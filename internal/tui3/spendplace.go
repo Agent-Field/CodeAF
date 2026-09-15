@@ -116,10 +116,10 @@ func (r spendReading) unpriced(calls int64) spendReading {
 // THE ROLE IS THE BINDING AND NEVER THE CALL. The ledger's own role word is the
 // auxiliary name one call gave itself — `title`, `taskname` — and a table headed
 // with it answers a question nobody can act on. The design's caption says which
-// question the column answered: which slot each model is bound to, so that
-// reading "execution is most of the bill" sent you to the one chip that changes
-// it. THE MODELS TABLE NO LONGER DRAWS IT ([spendReading.modelTable] says why);
-// what is still read off this map is the unbound-slot rows under that table.
+// question this column answers: which slot each model is bound to, so that
+// reading "execution is most of the bill" sends you to the one chip that changes
+// it. The unbound-slot rows under that table are the other half of the same
+// join.
 type spendCrew struct {
 	// role is the slot's plain word — `execution`, `conversation`,
 	// `verification`, `naming`, `planning` — by model id, lower-cased, because
@@ -847,9 +847,9 @@ func (r spendReading) sparkAxis(width int, pal palette) string {
 
 // spendModelsWord is the models table's caption.
 //
-// IT NO LONGER NAMES THE ROLE. The caption promised `and the role it was bound
-// to` for as long as the table carried that column; the column is gone, and a
-// caption promising a field the table does not draw is worse than no caption.
+// IT NO LONGER ENUMERATES THE COLUMNS. It promised `and the role it was bound
+// to` while every heading here was a sentence; a heading in this set says how
+// its table cuts the money and leaves the columns to say what they hold.
 const spendModelsWord = "by model"
 
 // spendSubjectsWord is the subjects table's caption.
@@ -1163,11 +1163,11 @@ func spendTokenFigure(n int) string {
 // modelNameField is the name field of a model row: the bullet and the model as
 // a person says it out loud.
 //
-// THE ROLE IS NOT IN IT. It rode here for one build, because the caption used to
-// pair the two — `by the model, and the role it was bound to` — but a word glued
-// to the end of a name is a name of a different length on one row, and every
-// column behind it moved for the row that wore it. It then had a column of its
-// own for a build, and now it has neither ([spendReading.modelTable] says why).
+// THE ROLE IS NOT IN IT ANY MORE. It rode here for one build, because the caption
+// used to pair the two — `by the model, and the role it was bound to` — but a
+// word glued to the end of a name is a name of a different length on one row, and
+// every column behind it moved for the row that wore it. The role has a column of
+// its own now, at the head of the block on the right.
 //
 // IT IS ONE FUNCTION because the pass that measures this table's columns and the
 // pass that draws its rows must not be able to build the same field two ways —
@@ -1185,22 +1185,33 @@ func (r spendReading) modelNameField(model session.ModelSpend) string {
 // and the row painter cannot disagree about which one is the money.
 const (
 	spendModelName = iota
+	spendModelRole
 	spendModelCalls
 	spendModelTokens
 	spendModelMoney
 )
 
-// modelTable is `by model` measured: each model's row as its fields — the
-// model, its calls, its token volume and what it cost — and where the columns
-// fell.
+// modelTable is `by model` measured: each model's row as its fields — the model,
+// the role it is bound to, its calls, its token volume and what it cost — and
+// where the columns fell.
 //
-// THERE IS NO ROLE COLUMN. It was the crew binding this machine has that model
-// BOUND to — the fact the old caption promised and the one a person could act
-// on — and it is off the table: on a page of figures a word among them is the
-// one cell that cannot be compared with the cell above it, and the crew is
-// answered where it is set rather than in a bill. [spendReading.modelRole] and
-// [spendCrew.role] remain, because the unbound-slot rows below the table still
-// read them.
+// THE ROLE LEADS THE BLOCK, FIRST AFTER THE NAME. It is the crew binding this
+// machine has that model BOUND to — never the auxiliary word one call gave
+// itself — and it is the one fact on the row a person can go and change: reading
+// that the dearest model is the conversation's own sends them to the chip that
+// changes it.
+//
+// IT IS NOT A MEASUREMENT AND DOES NOT BELONG AMONG THE FIGURES. What a model IS
+// on this machine reads with the name it follows, while the calls, the tokens
+// and the money are three readings of one quantity and want to stand together.
+// It sat second-last for a build, wedged between the token volume and the money,
+// where a word in the middle of a run of numbers broke the run.
+//
+// THE CAPTION DOES NOT PROMISE IT, and no longer needs to. It read `what ran it ·
+// by the model, and the role it was bound to` while every heading on this page
+// was a sentence; the headings are `by model`, `by topic`, `by standing order`
+// now and name only how each table cuts the money — the calls and the tokens are
+// not enumerated up there either.
 //
 // THE TOKEN COLUMN CARRIES NO UNIT WORD. `3.2B` beside `128,400 calls` is
 // already two different kinds of number, and `tokens` repeated down a column
@@ -1214,6 +1225,7 @@ func (r spendReading) modelTable(width, rule int) ([][]string, spendTable) {
 	for _, model := range r.models {
 		rows = append(rows, []string{
 			r.modelNameField(model),
+			strings.TrimSpace(r.modelRole(model.Model)),
 			spendFigureWord(spendCountFigure(model.Calls), plural("call", model.Calls), calls),
 			spendTokenFigure(model.Tokens),
 			spendMoneyWord(model.USD),
@@ -1221,8 +1233,9 @@ func (r spendReading) modelTable(width, rule int) ([][]string, spendTable) {
 	}
 	// THE FIELDS GO IN ORDER OF WHAT THEY ARE WORTH ON A FRAME THAT CANNOT HOLD
 	// THEM ALL: the token volume first, because the money beside it already says
-	// what that volume came to, then the calls. The money never goes.
-	drop := []int{spendModelTokens, spendModelCalls}
+	// what that volume came to; then the role, which the crew chips also say;
+	// then the calls. The money never goes.
+	drop := []int{spendModelTokens, spendModelRole, spendModelCalls}
 	return rows, spendMeasured(rows, drop, nil, rule, width)
 }
 

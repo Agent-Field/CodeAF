@@ -2015,13 +2015,18 @@ same three-second beat every place runs on, and it draws three things:
   the day was mostly spent on — that name is a row of *by topic* a few lines below —
   and then the clause altogether, before ever crowding `shift+↑ coarser` off the line: a
   key that is not drawn is a key that does not work, so the sentence yields to the control;
-- **by model**, dearest first, each row carrying its call count, its token volume and what
-  it cost. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
+- **by model**, dearest first, each row carrying **the role it is bound to**, its call
+  count, its token volume and what it cost. The role stands **first after the name**,
+  because what a model *is* on this machine reads with the name it follows, while the
+  calls, the tokens and the money are three readings of one quantity and belong together.
+  It is the **crew binding** — `execution`, `conversation`, `verification`, `naming`,
+  `planning` — read from the settings as they stand right now, and never the auxiliary word
+  one call gave itself. That is the point of the column: seeing that execution is most of
+  the bill sends you to the one row that changes it. A model that is on the bill and is
+  bound to nothing today draws **no role word at all**, and a model bound to two slots says
+  both. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
   `anthropic/claude-opus-4-1` — which is the spelling `/model`, the crew chips and the
-  status line all use. **There is no role column.** This table carried the crew binding for
-  a long time and its caption promised it; on a table of figures a word among them is the
-  one cell you cannot compare with the cell above it, and the crew is answered where it is
-  set — `/settings` → Providers, and the crew chips;
+  status line all use;
 - **a role slot with nothing bound to it** gets a row of its own under the models —
   `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
   is bound to planning" are opposite facts about the same blank. There is no figure on that
@@ -2054,14 +2059,16 @@ cost nothing has no row at all, which is the emptiness law and not a rounding.
 `by topic` and `by standing order` — four to eight cells each — and each says only which way
 that table cuts the money. They were sentences (`what ran it · by the model, and the role it
 was bound to`, `what it was for`, `what kept running · standing orders, and what a firing
-cost`), each naming the page's subject again before getting to the point.
+cost`), each naming the page's subject again before getting to the point. A heading in
+this set says how its table cuts the money and leaves the columns to say what they hold —
+the role, the calls and the tokens are all unnamed up there.
 
 **Every table on this page has four columns**, and they are the same four questions asked
 of the same money:
 
 | | | | | |
 | --- | --- | --- | --- | --- |
-| *by model* | the model | its calls | its tokens | what it cost |
+| *by model* | the model | the role it is bound to | its calls · its tokens | what it cost |
 | *by topic* | the task or the conversation | `task` or `chat` | its project | what it cost |
 | *by standing order* | the standing order | its firings | what a firing cost | what it cost |
 
@@ -2091,7 +2098,7 @@ reservation in front of it so a role word on one row could not push it out of li
 A name column is the width of what it holds and is **never squeezed** to keep a field behind
 it; a name wider than its column keeps every cell of itself and starts the next field one
 space late. On a frame too narrow for the whole table, **whole fields go** in order of what
-they are worth — the token volume first, then the calls; the kind word before
+they are worth — the token volume first, then the role, then the calls; the kind word before
 the project — never a figure with its tail cut off, and never the money. Where a field
 *stands* and what it is *worth* are two different questions: the kind word leads the block
 and is still the first thing given up.
