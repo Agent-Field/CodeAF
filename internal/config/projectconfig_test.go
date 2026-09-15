@@ -12,7 +12,7 @@ import (
 // are about the two ways such a file can betray them: applying when it should
 // not, and — far worse — not applying while looking as though it does.
 
-// projectDir writes one <cwd>/.codeaf-v3/config.json and answers with the cwd.
+// projectDir writes one <cwd>/.codeaf/config.json and answers with the cwd.
 func projectDir(t *testing.T, rows map[string]any) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -430,16 +430,50 @@ func TestEveryProjectKeyIsARegisteredSettingsRow(t *testing.T) {
 	}
 }
 
-// THE DIRECTORY IS ON THE codeaf SCHEME UNTIL THE ONE LATE RENAME. codeaf is
-// the product's final name and the rename is its own refactor, at the end
-// (docs/CHAT-V3.md, Decision 26): a directory that had gone ahead of it would
-// be a path people had already committed to their repositories under a name
-// nothing else in the build uses.
-func TestTheProjectLayerReadsTheCodeafDirectory(t *testing.T) {
-	if got, want := ProjectConfigDir, ".codeaf-v3"; got != want {
+// H4: the project layer names the new directory for every current read/write.
+func TestH4ProjectLayerUsesTheCurrentDirectory(t *testing.T) {
+	if got, want := ProjectConfigDir, ".codeaf"; got != want {
 		t.Fatalf("project settings directory = %q, want %q", got, want)
 	}
-	if got, want := ProjectConfigPath("/repo"), filepath.Join("/repo", ".codeaf-v3", "config.json"); got != want {
+	if got, want := ProjectConfigPath("/repo"), filepath.Join("/repo", ".codeaf", "config.json"); got != want {
 		t.Fatalf("project settings path = %q, want %q", got, want)
+	}
+}
+
+// H4: reads prefer .codeaf/config.json, fall back to the legacy file only when
+// the current one is absent, and writing the current path leaves legacy bytes.
+func TestH4ProjectConfigReadFallbackAndWritePath(t *testing.T) {
+	dir := t.TempDir()
+	legacyPath := filepath.Join(dir, legacyProjectConfigDir, ProjectConfigFile)
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyBody := mustJSON(t, map[string]any{KeyTierLowModel: "legacy/model"})
+	if err := os.WriteFile(legacyPath, legacyBody, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadProjectConfig(dir)
+	if err != nil || loaded.Path() != legacyPath {
+		t.Fatalf("legacy fallback = %q, %v", loaded.Path(), err)
+	}
+	if got, _, _ := loaded.String(KeyTierLowModel); got != "legacy/model" {
+		t.Fatalf("legacy value = %q", got)
+	}
+	currentPath := ProjectConfigPath(dir)
+	if err := os.MkdirAll(filepath.Dir(currentPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(currentPath, mustJSON(t, map[string]any{KeyTierLowModel: "current/model"}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = LoadProjectConfig(dir)
+	if err != nil || loaded.Path() != currentPath {
+		t.Fatalf("current read = %q, %v", loaded.Path(), err)
+	}
+	if got, _, _ := loaded.String(KeyTierLowModel); got != "current/model" {
+		t.Fatalf("current value = %q", got)
+	}
+	if body, err := os.ReadFile(legacyPath); err != nil || string(body) != string(legacyBody) {
+		t.Fatalf("write path changed legacy file: %q, %v", body, err)
 	}
 }

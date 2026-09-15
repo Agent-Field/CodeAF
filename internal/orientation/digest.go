@@ -94,7 +94,9 @@ var skipDirs = map[string]bool{
 	".git": true, ".hg": true, ".svn": true,
 	"node_modules": true, "vendor": true, "__pycache__": true,
 	".codeaf": true, ".plandb": true, ".obs": true,
-	"dist": true, "build": true, "target": true, ".next": true,
+	".aforge":    true, // legacy-name
+	".aforge-v3": true, // legacy-name
+	"dist":       true, "build": true, "target": true, ".next": true,
 	"bin": true, "obj": true, ".gradle": true, ".idea": true, ".vscode": true,
 }
 

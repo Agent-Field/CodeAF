@@ -115,6 +115,34 @@ func TestAutonomyPersistsPerProjectAndFillsPolicy(t *testing.T) {
 	}
 }
 
+// H4: autonomy reads the current project file first, falls back to the legacy
+// project file, and SetAutonomy writes only the current path.
+func TestH4AutonomyReadFallbackAndCurrentWrite(t *testing.T) {
+	root := t.TempDir()
+	a := &Agent{config: Config{Workspace: root}}
+	legacyPath := a.legacyAutonomyFile()
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyBody := []byte(`{"choice":{"kind":"decide"}}`)
+	if err := os.WriteFile(legacyPath, legacyBody, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.autonomyFor(AskChoice); got.Kind != PolicyDecide {
+		t.Fatalf("legacy policy = %+v", got)
+	}
+	want := Policy{Kind: PolicyRecommendThenAuto, After: 2 * time.Minute}
+	if err := a.SetAutonomy(AskChoice, want); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.autonomyFor(AskChoice); got != want {
+		t.Fatalf("current policy = %+v, want %+v", got, want)
+	}
+	if body, err := os.ReadFile(legacyPath); err != nil || string(body) != string(legacyBody) {
+		t.Fatalf("current write changed legacy file: %q, %v", body, err)
+	}
+}
+
 // THE RECORD REACHES THE MODEL, and answering does not re-price the
 // conversation to put it there. A decision is written to the file the gate
 // reads, and the copy message[0] carries is brought up to date the next time

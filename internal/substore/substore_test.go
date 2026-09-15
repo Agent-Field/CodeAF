@@ -583,6 +583,29 @@ func TestTheHomeStoreFollowsTheStateRoot(t *testing.T) {
 	}
 }
 
+// H4: project bundle reads prefer the current directory, fall back to the
+// legacy directory, and the write name remains current regardless.
+func TestH4ProjectStoreReadFallbackAndWriteName(t *testing.T) {
+	repository := t.TempDir()
+	current := ProjectDir(repository)
+	legacy := filepath.Join(repository, ".aforge", Root) // legacy-name
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProjectReadDir(repository); got != legacy {
+		t.Fatalf("legacy-only project store = %q, want %q", got, legacy)
+	}
+	if got := ProjectDir(repository); got != current {
+		t.Fatalf("write store = %q, want %q", got, current)
+	}
+	if err := os.MkdirAll(current, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProjectReadDir(repository); got != current {
+		t.Fatalf("current project store = %q, want %q", got, current)
+	}
+}
+
 // A store with no runtime behind it is not a source at all. That is the
 // codebase's law about a capability that cannot work, stated at the earliest
 // place it can be: nothing about subharnesses is drawn rather than a list of

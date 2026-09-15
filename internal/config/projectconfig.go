@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
-// The project-local settings layer: <workspace>/.codeaf-v3/config.json.
+// The project-local settings layer: <workspace>/.codeaf/config.json.
 //
 // It is omp's <repo>/.omp/config.yml in codeaf's file format, and it answers the
 // question the profile cannot: which settings belong to the REPOSITORY rather
@@ -60,13 +62,11 @@ import (
 const (
 	// ProjectConfigDir is the per-repository settings directory.
 	//
-	// IT IS ON THE codeaf SCHEME AND NOT THE PRODUCT'S FINAL NAME. codeaf is
-	// what this will be called, and the rename happens ONCE, at the end, as its
-	// own refactor (docs/CHAT-V3.md, Decision 26 — "One home, one seam, one late
-	// rename"); a single directory that had gone ahead of it would be one name
-	// the rename has to remember not to change, and the migration people write
-	// for their own repositories would be two migrations instead of one.
-	ProjectConfigDir = ".codeaf-v3"
+	// THE LIVE DIRECTORY IS .codeaf. When its config.json is absent, reads still
+	// accept the former .aforge-v3/config.json, but writes always name this live // legacy-name
+	// path and nothing rewrites a person's repository on its own.
+	ProjectConfigDir       = ".codeaf"
+	legacyProjectConfigDir = ".aforge-v3" // legacy-name
 	// ProjectConfigFile is the one file inside it this layer reads.
 	ProjectConfigFile = "config.json"
 )
@@ -124,7 +124,8 @@ type ProjectConfig struct {
 	values map[string]json.RawMessage
 }
 
-// LoadProjectConfig reads <cwd>/.codeaf-v3/config.json.
+// LoadProjectConfig reads <cwd>/.codeaf/config.json, falling back to the
+// legacy project file only when the current file is absent.
 //
 // Absent is empty; unreadable, unparseable, or written in the nested shape is an
 // error naming the path (law 3). Keys this build does not know are kept and
@@ -137,7 +138,12 @@ func LoadProjectConfig(cwd string) (ProjectConfig, error) {
 	}
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return ProjectConfig{path: path}, nil
+		legacy := filepath.Join(strings.TrimSpace(cwd), legacyProjectConfigDir, ProjectConfigFile)
+		path = legacy
+		raw, err = os.ReadFile(legacy)
+		if os.IsNotExist(err) {
+			return ProjectConfig{path: ProjectConfigPath(cwd)}, nil
+		}
 	}
 	if err != nil {
 		return ProjectConfig{}, fmt.Errorf("read project settings %s: %w", path, err)
@@ -381,7 +387,7 @@ func ProjectFloatAt(cwd, profileDir, key string) (float64, error) {
 // environmentBool reads a pin that is set AND readable. Anything else is not a
 // choice, and the layer below gets to answer.
 func environmentBool(name string) (bool, bool) {
-	raw := strings.TrimSpace(os.Getenv(name))
+	raw := strings.TrimSpace(env.Value(name))
 	if raw == "" {
 		return false, false
 	}

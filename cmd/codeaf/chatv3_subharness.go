@@ -160,7 +160,7 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// twice. An owned session's work directory is a different repository and is
 	// genuinely asked, which is the same call it always was.
 	if root, ok := v3GitRoot(space.Root()); ok {
-		registry.UseBundles(exec.LayerProject, substore.At(substore.ProjectDir(root)).Source(build))
+		registry.UseBundles(exec.LayerProject, substore.At(substore.ProjectReadDir(root)).Source(build))
 	}
 
 	return v3Subharness{

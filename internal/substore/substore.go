@@ -203,6 +203,21 @@ func ProjectDir(repository string) string {
 	return filepath.Join(repository, ".codeaf", Root)
 }
 
+// ProjectReadDir is the repository store a reader should open. The current
+// directory wins; the former directory is accepted only while the current one
+// is absent. Writers keep using [ProjectDir] and therefore never touch it.
+func ProjectReadDir(repository string) string {
+	current := ProjectDir(repository)
+	if _, err := os.Stat(current); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return current
+	}
+	legacy := filepath.Join(repository, ".aforge", Root) // legacy-name
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return current
+}
+
 // Dir names the store's directory.
 func (s *Store) Dir() string { return s.dir }
 

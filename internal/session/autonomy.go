@@ -44,6 +44,14 @@ func (a *Agent) autonomyFile() string {
 	return filepath.Join(root, ".codeaf", "autonomy.json")
 }
 
+func (a *Agent) legacyAutonomyFile() string {
+	root := strings.TrimSpace(a.config.Workspace)
+	if root == "" {
+		return ""
+	}
+	return filepath.Join(root, ".aforge", "autonomy.json") // legacy-name
+}
+
 // SetAutonomy is the one door surfaces use for the D-key promise.
 func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
 	// THE TWO ROWS NOBODY MAY CHANGE, refused at the door that writes them so
@@ -93,6 +101,9 @@ func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
 func (a *Agent) readAutonomy() map[AskKind]Policy {
 	settings := make(map[AskKind]Policy)
 	data, err := os.ReadFile(a.autonomyFile())
+	if os.IsNotExist(err) {
+		data, err = os.ReadFile(a.legacyAutonomyFile())
+	}
 	if err == nil {
 		_ = json.Unmarshal(data, &settings)
 	}

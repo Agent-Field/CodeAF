@@ -179,7 +179,7 @@ func runSubharnessCommand(args []string) error {
 	// whatever a `git pull` left there — so whether there is a project at all is
 	// asked with the one answer this binary already gives ([v3GitRoot]).
 	if root, ok := v3GitRoot(space.Root()); ok {
-		registry.UseBundles(exec.LayerProject, substore.At(substore.ProjectDir(root)).Source(build))
+		registry.UseBundles(exec.LayerProject, substore.At(substore.ProjectReadDir(root)).Source(build))
 	}
 
 	journal := &runJournal{}
@@ -549,7 +549,7 @@ func checkSubharnessName(name, workspace string) error {
 		return nil
 	}
 	if root, ok := v3GitRoot(dir); ok {
-		stores = append(stores, substore.At(substore.ProjectDir(root)))
+		stores = append(stores, substore.At(substore.ProjectReadDir(root)))
 	}
 	for _, store := range stores {
 		found, err := store.Names()
