@@ -242,7 +242,7 @@ func gatherDigests(root, from string, into map[string]string, walk *digestWalk) 
 		if from != "" {
 			child = from + "/" + entry.Name()
 		}
-		if entry.Name() == ".git" || child == codeafDroppings {
+		if entry.Name() == ".git" || isTaskDropping(child) {
 			continue
 		}
 		if walk.budget--; walk.budget < 0 {

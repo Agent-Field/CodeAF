@@ -678,7 +678,12 @@ func openForkAt(dir, branch, frozen string) error {
 	if out, err := git(dir, "checkout", "-b", branch, frozen); err != nil {
 		return errors.New("the family's world could not be opened in the fork: " + familyTreeProblem(out, err))
 	}
-	if out, err := git(dir, "clean", "-fd", "-e", codeafDroppings, "-e", furrowMarkerDir); err != nil {
+	cleanArgs := []string{"clean", "-fd"}
+	for _, dropping := range taskDroppingNames() {
+		cleanArgs = append(cleanArgs, "-e", dropping)
+	}
+	cleanArgs = append(cleanArgs, "-e", furrowMarkerDir)
+	if out, err := git(dir, cleanArgs...); err != nil {
 		return errors.New("the family's world could not be opened in the fork: " + familyTreeProblem(out, err))
 	}
 	return nil
@@ -950,7 +955,8 @@ func sealGroundWork(dir, title string) (string, error) {
 	if out, err := withIndex("add", "-A", "--", "."); err != nil {
 		return "", sealProblem(out, err)
 	}
-	if out, err := withIndex("reset", "-q", "--", codeafDroppings, furrowMarkerDir); err != nil {
+	private := append(taskDroppingNames(), furrowMarkerDir)
+	if out, err := withIndex(append([]string{"reset", "-q", "--"}, private...)...); err != nil {
 		return "", sealProblem(out, err)
 	}
 	tree, err := withIndex("write-tree")

@@ -6590,8 +6590,11 @@ func worktreeDirt(dir string) string { return worktreeDirtIn(context.Background(
 // worktreeDirtIn is [worktreeDirt] under a context, for a reading somebody may
 // have to stop ([treeWatch.close]).
 func worktreeDirtIn(ctx context.Context, dir string) string {
-	out, err := exec.CommandContext(ctx, "git", "-C", dir, "--no-optional-locks", "status", "--porcelain",
-		"--untracked-files=all", "--", ".", ":(exclude)"+codeafDroppings).Output()
+	args := []string{"-C", dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		args = append(args, ":(exclude)"+dropping)
+	}
+	out, err := exec.CommandContext(ctx, "git", args...).Output()
 	if err != nil {
 		return ""
 	}
@@ -6606,6 +6609,25 @@ func worktreeDirtIn(ctx context.Context, dir string) string {
 // the index [stageTaskWork] builds — and a disagreement would mean a node
 // judged as working on files that never reach its branch.
 const codeafDroppings = ".codeaf-v3"
+
+const legacyCodeafDroppings = ".aforge-v3" // legacy-name
+
+// taskDroppingNames is the one list of repository-local task machinery a
+// reader, cleaner or index builder must recognise. Writes keep using
+// codeafDroppings because live worktree registrations cannot be moved.
+func taskDroppingNames() []string {
+	return []string{codeafDroppings, legacyCodeafDroppings}
+}
+
+func isTaskDropping(path string) bool {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
+	for _, name := range taskDroppingNames() {
+		if clean == name || strings.HasPrefix(clean, name+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 // savingTools are the hands that PUT A FILE ON DISK at a path the call itself
 // names. They are the producing half of the belt, and the counterpart to
@@ -8000,7 +8022,7 @@ func mirrorGround(ground, dir string) string {
 			if relative != "" {
 				child = relative + "/" + entry.Name()
 			}
-			if entry.Name() == ".git" || child == codeafDroppings {
+			if entry.Name() == ".git" || isTaskDropping(child) {
 				continue
 			}
 			if visited++; visited > auditRestoreEntries {
@@ -8452,8 +8474,11 @@ func leftBehind(dir string) []string {
 			return paths
 		}
 	}
-	out, err := git(dir, "status", "--porcelain", "--untracked-files=all",
-		"--", ".", ":(exclude)"+codeafDroppings)
+	args := []string{"status", "--porcelain", "--untracked-files=all", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		args = append(args, ":(exclude)"+dropping)
+	}
+	out, err := git(dir, args...)
 	if err != nil {
 		return nil
 	}
@@ -8793,7 +8818,7 @@ func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
 			problem = firstLine(out)
 		}
 	}
-	if out, err := git(dir, "reset", "--quiet", "--", codeafDroppings); err != nil && problem == "" {
+	if out, err := git(dir, append([]string{"reset", "--quiet", "--"}, taskDroppingNames()...)...); err != nil && problem == "" {
 		problem = firstLine(out)
 	}
 	if problem == "" {
@@ -8830,7 +8855,7 @@ func stageableWork(dir string, wrote []string) []string {
 		clean = filepath.ToSlash(filepath.Clean(filepath.FromSlash(clean)))
 		switch {
 		case clean == "" || clean == "." || clean == "..", strings.HasPrefix(clean, "../"),
-			clean == codeafDroppings, strings.HasPrefix(clean, codeafDroppings+"/"),
+			isTaskDropping(clean),
 			seen[clean]:
 			continue
 		}

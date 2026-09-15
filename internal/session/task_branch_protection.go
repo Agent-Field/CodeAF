@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	codeafGitName  = "codeaf"
-	codeafGitEmail = "codeaf@localhost"
+	codeafGitName        = "codeaf"
+	codeafGitEmail       = "codeaf@localhost"
+	legacyCodeafGitName  = "aforge"           // legacy-name
+	legacyCodeafGitEmail = "aforge@localhost" // legacy-name
 )
 
 // codeafGitIdentity marks commits the task system creates so sibling landings
@@ -126,16 +128,20 @@ func (t taskTree) landsInThePersonsRepository() bool {
 	// prefix can name them; a mirror opened there sits on git's default branch,
 	// and reading that as the person's trunk would keep every part of the family
 	// off the tree its parent is waiting to merge.
-	if strings.Contains(root, string(filepath.Separator)+codeafDroppings+string(filepath.Separator)) {
-		return false
+	for _, dropping := range taskDroppingNames() {
+		if strings.Contains(root, string(filepath.Separator)+dropping+string(filepath.Separator)) {
+			return false
+		}
 	}
 	// A LEGACY SESSION HAS NO Place, but its family trees still live below the
 	// old .codeaf-v3/tasks path. Those repositories are codeaf's working
 	// material too; treating git's default branch there as the person's would
 	// keep every part out of its parent and break the family landing.
-	marker := string(filepath.Separator) + filepath.FromSlash(tasksDirName) + string(filepath.Separator)
-	if strings.Contains(root+string(filepath.Separator), marker) {
-		return false
+	for _, dropping := range taskDroppingNames() {
+		marker := string(filepath.Separator) + filepath.Join(dropping, "tasks") + string(filepath.Separator)
+		if strings.Contains(root+string(filepath.Separator), marker) {
+			return false
+		}
 	}
 	if t.place.Owned {
 		for _, own := range []string{t.place.Workspace, t.place.Work()} {
@@ -190,14 +196,29 @@ func branchMovedByPerson(root, branch, recorded string) bool {
 		}
 		return false
 	}
-	committers, err := git(root, "log", "--no-show-signature", "--format=%ce", recorded+"..refs/heads/"+branch)
+	committers, err := git(root, "log", "--no-show-signature", "--format=%cn%x09%ce", recorded+"..refs/heads/"+branch)
 	if err != nil {
 		return false
 	}
-	for _, email := range strings.Fields(committers) {
-		if email != codeafGitEmail {
+	// AN EMPTY RANGE IS NOT A MOVEMENT. The early returns above mean the range
+	// normally holds at least one commit, but a reading that comes back with no
+	// rows at all has observed nothing — and the reading-failure case two lines
+	// up already rules that "not the person", because an observation failure is
+	// no grounds to keep finished work away from the branch it was meant for.
+	rows := strings.TrimSpace(committers)
+	if rows == "" {
+		return false
+	}
+	for _, line := range strings.Split(rows, "\n") {
+		name, email, ok := strings.Cut(line, "\t")
+		if !ok || !taskCommitIdentity(name, email) {
 			return true
 		}
 	}
 	return false
+}
+
+func taskCommitIdentity(name, email string) bool {
+	return (name == codeafGitName && email == codeafGitEmail) ||
+		(name == legacyCodeafGitName && email == legacyCodeafGitEmail)
 }

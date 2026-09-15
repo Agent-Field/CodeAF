@@ -2289,7 +2289,7 @@ func copyOriginal(from, to string, wrote []string, started time.Time) string {
 			// The repository's own metadata and the harness's own corner are never
 			// part of anybody's deliverable (task_run.go's [stageTaskWork] keeps the
 			// second one off a branch for the same reason).
-			if entry.Name() == ".git" || child == codeafDroppings {
+			if entry.Name() == ".git" || isTaskDropping(child) {
 				continue
 			}
 			if visited++; visited > auditRestoreEntries {
