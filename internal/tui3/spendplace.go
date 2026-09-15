@@ -47,7 +47,7 @@ const (
 // The original lines are deliberately absent: once the window has been read,
 // no later draw should be able to count a line outside it by accident.
 type spendReading struct {
-	// unfolded is whether `what it was for` draws every subject rather than the
+	// unfolded is whether `by topic` draws every subject rather than the
 	// first [spendSubjectCap] and a fold line ([spendReading.unfolding]).
 	unfolded bool
 	window   session.UsageWindow
@@ -116,9 +116,10 @@ func (r spendReading) unpriced(calls int64) spendReading {
 // THE ROLE IS THE BINDING AND NEVER THE CALL. The ledger's own role word is the
 // auxiliary name one call gave itself — `title`, `taskname` — and a table headed
 // with it answers a question nobody can act on. The design's caption says which
-// question this column answers: `by the model, and the role it was bound to`, and
-// the point of the column is that reading "execution is 63% of the bill" sends
-// you to the one chip that changes it.
+// question the column answered: which slot each model is bound to, so that
+// reading "execution is most of the bill" sent you to the one chip that changes
+// it. THE MODELS TABLE NO LONGER DRAWS IT ([spendReading.modelTable] says why);
+// what is still read off this map is the unbound-slot rows under that table.
 type spendCrew struct {
 	// role is the slot's plain word — `execution`, `conversation`,
 	// `verification`, `naming`, `planning` — by model id, lower-cased, because
@@ -222,7 +223,7 @@ type spendStop struct {
 	// (place_spend.go's [app.openSpendRow]). It is a flag and not a fourth
 	// subject kind because it is not a subject at all: nothing was spent on it.
 	rails bool
-	// fold marks the fold line under `what it was for`, whose `enter` opens the
+	// fold marks the fold line under the subject tables, whose `enter` opens the
 	// rest of the subjects or folds them back.
 	fold bool
 }
@@ -658,7 +659,7 @@ const spendLoudestWord = "loudest day: "
 //	$21.40 aug 20
 //
 // WHAT IT WAS MOSTLY SPENT ON IS THE FIRST THING OFF, because the name is
-// already a row of `what it was for` four lines below and the figure and the
+// already a row of `by topic` four lines below and the figure and the
 // date are not said anywhere else on the page. A window with nothing in it says
 // nothing here at all.
 func (r spendReading) loudFields() rowField {
@@ -828,14 +829,36 @@ func (r spendReading) sparkAxis(width int, pal palette) string {
 // now ([spendReading.loudFields]) and the two subject headings name the key
 // ([spendOpensWord]).
 
-// spendModelsWord is the models table's caption, and it is SCREEN 2c's own. The
-// column says the role each model was BOUND to — the crew binding a person can
-// go and change — and not the auxiliary word one call gave itself, which is what
-// the caption used to promise and what the table used to draw.
-const spendModelsWord = "what ran it · by the model, and the role it was bound to"
+// THE THREE CAPTIONS ARE ONE SET, AND THE TAB ALREADY SAID `spend`.
+//
+// They were sentences — `what ran it · by the model, and the role it was bound
+// to`, `what it was for`, `what kept running · standing orders, and what a
+// firing cost` — each naming the page's subject again before saying how this
+// table cuts it. A person reading them has walked in through a tab marked
+// `spend` and read a pointer line of money; what they still do not know is which
+// way each table is sliced, and that is the whole of what a heading here owes
+// them.
+//
+// AND `usage` IS NOT THE WORD. It is what the CODE calls the ledger
+// ([session.UsageLine], [session.UsageByModel]) and a person has never been
+// shown it: this surface calls the thing money, spending, and the tab `spend`.
+// A heading introducing a second word for the page's own subject is the
+// one-source-of-truth law applied to vocabulary.
+
+// spendModelsWord is the models table's caption.
+//
+// IT NO LONGER NAMES THE ROLE. The caption promised `and the role it was bound
+// to` for as long as the table carried that column; the column is gone, and a
+// caption promising a field the table does not draw is worse than no caption.
+const spendModelsWord = "by model"
 
 // spendSubjectsWord is the subjects table's caption.
-const spendSubjectsWord = "what it was for"
+//
+// `topic` COVERS BOTH KINDS OF ROW, which is what this table needs and what no
+// exact word does: it holds a piece of work and a conversation, and `work` is
+// wrong for `britney spears albums ranked by sales` exactly as `topic` is loose
+// for a task. The row itself says which of the two it is, in its own column.
+const spendSubjectsWord = "by topic"
 
 // spendOpensWord says THAT THESE ROWS ARE DOORS, on the heading directly over
 // them.
@@ -846,16 +869,15 @@ const spendSubjectsWord = "what it was for"
 // clause on the head line now ([spendReading.loudFields]). A key is drawn where
 // it works or it is drawn nowhere.
 //
-// IT NAMES NO DESTINATION. `what it was for` holds two kinds — a task opens in
-// tasks and a conversation opens where it was left — so a heading over both can
-// promise only what they have in common; and the promises below stand under a
-// caption that has already said `standing orders`, where `enter opens it in
-// standing` would be the same word twice on one line.
+// IT NAMES NO DESTINATION. `by topic` holds two kinds — a task opens in tasks
+// and a conversation opens where it was left — so a heading over both can
+// promise only what they have in common, and the promises below open in the one
+// place a promise lives.
 const spendOpensWord = "enter opens it"
 
-// subjectHeading is one table's caption WITH THE DOOR WORD IN THE SENTENCE, in
-// the grammar this page's other caption already uses: `what ran it · by the
-// model, and the role it was bound to`.
+// subjectHeading is one table's caption WITH THE DOOR WORD IN THE SENTENCE —
+// `by topic · enter opens it` — in the grammar this surface uses for a second
+// fact about a heading.
 //
 // IT WAS FLUSHED TO THE RIGHT-HAND EDGE OF THE TABLE, which made the heading two
 // objects — a caption at one end of the line and an instruction at the other —
@@ -885,7 +907,7 @@ func (r spendReading) subjectHeading(caption, door string, width int, pal palett
 // kind word that had to be suppressed to stop the row saying `standing` twice.
 // Given a table of their own they simply have their own columns, which is the
 // whole of the fix.
-const spendStandingWord = "what kept running · standing orders, and what a firing cost"
+const spendStandingWord = "by standing order"
 
 // spendUnboundRow is one role slot with nothing bound to it:
 //
@@ -912,8 +934,8 @@ const spendUnboundWord = "unbound"
 
 // ── the two tables ──────────────────────────────────────────────────────────
 //
-// BOTH TABLES ARE THE SAME TABLE. `what ran it` and `what it was for` are two
-// partitions of ONE ledger — the same money asked two questions — and they were
+// BOTH TABLES ARE THE SAME TABLE. `by model` and `by topic` are two partitions
+// of ONE ledger — the same money asked two questions — and they were
 // drawn by two layouts that had drifted apart, each measuring its own fields its
 // own way. They share the machinery below instead: a row is its fields, and
 // every field stands in a column measured over the rows about to be drawn.
@@ -1141,11 +1163,11 @@ func spendTokenFigure(n int) string {
 // modelNameField is the name field of a model row: the bullet and the model as
 // a person says it out loud.
 //
-// THE ROLE IS NOT IN IT ANY MORE. It rode here for one build, because the
-// heading pairs the two — `by the model, and the role it was bound to` — but a
-// word glued to the end of a name is a name of a different length on one row,
-// and every column behind it moved for the row that wore it. The role has a
-// column of its own now, standing with the other facts in the block on the right.
+// THE ROLE IS NOT IN IT. It rode here for one build, because the caption used to
+// pair the two — `by the model, and the role it was bound to` — but a word glued
+// to the end of a name is a name of a different length on one row, and every
+// column behind it moved for the row that wore it. It then had a column of its
+// own for a build, and now it has neither ([spendReading.modelTable] says why).
 //
 // IT IS ONE FUNCTION because the pass that measures this table's columns and the
 // pass that draws its rows must not be able to build the same field two ways —
@@ -1163,23 +1185,22 @@ func (r spendReading) modelNameField(model session.ModelSpend) string {
 // and the row painter cannot disagree about which one is the money.
 const (
 	spendModelName = iota
-	spendModelRole
 	spendModelCalls
 	spendModelTokens
 	spendModelMoney
 )
 
-// modelTable is `what ran it` measured: each model's row as its fields — the
-// model, its calls, its token volume, the role it is bound to, and what it cost
-// — and where the columns fell.
+// modelTable is `by model` measured: each model's row as its fields — the
+// model, its calls, its token volume and what it cost — and where the columns
+// fell.
 //
-// THE ROLE LEADS THE BLOCK, FIRST AFTER THE NAME. It is not a measurement and
-// it does not belong among the figures: what a model IS on this machine reads
-// with the name it follows — `opus 4.1 · conversation` is one thought — while
-// the calls, the tokens and the money are three readings of one quantity and
-// want to stand together. It sat second-last for a build, wedged between the
-// token volume and the money, where a word in the middle of a run of numbers
-// broke the run.
+// THERE IS NO ROLE COLUMN. It was the crew binding this machine has that model
+// BOUND to — the fact the old caption promised and the one a person could act
+// on — and it is off the table: on a page of figures a word among them is the
+// one cell that cannot be compared with the cell above it, and the crew is
+// answered where it is set rather than in a bill. [spendReading.modelRole] and
+// [spendCrew.role] remain, because the unbound-slot rows below the table still
+// read them.
 //
 // THE TOKEN COLUMN CARRIES NO UNIT WORD. `3.2B` beside `128,400 calls` is
 // already two different kinds of number, and `tokens` repeated down a column
@@ -1193,7 +1214,6 @@ func (r spendReading) modelTable(width, rule int) ([][]string, spendTable) {
 	for _, model := range r.models {
 		rows = append(rows, []string{
 			r.modelNameField(model),
-			strings.TrimSpace(r.modelRole(model.Model)),
 			spendFigureWord(spendCountFigure(model.Calls), plural("call", model.Calls), calls),
 			spendTokenFigure(model.Tokens),
 			spendMoneyWord(model.USD),
@@ -1201,9 +1221,8 @@ func (r spendReading) modelTable(width, rule int) ([][]string, spendTable) {
 	}
 	// THE FIELDS GO IN ORDER OF WHAT THEY ARE WORTH ON A FRAME THAT CANNOT HOLD
 	// THEM ALL: the token volume first, because the money beside it already says
-	// what that volume came to; then the role, which the crew chips also say;
-	// then the calls. The money never goes.
-	drop := []int{spendModelTokens, spendModelRole, spendModelCalls}
+	// what that volume came to, then the calls. The money never goes.
+	drop := []int{spendModelTokens, spendModelCalls}
 	return rows, spendMeasured(rows, drop, nil, rule, width)
 }
 
@@ -1247,7 +1266,7 @@ const (
 	spendColMoney
 )
 
-// subjectTable is `what it was for` measured: the work and the conversations,
+// subjectTable is `by topic` measured: the work and the conversations,
 // each with the project it ran in and the word for what kind of thing it is.
 func (r spendReading) subjectTable(subjects []session.SubjectSpend, width, rule int) ([][]string, spendTable) {
 	rows := make([][]string, 0, len(subjects))
@@ -1268,7 +1287,7 @@ func (r spendReading) subjectTable(subjects []session.SubjectSpend, width, rule 
 	return rows, spendMeasured(rows, drop, map[int]int{spendColSecond: spendProjectCap}, rule, width)
 }
 
-// standingTable is `what kept running` measured — the promises, in the two facts
+// standingTable is `by standing order` measured — the promises, in the two facts
 // that are theirs and nobody else's ([spendStandingWord] says why they are a
 // table apart).
 func (r spendReading) standingTable(subjects []session.SubjectSpend, width, rule int) ([][]string, spendTable) {

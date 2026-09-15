@@ -4,6 +4,23 @@ title: the spend place is three tables in four columns each — no bars, one rig
 pr: 1043
 surface: [chat]
 invalidates:
+  - "THE THREE HEADINGS ARE `by model`, `by topic` and `by standing order`. They
+    were sentences — `what ran it · by the model, and the role it was bound to`,
+    `what it was for`, `what kept running · standing orders, and what a firing
+    cost` — each naming the page's subject again before saying how its table cuts
+    it. A person reading them walked in through a tab marked `spend` and read a
+    pointer line of money; what a heading here owes them is which way the table
+    is sliced. `usage` is deliberately not the word: it is what the CODE calls
+    the ledger and a person has never been shown it."
+  - "THE MODELS TABLE HAS NO ROLE COLUMN. It carried the crew binding — the slot
+    this machine has each model bound to, never the auxiliary word one call gave
+    itself — and its caption promised it. On a table of figures a word among them
+    is the one cell that cannot be compared with the cell above it, and the crew
+    is answered where it is set. `spendReading.modelRole` and `spendCrew.role`
+    remain: the unbound-slot rows under the table are the other half of that join
+    and still draw. Nothing else on the row moved — every column is right-aligned
+    into the block that ends on the chart's edge, so the calls, the tokens and the
+    money end where they did."
   - "`what it was for` showed the DEAREST THREE and folded the rest; it shows
     twenty (`spendSubjectCap`). Three is a headline rather than an answer to the
     question this page is for, and a fortnight on a working machine is twenty or

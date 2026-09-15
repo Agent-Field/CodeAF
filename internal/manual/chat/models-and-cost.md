@@ -2012,21 +2012,16 @@ same three-second beat every place runs on, and it draws three things:
   `14 days came to $34.10 · 41.2M tokens · loudest day: $21.40 aug 20 (the-filings-sweep)`.
   It had a row of its own between the chart and the first table, which is a sentence saying
   what the line above it already says three facts of. On a narrower frame it gives up what
-  the day was mostly spent on — that name is a row of *what it was for* a few lines below —
+  the day was mostly spent on — that name is a row of *by topic* a few lines below —
   and then the clause altogether, before ever crowding `shift+↑ coarser` off the line: a
   key that is not drawn is a key that does not work, so the sentence yields to the control;
-- **what ran it**, by the model and **the role it is bound to**, dearest first, each row
-  carrying its role, its call count, its token volume and what it cost. The role stands
-  **first after the name**, because what a model *is* on this machine reads with the name it
-  follows, while the calls, the tokens and the money are three readings of one quantity and
-  belong together. The role is the **crew binding** — `execution`,
-  `conversation`, `verification`, `naming`, `planning` — read from the settings as they
-  stand right now, and never the auxiliary word one call gave itself. That is the point of
-  the column: seeing that execution is most of the bill sends you to the one row that
-  changes it. A model that is on the bill and is bound to nothing today draws **no role word
-  at all**, and a model bound to two slots says both. A model is drawn by the word you say
-  out loud — `claude-opus-4-1`, not `anthropic/claude-opus-4-1` — which is the spelling
-  `/model`, the crew chips and the status line all use;
+- **by model**, dearest first, each row carrying its call count, its token volume and what
+  it cost. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
+  `anthropic/claude-opus-4-1` — which is the spelling `/model`, the crew chips and the
+  status line all use. **There is no role column.** This table carried the crew binding for
+  a long time and its caption promised it; on a table of figures a word among them is the
+  one cell you cannot compare with the cell above it, and the crew is answered where it is
+  set — `/settings` → Providers, and the crew chips;
 - **a role slot with nothing bound to it** gets a row of its own under the models —
   `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
   is bound to planning" are opposite facts about the same blank. There is no figure on that
@@ -2035,14 +2030,14 @@ same three-second beat every place runs on, and it draws three things:
   model you are talking to and for no other; the five crew slots are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
-- **what it was for** — the three things money is ever spent on, because the ledger holds
+- **by topic** — the three things money is ever spent on, because the ledger holds
   three ids: a piece of work, a standing promise, or a conversation. **The dearest twenty
   are shown** and the rest fold into one line — the body scrolls and the cursor carries the
   window with it, so a long table costs a short terminal nothing. It showed three, which is
   a headline rather than an answer to the question this page is for. Work with **no id of its own** — the hands a reply
   forks, the check that reads what a piece of work left — is on the row of the conversation
   it belongs to, because that is the only name it has;
-- **what kept running** — the standing promises, under a heading and columns of their own.
+- **by standing order** — the standing promises, under a heading and columns of their own.
   A promise's facts are not a task's: what you want of one is how often it went off and what
   a single firing costs, so its row reads `repo-watch · 88 firings · $0.04 a run · $3.31`
   rather than carrying a project and a kind word it has no use for.
@@ -2055,14 +2050,20 @@ full of slivers can show rows that add to more than the heading above them; the 
 the `today` pointer line and the Spending tab all keep the exact arithmetic. A call that
 cost nothing has no row at all, which is the emptiness law and not a rounding.
 
+**The three headings are one set, and the tab already said `spend`.** They read `by model`,
+`by topic` and `by standing order` — four to eight cells each — and each says only which way
+that table cuts the money. They were sentences (`what ran it · by the model, and the role it
+was bound to`, `what it was for`, `what kept running · standing orders, and what a firing
+cost`), each naming the page's subject again before getting to the point.
+
 **Every table on this page has four columns**, and they are the same four questions asked
 of the same money:
 
 | | | | | |
 | --- | --- | --- | --- | --- |
-| *what ran it* | the model | the role it is bound to | its calls · its tokens | what it cost |
-| *what it was for* | the task or the conversation | `task` or `chat` | its project | what it cost |
-| *what kept running* | the standing order | its firings | what a firing cost | what it cost |
+| *by model* | the model | its calls | its tokens | what it cost |
+| *by topic* | the task or the conversation | `task` or `chat` | its project | what it cost |
+| *by standing order* | the standing order | its firings | what a firing cost | what it cost |
 
 **What a row *is* stands first, right after its name**; the figures stand together behind
 it. The kind word is `task` and `chat` — column words, not sentences. It read `a task` and
@@ -2090,7 +2091,7 @@ reservation in front of it so a role word on one row could not push it out of li
 A name column is the width of what it holds and is **never squeezed** to keep a field behind
 it; a name wider than its column keeps every cell of itself and starts the next field one
 space late. On a frame too narrow for the whole table, **whole fields go** in order of what
-they are worth — the token volume first, then the role, then the calls; the kind word before
+they are worth — the token volume first, then the calls; the kind word before
 the project — never a figure with its tail cut off, and never the money. Where a field
 *stands* and what it is *worth* are two different questions: the kind word leads the block
 and is still the first thing given up.
@@ -2104,9 +2105,8 @@ The ledger holds **ids and no titles**, so the place joins each id against the r
 already reading — the project's own index of what it ran, and the standing store — to put a
 name on the row. A thing neither of them knows keeps its id.
 
-**`enter` on any row under "what it was for" or "what kept running" opens the thing
-itself**, and each heading says so in its own sentence — `what it was for · enter opens
-it` — in the grammar the other caption on this page already uses. A task opens **its own record card** in the tasks place, with the list
+**`enter` on any row under "by topic" or "by standing order" opens the thing itself**, and
+each heading says so in its own sentence — `by topic · enter opens it`. A task opens **its own record card** in the tasks place, with the list
 behind it parked on that row; a standing promise opens the standing place **on that
 order**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that

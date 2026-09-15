@@ -170,9 +170,10 @@ func TestTheLoudestDaySaysWhereItsDoorGoes(t *testing.T) {
 	}
 	// AND A FRAME WITH NO ROOM FOR BOTH KEEPS THE CAPTION. rowfit's law 1: the
 	// identity survives and the fact about it goes.
-	for _, row := range plainSpendRows(r.rows(30, pal)) {
+	tight := len(placeLead) + ansi.StringWidth(spendSubjectsWord+rowSep+spendOpensWord) - 1
+	for _, row := range plainSpendRows(r.rows(tight, pal)) {
 		if strings.Contains(row, spendSubjectsWord) && strings.Contains(row, "enter") {
-			t.Fatalf("a 30-cell frame kept a door word it has no room for: %q", row)
+			t.Fatalf("a %d-cell frame kept a door word it has no room for: %q", tight, row)
 		}
 	}
 }

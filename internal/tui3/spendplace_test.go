@@ -170,14 +170,19 @@ func spendEndAt(t *testing.T, row, text string) int {
 	return spendCellAt(t, row, text) + ansi.StringWidth(text)
 }
 
-// SCREEN 2c: THE ROLE COLUMN IS THE CREW BINDING AND NEVER THE CALL'S OWN WORD.
+// THE MODELS TABLE DRAWS NO ROLE WORD, AND THE SLOTS NOTHING ANSWERS FOR STILL
+// GET THEIR ROW.
 //
-// The fixture's opus lines named themselves `execution`, which is also a slot
-// word — so the crew below binds opus to `conversation` instead. A row that drew
-// the ledger's word would say `execution` here, and the assertion is that it
-// does not: the column is what this machine has that model bound to, which is
-// the fact a person can go and change.
-func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
+// The table carried the crew binding for a long time — the slot this machine has
+// each model BOUND to, never the auxiliary word one call gave itself — and the
+// caption promised it. On a table of figures a word among them is the one cell
+// that cannot be compared with the cell above it, so the column is gone and the
+// caption no longer promises it. The crew is answered where it is set.
+//
+// WHAT SURVIVES IS THE UNBOUND ROW, which is not a reading of spending at all:
+// "planning costs nothing" and "nothing is bound to planning" are opposite facts
+// about the same blank, and only one of them is true.
+func TestTheSpendModelsDrawNoRoleAndTheUnboundSlotKeepsItsRow(t *testing.T) {
 	crew := spendCrew{
 		role: map[string]string{
 			"opus 4.1":   "conversation",
@@ -188,24 +193,23 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	if slot, ok := config.ModelSlotFor("plan"); ok {
 		crew.unbound = append(crew.unbound, slot)
 	}
-	text := strings.Join(plainSpendRows(spendTestReading().crewed(crew).rows(120, newPalette(tokens.NoColor, false))), "\n")
-	if !strings.Contains(text, "what ran it · by the model, and the role it was bound to") {
-		t.Fatalf("the caption does not say what the column is:\n%s", text)
+	rows := plainSpendRows(spendTestReading().crewed(crew).rows(120, newPalette(tokens.NoColor, false)))
+	text := strings.Join(rows, "\n")
+	if !strings.Contains(text, spendModelsWord) {
+		t.Fatalf("the models table lost its caption:\n%s", text)
 	}
-	// THE ROW IS READ WHOLE AND NOT AS A FIXED RUN OF CELLS: what follows the
-	// name is the table's own column ([spendMeasured]), so the assertion is about
-	// the LINE the model is on and not about the cells beside it.
-	opus := ""
-	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "opus 4.1") {
-			opus = line
+	// NO ROW OF THE TABLE WEARS A BOUND SLOT'S WORD. The fixture binds three of
+	// the four models, so a table that still drew the column would say so on
+	// three of its rows.
+	for _, row := range spendSectionRows(t, rows, spendModelsWord) {
+		if strings.Contains(row, "unbound") {
+			continue
 		}
-	}
-	if !strings.Contains(opus, "conversation") {
-		t.Fatalf("opus does not wear the slot it is bound to:\n%s", text)
-	}
-	if strings.Contains(opus, "execution") {
-		t.Fatalf("opus wears the word its calls named themselves:\n%s", text)
+		for _, word := range []string{"conversation", "naming", "execution"} {
+			if strings.Contains(row, word) {
+				t.Fatalf("a model row still wears the slot it is bound to: %q", row)
+			}
+		}
 	}
 	// AND A MODEL IS DRAWN BY THE WORD A PERSON SAYS, not by the provider's slug:
 	// the vendor prefix, the alias marker and the release stamp come off, exactly
@@ -216,21 +220,19 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	if got := (spendReading{}).modelName("~deepseek/deepseek-v4-flash-latest"); got != "deepseek-v4-flash" {
 		t.Fatalf("an aliased slug is drawn as %q", got)
 	}
-	// AND A MODEL BOUND TO NOTHING WEARS NO ROLE WORD AT ALL. It is asserted on
-	// the separator and not on the cell after the name, because what follows the
-	// name now is the run of spaces that carries the row out to its first column
-	// ([spendColumnAt]) and not a single space.
-	if !strings.Contains(text, "gemini 2.5 pro ") || strings.Contains(text, "gemini 2.5 pro ·") {
-		t.Fatalf("an unbound model grew a role word:\n%s", text)
-	}
 	// AND THE SLOT NOTHING IS BOUND TO IS A ROW OF ITS OWN, with no figure.
 	if !strings.Contains(text, "planning · unbound · follows execution") {
 		t.Fatalf("the unbound slot has no row:\n%s", text)
 	}
-	for _, line := range strings.Split(text, "\n") {
+	for _, line := range rows {
 		if strings.Contains(line, "unbound") && strings.Contains(line, "$") {
 			t.Fatalf("the unbound row carries a figure nobody measured: %q", line)
 		}
+	}
+	// AND THE BINDING IS STILL READ, because the unbound rows are the other half
+	// of that same join ([spendCrew]).
+	if got := spendTestReading().crewed(crew).modelRole("opus 4.1"); got != "conversation" {
+		t.Fatalf("the crew binding reads %q", got)
 	}
 }
 
@@ -701,7 +703,7 @@ func TestTheSpendMoneyColumnIsCentsWithAFloor(t *testing.T) {
 // they had already opened.
 func TestTheSpendPageShowsTwentyPurposesThenFoldsTheRest(t *testing.T) {
 	text := strings.Join(plainSpendRows(spendTestReading().rows(120, newPalette(tokens.NoColor, false))), "\n")
-	for _, want := range []string{"what it was for", "the-filings-sweep", "bounty-companies", "repo-watch"} {
+	for _, want := range []string{spendSubjectsWord, "the-filings-sweep", "bounty-companies", "repo-watch"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("purpose rows do not carry %q:\n%s", want, text)
 		}
@@ -835,7 +837,7 @@ func spendLabOn(t *testing.T, a *app, path string) *app {
 func TestTheSpendPlaceDrawsTheLedgerItWalkedInOn(t *testing.T) {
 	a := spendLab(t, spendFixture())
 	text := placeFrameText(a)
-	for _, want := range []string{"$34.10", "what ran it", "opus 4.1", "what it was for"} {
+	for _, want := range []string{"$34.10", spendModelsWord, "opus 4.1", spendSubjectsWord} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the spend place does not carry %q:\n%s", want, text)
 		}
@@ -933,7 +935,7 @@ func TestWhatItWasForIsDrawnForAConversationTheLedgerOnlyHasAnIdFor(t *testing.T
 // ([spendPage.held]).
 func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
 	a := spendLab(t, spendFixture())
-	if !strings.Contains(placeFrameText(a), "what ran it") {
+	if !strings.Contains(placeFrameText(a), spendModelsWord) {
 		t.Fatalf("the lab did not open on the ledger:\n%s", placeFrameText(a))
 	}
 	// A fortnight back, where this fixture spent nothing.
