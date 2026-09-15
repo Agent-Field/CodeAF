@@ -55,7 +55,10 @@ come from what codeaf has already seen, in layers, best first.
 2. the directories **this conversation has been reading and writing in**, most recent first
 3. every **project on this machine** — the same list `alt+w` cycles on the task composer
 4. **repositories and ordinary folders under your home directory**, from an index built quietly in the
-   background and refreshed about once a day
+   background and refreshed about once a day. That walk is **bounded** — six levels below
+   your home directory, two thousand folders, three seconds — so on a very large home
+   directory this layer is a good sample and not everything under it. A folder it never
+   reached is still one you can **type the path of**, which is what typing a path is for.
 
 Inside a layer the order is how often you have picked that folder here, weighted by how
 recently — so after a week of use the folder you want is usually the first row, and the
