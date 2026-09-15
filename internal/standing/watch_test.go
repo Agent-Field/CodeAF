@@ -267,6 +267,95 @@ func TestH6StandingUnitsReplaceLegacyAndCarryBothHomes(t *testing.T) {
 	}
 }
 
+func TestFormerStandingTimersAreVisibleRepairableAndRemovable(t *testing.T) {
+	for _, platform := range []string{"darwin", "linux"} {
+		t.Run(platform+"/old-only-status-and-startup-repair", func(t *testing.T) {
+			homeDir := t.TempDir()
+			runner := &recordingRunner{}
+			timer := newTimer(t, platform, homeDir, "", runner, time.Now())
+			writeFormerStandingDefinitions(t, timer)
+			drift, err := timer.Drift()
+			if err != nil || !drift.Present || !drift.Stale {
+				t.Fatalf("former timer was invisible or not stale: %+v (%v)", drift, err)
+			}
+			if err := timer.Install(context.Background()); err != nil {
+				t.Fatalf("startup repair: %v", err)
+			}
+			assertStandingGeneration(t, timer, false, true)
+			if status, err := timer.Status(); err != nil || !status.Installed {
+				t.Fatalf("repaired status = %+v (%v)", status, err)
+			}
+		})
+
+		t.Run(platform+"/old-only-off", func(t *testing.T) {
+			timer := newTimer(t, platform, t.TempDir(), "", &recordingRunner{}, time.Now())
+			writeFormerStandingDefinitions(t, timer)
+			if err := timer.Uninstall(context.Background()); err != nil {
+				t.Fatalf("turn off former timer: %v", err)
+			}
+			assertStandingGeneration(t, timer, true, true)
+		})
+
+		t.Run(platform+"/both-generations-off", func(t *testing.T) {
+			timer := newTimer(t, platform, t.TempDir(), "", &recordingRunner{}, time.Now())
+			if err := timer.Install(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			writeFormerStandingDefinitions(t, timer)
+			if err := timer.Uninstall(context.Background()); err != nil {
+				t.Fatalf("turn off both generations: %v", err)
+			}
+			assertStandingGeneration(t, timer, true, true)
+		})
+	}
+}
+
+func writeFormerStandingDefinitions(t *testing.T, timer *Timer) {
+	t.Helper()
+	primary, service := timer.texts(timer.executable)
+	if timer.platform == "darwin" {
+		primary = strings.ReplaceAll(primary, DarwinTickLabel, legacyDarwinTickLabel)
+		writeStandingFile(t, timer.legacyDarwinPlistPath(), primary)
+		return
+	}
+	writeStandingFile(t, timer.legacyLinuxTimerPath(), primary)
+	writeStandingFile(t, timer.legacyLinuxServicePath(), service)
+}
+
+func writeStandingFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertStandingGeneration(t *testing.T, timer *Timer, currentGone, formerGone bool) {
+	t.Helper()
+	current := []string{timer.primaryPath()}
+	former := []string{timer.legacyDarwinPlistPath()}
+	if timer.platform == "linux" {
+		current = []string{timer.linuxTimerPath(), timer.linuxServicePath()}
+		former = []string{timer.legacyLinuxTimerPath(), timer.legacyLinuxServicePath()}
+	}
+	for _, group := range []struct {
+		paths []string
+		gone  bool
+	}{{current, currentGone}, {former, formerGone}} {
+		for _, path := range group.paths {
+			_, err := os.Stat(path)
+			if group.gone && !os.IsNotExist(err) {
+				t.Fatalf("%s remains: %v", path, err)
+			}
+			if !group.gone && err != nil {
+				t.Fatalf("%s missing: %v", path, err)
+			}
+		}
+	}
+}
+
 func TestWatchStatusReadsTheLastWakeFromTheLog(t *testing.T) {
 	homeDir := t.TempDir()
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)

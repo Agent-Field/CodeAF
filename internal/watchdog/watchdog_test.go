@@ -173,6 +173,102 @@ WantedBy=timers.target
 	}
 }
 
+func TestFormerWakeTimersAreVisibleRepairableAndRemovable(t *testing.T) {
+	for _, platform := range []string{"darwin", "linux"} {
+		t.Run(platform+"/old-only-status-and-startup-repair", func(t *testing.T) {
+			manager := newWatchdogManager(t, platform)
+			writeFormerWatchdogDefinitions(t, manager)
+			status, err := manager.Status()
+			if err != nil || !status.Installed || !status.Stale {
+				t.Fatalf("former timer status = %+v (%v)", status, err)
+			}
+			if err := manager.Install(context.Background()); err != nil {
+				t.Fatalf("startup repair: %v", err)
+			}
+			assertWatchdogGenerations(t, manager, false, true)
+			if status, err := manager.Status(); err != nil || !status.Installed || status.Stale {
+				t.Fatalf("repaired status = %+v (%v)", status, err)
+			}
+		})
+
+		t.Run(platform+"/old-only-off", func(t *testing.T) {
+			manager := newWatchdogManager(t, platform)
+			writeFormerWatchdogDefinitions(t, manager)
+			if err := manager.Uninstall(context.Background()); err != nil {
+				t.Fatalf("turn off former timer: %v", err)
+			}
+			assertWatchdogGenerations(t, manager, true, true)
+		})
+
+		t.Run(platform+"/both-generations-off", func(t *testing.T) {
+			manager := newWatchdogManager(t, platform)
+			if err := manager.Install(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			writeFormerWatchdogDefinitions(t, manager)
+			if err := manager.Uninstall(context.Background()); err != nil {
+				t.Fatalf("turn off both generations: %v", err)
+			}
+			assertWatchdogGenerations(t, manager, true, true)
+		})
+	}
+}
+
+func newWatchdogManager(t *testing.T, platform string) *Manager {
+	t.Helper()
+	manager, err := New(Options{
+		Platform: platform, HomeDir: t.TempDir(), Executable: "/usr/bin/codeaf",
+		UID: 501, Runner: &fakeRunner{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return manager
+}
+
+func writeFormerWatchdogDefinitions(t *testing.T, manager *Manager) {
+	t.Helper()
+	definitions := map[string]string{manager.legacyDarwinPlistPath(): legacyDarwinPlist(manager.executable)}
+	if manager.platform == "linux" {
+		definitions = map[string]string{
+			manager.legacyLinuxTimerPath():   legacyLinuxTimer(),
+			manager.legacyLinuxServicePath(): legacyLinuxService(manager.executable),
+		}
+	}
+	for path, body := range definitions {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func assertWatchdogGenerations(t *testing.T, manager *Manager, currentGone, formerGone bool) {
+	t.Helper()
+	current := []string{manager.primaryPath()}
+	former := []string{manager.legacyPrimaryPath()}
+	if manager.platform == "linux" {
+		current = []string{manager.linuxTimerPath(), manager.linuxServicePath()}
+		former = []string{manager.legacyLinuxTimerPath(), manager.legacyLinuxServicePath()}
+	}
+	for _, group := range []struct {
+		paths []string
+		gone  bool
+	}{{current, currentGone}, {former, formerGone}} {
+		for _, path := range group.paths {
+			_, err := os.Stat(path)
+			if group.gone && !os.IsNotExist(err) {
+				t.Fatalf("%s remains: %v", path, err)
+			}
+			if !group.gone && err != nil {
+				t.Fatalf("%s missing: %v", path, err)
+			}
+		}
+	}
+}
+
 func TestFailedLinuxStartLeavesRepairableStatus(t *testing.T) {
 	home := t.TempDir()
 	runner := &fakeRunner{errors: map[int]error{1: errors.New("not ready")}}

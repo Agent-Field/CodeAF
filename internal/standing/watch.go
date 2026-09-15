@@ -301,7 +301,18 @@ type reading struct {
 }
 
 func (w *Timer) read() (reading, error) {
-	primary, info, err := readDefinition(w.primaryPath())
+	primaryPath := w.primaryPath()
+	primary, info, err := readDefinition(primaryPath)
+	former := false
+	if err == nil && info == nil {
+		former = true
+		if w.platform == "darwin" {
+			primaryPath = w.legacyDarwinPlistPath()
+		} else {
+			primaryPath = w.legacyLinuxTimerPath()
+		}
+		primary, info, err = readDefinition(primaryPath)
+	}
 	if err != nil || info == nil {
 		return reading{}, err
 	}
@@ -310,7 +321,11 @@ func (w *Timer) read() (reading, error) {
 		// The timer unit names no program at all — the SERVICE beside it does —
 		// so on Linux the pair is read from there, and a service that is
 		// missing is itself drift.
-		if service, _, err = readDefinition(w.linuxServicePath()); err != nil {
+		servicePath := w.linuxServicePath()
+		if former {
+			servicePath = w.legacyLinuxServicePath()
+		}
+		if service, _, err = readDefinition(servicePath); err != nil {
 			return reading{}, err
 		}
 		named = service
@@ -332,7 +347,7 @@ func (w *Timer) read() (reading, error) {
 	}
 	wantPrimary, wantService := w.texts(executable)
 	shaped := executable != "" && primary == wantPrimary && service == wantService
-	seen.drift.Stale = !shaped || seen.drift.Gone
+	seen.drift.Stale = former || !shaped || seen.drift.Gone
 	return seen, nil
 }
 
@@ -451,25 +466,26 @@ func (w *Timer) installDarwin(ctx context.Context) error {
 
 func (w *Timer) uninstallDarwin(ctx context.Context) error {
 	path := w.darwinPlistPath()
+	var current error
 	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
+		if !os.IsNotExist(err) {
+			current = fmt.Errorf("standing: look at the timer: %w", err)
 		}
-		return fmt.Errorf("standing: look at the timer: %w", err)
-	}
-	stop := w.runner.Run(ctx, "launchctl", "bootout", w.darwinDomain(), path)
-	if stop != nil {
-		if fallback := w.runner.Run(ctx, "launchctl", "unload", path); fallback != nil {
-			stop = errors.Join(stop, fallback)
-		} else {
-			stop = nil
+	} else {
+		stop := w.runner.Run(ctx, "launchctl", "bootout", w.darwinDomain(), path)
+		if stop != nil {
+			if fallback := w.runner.Run(ctx, "launchctl", "unload", path); fallback != nil {
+				stop = errors.Join(stop, fallback)
+			} else {
+				stop = nil
+			}
+		}
+		remove := os.Remove(path)
+		if stop != nil || remove != nil {
+			current = fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove))
 		}
 	}
-	remove := os.Remove(path)
-	if stop != nil || remove != nil {
-		return fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove))
-	}
-	return nil
+	return errors.Join(current, w.removeLegacyDarwin(ctx))
 }
 
 func (w *Timer) installLinux(ctx context.Context) error {
@@ -500,22 +516,30 @@ func (w *Timer) uninstallLinux(ctx context.Context) error {
 	timerPath, servicePath := w.linuxTimerPath(), w.linuxServicePath()
 	_, timerErr := os.Stat(timerPath)
 	_, serviceErr := os.Stat(servicePath)
-	if os.IsNotExist(timerErr) && os.IsNotExist(serviceErr) {
-		return nil
-	}
 	if timerErr != nil && !os.IsNotExist(timerErr) {
 		return fmt.Errorf("standing: look at the timer: %w", timerErr)
 	}
 	if serviceErr != nil && !os.IsNotExist(serviceErr) {
 		return fmt.Errorf("standing: look at the timer: %w", serviceErr)
 	}
-	stop := w.runner.Run(ctx, "systemctl", "--user", "disable", "--now", LinuxTickTimer)
-	remove := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath))
-	reload := w.runner.Run(ctx, "systemctl", "--user", "daemon-reload")
-	if stop != nil || remove != nil || reload != nil {
-		return fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove, reload))
+	currentPresent := timerErr == nil || serviceErr == nil
+	var current error
+	if currentPresent {
+		stop := w.runner.Run(ctx, "systemctl", "--user", "disable", "--now", LinuxTickTimer)
+		remove := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath))
+		if stop != nil || remove != nil {
+			current = fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove))
+		}
 	}
-	return nil
+	formerPresent := pathExists(w.legacyLinuxTimerPath()) || pathExists(w.legacyLinuxServicePath())
+	former := w.removeLegacyLinux(ctx)
+	var reload error
+	if currentPresent || formerPresent {
+		if err := w.runner.Run(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+			reload = fmt.Errorf("standing: tell systemd about the timer: %w", err)
+		}
+	}
+	return errors.Join(current, former, reload)
 }
 
 func (w *Timer) primaryPath() string {
@@ -678,6 +702,11 @@ func removeIfPresent(path string) error {
 		return nil
 	}
 	return err
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // darwinPlist and the two systemd units below interpolate [Interval] rather
