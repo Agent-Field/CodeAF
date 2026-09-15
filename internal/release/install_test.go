@@ -17,14 +17,30 @@ import (
 )
 
 type fakeRelease struct {
-	TagName string `json:"tag_name"`
+	TagName     string      `json:"tag_name"`
+	CreatedAt   string      `json:"created_at,omitempty"`
+	PublishedAt any         `json:"published_at,omitempty"`
+	Assets      []fakeAsset `json:"assets,omitempty"`
+}
+
+type fakeAsset struct {
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type fakeTiming struct {
+	created   string
+	published any
 }
 
 type installGitHub struct {
 	server            *httptest.Server
 	releases          []string
+	timings           map[string]fakeTiming
 	badChecksum       bool
 	failAPI           bool
+	notFound          bool
 	oldRepositoryOnly bool
 	legacyAssetOnly   bool
 	binary            []byte
@@ -44,6 +60,10 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 	github.mu.Lock()
 	github.requests = append(github.requests, request.Clone(request.Context()))
 	github.mu.Unlock()
+	if github.notFound {
+		http.NotFound(w, request)
+		return
+	}
 
 	path := request.URL.Path
 	const prefix = "/repos/Agent-Field/codeaf/"
@@ -71,7 +91,19 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 		case path == apiPrefix+"releases":
 			var releases []fakeRelease
 			for _, tag := range github.releases {
-				releases = append(releases, fakeRelease{TagName: tag})
+				release := fakeRelease{TagName: tag}
+				if timing, ok := github.timings[tag]; ok {
+					release.CreatedAt = timing.created
+					release.PublishedAt = timing.published
+				}
+				if github.timings != nil {
+					release.Assets = []fakeAsset{{
+						Name:      platformAsset(),
+						CreatedAt: "2999-01-01T00:00:00Z",
+						UpdatedAt: "2999-01-01T00:00:00Z",
+					}}
+				}
+				releases = append(releases, release)
 			}
 			github.writeJSON(w, releases)
 			return
@@ -429,6 +461,83 @@ func TestInstallerSelectsTheNewestBuildOfEachChannel(t *testing.T) {
 	}
 }
 
+// Contract: the newest published_at wins regardless of list order, created_at
+// replaces a null published_at, and the same ordering applies to staging.
+func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
+	t.Run("newest published_at", func(t *testing.T) {
+		const (
+			oldest = "dev-20260915-e2ae913b7d0c"
+			middle = "dev-20260915-56a22c20ec53"
+			newest = "dev-20260915-4b6ec83cfbfa"
+		)
+		github := newInstallGitHub(t, oldest, middle, newest)
+		github.timings = map[string]fakeTiming{
+			oldest: {published: "2026-09-15T13:43:00Z"},
+			middle: {published: "2026-09-15T14:56:00Z"},
+			newest: {published: "2026-09-15T15:21:00Z"},
+		}
+		run := runInstaller(t, github, []string{"--dev"}, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 0 {
+			t.Fatalf("exit %d:\n%s", run.code, run.output)
+		}
+		if !strings.Contains(run.output, "dev "+newest) {
+			t.Errorf("output does not name newest tag %q:\n%s", newest, run.output)
+		}
+		for _, older := range []string{oldest, middle} {
+			if strings.Contains(run.output, older) {
+				t.Errorf("output contains older tag %q:\n%s", older, run.output)
+			}
+		}
+		installed, err := os.ReadFile(filepath.Join(run.installDir, "codeaf"))
+		if err != nil || !strings.Contains(string(installed), "codeaf "+newest) {
+			t.Fatalf("installed binary = %q, %v", installed, err)
+		}
+		github.mu.Lock()
+		defer github.mu.Unlock()
+		for _, request := range github.requests {
+			if strings.Contains(request.URL.Path, "/releases/download/"+oldest+"/") {
+				t.Fatalf("installer requested the oldest release: %s", request.URL.Path)
+			}
+		}
+	})
+
+	t.Run("created_at replaces null published_at", func(t *testing.T) {
+		const (
+			older  = "dev-20260915-111111111111"
+			newest = "dev-20260915-222222222222"
+		)
+		github := newInstallGitHub(t, older, newest)
+		github.timings = map[string]fakeTiming{
+			older:  {created: "2026-09-15T13:00:00Z", published: "2026-09-15T14:00:00Z"},
+			newest: {created: "2026-09-15T16:00:00Z", published: json.RawMessage("null")},
+		}
+		run := runInstaller(t, github, []string{"--dev"}, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 0 || !strings.Contains(run.output, "dev "+newest) {
+			t.Fatalf("exit %d, want %s:\n%s", run.code, newest, run.output)
+		}
+		installed, err := os.ReadFile(filepath.Join(run.installDir, "codeaf"))
+		if err != nil || !strings.Contains(string(installed), "codeaf "+newest) {
+			t.Fatalf("installed binary = %q, %v", installed, err)
+		}
+	})
+
+	t.Run("staging uses timestamps", func(t *testing.T) {
+		const (
+			older  = "staging-20260915-333333333333"
+			newest = "staging-20260915-444444444444"
+		)
+		github := newInstallGitHub(t, older, newest)
+		github.timings = map[string]fakeTiming{
+			older:  {published: "2026-09-15T12:00:00Z"},
+			newest: {published: "2026-09-15T17:00:00Z"},
+		}
+		run := runInstaller(t, github, []string{"--staging"}, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 0 || !strings.Contains(run.output, "staging "+newest) {
+			t.Fatalf("exit %d, want %s:\n%s", run.code, newest, run.output)
+		}
+	})
+}
+
 func TestInstallerPinsAReleaseAndNamesAMissingOne(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3", "build-legacy")
 	run := runInstaller(t, github, []string{"--version", "v1.2.3"}, "CODEAF_NO_MODIFY_PATH=1")
@@ -637,6 +746,39 @@ func TestInstallerHelpUnknownFlagsAndAPIFailures(t *testing.T) {
 	failure := runInstaller(t, github, nil)
 	if failure.code != 1 || !strings.Contains(failure.output, "GITHUB_TOKEN") || !strings.Contains(failure.output, "VERSION=") {
 		t.Fatalf("API failure exit %d:\n%s", failure.code, failure.output)
+	}
+}
+
+// Contract: an API refusal names rate limiting and an unreadable repository,
+// while retaining both available recovery actions.
+func TestInstallerNamesBothReasonsWhenTheAPIRefuses(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		prepare  func(*installGitHub)
+		wantLine bool
+	}{
+		{name: "rate limit", prepare: func(github *installGitHub) { github.failAPI = true }, wantLine: true},
+		{name: "private repository", prepare: func(github *installGitHub) { github.notFound = true }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := newInstallGitHub(t, "dev-20260915-aaaaaaaaaaaa")
+			test.prepare(github)
+			run := runInstaller(t, github, []string{"--dev"})
+			if run.code != 1 {
+				t.Fatalf("exit %d, want 1:\n%s", run.code, run.output)
+			}
+			for _, want := range []string{"a rate limit", "a repository you cannot read", "VERSION=", "GITHUB_TOKEN"} {
+				if !strings.Contains(run.output, want) {
+					t.Errorf("output does not contain %q:\n%s", want, run.output)
+				}
+			}
+			if test.wantLine {
+				const want = "GitHub's API could not be reached or refused (a rate limit, or a repository you cannot read?); pin VERSION=<tag>, or export GITHUB_TOKEN"
+				if !strings.Contains(run.output, want) {
+					t.Errorf("output does not contain pinned refusal:\n%s", run.output)
+				}
+			}
+		})
 	}
 }
 
