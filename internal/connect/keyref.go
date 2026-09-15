@@ -40,9 +40,10 @@ package connect
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // envReferencePattern is the two shapes a reference may be written in, and no
@@ -97,7 +98,7 @@ func envReferenceWord(name string) string {
 // known here or worth saying.
 func (s stored) secret(name string) (string, error) {
 	if variable := strings.TrimSpace(s.KeyEnv); variable != "" {
-		if value := strings.TrimSpace(os.Getenv(variable)); value != "" {
+		if value := strings.TrimSpace(env.Value(variable)); value != "" {
 			return value, nil
 		}
 		return "", fmt.Errorf("%s reads its key from %s, and nothing is set there",

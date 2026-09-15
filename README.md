@@ -308,7 +308,7 @@ opt-in settings.
 The default daily rail is `$500`; setting that row to `0` removes it. First run asks for
 `Daily limit`, `Chat model`, and `Work crew`.
 
-State lives under `$CODEAF_HOME`, or `~/.codeaf` when it is unset: settings and credentials
+State lives under `$CODEAF_HOME`, or `~/.codeaf` when it is unset or empty: settings and credentials
 in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/`.
 
 ## The manual ships with the binary

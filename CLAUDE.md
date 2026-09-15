@@ -24,9 +24,12 @@ Three places may still say them, and nothing else may:
 - **The record.** `CHANGELOG.md`, `docs/changes/`, `docs/design/`, the captured
   screen frames, `bench-results/`, `audit-notes/` and everything under a
   `testdata` directory say what was true on the day they were written.
-- **The compatibility seams.** `~/.aforge` is adopted into `~/.codeaf` on first
-  start, an `AFORGE_*` variable is still read when its `CODEAF_*` spelling is
-  unset, and `.aforge-v3/config.json` in a repository is still read. Every line
+- **The compatibility seams.** On first start codeaf tries to adopt `~/.aforge`
+  into `~/.codeaf` and leave a link behind; if the move itself fails, it carries
+  on reading the old folder. An `AFORGE_*` variable is still read when its
+  `CODEAF_*` spelling is unset or empty, and `.aforge-v3/config.json` in a
+  repository is still read. Persisted and on-the-wire identifiers permanently
+  keep their former bytes so old and new builds continue to communicate. Every line
   that has to spell the old name for one of those reasons carries the marker
   comment `legacy-name`, which is the ONLY way a live Go or shell line is
   allowed to say it.

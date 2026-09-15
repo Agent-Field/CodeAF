@@ -427,7 +427,7 @@ The environment table is ` + "`codeaf help env`" + ` — every variable and its 
 // its sentence soft-wrapped back under the name, which is the shape of a table
 // that has stopped being one. The name is at column 2 and the sentence at
 // column 23, or on the next line at column 23 when the name reaches past it.
-const legacyEnvironmentHelp = "AFORGE_* names are read for one release when matching CODEAF_* names are unset." // legacy-name
+const legacyEnvironmentHelp = "AFORGE_* names are read for one release when CODEAF_* is unset or empty." // legacy-name
 
 var environmentText = `codeaf — the environment
 

@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -13,12 +14,28 @@ import (
 	"testing"
 )
 
-// H3: every product read of an owned environment name goes through this
-// package, including calls whose argument is an owned package constant.
+// H3: every product read of an owned environment name that syntax can identify
+// goes through this package, including calls whose argument is an owned package
+// constant. A genuinely dynamic name is outside a static law's reach;
+// env.Value is the required door for that shape.
 func TestH3OwnedEnvironmentReadsUseTheOneDoor(t *testing.T) {
 	root := repositoryRoot(t)
-	ownedConstants := packageConstantsWithOwnedValues(t, root)
-	err := walkGo(root, func(path string, file *ast.File, set *token.FileSet) {
+	violations, err := ownedReadViolations(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, violation := range violations {
+		t.Error(violation)
+	}
+}
+
+func ownedReadViolations(root string) ([]string, error) {
+	ownedConstants, err := packageConstantsWithOwnedValues(root)
+	if err != nil {
+		return nil, err
+	}
+	var violations []string
+	err = walkGo(root, func(path string, file *ast.File, set *token.FileSet) {
 		relative := repoRelative(root, path)
 		if strings.HasPrefix(relative, "internal/env/") || strings.HasSuffix(path, "_test.go") {
 			return
@@ -30,17 +47,17 @@ func TestH3OwnedEnvironmentReadsUseTheOneDoor(t *testing.T) {
 					case *ast.BasicLit:
 						if ownedArgument(value, ownedConstants) {
 							position := set.Position(value.Pos())
-							t.Errorf("%s:%d reads an owned name out of os.Environ; put the read in internal/env", relative, position.Line)
+							violations = append(violations, fmt.Sprintf("%s:%d reads an owned name out of os.Environ; put the read in internal/env", relative, position.Line))
 						}
 					case *ast.Ident:
 						if ownedConstants[value.Name] {
 							position := set.Position(value.Pos())
-							t.Errorf("%s:%d reads an owned constant out of os.Environ; put the read in internal/env", relative, position.Line)
+							violations = append(violations, fmt.Sprintf("%s:%d reads an owned constant out of os.Environ; put the read in internal/env", relative, position.Line))
 						}
 					case *ast.SelectorExpr:
 						if ownedConstants[value.Sel.Name] {
 							position := set.Position(value.Pos())
-							t.Errorf("%s:%d reads an owned constant out of os.Environ; put the read in internal/env", relative, position.Line)
+							violations = append(violations, fmt.Sprintf("%s:%d reads an owned constant out of os.Environ; put the read in internal/env", relative, position.Line))
 						}
 					}
 					return true
@@ -52,13 +69,44 @@ func TestH3OwnedEnvironmentReadsUseTheOneDoor(t *testing.T) {
 			}
 			if ownedArgument(call.Args[0], ownedConstants) {
 				position := set.Position(call.Pos())
-				t.Errorf("%s:%d reads an owned environment variable through os; use internal/env", relative, position.Line)
+				violations = append(violations, fmt.Sprintf("%s:%d reads an owned environment variable through os; use internal/env", relative, position.Line))
 			}
 			return true
 		})
 	})
+	return violations, err
+}
+
+func TestEnvironmentLawRejectsEveryStaticallyVisibleOwnedReadShape(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"owned/names.go":   "package owned\nconst Home = \"CODEAF_HOME\"\n",
+		"literal/live.go":  "package literal\nimport \"os\"\nvar Value = os.Getenv(\"CODEAF_HOME\")\n",
+		"constant/live.go": "package constant\nimport \"os\"\nconst Home = \"CODEAF_HOME\"\nvar Value = os.LookupEnv(Home)\n",
+		"selector/live.go": "package selector\nimport (\"os\"; \"example/owned\")\nvar Value = os.Getenv(owned.Home)\n",
+		"environ/live.go":  "package environ\nimport (\"os\"; \"strings\")\nfunc Read() { for _, entry := range os.Environ() { if strings.HasPrefix(entry, \"CODEAF_\") {} } }\n",
+	}
+	for name, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := ownedReadViolations(root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, path := range []string{"literal/live.go", "constant/live.go", "selector/live.go", "environ/live.go"} {
+		found := false
+		for _, violation := range got {
+			found = found || strings.Contains(violation, path+":")
+		}
+		if !found {
+			t.Errorf("law accepted %s: %v", path, got)
+		}
 	}
 }
 
@@ -113,8 +161,7 @@ func repositoryRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(here), "..", ".."))
 }
 
-func packageConstantsWithOwnedValues(t *testing.T, root string) map[string]bool {
-	t.Helper()
+func packageConstantsWithOwnedValues(root string) (map[string]bool, error) {
 	names := make(map[string]bool)
 	err := walkGo(root, func(_ string, file *ast.File, _ *token.FileSet) {
 		for _, declaration := range file.Decls {
@@ -138,9 +185,9 @@ func packageConstantsWithOwnedValues(t *testing.T, root string) map[string]bool 
 		}
 	})
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	return names
+	return names, nil
 }
 
 func walkGo(root string, visit func(string, *ast.File, *token.FileSet)) error {
