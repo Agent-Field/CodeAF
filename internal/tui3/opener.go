@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os/exec"
 	"runtime"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
@@ -66,6 +67,17 @@ func startOpener(target string) error {
 	name, args := openerCommand()
 	if name == "" {
 		return errors.New("this machine has no way to open a browser")
+	}
+	// AN EMPTY TARGET IS NOTHING TO OPEN, and it is refused HERE so that all six
+	// doors are refused by one line. `open ""` on a Mac does not fail: the
+	// platform resolves the empty path to the process's own working directory
+	// and puts a Finder window on screen — so a sign-in event that arrived with
+	// no URL opened a file manager on whatever folder codeaf was started in,
+	// which is the one outcome a handoff must never have. The sentence is the
+	// one a miss already says, because a person is owed the same answer either
+	// way: the link under the block is still the way through.
+	if strings.TrimSpace(target) == "" {
+		return errors.New("the browser did not open")
 	}
 	command := exec.Command(name, append(append([]string(nil), args...), target)...)
 	if command.Err != nil {
