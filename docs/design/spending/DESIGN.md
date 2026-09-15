@@ -68,7 +68,7 @@ Rules, each with the reason:
    (emptiness law).
 2. **Rows are ordered by how often a person worries about them.** Day first
    (the bill), conversation (this window), plan (the ask), task, standing,
-   practice (aforge's own slice). Not alphabetical, not by key.
+   practice (codeaf's own slice). Not alphabetical, not by key.
 3. **A row's label is the scope; its value is a sentence fragment that
    completes "it may spend…".** `per plan · asks first above $100` — because
    that rail does not stop, it asks. `per task · $50 · 6h` — two limits, one
@@ -113,7 +113,7 @@ it does nothing on a line that names none.
 After the key and the crew, one screen, same rows, same words, same registry:
 
 ```
- What may aforge spend?  enter keeps a default · type a number · none means no limit
+ What may codeaf spend?  enter keeps a default · type a number · none means no limit
 
  per day            $500
  per plan           asks first above $100

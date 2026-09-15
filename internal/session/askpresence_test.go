@@ -8,7 +8,7 @@ package session
 // it — not the head alone — because a row that offers no answers is a row a
 // person can read and not act on. The consent lane is covered beside the gate
 // (question_test.go); this is the lane a model raises, which is the one that
-// crosses the wire on the road a plain `aforge` takes.
+// crosses the wire on the road a plain `codeaf` takes.
 
 import (
 	"context"

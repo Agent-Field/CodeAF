@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // scripted is one model with its answers written down, and a record of what
@@ -277,11 +277,11 @@ func TestAnAnswerThatEchoesTheAskIsSizedForTheAsk(t *testing.T) {
 // A reserve an operator lowered on purpose is still their word, and the floor
 // under one object never becomes a licence to overrun it.
 func TestTheOperatorsReserveIsNeverOverrun(t *testing.T) {
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "8000")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "8000")
 	if got := Room(Ask{Lane: "gate"}, ""); got != objectFloor {
 		t.Fatalf("one object under a small reserve = %d, want the floor %d", got, objectFloor)
 	}
-	t.Setenv("AFORGE_COMPLETION_RESERVE", "1000")
+	t.Setenv("CODEAF_COMPLETION_RESERVE", "1000")
 	if got := Room(Ask{Lane: "gate", Answers: 4}, ""); got != 1000 {
 		t.Fatalf("room = %d, want the stated reserve of 1000", got)
 	}

@@ -4,8 +4,8 @@
 
 The dim line at the right end of the rule above your message box is the hint slot. Most of
 the time it names the keys that work right now — `esc interrupt` while an answer is coming,
-`y allow · n deny · a always` while aforge is asking you something, `/ commands` when nothing
-is happening. Once you have used aforge a little, that idle line sometimes carries a tip
+`y allow · n deny · a always` while codeaf is asking you something, `/ commands` when nothing
+is happening. Once you have used codeaf a little, that idle line sometimes carries a tip
 instead: one sentence naming a key or a command you have not used yet, and what it does.
 For example `ctrl+. sees every task this project has run`, or `esc esc takes back the last
 message`.
@@ -28,10 +28,10 @@ sessions it is taken as read and retires by itself. Between tips there is always
 couple of turns, so a busy first session does not turn the border into a slideshow.
 
 This is remembered per profile, in a small file called `notices.json` beside `config.json`
-in your aforge profile directory. Deleting that file brings every tip back once; nothing else
+in your codeaf profile directory. Deleting that file brings every tip back once; nothing else
 is in it.
 
-## Every hint aforge can show, and what makes each one go away
+## Every hint codeaf can show, and what makes each one go away
 
 There are eight at the moment. Each one names the moment it first appears and the gesture
 that retires it.
@@ -69,7 +69,7 @@ Turning the row back on shows whatever is due. Tips you had already retired stay
 
 ## What "news" lines are — what's new after an update
 
-A news line is one dim sentence in the conversation, said once, the first time aforge runs
+A news line is one dim sentence in the conversation, said once, the first time codeaf runs
 after its build has changed — the place a newly shipped feature introduces itself. It lands
 under the replayed conversation and above the message box, and it never repeats: the build it
 was said under is written into the same `notices.json` file the tips use, so the next launch

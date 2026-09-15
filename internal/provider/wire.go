@@ -229,7 +229,7 @@ func ReasoningUnavoidable(model string) bool {
 }
 
 // normalizeModel keys the memo on the model itself rather than on how it was
-// written. The leading "~" is Aforge's own routing marker, not part of the
+// written. The leading "~" is codeaf's own routing marker, not part of the
 // slug, so "~minimax/minimax-m2.7" and "minimax/minimax-m2.7" are one model.
 func normalizeModel(model string) string {
 	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(model), "~"))
@@ -501,7 +501,7 @@ func sanitizeMessages(messages []ai.Message) []ai.Message {
 	if len(messages) == 0 {
 		return messages
 	}
-	// Copy on first write. The no-op is the overwhelmingly common case — aforge
+	// Copy on first write. The no-op is the overwhelmingly common case — codeaf
 	// writes conservative ids itself, and a transcript is only ever dirty when
 	// it came from somewhere else — so the array copy is built at the first
 	// message that actually changes, rather than built on every call and thrown

@@ -21,9 +21,9 @@ out at the cheapest place, which is not where Revision 2 took it out.
 
 ### The assumption
 
-Today a terminal running aforge is bound for its whole life to the directory it
-was typed in. The workspace is resolved once at launch (`cmd/aforge/chatv3.go:406`,
-`openV3Launch`; `v3Workspace`, `cmd/aforge/chatv3_layout.go:83`), the agent is
+Today a terminal running codeaf is bound for its whole life to the directory it
+was typed in. The workspace is resolved once at launch (`cmd/codeaf/chatv3.go:406`,
+`openV3Launch`; `v3Workspace`, `cmd/codeaf/chatv3_layout.go:83`), the agent is
 built on it once (`chatv3.go:141`), and the surface stores it in three fields that
 are written in `newApp` and never assigned again — `a.workspace`, `a.place`,
 `a.owned` (`internal/tui3/app.go:1246-1250`). Home (`internal/tui3/home.go`) then
@@ -84,7 +84,7 @@ feature needs is per-`Agent` today and has been since before home existed:
 
 - the workspace and the tool root (`bare.AllTools(cwd)`, `internal/exec/bare/tools.go`),
 - the gate, the crew, the ceiling and the saved shapes, resolved from
-  `<workspace>/.aforge-v3/config.json` at the moment the agent is built
+  `<workspace>/.codeaf-v3/config.json` at the moment the agent is built
   (`internal/config/projectconfig.go:69-72`),
 - the transcript and its flock (`lockSessionFile`, `internal/session/sessionfile.go:600-612`),
 - the presence file and its five-second heartbeat (`internal/session/taskpresence.go:103-113`),
@@ -216,7 +216,7 @@ comment (`home.go:1812-1826`) is unchanged and now covers one more row:
 `waiting on you` and `N running` still outrank it, because those are facts about
 work and this one is a fact about a door, and `enter` works either way.
 
-A conversation open in a *different* aforge process keeps `another window`
+A conversation open in a *different* codeaf process keeps `another window`
 (`homeHeldWord`/`homeHeldShort`, `home.go:229-230`) and keeps refusing, for the
 reason it refuses now — the flock is held somewhere this process cannot reach
 (`lockSessionFile`, `sessionfile.go:600-612`).
@@ -225,7 +225,7 @@ So the four spellings, exactly:
 
 ```
 ▲ the parser fix          waiting on you · 4m
-● aforge-v2               2 running · 12m
+● codeaf               2 running · 12m
 ○ notes                   open · 1h
 ○ somebody else's chat    another window · 3h
 ```
@@ -249,9 +249,9 @@ becomes:
 | the conversation in front | closes home into it | nothing — closing into it *is* the thing happening (`home.go:1229-1241` states this) |
 | **in the keeper** | closes home and attaches it | nothing, for the same reason |
 | not open, this project or any other | opens it through the seam, attaches it, and detaches the one that was in front | nothing on success; the transcript's own `resumed …` note lands in the conversation it belongs to |
-| open in another aforge | refuses, home stays up | `open in another window — go there, or start a new conversation here` — today's `sessionBusyWord` (`welcome.go:231`), unchanged |
+| open in another codeaf | refuses, home stays up | `open in another window — go there, or start a new conversation here` — today's `sessionBusyWord` (`welcome.go:231`), unchanged |
 | the project folder is gone | refuses, home stays up | `that folder is gone · <path>` |
-| this process already holds the cap | refuses, home stays up | `8 open is as many as aforge holds — /quit closes this one` |
+| this process already holds the cap | refuses, home stays up | `8 open is as many as codeaf holds — /quit closes this one` |
 
 The order of those rows is the order of the checks, and **the second row must be
 tested before the fourth**: see "Identity before flock". `homeHeldNow`
@@ -445,8 +445,8 @@ feature adds a rule a person has to learn.
 
 **`/quit` (aliases `/exit`, `/q` — `commands.go:218`) closes the conversation in
 front.** Its agent is closed for real. If the keeper is not empty, the most
-recently in front of them is attached and aforge stays up. If it was the last one,
-aforge leaves, exactly as it does today. It keeps its "leaves at once, it is typed
+recently in front of them is attached and codeaf stays up. If it was the last one,
+codeaf leaves, exactly as it does today. It keeps its "leaves at once, it is typed
 out on purpose" property (`keys.md:169`, `commands.md:189`) — closing one
 conversation is not something a person types three characters by accident.
 
@@ -999,7 +999,7 @@ is kept as the record of what was built.*
 lookup, in that order: attaching something already open is never capped, and a path
 that canonicalises to a transcript already open is an attach, not a second
 conversation. At the cap, `enter` refuses in home's own voice and home stays up:
-`8 open is as many as aforge holds — /quit closes this one`. Eight because of what
+`8 open is as many as codeaf holds — /quit closes this one`. Eight because of what
 the cost table above says, because it is roughly the number of projects a person
 genuinely has in flight, and because a cap that can only be hit on purpose never
 has to be explained.
@@ -1015,7 +1015,7 @@ folders whose transcript is locked (`internal/session/sweep.go`), and an open
 conversation is locked.
 
 **The hosted door caps the count at one**, because there is one remote agent by
-construction (`cmd/aforge/chatv3_host.go:406-423`, and the comment at `:409-415`
+construction (`cmd/codeaf/chatv3_host.go:406-423`, and the comment at `:409-415`
 says so). `hosted()` refuses a second conversation with the sentence that already
 exists rather than a new one.
 
@@ -1023,7 +1023,7 @@ exists rather than a new one.
 
 ## The lanes
 
-**Three, ordered, each independently mergeable, each leaving `bin/aforge` working
+**Three, ordered, each independently mergeable, each leaving `bin/codeaf` working
 and the suite green.** K1 and K2 are running now in worktrees off `chat-v3-task`
 and are independent of each other. K3 needs both.
 
@@ -1078,7 +1078,7 @@ Worktree `~/af-k1-attach`, branch `feat/agent-attach`.
 - **Ships value alone:** the presence fix is worth landing whether or not K3 is
   ever built.
 
-### K2 — the seam (`cmd/aforge`, `tui3.Options`), ~400 lines, in flight
+### K2 — the seam (`cmd/codeaf`, `tui3.Options`), ~400 lines, in flight
 
 Worktree `~/af-k2-open-seam`, branch `feat/open-seam`.
 
@@ -1127,12 +1127,12 @@ Worktree `~/af-k2-open-seam`, branch `feat/open-seam`.
    its one workspace and its one conversation. `--once` (`chatv3.go:125-135`)
    borrows `v3Process` and instantiates no keeper.
 
-- **Files:** `cmd/aforge/chatv3.go` (`:100-200`, `:406-520`),
-  `cmd/aforge/chatv3_approval.go` (`:68-141`), `cmd/aforge/chatv3_host.go`
-  (`:383-423`), `cmd/aforge/chatv3_layout.go`, `cmd/aforge/engine.go`,
+- **Files:** `cmd/codeaf/chatv3.go` (`:100-200`, `:406-520`),
+  `cmd/codeaf/chatv3_approval.go` (`:68-141`), `cmd/codeaf/chatv3_host.go`
+  (`:383-423`), `cmd/codeaf/chatv3_layout.go`, `cmd/codeaf/engine.go`,
   `internal/tui3/tui3.go` (`Options`), `internal/tui3/app.go` (`newApp`),
   `internal/tui3/welcome.go`.
-- **Tests:** `cmd/aforge` — an "always" answered after a `/new` reaches the gate the
+- **Tests:** `cmd/codeaf` — an "always" answered after a `/new` reaches the gate the
   new conversation is running behind (**this fails on `master` today and is the
   lane's proof**); `openV3Process` is called once and its store pointer is the one
   every launch carries; a launch whose later step fails closes the partial agent
@@ -1183,7 +1183,7 @@ Needs K1 and K2 in the tree.
   *process*; a row we hold never says `another window`; the cap refuses in home's
   own voice; a gone folder refuses and home stays up. `input_test.go` — `tab` in
   each of the sixteen precedence states does what the table says. Plus the armed
-  line with two conversations and work in both; `/quit` with two open leaves aforge
+  line with two conversations and work in both; `/quit` with two open leaves codeaf
   running; `/new` on a fresh empty conversation replaces it and on a used one adds;
   the count segment absent at one and present at two.
 - **Manual, in the same change:** `home.md:233-248` — the whole
@@ -1195,8 +1195,8 @@ Needs K1 and K2 in the tree.
   from the precedence table, the deletion of "on this surface tab means nothing
   else at all" from the `:622` survey, and the quitting section (`:124-169`).
   `sessions-and-rewind.md` — what switching keeps and what it forgets, beside what
-  `Agent.Close` does (`:494-510`). `starting-aforge.md:60-70` — "which folder does
-  aforge work in" gains the second case. `tasks.md:695-760` — the `away` rows and
+  `Agent.Close` does (`:494-510`). `starting-codeaf.md:60-70` — "which folder does
+  codeaf work in" gains the second case. `tasks.md:695-760` — the `away` rows and
   what they say about a conversation of ours on the same project (see Risks).
   `permissions.md` and `how-tasks-run.md` — the countdown sentence quoted verbatim.
 - **Retrieval headings to add**, in the asker's own words:
@@ -1211,7 +1211,7 @@ Needs K1 and K2 in the tree.
 ### Merge order
 
 K1 and K2 are independent and may land in either order; K3 lands after both.
-Rebuild `bin/aforge` after each merge — the user runs that binary — and tell the
+Rebuild `bin/codeaf` after each merge — the user runs that binary — and tell the
 other lanes to rebase, because K2 touches `chatv3.go` and K3 touches `app.go`,
 which every feature wave is in. Never `git add -A`; stage explicit paths.
 
@@ -1317,7 +1317,7 @@ to two files every feature wave touches. Land it as the only thing in its wave,
 rebuild, and tell the other lanes to rebase.
 
 **The suite.** `go test ./internal/tui3/` takes ~150 s; budget it. These fail on a
-clean tree and are **not** this work's: `cmd/aforge TestHarnessEntriesFromStore`,
+clean tree and are **not** this work's: `cmd/codeaf TestHarnessEntriesFromStore`,
 `internal/tui TestSettingsSheetIsOneCalmColumnAtEveryWidth` and `internal/plan`.
 Confirm with a stash-and-rerun before chasing anything in that list.
 
@@ -1476,14 +1476,14 @@ it distinct from `Workspace`. Both values are consumed: `projectPath` reads
 disposable if **either** value is under a temp directory (`sweep.go:206-208`,
 `underTempDir` at `:220-238`). The rule, and its exception, are in K2 above.
 
-**The shell's cwd does not change, ever.** `cmd/aforge/engine.go:75-77` chdirs into
+**The shell's cwd does not change, ever.** `cmd/codeaf/engine.go:75-77` chdirs into
 the workspace before assembling, because a remote engine has one conversation and a
 process that agreed to be in one place. The chat door must not: the tool root is a
 property of the agent, not of the process (`bare.AllTools(cwd)` fixes it at
 construction and `cmd.Dir = cwd` uses it per call, `internal/exec/bare/tools.go`),
 and the person's shell is theirs. A process that chdir'd on a switch would break
 `/image ./shot.png`, the `@` completion walk, and anybody's expectation about where
-they will be standing when aforge exits. It is also why `v3LaunchDir()` is captured
+they will be standing when codeaf exits. It is also why `v3LaunchDir()` is captured
 once.
 
 ### A6 — `gitRoot` is a global mutex, not keyed by root
@@ -1534,7 +1534,7 @@ two workspaces in one process it becomes a visible one. It rides on the
 - **`subharness.Store.Save` has no lock** (`store.go:77`, `:105`). Not this
   feature's, and not fixed here.
 - The comment at `chatv3.go:727` names the project config directory as
-  `.openaf/config.json`; the code says `.aforge-v3` (`projectconfig.go:69`). One
+  `.codeaf/config.json`; the code says `.codeaf/config.json` (`projectconfig.go`). One
   line, in a file K2 is already in.
 
 ### A9 — the test plan, in one place
@@ -1567,7 +1567,7 @@ By lane, so that none of it is discovered late:
   gone folder refuses and home stays up; the cap refuses in home's own voice. (K3)
 - **`tab` precedence**: one case per rung of the sixteen-row table. (K3)
 - **Close semantics**: the armed line with two conversations and work in both;
-  `/quit` with two open leaves aforge running and attaches the other; `/quit` with
+  `/quit` with two open leaves codeaf running and attaches the other; `/quit` with
   one open quits; the closed key is gone from `prev`; `/new` on a fresh empty
   conversation replaces it and on a used one adds, carrying the draft. (K3)
 - **The count segment**: absent at one conversation, present at two, `· N waiting`

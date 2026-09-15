@@ -21,7 +21,7 @@
 // imports no surface.
 //
 // KNOWN LIMITATION: the file is not locked, and a Store caches its contents in
-// memory after the first read. Two aforge processes on the same path interleave
+// memory after the first read. Two codeaf processes on the same path interleave
 // their appends (harmless — every line is independent) but each keeps serving
 // recall from the snapshot it loaded, so neither sees the other's new lines
 // until it is restarted. That is the right trade for a recall list; the fix,
@@ -47,7 +47,7 @@ const (
 
 	// maxEntries is where the file is rotated, keepEntries is what survives.
 	// Ten thousand prompts is far past the depth any up-arrow walk reaches; the
-	// cap exists so a machine running aforge for a year does not carry an
+	// cap exists so a machine running codeaf for a year does not carry an
 	// unbounded file for a feature whose whole value is in its recent tail.
 	maxEntries  = 10000
 	keepEntries = 5000

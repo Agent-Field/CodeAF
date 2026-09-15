@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── THE PIN A SURFACE NAMES IS THE PIN THE WIRE WOULD DEMAND ────────────────
@@ -206,7 +206,7 @@ func TestARoutingChangeReachesTheTransportAndThePanelAtOnce(t *testing.T) {
 	if !ok || row.Apply(config.RoutingLatency) != nil {
 		t.Fatal("could not write the routing row")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: flash}, Workspace: "/tmp/lab", ProfileDir: dir})
 	a.models = func() []Model { return laneCatalog }
 	a.width, a.height = 130, 40
@@ -238,7 +238,7 @@ func TestARoutingChangeReachesTheTransportAndThePanelAtOnce(t *testing.T) {
 	a.closeSettings()
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
-	if screen := plain(frame(a)); !strings.Contains(screen, "openrouter's own routing; aforge stays out") {
+	if screen := plain(frame(a)); !strings.Contains(screen, "openrouter's own routing; codeaf stays out") {
 		t.Fatalf("the fold still promises the old row's takeover:\n%s", screen)
 	}
 }

@@ -33,14 +33,14 @@ func TestTheThrowawayRootIsNobodysHome(t *testing.T) {
 	}
 	// Named for this process, so two packages running beside each other never
 	// share one root — which is how session node journals collided (#187).
-	if !strings.Contains(filepath.Base(quarantine), "aforge-test-home-") {
+	if !strings.Contains(filepath.Base(quarantine), "codeaf-test-home-") {
 		t.Errorf("the throwaway root %q does not say what it is", quarantine)
 	}
 }
 
 // TestARootTheTestChoseIsTheRootItGets is why the gate can be this blunt: what
 // is refused is a root NOBODY CHOSE. Every test in this repository that points
-// AFORGE_HOME at a directory of its own, and every package that moves HOME for
+// CODEAF_HOME at a directory of its own, and every package that moves HOME for
 // its whole run the way internal/session does, must keep working unchanged.
 func TestARootTheTestChoseIsTheRootItGets(t *testing.T) {
 	chosen := t.TempDir()
@@ -51,7 +51,7 @@ func TestARootTheTestChoseIsTheRootItGets(t *testing.T) {
 
 	// Moving HOME alone is the other way a package says where its state goes,
 	// and it has to reach the same answer: internal/session moves HOME and NOT
-	// AFORGE_HOME on purpose, so that its own tests keep their separate roots.
+	// CODEAF_HOME on purpose, so that its own tests keep their separate roots.
 	t.Setenv(EnvVar, "")
 	login := t.TempDir()
 	t.Setenv("HOME", login)
@@ -110,14 +110,14 @@ func TestOutsideATestBinaryNothingChanges(t *testing.T) {
 	if got, want := Dir(), DefaultUnder(login); got != want {
 		t.Errorf("the product's state root resolved to %q, want %q", got, want)
 	}
-	if got, want := Join("config.json"), filepath.Join(login, ".aforge", "config.json"); got != want {
+	if got, want := Join("config.json"), filepath.Join(login, ".codeaf", "config.json"); got != want {
 		t.Errorf("the product's config resolved to %q, want %q", got, want)
 	}
 	// And a process with no home at all still degrades to a relative directory
 	// rather than to an error path no caller was written to handle.
 	t.Setenv("HOME", "")
 	if runtimeHasNoHome(t) {
-		if got, want := Dir(), ".aforge"; got != want {
+		if got, want := Dir(), ".codeaf"; got != want {
 			t.Errorf("a process with no home resolved to %q, want %q", got, want)
 		}
 	}

@@ -7,18 +7,18 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // ── THE PLACES OVER --host ──────────────────────────────────────────────────
 //
 // A place is a listing of one machine's disk, and over a connection that machine
 // is the one the SESSION runs on. Until this file existed only home said so: the
-// other five walked ~/.aforge/v3 under this process — the laptop's — and drew
+// other five walked ~/.codeaf/v3 under this process — the laptop's — and drew
 // what they found under a conversation living somewhere else. The tasks place
 // was the worst of them, because it drew a count and a total in dollars: "work
-// aforge ran on its own. 8, $22.54 of it." was the laptop's eight tasks and the
+// codeaf ran on its own. 8, $22.54 of it." was the laptop's eight tasks and the
 // laptop's money, on a session on a server.
 //
 // EVERY READING HAS A FAR DOOR NOW. These tests keep the compatibility floor as
@@ -128,7 +128,7 @@ func TestTheTabBarNamesTheMachineOverHostAndNeverAtHome(t *testing.T) {
 
 // The tasks place over --host draws THE FAR MACHINE'S work and not one row of
 // this one's. It is the owner's own report, turned into a test: they attached to
-// spark, pressed the tasks tab, and read "work aforge ran on its own. 8, $22.54
+// spark, pressed the tasks tab, and read "work codeaf ran on its own. 8, $22.54
 // of it." — the laptop's eight tasks and the laptop's money.
 func TestTheTasksPlaceOverHostDrawsTheFarMachinesWork(t *testing.T) {
 	a := hostedPlaceLab(t)

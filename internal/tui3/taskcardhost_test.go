@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE RECORD CARD OVER --host ─────────────────────────────────────────────
@@ -34,7 +34,7 @@ func farCardEntry(now time.Time) session.TaskIndexEntry {
 		Status: string(session.TaskDone), Cost: 3.10, Model: "opus", FilesChanged: 3,
 		Outcome: "widened the pipe", SessionID: "bbbb000000000002", EndedAt: now.Add(-time.Minute),
 		ArtifactURI:   "git:task/widening",
-		TranscriptURI: "file:///srv/home/.aforge/v3/projects/-srv-code-api/bbbb000000000002/tasks/20260826-094113_1.jsonl",
+		TranscriptURI: "file:///srv/home/.codeaf/v3/projects/-srv-code-api/bbbb000000000002/tasks/20260826-094113_1.jsonl",
 	}
 }
 
@@ -402,7 +402,7 @@ func TestAHostedTaskCardSaysItsPathsAreTheFarMachines(t *testing.T) {
 	a.width = 160
 	pressFarCard(t, a)
 	text := placeText(a)
-	want := a.host + ":/srv/home/.aforge/v3/projects/-srv-code-api/bbbb000000000002/tasks/20260826-094113_1.jsonl"
+	want := a.host + ":/srv/home/.codeaf/v3/projects/-srv-code-api/bbbb000000000002/tasks/20260826-094113_1.jsonl"
 	if !strings.Contains(text, want) {
 		t.Fatalf("the card did not say whose disk its transcript is on:\n%s", text)
 	}

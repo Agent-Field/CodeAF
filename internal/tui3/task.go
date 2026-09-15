@@ -8,9 +8,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE TASK SURFACE: A DECISION, AND THEN A PRESENCE.
@@ -715,7 +715,7 @@ type taskAgent interface {
 //
 // IT IS EXPORTED FOR ONE REASON. internal/remote implements this surface's agent
 // over a wire and cannot import this package to check that it kept up, so the
-// door that wires the two together asserts it instead (cmd/aforge). The seam is
+// door that wires the two together asserts it instead (cmd/codeaf). The seam is
 // ALL-OR-NOTHING — [app.tasker] is one type assertion — so a single method
 // missing on the far half is not a feature that degrades, it is a rail that is
 // never subscribed and never draws a row. That is exactly what happened: the
@@ -1785,7 +1785,7 @@ func taskAsksOpen(agent taskAgent) ([]uint64, bool) {
 //	╰──────────────────────────────────────────────────────────────────────
 //
 //	? wants to start a task: Fix nil-map crash
-//	  the parser drops a key on an empty map · aforge
+//	  the parser drops a key on an empty map · codeaf
 //	  ▸ 1  start it
 //	    2  no
 //	  [enter] take the pick · [esc] later · [c] change · start it in 9s

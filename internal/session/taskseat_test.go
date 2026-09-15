@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // A TASK HANDED OFF IN A CONVERSATION RUNS ON THE CREW'S OWN WORKER (#312).
@@ -19,7 +19,7 @@ import (
 // started in that conversation ran on a model the person had never named.
 //
 // This is the ENGINE half of the acceptance, driven through the same call the
-// chat door builds its map with (cmd/aforge's v3Crew, whose own wiring test is
+// chat door builds its map with (cmd/codeaf's v3Crew, whose own wiring test is
 // [TestTheChatRoleMapSeatsTheInheritedWorkerRow]): the five classes as
 // internal/config resolves them, and the model a task admitted right now would
 // run on.
@@ -71,7 +71,7 @@ func TestATaskOnACrewOlderThanTheWorkerSeatRunsOnTheSmallWorkRow(t *testing.T) {
 }
 
 // profileTiers is the five classes read off a profile of a stated vintage, the
-// way the chat door reads them (cmd/aforge's v3Crew.snapshot): a value the role
+// way the chat door reads them (cmd/codeaf's v3Crew.snapshot): a value the role
 // ladder holds, and "not held" for a row that follows the conversation.
 func profileTiers(t *testing.T, rows map[string]string) func(string) (string, bool) {
 	t.Helper()

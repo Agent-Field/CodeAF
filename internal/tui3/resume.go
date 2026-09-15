@@ -1,6 +1,6 @@
 package tui3
 
-// THE RESUME PICKER: /resume, and the surface `aforge resume` opens on.
+// THE RESUME PICKER: /resume, and the surface `codeaf resume` opens on.
 //
 // The welcome box already lists the last four conversations (welcome.go), and
 // it is the right answer to "where was I" for the ten seconds after a launch:
@@ -55,7 +55,7 @@ const resumeHint = "filter · ↑↓ · enter open · esc cancel"
 // list. The first is the empty state a fresh machine meets; the second is what
 // a surface with no door onto the session files says (a headless frame, a test).
 const (
-	noSessionsWord        = "No sessions yet — start one with aforge chat"
+	noSessionsWord        = "No sessions yet — start one with codeaf chat"
 	resumeUnavailableWord = "resuming is unavailable here"
 )
 
@@ -383,7 +383,7 @@ func ago(at time.Time) string {
 
 // ── the app's side of the overlay ───────────────────────────────────────────
 
-// openResume is /resume, and the list `aforge resume` opens on.
+// openResume is /resume, and the list `codeaf resume` opens on.
 //
 // It resolves the list HERE rather than holding one from boot: a session picker
 // opened an hour into a conversation must show the conversation that was had in

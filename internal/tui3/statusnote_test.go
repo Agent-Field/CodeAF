@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── 1. the two commands exist, once ─────────────────────────────────────────
@@ -308,7 +308,7 @@ func TestStatusNamesTheFileWhenThereIsOne(t *testing.T) {
 		t.Fatal("a session with no file on disk grew a file line")
 	}
 
-	a.file = "/tmp/lab/.aforge/sessions/2026-08-17T09-15-02.json"
+	a.file = "/tmp/lab/.codeaf/sessions/2026-08-17T09-15-02.json"
 	a.slash("/status")
 	if !strings.Contains(lastNote(t, a), a.file) {
 		t.Fatalf("the note lost the session file:\n%s", lastNote(t, a))
@@ -342,7 +342,7 @@ func TestStatusJSONCarriesTheSameFactsInTheSameOrder(t *testing.T) {
 	a := newTestApp(agent)
 	a.model, a.ctxWindow, a.ctxTokens = agent.model, 128_000, 12_400
 	a.build = "1265feda built 2026-08-27 13:28"
-	a.file = "/tmp/lab/.aforge/sessions/2026-08-17T09-15-02.json"
+	a.file = "/tmp/lab/.codeaf/sessions/2026-08-17T09-15-02.json"
 
 	a.slash("/status --json")
 	text := lastNote(t, a)

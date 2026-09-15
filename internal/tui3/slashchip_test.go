@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── the chip ────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ func TestAPathInTheBoxIsNeverChipped(t *testing.T) {
 	for _, line := range []string{
 		"/Users/santosh/notes.md",
 		"read /tmp/task and say what it does",
-		"look at cmd/aforge/main.go",
+		"look at cmd/codeaf/main.go",
 		"https://example.com/help",
 	} {
 		a.input.reset()
@@ -291,7 +291,7 @@ func TestAnAbsolutePathDoesNotHoldTheCommandListOpen(t *testing.T) {
 	// The second slash of a path is not a boundary either, so nothing about the
 	// depth of a path can bring it back.
 	a.input.reset()
-	typeInto(t, a, "open /tmp/aforge/scratch")
+	typeInto(t, a, "open /tmp/codeaf/scratch")
 	if a.menu.open {
 		t.Fatalf("a path mid-sentence left the list up over %q", a.input.String())
 	}

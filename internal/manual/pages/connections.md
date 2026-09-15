@@ -2,30 +2,30 @@
 
 ## What a connection is
 
-Aforge can reach accounts you hold somewhere else — Google and Slack first — so that
+codeaf can reach accounts you hold somewhere else — Google and Slack first — so that
 "what did Priya say about the invoice" and "am I free Thursday afternoon" are
 questions it answers by looking, instead of questions it asks you to go and
 answer yourself.
 
 A connection is **per-account, and it acts as well as reads**. Connecting Google
-lets aforge search and open your mail and look at your calendar, and it lets it
+lets codeaf search and open your mail and look at your calendar, and it lets it
 send a message from your address and put an event on your calendar. It cannot
 empty your mailbox, and it cannot make or delete a calendar.
 
-Connecting Slack lets aforge search messages, read one thread, list the channels
+Connecting Slack lets codeaf search messages, read one thread, list the channels
 you can see, and — after asking you — post a message as you.
 
 ## Two kinds, and you can tell them apart by what they ask you for
 
 - **Google opens a browser.** You sign in on Google's own page, Google shows you
-  exactly what is being asked for, and aforge keeps the sign-in fresh for you.
+  exactly what is being asked for, and codeaf keeps the sign-in fresh for you.
 - **Slack opens a browser too.** You sign in on Slack's own page as yourself,
-  choose the workspace, and Slack shows the twelve permissions aforge needs to
+  choose the workspace, and Slack shows the twelve permissions codeaf needs to
   search, read, list channels and send messages as you.
 - **A few hundred others want a key.** Stripe, Freshdesk, Brevo, Mailgun,
   Airtable's neighbours — the systems you already pay for and already hold a key
   for. There is no page to open: you paste the key once and that is the whole of
-  it. Ask "what can you connect" and aforge lists them; give it a word to search
+  it. Ask "what can you connect" and codeaf lists them; give it a word to search
   by if the list is long.
 
 A handful of them live at an address with your own name in it —
@@ -38,7 +38,7 @@ The question says which part it wants first, in the words that service uses for
 it — a domain, a site name, a workspace.
 
 An account connected with a key shows as connected and **nothing else**. It does
-not say who you are, because a key does not carry a name and aforge will not
+not say who you are, because a key does not carry a name and codeaf will not
 invent one.
 
 ## Or don't paste the key at all
@@ -48,14 +48,14 @@ answer too**:
 
 > `$STRIPE_KEY`
 
-Write it with the dollar — `$STRIPE_KEY` or `${STRIPE_KEY}` — and aforge stores
+Write it with the dollar — `$STRIPE_KEY` or `${STRIPE_KEY}` — and codeaf stores
 **the name**, not the key. Every call reads the variable again, so:
 
-- The key never enters aforge's file. If your keys already live in your shell,
+- The key never enters codeaf's file. If your keys already live in your shell,
   your `.envrc` or a secret manager, they stay there.
 - **Rotating is rotating once.** Change it where it is set and the next call
   uses the new one. There is nothing here to update.
-- If the variable is not set when aforge reaches for it, it says so and names
+- If the variable is not set when codeaf reaches for it, it says so and names
   it — `Stripe reads its key from $STRIPE_KEY, and nothing is set there` — rather
   than making a call that fails somewhere else for a reason you cannot see.
 
@@ -79,7 +79,7 @@ The box that asks for a key also says **where to get one**, while it is open:
 >   › paste your Chargebee key
 >     find it at apidocs.chargebee.com
 
-It is the vendor's own page, and where the vendor names none, aforge's own note
+It is the vendor's own page, and where the vendor names none, codeaf's own note
 of where people find it. It is shown only while the box is open — not on every
 row of a two-hundred-row list, and not after the account is connected, because
 by then you have found it.
@@ -102,7 +102,7 @@ Three ways in, and they are the same connection:
   opens the key box **on the row itself**. It is the same box, and the page
   stays where it was — the account you just connected gains its tick and opens
   on what it may do, under your cursor.
-- **Aforge asks.** When the work in front of it needs an account you have not
+- **codeaf asks.** When the work in front of it needs an account you have not
   connected — you asked about a mail thread it cannot see — it stops and asks:
 
 > Connect Google? It will be able to read and send your mail, and read and
@@ -111,7 +111,7 @@ Three ways in, and they are the same connection:
 
 Nothing is connected until you answer yes, and **nothing happening is a no**:
 the question waits five minutes and then answers itself with "not now". Say no
-and aforge does the rest of the work without that account, and tells you plainly
+and codeaf does the rest of the work without that account, and tells you plainly
 what it could not reach.
 
 When you say yes, a browser page opens. Finish there and you are connected:
@@ -120,7 +120,7 @@ When you say yes, a browser page opens. Finish there and you are connected:
 
 ## Where the tools show up
 
-The moment an account is connected, aforge picks up the tools that come with it
+The moment an account is connected, codeaf picks up the tools that come with it
 — your mail, your calendar, or for a key account one tool that calls it
 directly — and they are in its hands **from its next reply on**, not
 mid-sentence. So the shape of a first connection is: it asks, you say
@@ -130,7 +130,7 @@ step is not hesitation; it is when it actually has the hands.
 Connecting once is connecting for good. Every conversation on this machine, from
 then on, starts with the account already in place — you are never asked twice.
 
-The exception is a version of aforge that can do more with an account than the
+The exception is a version of codeaf that can do more with an account than the
 one you connected under. If you signed in when it could only read your mail, the
 first time it needs to send one it asks you to sign in again, and Google shows
 you exactly what is being asked for. It is the same question as the first time,
@@ -158,17 +158,17 @@ So each account is a handful of **sentences**, in `⚙` settings under
 - **ask first** — you are asked before every one, with what is about to happen in
   the question.
 - **off** — **the hand is not there**. Not refused when it is reached for: the
-  tool never arrives in the conversation at all, and aforge is never told the
+  tool never arrives in the conversation at all, and codeaf is never told the
   account can do that. Nothing it plans will be built on it, and you are not
   asked a question about something you have already answered.
 
 Enter walks the three words and the answer is **saved the moment you change it**.
-It applies to conversations that are already open: turn sending off while aforge
+It applies to conversations that are already open: turn sending off while codeaf
 is drafting a message and the send stops there, with the conversation told
 plainly that you turned it off rather than that something broke.
 
 Reading is `yes` to begin with and anything that acts in your name is `ask first`,
-which is exactly how aforge behaved before these rows existed. Nothing is `off`
+which is exactly how codeaf behaved before these rows existed. Nothing is `off`
 until you say so.
 
 When a question stops you mid-conversation, answering **"always"** is the same
@@ -206,20 +206,20 @@ what pressing enter will ask you for (`key` or `sign in`), and the sentence
 about what a service is for shown **only under the row your cursor is on**. Two
 hundred sentences at once is not a catalog, it is a wall.
 
-Disconnecting takes effect immediately: aforge forgets the account on this
+Disconnecting takes effect immediately: codeaf forgets the account on this
 machine, and the next conversation is offered the chance to connect it again like
 the first one was.
 
 ## What a key account can do
 
-One tool, and it is the account itself: aforge makes the calls that service's
+One tool, and it is the account itself: codeaf makes the calls that service's
 own documentation describes. Reading is free to try. **Anything that changes
 something — creating, updating, deleting — stops and asks you first**, with the
 service, what it is about to do and where, in the question. That is the same
 rule that stands over sending a message, for the same reason: it happens in your
 name, in a system other people can see, and there is no undo.
 
-What aforge does not have is a hand-written tool per service. There are hundreds
+What codeaf does not have is a hand-written tool per service. There are hundreds
 of them and no two agree on what a contact is, so it reads their documentation
 the way you would rather than pretending to know in advance. Expect it to say
 what it is about to call.
@@ -230,11 +230,11 @@ Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
 Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear, Miro,
 Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
 Supabase and Todoist sign in through a browser the way Google and Slack do, and then they do one
-thing the others do not: **they say for themselves what they can do**. Aforge
+thing the others do not: **they say for themselves what they can do**. codeaf
 asks the account what it brings the moment it picks it up, and what comes back —
 search this, open that, file the other — is what it holds for the rest of the
-conversation. None of that list is written into aforge, so an account that
-gains a tool next month is an account aforge picks that tool up from, with
+conversation. None of that list is written into codeaf, so an account that
+gains a tool next month is an account codeaf picks that tool up from, with
 nothing to change here.
 
 | Service | Address | What it brings |
@@ -281,7 +281,7 @@ Two things follow from a list nobody here wrote:
   today is simply not picked up, and one that appeared overnight is. Nothing is
   remembered between conversations, so nothing can go stale.
 - **A few of them serve dozens.** Carrying sixty tools would cost you on every
-  turn of every conversation, so past about thirty aforge picks up none of them,
+  turn of every conversation, so past about thirty codeaf picks up none of them,
   reads the list, and asks again for the few the work needs. You will see it name
   a handful and carry on.
 
@@ -294,7 +294,7 @@ can be turned off. Off means the tools that do it never arrive at all.
 Google and Slack both ship with what their browser sign-in needs, so both are on
 the list from the first run. The **google app id**, **google app secret** and
 **slack app id** rows in `⚙` settings replace the shipped application for people
-and organisations that want their own; leaving them blank uses aforge's.
+and organisations that want their own; leaving them blank uses codeaf's.
 
 The key accounts need nothing set up. Your key is the whole of what it takes, so
 they are on the list from the first run.

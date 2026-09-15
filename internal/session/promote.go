@@ -13,7 +13,7 @@ package session
 // So a call that hits its bound is now ADOPTED rather than killed. The process
 // keeps running, the registry takes it over, and the call answers
 //
-//	still running as job 3; log at /path/to/.aforge-v3/jobs/3.log
+//	still running as job 3; log at /path/to/.codeaf/jobs/3.log
 //
 // followed by everything the command has printed so far ([promotedSentence]).
 // The first line is the sentence a background start already speaks
@@ -85,7 +85,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // promotedSentence is what a promoted call answers with: the line

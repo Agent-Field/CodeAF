@@ -2,7 +2,7 @@ package manual
 
 import "strings"
 
-// Pitch is aforge's account of what it is and what a person can say to it, in
+// Pitch is codeaf's account of what it is and what a person can say to it, in
 // its own voice. It lives here rather than in a page because it is the one
 // piece of the manual two surfaces need at once: the head carries it in its
 // stable prompt so the model can answer "what can you do?" without being told

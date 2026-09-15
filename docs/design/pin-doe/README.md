@@ -19,7 +19,7 @@ retained reports recorded their findings.
 
 Each cell also produced `frames.log` (every sampled frame), `f2p.log` and `suite.log`
 (pytest output), `entry.json` and `prompt.txt` (the brief, reproducible from the canary
-pool by id), and the full `home/` and `work/` directories (the isolated `AFORGE_HOME`
+pool by id), and the full `home/` and `work/` directories (the isolated `CODEAF_HOME`
 with its transcripts, and the checkout the model edited). Together they were 2.8 GB
 and are not in the repository. The raw run lived in a temporary scratchpad on the
 shared runner and does not survive a reboot of that machine. The

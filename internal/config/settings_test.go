@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 func registry(t *testing.T, dir string) *Settings {
@@ -69,7 +69,7 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 		registered[name] = true
 	}
 
-	pattern := regexp.MustCompile(`AFORGE_[A-Z0-9_]+`)
+	pattern := regexp.MustCompile(`CODEAF_[A-Z0-9_]+`)
 	root := repositoryRoot(t)
 	seen := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
@@ -106,7 +106,7 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 		t.Fatalf("the environment scan found only %d pins; it is not reading the tree", len(seen))
 	}
 	for name, path := range seen {
-		if strings.HasPrefix(name, "AFORGE_TEST_") || registered[name] {
+		if strings.HasPrefix(name, "CODEAF_TEST_") || registered[name] {
 			continue
 		}
 		t.Fatalf("%s (%s) is neither a settings row nor operator plumbing — register it in settings.go",
@@ -188,8 +188,8 @@ func TestRegistryGroupsEveryCategoryAndEveryModelSlot(t *testing.T) {
 func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{
-		"AFORGE_DAILY_BUDGET", "AFORGE_PRACTICE_BUDGET", "AFORGE_PRACTICE_IDLE",
-		"AFORGE_BRIEF_AFTER", "AFORGE_TENURE_AFTER", "AFORGE_DOC_ENGINE", "AFORGE_VISION_MODEL",
+		"CODEAF_DAILY_BUDGET", "CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE",
+		"CODEAF_BRIEF_AFTER", "CODEAF_TENURE_AFTER", "CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -258,9 +258,9 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 		t.Fatalf("a budget write erased the document engine: %q", got.Value())
 	}
 
-	t.Setenv("AFORGE_DOC_ENGINE", "ocr")
-	t.Setenv("AFORGE_TENURE_AFTER", "9")
-	t.Setenv("AFORGE_VISION_MODEL", "pinned/vision")
+	t.Setenv("CODEAF_DOC_ENGINE", "ocr")
+	t.Setenv("CODEAF_TENURE_AFTER", "9")
+	t.Setenv("CODEAF_VISION_MODEL", "pinned/vision")
 	pinned := registry(t, dir)
 	for key, want := range map[string]string{
 		KeyDocumentEngine: "ocr", KeyTenureAfter: "9", KeyVisionModel: "pinned/vision",
@@ -295,11 +295,11 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 		}
 	}
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
-	t.Setenv("AFORGE_BASE_URL", "http://127.0.0.1:1")
-	t.Setenv("AFORGE_PROFILE_DIR", dir)
+	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("CODEAF_PROFILE_DIR", dir)
 	for _, name := range []string{
-		"AFORGE_PRACTICE_BUDGET", "AFORGE_PRACTICE_IDLE", "AFORGE_BRIEF_AFTER",
-		"AFORGE_DOC_ENGINE", "AFORGE_VISION_MODEL", "AFORGE_ATTRIBUTION",
+		"CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE", "CODEAF_BRIEF_AFTER",
+		"CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL", "CODEAF_ATTRIBUTION",
 	} {
 		t.Setenv(name, "")
 	}
@@ -317,8 +317,8 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	}
 
 	// The environment still wins over everything written here.
-	t.Setenv("AFORGE_DOC_ENGINE", "ocr")
-	t.Setenv("AFORGE_BRIEF_AFTER", "2h")
+	t.Setenv("CODEAF_DOC_ENGINE", "ocr")
+	t.Setenv("CODEAF_BRIEF_AFTER", "2h")
 	loaded, err = Load()
 	if err != nil {
 		t.Fatal(err)
@@ -352,26 +352,26 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 
 func TestTenurePersistsAndReachesTheProcessEnvironment(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AFORGE_TENURE_AFTER", "")
+	t.Setenv("CODEAF_TENURE_AFTER", "")
 	rows := registry(t, dir)
 	row, _ := rows.Row(KeyTenureAfter)
 	if err := row.Apply("6"); err != nil {
 		t.Fatal(err)
 	}
-	if got := os.Getenv("AFORGE_TENURE_AFTER"); got != "6" {
+	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "6" {
 		t.Fatalf("tenure did not reach the running process: %q", got)
 	}
-	t.Setenv("AFORGE_TENURE_AFTER", "")
+	t.Setenv("CODEAF_TENURE_AFTER", "")
 	if got := TenureAfterAt(dir); got != 6 {
 		t.Fatalf("persisted tenure = %d", got)
 	}
 	InstallPersistedEnv(dir)
-	if got := os.Getenv("AFORGE_TENURE_AFTER"); got != "6" {
+	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "6" {
 		t.Fatalf("relaunch did not reinstall the persisted tenure: %q", got)
 	}
-	t.Setenv("AFORGE_TENURE_AFTER", "2")
+	t.Setenv("CODEAF_TENURE_AFTER", "2")
 	InstallPersistedEnv(dir)
-	if got := os.Getenv("AFORGE_TENURE_AFTER"); got != "2" {
+	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "2" {
 		t.Fatalf("a set environment was overwritten: %q", got)
 	}
 }
@@ -380,7 +380,7 @@ func TestTenurePersistsAndReachesTheProcessEnvironment(t *testing.T) {
 // to say otherwise short of the shell — which still wins.
 func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AFORGE_ATTRIBUTION", "")
+	t.Setenv("CODEAF_ATTRIBUTION", "")
 	rows := registry(t, dir)
 	row, ok := rows.Row(KeyAttribution)
 	if !ok {
@@ -403,13 +403,13 @@ func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
 	}
 
-	t.Setenv("AFORGE_ATTRIBUTION", "on")
+	t.Setenv("CODEAF_ATTRIBUTION", "on")
 	if !AttributionAt(dir) {
 		t.Fatal("the environment lost to the persisted file")
 	}
 	pinned, _ := registry(t, dir).Row(KeyAttribution)
 	name, isPinned := pinned.PinnedBy()
-	if !isPinned || name != "AFORGE_ATTRIBUTION" {
+	if !isPinned || name != "CODEAF_ATTRIBUTION" {
 		t.Fatalf("attribution did not report its pin: %q", name)
 	}
 	if err := pinned.Apply("off"); err == nil || !strings.Contains(err.Error(), name) {
@@ -418,7 +418,7 @@ func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 
 	// A hand-typed pin that means nothing reads as the default rather than
 	// stopping a launch over a signature.
-	t.Setenv("AFORGE_ATTRIBUTION", "sure")
+	t.Setenv("CODEAF_ATTRIBUTION", "sure")
 	if !AttributionAt(dir) {
 		t.Fatal("a malformed pin did not fall back to the default")
 	}
@@ -859,7 +859,7 @@ func mustRow(t *testing.T, rows *Settings, key string) Setting {
 func TestTheBackgroundChecksRowReadsTheTimerAndTurnsIt(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-	program := filepath.Join(t.TempDir(), "aforge")
+	program := filepath.Join(t.TempDir(), "codeaf")
 	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -900,7 +900,7 @@ func TestTheBackgroundChecksRowReadsTheTimerAndTurnsIt(t *testing.T) {
 	if BackgroundChecksWantedAt(dir) {
 		t.Fatal("the launch repair would put back a timer the person turned off")
 	}
-	// AND THE HINT NAMES THE THING IT INSTALLS. "aforge installs a launchd
+	// AND THE HINT NAMES THE THING IT INSTALLS. "codeaf installs a launchd
 	// agent" is a sentence nobody can check.
 	for _, want := range []string{standing.DarwinTickLabel, standing.LinuxTickTimer, standing.IntervalWords()} {
 		if !strings.Contains(row.Hint, want) {
@@ -1058,7 +1058,7 @@ func TestTheRoutingRowReadsAsAChoiceAndAsAnAnswer(t *testing.T) {
 // TestSpendRailsShipLargeEnoughNotToHinder is the guard on the raise itself. It
 // is written as floors and not as equalities on purpose: raising a rail further
 // is always allowed, and only a quiet DROP back towards the figures that made
-// aforge stop mid-errand ($20 a day, a $3 consent gate, a 15-cent standing
+// codeaf stop mid-errand ($20 a day, a $3 consent gate, a 15-cent standing
 // firing) is the regression worth a failing build.
 func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 	floors := []struct {
@@ -1098,7 +1098,7 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 // already uses for its off state — and `$0` appears nowhere at all.
 func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 	for _, name := range []string{
-		"AFORGE_DAILY_BUDGET", "AFORGE_PRACTICE_BUDGET", "AFORGE_PLAN_CONSENT",
+		"CODEAF_DAILY_BUDGET", "CODEAF_PRACTICE_BUDGET", "CODEAF_PLAN_CONSENT",
 	} {
 		t.Setenv(name, "")
 	}
@@ -1170,7 +1170,7 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 // ([Setting.EmptyLabel]), which leaves this column free to say the one thing a
 // person came to the row to read — what the day has actually cost.
 func TestTheDailyRailReceiptIsTheDaysOwnFigure(t *testing.T) {
-	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	dir := t.TempDir()
 	rows := NewSettings(SettingsOptions{
 		ProfileDir:    dir,
@@ -1261,16 +1261,16 @@ func TestTheThreeCategoriesSpendingLeftBehind(t *testing.T) {
 // row that says "no limit" over machinery that still stops the work would be
 // the worst of the three possible states.
 func TestZeroMeansNoLimitEverywhereARailIsEnforced(t *testing.T) {
-	t.Setenv("AFORGE_DAILY_BUDGET", "0")
+	t.Setenv("CODEAF_DAILY_BUDGET", "0")
 	dir := t.TempDir()
 	if rail, err := DailyBudgetUSDAt(dir); err != nil || rail != 0 {
 		t.Fatalf("the daily rail refused 0: %v %v", rail, err)
 	}
-	t.Setenv("AFORGE_PLAN_CONSENT", "0")
+	t.Setenv("CODEAF_PLAN_CONSENT", "0")
 	if gate, err := PlanConsentUSDAt(dir); err != nil || gate != 0 {
 		t.Fatalf("the consent gate refused 0: %v %v", gate, err)
 	}
-	t.Setenv("AFORGE_RESPONSE_LIFT_CAP", "0")
+	t.Setenv("CODEAF_RESPONSE_LIFT_CAP", "0")
 	if cap := ResponseLiftCapAt(dir); cap != 0 {
 		t.Fatalf("the lifted-tier cap refused 0: %v", cap)
 	}
@@ -1278,7 +1278,7 @@ func TestZeroMeansNoLimitEverywhereARailIsEnforced(t *testing.T) {
 	// bug this shape exists for: a reader that tested the NUMBER before it
 	// tested whether a value was written at all would hand back the default
 	// and quietly put a ceiling back over somebody who removed one.
-	for _, name := range []string{"AFORGE_DAILY_BUDGET", "AFORGE_PLAN_CONSENT", "AFORGE_RESPONSE_LIFT_CAP"} {
+	for _, name := range []string{"CODEAF_DAILY_BUDGET", "CODEAF_PLAN_CONSENT", "CODEAF_RESPONSE_LIFT_CAP"} {
 		t.Setenv(name, "")
 	}
 	for _, key := range []string{KeyDailyBudget, KeyPlanConsent, KeySpendRail, KeyResponseLiftCap} {

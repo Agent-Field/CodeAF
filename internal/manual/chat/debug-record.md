@@ -1,22 +1,22 @@
 # The debug record
 
-## How do I see what happened — turning the record on with /debug, --debug or AFORGE_DEBUG
+## How do I see what happened — turning the record on with /debug, --debug or CODEAF_DEBUG
 
-When a turn goes wrong and the answer is not in what you can see, you can ask aforge to
+When a turn goes wrong and the answer is not in what you can see, you can ask codeaf to
 keep the **debug record** of a run: everything that run did, in a folder of its own. There
 is one switch and three ways to say it, and they all mean the same thing.
 
 ```
 /debug                            in a conversation, from here to the end of it
-aforge chat --debug               and the same flag on `aforge do` and `aforge exec`
-AFORGE_DEBUG=1 aforge             for one shell, one run
+codeaf chat --debug               and the same flag on `codeaf do` and `codeaf exec`
+CODEAF_DEBUG=1 codeaf             for one shell, one run
 ```
 
-`AFORGE_CALL_LOG_BODIES=1` — the older word, if it is the one in your shell history —
+`CODEAF_CALL_LOG_BODIES=1` — the older word, if it is the one in your shell history —
 means the same thing now.
 
 **A recording launch keeps its conversation in this terminal.** The record is written by
-the process that makes the calls, and ordinarily `aforge` hands your conversation to this
+the process that makes the calls, and ordinarily `codeaf` hands your conversation to this
 folder's background session host — which was never told to record, and would leave you a
 folder holding `run.json` and no request bodies at all. So a run that is recording takes
 the in-process road, by the pin exactly as by the flag. The conversation ends with the
@@ -41,8 +41,8 @@ and the next one starts with it off.
 The three doors mean the same record and not the same reach. **With the pin or the flag,
 every conversation this process holds is recorded, each into its own folder; `/debug`
 records only the conversation you typed it in.** The pin and the flag were handed to that
-aforge on purpose, before anything opened; `/debug` was typed inside one conversation, and
-one aforge can be holding several.
+codeaf on purpose, before anything opened; `/debug` was typed inside one conversation, and
+one codeaf can be holding several.
 
 So if you have two conversations open and type `/debug` in one, the other one keeps
 writing nothing — its prompts, its files and its replies do not land in a folder its
@@ -50,7 +50,7 @@ person never asked for. Each conversation that is being recorded has a folder of
 named by its own run.
 
 Where the pin or the flag already turned everything on, `/debug` says so rather than
-pretending it did something: `the record is already on for every conversation this aforge
+pretending it did something: `the record is already on for every conversation this codeaf
 holds · this one goes to …`, naming your own conversation's folder. And in a conversation
 that belongs to no run at all, it says `this conversation has no run to record.` instead
 of switching on a record that would go nowhere.
@@ -60,18 +60,18 @@ of switching on a record that would go nowhere.
 Every run gets a folder of its own, named after that run:
 
 ```
-~/.aforge/logs/trace/<run>/
+~/.codeaf/logs/trace/<run>/
 ```
 
 `<run>` is sixteen characters minted when the run starts — when you open a conversation,
-and when `aforge do` or `aforge exec` begins. It is the id every record in that folder
+and when `codeaf do` or `codeaf exec` begins. It is the id every record in that folder
 carries, so records from two runs can never be read as one.
 
-Under `AFORGE_HOME` the folder moves with everything else aforge keeps.
+Under `CODEAF_HOME` the folder moves with everything else codeaf keeps.
 
 **The folder holds the record of that run, and the first thing in it is `run.json`** —
 written the moment the run starts, and saying which door opened it (`chat`, `resume`,
-`do`, `exec`), which model was asked for, which build of aforge this was, which folder the
+`do`, `exec`), which model was asked for, which build of codeaf this was, which folder the
 run was pointed at, and when it began. It is the file that tells you which run a folder
 you found afterwards actually was.
 
@@ -92,7 +92,7 @@ Each of the three doors also prints one line to the error output when it finishe
 only when there is something to go and look at:
 
 ```
-debug record: ~/.aforge/logs/trace/52dfbdde3f1a7c04
+debug record: ~/.codeaf/logs/trace/52dfbdde3f1a7c04
 ```
 
 **With the switch off, nothing is created at all** — no folder, no line, nothing to clean
@@ -112,11 +112,11 @@ not fire is recorded as loudly as one that did: both are the same choice answere
 ways, and a turn that waited ninety seconds with nothing saying why is the folder this
 exists to prevent.
 
-The **model-call log** is still there and still always on: `aforge logs` prints the last
+The **model-call log** is still there and still always on: `codeaf logs` prints the last
 calls with the status each came back with, the provider's own first sentence on a
 failure, how long it took and what it cost. What the log holds is the **shape** of a
 call — how many messages, how many tools, which ceiling, which provider — and not what you
-wrote. The old `AFORGE_CALL_LOG_BODIES` pin still adds the whole request and reply to each
+wrote. The old `CODEAF_CALL_LOG_BODIES` pin still adds the whole request and reply to each
 line of `calls.jsonl` as well as turning the debug record on. With that pin on, the live
 file is allowed 256 MB (32 MB without it). The bodies also live in the run's folder now,
 which is where they were always meant to live, so the file you grep can stay small.
@@ -159,11 +159,11 @@ Two ceilings, and both are about never losing the run you are looking at.
 Both move for one shell when you need them to:
 
 ```
-AFORGE_TRACE_MAX_MB=1024 aforge chat --debug     a bigger ceiling for one run
-AFORGE_TRACE_KEEP=3 aforge chat --debug          keep fewer folders around
+CODEAF_TRACE_MAX_MB=1024 codeaf chat --debug     a bigger ceiling for one run
+CODEAF_TRACE_KEEP=3 codeaf chat --debug          keep fewer folders around
 ```
 
 If the record cannot be written at all — a full disk, a folder that is not writable —
-aforge says so once on the error output, naming the path, and the run carries on exactly
+codeaf says so once on the error output, naming the path, and the run carries on exactly
 as it would have with the record off. **A record that cannot be written is never a failed
 run.**

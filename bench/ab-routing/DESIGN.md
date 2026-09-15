@@ -1,6 +1,6 @@
 # A/B routing experiment — design
 
-**Question.** aforge sends every call to one model. Phase A showed, offline, that
+**Question.** codeaf sends every call to one model. Phase A showed, offline, that
 a cascade over a small panel beats that single model on the cost–quality
 frontier — on isolated chat completions, graded one call at a time. Does the
 result survive contact with the **real harness**: a full `plan → run` pipeline,
@@ -22,7 +22,7 @@ recorded in §7 with its round number rather than folded in silently.
 
 `run-arm.sh` is parameterised by `ARM`. Arm A sets **no** environment: the point
 of a baseline is that it is the thing already running, not a reconstruction of
-it. Arm B sets `AFORGE_ROUTER=on` and `AFORGE_PANEL=panel.json`. That two-line
+it. Arm B sets `CODEAF_ROUTER=on` and `CODEAF_PANEL=panel.json`. That two-line
 `case` block is the entire difference between the arms; if the router lands
 under different names it is the only edit needed.
 
@@ -50,13 +50,13 @@ on measurement rather than on the caveat.
 
 One gate is new in Phase B and is applied before ability is even considered:
 a panel member must advertise **`tools`** as well as `structured_outputs`,
-because aforge's executor is a tool-calling loop. A model the harness cannot
+because codeaf's executor is a tool-calling loop. A model the harness cannot
 drive has no ability from the harness's point of view.
 
 ## 3. Tasks
 
-Three, run end to end through the real CLI — `aforge plan "<goal>" --brief` then
-`aforge run graph.json -w <workspace>` — never as isolated calls. Each is graded
+Three, run end to end through the real CLI — `codeaf plan "<goal>" --brief` then
+`codeaf run graph.json -w <workspace>` — never as isolated calls. Each is graded
 by code. **There is no LLM judge anywhere in this experiment.**
 
 | id | shape | deliverable | graded on |
@@ -133,7 +133,7 @@ It currently runs **70 checks**. Two defects it caught before any spend:
 
 ## 5. Replicates, ledgers, and what is recorded
 
-**n = 3 per task per arm.** aforge runs are stochastic — the planner samples the
+**n = 3 per task per arm.** codeaf runs are stochastic — the planner samples the
 spine three times, leaf order varies, provider latency varies — so a single cell
 is an anecdote.
 
@@ -143,7 +143,7 @@ same provider contention rather than one being measured on a quieter endpoint.
 
 **Ledger policy differs between the arms, deliberately:**
 
-- **Arm A: a fresh profile directory per cell.** aforge already learns across
+- **Arm A: a fresh profile directory per cell.** codeaf already learns across
   runs — `recordAndCalibrate` rewrites the planner's sizing ruler from measured
   leaves — so a shared ledger would make replicate 3 a continuation of
   replicate 1 rather than a repeat of it. The baseline has to measure the model,
@@ -155,7 +155,7 @@ same provider contention rather than one being measured on a quieter endpoint.
 
 Per cell, `collect.py` records: the grade and its per-group breakdown, success,
 wall clock split into plan and run phases, both exit codes, and — from the
-completed graph, which is aforge's own accounting rather than an account-level
+completed graph, which is codeaf's own accounting rather than an account-level
 credit delta — calls, prompt/completion/cached tokens, cost, total turns, node
 and leaf counts, per-leaf state, **per-leaf stop reason**, per-leaf turns and
 tokens, and each leaf's failure text. The whole profile directory is snapshotted
@@ -359,7 +359,7 @@ whole arm had been analysed.
 
 Unchanged from Phase B except that it is now enforced rather than hoped for:
 
-- `aforge models` after **every cell**, into `models-after.txt` — already done,
+- `codeaf models` after **every cell**, into `models-after.txt` — already done,
   and additionally copied per replicate into the committed ledger directory.
 - `router-events.jsonl` sliced per cell by line position, into
   `events-armB2.jsonl` beside the results.

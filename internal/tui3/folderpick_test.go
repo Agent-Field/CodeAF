@@ -15,8 +15,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // folderLab is a surface standing in a real directory with a shape under it:
@@ -209,7 +209,7 @@ func TestAPathShapeIsTheOnlyThingThatBrowses(t *testing.T) {
 			t.Errorf("%q should browse", typed)
 		}
 	}
-	for _, typed := range []string{"", "code", "aforge-v2", "a/b"} {
+	for _, typed := range []string{"", "code", "codeaf", "a/b"} {
 		if folderPathish(typed) {
 			t.Errorf("%q should filter, not browse", typed)
 		}
@@ -327,7 +327,7 @@ func TestWhatTheMachineKnowsAboutAFolder(t *testing.T) {
 // The @ list offers directories as well as files, marked, and choosing one
 // writes the path into the sentence exactly as a file does.
 func TestTheAtListOffersFoldersAndSaysWhichRowsThoseAre(t *testing.T) {
-	a := completionApp(t, "internal/tui3/app.go", "cmd/aforge/main.go", ".git/config")
+	a := completionApp(t, "internal/tui3/app.go", "cmd/codeaf/main.go", ".git/config")
 	typeInto(t, a, "look at @internal")
 	if !a.comp.loaded {
 		t.Fatal("the walk did not land")
@@ -415,13 +415,13 @@ func typeFolder(t *testing.T, a *app, text string) {
 func TestTheFolderBrowserFindsATransposedProjectName(t *testing.T) {
 	var picker folderPick
 	picker.start([]folderCand{
-		{path: "/code/aforge", show: "~/code/aforge", layer: folderProject},
+		{path: "/code/codeaf", show: "~/code/codeaf", layer: folderProject},
 		{path: "/notes", show: "~/notes", layer: folderProject},
 	}, "/home/person")
-	picker.filter.setText("afroge")
+	picker.filter.setText("codefa")
 	picker.rank()
 	path, ok := picker.here()
-	if !ok || path != "/code/aforge" {
-		t.Fatalf("transposed query selected %q, %v; want /code/aforge", path, ok)
+	if !ok || path != "/code/codeaf" {
+		t.Fatalf("transposed query selected %q, %v; want /code/codeaf", path, ok)
 	}
 }

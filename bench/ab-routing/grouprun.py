@@ -28,7 +28,7 @@ import tempfile
 
 TIMEOUT_S = 180
 SKIP_DIRS = {".git", "__pycache__", ".venv", ".pytest_cache", "obs",
-             "node_modules", ".aforge"}
+             "node_modules", ".codeaf"}
 
 
 def find_package(root, package):

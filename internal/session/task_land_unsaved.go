@@ -129,7 +129,7 @@ func askTheTree(dir string) landingRefusal {
 			place = named
 		}
 	}
-	scratch, err := os.CreateTemp(place, ".aforge-write-")
+	scratch, err := os.CreateTemp(place, ".codeaf-write-")
 	if err != nil {
 		return refusalFromWrite(err)
 	}

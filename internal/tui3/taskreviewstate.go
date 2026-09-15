@@ -1,11 +1,11 @@
 package tui3
 
-import "github.com/Agent-Field/aforge-v2/internal/session"
+import "github.com/Agent-Field/codeaf/internal/session"
 
-// taskReviewPendingWord is the ROSTER'S remaining word for a landing aforge is
+// taskReviewPendingWord is the ROSTER'S remaining word for a landing codeaf is
 // deciding, and it is on its way out: `awaiting review` is deleted as
 // person-facing text by docs/design/task-states/DESIGN.md, which says such a row
-// reads `your call · nobody could check it · aforge is deciding` instead. The
+// reads `your call · nobody could check it · codeaf is deciding` instead. The
 // landing card stopped drawing it with this change; the rail, the roster, the
 // record page and the room still do, and the rail lane owns their deletion.
 const taskReviewPendingWord = "awaiting review"

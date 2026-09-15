@@ -142,7 +142,7 @@ tests = "tests green" if f2p.get("pass") else ("tests: %d failed, %d errors, %d 
 # refuses work the tests call green is a defect of this product, and a single
 # pass/fail is exactly where such a defect would hide. `pass` below is their
 # conjunction, and stays the thing a regression is measured on.
-# THE VERDICT COLUMN READS THE DOOR'S OWN LADDER. `aforge do` ends on five
+# THE VERDICT COLUMN READS THE DOOR'S OWN LADDER. `codeaf do` ends on five
 # exit codes and each one is a different finding, so the rig reads the code
 # rather than inferring the finding from the record the door left behind:
 #   0  done — it finished the work and said so
@@ -365,7 +365,7 @@ export PATH="$WORK/.venv/bin:$PATH"
 case "$DOOR" in
   do)
     started=$(date +%s)
-    AFORGE_HOME="$HOME_DIR" timeout $((CANARY_WALL + 90)) "$CANARY_BIN" do "$(cat "$PROMPT")" \
+    CODEAF_HOME="$HOME_DIR" timeout $((CANARY_WALL + 90)) "$CANARY_BIN" do "$(cat "$PROMPT")" \
       -w "$WORK" -json -keep -yes-spend -model "$CANARY_MODEL" -plan-model "$CANARY_MODEL" -timeout "$CANARY_WALL" \
       >"$OUT/do.json" 2>"$OUT/do.err"
     code=$?

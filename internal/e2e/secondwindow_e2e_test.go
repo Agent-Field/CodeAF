@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // TestSecondWindowTaskRail drives the whole story in one workspace: a task
@@ -144,7 +144,7 @@ func railColumn(screen string) string {
 // fresh host that resumes the conversation from its checkpoint.
 //
 // THE PATH IS RESOLVED FIRST. The host is spawned with the workspace as the
-// LAUNCH resolved it (cmd/aforge's localLink.dial), and on macOS /tmp is a
+// LAUNCH resolved it (cmd/codeaf's localLink.dial), and on macOS /tmp is a
 // symlink to /private/tmp — so a pattern built from the path this test handed
 // out matches nothing at all and the whole scenario passes by never happening.
 func killHost(t *testing.T, ws string) {
@@ -196,7 +196,7 @@ func shortHome(t *testing.T, root string) string {
 	}
 	rows := map[string]any{}
 	if userHome, err := os.UserHomeDir(); err == nil {
-		if raw, err := os.ReadFile(filepath.Join(userHome, ".aforge", "config.json")); err == nil {
+		if raw, err := os.ReadFile(filepath.Join(userHome, ".codeaf", "config.json")); err == nil {
 			if err := json.Unmarshal(raw, &rows); err != nil {
 				t.Fatalf("the profile config would not parse: %v", err)
 			}

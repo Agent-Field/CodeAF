@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The ten deterministic recognizers, demoted.
@@ -165,10 +165,10 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 		}
 	}
 
-	// A question about aforge itself. It is the one reading whose answer is not
+	// A question about codeaf itself. It is the one reading whose answer is not
 	// on the board at all.
 	if selfQuestionCued(message) {
-		add("reads as a question about AFORGE ITSELF — the manual is the only honest source for it; invent no machinery")
+		add("reads as a question about codeaf ITSELF — the manual is the only honest source for it; invent no machinery")
 	} else if controlStatusCued(message) {
 		add("reads as a question about where work is up to — the shape of it, not just its temperature; plan is the read that answers it")
 	}

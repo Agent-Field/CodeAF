@@ -74,8 +74,8 @@ func TestAChatEditIsBlockedWhileATaskOwnsTheFile(t *testing.T) {
 	graph.nodes[2] = &TaskNode{
 		graph: graph, id: 2, state: TaskRunning, started: time.Now(),
 		spec:     taskSpec{title: "discount code entry"},
-		worktree: filepath.Join(workspace, ".aforge", "trees", "2"),
-		branch:   "aforge/task-2",
+		worktree: filepath.Join(workspace, ".codeaf", "trees", "2"),
+		branch:   "codeaf/task-2",
 		wrote:    []string{"cart.py"},
 	}
 	agent.config.tasker = graph
@@ -123,8 +123,8 @@ func TestAWorktreeIsolatedNodeDoesNotClaimTheWorkspace(t *testing.T) {
 	graph.nodes[4] = &TaskNode{
 		graph: graph, id: 4, state: TaskRunning, started: time.Now(),
 		spec:     taskSpec{title: "port the language server"},
-		worktree: filepath.Join(workspace, ".aforge", "trees", "4"),
-		branch:   "aforge/task-4",
+		worktree: filepath.Join(workspace, ".codeaf", "trees", "4"),
+		branch:   "codeaf/task-4",
 	}
 	agent.config.tasker = graph
 
@@ -193,7 +193,7 @@ func TestASiblingWritingInItsOwnCopyIsNotInTheHeldTree(t *testing.T) {
 	graph := inPlaceGraph(t, workspace, runningNode{id: 4, title: "repair the parser"})
 	agent.config.tasker = graph
 	agent.config.taskID = 7
-	agent.config.Workspace = filepath.Join(workspace, ".aforge", "trees", "7")
+	agent.config.Workspace = filepath.Join(workspace, ".codeaf", "trees", "7")
 
 	if _, _, ok := (treeClaimGuard{agent: agent}).PreAction(context.Background(), nil, nil,
 		scopedCall("write", filepath.Join(agent.config.Workspace, "src/analysis.rs"))); !ok {

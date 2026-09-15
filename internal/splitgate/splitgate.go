@@ -8,13 +8,13 @@
 // the planner with the gate OFF on the front and left every armed reading
 // behind it (docs/design/plan-gate-doe/REPORT.md). So an unpinned binary keeps
 // every division the planner drew, and the counting below decides only where
-// somebody has pinned `AFORGE_SPLITGATE=1` or `judgment`. modes.go holds the
+// somebody has pinned `CODEAF_SPLITGATE=1` or `judgment`. modes.go holds the
 // pin and the reasoning; everything else in this file is the counting itself,
 // which the experiment did not change and which arming still reads
 // (internal/session's enumeratesWidth).
 //
 // IT IS ONE ANSWER, ASKED IN THREE PLACES. The gate was written for the
-// resident's planner and its leaves (cmd/aforge/cooperative.go) and measured
+// resident's planner and its leaves (cmd/codeaf/cooperative.go) and measured
 // against the swarm bench corpus, where it reproduced the empirically best
 // arm's decision on every task in the table: twelve image files and eight
 // endpoints divided, four modules and three bugs did not. The v3 session engine

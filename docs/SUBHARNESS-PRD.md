@@ -15,7 +15,7 @@ rather than trusting the number if it does not land.*
 
 A **subharness** is a named, versioned, *typed* program for a narrow recurring kind
 of work — "weekly marketing for company X", "triage a flaky test" — that runs
-inside the aforge binary, spends model tokens and belt tools only through host
+inside the codeaf binary, spends model tokens and belt tools only through host
 calls the binary provides, presents to the person as a task, and is invokable
 three ways: proposed by chat when a conversation matches its signature, picked
 explicitly from a `/subharness` list, or run headless from the CLI. Some
@@ -160,13 +160,13 @@ Rules:
 One `Env`, two consumers: the host API handed to JS bundles and the interface
 handed to Go runners must be the same Go type. The current tree has two drifting
 `Env` implementations (`internal/subharness/exec_model.go` vs the session's) —
-named in `cmd/aforge/chatv3_harness.go:41-53` as a known wound. Do not mint a
+named in `cmd/codeaf/chatv3_harness.go:41-53` as a known wound. Do not mint a
 third.
 
 ## 6. The bundle
 
 ```
-~/.aforge/subharnesses/<name>/v<N>/
+~/.codeaf/subharnesses/<name>/v<N>/
   manifest.json      — §3, including cues (fixing the cue-death-at-restart hole,
                        named in internal/session/harness_build.go:414-421)
   program.js         — control flow; every block carries a required plain-English
@@ -189,13 +189,13 @@ a subharness's lineage reads like a log.
 Lookup order at run time, first hit wins:
 
 1. **Packed trailer** — a zip appended to the binary itself (Phase 2). Executable
-   formats ignore trailing data; `aforge pack <names...>` emits a new file that is
+   formats ignore trailing data; `codeaf pack <names...>` emits a new file that is
    the same binary plus a zip of bundles plus a manifest — no Go toolchain, no
    rebuild, a single versioned, hashable deploy artifact for headless boxes.
-2. **Project store** — `.aforge/subharnesses/` inside the repo. This is the
+2. **Project store** — `.codeaf/subharnesses/` inside the repo. This is the
    org-sharing story and it needs zero infrastructure: sharing is `git pull`,
    review is a PR, versions are history. Build nothing registry-shaped.
-3. **Home store** — `~/.aforge/subharnesses/` (moves with `AFORGE_HOME`, like
+3. **Home store** — `~/.codeaf/subharnesses/` (moves with `CODEAF_HOME`, like
    today's harness store).
 
 Go-native subharnesses are layer 0 implicitly: compiled in, always present.
@@ -262,7 +262,7 @@ Three doors, one card:
   Enter → the same intake card, pre-filled from the conversation.
   `/subharness <name>` jumps straight to the card. Register the command and its
   aliases in the manual or `internal/tui3/manual_test.go` fails the build.
-- **Headless**: `aforge run subharness <name> --input <file.json|->`. No task
+- **Headless**: `codeaf run subharness <name> --input <file.json|->`. No task
   surface, no cards; `ask()` behavior is declared per-gate in the program —
   either a manifest-defaulted answer or refuse-and-stop-incomplete. **Never
   silently auto-approve**; the old bridge's auto-approving gate
@@ -378,14 +378,14 @@ All from `CLAUDE.md` and the tree; the gates are real and fail the build.
   reads. Work is running, finishing, done, incomplete, or needs your look. Guard
   failures and deopts especially — "needed a closer look", never "guard failed".
 - **Absent, not broken**: over a remote connection, follow the precedent at
-  `cmd/aforge/engine.go:99-115` — if design-over-remote cannot raise its card,
+  `cmd/codeaf/engine.go:99-115` — if design-over-remote cannot raise its card,
   the verb is absent, not present-and-failing. Same for any capability a given
   door cannot support.
 - **One source of truth**: the pseudo-code pane is a projection (§11); schema
   defaults are stated once and interpolated; the system prompt
   (`internal/session/prompts/system.md`) must not promise conditional verbs
   unconditionally.
-- **Generic and meta, never hardcoded**: aforge ships the runtime, the contract,
+- **Generic and meta, never hardcoded**: codeaf ships the runtime, the contract,
   the index, and the loop — zero domain content. No hardcoded subharness lists,
   no if/else routing rules; matching is data-driven from manifests.
 - **Multi-session etiquette**: build in a worktree off `chat-v3-task`
@@ -399,14 +399,14 @@ All from `CLAUDE.md` and the tree; the gates are real and fail the build.
 generalist, plus the owner's custom Go subharnesses); goja runtime with the five host
 calls, journal, fuel, usage fold; bundle store (home layer only); typed I/O;
 intake card; `/subharness` list + card; auto-propose behind the consent card;
-run-as-task-node; headless `aforge run subharness`; deopt-to-linear on guard or
+run-as-task-node; headless `codeaf run subharness`; deopt-to-linear on guard or
 error; manual pages. *Accepted when*: a JS bundle authored by hand runs from all
 three doors, spends through the ledger, shows as a task, falls back to linear on
 a forced error, and every manual gate passes.
 
 **Phase 2 — scale and reach.** The capability index + per-kind budgets + the
 `catalog` verb with recursive tag drill-down; auto-generated manual pages wired
-to the same index; project store layer + git sharing; `aforge pack`; task-graph
+to the same index; project store layer + git sharing; `codeaf pack`; task-graph
 edges (upstream/downstream adapters) and subharness→subharness chains; the live
 split-pane design view; the co-design flow replacing the DAG designer, with
 `build_harness` re-pointed. *Accepted when*: 60 seeded manifests route correctly

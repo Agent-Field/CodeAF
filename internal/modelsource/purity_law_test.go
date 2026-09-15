@@ -76,9 +76,9 @@ func TestModelsourceReadsNothingAndDialsNothing(t *testing.T) {
 	}
 	forbidden := map[string]bool{
 		"os": true, "net": true, "net/http": true, "io/ioutil": true,
-		"github.com/Agent-Field/aforge-v2/internal/config":   true,
-		"github.com/Agent-Field/aforge-v2/internal/catalog":  true,
-		"github.com/Agent-Field/aforge-v2/internal/provider": true,
+		"github.com/Agent-Field/codeaf/internal/config":   true,
+		"github.com/Agent-Field/codeaf/internal/catalog":  true,
+		"github.com/Agent-Field/codeaf/internal/provider": true,
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {

@@ -268,7 +268,7 @@ func routerErrorEnvelope(payload []byte) (upstream string, ok bool) {
 // A BUILD WIRED WITH NO ModelPrice AT ALL KNOWS NOTHING, and that is the safe
 // reading rather than a gap: with no way to tell a real model from a typo, the
 // refusal is surfaced as the error it is and the ladder is not entered. Every
-// door that reaches a person wires it (cmd/aforge, internal/config,
+// door that reaches a person wires it (cmd/codeaf, internal/config,
 // internal/session), so the class is live where the outage happened.
 func (c *Client) catalogKnowsModel(model string) bool {
 	if c.config.ModelPrice == nil {
@@ -422,7 +422,7 @@ const (
 	// relaxEndpointFilter drops every membership restriction — the hard
 	// parameter filter, this process's own refusals, and the demand for one
 	// machine that a pin or a rescue put there. FIRST because it changes neither
-	// what the model is asked nor the most aforge will pay: it widens which
+	// what the model is asked nor the most codeaf will pay: it widens which
 	// endpoints may answer under the same ceiling.
 	//
 	// `provider.only` was not on this rung for a long time, and that is half of

@@ -1,4 +1,4 @@
-# Canary baseline chat-door rows on dev 35c1a79e (from aforge-v2-14, #407 "BASELINE COMPLETE"), no pin
+# Canary baseline chat-door rows on dev 35c1a79e (from codeaf-14, #407 "BASELINE COMPLETE"), no pin
 | brief | door / tests | wall s | cost $ | ttft s | note |
 |---|---|---|---|---|---|
 | reef-145 | ok / green | 483 | 0.0163 | 1.9 | |

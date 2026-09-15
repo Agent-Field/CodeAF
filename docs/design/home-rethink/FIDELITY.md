@@ -35,9 +35,9 @@ listed at the bottom and stays flagged to the owner.
    >
    > `placeSignalBand` and `placeGlareCeiling` are deleted and the five laws in
    > `designlanguage_test.go` walk the two authored ladders again.
-2. **The pulse, exactly screen 2b/3b:** `aforge` left; right: `2 want you · 4 moving ·
+2. **The pulse, exactly screen 2b/3b:** `codeaf` left; right: `2 want you · 4 moving ·
    $0.55 / $20.00 · tue 1:11pm` — the words `want you` and `moving`, the allowance as a fraction,
-   each clause absent at zero (1c: a quiet morning is `aforge` and the clock alone).
+   each clause absent at zero (1c: a quiet morning is `codeaf` and the clock alone).
 3. **Hints and feet, word for word:** home at rest `type to search or start something new · ↑↓ pick
    · enter open · tab next place`; with the composer `enter talk about it · alt+enter send it off
    as a task · alt+. for the map · tab next place`; each place's foot as its screen spells it
@@ -58,11 +58,11 @@ listed at the bottom and stays flagged to the owner.
    binding draws `unbound · follows execution` (`config.ModelSlotFor`). Not per-call attribution —
    the design itself asks for the binding.
 8. **The card at ≥160 (1d), five bands in the design's order and wording:** title; place line
-   `~/aforge-v2 · master, 1 file dirty · here`; `it is stopped on you` + the question + its answer
+   `~/codeaf · master, 1 file dirty · here`; `it is stopped on you` + the question + its answer
    keys; `work` rows with `✓ … $1.63` and `▸ 3 more tasks` naming the tasks place; `made for you`
    with the path; the facts line `spent $1.63 · 3.6M tokens · thinking high`; then `→ verbs: …`.
 9. **Composer 2e, exactly:** the page behind dims to the faintest tier; the three lines are
-   `· in ~/aforge-v2, on master` (`alt+w to move it`), `· execution runs on opus 4.1`
+   `· in ~/codeaf, on master` (`alt+w to move it`), `· execution runs on opus 4.1`
    (`alt+o to change`), `· it may spend up to $2.00 before it asks` (`type a number`); the lead line
    `it will run on its own and tell you when it lands` with `a task` right-flushed; foot
    `alt+enter send it off · enter talk about it first · esc back to <place>`.
@@ -82,7 +82,7 @@ height; the small 11.5px runs are the canvas's own captions, not screen content.
 
 11. **Font — recommend, verify, never pretend.** A TUI cannot set the terminal's font. So:
     (a) the manual (`screen.md`, and the first-run page) states the design font plainly —
-    *"aforge is drawn for JetBrains Mono, regular and bold; any monospace with the block and
+    *"codeaf is drawn for JetBrains Mono, regular and bold; any monospace with the block and
     box-drawing ranges works"* — with one line on where to set it in iTerm2/Terminal.app/kitty/
     alacritty/ghostty; (b) every glyph a place draws must render in JetBrains Mono, Menlo, SF Mono
     and DejaVu Sans Mono — audit the place surfaces against `tokens/glyph.go` slots (all current

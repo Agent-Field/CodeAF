@@ -22,7 +22,7 @@
 #
 # TWO ROADS TO REMOVING A UNIT, and it takes whichever exists:
 #
-#   the env    AFORGE_PROMPT_ABLATE=<id> — a hook lane C or lane G may add to
+#   the env    CODEAF_PROMPT_ABLATE=<id> — a hook lane C or lane G may add to
 #              the law registry, which drops one registered unit from the
 #              rendered page and leaves everything else byte-identical. This is
 #              the honest road: the unit is removed by the same code that puts
@@ -78,7 +78,7 @@ mkdir -p "$OUT" "$(dirname "$WORKTREE")"
 # binary: the registry is a Go symbol and grepping for it is both cheaper and
 # more honest than launching something and reading its behaviour.
 ROAD="patch"
-if grep -rqs 'AFORGE_PROMPT_ABLATE' "$RIG_ROOT/internal/session/" 2>/dev/null; then
+if grep -rqs 'CODEAF_PROMPT_ABLATE' "$RIG_ROOT/internal/session/" 2>/dev/null; then
   ROAD="env"
 fi
 echo "unit:  $UNIT"
@@ -94,12 +94,12 @@ echo "out:   $OUT"
 # until the hook exists.
 if [ "$ROAD" = "patch" ] && [ "$WHERE" != "system.md" ]; then
   echo "!  $UNIT is rendered from $WHERE, and the patch road can only cut system.md." >&2
-  echo "!  It needs the AFORGE_PROMPT_ABLATE hook (lane C or lane G). Not run." >&2
+  echo "!  It needs the CODEAF_PROMPT_ABLATE hook (lane C or lane G). Not run." >&2
   exit 1
 fi
 
 if [ "$ROAD" = "env" ]; then
-  AFORGE_PROMPT_ABLATE="$UNIT" \
+  CODEAF_PROMPT_ABLATE="$UNIT" \
     "$DIET_ROOT/run.sh" "$BRANCH" "$LABEL" --out "$OUT" --layers a,c,d "$@"
   exit $?
 fi

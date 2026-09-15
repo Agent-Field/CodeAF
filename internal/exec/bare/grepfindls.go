@@ -20,7 +20,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // grepMaxLineLength mirrors pi's truncate.js:GREP_MAX_LINE_LENGTH.

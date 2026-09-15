@@ -1,10 +1,10 @@
-# Aforge: keep thinking while the work gets done
+# codeaf: keep thinking while the work gets done
 
 **Product proposal · 2026-09-04**
 
 The product I would build is a conversation that stays useful while decisions turn into results. The person should be able to discuss a direction, say “build that,” continue thinking, occasionally look inside the work, change their mind, and return later to something they can use.
 
-The visible innovation is continuity across simultaneous work. Faster agents alone do not produce it. Neither does putting a task dashboard beside an ordinary coding transcript. Aforge should absorb the coordination that currently falls on the person: repeating context, checking whether anything started, saying “continue,” reconciling results, and reminding workers what changed.
+The visible innovation is continuity across simultaneous work. Faster agents alone do not produce it. Neither does putting a task dashboard beside an ordinary coding transcript. codeaf should absorb the coordination that currently falls on the person: repeating context, checking whether anything started, saying “continue,” reconciling results, and reminding workers what changed.
 
 This plan starts from that experience. Existing task graphs, prompts, branches, checks and room designs do not define the answer. The prior audit supplies failure examples; it is not the specification. The owner confirmed that requested work must continue after the terminal closes.
 
@@ -49,7 +49,7 @@ A conceptual example, not a pixel design:
 You
 Let's add offline reading. Keep this version local to the device.
 
-Aforge
+codeaf
 I'm adding local offline reading. I'll bring back a working preview.
 
   Offline reading                                      running
@@ -59,7 +59,7 @@ I'm adding local offline reading. I'll bring back a working preview.
 You
 While that's happening, what should the onboarding explain?
 
-Aforge
+codeaf
 It needs to explain what is available offline and how to remove it...
 ```
 

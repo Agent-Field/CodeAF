@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE SWITCHER IS A CARD OVER A DIMMED SURFACE, AND THESE ARE THE FOUR CLAIMS
@@ -23,7 +23,7 @@ func keepThree(t *testing.T, a *app) (older, newer *fakeAgent) {
 	t.Helper()
 	// THE MACHINE IS PINNED EMPTY, and every test in this file that wants rows
 	// below the fold hands its own closure. Without a seam the switcher's reading
-	// is [session.ReadWorld] over whatever `~/.aforge` the suite is running as,
+	// is [session.ReadWorld] over whatever `~/.codeaf` the suite is running as,
 	// so a card asserted against the developer's own conversations would pass on
 	// one machine and fail on the next (hop.go's [app.hopRest]).
 	emptyMachine(a)
@@ -352,7 +352,7 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 			},
 		}}}, true
 	}
-	// The door the card opens a closed row through, standing in for cmd/aforge's.
+	// The door the card opens a closed row through, standing in for cmd/codeaf's.
 	opened := ""
 	a.open = func(workspace, transcript string) (Conversation, error) {
 		opened = transcript

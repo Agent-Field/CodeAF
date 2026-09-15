@@ -3,7 +3,7 @@ package resident
 import (
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // A pass is written as a sequence of independent lanes, and that is deliberate:

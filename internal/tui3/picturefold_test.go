@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The pointer and keyboard must operate the actual visible control in both
@@ -236,7 +236,7 @@ func TestPlainSSHDoesNotLaunchAViewerOnTheServer(t *testing.T) {
 	}
 	found := false
 	for _, e := range a.entries {
-		if strings.Contains(e.text, "aforge --host") && strings.Contains(e.text, "/server/shot.png") {
+		if strings.Contains(e.text, "codeaf --host") && strings.Contains(e.text, "/server/shot.png") {
 			found = true
 		}
 	}

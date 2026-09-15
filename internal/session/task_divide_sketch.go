@@ -615,7 +615,7 @@ func bareLabel(name string) bool {
 // AND THE LABEL ITSELF IS THE SECOND CUT, which punctuation alone missed. The
 // legend on task 1 of conversation 57d51779f63ac603 read
 //
-//	**A:** read `seam.start` in `cmd/aforge/chatv3.go` … **B:** trace the
+//	**A:** read `seam.start` in `cmd/codeaf/chatv3.go` … **B:** trace the
 //	folder-pick path — `folderConfirm` in `folderact.go` → … **C:** …
 //
 // on ONE line with no separator between the clauses. A's clause swallowed the

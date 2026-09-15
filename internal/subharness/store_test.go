@@ -253,11 +253,11 @@ func TestRunsAreSavedUnderTheHarnessAndReadBackWhole(t *testing.T) {
 	}
 }
 
-// The registry lives under the one state root aforge owns, and moves wholesale
+// The registry lives under the one state root codeaf owns, and moves wholesale
 // with it.
 func TestTheDefaultRegistryFollowsTheStateRoot(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	t.Setenv("CODEAF_HOME", root)
 	if got, want := Default().Dir(), filepath.Join(root, Root); got != want {
 		t.Fatalf("the default registry is at %s, want %s", got, want)
 	}

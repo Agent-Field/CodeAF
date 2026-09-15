@@ -483,7 +483,7 @@ class MeterCase(unittest.TestCase):
         # right by luck; the id-based one has to get it right by pairing.
         rows = []
         for number in range(1, 17):
-            request_id = "followup-while-working-aforge-%d" % number
+            request_id = "followup-while-working-codeaf-%d" % number
             rows.append(self.admitted(request_id))
             if number in (13, 15, 16):
                 rows.append(self.settled(request_id, cost=None,

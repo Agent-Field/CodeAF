@@ -126,7 +126,7 @@ the single writer of the answer channel, with exactly two callers of
 `startSubharnessRun`: `/subharness`, and a confirmed card. `stand`'s "a session
 nobody is watching cannot set one up at all" is true twice over — `askStanding`
 refuses when unwatched (`:940-943`), and unwatched doors never fill
-`Config.Standing` (`cmd/aforge/chatv3.go:155-160`, `standing_run.go:646`).
+`Config.Standing` (`cmd/codeaf/chatv3.go:155-160`, `standing_run.go:646`).
 
 ### Where wide work can be admitted, and whether it is armed
 
@@ -156,23 +156,23 @@ path.
 | standing `WhenAt` / `WhenEvery` / `WhenFile` / `WhenIdle` / `WhenProbe` | `internal/standing/tick.go:250-331`, dispatched `:398-409` | `ActionSay` one line, or `ActionTask` a headless session that may now hand its parts out (`standing_run.go:506-640`) | the division road — `standingWideWork` gives a wide firing its own graph and the one node it IS | **yes — enumeration only** (`enumeratesWidth`, `task_divide.go`) | ratified at proposal time; a firing asks nobody | as-intended (M5 fixed w43, 2026-08-24) |
 | holds reaching workers | `standing_world.go:118`, appended `task_run.go:826`, `:1035-1039` | — | — | — | — | as-intended (M7 fixed w43, 2026-08-24) — one read per frontier pass, appended last to the brief, no per-node branch, and division parts join the conversation's own graph so `g.home` resolves the person's place. Every kind still rides, and now in **two registers**: a `WhenHold` under the binding sentence, every waking kind under one that says it is not a condition over this work |
 | resident leaf `request_split` | `internal/exec/tools.go:936`, armed `internal/exec/linear.go:600` | the leaf **ends** and its parts replace it | the resident's own growth road | by config, never per-node | nobody is asked; the money gate defers | as-intended — a deliberate product difference, documented on both sides (`task_divide.go:50-57` vs `linear.go:794-810`) |
-| the shared gate | `internal/splitgate/splitgate.go` | — | — | — | — | as-intended — genuinely one implementation, and `cmd/aforge/cooperative.go:148-156` keeps the old names as forwarders over `splitgate.Floor` — except **M8** |
-| `aforge chat --once` | `cmd/aforge/chatv3.go:146-172` | one headless turn | division road present but inert (C1) | `spec.wide`/enumeration | **`AskConsent=false` ⇒ the policy's "prompt" refuses** (`consent.go:282-284`); `Standing` nilled | as-intended |
-| `aforge do` | `cmd/aforge/main.go:117` → `do.go:142` | one resident errand | resident: plan gate + leaf split | n/a | spend consent false unless `--yes-spend` (`do.go:308-317`); a question ends the run at exit 1 into `blocked_on` (`:704-713`) | as-intended on consent; the road is the resident's |
-| `aforge exec` | `main.go:125` → `exec.go:30` | one linear pass | none | no | vacuous — no gate exists | as-intended; see **m5** |
-| `aforge run <subharness>` | `main.go:123` → `subharness_run.go:54` | one typed program | none | **exemplary** — `headlessEnv.Ask` returns `Unanswered=true` and stops (`cmd/aforge/subharness_env.go:259-283`): "Nothing here ever returns an approval" (`:255-257`) | as-intended |
+| the shared gate | `internal/splitgate/splitgate.go` | — | — | — | — | as-intended — genuinely one implementation, and `cmd/codeaf/cooperative.go:148-156` keeps the old names as forwarders over `splitgate.Floor` — except **M8** |
+| `codeaf chat --once` | `cmd/codeaf/chatv3.go:146-172` | one headless turn | division road present but inert (C1) | `spec.wide`/enumeration | **`AskConsent=false` ⇒ the policy's "prompt" refuses** (`consent.go:282-284`); `Standing` nilled | as-intended |
+| `codeaf do` | `cmd/codeaf/main.go:117` → `do.go:142` | one resident errand | resident: plan gate + leaf split | n/a | spend consent false unless `--yes-spend` (`do.go:308-317`); a question ends the run at exit 1 into `blocked_on` (`:704-713`) | as-intended on consent; the road is the resident's |
+| `codeaf exec` | `main.go:125` → `exec.go:30` | one linear pass | none | no | vacuous — no gate exists | as-intended; see **m5** |
+| `codeaf run <subharness>` | `main.go:123` → `subharness_run.go:54` | one typed program | none | **exemplary** — `headlessEnv.Ask` returns `Unanswered=true` and stops (`cmd/codeaf/subharness_env.go:259-283`): "Nothing here ever returns an approval" (`:255-257`) | as-intended |
 | checkpoint recovery | `task_store.go:838` → `:994` `restoreNode` | restored nodes on the frontier | division; never the planner | **re-derived, not persisted** | none required | drifted — **M3** |
 
 Exit codes: **there is ONE ladder and it is `exitLadder` in
-`cmd/aforge/envelope.go`**, which every headless verb now reads rather than
+`cmd/codeaf/envelope.go`**, which every headless verb now reads rather than
 spelling its own. `TestTheExitLadderIsOneTable` fails by name for a verb that
-disagrees with it, and `aforge --help` prints it interpolated from the same
+disagrees with it, and `codeaf --help` prints it interpolated from the same
 list, so this document deliberately does NOT restate the numbers — the table
 that used to be here was a per-verb list (`do` 0/1/2, `exec` 0/2/3/4/5/6) that
 had gone stale in both its rungs and its line references, and it was the FIFTH
-copy of that ladder found in this repository. `AFORGE_EXIT_CODES=legacy`
+copy of that ladder found in this repository. `CODEAF_EXIT_CODES=legacy`
 restores `exec`'s old numbers for one release. `tick` is outside the ladder: 0
-clean, 0 on `ErrHeld`, 1 otherwise (`cmd/aforge/tick.go`).
+clean, 0 on `ErrHeld`, 1 otherwise (`cmd/codeaf/tick.go`).
 
 ### What a restart keeps
 
@@ -291,7 +291,7 @@ against.*
 > `TestTheRoadOffProducesWorkersWithoutTheVerb` — none of which writes a Config
 > literal.
 
-`Config.Divide` has exactly one production setter — `cmd/aforge/chatv3.go:640`,
+`Config.Divide` has exactly one production setter — `cmd/codeaf/chatv3.go:640`,
 `Divide: settings.Swarm` — and it sets it on the **conversation**. But
 `Config.mayDivide()` (`task_divide.go:138-144`) also requires `mayFanOut()` =
 `InTask && tasker != nil && taskDepth < limit` (`task.go:301`), which a
@@ -599,7 +599,7 @@ commission.
 **(a) `wide` is silently inert when Swarm is off.** `armDivision` returns false at
 `task_divide.go:192` before it ever looks at `spec.wide`, but the schema at
 `task.go:119` promises "the worker may hand the parts out under itself" with no
-hedge. Either the description hedges, or `AFORGE_SWARM=0` removes the property
+hedge. Either the description hedges, or `CODEAF_SWARM=0` removes the property
 the way every other conditional capability on this belt is removed.
 
 **(b) The manual is wrong on two safety-relevant limits.** — **FIXED, w42,
@@ -640,12 +640,12 @@ only half that can change what the worker does. And when the eight-order clip
 bites, holds survive it whatever their age — eight reminders crowding out the one
 rule in the project was the same failure in a smaller shape.
 
-### M8 — `AFORGE_SPLITGATE=0` has a reader that ignores it.
+### M8 — `CODEAF_SPLITGATE=0` has a reader that ignores it.
 
 `divideWork` guards the evidence gate with `splitgate.Armed()`
 (`task_divide.go:247`), but `armDivision`'s third signal calls
 `splitgate.WorthIt` unguarded (`:201`). The stated law is one reader
-(`splitgate.go:146-149`, `cmd/aforge/cooperative.go:169-172`), and
+(`splitgate.go:146-149`, `cmd/codeaf/cooperative.go:169-172`), and
 `internal/config/settings.go:782-784` and `tasks.md:1643-1645` both document the
 switch as taking the width test away. With the gate off, work armed by neither
 the judge nor `wide` still never gets the verb.
@@ -741,10 +741,10 @@ is dropped without ever reaching the transcript.
   but `work_tree.go:86` is tasks plus runs plus jobs. Mitigated: the run happens
   inside one turn, and `EventHarnessRun` draws a dim line
   (`internal/tui3/harness.go:148`).
-- **m5 — two headless doors are looser than the third.** `aforge exec` builds its
-  toolbox with no approval policy at all (`cmd/aforge/exec.go:91-100`), unlike the
-  subharness door (`subharness_run.go:164`). And `aforge do`'s plan gate
-  (`cmd/aforge/cooperative.go:158-175`) lets width alone keep a divided plan, at a
+- **m5 — two headless doors are looser than the third.** `codeaf exec` builds its
+  toolbox with no approval policy at all (`cmd/codeaf/exec.go:91-100`), unlike the
+  subharness door (`subharness_run.go:164`). And `codeaf do`'s plan gate
+  (`cmd/codeaf/cooperative.go:158-175`) lets width alone keep a divided plan, at a
   door where nobody asked for a planned graph. Both are coherent inside the
   resident product; noted as cross-product drift.
 - **m6 — the long way is invisible while it runs.** Because the `Env` is discarded
@@ -787,7 +787,7 @@ is dropped without ever reaching the transcript.
   `standingWorldMost = 8` (`standing_world.go:44`), clipped newest-first with a
   `…N more` line in the brief and nothing on any surface.
 - **m13 — an interactive surface auto-approves its own human gates.**
-  `cmd/aforge/chatv3_harness.go:150-154` wires the harness runner with no `Ask` —
+  `cmd/codeaf/chatv3_harness.go:150-154` wires the harness runner with no `Ask` —
   `// No Ask: a gate auto-approves here and the trail says so.` — so a saved
   harness's `human.gate` is waved through by
   `internal/subharness/exec_model.go:272` on the one surface with a person sitting

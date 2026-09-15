@@ -141,7 +141,7 @@ func TestTaskQuestionFootKeepsTheRowDoor(t *testing.T) {
 	})
 	ws := newWorkspace(t, "qfootws", false)
 	r := startWithEnv(t,
-		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + brain.url()},
+		[]string{"OPENROUTER_API_KEY=stub-key", "CODEAF_BASE_URL=" + brain.url()},
 		"afe2e_qfoot", home, ws, tuiPlain, tuiShortRows, "chat", "--one-model", "--no-host")
 	statesPastTheDoor(t, r)
 

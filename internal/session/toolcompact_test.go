@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const toolCompactResultBytes = 4000
@@ -274,7 +274,7 @@ func TestLiveCompactToolHistoryKeepsNewestReadable(t *testing.T) {
 	if key == "" {
 		t.Skip("OPENROUTER_API_KEY missing")
 	}
-	model := strings.TrimSpace(os.Getenv("AFORGE_LIVE_MODEL"))
+	model := strings.TrimSpace(os.Getenv("CODEAF_LIVE_MODEL"))
 	if model == "" {
 		model = "deepseek/deepseek-v4-flash-0731"
 	}

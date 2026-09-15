@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The final board: one aforge, the old build, pi and opencode.
+"""The final board: one codeaf, the old build, pi and opencode.
 
 Two panels a person can read in one glance — quality against time and
 quality against cost, one dot per (arm, task), the finalist in the accent hue
@@ -7,7 +7,7 @@ and everything else as context. A third panel is the size ladder: the same
 quality by task, tasks ordered by the size of the ask, so "where we shine"
 reads left to right.
 
-Usage: final_board.py [finalist-arm]   (default: aforge-final-crew if present)
+Usage: final_board.py [finalist-arm]   (default: codeaf-final-crew if present)
 """
 import csv, json, os, statistics, sys
 import matplotlib
@@ -57,8 +57,8 @@ def load():
 def main():
     data = load()
     arms = {r["arm"] for r in data}
-    finalist = sys.argv[1] if len(sys.argv) > 1 else ("aforge-final-crew" if "aforge-final-crew" in arms else "aforge-pre-flash")
-    show = {finalist: ("aforge", ACCENT, "o"), "aforge-old-flash": ("aforge (old)", OLD, "o"),
+    finalist = sys.argv[1] if len(sys.argv) > 1 else ("codeaf-final-crew" if "codeaf-final-crew" in arms else "codeaf-pre-flash")
+    show = {finalist: ("codeaf", ACCENT, "o"), "codeaf-old-flash": ("codeaf (old)", OLD, "o"),
             "pi": ("pi", GRAY1, "s"), "opencode": ("opencode", GRAY2, "^")}
     data = [r for r in data if r["arm"] in show and r["q"] is not None]
 
@@ -106,7 +106,7 @@ def main():
                for l, c, m in show.values()]
     handles.append(Line2D([], [], linestyle="", marker="o", markersize=11, markerfacecolor="none", markeredgecolor="#e34948", label="failed: DNF / regressed / weakened test"))
     fig.legend(handles=handles, loc="lower center", ncol=5, frameon=False, fontsize=9, bbox_to_anchor=(0.5, -0.03))
-    fig.suptitle("aforge against pi and opencode — same model (deepseek-v4-flash), same real issues, three blind judges per cell",
+    fig.suptitle("codeaf against pi and opencode — same model (deepseek-v4-flash), same real issues, three blind judges per cell",
                  fontsize=12.5, color=INK, y=1.0)
     fig.tight_layout(rect=[0, 0.05, 1, 0.96])
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "final_board.png")

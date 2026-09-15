@@ -15,7 +15,7 @@ import (
 // where this package's wall clock goes is a number rather than a reading of the
 // code: #399 was opened on a reading that turned out to be false (the note above
 // [cmdBudget] records it), and the only reason that was caught is that somebody
-// counted. It is off unless AFORGE_TUI3_CMDPROFILE names a file, and when it is
+// counted. It is off unless CODEAF_TUI3_CMDPROFILE names a file, and when it is
 // off every hook in it is one nil compare.
 //
 // It measures the harness, not the surface, so it lives beside [runCmd] and
@@ -68,7 +68,7 @@ var cmdLatencyBounds = [cmdLatencyBuckets - 1]time.Duration{
 
 // startCmdProfile arms the profile if the environment asks for one.
 func startCmdProfile() bool {
-	cmdProfileOn = os.Getenv("AFORGE_TUI3_CMDPROFILE") != ""
+	cmdProfileOn = os.Getenv("CODEAF_TUI3_CMDPROFILE") != ""
 	return cmdProfileOn
 }
 
@@ -128,7 +128,7 @@ func writeCmdProfile() {
 	if !cmdProfileOn {
 		return
 	}
-	path := os.Getenv("AFORGE_TUI3_CMDPROFILE")
+	path := os.Getenv("CODEAF_TUI3_CMDPROFILE")
 	cmdProfileMu.Lock()
 	defer cmdProfileMu.Unlock()
 

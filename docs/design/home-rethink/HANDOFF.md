@@ -18,17 +18,17 @@ The owner opened the standing page, the memory page and the spend page on their 
 machine and said *"fill some standings, memories and spend — I don't see anything"*.
 Those stores were empty, and every one of those pages was correctly drawing nothing —
 the emptiness law, working, and indistinguishable from a page that is broken. Seeding
-the real `~/.aforge` with invented rows would make a person's own record a lie, so the
+the real `~/.codeaf` with invented rows would make a person's own record a lie, so the
 answer is a **second home, somewhere else**, that the real binary can be pointed at.
 
 ```sh
 make demo-home                                       # a fresh one, in a temp directory
-make demo-home DEMO_HOME=/tmp/aforge-demo            # somewhere you can name
-make demo-home DEMO_HOME=/tmp/aforge-demo KEEP=1     # open the one that is already there
+make demo-home DEMO_HOME=/tmp/codeaf-demo            # somewhere you can name
+make demo-home DEMO_HOME=/tmp/codeaf-demo KEEP=1     # open the one that is already there
 ```
 
-It builds `bin/aforge`, seeds the directory, opens the surface with `HOME` pointed at it
-and the working directory inside the demo's own `aforge-v2`, and prints the command that
+It builds `bin/codeaf`, seeds the directory, opens the surface with `HOME` pointed at it
+and the working directory inside the demo's own `codeaf`, and prints the command that
 comes back to the same home. It writes inside that directory and nowhere else — a test
 (`TestTheDemoHomeSeedsNothingOutsideTheDirectoryItWasGiven`) holds it to that.
 
@@ -36,7 +36,7 @@ comes back to the same home. It writes inside that directory and nowhere else �
 
 | Place | What it has |
 | --- | --- |
-| home | 3 projects — `~/aforge-v2` (a real git repository with two uncommitted files, so the repo band draws), `~/pricing-site`, `~/infra` |
+| home | 3 projects — `~/codeaf` (a real git repository with two uncommitted files, so the repo band draws), `~/pricing-site`, `~/infra` |
 | home | 14 conversations, one archived; one stopped on an answerable consent question, one holding a running task, one named in full-width CJK with an emoji and a combining accent |
 | tasks | 13 rows across the three buckets — one running, one needing your look with a 101-character title, eight landed (one of them a `saved shape`), three failed |
 | a conversation's own work | `Sweeping the Frame Budget` keeps a checkpointed task graph of 6 nodes and 3 background jobs in its session folder — see below |
@@ -53,7 +53,7 @@ CONVERSATION's own folder rather than from a project's history. Before it, the j
 section on the column, a job's page and a task ROOM had nothing on them at all, and
 `docs/design/polish/audit-tasks.md` had to read three of its rows out of the source.
 
-It all hangs off one conversation, `Sweeping the Frame Budget` in `~/aforge-v2`, and it
+It all hangs off one conversation, `Sweeping the Frame Budget` in `~/codeaf`, and it
 is written as the two files a live session writes: the session folder's `tasks.json`
 (internal/session's `taskDocument`) and, beside it, `tasks/<stamp>_<id>.jsonl` per node
 and `logs/jobs/<id>.log` per job.
@@ -93,7 +93,7 @@ surface defect rather than a hole in this file.
 
 ### How it is built, and the two rules it keeps
 
-`cmd/aforge-demo-home` writes through **the engine's own writers** — `session.SaveMeta`,
+`cmd/codeaf-demo-home` writes through **the engine's own writers** — `session.SaveMeta`,
 `session.RecordUsage`, `session.RecordArtifact`, `standing.Store`, `store.Store` — so what
 the surface reads back is what the product itself produces. There is exactly one place
 that spells a file shape for itself, and it says so: a session journal is written by a

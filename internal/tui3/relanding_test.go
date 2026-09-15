@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A LANDING THAT IS RE-SETTLED ASKS THE NEW QUESTION, NOT THE OLD ONE.

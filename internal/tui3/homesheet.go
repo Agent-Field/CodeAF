@@ -10,7 +10,7 @@ package tui3
 //
 //	 ‹ back                            esc
 //	 fix the nil-map crash
-//	 aforge-v2 · ~/src/aforge-v2
+//	 codeaf · ~/src/codeaf
 //	 ─────────────────────────────────────
 //	 open in another window
 //	 bash wants to run: git push --force
@@ -60,8 +60,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // The sentences the sheet says. Each is quoted in the manual exactly as it is

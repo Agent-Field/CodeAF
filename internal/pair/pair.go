@@ -3,15 +3,15 @@
 //
 // THE WHOLE STORY IN SIX LINES:
 //
-//	big-machine$ aforge serve
+//	big-machine$ codeaf serve
 //	  this machine is reachable as  otter-lamp-42
 //	  pair a new device with code   715 302   (valid 10 minutes)
 //
-//	laptop$ aforge chat --at otter-lamp-42
+//	laptop$ codeaf chat --at otter-lamp-42
 //	  pairing with otter-lamp-42 — enter the code shown there: ______
 //	  paired. this laptop is now a key to otter-lamp-42.
 //
-// After that, `aforge chat --at otter-lamp-42` from that laptop just opens.
+// After that, `codeaf chat --at otter-lamp-42` from that laptop just opens.
 //
 // ── the three facts this package is built on ────────────────────────────────
 //
@@ -41,9 +41,9 @@
 // THE DEVICE KEY IS A FILE, NOT A KEYCHAIN ENTRY, AND THERE IS NO TOUCH ID.
 // The design for this lane puts the device key in the OS keychain where there
 // is one, so that the platform can demand a fingerprint before releasing it and
-// aforge never sees a biometric. That is the right design and it is not built.
+// codeaf never sees a biometric. That is the right design and it is not built.
 // What is built is [Keeper] — the seam it goes behind — with one implementation:
-// a file with owner-only permissions under the aforge home directory. Every
+// a file with owner-only permissions under the codeaf home directory. Every
 // person-facing sentence in this package says "a file on this machine" because
 // that is what it is, and the manual page says the same. A CAPABILITY THAT
 // CANNOT WORK IS ABSENT, NOT BROKEN.
@@ -55,9 +55,11 @@ import "time"
 // prologue and into the tunnel's own greeting, so that two builds that would
 // disagree about any byte below cannot complete a handshake and quietly mean
 // different things.
-const protocol = "aforge-pair/1"
+// This is an ON-THE-WIRE identifier, not product prose. It stays byte-for-byte
+// compatible with machines that have not upgraded yet.
+const protocol = "aforge-pair/1" // legacy-name
 
-// CodeValidFor is how long a pairing code shown by `aforge serve` is good for.
+// CodeValidFor is how long a pairing code shown by `codeaf serve` is good for.
 // It is quoted in the person-facing line, and there is exactly one of it.
 const CodeValidFor = 10 * time.Minute
 

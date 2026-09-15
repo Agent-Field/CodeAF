@@ -1,6 +1,6 @@
 # Benchmark harness
 
-The protocol used to compare aforge against pi and opencode on real issues in a
+The protocol used to compare codeaf against pi and opencode on real issues in a
 real repository. `run.sh` runs it; this file explains why each step is there and
 which numbers it is honest to quote.
 
@@ -36,20 +36,20 @@ completed graph, the kept store where there is one, and a CSV row per cell in
 ## The CSV
 
 ```
-harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,nodes_failed
+harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,codeaf_mode,nodes_failed
 ```
 
 Columns are **appended, not inserted**. A CSV written before one existed is
 still a valid CSV, and a reader that indexed the first nine columns by position
 still reads the same nine things. Old rows simply have no value for the later
-ones; read a missing `aforge_mode` as `node`, which is what every recorded
-aforge row was.
+ones; read a missing `codeaf_mode` as `node`, which is what every recorded
+codeaf row was.
 
 There used to be a `subharness_chosen` column. It went in #227, along with the
 last thing that could have chosen: every leaf runs the one worker, so the column
 had one value and measured nothing. Old rows still carry it and still parse.
 
-- `aforge_mode` — the shape the cell ran in (below). `n/a` for pi and opencode,
+- `codeaf_mode` — the shape the cell ran in (below). `n/a` for pi and opencode,
   which have one shape and no name for it.
 - `nodes_failed` — failed nodes counted out of `done.json`, because the exit
   code is not the verdict: a smoke run watched the engine crash inside its
@@ -61,12 +61,12 @@ had one value and measured nothing. Old rows still carry it and still parse.
 ## Cost: harness self-reporting only
 
 **The cost column is filled in from the harness's own reported usage, never from
-an account-level credit delta.** For aforge that is the `$` figure on the run
+an account-level credit delta.** For codeaf that is the `$` figure on the run
 summary line, which comes from the provider's per-response usage accounting
 summed over the run.
 
-That one line is the source in every aforge graph shape and the script parses it
-the same way in each. `aforge run` ends with it; `aforge do` ends with
+That one line is the source in every codeaf graph shape and the script parses it
+the same way in each. `codeaf run` ends with it; `codeaf do` ends with
 `<elapsed> · <n> nodes · $<spend>`, which is the same accounting through a
 different mouth. Every leaf's spend lands in its `Outcome.Usage` and is summed
 into that figure. The shared-key law holds in every shape: self-reported or
@@ -82,14 +82,14 @@ number — it is a different number.
 The consequence is that **pi and opencode have no cost figure here.** Neither
 self-reports usage, so on a shared key their cost is not measurable at all. It
 becomes measurable only on a key isolated to a single run, and until someone
-does that, comparing aforge's self-reported dollars to a pi or opencode credit
+does that, comparing codeaf's self-reported dollars to a pi or opencode credit
 delta compares two different quantities. `results.csv` records this explicitly:
 the `cost_source` column reads `self-reported` or `not-self-reported`, and the
 `cost_usd` column is `n/a` in the latter case rather than a guess.
 
-## aforge invocation
+## codeaf invocation
 
-Four shapes, selected with `AFORGE_MODE`, against the same recorded pi and
+Four shapes, selected with `CODEAF_MODE`, against the same recorded pi and
 opencode rows.
 
 - `node` (default) — the one-node graph in `graphs/issue.json`, rendered with
@@ -97,13 +97,13 @@ opencode rows.
   agent, one leaf, no planning call. It is the shape quoted in the issue matrix,
   because it is the like-for-like comparison against pi and opencode, which are
   also single agents.
-- `do` — `aforge do "<issue text>"` with no graph written for it. The compiler
+- `do` — `codeaf do "<issue text>"` with no graph written for it. The compiler
   decides how the work is shaped and that shape is what gets measured. This
   mode was called `select` until #227, for the worker it also chose; there is
   one worker now, so the shape is the whole of what it still decides.
-- `pipeline` — `aforge plan --brief` first, then `aforge run` over the resulting
+- `pipeline` — `codeaf plan --brief` first, then `codeaf run` over the resulting
   graph. This is the parallel shape and is what the PR-review comparison used.
-- `chat` — `aforge chat --once "<issue text>" --yolo --one-model`. The chat
+- `chat` — `codeaf chat --once "<issue text>" --yolo --one-model`. The chat
   surface's brain, one turn, nobody watching.
 
 The workspace is the clone itself (`-w` in every shape, including `do`'s), so
@@ -131,7 +131,7 @@ Three things about the cell are the command's shape rather than a choice:
   much as the named model: on one trivial task, 22% of the spend went to a
   model the run never named. `--one-model` settles every text call on the
   session model for that run without writing any setting.
-- **`AFORGE_HOME` is set per cell.** Chat keeps its state in the shared home;
+- **`CODEAF_HOME` is set per cell.** Chat keeps its state in the shared home;
   four parallel cells sharing one would be four writers on one store, and the
   cells would leak into each other and into the operator's own history.
 
@@ -156,13 +156,13 @@ The shapes answer different questions and only make sense read together:
   expected to win.
 - **`do` is the shipping claim.** It is the only row that reflects what a person
   actually gets, because it is the only one where nobody wrote the graph for the
-  compiler. `aforge do --keep` leaves its private store beside the cell, which is
+  compiler. `codeaf do --keep` leaves its private store beside the cell, which is
   where a run's own record of which models served it is legible.
 - **`pipeline` is the decomposition claim.** It answers what planning the work
   first buys over taking it in one leaf, on the same issue and the same clone.
 
 **pi and opencode are the bar**, not the baseline. Their recorded rows in
-`../BENCHMARKS.md` are what any aforge shape has to beat to have shown anything.
+`../BENCHMARKS.md` are what any codeaf shape has to beat to have shown anything.
 
 ## pi and opencode invocation
 
@@ -179,7 +179,7 @@ backstop, not a work limit: a harness still running at the cap has produced no
 diff and is recorded as a DNF, and on a metered key leaving it running is how a
 benchmark run becomes an unrelated bill.
 
-The cap is one cap. `aforge do` carries its own wall in seconds and defaults to
+The cap is one cap. `codeaf do` carries its own wall in seconds and defaults to
 fifteen minutes, so `do` cells are given `-timeout` converted from
 `CELL_TIMEOUT`: a shape held to a quarter of the time the others get is not the
 same cell.
@@ -187,7 +187,7 @@ same cell.
 ## The dry run
 
 ```sh
-AFORGE_MODE=node ISSUES=21 HARNESSES=aforge bench/run.sh --dry-run
+CODEAF_MODE=node ISSUES=21 HARNESSES=codeaf bench/run.sh --dry-run
 ```
 
 `--dry-run` (or `BENCH_DRY_RUN=1`) composes every invocation and executes none
@@ -207,13 +207,13 @@ of the same shape and says so, so the wiring can be checked offline.
 REPO=https://github.com/MALIBA-AI/bambara-text-normalization \
 MODEL=deepseek/deepseek-v4-flash-0731 \
 ISSUES="20 21 22 23" \
-HARNESSES="aforge pi opencode" \
-AFORGE_MODE=node \
+HARNESSES="codeaf pi opencode" \
+CODEAF_MODE=node \
 BASE_COMMIT=6c978ffa1c49ba600c85eb893958409e37dbedd2 \
 bench/run.sh
 ```
 
-The aforge comparison is one run of that per `AFORGE_MODE`, each writing its
+The codeaf comparison is one run of that per `CODEAF_MODE`, each writing its
 own `results.csv`.
 
 Two lines of that invocation are load-bearing honesty:
@@ -225,15 +225,15 @@ Two lines of that invocation are load-bearing honesty:
   pi/opencode rows predate those merges; only pinned reruns are comparable to
   them, and even then suite drift means within-row comparison beats
   cross-table comparison.
-- **`MODEL` is passed to aforge as `-model` on every invocation** (run, plan,
+- **`MODEL` is passed to codeaf as `-model` on every invocation** (run, plan,
   do), because the CLI flag is the only rung that outranks the picker
-  preference in `~/.aforge/settings.json` — an env var does not. The smoke run
+  preference in `~/.codeaf/settings.json` — an env var does not. The smoke run
   found this the honest way: settings resolved to a `-latest` alias the
   engine's catalog rejected, and the cell died at $0 while claiming exit 0.
 
 Requires `git`, `python3`, `gh` (authenticated), and `timeout` (`gtimeout` from
 coreutils on macOS is picked up automatically). `OPENROUTER_API_KEY` must be set
-for aforge — the script exports what the shell already has rather than defining
+for codeaf — the script exports what the shell already has rather than defining
 a key of its own, and says so early when there is nothing to export. The other
 harnesses need whatever their own configuration expects.
 

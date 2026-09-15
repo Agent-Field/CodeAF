@@ -28,7 +28,7 @@ set -euo pipefail
 # The lock is a directory, because mkdir is atomic where a check-then-write
 # of a file is not: two starters in the same instant would both see no holder
 # and both write, and the first to finish would remove the other's lock.
-lock="/tmp/aforge-suite-$(id -u).lock"
+lock="/tmp/codeaf-suite-$(id -u).lock"
 
 holder_alive() {
 	local pid="$1"
@@ -75,10 +75,10 @@ date -u +%Y-%m-%dT%H:%M:%SZ >"$lock/since"
 
 # AND THIS SCRIPT EXPORTS NO STATE ROOT OF ITS OWN.
 #
-# An empty AFORGE_HOME for the whole run is the obvious answer to a test that
+# An empty CODEAF_HOME for the whole run is the obvious answer to a test that
 # reads the machine's real state, and it was tried and dropped, on clean dev,
 # with the measurement: an empty home turns `internal/lane` green and
-# `internal/rtk` red (its resolution order wants the managed `~/.aforge/bin/rtk`
+# `internal/rtk` red (its resolution order wants the managed `~/.codeaf/bin/rtk`
 # to be there), and `internal/resident` red as well (a recurring-skill check
 # that fails only when the package runs in sequence under the override). The
 # packages disagree about what a state root should hold, and each is right about

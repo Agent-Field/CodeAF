@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 func TestPlaceProseKeepsOneFoldGrammarAndOneSectionBreath(t *testing.T) {
@@ -81,7 +81,7 @@ func TestEveryPlaceWithATimeWindowDrawsTheSameControl(t *testing.T) {
 	if !strings.Contains(spend, label) {
 		t.Fatalf("the spend head row draws no control: %q", spend)
 	}
-	head := plain(placeHeadRow(120, "work aforge ran on its own. 7.", "", win, pal))
+	head := plain(placeHeadRow(120, "work codeaf ran on its own. 7.", "", win, pal))
 	if !strings.Contains(head, label) {
 		t.Fatalf("the shared head row draws no control: %q", head)
 	}
@@ -102,7 +102,7 @@ func TestEveryPlaceWithATimeWindowDrawsTheSameControl(t *testing.T) {
 // bound where the clause naming it is off the line.
 func TestAWindowIsBoundOnlyWhereItsControlIsDrawn(t *testing.T) {
 	win := session.LastDays(time.Date(2026, time.August, 25, 12, 0, 0, 0, time.Local), 14)
-	head := "work aforge ran on its own. 7."
+	head := "work codeaf ran on its own. 7."
 	if arrows, grain := placeWindowFits(200, head, win); !arrows || !grain {
 		t.Fatalf("a wide frame drew neither half: arrows %v, grain %v", arrows, grain)
 	}

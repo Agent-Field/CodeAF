@@ -1,4 +1,4 @@
-# Questions aforge asks you
+# Questions codeaf asks you
 
 ## What a question is here
 
@@ -93,7 +93,7 @@ because something begins when it runs out, and an assumptions card reads
 to strike a line and carries on with what it said it was assuming.
 
 **Nothing that cannot be taken back ever runs on a clock**, and only you ever answer
-one. aforge refuses to raise a question that says otherwise.
+one. codeaf refuses to raise a question that says otherwise.
 
 **A question the model raises does not always stop the work.** It says when it
 asks whether its turn waits for you. Where it does, the turn stands still until
@@ -126,7 +126,7 @@ Every line says WHO decided, and where that was not you it says so rather than
 reading as something you said.
 
 When the autonomy dial takes a recommendation, the record identifies the answer
-as `aforge, on your settings`; it never makes that answer look like yours.
+as `codeaf, on your settings`; it never makes that answer look like yours.
 
 **The whole record is on disk; the model is handed the newest few.** What rides at
 the top of every request is the newest eight decisions plus one line saying how
@@ -272,7 +272,7 @@ window can be focused with nobody reading it.
 While you are away:
 
 - a question your project's rule may take is taken, and its receipt says
-  `aforge, on your settings` decided it
+  `codeaf, on your settings` decided it
 - everything else stays open; the desktop notification says the conversation is
   `waiting on you`, and it is **pinned** rather than left to fade, so it is still
   there when you come back
@@ -361,7 +361,7 @@ again would fire exactly when you had looked away mid-decision.
 
 **When a clock does run out, it goes with the recommended answer and says so.**
 The decision is written down as this program's own rather than yours — the
-receipt reads `aforge, on your settings` — and what the model is told says in
+receipt reads `codeaf, on your settings` — and what the model is told says in
 so many words that the answer is provisional and you may still change it. That is
 the next section.
 
@@ -447,9 +447,9 @@ them, so both are taken back when it finishes, with `the turn moved on without
 it`. A question something else is still waiting on — a running task, or one whose
 asker said it would read the answer whenever it came — stays.
 
-## Questions aforge refuses to put to you
+## Questions codeaf refuses to put to you
 
-Before a question reaches you it has to be a real one, and aforge refuses it
+Before a question reaches you it has to be a real one, and codeaf refuses it
 otherwise:
 
 - a question with no sentence saying what is being asked
@@ -506,7 +506,7 @@ are standing.
 
 **Where the pointer opens on a permission depends on how much the call can cost
 you**, and that is the gate's judgement, not this block's: on an ordinary call it
-opens on `allow once`, and on a grave one — a call aforge always stops you for —
+opens on `allow once`, and on a grave one — a call codeaf always stops you for —
 it opens on `deny`. permissions.md, *What happens if you just press `enter`?*,
 says it in full.
 
@@ -523,7 +523,7 @@ what it means, its dim `then ·` / `why this one ·` / `would switch if` /
 side changes with it.
 
 ```
-╭─ ? which store should the ledger sit on? ─────────────── aforge asks · waiting ─╮
+╭─ ? which store should the ledger sit on? ─────────────── codeaf asks · waiting ─╮
 │ a schema change is next and it is cheaper before there are rows                 │
 │                                           │                                     │
 │  ▸ 1  postgres              ◆ recommended │ postgres                            │
@@ -786,7 +786,7 @@ off the right-hand edge, and the order is fixed:
 
 **What is never given up**: the question and what you picked, **who decided**,
 `cannot change`, `u undo` and `c change`. Who decided is the one thing on that line you
-cannot work out for yourself — `another window` and `aforge, on your settings`
+cannot work out for yourself — `another window` and `codeaf, on your settings`
 are the whole reason it is written — and the last two are not details about the
 decision, they are what is still possible about it. A line that dropped
 `cannot change` would read as something you could walk back. If a window is
@@ -908,7 +908,7 @@ width: `ctrl+g` stows it and gives the page its cells back.)
 The page has, from the top:
 
 - the question in one sentence, with the amber `?`
-- who is asking and what is waiting on it, dim — `aforge asks · the turn waits on
+- who is asking and what is waiting on it, dim — `codeaf asks · the turn waits on
   it` — with the reason under it
 - the answers, one row each, `something else…` last, with `◆ recommended` on the
   one the asker would take
@@ -1120,10 +1120,10 @@ over, and only the second writes it down.
 
 **Setting it answers nothing.** The question in front of you stays open and still
 wants an answer; what you have said is about the future. The setting lives in
-`.aforge/autonomy.json` beside the project, and a conversation with no project to
+`.codeaf/autonomy.json` beside the project, and a conversation with no project to
 keep it in says so rather than pretending.
 
-**A what-did-you-mean question can never be handed over.** aforge refuses it:
+**A what-did-you-mean question can never be handed over.** codeaf refuses it:
 there is nothing for it to decide, because the whole question is what you meant.
 
 ## None of the answers it offered are right — say what the real question is
@@ -1245,7 +1245,7 @@ say "loaded" before making a picture* on **what I can do**.
 
 ## Which questions draw this way
 
-**The approval question does** — the one aforge asks before it runs a tool. It
+**The approval question does** — the one codeaf asks before it runs a tool. It
 has all of the above: the digits, `esc` for later, the chip, the receipt, the
 settle guard, the narrow card and the phone sheet. `permissions` is its own page
 and states what each answer banks.
@@ -1311,13 +1311,13 @@ picks one before anything is written.
 While a beat is up, the digits belong to it — `3` is the third shape and not the
 third answer — and `esc` backs out of the beat rather than putting the question
 off.
-## Questions over the session host and on another machine — do questions work over --host, and on the engine behind an ordinary aforge when I run it normally
+## Questions over the session host and on another machine — do questions work over --host, and on the engine behind an ordinary codeaf when I run it normally
 
 **A question reaches you wherever the conversation is, and you answer it where
 you are standing.** That is true on all three roads and there is nothing to turn
 on:
 
-- **an ordinary `aforge` or `aforge chat` in a project.** The conversation is not
+- **an ordinary `codeaf` or `codeaf chat` in a project.** The conversation is not
   kept in your terminal — it lives in this machine's engine, so the work goes on
   when you close the window — and questions travel that link in both directions.
 - **`--host`**, a terminal here attached to a conversation on another machine. The
@@ -1336,7 +1336,7 @@ machine** for what it says about how long it sat there.
 
 **An engine of a different build is refused at the door, and says so.** Two
 programs that might disagree about what a frame means never guess at each other,
-so `aforge` tells you the engine is an older or newer aforge rather than starting
+so `codeaf` tells you the engine is an older or newer codeaf rather than starting
 a session in which questions would silently never appear.
 
 ## Why can I not answer the question on this task page
@@ -1362,7 +1362,7 @@ moved since somebody was asked something an hour ago.
 
 `o` opens a question out into a page of its own — see the sections above, from
 "Open a question up and read it properly" down. `D` writes the setting into
-`.aforge/autonomy.json` beside the project AND answers the question in front of
+`.codeaf/autonomy.json` beside the project AND answers the question in front of
 you; a conversation with no project to keep it in says so.
 
 **A row on home shows a question the model raised and does not take a key for

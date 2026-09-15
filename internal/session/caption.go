@@ -31,8 +31,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // The narrator is a ROLE registered from the file that makes the call. LOW is
@@ -263,7 +263,7 @@ func ShortCaption(line string) string {
 // line.
 //
 // EVERY OTHER DOT BELONGS TO THE TOKEN IT SITS IN. `livesteps.go`, `config.json`,
-// `v1.2.3` and `~/.aforge` are what people actually narrate, and cutting inside
+// `v1.2.3` and `~/.codeaf` are what people actually narrate, and cutting inside
 // one of them does worse than shorten the caption: the fragment in front of the
 // dot is usually a word or two, [ShortCaption] passes over anything under three
 // words, and the caption a person reads then begins after the dot — in the middle

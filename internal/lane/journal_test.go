@@ -8,19 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // ── THE FILE TWO PROCESSES SHARE ────────────────────────────────────────────
 //
 // The incident these tests are written from happened on a person's own machine:
-// two aforge windows, one belief file, and an afternoon of one process's
+// two codeaf windows, one belief file, and an afternoon of one process's
 // learning deleted because the other happened to save second. The state file
 // alone cannot fix it — the hierarchy's μ, a[lane] and b[model] are SHARED
 // components and there is no field-wise merge for them — so what crosses
 // between processes is the observations, and they cross by being replayed.
 //
-// Every test here moves AFORGE_HOME as well as pointing the store at a
+// Every test here moves CODEAF_HOME as well as pointing the store at a
 // temporary file, because a test that wrote the real one would cost somebody
 // else their belief file (law_test.go, TestNoTestWritesTheRealHome).
 

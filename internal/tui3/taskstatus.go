@@ -1,6 +1,6 @@
 package tui3
 
-import "github.com/Agent-Field/aforge-v2/internal/session"
+import "github.com/Agent-Field/codeaf/internal/session"
 
 // The two doors onto [session.ProjectTask], and the one table that turns a
 // reading into this surface's own words. The engine answers with identifiers and

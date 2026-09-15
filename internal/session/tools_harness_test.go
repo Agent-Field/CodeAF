@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/manual"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // THE MODEL'S HANDS ON THE BIG MACHINERY, from the three sides that matter: the
@@ -235,7 +235,7 @@ func TestListHarnessesReadsTheRegistryThisConversationCanReach(t *testing.T) {
 //
 // THE RUNNER IS STILL WIRED IN EVERY CASE HERE, which is the whole point. The
 // engine is untouched and the seam is filled the way the shipping door fills it
-// (cmd/aforge's chatv3_orchestrate.go); what is gone is any way for a turn to
+// (cmd/codeaf's chatv3_orchestrate.go); what is gone is any way for a turn to
 // reach it.
 func TestNoConversationCarriesTheAdaptiveVerb(t *testing.T) {
 	for _, c := range []struct {

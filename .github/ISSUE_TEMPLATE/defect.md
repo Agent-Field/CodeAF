@@ -32,7 +32,7 @@ printed while it hung is. -->
 **Deterministic (no model).**
 
 <!-- The one a reviewer can run at their desk this minute: a stub worker, a
-fixture, `go test -tags e2e`, `aforge do --json` with a short `--timeout`.
+fixture, `go test -tags e2e`, `codeaf do --json` with a short `--timeout`.
 Say what a developer sees TODAY when they run it — the wrong output is the
 evidence, so quote it — and where it is driven from. -->
 
@@ -50,8 +50,8 @@ whether the replication above stands in for it. Never make it the replication. -
 
 ## Where
 
-<!-- File and function names — `settlementWatch` in `cmd/aforge/do.go`, the
-escalation site in `cmd/aforge/chat.go` (search `escalated from`). Not line
+<!-- File and function names — `settlementWatch` in `cmd/codeaf/do.go`, the
+escalation site in `cmd/codeaf/chat.go` (search `escalated from`). Not line
 numbers: they move, and a stale one sends the next reader to the wrong code.
 Give the searchable string. -->
 
@@ -65,7 +65,7 @@ read. If there is a choice to make, make it and say why. -->
 
 <!-- e2e FIRST, and each line says what is asserted, not that a test exists. -->
 
-- **e2e:** <!-- through the real door — `aforge do --json`, the tmux suite,
+- **e2e:** <!-- through the real door — `codeaf do --json`, the tmux suite,
   `go test -tags e2e ./internal/e2e/` — with the exact text or receipt field
   asserted, and the exit code. One test, no model where a stub will do. -->
 - **e2e:** <!-- the second case, usually the control: the same run without the

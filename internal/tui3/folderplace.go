@@ -29,9 +29,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
 )
 
 // placeDoor is WHICH ROAD a directory came in by. It is carried rather than
@@ -381,8 +381,8 @@ func (a *app) contextStart() string {
 			return path
 		}
 	}
-	// AN OWNED WORKSPACE IS AFORGE'S BOOKKEEPING, NOT WHERE THE PERSON IS. It is
-	// ~/.aforge/v3/projects/<encoded>/<id>/work ([Options.Owned]), and standing
+	// AN OWNED WORKSPACE IS codeaf'S BOOKKEEPING, NOT WHERE THE PERSON IS. It is
+	// ~/.codeaf/v3/projects/<encoded>/<id>/work ([Options.Owned]), and standing
 	// the sheet there put work/, meta.json, presence.json and transcript.jsonl in
 	// front of somebody who was standing in a folder of their own.
 	if root := a.pathRoot(); root != "" && !a.owned {
@@ -984,7 +984,7 @@ func folderFactsOf(dir string) []string {
 		//
 		// IT IS THE MODIFICATION TIME AND IT IS NAMED AS ONE. It is not "last
 		// opened": atime is a lie on every filesystem mounted `relatime`, and
-		// aforge keeps no record of opening a file it merely previewed.
+		// codeaf keeps no record of opening a file it merely previewed.
 		var lines []string
 		if size := byteWord(int(info.Size())); size != "" {
 			lines = append(lines, size)
@@ -1063,8 +1063,8 @@ func folderFileCount(dir string) int {
 
 // ── what is kept, and the index under ~ ─────────────────────────────────────
 
-// folderStoreName is the file under the aforge state root, moved wholesale by
-// AFORGE_HOME the way every other file aforge writes is.
+// folderStoreName is the file under the codeaf state root, moved wholesale by
+// CODEAF_HOME the way every other file codeaf writes is.
 var folderStoreName = []string{"v3", "folders.json"}
 
 func folderStorePath() string { return home.Join(folderStoreName...) }
@@ -1222,7 +1222,7 @@ func (a *app) askFolderStore() tea.Cmd {
 // folderScanTTL is how long the index of repositories under `~` is believed. A
 // day is the honest figure: people clone a repository a few times a week and
 // the layer under this one — the projects home already knows — catches every
-// directory aforge has actually been opened in the moment it is opened there.
+// directory codeaf has actually been opened in the moment it is opened there.
 const folderScanTTL = 24 * time.Hour
 
 // scanFolderRoots discovers both projects and ordinary folders within the

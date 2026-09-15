@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A RETRY THAT MOVED TO ANOTHER MODEL SAYS SO ON THE FAR SIDE TOO.

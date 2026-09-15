@@ -3,7 +3,7 @@ package resident
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
 // The EV-lookahead gate: with measured evidence a split pays only when the

@@ -1,6 +1,6 @@
 # Conversation execution takeover — 2026-09-05
 
-The work continues from the “Aforge clean” Codex thread, in isolated worktree
+The work continues from the “codeaf clean” Codex thread, in isolated worktree
 `/private/tmp/af-runtime-next`, on `codex/conversation-execution`. Draft PR #653
 targets `dev`. The shared development checkout is not this worktree.
 
@@ -40,13 +40,13 @@ lower latency, lower bills, or equal success.
 
 ## Prior live evidence retained
 
-At source `70888a56b`, the two-repeat revision diagnostic recorded one Aforge
-pass and one timeout; Pi passed both. The timed-out Aforge attempt still has an
+At source `70888a56b`, the two-repeat revision diagnostic recorded one codeaf
+pass and one timeout; Pi passed both. The timed-out codeaf attempt still has an
 unsettled charge after a read-only reconciliation attempt. Its correct files do
 not override its missed deadline.
 
-In the successful diagnostic pair, Aforge made 18 admitted calls and sent
-910,727 request bytes; Pi made six calls and sent 56,038 bytes. Aforge's main
+In the successful diagnostic pair, codeaf made 18 admitted calls and sent
+910,727 request bytes; Pi made six calls and sent 56,038 bytes. codeaf's main
 requests carried 34 tool definitions. These are one pair's observations, not
 population estimates or an attribution of all overhead to tool schemas.
 
@@ -84,7 +84,7 @@ requires the richer configured tool set and is not the default-chat saving.
 ## Offline validation record
 
 The full `make check` run at `9f0ce1619` completed 85 passing packages, including
-`cmd/aforge`, `internal/remote`, `internal/enginehost` and the full `internal/tui3`
+`cmd/codeaf`, `internal/remote`, `internal/enginehost` and the full `internal/tui3`
 suite (464.828 seconds). Four tests failed across three packages: the worker
 vocabulary law, the chat-manual vocabulary law, and two media-schema fixtures
 that inspected the initial tool list without loading media. Those failures are
@@ -132,13 +132,13 @@ against another harness.
 ## Current revision regression
 
 The frozen `takeover-revision-v1` campaign at `eccef810e` completed all four
-planned cells. Both Aforge and Pi passed both repetitions, including adopting a
+planned cells. Both codeaf and Pi passed both repetitions, including adopting a
 mid-work requirement change while preserving the already-running command. Every
 assertion passed and every cell has attributable upstream billing.
 
 | Arm | Passes | Mean wall time | Mean billed cost |
 | --- | ---: | ---: | ---: |
-| aforge | 2/2 | 85.504 s | $0.002696575 |
+| codeaf | 2/2 | 85.504 s | $0.002696575 |
 | pi | 2/2 | 90.343 s | $0.000496991 |
 
 This is regression evidence from a small fixture, not a quality ranking. Provider
@@ -211,11 +211,11 @@ provider response.
 ### Complex pilot outcome and diagnostic grade
 
 Both original terminal runs ended at their ready screens: Pi in 1,232 seconds,
-Aforge in 1,282 seconds. Those times include startup and the quiet window; they
+codeaf in 1,282 seconds. Those times include startup and the quiet window; they
 are not times to equivalent completed work. Both original grades are zero.
 
 Pi produced an implementation. Its added test package collided with the hidden
-suite's module names, so the original acceptance collection never ran. Aforge's
+suite's module names, so the original acceptance collection never ran. codeaf's
 only task failed with an upstream HTTP 404, and its final main-workspace patch
 is empty. No unlanded branch was substituted to improve that score.
 
@@ -226,16 +226,16 @@ without network or additional inference. Results:
 | Saved implementation | Acceptance | Regression |
 | --- | ---: | ---: |
 | Pi, with candidate tests excluded | 159/159 | 61/61 |
-| Aforge, with candidate tests excluded | 0/159 | 61/61 |
+| codeaf, with candidate tests excluded | 0/159 | 61/61 |
 
 This diagnostic does not replace the original failed run. It establishes that
 Pi's implementation passes the assertions once the collection collision is
-removed; it does not repair Aforge's missing implementation. The original
+removed; it does not repair codeaf's missing implementation. The original
 patches, grades and logs remain intact. The diagnostic script and its patch
 hashes are retained under `af653-complex-20260905/diagnostic-test-isolation` on
 Spark; the invocation script is at that artifact root.
 
-The Aforge task's unreadable refusal begins with the gzip signature. The
+The codeaf task's unreadable refusal begins with the gzip signature. The
 benchmark proxy preserved compressed error bytes but dropped `Content-Encoding`
 and retry headers, unlike its success path. An offline compressed-404 regression
 fails before the proxy fix and passes after it. Error headers now retain the
@@ -244,9 +244,9 @@ the upstream 404, prove it is fixed, or turn the failed task into a success.
 The corrected proxy was not used retroactively in either scored run.
 
 Every admitted inference used `deepseek/deepseek-v4-flash-0731`: Pi made 76 calls;
-Aforge made 120. Read-only reconciliation prices all Pi calls at $0.048953800644.
-Aforge has 116 priced calls out of 120, so its total remains **unknown**. No
-cost ratio is reported. Emulation also drove Aforge's UI and engine close to the
+codeaf made 120. Read-only reconciliation prices all Pi calls at $0.048953800644.
+codeaf has 116 priced calls out of 120, so its total remains **unknown**. No
+cost ratio is reported. Emulation also drove codeaf's UI and engine close to the
 8 GiB container cap; this run used the declared `GOGC=off` workaround and does
 not establish native runtime memory demand. One pair with these failures cannot
 establish quality equivalence, a performance ranking or a frontier.
@@ -261,7 +261,7 @@ Final gate for the task UI wave: the full terminal suite passed above; the
 credential-free `make check` for session/manual passes (session 181.771 seconds),
 including vet, formatting, packed manual, build and binary-size ratchet. The
 binary is 50,552,770 bytes, below 54,600,000. All 156 conversation benchmark
-Python checks pass (44.738 seconds). A new complex Aforge trial will retain the
+Python checks pass (44.738 seconds). A new complex codeaf trial will retain the
 original runtime/model/limits and change the proxy's error-header behavior;
 its result will be recorded separately from the original paired pilot.
 
@@ -290,8 +290,8 @@ An important limit on the architecture inference: the original complex run's
 40-round ceiling recorded `dropped:work-already-out`. The existing ownership
 check prevented another handoff there. We do not attribute that run's failure
 to a forced handoff that never happened. Its recorded request traffic was
-71,984,610 bytes across 120 calls for Aforge and 17,282,734 across 76 for Pi;
-19 Aforge requests carried no tools. These are workload observations with failed
+71,984,610 bytes across 120 calls for codeaf and 17,282,734 across 76 for Pi;
+19 codeaf requests carried no tools. These are workload observations with failed
 outcomes, not proof that every helper call is unnecessary or a cost comparison.
 
 

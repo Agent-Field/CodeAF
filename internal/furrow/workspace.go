@@ -31,7 +31,7 @@ type Snapshot struct {
 	ID string
 
 	// SealedAt is when furrow sealed it. This is THE ALIGNMENT KEY between the
-	// two kinds of rewind aforge has: the conversation's cut points live in
+	// two kinds of rewind codeaf has: the conversation's cut points live in
 	// internal/session and know nothing about the workspace, so pairing them is
 	// done on the clock and on nothing else (see [Workspace.PointNear]).
 	SealedAt time.Time
@@ -88,7 +88,7 @@ func (w *Workspace) Snapshots(ctx context.Context, limit int) ([]Snapshot, error
 		// Materialization is furrow's fidelity declaration for this snapshot.
 		// Only its grade is read: the missing-path detail underneath it is
 		// furrow's to present in `furrow status --fidelity`, and copying it
-		// into a tool result would be aforge paraphrasing a contract it does
+		// into a tool result would be codeaf paraphrasing a contract it does
 		// not own.
 		Materialization struct {
 			Grade string `json:"grade"`
@@ -152,14 +152,14 @@ func (w *Workspace) PointNear(ctx context.Context, when time.Time) (Snapshot, bo
 // conversation rewound later has a workspace state to be offered beside it.
 //
 // It is `furrow hook turn-end`, which is the same door `furrow hook install`
-// wires a generic harness into — called directly instead, because aforge knows
+// wires a generic harness into — called directly instead, because codeaf knows
 // its own turn boundaries and does not need a shell adapter to tell it about
 // them. The label furrow writes is its own: `hook turn-end agent=<agent>
 // turn=<turn>`.
 //
 // It is only ever called on a Workspace, and that matters: the command furrow
 // runs underneath ATTACHES a folder it was not already watching, and attaching
-// somebody's folder to a program because a turn ended is not a thing aforge may
+// somebody's folder to a program because a turn ended is not a thing codeaf may
 // decide. [Open] having already said yes is what makes this safe.
 func (w *Workspace) Mark(ctx context.Context, agent, turn string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
@@ -222,7 +222,7 @@ func (w *Workspace) PreviewRestore(ctx context.Context, snapshot string, paths [
 //
 // It passes furrow's `--yes`, which is not this package waving a gate through:
 // furrow's gate is an explicit ID plus a confirmation, and the confirmation
-// aforge is passing on is a person's, collected before this is ever called. The
+// codeaf is passing on is a person's, collected before this is ever called. The
 // tool in tools.go is where that is enforced, and it is enforced by requiring a
 // separate argument rather than by trusting a model to have meant it.
 func (w *Workspace) ApplyRestore(ctx context.Context, snapshot string, paths []string) (Restore, error) {
@@ -557,15 +557,15 @@ func (p pathBytes) String() string { return string(p) }
 
 // ── folder sync ──────────────────────────────────────────────────────────────
 
-// SyncOffer is the pairing aforge OFFERS rather than performs: the two commands
+// SyncOffer is the pairing codeaf OFFERS rather than performs: the two commands
 // that put one folder on two machines, for the person to run themselves.
 //
-// AFORGE NEVER RUNS `furrow remote add` ITSELF, and the reason is one line of
+// codeaf NEVER RUNS `furrow remote add` ITSELF, and the reason is one line of
 // furrow's output. Pairing prints the workspace's recovery key — the only thing
 // that can read this workspace's ciphertext anywhere — and a secret that passes
 // through a tool result has been written into a transcript, a journal, and
 // possibly a screen somebody else is looking at. So the offer is commands, the
-// person runs them, and the key never enters aforge at all.
+// person runs them, and the key never enters codeaf at all.
 type SyncOffer struct {
 	// Workspace is the folder being offered, and Name is the shared workspace
 	// name suggested for both ends — furrow's own default, the folder's name.
@@ -579,7 +579,7 @@ type SyncOffer struct {
 	Here  []string
 	There []string
 
-	// Note is the honest edge, in furrow's own terms and aforge's law's terms
+	// Note is the honest edge, in furrow's own terms and codeaf's law's terms
 	// at once. It is not decoration: somebody who reads only this field should
 	// still not be surprised later.
 	Note string
@@ -625,7 +625,7 @@ func (w *Workspace) OfferSync(remote string) SyncOffer {
 // gets to run; this exists for the harness, where a universe is the GROUND a
 // task is given and everything that happens in it happens afterwards, over
 // hours, through the task's own belt. Until this door existed the rest of
-// aforge had to ground a task with `git worktree add`, which carries HEAD and
+// codeaf had to ground a task with `git worktree add`, which carries HEAD and
 // leaves the dirty tree, the untracked files and the `.env` behind — the defect
 // the ground law (internal/session/taskground.go) was written from.
 //

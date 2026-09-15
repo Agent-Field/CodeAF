@@ -11,7 +11,7 @@ Selection rule (Phase A):
   - output price <= $4.00 / M tokens (hard cap), <= $2.50 strongly preferred
   - open-weight families only; no closed frontier models
   - must span the ability range: one very cheap small model at the floor, the
-    current aforge default, mid-tier, and the strongest open model under cap
+    current codeaf default, mid-tier, and the strongest open model under cap
 """
 import json
 import os
@@ -31,7 +31,7 @@ CHOSEN = [
     ("qwen/qwen3-30b-a3b-instruct-2507", "qwen3-30b-a3b",
      "cheap MoE, Qwen 30B-class, non-reasoning"),
     ("~deepseek/deepseek-v4-flash-latest", "ds-v4-flash",
-     "INCUMBENT: current aforge default (internal/config/config.go)"),
+     "INCUMBENT: current codeaf default (internal/config/config.go)"),
     ("deepseek/deepseek-v4-pro", "ds-v4-pro",
      "mid: same family as incumbent, one tier up -- the natural upgrade"),
     ("z-ai/glm-4.7", "glm-4.7",

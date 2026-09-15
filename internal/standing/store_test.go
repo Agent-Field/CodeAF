@@ -277,7 +277,7 @@ func TestListIsNewestFirstAndSkipsWhatItCannotRead(t *testing.T) {
 	}
 	if _, err := store.Get(future.ID); err == nil {
 		t.Fatal("a newer document was read as though this build understood it")
-	} else if !strings.Contains(err.Error(), "newer aforge") {
+	} else if !strings.Contains(err.Error(), "newer codeaf") {
 		t.Fatalf("the refusal does not say why: %v", err)
 	}
 }
@@ -287,7 +287,7 @@ func TestForWorkspaceGroupsByProject(t *testing.T) {
 	store := openStore(t, now)
 
 	here := reminder("in this project", now.Add(time.Hour))
-	here.Workspace = "/home/someone/work/aforge"
+	here.Workspace = "/home/someone/work/codeaf"
 	if _, err := store.Create(here); err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestForWorkspaceGroupsByProject(t *testing.T) {
 
 	// A trailing separator is the same project, because a path is a place and
 	// not a string.
-	items, err := store.ForWorkspace("/home/someone/work/aforge/")
+	items, err := store.ForWorkspace("/home/someone/work/codeaf/")
 	if err != nil {
 		t.Fatalf("for workspace: %v", err)
 	}

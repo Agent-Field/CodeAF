@@ -14,9 +14,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE ATTACHMENT TRAY: a picture is not a sentence.
@@ -69,7 +69,7 @@ import (
 //	what /image does      [app.attachPath]
 //	what /attach does     [app.attachFilePath]
 //	what the completion does when the file is an image  [app.completeFile]
-//	the gate              session.Config.SupportsImages, wired in cmd/aforge
+//	the gate              session.Config.SupportsImages, wired in cmd/codeaf
 
 // maxAttachBytes is the per-picture ceiling this surface enforces, and it is
 // deliberately the SAME number internal/session's own guard uses
@@ -419,7 +419,7 @@ type wslPaths struct {
 // the environment ([Options.Env]); it is a function of that door now, so a suite
 // that hands [newApp] a table is told whether it is inside WSL by the table and
 // not by the developer's shell. The two boot files are still read the way they
-// were, once per app, which in a running aforge is once.
+// were, once per app, which in a running codeaf is once.
 func bootWSLPaths(env func(string) string) wslPaths {
 	return detectWSLPathsAt(env, procVersionPath, wslConfigPath)
 }

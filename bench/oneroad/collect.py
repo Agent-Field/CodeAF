@@ -15,7 +15,7 @@ FIELDS = ["task", "harness", "seed", "outcome", "settle_reason", "stranded_ids",
 def active_wall(cell, row):
     """The wall clock with the settle window taken back off it.
 
-    An aforge cell is called finished when its store has been silent for
+    A codeaf cell is called finished when its store has been silent for
     SILENCE_SECONDS, so the wall the cell timed ALWAYS carries that window on the
     end — a cell that worked for 66 seconds records 246. Quoting that beside a
     peer arm's wall, which has no such window, would hand every peer a free three
@@ -28,7 +28,7 @@ def active_wall(cell, row):
     is passed through unchanged. A DNF has no end of work to find and reports
     nothing rather than a number.
     """
-    if not row.get("harness", "").startswith("aforge"):
+    if not row.get("harness", "").startswith("codeaf"):
         return row.get("wall_s", "")
     if row.get("outcome") != "OK":
         return ""

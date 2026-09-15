@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // TestMain silences the fault log. A recovered panic writes its stack through
@@ -610,7 +610,7 @@ func engineOn(agent *fakeAgent) *Engine {
 	return &Engine{
 		Agent:                      agent,
 		Workspace:                  "/home/somebody/api",
-		SessionFile:                "/home/somebody/.aforge/v3/sessions/-home-somebody-api/one.jsonl",
+		SessionFile:                "/home/somebody/.codeaf/v3/sessions/-home-somebody-api/one.jsonl",
 		Resumed:                    true,
 		Note:                       "session open elsewhere — started a new one",
 		BashBackgroundAfterSeconds: 47,
@@ -1250,7 +1250,7 @@ func TestServeLandsAnUploadedPictureInTheSessionFolder(t *testing.T) {
 	if got, want := filepath.Dir(path), engine.Place.Artifacts(); got != want {
 		t.Fatalf("the picture landed in %q, want %q", got, want)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf")); !os.IsNotExist(err) {
 		t.Fatalf("the engine littered the workspace: %v", err)
 	}
 	if rows := session.ReadArtifacts(index); len(rows) != 0 {
@@ -1418,7 +1418,7 @@ func TestTheEnginesStandingStoreAnswersOverTheWire(t *testing.T) {
 }
 
 // AN ENGINE WITH NO AMBIENT SIDE HAS NO DOOR, not an empty one. A store that
-// could not be opened leaves both closures nil (cmd/aforge's engine.go), and the
+// could not be opened leaves both closures nil (cmd/codeaf's engine.go), and the
 // surface keeps the difference between "nothing is set up here" and "this
 // machine cannot answer that at all".
 func TestServeSaysWhenTheStandingDoorIsMissing(t *testing.T) {

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func TestProbationProposalDoesNotSpliceUntilPendingApprovalAndPromotesAfterGreen(t *testing.T) {
-	t.Setenv("AFORGE_TENURE_AFTER", "1")
+	t.Setenv("CODEAF_TENURE_AFTER", "1")
 	graph := openStore(t)
 	charter := residentTestCharter(t, "probation-approval", store.CharterRails{
 		PerFiringBudgetUSD: 0.1, MaxFiringsPerDay: 3,

@@ -12,16 +12,17 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/Agent-Field/aforge-v2/internal/filememo"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/filememo"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // DailyBudgetUSDAt resolves env → persisted config → built-in default. The env
 // remains the explicit headless override; /budget default writes the middle
 // layer used by both chat and one-shot runs.
 func DailyBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_DAILY_BUDGET")); raw != "" {
-		return parseDailyBudget(raw, "AFORGE_DAILY_BUDGET")
+	if raw := strings.TrimSpace(env.Get("CODEAF_DAILY_BUDGET")); raw != "" {
+		return parseDailyBudget(raw, "CODEAF_DAILY_BUDGET")
 	}
 	values, err := readProfileConfig(profileDir)
 	if err != nil {
@@ -191,7 +192,7 @@ func errorKey(updates map[string]any) string {
 
 // ── the generation counter ──────────────────────────────────────────────────
 //
-// A live reader — the v3 door's crew source (cmd/aforge's v3RolesSource) — needs
+// A live reader — the v3 door's crew source (cmd/codeaf's v3RolesSource) — needs
 // to know when what it read has changed, and it needs to know cheaply: an
 // auxiliary model is resolved on the path of a turn, and a file read there would
 // be a syscall per call for a file that changes once a week.
@@ -210,7 +211,7 @@ func errorKey(updates map[string]any) string {
 // beside it.)
 //
 // WHAT IT DOES NOT SEE, stated plainly: a config.json edited by hand in another
-// process, and a project file (`<workspace>/.aforge-v3/config.json`) edited by
+// process, and a project file (`<workspace>/.codeaf/config.json`) edited by
 // anything. Both are the same as the behaviour before a counter existed — those
 // changes have always landed on the next launch — and a counter that pretended
 // otherwise would need a watcher on two files per session.
@@ -228,10 +229,10 @@ func bumpSettingsGeneration() { settingsGeneration.Add(1) }
 // WHAT AN EMPTY PROFILE DIRECTORY MEANS.
 //
 // AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
-// ABSENCE IS A HOSTED WINDOW. [ProfileDir] carries AFORGE_PROFILE_DIR, which
+// ABSENCE IS A HOSTED WINDOW. [ProfileDir] carries CODEAF_PROFILE_DIR, which
 // almost nobody exports, so the empty string is what very nearly every launch
 // passes down here — and it has always meant "the profile where it always is",
-// aforge's own state root, which internal/home owns and AFORGE_HOME moves. A
+// codeaf's own state root, which internal/home owns and CODEAF_HOME moves. A
 // caller that reads emptiness as "there is no profile" and goes quiet is
 // therefore silent on the ordinary launch and loud only on the rare one, which
 // is the exact inversion this function exists to stop being retyped: it has
@@ -244,8 +245,8 @@ func ProfilePath(profileDir, name string) string {
 	return home.Join(name)
 }
 
-// BudgetConfigPath is config.json in aforge's state root unless
-// AFORGE_PROFILE_DIR supplies the same alternate root used by measured
+// BudgetConfigPath is config.json in codeaf's state root unless
+// CODEAF_PROFILE_DIR supplies the same alternate root used by measured
 // profiles.
 func BudgetConfigPath(profileDir string) string { return ProfilePath(profileDir, "config.json") }
 

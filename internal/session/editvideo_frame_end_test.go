@@ -41,7 +41,7 @@ func TestAFramePastTheEndOfTheClipIsRefusedToTheModelRatherThanSavedEmpty(t *tes
 	// race for it (tools_media.go), which is why the assertion is about bytes
 	// rather than about entries: what must never exist is a file with something
 	// in it, because that is the one the answer would have handed on.
-	entries, err := os.ReadDir(filepath.Join(workspace, ".aforge-v3", "images"))
+	entries, err := os.ReadDir(filepath.Join(workspace, ".codeaf", "images"))
 	if err != nil {
 		return
 	}
@@ -69,7 +69,7 @@ func TestTheClosingFrameOfTheSameClipIsStillSaved(t *testing.T) {
 	if !strings.Contains(result, "the closing frame of clip.mp4") {
 		t.Errorf("the answer %q does not say which frame of which clip it is", result)
 	}
-	saved := filepath.Join(workspace, ".aforge-v3", "images", onlyFileIn(t, filepath.Join(workspace, ".aforge-v3", "images")))
+	saved := filepath.Join(workspace, ".codeaf", "images", onlyFileIn(t, filepath.Join(workspace, ".codeaf", "images")))
 	if info, err := os.Stat(saved); err != nil || info.Size() == 0 {
 		t.Errorf("the saved frame is empty, which is the thing that must never be reported as saved: %v", err)
 	}

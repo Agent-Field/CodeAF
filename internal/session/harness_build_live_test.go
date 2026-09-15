@@ -7,8 +7,8 @@ package session
 //
 // It is OPT-IN and costs money:
 //
-//	AFORGE_LIVE_DESIGN=1 go test ./internal/session -run LiveDesign -v
-//	AFORGE_LIVE_DESIGN=1 AFORGE_LIVE_MODEL=deepseek/deepseek-v4-pro go test ...
+//	CODEAF_LIVE_DESIGN=1 go test ./internal/session -run LiveDesign -v
+//	CODEAF_LIVE_DESIGN=1 CODEAF_LIVE_MODEL=deepseek/deepseek-v4-pro go test ...
 
 import (
 	"context"
@@ -21,14 +21,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 func liveKey(t *testing.T) string {
 	t.Helper()
-	if os.Getenv("AFORGE_LIVE_DESIGN") == "" {
-		t.Skip("set AFORGE_LIVE_DESIGN=1 to spend real design turns on this")
+	if os.Getenv("CODEAF_LIVE_DESIGN") == "" {
+		t.Skip("set CODEAF_LIVE_DESIGN=1 to spend real design turns on this")
 	}
 	if key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")); key != "" {
 		return key
@@ -39,15 +39,15 @@ func liveKey(t *testing.T) string {
 	if err != nil {
 		t.Skip("no OPENROUTER_API_KEY and no home directory to look in")
 	}
-	data, err := os.ReadFile(filepath.Join(home, ".aforge", "config.json"))
+	data, err := os.ReadFile(filepath.Join(home, ".codeaf", "config.json"))
 	if err != nil {
-		t.Skip("no OPENROUTER_API_KEY and no ~/.aforge/config.json")
+		t.Skip("no OPENROUTER_API_KEY and no ~/.codeaf/config.json")
 	}
 	var config struct {
 		APIKey string `json:"api_key"`
 	}
 	if err := json.Unmarshal(data, &config); err != nil || strings.TrimSpace(config.APIKey) == "" {
-		t.Skip("no OPENROUTER_API_KEY and ~/.aforge/config.json has none")
+		t.Skip("no OPENROUTER_API_KEY and ~/.codeaf/config.json has none")
 	}
 	return strings.TrimSpace(config.APIKey)
 }
@@ -56,7 +56,7 @@ func liveKey(t *testing.T) string {
 // model, through the session's own designer.
 func TestLiveDesignResearchHelper(t *testing.T) {
 	key := liveKey(t)
-	model := os.Getenv("AFORGE_LIVE_MODEL")
+	model := os.Getenv("CODEAF_LIVE_MODEL")
 	if model == "" {
 		model = "deepseek/deepseek-v4-pro"
 	}
@@ -74,12 +74,12 @@ func TestLiveDesignResearchHelper(t *testing.T) {
 	defer agent.Close()
 
 	trials := 1
-	if n := os.Getenv("AFORGE_LIVE_TRIALS"); n != "" {
+	if n := os.Getenv("CODEAF_LIVE_TRIALS"); n != "" {
 		if parsed, err := strconv.Atoi(n); err == nil && parsed > 0 {
 			trials = parsed
 		}
 	}
-	goal := os.Getenv("AFORGE_LIVE_GOAL")
+	goal := os.Getenv("CODEAF_LIVE_GOAL")
 	if goal == "" {
 		goal = "research helper: given a topic, fetch 3 sources and summarize with citations"
 	}

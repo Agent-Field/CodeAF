@@ -11,8 +11,8 @@ package tui3
 import (
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // taskEffortDoor is the fifth door onto a node, beside the four in room.go: the

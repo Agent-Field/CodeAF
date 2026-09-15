@@ -9,16 +9,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // THE FIRST-RUN SETUP, AND THE MODEL DOOR THAT MAY COME BACK.
 //
 // A fresh install used to open on an empty chat and the first thing the product
 // said was a provider error. Now the door lets that launch open with no key
-// (cmd/aforge's chatv3.go) and this screen asks for what a first day needs, in
+// (cmd/codeaf's chatv3.go) and this screen asks for what a first day needs, in
 // TWO steps: the key every model call rides, and then one screen of controls —
-// the day's spending limit, the model you talk to, and the crew aforge works
+// the day's spending limit, the model you talk to, and the crew codeaf works
 // with. Under a minute; every control opens on the value already in force; the
 // way out is `Start a conversation`.
 //
@@ -150,7 +150,7 @@ type setupFlow struct {
 // — a profile that has a crew and no limit is shown both, with the crew already
 // on the value it chose, because a screen that dropped the row a person had
 // answered would read as a different screen every time it opened. The chat model
-// is not in the condition: it resolves from the build and from AFORGE_MODEL until
+// is not in the condition: it resolves from the build and from CODEAF_MODEL until
 // somebody chooses, so a profile is never MISSING one.
 func (a *app) setupSteps() []setupStep {
 	steps := make([]setupStep, 0, 2)
@@ -173,7 +173,7 @@ func (a *app) setupSteps() []setupStep {
 // ABSENCE IS A HOSTED WINDOW. This function used to return on an empty
 // [app.profileDir], reasoning that a door opened without a profile has nowhere
 // to write an answer — and the reasoning was sound about a fact that is not
-// true. [config.ProfileDir] is AFORGE_PROFILE_DIR, which almost nobody exports,
+// true. [config.ProfileDir] is CODEAF_PROFILE_DIR, which almost nobody exports,
 // so the empty string is what very nearly EVERY launch hands this surface, and
 // internal/config has always resolved it to this process's own profile in the
 // state root ([config.ProfilePath]). The guard therefore closed the front door
@@ -640,7 +640,7 @@ func (a *app) setupCommit() bool {
 // setup's refusals were `err.Error()`, so the first sentence a new person could
 // be shown — on the one screen where they have done nothing yet and something
 // has already failed — was a wrapped chain like `write config daily_budget_usd:
-// open /home/…/.aforge/config.json: permission denied`. It names a function, a
+// open /home/…/.codeaf/config.json: permission denied`. It names a function, a
 // key, a path inside the program's own storage and an errno, and there is no act
 // in it. Three lines away this same file already had the right shape twice
 // ([setupKeyShapeWord], [setupNoKeyConnectWord]): the cause, and then what to do.
@@ -660,9 +660,9 @@ const (
 	// closed tab, refused page, a connection that went away mid-flight.
 	setupSignInLostWord = "the browser sign-in did not finish — enter tries again, or paste a key instead"
 	// setupSaveFailedWord is the answer that could not be written down. It names
-	// no path: the folder is aforge's own, a person who needs its name asks
+	// no path: the folder is codeaf's own, a person who needs its name asks
 	// /status, and a permission on a directory is the one thing they can act on.
-	setupSaveFailedWord = "could not save that — the folder aforge keeps your settings in is not writable"
+	setupSaveFailedWord = "could not save that — the folder codeaf keeps your settings in is not writable"
 )
 
 // setupSaid is the line under the box for an error a SETTINGS ROW handed back:
@@ -925,8 +925,8 @@ func setupTitle(s *setupFlow) string {
 // AND EVERY ONE OF THEM NAMES THE PRODUCT FROM [product] AND NEVER FROM A
 // LITERAL. The wordmark three rows above this prose is drawn from that same
 // constant, and when the two were spelled separately the first screen anybody
-// ever sees said `openaf` in the letterforms and `aforge` in the sentence under
-// them.
+// ever sees said one name in the letterforms and a different one in the
+// sentence three rows under them.
 const (
 	setupKeyWord = product + " talks to models on its default service through openrouter, on your key and your card. " +
 		"nothing is sent until you do."

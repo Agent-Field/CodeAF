@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 // theGround and thePersonsRepository are the two paths the whole file is about.
@@ -26,7 +26,7 @@ import (
 const (
 	theGround           = "/work/trees/1"
 	thePersonsCheckout  = "/Users/santoshkumar/Documents/agentfield/code/agentfield"
-	theOtherCheckout    = "/Users/santoshkumar/Documents/agentfield/code/aforge-v2"
+	theOtherCheckout    = "/Users/santoshkumar/Documents/agentfield/code/codeaf"
 	outsideYourCopy     = "is outside your copy"
 	worksInTheGroundNow = "this task works in " + theGround
 )

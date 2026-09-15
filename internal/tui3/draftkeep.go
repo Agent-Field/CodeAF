@@ -224,7 +224,7 @@ const draftUnnamedOwner = "\x00window\x00"
 // named after: the draft file, which is this window's and this conversation's
 // and lives exactly as long as the words do.
 //
-// EVERY PRODUCTION DOOR NAMES A TRANSCRIPT — cmd/aforge sets `SessionFile` and
+// EVERY PRODUCTION DOOR NAMES A TRANSCRIPT — cmd/codeaf sets `SessionFile` and
 // `DraftFile` in the same breath, and the --host welcome carries the engine's own
 // path — so this is the seam and not the road. It exists because the surface
 // ACCEPTS an empty one, and a launch that took it would otherwise lose the

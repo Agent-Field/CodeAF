@@ -15,7 +15,7 @@ Two words this document uses precisely:
 `internal/session` is still one package. The seams below are real files with real owners;
 they are not module boundaries the compiler enforces. The only enforced boundaries in this
 area are the pre-existing package lines: `internal/session` (engine), `internal/remote`
-(client/server protocol), `internal/tui3` (terminal surface), `cmd/aforge` (doors).
+(client/server protocol), `internal/tui3` (terminal surface), `cmd/codeaf` (doors).
 
 ## 1. Seams that exist
 

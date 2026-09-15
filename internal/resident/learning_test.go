@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func TestLearningMomentsAnchorOneFactAndBatchPerJob(t *testing.T) {
@@ -18,16 +18,16 @@ func TestLearningMomentsAnchorOneFactAndBatchPerJob(t *testing.T) {
 	}{
 		{
 			name: "one fact",
-			learned: []Learned{{Scope: "repo:aforge", Kind: store.FactLesson,
+			learned: []Learned{{Scope: "repo:codeaf", Kind: store.FactLesson,
 				Body: "card receipts belong to their originating job\nwith supporting detail"}},
 			want: "· learned — card receipts belong to their originating job",
 		},
 		{
 			name: "batched",
 			learned: []Learned{
-				{Scope: "repo:aforge", Kind: store.FactPlain, Body: "first durable thing"},
-				{Scope: "repo:aforge", Kind: store.FactLesson, Body: "second durable thing"},
-				{Scope: "repo:aforge", Kind: store.FactPlaybook, Body: "third durable thing"},
+				{Scope: "repo:codeaf", Kind: store.FactPlain, Body: "first durable thing"},
+				{Scope: "repo:codeaf", Kind: store.FactLesson, Body: "second durable thing"},
+				{Scope: "repo:codeaf", Kind: store.FactPlaybook, Body: "third durable thing"},
 			},
 			want: "· learned 3 things ▸\n  · learned — first durable thing\n  · learned — second durable thing\n  · learned — third durable thing",
 		},
@@ -58,17 +58,17 @@ func TestLearningMomentShowsSettledExperiment(t *testing.T) {
 	}}, store.Provenance{Origin: store.OriginUser, SessionID: "trial", Intent: "seed evidence"}); err != nil {
 		t.Fatal(err)
 	}
-	first, err := graph.RecordFact("evidence-a", "repo:aforge", store.FactLesson, "buffered reads worked")
+	first, err := graph.RecordFact("evidence-a", "repo:codeaf", store.FactLesson, "buffered reads worked")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := graph.RecordFact("evidence-b", "repo:aforge", store.FactLesson, "direct reads worked")
+	second, err := graph.RecordFact("evidence-b", "repo:codeaf", store.FactLesson, "direct reads worked")
 	if err != nil {
 		t.Fatal(err)
 	}
-	pair, err := graph.RecordUnsettledFact("evidence-a", "repo:aforge", store.UnsettledPair{Approaches: []store.UnsettledApproach{
-		{Approach: "buffered reads", Scope: "repo:aforge", Evidence: []int64{first.Seq}},
-		{Approach: "direct reads", Scope: "repo:aforge", Evidence: []int64{second.Seq}},
+	pair, err := graph.RecordUnsettledFact("evidence-a", "repo:codeaf", store.UnsettledPair{Approaches: []store.UnsettledApproach{
+		{Approach: "buffered reads", Scope: "repo:codeaf", Evidence: []int64{first.Seq}},
+		{Approach: "direct reads", Scope: "repo:codeaf", Evidence: []int64{second.Seq}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestLearningMomentShowsSettledExperiment(t *testing.T) {
 		t.Fatal(err)
 	}
 	reconciler := New(graph, nil, nil).WithDistiller(func(_ context.Context, _, _ string, _ bool) ([]Learned, error) {
-		return []Learned{{Scope: "repo:aforge", Kind: store.FactPlaybook,
+		return []Learned{{Scope: "repo:codeaf", Kind: store.FactPlaybook,
 			Body: "buffered reads win for this parser", Replaces: pair.Seq}}, nil
 	})
 	if err := reconciler.SessionOpened(context.Background(), "trial", "tui", time.Hour); err != nil {
@@ -168,7 +168,7 @@ func TestLearningVisibilitySuppressesDetachedAndEmptyPaths(t *testing.T) {
 	t.Run("detached defers to brief", func(t *testing.T) {
 		graph := openStore(t)
 		settle, reconciler := learningJobFixture(t, graph, "detached", func(_ context.Context, _, _ string, _ bool) ([]Learned, error) {
-			return []Learned{{Scope: "repo:aforge", Kind: store.FactLesson, Body: "learned while away"}}, nil
+			return []Learned{{Scope: "repo:codeaf", Kind: store.FactLesson, Body: "learned while away"}}, nil
 		})
 		if err := reconciler.SessionClosed("detached", "tui"); err != nil {
 			t.Fatal(err)
@@ -185,7 +185,7 @@ func TestLearningVisibilitySuppressesDetachedAndEmptyPaths(t *testing.T) {
 	t.Run("another attached thread preserves the originating anchor", func(t *testing.T) {
 		graph := openStore(t)
 		settle, reconciler := learningJobFixture(t, graph, "originating", func(_ context.Context, _, _ string, _ bool) ([]Learned, error) {
-			return []Learned{{Scope: "repo:aforge", Kind: store.FactLesson, Body: "learning stays with its job"}}, nil
+			return []Learned{{Scope: "repo:codeaf", Kind: store.FactLesson, Body: "learning stays with its job"}}, nil
 		})
 		if _, err := graph.TouchSeen("tui", "new-thread", store.SeenAttached); err != nil {
 			t.Fatal(err)
@@ -226,7 +226,7 @@ func TestRetrospectiveDigestNonzeroOnlyAndSilentWhenEmpty(t *testing.T) {
 			settleRetrospectiveJob(t, graph, index)
 		}
 		reconciler := New(graph, nil, nil).WithReflector(func(_ context.Context, _ []JobSketch) ([]Learned, error) {
-			return []Learned{{Scope: "repo:aforge", Kind: store.FactLesson, Body: "the series proved one stable lesson"}}, nil
+			return []Learned{{Scope: "repo:codeaf", Kind: store.FactLesson, Body: "the series proved one stable lesson"}}, nil
 		}).WithCharterProposals()
 		if err := reconciler.SessionOpened(context.Background(), "reflection", "tui", time.Hour); err != nil {
 			t.Fatal(err)
@@ -331,12 +331,12 @@ func isLearningMomentBody(body string) bool {
 
 // Overnight work learns things with nobody watching. Dropping the moment
 // outright — which is what wiping the map unconditionally did — meant the whole
-// `aforge wake` path taught the notebook and told the user nothing.
+// `codeaf wake` path taught the notebook and told the user nothing.
 func TestLearningMomentsWaitForSomebodyToReadThem(t *testing.T) {
 	graph := openStore(t)
 	settle, reconciler := learningJobFixture(t, graph, "away",
 		func(_ context.Context, _, _ string, _ bool) ([]Learned, error) {
-			return []Learned{{Scope: "repo:aforge", Kind: store.FactLesson,
+			return []Learned{{Scope: "repo:codeaf", Kind: store.FactLesson,
 				Body: "overnight work still teaches something"}}, nil
 		})
 	if err := reconciler.SessionClosed("away", "tui"); err != nil {

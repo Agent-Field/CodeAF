@@ -1,6 +1,6 @@
 # Lane routing assessment — 2026-09-11
 
-Three days of the call log (`~/.aforge/logs/calls.jsonl`, 2026-09-08 to 2026-09-10,
+Three days of the call log (`~/.codeaf/logs/calls.jsonl`, 2026-09-08 to 2026-09-10,
 6,657 finished attempts), a replay of that log through the real chooser, and a live
 probe of every lane those models were served by. The question asked was whether the
 router gives a person the fastest usable answer, how it judges "fast enough", and
@@ -36,8 +36,8 @@ mean with six observations still passes.
 
 ## The wire, recorded
 
-One `aforge exec` against deepseek-v4.1-flash with `--debug` on 2026-09-11 00:15
-(`~/.aforge/logs/trace/150dc017fd15a0b9`). The chooser's decision event said
+One `codeaf exec` against deepseek-v4.1-flash with `--debug` on 2026-09-11 00:15
+(`~/.codeaf/logs/trace/150dc017fd15a0b9`). The chooser's decision event said
 "GMICloud starts in 2.8s and costs about $0.0024 for this answer", alternatives
 Novita and Fireworks. The request went out as:
 
@@ -102,7 +102,7 @@ refuses it because no gate is absolute.
 ## Replay: the chooser is right when it is told the truth and allowed to act
 
 The numbers below were produced by a build-tagged bench that has since been
-replaced by `cmd/aforge-replay` (`make replay`, DESIGN §8 of the recovery design).
+replaced by `cmd/codeaf-replay` (`make replay`, DESIGN §8 of the recovery design).
 That bench fed every answered row of the log into a fresh ledger as a sighting, in
 order, and at every request asked the real chooser what it would send; the oracle
 was the lane with the lowest perceived wait, computed from that lane's own answers

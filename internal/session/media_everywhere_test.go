@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/video"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/video"
 )
 
 // theFourGenerationVerbs is what "the media family" means everywhere below.
@@ -252,7 +252,7 @@ func TestAHarnessBeltLandsItsCutWhereASessionsWouldAndIndexesIt(t *testing.T) {
 	workspace := t.TempDir()
 	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
 	// A BORROWED session: the workspace is the person's repository, so its
-	// deliverables land in the session's own artifacts/ and nothing of aforge's
+	// deliverables land in the session's own artifacts/ and nothing of codeaf's
 	// is dropped in the project (landing.go's ladder, second rung).
 	place := Place{Dir: folder, Workspace: workspace}
 
@@ -268,7 +268,7 @@ func TestAHarnessBeltLandsItsCutWhereASessionsWouldAndIndexesIt(t *testing.T) {
 	if cut := onlyFileIn(t, place.Artifacts()); !strings.HasSuffix(cut, ".mp4") {
 		t.Errorf("a harness landed %s in the session's artifacts/, want the cut", cut)
 	}
-	if stray := filesIn(t, filepath.Join(workspace, ".aforge-v3", "video")); len(stray) != 0 {
+	if stray := filesIn(t, filepath.Join(workspace, ".codeaf", "video")); len(stray) != 0 {
 		t.Errorf("a harness dropped %v in the hidden dot directory inside the person's project", stray)
 	}
 	if rows := ReadArtifacts(index); len(rows) != 1 || rows[0].Kind != "video" {
@@ -286,13 +286,13 @@ func TestAHarnessBeltLandsItsCutWhereASessionsWouldAndIndexesIt(t *testing.T) {
 	if err != nil || isError {
 		t.Fatalf("a harness with no seams could not join two clips: %v %s", err, said)
 	}
-	if cut := onlyFileIn(t, filepath.Join(nowhere, ".aforge-v3", "video")); !strings.HasSuffix(cut, ".mp4") {
+	if cut := onlyFileIn(t, filepath.Join(nowhere, ".codeaf", "video")); !strings.HasSuffix(cut, ".mp4") {
 		t.Errorf("a harness with no Place landed %s, want the legacy rung the essay promises", cut)
 	}
 }
 
 // runHarnessTool calls one tool off a harness belt by name — the same hand the
-// run's bridge reaches for it with (cmd/aforge's chatv3_harness.go).
+// run's bridge reaches for it with (cmd/codeaf's chatv3_harness.go).
 func runHarnessTool(t *testing.T, belt []bare.Tool, name, arguments string) (string, bool, error) {
 	t.Helper()
 	for _, tool := range belt {

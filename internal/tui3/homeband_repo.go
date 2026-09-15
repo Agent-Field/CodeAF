@@ -17,7 +17,7 @@ type homeRepoReading struct {
 	line string
 	// branch is the head this workspace is on, kept beside the whole clause list
 	// rather than parsed back out of it. The composer layer states where a task
-	// will run as `in ~/aforge-v2, on master` (SCREEN 2e) and wants that one word
+	// will run as `in ~/codeaf, on master` (SCREEN 2e) and wants that one word
 	// without the dirty count beside it — and reading it back off `line` would be
 	// a second parser for a string this file just built.
 	branch string
@@ -78,7 +78,7 @@ func (a *app) tookHomeRepo(msg homeRepoMsg) {
 // correct; what neither of those bounds is the WALL. The command was given a
 // whole second of ceiling, and a repository big enough to need it is a
 // repository a person browsing home meets on their first `↓` — measured at 7.7ms
-// on aforge's own worktree, and seconds on a cold cache or a network mount, with
+// on codeaf's own worktree, and seconds on a cold cache or a network mount, with
 // every key and every motion queued behind it. It is exactly the fault
 // reasoninglevel.go took off the pointer's way over a connection, made locally.
 //

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/verify"
+	"github.com/Agent-Field/codeaf/internal/verify"
 )
 
 // TestACheckAlreadyRunOverAnUnchangedTreeIsNotRunAgain pins C1: an answer over

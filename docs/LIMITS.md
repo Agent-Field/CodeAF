@@ -1,4 +1,4 @@
-# The spend rails — every money limit aforge ships with
+# The spend rails — every money limit codeaf ships with
 
 One page for every dollar figure in the build: what it bounds, what the person
 sees when it fires, what zero means, and where the number lives so that raising
@@ -29,7 +29,7 @@ zero already meant something narrower and truer.
 | --- | --- | --- | --- | --- | --- |
 | **daily budget** | `daily_budget_usd` | $20 | **$500** | posts a blocking question — *"Daily budget reached -- $x spent of $y. Say the word and I'll continue"*. Nothing dies. | no limit |
 | **ask before spending** | `plan_consent_usd` | $3 | **$100** | a planned job above this estimate quotes its step count and price and waits | never asks |
-| **practice budget** | `practice_budget_usd` | $2 | **$50** | aforge's own self-practice stops for the day | **practice off** — see below |
+| **practice budget** | `practice_budget_usd` | $2 | **$50** | codeaf's own self-practice stops for the day | **practice off** — see below |
 | **session ceiling** | `session.spendRailUSD` | $0 | **$0** (unchanged) | refuses the NEXT turn; the turn in flight always finishes; the refused message is never journaled | no ceiling |
 
 Each row grows a **receipt** — the dim line beside its value — that says what a
@@ -62,13 +62,13 @@ watching, so it is the one pocket that always has a bottom.
 
 | Rail | Where | Default | Note |
 | --- | --- | --- | --- |
-| unattended session budget | `internal/session/principal.go` `Budget.USD` / `Budget.Wall` | **unset** | `--max-cost` / `--max-hours` (`AFORGE_MAX_COST`, `AFORGE_MAX_HOURS`), `--yolo` only. Unset is no ceiling: *"the $5.00 this was given is spent"* only ever fires on a figure somebody typed. |
+| unattended session budget | `internal/session/principal.go` `Budget.USD` / `Budget.Wall` | **unset** | `--max-cost` / `--max-hours` (`CODEAF_MAX_COST`, `CODEAF_MAX_HOURS`), `--yolo` only. Unset is no ceiling: *"the $5.00 this was given is spent"* only ever fires on a figure somebody typed. |
 | task subtree ceiling | `internal/store/task_budget.go` | **unset** | a `Set` flag separates "ungoverned" from "small", so nothing in the product installs one |
 | errand cap | `internal/tui3` `ErrandOrders.CapUSD` | **0** | 0 is the launch's own rail, and therefore usually no cap at all |
 
 ### Not money, listed so nothing here is mistaken for a spend rail
 
-`AFORGE_NODE_BUDGET` (60 nodes) and `--budget` on `aforge run` / `aforge exec`
+`CODEAF_NODE_BUDGET` (60 nodes) and `--budget` on `codeaf run` / `codeaf exec`
 (150 000 **tokens**) are counts. A task's own bounds are steps and time —
 `taskDeadline` 60m renewable four times, `taskMaxSteps` 200, `taskNoProgress` 6
 — and a task carries **no dollar cap of its own**: its money bound is whatever
@@ -77,26 +77,26 @@ at which a first-run tip arms, not a ceiling.
 
 ## Where each number is set, in the order it wins
 
-Environment pin → the row written into `~/.aforge/config.json` → the built-in
+Environment pin → the row written into `~/.codeaf/config.json` → the built-in
 default. A malformed *persisted* value falls back to the default rather than
 stopping a launch; a malformed *environment* value is the operator's own
 explicit instruction and still errors.
 
 | Rail | Environment | Settings row |
 | --- | --- | --- |
-| daily budget | `AFORGE_DAILY_BUDGET` | yes |
-| plan consent | `AFORGE_PLAN_CONSENT` | yes |
-| practice carve-out | `AFORGE_PRACTICE_BUDGET` | yes |
+| daily budget | `CODEAF_DAILY_BUDGET` | yes |
+| plan consent | `CODEAF_PLAN_CONSENT` | yes |
+| practice carve-out | `CODEAF_PRACTICE_BUDGET` | yes |
 | session ceiling | — | yes (also per-project) |
-| lifted-tier cap | `AFORGE_RESPONSE_LIFT_CAP` | **no** — plumbing, turned when a provider misbehaves or a run is held to a price |
+| lifted-tier cap | `CODEAF_RESPONSE_LIFT_CAP` | **no** — plumbing, turned when a provider misbehaves or a run is held to a price |
 | standing per-firing | — | `per_run_usd` on the `stand` tool, per item |
 | adaptive-run tank | — | the composer's third line, per run |
-| unattended budget | `AFORGE_MAX_COST` / `AFORGE_MAX_HOURS` | no — flags |
+| unattended budget | `CODEAF_MAX_COST` / `CODEAF_MAX_HOURS` | no — flags |
 
 ## One source of truth
 
 Every figure above appears **once**, in the constant named in the table, and is
-interpolated everywhere it is shown: `aforge --help`'s environment table, the
+interpolated everywhere it is shown: `codeaf --help`'s environment table, the
 first-run ceiling screen, the `stand` tool's own JSON schema, the settings
 rows. Three of them used to be written out separately —
 `standing.DefaultPerRunUSD` was a literal `0.15` in the store, in the head's
@@ -107,7 +107,7 @@ the engine and in the composer. Changing a rail is now one edit, and this page.
 ## Still to come
 
 The right answer is not a large default at all: it is **asking**. See
-[issue #83](https://github.com/Agent-Field/aforge-v2/issues/83) — "Onboarding asks
+[issue #83](https://github.com/Agent-Field/codeaf/issues/83) — "Onboarding asks
 for spend limits (daily, per plan, per task, standing) with 'no limit' as a
 first-class option". The large defaults above are what keeps nobody
 blocked in the meantime.

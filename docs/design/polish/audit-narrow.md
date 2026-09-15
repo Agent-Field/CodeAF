@@ -6,16 +6,16 @@ lane of this wave fixed the row heights and the eight-row cap, so what is below 
 left: three things a person at that width still could not DO, and the rows that were found
 beside them and left for the lanes that hold those files.
 
-Frames are under `docs/design/polish/frames/`, prefixed `narrow-`, captured from `bin/aforge`
+Frames are under `docs/design/polish/frames/`, prefixed `narrow-`, captured from `bin/codeaf`
 in a real terminal against the demo home. Each has a `.ans` twin with the colour.
 
 ---
 
-1. At sixty columns the place bar collapses to the word `home` and nothing says the other six exist — <repo>/internal/tui3/pages.go:495 (`placeTabBar`), whose ladder had exactly three rungs: every place, then the places with a count, then `barKeeps` alone — the seven words plus the padding each chip carries are 57 cells and the air between them (`tabGap`, settings.go:2339) is six more, so a sixty-column window overshoots by three and falls straight past the middle rung, because on a quiet machine no place wears a count; what is left is ` home` and 54 empty cells on the one row whose whole job is telling a person this program has rooms, while the pulse above it spends twelve cells on `thu 12:01am` — a developer who opened aforge in a split pane cannot discover six of the seven places at all, and the frame HAS the cells and spends them on the wrong row — fix shape: a rung between "all seven" and "one" that gives up the AIR rather than a word (57 ≤ 60, so every word survives the tier this is about), and under that a fill in the bar's own order ending in a dim count of what did not fit (`+2 more`), with the route (`tab`) staying on the foot where it already is — sev: high — frames: `narrow-home.60x30.txt` (line 2) → `narrow-home-after.60x30.txt` (line 2), `narrow-tasks-after.48x24.txt`, `narrow-tasks-after.56x24.txt`
+1. At sixty columns the place bar collapses to the word `home` and nothing says the other six exist — <repo>/internal/tui3/pages.go:495 (`placeTabBar`), whose ladder had exactly three rungs: every place, then the places with a count, then `barKeeps` alone — the seven words plus the padding each chip carries are 57 cells and the air between them (`tabGap`, settings.go:2339) is six more, so a sixty-column window overshoots by three and falls straight past the middle rung, because on a quiet machine no place wears a count; what is left is ` home` and 54 empty cells on the one row whose whole job is telling a person this program has rooms, while the pulse above it spends twelve cells on `thu 12:01am` — a developer who opened codeaf in a split pane cannot discover six of the seven places at all, and the frame HAS the cells and spends them on the wrong row — fix shape: a rung between "all seven" and "one" that gives up the AIR rather than a word (57 ≤ 60, so every word survives the tier this is about), and under that a fill in the bar's own order ending in a dim count of what did not fit (`+2 more`), with the route (`tab`) staying on the foot where it already is — sev: high — frames: `narrow-home.60x30.txt` (line 2) → `narrow-home-after.60x30.txt` (line 2), `narrow-tasks-after.48x24.txt`, `narrow-tasks-after.56x24.txt`
 
 2. Home's foot is sliced mid-word, so it names a key and then eats it — <repo>/internal/tui3/pages.go:1607 (`placeMsgLine`, which handed the sentence to `fit`) and homephone.go:519, 786, 788, 795 — the places' hint lines were put on `hintFit` by another lane this wave, but home's foot is a different path and never got it: at sixty columns it reads `open in another window — enter again to move it here (it …`, which is `takeoverArmedWord` (takeover.go:67) cut by a character ruler that has no idea what a clause is — a developer reading it learns that `enter` moves the conversation and then loses the sentence that says what that costs, and the phone did the same to `type to search or start something new · ↑↓ pick · enter open` — fix shape: one fitter for every foot on the surface — `hintFit` keeps its ranked `·` ladder and grows a second one for a foot that is a SENTENCE rather than a key list, dropping the bracketed gloss first and the dash elaboration second, so what a narrow frame is left with is the statement; then route `placeMsgLine` and the phone's four sites through it, and pin the law structurally so a new one cannot land — sev: high — frames: `narrow-home.60x30.txt` (line 30) → `narrow-home-after.60x30.txt` (line 30), `narrow-home-after.80x24.txt` (line 24), `narrow-home-after.160x50.txt` (line 50, whole)
 
-3. A conversation with no title draws a title-cased hex id as its name — <repo>/internal/tui3/home.go:4782 (`homeName`), which passed a title and a path to `humanName` (resume.go:275) whose last rung is `titleCase(unpackName(sessionStem(File)))` — under Decision 26 a session folder is named with an id, and the row a person is most likely to be standing in is the one they just opened, so home draws `○ 927D303242f9d00e     aforge-v2 here`; at sixty columns that hex is a third of the row, in the one column that exists to let a person match names, and title-casing it is worse than drawing nothing because it reads as a name somebody chose — `homeName` never had the picker's middle rung either, because a `session.SessionRow` carries no opening line and home may not open a transcript on a draw — fix shape: home's own ladder in names.go — the title, then the folder's name ONLY where it reads as words, then the plain word this surface already uses for the fact (`new conversation`, hop.go:609); an id-shaped stem is refused by the guard `readableName` already owns — sev: med — frames: `narrow-home.60x30.txt` (line 24) → `narrow-home-after.60x30.txt` (line 24), `narrow-home-after.120x40.txt` (line 24)
+3. A conversation with no title draws a title-cased hex id as its name — <repo>/internal/tui3/home.go:4782 (`homeName`), which passed a title and a path to `humanName` (resume.go:275) whose last rung is `titleCase(unpackName(sessionStem(File)))` — under Decision 26 a session folder is named with an id, and the row a person is most likely to be standing in is the one they just opened, so home draws `○ 927D303242f9d00e     codeaf here`; at sixty columns that hex is a third of the row, in the one column that exists to let a person match names, and title-casing it is worse than drawing nothing because it reads as a name somebody chose — `homeName` never had the picker's middle rung either, because a `session.SessionRow` carries no opening line and home may not open a transcript on a draw — fix shape: home's own ladder in names.go — the title, then the folder's name ONLY where it reads as words, then the plain word this surface already uses for the fact (`new conversation`, hop.go:609); an id-shaped stem is refused by the guard `readableName` already owns — sev: med — frames: `narrow-home.60x30.txt` (line 24) → `narrow-home-after.60x30.txt` (line 24), `narrow-home-after.120x40.txt` (line 24)
 
 4. The job page's key row is still painted through a plain `fit` and is cut mid-word — <repo>/internal/tui3/jobpage.go:386 (`paintHint(fit(keys, width-2), …)`) — it is row 2's defect in another room: on a narrow frame the job page's foot ends in half a chord, and the way out is the half that goes — a developer watching a job on a split pane cannot see which key closes it — fix shape: one character — `hintFit` in place of `fit`, exactly as pages.go and homephone.go now do; the structural law `TestEveryHintIsFittedByDroppingClausesNotByCuttingCharacters` already names this file in `hintsStillCutByCharacter` and will tell whoever lands it to delete the line — sev: med — frames: none captured; `jobpage.go` is held by the jobs lane this wave and was not touched
 
@@ -88,8 +88,8 @@ carries no opening line, and home may not open a transcript on a draw. Files:
 `internal/tui3/names.go`, `internal/tui3/home.go`; manual: `home.md` (*What is new
 conversation on my home list*). Test: `TestAConversationWithNoTitleIsNamedInWordsNotHex`
 (`internal/tui3/narrow_test.go`). Frames: `narrow-home.60x30.txt` (line 24,
-`○ 927D303242f9d00e     aforge-v2 here`) → `narrow-home-after.60x30.txt` (line 24,
-`○ new conversation     aforge-v2 here`), `narrow-home-after.120x40.txt` (line 24).
+`○ 927D303242f9d00e     codeaf here`) → `narrow-home-after.60x30.txt` (line 24,
+`○ new conversation     codeaf here`), `narrow-home-after.120x40.txt` (line 24).
 
 **Row 6 — the top line gives way one segment at a time, and the clock goes first.**
 `pulseLine` was all-or-nothing: `gap := width - name - tail - 1; if gap < 1 { return name }`,
@@ -99,12 +99,12 @@ without also saying what o'clock it was. It walks a ladder now (`pulseRungs`), w
 first, and what a narrow frame shows is a SUBSET of what a wide one shows:
 
 ```
- aforge   12 want you · 4 moving · $123.45 / $500.00 · thu 1:11pm      (160, 120, 80)
- aforge   12 want you · 4 moving · $123.45 / $500.00                   (60)
- aforge   12 want you · 4 moving · $123.45                             (50)
- aforge   12 want you · 4 moving                                       (40)
- aforge   12 want you                                                  (30)
- aforge                                                                (16)
+ codeaf   12 want you · 4 moving · $123.45 / $500.00 · thu 1:11pm      (160, 120, 80)
+ codeaf   12 want you · 4 moving · $123.45 / $500.00                   (60)
+ codeaf   12 want you · 4 moving · $123.45                             (50)
+ codeaf   12 want you · 4 moving                                       (40)
+ codeaf   12 want you                                                  (30)
+ codeaf                                                                (16)
 ```
 
 THE RANKING IS `clock → allowance → spend → moving → want you`, and the argument for it is
@@ -145,7 +145,7 @@ law in the code:
 - **A NOTE IS NOT A KEY SHEET, AND THE TWO ARE FITTED FROM OPPOSITE ENDS.** `hintFit`
   protects the LAST clause because on a key sheet that is the way out. A note is a sentence
   whose FIRST clause is the answer: settings says `saved to your profile · a project's own
-  .aforge-v3/config.json is a hand edit`, and `hintFit` would have kept the aside about a
+  .codeaf-v3/config.json is a hand edit`, and `hintFit` would have kept the aside about a
   file most people never open and dropped the answer. So `noteFit` is `hintFit`'s twin with
   the other end protected — it drops trailing `·` clauses, then falls through to the same
   `hintDropClause` sentence ladder — and the settings note and the macOS chord note go
@@ -163,7 +163,7 @@ law in the code:
 Before and after, computed at the widths each line bites at:
 
 ```
-settings foot, 60  saved to your profile · a project's own .aforge-v3/config…
+settings foot, 60  saved to your profile · a project's own .codeaf-v3/config…
                    saved to your profile
 chord note,    60  your terminal sends ⌥ as a letter — turn on "use option a…
                    your terminal sends ⌥ as a letter
@@ -215,7 +215,7 @@ current binary — `keep-taskpage.60x30.txt` (line 30,
 
 **Row 8 — the resting foot names places that are on the frame.**
 Recorded closed rather than fixed, which is what this row's own text asked for. Frames
-captured this pass from `bin/aforge`: `keep-home.60x30.txt` — line 2
+captured this pass from `bin/codeaf`: `keep-home.60x30.txt` — line 2
 `  home  tasks  standing  memory  spend  search  settings`, line 30
 `type to search or start something new · tab next place`, whole — against
 `narrow-home.60x30.txt` (line 2, ` home`, under the same foot); and `keep-home.50x24.txt`

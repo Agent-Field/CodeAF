@@ -77,7 +77,7 @@ nothing.`
 //
 // It is exported because the bit is not the planner's to compute. Whoever holds
 // the request holds the judgment — the chat session already makes it in the
-// delivery gate, and `aforge run` can make it from the goal — and everything
+// delivery gate, and `codeaf run` can make it from the goal — and everything
 // below this line only needs the answer. See Graph.FileShaped for the wiring.
 func DeliveryLaw(fileShaped bool) string {
 	if fileShaped {

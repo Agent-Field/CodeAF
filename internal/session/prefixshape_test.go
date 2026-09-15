@@ -26,8 +26,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // prefixShape is one door's config, named as a person would name it.
@@ -75,7 +75,7 @@ var prefixShapes = []prefixShape{{
 	},
 }}
 
-// conversationDoor wires what cmd/aforge's interactive door wires, including the
+// conversationDoor wires what cmd/codeaf's interactive door wires, including the
 // two seams that decide whole sections of the page: somebody watching who can
 // answer a card, and a store for `stand` to leave something in.
 func conversationDoor(t *testing.T, config *Config) {

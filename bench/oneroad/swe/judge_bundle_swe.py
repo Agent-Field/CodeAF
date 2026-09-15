@@ -26,7 +26,7 @@ def read(path, cap=None):
 
 
 def report():
-    if meta["harness"].startswith("aforge"):
+    if meta["harness"].startswith("codeaf"):
         pieces = []
         for s in glob.glob(os.path.join(cell, "profile/v3/projects/*/*")):
             for line in read(os.path.join(s, "transcript.jsonl")).splitlines():

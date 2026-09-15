@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE RAIL DRAWS WHAT THE ENGINE CALLS THE WORK, AND NOTHING ELSE.

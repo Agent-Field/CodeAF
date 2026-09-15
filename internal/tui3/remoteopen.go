@@ -14,9 +14,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/cas"
-	"github.com/Agent-Field/aforge-v2/internal/filedoor"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/cas"
+	"github.com/Agent-Field/codeaf/internal/filedoor"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // OPENING A FILE THAT IS ON ANOTHER MACHINE, WITH THIS MACHINE'S OWN VIEWER.
@@ -68,12 +68,12 @@ import (
 // `3f9a…c17b` in somebody's window title and in their recent-files menu. The
 // mirror is the same bytes under the name they actually have:
 //
-//	~/.aforge/v3/remote/mirror/<host>/<the engine's own path>
+//	~/.codeaf/v3/remote/mirror/<host>/<the engine's own path>
 //
 // It is HARDLINKED from the blob where the filesystem allows it, so the second
 // copy costs an inode and no bytes, and copied where it does not (a store and a
 // mirror on different devices, which is what happens the moment somebody points
-// AFORGE_HOME at another disk). Either way the file is read-only, which is not
+// CODEAF_HOME at another disk). Either way the file is read-only, which is not
 // an accident: THE MIRROR IS BYTES TO LOOK AT. Editing it changes nothing on the
 // machine that owns the file, this wave has no write-back, and a read-only copy
 // is the surface saying so in the one language every editor understands.
@@ -347,7 +347,7 @@ func (r *remoteFiles) mirror(target string, blob remoteBlob) (string, error) {
 	}
 	// A LINK ACROSS DEVICES IS NOT AN ERROR TO REPORT, it is the other case: the
 	// store and the mirror are on different filesystems, which is what happens
-	// the moment somebody points AFORGE_HOME somewhere else. Copy, and say
+	// the moment somebody points CODEAF_HOME somewhere else. Copy, and say
 	// nothing about it — a person opening a file does not need to know which of
 	// two ways their filesystem allowed.
 	if err := copyFileReadOnly(source, mirror); err != nil {
@@ -357,11 +357,11 @@ func (r *remoteFiles) mirror(target string, blob remoteBlob) (string, error) {
 }
 
 // mirrorPath is where one file from one machine lands, and it is the plan's own
-// shape: ~/.aforge/v3/remote/mirror/<host>/<the engine's absolute path>.
+// shape: ~/.codeaf/v3/remote/mirror/<host>/<the engine's absolute path>.
 //
 // THE HOST IS A DIRECTORY NAME AND THE ENGINE'S PATH IS THE REST OF IT, which is
 // what makes two machines with the same file layout two different trees here —
-// and what makes `ls ~/.aforge/v3/remote/mirror` the answer to "whose files am I
+// and what makes `ls ~/.codeaf/v3/remote/mirror` the answer to "whose files am I
 // holding".
 //
 // It answers "" for anything it will not write. The path came off the wire, and
@@ -470,5 +470,5 @@ const (
 	// filesCacheWord is this machine's own state directory refusing to hold the
 	// copy. It says WHERE rather than WHAT, because every way it can happen —
 	// no room, no permission, a read-only home — is answered in the same place.
-	filesCacheWord = "there is nowhere to keep a copy of it on this machine · check ~/.aforge"
+	filesCacheWord = "there is nowhere to keep a copy of it on this machine · check ~/.codeaf"
 )

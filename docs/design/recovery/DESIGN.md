@@ -14,7 +14,7 @@ sibling for the other question, which today is answered by eleven controllers:
 
 ## 1. What the log says
 
-Every model call this build makes writes a row to `~/.aforge/logs/calls.jsonl`.
+Every model call this build makes writes a row to `~/.codeaf/logs/calls.jsonl`.
 Over the ten days 2026-08-31 → 2026-09-10 that is 16,370 finished attempts. The
 census (`scripts/callcensus`, §8) says:
 
@@ -307,7 +307,7 @@ Every wave runs its suites on the Spark, never on the laptop.
 
 | wave | state | lands | number it moves |
 | --- | --- | --- | --- |
-| **R0 see** | **landed #852** | `scripts/callcensus` committed and run nightly on Spark against `~/.aforge/logs/calls.jsonl` (a `bench/` target); rows record `served` on every finish, cost and tokens on failures, `retry_after`, and an honest `deadline_ms`; `cost_s` NaN/Inf fixed at the source and the belief file compacts again | the table in §1 becomes a nightly metric |
+| **R0 see** | **landed #852** | `scripts/callcensus` committed and run nightly on Spark against `~/.codeaf/logs/calls.jsonl` (a `bench/` target); rows record `served` on every finish, cost and tokens on failures, `retry_after`, and an honest `deadline_ms`; `cost_s` NaN/Inf fixed at the source and the belief file compacts again | the table in §1 becomes a nightly metric |
 | **R1 never repeat** | **landed #850** | body encoded per move; refusing machine excluded on the next; `Retry-After` honoured only when alone; ledger keyed on `served`; `Tools`/`Uptime`/`Status` demoted to priors with a probe | same-lane chain share 53 % → < 5 %; max identical sends 17 → 2 |
 | **R2 one classifier** | **landed #854** | one `Evidence` for the three 404 rules; `isRetryable` regex deleted; `provider/verdict.go` renamed out of the way; `canWalk` → `walk` as a commitment, `exhausted()` deleted | the three-classifier bug class cannot recur; law test: one `Classify` call site per package |
 | **R3 one budget** | **landed #858**, finished by **R3b, this change** | `Plan` shared by hazard and dispatcher; `retry.go`'s loop, the hedge race and the relaxation ladder become `next()`; `fallbackChain` model hop removed from the adapter; task node and errand call the dispatcher | attempts × arms × rungs → one deadline; task never dies on the wire |
@@ -413,7 +413,7 @@ seconds with a `2 of N` line on screen and no `API error` string anywhere.
 
 ## 8. The census
 
-`cmd/aforge-census` (`make census LOG=…`, #852) reads `calls.jsonl` and prints
+`cmd/codeaf-census` (`make census LOG=…`, #852) reads `calls.jsonl` and prints
 §1's table. It groups by a normalised error signature (model, lane, numbers and
 ids stripped), reconstructs chains as (tag, node, model, rising attempt,
 ≤ 15 min gap), and reports lane health as clean-200 rate and median latency per
@@ -428,7 +428,7 @@ family rather than folding them into the wall's count.
 
 ### How a chooser change is judged
 
-**A change to the machine chooser is judged by `cmd/aforge-replay` (`make replay`),
+**A change to the machine chooser is judged by `cmd/codeaf-replay` (`make replay`),
 not by a screenshot.** The census above says what went wrong; this says what a
 different policy would have done instead. It walks the same `calls.jsonl` in time
 order, teaches each candidate exactly the sightings and refusals that had arrived

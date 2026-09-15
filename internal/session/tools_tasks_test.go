@@ -546,9 +546,9 @@ func TestABareIdNamesThisConversationsTaskAndNotAnotherConversationsRow(t *testi
 	}
 }
 
-// HANDING A DECISION TO AFORGE IS A PROMISE ITS OWN DOOR HAS TO BE ABLE TO KEEP.
+// HANDING A DECISION TO codeaf IS A PROMISE ITS OWN DOOR HAS TO BE ABLE TO KEEP.
 //
-// The person presses "let aforge decide", the engine marks the node and hands the
+// The person presses "let codeaf decide", the engine marks the node and hands the
 // model a line about it, and the model answers with `tasks … resolve`. That is
 // one road, and it ran through the id collision above: the person's door found
 // the node by id and the model's door found somebody else's row, so the card went
@@ -601,7 +601,7 @@ func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
 	}
 }
 
-// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. Pressing "let aforge decide"
+// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. Pressing "let codeaf decide"
 // twice sent the model two identical lines about one decision it was already
 // holding; the answer now is the plain fact.
 func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) {
@@ -657,15 +657,15 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 	}
 }
 
-// TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing is the same press
+// TestAnsweringLetCodeafDecideTwiceStandsRatherThanRefusing is the same press
 // from the OTHER side — the door a person's key goes through
 // ([Agent.applyLanding]). The row somebody is looking at was drawn before the
 // hand-over reached it, so a second press is a press on a stale card and the
 // state it asks for is the state that already holds; answering it with a
 // refusal would put trouble on a card whose question was answered correctly.
 // Every other refusal on that key is still handed back.
-func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
-	// The stale card is pressed WHILE aforge is holding the decision, so the
+func TestAnsweringLetCodeafDecideTwiceStandsRatherThanRefusing(t *testing.T) {
+	// The stale card is pressed WHILE codeaf is holding the decision, so the
 	// turn the first press woke has to still be in front of the model when the
 	// second one lands — see the sibling test above for why a completer that
 	// answers would be racing the end-of-turn floor for that fact (#1020).
@@ -698,7 +698,7 @@ func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
 		t.Fatalf("the model has been told to decide this %d times, want the %d the first press said", again, said)
 	}
 	if node := agent.taskNode(id); node == nil || node.decidedBy() != TaskAskOwnerModel {
-		t.Fatal("the node is not held by aforge after two presses")
+		t.Fatal("the node is not held by codeaf after two presses")
 	}
 	// AND A REFUSAL THAT IS NOT THIS ONE STILL ARRIVES: taking the decision back
 	// and settling it makes the next press a press on work that has stopped

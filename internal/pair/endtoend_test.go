@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/relay"
-	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // liveRelay starts a real relay and hands back its address.
@@ -94,11 +94,11 @@ func (r *tap) bytes() []byte {
 // A MACHINE SERVES, A DEVICE PAIRS WITH A CODE, AND THEN A REAL SESSION
 // CONVERSATION CROSSES THE INTERNET THROUGH A RELAY THAT CANNOT READ IT.
 //
-// This is the design doc's six lines, run: `aforge serve` on one side,
-// `aforge chat --at <name>` on the other, with internal/remote's own Dial and
+// This is the design doc's six lines, run: `codeaf serve` on one side,
+// `codeaf chat --at <name>` on the other, with internal/remote's own Dial and
 // Serve at the two ends and nothing between them but the tunnel.
 func TestPairingThenAWholeConversationThroughARelayThatCannotReadIt(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	_, upstream := liveRelay(t)
 	watched := newTap(t, upstream)
 	t.Setenv(RelayEnv, watched.address)
@@ -234,7 +234,7 @@ func openWhenReady(ctx context.Context, reach Reach) (*Tunnel, error) {
 // Revocation is the engine machine's decision, and this is that decision being
 // made after the pairing already happened.
 func TestARevokedDeviceIsTurnedAwayByTheMachineItself(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	_, address := liveRelay(t)
 	t.Setenv(RelayEnv, address)
 

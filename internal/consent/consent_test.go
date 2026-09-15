@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/profile"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/profile"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // consentGraph builds one planned job of the given width, priced by a journal

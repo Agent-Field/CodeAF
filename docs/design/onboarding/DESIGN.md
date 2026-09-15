@@ -2,7 +2,7 @@
 
 *DRAFT — under review, not landed. Opened 2026-09-09 as a draft pull request for the
 owner's visual review; nothing here has merged and the wording may still move.
-Issue [#208](https://github.com/Agent-Field/aforge-v2/issues/208).
+Issue [#208](https://github.com/Agent-Field/codeaf/issues/208).
 The code is `internal/tui3/onboarding.go` (the controls screen), `internal/tui3/firstrun.go`
 (the flow and the connection step) and `internal/tui3/welcome.go` (the first conversation).*
 
@@ -16,7 +16,7 @@ A setting belongs on the first screen when all three are true:
 
 1. it is **necessary to work**, or
 2. it **materially changes the first experience**, and
-3. it **can be understood before the person has used aforge**.
+3. it **can be understood before the person has used codeaf**.
 
 A setting can be important and still fail (3). Tool permissions are the clearest case:
 nobody can usefully write exception rules before they have seen a tool ask for something,
@@ -62,7 +62,7 @@ settings registry.
 
 - **Every value is the resolved one.** The limit, the model and the crew are read back
   through `config.Settings` and `internal/config`; an environment variable that owns a row
-  is named (`set by AFORGE_DAILY_BUDGET`) rather than quietly overwritten, and one that
+  is named (`set by CODEAF_DAILY_BUDGET`) rather than quietly overwritten, and one that
   merely seeds a value says `from …` because a choice made here outranks it.
 - **It writes only what it was given.** Leaving writes the day's limit. It writes a crew
   only where the person chose one here, or where the profile had none at all —

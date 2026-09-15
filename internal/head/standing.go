@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/shaped"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 const standingCompilerPrompt = `You compile durable intent into one inert charter draft.

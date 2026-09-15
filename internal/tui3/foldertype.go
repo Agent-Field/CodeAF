@@ -11,7 +11,7 @@ package tui3
 //
 //   - ONE CELL, FROM THE BLOCK THIS SURFACE ALREADY DRAWS. Every glyph below is
 //     in the U+25A0 geometric-shapes block, which is single-width in every
-//     terminal font aforge has been run in, and three of them (`▸`, `◆`, `▪`)
+//     terminal font codeaf has been run in, and three of them (`▸`, `◆`, `▪`)
 //     are already on this surface elsewhere. There are NO Nerd Font private-use
 //     characters and no emoji: a private-use codepoint is tofu on a font that
 //     does not carry it, and an emoji is two cells wide on some terminals and
@@ -28,7 +28,7 @@ package tui3
 // being taught; a mark per language would be a second alphabet on the sheet.
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"path/filepath"
 	"strings"
 )
@@ -176,7 +176,7 @@ func folderKindOf(name string) folderKind {
 		return folderKindBundle
 	}
 	// A name with no extension at all is very often a program — `Makefile`,
-	// `Dockerfile`, `aforge` — but "very often" is not a fact about this file, so
+	// `Dockerfile`, `codeaf` — but "very often" is not a fact about this file, so
 	// it draws the quiet mark rather than a guess dressed as one.
 	return folderKindPlain
 }

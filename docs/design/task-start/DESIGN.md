@@ -115,7 +115,7 @@ it asks for": the message's instruction, not the piece's own reading of its shar
   small burst; at twenty it is twenty checkouts and twenty builds starting against a
   reading taken before any of them. That is the governor's shape, not the cap's, and it
   is not worked around in the cap. It was issue
-  [#878](https://github.com/Agent-Field/aforge-v2/issues/878), fixed in the governor by
+  [#878](https://github.com/Agent-Field/codeaf/issues/878), fixed in the governor by
   the last section of this document.
 
 ### The governor seam (#878)
@@ -160,10 +160,10 @@ carry. The snapshot rung grounded the same repository without a word.
   then `its world was made in <time>`. The climb is the log's alone. The worker's brief
   is unchanged.
 - **A fork that could not be made is remembered for its ground** in
-  `~/.aforge/v3/universe-falls.json` (`groundfalls.go`). The next node on that ground
+  `~/.codeaf/v3/universe-falls.json` (`groundfalls.go`). The next node on that ground
   skips the rung before touching furrow, and its log says
   `a fork of the whole folder was not tried`, with the reason and when it last failed.
-  The memory holds only while the aforge build (`buildinfo.Identity`) and the furrow
+  The memory holds only while the codeaf build (`buildinfo.Identity`) and the furrow
   program (`furrow.Program`: path, size, mtime) both match the failure. A change to
   either end tries again, and a fork that succeeds forgets the fall. A task the person
   stopped mid-fork is not a fall.
@@ -221,7 +221,7 @@ tree another way.
 
 | per 8-call step | before | after, with an edit and two bash | after, read-only |
 | --- | --- | --- | --- |
-| aforge-v2 clone, 5,706 files | 61.6 ms | 8.3 ms | 0 |
+| codeaf clone, 5,706 files | 61.6 ms | 8.3 ms | 0 |
 | 50-file repository | 11.3 ms | 1.5 ms | 0 |
 
 ## The admission governor: a reservation, and one question per admission (#878)
@@ -323,7 +323,7 @@ now goes through (`takeLaneLocked`/`giveLaneLocked`), read back by
 No clamp to a fraction of `MemTotal`, no timer decay and no per-graph
 correction.
 
-**Which graphs share one is said, not assumed.** `cmd/aforge`'s `v3OpenSession`
+**Which graphs share one is said, not assumed.** `cmd/codeaf`'s `v3OpenSession`
 — the one door every conversation is built through, launch, relaunch, `/new`
 and `/resume` — builds one account for the life of the process and puts it on
 every `session.Config` it hands out; `Agent.graph` and `standingWideWork` read

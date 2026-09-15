@@ -3,7 +3,7 @@ package tui3
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE REASONING LEVEL IS A FACT THIS SURFACE HOLDS, NOT A QUESTION IT ASKS

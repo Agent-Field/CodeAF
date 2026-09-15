@@ -7,9 +7,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── ONE GRAMMAR, EVERY PLACE — CHECKED ON EVERY PLACE ───────────────────────
@@ -210,7 +210,7 @@ func spendPlaceLab(t *testing.T) *app {
 				At:    time.Date(2026, time.August, day, 12, 0, 0, 0, time.Local),
 				Model: model, Role: "execution", Calls: 10 + i, Input: 100000, Output: 20000,
 				USD: float64(day) / 10, Session: "talk-1", Task: "errand-" + itoa(day),
-				Workspace: "/work/aforge",
+				Workspace: "/work/codeaf",
 			})
 		}
 	}

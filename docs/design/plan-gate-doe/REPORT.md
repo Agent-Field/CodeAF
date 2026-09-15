@@ -2,11 +2,11 @@
 
 *On 2026-09-02 the owner chose planner B with the split gate OFF from this front.
 The gate had shipped armed, with a six-item floor under every division, and
-[#418](https://github.com/Agent-Field/aforge-v2/issues/418) said the floor folds
+[#418](https://github.com/Agent-Field/codeaf/issues/418) said the floor folds
 real divisions; #384 proposed three planner repairs. Neither question was going
 to be settled by argument, so both were made factors of one designed experiment
 and the winner was taken from the measurement. What landed in PR #435 is the
-decision: unpinned, the gate has no say; `AFORGE_SPLITGATE=1` puts the shipped
+decision: unpinned, the gate has no say; `CODEAF_SPLITGATE=1` puts the shipped
 count back and `judgment` asks the plan's own sizing. The `lanes` counting arm
 lost and its code is gone.*
 
@@ -110,7 +110,7 @@ Tiebreak stated in advance: quality > cost > wall; unrecoverable = oversized-und
 - n=3 is still a coin: A lanes fell from 0.76 (n=2) to 0.60 with one more draw per brief. Differences under ~0.15 are not decisions.
 
 ## Findings for other owners
-1. Plan door verdict vs tests (#428 family, for aforge-v2-3f): the door exits 0 with a graph on 103 of 273 draws that hold an
+1. Plan door verdict vs tests (#428 family, for codeaf-3f): the door exits 0 with a graph on 103 of 273 draws that hold an
    oversized node carrying a refusal word (A 14, B 13, C 42, D 34); cell ids and node ids are with the raw draws.
 2. Measurement defect in #425 (arms C, D): a per-lane node still names the whole file, so "its named material exceeds what one
    worker holds" is stamped on correctly divided lanes (R1a 3/3 lanes, R1b, H2, H3), and expansion cannot divide a lane over one

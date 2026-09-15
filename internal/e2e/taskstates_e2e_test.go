@@ -234,7 +234,7 @@ func testStatesConflict(t *testing.T) {
 	}
 	// THE PERSON'S EDIT IS NOT COMMITTED, AND THAT IS THE WHOLE OF WHAT MAKES A
 	// CLASH POSSIBLE. A commit on the checkout while the work is out MOVES the
-	// branch, and a branch that moved since the cut is one aforge will not write
+	// branch, and a branch that moved since the cut is one codeaf will not write
 	// either ([keptLandingSentence]'s last arm) — so a committing fixture buys the
 	// same `branch kept` the protected trunk did, one reason further along. An
 	// open editor with unsaved-to-git changes in the file is the shape a person is
@@ -349,7 +349,7 @@ func testStatesIncomplete(t *testing.T) {
 //
 // IT MUST REALLY RUN, and that is a fact about which half of the floor it
 // measures. [testStatesAutoFloorAcrossARestart] above it seeds the holder and
-// measures the half that is deterministic — a landing the record says aforge was
+// measures the half that is deterministic — a landing the record says codeaf was
 // deciding comes back the person's — and no fixture can catch the LIVE window
 // where the model is still holding one, because that window is however long the
 // model takes to answer. So this one runs the work and reads whichever of the two
@@ -380,7 +380,7 @@ func testStatesAutoFloor(t *testing.T) {
 		// so the answers stay drawn while the model reads, and ANSWERING ONE IS
 		// TAKING THE DECISION BACK.
 		held := r.waitFor(60*time.Second, say(t, "taskAutoDecidingWord"), say(t, "settleAnswersRow"))
-		t.Logf("aforge is deciding, and the answers are still on the row:\n%s", held)
+		t.Logf("codeaf is deciding, and the answers are still on the row:\n%s", held)
 		if line := statesReasonLine(held, say(t, "taskAutoDecidingWord")); line != "" {
 			t.Logf("AUTO ROW · %s", line)
 		}
@@ -409,14 +409,14 @@ func testStatesAutoFloor(t *testing.T) {
 
 // testStatesAutoFloorAcrossARestart is the same law measured where it is a fact
 // rather than a race: A TASK NEVER STAYS UNOWNED, and a process that died while
-// aforge was holding one is the hardest case, because the turn it was going to be
+// codeaf was holding one is the hardest case, because the turn it was going to be
 // decided in died with it.
 //
 // THE FIXTURE IS THE RECORD A KILLED PROCESS LEAVES. The checkpoint carries who
 // was holding each landing (session's taskRecord.Decider), so this seeds one that
 // says `model` and opens the conversation on it. What must be on the screen is
 // the chips — the floor hands the question back on the way in, before anything is
-// drawn — and what must NOT be on it is `aforge is deciding`, which would be a
+// drawn — and what must NOT be on it is `codeaf is deciding`, which would be a
 // card naming a decider that no longer exists and offering no way to act.
 //
 // IT PAYS FOR NO MODEL. Every fact this reads is one the record carries and the
@@ -429,7 +429,7 @@ func testStatesAutoFloorAcrossARestart(t *testing.T) {
 	statesPastTheDoor(t, r)
 
 	screen := r.waitFor(45*time.Second, say(t, "taskLookWord"), say(t, "settleAnswersRow"))
-	t.Logf("a landing the record said aforge was deciding, after the restart:\n%s", screen)
+	t.Logf("a landing the record said codeaf was deciding, after the restart:\n%s", screen)
 	if head := statesHeadLine(screen, say(t, "unverifiedGlyph"), say(t, "taskLookWord")); head != "" {
 		t.Logf("HEAD · %s", head)
 	}
@@ -443,7 +443,7 @@ func testStatesAutoFloorAcrossARestart(t *testing.T) {
 }
 
 // seedModelHeld writes one conversation holding a landing NOBODY COULD CHECK
-// that the record says AFORGE WAS DECIDING — the checkpoint a process killed
+// that the record says codeaf WAS DECIDING — the checkpoint a process killed
 // under `task.settle = auto` leaves behind.
 //
 // IT IS [seedUnchecked]'S FIXTURE PLUS ONE FIELD, and the field is the whole
@@ -464,7 +464,7 @@ func seedModelHeld(t *testing.T, home, ws string) string {
 	statesSeedTranscript(t, dir, sid, ws, "port the parser for me")
 	at := time.Now().Add(-3 * time.Minute)
 	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
-		"id": sid, "title": "The landing aforge was deciding", "workspace": ws,
+		"id": sid, "title": "The landing codeaf was deciding", "workspace": ws,
 		"created": at.Format(time.RFC3339Nano), "lastUserAt": at.Format(time.RFC3339Nano),
 	})
 	writeJSON(t, filepath.Join(dir, "tasks.json"), map[string]any{

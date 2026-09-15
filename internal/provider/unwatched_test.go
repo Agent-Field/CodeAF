@@ -17,7 +17,7 @@ import (
 //
 // Every test beside this one attaches a stream observer, which is what an
 // interactive surface does — and until 2026-08 attaching one was also what
-// decided whether the request was streamed at all. A headless `aforge do` leaf
+// decided whether the request was streamed at all. A headless `codeaf do` leaf
 // attaches none, so its calls took the request/response path, whose only bound
 // is adaptiveCompletionTimeout's fifteen-minute ceiling. Measured, on the
 // happy-dom run of 2026-08-28: three provider calls that produced nothing, each

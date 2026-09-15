@@ -13,7 +13,7 @@ and its final UI fixes remain the upstream implementation.
 
 ```mermaid
 flowchart LR
-    CLI["aforge collections"] --> Domain["internal/workspace"]
+    CLI["codeaf collections"] --> Domain["internal/workspace"]
     Domain --> DB["collections.db\nNames and memberships"]
     DB -. "references by existing address" .-> Chat["Conversation / transcript"]
     DB -. "session ID + task ID" .-> Task["Existing task owner"]
@@ -57,7 +57,7 @@ remove followed by re-add puts a reference at the end.
 
 ## Persistence and failure
 
-`~/.aforge/v3/collections.db` is a separate SQLite database. `AFORGE_HOME` changes
+`~/.codeaf/v3/collections.db` is a separate SQLite database. `CODEAF_HOME` changes
 its root and `--db` selects a different file. Existing modernc SQLite support is
 reused. Essential organization is available without enabling learned memory or
 configuring a model. No existing record format is migrated.

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/provider/pool"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // hangingCompile is the provider that caused the incident: it accepts the call

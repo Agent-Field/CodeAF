@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 var motionRGB = regexp.MustCompile(`\x1b\[38;2;(\d+);(\d+);(\d+)m([^\x1b]*)\x1b\[39m`)

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // HandoverFunc is asked to give up the resident role. It answers whether the

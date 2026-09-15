@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 // WHICH MODEL A PIECE OF WORK RUNS ON, AND WHETHER THE ROW SAYS SO.

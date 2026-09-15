@@ -1,12 +1,12 @@
 package standing
 
-// watch.go keeps the standing items current when no aforge window is open. It
-// is one launchd agent or one systemd user timer running `aforge tick` every
+// watch.go keeps the standing items current when no codeaf window is open. It
+// is one launchd agent or one systemd user timer running `codeaf tick` every
 // [Interval], and it is the entire footprint this design has on the host: no
 // server, no port, no account, no configuration file.
 //
 // IT IS THE SHAPE OF internal/watchdog AND NOT ITS CODE. v1's resident owns its
-// own units and its own `aforge wake`, and the two must be able to sit on one
+// own units and its own `codeaf wake`, and the two must be able to sit on one
 // machine without either one's install stepping on the other's. So the approach
 // is copied deliberately — injectable platform, home, executable and runner;
 // definitions written temp+rename; status derived from bytes on disk — and the
@@ -25,7 +25,7 @@ package standing
 // that names another program alone for as long as that program can still run;
 // it steps in only when the program the timer names is gone, or the definition
 // is not one this build would have written for this home. Before this law the
-// timer followed whichever aforge launched last, every launch of the other
+// timer followed whichever codeaf launched last, every launch of the other
 // build rewrote it, and a build that was then deleted left it failing every
 // five minutes in silence.
 
@@ -43,26 +43,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // DarwinTickLabel and LinuxTickTimer are what this machine's own scheduler
 // calls the timer.
 //
-// THEY ARE EXPORTED BECAUSE THE SETTINGS ROW SAYS THEM OUT LOUD. "aforge
+// THEY ARE EXPORTED BECAUSE THE SETTINGS ROW SAYS THEM OUT LOUD. "codeaf
 // installs a launchd agent" is a sentence nobody can check; the label is what
 // `launchctl list` and `systemctl --user list-timers` answer to, and a person
 // deciding whether to leave background checks on is entitled to the name they
 // would have to type to go and look.
 const (
-	DarwinTickLabel = "ai.agentfield.aforge.tick"
-	LinuxTickTimer  = "aforge-tick.timer"
+	DarwinTickLabel = "ai.agentfield.codeaf.tick"
+	LinuxTickTimer  = "codeaf-tick.timer"
 )
 
 const (
-	darwinTickPlist  = DarwinTickLabel + ".plist"
-	linuxTickService = "aforge-tick.service"
-	tickUnitTitle    = "Keep aforge's standing items current"
+	darwinTickPlist        = DarwinTickLabel + ".plist"
+	linuxTickService       = "codeaf-tick.service"
+	tickUnitTitle          = "Keep codeaf's standing items current"
+	legacyDarwinTickLabel  = "ai.agentfield.aforge.tick" // legacy-name
+	legacyLinuxTickTimer   = "aforge-tick.timer"         // legacy-name
+	legacyLinuxTickService = "aforge-tick.service"       // legacy-name
 )
 
 // IntervalWords is [Interval] the way a person says it — `5 minutes`.
@@ -102,7 +106,7 @@ type WatchOptions struct {
 	Platform   string
 	HomeDir    string
 	Executable string
-	// StateRoot is the home the timer ticks — AFORGE_HOME when set, the
+	// StateRoot is the home the timer ticks — CODEAF_HOME when set, the
 	// login's default otherwise — and the half of the pair a test has to name
 	// for a home it is not running under. Empty is this process's own.
 	StateRoot string
@@ -297,7 +301,18 @@ type reading struct {
 }
 
 func (w *Timer) read() (reading, error) {
-	primary, info, err := readDefinition(w.primaryPath())
+	primaryPath := w.primaryPath()
+	primary, info, err := readDefinition(primaryPath)
+	former := false
+	if err == nil && info == nil {
+		former = true
+		if w.platform == "darwin" {
+			primaryPath = w.legacyDarwinPlistPath()
+		} else {
+			primaryPath = w.legacyLinuxTimerPath()
+		}
+		primary, info, err = readDefinition(primaryPath)
+	}
 	if err != nil || info == nil {
 		return reading{}, err
 	}
@@ -306,7 +321,11 @@ func (w *Timer) read() (reading, error) {
 		// The timer unit names no program at all — the SERVICE beside it does —
 		// so on Linux the pair is read from there, and a service that is
 		// missing is itself drift.
-		if service, _, err = readDefinition(w.linuxServicePath()); err != nil {
+		servicePath := w.linuxServicePath()
+		if former {
+			servicePath = w.legacyLinuxServicePath()
+		}
+		if service, _, err = readDefinition(servicePath); err != nil {
 			return reading{}, err
 		}
 		named = service
@@ -328,7 +347,7 @@ func (w *Timer) read() (reading, error) {
 	}
 	wantPrimary, wantService := w.texts(executable)
 	shaped := executable != "" && primary == wantPrimary && service == wantService
-	seen.drift.Stale = !shaped || seen.drift.Gone
+	seen.drift.Stale = former || !shaped || seen.drift.Gone
 	return seen, nil
 }
 
@@ -367,18 +386,31 @@ func (w *Timer) texts(executable string) (primary, service string) {
 // placeholder.
 func definitionPair(platform, content string) (executable, root string) {
 	if platform == "linux" {
+		legacyRoot := ""
 		for _, line := range strings.Split(content, "\n") {
 			line = strings.TrimSpace(line)
 			if rest, found := strings.CutPrefix(line, "ExecStart="); found {
 				executable = unquoteSystemd(strings.TrimSuffix(strings.TrimSpace(rest), " tick"))
 			}
 			if rest, found := strings.CutPrefix(line, "Environment="); found {
-				root, _ = strings.CutPrefix(unquoteSystemd(rest), home.EnvVar+"=")
+				value := unquoteSystemd(rest)
+				if parsed, matched := strings.CutPrefix(value, home.EnvVar+"="); matched {
+					root = parsed
+				} else if parsed, matched := strings.CutPrefix(value, env.Legacy(home.EnvVar)+"="); matched {
+					legacyRoot = parsed
+				}
 			}
+		}
+		if root == "" {
+			root = legacyRoot
 		}
 		return executable, root
 	}
-	return plistString(content, "<key>ProgramArguments</key>"), plistString(content, "<key>"+home.EnvVar+"</key>")
+	root = plistString(content, "<key>"+home.EnvVar+"</key>")
+	if root == "" {
+		root = plistString(content, "<key>"+env.Legacy(home.EnvVar)+"</key>")
+	}
+	return plistString(content, "<key>ProgramArguments</key>"), root
 }
 
 // plistString is the first <string> after marker, or empty.
@@ -407,6 +439,9 @@ func unquoteSystemd(value string) string {
 }
 
 func (w *Timer) installDarwin(ctx context.Context) error {
+	if err := w.removeLegacyDarwin(ctx); err != nil {
+		return err
+	}
 	path := w.darwinPlistPath()
 	_, err := os.Stat(path)
 	switch {
@@ -431,28 +466,32 @@ func (w *Timer) installDarwin(ctx context.Context) error {
 
 func (w *Timer) uninstallDarwin(ctx context.Context) error {
 	path := w.darwinPlistPath()
+	var current error
 	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
+		if !os.IsNotExist(err) {
+			current = fmt.Errorf("standing: look at the timer: %w", err)
 		}
-		return fmt.Errorf("standing: look at the timer: %w", err)
-	}
-	stop := w.runner.Run(ctx, "launchctl", "bootout", w.darwinDomain(), path)
-	if stop != nil {
-		if fallback := w.runner.Run(ctx, "launchctl", "unload", path); fallback != nil {
-			stop = errors.Join(stop, fallback)
-		} else {
-			stop = nil
+	} else {
+		stop := w.runner.Run(ctx, "launchctl", "bootout", w.darwinDomain(), path)
+		if stop != nil {
+			if fallback := w.runner.Run(ctx, "launchctl", "unload", path); fallback != nil {
+				stop = errors.Join(stop, fallback)
+			} else {
+				stop = nil
+			}
+		}
+		remove := os.Remove(path)
+		if stop != nil || remove != nil {
+			current = fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove))
 		}
 	}
-	remove := os.Remove(path)
-	if stop != nil || remove != nil {
-		return fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove))
-	}
-	return nil
+	return errors.Join(current, w.removeLegacyDarwin(ctx))
 }
 
 func (w *Timer) installLinux(ctx context.Context) error {
+	if err := w.removeLegacyLinux(ctx); err != nil {
+		return err
+	}
 	if err := writeDefinition(w.linuxServicePath(), []byte(linuxServiceUnit(w.executable, w.stateRoot))); err != nil {
 		return err
 	}
@@ -477,22 +516,30 @@ func (w *Timer) uninstallLinux(ctx context.Context) error {
 	timerPath, servicePath := w.linuxTimerPath(), w.linuxServicePath()
 	_, timerErr := os.Stat(timerPath)
 	_, serviceErr := os.Stat(servicePath)
-	if os.IsNotExist(timerErr) && os.IsNotExist(serviceErr) {
-		return nil
-	}
 	if timerErr != nil && !os.IsNotExist(timerErr) {
 		return fmt.Errorf("standing: look at the timer: %w", timerErr)
 	}
 	if serviceErr != nil && !os.IsNotExist(serviceErr) {
 		return fmt.Errorf("standing: look at the timer: %w", serviceErr)
 	}
-	stop := w.runner.Run(ctx, "systemctl", "--user", "disable", "--now", LinuxTickTimer)
-	remove := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath))
-	reload := w.runner.Run(ctx, "systemctl", "--user", "daemon-reload")
-	if stop != nil || remove != nil || reload != nil {
-		return fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove, reload))
+	currentPresent := timerErr == nil || serviceErr == nil
+	var current error
+	if currentPresent {
+		stop := w.runner.Run(ctx, "systemctl", "--user", "disable", "--now", LinuxTickTimer)
+		remove := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath))
+		if stop != nil || remove != nil {
+			current = fmt.Errorf("standing: stop the timer: %w", errors.Join(stop, remove))
+		}
 	}
-	return nil
+	formerPresent := pathExists(w.legacyLinuxTimerPath()) || pathExists(w.legacyLinuxServicePath())
+	former := w.removeLegacyLinux(ctx)
+	var reload error
+	if currentPresent || formerPresent {
+		if err := w.runner.Run(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+			reload = fmt.Errorf("standing: tell systemd about the timer: %w", err)
+		}
+	}
+	return errors.Join(current, former, reload)
 }
 
 func (w *Timer) primaryPath() string {
@@ -506,6 +553,10 @@ func (w *Timer) darwinPlistPath() string {
 	return filepath.Join(w.homeDir, "Library", "LaunchAgents", darwinTickPlist)
 }
 
+func (w *Timer) legacyDarwinPlistPath() string {
+	return filepath.Join(w.homeDir, "Library", "LaunchAgents", legacyDarwinTickLabel+".plist")
+}
+
 func (w *Timer) darwinDomain() string { return "gui/" + strconv.Itoa(w.uid) }
 
 func (w *Timer) linuxUnitDir() string {
@@ -515,6 +566,64 @@ func (w *Timer) linuxUnitDir() string {
 func (w *Timer) linuxTimerPath() string { return filepath.Join(w.linuxUnitDir(), LinuxTickTimer) }
 
 func (w *Timer) linuxServicePath() string { return filepath.Join(w.linuxUnitDir(), linuxTickService) }
+
+func (w *Timer) legacyLinuxTimerPath() string {
+	return filepath.Join(w.linuxUnitDir(), legacyLinuxTickTimer)
+}
+
+func (w *Timer) legacyLinuxServicePath() string {
+	return filepath.Join(w.linuxUnitDir(), legacyLinuxTickService)
+}
+
+func (w *Timer) removeLegacyDarwin(ctx context.Context) error {
+	path := w.legacyDarwinPlistPath()
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("standing: look at the former timer: %w", err)
+	}
+	stop := w.runner.Run(ctx, "launchctl", "bootout", w.darwinDomain(), path)
+	if stop != nil {
+		stop = w.runner.Run(ctx, "launchctl", "unload", path)
+	}
+	if stop != nil {
+		return fmt.Errorf("standing: stop the former timer: %w", stop)
+	}
+	if err := removeIfPresent(path); err != nil {
+		return fmt.Errorf("standing: remove the former timer: %w", err)
+	}
+	return nil
+}
+
+func (w *Timer) removeLegacyLinux(ctx context.Context) error {
+	timerPath, servicePath := w.legacyLinuxTimerPath(), w.legacyLinuxServicePath()
+	_, timerErr := os.Stat(timerPath)
+	_, serviceErr := os.Stat(servicePath)
+	if os.IsNotExist(timerErr) && os.IsNotExist(serviceErr) {
+		return nil
+	}
+	if timerErr != nil && !os.IsNotExist(timerErr) {
+		return fmt.Errorf("standing: look at the former timer: %w", timerErr)
+	}
+	if serviceErr != nil && !os.IsNotExist(serviceErr) {
+		return fmt.Errorf("standing: look at the former timer: %w", serviceErr)
+	}
+	if timerErr == nil {
+		if err := w.runner.Run(ctx, "systemctl", "--user", "disable", "--now", legacyLinuxTickTimer); err != nil {
+			return fmt.Errorf("standing: stop the former timer: %w", err)
+		}
+	}
+	if serviceErr == nil {
+		if err := w.runner.Run(ctx, "systemctl", "--user", "stop", legacyLinuxTickService); err != nil {
+			return fmt.Errorf("standing: stop the former service: %w", err)
+		}
+	}
+	if err := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath)); err != nil {
+		return fmt.Errorf("standing: remove the former timer: %w", err)
+	}
+	return nil
+}
 
 // lastWake reads the last line of the wake log. It reads the tail rather than
 // the file because the log is one line every five minutes forever, and the only
@@ -564,7 +673,7 @@ func writeDefinition(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("standing: make room for the timer: %w", err)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".aforge-tick-*")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".codeaf-tick-*")
 	if err != nil {
 		return fmt.Errorf("standing: write the timer: %w", err)
 	}
@@ -595,10 +704,15 @@ func removeIfPresent(path string) error {
 	return err
 }
 
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // darwinPlist and the two systemd units below interpolate [Interval] rather
 // than spelling five minutes again: a cadence that appears in two places is a
 // cadence that will disagree with itself. Both carry the home the tick runs
-// against as AFORGE_HOME, because a tick that inherited nothing ticked the
+// against as CODEAF_HOME, because a tick that inherited nothing ticked the
 // login's default home whatever home had installed it.
 func darwinPlist(executable, root string) string {
 	return `<?xml version="1.0" encoding="UTF-8"?>
@@ -615,6 +729,8 @@ func darwinPlist(executable, root string) string {
   <key>EnvironmentVariables</key>
   <dict>
     <key>` + home.EnvVar + `</key>
+    <string>` + html.EscapeString(root) + `</string>
+    <key>` + env.Legacy(home.EnvVar) + `</key>
     <string>` + html.EscapeString(root) + `</string>
   </dict>
   <key>StartInterval</key>
@@ -633,6 +749,7 @@ Description=` + tickUnitTitle + `
 [Service]
 Type=oneshot
 Environment=` + quoteSystemd(home.EnvVar+"="+root) + `
+Environment=` + quoteSystemd(env.Legacy(home.EnvVar)+"="+root) + `
 ExecStart=` + quoteSystemd(executable) + ` tick
 `
 }

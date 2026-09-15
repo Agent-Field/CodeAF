@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/offpath"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/offpath"
 )
 
 // task_child_run.go is ONE NODE'S RUN, from the first request to the last report

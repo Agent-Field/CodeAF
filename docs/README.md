@@ -1,4 +1,4 @@
-# aforge — the documentation
+# codeaf — the documentation
 
 One page that says where everything is. Start here.
 
@@ -6,7 +6,7 @@ One page that says where everything is. Start here.
 
 | …then read | |
 | --- | --- |
-| **Drive it from a script, CI, or a benchmark** | [HEADLESS.md](HEADLESS.md) — `aforge do` and `aforge exec`, exit codes, the `--json` objects, environment, and the rules for measuring it |
+| **Drive it from a script, CI, or a benchmark** | [HEADLESS.md](HEADLESS.md) — `codeaf do` and `codeaf exec`, exit codes, the `--json` objects, environment, and the rules for measuring it |
 | **Know what it can do, feature by feature** | [FEATURES.md](FEATURES.md) — the master catalog, one entry per capability |
 | **Understand how it is built** | [ARCHITECTURE.md](ARCHITECTURE.md) — the store, the event log, the permanent spine, the resident role |
 | **Know what it promises a person** | [JOURNEY.md](JOURNEY.md) — the product law: one mouth, and the journeys we hold ourselves to |
@@ -31,7 +31,7 @@ One page that says where everything is. Start here.
 
 **The runtime source of truth is `internal/manual`, not `docs/`.** These pages
 are design documents: written to persuade, on disk, stale the moment a build
-lands. What aforge *says about itself* comes from the user-voice pages embedded
+lands. What codeaf *says about itself* comes from the user-voice pages embedded
 in the binary and searched by the `manual` tool. Where they disagree, the
 manual wins. Add a feature, add its manual paragraph; update these afterwards
 if you like, but never instead.
