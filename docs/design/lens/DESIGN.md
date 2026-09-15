@@ -38,7 +38,7 @@ The unchosen drift, concretely:
 And the deeper product question, which is the owner's actual framing: the
 industry's agent surface is one long linear scroll — prose, tool spam and
 status interleaved, with the human expected to read all of it, because the
-premise of that surface is that the human validates every step. Aforge's
+premise of that surface is that the human validates every step. codeaf's
 premise is the opposite: **the model executes well, and the person is needed at
 specific moments** — to say what they want, to correct it mid-flight, to answer
 what the work cannot decide alone, to judge whether it is going right, and to

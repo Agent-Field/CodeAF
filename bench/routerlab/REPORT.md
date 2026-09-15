@@ -1,6 +1,6 @@
 # Router lab — Phase A
 
-**Question.** aforge currently sends every call to one model
+**Question.** codeaf currently sends every call to one model
 (`~deepseek/deepseek-v4-flash-latest`, see `internal/config/config.go`). Does an
 Item-Response-Theory ability–difficulty model separate cheap open-weight models
 on real work, well enough that an offline-simulated routing or cascade policy
@@ -34,7 +34,7 @@ families only, no closed frontier models. All seven advertise
 |---|---|---|---|---|---|
 | `google/gemma-3-12b-it` | gemma-3-12b | 0.050 | 0.150 | 131 072 | floor — very cheap small dense model |
 | `qwen/qwen3-30b-a3b-instruct-2507` | qwen3-30b-a3b | 0.048 | 0.193 | 262 144 | cheap MoE, Qwen 30B-class |
-| `~deepseek/deepseek-v4-flash-latest` | ds-v4-flash | 0.090 | 0.180 | 1 048 576 | **incumbent** — aforge's current default |
+| `~deepseek/deepseek-v4-flash-latest` | ds-v4-flash | 0.090 | 0.180 | 1 048 576 | **incumbent** — codeaf's current default |
 | `deepseek/deepseek-v4-pro` | ds-v4-pro | 0.435 | 0.870 | 1 048 576 | mid — the natural in-family upgrade |
 | `z-ai/glm-4.7` | glm-4.7 | 0.400 | 1.750 | 204 800 | mid — strong open generalist under $2 |
 | `moonshotai/kimi-k2.6` | kimi-k2.6 | 0.589 | 2.480 | 262 144 | upper-mid Moonshot flagship under the cap |
@@ -49,11 +49,11 @@ No model 404'd or errored; **zero API errors across all 298 recorded calls**, so
 no substitutions were needed.
 
 **One configuration choice worth flagging.** Every call ran with reasoning
-explicitly disabled (`reasoning: {enabled: false}`), because that is how aforge
+explicitly disabled (`reasoning: {enabled: false}`), because that is how codeaf
 actually calls models in production — `DefaultReasoning` and
 `DefaultExecReasoning` are both `EffortOff` in `config.go`, settled by an
 earlier controlled experiment. Measured reasoning tokens across the whole run:
-**3**. This is the right comparison for aforge, but it is not a neutral one: it
+**3**. This is the right comparison for codeaf, but it is not a neutral one: it
 penalises reasoning-first models most, and glm-5.2's poor showing below should
 be read in that light.
 
@@ -349,7 +349,7 @@ the anchor block in this design costs about **$0.02 per new model** (10 tasks x
 2 replicates) and pins that model onto the existing scale directly. Measuring is
 two orders of magnitude cheaper than the risk of trusting the price tag.
 
-Caveat stated once more: reasoning was off for every call, matching aforge
+Caveat stated once more: reasoning was off for every call, matching codeaf
 production. glm-5.2 is a reasoning-first model and is the one most likely to be
 understated by that choice. Its R07 answer arrived in **9 completion tokens** —
 it guessed rather than computed. If Phase B ever turns reasoning on, glm-5.2's
@@ -408,7 +408,7 @@ Composition of the winning cascade:
   it is no longer the only thing that can happen.
 
 This is the load-bearing caveat for Phase B: **the cascade's economics require a
-cheap, trustworthy verifier.** In aforge that exists for a large fraction of
+cheap, trustworthy verifier.** In codeaf that exists for a large fraction of
 work — a test suite for coding nodes, schema plus semantic validation for
 planning nodes (exactly what `bench/run.sh` already does when it uses the
 repository's own suite as the judge). For work where correctness cannot be

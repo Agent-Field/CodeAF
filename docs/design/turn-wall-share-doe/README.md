@@ -3,7 +3,7 @@
 This folder is the record of the run that settles `turnWallShare`
 (internal/session/turnwall.go), the fraction of an unattended run's wall that ONE
 turn may spend working inline before what is left of it moves onto a task
-([#546](https://github.com/Agent-Field/aforge-v2/issues/546), landed as the
+([#546](https://github.com/Agent-Field/codeaf/issues/546), landed as the
 constant at 3). The law and the mechanism are on the issue and in the code; this
 is the evidence for the number.
 
@@ -39,7 +39,7 @@ factor and is left as it is in both.
 
 `attrs`, `tox` and `reef` from the canary pool, each run through the chat door
 under `--yolo` with a wall, at both arms. The rig, the pool and the driver are the
-gatekeeper's (issue [#407](https://github.com/Agent-Field/aforge-v2/issues/407));
+gatekeeper's (issue [#407](https://github.com/Agent-Field/codeaf/issues/407));
 `tox` is the cell the defect was measured on and is the one that must move.
 
 ## The method
@@ -54,7 +54,7 @@ seam exists to prevent shows up there as changed files with nothing landed.
 
 The first pass of both arms produced no `ran long` row in any cell, and reading
 the cells' launch lines said why. The canary's chat driver starts
-`aforge chat -yolo -one-model -model … -max-cost <cap>` and passes no
+`codeaf chat -yolo -one-model -model … -max-cost <cap>` and passes no
 `-max-hours`, so `Budget().Wall` was zero in every chat cell and the share seam,
 which is asked only under a wall, never fired. Every "wall" the canary had recorded
 for a chat cell so far was the tmux clock killing the pane from outside, never the

@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // AND THEN SOMEBODY LOOKS AT IT.
@@ -26,11 +26,11 @@ import (
 // looked at is what is drawn: a harness that re-implemented the layout to make
 // a picture would be a picture of a program that does not exist.
 //
-// It writes nothing unless AFORGE_SCREENS names a directory, so the ordinary
+// It writes nothing unless CODEAF_SCREENS names a directory, so the ordinary
 // suite runs it as a drawing check — every case must produce rows — and the
 // screens are taken on purpose.
 func TestQuestionScreens(t *testing.T) {
-	dir := strings.TrimSpace(os.Getenv("AFORGE_SCREENS"))
+	dir := strings.TrimSpace(os.Getenv("CODEAF_SCREENS"))
 	at := time.Date(2026, time.September, 9, 14, 2, 0, 0, time.UTC)
 
 	shot := func(name string, build func(*questionLab)) {
@@ -305,7 +305,7 @@ func TestTheChipIsDrawnOnTheStatusRowWhereEveryPageCanSeeIt(t *testing.T) {
 	if !strings.Contains(got, "allow this? · "+questionChipKey) {
 		t.Fatalf("the chip is not on the status row:\n%s", got)
 	}
-	if dir := strings.TrimSpace(os.Getenv("AFORGE_SCREENS")); dir != "" {
+	if dir := strings.TrimSpace(os.Getenv("CODEAF_SCREENS")); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}

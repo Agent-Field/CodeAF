@@ -11,10 +11,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 var spendTestNow = time.Date(2026, time.August, 25, 12, 0, 0, 0, time.Local)
@@ -27,9 +27,9 @@ func spendFixture() []session.UsageLine {
 	return []session.UsageLine{
 		line(20, "opus 4.1", "execution", 312, 12_000_000, 6_100_000, 21.40, "the-filings-sweep", "", "/work/bounty-companies"),
 		line(22, "sonnet 4.5", "", 1904, 14_000_000, 5_700_000, 9.12, "render-fight-clips", "", "/work/thor-clips"),
-		line(24, "gemini 2.5 pro", "verification", 88, 2_000_000, 900_000, 3.31, "", "repo-watch", "/work/aforge"),
-		line(25, "haiku 4.5", "naming", 6, 400_000, 100_000, 0.27, "", "", "/work/aforge"),
-		line(25, "silent", "", 1, 5, 5, 0, "zero-cost", "", "/work/aforge"),
+		line(24, "gemini 2.5 pro", "verification", 88, 2_000_000, 900_000, 3.31, "", "repo-watch", "/work/codeaf"),
+		line(25, "haiku 4.5", "naming", 6, 400_000, 100_000, 0.27, "", "", "/work/codeaf"),
+		line(25, "silent", "", 1, 5, 5, 0, "zero-cost", "", "/work/codeaf"),
 	}
 }
 

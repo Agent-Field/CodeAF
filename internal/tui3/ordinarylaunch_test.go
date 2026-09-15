@@ -3,7 +3,7 @@ package tui3
 // THE ORDINARY LAUNCH, WHICH IS THE ONE NOBODY HAD A TEST FOR.
 //
 // AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
-// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] carries AFORGE_PROFILE_DIR,
+// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] carries CODEAF_PROFILE_DIR,
 // which almost nobody exports, so what reaches this package on very nearly
 // every launch is the empty string — and internal/config has always resolved
 // that to this process's own profile in the state root ([config.ProfilePath]).
@@ -13,7 +13,7 @@ package tui3
 // tool gate is open (#322).
 //
 // EVERY TEST IN THIS FILE IS WRITTEN FROM THE LAUNCH AND NOT FROM THE FIELD. It
-// names no profile directory, exactly as `aforge` bare on a terminal does, and
+// names no profile directory, exactly as `codeaf` bare on a terminal does, and
 // then asks what a person sitting in front of it would see. The suite already
 // had thorough tests of all three behaviours and every one of them named a
 // profile directory first — which is how a class of defects that made the
@@ -25,11 +25,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// ordinaryLaunch is a surface opened the way `aforge` bare on a TTY opens it: a
+// ordinaryLaunch is a surface opened the way `codeaf` bare on a TTY opens it: a
 // state root of its own, no provider key anywhere the door would look, and NO
 // PROFILE DIRECTORY NAMED.
 //
@@ -45,10 +45,10 @@ func ordinaryLaunch(t *testing.T, opts Options, seed func()) *app {
 	// Everything the key resolution and the rails would otherwise read out of
 	// the developer's own shell. Empty reads as unset everywhere in
 	// internal/config.
-	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET", config.ProfileDirEnv} {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "CODEAF_DAILY_BUDGET", config.ProfileDirEnv} {
 		t.Setenv(pin, "")
 	}
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	if seed != nil {
 		seed()
 	}
@@ -63,7 +63,7 @@ func ordinaryLaunch(t *testing.T, opts Options, seed func()) *app {
 
 // ordinaryConnect is the default provider's browser door as the real launch
 // hands it over: a local interactive session on the built-in OpenRouter
-// endpoint gets one (cmd/aforge's v3OpenRouterConnection). Nothing here calls
+// endpoint gets one (cmd/codeaf's v3OpenRouterConnection). Nothing here calls
 // it — its presence is the whole fact the key step reads.
 func ordinaryConnect(context.Context) (OpenRouterFlow, error) { return nil, nil }
 
@@ -180,7 +180,7 @@ func TestAHostedWindowIsAskedNothingOnAnOrdinaryLaunch(t *testing.T) {
 // THIS ONE IS TESTED SEPARATELY BECAUSE IT IS NOT A STATUS SEGMENT, IT IS A
 // SAFETY CLAIM. The segment is drawn only when the gate is open (render.go's
 // NEGATIVE-SPACE SAFETY), so its ABSENCE is the claim that every tool call will
-// be asked about — and the gate it is claiming about is the one cmd/aforge
+// be asked about — and the gate it is claiming about is the one cmd/codeaf
 // builds from [config.ToolApprovalModeAt] on the same profile directory
 // (chatv3.go's v3Policy). Before #322 the surface's reading answered "" on an
 // empty profile directory while the policy's reading resolved it to the state

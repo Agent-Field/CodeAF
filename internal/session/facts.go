@@ -7,7 +7,7 @@ package session
 // has been spent, what the conversation weighs, how hard each model is being
 // asked to think. That is the right shape at home, where a lock is nanoseconds.
 //
-// It is the WRONG shape over a connection. `aforge chat --host devbox` puts an
+// It is the WRONG shape over a connection. `codeaf chat --host devbox` puts an
 // ssh pipe between the frame and every one of those questions, and a status
 // line that asks five of them is five round trips per repaint — which is the
 // defect this file exists to end. A [Facts] is the whole set as ONE value, so

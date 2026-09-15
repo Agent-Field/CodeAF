@@ -40,19 +40,19 @@ rig that moved with the subject would be comparing two harnesses rather than two
 prompts.
 
 **Layer D stands up no new proxy, and none needed writing.** The wave brief
-allowed for a sixty-line Go forwarder behind `AFORGE_BASE_URL`. Two records
+allowed for a sixty-line Go forwarder behind `CODEAF_BASE_URL`. Two records
 already existed and between them they are better than one:
 
 - `bench/conversation/lib/guard.py` is a loopback forwarder every conversation
   cell already runs in front of OpenRouter, handed to the harness as
-  `AFORGE_BASE_URL` with a sentinel key while the real one stays in the guard's
+  `CODEAF_BASE_URL` with a sentinel key while the real one stays in the guard's
   own process. It writes an `admitted` row carrying the request's SHAPE — bytes
   on the wire, message count, tool count — and a `settled` row carrying what the
   provider said it CHARGED: `prompt_tokens`, `completion_tokens`,
   `prompt_tokens_details.cached_tokens`, `completion_tokens_details.reasoning_tokens`,
   `cost_usd`. It is arm-neutral and it deliberately keeps no bodies.
-- `internal/calllog` is aforge's own always-on record, pinned anywhere with
-  `AFORGE_CALL_LOG`. Under `AFORGE_CALL_LOG_BODIES=1` it keeps the whole request
+- `internal/calllog` is codeaf's own always-on record, pinned anywhere with
+  `CODEAF_CALL_LOG`. Under `CODEAF_CALL_LOG_BODIES=1` it keeps the whole request
   body, which is the ONLY place a request's **tool-block bytes** can be counted
   rather than inferred.
 
@@ -91,7 +91,7 @@ to it, cells died mid-turn with the provider's own sentence:
 
 Two things make that fatal to a comparison rather than merely annoying. This
 account's privacy settings exclude at least one endpoint serving that model, and
-**aforge asks for ONE endpoint per request and takes no fallback**, so drawing
+**codeaf asks for ONE endpoint per request and takes no fallback**, so drawing
 the excluded lane is a dead turn rather than a hop. It killed `research-brief`,
 which had passed twice that afternoon, and `code-fix`, on the same build within
 minutes — and it lands on whichever side happens to draw it, which is exactly
@@ -101,7 +101,7 @@ the shape of noise a parity ruling cannot survive.
 historical row in `bench/conversation` and `bench/e2e` was measured on, and
 endpoints this account allows. Nothing failed that way again.
 
-That aforge turns an endpoint exclusion into a dead turn with no hop, while the
+That codeaf turns an endpoint exclusion into a dead turn with no hop, while the
 failover ladder exists and works for other causes, looked like a defect worth its
 own issue, and it was held back for the lane that owns routing to say whether the
 one-endpoint pin was deliberate.
@@ -342,8 +342,8 @@ digest, for its entire life:
 
 The 20 and the 31 that make up "51 of 69" are two different cells. The two bytes
 between them are in the footer's own `- Working directory:` line —
-`work-result-recalled-aforge` against `followup-while-working-aforge` — and the
-six-byte pair is `code-fix-aforge` against `research-brief-aforge`. They are the
+`work-result-recalled-codeaf` against `followup-while-working-codeaf` — and the
+six-byte pair is `code-fix-codeaf` against `research-brief-codeaf`. They are the
 names of the bench's scratch directories, and they differ between conversations
 exactly as they should.
 
@@ -558,7 +558,7 @@ bench that will be quoted as though it had none.
 
 | shape | covered by | how |
 | --- | --- | --- |
-| a conversation turn | `bench/conversation/research-brief` | print door, `aforge chat --once`, facts that exist only in the fixture |
+| a conversation turn | `bench/conversation/research-brief` | print door, `codeaf chat --once`, facts that exist only in the fixture |
 | a task handoff | `bench/e2e/bundle3`, `bench/conversation/code-fix` | three parts, three leaves and a sink; and a turn that becomes work |
 | work coming back | `bench/conversation/work-result-recalled` | the interactive door — work handed off, then recalled |
 | a person typing mid-work | `bench/conversation/followup-while-working` | the interactive door, tmux, a real screen |
@@ -568,7 +568,7 @@ bench that will be quoted as though it had none.
 
 **Both interactive cells were dead when this lane found them, and are not now.**
 `bench/conversation`'s tmux door waits for `ARM_READY_RE` before it types
-anything, and for aforge that needle was `· idle`. After the seven-panel home
+anything, and for codeaf that needle was `· idle`. After the seven-panel home
 landed, a fresh screen draws the state word at the right edge of the status row
 with nothing in front of it — the failed cell's own saved scrollback ends in a
 line reading `idle`, no separator — so the needle matched nothing, the door gave
@@ -624,8 +624,8 @@ The rig is a worktree of the branch carrying `bench/prompt-diet`:
 
 ```sh
 ssh spark 'export PATH=$HOME/.local/bin:$PATH
-  git -C ~/src/aforge-v2 fetch -q origin prompt-diet/h
-  git -C ~/src/aforge-v2 worktree add -f --detach ~/bench-diet/rig origin/prompt-diet/h'
+  git -C ~/src/codeaf fetch -q origin prompt-diet/h
+  git -C ~/src/codeaf worktree add -f --detach ~/bench-diet/rig origin/prompt-diet/h'
 ```
 
 **The evidence and the build live outside every checkout** — `~/bench-diet-out/<label>`
@@ -634,8 +634,8 @@ and `~/bench-diet-build/<label>`, movable with `DIET_OUT_ROOT` and
 way. The first baseline run put the evidence under `bench/prompt-diet/out/`, so
 a cell's scratch workspace sat inside the rig's own git checkout; the `code-fix`
 cell handed the model a two-file Go module to repair, and the model walked up
-out of it, found the aforge repository around it, and ran `cd <rig> && go test
-./...` — a full-tree build of aforge on a shared box, inside a cell whose wall
+out of it, found the codeaf repository around it, and ran `cd <rig> && go test
+./...` — a full-tree build of codeaf on a shared box, inside a cell whose wall
 clock was supposed to be measuring a two-file fix. That run was killed and
 thrown away. `run.sh` now refuses an `--out` inside a checkout.
 
@@ -695,7 +695,7 @@ cell, and it has now been run.
 
 ```sh
 ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
-  AFORGE_PROMPT_PROFILE=lean CONV_PASS_ENV=AFORGE_PROMPT_PROFILE \
+  CODEAF_PROMPT_PROFILE=lean CONV_PASS_ENV=CODEAF_PROMPT_PROFILE \
     ~/bench-diet/rig/bench/prompt-diet/run.sh post-diet/owed lean-owed2 --layers a,c,d'
 ssh spark '~/bench-diet/rig/bench/prompt-diet/compare.py diet-k lean-owed2 --out-root ~/bench-diet-out'
 ```
@@ -714,7 +714,7 @@ while its e2e cells went out lean, because `bench/e2e/run.sh` inherits the whole
 environment and `bench/conversation` filters it. §4a's own warning about
 `CONV_PASS_ENV` was right about the failure and wrong about the cause: the
 recipe above did name the variable, and `run.sh` then assigned
-`CONV_PASS_ENV="AFORGE_CALL_LOG AFORGE_CALL_LOG_BODIES"` flat over the top of it.
+`CONV_PASS_ENV="CODEAF_CALL_LOG CODEAF_CALL_LOG_BODIES"` flat over the top of it.
 It appends now (`071d75f2f`), and the re-run's call log carries 18 tools with
 `ask` armed and `propose_task` absent, which is what a lean belt looks like.
 
@@ -805,7 +805,7 @@ on a genuinely small window.
 
 **So the profile ships, and this is what it is signed off on.** It is correct, it
 costs a third less tool block, it changes no outcome, and it must not be turned
-on for a model that does not need it. `AFORGE_PROMPT_PROFILE=lean` on a
+on for a model that does not need it. `CODEAF_PROMPT_PROFILE=lean` on a
 128,000-token model is a measurement instrument. The `prompt profile` settings
 row (internal/config's `prompt.profile`, added in #844) is the person's way in
 and it defaults to `auto` for the reason above.
@@ -831,7 +831,7 @@ substring test pins it.
 
 Two roads, and the script says in its own output which one it took:
 
-- **the env hook**, `AFORGE_PROMPT_ABLATE=<id>`, which lane C or lane G may add
+- **the env hook**, `CODEAF_PROMPT_ABLATE=<id>`, which lane C or lane G may add
   beside the law registry. This is the honest road: the unit is removed by the
   same code that renders it, so no neighbouring byte moves.
 - **the patch**, which cuts the unit's whole blank-line-delimited block out of a
@@ -844,7 +844,7 @@ strings chosen by a predicate — and there is no honest way to cut one out of a
 Markdown file. `ablate.sh` refuses those rather than removing nothing and
 reporting a null effect, which would read exactly like a law that turned out not
 to matter. **This is the one thing this lane needs from another: lane C or lane
-G adding `AFORGE_PROMPT_ABLATE` to the law registry unlocks them.**
+G adding `CODEAF_PROMPT_ABLATE` to the law registry unlocks them.**
 
 What the ablation could and could not settle, before anybody spends on it:
 
@@ -900,7 +900,7 @@ as a pass nor as a regression.
 
 - **`bench/e2e`'s shape assertions do not work in this rig.** `lookup` passes
   every quality check and fails `no journal — the run left no store to autopsy`
-  on both sides: `aforge do --keep` did not leave the `store kept at …` line the
+  on both sides: `codeaf do --keep` did not leave the `store kept at …` line the
   autopsy greps for. Both sides fail identically so no comparison is harmed, but
   the cell's real value — route, node count, edges — is unavailable, and
   `bundle3`, the handoff-shape cell, is worth nothing without it. `bundle3` is
@@ -918,7 +918,7 @@ as a pass nor as a regression.
   exist: every arm of every battery under `bench/` runs unattended, so there is
   no assertion vocabulary for an agent→person `ask`.
 
-- **`AFORGE_PROMPT_ABLATE`**, from lane C or lane G. Without it, two of the ten
+- **`CODEAF_PROMPT_ABLATE`**, from lane C or lane G. Without it, two of the ten
   largest law units — standing and accounts — cannot be ablated at all (§5).
 
 - ~~**The lean cell in §4a has not been run.**~~ **Run (2026-09-10, `lean-owed2`
@@ -937,11 +937,11 @@ as a pass nor as a regression.
   | --- | --- |
   | normalised, one row per request | `~/bench-diet-out/<label>/wire.jsonl` |
   | whole request bodies | `~/bench-diet-out/<label>/cells/conversation.calllog.jsonl` |
-  | the guard's own token and cost ledger | `~/bench-diet-out/<label>/cells/conversation/<scenario>-aforge/guard-usage.jsonl` |
+  | the guard's own token and cost ledger | `~/bench-diet-out/<label>/cells/conversation/<scenario>-codeaf/guard-usage.jsonl` |
 
   The call logs are 14 MB (dev, 190 rows) and 2.4 MB (diet, 80 rows), and EVERY
   row carries its whole `request_body` — system, tools and messages — because
-  the cells run under `AFORGE_CALL_LOG_BODIES=1`. `wire.jsonl` deliberately does
+  the cells run under `CODEAF_CALL_LOG_BODIES=1`. `wire.jsonl` deliberately does
   not copy those bytes; it carries the fingerprints computed from them
   (`system_bytes`, `system_sha`, `tool_block_bytes`, `tools_sha`, `prefix_sha`)
   and a `body_source` naming the log beside it. **The thread has been pulled**:

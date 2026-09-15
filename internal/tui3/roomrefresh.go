@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A task accepts steering before its worker journals it. Keep that receipt in

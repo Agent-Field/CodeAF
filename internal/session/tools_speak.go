@@ -22,15 +22,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // audioDirectory is where a spoken file lands when the model does not say and
 // the session has no folder of its own — [imageDirectory]'s sibling, and
 // [AudioDir] holds the whole rule.
-const audioDirectory = ".aforge-v3/audio"
+const audioDirectory = ".codeaf/audio"
 
 // speechFormat is what the endpoint is asked for and what the file is named
 // with. One constant, because a request that asked for mp3 and a file called

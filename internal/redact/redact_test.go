@@ -129,7 +129,7 @@ func TestOrdinaryOutputIsLeftExactlyAsItCame(t *testing.T) {
 		},
 		{
 			name: "a URL with a long path",
-			text: "https://github.com/Agent-Field/aforge-v2/blob/main/internal/session/loop.go#L1820-L1899",
+			text: "https://github.com/Agent-Field/codeaf/blob/main/internal/session/loop.go#L1820-L1899",
 		},
 		{
 			name: "a long file path with hyphenated segments",

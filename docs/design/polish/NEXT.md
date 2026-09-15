@@ -21,9 +21,9 @@ a person can act on.**
 
 **VERIFIED, with the frame.** The trial kept it rather than describing it —
 `bench/worker-trial/captures/510-run1-stream.log` on branch
-`trial/aforge-as-worker` @`25cb52250` (worktree `~/af-trial`), with the two leaf
+`trial/codeaf-as-worker` @`25cb52250` (worktree `~/af-trial`), with the two leaf
 records beside it and the analysis in that directory's `README.md`. The live
-store is `~/.aforge/runs/aforge-do-1923110067`. The sentence, as a
+store is `~/.codeaf/runs/codeaf-do-1923110067`. The sentence, as a
 person saw it:
 
 ```
@@ -197,7 +197,7 @@ is free.
 — sev: med
 
 **N3 — a refused run leaves nothing on the tree despite `-w`, and to see what it
-understood you must already know `aforge why` and the store path.**
+understood you must already know `codeaf why` and the store path.**
 `shows:` the refusal is a dead end. Something that stops without writing has to
 say where its record is and how to read it — the developer trial has already
 shown twice that a person will go hunting in the wrong directory rather than
@@ -213,7 +213,7 @@ read tool.**
 **VERIFIED, verbatim, and the exchange is the whole row.** The contract is
 composed at RUNTIME and exists in the tree nowhere — I looked, and there is no
 such string in `internal/` or `cmd/` — so this is preserved only because the
-trial copied it out: `bench/worker-trial/captures/` on `trial/aforge-as-worker`,
+trial copied it out: `bench/worker-trial/captures/` on `trial/codeaf-as-worker`,
 **pushed to origin at `a4500aadf`**, which is why it survives its store when `A`,
 `B` and `E` did not.
 
@@ -316,7 +316,7 @@ whether it should survive being contradicted rather than sitting in the
 scrollback as the last word a skimmer saw.
 
 `engine:` why the node reported success.
-*Frame:* `bench/worker-trial/captures/` on `trial/aforge-as-worker` @`a4500aadf`.
+*Frame:* `bench/worker-trial/captures/` on `trial/codeaf-as-worker` @`a4500aadf`.
 — sev: high
 
 ---

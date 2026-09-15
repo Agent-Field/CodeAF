@@ -12,7 +12,7 @@ document fixes that with the least primitive set that could work.
 
 - **`sh` gains `bg: true`** — same command, same process-group
   hardening, but returns immediately with a job handle. Output streams
-  to a plain workspace file (`.aforge/jobs/<n>.log`), so the model can
+  to a plain workspace file (`.codeaf/jobs/<n>.log`), so the model can
   tail, grep, and diff it with tools it already has. The `t` field
   becomes the job's hard lifetime cap (default 15m); foreground `sh`
   is byte-identical to before.
@@ -55,7 +55,7 @@ provenance and recall see what ran even after the process is gone.
 ## Decision 4 — Universal by construction
 
 The job registry lives in the toolbox every leaf already gets: chat
-reflexes, resident tasks, and headless `aforge run` gain identical
+reflexes, resident tasks, and headless `codeaf run` gain identical
 behavior from one implementation. The tool descriptions carry the
 strategy tersely (bg for servers/long builds/watch loops; one wait
 beats many peeks; kill your servers when done testing) — the knowledge

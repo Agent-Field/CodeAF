@@ -85,7 +85,7 @@ jobs:
       # The Makefile's TEST_TIMEOUT is measured with headroom instead.
       - name: Test
         env:
-          TMPDIR: /tmp/aforge-ci
+          TMPDIR: /tmp/codeaf-ci
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
@@ -238,7 +238,7 @@ jobs:
         run: |
           set -euo pipefail
           make build
-          actual="$(stat -c%s bin/aforge)"
+          actual="$(stat -c%s bin/codeaf)"
           budget="$(cat SIZE-BUDGET)"
-          printf 'bin/aforge on linux/amd64: %s bytes. SIZE-BUDGET (set on linux/arm64): %s.\n' \
+          printf 'bin/codeaf on linux/amd64: %s bytes. SIZE-BUDGET (set on linux/arm64): %s.\n' \
             "$actual" "$budget"

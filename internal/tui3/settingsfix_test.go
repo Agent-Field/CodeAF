@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // The four defects this slice closed, each pinned by the behaviour a person
@@ -239,7 +239,7 @@ func TestTheSearchingRowFollowsProviderAndKeyWrites(t *testing.T) {
 // built-ins. The cache is the one that actually broke — it is a file the door
 // wrote before this rule existed, and it is full of drawing models.
 func TestOnlyModelsThatAnswerInTextReachThePicker(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
 
 	a.models = func() []Model { return mixedModels }
@@ -259,7 +259,7 @@ func TestOnlyModelsThatAnswerInTextReachThePicker(t *testing.T) {
 		t.Fatalf("the cache let %v through, want %v", got, chatOnly)
 	}
 	// A cache written with no modality field at all — every row silent — is the
-	// live shape of ~/.aforge/v3/models.json, and the id rung is what catches
+	// live shape of ~/.codeaf/v3/models.json, and the id rung is what catches
 	// the drawing models in it.
 	silent := make([]Model, 0, len(mixedModels))
 	for _, model := range mixedModels {

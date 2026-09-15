@@ -40,11 +40,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/shaped"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // agentPremise is the one paragraph every planning prompt shares. It is stated
@@ -430,7 +430,7 @@ type Options struct {
 	// queryable from its own artifacts rather than only as a field inside the
 	// plan blob. The caller forms the store id; see BriefJournal. Nil leaves
 	// briefs exactly as durable as they were before this existed, which is the
-	// one-shot `aforge plan` path and every caller with no store to journal to.
+	// one-shot `codeaf plan` path and every caller with no store to journal to.
 	Journal BriefJournal
 }
 
@@ -1257,7 +1257,7 @@ func plural(count int, noun string) string {
 // that re-running the same goal lands in the same directory.
 func RunID(goal string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(goal)))
-	return "aforge-" + hex.EncodeToString(sum[:8])
+	return "codeaf-" + hex.EncodeToString(sum[:8])
 }
 
 func trim(value string) string { return strings.TrimSpace(value) }

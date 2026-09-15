@@ -3,7 +3,7 @@
 //
 // It is the only thing in this repository that imports the catalog library, and
 // it is a main package that nothing imports, so the library is a build-time
-// requirement and not a linked dependency of the aforge binary. That is the
+// requirement and not a linked dependency of the codeaf binary. That is the
 // whole point of the exercise — see ../ampcatalog.go.
 //
 // Run it with `go generate ./internal/connect/ampcatalog` and read the diff.
@@ -22,7 +22,7 @@ import (
 
 	amp "github.com/amp-labs/connectors/providers"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
+	"github.com/Agent-Field/codeaf/internal/connect/ampcatalog"
 )
 
 func main() {
@@ -40,7 +40,7 @@ func run() error {
 	for _, name := range names {
 		info, err := amp.ReadInfo(name)
 		if err != nil || info == nil {
-			// A name the library will not read is a name aforge already skips.
+			// A name the library will not read is a name codeaf already skips.
 			continue
 		}
 		cut, err := narrow(info)

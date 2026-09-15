@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // nodeRunsBackgroundJob drives one background `bash` to a clean close on the

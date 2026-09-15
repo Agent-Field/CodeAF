@@ -7,9 +7,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE STANDING PLACE'S READING, ON ITS OWN.
@@ -199,7 +199,7 @@ func TestTheReadingStopsOnlyOnOrders(t *testing.T) {
 
 // ── the paint ───────────────────────────────────────────────────────────────
 
-// EVERY ROW IS DRAWN IN ONE GRAMMAR: the mark every aforge screen agrees on
+// EVERY ROW IS DRAWN IN ONE GRAMMAR: the mark every codeaf screen agrees on
 // ([standing.Item.Glyph]), what the order is called, and home's own clause
 // ([standRollup]) — on the machine's shelf exactly as on the three above it.
 func TestTheReadingDrawsEveryShelfInOneGrammar(t *testing.T) {

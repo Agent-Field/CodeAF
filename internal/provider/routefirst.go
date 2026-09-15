@@ -273,7 +273,7 @@ func forgetRouterGates() {
 // the machine is the thing that changed and the model is the thing a person
 // goes to change.
 func takeoverLine(model string) string {
-	return model + " has come back refused or unusable twice lately, so aforge is choosing its provider for a while · pin one in /model to choose it yourself"
+	return model + " has come back refused or unusable twice lately, so codeaf is choosing its provider for a while · pin one in /model to choose it yourself"
 }
 
 // ── THE SENTENCE, PARKED UNTIL SOMEBODY IS READING ──────────────────────────

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	executor "github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
+	executor "github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/thread"
 )
 
 // The incident, at the composition: a leaf that ran a long benchmark campaign,

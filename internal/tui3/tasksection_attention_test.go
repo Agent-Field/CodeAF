@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // tasksAskingWorld is ONE conversation with four pieces of work out and one the
@@ -28,7 +28,7 @@ import (
 // stopped on a question that has nothing to do with any of them.
 func tasksAskingWorld(now time.Time, asking bool) (session.World, session.UsageWindow) {
 	row := session.SessionRow{
-		ID: "room-a", Title: "shipping the gate", Project: "aforge",
+		ID: "room-a", Title: "shipping the gate", Project: "codeaf",
 		Open: true, Live: true,
 	}
 	// The presence file is what says a row is HAPPENING ([session.SessionRow]'s
@@ -58,7 +58,7 @@ func tasksAskingWorld(now time.Time, asking bool) (session.World, session.UsageW
 			Status: string(session.TaskDone), EndedAt: now.Add(-3 * time.Hour)},
 	}
 	world := session.World{
-		Projects: []session.Project{{Name: "aforge", Sessions: []session.SessionRow{row}}},
+		Projects: []session.Project{{Name: "codeaf", Sessions: []session.SessionRow{row}}},
 		Read:     now,
 	}
 	return world, session.LastDays(now, 7)
@@ -236,14 +236,14 @@ func TestTheNeedsSectionIsTheWorksOwnReading(t *testing.T) {
 		world, win := tasksAskingWorld(now, asking)
 		// A dead window's live-looking rows are in the sweep too: the record
 		// claims running and nothing is behind it.
-		gone := session.SessionRow{ID: "room-c", Title: "gone", Project: "aforge"}
+		gone := session.SessionRow{ID: "room-c", Title: "gone", Project: "codeaf"}
 		gone.Tasks.Rows = []session.TaskIndexEntry{
 			{SessionID: "room-c", ID: "1", Label: "the certificate rotation", Status: string(session.TaskRunning)},
 			{SessionID: "room-c", ID: "2", Label: "install the render toolchain",
 				Status: string(session.TaskFailed), Ending: session.TaskEndingError, EndedAt: now.Add(-time.Hour)},
 		}
 		world.Projects = append(world.Projects, session.Project{
-			Name: "aforge", Sessions: []session.SessionRow{gone},
+			Name: "codeaf", Sessions: []session.SessionRow{gone},
 		})
 		reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 		if len(reading.items) == 0 {

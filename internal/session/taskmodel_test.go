@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // testModels is one plausible install: two vendors, two families, and the two

@@ -3,7 +3,7 @@ package tui3
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // A model chosen here has to outlive the session, and the door is the only

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A WINDOW THAT ACTED SECONDS AGO IS WATCHING, whatever its pipe is doing.
@@ -88,7 +88,7 @@ func TestAnActThatHasAgedOutStopsCountingAsPresence(t *testing.T) {
 // A STOP TAKEN WHILE SOMEBODY IS WATCHING DOES NOT SAY NOBODY WAS.
 //
 // Every road that ends a conversation used to go through one door and one
-// sentence, so `aforge engine --stop`, a host shutting down and a person's own
+// sentence, so `codeaf engine --stop`, a host shutting down and a person's own
 // goodbye all told whoever was reading that nobody had been left watching. The
 // sentence is the unattended door's, and only the unattended door may say it.
 func TestAStopTakenWithAWindowInTheRoomDoesNotSayNobodyWasWatching(t *testing.T) {

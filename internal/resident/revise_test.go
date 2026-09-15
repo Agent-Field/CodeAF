@@ -7,8 +7,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The sentinel's four edits, mirrored onto the store: add splices, remove
@@ -469,7 +469,7 @@ func TestARevisionRepairNobodyWillGatherStandsOnTheSpine(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("the repair was not admitted: ok=%t err=%v", ok, err)
 	}
-	// This is the whole of it: cmd/aforge's shouldGate admits a node whose
+	// This is the whole of it: cmd/codeaf's shouldGate admits a node whose
 	// parent is the spine and nothing else, and announceNode reads the same
 	// column.
 	if added.Parent != store.RootID {

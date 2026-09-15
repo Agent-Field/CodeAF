@@ -79,19 +79,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/redact"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 // ── retry constants (pi spec §4, verbatim from internal/exec/bare) ──────────
@@ -382,7 +382,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// door reaches any more say so where they stand.
 
 	// AND THE READING THAT USED TO BE THE LAST THING BEFORE THE FIRST REQUEST:
-	// which of the things this person has had aforge remember bear on what they
+	// which of the things this person has had codeaf remember bear on what they
 	// just said (memory.go).
 	//
 	// IT IS NOT A LINE OF THIS FUNCTION ANY MORE. It is already in flight — it was
@@ -4273,7 +4273,7 @@ func CompactThresholdFor(model string, window int) int {
 
 // ContextFillPinned is how full a PERSON has said a window may get before it is
 // folded, and whether anybody has said so at all — the settings registry's
-// `context fill` row, the `AFORGE_CONTEXT_FILL_PCT` environment pin behind it,
+// `context fill` row, the `CODEAF_CONTEXT_FILL_PCT` environment pin behind it,
 // and the `--context-fill` flag that sets that pin for one run
 // (internal/ctxbudget's PinnedFillPercent, which is where those three meet).
 //
@@ -4856,8 +4856,8 @@ const foldMarkerPrefix = "[folded "
 // a dead one. The original lines stay above the compaction marker in that
 // file; the path is the recovery floor.
 //
-//	[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]
-//	[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl]
+//	[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl, lines 12..40]
+//	[folded 31 messages · grep or read /home/x/.codeaf/v3/sessions/abc.jsonl]
 //	[folded 31 messages · full record in the store]
 //	[folded 31 messages · full record in the session journal]
 //

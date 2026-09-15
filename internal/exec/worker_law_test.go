@@ -75,7 +75,7 @@ var workerChoicePhrases = []struct {
 	{regexp.MustCompile(`--subharness`), "the flag that pinned a worker does not exist"},
 	{regexp.MustCompile(`(?i)default worker`), "\"default\" implies one of several; there is one worker"},
 	{regexp.MustCompile(`(?i)return the choice as`), "nothing asks a model to name a worker"},
-	{regexp.MustCompile(`(?i)AFORGE_WORKERS`), "the worker roster setting does not exist"},
+	{regexp.MustCompile(`(?i)CODEAF_WORKERS`), "the worker roster setting does not exist"},
 }
 
 // promptCorpora are the files a model or a person actually reads: the session's
@@ -195,8 +195,8 @@ var removedNames = []string{
 	"SWESubharness",
 	"NewSWE",
 	"BareSubharness",
-	"AFORGE_SWEPRO",
-	"AFORGE_SWE_MAX_COST",
+	"CODEAF_SWEPRO",
+	"CODEAF_SWE_MAX_COST",
 	"internal/swepro",
 }
 
@@ -209,7 +209,7 @@ var namesLawSkipped = map[string]string{
 	"BENCHMARKS.md":                    "dated measurements of what ran at the time",
 	"audit-notes":                      "an audit of the tree as it was",
 	"bench/deepswe":                    "a benchmark track, named for the task set and not for a worker",
-	"bench/oneroad":                    "the SWE-bench track for aforge, pi and opencode",
+	"bench/oneroad":                    "the SWE-bench track for codeaf, pi and opencode",
 	".git":                             "not the tree",
 	"internal/exec/worker_law_test.go": "this law has to be able to say the names it forbids",
 }

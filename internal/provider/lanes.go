@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // ── THE ADAPTER BETWEEN A BELIEF AND A WIRE ─────────────────────────────────
@@ -541,7 +541,7 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 		// refuses the pin (tellRetiredPins). One predicate, so the machine a
 		// person is asked for and the sentence they get when it is refused can
 		// never belong to two different sets of calls. Inside a command a
-		// person typed every call is theirs — the planning pass of `aforge do`
+		// person typed every call is theirs — the planning pass of `codeaf do`
 		// runs in a role nobody reads and is still the thing they are waiting
 		// on — and the same predicate says so.
 		if named == "" || retired || !readByAPerson(knobs.role) {
@@ -980,7 +980,7 @@ func sheetNotFound(status string, payload []byte) error {
 //
 // IT IS A HINT AND NEVER A REFUSAL. This build used to decide whether the
 // endpoints page was fetched at all by this very substring test, so a binary
-// driven through AFORGE_BASE_URL at a proxy, a mirror, a self-hosted router or
+// driven through CODEAF_BASE_URL at a proxy, a mirror, a self-hosted router or
 // the router reached by its IP silently got no sheet, an empty frontier and no
 // lane behaviour whatever — nothing errored and nothing logged a refusal, the
 // feature was simply absent (issue #373). A ROUTER IS RECOGNISABLE BY WHAT IT
@@ -1003,7 +1003,7 @@ func LaneSheetCertain(base string) bool {
 // should carry. It is the one door through which internal/lane is handed a
 // transport, and it is exported because two callers need it and a second
 // spelling of it would drift: [NewClient] wires the base its client talks to,
-// and the process's own beat (cmd/aforge's lanebeat.go) wires the base the
+// and the process's own beat (cmd/codeaf's lanebeat.go) wires the base the
 // settings name, because on three headless doors the beat starts before any
 // client exists and a beat over an unwired sheet fetches nothing at all.
 //

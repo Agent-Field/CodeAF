@@ -4,7 +4,7 @@ Decision note, September 5, 2026. This narrows the execution plan; it is not a
 claim that the policy simplification below has shipped.
 
 The user's analogy is substantially right: a Pi-like agent loop can start other
-instances of that loop. Aforge already uses `newAgent` for both durable workers
+instances of that loop. codeaf already uses `newAgent` for both durable workers
 (`task_run.go`, `newTaskAgentOn`) and short forks (`fork.go`). We do not need to
 replace that core, or introduce separate agent implementations for every role.
 
@@ -84,7 +84,7 @@ still completes and remains steerable, not how many calls disappear.
 Use realistic repository tasks to evaluate this change. The current Validated
 pilot exposed a grader collection conflict and a compressed-error proxy defect;
 it cannot justify a wholesale architecture rewrite or an efficiency ranking.
-The corrected-proxy Aforge trial retains the original runtime so that those
+The corrected-proxy codeaf trial retains the original runtime so that those
 experimental conditions are kept separate from future policy changes. It reached
 the 30-minute deadline with implementation in the child worktree but no feature
 integrated into the main workspace. The child was awaiting a full test run.

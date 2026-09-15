@@ -83,7 +83,7 @@ func modelSectionLabel(section Section) string {
 // — `## permissions · ` — so the command-line door and every test that reads
 // what a person saw share one spelling. The model's bracketed form is
 // [ModelSectionOpen]; the two must never be swapped, because a person reading
-// `aforge manual "…"` is reading Markdown headings and the belt tool is reading
+// `codeaf manual "…"` is reading Markdown headings and the belt tool is reading
 // brackets.
 func PersonSectionOpen(page string) string {
 	return "## " + page + " · "

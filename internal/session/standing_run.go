@@ -72,13 +72,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/processgroup"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 const (
@@ -167,7 +167,7 @@ func forgetLiveSession(agent *Agent) {
 // ([registerLiveSession]), so an entry here is a room with a person in it and
 // nothing else is. A headless run opens no conversation; it answers true only
 // when the door said a person typed it (internal/provider's
-// [provider.SetPersonAtTheDoor]), which is the difference between `aforge do`
+// [provider.SetPersonAtTheDoor]), which is the difference between `codeaf do`
 // at somebody's terminal and a node a spawner built with nobody there.
 //
 // WHAT IT IS FOR. λ — what a second of waiting is worth — is zero for work
@@ -1130,7 +1130,7 @@ func standingSentinelQuestion(judgment standing.Judgment) string {
 	return out.String()
 }
 
-// standingVerdict reads the answer. It is v1's parse (cmd/aforge/chat.go's
+// standingVerdict reads the answer. It is v1's parse (cmd/codeaf/chat.go's
 // checkSentinel) and keeps its law: the first word is the whole verdict, and a
 // reply that says neither is NOT a yes.
 //

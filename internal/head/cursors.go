@@ -1,6 +1,6 @@
 package head
 
-import "github.com/Agent-Field/aforge-v2/internal/store"
+import "github.com/Agent-Field/codeaf/internal/store"
 
 // sessionCursors is the head's resume state: one watermark per room — the
 // newest row of that room the head owes nothing for — beside the journal

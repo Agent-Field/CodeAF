@@ -113,7 +113,7 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "marketing", "linkedin.png"), "png\n")
 	writeFile(t, filepath.Join(tree.dir, ".venv", "lib", "site.py"), "vendored\n")
 	// And the harness's own droppings, which are not the node's work either.
-	writeFile(t, filepath.Join(tree.dir, aforgeDroppings, "jobs", "1.log"), "building\n")
+	writeFile(t, filepath.Join(tree.dir, codeafDroppings, "jobs", "1.log"), "building\n")
 
 	merge, changed := keptWork(tree, "make the sheets", []string{"marketing/linkedin.png"}, false)
 	if merge != mergeAborted {
@@ -123,7 +123,7 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 		t.Fatalf("changed = %v, want it to name marketing/linkedin.png", changed)
 	}
 	for _, unwanted := range changed {
-		if strings.HasPrefix(unwanted, aforgeDroppings) || strings.HasPrefix(unwanted, ".venv") {
+		if strings.HasPrefix(unwanted, codeafDroppings) || strings.HasPrefix(unwanted, ".venv") {
 			t.Fatalf("changed = %v, want what the node did not write left out", changed)
 		}
 	}
@@ -141,7 +141,7 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 	if strings.Contains(listed, ".venv") {
 		t.Fatalf("branch %s carries an environment the node did not write:\n%s", tree.branch, listed)
 	}
-	if strings.Contains(listed, aforgeDroppings) {
+	if strings.Contains(listed, codeafDroppings) {
 		t.Fatalf("branch %s carries the harness's own droppings:\n%s", tree.branch, listed)
 	}
 

@@ -4,18 +4,18 @@
 // version pages inside it, and the two mutable notes a subharness accumulates —
 // what it has learnt, and how its last run went — beside them:
 //
-//	~/.aforge/subharnesses/<name>/v1.json      the version record: hash, parent, why
-//	~/.aforge/subharnesses/<name>/v1/          the bundle that record describes
+//	~/.codeaf/subharnesses/<name>/v1.json      the version record: hash, parent, why
+//	~/.codeaf/subharnesses/<name>/v1/          the bundle that record describes
 //	                              manifest.json
 //	                              program.js
 //	                              prompts/*.md
 //	                              memory.md      the seed this version was minted with
 //	                              evals/         inert until v3; the format exists now
-//	~/.aforge/subharnesses/<name>/v2.json
-//	~/.aforge/subharnesses/<name>/v2/
-//	~/.aforge/subharnesses/<name>/memory.md    the LIVE memory, written by remember()
-//	~/.aforge/subharnesses/<name>/last-run.json
-//	~/.aforge/subharnesses/<name>/.mint.lock   the gate one mint at a time holds
+//	~/.codeaf/subharnesses/<name>/v2.json
+//	~/.codeaf/subharnesses/<name>/v2/
+//	~/.codeaf/subharnesses/<name>/memory.md    the LIVE memory, written by remember()
+//	~/.codeaf/subharnesses/<name>/last-run.json
+//	~/.codeaf/subharnesses/<name>/.mint.lock   the gate one mint at a time holds
 //
 // THERE IS NO HEAD FILE. The head is the highest version present, which is the
 // rule internal/subharness/store.go states about its own pages and the reason it
@@ -59,12 +59,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 const (
 	// Root is the directory name under the state root, and it is the same word
-	// under a project's `.aforge/` — see [ProjectDir].
+	// under a project's `.codeaf/` — see [ProjectDir].
 	Root = "subharnesses"
 
 	// ManifestFile, ProgramFile, PromptsDir, MemoryFile and EvalsDir are PRD §6's
@@ -189,8 +189,8 @@ func (s *Store) now() time.Time {
 // itself a mutation.
 func At(dir string) *Store { return &Store{dir: dir} }
 
-// Home opens the store aforge owns: ~/.aforge/subharnesses, moved wholesale by
-// AFORGE_HOME like everything else durable, through the one package that reads
+// Home opens the store codeaf owns: ~/.codeaf/subharnesses, moved wholesale by
+// CODEAF_HOME like everything else durable, through the one package that reads
 // that variable.
 func Home() *Store { return At(home.Join(Root)) }
 
@@ -200,7 +200,22 @@ func Home() *Store { return At(home.Join(Root)) }
 // would consult it is one Registry.UseBundles(exec.LayerProject, …) away when
 // the phase that wants it arrives.
 func ProjectDir(repository string) string {
-	return filepath.Join(repository, ".aforge", Root)
+	return filepath.Join(repository, ".codeaf", Root)
+}
+
+// ProjectReadDir is the repository store a reader should open. The current
+// directory wins; the former directory is accepted only while the current one
+// is absent. Writers keep using [ProjectDir] and therefore never touch it.
+func ProjectReadDir(repository string) string {
+	current := ProjectDir(repository)
+	if _, err := os.Stat(current); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return current
+	}
+	legacy := filepath.Join(repository, ".aforge", Root) // legacy-name
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return current
 }
 
 // Dir names the store's directory.

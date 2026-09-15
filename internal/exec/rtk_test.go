@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/rtk"
+	"github.com/Agent-Field/codeaf/internal/rtk"
 )
 
 // compressorBench sets up a workspace, the stand-in rtk, and the log the stub
@@ -35,7 +35,7 @@ func compressorBench(t *testing.T) (*Toolbox, string, func() []string) {
 		t.Fatal(err)
 	}
 	logPath := filepath.Join(t.TempDir(), "asked.log")
-	t.Setenv("AFORGE_RTK_STUB_LOG", logPath)
+	t.Setenv("CODEAF_RTK_STUB_LOG", logPath)
 	t.Setenv(rtk.EnvBinary, binary)
 
 	asked := func() []string {

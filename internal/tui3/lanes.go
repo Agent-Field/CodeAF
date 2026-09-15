@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── THE SURFACE'S SIDE OF LANES ─────────────────────────────────────────────
@@ -659,7 +659,7 @@ func laneSlotForRow(key string) string {
 // measurements that never come.
 func (a *app) armLanes(p *picker, slot string) {
 	// THE ROUTING ROW RIDES ALONG EVEN WHERE IT CLOSES THE FOLD, because it is
-	// the one fact here that is about what aforge PROMISES rather than about
+	// the one fact here that is about what codeaf PROMISES rather than about
 	// what it has measured, and the row that makes that promise reads it
 	// ([laneAutoSaid]).
 	p.routing = a.routing
@@ -1191,9 +1191,9 @@ func laneNamed(views []laneView, word string) (laneView, bool) {
 //
 // AND "OVER A CONNECTION" IS [app.hosted] AND NOT AN EMPTY PROFILE PATH. These
 // three sites read the empty string as "no profile", which is the one thing it
-// has never meant in internal/config: `AFORGE_PROFILE_DIR` unset is the
+// has never meant in internal/config: `CODEAF_PROFILE_DIR` unset is the
 // ORDINARY launch, and every reader and writer in that package resolves an
-// empty directory to ~/.aforge. So a pin from the picker, and `/model
+// empty directory to ~/.codeaf. So a pin from the picker, and `/model
 // @cloudflare`, refused to write on every machine nobody had exported that
 // variable on — while the settings row beside them wrote fine, because it goes
 // through the registry, which passes the same empty string down. One fact, two

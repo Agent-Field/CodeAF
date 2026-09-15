@@ -29,7 +29,7 @@ func TestRetainedBranchNoticePreservesRequestedWorkflow(t *testing.T) {
 // (task_contract.go). These are assertions about that wording and nothing else.
 
 func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
-	uri := "file:///tmp/lab/.aforge/sessions/task-7.jsonl"
+	uri := "file:///tmp/lab/.codeaf/sessions/task-7.jsonl"
 	// WHAT THE ENGINE WRITES WHEN BOTH CHECKING CALLS CAME BACK WITH NOTHING,
 	// composed the one way production composes it ([auditVerdict.twice]) rather
 	// than spelled again here: the subject of that sentence depends on which

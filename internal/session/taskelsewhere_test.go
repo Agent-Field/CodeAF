@@ -10,7 +10,7 @@ import (
 
 // ── THE OTHER WINDOWS ───────────────────────────────────────────────────────
 //
-// A project is a directory and a directory may have three aforge windows open on
+// A project is a directory and a directory may have three codeaf windows open on
 // it. These are the whole of what one window is allowed to say about the others:
 // what they have out right now, and whether a row of the shared index that says
 // `running` is a claim anybody is still standing behind.
@@ -27,7 +27,7 @@ func writeWindow(t *testing.T, bucket, id, title string, age time.Duration, task
 	raw, err := json.Marshal(SessionPresence{
 		Schema:       presenceSchema,
 		SessionID:    id,
-		Workspace:    "/work/aforge",
+		Workspace:    "/work/codeaf",
 		PID:          4242,
 		UpdatedAt:    time.Now().Add(-age),
 		State:        PresenceWorking,

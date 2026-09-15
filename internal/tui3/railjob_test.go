@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // runningJob is one background job as the engine publishes it now: its own
@@ -34,7 +34,7 @@ func runningJob(id int, name, command string) session.JobNotice {
 		Command: command,
 		Kind:    session.JobKindCommand,
 		State:   session.JobRunning,
-		LogPath: "/tmp/aforge/jobs/3.log",
+		LogPath: "/tmp/codeaf/jobs/3.log",
 		Started: time.Now().Add(-90 * time.Second),
 	}
 }

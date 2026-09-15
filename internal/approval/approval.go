@@ -267,7 +267,7 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	// default (prompt) mode when the pattern list is empty. The moment the
 	// list has an author, that list is the whole answer: a project row that
 	// replaced the person's patterns must not quietly re-allow git status
-	// underneath (cmd/aforge's TestAProjectBashRowReplacesTheRememberedOne).
+	// underneath (cmd/codeaf's TestAProjectBashRowReplacesTheRememberedOne).
 	if !matched && len(p.BashPatterns) == 0 && p.liftsReadOnly(ToolBash) && decision.Action == ActionPrompt && readOnlyBash(command) {
 		return Decision{Action: ActionAllow, Rule: "read-only"}
 	}
@@ -303,7 +303,7 @@ func bashCommand(args json.RawMessage) (string, bool) {
 //	bash.patterns  : [{"match": "git status*", "approval": "allow"}, …]
 //
 // The patterns list is accepted both nested (bash → patterns) and under the
-// flattened dotted key, because aforge's config registry keys are dotted and
+// flattened dotted key, because codeaf's config registry keys are dotted and
 // a JSON settings file is not. Keys this package does not know are ignored:
 // the map it is handed is a whole settings tree, not a struct built for it.
 //

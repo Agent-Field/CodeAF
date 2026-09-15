@@ -13,7 +13,7 @@ import (
 // THE STRUCTURAL GUARD ON ONE LAW: an empty profile directory is the normal
 // case, not the absent case, and absence is a hosted window.
 //
-// [config.ProfileDir] carries AFORGE_PROFILE_DIR, which almost nobody exports,
+// [config.ProfileDir] carries CODEAF_PROFILE_DIR, which almost nobody exports,
 // so the empty string is what very nearly every launch hands this surface — and
 // internal/config has always resolved it to this process's own profile in the
 // state root ([config.ProfilePath]). A guard that reads emptiness as "there is
@@ -38,7 +38,7 @@ import (
 // (ordinarylaunch_test.go), so this is no longer a ledger of exceptions with a
 // gate around it: it is a GUARANTEE over the whole package. An entry added back
 // here is a claim that some site genuinely means "there is no profile" and not
-// "AFORGE_PROFILE_DIR is unset", and the three that were here for months are
+// "CODEAF_PROFILE_DIR is unset", and the three that were here for months are
 // the evidence that such a claim is nearly always wrong.
 func TestNoNewSiteReadsAnEmptyProfileDirectoryAsNoProfile(t *testing.T) {
 	// known is every site that compares a profile directory against "" today,

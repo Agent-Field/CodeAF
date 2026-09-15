@@ -10,9 +10,9 @@ package connect
 //
 //   - the one whose keys already live in their shell, their direnv file or their
 //     secret manager, and who would have to copy each of them into a second file
-//     to use aforge at all;
+//     to use codeaf at all;
 //   - the one on a machine they share, or a machine whose disk they do not own,
-//     for whom "aforge wrote my Stripe key down" is the reason they stop here;
+//     for whom "codeaf wrote my Stripe key down" is the reason they stop here;
 //   - the one who rotates. A key in an environment is rotated where it is set. A
 //     key copied into a store file is rotated twice, and the second time is the
 //     one they forget.
@@ -40,9 +40,10 @@ package connect
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // envReferencePattern is the two shapes a reference may be written in, and no
@@ -97,7 +98,7 @@ func envReferenceWord(name string) string {
 // known here or worth saying.
 func (s stored) secret(name string) (string, error) {
 	if variable := strings.TrimSpace(s.KeyEnv); variable != "" {
-		if value := strings.TrimSpace(os.Getenv(variable)); value != "" {
+		if value := strings.TrimSpace(env.Value(variable)); value != "" {
 			return value, nil
 		}
 		return "", fmt.Errorf("%s reads its key from %s, and nothing is set there",

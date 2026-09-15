@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE TASK DOOR CROSSES WHOLE, AND SOLO CROSSES WITH IT. The engine decides

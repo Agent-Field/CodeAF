@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // modelServer is a provider endpoint with a script behind it: each reply is

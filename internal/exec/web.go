@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // Web is search and page fetching, the one capability a shell does not already
@@ -123,7 +123,7 @@ func (w *Web) searchDuckDuckGo(ctx context.Context, query string, limit int) (st
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; aforge/1.0)")
+	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; codeaf/1.0)")
 	response, err := w.http.Do(request)
 	if err != nil {
 		return "", err
@@ -212,7 +212,7 @@ func (w *Web) fetchOne(ctx context.Context, url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; aforge/1.0)")
+	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; codeaf/1.0)")
 	response, err := w.http.Do(request)
 	if err != nil {
 		return "", err

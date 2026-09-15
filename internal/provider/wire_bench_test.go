@@ -25,7 +25,7 @@ func benchClient(b *testing.B, baseURL, model string) *Client {
 
 // dirtyTranscript is benchTranscript with ids a strict backend would reject, so
 // the repair path is measured too. The clean transcript is the common case —
-// aforge's own ids are already conservative — but a sanitizer that got cheaper
+// codeaf's own ids are already conservative — but a sanitizer that got cheaper
 // on the no-op and dearer on the repair would be a bad trade, and only a
 // benchmark of both says which happened.
 func dirtyTranscript(turns int) []ai.Message {

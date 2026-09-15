@@ -1,5 +1,5 @@
 // Package lease elects the one process currently serving as a resident for a
-// durable Aforge store. The lock is only coordination; the journal remains the
+// durable codeaf store. The lock is only coordination; the journal remains the
 // source of truth and another process may take the role as soon as it is free.
 package lease
 
@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 const (

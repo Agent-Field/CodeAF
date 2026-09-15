@@ -3,7 +3,7 @@ package resident
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // §4. The arrival brief said "$0.0023" in its header and "$0.00 spent" in its

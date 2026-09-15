@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A NODE STILL WORKING WITH NOTHING ON ITS PAGE SAYS SO, rather than drawing a

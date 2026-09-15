@@ -51,7 +51,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 const (
@@ -195,7 +195,7 @@ type stateStore struct {
 // different extension, beside it in the same directory.
 //
 // It is per-journal rather than one state.json per session DIRECTORY, which the
-// FLAT layout's shape demanded: ~/.aforge/v3/sessions/<workspace>/ held every
+// FLAT layout's shape demanded: ~/.codeaf/v3/sessions/<workspace>/ held every
 // session this workspace ever had, so a single state.json there would have been
 // every window and every resumed conversation writing over each other's
 // beliefs. State belongs to ONE conversation, and the journal is what names one
@@ -536,7 +536,7 @@ func idPrefix(kind stateKind) string {
 //
 //	[state] 2 beliefs · 1 open · 1 done — working state, kept outside the transcript
 //	beliefs:
-//	- b2 the module path is github.com/Agent-Field/aforge-v2  ← read: go.mod
+//	- b2 the module path is github.com/Agent-Field/codeaf  ← read: go.mod
 //	open:
 //	- p2 wire StateBlock into the compaction rebuild  ← grep: compact loop.go
 //	done:

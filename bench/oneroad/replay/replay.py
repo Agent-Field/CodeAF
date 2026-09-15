@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Off-policy replay evaluation of mid-turn escalation questions.
 
-Reads recorded aforge benchmark transcripts, truncates each at ~10 completed
+Reads recorded codeaf benchmark transcripts, truncates each at ~10 completed
 tool rounds, appends ONE candidate checkpoint question as a user injection,
 and asks two OpenRouter models what they would do. Scores the resulting
 decision distribution (SPLIT vs CONTINUE vs AMBIG) per variant per model.
@@ -30,7 +30,7 @@ RESULTS_ROOT = os.path.join(os.path.dirname(HERE), "results")
 ANSWERS = os.path.join(HERE, "answers.jsonl")
 RESULTS_MD = os.path.join(HERE, "RESULTS.md")
 
-CELLS = [f"aforge-pre-{fam}-{t}-s1"
+CELLS = [f"codeaf-pre-{fam}-{t}-s1"
          for fam in ("crew", "flash")
          for t in ("20", "21", "22", "23", "batch")]
 
@@ -753,7 +753,7 @@ def probe():
 
 
 def probe_call():
-    msgs, st = reconstruct("aforge-pre-crew-batch-s1")
+    msgs, st = reconstruct("codeaf-pre-crew-batch-s1")
     full = msgs + [{"role": "user", "content": VARIANTS["C"][1]}]
     print("est_tokens", st["est_tokens"])
     txt, u, err = call(MODELS[0], full, 0.7, "probe")

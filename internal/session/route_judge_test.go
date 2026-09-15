@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/splitgate"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/splitgate"
 )
 
 // THE ROUTE JUDGE, on the two questions it exists to get right: does it fire at
@@ -1145,7 +1145,7 @@ func TestARacedYesIsLookedAtEarlyAndTheLookConvertsTheTurn(t *testing.T) {
 }
 
 // AND A RACED YES ON ITS OWN CONVERTS NOTHING AND SAYS NOTHING. IT ONLY MAKES
-// AFORGE SAY SOMETHING TO THE TURN SOONER.
+// codeaf SAY SOMETHING TO THE TURN SOONER.
 //
 // This is the demotion, pinned, and it is one step further along than it was.
 // The benchmark measured the raced screen converting BOTH of its small-work

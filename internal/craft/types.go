@@ -1,4 +1,4 @@
-// Package craft is aforge's learned know-how: workflows, skills, verifiers,
+// Package craft is codeaf's learned know-how: workflows, skills, verifiers,
 // and exemplars, versioned in a git repository the resident owns. A workflow
 // is a reusable job-shape written by the distiller from experience — never by
 // hand into the binary — and refined across versions whose survival is
@@ -97,7 +97,7 @@ type Step struct {
 	// the existing model-words machinery. Empty means the job's model.
 	Model string
 	// Skill names an executable in the craft repo's skills/ directory (also on
-	// AFORGE_SKILLS_BIN). Advice, not enforcement.
+	// CODEAF_SKILLS_BIN). Advice, not enforcement.
 	Skill string
 	// ForEach unrolls this step over a list produced upstream.
 	ForEach *ForEach

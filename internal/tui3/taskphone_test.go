@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // TASKS ON A PHONE ARE A VISIBLE DOOR, A SCROLLABLE LIST OF CARDS, AND A WAY

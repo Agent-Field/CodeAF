@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 )
 
 // workspaceNaming writes a workspace holding one file of the given size and

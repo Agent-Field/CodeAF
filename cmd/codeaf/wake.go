@@ -1,0 +1,271 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/craft"
+	"github.com/Agent-Field/codeaf/internal/lease"
+	"github.com/Agent-Field/codeaf/internal/provider/pool"
+	"github.com/Agent-Field/codeaf/internal/resident"
+	"github.com/Agent-Field/codeaf/internal/store"
+)
+
+const (
+	defaultWakeMaxSeconds = 120
+	maxWakeTicks          = 32
+)
+
+type wakeBuilder func(graph *store.Store, path string) (*resident.Reconciler, error)
+
+// runWake opens the resident store, serves the full resident role for one
+// bounded pass, and exits. It starts no permanent process or worker runner.
+func runWake(args []string) error {
+	return runWakeWith(args, os.Stdout, func(graph *store.Store, path string) (*resident.Reconciler, error) {
+		settings, err := config.Load()
+		if err != nil {
+			return nil, err
+		}
+		prefs := loadChatPrefs(filepath.Dir(path))
+		chatClient, err := newLiveClient(settings, firstNonEmptyString(prefs.ChatModel, settings.Model))
+		if err != nil {
+			return nil, err
+		}
+		taskClient, err := newLiveClient(settings, firstNonEmptyString(prefs.TaskModel, settings.Model))
+		if err != nil {
+			return nil, err
+		}
+		// Same resolution as the chat surface: an explicit plan choice splits
+		// structuring from execution, empty follows the work model.
+		planClient, err := newLiveClient(settings, firstNonEmptyString(prefs.PlanModel, settings.PlanModel, taskClient.Model()))
+		if err != nil {
+			return nil, err
+		}
+		// A wake pass is unattended by definition, which makes an unbounded
+		// structuring call worse here than in chat: there is nobody to notice.
+		chatClient.WithCallWall(pool.DefaultCallWall)
+		planClient.WithCallWall(pool.DefaultCallWall)
+		installMeasuredRulers(settings, taskClient.Model())
+		plans := &jobPlans{graphs: map[string]plannedJob{}}
+		// A wake pass has no live boost slot to resolve model words against;
+		// jobs born here run on the configured work model.
+		// A wake pass is the standing half of the product doing its job, not a
+		// one-shot errand: charters are exactly what it exists to serve.
+		// A wake pass has no shared workspace to show the planner: the jobs it
+		// admits work in per-job directories that do not exist yet, so terrain
+		// renders nothing and every prompt it sends is the prompt it always sent.
+		reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, "", nil, false)
+		// Craft is not a chat ornament. Without it an overnight charter plans
+		// from scratch a job that has a proven learned workflow, and any craft
+		// that overnight job would have taught is discarded before it can even
+		// be filed as a lesson — the forge returns early for want of a mind.
+		// The repository lives beside the graph it serves; a missing or broken
+		// one leaves craft dormant, exactly as it does in chat.
+		if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(path), "craft")); craftErr == nil {
+			reconciler = reconciler.
+				WithCraftRunner(resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())).
+				WithCraftMind(resident.NewCraftMind(craftRepo, craftRepo.Dir(),
+					fillCraftParams(settings, chatClient), repairCraft(settings, chatClient)))
+		} else {
+			log.Printf("note: craft repository unavailable: %v", craftErr)
+		}
+		return reconciler, nil
+	})
+}
+
+func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
+	flags := commandFlags("wake")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
+	// A WALL IS `--timeout` ON EVERY DOOR THAT HAS ONE. This was
+	// `--max-seconds`, which is the same concept spelled a third way and in the
+	// unit rather than in the quantity — so `codeaf wake --max-seconds 5m` was a
+	// parse error on a machine where `codeaf do --timeout 5m` works (wall.go).
+	wall := wallFlag{wall: time.Duration(defaultWakeMaxSeconds) * time.Second}
+	flags.Var(&wall, "timeout", "hard wall on the pass, as a duration such as 2m (a bare number is seconds)")
+	renamedFlag(flags, "max-seconds", "timeout")
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
+		return err
+	}
+	noteRenamedFlags(flags)
+	if flags.NArg() != 0 {
+		return fmt.Errorf("usage: codeaf wake [--db path] [--timeout 2m]")
+	}
+	path, err := expandHome(strings.TrimSpace(*database))
+	if err != nil {
+		return err
+	}
+	holder, err := lease.ProbeResident(path)
+	if err != nil {
+		return err
+	}
+	// A holder that is alive but has not completed a pass in several intervals
+	// is not serving the role, only occupying it. Deferring to it forever is how
+	// a resident whose loop died silently stopped every standing watch on the
+	// machine while still printing "alive" at anyone who asked.
+	if holder != nil && !holder.Stuck {
+		_, err = fmt.Fprintf(output, "resident alive (pid %d) — skipping wake\n", holder.PID)
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("open wake store: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("open wake store: %s is not a regular database file", path)
+	}
+	releaseResident, heldBy, err := lease.AcquireResident(path, "wake")
+	if err != nil {
+		return err
+	}
+	if releaseResident == nil {
+		if !heldBy.Stuck {
+			_, err = fmt.Fprintf(output, "resident alive (pid %d) — skipping wake\n", heldBy.PID)
+			return err
+		}
+		// The flock cannot be taken from a live process, so the pass runs
+		// without it. Two residents against one store is the risk this lease
+		// exists to prevent; a holder that has stopped ticking is not the
+		// second one, and saying so out loud is how an operator finds out.
+		if _, err := fmt.Fprintf(output, "resident (pid %d) has not ticked since %s — waking anyway\n",
+			heldBy.PID, heldBy.LastTick.Format(time.RFC3339)); err != nil {
+			return err
+		}
+	} else {
+		defer releaseResident()
+	}
+
+	graph, err := store.Open(path)
+	if err != nil {
+		return err
+	}
+	defer graph.Close()
+	reconciler, err := build(graph, path)
+	if err != nil {
+		return err
+	}
+	startSeq, err := graph.LatestEventSeq()
+	if err != nil {
+		return err
+	}
+	// THE WALL IS THE WALL, TO THE NANOSECOND. `--timeout` is a duration on
+	// every door that has one, and this one used to fold it down to a whole
+	// number of seconds and multiply it back up — so `--timeout 500ms`
+	// truncated to zero, and a zero wall is no wall at all, which handed the
+	// pass the full default instead of the half second that was asked for.
+	ctx, cancel := context.WithTimeout(context.Background(), wall.wall)
+	defer cancel()
+	var pass resident.WatchPass
+	for tick := 0; tick < maxWakeTicks; tick++ {
+		before, watermarkErr := graph.LatestEventSeq()
+		if watermarkErr != nil {
+			return watermarkErr
+		}
+		tickErr := reconciler.Tick(ctx)
+		addWatchPass(&pass, reconciler.LastWatchPass())
+		if tickErr == nil {
+			// Stamping liveness is what makes the role reclaimable: a pass that
+			// completes says so on the lease, and a holder that stops saying it
+			// stops being deferred to.
+			_ = lease.NoteResidentTick(path, time.Now())
+		}
+		if tickErr != nil {
+			if errors.Is(tickErr, context.DeadlineExceeded) || errors.Is(tickErr, context.Canceled) {
+				break
+			}
+			return tickErr
+		}
+		after, watermarkErr := graph.LatestEventSeq()
+		if watermarkErr != nil {
+			return watermarkErr
+		}
+		if after == before || ctx.Err() != nil {
+			break
+		}
+	}
+	events, err := graph.Events(startSeq, 0)
+	if err != nil {
+		return err
+	}
+	practice, learning := 0, 0
+	for _, event := range events {
+		switch event.Kind {
+		case store.EventQuestionPracticeStarted:
+			practice++
+		case store.EventFactLearned, store.EventFactActivated:
+			learning++
+		}
+	}
+	if err := graph.RecordStandingWatchPass(store.StandingWatchPass{
+		Examined: pass.Examined, Woken: pass.Woken, Checked: pass.Checked,
+		Fired: pass.Fired, Proposed: pass.Proposed, No: pass.No, Errors: pass.Errors,
+		Quota: pass.Quota, Expired: pass.Expired, RailWaits: pass.RailWaits,
+	}); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(output, wakePassWords(pass, practice, learning))
+	return err
+}
+
+// wakePassWords is the one line a wake pass leaves behind, and it says only
+// what happened.
+//
+// THE EMPTINESS LAW REACHES A RECEIPT PRINTED ONCE. It used to print all eight
+// figures unconditionally, so an ordinary quiet pass read `examined 3, checked
+// 2, fired 1, no 0, errors 0, rail waits 0, practice 0, learning 2` — four
+// numbers asserting a measurement where nothing had happened, and a reader has
+// to spend a moment on each of them to find that out. The one sanctioned
+// exception to the law is the live status line's `$0.00`, which is there so a
+// status segment does not jump sideways as it redraws; a line printed once and
+// never redrawn is not that.
+//
+// And a pass on which NOTHING happened says so in a sentence rather than in
+// eight zeroes, because a receipt of zeroes and a reader that failed look
+// identical, which is the same reason `why self` answers an empty day with one
+// sentence instead of a column header over nothing.
+func wakePassWords(pass resident.WatchPass, practice, learning int) string {
+	counted := []struct {
+		word  string
+		count int
+	}{
+		{"examined", pass.Examined},
+		{"checked", pass.Checked},
+		{"fired", pass.Fired},
+		{"no", pass.No},
+		{"errors", pass.Errors},
+		{"rail waits", pass.RailWaits},
+		{"practice", practice},
+		{"learning", learning},
+	}
+	clauses := make([]string, 0, len(counted))
+	for _, row := range counted {
+		if row.count == 0 {
+			continue
+		}
+		clauses = append(clauses, fmt.Sprintf("%s %d", row.word, row.count))
+	}
+	if len(clauses) == 0 {
+		return "nothing was waiting to be looked at."
+	}
+	return strings.Join(clauses, ", ")
+}
+
+func addWatchPass(total *resident.WatchPass, pass resident.WatchPass) {
+	total.Examined += pass.Examined
+	total.Woken += pass.Woken
+	total.Checked += pass.Checked
+	total.Fired += pass.Fired
+	total.Proposed += pass.Proposed
+	total.No += pass.No
+	total.Errors += pass.Errors
+	total.Quota += pass.Quota
+	total.Expired += pass.Expired
+	total.RailWaits += pass.RailWaits
+}

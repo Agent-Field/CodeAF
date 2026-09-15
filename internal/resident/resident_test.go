@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func TestTickAppliesSpliceAndPostsCompiledReceipt(t *testing.T) {
@@ -28,7 +28,7 @@ func TestTickAppliesSpliceAndPostsCompiledReceipt(t *testing.T) {
 		if got != instruction {
 			return Compiled{}, fmt.Errorf("instruction = %q, want verbatim %q", got, instruction)
 		}
-		if !strings.Contains(graphContext, "root | Permanent Aforge spine | running") {
+		if !strings.Contains(graphContext, "root | Permanent codeaf spine | running") {
 			return Compiled{}, fmt.Errorf("graph context omitted active root: %q", graphContext)
 		}
 		return Compiled{
@@ -676,7 +676,7 @@ func TestSpliceTargetThatIsNoLongerLiveCostsOnlyTheContinuity(t *testing.T) {
 }
 
 // A completion journaled while no reconciler was ticking is the routine case,
-// not the exceptional one: every `aforge wake` builds a fresh reconciler, and
+// not the exceptional one: every `codeaf wake` builds a fresh reconciler, and
 // the settle lane used to prime past everything that landed since the last one.
 func TestSettlementResumesAcrossProcessBoundary(t *testing.T) {
 	graph := openStore(t)

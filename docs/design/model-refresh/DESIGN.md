@@ -23,9 +23,9 @@ it does; the list it was showing is never taken away.**
    empty list's line, `no model matches · ctrl+r fetches the newest list`.
 3. **The door** is `tui3.Options.RefreshModels`. Nil is the capability absent: the key does
    nothing and no line names it. Both chat doors implement it with a `v3ModelShelf`
-   (`cmd/aforge/chatv3_modelshelf.go`): one atomic pointer the picker's list, the vision
+   (`cmd/codeaf/chatv3_modelshelf.go`): one atomic pointer the picker's list, the vision
    gate and the task-model list read, which `catalog.Refresh` refills; the shelf writes
-   `~/.aforge/v3/models.json`. `--host` fetches on the laptop, whose list of names it shows.
+   `~/.codeaf/v3/models.json`. `--host` fetches on the laptop, whose list of names it shows.
 4. **While it runs** the list's first line reads `fetching the newest list…`; the fetch is a
    command off the loop with the catalog's own fifteen-second ceiling; every key still works;
    a second press does nothing.
@@ -35,7 +35,7 @@ it does; the list it was showing is never taken away.**
 6. **When it fails** nothing on the shelf or the picker changes; the note is
    `could not fetch the model list · <the transport's reason, one line>` and the key is
    offered again. `catalog.Refresh` is `Load` plus the error `Load` drops on purpose.
-7. **`aforge models --refresh`** does the same for a script, and says the same sentence on
+7. **`codeaf models --refresh`** does the same for a script, and says the same sentence on
    stderr when the fetch fails.
 
 ## Not done

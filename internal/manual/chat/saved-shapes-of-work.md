@@ -4,9 +4,9 @@
 
 Ask for it in a sentence, in your own words: "we should have a saved procedure for release
 notes", "make a harness for triaging flaky tests", "save what we just did so I can run it
-again". aforge writes a design, shows it to you as a card, and saves it when you approve.
+again". codeaf writes a design, shows it to you as a card, and saves it when you approve.
 After that the saved way of working is offered back whenever your words look like the work
-it was built for, and it can be run without the chat at all with `aforge run <name>`.
+it was built for, and it can be run without the chat at all with `codeaf run <name>`.
 
 The saved thing is called a **harness** — a named, versioned procedure with steps, the
 tools those steps may use, and its own bounds. Everything below is what that means: how one
@@ -28,7 +28,7 @@ about. `/subharness` and `/sub` open the whole list: these and the ones written 
 on disk, all in one list with nothing marking which is which except where it was found. See the *Subharnesses* page for that list and the card you
 settle before one runs.
 
-**There are three ways to run one.** aforge offers one by itself when what you typed matches
+**There are three ways to run one.** codeaf offers one by itself when what you typed matches
 a saved harness closely enough — that is the road for somebody who does not know the
 registry has the thing they are describing. You can pick one yourself: type `/harness `
 with a space, choose it from the list that opens, and then type the request. Or open
@@ -44,7 +44,7 @@ Three rules govern that offer:
 - **It is silent when nobody is watching.** With no registry, no runner, or no interactive
   screen, the whole feature does nothing at all.
 
-## Why aforge offered me a harness
+## Why codeaf offered me a harness
 
 The detection that raises the offer is a table lookup. No model is called. It is
 deterministic — the same words give the same answer on every machine.
@@ -85,7 +85,7 @@ directly above the message box.
 | `ctrl+c` | not swallowed; mid-turn it is still the interrupt, which releases the held turn. It never quits on one press — the door takes two |
 
 **`enter` and `y` no longer answer it, and `esc` is no longer the no.** Every question in
-aforge now answers to the number beside the answer, and `esc` means *later* on all of them.
+codeaf now answers to the number beside the answer, and `esc` means *later* on all of them.
 The one previous spelling that changed meaning is `esc`: it used to be the outright no.
 
 **The block is not modal.** Every key it has not drawn falls straight through to the message
@@ -222,7 +222,7 @@ uses tools, and the calls of any harness it calls in turn — and all of them la
 conversation's total. `/cost` and `/status` show the money and the tokens, the status line
 moves, and the requests are counted in `model calls`.
 
-They are counted the way every call aforge makes on your behalf is counted: against the
+They are counted the way every call codeaf makes on your behalf is counted: against the
 session, not against the turn you typed. The turn's own receipt stays empty, because the
 run's work is not the conversation's — it thinks on its own messages, on its own model.
 
@@ -343,7 +343,7 @@ answer the card on.
 | the room | press the row, or open it from the roster; `esc` comes back out |
 | the thread | the room's journal — the brief, the milestones in plain words (a draft written, an attempt refused, what the review changed), the card, and what became of it — kept on disk with the rest of the session's tasks |
 | stopping it | `x` on its row, or `Stop` on its room's facts row — the same card everything else is stopped by |
-| the number | `task 4`, which is what you and aforge both call it afterwards |
+| the number | `task 4`, which is what you and codeaf both call it afterwards |
 
 **It is admitted without a countdown**, unlike an ordinary task. There is no "redirect or
 wave it off" window in front of it, because the question about a design is at the *end*: the
@@ -518,7 +518,7 @@ this surface saves for the one live thing on a screen.
 
 **The name is the real one, and it arrives when it exists.** For the first minute of a
 design there is no page and no name, so the mark says `designing a subharness` and nothing
-more — aforge does not guess a name for something that has not been written. The moment the
+more — codeaf does not guess a name for something that has not been written. The moment the
 page is written the mark reads `designing subharness <name>`, on new lines and on the ones
 already above them, because the room is read back from one place.
 
@@ -675,13 +675,13 @@ and it stopped when the page landed. The card below it waits with no clock at al
 
 The same block is drawn everywhere: on the card in the conversation that asks you to keep
 a design, after `The page is written.`, under `/harness` and `enter`, and in a design's own
-room. It is written to be read without knowing anything about how aforge works, so no step
+room. It is written to be read without knowing anything about how codeaf works, so no step
 ever names the machinery behind it.
 
 **There is no box around it and no diagram above it.** The card in the conversation used to
 draw its own picture — `[plan]──▶[fetch]──▶[verify]`, a bullet per step, and two rows
 reading `verify: report` and `tools: read · grep` — inside a bordered frame. All of that is
-gone: those were names from inside aforge, shown to somebody who has never seen inside it,
+gone: those were names from inside codeaf, shown to somebody who has never seen inside it,
 and what stands there now is exactly the block below with `enter save   e change it
 esc drop` under it.
 
@@ -723,16 +723,16 @@ checks its own work and fixes what it finds
   prints nothing, so a short foot means a narrow harness. `can use · nothing` means it
   reaches no tools at all.
 
-Nothing on the card is a name from inside aforge. The tool names on a page — `bash`,
+Nothing on the card is a name from inside codeaf. The tool names on a page — `bash`,
 `generate_image` — are shown as what they do (`runs commands`, `makes images`); a tool this
 build has never heard of is printed as its own name instead.
 
-## What happens to a design when aforge closes or restarts — does a design survive closing the chat
+## What happens to a design when codeaf closes or restarts — does a design survive closing the chat
 
 Two different things, depending on how far the design had got.
 
 **A finished page waiting on your answer survives.** If the page was written and the card
-was up — the phase read `awaiting your look` — closing aforge (quit, `ctrl+c`, a crash)
+was up — the phase read `awaiting your look` — closing codeaf (quit, `ctrl+c`, a crash)
 does not throw it away. The page rides the task checkpoint, and the next session raises
 **the same card over the same page**: approve it and it saves exactly as it would have
 last night. The recovered-graph line counts it as coming back:
@@ -745,7 +745,7 @@ recovered task graph: 2 done · 1 design asks again · 1 waiting
 saying:
 
 ```
-the design did not finish before aforge closed; nothing was saved
+the design did not finish before codeaf closed; nothing was saved
 ```
 
 That is the literal truth rather than a soft ending. Nothing reaches the harness registry
@@ -822,7 +822,7 @@ whose harness task says it ran out of time, that is what you are looking at; the
 recoverable from it, and asking for the harness again is the way back.
 
 **What can end a waiting card**, then, is only: your answer; `x` on its row or `Stop`,
-which settles it `harness design stopped; nothing was saved`; or aforge closing, which
+which settles it `harness design stopped; nothing was saved`; or codeaf closing, which
 settles it `harness "triage-flake" was designed; the card went unanswered, so nothing was
 saved`. That last one is a **done** task, not a failed one — the design did its work, and
 you simply never got to it. Nothing reaches the registry in either case.
@@ -860,7 +860,7 @@ on purpose.
 Every ending says something. It is the design task's own settle card in the transcript —
 the outcome lines are listed under *The design's own task and room* above — and the same
 sentence reaches the model as an ambient note, so the next thing said in the conversation
-happens after aforge knows what became of it.
+happens after codeaf knows what became of it.
 
 **It is ambient and does not start a turn.** You are at the keyboard, you just answered the
 card, and the card already says what happened; a model turn reading your own answer back to
@@ -870,8 +870,8 @@ because nobody is standing there for it.
 ## Where harnesses are stored
 
 A subharness can live in one of several places, and this is one of them: the pages a design
-writes. (The others are `~/.aforge/subharnesses` and the project's own
-`.aforge/subharnesses` — the *Subharnesses* page lists all three.) They are one
+writes. (The others are `~/.codeaf/subharnesses` and the project's own
+`.codeaf/subharnesses` — the *Subharnesses* page lists all three.) They are one
 list wherever they came from; where a program lives decides only the mark on its row, and a
 page written here is marked `yours`.
 
@@ -879,12 +879,12 @@ Under the state root, one directory per harness, with immutable version pages an
 beside them:
 
 ```
-~/.aforge/harnesses/<name>/v1.json
-~/.aforge/harnesses/<name>/v2.json
-~/.aforge/harnesses/<name>/run/20260816T101112Z.json
+~/.codeaf/harnesses/<name>/v1.json
+~/.codeaf/harnesses/<name>/v2.json
+~/.codeaf/harnesses/<name>/run/20260816T101112Z.json
 ```
 
-Setting `AFORGE_HOME` moves the whole tree.
+Setting `CODEAF_HOME` moves the whole tree.
 
 **There is no head file.** The head is simply the highest version page present, so a
 pointer can never disagree with the pages it points at. The version is minted by the store
@@ -1017,7 +1017,7 @@ Limits:
 This is a real limit of this build, and it is worth stating plainly.
 
 **Cues are not saved to disk.** A harness page has nowhere to put its cue list. The
-registry aforge builds at launch therefore carries no cues at all — entries are built from
+registry codeaf builds at launch therefore carries no cues at all — entries are built from
 name, description and version only.
 
 What follows from that:
@@ -1058,7 +1058,7 @@ Two different things, two different answers.
 the answer travels on the wire like any other, so a remote session can offer a harness and
 run it.
 
-**Building a new one is switched off.** Over a `--host` connection aforge does not have
+**Building a new one is switched off.** Over a `--host` connection codeaf does not have
 the designer at all: the `build_harness` and `list_harnesses` tools are left off entirely,
 so the model does not have the verb and tells you it cannot do it from here rather than
 starting something. The reason is that the card asking whether to keep the finished page

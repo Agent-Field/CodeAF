@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-// The bug this pins: a machine that had never run aforge had no ~/.aforge, and
+// The bug this pins: a machine that had never run codeaf had no ~/.codeaf, and
 // SQLite makes database files but never the directories holding them — so the
 // very first launch on a new machine could not open a brain at all, and said so
 // in the one wording nobody could act on.
 func TestOpenMakesItsDirectoryOnAFirstRun(t *testing.T) {
-	fresh := filepath.Join(t.TempDir(), ".aforge", "graph.db")
+	fresh := filepath.Join(t.TempDir(), ".codeaf", "graph.db")
 	brain, err := Open(fresh)
 	if err != nil {
 		t.Fatalf("a first run could not open its own store: %v", err)
@@ -30,7 +30,7 @@ func TestOpenMakesItsDirectoryOnAFirstRun(t *testing.T) {
 
 // A second launch finds its own directory and does not mind.
 func TestOpenIsHappyWhenTheDirectoryIsAlreadyThere(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".aforge", "graph.db")
+	path := filepath.Join(t.TempDir(), ".codeaf", "graph.db")
 	first, err := Open(path)
 	if err != nil {
 		t.Fatalf("first open: %v", err)
@@ -97,12 +97,12 @@ func TestADirectoryBlockedByAFileSaysSoPlainly(t *testing.T) {
 }
 
 // The path in the sentence is spelled the way the person would write it down,
-// because `/home/them/.aforge/graph.db` is a path they have to translate and
-// `~/.aforge/graph.db` is one they can paste.
+// because `/home/them/.codeaf/graph.db` is a path they have to translate and
+// `~/.codeaf/graph.db` is one they can paste.
 func TestThePathIsSpelledTheWayAPersonWouldWriteIt(t *testing.T) {
 	house := t.TempDir()
 	t.Setenv("HOME", house)
-	if got, want := storePathForPerson(filepath.Join(house, ".aforge", "graph.db")), "~/.aforge/graph.db"; got != want {
+	if got, want := storePathForPerson(filepath.Join(house, ".codeaf", "graph.db")), "~/.codeaf/graph.db"; got != want {
 		t.Fatalf("shortened path: got %q, want %q", got, want)
 	}
 	if got, want := storePathForPerson(house), "~"; got != want {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // THE LEDGER: what this profile has already been told.
@@ -32,7 +32,7 @@ const noticeLedgerName = "notices.json"
 // AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
 // ABSENCE IS A HOSTED WINDOW. This function used to answer "" for an empty
 // directory and the board then held its memory in RAM for the session — which,
-// because AFORGE_PROFILE_DIR is set on almost no launch, is what happened on
+// because CODEAF_PROFILE_DIR is set on almost no launch, is what happened on
 // almost every launch: a hint that is meant to age out after three sessions was
 // on its first session every time, a hint retired by the gesture it teaches came
 // back at the next start, and the news channel never had an older build to

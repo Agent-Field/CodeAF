@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 const deliveredNumbers = "Q3 revenue was $4.21M against a $3.90M plan, and headcount closed at 214."

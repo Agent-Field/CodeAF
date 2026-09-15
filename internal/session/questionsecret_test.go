@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
 // theKey is the exact string a person pastes into a connect box. It is written

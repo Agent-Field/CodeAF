@@ -55,7 +55,7 @@ type jobBaseline struct {
 	tree string
 }
 
-// baselines is process-scoped because a job is process-scoped: `aforge do` is
+// baselines is process-scoped because a job is process-scoped: `codeaf do` is
 // one process for the whole job, and the resident holds every continuation of a
 // job in the process that started it. It is deliberately NOT a file in the
 // workspace — a run that wrote its own bookkeeping into the tree it is measuring

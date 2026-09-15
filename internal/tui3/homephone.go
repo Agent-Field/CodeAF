@@ -30,9 +30,9 @@ package tui3
 //
 //	 since you left
 //	   ◆ the deploy went green
-//	     12m · aforge-v2
+//	     12m · codeaf
 //
-//	 aforge-v2
+//	 codeaf
 //	   ○ tidy the roster
 //	     3 tasks · 2h
 //	 ▸ wisp                      6 · 2d
@@ -76,8 +76,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // The row kinds the inbox adds, declared HERE and given values far above the

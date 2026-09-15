@@ -7,7 +7,7 @@
 
 SCENARIO_WORKLOAD="data"
 SCENARIO_DOOR="print"
-SCENARIO_ARMS="aforge omp pi opencode"
+SCENARIO_ARMS="codeaf omp pi opencode"
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-300}"
 SCENARIO_GUARDS="exact arithmetic over a handed file"
 

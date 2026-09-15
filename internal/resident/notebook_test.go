@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func TestExtractCuesOrdersAndDeduplicatesScopes(t *testing.T) {
@@ -328,7 +328,7 @@ func TestNotebookDigestRetrievesPathScopeAndEmptyNotebook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.ActivateSkill(skill.Seq, "/home/test/.aforge/skills/notebook-audit"); err != nil {
+	if err := graph.ActivateSkill(skill.Seq, "/home/test/.codeaf/skills/notebook-audit"); err != nil {
 		t.Fatal(err)
 	}
 	got := NotebookDigest(graph, "leaf", "inspect internal/resident/notebook.go", "fix cue lookup", 5)
@@ -1088,7 +1088,7 @@ func TestCompileContextCarriesTheConversationTheInstructionCameFrom(t *testing.T
 	graph := openStore(t)
 	for _, message := range []store.Message{
 		{SessionID: "deixis", Role: store.RoleUser,
-			Body: "there's a github issue on aforge-v2 with a contributor's implementation plan"},
+			Body: "there's a github issue on codeaf with a contributor's implementation plan"},
 		{SessionID: "deixis", Role: store.RoleAgent,
 			Body: "I'll find the issue with the contributor's plan and review it."},
 		{SessionID: "elsewhere", Role: store.RoleUser, Body: "unrelated other window"},

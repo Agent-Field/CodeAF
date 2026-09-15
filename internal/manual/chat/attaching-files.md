@@ -7,7 +7,7 @@ message box. One- and two-line pastes stay ordinary text. A paste made only of r
 paths is still attached as files, and a paste into a box whose text starts with `/` stays
 plain text so command arguments remain usable.
 
-The chip holds the complete text locally. When you send, aforge puts that complete text
+The chip holds the complete text locally. When you send, codeaf puts that complete text
 into the message where the chip stood, headed `paste 1:` and enclosed in a text fence.
 The model receives every character; your transcript keeps the short chip instead of
 dumping the pasted document onto the screen. Sent paste chips cannot currently be opened
@@ -50,7 +50,7 @@ Inside the paste editor, `ctrl+x` does the same thing. There is no recovery afte
 is discarded, though ordinary unsent draft recovery still applies to the rest of the
 message.
 
-## Send a file with your message — /attach, how do I share a file with aforge, how do I send it a photo or an image
+## Send a file with your message — /attach, how do I share a file with codeaf, how do I send it a photo or an image
 
 `/attach <path>` puts an ordinary file — a log, a CSV, a PDF, a stack trace you saved —
 on the tray above the message box, and it goes with the next thing you send.
@@ -73,7 +73,7 @@ including over `--host`.** It is the same framed window `/folder` opens locally,
 same place and already browsing — the conversation stays visible behind it, dimmed, and does
 not answer a click while it is up. It stands first in a folder the conversation already
 holds, otherwise in the folder this window is working in, then in your home directory;
-aforge's own state folder is never where an owned conversation opens it. The sheet shows the
+codeaf's own state folder is never where an owned conversation opens it. The sheet shows the
 subdirectories and then the files with their sizes, and previews the thing under the cursor
 — source with syntax colour, a picture drawn in the terminal's own cells, a PDF's text.
 Moving the cursor shows you a file; it does not attach it. `alt+m` chooses one, or several,
@@ -102,7 +102,7 @@ and it says
 
 ## I dropped a file and nothing happened
 
-Dropping a file onto the terminal is the same as `/attach <path>`. aforge recognises a
+Dropping a file onto the terminal is the same as `/attach <path>`. codeaf recognises a
 drop made only of real local files, takes the path out of the message box, and shows each
 file on the tray. Over `--host`, pressing `enter` sends those local bytes to the other
 machine before the turn starts. A picture gets its numbered picture chip and `[image #n]`;
@@ -124,16 +124,16 @@ When you press `enter`, the transcript shows your line with the file's name afte
 
 ## Drops arrive however the terminal sends them
 
-**Your terminal decides the shape, and aforge handles both.** Most terminals write a drop
+**Your terminal decides the shape, and codeaf handles both.** Most terminals write a drop
 into the message box as one *paste* of the file's path. Others *type* the same path,
 one character at a time, with nothing marking it as a paste.
 
-Either way you get the chip. When the characters stop arriving, aforge reads the run that
+Either way you get the chip. When the characters stop arriving, codeaf reads the run that
 just landed, and if one complete terminal reading of it names real files on the machine
 you are sitting at, the path comes out of the box and the files go on the tray.
 
 **Nothing happens while you are still typing.** A half-arrived path names nothing, so
-aforge says nothing about it — no complaint, no half-attached file. Only a run that names
+codeaf says nothing about it — no complaint, no half-attached file. Only a run that names
 files that are really there is ever converted.
 
 **Every shape a terminal writes is understood:** backslashed spaces
@@ -210,10 +210,10 @@ true.
 - **It has not settled yet.** The path becomes a chip a fraction of a second after the
   last character arrives. Pressing `enter` does not lose it: the send door spends the drop
   first, so the chip is on the message either way.
-- **The file is not on this machine, and aforge says so.** aforge attaches what it can
+- **The file is not on this machine, and codeaf says so.** codeaf attaches what it can
   `stat` on the computer you are sitting at. Over `--host` that is still your laptop,
   which is the point — the bytes travel. But a terminal on your Mac talking over `ssh` to
-  aforge on a Linux box delivers a *Mac* path, and there is nothing at that path here. A
+  codeaf on a Linux box delivers a *Mac* path, and there is nothing at that path here. A
   drop that names nothing on this machine now answers
 
   ```
@@ -241,27 +241,27 @@ Yes. Windows Terminal and the VS Code terminal may send a drag from Explorer as 
 'c:/Users/you/Pictures/Screenshots/Screenshot (1).png'
 ```
 
-aforge recognises that as the local WSL file at
+codeaf recognises that as the local WSL file at
 `/mnt/c/Users/you/Pictures/Screenshots/Screenshot (1).png` and turns it into the same chip
 as a Linux path. A bare `C:\Users\…` path, either quote style, a `file:///C:/…` URL, and
 the `\\wsl.localhost\<distro>\…` or `\\wsl$\<distro>\…` spelling work too. A UNC path is
 local only when its distro is this WSL distro.
 
 `/mnt` is WSL's default automount root. If `[automount] root` in `/etc/wsl.conf` names
-another root, aforge uses that instead: `root = /drives` makes `c:/Users/…` read from
+another root, codeaf uses that instead: `root = /drives` makes `c:/Users/…` read from
 `/drives/c/Users/…`. This applies to a drag, a pasted path, `/attach`, `/image`, `/export`,
 and a local copy destination chosen in `/files` because all use the same path reading.
 
 ## I copied a screenshot and pasted it — nothing happened
 
-aforge does not read picture bytes from the Windows or macOS clipboard. If the clipboard
+codeaf does not read picture bytes from the Windows or macOS clipboard. If the clipboard
 contains a picture rather than a file path, the terminal sends no path into the message
 box, so its paste shortcut with that picture pastes nothing into the box. Most terminals
-consume their paste shortcut before aforge sees a key. If a terminal does pass `ctrl+v`
-through, aforge uses that chord to change thinking, never to read clipboard pixels.
+consume their paste shortcut before codeaf sees a key. If a terminal does pass `ctrl+v`
+through, codeaf uses that chord to change thinking, never to read clipboard pixels.
 
 Two things do work: drag the screenshot file onto the terminal, or paste the screenshot's
-path. Either one gives aforge a real local file to put on the tray. If your screenshot is
+path. Either one gives codeaf a real local file to put on the tray. If your screenshot is
 only in the clipboard, save it as a file first.
 
 ## A drop into a box that already holds a command
@@ -274,9 +274,9 @@ the command and the file lands on the tray by that road instead.
 The rule is exactly: a message box whose text already begins with `/` keeps a dropped path
 as plain text. An empty box, or one holding ordinary words, converts it.
 
-## What aforge does with an attached file
+## What codeaf does with an attached file
 
-**It is told the path, not the contents.** An attached file is a file, and aforge already
+**It is told the path, not the contents.** An attached file is a file, and codeaf already
 has a `read` tool — so a 4MB CSV stays out of the conversation until something actually
 wants a row of it. The message it receives carries your sentence and then, plainly:
 
@@ -296,13 +296,13 @@ That is the whole difference from a picture. A picture has to travel *as content
 nothing on the belt can turn a PNG into something a model can look at; a file does not,
 because `read` opens it.
 
-So aforge may open an attached file, read part of it, `grep` it, or never touch it at all
+So codeaf may open an attached file, read part of it, `grep` it, or never touch it at all
 — it is a file on disk that you have pointed at, and what it does with it is up to what
 you asked for.
 
 ## Where did my file go
 
-**On a local session, nowhere.** The file stays exactly where it is. aforge is running on
+**On a local session, nowhere.** The file stays exactly where it is. codeaf is running on
 the same machine, the path you typed already means something to it, and copying the file
 would only give you two of them.
 
@@ -320,14 +320,14 @@ contents in front:
 ```
 
 The stamp makes the folder read in the order things arrived, the digest means the same
-file attached twice is one file, and your own name on the end is what tells aforge what it
+file attached twice is one file, and your own name on the end is what tells codeaf what it
 is holding before it opens anything.
 
 `attachments/` sits inside the conversation's own folder, beside the transcript — so
 deleting a conversation takes its attachments with it, and nothing you attached is ever
 swept away while the transcript still refers to it.
 
-## Upload a file to the machine aforge is running on
+## Upload a file to the machine codeaf is running on
 
 Yes — this is what `/attach` does over `--host`, and it is the point of it.
 
@@ -467,7 +467,7 @@ actually be looked at.
 You do not have to remember which word is which. **A picture handed to `/attach` is still
 treated as a picture** — it goes on the tray as `▣ #1 shot.png`, gets its `[image #1]`
 token in your sentence, and is looked at rather than read. png, jpeg, webp and gif are the
-five aforge accepts.
+five codeaf accepts.
 
 The reverse is not true: `/image` refuses anything that is not one of those five, with
 
@@ -486,7 +486,7 @@ an ordinary file remains the `[server.log]` marker alone.
 ## Drag a file in, or paste a path
 
 **Dragging a picture onto the terminal attaches it** — your terminal hands the file's path
-over, and aforge recognises the picture extensions and turns it into a numbered chip with
+over, and codeaf recognises the picture extensions and turns it into a numbered chip with
 `[image #1]` in your sentence.
 
 **Dragging an ordinary file in attaches it too**, as an unnumbered file chip. It used to be

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // THE CREW, from the three sides a person meets it: what a preset writes, what
@@ -284,7 +284,7 @@ func TestALevelOnATierRowResolvesAsAnEffortAndNotAsAnId(t *testing.T) {
 }
 
 // Every persisted write bumps the generation, which is the signal a live crew
-// source invalidates its snapshot on (cmd/aforge's v3RolesSource).
+// source invalidates its snapshot on (cmd/codeaf's v3RolesSource).
 func TestEverySettingsWriteBumpsTheGeneration(t *testing.T) {
 	dir := t.TempDir()
 	before := SettingsGeneration()

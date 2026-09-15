@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // TestNoPathHereResolvesInsideTheHomeThisBinaryInherited is the law of
@@ -17,7 +17,7 @@ import (
 //
 // It is the witness for #475. Against the tree before the gate, on a machine
 // where a real run has written a sheet, both of these resolved into
-// `~/.aforge/v3` and `TestAnEmptyLedgerIsAnEmptyChoice` was answered out of a
+// `~/.codeaf/v3` and `TestAnEmptyLedgerIsAnEmptyChoice` was answered out of a
 // person's own router state.
 func TestNoPathHereResolvesInsideTheHomeThisBinaryInherited(t *testing.T) {
 	if got := StorePath(); got != "" {
@@ -37,7 +37,7 @@ func TestNoPathHereResolvesInsideTheHomeThisBinaryInherited(t *testing.T) {
 
 // TestAHomeATestChoseIsNotTheHomeItInherited is the other half, and it is why
 // the gate can be this blunt: what is refused is a root NOBODY CHOSE. Most
-// tests in this directory point AFORGE_HOME at a directory of their own and
+// tests in this directory point CODEAF_HOME at a directory of their own and
 // then read the store back, and every one of them must keep working.
 func TestAHomeATestChoseIsNotTheHomeItInherited(t *testing.T) {
 	chosen := t.TempDir()
@@ -80,13 +80,13 @@ func TestTheWholeInheritedRootIsRefusedAndNothingBeside(t *testing.T) {
 }
 
 // TestTheProfileRootIsNotThisPackagesBusiness is the boundary the gate is drawn
-// at. The call log resolves under AFORGE_PROFILE_DIR and must refuse it; this
+// at. The call log resolves under CODEAF_PROFILE_DIR and must refuse it; this
 // package resolves both its files with [home.Join] and never reads that
 // variable, so a test whose chosen home happens to sit under an inherited
 // profile root has still chosen it.
 func TestTheProfileRootIsNotThisPackagesBusiness(t *testing.T) {
 	profile := t.TempDir()
-	t.Setenv("AFORGE_PROFILE_DIR", profile)
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	chosen := filepath.Join(profile, "a-home-the-test-chose")
 	t.Setenv(home.EnvVar, chosen)
 	if got, want := StorePath(), filepath.Join(chosen, "v3", "lanes.json"); got != want {

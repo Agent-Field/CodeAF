@@ -2,7 +2,7 @@ package session
 
 // newskey.go is WHOSE NEWS THIS IS, AND THE DOOR NEWS COMES BACK IN THROUGH.
 //
-// THE DEFECT THIS FIXES. Bare `aforge` in a workspace does not run this engine
+// THE DEFECT THIS FIXES. Bare `codeaf` in a workspace does not run this engine
 // in the surface's own process: the surface dials the machine's engine host
 // (internal/enginehost) and talks to a `remote.Agent` over a pipe. Everything
 // [OnPhaseNews] and [OnLaneNews] carry — the live rate at the right edge of the

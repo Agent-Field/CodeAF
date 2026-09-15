@@ -85,7 +85,7 @@ func TestAcceptingAfterTheCopyWasGivenBackLandsTheRenamedBranch(t *testing.T) {
 		t.Fatalf("state = %q, want the accepted work done (report %q)", state, report)
 	}
 	if merge != mergeMerged {
-		t.Fatalf("merge = %q, want the work merged — the copy was aforge's to pick up (report %q)", merge, report)
+		t.Fatalf("merge = %q, want the work merged — the copy was codeaf's to pick up (report %q)", merge, report)
 	}
 	for _, false_ := range []string{"not a git repository", keptWhereItIsLead, "could not be brought home"} {
 		if strings.Contains(report, false_) {
@@ -177,7 +177,7 @@ func TestAFreshCheckoutFollowsTheBranchTheNodeRenamed(t *testing.T) {
 }
 
 // AND A DIRECTORY THAT WAS NEVER A REPOSITORY IS STILL EXACTLY THAT. The repair
-// above must not turn every missing `.git` into something aforge claims it can
+// above must not turn every missing `.git` into something codeaf claims it can
 // put back: a workspace with no repository under it is a fact about the person's
 // disk, it is answered where it happens, and it stays answered that way
 // (task_run.go's [stageTaskWork], task_land_unsaved.go's [landingRefusal]).

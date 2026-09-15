@@ -1,6 +1,6 @@
 # Standing orders — rules that stay true after this conversation
 
-A standing order is something you said once that aforge keeps holding: "always run the
+A standing order is something you said once that codeaf keeps holding: "always run the
 tests before you say you are done", "never touch the public API in this repo", "every
 Monday draft the weekly update". It stays in force until you stop it.
 
@@ -12,7 +12,7 @@ how to stop one.
 ## Rules, always do this, automations — all the same one thing
 
 There is no separate "rules engine", no "automations" list and no macro language. Say
-the sentence in your own words and aforge offers to make it a standing order:
+the sentence in your own words and codeaf offers to make it a standing order:
 
 - "always run the tests before you tell me it works"
 - "never commit straight to main here"
@@ -27,7 +27,7 @@ word and is never rewritten; a short title may be drawn beside it on narrow rows
 
 There is no form to fill in, no `rules:` block in a config file and no macro language.
 **You say the sentence**: "always run the tests before you tell me it works".
-aforge recognises it and puts a card in the conversation; you answer the card, and it
+codeaf recognises it and puts a card in the conversation; you answer the card, and it
 stands.
 
 - **In a conversation** — say it. The card appears in the transcript with your own
@@ -50,7 +50,7 @@ projects`. `/home` shows the same orders filed under the project each one belong
 
 ## How does it know I mean always — instruction, or standing order
 
-"Make sure" turns up in as many one-off instructions as it does in rules, so aforge
+"Make sure" turns up in as many one-off instructions as it does in rules, so codeaf
 does not decide by the words. It asks one question about your sentence: **can it be
 satisfied once and then forgotten?**
 
@@ -83,10 +83,10 @@ true.
 
 None of this kind has to be about code. A rule for **how you want it to write** is the
 same shape and is kept the same way — "always write in full sentences, never bullet
-lists", "use our spelling, not the American one", "keep replies short". What aforge keeps
+lists", "use our spelling, not the American one", "keep replies short". What codeaf keeps
 is your sentence; what your sentence is about is yours to choose.
 
-aforge keeps that kind as a standing order that **holds**. It never fires, it is never
+codeaf keeps that kind as a standing order that **holds**. It never fires, it is never
 checked, and it costs nothing. What it does instead is ride into the world of the work
 it reaches: a new conversation in this project opens already knowing it, and a task
 starts with it in its brief under the heading `Standing orders`, told these are your
@@ -119,12 +119,12 @@ that it shares the day's allowance. `esc` or `0` declines, and a card left unans
 when the turn ends sets nothing up: `the card was left unanswered — nothing was set up`.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
-inference from your files, and no order aforge made up on your behalf.
+inference from your files, and no order codeaf made up on your behalf.
 
 ## Make it standing on purpose — force it to be standing, make this permanent
 
 Type the sentence and press **`ctrl+enter`** instead of `enter`. That send means "keep
-this true", and aforge is *told* rather than left to work it out: it shapes your sentence
+this true", and codeaf is *told* rather than left to work it out: it shapes your sentence
 into a standing order's card — when it wakes, what it does, how far it reaches — and it
 does **not** carry the sentence out as one-off work as well.
 
@@ -133,7 +133,7 @@ answer it. `ctrl+enter` decides how the sentence is *read*, never whether someth
 created.
 
 If the sentence cannot stand at all — "what time is it?", a one-off command with no
-condition in it — aforge says so in one short line, tells you what would make it stand,
+condition in it — codeaf says so in one short line, tells you what would make it stand,
 and does nothing else. It never quietly does it instead.
 
 Two things it refuses rather than sending:
@@ -148,7 +148,7 @@ A slash command is unaffected — `ctrl+enter` on `/standing` is just `/standing
 There is a typed form of the same door: `/standing <words>` — see *Make a rule in one
 line* below.
 
-**One limit, and it is the terminal's.** `ctrl+enter` reaches aforge only on a terminal
+**One limit, and it is the terminal's.** `ctrl+enter` reaches codeaf only on a terminal
 that can tell it apart from a plain `enter` (the kitty protocol, win32-input). `alt+enter`
 cannot be borrowed for it here — in a conversation that chord opens a new line in the
 message. If `ctrl+enter` does nothing on your terminal, say it in words instead: "always
@@ -157,7 +157,7 @@ run the tests before you say you are done" is recognised on its own.
 ## It didn't notice — it did the rule once instead of keeping it
 
 This is the failure the chord above exists for. Say "run the tests whenever I push" and
-aforge may read it as work to do now: the tests run, you see something happen, and
+codeaf may read it as work to do now: the tests run, you see something happen, and
 **nothing was set up**. There is no error, because nothing failed — it answered a
 different request.
 
@@ -285,7 +285,7 @@ standing order.**
 
 They go through the same deliberate door `ctrl+enter` opens, with the same guarantee:
 
-- **It is never read as work to do once.** aforge is *told* to shape your sentence into a
+- **It is never read as work to do once.** codeaf is *told* to shape your sentence into a
   standing order's card — when it wakes, what it does, how far it reaches — and it does not
   carry the sentence out as one-off work as well.
 - **Nothing stands until you answer the card.** What comes back is the ordinary
@@ -371,7 +371,7 @@ not reach the conversation you are in — including orders in a folder you have 
 a conversation in. An order is on exactly one shelf: what already stands over this
 conversation is never repeated down there.
 
-Each row leads with the mark every aforge screen uses — `?` needs you, `◐` being
+Each row leads with the mark every codeaf screen uses — `?` needs you, `◐` being
 checked or fired right now, `◦` waiting for its time, `∙` paused or stopped — then what
 the order is called, then where it stands. A rule that never wakes says `holds` there,
 because it has no cadence and nothing it last found. Rows are drawn the same way on all
@@ -488,7 +488,7 @@ Standing orders:
 thing.** A rule that holds — "always use tabs here" — is a condition on the work, and it
 is handed over as one: *these are the person's own conditions over this place … they are
 not suggestions. Work within them.* A reminder, a rhythm, a file being watched, a check
-of the world — those are appointments on your clock, answered by aforge itself when
+of the world — those are appointments on your clock, answered by codeaf itself when
 their moment comes. They ride along too, so the work knows what else is standing here,
 but under a plainer sentence: *these are the person's own standing orders over this
 place, each waiting on a moment, a rhythm or a change of its own … none of them is a
@@ -514,7 +514,7 @@ Three different things, and they are not the same:
 
 - **Stop it.** `s` on the standing orders page, or just say it: "stop the CI one", "delete
   the CI one", "stop reminding me about the plants". Stopping is permanent — setting it up
-  afresh is a new card. If your words match more than one, aforge will not guess; it lists
+  afresh is a new card. If your words match more than one, codeaf will not guess; it lists
   them and asks which.
 - **Pause it.** `p`, or "pause the weekly update for now". A paused order is not checked
   and not fired, and it keeps everything it knows — what it has cost, when it last ran,
@@ -573,7 +573,7 @@ The tab bar, the composer and the top line are all there as usual, so `tab` walk
 anything you type is still the first sentence of something new.
 
 `/standing` used to say one sentence **instead** of opening, with no page behind it. On a
-machine aforge was installed on an hour ago that is every door onto the page, so the refusal
+machine codeaf was installed on an hour ago that is every door onto the page, so the refusal
 went and the page opens.
 
 A list emptied by the **time window** rather than by the machine is a different screen: it
@@ -603,7 +603,7 @@ Trust is a run, not a tally: five good mornings do not buy an order past the one
 **A rule that only `holds` says nothing about rope at all.** Nothing examines it and nothing
 fires it, so it can never act unattended and the question does not arise.
 
-Two honest limits. The count starts at zero for every order that existed before aforge began
+Two honest limits. The count starts at zero for every order that existed before codeaf began
 keeping it — nothing on disk says those old firings were clean, so they are not counted.
 And **the rung is a label, never a permission**: what a firing is allowed to do is your
 banked approval rules and only those. Nothing widens because a count went up.

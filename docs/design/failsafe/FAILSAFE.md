@@ -152,7 +152,7 @@ Three numbers, none of them wrong on its own:
 | | |
 | --- | --- |
 | `exec.SubharnessInfo.Deadline(150_000)` → the linear floor | **15m** |
-| `cmd/aforge/chat.go`'s `watchdog := deadline + 2*time.Minute` | **17m** |
+| `cmd/codeaf/chat.go`'s `watchdog := deadline + 2*time.Minute` | **17m** |
 | `resident.claimReaperPad`, added by `Runner.RaiseStaleAge(watchdog)` | **+5m** |
 | `store.ReleaseSilent`'s window, swept every 500ms | **= 22m** |
 
@@ -457,7 +457,7 @@ cold start again, and an attempt that recorded not one turn before the clock
 stopped it has told us the only thing it is going to.
 
 The rule is one function, `exec.Requeued`, and BOTH schedulers ask it. The
-resident's was fixed first and the one-shot `aforge run` scheduler went on
+resident's was fixed first and the one-shot `codeaf run` scheduler went on
 failing an abandoned node outright for a day afterwards — the same defect, one
 package along, in code nobody had looked at because the sentence it printed was
 the same. What is local to each caller is only what the RECORD is: the resident
@@ -512,7 +512,7 @@ with a flush on each side of the abandonment, and the money had no equivalent.
 > different KIND of record (`usage_turns`), and is no longer the only one.
 
 The fix is not another flush on another ending; there is always one more ending.
-`provider.WithBilling` and `cmd/aforge`'s `leafBanker`, with
+`provider.WithBilling` and `cmd/codeaf`'s `leafBanker`, with
 `resident.ExecResult.SpendBanked` so the landing does not write the same money
 twice. `cost.json` and the settlement's money line read the `usage` table, so
 both now see an interrupted leaf.
@@ -716,7 +716,7 @@ ran" guard read this column, so the guard was asking the ask.
 
 `nodes.ran` carries it, `store.EventNodeRan` journals it with the worker it
 replaced and why, and both are written at ONE seam — `runningWorker` in
-`cmd/aforge/subharness.go`, the single place the surface builds a leaf's
+`cmd/codeaf/subharness.go`, the single place the surface builds a leaf's
 executor, with a source test that fails the build on a second one. The
 assignment column keeps its own meaning untouched: one column, one question,
 and the two are allowed to disagree, because the runs worth reading are exactly
@@ -851,7 +851,7 @@ lineages are two remainders and their being different says nothing.
 ### 4. The wall existed in one process and not in the machinery
 
 `revision.outOfWall` has read `ctx.Deadline()` since the SETTLEMENT §3 wave, and
-in a headless run it has never once fired. `aforge do` builds its timeout context
+in a headless run it has never once fired. `codeaf do` builds its timeout context
 and hands it to the **settlement watcher**; the brain that plans, claims,
 executes and grows runs on `context.Background()`. So every rule in the program
 that asks "is there time left to finish another round of work" was asking a

@@ -12,7 +12,7 @@ the copy that lands on this machine is a copy.
 ## Click a path over --host to open a file on the other machine
 
 **A path in a reply is a real link again over a connection.** cmd+click it on a Mac,
-ctrl+click on Linux — the same gesture that opens a path in a local conversation. aforge
+ctrl+click on Linux — the same gesture that opens a path in a local conversation. codeaf
 fetches the bytes into this machine's read-only cache and opens that local named copy in
 your desktop viewer: Preview, your editor, your spreadsheet, or whatever owns that kind
 of file here.
@@ -21,22 +21,22 @@ The link is underlined, which is how you can tell there is something to click be
 hold the modifier down. A path with no underline is not a link, and the next section says
 why.
 
-It works on a path wherever aforge wrote it: in a sentence, in a list, in a table cell, on
+It works on a path wherever codeaf wrote it: in a sentence, in a list, in a table cell, on
 a `read`, `write` or `edit` tool row, in the dim `·` notes. A path too long for the pane
 wraps across rows and every row of it opens the same file.
 
 A file the model **just wrote** is usually already on this machine before you click it,
-so it opens at once — aforge quietly fetches a small file as it watches the `write` tool
+so it opens at once — codeaf quietly fetches a small file as it watches the `write` tool
 make it, a few at a time so a turn that writes forty of them does not take over the
 connection. A larger one crosses when you click, and a fetch that takes more than about a
 third of a second draws one line naming the file. Nothing spins.
 
-**You always get the version that is on that machine now.** aforge keeps the copies it has
+**You always get the version that is on that machine now.** codeaf keeps the copies it has
 already fetched so a second click is instant, but before it hands one back it asks the
 other machine how big the file is and when it last changed — a question far smaller than
 the file. If either has moved, the file crosses again and you open the new one. If the
 file has been deleted over there, you get that machine's own sentence about it rather than
-the copy aforge was holding.
+the copy codeaf was holding.
 
 `/files <path>` takes the same fetch-and-open road when you prefer to type the path.
 
@@ -48,7 +48,7 @@ only the machine answering it changed.
 
 So a path is drawn plain when:
 
-- **It has not been confirmed yet.** The first time a name appears aforge does not know
+- **It has not been confirmed yet.** The first time a name appears codeaf does not know
   it, so it asks that machine and the word becomes a link a moment later. A file a tool is
   still in the middle of writing is plain until it exists.
 - **The file is not there at all** — a name the model invented, a path with a typo, a file
@@ -61,7 +61,7 @@ So a path is drawn plain when:
 - **It is outside what may cross** — see the last section of this page. Two places cross
   and nothing else does.
 - **Something else printed it.** The output of a `bash` call, a `grep` result, the body of
-  a `read` — those are another program's words and aforge draws them exactly as they
+  a `read` — those are another program's words and codeaf draws them exactly as they
   arrived.
 - **It is written inside `backticks` and was not confirmed.** Inline code is checked like
   any other word: when it really is a file the backtick shading is dropped and the
@@ -73,7 +73,7 @@ and the file is on the other one.
 ## Where cmd+click opens it — the little door on this machine
 
 The link does not point at the file. It points at `http://127.0.0.1:<port>/o/<a long
-random id>` — a small web address served by aforge **inside this window**. A click spends
+random id>` — a small web address served by codeaf **inside this window**. A click spends
 that capability, fetches the bytes over the conversation's connection, makes the
 read-only local mirror, and hands that local path to this machine's viewer.
 
@@ -101,7 +101,7 @@ Ask for the picture as usual. What is different over a connection is only where 
 the file is written on the far machine, and the row that names it is your way in.
 
 **The picture is painted into the terminal over a connection once its tool finishes.**
-aforge fetches the far bytes into this machine's cache, decodes that copy, and keeps the
+codeaf fetches the far bytes into this machine's cache, decodes that copy, and keeps the
 path under it as the far path. Click that path, or use `/files <path>`, and the same cached
 copy opens in your usual image viewer. If the file cannot cross or this terminal cannot
 paint pictures, the row keeps the far path and the other machine's honest refusal applies.
@@ -199,7 +199,7 @@ put attachments/20260824-215842-d9e4ec72-notes.csv next to the other data files
 
 The model has the same tools it always has, on that machine, and moving or copying a file
 into the workspace is an ordinary write it does in front of you — which is the point.
-aforge itself never writes anywhere on that machine except the one attachments folder, so
+codeaf itself never writes anywhere on that machine except the one attachments folder, so
 the step where a file becomes part of the work is a step you asked for and can see.
 
 You can also just tell it the path and ask it to read the file. It is a real path on that
@@ -207,7 +207,7 @@ machine; nothing has to be moved for the model to open it.
 
 ## Where do the downloaded copies go on this machine
 
-Two places, both under `~/.aforge/v3/remote/`:
+Two places, both under `~/.codeaf/v3/remote/`:
 
 - `cas/` holds the bytes, filed by their content, so the same file fetched twice crosses
   the wire once.
@@ -215,7 +215,7 @@ Two places, both under `~/.aforge/v3/remote/`:
   handed, under the file's own name — which is why the window title says `q3.csv` and not
   a row of hex.
 
-So `ls ~/.aforge/v3/remote/mirror` answers "whose files am I holding". Deleting that whole
+So `ls ~/.codeaf/v3/remote/mirror` answers "whose files am I holding". Deleting that whole
 folder is safe and is the one gesture that clears everything fetched from every machine;
 anything you still want is fetched again next time you ask.
 
@@ -237,7 +237,7 @@ On the browse page a row over the ceiling is not a link at all and says `too big
 cross`, so you find out before the click rather than after it.
 
 **Files the model writes get a head start.** When the `write` tool makes a file of 2MB or less,
-aforge fetches it quietly in the background before anybody clicks anything, so the click
+codeaf fetches it quietly in the background before anybody clicks anything, so the click
 is instant. Bigger files are left alone: spending your connection on a 12MB file on the
 chance that somebody looks at it is not a bargain worth making. Nothing on the screen ever
 says this happened, and a fetch that fails is simply one you will do when you click.
@@ -257,7 +257,7 @@ Only you, and only from this machine, and only while this window is open.
 - **A wrong id and a wrong token get exactly the same answer** — `404`, with nothing to
   tell one from the other. A refusal that told you which of the two you got wrong would be
   a refusal helping somebody guess.
-- **They die with the window.** Quit aforge and every link it minted stops resolving, the
+- **They die with the window.** Quit codeaf and every link it minted stops resolving, the
   browse page included. A tab you left open reloads to nothing.
 - **The address you are handed holds no key.** It is a one-time way in: walking it gives
   your browser the key as a cookie nothing on a page can read, and sends you on to an

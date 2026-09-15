@@ -1,4 +1,4 @@
-// Package openrouterauth connects a local aforge profile to OpenRouter without
+// Package openrouterauth connects a local codeaf profile to OpenRouter without
 // asking the person to make and copy an API key by hand.
 package openrouterauth
 
@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 const (
@@ -268,6 +268,6 @@ func (f *Flow) finish(key string, err error) {
 	})
 }
 
-const successPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenRouter connected</title></head><body><main><h1>OpenRouter connected.</h1><p>You can close this tab and return to aforge.</p></main></body></html>`
+const successPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenRouter connected</title></head><body><main><h1>OpenRouter connected.</h1><p>You can close this tab and return to codeaf.</p></main></body></html>`
 
-const failurePage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenRouter did not connect</title></head><body><main><h1>OpenRouter did not connect.</h1><p>Return to aforge and try again.</p></main></body></html>`
+const failurePage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenRouter did not connect</title></head><body><main><h1>OpenRouter did not connect.</h1><p>Return to codeaf and try again.</p></main></body></html>`

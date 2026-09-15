@@ -29,7 +29,7 @@ It does not certify every feature in the repository or every operating system.
 policy.** No terminal window was clicked, restarted, replaced or inspected through
 another automation mechanism. Test frames came from isolated application fixtures,
 not a screenshot of the user's window. Real-terminal accessibility and visual
-appearance therefore remain unverified. No new live Aforge developer-task evaluation was run
+appearance therefore remain unverified. No new live codeaf developer-task evaluation was run
 in this audit; the authorized Claude CLI implementation and review work is separate.
 
 ## Initial click findings — historical launch observations
@@ -40,11 +40,11 @@ in the user's window. They must not be collapsed into one guessed cause.
 
 | Evidence | Finding | Required action |
 | --- | --- | --- |
-| The executable at the running `/private/tmp/af-conversation/bin/aforge` process path reports `3cb79f3f8 (dirty)`, built September 5 at 03:12. Its source still gates hosted task opening on `hosted()`. | It predates the fix allowing local engine task readers without a remote hostname. | Verify the actual failing window and put the tested client build in its launch path. Preserve the existing conversation and work. |
+| The executable at the running `/private/tmp/af-conversation/bin/codeaf` process path reports `3cb79f3f8 (dirty)`, built September 5 at 03:12. Its source still gates hosted task opening on `hosted()`. | It predates the fix allowing local engine task readers without a remote hostname. | Verify the actual failing window and put the tested client build in its launch path. Preserve the existing conversation and work. |
 | The executable at the other running shared-checkout path reports `d4ac249c (dirty)`, built September 3. The audited binary reports `d9da6c48d`. | Multiple launch paths expose materially different products. A fixed worktree does not update an already running client. | Establish one documented launch/install path and show both client and engine revisions in diagnostics. Test upgrade/reconnect without losing work. |
 | `tasksItem.pick()` deliberately returns false for another window's live task. The existing test requires Enter to do nothing. | At the initial audit revision, visible other-conversation rows were intentionally inert. Local owner navigation is now implemented. | Qualify the implemented local owner view in the actual launch path. Remote other-conversation navigation remains unsupported and needs an actionable path. |
 
-The audit shell also has no `aforge` on PATH. That is evidence about this shell,
+The audit shell also has no `codeaf` on PATH. That is evidence about this shell,
 not proof about the user's interactive shell or aliases. The shared checkout is
 dirty with other work and was not rebuilt or modified.
 
@@ -273,7 +273,7 @@ precede history on that page; the organization pass must preserve that useful
 order and check the rail, home, mixed families, focus and narrow layouts. One
 subdued identity marker is being implemented. No updated actual-user terminal
 or release is implied: the existing iTerm inspection restriction and old-running-
-binary findings above still apply. No new live Aforge developer-task evaluation
+binary findings above still apply. No new live codeaf developer-task evaluation
 was run in this follow-up; the authorized Claude CLI work is separate.
 
 ## Recipient draft integration checkpoint — `810f6e4f8`
@@ -403,7 +403,7 @@ from inspecting the user's blocked iTerm window.
 ## Real-terminal state audit and multi-module trial, follow-up
 
 The tested baseline `e4a614d15` was launched in a private terminal created for this
-work (`tmux -L af-state-ux-20260906`), with isolated Aforge state. This did not
+work (`tmux -L af-state-ux-20260906`), with isolated codeaf state. This did not
 inspect or control the user's existing iTerm window. Captures use the same native
 terminal-pane mechanism as `scripts/frame.sh`, preserving both ANSI and plain text;
 PNG renderings are derived from those captures. Seeded-demo frames are labelled
@@ -705,7 +705,7 @@ owner-scoped draft restoration, caret editing, breadcrumb ancestry and expanded
 Markdown results at 160×50, 80×32 and 60×28. Captures use seeded data, not a claim
 about a live user's tasks. The private QA engine and tmux server were stopped
 without changing existing user sessions. The final binary is built only at
-`/private/tmp/af-runtime-next/bin/aforge`; use `env -u NO_COLOR` when the invoking
+`/private/tmp/af-runtime-next/bin/codeaf`; use `env -u NO_COLOR` when the invoking
 shell would otherwise disable its colors.
 
 Evidence: `/private/tmp/af-production-followup-20260907/` contains

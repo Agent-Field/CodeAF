@@ -30,7 +30,7 @@ import (
 //     `content`, fenced in a `<think>` tag the endpoint never stripped. It is
 //     the shape every OpenAI-compatible gateway in front of a raw open model
 //     produces — vLLM, llama.cpp, Ollama, LM Studio, anything reached through
-//     AFORGE_BASE_URL — and until this file existed the tag and the model's
+//     CODEAF_BASE_URL — and until this file existed the tag and the model's
 //     private working were typed into the answer and recorded in the
 //     transcript as words the model had said out loud.
 //

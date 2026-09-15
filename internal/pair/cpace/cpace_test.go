@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/pair/cpace"
+	"github.com/Agent-Field/codeaf/internal/pair/cpace"
 	"github.com/gtank/ristretto255"
 	"golang.org/x/crypto/hkdf"
 )

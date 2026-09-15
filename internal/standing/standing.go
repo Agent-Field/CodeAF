@@ -93,7 +93,7 @@ const Interval = 5 * time.Minute
 // probe cannot hold the store's lock against every other window on the machine.
 //
 // IT IS ONE NUMBER BECAUSE IT IS ONE QUESTION. A window's own goroutine and
-// `aforge tick` each used to name their own 120 seconds, and [Store.Running]
+// `codeaf tick` each used to name their own 120 seconds, and [Store.Running]
 // needs a third reading of the same figure — how long a pass may last is how
 // long a marker may be believed. Three copies of a ceiling is three chances for
 // one of them to move.
@@ -617,7 +617,7 @@ const RunningFile = "running"
 
 // ── the store ───────────────────────────────────────────────────────────────
 
-// Root is where everything standing lives: <aforge home>/v3/standing.
+// Root is where everything standing lives: <codeaf home>/v3/standing.
 // Callers pass it in rather than this package reading internal/home, so a
 // test's store is a temp dir and nothing else.
 type Store struct {
@@ -676,7 +676,7 @@ func (s *Store) LedgerPath(day time.Time) string {
 }
 
 // LockPath is the flock one ticker at a time holds. A window takes it for the
-// length of a pass; `aforge tick` refuses when it is held.
+// length of a pass; `codeaf tick` refuses when it is held.
 func (s *Store) LockPath() string { return filepath.Join(s.root, "tick.lock") }
 
 // WakeLogPath is where every pass writes one line, and where "last wake" is
@@ -873,7 +873,7 @@ type Pass struct {
 }
 
 // Ticker runs passes. One is built per process that may tick — a window, or
-// `aforge tick` — and [Ticker.Tick] is what both call.
+// `codeaf tick` — and [Ticker.Tick] is what both call.
 type Ticker struct {
 	Store    *Store
 	Sentinel Sentinel
@@ -890,7 +890,7 @@ type Ticker struct {
 }
 
 // ErrHeld is Tick's answer when another process holds the lock.
-var ErrHeld = errors.New("standing: another aforge is ticking")
+var ErrHeld = errors.New("standing: another codeaf is ticking")
 
 // ── the rhythm ──────────────────────────────────────────────────────────────
 
@@ -910,7 +910,7 @@ type WatchStatus struct {
 }
 
 // Watch is the OS timer: a launchd agent or a systemd user timer running
-// `aforge tick` every [Interval]. The core lane builds it on internal/watchdog's
+// `codeaf tick` every [Interval]. The core lane builds it on internal/watchdog's
 // shape with its own unit names, so it can coexist with v1's.
 type Watch interface {
 	Install(ctx context.Context) error

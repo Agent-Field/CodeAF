@@ -1,4 +1,4 @@
-// Package buildinfo names the source and moment that produced this aforge.
+// Package buildinfo names the source and moment that produced this codeaf.
 package buildinfo
 
 import (
@@ -39,7 +39,7 @@ func String() string {
 // build` runs on one unmodified commit produce the same program, so they produce
 // the same engine — and the door that decides whether to attach must not read a
 // difference nobody made. It did: the build moment was in here, so a window built
-// thirteen seconds after the engine it met was told it had met an older aforge.
+// thirteen seconds after the engine it met was told it had met an older codeaf.
 //
 // A BUILD THAT CANNOT NAME ITS SOURCE KEEPS THE MOMENT IT WAS MADE. A modified
 // tree spells the same revision before and after an edit, and an unstamped build
@@ -162,7 +162,7 @@ func (detector *Detector) Notice() string {
 		return ""
 	}
 	detector.lastBuild = modified
-	return fmt.Sprintf("a newer aforge was built at %s — restart to use it", modified.Local().Format("15:04"))
+	return fmt.Sprintf("a newer codeaf was built at %s — restart to use it", modified.Local().Format("15:04"))
 }
 
 var running = newRunningDetector()

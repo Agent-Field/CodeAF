@@ -11,13 +11,13 @@ One line on top, three columns, one strip at the bottom. No other rows, no
 boxes, no borders: zones are made of typography, alignment and two hairlines.
 
 ```
-aforge                                        on watch · 4 orders · $1.10 today · fri 9:41
+codeaf                                        on watch · 4 orders · $1.10 today · fri 9:41
 ──────────────────────────────────────────────────────────────────────────────────────────
- needs you                    aforge                         keeping an eye on
+ needs you                    codeaf                         keeping an eye on
  ▲ approve schema change       ● odysseys wave 4      ⠹ 8m    ◦ tests sweep       in 2h
    hax-sdk · waiting 2h        › rename plan     yesterday    ◦ weekly review    mon 8am
  moving                       hax-sdk                        since you left
- ● port sweep     wisp · 8m    ▲ schema migration      2h     ◆ 2 tasks landed   aforge
+ ● port sweep     wisp · 8m    ▲ schema migration      2h     ◆ 2 tasks landed   codeaf
                               ─ elsewhere ─                  today
                                af-docs · 4 more               3 chats · 5 tasks · $1.10
 ──────────────────────────────────────────────────────────────────────────────────────────
@@ -78,9 +78,9 @@ nothing else on home may wear it; ● moving glyphs wear the spinner's own
 `hueMuted` so still and animated rows agree; landed/kept clauses wear `hueAdd`;
 a bound nearing its ceiling (the pool at "$4.80 of $5") wears `hueWarn` — a
 bound about to matter is not a failure; `hueBad` only for a genuinely failed
-thing; headings that lead and the `aforge` name wear `hueMuted`, and `hueAccent`
+thing; headings that lead and the `codeaf` name wear `hueMuted`, and `hueAccent`
 is spent on the one live or chosen thing on the screen and nothing else
-(amended 2026-08-23: this line read "headings that lead and the `aforge` name
+(amended 2026-08-23: this line read "headings that lead and the `codeaf` name
 wear `hueAccent`" — THE ACCENT BUDGET IS ONE ELEMENT PER SCREEN and a heading is
 structure, so the machine card's band headings, home's top-line name and the
 welcome wordmark all stepped down to `hueMuted`); zone labels,

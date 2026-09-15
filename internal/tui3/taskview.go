@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // WHAT THE TASKS PLACE IS MADE OF, minus the place itself.
@@ -60,7 +60,7 @@ const (
 	// alike, and it is the word the command spells: /history.
 	//
 	// IT IS NOT SPELLED "tasks", AND THAT IS THE WHOLE OF WHY THE COMMAND IS
-	// /history. "/task <brief>" means GIVE AFORGE WORK, and it has three rows in
+	// /history. "/task <brief>" means GIVE codeaf WORK, and it has three rows in
 	// the command list; a "/tasks" beside them narrowed to both on the four
 	// characters they share, so the muscle memory for starting work led to a page
 	// that starts none. What a person calls this thing is the record of everything
@@ -172,7 +172,7 @@ func taskAwayCardWhere(window string) string {
 }
 
 // taskOpenHereWord is the note on a row whose conversation THIS TERMINAL is
-// holding — one aforge, several conversations, all of them alive (keeper.go).
+// holding — one codeaf, several conversations, all of them alive (keeper.go).
 //
 // IT IS `open` AND NOT `another window`, and the difference is the whole of what
 // the row is for. Those conversations write the same presence file every other
@@ -235,7 +235,7 @@ const (
 	// the inert row this clause replaced.
 	tasksEnterAwayWord = "enter where it is running"
 	// tasksEnterOpenWord is enter over work one of THIS TERMINAL'S OTHER
-	// CONVERSATIONS is running. One aforge holds any number of them and every one
+	// CONVERSATIONS is running. One codeaf holds any number of them and every one
 	// is alive (keeper.go), so the row arrived through the same presence reading a
 	// stranger's would — and the door is a switch: the conversation on screen is
 	// stowed still running, and the one that owns the work comes forward standing
@@ -321,7 +321,7 @@ const (
 // THE PROJECT IS BIGGER THAN THIS WINDOW, and until now this surface could not
 // say so.
 //
-// A person with two aforge windows open on one directory would start a task in
+// A person with two codeaf windows open on one directory would start a task in
 // the first, look at the second, and find no trace of it anywhere: not in the
 // column, not on this page, not in the "@" list. The reason is in
 // internal/session's taskelsewhere.go — an ordinary task writes NO row into the
@@ -663,7 +663,7 @@ func taskStateWord(entry session.TaskIndexEntry, runs bool) string {
 //
 // It was not always so. The column carried a footnote of the record under its
 // live rows — at most six flat rows, dulled, walkable, each a door into a card —
-// and it was put there to solve a real problem: a person opening aforge in a
+// and it was put there to solve a real problem: a person opening codeaf in a
 // directory they had worked in for a month saw a column saying "no tasks yet",
 // and nothing on the frame suggested that a month of finished work was one chord
 // away. The footnote made the work visible and cost more than it was worth. Six

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // The registry these tests offer from, and a turn that clears the threshold

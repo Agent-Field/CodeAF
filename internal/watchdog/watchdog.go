@@ -1,4 +1,4 @@
-// Package watchdog keeps standing watches available when no aforge terminal
+// Package watchdog keeps standing watches available when no codeaf terminal
 // is open. The user-facing surfaces describe the consequence; this package
 // owns the deliberately quiet operating-system details.
 package watchdog
@@ -21,11 +21,15 @@ const (
 	// Interval is the cadence promised by the standing-watch ratification.
 	Interval = 5 * time.Minute
 
-	darwinLabel       = "ai.agentfield.aforge.wake"
-	darwinPlistName   = darwinLabel + ".plist"
-	linuxTimerName    = "aforge-wake.timer"
-	linuxServiceName  = "aforge-wake.service"
-	standingUnitTitle = "Keep aforge standing watches current"
+	darwinLabel            = "ai.agentfield.codeaf.wake"
+	darwinPlistName        = darwinLabel + ".plist"
+	linuxTimerName         = "codeaf-wake.timer"
+	linuxServiceName       = "codeaf-wake.service"
+	standingUnitTitle      = "Keep codeaf standing watches current"
+	legacyDarwinLabel      = "ai.agentfield.aforge.wake"            // legacy-name
+	legacyLinuxTimerName   = "aforge-wake.timer"                    // legacy-name
+	legacyLinuxServiceName = "aforge-wake.service"                  // legacy-name
+	legacyStandingTitle    = "Keep aforge standing watches current" // legacy-name
 )
 
 // Runner is the complete process boundary used to load and unload the user
@@ -54,8 +58,11 @@ type Options struct {
 // Status is the shared standing-watch view used by doctor and chat grounding.
 type Status struct {
 	Installed bool
-	LastWake  time.Time
-	NextDue   time.Time
+	// Stale means the installed timer is from before the rename and startup
+	// should replace it with the current generation.
+	Stale    bool
+	LastWake time.Time
+	NextDue  time.Time
 }
 
 // Manager installs, removes, and inspects the current user's five-minute
@@ -164,11 +171,21 @@ func (m *Manager) Status() (Status, error) {
 	}
 	definition := m.primaryPath()
 	info, err := os.Stat(definition)
+	former := false
 	if err != nil {
 		if os.IsNotExist(err) {
-			return status, nil
+			former = true
+			definition = m.legacyPrimaryPath()
+			info, err = os.Stat(definition)
+			if os.IsNotExist(err) {
+				return status, nil
+			}
+			if err != nil {
+				return Status{}, fmt.Errorf("standing watch: inspect definition: %w", err)
+			}
+		} else {
+			return Status{}, fmt.Errorf("standing watch: inspect definition: %w", err)
 		}
-		return Status{}, fmt.Errorf("standing watch: inspect definition: %w", err)
 	}
 	if !info.Mode().IsRegular() {
 		return Status{}, fmt.Errorf("standing watch: %s is not a regular file", definition)
@@ -181,11 +198,23 @@ func (m *Manager) Status() (Status, error) {
 	if m.platform == "linux" {
 		wantPrimary = linuxTimer()
 	}
+	if former {
+		wantPrimary = legacyDarwinPlist(m.executable)
+		if m.platform == "linux" {
+			wantPrimary = legacyLinuxTimer()
+		}
+	}
 	if string(primary) != wantPrimary {
 		return status, nil
 	}
 	if m.platform == "linux" {
-		service, serviceErr := os.Stat(m.linuxServicePath())
+		servicePath := m.linuxServicePath()
+		wantService := linuxService(m.executable)
+		if former {
+			servicePath = m.legacyLinuxServicePath()
+			wantService = legacyLinuxService(m.executable)
+		}
+		service, serviceErr := os.Stat(servicePath)
 		if serviceErr != nil {
 			if os.IsNotExist(serviceErr) {
 				return status, nil
@@ -193,18 +222,19 @@ func (m *Manager) Status() (Status, error) {
 			return Status{}, fmt.Errorf("standing watch: inspect definition: %w", serviceErr)
 		}
 		if !service.Mode().IsRegular() {
-			return Status{}, fmt.Errorf("standing watch: %s is not a regular file", m.linuxServicePath())
+			return Status{}, fmt.Errorf("standing watch: %s is not a regular file", servicePath)
 		}
-		serviceDefinition, readErr := os.ReadFile(m.linuxServicePath())
+		serviceDefinition, readErr := os.ReadFile(servicePath)
 		if readErr != nil {
 			return Status{}, fmt.Errorf("standing watch: read definition: %w", readErr)
 		}
-		if string(serviceDefinition) != linuxService(m.executable) {
+		if string(serviceDefinition) != wantService {
 			return status, nil
 		}
 	}
 
 	status.Installed = true
+	status.Stale = former
 	base := info.ModTime()
 	if status.LastWake.After(base) {
 		base = status.LastWake
@@ -214,6 +244,9 @@ func (m *Manager) Status() (Status, error) {
 }
 
 func (m *Manager) installDarwin(ctx context.Context) error {
+	if err := m.removeLegacyDarwin(ctx); err != nil {
+		return err
+	}
 	path := m.darwinPlistPath()
 	_, priorErr := os.Stat(path)
 	hadDefinition := priorErr == nil
@@ -239,28 +272,32 @@ func (m *Manager) installDarwin(ctx context.Context) error {
 
 func (m *Manager) uninstallDarwin(ctx context.Context) error {
 	path := m.darwinPlistPath()
+	var current error
 	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
+		if !os.IsNotExist(err) {
+			current = fmt.Errorf("standing watch: inspect definition: %w", err)
 		}
-		return fmt.Errorf("standing watch: inspect definition: %w", err)
-	}
-	stopErr := m.runner.Run(ctx, "launchctl", "bootout", m.darwinDomain(), path)
-	if stopErr != nil {
-		if fallbackErr := m.runner.Run(ctx, "launchctl", "unload", path); fallbackErr != nil {
-			stopErr = errors.Join(stopErr, fallbackErr)
-		} else {
-			stopErr = nil
+	} else {
+		stopErr := m.runner.Run(ctx, "launchctl", "bootout", m.darwinDomain(), path)
+		if stopErr != nil {
+			if fallbackErr := m.runner.Run(ctx, "launchctl", "unload", path); fallbackErr != nil {
+				stopErr = errors.Join(stopErr, fallbackErr)
+			} else {
+				stopErr = nil
+			}
+		}
+		removeErr := os.Remove(path)
+		if stopErr != nil || removeErr != nil {
+			current = fmt.Errorf("standing watch: remove timer: %w", errors.Join(stopErr, removeErr))
 		}
 	}
-	removeErr := os.Remove(path)
-	if stopErr != nil || removeErr != nil {
-		return fmt.Errorf("standing watch: remove timer: %w", errors.Join(stopErr, removeErr))
-	}
-	return nil
+	return errors.Join(current, m.removeLegacyDarwin(ctx))
 }
 
 func (m *Manager) installLinux(ctx context.Context) error {
+	if err := m.removeLegacyLinux(ctx); err != nil {
+		return err
+	}
 	if err := writeDefinition(m.linuxServicePath(), []byte(linuxService(m.executable))); err != nil {
 		return err
 	}
@@ -285,22 +322,30 @@ func (m *Manager) uninstallLinux(ctx context.Context) error {
 	timerPath, servicePath := m.linuxTimerPath(), m.linuxServicePath()
 	_, timerErr := os.Stat(timerPath)
 	_, serviceErr := os.Stat(servicePath)
-	if os.IsNotExist(timerErr) && os.IsNotExist(serviceErr) {
-		return nil
-	}
 	if timerErr != nil && !os.IsNotExist(timerErr) {
 		return fmt.Errorf("standing watch: inspect definition: %w", timerErr)
 	}
 	if serviceErr != nil && !os.IsNotExist(serviceErr) {
 		return fmt.Errorf("standing watch: inspect definition: %w", serviceErr)
 	}
-	stopErr := m.runner.Run(ctx, "systemctl", "--user", "disable", "--now", linuxTimerName)
-	removeErr := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath))
-	reloadErr := m.runner.Run(ctx, "systemctl", "--user", "daemon-reload")
-	if stopErr != nil || removeErr != nil || reloadErr != nil {
-		return fmt.Errorf("standing watch: remove timer: %w", errors.Join(stopErr, removeErr, reloadErr))
+	currentPresent := timerErr == nil || serviceErr == nil
+	var current error
+	if currentPresent {
+		stopErr := m.runner.Run(ctx, "systemctl", "--user", "disable", "--now", linuxTimerName)
+		removeErr := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath))
+		if stopErr != nil || removeErr != nil {
+			current = fmt.Errorf("standing watch: remove timer: %w", errors.Join(stopErr, removeErr))
+		}
 	}
-	return nil
+	formerPresent := watchdogPathExists(m.legacyLinuxTimerPath()) || watchdogPathExists(m.legacyLinuxServicePath())
+	former := m.removeLegacyLinux(ctx)
+	var reload error
+	if currentPresent || formerPresent {
+		if err := m.runner.Run(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+			reload = fmt.Errorf("standing watch: refresh timer: %w", err)
+		}
+	}
+	return errors.Join(current, former, reload)
 }
 
 func (m *Manager) primaryPath() string {
@@ -312,6 +357,17 @@ func (m *Manager) primaryPath() string {
 
 func (m *Manager) darwinPlistPath() string {
 	return filepath.Join(m.homeDir, "Library", "LaunchAgents", darwinPlistName)
+}
+
+func (m *Manager) legacyDarwinPlistPath() string {
+	return filepath.Join(m.homeDir, "Library", "LaunchAgents", legacyDarwinLabel+".plist")
+}
+
+func (m *Manager) legacyPrimaryPath() string {
+	if m.platform == "darwin" {
+		return m.legacyDarwinPlistPath()
+	}
+	return m.legacyLinuxTimerPath()
 }
 
 func (m *Manager) darwinDomain() string { return "gui/" + strconv.Itoa(m.uid) }
@@ -326,11 +382,58 @@ func (m *Manager) linuxServicePath() string {
 	return filepath.Join(m.linuxUnitDir(), linuxServiceName)
 }
 
+func (m *Manager) legacyLinuxTimerPath() string {
+	return filepath.Join(m.linuxUnitDir(), legacyLinuxTimerName)
+}
+
+func (m *Manager) legacyLinuxServicePath() string {
+	return filepath.Join(m.linuxUnitDir(), legacyLinuxServiceName)
+}
+
+func (m *Manager) removeLegacyDarwin(ctx context.Context) error {
+	path := m.legacyDarwinPlistPath()
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("standing watch: inspect former definition: %w", err)
+	}
+	stop := m.runner.Run(ctx, "launchctl", "bootout", m.darwinDomain(), path)
+	if stop != nil {
+		stop = m.runner.Run(ctx, "launchctl", "unload", path)
+	}
+	remove := removeIfPresent(path)
+	if stop != nil || remove != nil {
+		return fmt.Errorf("standing watch: remove former timer: %w", errors.Join(stop, remove))
+	}
+	return nil
+}
+
+func (m *Manager) removeLegacyLinux(ctx context.Context) error {
+	timerPath, servicePath := m.legacyLinuxTimerPath(), m.legacyLinuxServicePath()
+	timerPresent, servicePresent := watchdogPathExists(timerPath), watchdogPathExists(servicePath)
+	if !timerPresent && !servicePresent {
+		return nil
+	}
+	var stopTimer, stopService error
+	if timerPresent {
+		stopTimer = m.runner.Run(ctx, "systemctl", "--user", "disable", "--now", legacyLinuxTimerName)
+	}
+	if servicePresent {
+		stopService = m.runner.Run(ctx, "systemctl", "--user", "stop", legacyLinuxServiceName)
+	}
+	remove := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath))
+	if stopTimer != nil || stopService != nil || remove != nil {
+		return fmt.Errorf("standing watch: remove former timer: %w", errors.Join(stopTimer, stopService, remove))
+	}
+	return nil
+}
+
 func writeDefinition(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("standing watch: create definition directory: %w", err)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".aforge-wake-*")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".codeaf-wake-*")
 	if err != nil {
 		return fmt.Errorf("standing watch: create definition: %w", err)
 	}
@@ -359,6 +462,11 @@ func removeIfPresent(path string) error {
 		return nil
 	}
 	return err
+}
+
+func watchdogPathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func nextDue(base, now time.Time) time.Time {
@@ -391,6 +499,10 @@ func darwinPlist(executable string) string {
 `
 }
 
+func legacyDarwinPlist(executable string) string {
+	return strings.ReplaceAll(darwinPlist(executable), darwinLabel, legacyDarwinLabel)
+}
+
 func linuxService(executable string) string {
 	return `[Unit]
 Description=` + standingUnitTitle + `
@@ -399,6 +511,10 @@ Description=` + standingUnitTitle + `
 Type=oneshot
 ExecStart=` + quoteSystemd(executable) + ` wake
 `
+}
+
+func legacyLinuxService(executable string) string {
+	return strings.ReplaceAll(linuxService(executable), standingUnitTitle, legacyStandingTitle)
 }
 
 func linuxTimer() string {
@@ -413,6 +529,11 @@ Unit=` + linuxServiceName + `
 [Install]
 WantedBy=timers.target
 `
+}
+
+func legacyLinuxTimer() string {
+	text := strings.ReplaceAll(linuxTimer(), standingUnitTitle, legacyStandingTitle)
+	return strings.ReplaceAll(text, linuxServiceName, legacyLinuxServiceName)
 }
 
 func quoteSystemd(value string) string {

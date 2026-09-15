@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
 // Tool is the shape every tool in this package wears, and the shape a
@@ -98,7 +98,7 @@ func ToolsCapped(cwd string, caps Caps) []Tool {
 // float, and one of them sent `{"limit":10.0}` to a tool eleven times in a
 // single turn. `timeout` stays `"number"`: it is a float64 and seconds really
 // can be fractional. (internal/session/toolargs.go carries the other half of
-// that fix, for the tools aforge adds itself.)
+// that fix, for the tools codeaf adds itself.)
 const readSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"integer","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"integer","description":"Maximum number of lines to read"}},"required":["path"],"additionalProperties":false}`
 
 var bashSchemaJSON = `{"type":"object","properties":{"command":{"type":"string","description":"Bash command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional; ` + strconv.Itoa(BashCeilingSeconds) + ` when unset)"}},"required":["command"],"additionalProperties":false}`

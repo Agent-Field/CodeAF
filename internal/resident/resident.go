@@ -13,11 +13,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
-	"github.com/Agent-Field/aforge-v2/internal/watchdog"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/thread"
+	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
 
 const (
@@ -519,7 +519,7 @@ func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
 // structural: a store that can no longer be read. Returning on the first error
 // treated them as the same thing, and the transient one is overwhelmingly the
 // common one. The resident then died in under a millisecond while its process
-// lived on holding the lease, so every later `aforge wake` reported it alive and
+// lived on holding the lease, so every later `codeaf wake` reported it alive and
 // no standing watch, charter or practice ever fired again, silently, forever.
 //
 // Counting consecutive failures separates the two without anyone having to
@@ -887,7 +887,7 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 }
 
 // LastWatchPass returns the standing-watch decisions made by the latest Tick.
-// It is an ephemeral operation report for bounded callers such as `aforge
+// It is an ephemeral operation report for bounded callers such as `codeaf
 // wake`; all resulting state transitions remain journaled in the store.
 func (r *Reconciler) LastWatchPass() WatchPass {
 	r.mu.Lock()
@@ -1537,7 +1537,7 @@ const oneShotErrandContext = "\n\nSurface: this ask arrived as a single headless
 
 // oneShotErrandOnceEvidence is what the journal records about a standing draft
 // that never had a ratification card to stand on.
-const oneShotErrandOnceEvidence = "one-shot errand surface: `aforge do` is the choice of once, not standing"
+const oneShotErrandOnceEvidence = "one-shot errand surface: `codeaf do` is the choice of once, not standing"
 
 // keepTheAskVerbatim is the headless surface's half of the compile contract.
 //

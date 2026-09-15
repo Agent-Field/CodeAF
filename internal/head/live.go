@@ -3,7 +3,7 @@ package head
 import (
 	"errors"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // The head's world may not be smaller than what is happening in it.

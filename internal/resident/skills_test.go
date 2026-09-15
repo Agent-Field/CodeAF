@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 const testSkillDoc = "repo-audit runs the verified repository audit"
@@ -18,9 +18,9 @@ func TestRecurringSkillPromotesOnlyAfterGreenCheck(t *testing.T) {
 	graph := openStore(t)
 	firstArtifact := writeSkillArtifact(t, "repo-audit", `#!/bin/sh
 set -eu
-test "$PWD" != "$AFORGE_SKILL_DIR"
-test -x "$AFORGE_SKILL_DIR/run.sh"
-printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
+test "$PWD" != "$CODEAF_SKILL_DIR"
+test -x "$CODEAF_SKILL_DIR/run.sh"
+printf '%s' "$PWD" > "$CODEAF_SKILL_DIR/CHECK_CWD"
 `)
 	first := recordCandidateJob(t, graph, "job-first", firstArtifact)
 	reconciler := New(graph, nil, nil)
@@ -36,9 +36,9 @@ printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
 
 	secondArtifact := writeSkillArtifact(t, "repo-audit", `#!/bin/sh
 set -eu
-test "$PWD" != "$AFORGE_SKILL_DIR"
-test -x "$AFORGE_SKILL_DIR/run.sh"
-printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
+test "$PWD" != "$CODEAF_SKILL_DIR"
+test -x "$CODEAF_SKILL_DIR/run.sh"
+printf '%s' "$PWD" > "$CODEAF_SKILL_DIR/CHECK_CWD"
 `)
 	second := recordCandidateJob(t, graph, "job-second", secondArtifact)
 	if err := reconciler.Tick(context.Background()); err != nil {
@@ -63,7 +63,7 @@ printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
 	if err != nil {
 		t.Fatalf("check did not execute: %v", err)
 	}
-	if got := string(checkDir); !strings.Contains(got, "aforge-skill-check-") || strings.HasPrefix(got, active[0].Artifact) {
+	if got := string(checkDir); !strings.Contains(got, "codeaf-skill-check-") || strings.HasPrefix(got, active[0].Artifact) {
 		t.Fatalf("check cwd = %q, want a clean temp directory", got)
 	}
 	provenance, err := os.ReadFile(filepath.Join(active[0].Artifact, "PROVENANCE"))
@@ -120,6 +120,20 @@ printf '%s' "$PWD" > "$AFORGE_SKILL_DIR/CHECK_CWD"
 	}
 	if _, err := os.Stat(active[0].Artifact); err != nil {
 		t.Fatalf("retirement removed provenance-bearing artifact: %v", err)
+	}
+}
+
+// H7: a skill check receives the current and legacy skill-directory spellings
+// with the same value.
+func TestH7SkillCheckExportsBothDirectorySpellings(t *testing.T) {
+	// The old spelling is named on its own Go line so the name law can see
+	// the exemption; a marker inside the script's string cannot open one.
+	const legacySpelling = "AFORGE_SKILL_DIR" // legacy-name
+	dir := writeSkillArtifact(t, "both-envs", "#!/bin/sh\nset -eu\n"+
+		"test \"$CODEAF_SKILL_DIR\" = \"$"+legacySpelling+"\"\n"+
+		"test \"$CODEAF_SKILL_DIR\" != \"\"\n")
+	if err := runSkillCheck(context.Background(), dir); err != nil {
+		t.Fatal(err)
 	}
 }
 

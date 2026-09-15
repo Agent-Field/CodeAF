@@ -29,7 +29,7 @@ no-hosted-service rendezvous, but for state, not for a conversation; polling a b
 not a chat wire. So: **the session host, the roaming reconnect, and the relay all stand
 exactly as designed.** Furrow replaces none of them.
 
-It also cannot be linked: furrow is Rust, aforge is Go. Any integration is the CLI —
+It also cannot be linked: furrow is Rust, codeaf is Go. Any integration is the CLI —
 which is fine, because the CLI *is* furrow's declared API — and therefore optional and
 feature-detected. The codebase's own law applies: a capability that cannot work is
 absent, not broken. No furrow on the machine → the seams below simply do not exist, and
@@ -42,7 +42,7 @@ nothing else in this plan notices.
    in-chat attachment contract (bytes travel with the message) stays the default and is
    still built. But for the person who *does* want a local folder to exist over there —
    "I have this directory on my laptop, work on it from the big machine" — furrow is the
-   right answer and we should not build a worse one: `aforge` detects furrow on both
+   right answer and we should not build a worse one: `codeaf` detects furrow on both
    ends and offers the pairing (`furrow remote add` + `sync --follow`) instead of
    growing its own file-sync protocol. Divergence is furrow's honest edge (preserved and
    reported, not auto-merged; smoothest with one writer at a time) — which matches our
@@ -125,8 +125,8 @@ without each other.
 
 ### Lane A — the session host *(the meat; largest lane)*
 
-Per-machine host on a unix socket under `AFORGE_HOME`; engines outlive pipes;
-`aforge engine` becomes attach-or-spawn (flock-guarded, the standing tick's discipline);
+Per-machine host on a unix socket under `CODEAF_HOME`; engines outlive pipes;
+`codeaf engine` becomes attach-or-spawn (flock-guarded, the standing tick's discipline);
 held cards; fan-out to N attached surfaces; idle policy. Includes the first honest pass
 on **re-opening the gap list**: every `--host` refusal justified by "the card would land
 in an empty room" (harness building, adaptive runs, consent "always") either lights up
@@ -163,14 +163,14 @@ The dumb blind pipe: registration by key-derived name, dial matching, ciphertext
 forwarding, rate limits, name-squatting policy. Speaks only lane 0's rendezvous
 framing; never sees a session frame in plaintext. Lives as its own small deployable
 (own repo or `cmd/relay` — decide at kickoff); runnable locally as a test binary, which
-is what lane E develops against. Deployment to `relay.aforge.dev` is an ops task
+is what lane E develops against. Deployment to `relay.codeaf.dev` is an ops task
 decoupled from the code merge.
 
 ### Lane E — pairing + client crypto *(medium; parallel; depends only on lane 0's rendezvous framing)*
 
-`aforge serve` (the host, given a flag, dialing out and holding the registration);
+`codeaf serve` (the host, given a flag, dialing out and holding the registration);
 PAKE over the short pairing code; Noise between pinned device keys; keys in the OS
-keychain (Touch ID gating where the platform offers it); `aforge devices`
+keychain (Touch ID gating where the platform offers it); `codeaf devices`
 list/revoke; `--at <name>` on the surface. Tunnel presents `io.ReadWriteCloser` —
 `remote.Dial` never knows. Tested end-to-end against lane D's local binary. Keeps its
 vocabulary compatible with furrow's recovery-key UX rather than rivaling it.
@@ -223,7 +223,7 @@ lane G (web glance) — severable, hangs off D+E when they exist
 
 One binary release in which: `--host` attaches to a persistent engine and survives every
 disconnect; the surface redials by itself; anything pasted or attached lands over there
-and anything made over there can be fetched here; `aforge serve` + a pairing code +
+and anything made over there can be fetched here; `codeaf serve` + a pairing code +
 `--at <name>` work with no ssh the moment the relay service is switched on (and fail in
 one honest sentence until it is); furrow, where installed, offers folder sync, forked
 universes, and aligned rewind; and the manual tells the truth about all of it. The relay

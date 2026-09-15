@@ -1,7 +1,7 @@
 # The call census, nightly
 
-`cmd/aforge-census` reads the model-call log this build always writes
-(`~/.aforge/logs/calls.jsonl`, `internal/calllog`) and prints
+`cmd/codeaf-census` reads the model-call log this build always writes
+(`~/.codeaf/logs/calls.jsonl`, `internal/calllog`) and prints
 [docs/design/recovery/DESIGN.md](../../docs/design/recovery/DESIGN.md) §1 as
 markdown: finishes by status, cause families, the top error signatures under a
 normalised spelling, the 429 depth histogram, retry chains with their same-lane
@@ -27,8 +27,8 @@ them is an argument about anecdotes. So the Spark syncs the laptop's log and
 runs the same target once a night, keeping one file per day:
 
 ```sh
-rsync -a laptop:~/.aforge/logs/calls.jsonl ~/census/calls.jsonl
-make -C ~/src/aforge-v2 census LOG=~/census/calls.jsonl OUT=~/census/$(date +%F).md
+rsync -a laptop:~/.codeaf/logs/calls.jsonl ~/census/calls.jsonl
+make -C ~/src/codeaf census LOG=~/census/calls.jsonl OUT=~/census/$(date +%F).md
 ```
 
 **The cron is not set up here and is not this repository's to own.** What is

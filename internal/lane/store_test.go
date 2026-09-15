@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // TestABeliefSurvivesBeingWrittenDown is the point of persisting at all: what
@@ -109,7 +109,7 @@ func TestARowThatNamesNoLaneIsNotLoaded(t *testing.T) {
 }
 
 // TestTheStoreFollowsTheStateRootWhereverItMoves is why the path is resolved on
-// every call: a disposable run moves AFORGE_HOME under a process that is
+// every call: a disposable run moves CODEAF_HOME under a process that is
 // already running, and a store holding the path it was born with would keep
 // writing into the home it was pointed at first.
 func TestTheStoreFollowsTheStateRootWhereverItMoves(t *testing.T) {
@@ -191,7 +191,7 @@ func TestAnUnattachedLedgerKeepsBelievingAnyway(t *testing.T) {
 // The scenario these three tests are written from happened on a person's own
 // machine and cost them five seconds of staring at an empty line, so it is
 // written here in the shape it happened in rather than as an abstraction: two
-// aforge processes, one belief file, one of them holding a seventeen-lane
+// codeaf processes, one belief file, one of them holding a seventeen-lane
 // sheet the other has never heard of.
 
 // twoProcessRows is a sheet for a model only one of the two processes knows

@@ -13,8 +13,8 @@ import (
 // THE LEAF'S WORKING DIRECTORY IS BORING, and this is the test that says so.
 //
 // It used to be anything but. `.obs/` held every spilled tool result,
-// `.aforge/trace/` held the worker's own turn-by-turn transcript, its raw event
-// stream and its patch, and `.aforge/jobs/` held its background logs — all of it
+// `.codeaf/trace/` held the worker's own turn-by-turn transcript, its raw event
+// stream and its patch, and `.codeaf/jobs/` held its background logs — all of it
 // in the one directory the worker was told to work in and told to look at. A
 // measured atomic leaf spent five of its eleven turns listing that machinery and
 // reading its own trace log back into its own context: orientation at full

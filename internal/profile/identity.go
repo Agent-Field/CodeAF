@@ -56,7 +56,7 @@ func UseIdentity(resolve Resolve) {
 // Identity is the model a history belongs to.
 //
 // Two layers, and only the first is always there. The free one is the doctrine's
-// own normalisation — the leading "~" is aforge's routing marker and not part of
+// own normalisation — the leading "~" is codeaf's routing marker and not part of
 // any slug, and case is not an identity — which is what a surface with no catalog
 // gets. The second is whatever resolver was installed, applied over the first.
 //
@@ -90,7 +90,7 @@ func Identity(model string) string {
 }
 
 // normalizeModel is provider.normalizeModel's rule, restated where a file name
-// is built: the leading "~" is aforge's own routing marker, not part of the
+// is built: the leading "~" is codeaf's own routing marker, not part of the
 // slug, so "~minimax/minimax-m2.7" and "minimax/minimax-m2.7" are one model.
 func normalizeModel(model string) string {
 	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(model), "~"))

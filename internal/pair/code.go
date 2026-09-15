@@ -124,7 +124,7 @@ func (d *Desk) Spend() (string, error) {
 	defer d.mu.Unlock()
 	if d.current == nil || !d.alive(d.current) {
 		d.current = nil
-		return "", errors.New("there is no pairing code on that machine right now — run `aforge serve` there and read the new one")
+		return "", errors.New("there is no pairing code on that machine right now — run `codeaf serve` there and read the new one")
 	}
 	d.current.left--
 	secret := d.current.secret()
@@ -141,7 +141,7 @@ func (d *Desk) alive(c *Code) bool {
 	return c.left > 0 && d.now().Sub(c.born) < CodeValidFor
 }
 
-// Lines is what `aforge serve` prints, exactly.
+// Lines is what `codeaf serve` prints, exactly.
 //
 // The wording and the spacing are the design's own, and the validity is
 // interpolated from [CodeValidFor] rather than typed, because a number that

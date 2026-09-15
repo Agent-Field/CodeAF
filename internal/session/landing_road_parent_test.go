@@ -330,14 +330,14 @@ func TestTheChildsWorkIsHomeBeforeItsNoteIsDelivered(t *testing.T) {
 
 	// finish is the write and complete is the announcement, in that order: by the
 	// time a reader can be handed the news the leavings are already on the node.
-	kid.finish("the law is in section four", []string{"law.md"}, "aforge/task-2-law", mergeMerged)
+	kid.finish("the law is in section four", []string{"law.md"}, "codeaf/task-2-law", mergeMerged)
 	nest.graph.complete(kid, TaskDone)
 
 	waitFor(t, "the note to reach the parent worker", func() bool {
 		return steeringContains(nest.node, "the law is in section four")
 	})
 	note := strings.Join(steeringQueue(nest.node), "\n")
-	for _, want := range []string{"changed: law.md", "its branch aforge/task-2-law merged into yours"} {
+	for _, want := range []string{"changed: law.md", "its branch codeaf/task-2-law merged into yours"} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the parent's note does not say %q:\n%s", want, note)
 		}

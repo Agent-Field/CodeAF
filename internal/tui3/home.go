@@ -11,16 +11,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // HOME: /home — everything this machine has worked on, in one place.
 //
 // Every other surface here is a reading of ONE conversation in ONE directory.
 // That is the whole of what a person is fighting when they say "do I need
-// another terminal?": aforge made the folder you are standing in the identity
+// another terminal?": codeaf made the folder you are standing in the identity
 // of the screen, so moving between projects meant moving windows, and there was
 // nowhere at all that showed the work as a person holds it — everything, at
 // once, ordered by what wants them.
@@ -574,7 +574,7 @@ type homeBare struct {
 type homeView struct {
 	// why is the one line drawn where the rows would be when there CANNOT be any.
 	// It is EMPTY EVERYWHERE TODAY: the one state that filled it was --host,
-	// where this process's ~/.aforge/v3 belonged to the wrong machine, and the
+	// where this process's ~/.codeaf/v3 belonged to the wrong machine, and the
 	// world comes from the machine that owns the work now ([app.readWorld]). The
 	// field is kept because the state it names is real — a home that cannot read
 	// its rows at all is a screen that owes a sentence, not a blank — and because
@@ -941,7 +941,7 @@ func (a *app) raiseHome() tea.Cmd {
 
 // landHome decides, once, whether home is the FIRST THING a launch shows.
 //
-// A person opening aforge is not usually opening a conversation — they are
+// A person opening codeaf is not usually opening a conversation — they are
 // opening the machine, and the conversation is a guess the door made for them
 // out of which directory they happened to be standing in. So the first frame is
 // this screen, with the conversation the door picked loaded and waiting
@@ -956,10 +956,10 @@ func (a *app) raiseHome() tea.Cmd {
 //  1. THE DOOR ASKED FOR IT ([Options.Landing]). A `--once` run, a headless
 //     frame, a test, anything over `--host` — none of them set it, so none of
 //     them can be greeted by accident. And a launch that NAMED a conversation
-//     (`--session <path>`, `aforge resume`) does not set it either: somebody who
+//     (`--session <path>`, `codeaf resume`) does not set it either: somebody who
 //     said which one means that one.
 //
-//  2. NOTHING ELSE IS ALREADY GREETING THEM. `aforge resume` opens on its
+//  2. NOTHING ELSE IS ALREADY GREETING THEM. `codeaf resume` opens on its
 //     picker; a surface that put a second full-screen greeting behind the first
 //     would be two answers to one keystroke.
 //
@@ -1001,7 +1001,7 @@ func (a *app) landHome() {
 	// runs inside [newApp], before bubbletea exists and therefore on the road to
 	// the FIRST PAINT, and the walk is four system calls per session across every
 	// project on the machine ([session.ReadWorld]). A launch that is not being
-	// greeted — `--session`, `aforge resume`, `--once`, every headless frame and
+	// greeted — `--session`, `codeaf resume`, `--once`, every headless frame and
 	// every test — used to pay all of it to decide one word in the legend; the
 	// legend stopped asking, so the two conditions below cut the walk out
 	// entirely rather than moving it off the loop.
@@ -1137,7 +1137,7 @@ func (a *app) readWorldKnown() (session.World, bool) {
 // the surface reads the places root itself and the reading is always an answer.
 // Over --host the door hands a function that reads a cache the connection keeps
 // warm behind itself, and that cache says false until the far machine has
-// replied once (cmd/aforge's [hostWorld], tui3.go's [Options.World]).
+// replied once (cmd/codeaf's [hostWorld], tui3.go's [Options.World]).
 func (a *app) worldOf() (session.World, bool) { return worldSeam(a.world, a.placesRoot(), a.hosted()) }
 
 // worldSeam is that same seam with its three inputs handed in, so a COMMAND can
@@ -1156,7 +1156,7 @@ func worldSeam(door func() (session.World, bool), root string, hosted bool) (ses
 		// as the machine the conversation is on, and is exactly the fault the
 		// whole lane exists to end. An engine too old to answer Places.World
 		// arrives here the same way, through a cache that never becomes known
-		// (cmd/aforge's [hostWorld]), and the places draw nothing rather than
+		// (cmd/codeaf's [hostWorld]), and the places draw nothing rather than
 		// somebody else's disk.
 		return session.World{}, false
 	}
@@ -1351,7 +1351,7 @@ func (a *app) placesRoot() string {
 // that gets both wrong: glancing at the server's list would clear the badge over
 // the laptop's, and the laptop's own windows would go on writing over an origin
 // that was never about them. So a connection gets a folder of its own, named
-// after the machine — `~/.aforge/v3/looks/<machine>` — and a local session keeps
+// after the machine — `~/.codeaf/v3/looks/<machine>` — and a local session keeps
 // its stamps exactly where they have always been.
 //
 // THE FOLDER IS MADE HERE AND NOWHERE ELSE. [session.NoteLookAt] refuses to
@@ -1383,7 +1383,7 @@ func (a *app) looksRoot() string {
 // directory name should not have to survive. Anything that is not a letter, a
 // digit or one of the three quiet punctuation marks becomes a dash, so two
 // machines can only collide by being spelled almost identically, and a person
-// reading `~/.aforge/v3/looks/` still recognises which is which.
+// reading `~/.codeaf/v3/looks/` still recognises which is which.
 func looksHostFolder(host string) string {
 	host = strings.TrimSpace(host)
 	if host == "" {
@@ -3337,7 +3337,7 @@ func folderThere(where string) bool {
 //
 // IT ASKS ABOUT PATHS AND NEVER ABOUT NAMES. [homeWhere] falls back to the
 // project's NAME for a row that recorded no directory, and a name is not a place
-// — statting `aforge-v2` from whatever directory this process happens to be in
+// — statting `codeaf` from whatever directory this process happens to be in
 // would report every older session shape on the machine as gone. Those rows are
 // simply never in the map, and a path the map has not heard of is not gone.
 //

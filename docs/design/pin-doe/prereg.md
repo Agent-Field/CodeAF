@@ -1,6 +1,6 @@
 # Pre-registration: what a pin means after the wire refuses it
 
-Owner aforge-v2-e6. Written 2026-09-02 before any arm was built or any cell run.
+Owner codeaf-e6. Written 2026-09-02 before any arm was built or any cell run.
 
 ## Question
 After the router refuses a person's pinned lane for a model (`permits only:` 404),
@@ -14,7 +14,7 @@ on deepseek-v4-flash, through the chat door?
 - N  null baseline — A's binary with no pin (`lane.talk` unset, auto). Bounds what pinning costs at all.
 
 ## Briefs (factor 2) and replicates
-k = 4 to 6 validated anchors from aforge-v2-14's pool (`~/af-canary/bench/canary/pool.json`), cited by pool id, chosen BEFORE any arm runs as the first k validated in pool order; n = 2 per (arm, brief). Cells = 4·k·2 (32 to 48).
+k = 4 to 6 validated anchors from codeaf-14's pool (`~/af-canary/bench/canary/pool.json`), cited by pool id, chosen BEFORE any arm runs as the first k validated in pool order; n = 2 per (arm, brief). Cells = 4·k·2 (32 to 48).
 k is fixed after the #407 baseline table: the largest k in [4,6] with 4·k·2·(mean baseline cost per cell) ≤ $8, keeping $2 reserve under the $10 budget.
 
 ## Held constant
@@ -33,13 +33,13 @@ H1 redemand_count(A) ≥ number of turns; (B) = (C) = 1; (N) = 0. H2 wall(A) −
 Minimise (cost, 1−quality, wall). Front = non-dominated arm means. Tiebreak, in order: quality (passes out of 2k), then cost, then wall. Noise band: two arms tie on a metric when their means differ by less than the mean absolute difference between replicates over all cells for that metric.
 
 ## Exclusions (reported, never silent)
-A cell with an unclosed ledger row (aforge-v2-14's sighting; likely #334, fix #357) is excluded from wall and ttft and listed. A cell that hits the cap counts as quality 0 and is listed. A cell where the refusal did not occur on A/B/C is invalid and re-run once.
+A cell with an unclosed ledger row (codeaf-14's sighting; likely #334, fix #357) is excluded from wall and ttft and listed. A cell that hits the cap counts as quality 0 and is listed. A cell where the refusal did not occur on A/B/C is invalid and re-run once.
 
 ## Pilot before the main run (one cell, arm A, anchor 1)
-Verifies that the 404 refusal is observable in `<home>/logs/calls.jsonl` and the turn recovers, and that all five metrics extract from the cell's files. If the ledger does not record the refusal, redemand_count is taken from AFORGE's debug log; if neither, the arms run against santosh-75's lanestub with SheetOnly for redemand and wall only, and quality is not claimed from that run (the stub does not answer with a real model).
+Verifies that the 404 refusal is observable in `<home>/logs/calls.jsonl` and the turn recovers, and that all five metrics extract from the cell's files. If the ledger does not record the refusal, redemand_count is taken from codeaf's debug log; if neither, the arms run against santosh-75's lanestub with SheetOnly for redemand and wall only, and quality is not claimed from that run (the stub does not answer with a real model).
 
 ## Builds
-A: #368 tip, `make build` in its own worktree. B, C: Opus lanes (Fable if Opus is still limited) on branches off A; diff confined to lanepin.go, laneChoiceFor, one RescueNews line; santosh-75's names kept. Each arm's bin/aforge is passed as CANARY_BIN. The winning arm lands later as a PR on top of #368's merge, pin policy only.
+A: #368 tip, `make build` in its own worktree. B, C: Opus lanes (Fable if Opus is still limited) on branches off A; diff confined to lanepin.go, laneChoiceFor, one RescueNews line; santosh-75's names kept. Each arm's bin/codeaf is passed as CANARY_BIN. The winning arm lands later as a PR on top of #368's merge, pin policy only.
 
 ## Deliverable
 The table of arm means with replicate ranges, the Pareto front, the secondary table, the exclusion list, and the sealed map. The user or operator picks.
@@ -48,7 +48,7 @@ The table of arm means with replicate ranges, the Pareto front, the secondary ta
 The pool holds nine validated anchors in this order: reef-145, attrs-1416, packaging-1318, click-3740, tox-4031, build-860, virtualenv-3072, astroid-2305, sphinx-11437. The rule "first k in pool order" would take packaging-1318, whose fail-to-pass set is 53,420 tests and whose grade is slow enough that eight cells of it would dominate the run's wall for a reason that has nothing to do with the arms. It is skipped, and the briefs are the next four in pool order: reef-145, attrs-1416, click-3740, tox-4031. Declared here before any cell ran; the sealed map was written with these four. Cells run three at a time; the box's one-minute load is recorded at each cell's start and end and reported beside wall.
 
 ## Scoring note added during the run (16:20 EDT), before any cell was scored
-aforge-v2-14 reports that pytest's cleanup of the shared <temporary pytest directory> can die under other sessions' pytest runs and leave a grade reading "0 passed 0 failed" with an rm_rf traceback in f2p.log. The driver copy this run uses predates the per-cell TMPDIR fix and is not edited while cells are in flight. Rule: after the last cell, every cell whose judge shows zero tests collected and an rm_rf traceback in f2p.log is re-graded with CANARY_REGRADE=1 through the canary lib on dev (no door re-run, no spend), and the report lists which cells were re-graded. A grade is never changed by hand.
+codeaf-14 reports that pytest's cleanup of the shared <temporary pytest directory> can die under other sessions' pytest runs and leave a grade reading "0 passed 0 failed" with an rm_rf traceback in f2p.log. The driver copy this run uses predates the per-cell TMPDIR fix and is not edited while cells are in flight. Rule: after the last cell, every cell whose judge shows zero tests collected and an rm_rf traceback in f2p.log is re-graded with CANARY_REGRADE=1 through the canary lib on dev (no door re-run, no spend), and the report lists which cells were re-graded. A grade is never changed by hand.
 
 ## Amendments at scoring (18:25 EDT), declared before the front was read
 1. The exclusion for unclosed ledger rows is withdrawn: they proved endemic (a start row per cancelled hedge arm, the #334 accounting class), and wall is the door's own clock while first-token latency sits on end rows, so neither depends on them. The count is reported per cell instead.

@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // newsAgent is the scripted agent with a name for its news, which is what makes
@@ -95,7 +95,7 @@ func heardLanes(t *testing.T) func() []session.LaneNews {
 // A PHASE MEASURED ON THE ENGINE'S MACHINE REACHES THE SURFACE'S OWN DESK.
 //
 // This is the whole defect in one test: everything the status row draws about a
-// turn in flight is posted where the request is made, and a bare `aforge` makes
+// turn in flight is posted where the request is made, and a bare `codeaf` makes
 // its requests in another process.
 func TestAPhaseFrameReachesTheSurfacesOwnPhaseReader(t *testing.T) {
 	heard := heardPhases(t)

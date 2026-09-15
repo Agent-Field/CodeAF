@@ -2,7 +2,7 @@
 
 ## See what a task did after restarting — a finished task's room shows its whole transcript
 
-Close aforge, open the same conversation again, and walk into a task that finished in the
+Close codeaf, open the same conversation again, and walk into a task that finished in the
 earlier life of it — `enter` on its roster row, a click on its strip chip, a `task 7`
 link — and its room replays **the whole transcript**: the instruction it was given, its
 prose between calls, its thinking blocks, every tool call with its arguments and result,
@@ -14,7 +14,7 @@ and where the task was spawned under another task it names that too:
 That works because the task's transcript is a real file on disk, kept beside the
 conversation that commissioned it — `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl`
 — and the conversation's task checkpoint remembers which file is which. A checkpoint
-written by an older aforge that did not remember is no worse off: the file is named with
+written by an older codeaf that did not remember is no worse off: the file is named with
 the task's id, so the room finds it by that id in the same directory, and remembers it from
 then on. The audit and repair transcripts beside it (`…_<id>-audit-<6 hex>.jsonl`,
 `…_<id>-repair1.jsonl`) are never mistaken for the task's own. A task that ran more than
@@ -121,9 +121,9 @@ A job's row is easy to tell apart before you open it: it sits in the `jobs` sect
 `tasks` and `standing`, not among the families, and it has no dim under-line starting with
 `job` and a number — that line is gone. The handle `job 4` is on the page.
 
-Earlier versions of aforge got this wrong in a way worth naming, in case you remember it: a
+Earlier versions of codeaf got this wrong in a way worth naming, in case you remember it: a
 job's page came up with a correct header — its name, `done`, its elapsed — over a body
-holding nothing but `· no task 4 in this session` and the foot. That sentence was aforge
+holding nothing but `· no task 4 in this session` and the foot. That sentence was codeaf
 talking to itself, not about anything you did, and it is gone. A task that had not landed
 yet went wrong the same way and for longer: a queued task, or one opened the instant it
 started, drew a correct header over a screen with **nothing at all** on it, because the
@@ -136,7 +136,7 @@ says what it knows and what it does not.
 A finished task's conversation is its **journal**, and the room replays it. If you opened
 the room and saw only the foot line, the transcript was not found: either the file is gone
 from the disk (the room now says `this task's transcript is not here any more` when that is
-so) or you are on an aforge from before the room could find a task's file by its id after a
+so) or you are on a codeaf from before the room could find a task's file by its id after a
 restart, in which case the file is still where it always was —
 `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl` — and the `read` tool, or your
 editor, opens it.
@@ -152,11 +152,11 @@ Task numbers belong to their conversation. A reading view of another conversatio
 finished task never shows or answers the current conversation's answers. Open its owning
 conversation to make a decision there.
 
-## It says aforge is deciding — I handed a review to the chat, why does it still need me?
+## It says codeaf is deciding — I handed a review to the chat, why does it still need me?
 
 **`awaiting review` is gone from every row, and there is no such state.** The card said
 it, then the rail, the roster, the record page and this room's own header said it too —
-four surfaces wearing a fourth word for one reading. A task handed to aforge is still a
+four surfaces wearing a fourth word for one reading. A task handed to codeaf is still a
 task that says `your call`; what changes is **who is holding the question**, and the card
 says that rather than renaming the state. The room's header now reads the reading's own
 sentence, `your call · nobody could check it`, whoever is deciding it.
@@ -164,27 +164,27 @@ sentence, `your call · nobody could check it`, whoever is deciding it.
 After you press `d you decide` — or when `task.settle` is `auto` — the row reads
 
 ```
-nobody could check it · aforge is deciding
+nobody could check it · codeaf is deciding
 ```
 
 so the row is never quiet without saying why, and **the answers stay drawn beside it**:
-answering one yourself is how you take the question back, and anything aforge was going to
+answering one yourself is how you take the question back, and anything codeaf was going to
 say it may still say.
 
 **And it comes back to you by itself.** A task never stays unowned past the end of a turn:
-if aforge's turn ends with the question still unanswered, the decision moves back to you
+if codeaf's turn ends with the question still unanswered, the decision moves back to you
 and the card draws its chips, whether or not you noticed it had been handed over. Where
-aforge's last message asked you something about that task, those chips are the answer
+codeaf's last message asked you something about that task, those chips are the answer
 surface for that question — its words above, the chips below, one ask.
 
-**Closing aforge ends that turn too, so after a restart it is yours again.** Who was
+**Closing codeaf ends that turn too, so after a restart it is yours again.** Who was
 deciding is kept with the task, and a conversation reopened — tomorrow, or after a crash,
-or from another window — hands every question aforge was holding straight back to you: the
-row drops the `aforge is deciding` clause, because the turn it was going to be decided in is
+or from another window — hands every question codeaf was holding straight back to you: the
+row drops the `codeaf is deciding` clause, because the turn it was going to be decided in is
 gone and nothing is going to finish that thought.
 
 **A conflict is never handed over at all.** Whatever `task.settle` says, a landing whose
-branch would not merge stays yours: aforge cannot merge by decree, and which of two
+branch would not merge stays yours: codeaf cannot merge by decree, and which of two
 versions of your own file survives is yours to say.
 
 If handing over fails, the original answers stay available. A running parent alone does not

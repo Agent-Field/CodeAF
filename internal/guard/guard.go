@@ -1,4 +1,4 @@
-// Package guard is the one place a panic stops being fatal. aforge is
+// Package guard is the one place a panic stops being fatal. codeaf is
 // event-sourced: the graph loses nothing when a goroutine dies, so a fault
 // should be absorbed, recorded, and degraded around — never allowed to take
 // the terminal surface down while the user is working.
@@ -28,7 +28,7 @@ type Fault struct {
 func (f *Fault) Error() string {
 	scope := strings.TrimSpace(f.Scope)
 	if scope == "" {
-		scope = "aforge"
+		scope = "codeaf"
 	}
 	return fmt.Sprintf("internal fault in %s: %v", scope, f.Recovered)
 }
@@ -43,9 +43,9 @@ func Note(scope string, recovered any) error {
 func note(scope string, recovered any, stack []byte) error {
 	fault := &Fault{Scope: scope, Recovered: recovered, Stack: stack}
 	// One structured line, then the stack. Every door that opens the v3 surface
-	// runs it through cmd/aforge's runSurface, which parks the standard logger
-	// in the profile's chat.log — `~/.aforge/chat.log` unless AFORGE_PROFILE_DIR
-	// or AFORGE_HOME moves it — for as long as the surface owns the terminal, so
+	// runs it through cmd/codeaf's runSurface, which parks the standard logger
+	// in the profile's chat.log — `~/.codeaf/chat.log` unless CODEAF_PROFILE_DIR
+	// or CODEAF_HOME moves it — for as long as the surface owns the terminal, so
 	// this lands in a file a person can read afterwards rather than tearing
 	// through the alt screen. It was true of the in-process door alone until
 	// #404; the ssh, relay and unix-socket doors left it on stderr.
@@ -62,7 +62,7 @@ func Recover(scope string) {
 	}
 }
 
-// Go spawns fn under Recover. Every fire-and-forget goroutine in aforge starts
+// Go spawns fn under Recover. Every fire-and-forget goroutine in codeaf starts
 // here, so "no goroutine can kill the surface" is one grep, not a habit.
 func Go(scope string, fn func()) {
 	go func() {

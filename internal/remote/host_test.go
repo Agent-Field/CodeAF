@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // dialSession is [dial] against a conversation that ALREADY EXISTS, which is
@@ -307,7 +307,7 @@ func TestATornPipeLeavesAPersistentConversationAlone(t *testing.T) {
 }
 
 // The other half of the same fork, driven through [Loopback] because the shape
-// being tested is the REAL one: a bare `aforge engine` on a pipe, whose life
+// being tested is the REAL one: a bare `codeaf engine` on a pipe, whose life
 // the conversation's life is. [Loop.Cut] is a link that died without saying
 // goodbye — the laptop lid — and on this shape that has to mean the end.
 func TestATornPipeStillEndsAnEngineThatIsThePipe(t *testing.T) {
@@ -368,7 +368,7 @@ func TestAQuestionRaisedInAnEmptyRoomIsWaitingOnTheNextAttach(t *testing.T) {
 	sess := NewSession(&Engine{
 		Agent:       far,
 		Workspace:   "/home/somebody/api",
-		SessionFile: "/home/somebody/.aforge/v3/sessions/-home-somebody-api/one.jsonl",
+		SessionFile: "/home/somebody/.codeaf/v3/sessions/-home-somebody-api/one.jsonl",
 	}, true)
 
 	l := dialSession(t, sess)

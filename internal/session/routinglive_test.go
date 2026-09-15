@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // A SESSION THAT CARRIES NO ROW OF ITS OWN READS THE LIVE ONE. The row a person

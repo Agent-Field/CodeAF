@@ -48,8 +48,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/pdfx"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/pdfx"
 )
 
 // pdfSentence is the one sentence the wrapper adds to pi's read description.

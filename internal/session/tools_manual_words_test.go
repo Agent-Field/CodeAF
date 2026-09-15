@@ -38,7 +38,7 @@ const (
 	// permissions page on its own since that page was reworded to carry the
 	// privacy terms, so it no longer misses and cannot measure the wiring; a
 	// phrasing of the same shape that still misses is used instead.
-	personsPrivacyQuestion = "who can see my files in aforge"
+	personsPrivacyQuestion = "who can see my files in codeaf"
 	modelsRewrite          = "document exposure boundaries"
 	permissionsLabel       = "[permissions · "
 )

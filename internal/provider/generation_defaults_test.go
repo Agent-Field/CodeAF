@@ -143,7 +143,7 @@ func TestAnOperatorsOwnThinkingLevelStillTravels(t *testing.T) {
 }
 
 // TestAnOperatorsExplicitOffStillSuppressesThinking keeps the escape hatch the
-// old default used to be. AFORGE_REASONING=off resolves to [EffortOff], and
+// old default used to be. CODEAF_REASONING=off resolves to [EffortOff], and
 // that is a REQUEST — the disable object — rather than the silence a default
 // now sends.
 func TestAnOperatorsExplicitOffStillSuppressesThinking(t *testing.T) {

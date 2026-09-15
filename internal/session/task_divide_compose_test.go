@@ -224,7 +224,7 @@ func TestAPartsBriefHoldsItsBoundWhateverLengthTheFieldsArriveAt(t *testing.T) {
 // part's own journal. THE POINTER IS AN ADDRESS, NOT INHERITED CONTEXT: the
 // human's words live in one file, and every part of the family points there.
 func TestADividedPartCarriesTheParentsOrigin(t *testing.T) {
-	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	origin := taskOrigin{journal: "/home/x/.codeaf/v3/sessions/abc.jsonl", line: 12}
 	nest := newDivideNestFrom(t, taskSpec{
 		title: "the whole job", request: personSentence, origin: origin,
 		brief: wideBrief, acceptance: "a", depth: 1,

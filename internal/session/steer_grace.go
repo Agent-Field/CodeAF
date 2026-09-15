@@ -70,7 +70,7 @@ package session
 import (
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // steerGraceMargin is the hair of slack between the timer and the age test it

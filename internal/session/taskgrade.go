@@ -10,7 +10,7 @@ package session
 // dividing worker wrote — `mechanical` or `careful` — which is a guess made
 // before anybody opened the material (task_divide.go).
 //
-// Both ends existed. Nothing joined them. `aforge models` — the panel that
+// Both ends existed. Nothing joined them. `codeaf models` — the panel that
 // exists precisely to ground a choice like this one — printed "nothing measured
 // yet. Ratings appear once calls have been graded" on a machine that had settled
 // weeks of tasks, because the only thing that had ever written into the ledger
@@ -22,7 +22,7 @@ package session
 //
 // ── WHAT THIS FILE DOES, IN ONE BREATH ──
 //
-// Every settled node writes one graded record into the SAME store `aforge
+// Every settled node writes one graded record into the SAME store `codeaf
 // models` reads, and the divider reads that store before it assigns a tier.
 //
 // ── THE GRADE IS THE CHECK'S OWN ANSWER, AND NOTHING ELSE ──
@@ -74,7 +74,7 @@ package session
 //
 // ── WHERE IT IS WRITTEN, AND WHY THAT IS THE SAME PLACE ──
 //
-// internal/router's Ledger is the ratings store, and `aforge models` reads it
+// internal/router's Ledger is the ratings store, and `codeaf models` reads it
 // out of the person's profile directory. A second store would be a second
 // answer to "how good is this model at this", which is the drift the
 // one-source-of-truth law exists to stop — so a settled node observes into that
@@ -88,8 +88,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 const (
@@ -112,7 +112,7 @@ const (
 	// TaskGradeEvidence is how many checked settles of one kind-shaped work it
 	// takes before the store may move a tier.
 	//
-	// It is EXPORTED for one reader: `aforge models`, which prints a note under
+	// It is EXPORTED for one reader: `codeaf models`, which prints a note under
 	// every row that is not yet driving anything and would otherwise print the
 	// router's own gate over a task node's row. Two gates guarding two decisions
 	// is fine; two numbers claiming to be the same gate is the drift the
@@ -138,7 +138,7 @@ const (
 //
 // NOTHING IS HELD OPEN ON PURPOSE. A node settles every few minutes at the
 // fastest, and the ledger's flush is already a locked read-merge-write built for
-// several aforge processes doing exactly this to the same small file — so taking
+// several codeaf processes doing exactly this to the same small file — so taking
 // it, folding one observation in and giving it back is one locked write per
 // settle, with no lifetime to manage, no handle to close on a crash, and no
 // window in which this session's evidence exists only in memory. A long-lived
@@ -335,7 +335,7 @@ func (g *taskGrades) saysCareful(model, kind string) bool {
 // and capped.
 //
 // THE WORDS KEEP THEIR ORDER, so the class reads as the name somebody wrote —
-// `task.node/tests for the rail` on `aforge models` — for the reason
+// `task.node/tests for the rail` on `codeaf models` — for the reason
 // internal/router states about its own keys: a ledger nobody can read is a
 // ledger nobody checks. The set comparison that pools two kinds happens at read
 // time and does not need the key sorted.

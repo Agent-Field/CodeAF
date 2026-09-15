@@ -1,6 +1,6 @@
 package tui3
 
-import "github.com/Agent-Field/aforge-v2/internal/session"
+import "github.com/Agent-Field/codeaf/internal/session"
 
 // ── why a task stopped where it did ─────────────────────────────────────────
 //

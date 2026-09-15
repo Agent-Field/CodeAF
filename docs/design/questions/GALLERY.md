@@ -1,6 +1,6 @@
 # The questions wave, photographed
 
-Every picture below is a **real screen**: `bin/aforge` in tmux at 100×36, talking
+Every picture below is a **real screen**: `bin/codeaf` in tmux at 100×36, talking
 to `deepseek/deepseek-v4-flash` over OpenRouter, with the glyph vocabulary on its
 plain tier. They are captured and rendered by `internal/e2e/questions_e2e_test.go`
 (build tag `e2e`) — nothing here was mocked, staged or drawn by hand, and re-running
@@ -113,7 +113,7 @@ differently spelled. One of them is owed a deletion.*
 **These eight are the only pictures in this folder taken after the owner's rulings of
 2026-09-11**, and they are taken a different way: `~/af-qv-reports/R/drive.sh` opens
 this worktree's own binary in a tmux session on a throwaway home with a fixture named
-in the environment (`AFORGE_QUESTION_DEMO`, `internal/tui3/questiondemo.go`), so they
+in the environment (`CODEAF_QUESTION_DEMO`, `internal/tui3/questiondemo.go`), so they
 cost no model and can be re-taken in seconds. The marks that show as `▯` are the plain
 glyph floor rendering in a font the renderer does not have; the terminal draws `?`, `◆`
 and `✓`.
@@ -304,12 +304,12 @@ cover said out loud rather than discovered by being refused.*
 reason a person set is a clock they are owed the reason for.*
 
 ![decided](screens/a-project-rule-decides-a-choice-and-the-row-wears-it-decided.png)
-*Nobody pressed anything. The record says `aforge, on your settings` — never `you`.*
+*Nobody pressed anything. The record says `codeaf, on your settings` — never `you`.*
 
 ## The road that ships
 
 ![the ordinary road](screens/the-ordinary-road-carries-a-question-and-its-answer-asked.png)
-***✗** A plain `aforge` in a project, on a state root short enough for its session host's
+***✗** A plain `codeaf` in a project, on a state root short enough for its session host's
 socket. Three minutes after the model called `ask`: no block, no chip, and the turn
 still running. Questions do not cross that link.*
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # canary_home writes the whole state root one cell runs in.
 #
-# EVERY CELL IS ITS OWN MACHINE. AFORGE_HOME moves the state root wholesale
+# EVERY CELL IS ITS OWN MACHINE. CODEAF_HOME moves the state root wholesale
 # (internal/home), so a directory of its own gives a cell its own journal, its
 # own call log, its own budget and its own first-run history, and nothing a
 # previous cell learned or spent can reach the next one.
@@ -20,7 +20,7 @@ canary_home() {
   CANARY_MODEL="$model" CANARY_CAP="$cap" CANARY_OUT="$dir/config.json" python3 - <<'PY'
 import datetime, json, os
 
-profile = os.path.join(os.path.expanduser("~"), ".aforge", "config.json")
+profile = os.path.join(os.path.expanduser("~"), ".codeaf", "config.json")
 rows = {}
 try:
     rows = json.load(open(profile))

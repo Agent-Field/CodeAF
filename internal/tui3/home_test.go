@@ -11,14 +11,14 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // homeLab builds a projects root on disk — the same shape the launch door
-// writes (cmd/aforge's chatv3_layout.go) — so that these tests exercise the
+// writes (cmd/codeaf's chatv3_layout.go) — so that these tests exercise the
 // real reader rather than a fixture handed to it.
 type homeLab struct {
 	t    *testing.T
@@ -167,7 +167,7 @@ func (l *homeLab) app(standing string) *app {
 	// THE LEDGER IS THE LAB'S TOO. An empty path is the door's way of saying
 	// "this machine's" (usage_ledger.go's [UsageCache] falls back to
 	// [UsageLedgerPath]), so a lab that left it empty had the spend place read
-	// the developer's real ~/.aforge — and a test about an empty spend place
+	// the developer's real ~/.codeaf — and a test about an empty spend place
 	// went red the first time anything on the machine cost a cent.
 	a.usageLedger = filepath.Join(l.root, session.UsageLedgerName)
 	a.file = standing
@@ -202,7 +202,7 @@ func (l *homeLab) app(standing string) *app {
 //
 // It stops short of calling [newApp] itself for one reason: the root home reads
 // is a field set after construction (home.go's [app.placesRoot]), so a real
-// constructor here would walk the developer's own ~/.aforge before the test
+// constructor here would walk the developer's own ~/.codeaf before the test
 // could point it anywhere. [TestALaunchThatNamedASessionIsNotGreeted] covers
 // the one line this skips.
 func (l *homeLab) launch(standing string, landing bool) *app {
@@ -1786,7 +1786,7 @@ func TestHomeBeatStopsWhenHomeCloses(t *testing.T) {
 
 // ── the landing ─────────────────────────────────────────────────────────────
 
-// A person opening aforge on a machine they have worked on is greeted by home,
+// A person opening codeaf on a machine they have worked on is greeted by home,
 // with the conversation the door picked loaded underneath it.
 func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	lab := newHomeLab(t)
@@ -1902,7 +1902,7 @@ func TestALaunchThatNamedASessionIsNotGreeted(t *testing.T) {
 		t.Fatal("home greeted a launch that named its conversation")
 	}
 
-	// And `aforge resume` is already greeting them with its picker.
+	// And `codeaf resume` is already greeting them with its picker.
 	a = lab.app(mine)
 	a.landing, a.pickSession = true, true
 	a.landHome()
@@ -2020,8 +2020,8 @@ func TestHomeOverHostListsTheFarMachine(t *testing.T) {
 			Projects: []session.Project{{
 				Dir: "-srv-code-api", Path: "/srv/code/api", Name: "api",
 				Sessions: []session.SessionRow{{
-					ID: "bbbb000000000002", Dir: "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002",
-					Transcript: "/srv/.aforge/v3/projects/-srv-code-api/bbbb000000000002/transcript.jsonl",
+					ID: "bbbb000000000002", Dir: "/srv/.codeaf/v3/projects/-srv-code-api/bbbb000000000002",
+					Transcript: "/srv/.codeaf/v3/projects/-srv-code-api/bbbb000000000002/transcript.jsonl",
 					Title:      "rewriting the importer", Project: "api", ProjectDir: "-srv-code-api",
 					Workspace: "/srv/code/api", At: now, Created: now,
 				}},
@@ -2638,7 +2638,7 @@ func TestAReadingOfNothingDoesNotShutTheDoor(t *testing.T) {
 // FRAME UP. [app.landHome] runs inside [newApp], before bubbletea exists, and
 // the walk under the places root is four system calls per session across every
 // project on the machine. So a launch that named a conversation — `--session`,
-// `aforge resume`, `--once`, every headless frame — reads nothing at all: the
+// `codeaf resume`, `--once`, every headless frame — reads nothing at all: the
 // door at the foot of the conversation stopped depending on what the disk holds
 // ([app.homeDoorOpen]), so there is no question left for the launch to answer.
 func TestALaunchThatIsNotGreetedNeverWalksTheDiskForTheDoor(t *testing.T) {
@@ -2788,7 +2788,7 @@ func TestTheGestureWorksWhileATurnIsRunning(t *testing.T) {
 // ── a conversation another window is holding ────────────────────────────────
 
 // hold takes a real exclusive flock on a session's journal and keeps it until
-// the test ends — the same lock a second aforge would meet, taken the same way
+// the test ends — the same lock a second codeaf would meet, taken the same way
 // (internal/session's sessionfile.go), so these tests exercise the actual
 // condition rather than a flag standing in for it.
 func (l *homeLab) hold(transcript string) {
@@ -2881,7 +2881,7 @@ func TestEnterOnALockedRowOffersToMoveItInHomesOwnVoice(t *testing.T) {
 	}
 	// AND IT STILL NAMES NO PATH. The whole original defect was sixty characters
 	// of somebody else's bookkeeping wrapped across two lines.
-	for _, banned := range []string{"transcript.jsonl", "resume failed", "aforge/v3"} {
+	for _, banned := range []string{"transcript.jsonl", "resume failed", "codeaf/v3"} {
 		if strings.Contains(homeText(a), banned) {
 			t.Fatalf("the line leaked %q:\n%s", banned, homeText(a))
 		}
@@ -3286,13 +3286,13 @@ func TestHomeOverHostNeverResolvesTheFarMachinesPathsOnThisDisk(t *testing.T) {
 			Projects: []session.Project{{
 				Dir: "-home-far-src-api", Path: "/home/far/src/api", Name: "api",
 				Sessions: []session.SessionRow{{
-					ID: "bbbb000000000002", Dir: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000002",
-					Transcript: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000002/transcript.jsonl",
+					ID: "bbbb000000000002", Dir: "/home/far/.codeaf/v3/projects/-home-far-src-api/bbbb000000000002",
+					Transcript: "/home/far/.codeaf/v3/projects/-home-far-src-api/bbbb000000000002/transcript.jsonl",
 					Title:      "rewriting the importer", Project: "api", ProjectDir: "-home-far-src-api",
 					Workspace: "/home/far/src/api", At: now, Created: now,
 				}, {
-					ID: "bbbb000000000003", Dir: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000003",
-					Transcript: "/home/far/.aforge/v3/projects/-home-far-src-api/bbbb000000000003/transcript.jsonl",
+					ID: "bbbb000000000003", Dir: "/home/far/.codeaf/v3/projects/-home-far-src-api/bbbb000000000003",
+					Transcript: "/home/far/.codeaf/v3/projects/-home-far-src-api/bbbb000000000003/transcript.jsonl",
 					Title:      "porting the picker", Project: "api", ProjectDir: "-home-far-src-api",
 					Workspace: "/home/far/src/api", At: now, Created: now,
 				}},

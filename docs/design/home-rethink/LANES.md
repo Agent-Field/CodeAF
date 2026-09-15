@@ -37,7 +37,7 @@ rulings, and `ARCHITECTURE.md` for the shipped structure.
    key. No machinery words on screen.
 6. **Data we add (cheap, additive), all in `internal/session` / `internal/store`:**
    - `TaskIndexEntry.Kind` — from `taskSpec.kind()`, so a row can say *adaptive*, *saved shape*, *job*.
-   - A machine-wide **usage ledger** `~/.aforge/v3/usage.jsonl`: one line per model call with day,
+   - A machine-wide **usage ledger** `~/.codeaf/v3/usage.jsonl`: one line per model call with day,
      model, role, calls, tokens, cost, session id, task id, standing id — written where
      `journalUsage` is written today, read through a cached day/model/role aggregation.
    - **Per-place look stamps** beside `session.LastLook` — one stamp per place, written when a place

@@ -353,7 +353,7 @@ func TestALineTooLongKeepsEveryLineAboveItOnBothPaths(t *testing.T) {
 // is the page opening blank and saying nothing: the same lie as a short reading,
 // told about a whole file instead of a line. THE LENS MAY LOWER SALIENCE; IT MAY
 // NOT DROP A FACT.
-func TestARecordFromANewerAforgeIsRefusedOutLoud(t *testing.T) {
+func TestARecordFromANewerCodeafIsRefusedOutLoud(t *testing.T) {
 	record := `{"type":"session","version":` + strconv.Itoa(sessionFileVersion+1) + `,"id":"n1","cwd":"/tmp/lab"}
 {"type":"message","role":"user","content":"Fix the nil-map crash"}
 {"type":"message","role":"assistant","content":"Found it — the map is never made."}
@@ -366,7 +366,7 @@ func TestARecordFromANewerAforgeIsRefusedOutLoud(t *testing.T) {
 	// THE RESUME PATH REFUSES IT, which is the behaviour the door has to answer
 	// for rather than quietly disagree with.
 	if _, err := replaySessionFile(path); err == nil {
-		t.Fatal("the resume opened a file written by a newer aforge")
+		t.Fatal("the resume opened a file written by a newer codeaf")
 	}
 
 	for _, door := range []struct {
@@ -383,14 +383,14 @@ func TestARecordFromANewerAforgeIsRefusedOutLoud(t *testing.T) {
 		}
 		// AND IT SAYS WHY, in words naming the cause — which is also the remedy,
 		// because a newer build opens the same file.
-		if !strings.Contains(read.Unreadable, "newer aforge") {
-			t.Fatalf("%s: the reading says %q, want it to say the file is from a newer aforge",
+		if !strings.Contains(read.Unreadable, "newer codeaf") {
+			t.Fatalf("%s: the reading says %q, want it to say the file is from a newer codeaf",
 				door.name, read.Unreadable)
 		}
 	}
 }
 
-// AND ONLY THAT FILE IS BLAMED ON THE BUILD. "Written by a newer aforge" sends
+// AND ONLY THAT FILE IS BLAMED ON THE BUILD. "Written by a newer codeaf" sends
 // somebody to upgrade, so the reading says it only when the scan actually
 // refused the FORMAT. Every other way a reading can come back empty — a disk
 // that went away, a read cut off, whatever the scan learns to refuse next —
@@ -405,7 +405,7 @@ func TestOnlyAFormatRefusalIsBlamedOnTheBuild(t *testing.T) {
 		t.Fatalf("a reading that failed for some other reason says %q, want %q",
 			plain.Unreadable, unreadRefusedWord)
 	}
-	if strings.Contains(plain.Unreadable, "newer aforge") {
+	if strings.Contains(plain.Unreadable, "newer codeaf") {
 		t.Fatalf("a reading that failed for some other reason told somebody to upgrade: %q",
 			plain.Unreadable)
 	}
@@ -421,7 +421,7 @@ func TestOnlyAFormatRefusalIsBlamedOnTheBuild(t *testing.T) {
 	}
 	// The sentence people are shown is the one the manual quotes
 	// (internal/manual/chat/sessions-and-rewind.md), unchanged by the wrapping.
-	want := "session file: /tmp/node.jsonl was written by a newer aforge (format version 2; this build reads 1)"
+	want := "session file: /tmp/node.jsonl was written by a newer codeaf (format version 2; this build reads 1)"
 	if refused.Error() != want {
 		t.Fatalf("the refusal now reads %q, want %q", refused.Error(), want)
 	}

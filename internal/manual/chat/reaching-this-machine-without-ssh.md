@@ -4,15 +4,15 @@
 
 `--host` needs `ssh <machine>` to already work. When it does not — a home server behind a
 router with no forwarded port, a work machine behind a firewall, a laptop on a café
-network — there is a second door: one machine runs `aforge serve`, and you reach it by the
+network — there is a second door: one machine runs `codeaf serve`, and you reach it by the
 name that prints, with a pairing code instead of a key.
 
 ```
-big-machine$ aforge serve
+big-machine$ codeaf serve
   this machine is reachable as  otter-lamp-42
   pair a new device with code   715 302   (valid 10 minutes)
 
-laptop$ aforge chat --at otter-lamp-42
+laptop$ codeaf chat --at otter-lamp-42
 ```
 
 **Nothing is opened on the machine that runs the work.** No port, no inbound rule, no
@@ -23,19 +23,19 @@ firewalls and NAT stop mattering.
 on, `--at` prints:
 
 ```
-no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set AFORGE_RELAY to a relay's address, or reach that machine with --host over ssh
+no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a relay's address, or reach that machine with --host over ssh
 ```
 
 `--host` works today and is not going anywhere. If you can already reach the machine that
 way, use that; the two doors are compared at the bottom of this page.
 
-## aforge serve, and the name a machine gets
+## codeaf serve, and the name a machine gets
 
 Run it on the machine that owns the work — the one with the files, the API key and the
 things you have set up:
 
 ```
-aforge serve [--workspace path] [--relay https://…]
+codeaf serve [--workspace path] [--relay https://…]
 ```
 
 It prints, exactly:
@@ -50,19 +50,19 @@ digits, the same every time, on any relay. You cannot pick a nicer one, and nobo
 can register under yours while your machine is connected.
 
 `--workspace` is the directory a connection works in when it does not name one; empty
-means the directory you ran the command in. `--relay` beats the `AFORGE_RELAY`
+means the directory you ran the command in. `--relay` beats the `CODEAF_RELAY`
 environment variable.
 
 Running it twice on one machine is refused, because there is only one of it:
 
 ```
-this machine is already connected to the relay as otter-lamp-42 — there is only one of it, so close the other `aforge serve`
+this machine is already connected to the relay as otter-lamp-42 — there is only one of it, so close the other `codeaf serve`
 ```
 
 With no relay set up at all it says:
 
 ```
-no relay is set up on this machine, so there is nowhere to be reachable from — set AFORGE_RELAY to a relay's address, or let people in over ssh with `aforge chat --host` from their side
+no relay is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to a relay's address, or let people in over ssh with `codeaf chat --host` from their side
 ```
 
 Ctrl+c ends it, and the machine gives its name back on the way out:
@@ -76,7 +76,7 @@ off the machine's own screen and type them into the device.
 On the device:
 
 ```
-aforge chat --at otter-lamp-42
+codeaf chat --at otter-lamp-42
 ```
 
 It prints, in this order:
@@ -93,7 +93,7 @@ Type `715 302` or `715302` — spaces and dashes are thrown away. Then:
 paired. this device is now a key to otter-lamp-42.
 ```
 
-and the chat opens. Every later `aforge chat --at otter-lamp-42` from that device just
+and the chat opens. Every later `codeaf chat --at otter-lamp-42` from that device just
 opens; the code is never asked for again.
 
 **Once that machine says a device is paired, the very next connection is accepted.** The
@@ -127,8 +127,8 @@ a device tried to pair and there was no code to pair with
 Each device pairs separately, with its own code and its own key. Pairing your laptop does
 not pair your desktop.
 
-1. On the machine with the work: `aforge serve`. Read the code it shows.
-2. On the other machine: `aforge chat --at <name>`, and type the code.
+1. On the machine with the work: `codeaf serve`. Read the code it shows.
+2. On the other machine: `codeaf chat --at <name>`, and type the code.
 
 The machine you are sitting at prints one line per arrival, so you can watch it happen:
 
@@ -148,7 +148,7 @@ same as for any other connection; nothing about `--at` changes it.
 
 **A phone or a tablet cannot do this yet.** There is no browser client and no phone app;
 `--at` is a terminal command, so a phone reaches a machine only if you have a terminal on
-it that can run aforge.
+it that can run codeaf.
 
 ## What a paired device is allowed to do
 
@@ -171,10 +171,10 @@ Pair a device you would trust with a key to that machine, and no other.
 **What a paired device cannot do:** it cannot pair another device, it cannot list or stop
 the devices that machine has let in, and it cannot un-pair itself from there. Those are
 all decisions of the machine that owns the work, made on that machine with
-`aforge devices`.
+`codeaf devices`.
 
 **What crosses the connection is exactly what crosses a `--host` connection.**
-`aforge serve` starts the very same `aforge engine` on that machine, one per connection, so
+`codeaf serve` starts the very same `codeaf engine` on that machine, one per connection, so
 everything this manual says about what does and does not work over a connection is true
 here word for word. Read *Running on another machine* for that list.
 
@@ -212,7 +212,7 @@ session, and does not ask again — a borrowed laptop you paired stays a key to 
 after you hand it back, until you stop it from the machine that owns the work.
 
 If you have already done it: go to the machine with the work and run
-`aforge devices revoke <name>`. That takes effect on the next connection attempt, and the
+`codeaf devices revoke <name>`. That takes effect on the next connection attempt, and the
 device is told:
 
 ```
@@ -223,26 +223,26 @@ There is no browser version of this, so "log in from a friend's computer" is not
 this door offers at all — it is a terminal command that installs a long-lived key on the
 machine it is run on.
 
-## Stop a device — aforge devices
+## Stop a device — codeaf devices
 
 Run it on the machine that owns the work:
 
 ```
-aforge devices
+codeaf devices
 ```
 
 It prints which machine this is, where its key is kept, and the devices it lets in:
 
 ```
 this machine is reachable as otter-lamp-42
-its key is kept in a file on this machine, readable only by you (~/.aforge/v3/remote/device.key)
+its key is kept in a file on this machine, readable only by you (~/.codeaf/v3/remote/device.key)
 
 devices paired with this machine
 
   laptop   paired 3d ago  ·  last here 2h ago
   desktop  paired 12d ago
 
-stop one with `aforge devices revoke <name>` — it will need a new code to come back.
+stop one with `codeaf devices revoke <name>` — it will need a new code to come back.
 ```
 
 With nothing paired it says
@@ -252,7 +252,7 @@ connected shows nothing where its last connection would be, rather than a zero.
 To stop one:
 
 ```
-aforge devices revoke laptop
+codeaf devices revoke laptop
 ```
 
 which answers
@@ -261,20 +261,20 @@ which answers
 A name nothing matches says:
 
 ```
-no device called "phone" is paired with this machine — `aforge devices` lists the ones that are
+no device called "phone" is paired with this machine — `codeaf devices` lists the ones that are
 ```
 
 Two devices with the same name are refused rather than guessed at, and `--all` stops every
 device answering to that name:
 
 ```
-aforge devices revoke laptop --all
-aforge devices revoke --all laptop
+codeaf devices revoke laptop --all
+codeaf devices revoke --all laptop
 ```
 
 **Both spellings work.** `--all` is an ordinary flag and is read wherever you put it, before
-the name or after it; `aforge devices revoke --help` prints it. It used to be read only when
-it came first, so `aforge devices revoke laptop --all` was refused with a usage line that did
+the name or after it; `codeaf devices revoke --help` prints it. It used to be read only when
+it came first, so `codeaf devices revoke laptop --all` was refused with a usage line that did
 not mention `--all` at all.
 
 Stopping one device with `--all` answers in the ordinary sentence — `laptop has been stopped
@@ -287,11 +287,11 @@ do it from the device, and no way for a device to remove another one.
 
 ## I lost my laptop
 
-Go to the machine that owns the work — the one you ran `aforge serve` on — and stop the
+Go to the machine that owns the work — the one you ran `codeaf serve` on — and stop the
 device:
 
 ```
-aforge devices revoke laptop
+codeaf devices revoke laptop
 ```
 
 From then on that laptop opens nothing. It is told
@@ -303,7 +303,7 @@ name, or re-pair your other devices — each device has its own key and stopping
 effect on the others.
 
 **If you would rather start over completely**, delete the machine's own key file
-(`~/.aforge/v3/remote/device.key`) and run `aforge serve` again. It comes back under a
+(`~/.codeaf/v3/remote/device.key`) and run `codeaf serve` again. It comes back under a
 *different name*, because the name is derived from the key — which un-pairs every device
 at once, and means telling the ones you still want the new name and a new code.
 
@@ -317,7 +317,7 @@ There are four different reasons, and each says which one it is, in one sentence
 **No relay is set up on this machine:**
 
 ```
-no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set AFORGE_RELAY to a relay's address, or reach that machine with --host over ssh
+no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a relay's address, or reach that machine with --host over ssh
 ```
 
 **The relay is set up and not answering:**
@@ -329,13 +329,13 @@ the relay at https://relay.example.com cannot be reached from here — check thi
 **The relay is fine and that machine is not connected to it:**
 
 ```
-otter-lamp-42 is not connected to the relay right now — run `aforge serve` on that machine
+otter-lamp-42 is not connected to the relay right now — run `codeaf serve` on that machine
 ```
 
 **This device has never been let in:**
 
 ```
-this device is not paired with otter-lamp-42 — run `aforge serve` on that machine, then run this command again and type the code it shows
+this device is not paired with otter-lamp-42 — run `codeaf serve` on that machine, then run this command again and type the code it shows
 ```
 
 Two more you may meet. A machine that does not answer the handshake at all:
@@ -362,7 +362,7 @@ So if a code you read carefully keeps being refused, go and look at that machine
 A name of the wrong shape is caught before anything is dialled:
 
 ```
-"devbox" is not the shape of a machine name — they look like otter-lamp-42, and `aforge serve` prints the name of a machine
+"devbox" is not the shape of a machine name — they look like otter-lamp-42, and `codeaf serve` prints the name of a machine
 ```
 
 ## How to type the --at target
@@ -372,7 +372,7 @@ The target is a machine name, optionally with a directory after a colon — the 
 
 | What you type | What it means |
 | --- | --- |
-| `--at otter-lamp-42` | that machine, in the directory `aforge serve` was started in |
+| `--at otter-lamp-42` | that machine, in the directory `codeaf serve` was started in |
 | `--at otter-lamp-42:code/app` | a path relative to that machine's home directory |
 | `--at otter-lamp-42:/srv/code/app` | an absolute path on that machine |
 
@@ -382,7 +382,7 @@ Tab completion in your own shell will not help you with it.
 An empty target says:
 
 ```
---at needs a machine name: --at otter-lamp-42, or --at otter-lamp-42:code/app — `aforge serve` prints the name of a machine
+--at needs a machine name: --at otter-lamp-42, or --at otter-lamp-42:code/app — `codeaf serve` prints the name of a machine
 ```
 
 `--model`, `--reasoning`, `--session` and `--once` all work. `--no-compact` and `--yolo`
@@ -390,7 +390,7 @@ are refused rather than quietly ignored, because they build a session that is bu
 there:
 
 ```
---no-compact and --yolo cannot travel over --at: the session is built on otter-lamp-42, so set it there — open the settings panel on that machine, or run `aforge chat --no-compact --yolo` on it
+--no-compact and --yolo cannot travel over --at: the session is built on otter-lamp-42, so set it there — open the settings panel on that machine, or run `codeaf chat --no-compact --yolo` on it
 ```
 
 ## Where the device key is kept, and Touch ID
@@ -399,16 +399,16 @@ Each machine has one long-term key. Its name comes from that key, and every pair
 written down against it.
 
 **It is a file, not a keychain entry, and there is no Touch ID or fingerprint unlock in
-this build.** The file is `~/.aforge/v3/remote/device.key`, readable only by you, and
-`aforge devices` says so in as many words:
+this build.** The file is `~/.codeaf/v3/remote/device.key`, readable only by you, and
+`codeaf devices` says so in as many words:
 
 ```
-its key is kept in a file on this machine, readable only by you (~/.aforge/v3/remote/device.key)
+its key is kept in a file on this machine, readable only by you (~/.codeaf/v3/remote/device.key)
 ```
 
 Putting the key in the operating system's keychain — so that a Mac could demand a
-fingerprint before releasing it, and aforge would never see the fingerprint itself — is
-the intended design and is **not built**. Nothing in aforge asks for a fingerprint today,
+fingerprint before releasing it, and codeaf would never see the fingerprint itself — is
+the intended design and is **not built**. Nothing in codeaf asks for a fingerprint today,
 and any screen that appeared to would not be this.
 
 What that means in practice: anybody who can read that file on your machine can be your
@@ -426,7 +426,7 @@ sitting at. They differ only in how the two halves reach each other.
 | | `--host` | `--at` |
 | --- | --- | --- |
 | Needs | `ssh <machine>` already works | a relay service, and one pairing |
-| Set up on the far machine | nothing | `aforge serve` running |
+| Set up on the far machine | nothing | `codeaf serve` running |
 | Works through NAT and firewalls | only if ssh does | yes — that machine dials out |
 | Anything in the middle | nothing of ours | a relay that cannot read the conversation |
 | Available today | yes | not until a relay is running |

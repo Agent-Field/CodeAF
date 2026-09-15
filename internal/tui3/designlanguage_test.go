@@ -11,8 +11,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE DESIGN LANGUAGE, HELD TO ITS OWN NUMBERS ────────────────────────────
@@ -754,7 +754,7 @@ func trimFloat(f float64) string {
 // questions — [tokens.DetectProfile]'s NoColor answer (this terminal was told
 // not to be styled) and [detectASCII]'s veto (this terminal cannot be trusted
 // with a box-drawing character) — so the walk below turns both of them on at
-// once, which is the worst terminal aforge claims to run on: TERM=linux in a C
+// once, which is the worst terminal codeaf claims to run on: TERM=linux in a C
 // locale with NO_COLOR set.
 //
 // Four things are asserted and each of them is a way the floor could be a lie:

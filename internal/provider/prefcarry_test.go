@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
+	"github.com/Agent-Field/codeaf/internal/home"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 // ── WHETHER A BASE CARRIES A PREFERENCE IS LEARNED FROM THE BASE ────────────
@@ -298,7 +298,7 @@ func TestTheAnswerIsLearnedOncePerBaseAndSurvivesASecondClient(t *testing.T) {
 
 // AND A BASE THAT MOVES FORGETS. What one address answered is not evidence
 // about another, which is the sheet's own law (internal/lane's wire) read
-// through this question: a person who repoints AFORGE_BASE_URL at a real router
+// through this question: a person who repoints CODEAF_BASE_URL at a real router
 // after a proxy that dropped their pin gets their pin back.
 func TestABaseThatMovesForgetsWhatTheOldOneAnswered(t *testing.T) {
 	dropped := prefRig(t)

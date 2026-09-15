@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/search"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
+	"github.com/Agent-Field/codeaf/internal/search"
+	"github.com/Agent-Field/codeaf/internal/tui2/modelui"
 )
 
 // PER-TOOL DERIVATION (docs/CHAT-V3.md D11).

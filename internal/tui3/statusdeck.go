@@ -6,7 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE PHONE'S STATUS DECK ─────────────────────────────────────────────────
@@ -438,7 +438,7 @@ func (a *app) deckItems() []deckItem {
 	add("lane", a.pinnedNow(), deckActNone)
 	// THE CREW GOES UNDER THE MODEL AND ITS LANE, because the two are read together
 	// or not at all: the line above is the model this conversation talks to, and
-	// this one is the four classes aforge makes its own calls on. A person who
+	// this one is the four classes codeaf makes its own calls on. A person who
 	// has just changed one and is checking whether it took is looking at exactly
 	// this pair, and a crew line anywhere else on the page would be a fact they
 	// have to go and find. It is the FULL reading here — the preset word and the
@@ -599,7 +599,7 @@ const compactsAtLabel = "compacts at"
 // window the threshold was taken of. On the ordinary session the two are the
 // same figure and this reads exactly like the meter above it; on a model that
 // has been refused, the meter says what the card claims and this says what
-// aforge now believes, which is the difference a person is owed.
+// codeaf now believes, which is the difference a person is owed.
 func (a *app) compactionRuleWord() string {
 	window := session.TrustedWindowFor(a.model, a.ctxWindow)
 	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)

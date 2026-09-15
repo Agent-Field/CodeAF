@@ -278,9 +278,9 @@ func TestTheLedgerIsNamesTimesAndCounts(t *testing.T) {
 // rides it, because a package that cannot name a type cannot decode one.
 func TestTheRelayCannotEvenNameTheThingsItCarries(t *testing.T) {
 	forbidden := []string{
-		"github.com/Agent-Field/aforge-v2/internal/remote",
-		"github.com/Agent-Field/aforge-v2/internal/pair",
-		"github.com/Agent-Field/aforge-v2/internal/session",
+		"github.com/Agent-Field/codeaf/internal/remote",
+		"github.com/Agent-Field/codeaf/internal/pair",
+		"github.com/Agent-Field/codeaf/internal/session",
 	}
 	set := token.NewFileSet()
 	packages, err := parser.ParseDir(set, ".", func(info fs.FileInfo) bool {

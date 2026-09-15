@@ -489,9 +489,9 @@ cold start work.
 **So the store becomes state plus an append-only observation journal.**
 
 ```
-~/.aforge/v3/lanes.json     the compacted state: version, the chains, the Beta
+~/.codeaf/v3/lanes.json     the compacted state: version, the chains, the Beta
                             counts, the facts, and the moment it was written
-~/.aforge/v3/lanes.log      one line per observation since the last compaction
+~/.codeaf/v3/lanes.log      one line per observation since the last compaction
 ```
 
 - **Append.** After an answer — never on the send path — one line of NDJSON is
@@ -621,7 +621,7 @@ writing their next message, not answering a question, and a surface that stole a
 `y` out of a sentence would be worse than the wait. The manual page for lanes
 gains the offer and its key in the same change (the manual law).
 
-**With no surface at all** — `aforge do`, a standing run, any headless session —
+**With no surface at all** — `codeaf do`, a standing run, any headless session —
 there is nobody to ask, and the invariant still holds. So:
 
 > **A pinned lane with no reader borrows at the ceiling, once, and says so in
@@ -839,9 +839,9 @@ somebody will delete.
 
 **`TestNoTestWritesTheRealHome` is a law about this repo's own tests**, and it is
 here because breaking it costs somebody else their belief file. The junk found
-in `~/.aforge/v3/lanes.json` on the machine this was written on came from the
+in `~/.codeaf/v3/lanes.json` on the machine this was written on came from the
 sheet beat's own test, which used the default registry without moving
-`AFORGE_HOME`. That one is fixed in this commit; two more are red and belong to
+`CODEAF_HOME`. That one is fixed in this commit; two more are red and belong to
 W5.
 
 ---
@@ -924,7 +924,7 @@ Four scenarios are added, and each is a row of the pass table in §K:
 
 | scenario | staged with |
 | --- | --- |
-| **cold store** | `-prime=none`, a fresh `AFORGE_HOME` per seed, no sheet |
+| **cold store** | `-prime=none`, a fresh `CODEAF_HOME` per seed, no sheet |
 | **stalled lane** | `lanestub.Profile.StallAfter` / `StallFor` on the modal lane |
 | **thinking model** | `lanestub.Profile.Reasoning` set long, with and without a stall inside it |
 | **pinned lane** | a policy that sends `only:[pin]`, with and without a reader for the offer |
@@ -1028,7 +1028,7 @@ account, alternating request by request so a slow ten minutes hits both:
 - **One price table for both arms**, and the diff is what is judged: p90 wait,
   time-to-action on the stalls that occurred, arms per request, dollars per
   thousand requests.
-- **The cold-store half is run first**, from an empty `AFORGE_HOME`, because that
+- **The cold-store half is run first**, from an empty `CODEAF_HOME`, because that
   is the state the reported defect happened in and a warmed ledger would hide it.
 
 ### Laws currently red — none, as of the integration lane
@@ -1197,7 +1197,7 @@ for a change that can check every surface's reading of that event.
 ## M. The call wall is told, and keeps what was thought (issue #927)
 
 The structuring slots — the one that talks and the one that plans, on the
-resident and on `aforge do` — bound every completion at
+resident and on `codeaf do` — bound every completion at
 `pool.DefaultCallWall`, four minutes. §L's stream wall bounds a reply that is
 not working; this one bounds a completion that is working and has run out of
 time, and until #927 it did two things wrong.
@@ -1290,8 +1290,8 @@ sent from `walled.completion` alone, and that function carries the wall);
 `plan`'s `TestPlanningReachesAModelOnlyThroughTheClientItIsHanded` (planning
 and the compiler build no client of their own, so every planning call goes
 through the wall it was handed). And the door itself:
-`cmd/aforge`'s `TestAPlanningModelThatThinksPastItsWallStillPlans` runs
-`aforge do --json` against a compiler that never stops thinking and asserts the
+`cmd/codeaf`'s `TestAPlanningModelThatThinksPastItsWallStillPlans` runs
+`codeaf do --json` against a compiler that never stops thinking and asserts the
 budget on the first body, the thought on the second, a settled run and no
 `stopped answering`. `TestEveryPlanningStageThatThinksPastItsWallStillPlans` is
 the same door with every pass of the pipeline — compile, ground, spine, fan-out,

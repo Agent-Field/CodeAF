@@ -13,13 +13,14 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/connect"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
+	internalenv "github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -2293,8 +2294,8 @@ type app struct {
 	//
 	// THE WHOLE ROW IS KEPT AND NOT ONE READING OF IT. This was a `routingOff
 	// bool`, which answered the only question the surface had while the row had
-	// three answers and aforge chose under two of them. `simple` is a fourth,
-	// and under it aforge does not choose at all — so a row that says what auto
+	// three answers and codeaf chose under two of them. `simple` is a fourth,
+	// and under it codeaf does not choose at all — so a row that says what auto
 	// does has to be told which routing it is describing ([laneAutoSaid]), and a
 	// second boolean beside the first would be two readings of one row, drifting
 	// the first time either was fixed. Under `off` there is no fold to open
@@ -2466,7 +2467,7 @@ type app struct {
 	// answering it. Empty is an ordinary local conversation. localRoot is this
 	// machine's own directory: [app.pathRoot] anchors typed paths there over a
 	// connection, and [app.contextStart] opens an owned local conversation's
-	// chooser there instead of in aforge's state. Both are read once, at
+	// chooser there instead of in codeaf's state. Both are read once, at
 	// construction — see host.go for the whole law.
 	host      string
 	localRoot string
@@ -2475,7 +2476,7 @@ type app struct {
 	// key; host cannot answer that because both roads carry a remote agent.
 	engineRoad bool
 	// owned says the workspace is this session's own work/ directory rather
-	// than a project somebody opened aforge inside of (Options.Owned). It is
+	// than a project somebody opened codeaf inside of (Options.Owned). It is
 	// read by [app.placeWord] and [app.contextStart].
 	owned bool
 	// handedApproval is the tool-approval posture this launch knows the
@@ -2522,7 +2523,7 @@ type app struct {
 	autonomyRules map[session.AskKind]session.Policy
 
 	// titleSent is the terminal's title as it was last sent (title.go): the
-	// sentence that says where in aforge this tab is standing. It is what
+	// sentence that says where in codeaf this tab is standing. It is what
 	// [app.retitle] compares against so an unchanged title is never sent twice,
 	// and what [app.View] declares as the window title, so the tab's half and
 	// the window's half are one sentence.
@@ -2632,7 +2633,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// test hands one in ([Options.Env] says why a test must).
 	env := opts.Env
 	if env == nil {
-		env = os.Getenv
+		env = internalenv.Value
 	}
 	host := strings.TrimSpace(opts.Host)
 	place := strings.TrimSpace(opts.Workspace)
@@ -2764,7 +2765,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.feed = newFeed(a.feedHooks(participantLens))
 	a.gitProbe = gitHead
 	// This machine's own directory anchors local things over a connection and
-	// keeps an owned local conversation's chooser out of aforge's state folder.
+	// keeps an owned local conversation's chooser out of codeaf's state folder.
 	if cwd, err := os.Getwd(); err == nil {
 		a.localRoot = cwd
 	}
@@ -5219,7 +5220,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		//
 		// ev.NeedsKey rides along on the ask and is read where the ANSWER is
 		// given (connect.go's [app.answerConnect]) rather than branched on here.
-		// The question is the same question either way — may aforge connect this
+		// The question is the same question either way — may codeaf connect this
 		// account — and the flag decides only what saying yes DOES: a browser
 		// trip, or a box that opens in place and takes a key.
 		a.closeSettings()
@@ -6712,7 +6713,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// AND THE PATH ON ITS LAST ROW IS WRITTEN AGAINST $HOME, for the reason
 		// the opening line of every resumed session is ([app.resumedNote]): an
 		// absolute journal path is four wrapped rows at eighty columns and seven
-		// at sixty, and `~/.aforge/v3/…` is the one shortening that survives being
+		// at sixty, and `~/.codeaf/v3/…` is the one shortening that survives being
 		// pasted into a shell. /status still prints it whole.
 		help := helpText(a.hostedPath(tildePath(a.file, a.tilde)), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
@@ -7023,7 +7024,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "crew":
-		// The four models aforge uses on your own behalf, as one word (crew.go).
+		// The four models codeaf uses on your own behalf, as one word (crew.go).
 		// The bare form is the three presets with yours marked; a word applies
 		// one. An unknown word shows the three and changes nothing, which is the
 		// shape every choice row on this surface refuses in.
@@ -7043,7 +7044,7 @@ func (a *app) slash(line string) tea.Cmd {
 	case "history":
 		// The place onto every task this MACHINE has run, this session's and every
 		// conversation's before it, across every project (place_tasks.go). It is
-		// NOT spelled /tasks: the three /task rows all mean give aforge work, and a
+		// NOT spelled /tasks: the three /task rows all mean give codeaf work, and a
 		// plural among them was a command that answered the muscle memory for
 		// starting one (commands.go says it at more length).
 		//
@@ -7098,7 +7099,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.runCacheCommand(rest)
 
 	case "manual":
-		// Aforge's own manual, in the conversation, AS WRITTEN (manualcmd.go).
+		// codeaf's own manual, in the conversation, AS WRITTEN (manualcmd.go).
 		// It is an answer rather than a place for /status' reason — a person who
 		// asked a question about the product wants it where they can scroll back
 		// to it — and it is a lookup rather than a turn, so it makes no model
@@ -7121,7 +7122,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "debug":
 		// The third door onto one switch — the other two are --debug and
-		// AFORGE_DEBUG — and the only one that can be reached from inside a
+		// CODEAF_DEBUG — and the only one that can be reached from inside a
 		// conversation that is already open (commands.go's [app.runDebugCommand]).
 		// It is also the only one whose scope is this conversation alone: the
 		// pin and the flag were given to the whole process, this was typed here.
@@ -7228,7 +7229,7 @@ func (a *app) openConversation(file string) (Conversation, bool, error) {
 // at boot, around the agent the door opened before the surface existed, and it
 // stayed wired to that agent through every /new and every resume. So an "always"
 // answered in a conversation opened later was written to the profile correctly
-// and pushed into a closed session (cmd/aforge's chatv3_approval.go says what the
+// and pushed into a closed session (cmd/codeaf's chatv3_approval.go says what the
 // push is for), which the person had no way to see: the card said saved, it was
 // saved, and the very next call asked again. Rebinding here means the closure a
 // keystroke reaches is always the one minted around the agent that keystroke is
@@ -8415,7 +8416,7 @@ func (a *app) measureContext() {
 	if a.ctxWindow <= 0 {
 		// The door may not have known the window at boot: a cold catalog
 		// resolves in the background AFTER this surface is already up, and it
-		// tells the agent directly (cmd/aforge's warmV3Models) where there is
+		// tells the agent directly (cmd/codeaf's warmV3Models) where there is
 		// no seam back to here. Asking the model list again is that seam, and
 		// it cannot block — [app.modelList] falls through to the disk cache and
 		// then to the built-ins. Once it answers, it is never asked again.
@@ -8982,7 +8983,7 @@ func gitHead(dir string) (string, bool, bool) {
 // THIS IS A SAFETY CLAIM AND IT MUST MATCH THE POSTURE IN FORCE. The segment is
 // drawn only when the gate is open (render.go's NEGATIVE-SPACE SAFETY), so its
 // ABSENCE is the claim that every tool call will be asked about — and the gate
-// it is claiming about is the one cmd/aforge built from
+// it is claiming about is the one cmd/codeaf built from
 // [config.ToolApprovalModeAt] on the very same profile directory (chatv3.go's
 // v3Policy). The two must be one reading, because a segment that is quiet over
 // an open gate is the surface telling somebody they will be asked before their
@@ -8991,7 +8992,7 @@ func gitHead(dir string) (string, bool, bool) {
 // IT WAS NOT ONE READING. This resolved through a helper that answered "" on an
 // empty [app.profileDir], on the reasoning that a surface booted without a
 // profile has not been told the gate is open. But AN EMPTY PROFILE DIRECTORY IS
-// THE NORMAL CASE, NOT THE ABSENT CASE: AFORGE_PROFILE_DIR is the rare export,
+// THE NORMAL CASE, NOT THE ABSENT CASE: CODEAF_PROFILE_DIR is the rare export,
 // the empty string has always meant this process's own profile in the state
 // root ([config.ProfilePath]), and the policy the tools actually ran under read
 // that profile. So a person who had turned the asking off — the one posture
@@ -8999,9 +9000,9 @@ func gitHead(dir string) (string, bool, bool) {
 // launch while their gate stood open (#322). The profile is read here the way
 // every other persisted row on this surface is read.
 //
-// THE PROFILE ROW IS NOT THE ONLY THING THAT OPENS THIS GATE. `aforge chat
+// THE PROFILE ROW IS NOT THE ONLY THING THAT OPENS THIS GATE. `codeaf chat
 // --yolo` replaces the gate's default for the session and writes nothing down
-// (cmd/aforge's v3Policy), so a surface that read only the profile drew nothing
+// (cmd/codeaf's v3Policy), so a surface that read only the profile drew nothing
 // over a gate that was open for the whole run (#325). The launch hands that
 // posture down instead, and a launch that hands nothing down is read from the
 // profile, live, as before. Locally the handed-down answer can ONLY ever be

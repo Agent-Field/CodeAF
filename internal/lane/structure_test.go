@@ -63,9 +63,9 @@ func isTest(name string) bool { return strings.HasSuffix(name, "_test.go") }
 func TestNothingHereOpensAConnectionOrDrawsAnything(t *testing.T) {
 	forbidden := []string{
 		"net/http",
-		"github.com/Agent-Field/aforge-v2/internal/provider",
-		"github.com/Agent-Field/aforge-v2/internal/tui3",
-		"github.com/Agent-Field/aforge-v2/internal/session",
+		"github.com/Agent-Field/codeaf/internal/provider",
+		"github.com/Agent-Field/codeaf/internal/tui3",
+		"github.com/Agent-Field/codeaf/internal/session",
 	}
 	fset, files := sources(t)
 	for name, file := range files {

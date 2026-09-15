@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 )
 
 func TestAnEmptyCatalogLeavesEveryGenerationModelUnresolved(t *testing.T) {

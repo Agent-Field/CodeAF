@@ -13,7 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // /files: THE THINGS THAT WERE MADE FOR YOU, AND WHERE THEY WENT.
@@ -405,7 +405,7 @@ func madeNote(row deliverable, home string, width, label int) string {
 // ── the app's side of the overlay ───────────────────────────────────────────
 
 // The list reads the same global index /export writes to: [app.artifactsIndex]
-// (export.go) is the one resolver, going through internal/home so AFORGE_HOME
+// (export.go) is the one resolver, going through internal/home so CODEAF_HOME
 // moves it with everything else, with the field as the narrower override a
 // test sets directly.
 

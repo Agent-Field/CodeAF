@@ -18,11 +18,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // RelayEnv names the override, exported so that a sentence and the code that
 // reads it spell it the same way.
-const RelayEnv = "AFORGE_RELAY"
+const RelayEnv = "CODEAF_RELAY"
 
 // RelayFile is where a relay address is kept when somebody wants it to outlive
 // a shell.
@@ -31,7 +33,7 @@ func RelayFile() string { return filepath.Join(Dir(), "relay") }
 // Relay is the address this machine uses when nothing else says otherwise.
 // Empty means none is set up.
 func Relay() string {
-	if set := strings.TrimSpace(os.Getenv(RelayEnv)); set != "" {
+	if set := strings.TrimSpace(env.Get(RelayEnv)); set != "" {
 		return set
 	}
 	raw, err := os.ReadFile(RelayFile())
@@ -44,7 +46,7 @@ func Relay() string {
 // RelayFor is the address to reach one machine through: the override, then the
 // relay that machine was paired through, then the configured one.
 func RelayFor(known Known, found bool) string {
-	if set := strings.TrimSpace(os.Getenv(RelayEnv)); set != "" {
+	if set := strings.TrimSpace(env.Get(RelayEnv)); set != "" {
 		return set
 	}
 	if found && strings.TrimSpace(known.Service) != "" {

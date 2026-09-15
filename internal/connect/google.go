@@ -76,7 +76,7 @@ func (google) Endpoint() oauth2.Endpoint {
 // AuthCodeOptions asks Google for the two things it will not give by default.
 //
 // GOOGLE ISSUES A REFRESH KEY ONLY ON A FRESH GRANT. Offline access alone is
-// not enough: a person who has approved aforge before is bounced straight back
+// not enough: a person who has approved codeaf before is bounced straight back
 // with an access key that expires in an hour and nothing to renew it with,
 // which looks exactly like a successful connection until it silently stops
 // working. Forcing the consent screen every time costs one extra click and

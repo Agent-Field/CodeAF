@@ -12,7 +12,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="$ROOT/bin/aforge"
+BIN="$ROOT/bin/codeaf"
 OUT="${QV_OUT:-$HOME/af-qv-reports/P/screens}"
 SESSION="af-qv-P-drive"
 HOMEDIR="${QV_HOME:-/tmp/af-qv-P-drive-home}"
@@ -48,8 +48,8 @@ capture() {
 
   tmux kill-session -t "$SESSION" 2>/dev/null
   local env=(
-    "HOME=$HOMEDIR" "AFORGE_HOME=$HOMEDIR" "AFORGE_PROFILE_DIR="
-    "TERM=xterm-256color" "AFORGE_QUESTION_DEMO=$fixture"
+    "HOME=$HOMEDIR" "CODEAF_HOME=$HOMEDIR" "CODEAF_PROFILE_DIR="
+    "TERM=xterm-256color" "CODEAF_QUESTION_DEMO=$fixture"
     "OPENROUTER_API_KEY=demo-key-not-used"
   )
   case "$theme" in

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/codeaf/internal/history"
 )
 
 // The kill ring: what a whole-box clear keeps, and how the ↑ walk visits it.

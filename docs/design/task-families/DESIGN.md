@@ -259,7 +259,7 @@ put them.
 
 Two defects in `sealGroundWork`, raised by an independent reviewer on this seam:
 
-- it staged through **one shared** `.git/aforge-ground-index`, so concurrent
+- it staged through **one shared** `.git/codeaf-ground-index`, so concurrent
   siblings raced on the file. Each seal now takes an index of its own
   (`groundIndexPrefix`), and a test runs eight at once.
 - it turned **every git failure into `""`**, indistinguishable from a clean tree, so
@@ -318,7 +318,7 @@ somebody types `accept` hours later, from a ledger recorded before lunch.
 
 - **A baseline is recorded when the mirror is made.** `rememberGroundBaseline` walks
   the copy once at `prepareTaskTreeOn`'s mirror case and writes a digest per path
-  into the tree's private corner — `.aforge-v3/ground-baseline.json`, beside
+  into the tree's private corner — `.codeaf-v3/ground-baseline.json`, beside
   `leftBehindRecord` and for the same reason. It reads the COPY, not the folder,
   which is the one reading with no race in it. It is written where the copy is made
   and nowhere else, so a resumed node keeps the baseline its first run recorded.

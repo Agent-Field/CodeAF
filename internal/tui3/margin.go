@@ -6,9 +6,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // THE MARGIN: ONE COLUMN, THREE SECTIONS, AND A DOOR AT THE FOOT OF THE TWO THAT HAVE ONE.
@@ -365,7 +365,7 @@ func (a *app) marginDoorLine(typed string, width int) string {
 	return mark + a.pal.dim(fit(word, max(0, width-ansi.StringWidth(marginDoorMark))))
 }
 
-// marginStandRow is one order as one line: the glyph every aforge surface agrees
+// marginStandRow is one order as one line: the glyph every codeaf surface agrees
 // on, what the order is called, and its reach when its reach is not the default.
 //
 // THE TITLE IS THE MUTED VOICE and never the ink. A task that is running is the

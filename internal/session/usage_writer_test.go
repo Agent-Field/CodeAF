@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// THE TURN PATH NEVER WAITS ON THE LEDGER'S DISK. `~/.aforge` on a stalled home
+// THE TURN PATH NEVER WAITS ON THE LEDGER'S DISK. `~/.codeaf` on a stalled home
 // mount used to mean a turn could not finish: [RecordUsage] held a process-wide
 // mutex across a mkdir, an open, a write and a close, so one hung disk stopped
 // every conversation in the process. A row is worth less than a turn, and this

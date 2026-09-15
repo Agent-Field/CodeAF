@@ -1,4 +1,4 @@
-// Package relay is the blind pipe between a machine that runs aforge and a
+// Package relay is the blind pipe between a machine that runs codeaf and a
 // machine somebody is sitting at.
 //
 // IT EXISTS BECAUSE THE ENGINE MACHINE ONLY EVER DIALS OUT. A home server, an
@@ -30,7 +30,7 @@
 // production. The design doc says "outbound websocket" and means the property
 // rather than the framing: one long-lived connection the engine machine dials
 // out on, over the port every network already lets out. A websocket's masking
-// and its close protocol buy nothing here — both ends of this pipe are aforge,
+// and its close protocol buy nothing here — both ends of this pipe are codeaf,
 // and the payloads are already ciphertext — while its framing would be a second
 // framing on top of the one below, which this package needs anyway to carry
 // several surfaces down one carrier.
@@ -43,7 +43,9 @@ import "time"
 // below changes, which is a different clock from internal/remote's Version —
 // the relay carries session frames it cannot read, so the two versions move
 // independently and neither may be inferred from the other.
-const Protocol = "aforge-relay/1"
+// This is an ON-THE-WIRE identifier, not product prose. A product rename may
+// not split old and new relay clients into different protocols.
+const Protocol = "aforge-relay/1" // legacy-name
 
 // The doors. Both are GET so that an ordinary HTTP front end, a load balancer
 // or a corporate proxy sees a request shape it already knows how to pass.
@@ -61,9 +63,9 @@ const (
 // to every one of them.
 const (
 	// HeaderName carries the machine name being claimed.
-	HeaderName = "Aforge-Name"
+	HeaderName = "Aforge-Name" // legacy-name: persisted on the wire.
 	// HeaderKey carries the machine's long-term public key, base64 raw-url.
-	HeaderKey = "Aforge-Key"
+	HeaderKey = "Aforge-Key" // legacy-name: persisted on the wire.
 )
 
 // The tuning, all in one place so that a relay operator changes a number here

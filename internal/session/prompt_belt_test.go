@@ -29,10 +29,10 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
-	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // beltShape is one agent this package builds: the config its own door builds,
@@ -178,7 +178,7 @@ func systemTextOf(a *Agent) string {
 }
 
 // openTestBrain is a store in a directory the test owns. It is never the
-// person's real one: a test that wrote into ~/.aforge would be a test that
+// person's real one: a test that wrote into ~/.codeaf would be a test that
 // changes their next conversation.
 func openTestBrain(t *testing.T) *store.Store {
 	t.Helper()

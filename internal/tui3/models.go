@@ -2,15 +2,15 @@ package tui3
 
 import (
 	"encoding/json"
-	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // The model list the picker shows, and the one law about where it comes from:
@@ -21,8 +21,8 @@ import (
 // resolved from what is already known, in this order:
 //
 //  1. the catalog, when it can answer without a fetch — the door passes it in
-//     as [Options.Models] (see cmd/aforge/chatv3.go);
-//  2. this package's own cache, ~/.aforge/v3/models.json, written whenever a
+//     as [Options.Models] (see cmd/codeaf/chatv3.go);
+//  2. this package's own cache, ~/.codeaf/v3/models.json, written whenever a
 //     catalog fetch elsewhere succeeded;
 //  3. [BuiltinModels], five names this build remembers.
 //
@@ -111,15 +111,15 @@ type Model struct {
 	Direct bool `json:"-"`
 }
 
-// modelCacheName is the file under the aforge state root. It is v3's own list
+// modelCacheName is the file under the codeaf state root. It is v3's own list
 // and deliberately NOT internal/catalog's cache: this one holds the two fields
 // a picker draws, so reading it costs a kilobyte or two rather than the whole
 // six-hundred-row catalog, and a schema change on either side cannot break the
 // other.
 var modelCacheName = []string{"v3", "models.json"}
 
-// ModelCachePath is ~/.aforge/v3/models.json, moved wholesale by AFORGE_HOME
-// the way every other file aforge writes is.
+// ModelCachePath is ~/.codeaf/v3/models.json, moved wholesale by CODEAF_HOME
+// the way every other file codeaf writes is.
 func ModelCachePath() string { return home.Join(modelCacheName...) }
 
 // ModelCachePathFor returns the cache owned by one service-and-base pair. The
@@ -411,7 +411,7 @@ func chatModels(models []Model) []Model { return keepModels(models, chatModel) }
 
 // ChatModels is that same law for the DOOR, which since Decision 6 hands this
 // package the whole catalog and has its own list to narrow: the models a task
-// may be handed to (cmd/aforge's v3TaskModels).
+// may be handed to (cmd/codeaf's v3TaskModels).
 //
 // It is exported rather than copied because a second spelling of "a model you
 // can talk to" is a second spelling that drifts — the picker would offer a row
@@ -429,7 +429,7 @@ func chatModel(model Model) bool { return answersText(model) && readsText(model)
 // of it): can this model look at a picture.
 //
 // SILENCE IS NO, and it is the SAME no the door's vision gate gives it
-// (cmd/aforge's v3ReadsImages) — THE ONE SILENCE LAW, docs/MULTIMODAL.md
+// (cmd/codeaf's v3ReadsImages) — THE ONE SILENCE LAW, docs/MULTIMODAL.md
 // Decision 6: an unpublished modality list means text-in/text-out and nothing
 // more, so a media capability is never assumed, only published.
 //
@@ -442,7 +442,7 @@ func chatModel(model Model) bool { return answersText(model) && readsText(model)
 // The id-word marks are the last resort, exactly as [makesModality] uses them:
 // a row that published nothing is read by its name, against the narrow
 // vocabulary that means sight and nothing else. And the slot's own blank still
-// means "aforge picks one that can see", so nothing here has to guess for it.
+// means "codeaf picks one that can see", so nothing here has to guess for it.
 func seesImages(model Model) bool {
 	if len(model.Input) > 0 {
 		return hasModality(model.Input, "image")
@@ -451,7 +451,7 @@ func seesImages(model Model) bool {
 }
 
 // inspectsImages is what the VISION SLOT actually asks, and it is [seesImages]
-// AND [chatModel] because the slot is an inspection proxy: aforge hands it a
+// AND [chatModel] because the slot is an inspection proxy: codeaf hands it a
 // picture and reads back a sentence about one (config's ResolveVisionModel, and
 // the view_image tool behind it). Image input alone is half the question — it
 // keeps google/gemini-3.1-flash-image, which reads pictures and answers in
@@ -816,8 +816,8 @@ func modelFields(model Model, pin, routing string) []rowField {
 // for — can it see my screenshot — and because a model that both sees and draws
 // reads better forwards than backwards.
 //
-// It is exported for `aforge models`, which draws the same tail beside the same
-// facts (cmd/aforge's models.go). One spelling of "draws", in one place.
+// It is exported for `codeaf models`, which draws the same tail beside the same
+// facts (cmd/codeaf's models.go). One spelling of "draws", in one place.
 func ModalityWord(input, output []string) string {
 	words := make([]string, 0, 5)
 	if hasModality(input, "image") {

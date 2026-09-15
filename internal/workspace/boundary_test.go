@@ -31,7 +31,7 @@ func TestWorkspaceDoesNotDependOnExecutionOrOptionalMemory(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, owner := range []string{"session", "tui", "tui2", "tui3", "store", "standing", "provider", "remote", "enginehost"} {
-				forbidden := "github.com/Agent-Field/aforge-v2/internal/" + owner
+				forbidden := "github.com/Agent-Field/codeaf/internal/" + owner
 				if path == forbidden || strings.HasPrefix(path, forbidden+"/") {
 					t.Errorf("%s depends on %s; resolve work in an adapter, not in organization storage", file.Name(), path)
 				}

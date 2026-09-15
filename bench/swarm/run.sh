@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Swarm-mode benchmark: A/B across a task corpus, four arms.
 #
-# One cell = one task × one arm. Every cell runs `aforge do` in a fresh
+# One cell = one task × one arm. Every cell runs `codeaf do` in a fresh
 # directory with a private durable store, then a category verdict script
 # grades the artifacts — never the run's self-report. The corpus and the
 # doctrine live in README.md; this file is only the protocol.
@@ -10,15 +10,15 @@
 # This suite inherits it: the cost column comes from the journal's usage
 # table, summed per cell, and from nothing else.
 #
-# Arms (named; AFORGE_MECHANISM selects the inhibition/quorum extension,
-# gated behind AFORGE_SWARM=1):
-#   baseline    AFORGE_SWARM=0, AFORGE_MECHANISM=baseline
+# Arms (named; CODEAF_MECHANISM selects the inhibition/quorum extension,
+# gated behind CODEAF_SWARM=1):
+#   baseline    CODEAF_SWARM=0, CODEAF_MECHANISM=baseline
 #               refusal-first pipeline — no cooperative decomposition.
-#   swarm       AFORGE_SWARM=1, AFORGE_MECHANISM=baseline
+#   swarm       CODEAF_SWARM=1, CODEAF_MECHANISM=baseline
 #               cooperative claim-time decomposition (the original ON arm).
-#   inhibition  AFORGE_SWARM=1, AFORGE_MECHANISM=inhibition
+#   inhibition  CODEAF_SWARM=1, CODEAF_MECHANISM=inhibition
 #               swarm + explicit scope ownership injected into split parts.
-#   quorum      AFORGE_SWARM=1, AFORGE_MECHANISM=quorum
+#   quorum      CODEAF_SWARM=1, CODEAF_MECHANISM=quorum
 #               swarm + two validators gate the commit, one revision round.
 set -uo pipefail
 
@@ -30,10 +30,10 @@ Runs the swarm benchmark corpus, one cell per task × arm × seed, and appends
 one CSV row per cell to results/results.csv.
 
 Arms (the factor this suite varies):
-  baseline    AFORGE_SWARM=0, AFORGE_MECHANISM=baseline   (refusal-first)
-  swarm       AFORGE_SWARM=1, AFORGE_MECHANISM=baseline   (cooperative decomposition)
-  inhibition  AFORGE_SWARM=1, AFORGE_MECHANISM=inhibition  (scope ownership in splits)
-  quorum      AFORGE_SWARM=1, AFORGE_MECHANISM=quorum      (validators gate commit)
+  baseline    CODEAF_SWARM=0, CODEAF_MECHANISM=baseline   (refusal-first)
+  swarm       CODEAF_SWARM=1, CODEAF_MECHANISM=baseline   (cooperative decomposition)
+  inhibition  CODEAF_SWARM=1, CODEAF_MECHANISM=inhibition  (scope ownership in splits)
+  quorum      CODEAF_SWARM=1, CODEAF_MECHANISM=quorum      (validators gate commit)
 
 All arms of one task fire in the same wave (pair-fair → now arm-fair) so a
 provider slowdown lands on every arm of the comparison together and cancels
@@ -54,7 +54,7 @@ fi
 # tasks.txt may select a subset.
 ARMS_DEFAULT="baseline,swarm,inhibition,quorum,splitgate"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AFORGE_BIN="${AFORGE_BIN:-aforge}"
+CODEAF_BIN="${CODEAF_BIN:-codeaf}"
 RESULTS="${RESULTS:-$HERE/results}"
 MODEL="${MODEL:-~deepseek/deepseek-v4-flash-latest}"
 
@@ -88,7 +88,7 @@ if [ "${BENCH_CLEAN:-0}" = "1" ]; then rm -f "$CSV"; fi
 run_cell() {
   local task="$1" category="$2" verdict="$3" fixture="$4" arm="$5" seed="$6"
   # Translate the named arm into the env the harness reads. swarm=1 gates
-  # cooperative decomposition; AFORGE_MECHANISM selects the inhibition/quorum
+  # cooperative decomposition; CODEAF_MECHANISM selects the inhibition/quorum
   # extension (baseline = none). The baseline arm runs swarm off; its
   # mechanism is pinned to baseline for a clean, comparable CSV.
   local swarm mech gate
@@ -113,9 +113,9 @@ run_cell() {
   fi
   local t0 t1 wall ec cost nodes urows verdict_out
   t0=$(date +%s)
-  (cd "$dir" && AFORGE_SWARM="$swarm" AFORGE_MECHANISM="$mech" AFORGE_SPLITGATE="$gate" AFORGE_MODEL="$MODEL" \
+  (cd "$dir" && CODEAF_SWARM="$swarm" CODEAF_MECHANISM="$mech" CODEAF_SPLITGATE="$gate" CODEAF_MODEL="$MODEL" \
     timeout "$CELL_TIMEOUT" \
-    "$AFORGE_BIN" do "$(cat "$HERE/tasks/$task.txt")" \
+    "$CODEAF_BIN" do "$(cat "$HERE/tasks/$task.txt")" \
       -db "$dir/store.db" -keep -timeout "$CELL_TIMEOUT" --yes-spend --json \
       > "$dir/out.json" 2> "$dir/stderr.log")
   ec=$?

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // (f) a session written to disk reopens as the same transcript.
@@ -304,7 +304,7 @@ func TestSessionFileDropsOrphanedToolResults(t *testing.T) {
 	assertWellFormed(t, append([]ai.Message{textMessage("system", "SYSTEM")}, messages...))
 }
 
-// A file from a newer aforge can hold entry types this build drops in silence.
+// A file from a newer codeaf can hold entry types this build drops in silence.
 // A resume that looks complete and is not is worse than a refusal to open.
 func TestSessionFileRejectsANewerFormatVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -315,7 +315,7 @@ func TestSessionFileRejectsANewerFormatVersion(t *testing.T) {
 
 	if _, err := replaySessionFile(path); err == nil {
 		t.Fatal("a version-99 session file was replayed as if this build understood it")
-	} else if !strings.Contains(err.Error(), "newer aforge") {
+	} else if !strings.Contains(err.Error(), "newer codeaf") {
 		t.Fatalf("error = %v, want it to name the version mismatch", err)
 	}
 	if _, err := newAgent(Config{
@@ -442,7 +442,7 @@ func TestSessionFileJournalsToolCallsAndCompaction(t *testing.T) {
 	}
 }
 
-// Two aforge processes resuming the same file both replay it and both append,
+// Two codeaf processes resuming the same file both replay it and both append,
 // and the journal that comes out replays as neither conversation. A resume
 // picks the newest transcript by mtime, so the second window lands on the live
 // file by default — the second open has to be refused, by name, and it has to

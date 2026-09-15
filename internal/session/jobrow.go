@@ -77,7 +77,7 @@ func jobRowLead(id int, logPath string) string {
 // jobRowLogSep joins the handle to the path in the sentence above. It is a
 // constant because the sentence is now a STORAGE FORMAT as much as a row —
 // [jobNoticeFromRow] reads it back out of a checkpoint written by an older
-// aforge — and a separator spelled in two places is a separator that drifts
+// codeaf — and a separator spelled in two places is a separator that drifts
 // until one of them stops being able to read the other.
 const jobRowLogSep = " · log "
 
@@ -188,7 +188,7 @@ func (a *Agent) announceJobRow(info jobInfo) {
 	// section and once among the task families.
 	//
 	// WHAT THE STORE KEEPS IS STILL A TASK ROW because the store is a FILE, and
-	// files already written are read by the aforge that opens them next. The
+	// files already written are read by the codeaf that opens them next. The
 	// checkpoint's own dialect is projected back at the edge on the way out
 	// ([jobNoticeFromRow], replayed by [Agent.replayTaskRoster]).
 	a.graph().keepRunRows(row, []TaskNotice{notice})

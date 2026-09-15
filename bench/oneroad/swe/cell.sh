@@ -41,7 +41,7 @@ DATASET="${DATASET:-$HOME/src/senior-swe-bench-v2026.06}"
 TASKDIR="$DATASET/tasks/$TASK"
 
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
-NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/aforge}"
+NEW_BIN="${NEW_BIN:-$HOME/af-oneroad/bin/codeaf}"
 # PI IS A NODE BUNDLE, NOT A BINARY, and mounting just the entry point is how
 # all seven pi cells died in 0 seconds with ERR_MODULE_NOT_FOUND. ~/.local/bin/pi
 # is a symlink into a node_modules package whose cli.js imports sibling files
@@ -139,7 +139,7 @@ docker run -d --name "$CONTAINER" --cpus "$CPUS" --memory "$MEM" \
   -v "$CELL/peer:/peer" \
   -v "$SWE/verify.sh:/oneroad-verify.sh:ro" \
   -v "$ONEROAD/lib:/oneroad-lib:ro" \
-  -v "$NEW_BIN:/usr/local/bin/aforge:ro" \
+  -v "$NEW_BIN:/usr/local/bin/codeaf:ro" \
   ${PI_PKG:+-v "$PI_PKG:/opt/pi:ro"} \
   ${HOST_NODE:+-v "$HOST_NODE:/opt/node:ro"} \
   ${OPENCODE_BIN:+-v "$OPENCODE_BIN:/usr/local/bin/opencode:ro"} \
@@ -172,8 +172,8 @@ cleanup() {
 HOST_UID="$(id -u)"; HOST_GID="$(id -g)"
 trap cleanup EXIT INT TERM
 
-# ── the aforge arms: the real TUI, over tmux, into the container ────────────
-run_aforge() {
+# ── the codeaf arms: the real TUI, over tmux, into the container ────────────
+run_codeaf() {
   local all_flash="$1"
   ALL_FLASH="$all_flash" MODEL="$MODEL" PROFILE="$CELL/profile" python3 - <<'PY'
 import datetime, json, os
@@ -192,14 +192,14 @@ PY
   # surface drawing into this pane is the one running beside the repository.
   tmux new-session -d -s "$SESSION_NAME" -x 200 -y 50 \
     "docker exec -it -w /repo/$REPO_NAME \
-       -e HOME=/chome -e AFORGE_HOME=/prof -e AFORGE_PROFILE_DIR=/prof \
+       -e HOME=/chome -e CODEAF_HOME=/prof -e CODEAF_PROFILE_DIR=/prof \
        -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY -e TERM=xterm-256color \
-       $CONTAINER aforge chat --yolo --model '$MODEL'; echo AFORGE-EXITED; sleep 60"
+       $CONTAINER codeaf chat --yolo --model '$MODEL'; echo codeaf-EXITED; sleep 60"
 
   local waited=0 drew=""
   while [ "$waited" -lt 90 ]; do
     sleep 3; waited=$((waited + 3))
-    tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'AFORGE-EXITED' && break
+    tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q 'codeaf-EXITED' && break
     if tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -Eq '›|try "what is in this folder"'; then drew=yes; break; fi
   done
   tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-firstframe.txt"
@@ -304,8 +304,8 @@ run_peer() {
 STARTED=$(date +%s)
 cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-before"
 case "$ARM" in
-  aforge-swe-flash) run_aforge 1; CODE=$? ;;
-  aforge-swe-crew)  run_aforge 0; CODE=$? ;;
+  codeaf-swe-flash) run_codeaf 1; CODE=$? ;;
+  codeaf-swe-crew)  run_codeaf 0; CODE=$? ;;
   pi|opencode)      run_peer >"$CELL/harness.log" 2>&1; CODE=$?
                     [ "$CODE" = "124" ] && echo DNF > "$CELL/outcome" || echo OK > "$CELL/outcome" ;;
   *) say "unknown arm $ARM"; cleanup; exit 2 ;;

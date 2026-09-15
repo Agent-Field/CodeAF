@@ -203,7 +203,7 @@ def main():
     parser.add_argument("run_dir", nargs="+", help="run directories; the first one's run.json names the run and holds the outputs")
     parser.add_argument("--baseline", help="rows.csv of the run to compare against")
     parser.add_argument("--post", help="tracking issue number to append the scoreboard to")
-    parser.add_argument("--repo", default="Agent-Field/aforge-v2")
+    parser.add_argument("--repo", default="Agent-Field/codeaf")
     parser.add_argument("--note", action="append", default=[], help="a caveat printed under the table, repeatable")
     args = parser.parse_args()
 

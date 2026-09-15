@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -186,7 +186,7 @@ type tasksReading struct {
 	// THE HEAD SENTENCE IS A CLAIM ABOUT THE PLACE AND THE FILTER IS A PROPERTY
 	// OF THE QUERY. Counting the sentence off the rows that survived a filter
 	// told a person who typed a word they half-remembered that their history was
-	// empty — `work aforge ran on its own. nothing.` across the top of a machine
+	// empty — `work codeaf ran on its own. nothing.` across the top of a machine
 	// that had run ten pieces of work. The news that nothing matches already has
 	// its own home on the note line ([taskSheetFilterLine]).
 	whole     int
@@ -1455,7 +1455,7 @@ func (r tasksReading) head(width int, edge bool) string {
 	if r.whole == 0 && r.wholeChats == 0 {
 		return tasksHeadWord + " · nothing" + since
 	}
-	// IT IS A HEADING AND NO LONGER A PARAGRAPH. It read `work aforge ran on its
+	// IT IS A HEADING AND NO LONGER A PARAGRAPH. It read `work codeaf ran on its
 	// own. 14 pieces of work since aug 2, $34.10 between them.` — three clauses,
 	// the widest thing on the page, and the first thing every reader met. Two of
 	// them were wrong to lead with: the sentence taught the machinery's own idea

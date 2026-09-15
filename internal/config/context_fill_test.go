@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 )
 
 // THE PROVENANCE HAS TO SURVIVE THE HANDOVER. [contextLaw] is the one seam
@@ -61,7 +61,7 @@ func TestAFillAPersonSetIsAPinByEitherRoad(t *testing.T) {
 	if _, pinned := ctxbudget.PinnedFillPercent(); pinned {
 		t.Fatal("a second, untouched profile inherited the first one's pin")
 	}
-	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "35")
+	t.Setenv("CODEAF_CONTEXT_FILL_PCT", "35")
 	percent, pinned = ctxbudget.PinnedFillPercent()
 	if !pinned || percent != 35 {
 		t.Fatalf("an environment pin reads as %d/%v, want 35/true", percent, pinned)

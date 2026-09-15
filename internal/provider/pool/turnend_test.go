@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // TurnEnd is the one line every structuring caller needs at its posting seam.

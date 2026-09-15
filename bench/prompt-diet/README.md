@@ -30,10 +30,10 @@ editing; layers B, C and D call a real model.
 
 Layer D stands up no new proxy. `bench/conversation/lib/guard.py` is already a
 loopback forwarder every cell runs in front of OpenRouter — handed to the
-harness as `AFORGE_BASE_URL` with a sentinel key — and it already writes an
+harness as `CODEAF_BASE_URL` with a sentinel key — and it already writes an
 admitted row carrying the request's shape and a settled row carrying what the
-provider said it charged. `internal/calllog` is aforge's own always-on record
-and, with `AFORGE_CALL_LOG_BODIES=1`, is the only place the **tool block's own
+provider said it charged. `internal/calllog` is codeaf's own always-on record
+and, with `CODEAF_CALL_LOG_BODIES=1`, is the only place the **tool block's own
 bytes** can be counted per request. `lib/wire.py` normalises both into one
 JSONL, keeping `source` on every row so the two are never added together.
 
@@ -65,7 +65,7 @@ bench/prompt-diet/prefixdiff.py ~/bench-diet-out/dev ~/bench-diet-out/diet
 question `compare.py` cannot — a cached share is an OUTCOME, and a share that
 fell because the prefix moved wants the opposite response from one that fell
 because the run made fewer, shorter conversations. It needs request bodies, so
-the run must have set `AFORGE_CALL_LOG_BODIES=1`, which `run.sh` does. BENCH.md
+the run must have set `CODEAF_CALL_LOG_BODIES=1`, which `run.sh` does. BENCH.md
 §1c is the worked example and the finding it convicted.
 
 `compare.py` exits non-zero when an outcome got worse, so it is usable as a
@@ -76,7 +76,7 @@ default (`DIET_OUT_ROOT` or `--out`), and the build goes to a second root at
 `~/bench-diet-build/<label>` (`DIET_BUILD_ROOT`). That is a correctness rule and
 not tidiness: a cell's scratch workspace sits inside the evidence tree, and the
 first baseline run put it inside the rig's own git checkout — whereupon the
-`code-fix` cell's model walked up out of its two-file fixture, found the aforge
+`code-fix` cell's model walked up out of its two-file fixture, found the codeaf
 repository around it, and ran `go test ./...` on a shared box. `run.sh` now
 refuses an `--out` inside a checkout.
 

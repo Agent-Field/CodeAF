@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
 // ── bash, wrapped ───────────────────────────────────────────────────────────
@@ -284,7 +284,7 @@ const (
 // `propose_task` each carried a third and a fourth copy. It is one law about
 // everything handed off, so prompts/system.md states it once for all of them and
 // the belt states none of it; the manual's own page answers it at length ("Does
-// aforge poll a background job, or does it get told", what-i-can-do.md). What
+// codeaf poll a background job, or does it get told", what-i-can-do.md). What
 // this description keeps is the contract: which two kinds of work are here, what
 // each op does, what comes back, and where the whole log lives.
 var jobsDescription = "Background work: bash background:true commands and watches. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +

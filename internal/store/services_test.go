@@ -19,7 +19,7 @@ func seedServiceNode(t *testing.T, graph *Store, id string, serviceIntent bool) 
 
 func serviceFixture(id, name, node string, pid int) Service {
 	return Service{
-		ID: id, Name: name, Command: "npm run dev", Dir: "/tmp/work", LogPath: "/tmp/work/.aforge/jobs/1.log",
+		ID: id, Name: name, Command: "npm run dev", Dir: "/tmp/work", LogPath: "/tmp/work/.codeaf/jobs/1.log",
 		Health: ServiceHealth{Kind: ServiceHealthPort, Value: "5173"}, PID: pid,
 		StartedAt: time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC), Status: ServiceRunning,
 		Provenance: ServiceProvenance{OriginJobID: 1, LeafNodeID: node},

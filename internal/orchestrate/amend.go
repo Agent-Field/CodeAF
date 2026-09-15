@@ -31,7 +31,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/subharness"
 )
 
 // RepeatLimit is how many times one run may send work at the same file before

@@ -307,7 +307,7 @@ func TestAOneLeafPlanBuysNoSecondMethod(t *testing.T) {
 }
 
 // The contract call is the one structuring call every leaf makes, and it used
-// to fail on 100% of `aforge do` runs against a model the router had no
+// to fail on 100% of `codeaf do` runs against a model the router had no
 // structured-output path to: the reply came back fenced or with a sentence in
 // front of it, the decode demanded a bare value, and stderr filled with
 // `contract "": parse response: invalid character 'B'`. The call was paid for

@@ -48,7 +48,7 @@ plain JSON.
 ## Decision 2 — The transport is an `io.ReadWriteCloser`, and nothing in the protocol knows what it is
 
 **Decision.** `remote.Dial` takes an `io.ReadWriteCloser`; `remote.Serve` takes
-a reader and a writer. Spawning ssh belongs to the door in `cmd/aforge`, which
+a reader and a writer. Spawning ssh belongs to the door in `cmd/codeaf`, which
 owns processes and flags. The protocol has no opinion about the pipe.
 
 **Why.** This is the single most load-bearing decision in the remote lane, and
@@ -92,9 +92,9 @@ version moved and the mismatch is still refused here, at the door, with the
 same sentence naming the fix.
 
 **The half in the middle, and the question that finds it.** A session host
-(Decision 5) outlives the binary that started it, so after `rm bin/aforge &&
-make build` on the far machine the *new* aforge answers `aforge version` while
-the *old* one still holds the socket — and `aforge engine` spliced the new
+(Decision 5) outlives the binary that started it, so after `rm bin/codeaf &&
+make build` on the far machine the *new* codeaf answers `codeaf version` while
+the *old* one still holds the socket — and `codeaf engine` spliced the new
 surface straight onto it. The refusal that came back told the person to update a
 machine they had just updated. Two builds were the same build; the third was
 not.
@@ -123,7 +123,7 @@ would fail on the journal and say so in a sentence about a path.
 
 Two things keep it from recurring: a host retires itself once it notices the
 file it was started from was removed or rebuilt and it is holding nothing
-(`internal/enginehost/binary.go`), and `aforge engine --stop` ends whatever
+(`internal/enginehost/binary.go`), and `codeaf engine --stop` ends whatever
 holds a workspace on that machine — asking politely first, and naming the
 process through the socket's peer credentials when it is too old to be asked.
 
@@ -174,7 +174,7 @@ legitimate shapes and both speak this protocol.
 
 **Why.** A SURFACE MUST NOT PROMISE A LIFETIME THE ENGINE DOES NOT HAVE.
 "Close the lid, it keeps going" is true against a host and false against
-`aforge engine` started by hand on a machine with no host — and the person
+`codeaf engine` started by hand on a machine with no host — and the person
 cannot see which they have. Inferring it from the carrier would be wrong in
 both directions: a unix socket does not imply a host, and an ssh pipe does not
 preclude one. So it is a fact the engine states about itself, and every screen
@@ -275,7 +275,7 @@ cannot even tell which of your devices connected.
 
 ## Decision 9 — The device key is a file, and the page says so
 
-**Decision.** A machine's long-term key lives at `~/.aforge/v3/remote/device.key`, mode
+**Decision.** A machine's long-term key lives at `~/.codeaf/v3/remote/device.key`, mode
 0600. The OS keychain — and with it a Mac's fingerprint prompt — is a seam (`pair.Keeper`)
 with no implementation.
 
@@ -287,7 +287,7 @@ wanting their own — a project, not a finishing touch.
 
 **Why it is written down rather than left quiet.** Somebody who assumes a keychain will
 protect a stolen laptop is worse off than somebody who knows it is a file. So
-`aforge devices` names the path on screen, the manual has a section saying the keychain is
+`codeaf devices` names the path on screen, the manual has a section saying the keychain is
 **not built** and what that means in practice, and a test fails the build if that page
 ever starts promising otherwise. When the seam is filled, `Keeper.Where()` is the one
 sentence that changes.
@@ -299,7 +299,7 @@ connection that machine is the one the SESSION runs on. `Places.World` answers
 `session.ReadWorld(session.PlacesRoot())` on the engine, and `Welcome` carries
 the root it was walked under. The surface reads it through one seam
 (`tui3.Options.World`), backed by a cache the door keeps warm
-(`cmd/aforge`'s `hostWorld`), and **a hosted surface with no seam reads nothing
+(`cmd/codeaf`'s `hostWorld`), and **a hosted surface with no seam reads nothing
 at all** rather than falling back to its own disk.
 
 The engine door also adds that machine's deliverables index to the world. Home
@@ -339,7 +339,7 @@ the corollary of Decision 6 stated for a screen rather than for a capability.
 stats every project it draws; over a connection those paths are the engine's, so
 the stat is not made and no row is marked `folder gone` — a stat here would
 report every remote row as deleted. And the look stamps behind a tab's number
-are kept per machine, in `~/.aforge/v3/looks/<machine>` on the SURFACE's disk:
+are kept per machine, in `~/.codeaf/v3/looks/<machine>` on the SURFACE's disk:
 what changed belongs to the far machine, when you last looked belongs to this
 terminal, and one stamp answering for both would let a glance at the server clear
 the badge over the laptop's own tab.
@@ -393,7 +393,7 @@ surface that stole it would be one nobody is looking at.
 
 **Why the wording is per-recipient.** "The driver is macbook" is two different
 sentences depending on who hears it: to the window beside it on the same
-machine the honest word is `another window`, which is what aforge already says
+machine the honest word is `another window`, which is what codeaf already says
 at home; to a surface on another machine it is the machine's name. Only the
 engine knows both names. The surface still owns the words — the engine sends
 facts (`Driver{Yours, Machine, Here}`), except for the refusal, which is a
@@ -546,5 +546,5 @@ fast enough for prose to fill visibly and is independent of the 30Hz painter.
 | `internal/remote/image.go` | the payload that cannot be handed on: a picture, remade on arrival |
 | `internal/remote/replica.go` | the surface's copy of what the engine says about itself, kept fresh by push |
 | `internal/remote/loopback.go` | the transport's test double: a real client, a real server, an in-memory pipe |
-| `cmd/aforge/chatv3_host.go` | the `--host` door: parse the target, start ssh, hand the connection to the surface |
-| `cmd/aforge/engine.go` | the far half ssh starts — machinery, not a command |
+| `cmd/codeaf/chatv3_host.go` | the `--host` door: parse the target, start ssh, hand the connection to the surface |
+| `cmd/codeaf/engine.go` | the far half ssh starts — machinery, not a command |

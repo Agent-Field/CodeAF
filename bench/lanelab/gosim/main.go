@@ -36,9 +36,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 // ── THE SHIP GATE ───────────────────────────────────────────────────────────
@@ -551,7 +551,7 @@ var theMoment = time.Date(2026, time.August, 30, 11, 0, 0, 0, time.UTC)
 // run is one arm of one scenario at one seed, all the way through.
 func run(w *world, s scenario, policy string, seed, n, speedup int, trace bool) ([]record, int) {
 	// A HOME OF ITS OWN, FIRST. The ledger writes every belief through a store
-	// and `lane.StorePath` resolves under AFORGE_HOME on every call, so a run
+	// and `lane.StorePath` resolves under CODEAF_HOME on every call, so a run
 	// that did not move the state root would fold this program's lanes into the
 	// belief file of whoever ran it and read them back on the next run. That is
 	// the bug docs/design/routing/provider-routing.md Part III records at the end.

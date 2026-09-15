@@ -118,8 +118,12 @@ func openFamilyRepository(dir string) string {
 	// belong to machinery rather than to anybody's world — a task's private
 	// metadata and furrow's bookkeeping — exactly as [sealGroundWork] keeps them
 	// out of the world it hands a child.
-	if out, err := git(dir, "add", "--all", "--force", "--",
-		".", ":(exclude)"+aforgeDroppings, ":(exclude)"+furrowMarkerDir); err != nil {
+	addArgs := []string{"add", "--all", "--force", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		addArgs = append(addArgs, ":(exclude)"+dropping)
+	}
+	addArgs = append(addArgs, ":(exclude)"+furrowMarkerDir)
+	if out, err := git(dir, addArgs...); err != nil {
 		return familyTreeProblem(out, err)
 	}
 	// AN EMPTY FOLDER STILL GETS A FAMILY TREE (`--allow-empty`): a family that
@@ -132,7 +136,7 @@ func openFamilyRepository(dir string) string {
 	// commit somebody's global settings would sign is a passphrase prompt on a
 	// terminal nobody is watching — neither is a thing to lose a family tree
 	// over, and neither commit is the person's to answer for.
-	if out, err := git(dir, append(aforgeGitIdentity(),
+	if out, err := git(dir, append(codeafGitIdentity(),
 		"-c", "commit.gpgsign=false",
 		"commit", "--quiet", "--no-verify", "--allow-empty",
 		"-m", familyTreeCommitMessage)...); err != nil {

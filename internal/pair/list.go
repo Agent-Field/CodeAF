@@ -1,11 +1,11 @@
 package pair
 
-// `aforge devices`: what this machine has let in, and how to stop one.
+// `codeaf devices`: what this machine has let in, and how to stop one.
 //
 // THE LIST IS THE ENGINE MACHINE'S OWN, and so is the stopping. A device cannot
 // list itself out of somebody's machine and cannot stop another device; the
 // command answers about the machine it is typed on. That is the same law the
-// rest of aforge keeps about remote surfaces — the machine that runs the tools
+// rest of codeaf keeps about remote surfaces — the machine that runs the tools
 // is the machine that decides who may run them.
 //
 // THE EMPTINESS LAW APPLIES: a machine with no devices paired prints one
@@ -31,14 +31,14 @@ func decodeStoredKey(stored string) ([]byte, error) {
 	return key, nil
 }
 
-// DevicesList is what `aforge devices` prints on the machine that owns the work.
+// DevicesList is what `codeaf devices` prints on the machine that owns the work.
 func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "this machine is reachable as %s\n", name)
 	fmt.Fprintf(&out, "its key is kept in %s\n\n", keeper.Where())
 
 	if len(paired) == 0 {
-		out.WriteString("no devices are paired with this machine.\nrun `aforge serve` here and `aforge chat --at " + name + "` there to pair one.\n")
+		out.WriteString("no devices are paired with this machine.\nrun `codeaf serve` here and `codeaf chat --at " + name + "` there to pair one.\n")
 		return out.String()
 	}
 
@@ -59,11 +59,11 @@ func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) str
 		}
 		out.WriteString(line + "\n")
 	}
-	out.WriteString("\nstop one with `aforge devices revoke <name>` — it will need a new code to come back.\n")
+	out.WriteString("\nstop one with `codeaf devices revoke <name>` — it will need a new code to come back.\n")
 	return out.String()
 }
 
-// MachinesList is what `aforge devices` prints about the machines THIS device
+// MachinesList is what `codeaf devices` prints about the machines THIS device
 // can reach. It is the other half of the same command, because a person asking
 // "what am I paired with" means both directions and should not have to know
 // there are two books.
@@ -82,7 +82,7 @@ func MachinesList(known []Known, now time.Time) string {
 	for _, one := range known {
 		fmt.Fprintf(&out, "  %-*s  paired %s\n", widest, one.Name, since(one.Since, now))
 	}
-	out.WriteString("\nopen one with `aforge chat --at <name>`.\n")
+	out.WriteString("\nopen one with `codeaf chat --at <name>`.\n")
 	return out.String()
 }
 

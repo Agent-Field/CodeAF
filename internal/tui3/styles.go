@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The whole surface's palette lives here and nowhere else.
@@ -1194,7 +1194,7 @@ func detectPalette(env func(string) string) palette {
 // There is deliberately no environment pin here. A human override of a terminal
 // veto is a Display setting (internal/config's registry already fronts the
 // nerd-font tier that way, and the repo's completeness gate says any new pin
-// arrives as a row); inventing an AFORGE_* variable for this one surface would
+// arrives as a row); inventing a CODEAF_* variable for this one surface would
 // be a second door onto the same question.
 func detectASCII(env func(string) string) bool {
 	if env == nil {
@@ -1671,11 +1671,10 @@ func (p palette) railCont() string {
 // consent line and the desktop notification's title. It is written down ONCE
 // because a product name spelled out at four call sites is a product name that
 // gets renamed at three of them — which is exactly what had happened: this
-// constant said `openaf` while pulse.go held a second spelling of the same fact
-// (`pulseName = "aforge"`), so a fresh install met a wordmark naming one
-// product and, three rows under it, prose naming another. There is one name and
-// it is the one a person types.
-const product = "aforge"
+// constant and pulse.go held different spellings of the same fact, so a fresh
+// install met a wordmark naming one product and, three rows under it, prose
+// naming another. There is one name and it is the one a person types.
+const product = "codeaf"
 
 // The glyph vocabulary of this surface.
 //

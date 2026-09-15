@@ -1,4 +1,4 @@
-# The ambient side — what aforge does when you are not asking
+# The ambient side — what codeaf does when you are not asking
 
 *Design doc, 2026-08-20; brought level with the code 2026-08-21. Status: BUILT —
 `internal/standing` (the files, the pass, the OS timer), `internal/session`
@@ -48,7 +48,7 @@ A reminder is the smallest of these: it fires once, it says one line, it retires
 
 A watch can look with a shell command, a URL, a file glob, or a tool on a connected
 account (mail, calendar, Linear, Notion, Slack, anything a signed-in service brings).
-v1 built its watches before aforge had accounts; v3 has them, and that is what makes
+v1 built its watches before codeaf had accounts; v3 has them, and that is what makes
 half of this list possible.
 
 ### Rules you stop thinking about
@@ -125,7 +125,7 @@ v1's mechanism is right and small; what it is wrapped in is not needed.
 
 | Keep (≈2.7k LOC in v1) | Leave (≈40k LOC in v1) |
 |---|---|
-| OS user timer → `aforge wake` → bounded pass (120 s, 32 ticks, early stop). `internal/watchdog` reused nearly verbatim. | The SQLite event graph and the head/resident split. v3 is folders + JSONL. |
+| OS user timer → `codeaf wake` → bounded pass (120 s, 32 ticks, early stop). `internal/watchdog` reused nearly verbatim. | The SQLite event graph and the head/resident split. v3 is folders + JSONL. |
 | A live window holds a lock; the timer's wake refuses if held. `internal/lease` shape. | Practice loop, belief aging, retrospectives, self-audit dials, competence map, surprise ledger, crafts, skills. v3 has routed memory and the fix store; none of this is the ambient side's job. |
 | Charter = the person's verbatim words + watch (cron / file / poll) + sentinel + action + rails. Rails mandatory by construction. | `graph:` watches. There is no graph. |
 | One cheap yes/no sentinel call carrying its own previous judgments, so a declined firing is not re-proposed forever. | The 1.7k LOC regex cadence recogniser. In v3 the model is the compiler. |
@@ -153,7 +153,7 @@ v1's mechanism is right and small; what it is wrapped in is not needed.
    relative moment goes to `stand`'s own `when.in` ("2m", "1h30m") and is resolved
    against the real clock at the instant of the call. A moment that has already passed
    is REFUSED with the time it is now — never quietly moved to tomorrow.
-2. **Storage is files.** `~/.aforge/v3/standing/<id>.json` — one document per charter,
+2. **Storage is files.** `~/.codeaf/v3/standing/<id>.json` — one document per charter,
    written temp + rename, flocked on mutate. `standing/ledger-YYYY-MM-DD.jsonl` —
    append-only, for the daily rail and max-per-day. `standing/<id>/runs/<n>/` — each
    firing is an ordinary session folder, so `/cost`, `/export`, the task index and the
@@ -190,7 +190,7 @@ v1's mechanism is right and small; what it is wrapped in is not needed.
    cadence in words, in the conversation or by clicking.
 
    **`●` crosses processes, because a marker does.** A pass runs in whichever of a live
-   window or `aforge tick` took the lock, so "firing now" is knowledge one process has
+   window or `codeaf tick` took the lock, so "firing now" is knowledge one process has
    and every other one needs. While a pass holds an item it writes
    `standing/<id>/running` — the process id, the moment it started, and `checking` or
    `firing` — and removes it when that item's pass ends. Any window reads it: the row
@@ -226,7 +226,7 @@ pattern `presence.json` and `meta.json` already use. The one cross-document inva
 in the same second, an overspend bounded by one firing's cap, which v1 accepted too.
 
 Where files and SQLite fail alike: NFS and synced home directories. flock is unreliable
-there and SQLite says the same of itself. `AFORGE_HOME` is the answer, and the page says
+there and SQLite says the same of itself. `CODEAF_HOME` is the answer, and the page says
 so.
 
 **Decision: files.** The dependency cost of SQLite is zero (v1 links it in the same

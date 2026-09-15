@@ -7,18 +7,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
-	"github.com/Agent-Field/aforge-v2/internal/modelsource"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
-	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 const (
@@ -79,7 +79,7 @@ const (
 	// downgrade on one that can. A harness that has not been asked for a level
 	// asks for none.
 	//
-	// AFORGE_REASONING and AFORGE_EXEC_REASONING are unchanged and still take
+	// CODEAF_REASONING and CODEAF_EXEC_REASONING are unchanged and still take
 	// off|low|medium|high — including `off`, which is how somebody who wants
 	// the thinking pass actually suppressed says so and gets exactly the
 	// request this default used to make on their behalf.
@@ -196,7 +196,7 @@ const (
 
 	// DefaultSwarm is whether cooperative decomposition is armed with nobody
 	// having said anything about it. It is TRUE from the swarm-road wave on;
-	// [Config.Swarm] carries the whole argument, and `AFORGE_SWARM=0` is the
+	// [Config.Swarm] carries the whole argument, and `CODEAF_SWARM=0` is the
 	// escape hatch.
 	DefaultSwarm = true
 )
@@ -210,7 +210,7 @@ const (
 // default answers. The one field that looks like an exception is not one —
 // [Config.Reasoning] and [Config.ExecReasoning] default to
 // [provider.EffortNone], which sends nothing, and carry a level only when
-// AFORGE_REASONING or AFORGE_EXEC_REASONING said so.
+// CODEAF_REASONING or CODEAF_EXEC_REASONING said so.
 //
 // AN OPERATOR OR EMBEDDER MAY STILL SIZE A CALL, with ai.WithMaxTokens on that
 // one request — the seam is open and the adapter honours it (internal/provider).
@@ -276,7 +276,7 @@ type Config struct {
 	// costs nothing below the width floor and is worth 1.15×–1.95× wall clock
 	// above it. A capability that is free when it does not apply belongs on.
 	//
-	// OFF IS STILL EXACTLY TODAY'S BEHAVIOUR, and `AFORGE_SWARM=0` is how
+	// OFF IS STILL EXACTLY TODAY'S BEHAVIOUR, and `CODEAF_SWARM=0` is how
 	// somebody asks for it: workers run their brief to settlement and growth is
 	// failure-driven only (overrun, revision, JIT). Everything gated by Swarm
 	// is inert when it is off.
@@ -289,13 +289,13 @@ type Config struct {
 	// final word — byte-identical to before this existed.
 	Quorum bool
 
-	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
+	// Panel is the set of models a run may route across, from CODEAF_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
 	// harness builds the same single adapter it always did and no routing code
 	// runs at all.
 	Panel router.Panel
 
-	// ProfileDir holds measured executor behaviour. Empty means ~/.aforge.
+	// ProfileDir holds measured executor behaviour. Empty means ~/.codeaf.
 	ProfileDir string
 
 	// Models is the model catalog every adapter built from this config consults
@@ -321,12 +321,12 @@ var ErrNoAPIKey = errors.New(APIKeyEnv + " (or OPENAI_API_KEY) is required")
 // settings file, the measured behaviour — somewhere else. It is what an
 // isolated run sets, and it is spelled here once so every reader of the profile
 // asks the same question.
-const ProfileDirEnv = "AFORGE_PROFILE_DIR"
+const ProfileDirEnv = "CODEAF_PROFILE_DIR"
 
 // ProfileDir is the profile this process reads and writes. Empty is the ordinary
 // answer and means the state root's own profile; the readers below take it as
 // such, so a caller never has to know what the default expands to.
-func ProfileDir() string { return os.Getenv(ProfileDirEnv) }
+func ProfileDir() string { return env.Get(ProfileDirEnv) }
 
 // Load resolves configuration from the environment, falling back to the
 // defaults above. Only the API key has no default; everything else runs
@@ -339,7 +339,7 @@ func Load() (Config, error) { return load(true) }
 // resolves it, and APIKey is simply empty until the person hands one over.
 //
 // AND FOR A PASS THAT WILL PROBABLY DO NOTHING, which is the second legitimate
-// caller and the one nobody expects: the standing tick (cmd/aforge's
+// caller and the one nobody expects: the standing tick (cmd/codeaf's
 // v3StandingTicker), run every five minutes by whichever of a window or the
 // operating system's timer gets there first. Most passes decline the lock or
 // find every item asleep, and a pass that will do nothing costs nothing and
@@ -359,12 +359,12 @@ func load(requireKey bool) (Config, error) {
 	// empty model_sources field does not add a launch-path read.
 	profileValues, _ := readProfileConfig(profileDir)
 	apiKey := apiKeyFrom(profileValues)
-	baseURL := firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL)
+	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
 	config := Config{
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
-		Model:             firstNonEmpty(os.Getenv(ModelEnv), DefaultModel),
-		PlanModel:         strings.TrimSpace(os.Getenv(PlanModelEnv)),
+		Model:             firstNonEmpty(env.Get(ModelEnv), DefaultModel),
+		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,
 		ExecReasoning:     DefaultExecReasoning,
@@ -445,17 +445,17 @@ func load(requireKey bool) (Config, error) {
 	if config.PlanConsentUSD, err = PlanConsentUSDAt(config.ProfileDir); err != nil {
 		return Config{}, err
 	}
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_REASONING")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_REASONING")); raw != "" {
 		effort, ok := provider.ParseEffort(raw)
 		if !ok {
-			return Config{}, fmt.Errorf("AFORGE_REASONING: unknown effort %q (off, low, medium, high)", raw)
+			return Config{}, fmt.Errorf("CODEAF_REASONING: unknown effort %q (off, low, medium, high)", raw)
 		}
 		config.Reasoning = effort
 	}
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_EXEC_REASONING")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_EXEC_REASONING")); raw != "" {
 		effort, ok := provider.ParseEffort(raw)
 		if !ok {
-			return Config{}, fmt.Errorf("AFORGE_EXEC_REASONING: unknown effort %q (off, low, medium, high)", raw)
+			return Config{}, fmt.Errorf("CODEAF_EXEC_REASONING: unknown effort %q (off, low, medium, high)", raw)
 		}
 		config.ExecReasoning = effort
 	}
@@ -463,11 +463,11 @@ func load(requireKey bool) (Config, error) {
 		name   string
 		target *int
 	}{
-		{"AFORGE_SPINE_SAMPLES", &config.SpineSamples},
-		{"AFORGE_MAX_DEPTH", &config.MaxDepth},
-		{"AFORGE_NODE_BUDGET", &config.NodeBudget},
+		{"CODEAF_SPINE_SAMPLES", &config.SpineSamples},
+		{"CODEAF_MAX_DEPTH", &config.MaxDepth},
+		{"CODEAF_NODE_BUDGET", &config.NodeBudget},
 	} {
-		raw := strings.TrimSpace(os.Getenv(knob.name))
+		raw := strings.TrimSpace(env.Value(knob.name))
 		if raw == "" {
 			continue
 		}
@@ -477,22 +477,22 @@ func load(requireKey bool) (Config, error) {
 		}
 		*knob.target = value
 	}
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_MECHANISM")); raw == "quorum" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_MECHANISM")); raw == "quorum" {
 		config.Quorum = true
 	}
 	// THE SENSE OF THIS SWITCH TURNED OVER. It was the arming switch for a wave
 	// that was off by default; now the wave is the default and this is the way
-	// out of it — `AFORGE_SWARM=0`. The reading is unchanged, because
+	// out of it — `CODEAF_SWARM=0`. The reading is unchanged, because
 	// [strconv.ParseBool] already answered both directions; what changed is
 	// which direction anybody has a reason to write.
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_SWARM")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_SWARM")); raw != "" {
 		swarm, err := strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("AFORGE_SWARM: want 0 or 1, got %q", raw)
+			return Config{}, fmt.Errorf("CODEAF_SWARM: want 0 or 1, got %q", raw)
 		}
 		config.Swarm = swarm
 	}
-	panel, err := router.LoadPanel(os.Getenv("AFORGE_MODELS"))
+	panel, err := router.LoadPanel(env.Get("CODEAF_MODELS"))
 	if err != nil {
 		return Config{}, err
 	}
@@ -591,7 +591,7 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 		}
 		return found
 	case "vision":
-		// The inspection proxy: aforge hands it a picture and reads back a
+		// The inspection proxy: codeaf hands it a picture and reads back a
 		// sentence about one, so image input ALONE is half the question. A
 		// drawing model that reads pictures and answers in pictures passes the
 		// input half and cannot answer "what is in this photo".
@@ -837,7 +837,7 @@ func (c Config) DocumentClient() (*provider.Client, error) {
 func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 	// THE THINKING LEVEL IS NOT PART OF A MODEL ID, and this is the one place
 	// that has to know it. `moonshotai/kimi-k3:low` is how a tier row, a
-	// --plan-model flag and AFORGE_PLAN_MODEL all say "that model, thinking a
+	// --plan-model flag and CODEAF_PLAN_MODEL all say "that model, thinking a
 	// little"; the level is applied per call by the role ladder
 	// (internal/session's roleRequest), and the slug that goes on the wire is
 	// the model alone. Sent whole it is a slug no provider publishes, which is

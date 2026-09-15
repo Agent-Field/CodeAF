@@ -50,7 +50,7 @@ gains `keep: {name, health}` — a *request* to promote. Two paths:
   failing service gets one attention line, not a respawn loop. Auto-
   restart is opt-in per service and capped (3 attempts, then it rests
   and says so).
-- **Headless**: `aforge services` lists; `aforge services stop <name>`
+- **Headless**: `codeaf services` lists; `codeaf services stop <name>`
   for scripts. The journal is the truth either way.
 
 ## What this is not

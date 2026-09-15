@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const (
@@ -36,8 +36,10 @@ const (
 	documentEngineFree     = "free"
 	documentEngineOCR      = "ocr"
 
-	documentCacheHashPrefix  = "<!-- aforge-source-sha256: "
-	documentCachePagesPrefix = "<!-- aforge-pages: "
+	documentCacheHashPrefix        = "<!-- codeaf-source-sha256: "
+	documentCachePagesPrefix       = "<!-- codeaf-pages: "
+	legacyDocumentCacheHashPrefix  = "<!-- aforge-source-sha256: " // legacy-name
+	legacyDocumentCachePagesPrefix = "<!-- aforge-pages: "         // legacy-name
 )
 
 var (
@@ -434,7 +436,11 @@ func readDocumentCache(path, sourceHash, pages string) (string, bool) {
 	}
 	wantHash := documentCacheHashPrefix + sourceHash + " -->"
 	wantPages := documentCachePagesPrefix + documentCachePages(pages) + " -->"
-	if strings.TrimSpace(lines[0]) != wantHash || strings.TrimSpace(lines[1]) != wantPages {
+	legacyHash := legacyDocumentCacheHashPrefix + sourceHash + " -->"
+	legacyPages := legacyDocumentCachePagesPrefix + documentCachePages(pages) + " -->"
+	current := strings.TrimSpace(lines[0]) == wantHash && strings.TrimSpace(lines[1]) == wantPages
+	former := strings.TrimSpace(lines[0]) == legacyHash && strings.TrimSpace(lines[1]) == legacyPages
+	if !current && !former {
 		return "", false
 	}
 	text := strings.TrimSpace(lines[3])

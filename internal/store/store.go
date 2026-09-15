@@ -1,4 +1,4 @@
-// Package store owns Aforge's durable, append-only task graph.
+// Package store owns codeaf's durable, append-only task graph.
 //
 // Events are the source of truth. Nodes and edges are queryable materialized
 // views updated in the same SQLite transaction as the event that changed them.
@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/cas"
+	"github.com/Agent-Field/codeaf/internal/cas"
 	_ "modernc.org/sqlite"
 )
 
@@ -46,7 +46,7 @@ const (
 	//
 	// It is deliberately not MaxDigestBytes. A job root's summary is not a
 	// digest of the deliverable, it IS the deliverable: it is what the thread
-	// announces, what `aforge do` prints, and what an export carries. Bounding
+	// announces, what `codeaf do` prints, and what an export carries. Bounding
 	// the record at the routing bound made a guillotine out of a budget — a
 	// 697-second PR review lost its approve/request-changes verdict mid-word at
 	// 4,096 bytes, in the store, before any surface could have shown it. So the
@@ -668,8 +668,8 @@ func probeOpen(path string) error {
 }
 
 // pathReason strips an operating-system error down to its reason alone.
-// [openFailure] has already named the path, and `could not open ~/.aforge/graph.db:
-// open /home/you/.aforge/graph.db: permission denied` says it twice.
+// [openFailure] has already named the path, and `could not open ~/.codeaf/graph.db:
+// open /home/you/.codeaf/graph.db: permission denied` says it twice.
 func pathReason(err error) error {
 	var failure *fs.PathError
 	if errors.As(err, &failure) && failure.Err != nil {
@@ -709,14 +709,14 @@ func Open(path string) (*Store, error) {
 	}
 
 	// SQLITE CREATES THE DATABASE FILE AND NEVER THE DIRECTORY HOLDING IT, and
-	// on a machine that has never run aforge there is no directory yet — so the
+	// on a machine that has never run codeaf there is no directory yet — so the
 	// very first launch found no brain, said so, and carried on without one for
 	// as long as the person owned that machine. Every caller opens a store
 	// through this one door, so the directory is made here rather than in the
-	// dozen places that name a path: `aforge`, `aforge run`, `doctor`, `recall`
+	// dozen places that name a path: `codeaf`, `codeaf run`, `doctor`, `recall`
 	// and the rest all had the same first run and would all have needed the
 	// same line. 0o700 is what the state root is made with everywhere else
-	// (cmd/aforge's v3Dir) — a person's conversations are their own.
+	// (cmd/codeaf's v3Dir) — a person's conversations are their own.
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
 		return nil, fmt.Errorf("could not open %s: %w", storePathForPerson(absolute), pathReason(err))
 	}
@@ -885,7 +885,7 @@ func (s *Store) ensureSpine() error {
 	if eventCount == 0 {
 		payload := spinePayload{
 			ID:    RootID,
-			Brief: "Permanent Aforge spine",
+			Brief: "Permanent codeaf spine",
 			Provenance: Provenance{
 				Origin: OriginSelf,
 				Intent: "permanent spine root",

@@ -120,7 +120,7 @@ func TestTheLogRotatesAtTheCapAndKeepsOnePredecessor(t *testing.T) {
 	}
 }
 
-// TestBodiesKeepHistoryPastTheOrdinaryCap is F24: AFORGE_CALL_LOG_BODIES=1
+// TestBodiesKeepHistoryPastTheOrdinaryCap is F24: CODEAF_CALL_LOG_BODIES=1
 // makes each record tens of kilobytes, and MaxBytes then turns over after
 // ~80 calls. A debug session that asked for the bodies must still have the
 // first call after that point, on the live file, not rotated away.

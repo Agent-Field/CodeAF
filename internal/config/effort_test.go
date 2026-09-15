@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
 // Missing settings use the provider default; explicit choices survive a write.
