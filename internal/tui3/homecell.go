@@ -57,7 +57,7 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at))...)
 	}
 	if at := homeDescCol(h.grid.cols); at != homeNoLine && at < len(columns) {
-		columns[at] = a.homeDescLines(widths[at], room, pal, homeDescTop(columns, a.home.previewAt()))
+		columns[at] = a.homeDescLines(widths[at], room, pal, columns[0])
 	}
 	rows := make([]placeRow, room)
 	for y := range rows {
@@ -66,8 +66,18 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 	return rows
 }
 
-// homeDescLines is the middle column: what the SELECTED ROW says about itself,
-// wrapped, and nothing at all where the row has nothing to say.
+// homeDescLines is the middle column: what the rows have to say about
+// themselves, each sentence standing ON THE LINE OF THE ROW IT BELONGS TO.
+//
+// TWO KINDS SHARE IT. A `needs you` question is drawn WHETHER OR NOT its row is
+// selected ([homeCell.alwaysSaid]) — the panel exists so a person reads what is
+// waiting on them at a glance. Every other row's sentence is drawn only while it
+// is the row under the cursor, because a gloss on forty rows at once is a wall.
+//
+// ALIGNMENT IS WHAT MAKES THE TWO LEGIBLE TOGETHER. Each note starts on its own
+// row's line, so which row a sentence is about is a fact about where it is
+// rather than something the reader works out, and a note runs down only as far
+// as the next note's row so two of them never overlap.
 //
 // IT IS BUILT AT PAINT TIME AND NOT AT BUILD TIME, which is the whole reason it
 // can follow the cursor: the grid's lines are settled when the room or the width
@@ -76,48 +86,83 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 // on when the frame was last rebuilt.
 //
 // IT FOLLOWS THE POINTER TOO, through the same [homeView.previewLine] the card
-// beside the search has always used — hovering a row reads that row here without
-// moving the cursor, and a pointer that leaves the column gives the description
-// back to the cursor's row.
+// beside the search has always used.
 //
 // NOTHING IN IT IS A STOP. The column holds no row a cursor may stand on, which
 // is what makes `→` step over it to the rail ([homeView.gridCrossTarget]) rather
 // than parking the cursor on a sentence about the row it just left.
-func (a *app) homeDescLines(width, room int, pal palette, top int) []homeCellLine {
-	line, ok := a.home.previewLine()
-	if !ok || line.cell == nil || room <= 0 {
+func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) []homeCellLine {
+	h := &a.home
+	if room <= 0 || width <= homeGridLead {
 		return nil
 	}
-	said := strings.TrimSpace(line.cell.sub)
-	// AND NOTHING AT ALL FOR A ROW THAT KEPT ITS SENTENCE. The column would be
-	// saying a second time what the row under the cursor is already saying, and
-	// the same words twice on one frame is the reader wondering which is which.
-	if said == "" || line.cell.keepsSub() {
+	room = min(room, len(field))
+	preview := h.previewAt()
+	type note struct {
+		y     int
+		words []string
+	}
+	var notes []note
+	for y := 0; y < room; y++ {
+		at := field[y].at
+		if at == homeNoLine || at < 0 || at >= len(h.lines) {
+			continue
+		}
+		line := h.lines[at]
+		if line.cell == nil {
+			continue
+		}
+		said := strings.TrimSpace(line.cell.sub)
+		selected := at == preview
+		if said == "" || (!line.cell.alwaysSaid() && !selected) {
+			continue
+		}
+		notes = append(notes, note{y: y, words: a.homeDescNote(line, at, said, width, selected, pal)})
+	}
+	if len(notes) == 0 {
 		return nil
 	}
-	// IT STARTS ON THE ROW IT IS ABOUT. A sentence at the top of a column while
-	// the row it describes is eight lines down is a sentence a person has to
-	// work out the owner of; on the row's own line the two read as one thing,
-	// which is what the second line under the row did for free.
-	out := make([]homeCellLine, 0, room)
-	for y := 0; y < top && y < room; y++ {
-		out = append(out, homeCellLine{at: homeNoLine, head: -1})
+	out := make([]homeCellLine, room)
+	for i := range out {
+		out[i] = homeCellLine{at: homeNoLine, head: -1}
 	}
-	// The lead is the rows' own, so the sentence starts in the column every
-	// title on the screen starts in.
-	for _, words := range wrap(said, max(1, width-homeGridLead)) {
-		if len(out) >= room {
-			break
+	for i, n := range notes {
+		// A NOTE RUNS DOWN ONLY AS FAR AS THE NEXT ONE'S ROW. The rest of a
+		// sentence that does not fit is dropped rather than drawn over somebody
+		// else's row: the column's whole promise is that a line belongs to the
+		// row beside it.
+		stop := room
+		if i+1 < len(notes) {
+			stop = notes[i+1].y
 		}
-		out = append(out, homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + pal.dim(words)})
+		for j, words := range n.words {
+			if n.y+j >= stop {
+				break
+			}
+			out[n.y+j] = homeCellLine{at: homeNoLine, head: -1, text: words}
+		}
 	}
-	// AND THE ANSWERS UNDER IT, on a line of their own — they were at the right
-	// of the row's second line, and that line is here now.
-	if answers := strings.TrimSpace(a.homeRowAnswers(line, a.home.cursor)); answers != "" && len(out) < room {
-		out = append(out, homeCellLine{at: homeNoLine, head: -1})
-		if len(out) < room {
-			out = append(out, homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + paintHint(answers, pal, pal.dim)})
-		}
+	return out
+}
+
+// homeDescNote is one row's note as the lines it takes.
+//
+// THE SELECTED ROW'S IS WRAPPED AND A PERMANENT ONE IS NOT. The row a person is
+// on is the one they are reading, and it gets the room; a `needs you` question
+// standing over other rows keeps the one line it had under its row, cut the way
+// the row cut it, with its key at the right where the row put it.
+func (a *app) homeDescNote(line homeLine, at int, said string, width int, selected bool, pal palette) []string {
+	room := max(1, width-homeGridLead)
+	answers := strings.TrimSpace(a.homeRowAnswers(line, at))
+	if !selected {
+		return []string{homeCellLeadBlank + switcherSides(room, said, answers, pal.dim, pal.muted)}
+	}
+	var out []string
+	for _, words := range wrap(said, room) {
+		out = append(out, homeCellLeadBlank+pal.dim(words))
+	}
+	if answers != "" {
+		out = append(out, "", homeCellLeadBlank+paintHint(answers, pal, pal.dim))
 	}
 	return out
 }
@@ -343,7 +388,7 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
 	// THE DESCRIPTION COLUMN HAS THIS LINE WHERE THERE IS ONE, so the row is one
 	// line and the panel above it is that much shorter ([homeDescCol]).
-	if cell.sub == "" || (homeDescOn(a.home.grid.cols) && !cell.keepsSub()) || (cell.grows && at != a.home.cursor) {
+	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.cursor) {
 		return rows
 	}
 	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
@@ -514,19 +559,4 @@ func homeCellWidth(title string, pad int, note, tag, right string) int {
 		n += 1 + ansi.StringWidth(tail)
 	}
 	return n
-}
-
-// homeDescTop is the body row the described line was drawn on, so the
-// description can start there. It is the FIELD's own column that is searched,
-// because that is the only one whose rows have descriptions.
-func homeDescTop(columns [][]homeCellLine, at int) int {
-	if at == homeNoLine || len(columns) == 0 {
-		return 0
-	}
-	for y, line := range columns[0] {
-		if line.at == at {
-			return y
-		}
-	}
-	return 0
 }

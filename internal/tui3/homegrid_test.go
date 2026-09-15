@@ -169,7 +169,7 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && strings.TrimSpace(l.cell.sub) != "" && !l.cell.keepsSub()
+		return l.cell != nil && strings.TrimSpace(l.cell.sub) != "" && !l.cell.alwaysSaid()
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
@@ -197,11 +197,12 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	}
 }
 
-// `needs you` KEEPS ITS QUESTION UNDER ITS ROW even where the description column
-// exists, and the column does not repeat it. Everywhere else the second line is
-// a gloss; here it is the row — a question you have to select to read is a
-// question you can miss (owner, 2026-09-15).
-func TestTheNeedsYouQuestionStaysUnderItsRowAndIsNotRepeatedInTheColumn(t *testing.T) {
+// `needs you` DRAWS ITS QUESTION IN THE DESCRIPTION COLUMN WHETHER OR NOT ITS
+// ROW IS SELECTED, on its own row's line, and once. Everywhere else the second
+// line is a gloss worth a column only for the row being read; here it is the row
+// — a question you have to select to read is a question you can miss (owner,
+// 2026-09-15).
+func TestTheNeedsYouQuestionIsAlwaysInTheColumnOnItsOwnRowsLine(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
 	a.width, a.height = 180, 45
@@ -211,17 +212,30 @@ func TestTheNeedsYouQuestionStaysUnderItsRowAndIsNotRepeatedInTheColumn(t *testi
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
-	if !line.cell.keepsSub() {
-		t.Fatalf("a needs you question does not keep its own line")
+	if !line.cell.alwaysSaid() {
+		t.Fatalf("a needs you question is not drawn whether or not its row is selected")
 	}
+	// IT IS IN THE COLUMN WHILE THE CURSOR IS SOMEWHERE ELSE ENTIRELY, which is
+	// the whole point: what is waiting on you is readable without walking onto
+	// it.
+	a.home.cursor = a.home.placesTop()
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRecent })
 	frame := homeText(a)
-	lines := strings.Split(frame, "\n")
-	title, _ := homeRowOf(frame, line.cell.title)
-	if title < 0 || title+1 >= len(lines) || !strings.Contains(lines[title+1], firstWordsOf(said)) {
-		t.Fatalf("the question is not on the line under its row:\n%s", frame)
+	row, at := homeRowOf(frame, firstWordsOf(said))
+	if row < 0 {
+		t.Fatalf("the question left the frame when the cursor moved off its row:\n%s", frame)
 	}
-	// AND ONCE ONLY. The column saying it a second time is the same words twice
-	// on one frame.
+	_, rail := homeRowOf(frame, "projects · ")
+	if at <= homeGridMargin || at >= rail {
+		t.Fatalf("the question is at cell %d, want the description column between %d and %d:\n%s", at, homeGridMargin, rail, frame)
+	}
+	// AND ON ITS OWN ROW'S LINE, so which row it belongs to is where it is.
+	title, _ := homeRowOf(frame, line.cell.title)
+	if title != row {
+		t.Fatalf("the question is on row %d and its row is on %d:\n%s", row, title, frame)
+	}
+	// AND ONCE ONLY. The same words twice on one frame is the reader wondering
+	// which is which.
 	if n := strings.Count(frame, firstWordsOf(said)); n != 1 {
 		t.Fatalf("the question is on the frame %d times, want once:\n%s", n, frame)
 	}

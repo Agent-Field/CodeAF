@@ -77,7 +77,16 @@ func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
 // not this window's own folder, where the tag would be the same word on every
 // row, and only when the folder has a name ([chatProjectTag]).
 func recentCell(row switcherRow, in *homeGridInput) *homeCell {
+	// THE LAST THING THIS PERSON SAID IN IT, under the cursor — which is the one
+	// fact that tells two conversations with similar names apart, and the same
+	// reading this window's own row has always drawn ([recentOwnCell]). It is
+	// empty until the journal's tail has come back ([app.askHomeLeftOff] asks for
+	// the row being read, off the draw), and a row with nothing to say draws
+	// nothing rather than a gap.
 	cell := &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row)}
+	if in.desc {
+		cell.grows, cell.sub = true, switcherFirstLine(in.last[row.session.Transcript].LastUser)
+	}
 	cell.hold = cell.right != row.age
 	if row.door && cell.right == homeHeldShort {
 		cell.door = takeoverHeldDoorWord

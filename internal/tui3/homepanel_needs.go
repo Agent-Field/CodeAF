@@ -140,18 +140,32 @@ func needsAsked(in *homeGridInput) []needsItem {
 			needsLandingsSpeakFor(row.session, needsCallTitlesOn(in, row.session.ID))) {
 			continue
 		}
-		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title, subRight: needsOpenWord}
+		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title}
 		homeLiveMargin(cell, row, sinceAt(row.at, in.now))
 		item := needsItem{asked: row.at}
 		switch row.kind {
 		case switcherConversation:
 			head, whole := needsSentence(row.session)
 			cell.sub = head
+			// A CONVERSATION ALWAYS HAS A DOOR: it is the conversation the
+			// question was asked in, and enter goes to it.
+			cell.subRight = needsOpenWord
 			if _, ok := answerable(row.session, in.now); ok && whole {
 				cell.answers = answersWord(row.session.Presence.Question)
 			}
 		case switcherStanding:
 			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
+			// AND A WATCH HAS ONE ONLY WHERE IT WAS ASKED FOR IN A CONVERSATION.
+			// An item made from home's own box keeps its exchange under the item's
+			// folder rather than as a session ([standing.Origin.Exchange]), and
+			// [app.homeItemEnter] opens a TRANSCRIPT — so it answers `made from
+			// home — no conversation to open`, and a row that drew `enter` beside
+			// that sentence was promising a key it had already decided against.
+			// It is the legend's law on the row itself ([drawKeysBand]): NAME
+			// ONLY KEYS THAT WORK.
+			if strings.TrimSpace(row.item.Item.Origin.Transcript) != "" {
+				cell.subRight = needsOpenWord
+			}
 		}
 		item.line = switcherRowLine(row, cell)
 		items = append(items, item)

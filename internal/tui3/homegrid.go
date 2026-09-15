@@ -321,6 +321,12 @@ type homeGridInput struct {
 	spend homeSpendReading
 	seen  time.Time
 	now   time.Time
+	// desc is that this frame HAS a description column ([homeDescOn]). A row
+	// whose sentence only exists to be drawn there does not carry one on a frame
+	// with nowhere to draw it — a sub reserves a line in its panel's height
+	// ([homeGridPanel.growsARow]), and paying that on a narrow terminal for a
+	// column that is not on the screen costs a row a person could have read.
+	desc bool
 }
 
 // gridInput gathers it. EVERY FIELD IS A CACHE HOME ALREADY HOLDS, and the one
@@ -332,7 +338,7 @@ func (h *homeView) gridInput() homeGridInput {
 	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read, h.ledger)
 	calls, older := needsFresh(needsCalls(world, h.world.Read), h.world.Read)
 	return homeGridInput{rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
-		world: world, items: h.items,
+		desc: homeDescOn(h.cols), world: world, items: h.items,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
 		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
 }
@@ -492,22 +498,22 @@ func (l homeLine) height() int {
 	return 1
 }
 
-// keepsSub reports a row that draws its own second line even where the
-// description column exists ([homeDescOn]).
+// alwaysSaid reports a row whose sentence the description column draws WHETHER
+// OR NOT the row is selected.
 //
-// `needs you` IS THE ONE EXCEPTION, and the owner made it one on 2026-09-15.
-// Everywhere else the second line is a gloss on the row — what a piece of work
-// is doing, the first sentence of a report — and a gloss is exactly what a
-// column about the selected row is for. On `needs you` the second line IS the
-// row: the question is the thing that stopped, and the panel's whole purpose is
-// that a person reads what is waiting on them WITHOUT having to walk the cursor
-// onto it. A question you must select to read is a question you can miss.
+// `needs you` IS THE ONE PANEL THAT GETS THIS, and the owner made it so on
+// 2026-09-15. Everywhere else the second line is a gloss on the row — what a
+// piece of work is doing, the first sentence of a report — and a gloss is worth
+// a column only for the row a person is actually on. On `needs you` the second
+// line IS the row: the question is the thing that stopped, and the panel's whole
+// purpose is that a person reads what is waiting on them WITHOUT walking the
+// cursor onto it. A question you must select to read is a question you can miss.
 //
 // It is the permanent one only. A `to check` landing in the same panel grows its
-// sentence under the cursor and has never been readable at a glance, so it moves
-// to the column like every other row's.
-func (c *homeCell) keepsSub() bool {
-	return c != nil && c.panel == panelNeeds && !c.grows
+// sentence under the cursor and has never been readable at a glance, so it is
+// drawn only while it is the selected row, like every other row's.
+func (c *homeCell) alwaysSaid() bool {
+	return c != nil && c.panel == panelNeeds && !c.grows && strings.TrimSpace(c.sub) != ""
 }
 
 // ── the layout ─────────────────────────────────────────────────────────────
@@ -576,7 +582,7 @@ func (p homeGridPanel) height() int {
 		// A ROW IS ONE LINE WHERE THE DESCRIPTION COLUMN HAS ITS SECOND, and the
 		// reservation below goes with it — unless it is a row that keeps its own
 		// ([homeCell.keepsSub]).
-		if p.desc && !line.cell.keepsSub() {
+		if p.desc {
 			n++
 			continue
 		}
@@ -1476,6 +1482,13 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 		case line.cell != nil && line.cell.bold:
 			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
 		}
+	}
+	// AND THE TAIL OF THE ROW BEING READ, for the description column. One peek
+	// per conversation a person actually stops on, cached for the life of the
+	// window like every other — a screen that read all forty journals to fill a
+	// column about one row would be paying for thirty-nine nobody looked at.
+	if line, ok := a.home.previewLine(); ok && line.kind == homeSession {
+		asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
 	}
 	return tea.Batch(asked...)
 }
