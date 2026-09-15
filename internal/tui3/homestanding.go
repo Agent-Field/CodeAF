@@ -754,12 +754,23 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 	// older agent-alone [Options.Resume], and a row that read only the second
 	// would refuse to open a conversation this window can plainly open
 	// (app.go's [app.canOpen]).
-	if !a.canOpen() || filepath.Clean(homeBucketOf(transcript)) != h.bucket {
-		// The same limit a conversation in another project meets, said in the
-		// same words and naming the same place to go (home.go's header).
-		h.say(homeElsewhereWord+" · "+standWhere(line), strings.TrimSpace(line.item.Workspace))
+	if !a.canOpen() {
+		// The same sentence a conversation row says when this window has no door
+		// to open one with ([app.homeOpenLine]).
+		h.say(resumeUnavailableWord, "")
 		return nil
 	}
+	// AND THE PROJECT THE CONVERSATION IS IN IS NOT A LIMIT. This used to refuse
+	// any origin outside the window's own bucket — `elsewhere · <path>` on the
+	// foot — on the reading that a conversation in another project is out of
+	// reach. That reading was repealed for conversations and the word itself
+	// says so ([homeElsewhereWord]: "IT NO LONGER MARKS A ROW THIS WINDOW CANNOT
+	// OPEN, because there is no such row: enter opens any project on this
+	// screen"), and a `where you were` row in another project has opened from
+	// here ever since. Only this path kept the old guard, so a watch asked for in
+	// one project answered nothing at all from a window standing in another —
+	// which is every window that did not happen to be launched inside that
+	// folder (owner, 2026-09-15).
 	if transcript == a.file {
 		a.closeHome()
 		return nil

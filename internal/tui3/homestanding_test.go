@@ -573,6 +573,43 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 	}
 }
 
+// A WATCH ASKED FOR IN ANOTHER PROJECT STILL OPENS FROM HERE. It used to refuse
+// any origin outside the window's own bucket — `elsewhere · <path>` on the foot
+// — which meant a watch answered nothing at all from every window not launched
+// inside the folder that made it. A `where you were` row in another project has
+// opened from here for as long as the grid has existed; this path was the last
+// one holding the repealed rule (owner, 2026-09-15).
+func TestAWatchAskedForInAnotherProjectStillOpensFromHere(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", now.Add(-time.Hour))
+	asked := lab.session("beta", "s2", "Standing Up the Watches", "/w/beta", now.Add(-2*time.Hour))
+
+	band := &standBand{}
+	watch := bandItem("watch", "tell me when CI goes red", "/w/beta", standing.WhenProbe, "when CI goes red")
+	watch.NeedsPerson = "may I re-run it?"
+	watch.LastChecked = now.Add(-time.Minute)
+	watch.Created = now.Add(-time.Hour)
+	watch.Origin = standing.Origin{SessionID: "s2", Transcript: asked}
+	band.items = []standing.Item{watch}
+
+	a := lab.app(mine)
+	a.workspace = "/w/alpha"
+	band.wire(a)
+	a.width, a.height = 180, 40
+	openHomeOn(a, mine)
+	homeText(a)
+
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeItem })
+	drive(t, a, key("enter"))
+	if a.at(pageHome) {
+		t.Fatalf("enter on a watch from another project stayed on home, saying %q", a.home.msg)
+	}
+	if a.file != asked {
+		t.Fatalf("enter opened %q, want the conversation that asked for it %q", a.file, asked)
+	}
+}
+
 // THE ◆ IS DERIVED AND NEVER ASSERTED: it means the thing went off after the
 // last time this person spoke in the conversation that asked for it, and an item
 // with no conversation to compare against does not wear it at all.
