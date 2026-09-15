@@ -177,7 +177,7 @@ jobs:
           set -euo pipefail
           # The known-red ledger only shrinks, so an empty ledger is a success
           # state and must not leave an empty -skip expression in the way.
-          skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"
+          skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt 2>/dev/null | paste -sd'|' -)"
           test_args=()
           [ -z "$skip" ] || test_args=(-skip "^(${skip})$")
           go test "${test_args[@]}" \

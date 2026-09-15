@@ -27,6 +27,7 @@ type installGitHub struct {
 	failAPI           bool
 	oldRepositoryOnly bool
 	legacyAssetOnly   bool
+	binary            []byte
 	mu                sync.Mutex
 	requests          []*http.Request
 }
@@ -106,6 +107,9 @@ func (github *installGitHub) writeJSON(w http.ResponseWriter, value any) {
 
 func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string) {
 	binary := fakeBinary(tag)
+	if len(github.binary) != 0 {
+		binary = github.binary
+	}
 	asset := platformAsset()
 	if github.legacyAssetOnly {
 		asset = legacyPlatformAsset()
@@ -205,7 +209,7 @@ func asExitError(err error, target **exec.ExitError) bool {
 func minimalPath(t *testing.T, withCurl bool) string {
 	t.Helper()
 	dir := t.TempDir()
-	commands := []string{"awk", "basename", "cat", "chmod", "cp", "dirname", "grep", "mkdir", "mktemp", "mv", "rm", "sed", "sha256sum", "shasum", "tr", "uname", "wget"}
+	commands := []string{"awk", "basename", "cat", "chmod", "cp", "dirname", "grep", "ln", "mkdir", "mktemp", "mv", "rm", "sed", "sha256sum", "shasum", "tr", "uname", "wget"}
 	if withCurl {
 		commands = append(commands, "curl")
 	}
@@ -279,6 +283,89 @@ func TestH10InstallerFallsBackToLegacyAssetName(t *testing.T) {
 	}
 }
 
+func TestPinnedFormerReleaseKeepsAssetAndChecksumInTheFormerRepository(t *testing.T) {
+	github := newInstallGitHub(t, "v0.2.0")
+	github.oldRepositoryOnly = true
+	github.legacyAssetOnly = true
+	run := runInstaller(t, github, []string{"--version", "v0.2.0"}, "CODEAF_NO_MODIFY_PATH=1")
+	if run.code != 0 {
+		t.Fatalf("pinned compatibility install exit %d:\n%s", run.code, run.output)
+	}
+	github.mu.Lock()
+	defer github.mu.Unlock()
+	var asset, checksum bool
+	for _, request := range github.requests {
+		asset = asset || strings.Contains(request.URL.Path, "/Agent-Field/aforge-v2/releases/download/v0.2.0/aforge-") // legacy-name
+		checksum = checksum || request.URL.Path == "/Agent-Field/aforge-v2/releases/download/v0.2.0/checksums.txt"     // legacy-name
+	}
+	if !asset || !checksum {
+		t.Fatalf("former repository asset=%v checksum=%v", asset, checksum)
+	}
+}
+
+func TestInstallerRunsAdoptionBeforeCreatingTheStateRoot(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	github.binary = adoptingFakeBinary("v1.2.3")
+	home := t.TempDir()
+	oldState := filepath.Join(home, ".aforge") // legacy-name
+	kept := filepath.Join(oldState, "v3", "projects", "p1", "note.txt")
+	if err := os.MkdirAll(filepath.Dir(kept), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kept, []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installDir := filepath.Join(home, ".codeaf", "bin")
+	run := runInstaller(t, github, nil, "HOME="+home, "CODEAF_INSTALL_DIR="+installDir, "CODEAF_NO_MODIFY_PATH=1")
+	if run.code != 0 {
+		t.Fatalf("adopting install exit %d:\n%s", run.code, run.output)
+	}
+	adopted := filepath.Join(home, ".codeaf", "v3", "projects", "p1", "note.txt")
+	if body, err := os.ReadFile(adopted); err != nil || string(body) != "kept" {
+		t.Fatalf("adopted state = %q, %v", body, err)
+	}
+	if info, err := os.Lstat(oldState); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("former state root is not a compatibility link: %v %v", info, err)
+	}
+	installed := filepath.Join(installDir, "codeaf")
+	command := exec.Command(installed, "doctor")
+	command.Env = []string{"HOME=" + home}
+	output, err := command.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), adopted) {
+		t.Fatalf("installed executable does not resolve adopted state: %v\n%s", err, output)
+	}
+}
+
+func TestCustomInstallOutsideTheStateRootDoesNotRunAdoption(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	github.binary = adoptingFakeBinary("v1.2.3")
+	home := t.TempDir()
+	oldState := filepath.Join(home, ".aforge") // legacy-name
+	if err := os.MkdirAll(oldState, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(home, "bin")
+	run := runInstaller(t, github, nil, "HOME="+home, "CODEAF_INSTALL_DIR="+outside, "CODEAF_NO_MODIFY_PATH=1")
+	if run.code != 0 {
+		t.Fatalf("custom install exit %d:\n%s", run.code, run.output)
+	}
+	if info, err := os.Lstat(oldState); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("custom install moved former state: %v %v", info, err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".codeaf")); !os.IsNotExist(err) {
+		t.Fatalf("custom install created the state root: %v", err)
+	}
+}
+
+func adoptingFakeBinary(tag string) []byte {
+	return []byte("#!/bin/sh\n" +
+		"if [ -z \"${CODEAF_HOME+x}\" ] && [ -z \"${AFORGE_HOME+x}\" ] && [ ! -e \"$HOME/.codeaf\" ] && [ -d \"$HOME/.aforge\" ] && [ ! -L \"$HOME/.aforge\" ]; then\n" + // legacy-name
+		"  mv \"$HOME/.aforge\" \"$HOME/.codeaf\" && ln -s .codeaf \"$HOME/.aforge\"\n" + // legacy-name
+		"fi\n" +
+		"if [ \"${1:-}\" = doctor ]; then printf '%s\\n' \"$HOME/.codeaf/v3/projects/p1/note.txt\"; exit 0; fi\n" +
+		"printf 'codeaf " + tag + " · fake\\n'\n")
+}
+
 // H10: PATH edits use the current installer marker and remain idempotent.
 func TestH10InstallerWritesTheCurrentPathMarker(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3")
@@ -293,6 +380,30 @@ func TestH10InstallerWritesTheCurrentPathMarker(t *testing.T) {
 	}
 	if strings.Count(string(body), "# codeaf installer") != 1 {
 		t.Fatalf("PATH marker = %q", body)
+	}
+}
+
+func TestInstallerReplacesTheFormerPathLineOnceAndStaysIdempotent(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	home := t.TempDir()
+	rc := filepath.Join(home, ".bashrc")
+	former := "export PATH=\"$HOME/.aforge/bin:$PATH\" # aforge installer\n" // legacy-name
+	if err := os.WriteFile(rc, []byte(former), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installDir := filepath.Join(home, ".codeaf", "bin")
+	for attempt := 0; attempt < 3; attempt++ {
+		run := runInstaller(t, github, nil, "HOME="+home, "CODEAF_INSTALL_DIR="+installDir)
+		if run.code != 0 {
+			t.Fatalf("attempt %d exit %d:\n%s", attempt+1, run.code, run.output)
+		}
+	}
+	body, err := os.ReadFile(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(body), "# codeaf installer") != 1 || strings.Contains(string(body), "aforge") { // legacy-name
+		t.Fatalf("PATH line was not repaired exactly once:\n%s", body)
 	}
 }
 

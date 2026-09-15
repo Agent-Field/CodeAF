@@ -9,6 +9,7 @@ VERSION="${VERSION:-}"
 VERBOSE="${VERBOSE:-0}"
 NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-${AFORGE_NO_MODIFY_PATH:-0}}" # legacy-name
 INSTALL_DIR="${CODEAF_INSTALL_DIR:-${AFORGE_INSTALL_DIR:-${HOME}/.codeaf/bin}}" # legacy-name
+STATE_ROOT="${CODEAF_HOME:-${AFORGE_HOME:-${HOME}/.codeaf}}" # legacy-name
 GITHUB_API="${CODEAF_GITHUB_API:-${AFORGE_GITHUB_API:-https://api.github.com}}" # legacy-name
 GITHUB_DOWNLOAD="${CODEAF_GITHUB_DOWNLOAD:-${AFORGE_GITHUB_DOWNLOAD:-https://github.com}}" # legacy-name
 # GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
@@ -151,7 +152,7 @@ release_api_get() {
     return 0
   fi
   if [[ "$HTTP_STATUS" == "404" && "$REPOSITORY" != "$LEGACY_REPOSITORY" ]]; then
-    # Remove after the renamed repository has carried releases for one release. # legacy-name
+    # Remove after the renamed repository has carried releases for one release.
     if http_get "$GITHUB_API/repos/$LEGACY_REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 1; then
       REPOSITORY="$LEGACY_REPOSITORY"
       return 0
@@ -240,25 +241,41 @@ fi
 ASSET="codeaf-${OS}-${ARCH}${extension}"
 
 download_asset() {
-  local name="$1"
-  local destination="$2"
-  http_get "$GITHUB_DOWNLOAD/$REPOSITORY/releases/download/$TAG/$name" "$destination" "application/octet-stream"
+	local repository="$1"
+	local name="$2"
+	local destination="$3"
+	http_get "$GITHUB_DOWNLOAD/$repository/releases/download/$TAG/$name" "$destination" "application/octet-stream"
+}
+
+download_release() {
+	local repository="$1"
+	ASSET="codeaf-${OS}-${ARCH}${extension}"
+	if ! download_asset "$repository" "$ASSET" "$TMP_ROOT/$ASSET"; then
+		LEGACY_ASSET="aforge-${OS}-${ARCH}${extension}" # Remove after releases with the former asset name age out. # legacy-name
+		if [[ "$HTTP_STATUS" != "404" ]] || ! download_asset "$repository" "$LEGACY_ASSET" "$TMP_ROOT/$LEGACY_ASSET"; then
+			return 1
+		fi
+		ASSET="$LEGACY_ASSET"
+	fi
+	download_asset "$repository" "checksums.txt" "$TMP_ROOT/checksums.txt"
 }
 
 if [[ -n "$DISPLAY_CHANNEL" ]]; then
-  printf 'codeaf: %s %s for %s/%s\n' "$DISPLAY_CHANNEL" "$TAG" "$OS" "$ARCH"
+	printf 'codeaf: %s %s for %s/%s\n' "$DISPLAY_CHANNEL" "$TAG" "$OS" "$ARCH"
 else
-  printf 'codeaf: %s for %s/%s\n' "$TAG" "$OS" "$ARCH"
+	printf 'codeaf: %s for %s/%s\n' "$TAG" "$OS" "$ARCH"
 fi
-if ! download_asset "$ASSET" "$TMP_ROOT/$ASSET"; then
-  LEGACY_ASSET="aforge-${OS}-${ARCH}${extension}" # Remove after releases with the former asset name age out. # legacy-name
-  if [[ "$HTTP_STATUS" != "404" ]] || ! download_asset "$LEGACY_ASSET" "$TMP_ROOT/$LEGACY_ASSET"; then
-    fail "could not download $ASSET; check the tag on the Releases page"
-  fi
-  ASSET="$LEGACY_ASSET"
-fi
-if ! download_asset "checksums.txt" "$TMP_ROOT/checksums.txt"; then
-  fail "could not download checksums.txt; check the tag on the Releases page"
+DOWNLOAD_REPOSITORY="$REPOSITORY"
+if ! download_release "$DOWNLOAD_REPOSITORY"; then
+	if [[ "$HTTP_STATUS" == "404" && "$DOWNLOAD_REPOSITORY" != "$LEGACY_REPOSITORY" ]]; then
+		# Remove after the renamed repository has carried releases for one release.
+		DOWNLOAD_REPOSITORY="$LEGACY_REPOSITORY"
+		if ! download_release "$DOWNLOAD_REPOSITORY"; then
+			fail "could not download codeaf-${OS}-${ARCH}${extension}; check the tag on the Releases page"
+		fi
+	else
+		fail "could not download codeaf-${OS}-${ARCH}${extension}; check the tag on the Releases page"
+	fi
 fi
 
 expected=$(awk -v name="$ASSET" '$2 == name || $2 == "*" name {print $1; exit}' "$TMP_ROOT/checksums.txt")
@@ -273,6 +290,22 @@ fi
 if [[ "$actual" != "$expected" ]]; then
   fail "the checksum for $ASSET did not match"
 fi
+
+# Running the verified binary before creating its destination gives boot
+# adoption its one chance to move an existing state root. A custom install
+# elsewhere must not mutate the login's state folders.
+RUN_BOOT_ADOPTION=0
+case "$INSTALL_DIR/" in
+  "$STATE_ROOT/"*)
+    RUN_BOOT_ADOPTION=1
+    chmod 0755 "$TMP_ROOT/$ASSET"
+    adoption_status=0
+    "$TMP_ROOT/$ASSET" version >/dev/null 2>&1 || adoption_status=$?
+    if [[ "$adoption_status" != "0" && "$VERBOSE" == "1" ]]; then
+      printf 'codeaf: pre-install adoption exited %s; continuing\n' "$adoption_status" >&2
+    fi
+    ;;
+esac
 
 mkdir -p "$INSTALL_DIR"
 INSTALL_TEMP="$INSTALL_DIR/.codeaf.tmp.$$"
@@ -292,8 +325,17 @@ path_has_dir() {
 append_path_line() {
   local file="$1"
   local line="$2"
+  local former_marker='# aforge installer' # legacy-name
   mkdir -p "$(dirname "$file")"
-  if [[ ! -f "$file" ]] || ! grep -F '# codeaf installer' "$file" >/dev/null 2>&1; then
+  if [[ -f "$file" ]] && { grep -F '# codeaf installer' "$file" >/dev/null 2>&1 || grep -F "$former_marker" "$file" >/dev/null 2>&1; }; then
+    local repaired="$file.codeaf-path.$$"
+    awk -v line="$line" -v current='# codeaf installer' -v former="$former_marker" '
+      index($0, current) || index($0, former) { if (!done) { print line; done=1 }; next }
+      { print }
+      END { if (!done) print line }
+    ' "$file" > "$repaired"
+    mv -f "$repaired" "$file"
+  else
     printf '%s\n' "$line" >> "$file"
   fi
 }
@@ -320,4 +362,8 @@ if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   fi
 fi
 
-"$INSTALL_DIR/codeaf${extension}" version
+if [[ "$RUN_BOOT_ADOPTION" == "1" ]]; then
+  "$INSTALL_DIR/codeaf${extension}" version
+else
+  CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/codeaf${extension}" version
+fi

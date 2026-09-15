@@ -86,7 +86,7 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 		}
 	}
 	for _, source := range []string{
-		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"`,
+		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt 2>/dev/null | paste -sd'|' -)"`,
 		`test_args=()`,
 		`go test "${test_args[@]}"`,
 	} {
