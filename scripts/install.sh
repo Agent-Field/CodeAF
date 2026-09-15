@@ -166,6 +166,19 @@ extract_tags() {
     sed -E 's/^"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)"$/\1/'
 }
 
+# Channel selection accepts exactly the grammar used by internal/update/version.go.
+tag_matches_channel() {
+  local channel="$1"
+  local tag="$2"
+  case "$channel" in
+    stable) [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ;;
+    rc) [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$ ]] ;;
+    dev) [[ "$tag" =~ ^dev-[0-9]{8}-[0-9a-f]{12}$ ]] ;;
+    staging) [[ "$tag" =~ ^staging-[0-9]{8}-[0-9a-f]{12}$ ]] ;;
+    *) return 1 ;;
+  esac
+}
+
 # GitHub's release-list order is not publish order, so the LAW carries each tag's own timestamp into channel selection.
 extract_dated_tags() {
   awk '
@@ -247,9 +260,7 @@ else
       TAG_STAMP=""
       # GitHub's list order is not publish order, so the LAW chooses a matching candidate by its own release timestamp.
       while IFS=' ' read -r stamp candidate; do
-        if [[ "$CHANNEL" == "rc" && "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]] ||
-          [[ "$CHANNEL" == "dev" && "$candidate" == dev-* ]] ||
-          [[ "$CHANNEL" == "staging" && "$candidate" == staging-* ]]; then
+        if tag_matches_channel "$CHANNEL" "$candidate"; then
           if [[ -z "$TAG" || "$stamp" > "$TAG_STAMP" ]]; then
             TAG="$candidate"
             TAG_STAMP="$stamp"
@@ -267,13 +278,17 @@ if [[ -z "${TAG:-}" ]]; then
   api_problem
 fi
 
-if [[ "$TAG" =~ ^dev-[0-9]{8}-[0-9a-f]{12}$ ]]; then
+if [[ -z "$VERSION" ]] && ! tag_matches_channel "$CHANNEL" "$TAG"; then
+  fail "no $CHANNEL build has been published yet"
+fi
+
+if tag_matches_channel "dev" "$TAG"; then
   DISPLAY_CHANNEL="dev"
-elif [[ "$TAG" =~ ^staging-[0-9]{8}-[0-9a-f]{12}$ ]]; then
+elif tag_matches_channel "staging" "$TAG"; then
   DISPLAY_CHANNEL="staging"
-elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]]; then
+elif tag_matches_channel "rc" "$TAG"; then
   DISPLAY_CHANNEL="rc"
-elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+elif tag_matches_channel "stable" "$TAG"; then
   DISPLAY_CHANNEL="stable"
 else
   DISPLAY_CHANNEL=""
