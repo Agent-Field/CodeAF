@@ -111,6 +111,8 @@ own plan, its own checks and the models that suit it. It takes typed input and
 returns typed output, so it delivers what it promised or is marked incomplete.
 A run is a task like any other, on `home`, with a room and a stop.
 
+<img src="assets/readme/subharness.webp" alt="Work that comes round again goes to a specialist: from home, review PR #412 routes to the pr-af subharness; each subharness takes typed input, runs its own plan and checks, and returns typed output or says incomplete, and the result comes back to home as a task" width="100%">
+
 - **Coming soon, native:** [PR-AF](https://github.com/Agent-Field/pr-af), the #1
   open-source code reviewer on Martian Code-Review-Bench.
 - **In the benchmark below:** `[SUBHARNESS]`, the developer subharness, against
