@@ -304,5 +304,4 @@ what it says into an issue.
 - [Guide](docs/GUIDE.md): every flag, key, slash command and exit code.
 - [docs/](docs/README.md): architecture, headless, remote, limits.
 
-Built by the team behind [AgentField](https://github.com/Agent-Field/agentfield),
-the open-source AI backend, and Covalent.
+Built by [AgentField](https://github.com/Agent-Field/agentfield) team.
