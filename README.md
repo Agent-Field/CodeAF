@@ -56,14 +56,13 @@ want to watch.
    per-client backoff numbers, and make the tests pass
 ```
 
-The task exists when you press enter. It works on its own branch, and the
-conversation is yours again. Describe the work without `/task` and CodeAF
-proposes one on a card when the job is bigger than a few edits, and waits for
-your yes.
+The task exists when you press enter. It works in its own copy, on its own
+branch, and the conversation is yours again. Say it in plain words instead and
+CodeAF offers the task on a card, or starts it and tells you in one line.
 
-When it lands, `home` says so under `to check`, with the diff, the test run and
-the cost. `a` accepts and merges, `l` sends it back with a note, `n` drops it.
-Nothing merges without you.
+Work that passes its check lands on your branch by itself, never on `main`,
+`dev` or a release branch. Work nothing could check waits on `home` under
+`to check`: `1` accept, `2` not right.
 
 <!-- TODO(G1): recording. A brief becomes a task, home shows it running, it
      lands, `a` accepts it. 160x45, about 20s, scripted with vhs. -->
@@ -90,8 +89,8 @@ line out, one line back. What makes that possible:
 
 - **The factory does the middle.** It sizes the work, splits it when one
   worker is not enough, runs the parts where they cannot collide, tests what
-  came back, and merges what passed. You see one thing per task: land it, or
-  send it back.
+  came back, and merges what passed. What nothing could check waits for your
+  call.
 - **It asks only when it must.** A question a person has to answer waits under
   `needs you` on `home`. Everything else it decides, records the decision, and
   carries on.
@@ -170,19 +169,13 @@ work on it.
 
 <img src="assets/readme/screens/home.jpg" alt="The control room for your factory: home in two columns, needs you, to check and where you were on the left, running, since you left and spend on the right" width="100%">
 
-Every project on the machine is on it, not only the folder you started in. A
-digit answers a question from the row it is asked on. `enter` on a landed task
-opens it with its diff, its test run and its cost; `a` accepts.
+Every project on the machine is here, not only this folder. A digit answers a
+question from its row. `enter` opens a landed task with its diff, test run and
+cost.
 
-<img src="assets/readme/screens/review.png" alt="a task page: finished, but nobody has checked it. your call." width="100%">
-
-Six more places sit behind it, one key each: `tasks` (every task on the
-machine, with state and cost), `spend` (by day, model and task), `settings`,
-`standing`, `memory` (what CodeAF remembers about you and your projects, line
-by line, editable) and `search` (every past conversation). Conversations,
-tasks and spend are written to disk as they happen, so a crash or a closed
-laptop loses nothing, and `esc esc` rewinds a conversation to any earlier
-message.
+Six more places, one key each: `tasks`, `spend`, `settings`, `standing`,
+`memory` and `search`. Everything is written to disk as it happens, so a crash
+loses nothing, and `/rewind` takes a conversation back to any earlier message.
 
 <img src="assets/readme/screens/tasks-tree.jpg" alt="Every task is a tree you can open: the tasks page with a task family unfolded, subtasks marked done, your call and incomplete" width="100%">
 
@@ -215,30 +208,38 @@ says what. [The contract](docs/HEADLESS.md).
 
 <!-- TODO: confirm "no title, no memory reflex" against the code. -->
 
-## From your terminal, your servers, or your phone
+## Run it on your dev box, drive it from anywhere
 
-The conversation lives on the machine that owns the work. Your screen attaches
-to it.
+Most agents on a remote box mean ssh, tmux, and a terminal that lags on every
+key. CodeAF splits in two instead. The screen runs on the machine in front of
+you. The conversation runs on the machine that owns the work.
 
 <img src="assets/readme/anywhere.png" alt="one conversation on devbox; your terminal on the same machine, your laptop over ssh, and your phone from a mobile terminal over ssh all attach to it" width="100%">
 
 ```bash
-codeaf chat --host devbox     # the work runs on devbox, over ssh; codeaf on its PATH is all it needs
-codeaf serve                  # no ssh in? hold a connection open through a relay
-codeaf chat --at otter-lamp   # attach to a served machine by name, from any paired device
+codeaf chat --host devbox    # your own ssh: config, keys, jump hosts. nothing to install there but codeaf
 ```
 
-The relay puts two connections next to each other and nothing more. It sees a
-machine name and byte counts; the conversation is encrypted end to end, and
-pairing uses a password-authenticated key exchange, so the relay cannot read it
-or sit in the middle. [Details](docs/REMOTE.md).
+- **Typing never waits on the network.** Drawing the screen makes no round
+  trip. Pressing enter makes one.
+- **Close the lid, the work keeps going.** The conversation lives on devbox. A
+  dropped link redials for five minutes, and a question asked while you were
+  away is still waiting when you come back.
+- **Files cross both ways.** Paste a screenshot or drop a file and it lands on
+  devbox. Click a path in a reply and it opens here, in your own editor.
+- **Two screens, one conversation.** Desk and laptop watch the same turn. The
+  newest window types; `enter` takes the keyboard back.
+- **Home shows that machine.** Its projects, tasks and standing orders.
 
-Close the laptop and the tasks keep running. There is no app to install: ssh
-into the machine from any terminal on your phone, and CodeAF lays itself out
-for the narrow screen. `home` becomes an inbox you can thumb through, and a
-question becomes a sheet of answers.
+On your phone there is no app to install. ssh in from any mobile terminal, run
+`codeaf` in the project, and it joins the same live conversation, folded to fit
+the screen.
 
 <img src="assets/readme/screens/phone.jpg" alt="Native in the terminal on your phone: CodeAF home at phone width inside a mobile terminal over ssh, beside the same home on a wide screen" width="100%">
+
+Still local over a connection: spend, search and memory. Reaching a machine
+with no ssh at all, through a relay and a pairing code, is built and waits on a
+hosted relay. [How it works](docs/REMOTE.md).
 
 ## What it is allowed to touch
 
@@ -280,9 +281,9 @@ v0.1.0 shipped on 2026-08-17. `[N]` changes since, each written up in
 | shipped | launch, `[DATE]` | next |
 | --- | --- | --- |
 | conversation, tasks, review | binaries and installer for every platform | team server: one machine, every engineer's factory |
-| home, standing orders, memory | benchmark results and chart | web view |
-| six-seat crew, spend limits | `[..]` | identity and a signed record per task, through the AgentField control plane, Apache 2.0 like the rest |
-| ssh, relay, phone, headless | | |
+| home, standing orders, memory | benchmark results and chart | no-ssh access through a hosted relay (`--at`) |
+| six-seat crew, spend limits | `[..]` | web view |
+| remote over ssh, phone-width terminal, headless | | identity and a signed record per task, through the AgentField control plane, Apache 2.0 like the rest |
 
 Vote in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
 Three things help most: run the benchmark on your own repository and send the
