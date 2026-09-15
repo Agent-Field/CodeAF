@@ -9,7 +9,7 @@ to send one the other way.
 Everything except that one drag only **reads**. Nothing here edits a file over there, and
 the copy that lands on this machine is a copy.
 
-## Click a path over --host to open a file on the other machine
+## Download a file from my dev box — click a path over --host to open a file on the other machine
 
 **A path in a reply is a real link again over a connection.** cmd+click it on a Mac,
 ctrl+click on Linux — the same gesture that opens a path in a local conversation. codeaf

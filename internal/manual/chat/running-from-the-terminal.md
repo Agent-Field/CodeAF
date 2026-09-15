@@ -1,6 +1,31 @@
 # Commands you type in a terminal
 
-## How do I install or update codeaf to the latest version — the curl line, dev, staging, rc and stable
+## Is there a newer version — how do I update codeaf — /update — codeaf update — why does it say this every time I start
+
+At launch, a stable release that is behind the newest stable release gets one dim
+line naming both versions. The line offers `/update`, which downloads the release,
+checks its sha256, replaces this executable and restarts the same conversation. Its
+alias is `/upgrade`. Finish a running turn or task first. A matching release says
+`you are on the newest codeaf, <tag>` and does not restart.
+
+Release candidates get the launch line once their stable line is published. A
+stable build already newest or ahead gets nothing. Dev and staging channel builds,
+source builds and unstamped builds make no launch request and draw nothing. Set
+`CODEAF_NO_UPDATE_CHECK=1` to skip this launch check only; `/update` and `codeaf
+update` still work. The answer is cached in `update-check.json` beside the profile's
+`config.json` for 24 hours for the same running build. A cached newer release is
+still shown at every launch, because the reminder is the useful part.
+
+From a shell, `codeaf update --check` checks without installing; it exits 3 when a
+newer stable exists, 0 when this release is newest, and 1 when it could not check.
+`codeaf update` installs stable by default. `--rc`, `--dev`, `--staging`, or
+`--version <tag>` selects another release. A binary built from source refuses an
+in-place install and names its path: rebuild it with `make build`, or install a
+release with the curl line below. An unwritable executable is also left untouched
+and offered that line; codeaf never tries sudo. A failed download or checksum leaves
+the original executable in place.
+
+## The curl installer — dev, staging, rc and stable channels
 
 Build from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout. While the repository is private, both the
@@ -32,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/ins
 `https://agentfield.ai/get/codeaf` is not serving yet. Once it serves, it is the
 supported proxy for the same script, with `/dev`, `/staging`, or `/rc` selecting
 another channel. The installer writes `~/.codeaf/bin/codeaf`; its last line is
-`codeaf version`. Nothing self-updates: run it again when you want a newer build.
+`codeaf version`.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 
