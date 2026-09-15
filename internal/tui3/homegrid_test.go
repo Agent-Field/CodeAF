@@ -166,12 +166,10 @@ func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 // line — and the row is one line, because the line it used to grow is over there
 // now.
 func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
-	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
-	a := lab.a
-	a.width, a.height = 180, 45
+	a := newSwitchLab(t).open(180, 45)
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && l.cell.panel == panelNeeds && strings.TrimSpace(l.cell.sub) != ""
+		return l.cell != nil && strings.TrimSpace(l.cell.sub) != "" && !l.cell.keepsSub()
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
@@ -182,10 +180,9 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	if row < 0 {
 		t.Fatalf("the selected row's sentence %q is nowhere on the frame:\n%s", said, frame)
 	}
-	_, field := homeRowOf(frame, "needs you")
-	_, rail := homeRowOf(frame, "projects")
-	if at <= field || at >= rail {
-		t.Fatalf("the sentence is at cell %d, want it between the field at %d and the rail at %d:\n%s", at, field, rail, frame)
+	_, rail := homeRowOf(frame, "projects · ")
+	if at <= homeGridMargin || at >= rail {
+		t.Fatalf("the sentence is at cell %d, want it between the field at %d and the rail at %d:\n%s", at, homeGridMargin, rail, frame)
 	}
 	// AND IT STARTS ON THE ROW IT IS ABOUT, so the two read as one thing.
 	title, _ := homeRowOf(frame, line.cell.title)
@@ -197,6 +194,36 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	lines := strings.Split(frame, "\n")
 	if title+1 < len(lines) && strings.Contains(lines[title+1], firstWordsOf(said)) {
 		t.Fatalf("the row still draws its own second line:\n%s", frame)
+	}
+}
+
+// `needs you` KEEPS ITS QUESTION UNDER ITS ROW even where the description column
+// exists, and the column does not repeat it. Everywhere else the second line is
+// a gloss; here it is the row — a question you have to select to read is a
+// question you can miss (owner, 2026-09-15).
+func TestTheNeedsYouQuestionStaysUnderItsRowAndIsNotRepeatedInTheColumn(t *testing.T) {
+	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+	a := lab.a
+	a.width, a.height = 180, 45
+	homeText(a)
+	homeLineOf(t, a, func(l homeLine) bool {
+		return l.cell != nil && l.cell.panel == panelNeeds && strings.TrimSpace(l.cell.sub) != ""
+	})
+	line, _ := a.home.focusedLine()
+	said := strings.TrimSpace(line.cell.sub)
+	if !line.cell.keepsSub() {
+		t.Fatalf("a needs you question does not keep its own line")
+	}
+	frame := homeText(a)
+	lines := strings.Split(frame, "\n")
+	title, _ := homeRowOf(frame, line.cell.title)
+	if title < 0 || title+1 >= len(lines) || !strings.Contains(lines[title+1], firstWordsOf(said)) {
+		t.Fatalf("the question is not on the line under its row:\n%s", frame)
+	}
+	// AND ONCE ONLY. The column saying it a second time is the same words twice
+	// on one frame.
+	if n := strings.Count(frame, firstWordsOf(said)); n != 1 {
+		t.Fatalf("the question is on the frame %d times, want once:\n%s", n, frame)
 	}
 }
 

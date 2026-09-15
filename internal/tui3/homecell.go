@@ -89,7 +89,10 @@ func (a *app) homeDescLines(width, room int, pal palette, top int) []homeCellLin
 		return nil
 	}
 	said := strings.TrimSpace(line.cell.sub)
-	if said == "" {
+	// AND NOTHING AT ALL FOR A ROW THAT KEPT ITS SENTENCE. The column would be
+	// saying a second time what the row under the cursor is already saying, and
+	// the same words twice on one frame is the reader wondering which is which.
+	if said == "" || line.cell.keepsSub() {
 		return nil
 	}
 	// IT STARTS ON THE ROW IT IS ABOUT. A sentence at the top of a column while
@@ -340,7 +343,7 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
 	// THE DESCRIPTION COLUMN HAS THIS LINE WHERE THERE IS ONE, so the row is one
 	// line and the panel above it is that much shorter ([homeDescCol]).
-	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.cursor) {
+	if cell.sub == "" || (homeDescOn(a.home.grid.cols) && !cell.keepsSub()) || (cell.grows && at != a.home.cursor) {
 		return rows
 	}
 	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
