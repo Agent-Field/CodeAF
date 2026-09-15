@@ -668,9 +668,10 @@ placeholder.
 
 **Two of those are doors.** Press the model's name and the model picker opens, exactly as
 typing `/model` does. Press the thinking rung and it walks one step up the ladder —
-low → medium → high → xhigh → max, and round again — which is the same thing `ctrl+v`
-does and the same thing pressing a task's thinking row does inside a task. From `auto` the
-first press lands on `low`; the way back to `auto` is `/effort auto`, never the wheel. Each brightens
+auto → low → medium → high → xhigh → max, and back to auto — which is the same thing
+`ctrl+v` does and the same thing pressing a task's thinking row does inside a task. From
+`auto` the first press lands on `low`, and one press past `max` hands the conversation
+back to `auto` again; `/effort auto` gets there in one move. Each brightens
 under the pointer over exactly its own cells, so you can see which of the two you are
 about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `ctrl+v`
 do all three jobs. See "The thinking chip above the message box" on the keys page.

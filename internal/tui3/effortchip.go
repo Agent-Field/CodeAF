@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE THINKING CHIP — how hard this conversation thinks, said beside the model
@@ -110,10 +111,11 @@ import (
 // keeping: the words with what each one buys is how a person decides between
 // them, and the wheel alone can only be walked blind.
 //
-// AND THE WAY BACK TO auto IS BY NAME, NEVER BY THE WHEEL. The wheel has five
-// stops and wraps off the top ([app.cycleEffort] states why absence is not a
-// sixth), so `/effort auto` — and the ladder's own top row — is what hands the
-// scope back to whatever stands above it.
+// AND auto IS THE WHEEL'S LAST STOP AS WELL AS A NAME. The wheel has six stops
+// and comes back to absence off the top ([app.cycleEffort] states why), so one
+// more press on `max` hands the scope back to whatever stands above it. `/effort
+// auto` and the ladder's own top row still do it in one move, which is what a
+// person who is five rungs away from it wants.
 
 // effortKey is the chord that walks the ladder, written down once: the router
 // binds it, the manual prints it and the menu's foot names it, and a surface
@@ -305,7 +307,7 @@ func (a *app) effortFlashing() bool {
 // ── the chord ───────────────────────────────────────────────────────────────
 
 // cycleEffort is [effortKey]: the conversation walks one rung up the ladder and
-// wraps off the top back onto the cheapest.
+// comes back to `auto` off the top.
 //
 // IT STARTS FROM WHAT THE CHIP SAYS. The word on screen is the RESOLVED rung, so
 // a cycle that stepped from the stored one would move the chip from a word
@@ -314,27 +316,31 @@ func (a *app) effortFlashing() bool {
 // before every rung. Stepping from what is drawn is the only reading under which
 // one press means one step.
 //
-// AND FROM `auto` THE FIRST PRESS LANDS ON `low`, which is [effortNext]'s own
-// law: absence is where the wheel starts and never a stop on it (effortscope.go
-// states it in full). So the cell a fresh conversation draws is the beginning of
-// the walk and not a rung in the middle of one.
+// AND FROM `auto` THE FIRST PRESS LANDS ON `low`, which is the wheel's own law:
+// absence is where it starts (effortscope.go states it in full). So the cell a
+// fresh conversation draws is the beginning of the walk and not a rung in the
+// middle of one.
 //
-// THE CYCLE HAS FIVE STOPS AND absence IS NOT ONE OF THEM. A five-key walk with
-// a sixth state hidden in it is a walk people lose their place in, and clearing
-// a rung somebody paid for by pressing a key once too often is a move no wheel
-// should be able to make. The way back to auto is by NAME — `/effort auto` and
-// the ladder's own top row ([app.runEffort]) — which is a deliberate act, as
-// handing the scope back to whatever stands above it ought to be.
+// THE CYCLE HAS SIX STOPS AND absence IS THE LAST OF THEM. It had five until
+// 2026-09-15, on the reading that clearing a rung somebody paid for should not
+// be one press too many — but the state left out of the wheel was the one the
+// install SHIPS at, so a conversation dialled up once could only be put back by
+// name, through a door nobody standing at the chip was already in. A walk that
+// cannot reach where it started is the worse trade. So `max` steps to `auto`,
+// the way the model picker's ctrl+t and a task's own rung have always walked
+// ([effortNextClearing]), and the step that clears says what decides now rather
+// than leaving a word that reads like the dial went away ([app.setEffortRung]).
 func (a *app) cycleEffort() tea.Cmd {
 	dial, ok := a.effortDial()
 	if !ok {
 		return nil
 	}
-	// THE WHEEL IS ONE FUNCTION FOR ALL FOUR SURFACES ([effortNext] in
+	// THE WHEEL IS ONE FUNCTION AND NEVER A COPY OF ONE ([effortNextClearing] in
 	// effortscope.go). A second copy here would be a second place for "and it
-	// wraps" to stop being true, and a person who learns the walk on the chip
-	// knows it on a task for exactly as long as the two agree.
-	return a.setEffortRung(dial, effortNext(effort.Rung(dial.ResolvedEffort())))
+	// comes back to auto" to stop being true, and a person who learns the walk on
+	// the chip knows it on a task and in the model picker for exactly as long as
+	// the three agree.
+	return a.setEffortRung(dial, effortNextClearing(effort.Rung(dial.ResolvedEffort())))
 }
 
 // setEffortRung is the ONE path from the chord and from the menu to the session,
@@ -353,7 +359,30 @@ func (a *app) setEffortRung(dial effortDialer, rung effort.Rung) tea.Cmd {
 	}
 	a.effortLit = effortMoved{where: effortScopeConversation, at: a.now()}
 	a.touch()
-	if got := dial.ResolvedEffort(); got != rung.String() {
+	switch got := dial.ResolvedEffort(); {
+	case got == rung.String():
+		if rung == effort.None {
+			// CLEARING THE DIAL IS THE ONE MOVE WHOSE RESULT IS NOT A RUNG, so it is
+			// the one move that says something. The five leave a word on the seam that
+			// answers "what did that do" by itself; `auto` leaves a word that reads
+			// like the dial went away, and a person who has just handed the scope back
+			// deserves to be told what now decides. It is said in the flat dotted
+			// grammar the other notes on this surface are written in.
+			a.noteFacts("thinking · "+effortAutoWord+" · the model decides", effortAutoWord)
+		}
+	case rung == effort.None && a.modelOwnLevel() == "":
+		// THE MACHINE'S OWN ROW IS WHAT CAUGHT IT, AND IT IS NOT A KNOB THAT FAILED.
+		// A conversation handed back on an install whose `thinking` row is set lands
+		// on that row rather than on `auto`, which is the ladder working exactly as
+		// internal/effort's [Resolve] describes — so the note states the scope that
+		// now decides and names its door, instead of the sentence below, which
+		// blames a level on the model and points at a chord that would not move
+		// this. The wheel reaches `auto` now (effortscope.go), so this is an
+		// ordinary press and not the rare one it was while `/effort auto` was the
+		// only way here.
+		a.noteFacts("thinking · "+effortAutoWord+" for this chat · "+got+
+			" · "+effortInstallDecides, effortAutoWord, got)
+	default:
 		// The note names the model whose own level is winning and the door that
 		// moves it, because "this did not take" without either is a message that
 		// leaves a person pressing the key harder. THE PAYLOAD RULE lifts the id
@@ -371,16 +400,28 @@ func (a *app) setEffortRung(dial effortDialer, rung effort.Rung) tea.Cmd {
 		}
 		a.noteFacts("thinking stays "+got+" · "+on+
 			" decides this conversation — ctrl+t in /model changes it", facts...)
-	} else if rung == effort.None {
-		// CLEARING THE DIAL IS THE ONE MOVE WHOSE RESULT IS NOT A RUNG, so it is
-		// the one move that says something. The five leave a word on the seam that
-		// answers "what did that do" by itself; `auto` leaves a word that reads
-		// like the dial went away, and a person who has just handed the scope back
-		// deserves to be told what now decides. It is said in the flat dotted
-		// grammar the other notes on this surface are written in.
-		a.noteFacts("thinking · "+effortAutoWord+" · the model decides", effortAutoWord)
 	}
 	return surfaceTick(effortFlashFor, func(time.Time) tea.Msg { return effortFlashMsg{} })
+}
+
+// modelOwnLevel is the level dialled onto the model in use — the picker's ctrl+t
+// or `--reasoning` at launch — and "" where nobody has dialled one.
+//
+// IT IS ASKED AND NOT GUESSED, because the answer decides which door a note
+// points at and a table that has not been told yet answers "" for a model that
+// does have a level ([app.reasoningFor] states why absence is its answer for the
+// unknown). So this seeds the way a keystroke is allowed to
+// ([app.cycleReasoning] is the other one): it is a press, a person is waiting
+// for the note it writes, and over a connection one round trip is what that
+// note costs.
+func (a *app) modelOwnLevel() string {
+	if a.agent == nil || a.model == "" {
+		return ""
+	}
+	if _, known := a.levels[session.ReasoningKey(a.model)]; !known {
+		a.learnLevel(a.model)
+	}
+	return a.reasoningFor(a.model)
 }
 
 // ── the menu ────────────────────────────────────────────────────────────────
@@ -437,6 +478,13 @@ const (
 	// effortDefaultLine is the closing note: where the answer for every other
 	// conversation is set, which this chooser deliberately does not touch.
 	effortDefaultLine = "other conversations follow the thinking row in /settings"
+	// effortInstallDecides is what a conversation handed back to `auto` on a
+	// machine whose own row is set says about what caught it. It names the same
+	// door as the line above and says a different thing with it — that row is now
+	// deciding THIS chat too — because a person who has just cleared a rung and
+	// watched the seam stay at a word needs the scope, not the reassurance that
+	// other conversations are unaffected ([app.setEffortRung]).
+	effortInstallDecides = "the thinking row in /settings decides now"
 	// effortFrameRows is how many of the chooser's rows are not rung rows: the
 	// scope line and the closing note.
 	effortFrameRows = 2

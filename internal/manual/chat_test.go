@@ -2006,11 +2006,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the word the cell says before anybody has dialled anything, which
 		// is what a shipped install draws — asked first by somebody reading it
 		// off the screen for the first time, and then by somebody who dialled a
-		// rung and wants the shipped state back. The wheel cannot get there, so
-		// the second one is a question the manual has to answer or the person is
-		// stuck pressing a key.
+		// rung and wants the shipped state back. The wheel reaches `auto` since
+		// 2026-09-15, and the last two are the questions somebody asks while
+		// walking it: whether pressing on past `max` is the way back, and what
+		// the word means when the cell keeps a rung after it is cleared.
 		{"what does auto mean next to the model", "keys"},
 		{"how do I put thinking back to auto", "keys"},
+		{"does the thinking cycle go back to auto", "keys"},
+		{"I cleared the thinking rung and it still says high", "keys"},
 
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of

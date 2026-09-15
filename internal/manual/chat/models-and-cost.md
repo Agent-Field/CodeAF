@@ -992,21 +992,23 @@ Several things can name a rung, and the most specific one wins:
 **this conversation's** rung, which is named on the line above the box, beside the model:
 `glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
 inside — it moves that task's rung. On a standing item's card it moves that item's. A
-conversation's rung and an item's rung climb one step each press and wrap from `max` back
-to `low`; they never go back to "nobody said". For this conversation, `/effort auto` and
-the top row of `/effort` clear it instead. A task's rung, and the level `ctrl+t` dials onto
-one model in `/model`, come back to `auto` off the top — that is how you hand this piece of
-work, or this model, back to whatever stands above it. The **thinking** row in `/settings`
-stays what it is: the answer for every conversation that has not been dialled by hand. The
-keys page has the whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
+conversation's rung, a task's rung, and the level `ctrl+t` dials onto one model in
+`/model` all climb one step each press and come back to `auto` off the top — that is how
+you hand this chat, this piece of work, or this model back to whatever stands above it.
+(This conversation's rung joined them on 2026-09-15; its wheel had five stops until then
+and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` still clear
+this conversation in one move from any rung. A standing item's rung is the one that never
+walks back to "nobody said": it is cleared in the item's own document. The **thinking**
+row in `/settings` stays what it is: the answer for every conversation that has not been
+dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
 thing you are looking at thinks*.
 
 **Three doors, one rung.** `ctrl+v`, a press on the rung itself, and `/effort`:
 
 | What you do | What happens |
 |---|---|
-| `ctrl+v` | one step up the ladder, wrapping off the top |
-| press the rung on the line above the box | the same one step, and it lights under the pointer first |
+| `ctrl+v` | one step up the ladder, and back to `auto` off the top |
+| press the rung on the line above the box | the same one step, the same six stops, and it lights under the pointer first |
 | `/effort` (or `/thinking`, `/think`) | six rows — `auto` and the five rungs — with what each one buys and the one in force marked |
 | `/effort max` | that rung, outright |
 | `/effort auto` (or `/effort off`) | clears this conversation's rung and hands it back to whatever stands over it |

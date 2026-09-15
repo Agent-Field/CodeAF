@@ -585,7 +585,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
+| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -1162,13 +1162,13 @@ whole ladder and for what each rung asks the provider for.
 **A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
 says on every fresh conversation. See *What `auto` means beside the model* below.
 
-**`ctrl+v` walks it.** Each press moves one rung up and wraps off the top:
-low → medium → high → xhigh → max → low. It works with a sentence half typed — it is a
-chord, it carries no text of its own, and it leaves your draft and your caret exactly
-where they were. Ordinary letters keep typing.
+**`ctrl+v` walks it.** Each press moves one rung up, and off the top it comes back to
+`auto`: auto → low → medium → high → xhigh → max → auto. It works with a sentence half
+typed — it is a chord, it carries no text of its own, and it leaves your draft and your
+caret exactly where they were. Ordinary letters keep typing.
 
-**Pressing the rung walks it too**, one step per press, which is the same gesture as
-pressing a task's thinking row inside that task. It brightens under the pointer over
+**Pressing the rung walks it too**, one step per press — the same six stops, `auto`
+included — which is the same gesture as pressing a task's thinking row inside that task. It brightens under the pointer over
 exactly its own cells first, and the press never moves the caret in your draft. It does
 not open a list: the list is `/effort`.
 
@@ -1204,9 +1204,10 @@ What it changes and what it does not:
 - The rung reaches the work this conversation hands out: task workers start at it too.
 - It does **not** change other conversations. The default for those is the **thinking**
   row in `/settings`, which ships at `auto` (the provider default).
-- **`auto` is on the legend and it is the ladder's top row.** With thinking at `auto` and
-  no more specific level chosen — which is what a shipped install is — the cell reads
-  `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+- **`auto` is on the legend, it is the ladder's top row, and it is a stop on the wheel.**
+  With thinking at `auto` and no more specific level chosen — which is what a shipped
+  install is — the cell reads `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+  One more press past `max` brings it back to `auto`.
 - **It works on a `--host` conversation.** The rung is set on the engine machine, where
   the conversation lives, and the word on your legend is the one that machine resolved.
   An engine too old to know the ladder says so at the door and there is then no rung on
@@ -1220,8 +1221,8 @@ model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation'
 
 The rung is dim, like the rest of that line. It brightens for about two seconds after it
 changes — the cell takes a lit ground and its `⠿` goes cyan — so you can see the new word
-without looking away from what you are typing, and then it goes quiet again. Setting it
-back to `auto` flashes the same way and writes one line: *thinking · auto · the model
+without looking away from what you are typing, and then it goes quiet again. Walking it
+back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
 
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
@@ -1236,15 +1237,24 @@ so until you dial something — this conversation with `ctrl+v`, `/effort` or a 
 cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
 itself in `/settings` — every conversation reads `⠿ auto`.
 
-**To put it back to `auto`:** type `/effort auto` (or `/effort off`, the older name for
-the same thing), or open `/effort` and pick the top row. **`ctrl+v` and pressing the cell
-will not get you there** — the wheel has five stops and wraps from `max` back to `low`, on
-purpose: clearing a rung hands the conversation back to whatever stands over it, which is
-a decision rather than something a wheel should do on its way past.
+**To put it back to `auto`:** keep pressing `ctrl+v` or the cell — the wheel's stop after
+`max` is `auto` — or type `/effort auto` (or `/effort off`, the older name for the same
+thing), or open `/effort` and pick the top row. The typed word and the top row do it in
+one move from any rung; the wheel gets there by walking. Until 2026-09-15 the wheel had
+five stops and could not reach `auto` at all, which left the state a fresh install starts
+at as the one thing the control in front of you could not say.
 
-Clearing it does not always change the word on the line. If a level is dialled onto the
-model itself (`ctrl+t` in `/model`, or `--reasoning` at launch), that level wins and the
-cell keeps saying it — codeaf says so in a note naming the model and the key that moves it.
+Clearing it does not always change the word on the line, and codeaf says why in a note
+either way:
+
+- Nothing else is set: the cell reads `⠿ auto` and the note is *thinking · auto · the
+  model decides*.
+- The **thinking** row in `/settings` is set on this machine: a cleared conversation
+  falls back to that row, so the cell keeps its word and the note is *thinking · auto for
+  this chat · \<rung\> · the thinking row in /settings decides now*.
+- A level is dialled onto the model itself (`ctrl+t` in `/model`, or `--reasoning` at
+  launch): that level beats every rung here, the cell keeps saying it, and the note names
+  the model and points at `ctrl+t`.
 
 Until 2026-09-09 there was **no cell at all** on a conversation nobody had dialled, which
 on a shipped install meant every conversation — so the dial was invisible to anyone who
@@ -2805,14 +2815,15 @@ default, open `/settings` and walk to the **`thinking`** row, which is the setti
 roads always wrote.
 
 **It climbs, and what happens off the top is the scope's own answer.** Each press goes one
-rung up. A conversation's rung and a standing item's rung wrap from `max` back to `low` and
-never return to "nobody said" — clearing one hands the work back to whatever stands over
-it, which is a decision rather than something a wheel does on its way past. Clear the
-conversation with `/effort auto` or the top row of `/effort`; clear an item where its rung
-is written down.
-A task's rung, and the level `ctrl+t` dials onto one model in `/model`, come back to `auto`
-off the top instead, because the surface is the only door that sets either and so has to be
-the door that clears them.
+rung up. This conversation's rung, a task's rung, and the level `ctrl+t` dials onto one
+model in `/model` come back to `auto` off the top — the surface is the only door that sets
+any of them, so it has to be the door that clears them, and clearing hands the work back
+to whatever stands over it. `/effort auto` and the top row of `/effort` clear the
+conversation in one move instead of walking to it. (This conversation's rung wrapped from
+`max` back to `low` until 2026-09-15, which left `auto` — the state a fresh install is in
+— reachable only by name.) **A standing item's rung is the one that never returns to
+"nobody said"**: it wraps from `max` back to `low`, and it is cleared where its rung is
+written down.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 under `Task setup` (or `Next run setup` after it settles) in the expanded

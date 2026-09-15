@@ -35,9 +35,9 @@ package tui3
 // reads as nothing (the emptiness law) and the first press lands on the cheapest
 // rung, but no number of further presses ever puts a rung BACK to absence.
 // Clearing one is a deliberate act with real meaning — it hands the scope back
-// to whatever stands above it. A conversation rung and a standing item's rung
-// therefore keep this wheel; the two scopes the surface itself must be able to
-// clear use [effortNextClearing] below.
+// to whatever stands above it. A standing item's rung therefore keeps this
+// wheel; the three scopes the surface itself must be able to clear use
+// [effortNextClearing] below.
 //
 // ── AND THE RUNG IS FURNITURE UNTIL IT MOVES ──
 //
@@ -100,13 +100,18 @@ func effortNext(rung effort.Rung) effort.Rung {
 // from the surface: the same climb, except that the top rung comes back to
 // absence instead of to the bottom.
 //
-// TWO SCOPES ARE CLEARABLE AND BOTH ARE CLEARED HERE. A task's own rung and the
-// level dialled onto a model are the two scopes whose absence means something:
-// hand this piece of work, or this model, back to whatever stands above it. The
-// surface is the only door that sets either, so it has to be the door that
-// clears them. The conversation rung above ([effortNext]) is cleared by
-// `/effort auto`, and a standing item's in its own document, which is why both
-// keep the wheel that never lands on absence.
+// THREE SCOPES ARE CLEARABLE AND ALL THREE ARE CLEARED HERE. A task's own rung,
+// the level dialled onto a model and this conversation's rung are the scopes
+// whose absence means something: hand this piece of work, this model, or this
+// chat back to whatever stands above it. The surface is the only door that sets
+// any of them, so it has to be the door that clears them.
+//
+// THE CONVERSATION JOINED THEM ON 2026-09-15. Its wheel had five stops and the
+// way back to `auto` was by name — `/effort auto`, or the ladder's top row —
+// which left the state a shipped install STARTS at reachable only by leaving the
+// chip a person was standing at. A standing item's rung is still cleared in its
+// own document, which is why it alone keeps the wheel that never lands on
+// absence ([effortNext] above).
 func effortNextClearing(rung effort.Rung) effort.Rung {
 	if rung == effort.Rungs[len(effort.Rungs)-1] {
 		return effort.None
