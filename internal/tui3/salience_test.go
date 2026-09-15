@@ -368,6 +368,14 @@ func TestAnEndPairsByArgumentsInTheConversationToo(t *testing.T) {
 // be one more thing they agreed about by accident.
 func salienceRun(t *testing.T, ev session.Event) (chat, room []entry) {
 	t.Helper()
+	// NO KIND IN THIS TABLE MAY REACH THE MACHINE RUNNING THE TEST. The table
+	// drives every event a session can send, and EventConnectAuth's door is a
+	// browser (connect.go) — so a row that carries no URL used to hand the
+	// platform an empty target, which on a Mac is a Finder window onto this very
+	// directory. The handoff belongs to the surface either way; what it may not
+	// do is happen for real (opener.go's [processOpener], deliverables_test.go's
+	// [watchOpener]).
+	watchOpener(t)
 	participant := newTestApp(&fakeAgent{model: "m"})
 	participant.turn = 1
 	participant.apply(ev)
