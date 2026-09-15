@@ -3,13 +3,14 @@
 set -euo pipefail
 
 REPOSITORY="Agent-Field/codeaf"
+LEGACY_REPOSITORY="Agent-Field/aforge-v2" # Remove after the one-release repository fallback. # legacy-name
 CHANNEL="${CHANNEL:-stable}"
 VERSION="${VERSION:-}"
 VERBOSE="${VERBOSE:-0}"
-NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-0}"
-INSTALL_DIR="${CODEAF_INSTALL_DIR:-${HOME}/.codeaf/bin}"
-GITHUB_API="${CODEAF_GITHUB_API:-https://api.github.com}"
-GITHUB_DOWNLOAD="${CODEAF_GITHUB_DOWNLOAD:-https://github.com}"
+NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-${AFORGE_NO_MODIFY_PATH:-0}}" # legacy-name
+INSTALL_DIR="${CODEAF_INSTALL_DIR:-${AFORGE_INSTALL_DIR:-${HOME}/.codeaf/bin}}" # legacy-name
+GITHUB_API="${CODEAF_GITHUB_API:-${AFORGE_GITHUB_API:-https://api.github.com}}" # legacy-name
+GITHUB_DOWNLOAD="${CODEAF_GITHUB_DOWNLOAD:-${AFORGE_GITHUB_DOWNLOAD:-https://github.com}}" # legacy-name
 # GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
 TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 
@@ -143,6 +144,22 @@ api_problem() {
   fail "GitHub's API could not be reached or refused (a rate limit?); pin VERSION=<tag>, or export GITHUB_TOKEN to raise the limit"
 }
 
+release_api_get() {
+  local suffix="$1"
+  local destination="$2"
+  if http_get "$GITHUB_API/repos/$REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 1; then
+    return 0
+  fi
+  if [[ "$HTTP_STATUS" == "404" && "$REPOSITORY" != "$LEGACY_REPOSITORY" ]]; then
+    # Remove after the renamed repository has carried releases for one release. # legacy-name
+    if http_get "$GITHUB_API/repos/$LEGACY_REPOSITORY/$suffix" "$destination" "application/vnd.github+json" 1; then
+      REPOSITORY="$LEGACY_REPOSITORY"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 extract_tags() {
   grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' "$1" |
     sed -E 's/^"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)"$/\1/'
@@ -154,7 +171,7 @@ if [[ -n "$VERSION" ]]; then
 else
   case "$CHANNEL" in
     stable)
-      if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases/latest" "$release_file" "application/vnd.github+json" 1; then
+      if ! release_api_get "releases/latest" "$release_file"; then
         if [[ "$HTTP_STATUS" == "404" ]]; then
           fail "no stable build has been published yet"
         fi
@@ -164,7 +181,7 @@ else
       ;;
     rc|dev|staging)
       list_file="$TMP_ROOT/releases.json"
-      if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases?per_page=100" "$list_file" "application/vnd.github+json" 1; then
+      if ! release_api_get "releases?per_page=100" "$list_file"; then
         api_problem
       fi
       TAG=""
@@ -225,9 +242,7 @@ ASSET="codeaf-${OS}-${ARCH}${extension}"
 download_asset() {
   local name="$1"
   local destination="$2"
-  if ! http_get "$GITHUB_DOWNLOAD/$REPOSITORY/releases/download/$TAG/$name" "$destination" "application/octet-stream"; then
-    fail "could not download $name; check the tag on the Releases page"
-  fi
+  http_get "$GITHUB_DOWNLOAD/$REPOSITORY/releases/download/$TAG/$name" "$destination" "application/octet-stream"
 }
 
 if [[ -n "$DISPLAY_CHANNEL" ]]; then
@@ -235,8 +250,16 @@ if [[ -n "$DISPLAY_CHANNEL" ]]; then
 else
   printf 'codeaf: %s for %s/%s\n' "$TAG" "$OS" "$ARCH"
 fi
-download_asset "$ASSET" "$TMP_ROOT/$ASSET"
-download_asset "checksums.txt" "$TMP_ROOT/checksums.txt"
+if ! download_asset "$ASSET" "$TMP_ROOT/$ASSET"; then
+  LEGACY_ASSET="aforge-${OS}-${ARCH}${extension}" # Remove after releases with the former asset name age out. # legacy-name
+  if [[ "$HTTP_STATUS" != "404" ]] || ! download_asset "$LEGACY_ASSET" "$TMP_ROOT/$LEGACY_ASSET"; then
+    fail "could not download $ASSET; check the tag on the Releases page"
+  fi
+  ASSET="$LEGACY_ASSET"
+fi
+if ! download_asset "checksums.txt" "$TMP_ROOT/checksums.txt"; then
+  fail "could not download checksums.txt; check the tag on the Releases page"
+fi
 
 expected=$(awk -v name="$ASSET" '$2 == name || $2 == "*" name {print $1; exit}' "$TMP_ROOT/checksums.txt")
 [[ -n "$expected" ]] || fail "checksums.txt has no checksum for $ASSET"

@@ -118,6 +118,25 @@ func TestMissingCommandIsRecognizedInEveryShellsWording(t *testing.T) {
 	}
 }
 
+// H9: both current and former far-shell missing-command replies are recognised,
+// and the remedy names the current command and the rename date.
+func TestH9HostMissingCommandNamesTheCurrentInstallation(t *testing.T) {
+	for _, said := range []string{
+		"bash: codeaf: command not found",
+		"sh: aforge: not found", // legacy-name
+	} {
+		if !mentionsMissingCommand(said) {
+			t.Fatalf("missing command was not recognised: %q", said)
+		}
+	}
+	got := missingHostCommand("devbox").Error()
+	for _, want := range []string{"called codeaf now", "before 2026-09-14", "installed on devbox under that name"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("host remedy %q does not contain %q", got, want)
+		}
+	}
+}
+
 func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(os.TempDir(), "acp"))
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())

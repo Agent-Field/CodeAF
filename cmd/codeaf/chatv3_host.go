@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/history"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -214,7 +215,7 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 // different policy has a supported override rather than a private environment
 // variable hidden from the settings sheet.
 func sshTransportArgs(dest, remoteCommand string) []string {
-	settings := config.SSHTransportAt(os.Getenv("CODEAF_PROFILE_DIR"))
+	settings := config.SSHTransportAt(env.Get("CODEAF_PROFILE_DIR"))
 	args := []string{
 		"-T",
 		"-o", fmt.Sprintf("ServerAliveInterval=%d", settings.ServerAliveSeconds),
@@ -329,7 +330,7 @@ func (l *engineLink) diagnose(dest string, cause error) error {
 	said := l.said()
 	switch {
 	case code == 127 || mentionsMissingCommand(said):
-		return fmt.Errorf("codeaf is not installed on %s — install it there, or put it on the PATH that a non-login ssh command sees", dest)
+		return missingHostCommand(dest)
 	case code == 255:
 		// ssh has already said why, in its own words, above this line.
 		return fmt.Errorf("ssh could not open a session on %s", dest)
@@ -338,14 +339,21 @@ func (l *engineLink) diagnose(dest string, cause error) error {
 	}
 }
 
+const missingHostCommandText = "the program is called codeaf now (it was aforge before 2026-09-14) and must be installed on %s under that name — put it on the PATH that a non-login ssh command sees" // legacy-name
+
+func missingHostCommand(dest string) error {
+	return fmt.Errorf(missingHostCommandText, dest)
+}
+
 // mentionsMissingCommand reads the far shell's own wording. The three spellings
 // are bash/zsh, sh/dash and busybox, which is every shell an engine is likely to
 // be started from.
 func mentionsMissingCommand(said string) bool {
 	said = strings.ToLower(said)
+	const legacyCommand = "aforge" // legacy-name
 	return strings.Contains(said, "command not found") ||
-		strings.Contains(said, "not found") && strings.Contains(said, "codeaf") ||
-		strings.Contains(said, "no such file or directory") && strings.Contains(said, "codeaf")
+		strings.Contains(said, "not found") && (strings.Contains(said, "codeaf") || strings.Contains(said, legacyCommand)) ||
+		strings.Contains(said, "no such file or directory") && (strings.Contains(said, "codeaf") || strings.Contains(said, legacyCommand))
 }
 
 // close shuts the connection and reaps the process. Closing the client also
@@ -597,7 +605,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	profileDir := settings.ProfileDir
 	if err != nil {
 		settings = config.Config{BaseURL: config.DefaultBaseURL}
-		profileDir = os.Getenv("CODEAF_PROFILE_DIR")
+		profileDir = env.Get("CODEAF_PROFILE_DIR")
 	}
 	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir}
 	models := catalog.LoadLazy(context.Background(), discovery)

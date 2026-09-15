@@ -21,12 +21,14 @@ type fakeRelease struct {
 }
 
 type installGitHub struct {
-	server      *httptest.Server
-	releases    []string
-	badChecksum bool
-	failAPI     bool
-	mu          sync.Mutex
-	requests    []*http.Request
+	server            *httptest.Server
+	releases          []string
+	badChecksum       bool
+	failAPI           bool
+	oldRepositoryOnly bool
+	legacyAssetOnly   bool
+	mu                sync.Mutex
+	requests          []*http.Request
 }
 
 func newInstallGitHub(t *testing.T, releases ...string) *installGitHub {
@@ -44,20 +46,28 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 
 	path := request.URL.Path
 	const prefix = "/repos/Agent-Field/codeaf/"
-	if strings.HasPrefix(path, prefix) {
+	const legacyPrefix = "/repos/Agent-Field/aforge-v2/" // legacy-name
+	apiPrefix := ""
+	switch {
+	case strings.HasPrefix(path, prefix) && !github.oldRepositoryOnly:
+		apiPrefix = prefix
+	case strings.HasPrefix(path, legacyPrefix):
+		apiPrefix = legacyPrefix
+	}
+	if apiPrefix != "" {
 		if github.failAPI {
 			http.Error(w, "rate limited", http.StatusTooManyRequests)
 			return
 		}
 		switch {
-		case path == prefix+"releases/latest":
+		case path == apiPrefix+"releases/latest":
 			if len(github.releases) == 0 {
 				http.NotFound(w, request)
 				return
 			}
 			github.writeJSON(w, fakeRelease{TagName: github.releases[0]})
 			return
-		case path == prefix+"releases":
+		case path == apiPrefix+"releases":
 			var releases []fakeRelease
 			for _, tag := range github.releases {
 				releases = append(releases, fakeRelease{TagName: tag})
@@ -68,8 +78,16 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 	}
 
 	const downloads = "/Agent-Field/codeaf/releases/download/"
-	if strings.HasPrefix(path, downloads) {
-		rest := strings.TrimPrefix(path, downloads)
+	const legacyDownloads = "/Agent-Field/aforge-v2/releases/download/" // legacy-name
+	downloadPrefix := ""
+	switch {
+	case strings.HasPrefix(path, downloads) && !github.oldRepositoryOnly:
+		downloadPrefix = downloads
+	case strings.HasPrefix(path, legacyDownloads):
+		downloadPrefix = legacyDownloads
+	}
+	if downloadPrefix != "" {
+		rest := strings.TrimPrefix(path, downloadPrefix)
 		tag, name, ok := strings.Cut(rest, "/")
 		if !ok || !contains(github.releases, tag) {
 			http.NotFound(w, request)
@@ -88,8 +106,12 @@ func (github *installGitHub) writeJSON(w http.ResponseWriter, value any) {
 
 func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string) {
 	binary := fakeBinary(tag)
+	asset := platformAsset()
+	if github.legacyAssetOnly {
+		asset = legacyPlatformAsset()
+	}
 	switch name {
-	case platformAsset():
+	case asset:
 		_, _ = w.Write(binary)
 	case "checksums.txt":
 		digest := sha256.Sum256(binary)
@@ -97,7 +119,7 @@ func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string)
 		if github.badChecksum {
 			checksum = strings.Repeat("0", len(checksum))
 		}
-		fmt.Fprintf(w, "%s  %s\n", checksum, platformAsset())
+		fmt.Fprintf(w, "%s  %s\n", checksum, asset)
 	default:
 		http.NotFound(w, nil)
 	}
@@ -113,6 +135,14 @@ func platformAsset() string {
 		extension = ".exe"
 	}
 	return "codeaf-" + runtime.GOOS + "-" + runtime.GOARCH + extension
+}
+
+func legacyPlatformAsset() string {
+	extension := ""
+	if runtime.GOOS == "windows" {
+		extension = ".exe"
+	}
+	return "aforge-" + runtime.GOOS + "-" + runtime.GOARCH + extension // legacy-name
 }
 
 func contains(values []string, value string) bool {
@@ -210,6 +240,59 @@ func TestInstallerGetsLatestStableAndFinishesWithVersion(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(run.home, ".bashrc")); !os.IsNotExist(err) {
 		t.Fatalf("--no-modify-path edited the shell file: %v", err)
+	}
+}
+
+// H10: a 404 from the current repository makes release discovery retry the
+// former repository and complete the install from there.
+func TestH10InstallerFallsBackToLegacyRepository(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	github.oldRepositoryOnly = true
+	run := runInstaller(t, github, nil, "CODEAF_NO_MODIFY_PATH=1")
+	if run.code != 0 {
+		t.Fatalf("fallback install exit %d:\n%s", run.code, run.output)
+	}
+	github.mu.Lock()
+	defer github.mu.Unlock()
+	var current, legacy bool
+	for _, request := range github.requests {
+		current = current || request.URL.Path == "/repos/Agent-Field/codeaf/releases/latest"
+		legacy = legacy || request.URL.Path == "/repos/Agent-Field/aforge-v2/releases/latest" // legacy-name
+	}
+	if !current || !legacy {
+		t.Fatalf("repository requests current=%v legacy=%v", current, legacy)
+	}
+}
+
+// H10: a release containing only the former asset spelling is installed under
+// the current binary name after its checksum is verified.
+func TestH10InstallerFallsBackToLegacyAssetName(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	github.legacyAssetOnly = true
+	run := runInstaller(t, github, nil, "CODEAF_NO_MODIFY_PATH=1")
+	if run.code != 0 {
+		t.Fatalf("asset fallback exit %d:\n%s", run.code, run.output)
+	}
+	installed, err := os.ReadFile(filepath.Join(run.installDir, "codeaf"))
+	if err != nil || !strings.Contains(string(installed), "codeaf v1.2.3") {
+		t.Fatalf("installed current binary = %q, %v", installed, err)
+	}
+}
+
+// H10: PATH edits use the current installer marker and remain idempotent.
+func TestH10InstallerWritesTheCurrentPathMarker(t *testing.T) {
+	github := newInstallGitHub(t, "v1.2.3")
+	home := t.TempDir()
+	run := runInstaller(t, github, nil, "HOME="+home)
+	if run.code != 0 {
+		t.Fatalf("install exit %d:\n%s", run.code, run.output)
+	}
+	body, err := os.ReadFile(filepath.Join(home, ".bashrc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(body), "# codeaf installer") != 1 {
+		t.Fatalf("PATH marker = %q", body)
 	}
 }
 
