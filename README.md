@@ -23,7 +23,7 @@
 CodeAF is an open-source software factory for your terminal. You describe the
 work and decide what lands. It plans, runs, checks and merges, on the model
 you choose for each call, and comes back only when it needs you. One binary, no
-account, no service to run. Any model, open models by default. Apache 2.0. By
+account, no service to run. Built for open models, and any other model you point it at. Apache 2.0. By
 [AgentField AI](https://agentfield.ai).
 
 ## Install
