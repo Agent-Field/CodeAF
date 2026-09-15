@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/readme/hero.jpg" alt="CodeAF, the open-source software factory. Direct the work from your terminal, servers or phone. Any model, open by default." width="100%">
+<img src="assets/readme/hero.jpg" alt="CodeAF, the open-source software factory. Direct the work from your terminal, servers or phone. Built for open models: DeepSeek, Qwen, GLM, Kimi, MiniMax, Ollama and more." width="100%">
 
 <br>
 
