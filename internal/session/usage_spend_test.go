@@ -287,7 +287,7 @@ func TestUsageBySubjectSaysWhatTheMoneyWasFor(t *testing.T) {
 	if rows[0].Kind != SubjectTask || rows[0].ID != "7" || rows[0].USD != 7 {
 		t.Fatalf("the dearest row is %+v", rows[0])
 	}
-	if rows[0].Label != "a task" || rows[0].Session != "sess-1" {
+	if rows[0].Label != "task" || rows[0].Session != "sess-1" {
 		t.Fatalf("the task row is %+v", rows[0])
 	}
 	// TWO FIRINGS, ONE PROMISE. A row per run folder would be a log, not an
@@ -298,18 +298,21 @@ func TestUsageBySubjectSaysWhatTheMoneyWasFor(t *testing.T) {
 	if rows[1].Label != "standing" || rows[1].Session != "" {
 		t.Fatalf("the standing row named a run folder: %+v", rows[1])
 	}
-	if rows[2].Kind != SubjectConversation || rows[2].ID != "sess-1" || rows[2].Label != "a conversation" {
+	if rows[2].Kind != SubjectConversation || rows[2].ID != "sess-1" || rows[2].Label != "chat" {
 		t.Fatalf("the conversation row is %+v", rows[2])
 	}
 }
 
 // No machinery word may reach a screen through the one function that spells
-// these three.
+// these three — AND THEY ARE COLUMN WORDS. The spend place stands them in a
+// column of their own beside a project and a figure, where `a` is a cell that
+// says nothing and `conversation` is twelve of them; `chat` is what this surface
+// already counts them in.
 func TestTheSubjectWordsAreWordsAPersonUses(t *testing.T) {
 	for kind, want := range map[string]string{
-		SubjectTask:         "a task",
+		SubjectTask:         "task",
 		SubjectStanding:     "standing",
-		SubjectConversation: "a conversation",
+		SubjectConversation: "chat",
 		"":                  "",
 		"errand":            "",
 	} {
