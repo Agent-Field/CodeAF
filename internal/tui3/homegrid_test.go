@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"strings"
 	"testing"
 	"time"
@@ -277,6 +278,51 @@ func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.
 	lines := strings.Split(frame, "\n")
 	if foot := lines[len(lines)-1]; strings.Contains(foot, head) {
 		t.Fatalf("the foot repeats the question: %q", foot)
+	}
+}
+
+// THE `?` LEADS THE QUESTION AND NOT THE ROW where the description column draws
+// the question. The mark means "this has stopped and is waiting on you", and the
+// thing that is true of is the question — so it stands beside the words rather
+// than beside the title of the conversation they came from (owner, 2026-09-15).
+// The row keeps its two blank cells, so every title still starts in the same
+// column.
+func TestTheNeedsMarkLeadsTheQuestionInTheColumnAndNotTheRow(t *testing.T) {
+	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+	a := lab.a
+	a.width, a.height = 180, 45
+	homeText(a)
+	homeLineOf(t, a, func(l homeLine) bool {
+		return l.cell != nil && l.cell.panel == panelNeeds && l.cell.mark == cellMarkNeeds
+	})
+	line, _ := a.home.focusedLine()
+	mark := a.pal.glyph(tokens.GNeedsHuman)
+	frame := homeText(a)
+	lines := strings.Split(frame, "\n")
+
+	row, _ := homeRowOf(frame, line.cell.title)
+	if row < 0 {
+		t.Fatalf("the waiting row is not on the frame:\n%s", frame)
+	}
+	at := strings.Index(lines[row], mark)
+	if at < 0 {
+		t.Fatalf("the mark is nowhere on the row's line:\n%s", frame)
+	}
+	// IT IS ON THE QUESTION'S SIDE OF THE FRAME, not in the row's own lead.
+	said := strings.Index(lines[row], firstWordsOf(strings.TrimSpace(line.cell.sub)))
+	if said < 0 {
+		t.Fatalf("the question is not on the row's line:\n%s", frame)
+	}
+	if at > said || said-at > homeGridLead+1 {
+		t.Fatalf("the mark at %d does not lead the question at %d:\n%s", at, said, frame)
+	}
+	title := strings.Index(lines[row], line.cell.title)
+	if title >= 0 && at < title {
+		t.Fatalf("the mark at %d is still leading the row's title at %d:\n%s", at, title, frame)
+	}
+	// AND THERE IS STILL ONLY ONE OF IT (law 8).
+	if n := strings.Count(lines[row], mark); n != 1 {
+		t.Fatalf("the row's line wears %d marks, want one:\n%s", n, frame)
 	}
 }
 

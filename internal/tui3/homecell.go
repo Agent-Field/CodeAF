@@ -172,7 +172,7 @@ func (a *app) homeDescNote(line homeLine, at int, said string, width int, select
 		answers = strings.TrimSpace(a.homeRowAnswers(line, at))
 	}
 	if line.cell.alwaysSaid() {
-		return []string{homeCellLeadBlank + switcherSides(room, said, answers, pal.dim, pal.muted)}
+		return []string{a.homeDescLead(line.cell, pal) + switcherSides(room, said, answers, pal.dim, pal.muted)}
 	}
 	var out []string
 	for _, words := range wrap(said, room) {
@@ -423,6 +423,16 @@ func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 	if spin := a.homeSpinCell(at); spin != "" && cell.mark != cellMarkNeeds {
 		return pal.accent(spin) + " "
 	}
+	// THE MARK LEADS THE QUESTION AND NOT THE ROW where the description column
+	// draws that question ([homeDescNote]). The `?` means "this has stopped and
+	// is waiting on you", and the thing it is true of is the QUESTION — so on a
+	// frame that draws the question, the mark belongs beside the words rather
+	// than beside the title of the conversation they came from (owner,
+	// 2026-09-15). The row keeps the two blank cells, so every title on the
+	// screen still starts in the same column.
+	if cell.mark == cellMarkNeeds && homeDescOn(a.home.grid.cols) && cell.alwaysSaid() {
+		return homeCellLeadBlank
+	}
 	switch cell.mark {
 	case cellMarkNeeds:
 		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + " "
@@ -634,4 +644,14 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 		out[top+i] = homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + words}
 	}
 	return out
+}
+
+// homeDescLead is what a note stands in: the row's own mark where the row gave
+// it up ([app.homeCellLead]), and the same two blank cells otherwise — so a note
+// with a mark and a note without one start their words in the same column.
+func (a *app) homeDescLead(cell *homeCell, pal palette) string {
+	if cell.mark == cellMarkNeeds {
+		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + " "
+	}
+	return homeCellLeadBlank
 }
