@@ -45,10 +45,16 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 	for _, command := range []string{
 		"go run ./cmd/codeaf-release next",
 		"go run ./cmd/codeaf-release prune",
+		// The stable notes are rendered for the page and never copied whole:
+		// a rolled-up section is bigger than a release body may be.
+		`go run ./cmd/codeaf-changes notes "$TAG"`,
 	} {
 		if !strings.Contains(workflow, command) {
 			t.Errorf("workflow does not run %q", command)
 		}
+	}
+	if strings.Contains(workflow, "awk -v tag=") {
+		t.Fatal("the stable notes are copied straight out of CHANGELOG.md, which GitHub refuses once the section outgrows a release body")
 	}
 	if strings.Contains(workflow, "40") {
 		t.Fatal("the retention count was copied into the workflow instead of read from codeaf-release")

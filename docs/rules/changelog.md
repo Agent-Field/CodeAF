@@ -159,3 +159,7 @@ break the fast-forward that `branching.md` depends on.
 
 The release workflow reads the section back out of `CHANGELOG.md` for the release
 notes, so the roll-up is not paperwork after the fact: it is the release notes.
+It reads them through `codeaf-changes notes <tag>`, because a GitHub release body
+has a ceiling and a rolled-up section does not: when the whole section fits it is
+the notes, and when it does not the page carries every headline line with the
+folds left out and one line saying the record is in `CHANGELOG.md`.

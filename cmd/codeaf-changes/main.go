@@ -18,6 +18,9 @@
 //	codeaf-changes roll   <version> [date]    render into CHANGELOG.md, then
 //	                                          remove the entries it consumed
 //	codeaf-changes new <kind> <pr> <slug>     scaffold an entry to fill in
+//	codeaf-changes notes <tag>                print one released version's
+//	                                          section, shortened to fit a
+//	                                          GitHub release page
 package main
 
 import (
@@ -49,6 +52,8 @@ func main() {
 		err = roll(os.Args[2:])
 	case "new":
 		err = scaffold(os.Args[2:])
+	case "notes":
+		err = notes(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -67,6 +72,8 @@ func usage() {
   roll   <version> [date]     write that section into CHANGELOG.md and remove the
                               entries it consumed
   new <kind> <pr> <slug>      scaffold an entry to fill in
+  notes <tag>                 print that version's section from CHANGELOG.md,
+                              shortened to fit a GitHub release page
 
   kinds: added changed renamed fixed removed internal
 
