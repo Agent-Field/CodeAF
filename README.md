@@ -7,6 +7,7 @@
 <a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-0A0B0D?style=flat&labelColor=1D2024&color=D4A24A"></a>
 <a href="https://github.com/Agent-Field/codeaf/releases"><img alt="release" src="https://img.shields.io/github/v/release/Agent-Field/codeaf?style=flat&labelColor=1D2024&color=0A0B0D"></a>
 <a href="https://github.com/Agent-Field/codeaf/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/Agent-Field/codeaf?style=flat&labelColor=1D2024&color=0A0B0D"></a>
+<img alt="early preview" src="https://img.shields.io/badge/status-early%20preview-0A0B0D?style=flat&labelColor=1D2024&color=D4A24A">
 <img alt="one binary, darwin linux windows" src="https://img.shields.io/badge/one%20binary-darwin%20%7C%20linux%20%7C%20windows-0A0B0D?style=flat&labelColor=1D2024">
 
 <p>
@@ -27,6 +28,9 @@ the work. It becomes tasks that run, check and land on their own, across every
 project on the machine, from one window. You decide only what needs you, and
 the work that matters most goes to subharnesses, specialists built for one job.
 One binary, built for open models. Apache 2.0. By [AgentField AI](https://agentfield.ai).
+
+> **Early preview.** CodeAF is young and moving fast. Expect rough edges, and tell
+> us where you hit them: [Discord](#TODO-discord) or an [issue](https://github.com/Agent-Field/codeaf/issues).
 
 <img src="assets/readme/screens/overview.webp" alt="From one chat to a factory: a chat, the tasks it fanned out into (14 chats, 35 subtasks), home showing every project on the machine, and a question waiting on your answer" width="100%">
 
@@ -277,7 +281,9 @@ v0.1.0 shipped on 2026-08-17. `[N]` changes since, each written up in
 | six-seat crew, spend limits | `[..]` | no-ssh access through a hosted relay (`--at`), web view |
 | remote over ssh, phone-width terminal, headless | | identity and a signed record per task, through the AgentField control plane, Apache 2.0 like the rest |
 
-Vote in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
+More is already being tested by teams inside AgentField, native subharnesses
+first, and it lands here as it holds up. [Discord](#TODO-discord) is where it
+shows up first. Vote in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
 Three things help most: run the benchmark on your own repository and send the
 run; add a provider that is missing; when a task goes wrong, `/why` and paste
 what it says into an issue.
