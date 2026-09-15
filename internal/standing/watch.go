@@ -43,6 +43,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -60,9 +61,12 @@ const (
 )
 
 const (
-	darwinTickPlist  = DarwinTickLabel + ".plist"
-	linuxTickService = "codeaf-tick.service"
-	tickUnitTitle    = "Keep codeaf's standing items current"
+	darwinTickPlist        = DarwinTickLabel + ".plist"
+	linuxTickService       = "codeaf-tick.service"
+	tickUnitTitle          = "Keep codeaf's standing items current"
+	legacyDarwinTickLabel  = "ai.agentfield.aforge.tick" // legacy-name
+	legacyLinuxTickTimer   = "aforge-tick.timer"         // legacy-name
+	legacyLinuxTickService = "aforge-tick.service"       // legacy-name
 )
 
 // IntervalWords is [Interval] the way a person says it — `5 minutes`.
@@ -367,18 +371,31 @@ func (w *Timer) texts(executable string) (primary, service string) {
 // placeholder.
 func definitionPair(platform, content string) (executable, root string) {
 	if platform == "linux" {
+		legacyRoot := ""
 		for _, line := range strings.Split(content, "\n") {
 			line = strings.TrimSpace(line)
 			if rest, found := strings.CutPrefix(line, "ExecStart="); found {
 				executable = unquoteSystemd(strings.TrimSuffix(strings.TrimSpace(rest), " tick"))
 			}
 			if rest, found := strings.CutPrefix(line, "Environment="); found {
-				root, _ = strings.CutPrefix(unquoteSystemd(rest), home.EnvVar+"=")
+				value := unquoteSystemd(rest)
+				if parsed, matched := strings.CutPrefix(value, home.EnvVar+"="); matched {
+					root = parsed
+				} else if parsed, matched := strings.CutPrefix(value, env.Legacy(home.EnvVar)+"="); matched {
+					legacyRoot = parsed
+				}
 			}
+		}
+		if root == "" {
+			root = legacyRoot
 		}
 		return executable, root
 	}
-	return plistString(content, "<key>ProgramArguments</key>"), plistString(content, "<key>"+home.EnvVar+"</key>")
+	root = plistString(content, "<key>"+home.EnvVar+"</key>")
+	if root == "" {
+		root = plistString(content, "<key>"+env.Legacy(home.EnvVar)+"</key>")
+	}
+	return plistString(content, "<key>ProgramArguments</key>"), root
 }
 
 // plistString is the first <string> after marker, or empty.
@@ -407,6 +424,9 @@ func unquoteSystemd(value string) string {
 }
 
 func (w *Timer) installDarwin(ctx context.Context) error {
+	if err := w.removeLegacyDarwin(ctx); err != nil {
+		return err
+	}
 	path := w.darwinPlistPath()
 	_, err := os.Stat(path)
 	switch {
@@ -453,6 +473,9 @@ func (w *Timer) uninstallDarwin(ctx context.Context) error {
 }
 
 func (w *Timer) installLinux(ctx context.Context) error {
+	if err := w.removeLegacyLinux(ctx); err != nil {
+		return err
+	}
 	if err := writeDefinition(w.linuxServicePath(), []byte(linuxServiceUnit(w.executable, w.stateRoot))); err != nil {
 		return err
 	}
@@ -506,6 +529,10 @@ func (w *Timer) darwinPlistPath() string {
 	return filepath.Join(w.homeDir, "Library", "LaunchAgents", darwinTickPlist)
 }
 
+func (w *Timer) legacyDarwinPlistPath() string {
+	return filepath.Join(w.homeDir, "Library", "LaunchAgents", legacyDarwinTickLabel+".plist")
+}
+
 func (w *Timer) darwinDomain() string { return "gui/" + strconv.Itoa(w.uid) }
 
 func (w *Timer) linuxUnitDir() string {
@@ -515,6 +542,64 @@ func (w *Timer) linuxUnitDir() string {
 func (w *Timer) linuxTimerPath() string { return filepath.Join(w.linuxUnitDir(), LinuxTickTimer) }
 
 func (w *Timer) linuxServicePath() string { return filepath.Join(w.linuxUnitDir(), linuxTickService) }
+
+func (w *Timer) legacyLinuxTimerPath() string {
+	return filepath.Join(w.linuxUnitDir(), legacyLinuxTickTimer)
+}
+
+func (w *Timer) legacyLinuxServicePath() string {
+	return filepath.Join(w.linuxUnitDir(), legacyLinuxTickService)
+}
+
+func (w *Timer) removeLegacyDarwin(ctx context.Context) error {
+	path := w.legacyDarwinPlistPath()
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("standing: look at the former timer: %w", err)
+	}
+	stop := w.runner.Run(ctx, "launchctl", "bootout", w.darwinDomain(), path)
+	if stop != nil {
+		stop = w.runner.Run(ctx, "launchctl", "unload", path)
+	}
+	if stop != nil {
+		return fmt.Errorf("standing: stop the former timer: %w", stop)
+	}
+	if err := removeIfPresent(path); err != nil {
+		return fmt.Errorf("standing: remove the former timer: %w", err)
+	}
+	return nil
+}
+
+func (w *Timer) removeLegacyLinux(ctx context.Context) error {
+	timerPath, servicePath := w.legacyLinuxTimerPath(), w.legacyLinuxServicePath()
+	_, timerErr := os.Stat(timerPath)
+	_, serviceErr := os.Stat(servicePath)
+	if os.IsNotExist(timerErr) && os.IsNotExist(serviceErr) {
+		return nil
+	}
+	if timerErr != nil && !os.IsNotExist(timerErr) {
+		return fmt.Errorf("standing: look at the former timer: %w", timerErr)
+	}
+	if serviceErr != nil && !os.IsNotExist(serviceErr) {
+		return fmt.Errorf("standing: look at the former timer: %w", serviceErr)
+	}
+	if timerErr == nil {
+		if err := w.runner.Run(ctx, "systemctl", "--user", "disable", "--now", legacyLinuxTickTimer); err != nil {
+			return fmt.Errorf("standing: stop the former timer: %w", err)
+		}
+	}
+	if serviceErr == nil {
+		if err := w.runner.Run(ctx, "systemctl", "--user", "stop", legacyLinuxTickService); err != nil {
+			return fmt.Errorf("standing: stop the former service: %w", err)
+		}
+	}
+	if err := errors.Join(removeIfPresent(timerPath), removeIfPresent(servicePath)); err != nil {
+		return fmt.Errorf("standing: remove the former timer: %w", err)
+	}
+	return nil
+}
 
 // lastWake reads the last line of the wake log. It reads the tail rather than
 // the file because the log is one line every five minutes forever, and the only
@@ -616,6 +701,8 @@ func darwinPlist(executable, root string) string {
   <dict>
     <key>` + home.EnvVar + `</key>
     <string>` + html.EscapeString(root) + `</string>
+    <key>` + env.Legacy(home.EnvVar) + `</key>
+    <string>` + html.EscapeString(root) + `</string>
   </dict>
   <key>StartInterval</key>
   <integer>` + strconv.Itoa(int(Interval/time.Second)) + `</integer>
@@ -633,6 +720,7 @@ Description=` + tickUnitTitle + `
 [Service]
 Type=oneshot
 Environment=` + quoteSystemd(home.EnvVar+"="+root) + `
+Environment=` + quoteSystemd(env.Legacy(home.EnvVar)+"="+root) + `
 ExecStart=` + quoteSystemd(executable) + ` tick
 `
 }

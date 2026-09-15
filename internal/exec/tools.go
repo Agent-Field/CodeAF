@@ -20,6 +20,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/rtk"
@@ -1573,6 +1574,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
 			environment = replaceEnv(environment, "CODEAF_SKILLS_BIN", bin)
+			environment = replaceEnv(environment, env.Legacy("CODEAF_SKILLS_BIN"), bin)
 			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
 		}
 	}
@@ -1581,6 +1583,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 			environment = os.Environ()
 		}
 		environment = replaceEnv(environment, "CODEAF_RTK_BIN", filepath.Dir(rtkBin))
+		environment = replaceEnv(environment, env.Legacy("CODEAF_RTK_BIN"), filepath.Dir(rtkBin))
 		command = "export PATH=\"${CODEAF_RTK_BIN:?}:$PATH\"\n" + command
 	}
 

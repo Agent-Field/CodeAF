@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // recordingRunner is the host, stood in for. Nothing in these tests touches
@@ -193,6 +196,74 @@ func TestWatchInstallsAndUninstallsOnDarwin(t *testing.T) {
 	}
 	if status, err := timer.Status(); err != nil || status.Installed {
 		t.Fatalf("after uninstalling, status is %+v (%v)", status, err)
+	}
+}
+
+// H6: current units export both HOME spellings, replace former units on
+// install, and the definition reader accepts a former HOME-only unit.
+func TestH6StandingUnitsReplaceLegacyAndCarryBothHomes(t *testing.T) {
+	for _, platform := range []string{"linux", "darwin"} {
+		t.Run(platform, func(t *testing.T) {
+			homeDir := t.TempDir()
+			runner := &recordingRunner{}
+			timer := newTimer(t, platform, homeDir, "", runner, time.Now())
+			var oldPaths []string
+			if platform == "linux" {
+				oldPaths = []string{timer.legacyLinuxTimerPath(), timer.legacyLinuxServicePath()}
+			} else {
+				oldPaths = []string{timer.legacyDarwinPlistPath()}
+			}
+			for _, path := range oldPaths {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("old unit\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := timer.Install(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range oldPaths {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatalf("former unit remains at %s: %v", path, err)
+				}
+			}
+			if platform == "linux" {
+				if !runner.saw("disable --now " + legacyLinuxTickTimer) {
+					t.Fatalf("former Linux timer was not stopped: %v", runner.calls)
+				}
+				if !runner.saw("stop " + legacyLinuxTickService) {
+					t.Fatalf("former Linux service was not stopped: %v", runner.calls)
+				}
+				content := string(mustRead(t, timer.linuxServicePath()))
+				for _, name := range []string{home.EnvVar, env.Legacy(home.EnvVar)} {
+					if !strings.Contains(content, "Environment=\""+name+"=") {
+						t.Fatalf("service does not export %s: %s", name, content)
+					}
+				}
+				legacyOnly := "ExecStart=\"" + timer.executable + "\" tick\nEnvironment=\"" + env.Legacy(home.EnvVar) + "=" + timer.stateRoot + "\"\n"
+				_, root := definitionPair("linux", legacyOnly)
+				if root != timer.stateRoot {
+					t.Fatalf("former Linux HOME resolved %q, want %q", root, timer.stateRoot)
+				}
+			} else {
+				if !runner.saw("launchctl bootout gui/501 " + oldPaths[0]) {
+					t.Fatalf("former Darwin agent was not stopped: %v", runner.calls)
+				}
+				content := string(mustRead(t, timer.darwinPlistPath()))
+				for _, name := range []string{home.EnvVar, env.Legacy(home.EnvVar)} {
+					if !strings.Contains(content, "<key>"+name+"</key>") {
+						t.Fatalf("plist does not export %s: %s", name, content)
+					}
+				}
+				legacyOnly := "<key>" + env.Legacy(home.EnvVar) + "</key><string>" + timer.stateRoot + "</string>"
+				_, root := definitionPair("darwin", legacyOnly)
+				if root != timer.stateRoot {
+					t.Fatalf("former Darwin HOME resolved %q, want %q", root, timer.stateRoot)
+				}
+			}
+		})
 	}
 }
 

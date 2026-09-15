@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -280,7 +281,8 @@ func runSkillCheck(ctx context.Context, skillDir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(trialCtx, filepath.Join(skillDir, "check.sh"))
 	cmd.Dir = clean
-	cmd.Env = append(os.Environ(), "CODEAF_SKILL_DIR="+skillDir)
+	const skillDirEnv = "CODEAF_SKILL_DIR"
+	cmd.Env = append(os.Environ(), skillDirEnv+"="+skillDir, env.Legacy(skillDirEnv)+"="+skillDir)
 	cmd.WaitDelay = time.Second
 	output, runErr := cmd.CombinedOutput()
 	if trialCtx.Err() == context.DeadlineExceeded {

@@ -123,6 +123,19 @@ printf '%s' "$PWD" > "$CODEAF_SKILL_DIR/CHECK_CWD"
 	}
 }
 
+// H7: a skill check receives the current and legacy skill-directory spellings
+// with the same value.
+func TestH7SkillCheckExportsBothDirectorySpellings(t *testing.T) {
+	dir := writeSkillArtifact(t, "both-envs", `#!/bin/sh
+set -eu
+test "$CODEAF_SKILL_DIR" = "$AFORGE_SKILL_DIR" # legacy-name
+test "$CODEAF_SKILL_DIR" != ""
+`)
+	if err := runSkillCheck(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRecurringSkillRedCheckSupersedesCandidates(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

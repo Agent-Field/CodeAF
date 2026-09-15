@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -138,6 +139,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 		if bin, pathErr := store.SkillsBinDir(); pathErr == nil {
 			environment = os.Environ()
 			environment = replaceEnv(environment, "CODEAF_SKILLS_BIN", bin)
+			environment = replaceEnv(environment, env.Legacy("CODEAF_SKILLS_BIN"), bin)
 			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
 		}
 	}
