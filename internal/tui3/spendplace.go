@@ -22,7 +22,21 @@ import (
 )
 
 const (
-	spendSubjectCap = 3
+	// spendSubjectCap is how many of the things money went on are drawn before
+	// the rest go behind a fold ([spendReading.unfolding]).
+	//
+	// IT WAS THREE, AND THREE IS A HEADLINE RATHER THAN AN ANSWER. `what it was
+	// for` is the table this page exists for, and a fortnight of work on a
+	// working machine is twenty or thirty things — so a person who came here to
+	// find what their money went on met the three dearest and a fold, and had to
+	// press a key to see the page they had already opened. The body scrolls and
+	// the cursor carries the window with it ([placeSpend.body]), so a long table
+	// costs a short terminal nothing it was not already paying.
+	//
+	// IT IS STILL A CAP AND NOT A LIFTING OF ONE. A machine that has spent on
+	// three hundred things has a page nobody can read by scrolling, and the fold
+	// says how many are behind it in a word.
+	spendSubjectCap = 20
 	// spendProjectCap bounds the PROJECT column, which is a secondary fact and
 	// must not spend the frame a name and its figures need. Every other column on
 	// this page is the width of what it holds ([spendMeasured]).

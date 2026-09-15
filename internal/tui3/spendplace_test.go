@@ -692,12 +692,48 @@ func TestTheSpendMoneyColumnIsCentsWithAFloor(t *testing.T) {
 	}
 }
 
-func TestTheSpendPageShowsThreePurposesThenFoldsTheRest(t *testing.T) {
+// THE PAGE SHOWS TWENTY THINGS MONEY WENT ON AND FOLDS THE REST.
+//
+// It showed THREE, which is a headline rather than an answer: `what it was for`
+// is the table this page exists for, and a fortnight on a working machine is
+// twenty or thirty things — so a person who came here to find where their money
+// went met the three dearest and a fold, and had to press a key to see the page
+// they had already opened.
+func TestTheSpendPageShowsTwentyPurposesThenFoldsTheRest(t *testing.T) {
 	text := strings.Join(plainSpendRows(spendTestReading().rows(120, newPalette(tokens.NoColor, false))), "\n")
-	for _, want := range []string{"what it was for", "the-filings-sweep", "bounty-companies", "repo-watch", tokens.GlyphCollapsed + " 1 more"} {
+	for _, want := range []string{"what it was for", "the-filings-sweep", "bounty-companies", "repo-watch"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("purpose rows do not carry %q:\n%s", want, text)
 		}
+	}
+	// A FORTNIGHT SMALLER THAN THE CAP FOLDS NOTHING. Four things were spent on
+	// and four rows are drawn; a fold line over nothing is a key that does
+	// nothing.
+	if strings.Contains(text, "more") {
+		t.Fatalf("a page with %d subjects drew a fold:\n%s", len(spendTestReading().subjects), text)
+	}
+
+	// AND A LONGER LEDGER FOLDS AT THE CAP, saying how many are behind it.
+	var many []session.UsageLine
+	for at := range spendSubjectCap + 5 {
+		many = append(many, session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2,
+			Input: 100, Output: 10, USD: float64(spendSubjectCap + 5 - at), Session: "talk-1",
+			Task: "piece-" + itoa(at), Workspace: "/work/aforge"})
+	}
+	r := readSpend(many, session.LastDays(spendTestNow, 14), spendTestNow)
+	rows := plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false)))
+	table := spendSectionRows(t, rows, spendSubjectsWord)
+	if len(table) != spendSubjectCap+1 {
+		t.Fatalf("%d rows stand under the heading, want %d and the fold:\n%s",
+			len(table), spendSubjectCap+1, strings.Join(rows, "\n"))
+	}
+	if want := tokens.GlyphCollapsed + " 5 more"; !strings.Contains(table[len(table)-1], want) {
+		t.Fatalf("the fold line reads %q, want %q", table[len(table)-1], want)
+	}
+	// AND THE FOLD OPENS ON EVERY ONE OF THEM.
+	open := plainSpendRows(r.unfolding(true).rows(120, newPalette(tokens.NoColor, false)))
+	if got := len(spendSectionRows(t, open, spendSubjectsWord)); got != len(r.subjects)+1 {
+		t.Fatalf("the open fold draws %d rows, want the %d subjects and the fold", got, len(r.subjects))
 	}
 }
 
@@ -990,8 +1026,8 @@ func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 	// too, on a row of its own between the chart and the first table; it is a
 	// clause on the head line now and the key is named on the headings over the
 	// rows it actually works on (spendplace.go's [spendOpensWord]).
-	if seen != spendSubjectCap {
-		t.Fatalf("%d doors were drawn, want the %d shown subjects", seen, spendSubjectCap)
+	if want := min(len(a.spend.reading.subjects), spendSubjectCap); seen != want {
+		t.Fatalf("%d doors were drawn, want the %d shown subjects", seen, want)
 	}
 	if len(a.spend.reading.subjects) > spendSubjectCap && folds != 1 {
 		t.Fatalf("%d fold doors were drawn under %d subjects, want 1", folds, len(a.spend.reading.subjects))

@@ -4,6 +4,14 @@ title: the spend place is three tables in four columns each — no bars, one rig
 pr: 1040
 surface: [chat]
 invalidates:
+  - "`what it was for` showed the DEAREST THREE and folded the rest; it shows
+    twenty (`spendSubjectCap`). Three is a headline rather than an answer to the
+    question this page is for, and a fortnight on a working machine is twenty or
+    thirty things — so a person who came here to find where their money went met
+    three rows and a fold, and had to press a key to see the page they had
+    already opened. The body scrolls and the cursor carries the window with it,
+    so the longer table costs a short terminal nothing it was not already
+    paying."
   - "`enter` ON A ROW OF `what it was for` NOW OPENS THE THING. A task opened the
     tasks PLACE and left the person to find their own row in a list of everything
     the machine has run; it opens that piece of work's own record card now

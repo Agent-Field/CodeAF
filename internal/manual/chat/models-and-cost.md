@@ -2036,8 +2036,10 @@ same three-second beat every place runs on, and it draws three things:
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **what it was for** — the three things money is ever spent on, because the ledger holds
-  three ids: a piece of work, a standing promise, or a conversation. The dearest three are
-  shown and the rest fold into one line. Work with **no id of its own** — the hands a reply
+  three ids: a piece of work, a standing promise, or a conversation. **The dearest twenty
+  are shown** and the rest fold into one line — the body scrolls and the cursor carries the
+  window with it, so a long table costs a short terminal nothing. It showed three, which is
+  a headline rather than an answer to the question this page is for. Work with **no id of its own** — the hands a reply
   forks, the check that reads what a piece of work left — is on the row of the conversation
   it belongs to, because that is the only name it has;
 - **what kept running** — the standing promises, under a heading and columns of their own.
