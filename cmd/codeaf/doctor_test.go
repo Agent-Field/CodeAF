@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
@@ -16,6 +18,33 @@ import (
 type fakeDoctorWatch struct {
 	status watchdog.Status
 	err    error
+}
+
+// H8: help env lists the current names and says exactly once that legacy
+// spellings remain a one-release fallback; doctor names the resolved root and
+// never recommends the former HOME variable.
+func TestH8EnvironmentHelpAndDoctorUseCurrentNames(t *testing.T) {
+	if !strings.Contains(environmentText, "CODEAF_HOME") {
+		t.Fatal("help env does not list CODEAF_HOME")
+	}
+	if got := strings.Count(environmentText, legacyEnvironmentHelp); got != 1 {
+		t.Fatalf("legacy fallback sentence appears %d times, want once", got)
+	}
+	if got := strings.Count(environmentText, "AFORGE_*"); got != 1 { // legacy-name
+		t.Fatalf("legacy wildcard appears %d times, want once", got)
+	}
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, root)
+	var output bytes.Buffer
+	if err := runDoctorWith(nil, &output, 0, fakeDoctorWatch{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), root) {
+		t.Fatalf("doctor does not name resolved root %q:\n%s", root, output.String())
+	}
+	if strings.Contains(output.String(), env.Legacy(home.EnvVar)) {
+		t.Fatalf("doctor recommends former HOME spelling:\n%s", output.String())
+	}
 }
 
 func (watch fakeDoctorWatch) Status() (watchdog.Status, error) { return watch.status, watch.err }

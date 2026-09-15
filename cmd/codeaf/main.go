@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -34,6 +35,7 @@ import (
 )
 
 func main() {
+	home.Adopt(log.Printf)
 	os.Exit(execute())
 }
 
@@ -425,11 +427,15 @@ The environment table is ` + "`codeaf help env`" + ` — every variable and its 
 // its sentence soft-wrapped back under the name, which is the shape of a table
 // that has stopped being one. The name is at column 2 and the sentence at
 // column 23, or on the next line at column 23 when the name reaches past it.
+const legacyEnvironmentHelp = "AFORGE_* names are read for one release when matching CODEAF_* names are unset." // legacy-name
+
 var environmentText = `codeaf — the environment
 
 Every variable below is read at launch. A variable set here always wins over the
 ` + "`/settings`" + ` sheet in the chat, and that row reads read-only in the sheet rather
 than fighting your shell.
+
+` + legacyEnvironmentHelp + `
 
   OPENROUTER_API_KEY   a provider key, and the first of three places one is
                        looked for — this, then OPENAI_API_KEY, then the key

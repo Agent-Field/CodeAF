@@ -18,6 +18,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // EnvVar names the override. It is exported so help text and doctor output can
@@ -47,14 +49,22 @@ func Dir() string {
 // to be able to ask for so it can capture the root this process was started
 // with before any test moves anything.
 func resolve() string {
-	if override := strings.TrimSpace(os.Getenv(EnvVar)); override != "" {
+	if override := strings.TrimSpace(env.Get(EnvVar)); override != "" {
 		return override
 	}
 	base, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(base) == "" {
 		return ".codeaf"
 	}
-	return DefaultUnder(base)
+	current := DefaultUnder(base)
+	if exists(current) {
+		return current
+	}
+	legacy := legacyUnder(base)
+	if exists(legacy) {
+		return legacy
+	}
+	return current
 }
 
 // DefaultUnder is the state root a login whose home directory is base gets
@@ -63,6 +73,13 @@ func resolve() string {
 // timer written before its definition carried a home ticked exactly this — so
 // the directory's name stays spelled in one place.
 func DefaultUnder(base string) string { return filepath.Join(base, ".codeaf") }
+
+func legacyUnder(base string) string { return filepath.Join(base, ".aforge") } // legacy-name
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
 
 // Join names a file inside the state root.
 func Join(elements ...string) string {

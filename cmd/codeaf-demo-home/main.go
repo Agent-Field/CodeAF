@@ -34,10 +34,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -206,12 +206,5 @@ func launchAgainst(dir, binary string) error {
 // caller; CODEAF_HOME would override it outright, which is the one variable
 // that could silently send a demo launch at the owner's own state root.
 func demoEnviron() []string {
-	var kept []string
-	for _, entry := range os.Environ() {
-		if strings.HasPrefix(entry, "HOME=") || strings.HasPrefix(entry, home.EnvVar+"=") {
-			continue
-		}
-		kept = append(kept, entry)
-	}
-	return kept
+	return env.EnvironWithout("HOME", home.EnvVar)
 }

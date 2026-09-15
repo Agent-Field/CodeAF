@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/lease"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/watchdog"
@@ -73,7 +74,7 @@ type callLogReport struct {
 }
 
 func runDoctor(args []string) error {
-	profileDir := strings.TrimSpace(os.Getenv("CODEAF_PROFILE_DIR"))
+	profileDir := strings.TrimSpace(env.Get("CODEAF_PROFILE_DIR"))
 	dailyBudget, err := config.DailyBudgetUSDAt(profileDir)
 	if err != nil {
 		return err
@@ -130,10 +131,10 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 	// The model-call log lives beside the quirks memo under the profile, which
 	// `--db` does not move: it is read from the same environment runDoctor read
 	// the budget from.
-	snapshot.CallLog = readCallLogReport(calllog.PathFor(strings.TrimSpace(os.Getenv("CODEAF_PROFILE_DIR"))))
+	snapshot.CallLog = readCallLogReport(calllog.PathFor(strings.TrimSpace(env.Get("CODEAF_PROFILE_DIR"))))
 	// The key is read from the same profile, and for the same reason: `--db`
 	// moves the store and moves nothing about who this machine can talk to.
-	snapshot.Key = readKeyReport(strings.TrimSpace(os.Getenv(config.ProfileDirEnv)))
+	snapshot.Key = readKeyReport(strings.TrimSpace(env.Get(config.ProfileDirEnv)))
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
 }
