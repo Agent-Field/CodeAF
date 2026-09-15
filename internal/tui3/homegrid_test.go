@@ -70,35 +70,94 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 	}
 }
 
-// AT A HUNDRED AND TWENTY THE PERSON'S PANELS ARE ON THE LEFT AND THE MACHINE'S
-// ON THE RIGHT, and the two columns start on the same row.
-func TestAtOneTwentyThePersonActsLeftAndTheMachineIsWatchedRight(t *testing.T) {
+// AT A HUNDRED AND TWENTY WHAT HAS ROWS IS THE FIELD AND EVERYTHING ELSE IS THE
+// RAIL (law 2, ruled 2026-09-15), and the two columns start on the same row.
+func TestAtOneTwentyWhatHasRowsTakesTheFieldAndTheQuietGatherInTheRail(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	frame := homeText(a)
 	needs, needsCol := homeRowOf(frame, "needs you")
-	running, runningCol := homeRowOf(frame, "running")
-	if needs < 0 || needs != running || runningCol <= needsCol {
-		t.Fatalf("needs you (row %d) and running (row %d) are not the heads of two columns:\n%s", needs, running, frame)
+	projects, railCol := homeRowOf(frame, "projects")
+	if needs < 0 || needs != projects || railCol <= needsCol {
+		t.Fatalf("needs you (row %d) and projects (row %d) are not the heads of the field and the rail:\n%s", needs, projects, frame)
 	}
-	projects, projectsCol := homeRowOf(frame, "projects")
-	if projects <= needs || projectsCol != needsCol {
-		t.Fatalf("projects is not under needs you in the left column:\n%s", frame)
+	// WHERE YOU WERE HAS ROWS, SO IT IS IN THE FIELD under the panel that
+	// outranks it — the rank inside a column is the order table's as it always
+	// was, and only the column is the content's to say.
+	recent, recentCol := homeRowOf(frame, "where you were")
+	if recent <= needs || recentCol != needsCol {
+		t.Fatalf("where you were has rows and is not under needs you in the field:\n%s", frame)
 	}
+	// AND SPEND IS PINNED UNDER PROJECTS AT THE TOP OF THE RAIL, with the quiet
+	// panels under the pair rather than mixed through it.
 	spend, spendCol := homeRowOf(frame, "spend")
-	if spend <= running || spendCol != runningCol {
-		t.Fatalf("spend is not under running in the right column:\n%s", frame)
+	if spend <= projects || spendCol != railCol {
+		t.Fatalf("spend is not pinned under projects at the top of the rail:\n%s", frame)
+	}
+	quiet, quietCol := homeRowOf(frame, "since you left")
+	if quiet <= spend || quietCol != railCol {
+		t.Fatalf("a quiet panel is not in the rail under the pinned pair:\n%s", frame)
 	}
 }
 
-// AT A HUNDRED AND EIGHTY THERE ARE THREE COLUMNS, and projects heads the third.
-func TestAtOneEightyProjectsAndSpendHaveAColumnOfTheirOwn(t *testing.T) {
+// AND THE RAIL TELLS ITS TWO GROUPS APART WITH AIR: the pinned pair that lives
+// there, then a blank row that is not the ordinary one between panels, then the
+// panels that are only there because they are quiet today.
+func TestTheRailKeepsTheQuietPanelsAnExtraRowBelowThePinnedPair(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	frame := homeText(a)
+	lines := strings.Split(frame, "\n")
+	spend, railCol := homeRowOf(frame, "spend")
+	quiet, _ := homeRowOf(frame, "since you left")
+	if spend < 0 || quiet < 0 {
+		t.Fatalf("the rail is not drawn:\n%s", frame)
+	}
+	blank := 0
+	for y := spend + 1; y < quiet; y++ {
+		if strings.TrimSpace(string([]rune(lines[y])[min(railCol, len([]rune(lines[y]))):])) == "" {
+			blank++
+		}
+	}
+	if blank < 2 {
+		t.Fatalf("the rail holds %d blank rows between the pinned pair and the quiet panels, want the ordinary one and the group's own:\n%s", blank, frame)
+	}
+}
+
+// AT A HUNDRED AND EIGHTY THE RAIL IS THE LAST COLUMN AND THE FIELD STILL FILLS
+// FROM THE LEFT — so the rail is flush with the right edge at every width it
+// exists at, and a frame whose panels fit in one column leaves the middle of the
+// screen empty rather than spreading them over it.
+//
+// THE EMPTY MIDDLE IS THE RULING, not a gap in it (owner, 2026-09-15): the point
+// of the column that has something in it standing alone at the left is that the
+// eye has one place to go.
+func TestAtOneEightyTheRailIsTheLastColumnAndTheFieldFillsFromTheLeft(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	frame := homeText(a)
 	needs, needsCol := homeRowOf(frame, "needs you")
-	running, runningCol := homeRowOf(frame, "running")
-	projects, projectsCol := homeRowOf(frame, "projects")
-	if needs != running || running != projects || !(needsCol < runningCol && runningCol < projectsCol) {
-		t.Fatalf("needs you, running and projects do not head three columns:\n%s", frame)
+	recent, recentCol := homeRowOf(frame, "where you were")
+	projects, railCol := homeRowOf(frame, "projects")
+	if needs != projects || needsCol >= railCol {
+		t.Fatalf("needs you and projects do not head the field and the rail:\n%s", frame)
+	}
+	if recent <= needs || recentCol != needsCol {
+		t.Fatalf("where you were is not under needs you in the first field column:\n%s", frame)
+	}
+	if needsCol != homeGridMargin {
+		t.Fatalf("the field does not start at the left margin (cell %d):\n%s", needsCol, frame)
+	}
+	// AND THE QUIET PANELS ARE ALL IN THE LAST COLUMN, none of them left behind
+	// in the field beside a panel that has something to say.
+	for _, word := range []string{"spend", "since you left", "next up"} {
+		if _, at := homeRowOf(frame, word); at != railCol {
+			t.Fatalf("%q is at cell %d, want the rail at %d:\n%s", word, at, railCol, frame)
+		}
+	}
+	// AND NOTHING AT ALL STANDS BETWEEN THEM. The middle column is the air the
+	// ruling spends to put the field at one edge and the rail at the other.
+	for at := range a.home.lines {
+		if got := a.home.columnOf(at); got == 1 {
+			t.Fatalf("line %d stands in the middle column, which this frame has nothing to put there:\n%s", at, frame)
+		}
 	}
 }
 
@@ -185,11 +244,19 @@ func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
 	}
 	a.width, a.height = 120, 24
 	frame = homeText(a)
-	if len(strings.Split(frame, "\n")) != 24 || strings.Contains(frame, "66 more") {
-		t.Fatalf("at 120×24 the squeeze does not hold:\n%s", frame)
+	if len(strings.Split(frame, "\n")) != 24 {
+		t.Fatalf("at 120×24 the frame is not twenty-four rows:\n%s", frame)
 	}
 	if row, _ := homeRowOf(frame, "where you were"); row < 0 {
 		t.Fatalf("where you were was squeezed off a 120×24 home:\n%s", frame)
+	}
+	// AND A SHORT FRAME SPENDS THE RAIL BEFORE THE FIELD. Where you were is the
+	// only panel with rows, so it has the whole field and keeps every row it
+	// grew; what gives way is the column of panels with nothing in them, which
+	// is the trade law 2 was rewritten to make (ruled 2026-09-15). Before that
+	// this frame cut the recent list to share a column with two quiet panels.
+	if got := len(panelRows(a, panelRecent)); got != homeSlotOf(panelRecent).most {
+		t.Fatalf("where you were drew %d rows at 120×24, want the %d it holds alone in the field:\n%s", got, homeSlotOf(panelRecent).most, frame)
 	}
 }
 
@@ -310,13 +377,15 @@ func TestAWhisperWrapsAtItsColumnAndIsNeverCut(t *testing.T) {
 	}
 	// AND A REAL FRAME DRAWS THE SECOND LINE: at 120 cells a column is 58 wide,
 	// and the end of the needs whisper is on the line under its first half,
-	// standing in the row's lead.
+	// standing in the row's lead. A quiet needs you is in the rail (law 2), so
+	// the lead it stands in is the rail's and not the margin's.
 	a := newLiveLab(t).open()
 	frame := homeText(a)
-	first, _ := homeRowOf(frame, "questions from any chat")
+	_, rail := homeRowOf(frame, "projects")
+	first, head := homeRowOf(frame, "questions from any chat")
 	second, at := homeRowOf(frame, "answers them")
-	if first < 0 || second != first+1 || at != homeGridMargin+homeGridLead {
-		t.Fatalf("the needs whisper is cut rather than wrapped:\n%s", frame)
+	if first < 0 || second != first+1 || at != head || at != rail+homeGridLead {
+		t.Fatalf("the needs whisper is cut rather than wrapped in the rail:\n%s", frame)
 	}
 }
 
@@ -373,12 +442,18 @@ func TestTheFootNamesAChordWhereTheArrowCrossesColumns(t *testing.T) {
 	if !strings.HasSuffix(opened, "beta") {
 		t.Fatalf("ctrl+o on a project opened %q, want its folder", opened)
 	}
-	a.placeKeyPress(key("right"))
-	if a.home.columnOf(a.home.cursor) != 1 || a.strip.open {
-		t.Fatal("→ on a project did not cross to the right column")
+	// A PROJECT IS IN THE RAIL NOW (law 2), and the rail is the last column — so
+	// → has no column to cross to and opens the row's verb strip instead, which
+	// is §6.6 read on the column the row actually ended up in.
+	if got := a.home.columnOf(a.home.cursor); got != homeRailCol(a.home.cols) {
+		t.Fatalf("a project is in column %d, want the rail at %d", got, homeRailCol(a.home.cols))
 	}
 	if hint := a.homeHint(); hint != homeRestHint {
-		t.Fatalf("a right-column row's foot is %q, want the resting sentence", hint)
+		t.Fatalf("a rail row's foot is %q, want the resting sentence", hint)
+	}
+	a.placeKeyPress(key("right"))
+	if !a.strip.open {
+		t.Fatal("→ on a rail row neither crossed a column nor opened its verbs")
 	}
 }
 

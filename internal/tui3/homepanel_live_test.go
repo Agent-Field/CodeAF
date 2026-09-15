@@ -451,11 +451,16 @@ func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
 	}
 }
 
-// ON A THREE-COLUMN HOME `running` IS THE MIDDLE COLUMN, so `→` on one of its
-// rows crosses to `projects` and `spend` rather than opening the strip — and the
-// stop the strip offers keeps a door (DESIGN §6 ruling 6). At 180×45 the foot on
-// a task this window holds names `ctrl+x stop it`, in the tasks place's own
-// spelling of the verb ([stopActWord]), and the chord raises the stop card.
+// ON A THREE-COLUMN HOME A `running` ROW IS IN THE FIELD — it has rows, and
+// that is what the field is (law 2, ruled 2026-09-15) — so `→` on it crosses to
+// the rail rather than opening the strip, and the stop the strip offers keeps a
+// door (DESIGN §6 ruling 6). At 180×45 the foot on a task this window holds
+// names `ctrl+x stop it`, in the tasks place's own spelling of the verb
+// ([stopActWord]), and the chord raises the stop card.
+//
+// THE CROSSING SKIPS THE EMPTY MIDDLE. A field that fits in one column leaves
+// the next one white, and `→` reaches the rail over it rather than stopping on
+// air — a key that lands nowhere is the one state this surface may not be in.
 func TestAThreeColumnRunningRowNamesItsStopOnTheFoot(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
@@ -468,8 +473,8 @@ func TestAThreeColumnRunningRowNamesItsStopOnTheFoot(t *testing.T) {
 	a.tasks = map[uint64]*taskNode{5: {id: 5, state: session.TaskRunning}}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRunning && l.cell.title == "mine" })
 	mine := a.home.cursor
-	if got := a.home.columnOf(mine); got != 1 {
-		t.Fatalf("running stands in column %d of a three-column home, want the middle one", got)
+	if got := a.home.columnOf(mine); got != 0 {
+		t.Fatalf("running has rows and stands in column %d of a three-column home, want the field at 0", got)
 	}
 	if verbs := a.runningVerbs(a.home.lines[mine]); len(verbs) != 1 || verbs[0].word != stopActWord {
 		t.Fatalf("the row's strip offers %+v, want the tasks place's `%s`", verbs, stopActWord)
@@ -479,8 +484,9 @@ func TestAThreeColumnRunningRowNamesItsStopOnTheFoot(t *testing.T) {
 		t.Fatalf("the foot on a running row this window holds is %q, want it to name `ctrl+x %s`", foot, stopActWord)
 	}
 	a.placeKeyPress(key("right"))
-	if a.strip.open || a.home.columnOf(a.home.cursor) != 2 {
-		t.Fatal("→ on the middle column's row did not cross to the right column")
+	if a.strip.open || a.home.columnOf(a.home.cursor) != homeRailCol(a.home.cols) {
+		t.Fatalf("→ on a field row landed in column %d (strip %v), want the rail at %d",
+			a.home.columnOf(a.home.cursor), a.strip.open, homeRailCol(a.home.cols))
 	}
 	a.home.cursor = mine
 	drive(t, a, key("ctrl+x"))

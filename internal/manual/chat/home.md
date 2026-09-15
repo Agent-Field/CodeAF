@@ -11,33 +11,49 @@ answering one question you would ask walking up to a colleague's desk:
   home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you · 2                                   running · 2
- ? Searching for Apartments Near Minto      2h   ⠋ Generate and Display First 200 Primes   4m
-   needs your ok to run bash  1 allow once  2 always  3 deny    bash · 12s · 2 of 5
- ? Clever Bet Prediction Model              6h     npm run dev · pricing-site · a background job
-   the 2024 season only, or all three?  enter
-                                                 since you left · 12h
- to check · 3       finished, nobody has checked it  Spark Fleet Ssh Audit · 2 hosts up, 1 not
-   tier-B subs                      3 files · 1d    made apartments-minto-street.md
+ needs you · 2                                   projects · folders you've opened
+ ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
+   needs your ok to run bash  1 allow once  2 always  ~/pricing-site   5 chats
+ ? Clever Bet Prediction Model              6h
+   the 2024 season only, or all three?  enter     spend                    today $0.14 of $20
+                                                    ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
+ to check · 3       finished, nobody has checked it  opus 63%  ·  3 chats and 1 task today
+   tier-B subs                      3 files · 1d
    built the tier-B flow   1 accept   2 not right
-   package release radar                      1d  spend                    today $0.14 of $20
-   1 more · 15 older · tasks                         ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10 · loudest mon $9.20
-                                                  opus 63%  ·  3 chats and 1 task today
+   package release radar                      1d
+   1 more · 15 older · tasks
+
  where you were
-   Understanding Hash Tables                here  next up
-   explain open addressing vs chaining              the 6am repo watch                in 20h
+   Understanding Hash Tables                here
+   explain open addressing vs chaining
    Understanding Bloom Filters               11h
    70 more · type to find one
 
- projects                                        next up
-   ~/codeaf      12 chats · 1 running  master     the 6am repo watch                in 20h
-   ~/pricing-site   5 chats
+ running · 2
+ ⠋ Generate and Display First 200 Primes     4m
+   bash · 12s · 2 of 5
+   npm run dev · pricing-site · a background job
+
+ since you left · 12h
+   Spark Fleet Ssh Audit · 2 hosts up, 1 not
+   made apartments-minto-street.md
+
+ next up
+   the 6am repo watch                      in 20h
 ```
 
+Everything with rows in it is on the **left**, in the fixed order of the seven panels.
+`projects` and `spend` are pinned at the **top right** and stay there. On a quieter machine
+most of those left-hand panels have nothing in them, and they gather under the pinned pair
+in the right-hand rail instead — heading and one dim line each — so the left of the screen
+is only ever the things that are actually going on.
+
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
-nothing was sent while you were looking. The resting foot reads exactly `type to search or
-start something new · ↑↓ pick · enter open · tab next place`, and `alt+.` draws the whole
-map over the cells you are already reading.
+nothing was sent while you were looking. The resting foot reads `type to search or start
+something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place` — the chord is
+there because `→` on a field row crosses to the rail rather than opening the row's verbs, and
+a door you cannot see is a door you never learn. `alt+.` draws the whole map over the cells
+you are already reading.
 
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
@@ -48,10 +64,26 @@ things stand, and you either act on something or leave.
 
 ## See everything at once — what is on the home screen, the seven panels, and what an empty one says
 
-**Act on the left, watch on the right.** The left column is yours — `needs you`, `where
-you were`, `projects`. The right column is the machine's — `running`, `since you left`,
-`spend`, `next up`. One column under 110 cells, in that order; two columns from 110; three
-from 170, where `projects` and `spend` take the third.
+**What has something in it is on the left; everything else is a rail down the right
+edge.** A panel with rows stands in the **field** — the left of the screen, filled from the
+top left corner down. A panel with nothing in it stands in the **rail**, flush with the
+right edge, as its heading and its one dim line. So the panels move between the two sides as
+work arrives and finishes, and the side a panel is on tells you whether it holds anything
+before you have read a word of it.
+
+**`projects` and `spend` are pinned to the top of the rail** and never move, because their
+height is the same on every machine on every day. A blank row separates that pair from the
+panels below them, which are in the rail only because they are quiet today.
+
+**The rank never moves, only the side.** Within the field and within the rail the order is
+always `needs you`, `where you were`, `projects`, `running`, `since you left`, `spend`,
+`next up` — so two panels that both fill never swap places.
+
+One column under 110 cells, where every panel is in that one order and there is no rail;
+two columns from 110; three from 170, where the rail is the third and the field fills the
+first. **A field that fits in one column leaves the middle of a wide screen empty** rather
+than spreading two short columns over it — the point of the one busy column standing alone
+at the left is that your eye has a single place to go.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
@@ -71,8 +103,10 @@ while a number still draws nothing at zero — never `$0.00`, never `0 tasks`.
 
 ## What needs me — the needs you panel, the ? rows at the top of home
 
-**The top of the left column.** The panel holds **two groups**: the questions that have
-stopped something, then the work that landed and has not been checked.
+**The first panel of the field whenever it holds anything**, so a question waiting on you
+is at the top left corner of the screen. The panel holds **two groups**: the questions that
+have stopped something, then the work that landed and has not been checked. With nothing
+waiting it is in the rail down the right edge, as its heading and its dim line.
 
 **The first group is the questions, and only they wear the amber `?`.** A row is there when
 something has stopped and cannot go on without you, from any project:
@@ -224,8 +258,9 @@ not where it is settled.**
 
 ## What is running — the running panel: what is running on this machine right now, and what went in the moving column
 
-**The `running` panel, at the top of the right column, is every piece of work out on the
-machine** — every task and adaptive run, every background job a conversation started, and
+**The `running` panel is every piece of work out on the machine**, in the field with the
+other panels that hold something — under `needs you` and `where you were`, which outrank it
+— and in the rail on the right when nothing is out — every task and adaptive run, every background job a conversation started, and
 every watch or reminder in the middle of firing — the most recently started first. A row is
 a piece of work and not a conversation: a chat with three tasks out is three rows.
 
@@ -252,9 +287,10 @@ column or `◐` mark any more; this panel is that list.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
 conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
-from any column with no strip. On a three-column home `running` is the middle column, so
-`→` crosses to the next column instead of opening the verbs, and the foot names the chord:
-`ctrl+x stop it`. **A task another window runs cannot be stopped from here** — the row
+from any column with no strip. A `running` row with rows in it is in the field, and the rail
+is always a column with rows to its right — so `→` crosses to the rail instead of opening
+the verbs, and the foot names the chord: `ctrl+x stop it`. Where the column the arrow would
+reach is empty, it steps over it to the next one that has a row. **A task another window runs cannot be stopped from here** — the row
 offers no stop at all; bring it here with `enter` and stop it there.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
@@ -279,8 +315,9 @@ spinner. In screen-reader (linear) mode nothing turns at all.
 
 ## What did it do while I was away — the since you left panel, what happened while the terminal was shut
 
-**What happened on its own while you were not looking**, in the right column under
-`running`, headed with how long you were away:
+**What happened on its own while you were not looking**, under `running` — in the field
+when it holds anything and in the rail when it does not — headed with how long you were
+away:
 
 ```
  since you left · 12h
@@ -403,7 +440,7 @@ each of those is a panel of its own now.
 | `◐` rows under them | the `running` panel |
 | the quiet rows and `▸ 15 more, quiet since 6d` | `where you were`, then `N more · type to find one` |
 | project headings, `alt+g` | the `projects` panel |
-| the `since you left` ledger above the list | the `since you left` panel, right column |
+| the `since you left` ledger above the list | the `since you left` panel |
 | the card on the right | nothing at rest; a card still stands beside a search on a wide frame |
 
 ## How do I group home by project — alt+g
@@ -437,7 +474,8 @@ wears the same ground and its title goes bold; the row under your mouse pointer 
 while the pointer is on it.
 
 **Columns win the arrow: `→` opens a row's verbs only where no column with rows lies to its
-right** — on the right column, and everywhere at one column. On a row where `→` crosses
+right** — on the rail, and everywhere at one column. Where the next column along is empty
+the arrow steps over it to the next one that has a row, so the rail is always reachable. On a row where `→` crosses
 instead, **the foot names the chord that still reaches them** — `ctrl+o open folder`, or
 `ctrl+e pause` on a standing order — and the rest are on their chords too: `ctrl+y` copy
 path, `ctrl+e` put away. `ctrl+o` on a `projects` row opens that project's folder.
@@ -1828,8 +1866,9 @@ conversation's `a put it away` and, where it has a folder, `t new chat here`,
 `o open folder`, `c copy path`; a standing item's `p pause it` or `r resume it`; a task this
 window runs, `s stop`; a project's `its chats` and `open folder`.
 
-**On the left column `→` crosses to the right instead** — columns win the arrow — so a
-question there is answered with its digit, and a conversation's verbs are on their chords —
+**In the field `→` crosses to the rail instead** — columns win the arrow, and the rail
+always has rows in it because `projects` is pinned there — so a question in the field is
+answered with its digit, and a conversation's verbs are on their chords —
 `ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that matters on such a row:
 `ctrl+o open folder`, or `ctrl+e pause` on a standing order.
 
@@ -1988,7 +2027,7 @@ have.
 
 ## What is next up on home — reminders and routines coming soon
 
-**The `next up` panel, at the foot of the right column**: every reminder and routine this
+**The `next up` panel, last of the seven**: every reminder and routine this
 machine will act on, from every project, **soonest first**, with the rules that simply hold
 at the end. Each row is your own words, with when it goes off at the right — `in 20h`,
 `mon 8:30`, `holds`:
@@ -2010,7 +2049,7 @@ up. On a short terminal `next up` is the first panel to give way.
 
 ## How much did today cost — the spend panel on home
 
-**The `spend` panel, in the right column**, is the day and the fortnight in three dim lines,
+**The `spend` panel, pinned in the rail under `projects`**, is the day and the fortnight in three dim lines,
 and every line is a door into the spend place:
 
 ```

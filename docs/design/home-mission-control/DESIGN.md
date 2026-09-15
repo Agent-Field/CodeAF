@@ -5,6 +5,14 @@
 picker artifact is the visual record). Status: **ruled 2026-09-10** — the owner took every default in §6. Everything in §2 and §3 is verified against the tree
 on 2026-09-10; file references are to `dev` at `893d66067`.*
 
+*Amended 2026-09-15: **laws 2 and 3 were re-ruled** by the owner after reading a
+real quiet home — six of the seven panels whispering over a screen that was five
+sixths scaffolding. A panel's column is now its content's to say: what has rows
+is the field at the left, what has none gathers in a rail down the right edge,
+and `projects` and `spend` are pinned to the top of that rail. The laws below
+carry the change and say what each of them used to say; §1's screen is redrawn
+under it.*
+
 ## 1. The ruling in one screen
 
 Home is not a list of chats. It is a fixed set of **panels**, each answering one
@@ -13,43 +21,74 @@ own keys, each a door to the place that owns it. The chat list is one panel.
 
 ```
  codeaf                                                      $0.14 / $20.00 · thu 9:49am
- home   tasks 1   spend   settings
+ home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you · 2                                   running · 2
- ? Searching for Apartments Near Minto      2h   ◐ Generate and Display First 200 Primes   4m
-   needs your ok to run bash   1 yes  2 not now     working · checking
- ? Clever Bet Prediction Model              6h     npm run dev · pricing-site           up 3h
+ needs you · 2                                   projects
+ ? Searching for Apartments Near Minto      2h      ~/codeaf      12 chats · 1 running   master, 2 dirty
+   needs your ok to run bash   1 yes  2 not now     ~/pricing-site   5 chats · a job up   main
+ ? Clever Bet Prediction Model              6h      ~/infra          3 chats · quiet 4d
    the 2024 season only, or all three?  enter
-                                                 since you left · 12h
- where you were                                    Spark Fleet Ssh Audit · 2 hosts up, 1 not
- › Understanding Hash Tables in Data …    here     made reports/apartments-minto-street.md
-   explain open addressing vs chaining             the 6am repo watch found nothing changed
-   Understanding Bloom Filters in Eight …   11h    learned 2 things about codeaf
-   AI Influencers and Developers in …       11h
-   Locate Recent Sandbox Task in …           1d   spend                    today $0.14 of $20
-   70 more · type to find one                      ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪  under a cent per chat
-                                                   ▁▂▁▃▅▂▁▁▇▃▂▅▂▁   14 days $34.10 · opus 63%
- projects
- ~/codeaf      12 chats · 1 running   master, 2 dirty
- ~/pricing-site   5 chats · a job up     main       next up
- ~/infra          3 chats · quiet 4d                 the 6am repo watch                in 20h
-                                                     top movers before the open      mon 8:30
-                                                     2 rules hold
+                                                  spend                    today $0.14 of $20
+ where you were                                     ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪  under a cent per chat
+ › Understanding Hash Tables in Data …    here      ▁▂▁▃▅▂▁▁▇▃▂▅▂▁   14 days $34.10 · opus 63%
+   explain open addressing vs chaining
+   Understanding Bloom Filters in Eight …   11h
+   AI Influencers and Developers in …       11h    running · 2
+   Locate Recent Sandbox Task in …           1d    ◐ Generate and Display First 200 Primes   4m
+   70 more · type to find one                        working · checking
+                                                    npm run dev · pricing-site           up 3h
+ since you left · 12h
+   Spark Fleet Ssh Audit · 2 hosts up, 1 not       next up
+   made reports/apartments-minto-street.md           the 6am repo watch                in 20h
+   the 6am repo watch found nothing changed          top movers before the open      mon 8:30
+   learned 2 things about codeaf                     2 rules hold
+
  ───────────────────────────────────────────────────────────────────────────────────────
  › say what you want done                                               here ~/codeaf
    type to reach anything · ↑↓ ←→ move · enter open · 1 2 answer · alt for the map
 ```
 
+The field on the left is every panel with rows, in the order table's order; the
+rail on the right is the pinned pair and, under a blank row, whatever is quiet
+today — here `running`, `since you left` and `next up` all hold something, so the
+rail is only its pinned top. THE SCREEN A PERSON ACTUALLY SEES MOST DAYS is the
+inverse of this one: one panel in the field and six headings in the rail, which
+is the reading that produced the 2026-09-15 amendment.
+
 ### The laws
 
 1. **One primary action.** The box. Everything above it sets up what you type or
    where you press enter.
-2. **Act left, watch right.** Left column is the person's: `needs you`, `where
-   you were`, `projects`. Right column is the machine's: `running`, `since you
-   left`, `spend`, `next up`. One column under 110 cells, two to 170, three past it.
-3. **Stable order, flexible height.** A panel keeps its column and its rank in
-   it. Its height is what it holds. Position is a rank, not a pixel.
+2. **The field and the rail** (ruled 2026-09-15, replacing *act left, watch
+   right*). A panel with rows stands in the **field** — the columns left of the
+   last one, filled from the top left corner down. A panel with nothing in it
+   stands in the **rail**, the last column, flush with the right edge, as its
+   heading and its whisper. `projects` and `spend` are **pinned** to the top of
+   the rail whatever they hold, because their height is the same on every
+   machine on every day; one blank row separates that pair from the panels that
+   are in the rail only because they are quiet today. One column under 110
+   cells, two to 170, three past it — and the field FILLS rather than balances,
+   so a frame whose panels fit in one column leaves the middle of a wide screen
+   empty rather than spreading two short columns over it.
+
+   *What this law was.* Until 2026-09-15 the column was a fact about the panel:
+   the person's three on the left, the machine's four on the right. It was
+   replaced because on a quiet machine — which is most machines most of the time
+   — six of the seven panels held nothing, and the screen was five sixths
+   scaffolding standing over the one panel with anything in it. The trade is
+   named in law 3.
+3. **Stable RANK, flexible column and height** (ruled 2026-09-15). A panel keeps
+   its rank in whichever column it lands in, so two panels that both fill never
+   swap places. Its height is what it holds. Its column is its content's to say
+   (law 2). Position is a rank, not a pixel.
+
+   *What this law was.* It read "a panel keeps its column and its rank in it".
+   The column half was struck knowingly: home's geography now moves, and a
+   person cannot learn that `running` is on the right the way they could before.
+   What is bought with it is that the left of the screen is only ever the things
+   that are actually going on, which is the thing a person walks up to home to
+   find. The rank never moving is what keeps the cost to one axis.
 4. **An empty panel whispers.** It stays as its heading and one dim line that
    names what arrives here and the one thing that puts it there — never that
    the panel is empty.
@@ -262,8 +301,10 @@ useful.
 4. **The emptiness law narrows for panels** — written into `docs/DESIGN-LANGUAGE.md`
    ("presence over labels") and CLAUDE.md's design-laws list in this branch.
 5. **Cross-window stop stays absent**, not broken; the row says `another window`.
-6. **Columns win the arrow.** `←→` cross columns, and `→` opens a row's verb strip
-   only where no column with rows lies to its right. A row whose verbs `→` cannot
+6. **Columns win the arrow.** `←→` cross columns, stepping over a column with
+   nothing to stand on to the next that has a row — without which the rail would
+   be out of the arrows' reach on a wide frame whose field fills one column. `→`
+   opens a row's verb strip only where no column with rows lies to its right. A row whose verbs `→` cannot
    reach keeps them on their chords (`ctrl+o`, `ctrl+e`, …), and the foot names one
    so the door is never invisible.
 7. **A whisper never outranks a row.** When a squeeze has to drop a whole panel, every

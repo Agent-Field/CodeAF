@@ -127,9 +127,13 @@ type homePanelSlot struct {
 	// heading is the one that counts live questions, so a gloss there would
 	// repeat the panel and stack a third clause on the count.
 	explainer string
-	// col2 and col3 are the column this panel stands in at two and at three
-	// columns. One column is every panel in table order.
-	col2, col3 int
+	// pinned is a panel that stands in the rail whatever it holds. It is for a
+	// panel whose height is the same on every machine on every day — spend is
+	// three rows forever, and projects is the folders you have opened — so
+	// moving it into the field would teach a person a position that then never
+	// changes back. Every other panel's column is its content's to say
+	// ([homeColumnOf]).
+	pinned bool
 	// keep is the squeeze priority: the LOWEST gives way first (law 5).
 	keep int
 	// least is how many rows the panel keeps when it is squeezed, heading and
@@ -153,11 +157,16 @@ type homePanelSlot struct {
 }
 
 // homePanelOrder is THE ORDER TABLE (DESIGN §1 law 2 and law 5). Its row order
-// is the rank inside a column; at one column it is the reading order too, which
-// is the two-column page read left column first.
+// is the rank a panel takes wherever it stands, and at one column it is the
+// reading order too.
 //
-//	two columns     needs · recent · projects  |  running · left · spend · next
-//	three columns   needs · recent  |  running · left · next  |  projects · spend
+// IT NO LONGER SAYS WHICH COLUMN A PANEL IS IN, because the column is a reading
+// of what the panel holds rather than a fact about the panel (law 2, ruled
+// 2026-09-15). What the table still fixes is the rank inside whichever column
+// the panel lands in, so two panels that both fill never swap places:
+//
+//	field (panels with rows)   needs · recent · running · left · next
+//	rail (pinned, then quiet)  projects · spend  ·  the quiet ones in the same rank
 //
 // The keep column is the order a short frame takes rows away in and a tall one
 // hands them out in, and rest and most are each panel's natural height and its
@@ -167,13 +176,13 @@ type homePanelSlot struct {
 // place but itself, so its heading opens nothing. The explainer is the dim
 // clause a heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
-	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
-	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", col2: 0, col3: 2, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", explainer: "reminders & routines", col2: 1, col3: 1, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
+	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
+	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
+	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", explainer: "reminders & routines", keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
 
 // homeFindWord is what a fold says where the rest are reached by typing rather
@@ -234,13 +243,33 @@ func homeSlotOf(id homePanelID) homePanelSlot {
 	return homePanelSlot{}
 }
 
-// column is which column a panel stands in at this many columns.
-func (s homePanelSlot) column(cols int) int {
-	switch cols {
-	case 3:
-		return s.col3
-	case 2:
-		return s.col2
+// railCol is the column the rail is: the LAST one the ladder drew, so the rail
+// is flush with the right edge at every width it exists at. One column has no
+// rail — everything is read top to bottom in table order.
+func homeRailCol(cols int) int { return max(0, cols-1) }
+
+// homeColumnOf is which column a panel stands in, and it is THE LAW OF THE
+// GRID (DESIGN §1 law 2, ruled 2026-09-15): the field is what has something in
+// it, the rail is everything else.
+//
+// A panel with rows goes in the FIELD — the columns left of the rail — because
+// the thing with content is the thing being read, and reading wants the left
+// edge and the width. A panel with nothing in it goes in the RAIL, where its
+// heading and its whisper stand as a list of what this machine could be doing
+// and is not. A pinned panel is in the rail whatever it holds.
+//
+// THE COST OF THIS LAW IS THAT HOME'S GEOGRAPHY MOVES, and it is paid on
+// purpose. The old law kept every panel in one column forever so a person could
+// learn where to look; this one spends that to keep the eye on the one part of
+// the screen where anything is happening, which on a quiet machine is a very
+// small part. The rank inside each column never moves ([homePanelOrder]), so
+// what changes is which side a panel is on and never the order it is found in.
+func homeColumnOf(slot homePanelSlot, cols int, empty bool) int {
+	if cols <= 1 {
+		return 0
+	}
+	if slot.pinned || empty {
+		return homeRailCol(cols)
 	}
 	return 0
 }
@@ -483,6 +512,11 @@ type homeGridPanel struct {
 	// gone from the page.
 	shown   int
 	dropped bool
+	// gapAbove is a second blank row over this panel's heading. It is set on the
+	// first quiet panel of the rail, so the pinned pair at the top is read as a
+	// group that lives there and the panels under it as the ones that are only
+	// passing through ([homeGridLayout]).
+	gapAbove bool
 }
 
 // natural is how many rows the panel shows at its natural height: its rest,
@@ -568,6 +602,18 @@ func homeColumnHeight(column []*homeGridPanel) int {
 	}
 	if drawn > 1 {
 		n += drawn - 1
+	}
+	// AND THE RAIL'S OWN GAP IS A ROW OF THE COLUMN. A squeeze that did not
+	// count it would fit the column to the row below the screen.
+	first := true
+	for _, p := range column {
+		if p.height() == 0 {
+			continue
+		}
+		if p.gapAbove && !first {
+			n++
+		}
+		first = false
 	}
 	return n
 }
@@ -700,24 +746,112 @@ func (p *homeGridPanel) shrink() {
 }
 
 // homeGridLayout reads every panel and fits each column: the panels in table
-// order, each in the column the ladder puts it in, at that column's width.
+// order, each in the column its own content puts it in ([homeColumnOf]), at
+// that column's width.
+//
+// THE FIELD IS EVERY COLUMN LEFT OF THE RAIL, AND IT FILLS FROM THE LEFT. A
+// panel with rows takes the first field column its height still fits in, and
+// the next only when that one is full — so the first panel with rows is at the
+// top left corner at every width, and a frame with one column's worth of
+// content leaves the middle of the screen empty rather than spreading two short
+// columns over it.
+//
+// IT DOES NOT BALANCE THE COLUMNS, and that is the point rather than a
+// shortcoming. Balancing put whichever panel the cursor was resting in into
+// whichever column had room, so `↓` off the tab bar landed on a different panel
+// at 120 cells than at 200 — and the landing is the same line at every width
+// ([homeView.placesTop], homebridge.go), because a landing that moves with the
+// frame is a landing nobody can build a habit on. Filling from the left keeps
+// the cursor's panel in the same column at every width the content fits in.
 func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel {
 	columns := make([][]*homeGridPanel, cols)
 	_, widths := homeGridGeometry(width, cols)
+	rail := homeRailCol(cols)
+	field := make([]int, max(1, rail))
 	for _, slot := range homePanelOrder {
 		read := slot.panel.rows(in)
-		at := slot.column(cols)
 		p := &homeGridPanel{slot: slot, read: read}
 		p.shown = p.natural()
+		at := homeColumnOf(slot, cols, p.empty())
+		if at != rail {
+			at = fillField(field, p.height(), room)
+		}
 		if p.empty() {
 			p.whisper = homeWhisperLines(slot.panel.whisper(), widths[at])
 		}
+		if at != rail {
+			field[at] += p.height() + 1
+		}
 		columns[at] = append(columns[at], p)
+	}
+	// ONE COLUMN HAS NO RAIL AND THEREFORE NO GROUPS IN IT. Every panel is in
+	// the one column in table order, which is the reading order the narrow
+	// frame has always had — sorting the pinned pair to the top there would put
+	// projects and spend above the question waiting to be answered.
+	if cols > 1 {
+		columns[rail] = orderRail(columns[rail])
+		markRailGap(columns[rail])
 	}
 	for _, column := range columns {
 		fitColumn(column, room)
 	}
 	return columns
+}
+
+// fillField is the field column a panel this tall goes in: the first from the
+// left with the room for it, and the last when none has ([homeGridLayout] says
+// why it fills rather than balances). A frame with no room at all — the build
+// before the first one knows a height — keeps everything in the first column,
+// where the squeeze will find it.
+func fillField(field []int, height, room int) int {
+	if room <= 0 {
+		return 0
+	}
+	for at, filled := range field {
+		if filled == 0 || filled+height <= room {
+			return at
+		}
+	}
+	return len(field) - 1
+}
+
+// orderRail puts the pinned panels at the top of the rail and the quiet ones
+// under them, each group in table order. THE TOP OF THE RAIL IS THE PART THAT
+// DOES NOT MOVE: projects and spend are there on every machine on every day, so
+// they are the corner a person can aim at, and a panel that is only in the rail
+// because it is quiet today is never drawn above them.
+func orderRail(rail []*homeGridPanel) []*homeGridPanel {
+	out := make([]*homeGridPanel, 0, len(rail))
+	for _, p := range rail {
+		if p.slot.pinned {
+			out = append(out, p)
+		}
+	}
+	for _, p := range rail {
+		if !p.slot.pinned {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// markRailGap puts the rail's one extra blank over the first panel that is
+// there because it is quiet rather than because it is pinned. THE PINNED PAIR
+// READS AS THE TOP OF THE RAIL and the quiet ones as a list under it, which is
+// the whole difference between a panel that lives in the rail and a panel that
+// is in it today.
+func markRailGap(rail []*homeGridPanel) {
+	seen := false
+	for _, p := range rail {
+		if p.slot.pinned {
+			seen = true
+			continue
+		}
+		if seen {
+			p.gapAbove = true
+		}
+		return
+	}
 }
 
 // homeWhisperLines is a whisper at one column's width, standing in a row's lead.
@@ -764,6 +898,11 @@ func (h *homeView) buildGrid() {
 			}
 			if !first {
 				h.addGridLine(homeLine{kind: homeBlank}, at)
+				// AND THE RAIL'S GROUPS ARE TOLD APART BY AIR AND NOTHING ELSE
+				// — the grid draws no rules ([homeGridGutter]).
+				if p.gapAbove {
+					h.addGridLine(homeLine{kind: homeBlank}, at)
+				}
 			}
 			first = false
 			for _, line := range lines {
@@ -963,24 +1102,31 @@ func (h *homeView) gridCross(dir int) bool {
 // the arrow keeps its other meaning. The foot asks it too, to know whether `→`
 // on the row under the cursor is a move or the strip ([app.homeCrossChord]).
 func (h *homeView) gridCrossTarget(dir int) int {
-	next := h.columnOf(h.cursor) + dir
-	if next < 0 || next >= h.grid.cols {
-		return -1
-	}
 	y := h.rowOf(h.cursor)
-	best, gap := -1, 0
-	for _, at := range h.columnStops(next) {
-		d := h.rowOf(at) - y
-		if d < 0 {
-			d = -d
+	// A COLUMN WITH NOTHING TO STAND ON IS NO COLUMN THAT WAY — every panel in
+	// it is whispering, or the field never filled it at all — so the arrow STEPS
+	// OVER IT and asks the next one. It stopped at the neighbour until the field
+	// began leaving its second column empty (law 2, ruled 2026-09-15), and a
+	// crossing that stopped there would put the rail out of the arrows' reach
+	// entirely on a wide quiet frame: projects and spend would be drawn on the
+	// screen with no key that walks to them.
+	for next := h.columnOf(h.cursor) + dir; next >= 0 && next < h.grid.cols; next += dir {
+		best, gap := -1, 0
+		for _, at := range h.columnStops(next) {
+			d := h.rowOf(at) - y
+			if d < 0 {
+				d = -d
+			}
+			if best < 0 || d < gap {
+				best, gap = at, d
+			}
 		}
-		if best < 0 || d < gap {
-			best, gap = at, d
+		if best >= 0 {
+			return best
 		}
 	}
-	// A COLUMN WITH NOTHING TO STAND ON IS NO COLUMN THAT WAY: every panel in
-	// it is whispering, and the arrow keeps its other meaning.
-	return best
+	// AND WHERE NO COLUMN THAT WAY HAS A ROW, the arrow keeps its other meaning.
+	return -1
 }
 
 // homeGridCross is `←` and `→` on the resting grid: the neighbouring column.

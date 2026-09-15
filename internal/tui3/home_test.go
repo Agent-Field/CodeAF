@@ -922,8 +922,21 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	}
 	// The last row is the hint and the row above it is the box, which is the
 	// order pages.go assembles every place's foot in.
-	if got := strings.TrimSpace(ansi.Strip(lines[len(lines)-1])); got != design {
-		t.Fatalf("the resting hint reads %q, want %q", got, design)
+	//
+	// THE RESTING ROW CARRIES ONE CHORD BESIDE THE DESIGN'S FOUR KEYS, and it is
+	// the door §6.6 refuses to leave invisible: the rail is a column with rows in
+	// it (projects is pinned there and is never empty), so `→` on a field row
+	// crosses columns rather than opening the row's verbs, and the foot names the
+	// one key that still reaches them ([app.homeCrossChord]). It was already on
+	// this row on any machine whose right column had rows; what the 2026-09-15
+	// ruling changed is that the right column now always does.
+	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
+	want := strings.Replace(design, " · tab next place", rowSep+homeFolderChordWord+" · tab next place", 1)
+	if rest != want {
+		t.Fatalf("the resting hint reads %q, want %q", rest, want)
+	}
+	if !strings.HasPrefix(rest, "type to search or start something new · ↑↓ pick · enter open") {
+		t.Fatalf("the resting hint no longer opens with the design's own words: %q", rest)
 	}
 	// THE BOX ROW IS THE SAME SENTENCE AS EVERY OTHER PLACE'S (SCREEN 2b). What
 	// home's box ALSO does — filter the list — is said on the hint above, which is
@@ -936,7 +949,7 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	}
 	// AND THE CLAUSE THAT LEFT IS REALLY GONE from the foot — not merely absent
 	// from the constant this test already compared.
-	for _, row := range []string{box, design} {
+	for _, row := range []string{box, rest} {
 		if strings.Contains(row, "esc") {
 			t.Fatalf("the resting foot names esc: %q", row)
 		}
