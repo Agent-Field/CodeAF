@@ -1330,6 +1330,9 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// empty message — "what is this?" is often the picture itself — so the two
 	// tests below both ask about the tray as well as about the words.
 	held := len(a.chips) > 0
+	if !strings.HasPrefix(line, "/") && (line != "" || held) && a.updateStopsTurn() {
+		return nil
+	}
 	// An empty draft with a call selected is a reader, not a typist: enter
 	// opens what ↑/↓ picked out. A draft of any length is a sentence, and a
 	// sentence wins.
