@@ -67,7 +67,7 @@ Nothing merges without you.
 
 <!-- TODO(G1): recording. A brief becomes a task, home shows it running, it
      lands, `a` accepts it. 160x45, about 20s, scripted with vhs. -->
-<img src="assets/readme/screens/tasks.png" alt="a conversation with tasks running in the column beside it" width="100%">
+<img src="assets/readme/screens/conversation.jpg" alt="One chat, a tree of tasks: a conversation that handed out four bug fixes, with its task rail beside it showing each task, its subtasks and which ones wait on your call" width="100%">
 
 Every turn ends with its price.
 
@@ -100,6 +100,8 @@ line out, one line back. What makes that possible:
   dependencies) runs as a saved program with typed input and typed output. It
   either produces what it promised or is marked incomplete. Those are the tasks
   in the benchmark below.
+
+<img src="assets/readme/screens/question.jpg" alt="It asks only when it must: a question panel asking which store the spend ledger should sit on, three options, SQLite recommended with the reason" width="100%">
 
 <!-- TODO: settle the public name. The manual calls these subharnesses and the
      command is /subharness; this README says specialist task. -->
@@ -153,7 +155,7 @@ had to pass, so work that keeps failing on the worker seat is lifted to careful
 work on its own. `codeaf models` prints the ratings. Reasoning effort is a
 ladder, `low` to `max`, per seat.
 
-<img src="assets/readme/screens/crew.png" alt="/crew: the chat model and five seats, frugal, balanced and max" width="100%">
+<img src="assets/readme/screens/models.jpg" alt="The right model for each call: the spend page showing what ran it, by model and role: glm-5.3, deepseek-v4-flash and qwen3.8-27b with calls, tokens and dollars" width="100%">
 
 Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Ollama and
 any OpenAI-compatible endpoint. Set a daily limit on first start; `spend`
@@ -166,7 +168,7 @@ needs me, what is running, what happened while I was away, and what did it
 cost. That is `home`, and it is what a bare `codeaf` opens once the machine has
 work on it.
 
-<img src="assets/readme/screens/home.png" alt="home: needs you, where you were, projects, running, since you left, spend, next up" width="100%">
+<img src="assets/readme/screens/home.jpg" alt="The control room for your factory: home in two columns, needs you, to check and where you were on the left, running, since you left and spend on the right" width="100%">
 
 Every project on the machine is on it, not only the folder you started in. A
 digit answers a question from the row it is asked on. `enter` on a landed task
@@ -181,6 +183,8 @@ by line, editable) and `search` (every past conversation). Conversations,
 tasks and spend are written to disk as they happen, so a crash or a closed
 laptop loses nothing, and `esc esc` rewinds a conversation to any earlier
 message.
+
+<img src="assets/readme/screens/tasks-tree.jpg" alt="Every task is a tree you can open: the tasks page with a task family unfolded, subtasks marked done, your call and incomplete" width="100%">
 
 ## Standing orders
 
@@ -216,7 +220,7 @@ says what. [The contract](docs/HEADLESS.md).
 The conversation lives on the machine that owns the work. Your screen attaches
 to it.
 
-<img src="assets/readme/anywhere.png" alt="one conversation on devbox; a terminal, a laptop over ssh and a phone through the relay all attach to it" width="100%">
+<img src="assets/readme/anywhere.png" alt="one conversation on devbox; your terminal on the same machine, your laptop over ssh, and your phone from a mobile terminal over ssh all attach to it" width="100%">
 
 ```bash
 codeaf chat --host devbox     # the work runs on devbox, over ssh; codeaf on its PATH is all it needs
@@ -229,13 +233,12 @@ machine name and byte counts; the conversation is encrypted end to end, and
 pairing uses a password-authenticated key exchange, so the relay cannot read it
 or sit in the middle. [Details](docs/REMOTE.md).
 
-Close the laptop and the tasks keep running. Open the phone and `home` is
-there at phone width: what needs you, a digit to answer, a key to accept.
+Close the laptop and the tasks keep running. There is no app to install: ssh
+into the machine from any terminal on your phone, and CodeAF lays itself out
+for the narrow screen. `home` becomes an inbox you can thumb through, and a
+question becomes a sheet of answers.
 
-<p>
-<img src="assets/readme/screens/ssh.png" alt="codeaf chat --host devbox from a laptop" width="66%">
-<img src="assets/readme/screens/phone.png" alt="home on a phone: needs you, approve" width="32%">
-</p>
+<img src="assets/readme/screens/phone.jpg" alt="Native in the terminal on your phone: CodeAF home at phone width inside a mobile terminal over ssh, beside the same home on a wide screen" width="100%">
 
 ## What it is allowed to touch
 
