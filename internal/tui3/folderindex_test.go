@@ -371,3 +371,66 @@ func TestAWalkWithNoBaseDoesNothingRatherThanWalkingTheDisk(t *testing.T) {
 		t.Fatalf("a walk with no base answered %v", answer)
 	}
 }
+
+// TestTheBudgetIsMeasuredAgainstEveryEntryAndNotOnlyDirectories is the law the
+// three-second bound needs in order to be a bound at all.
+//
+// THE BUG IT REPRODUCES. The clock check stood below the walk's
+// `!entry.IsDir()` return, so a FILE never consulted it and the walk got a turn
+// to stop only BETWEEN DIRECTORIES. The directory that ends a home walk on a
+// Mac is `~/Library/Caches`, which is one directory holding hundreds of
+// thousands of files, and a bound that is never read while those stream past is
+// not a bound. Measured on the owner's laptop before this change:
+// `scanFolderRoots` took 5m58s under a three-second budget, which is what took
+// the folder picker's background read past the test driver's own budget and
+// panicked `TestThePicksLandingMidBrowseKeepTheChoicesAndThePreview`.
+//
+// THE CLOCK IS DRIVEN AND NOT RACED, and it advances once per reading, which is
+// what makes this a regression test rather than a restatement. A walk that
+// measures only directories reads this clock four times in the tree below and
+// never runs out; a walk that measures every entry runs out among the files —
+// so the two disagree about whether `z-repo` is ever reached, and that is the
+// assertion.
+func TestTheBudgetIsMeasuredAgainstEveryEntryAndNotOnlyDirectories(t *testing.T) {
+	base := t.TempDir()
+	// One directory whose whole content is files, which is the shape that runs
+	// away, and a repository AFTER it that a bounded walk never gets to.
+	deep := filepath.Join(base, "a-files")
+	if err := os.MkdirAll(filepath.Join(base, "z-repo", ".git"), 0o755); err != nil {
+		t.Fatalf("building the tree: %v", err)
+	}
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatalf("building the tree: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		if err := os.WriteFile(filepath.Join(deep, "f"+strconv.Itoa(i)), nil, 0o644); err != nil {
+			t.Fatalf("building the tree: %v", err)
+		}
+	}
+
+	// A clock that spends one second of the budget every time it is read. Six
+	// seconds is more than the four readings a directories-only walk of this
+	// tree ever takes, and far less than the twenty-three an every-entry walk
+	// would take if nothing stopped it.
+	at := time.Unix(1_700_000_000, 0)
+	opts := folderIndexDefaults(base)
+	opts.Budget = 6 * time.Second
+	opts.Now = func() time.Time {
+		at = at.Add(time.Second)
+		return at
+	}
+
+	answer := folderIndexWalk(context.Background(), opts)
+
+	if !answer.Bound {
+		t.Fatal("a walk that spent its whole budget among the files reported itself complete — " +
+			"which is the surface saying it saw everything when it saw a fraction, and is the " +
+			"budget being read only on the way into a directory")
+	}
+	for _, root := range answer.Roots {
+		if filepath.Base(root.Path) == "z-repo" {
+			t.Fatal("the walk carried on to a later directory after its budget was spent: the " +
+				"files it crossed to get there cost time and were never measured against it")
+		}
+	}
+}

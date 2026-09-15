@@ -1212,7 +1212,7 @@ func (a *app) askFolderStore() tea.Cmd {
 	return func() tea.Msg {
 		store := readFolderStore()
 		if now.Sub(store.Scanned) > folderScanTTL {
-			store.Roots, store.Scanned = scanFolderRoots(), now
+			store.Roots, store.Scanned = folderRootScan(), now
 			_ = writeFolderStore(store)
 		}
 		return folderStoreMsg{store: store}
@@ -1224,6 +1224,22 @@ func (a *app) askFolderStore() tea.Cmd {
 // the layer under this one — the projects home already knows — catches every
 // directory codeaf has actually been opened in the moment it is opened there.
 const folderScanTTL = 24 * time.Hour
+
+// folderRootScan is where this file reaches the PERSON'S OWN HOME DIRECTORY,
+// and it is a variable for the reason opener.go's [processOpener] is one: it is
+// the seam a test replaces so that a suite does not walk the disk of whoever is
+// running it.
+//
+// THIS PACKAGE'S TEST HOME IS NOT THE MACHINE'S HOME. tui3_test.go's TestMain
+// moves the state root, and says in so many words that it leaves HOME alone
+// because this package draws `~` in front of paths and those readings are
+// about the real one. [scanFolderRoots] does not draw `~` — it WALKS it, with
+// os.UserHomeDir, which is the one thing that seam does not cover. So a test
+// that opened the folder picker indexed the developer's whole home directory,
+// on every run: minutes of work on a real laptop, and nothing at all on a fresh
+// CI runner whose home is empty. That is a test that passes there and fails
+// here, which is the shape TestMain exists to prevent.
+var folderRootScan = scanFolderRoots
 
 // scanFolderRoots discovers both projects and ordinary folders within the
 // shared index bounds. All of this work runs in the background command.
