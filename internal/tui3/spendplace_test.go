@@ -97,16 +97,53 @@ func TestTheSpendPageSaysWhichDayWasLoudest(t *testing.T) {
 	}
 }
 
-func TestTheSpendModelsRunDearestFirstAndTheirBarsStayBounded(t *testing.T) {
+// THE MODELS RUN DEAREST FIRST, AND THAT ORDER IS THE WHOLE OF THE CHART NOW.
+//
+// This table drew a bar beside every model — that model's share of the dearest
+// one — and the bar is gone. It was a reading the figure at the end of the same
+// row already gives, and it cost a reserved column, an alignment law and a
+// second reservation in front of it to stop a role word on one row moving it. A
+// sorted list whose rows each say what they cost answers the same question, in
+// figures a person can also subtract.
+func TestTheSpendModelsRunDearestFirstAndDrawNoBars(t *testing.T) {
 	r := spendTestReading()
 	if r.models[0].Model != "opus 4.1" || r.models[1].Model != "sonnet 4.5" {
 		t.Fatalf("models are not dearest first: %#v", r.models)
 	}
-	for _, model := range r.models {
-		if got := ansi.StringWidth(spendBar(model.USD/r.models[0].USD, spendModelBarCap)); got > spendModelBarCap {
-			t.Fatalf("%s grew a %d-cell bar past the %d-cell cap", model.Model, got, spendModelBarCap)
-		}
+	text := strings.Join(plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false))), "\n")
+	if strings.Contains(text, "\u2588") {
+		t.Fatalf("the spend place still draws a bar:\n%s", text)
 	}
+}
+
+// spendSectionRows is one table of the drawn page: every row under a heading, up
+// to the blank line before the next one ([appendPlaceSection]).
+func spendSectionRows(t *testing.T, rows []string, heading string) []string {
+	t.Helper()
+	for at, row := range rows {
+		if !strings.Contains(row, heading) {
+			continue
+		}
+		tail := rows[at+1:]
+		for end, next := range tail {
+			if next == "" {
+				return tail[:end]
+			}
+		}
+		return tail
+	}
+	t.Fatalf("the page has no %q section:\n%s", heading, strings.Join(rows, "\n"))
+	return nil
+}
+
+// spendCellAt is where a run of text stands on a drawn row, in terminal cells.
+func spendCellAt(t *testing.T, row, text string) int {
+	t.Helper()
+	at := strings.Index(row, text)
+	if at < 0 {
+		t.Fatalf("the row %q does not carry %q", row, text)
+	}
+	return ansi.StringWidth(row[:at])
 }
 
 // SCREEN 2c: THE ROLE COLUMN IS THE CREW BINDING AND NEVER THE CALL'S OWN WORD.
@@ -131,9 +168,9 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	if !strings.Contains(text, "what ran it · by the model, and the role it was bound to") {
 		t.Fatalf("the caption does not say what the column is:\n%s", text)
 	}
-	// THE ROW IS READ WHOLE AND NOT AS ONE RUN OF CELLS: the role stands in a
-	// column of its own now ([spendReading.modelCols]), so the name and the word
-	// it wears are no longer neighbours in the string.
+	// THE ROW IS READ WHOLE AND NOT AS A FIXED RUN OF CELLS: what follows the
+	// name is the table's own column ([spendMeasured]), so the assertion is about
+	// the LINE the model is on and not about the cells beside it.
 	opus := ""
 	for _, line := range strings.Split(text, "\n") {
 		if strings.Contains(line, "opus 4.1") {
@@ -157,8 +194,8 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	}
 	// AND A MODEL BOUND TO NOTHING WEARS NO ROLE WORD AT ALL. It is asserted on
 	// the separator and not on the cell after the name, because what follows the
-	// name now is the run of spaces that carries the bar to its column
-	// ([spendModelBarAt]) and not a single space.
+	// name now is the run of spaces that carries the row out to its first column
+	// ([spendColumnAt]) and not a single space.
 	if !strings.Contains(text, "gemini 2.5 pro ") || strings.Contains(text, "gemini 2.5 pro ·") {
 		t.Fatalf("an unbound model grew a role word:\n%s", text)
 	}
@@ -173,146 +210,112 @@ func TestTheSpendModelsWearTheRoleTheyAreBoundTo(t *testing.T) {
 	}
 }
 
-// THE MODELS TABLE IS A TABLE: THE BARS STAND IN ONE COLUMN AND THE COUNTS
-// BEHIND THEM IN ANOTHER ([spendReading.modelCols]).
+// THE MODELS TABLE IS A TABLE: THE CALLS AND THE TOKENS EACH STAND IN A COLUMN,
+// AND EACH FIGURE'S DIGITS END WHERE THE ONE ABOVE THEM ENDS ([spendMeasured]).
 //
-// A bar is that model's share of the dearest one, and a share is read off the
-// bars' ENDS — which says nothing unless their starts are already level. Hung
-// one space behind names and role words of six different lengths, they were a
-// ragged set of unrelated marks: the second-dearest model's bar could BEGIN
-// further right than the fourth's ended, so the column a person opens this
-// table to compare was the one thing on it they could not. The counts have the
-// same law for the same reason, and they clear the bar's whole reservation
-// rather than each bar's own length — bars differ by design, and counts laid
-// one space behind them would be as ragged as the bars used to be.
-func TestTheSpendModelBarsAndCountsStandInColumns(t *testing.T) {
+// Digits are compared from the RIGHT, and with the bars gone the figures are the
+// whole of the comparison a person opened this table to make — so they are
+// right-aligned rather than merely started in one place. The unit word rides
+// behind each numeral because this surface has no header row, and its position
+// is what this test measures: the word can only stand still if the digits in
+// front of it end where the digits above them end.
+func TestTheSpendModelFiguresStandInColumns(t *testing.T) {
 	crew := spendCrew{role: map[string]string{
 		"opus 4.1": "conversation", "haiku 4.5": "naming", "sonnet 4.5": "execution",
 	}}
 	r := spendTestReading().crewed(crew)
-	// THE WIDTHS ARE ONES THAT DRAW BARS AT ALL. A narrow frame spends its cells
-	// on the name, the role and the money and gives up the bar and the counts
-	// together ([spendReading.modelRow]), and a frame with no bars on it has no
-	// column for this test to measure.
-	for _, width := range []int{81, 100, 160} {
+	for _, width := range []int{80, 100, 160} {
 		rows := plainSpendRows(r.rows(width, newPalette(tokens.NoColor, false)))
-		// THE MODEL ROWS ARE THE ONES UNDER THEIR OWN HEADING and not every row
-		// carrying a bar cell: the chart above them is drawn out of the same
-		// vocabulary, and a test that swept the whole page would measure it too.
-		head := 0
-		for i, row := range rows {
-			if strings.Contains(row, spendModelsWord) {
-				head = i + 1
-				break
-			}
+		table := spendSectionRows(t, rows, spendModelsWord)
+		if len(table) < len(r.models) {
+			t.Fatalf("at %d cells the models table is short:\n%s", width, strings.Join(rows, "\n"))
 		}
-		bars, counts, seen := map[int]bool{}, map[int]bool{}, 0
-		for _, row := range rows[head:] {
-			if strings.Contains(row, spendSubjectsWord) {
-				break
+		calls, toks := map[int]bool{}, map[int]bool{}
+		for at, model := range r.models {
+			row := table[at]
+			if !strings.Contains(row, r.modelName(model.Model)) {
+				t.Fatalf("at %d cells row %d is not %q:\n%s", width, at, model.Model, row)
 			}
-			bar := strings.Index(row, spendBar(1, 1))
-			if bar < 0 {
-				continue
-			}
-			seen++
-			bars[ansi.StringWidth(row[:bar])] = true
-			// The counts begin at the first digit after the bar's last cell.
-			tail := row[bar:]
-			count := strings.IndexAny(tail, "0123456789")
-			if count < 0 {
-				t.Fatalf("at %d cells a model row drew no counts to line up:\n%s", width, row)
-			}
-			counts[ansi.StringWidth(row[:bar+count])] = true
+			calls[spendCellAt(t, row, " "+plural("call", model.Calls))] = true
+			toks[spendCellAt(t, row, " "+plural("token", model.Tokens))] = true
 		}
-		if seen != len(r.models) {
-			t.Fatalf("at %d cells %d of the %d models drew a bar:\n%s",
-				width, seen, len(r.models), strings.Join(rows, "\n"))
-		}
-		if len(bars) != 1 || len(counts) != 1 {
-			t.Fatalf("at %d cells the bars start in columns %v and the counts in %v, want one of each:\n%s",
-				width, bars, counts, strings.Join(rows, "\n"))
+		if len(calls) != 1 || len(toks) != 1 {
+			t.Fatalf("at %d cells the call counts end in columns %v and the token volumes in %v, want one of each:\n%s",
+				width, calls, toks, strings.Join(rows, "\n"))
 		}
 	}
 }
 
-// AND THE ROLE HAS A COLUMN OF ITS OWN, HELD WHETHER OR NOT ANY ROW USES IT.
+// AND A ROLE WORD ON ONE ROW MOVES NOTHING ON ANY OTHER.
 //
-// Sharing one field with the name is what put the single row wearing a role
-// word out of line with every row without one: `deepseek-v4-pro-0813 ·
-// conversation` is twelve cells longer than the name alone, and exactly ONE
-// model can answer for a slot on this surface, so that is the ordinary table
-// rather than an edge of it.
-func TestTheSpendRoleColumnIsHeldWhetherOrNotARowUsesIt(t *testing.T) {
-	line := func(model string, usd float64) session.UsageLine {
-		return session.UsageLine{At: spendTestNow, Model: model, Calls: 9, Input: 100, Output: 10, USD: usd, Session: "talk-1"}
+// The role is part of the model's own name field now — the heading says the two
+// belong together, `by the model, and the role it was bound to` — so the table's
+// columns are measured over it like any other cell of the name. It had a column
+// held open on every machine while the bars existed, because exactly ONE model
+// can answer for a slot on this surface and that one row's bar went out of line;
+// with the bars gone there is no chart to protect and the reservation was a
+// column of air.
+func TestASpendRoleWordKeepsTheFiguresBehindItInColumn(t *testing.T) {
+	line := func(model string, calls int, usd float64) session.UsageLine {
+		return session.UsageLine{At: spendTestNow, Model: model, Calls: calls, Input: 100, Output: 10, USD: usd, Session: "talk-1"}
 	}
 	lines := []session.UsageLine{
-		line("z-ai/glm-5.3-flash", 1.41),
-		line("deepseek/deepseek-v4-pro-0813", 0.96),
-		line("qwen/qwen3.8-27b", 0.46),
+		line("z-ai/glm-5.3-flash", 9, 1.41),
+		line("deepseek/deepseek-v4-pro-0813", 1204, 0.96),
+		line("qwen/qwen3.8-27b", 88, 0.46),
 	}
-	win := session.LastDays(spendTestNow, 14)
-	bare := readSpend(lines, win, spendTestNow)
+	bare := readSpend(lines, session.LastDays(spendTestNow, 14), spendTestNow)
 	bound := bare.crewed(spendCrew{role: map[string]string{"deepseek/deepseek-v4-pro-0813": "conversation"}})
-	// THE COLUMNS DO NOT MOVE WHEN A BINDING APPEARS. The reservation's floor is
-	// the crew's own ladder, so the same models draw the same layout on a machine
-	// that has bound one of them and on a machine that has bound none.
-	if bare.modelCols(120) != bound.modelCols(120) {
-		t.Fatalf("binding a model moved the table's columns: %+v then %+v", bare.modelCols(120), bound.modelCols(120))
-	}
 	for _, r := range []spendReading{bare, bound} {
-		cols := r.modelCols(120)
-		for _, model := range r.models {
-			name := ansi.StringWidth(r.modelNameField(model))
-			if name >= cols.role {
-				t.Fatalf("%q is %d cells and the role column is %d — its role is pushed out of line",
-					r.modelNameField(model), name, cols.role)
-			}
-			role := strings.TrimSpace(r.modelRole(model.Model))
-			if role == "" {
-				continue
-			}
-			if used := cols.role + ansi.StringWidth(tokens.GlyphProseBullet+" "+role); used >= cols.bar {
-				t.Fatalf("%q ends at %d and the bar column is %d — its bar is pushed out of line", role, used, cols.bar)
-			}
+		rows := plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false)))
+		calls := map[int]bool{}
+		for _, row := range spendSectionRows(t, rows, spendModelsWord) {
+			calls[spendCellAt(t, row, " calls")] = true
+		}
+		if len(calls) != 1 {
+			t.Fatalf("the call counts end in columns %v, want one:\n%s", calls, strings.Join(rows, "\n"))
 		}
 	}
 }
 
 // A NAME COLUMN IS THE WIDTH OF WHAT IT HOLDS AND IS NEVER SQUEEZED TO KEEP A
-// FIELD BEHIND IT. A narrow frame drops fields instead, in order of what they
-// are worth.
+// FIELD BEHIND IT. A narrow frame drops WHOLE FIELDS instead, from the right, in
+// order of what they are worth.
 //
 // Squeezing was the first answer and it was wrong in a way only large figures
 // showed: the longest name on a table is very often the row that also wears the
-// role word, so a squeezed column put that one row's bar AND counts out of line
-// and then clipped its token figure — one ragged row among straight ones, which
-// reads as a defect in the straight ones.
+// role word, so a squeezed column put that one row's fields out of line and then
+// clipped its token figure — one ragged row among straight ones, which reads as
+// a defect in the straight ones.
 func TestASpendNameColumnIsNeverSqueezedToKeepAField(t *testing.T) {
 	r := spendTestReading().unfolding(true)
-	widest := 0
+	var work []session.SubjectSpend
 	for _, subject := range r.subjects {
+		if subject.Kind != session.SubjectStanding {
+			work = append(work, subject)
+		}
+	}
+	widest := 0
+	for _, subject := range work {
 		widest = max(widest, ansi.StringWidth(tokens.GlyphProseBullet+" "+r.name(subject)))
 	}
 	for _, width := range []int{200, 120, 80, 60, 40} {
-		cols := r.subjectCols(r.subjects, width)
-		if cols.tag != widest+1 {
-			t.Fatalf("at %d cells the name column is %d and the widest name %d — it was squeezed",
-				width, cols.tag, widest)
+		_, _, table := r.subjectTable(work, width)
+		if table.at[1] != widest+spendGutter {
+			t.Fatalf("at %d cells the project column is at %d and the widest name is %d — the name was squeezed",
+				width, table.at[1], widest)
 		}
 	}
 	// AND THE FIELDS GO IN ORDER OF WHAT THEY ARE WORTH: the kind word first,
 	// because the name already says which thing this is, then the project.
-	if wide := r.subjectCols(r.subjects, 200); !wide.showTag || !wide.showKind {
-		t.Fatalf("a frame with room to spare dropped a field: %+v", wide)
+	if _, _, wide := r.subjectTable(work, 200); wide.shown != 3 {
+		t.Fatalf("a frame with room to spare draws %d of the 3 fields", wide.shown)
 	}
-	narrow := r.subjectCols(r.subjects, 60)
-	if narrow.showKind {
-		t.Fatalf("a 60-cell frame kept the kind word it has no room for: %+v", narrow)
+	if _, _, narrow := r.subjectTable(work, 46); narrow.shown != 2 {
+		t.Fatalf("a 46-cell frame draws %d fields, want the name and the project", narrow.shown)
 	}
-	if tight := r.subjectCols(r.subjects, 40); tight.showTag || tight.showKind {
-		t.Fatalf("a 40-cell frame kept a field it has no room for: %+v", tight)
+	if _, _, tight := r.subjectTable(work, 30); tight.shown != 1 {
+		t.Fatalf("a 30-cell frame draws %d fields, want the name alone", tight.shown)
 	}
 }
 
@@ -330,8 +333,8 @@ func TestASpendNameWiderThanItsColumnIsNotCutDownToFitIt(t *testing.T) {
 	}
 }
 
-// `WHAT IT WAS FOR` IS A TABLE TOO: THE PROJECT AND THE KIND WORD EACH STAND IN
-// A COLUMN ([spendReading.subjectCols]).
+// `WHAT IT WAS FOR` IS THE SAME TABLE AS `WHAT RAN IT`, laid out by the same
+// machinery: the project and the kind word each stand in a column ([spendMeasured]).
 //
 // The names under this heading are whatever a person called their work, so the
 // two fields behind them landed wherever each name happened to end and the eye
@@ -339,58 +342,93 @@ func TestASpendNameWiderThanItsColumnIsNotCutDownToFitIt(t *testing.T) {
 // thing on the page that stood in a column at all.
 func TestTheSpendSubjectFactsStandInColumns(t *testing.T) {
 	r := spendTestReading().unfolding(true)
+	var work []session.SubjectSpend
+	for _, subject := range r.subjects {
+		if subject.Kind != session.SubjectStanding {
+			work = append(work, subject)
+		}
+	}
+	// TWO ROWS ARE THE FEWEST THAT CAN PROVE A COLUMN, and the fixture's names
+	// are deliberately different lengths — a table whose rows happened to be the
+	// same width would pass this test without a column in it.
+	if len(work) < 2 {
+		t.Fatalf("the fixture has %d rows under this heading — too few to prove a column", len(work))
+	}
 	for _, width := range []int{100, 160} {
 		rows := plainSpendRows(r.rows(width, newPalette(tokens.NoColor, false)))
-		head := 0
-		for i, row := range rows {
-			if strings.Contains(row, spendSubjectsWord) {
-				head = i + 1
-				break
-			}
+		table := spendSectionRows(t, rows, spendSubjectsWord)
+		if len(table) != len(work) {
+			t.Fatalf("at %d cells the table has %d rows and the reading %d:\n%s",
+				width, len(table), len(work), strings.Join(rows, "\n"))
 		}
-		if head+len(r.subjects) > len(rows) {
-			t.Fatalf("at %d cells the subjects table is short:\n%s", width, strings.Join(rows, "\n"))
-		}
-		tags, kinds := map[int]bool{}, map[int]bool{}
-		tagged, kinded := 0, 0
-		for i, subject := range r.subjects {
-			row := rows[head+i]
-			name := r.name(subject)
-			// THE SEARCH STARTS AFTER THE NAME. A promise's tag carries a
-			// separator of its own — `standing · 88 firings` — so a scan for the
-			// mark that introduces a field finds one inside a field too.
-			from := strings.Index(row, name)
-			if from < 0 {
-				t.Fatalf("at %d cells row %d does not name %q:\n%s", width, i, name, row)
+		projects, kinds := map[int]bool{}, map[int]bool{}
+		for at, subject := range work {
+			row := table[at]
+			if !strings.Contains(row, r.name(subject)) {
+				t.Fatalf("at %d cells row %d does not name %q:\n%s", width, at, r.name(subject), row)
 			}
-			from += len(name)
-			at := func(field string) int {
-				if field == "" {
-					return -1
-				}
-				found := strings.Index(row[from:], field)
-				if found < 0 {
-					t.Fatalf("at %d cells row %q does not carry %q", width, row, field)
-				}
-				return ansi.StringWidth(row[:from+found])
-			}
-			if col := at(spendSubjectTag(subject)); col >= 0 {
-				tags[col], tagged = true, tagged+1
-			}
-			if col := at(spendSubjectKind(subject, spendSubjectTag(subject))); col >= 0 {
-				kinds[col], kinded = true, kinded+1
-			}
+			projects[spendCellAt(t, row, spendProjectField(subject))] = true
+			kinds[spendCellAt(t, row, subject.Label)] = true
 		}
-		// TWO ROWS ARE THE FEWEST THAT CAN PROVE A COLUMN, and the fixture's
-		// names are deliberately different lengths — a table whose rows happened
-		// to be the same width would pass this test without a column in it.
-		if tagged < 2 || kinded < 2 {
-			t.Fatalf("at %d cells only %d rows carried a tag and %d a kind word — too few to prove a column", width, tagged, kinded)
+		if len(projects) != 1 || len(kinds) != 1 {
+			t.Fatalf("at %d cells the projects start in columns %v and the kind words in %v, want one of each:\n%s",
+				width, projects, kinds, strings.Join(rows, "\n"))
 		}
-		if len(tags) > 1 || len(kinds) > 1 {
-			t.Fatalf("at %d cells the subject tags start in columns %v and the kinds in %v, want one of each:\n%s",
-				width, tags, kinds, strings.Join(rows, "\n"))
+	}
+}
+
+// THE KIND WORD IS SHORT BECAUSE IT IS A COLUMN AND NOT A SENTENCE.
+//
+// It read `a task` and `a conversation` — how prose names those things, and
+// twice what a column needs beside a project and a figure. The article is a cell
+// that says nothing and `conversation` is twelve of them; `chat` is what this
+// surface already counts them in (the tasks place's own head row).
+func TestTheSpendKindWordsAreColumnWords(t *testing.T) {
+	for kind, want := range map[string]string{
+		session.SubjectTask:                       "task",
+		session.SubjectConversation:               "chat",
+		session.SubjectStanding:                   "standing",
+		"something this build has never heard of": "",
+	} {
+		if got := session.UsageSubjectWord(kind); got != want {
+			t.Errorf("%q wears the word %q, want %q", kind, got, want)
 		}
+	}
+}
+
+// AND THE PROMISES ARE A TABLE OF THEIR OWN, with the two facts that are theirs
+// and nobody else's: how often the promise went off, and what one firing cost.
+//
+// Mixed in with the work they wore a `standing · 88 firings` tag crammed into the
+// project's column and a kind word that had to be suppressed to stop the row
+// saying `standing` twice — two special cases in a table of three rows. Given a
+// heading of their own they simply have their own columns.
+func TestTheSpendPromisesAreATableOfTheirOwn(t *testing.T) {
+	r := spendTestReading()
+	rows := plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false)))
+	// The fold line stands at the foot of the page, under whichever table was
+	// drawn last, so the section runs to the end of the rows and the promise is
+	// the first of them.
+	table := spendSectionRows(t, rows, spendStandingWord)
+	if len(table) == 0 {
+		t.Fatalf("the promises table is empty:\n%s", strings.Join(rows, "\n"))
+	}
+	for _, want := range []string{"repo-watch", "88 firings", "$0.04 a run", "$3.31"} {
+		if !strings.Contains(table[0], want) {
+			t.Fatalf("the promise row does not carry %q: %q", want, table[0])
+		}
+	}
+	// AND NOTHING SAYS `standing` TWICE, which is what the old shared table did
+	// the moment it was not suppressed.
+	if strings.Count(strings.Join(rows, "\n"), "standing") != 1 {
+		t.Fatalf("the word `standing` is said more than once on the page:\n%s", strings.Join(rows, "\n"))
+	}
+	// AND A PROMISE THAT COSTS A SLIVER A RUN READS AS THE MONEY COLUMN'S FLOOR
+	// rather than as the words `under a cent a run`, which used to stand in the
+	// kind word's place and could not be lined up against anything.
+	sliver := session.SubjectSpend{Kind: session.SubjectStanding, ID: "repo-watch", Calls: 400, USD: 0.4}
+	if got := spendEachFigure(sliver); got != "$0.01" {
+		t.Fatalf("a sliver a run reads %q, want the money column's floor", got)
 	}
 }
 
@@ -405,20 +443,20 @@ func TestASpendSubjectWithNoProjectDrawsNoTag(t *testing.T) {
 	if strings.Contains(text, tokens.GlyphProseBullet+" .") {
 		t.Fatalf("a line that named no project drew a dot for one:\n%s", text)
 	}
-	if !strings.Contains(text, "a conversation") {
-		t.Fatalf("the subject row lost its kind word with its tag:\n%s", text)
+	if !strings.Contains(text, "chat") {
+		t.Fatalf("the subject row lost its kind word with its project:\n%s", text)
 	}
 }
 
-// THE TABLE HOLDS WITH ITS BARS SATURATED AND EVERY FIGURE AT FULL WIDTH.
+// THE TABLE HOLDS WITH EVERY FIGURE AT FULL WIDTH.
 //
-// A fixture of small change exercises none of this. Bars are scaled to the
-// dearest model ([spendBar]), so a ledger whose top model is three times its
-// second draws one full bar and a staircase of stubs, and the case that fills
-// the column — several models within a few per cent, all pinned at the cap —
-// never appears. The demo home carries a heavy stretch for the same reason
-// (cmd/aforge-demo-home's demoHeavy); this pins what the page does with one.
-func TestTheSpendTableHoldsWithSaturatedBarsAndLargeFigures(t *testing.T) {
+// A fixture of small change exercises none of this: five-figure call counts,
+// billions of tokens and four-figure money are where a layout that measured one
+// field and drew another finally runs off the edge, and where a numeral that was
+// not right-aligned is finally visible as a fault. The demo home carries a heavy
+// stretch for the same reason (cmd/aforge-demo-home's demoHeavy); this pins what
+// the page does with one.
+func TestTheSpendTableHoldsWithLargeFigures(t *testing.T) {
 	heavy := func(model string, calls, in, out int, usd float64) session.UsageLine {
 		return session.UsageLine{At: spendTestNow, Model: model, Calls: calls,
 			Input: in, Output: out, USD: usd, Session: "talk-1", Workspace: "/work/the-corpus-sweep"}
@@ -433,22 +471,6 @@ func TestTheSpendTableHoldsWithSaturatedBarsAndLargeFigures(t *testing.T) {
 		role: map[string]string{"deepseek/deepseek-v4-pro-0813": "conversation"},
 	})
 
-	// THE BARS ARE SATURATED AND NONE OF THEM IS OVER THE CAP. Three models
-	// within five per cent of each other all draw a full-length bar, which is
-	// the arrangement the cap exists for.
-	full := 0
-	for _, model := range r.models {
-		bar := spendBar(model.USD/r.models[0].USD, spendModelBarCap)
-		if got := ansi.StringWidth(bar); got > spendModelBarCap {
-			t.Fatalf("%s drew a %d-cell bar past the %d-cell cap", model.Model, got, spendModelBarCap)
-		} else if got == spendModelBarCap {
-			full++
-		}
-	}
-	if full < 2 {
-		t.Fatalf("only %d bars saturated, so this fixture does not test saturation", full)
-	}
-
 	for _, width := range []int{200, 120, 100, 80, 60} {
 		rows := r.rows(width, newPalette(tokens.ANSI256, false))
 		// THE ROW WIDTH LAW HOLDS AT FULL FIGURES. Five-figure call counts and
@@ -459,35 +481,21 @@ func TestTheSpendTableHoldsWithSaturatedBarsAndLargeFigures(t *testing.T) {
 				t.Fatalf("a spend row is %d cells at width %d: %q", got, width, plain(row))
 			}
 		}
-		// AND THE COLUMNS STILL HOLD. The counts are the last field before the
-		// money, so a column that slipped anywhere behind it shows up here.
+		// AND THE COLUMNS STILL HOLD, or the frame has given the whole field up
+		// — never half of one.
 		plainRows := plainSpendRows(rows)
-		head := 0
-		for i, row := range plainRows {
-			if strings.Contains(row, spendModelsWord) {
-				head = i + 1
-				break
+		calls, toks := map[int]bool{}, map[int]bool{}
+		for _, row := range spendSectionRows(t, plainRows, spendModelsWord) {
+			if at := strings.Index(row, " calls"); at >= 0 {
+				calls[ansi.StringWidth(row[:at])] = true
+			}
+			if at := strings.Index(row, " tokens"); at >= 0 {
+				toks[ansi.StringWidth(row[:at])] = true
 			}
 		}
-		bars, counts := map[int]bool{}, map[int]bool{}
-		for _, row := range plainRows[head:] {
-			if strings.Contains(row, spendSubjectsWord) {
-				break
-			}
-			at := strings.Index(row, spendBar(1, 1))
-			if at < 0 {
-				continue
-			}
-			bars[ansi.StringWidth(row[:at])] = true
-			count := strings.IndexAny(row[at:], "0123456789")
-			if count < 0 {
-				t.Fatalf("at %d cells a model row drew a bar and no counts:\n%s", width, row)
-			}
-			counts[ansi.StringWidth(row[:at+count])] = true
-		}
-		if len(bars) > 1 || len(counts) > 1 {
-			t.Fatalf("at %d cells saturated bars start in columns %v and their counts in %v:\n%s",
-				width, bars, counts, strings.Join(plainRows, "\n"))
+		if len(calls) > 1 || len(toks) > 1 {
+			t.Fatalf("at %d cells the call counts end in columns %v and the token volumes in %v:\n%s",
+				width, calls, toks, strings.Join(plainRows, "\n"))
 		}
 	}
 }

@@ -42,19 +42,16 @@ var demoModels = []struct {
 // of agents at a corpus and left it running — and it is in this fixture to put
 // the spend page AT THE TOP OF ITS OWN RANGE.
 //
-// A fixture of small change exercises none of the page's edges. Every bar is
-// scaled to the dearest model on the table ([spendBar]), so a ledger whose top
-// model is three times its second draws one full bar and a staircase of stubs,
-// and the saturated case — three models within a few per cent of each other,
-// all of them pinned at the twelve-cell cap — never appears at all. Neither do
-// the columns beside it at full width: five-figure call counts, token volumes
-// that need more than one unit, money in the thousands. Those are the readings
-// a heavy user meets on their FIRST look at this page, and `make demo-home`
-// exists so that somebody can see a page full before they ship it.
+// A fixture of small change exercises none of the page's columns at full width:
+// five-figure call counts, token volumes that need more than one unit, money in
+// the thousands. Those are the readings a heavy user meets on their FIRST look
+// at this page, and `make demo-home` exists so that somebody can see a page full
+// before they ship it.
 //
-// THE THREE ARE CLOSE ON PURPOSE. The swarm split its work across them, so
-// their totals land within a few per cent, which is the arrangement that fills
-// the bar column rather than the one that empties it.
+// THE THREE ARE CLOSE ON PURPOSE. The swarm split its work across them, so their
+// totals land within a few per cent — the arrangement where a table of figures
+// has to be read digit by digit, and therefore the one that proves the figures
+// are lined up to be read that way.
 var demoHeavy = []struct {
 	slug   string
 	calls  int

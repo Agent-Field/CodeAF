@@ -2008,8 +2008,8 @@ same three-second beat every place runs on, and it draws three things:
   read rather than fourteen cells in the corner. Its axis is **two dates**: the first bucket
   at the left, and at the right the last one, called `today` when it is today. There is no
   money on the axis — the money is the line above it;
-- **what ran it**, by the model and **the role it is bound to**, dearest first, each row with
-  a bar, its call count and its tokens. The role is the **crew binding** — `execution`,
+- **what ran it**, by the model and **the role it is bound to**, dearest first, each row
+  carrying its call count, its token volume and what it cost. The role is the **crew binding** — `execution`,
   `conversation`, `verification`, `naming`, `planning` — read from the settings as they
   stand right now, and never the auxiliary word one call gave itself. That is the point of
   the column: seeing that execution is most of the bill sends you to the one row that
@@ -2029,7 +2029,11 @@ same three-second beat every place runs on, and it draws three things:
   three ids: a piece of work, a standing promise, or a conversation. The dearest three are
   shown and the rest fold into one line. Work with **no id of its own** — the hands a reply
   forks, the check that reads what a piece of work left — is on the row of the conversation
-  it belongs to, because that is the only name it has.
+  it belongs to, because that is the only name it has;
+- **what kept running** — the standing promises, under a heading and columns of their own.
+  A promise's facts are not a task's: what you want of one is how often it went off and what
+  a single firing costs, so its row reads `repo-watch · 88 firings · $0.04 a run · $3.31`
+  rather than carrying a project and a kind word it has no use for.
 
 **The money on every row of both tables is a column of cents.** A row that cost less than
 a cent reads `$0.01` — the smallest figure the column can say and still be read — rather
@@ -2039,23 +2043,36 @@ full of slivers can show rows that add to more than the heading above them; the 
 the `today` pointer line and the Spending tab all keep the exact arithmetic. A call that
 cost nothing has no row at all, which is the emptiness law and not a rounding.
 
-**Both tables are laid out in columns.** Under *what ran it* the model name, the role word,
-the bar and the call counts each stand in one, and under *what it was for* so do the
-project and the word for what kind of thing it was. A bar is that model's share of the
-dearest one, and a share is read by comparing where the bars END — which only says
-something when their starts are level.
+**Every table on this page has four columns**, and they are the same four questions asked
+of the same money:
 
-**The role keeps its column whether or not anything is bound.** Its width is the longest
-word the crew has, so the bars stand in the same place on a machine that has bound a model
-and on one that has not, and they do not move when the model you are talking to changes
-under them. A row with no role word draws nothing there rather than closing the gap up.
+| | | | | |
+| --- | --- | --- | --- | --- |
+| *what ran it* | the model, with the role it is bound to | its calls | its tokens | what it cost |
+| *what it was for* | the task or the conversation | its project | `task` or `chat` | what it cost |
+| *what kept running* | the standing order | its firings | what a firing cost | what it cost |
 
-On a frame too narrow to carry them, the bar and the counts go together and the row keeps
-the name, the role and the money — never a count with its tail cut off. Rows under *what it
-was for* give up the kind word first and then the project, in that order.
+The kind word is `task` and `chat` — column words, not sentences. It read `a task` and
+`a conversation`, which is how prose names those things and twice what a column needs.
+
+**Counts are right-aligned and money is flushed to the right edge**, so digits end where
+the digits above them end and two rows can be compared without being read. The unit word
+rides behind each figure — `9,400 calls`, `163M tokens` — because the page has no header
+row.
+
+**There used to be a bar beside every model**, its share of the dearest one. It is gone: the
+list is sorted dearest first and every row says what it cost, which is the same comparison
+in figures you can also subtract — and the bar cost a reserved column, plus a second
+reservation in front of it so a role word on one row could not push it out of line.
+
+A name column is the width of what it holds and is **never squeezed** to keep a field behind
+it; a name wider than its column keeps every cell of itself and starts the next field one
+space late. On a frame too narrow for the whole table, **whole fields go, from the right** —
+the tokens before the calls, the kind word before the project — never a figure with its tail
+cut off.
 
 **Figures are written the same way wherever they appear.** Money over a thousand carries the
-mark — `$4,210.55`, and a limit `$50,000` — and so do call counts: `128,400 calls`. Token
+mark — `$4,210.55`, and a limit `$50,000` — and so do call and firing counts: `128,400 calls`. Token
 volumes climb `842`, `12.4k`, `1.2M`, `3.2B`, one decimal and no more, so a number never
 keeps a unit it has outgrown.
 
@@ -2063,8 +2080,9 @@ The ledger holds **ids and no titles**, so the place joins each id against the r
 already reading — the project's own index of what it ran, and the standing store — to put a
 name on the row. A thing neither of them knows keeps its id.
 
-**`enter` on a row of "what it was for" opens what it was for**: a task goes to the tasks
-place, a standing promise to the standing place, a conversation to home.
+**`enter` on any row under "what it was for" or "what kept running" opens what it was
+for**: a task goes to the tasks place, a standing promise to the standing place, a
+conversation to home.
 
 **The loudest day is a row like those.** It reads
 `aug 20 was the loudest day — $21.40, the-filings-sweep` with the door out at its right —

@@ -528,10 +528,10 @@ type SubjectSpend struct {
 	// Workspace is the project the money was spent against, and empty where the
 	// line named none.
 	Workspace string
-	// Label is the row's LEFT WORD and nothing more: "a task", "standing", "a
-	// conversation". It is deliberately not a title — see ID — and it is here so
-	// that the three spellings live in one place rather than in each page that
-	// draws them.
+	// Label is the row's KIND WORD and nothing more: "task", "standing", "chat"
+	// ([UsageSubjectWord], which says why they are that short). It is
+	// deliberately not a title — see ID — and it is here so that the three
+	// spellings live in one place rather than in each page that draws them.
 	Label  string
 	Calls  int
 	Tokens int
@@ -622,14 +622,23 @@ func UsageBySubject(lines []UsageLine) []SubjectSpend {
 // other axis of a spend row. An unknown kind reads as nothing rather than as
 // itself, because a machine word leaking onto a screen is the failure this
 // function exists to prevent.
+//
+// THEY ARE COLUMN WORDS AND SO THEY ARE SHORT. They were `a task` and `a
+// conversation`, which are how a SENTENCE names those things and twice what a
+// column needs: the spend place stands them in a column of their own beside the
+// project and the figure, where the article is a cell spent saying nothing and
+// `conversation` is twelve of them. `chat` is what this surface already counts
+// them in — the tasks place's own head row says `3 chats · 8 subtasks` — and
+// the long spelling stays where it belongs, in prose (home's `start a new
+// conversation`).
 func UsageSubjectWord(kind string) string {
 	switch kind {
 	case SubjectTask:
-		return "a task"
+		return "task"
 	case SubjectStanding:
 		return "standing"
 	case SubjectConversation:
-		return "a conversation"
+		return "chat"
 	}
 	return ""
 }
