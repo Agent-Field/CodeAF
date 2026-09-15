@@ -2105,8 +2105,8 @@ already reading — the project's own index of what it ran, and the standing sto
 name on the row. A thing neither of them knows keeps its id.
 
 **`enter` on any row under "what it was for" or "what kept running" opens the thing
-itself**, and each heading says so: `enter opens it`, out at the right-hand edge of the
-table it heads. A task opens **its own record card** in the tasks place, with the list
+itself**, and each heading says so in its own sentence — `what it was for · enter opens
+it` — in the grammar the other caption on this page already uses. A task opens **its own record card** in the tasks place, with the list
 behind it parked on that row; a standing promise opens the standing place **on that
 order**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that

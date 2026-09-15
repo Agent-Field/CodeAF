@@ -161,14 +161,18 @@ func TestTheLoudestDaySaysWhereItsDoorGoes(t *testing.T) {
 	if heading < 0 || table != heading+1 {
 		t.Fatalf("the heading and its first row are not neighbours:\n%s", strings.Join(rows, "\n"))
 	}
-	if !strings.Contains(rows[heading], spendOpensWord) {
-		t.Fatalf("the heading over the doors does not name the key: %q", rows[heading])
+	// AND IT IS A CLAUSE OF THE CAPTION'S OWN SENTENCE, in the grammar the other
+	// caption on this page already uses — `what ran it · by the model, and the
+	// role it was bound to` — rather than an instruction flushed to the far end
+	// of the line, which made one heading two objects.
+	if want := spendSubjectsWord + rowSep + spendOpensWord; !strings.Contains(rows[heading], want) {
+		t.Fatalf("the heading over the doors reads %q, want %q", rows[heading], want)
 	}
 	// AND A FRAME WITH NO ROOM FOR BOTH KEEPS THE CAPTION. rowfit's law 1: the
 	// identity survives and the fact about it goes.
-	for _, row := range plainSpendRows(r.rows(40, pal)) {
+	for _, row := range plainSpendRows(r.rows(30, pal)) {
 		if strings.Contains(row, spendSubjectsWord) && strings.Contains(row, "enter") {
-			t.Fatalf("a 40-cell frame kept a door word it has no room for: %q", row)
+			t.Fatalf("a 30-cell frame kept a door word it has no room for: %q", row)
 		}
 	}
 }

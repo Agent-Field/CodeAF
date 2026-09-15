@@ -33,9 +33,10 @@ invalidates:
     long enough to crowd `shift+↑ coarser` off the line does not hide that key, it
     UNBINDS it. The head was short enough for this never to arise until the
     loudest day joined it."
-  - "The two subject headings carry `enter opens it` at the right-hand edge of the
-    table they head. The page said it once, on the loudest day's row, four lines
-    above a heading and a table the sentence was not about — and that row no
+  - "The two subject headings carry `enter opens it` as a clause of their own
+    sentence — `what it was for · enter opens it` — in the grammar the models
+    caption already uses. The page said it once, on the loudest day's row, four
+    lines above a heading and a table the sentence was not about, and that row no
     longer exists. It names no destination: `what it was for` holds tasks and
     conversations, which open in different places."
   - "THE MODEL BARS ARE GONE. Every model row on the spend place carried a bar —

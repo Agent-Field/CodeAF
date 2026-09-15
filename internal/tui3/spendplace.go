@@ -426,7 +426,7 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			work = append(work, subject)
 		}
 		if len(work) > 0 {
-			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendSubjectsWord, spendOpensWord, rule, inner, pal))
+			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendSubjectsWord, spendOpensWord, inner, pal))
 			fields, table := r.subjectTable(work, inner, rule)
 			for at, subject := range work {
 				doors[len(out)] = subject
@@ -434,7 +434,7 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			}
 		}
 		if len(promises) > 0 {
-			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendStandingWord, spendOpensWord, rule, inner, pal))
+			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendStandingWord, spendOpensWord, inner, pal))
 			fields, table := r.standingTable(promises, inner, rule)
 			for at, subject := range promises {
 				doors[len(out)] = subject
@@ -853,22 +853,25 @@ const spendSubjectsWord = "what it was for"
 // standing` would be the same word twice on one line.
 const spendOpensWord = "enter opens it"
 
-// subjectHeading is one table's caption with the door word out at the rule — the
-// same edge every figure under it ends on ([spendReading.rule]), so the heading
-// is the width of the table it heads rather than of the frame.
+// subjectHeading is one table's caption WITH THE DOOR WORD IN THE SENTENCE, in
+// the grammar this page's other caption already uses: `what ran it · by the
+// model, and the role it was bound to`.
+//
+// IT WAS FLUSHED TO THE RIGHT-HAND EDGE OF THE TABLE, which made the heading two
+// objects — a caption at one end of the line and an instruction at the other —
+// on a page whose headings are sentences. A clause after a `·` is what this
+// surface does with a second fact about a heading, and the eye that has just
+// read the caption is already standing where the clause begins.
 //
 // THE DOOR IS THE FIRST THING OFF A NARROW FRAME. The caption says what the
 // table is and the door word says what a key does; rowfit's law 1 is that the
 // identity survives and the fact about it goes.
-func (r spendReading) subjectHeading(caption, door string, rule, width int, pal palette) string {
+func (r spendReading) subjectHeading(caption, door string, width int, pal palette) string {
 	ink := placeHeadingInk(pal)
-	if rule > width {
-		rule = width
+	if said := caption + rowSep + door; ansi.StringWidth(said) <= width {
+		return ink(said)
 	}
-	if ansi.StringWidth(caption)+rowGutter+ansi.StringWidth(door) > rule {
-		return ink(fit(caption, width))
-	}
-	return spendSides(rule, caption, door, ink, ink)
+	return ink(fit(caption, width))
 }
 
 // spendStandingWord heads the STANDING PROMISES, which answer the same question
