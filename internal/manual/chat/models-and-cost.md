@@ -2009,7 +2009,9 @@ same three-second beat every place runs on, and it draws three things:
   at the left, and at the right the last one, called `today` when it is today. There is no
   money on the axis — the money is the line above it;
 - **what ran it**, by the model and **the role it is bound to**, dearest first, each row
-  carrying its call count, its token volume and what it cost. The role is the **crew binding** — `execution`,
+  carrying its call count, its token volume, its role and what it cost. The role stands
+  second-last, immediately left of the money, because that is where you read down the
+  column to see which binding is paying the bill. The role is the **crew binding** — `execution`,
   `conversation`, `verification`, `naming`, `planning` — read from the settings as they
   stand right now, and never the auxiliary word one call gave itself. That is the point of
   the column: seeing that execution is most of the bill sends you to the one row that
@@ -2048,17 +2050,26 @@ of the same money:
 
 | | | | | |
 | --- | --- | --- | --- | --- |
-| *what ran it* | the model, with the role it is bound to | its calls | its tokens | what it cost |
+| *what ran it* | the model | its calls | its tokens | the role it is bound to · what it cost |
 | *what it was for* | the task or the conversation | its project | `task` or `chat` | what it cost |
 | *what kept running* | the standing order | its firings | what a firing cost | what it cost |
 
 The kind word is `task` and `chat` — column words, not sentences. It read `a task` and
 `a conversation`, which is how prose names those things and twice what a column needs.
 
-**Counts are right-aligned and money is flushed to the right edge**, so digits end where
-the digits above them end and two rows can be compared without being read. The unit word
-rides behind each figure — `9,400 calls`, `163M tokens` — because the page has no header
-row.
+**The name is left-aligned and everything else is pushed right and right-aligned.** What a
+row is *about* is read from the left, where your eye already is; what it *cost*, how many
+calls it took and what it was bound to are read by comparing them with the row above, and a
+comparison is made on a figure's right-hand edge. So the facts travel together in one block
+and the names run out to meet them. The call count keeps its unit word — `9,400 calls` —
+because the page has no header row; the token column does not, since `3.2B` beside
+`128,400 calls` is already plainly a different kind of number.
+
+**That block ends where the chart above it ends** — the `today` point, with the last
+bucket's date already standing under it. The money used to be flushed to the frame, which
+on a wide terminal put the one figure every row is read for forty cells away from the counts
+it belongs with. A window zoomed so far in that its chart is only a few cells wide falls
+back to the frame, because a table has to be drawn somewhere.
 
 **There used to be a bar beside every model**, its share of the dearest one. It is gone: the
 list is sorted dearest first and every row says what it cost, which is the same comparison
@@ -2067,9 +2078,9 @@ reservation in front of it so a role word on one row could not push it out of li
 
 A name column is the width of what it holds and is **never squeezed** to keep a field behind
 it; a name wider than its column keeps every cell of itself and starts the next field one
-space late. On a frame too narrow for the whole table, **whole fields go, from the right** —
-the tokens before the calls, the kind word before the project — never a figure with its tail
-cut off.
+space late. On a frame too narrow for the whole table, **whole fields go** in order of what
+they are worth — the token volume first, then the role, then the calls; the kind word before
+the project — never a figure with its tail cut off, and never the money.
 
 **Figures are written the same way wherever they appear.** Money over a thousand carries the
 mark — `$4,210.55`, and a limit `$50,000` — and so do call and firing counts: `128,400 calls`. Token

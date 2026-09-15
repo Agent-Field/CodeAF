@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: the spend place is three tables in four columns each — no bars, and money in cents
+title: the spend place is three tables in four columns each — no bars, one right edge, money in cents
 pr: 1040
 surface: [chat]
 invalidates:
@@ -18,13 +18,31 @@ invalidates:
     the figures are the whole of the comparison. The unit word rides behind each
     numeral (`9,400 calls`, `163M tokens`) because this surface has no header
     row."
-  - "`what ran it` is name · calls · tokens · money, and the role it is bound to
-    is part of the NAME FIELD rather than a column of its own. The role held a
-    reserved column, floored at the widest `config.ModelSlots()` label, only so
-    that one bound row's bar stayed in line; with no bar to protect, a column
-    held open on every machine for a word at most one row wears is a column of
-    air. `spendReading.modelCols` and `roleCol` are deleted."
+  - "`what ran it` is name · calls · tokens · ROLE · money, the role second-last
+    and immediately left of the figures, where reading down the column says which
+    binding is paying the bill. It held a reserved column of its own floored at
+    the widest `config.ModelSlots()` label — that existed only to keep one bound
+    row's bar in line — and `spendReading.modelCols` and `roleCol` are deleted."
+  - "The role no longer wears the `·` that used to introduce it. A column needs
+    no mark saying a column has begun."
+  - "The token column carries NO UNIT WORD: `3.2B`, not `3.2B tokens`. Beside
+    `128,400 calls` it is already plainly a different kind of number, and the
+    word repeated down a column said nothing the k/M/B did not."
   - "`what it was for` is name · project · kind · money."
+  - "THE NAME IS LEFT-ALIGNED AND EVERY OTHER COLUMN IS PUSHED RIGHT AND
+    RIGHT-ALIGNED. Fields used to start in their columns and run left to right
+    behind the name. What a row is about is read from the left; what it cost and
+    how many calls it took are read by comparison with the row above, and a
+    comparison is made on a figure's right-hand edge — so the facts travel
+    together in one block and the names run out to meet them."
+  - "AND THAT BLOCK ENDS WHERE THE CHART ENDS ([spendReading.rule]) rather than
+    at the frame. The money was flushed to the frame's right edge, which on a
+    wide terminal put the one figure every row is read for forty cells from the
+    counts it belongs with, on a page that already draws a horizontal scale. The
+    tables now end on the chart's `today` point, with the last bucket's date
+    standing under it. A window zoomed until its chart is a few cells wide falls
+    back to the frame, with every field back — a table measured against a rule it
+    cannot meet must not give up fields the frame behind it had room for."
   - "STANDING PROMISES ARE A TABLE OF THEIR OWN, under a new heading `what kept
     running · standing orders, and what a firing cost`, with name · firings ·
     what a firing cost · money. They used to share `what it was for`, where the
@@ -68,11 +86,11 @@ invalidates:
     the rung below turns at 999,950. It is the status line's context meter and
     tok/s reading too, though nothing there comes near a billion."
   - "The models table gave up its bar and counts below a flat 80 cells. A narrow
-    frame now drops WHOLE FIELDS FROM THE RIGHT, measured against what each table
-    actually holds — the tokens before the calls, the kind word before the
-    project. A name column is never squeezed to keep a field behind it, because a
-    column narrower than what it holds is a column the longest rows fall out of,
-    and the longest name is very often the row that also wears the role word."
+    frame now gives up WHOLE FIELDS in a named order of worth, measured against
+    what each table actually holds — the token volume, then the role, then the
+    calls; the kind word, then the project. The money is never given up. A name
+    column is never squeezed to keep a field behind it, because a column narrower
+    than what it holds is a column the longest rows fall out of."
   - "The demo home's ledger was a fortnight of small change, so `make demo-home`
     could not show the spend page at the top of its range. It now carries a
     four-day heavy stretch (`demoHeavy` in cmd/aforge-demo-home/seed_spend.go)
