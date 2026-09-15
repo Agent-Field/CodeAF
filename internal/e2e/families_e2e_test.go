@@ -343,7 +343,7 @@ func (r *familyRun) awaitFamilyTree(ctx context.Context) {
 // groundBaselineRecord), spelled again here because they are unexported there
 // and this lane reads the disk rather than the engine.
 const (
-	codeafDroppings      = ".codeaf-v3"
+	codeafDroppings      = ".codeaf"
 	groundBaselineRecord = "ground-baseline.json"
 )
 

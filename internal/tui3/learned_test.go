@@ -80,7 +80,7 @@ func TestALearnedFactIsReadOncePerNameUntilSomethingSaysOtherwise(t *testing.T) 
 // the preview cache's key (imagepreview.go).
 func TestTheFrameStatsOnePictureOnceAndNotOncePerPaint(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image", `{"prompt":"a harbour"}`,
-		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
+		".codeaf/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
 	stats := 0
 	// A FRESH MEMO, so what the turn's own arrival learned is not counted here:
 	// what is being measured is what the FRAME costs from here on.
@@ -123,7 +123,7 @@ func TestTheFrameStatsOnePictureOnceAndNotOncePerPaint(t *testing.T) {
 // after it already has the file — no window, no message, no beat in between.
 func TestAPictureIsStatdWhenItsCallFinishes(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image", `{"prompt":"a harbour"}`,
-		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
+		".codeaf/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"))
 	if paintedRows(openFirst(t, a)) == 0 {
 		t.Fatal("the first frame after the call drew no picture")
 	}

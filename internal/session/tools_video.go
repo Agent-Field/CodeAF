@@ -40,7 +40,7 @@ import (
 // videoDirectory is where a render lands when the model does not say and the
 // session has no folder of its own — [imageDirectory]'s sibling, and [VideoDir]
 // holds the whole rule.
-const videoDirectory = ".codeaf-v3/video"
+const videoDirectory = ".codeaf/video"
 
 // videoExtension is what the provider sends and what the file is called. The
 // endpoint has no format argument, so there is nothing to keep in step with.

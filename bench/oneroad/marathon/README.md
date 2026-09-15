@@ -395,7 +395,7 @@ bash rescore.sh s6 3          # the third out-of-band reading of seed s6
 ```
 
 Copies the running cell's `/workspace` **with the droppings stripped** — no
-`target/` (build output the verifier rebuilds), no `.git`, no `.codeaf-v3` (the
+`target/` (build output the verifier rebuilds), no `.git`, no `.codeaf` (the
 harness's own store, which the agent happened to write inside the working
 directory and which is no part of the work being judged) — scores it in a
 short-lived two-CPU container with the agent's toolchain adopted, and appends a

@@ -1250,7 +1250,7 @@ func TestServeLandsAnUploadedPictureInTheSessionFolder(t *testing.T) {
 	if got, want := filepath.Dir(path), engine.Place.Artifacts(); got != want {
 		t.Fatalf("the picture landed in %q, want %q", got, want)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, ".codeaf-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workspace, ".codeaf")); !os.IsNotExist(err) {
 		t.Fatalf("the engine littered the workspace: %v", err)
 	}
 	if rows := session.ReadArtifacts(index); len(rows) != 0 {

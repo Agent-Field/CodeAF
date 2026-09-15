@@ -113,7 +113,11 @@ const (
 	// path, so repo-local placement was never a constraint — it was only where
 	// the first version happened to put them, and it is litter in somebody
 	// else's repository.
-	tasksDirName = ".codeaf-v3/tasks"
+	tasksDirName = ".codeaf/tasks"
+	// legacyTasksDirName is a PERSISTED worktree and lock location. New
+	// repository-local work goes to tasksDirName, but an earlier binary and this
+	// one must still meet on the same registered worktree and repository lock.
+	legacyTasksDirName = ".aforge-v3/tasks" // legacy-name
 
 	// taskReportLines and taskReportLineLimit bound the ordinary report. Two or
 	// three lines is what a person reads off a finished card and what a
@@ -6110,7 +6114,7 @@ func rememberReleased(dir, branch, root string) {
 // rememberedRelease answers whether this directory is a working copy a settle
 // gave back, and what it was standing on when that happened.
 func rememberedRelease(dir string) (releasedTree, bool) {
-	contents, err := os.ReadFile(filepath.Join(dir, codeafDroppings, releasedRecord))
+	contents, err := readTaskDropping(dir, releasedRecord)
 	if err != nil {
 		return releasedTree{}, false
 	}
@@ -6124,7 +6128,9 @@ func rememberedRelease(dir string) (releasedTree, bool) {
 // forgetReleased drops the mark once the copy is a registered worktree again,
 // so the record only ever describes the state the directory is actually in.
 func forgetReleased(dir string) {
-	_ = os.Remove(filepath.Join(dir, codeafDroppings, releasedRecord))
+	for _, dropping := range taskDroppingNames() {
+		_ = os.Remove(filepath.Join(dir, dropping, releasedRecord))
+	}
 }
 
 // branchIsThere asks a repository whether it holds a branch by that name, which
@@ -6189,7 +6195,7 @@ func (t taskTree) releaseIdentity() (releasedTree, bool) {
 	// Older releases wrote only the leavings record. That valid record is also
 	// evidence of runtime cleanup, but cannot recover an unknown renamed branch.
 	if !released && !t.ownRepository() {
-		if data, err := os.ReadFile(filepath.Join(t.dir, codeafDroppings, leftBehindRecord)); err == nil {
+		if data, err := readTaskDropping(t.dir, leftBehindRecord); err == nil {
 			var paths []string
 			if json.Unmarshal(data, &paths) == nil {
 				mark = releasedTree{Branch: t.branch, Root: t.root}
@@ -6576,7 +6582,7 @@ func argField(args, field string) string {
 // "?? marketing/" both times and its second file read as a stall, which is
 // exactly the shape of work that makes many files in one new folder. The
 // exclude drops the harness's own droppings: a background job writes its log
-// under .codeaf-v3 while the node works (jobs.go), and a tree that dirties
+// under .codeaf while the node works (jobs.go), and a tree that dirties
 // itself on a timer would make every step look like progress forever — the same
 // exclusion [stageTaskWork] makes for the same reason.
 //
@@ -6608,7 +6614,7 @@ func worktreeDirtIn(ctx context.Context, dir string) string {
 // once because two places have to agree about it — the fingerprint above and
 // the index [stageTaskWork] builds — and a disagreement would mean a node
 // judged as working on files that never reach its branch.
-const codeafDroppings = ".codeaf-v3"
+const codeafDroppings = ".codeaf"
 
 const legacyCodeafDroppings = ".aforge-v3" // legacy-name
 
@@ -6617,6 +6623,24 @@ const legacyCodeafDroppings = ".aforge-v3" // legacy-name
 // codeafDroppings because live worktree registrations cannot be moved.
 func taskDroppingNames() []string {
 	return []string{codeafDroppings, legacyCodeafDroppings}
+}
+
+// readTaskDropping reads current metadata first and consults the former
+// directory only when the current file is absent. A current file that exists
+// but cannot be read is never silently replaced with older state.
+func readTaskDropping(dir, name string) ([]byte, error) {
+	var absent error
+	for _, dropping := range taskDroppingNames() {
+		contents, err := os.ReadFile(filepath.Join(dir, dropping, name))
+		if err == nil {
+			return contents, nil
+		}
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		absent = err
+	}
+	return nil, absent
 }
 
 func isTaskDropping(path string) bool {
@@ -7248,7 +7272,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// AND WHERE ITS LITTER GOES, which is NOT its workspace. A worker is not a
 		// session and carries no Place — that is deliberate (session.go) — so with
 		// nothing here its job logs and its stubbed tool results landed in
-		// <workspace>/.codeaf-v3, and a worker's workspace is the person's
+		// <workspace>/.codeaf, and a worker's workspace is the person's
 		// repository or a worktree of it. landing.go states the law and the
 		// measured failure; this line is the whole of the fix for a task node.
 		droppings: family,
@@ -7816,6 +7840,11 @@ func taskOwnFolder(place Place, workspace, session string, id uint64) (string, o
 	mode := os.FileMode(0o755)
 	if trees := place.Trees(); trees != "" {
 		dir, mode = filepath.Join(trees, strconv.FormatUint(id, 10)), 0o700
+	} else if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		former := filepath.Join(workspace, filepath.FromSlash(legacyTasksDirName), taskTreeSession(session), strconv.FormatUint(id, 10))
+		if _, formerErr := os.Lstat(former); formerErr == nil || !os.IsNotExist(formerErr) {
+			dir = former
+		}
 	}
 	// Git resolves symlinks before it registers a worktree. Record that same
 	// spelling from the start so the checkpoint, cleanup and git all name one
@@ -8523,7 +8552,7 @@ func rememberLeftBehind(dir string, paths []string) {
 // rememberedLeftBehind distinguishes no record from a recorded empty answer:
 // nil means the folder predates this cleanup law and should use Git's answer.
 func rememberedLeftBehind(dir string) []string {
-	contents, err := os.ReadFile(filepath.Join(dir, codeafDroppings, leftBehindRecord))
+	contents, err := readTaskDropping(dir, leftBehindRecord)
 	if err != nil {
 		return nil
 	}

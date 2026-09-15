@@ -132,7 +132,8 @@ func claimGitRoot(place Place, root string) *os.File {
 // nil when there is nowhere to put one.
 //
 // A SESSION WITH A FOLDER LOCKS OUTSIDE THE PERSON'S REPOSITORY. The legacy
-// layout kept the file with the worktrees under <repo>/.codeaf-v3/, which is the
+// layout keeps the file with the worktrees under the former repository-local
+// directory, which is the
 // litter Decision 26 removes; the folder layout keys the same lock on a digest
 // of the repository root instead and keeps it under the state root. Both windows
 // on one repository still meet on one file, because both derive it from the same
@@ -144,7 +145,16 @@ func openGitRootLock(place Place, root string) *os.File {
 	// future doors may already hold a root. The lock boundary canonicalizes it
 	// again because two spellings of one repository must never make two locks.
 	root = canonicalPath(root)
+	// A repository that already has the former task directory keeps its lock
+	// there so a binary from before the rename and this one meet on one file.
+	// A repository with no former task state writes only the current directory.
 	directory, name := filepath.Join(root, filepath.FromSlash(tasksDirName)), gitRootLockName
+	if _, err := os.Lstat(directory); os.IsNotExist(err) {
+		former := filepath.Join(root, filepath.FromSlash(legacyTasksDirName))
+		if _, formerErr := os.Lstat(former); formerErr == nil || !os.IsNotExist(formerErr) {
+			directory = former
+		}
+	}
 	directoryMode, fileMode := os.FileMode(0o755), os.FileMode(0o644)
 	if strings.TrimSpace(place.Dir) != "" {
 		directory, name = home.Join("v3", gitRootLockDir), gitRootLockFile(root)

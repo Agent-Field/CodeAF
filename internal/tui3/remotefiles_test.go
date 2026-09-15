@@ -112,7 +112,7 @@ func (w *fakeWire) DepositFile(name, mime string, data []byte) (string, error) {
 	if w.depositErr != nil {
 		return "", w.depositErr
 	}
-	return "/srv/app/.codeaf-v3/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-" + name, nil
+	return "/srv/app/.codeaf/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-" + name, nil
 }
 
 func (w *fakeWire) fetched() []string {
@@ -950,7 +950,7 @@ func TestDepositCrossesAndAnswersWithTheEnginesOwnPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a deposit has to cross: %v", err)
 	}
-	if landed != "/srv/app/.codeaf-v3/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-notes.txt" {
+	if landed != "/srv/app/.codeaf/sessions/9f3c/attachments/20260824-141233-a1b2c3d4-notes.txt" {
 		t.Fatalf("the path is the engine's answer and came back as %q", landed)
 	}
 	wire.mu.Lock()

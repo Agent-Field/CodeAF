@@ -30,7 +30,7 @@ import (
 // audioDirectory is where a spoken file lands when the model does not say and
 // the session has no folder of its own — [imageDirectory]'s sibling, and
 // [AudioDir] holds the whole rule.
-const audioDirectory = ".codeaf-v3/audio"
+const audioDirectory = ".codeaf/audio"
 
 // speechFormat is what the endpoint is asked for and what the file is named
 // with. One constant, because a request that asked for mp3 and a file called

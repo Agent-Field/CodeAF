@@ -406,7 +406,7 @@ runs, including one a task's worker started in its own checkout: a job log is
 the harness's own droppings, not your work, so it is kept beside the transcript
 that explains what it was for and goes when you delete the conversation. Only a
 conversation with no folder at all still keeps them at
-`<workspace>/.codeaf-v3/jobs/`.
+`<workspace>/.codeaf/jobs/`.
 
 **You can see a job without asking.** Every job this conversation starts is a row in the
 `jobs` section on the column — a third section under `tasks` and `standing`, collapsed by

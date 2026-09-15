@@ -1139,7 +1139,7 @@ type Config struct {
 	// Place is the session folder and everything inside it (place.go,
 	// Decision 26). The zero Place is the legacy flat layout: sidecar paths
 	// keep deriving from SessionFile, droppings keep landing in the
-	// workspace's .codeaf-v3, and nothing changes for a caller that has not
+	// workspace's .codeaf, and nothing changes for a caller that has not
 	// adopted the folder. When set, SessionFile and Place.Transcript() name
 	// the same file.
 	Place Place

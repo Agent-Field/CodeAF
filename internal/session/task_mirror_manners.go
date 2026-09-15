@@ -138,7 +138,7 @@ func rememberGroundBaseline(dir string) {
 // empty when the copy was made, and every path in the ledger is measured against
 // it.
 func rememberedGroundBaseline(dir string) map[string]string {
-	contents, err := os.ReadFile(filepath.Join(dir, codeafDroppings, groundBaselineRecord))
+	contents, err := readTaskDropping(dir, groundBaselineRecord)
 	if err != nil {
 		return nil
 	}

@@ -268,7 +268,7 @@ func TestAHarnessBeltLandsItsCutWhereASessionsWouldAndIndexesIt(t *testing.T) {
 	if cut := onlyFileIn(t, place.Artifacts()); !strings.HasSuffix(cut, ".mp4") {
 		t.Errorf("a harness landed %s in the session's artifacts/, want the cut", cut)
 	}
-	if stray := filesIn(t, filepath.Join(workspace, ".codeaf-v3", "video")); len(stray) != 0 {
+	if stray := filesIn(t, filepath.Join(workspace, ".codeaf", "video")); len(stray) != 0 {
 		t.Errorf("a harness dropped %v in the hidden dot directory inside the person's project", stray)
 	}
 	if rows := ReadArtifacts(index); len(rows) != 1 || rows[0].Kind != "video" {
@@ -286,7 +286,7 @@ func TestAHarnessBeltLandsItsCutWhereASessionsWouldAndIndexesIt(t *testing.T) {
 	if err != nil || isError {
 		t.Fatalf("a harness with no seams could not join two clips: %v %s", err, said)
 	}
-	if cut := onlyFileIn(t, filepath.Join(nowhere, ".codeaf-v3", "video")); !strings.HasSuffix(cut, ".mp4") {
+	if cut := onlyFileIn(t, filepath.Join(nowhere, ".codeaf", "video")); !strings.HasSuffix(cut, ".mp4") {
 		t.Errorf("a harness with no Place landed %s, want the legacy rung the essay promises", cut)
 	}
 }

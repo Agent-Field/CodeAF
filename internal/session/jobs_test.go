@@ -302,7 +302,7 @@ func TestBackgroundBashReturnsImmediately(t *testing.T) {
 		t.Fatalf("background bash waited %s for a 30s command", elapsed)
 	}
 
-	logPath := filepath.Join(workspace, ".codeaf-v3", "jobs", "1.log")
+	logPath := filepath.Join(workspace, ".codeaf", "jobs", "1.log")
 	if !strings.Contains(text, "job 1 started") || !strings.Contains(text, logPath) {
 		t.Fatalf("unexpected start line: %q (wanted job 1 and %s)", text, logPath)
 	}

@@ -379,7 +379,7 @@ They are two different kinds of line and they are fitted by two different rules.
 - **A note** — the dim words written into the rule over the composer, saying what just
   happened or what the page holds — has the answer at
   the **front**, so the front is protected and the line gives up its later clauses. Settings
-  says `saved to your profile · a project's own .codeaf-v3/config.json is a hand edit`; at
+  says `saved to your profile · a project's own .codeaf/config.json is a hand edit`; at
   sixty columns that becomes `saved to your profile`, which is the half you asked for. The
   macOS chord note behaves the same way: `your terminal sends ⌥ as a letter — turn on "use
   option as meta" in Terminal: Profiles › Keyboard` shortens to

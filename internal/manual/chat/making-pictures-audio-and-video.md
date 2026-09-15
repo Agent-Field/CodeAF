@@ -27,7 +27,7 @@ The picture is written to a file, and the result codeaf reads is one line naming
 it — **the whole path, absolute, from the root** — like:
 
 ```
-/home/you/work/.codeaf-v3/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
+/home/you/work/.codeaf/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
 ```
 
 The path is whole because that line is what you are shown in place of the
@@ -257,7 +257,7 @@ Arguments: `text` (required), `voice`, `path`, `model`. It writes an **mp3** and
 with the path, the file size and the model, e.g.
 
 ```
-.codeaf-v3/audio/20260817-142433-good-morning-harbour-road.mp3 — 84.2KB of mp3 audio, spoken by <model>
+.codeaf/audio/20260817-142433-good-morning-harbour-road.mp3 — 84.2KB of mp3 audio, spoken by <model>
 ```
 
 **Leave `voice` out and the provider's default voice speaks.** Name one only if
@@ -287,13 +287,13 @@ to sing and not text to be read out.
 `generate_video` does, because a compose takes most of a minute:
 
 ```
-job 4 started; composing on <model> — the finished piece arrives as a note naming the file. Log at /path/to/.codeaf-v3/jobs/4.log
+job 4 started; composing on <model> — the finished piece arrives as a note naming the file. Log at /path/to/.codeaf/jobs/4.log
 ```
 
 codeaf keeps working — on other clips, on a stitch, on the conversation —
 while the piece is written, and when it lands codeaf is told in a note at the
 next step:
-`job 4 finished: .codeaf-v3/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>`.
+`job 4 finished: .codeaf/music/20260818-160204-a-calm-solo-piano-loop.mp3 — 1.6MB of mp3 audio, composed by <model>`.
 A compose that fails says so the same way: `job 4 failed: music generation
 failed (<model>): …`. It shows in `jobs list` as `job 4 · music · running · 12.3s
 · a calm solo piano loop`, and `jobs kill 4` stops it — `music (job 4) stopped;
@@ -350,12 +350,12 @@ behaves differently from most tools, because a render takes **minutes**.
 `background: true`:
 
 ```
-job 3 started; filming on <model> — the finished video arrives as a note naming the file. Log at /path/to/.codeaf-v3/jobs/3.log
+job 3 started; filming on <model> — the finished video arrives as a note naming the file. Log at /path/to/.codeaf/jobs/3.log
 ```
 
 It keeps working while you and codeaf carry on talking. When it lands, codeaf is
 told in a note at the next step:
-`job 3 finished: .codeaf-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, 8.0s with sound, filmed on <model>`.
+`job 3 finished: .codeaf/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, 8.0s with sound, filmed on <model>`.
 The length and the sound answer are measured from the file itself — a clip that
 landed silent says `without sound` — and when the file cannot be measured the
 note simply omits both rather than guessing. A render that fails says so the
@@ -470,7 +470,7 @@ command gets wrong:
 The answer is measured off the file that now exists, not claimed:
 
 ```
-.codeaf-v3/video/20260901-181201-joined-cut-of-4-clips.mp4 — 34.0s with sound, 1280×720 at 24fps, 12.4MB of mp4 video, joined from 4 clips
+.codeaf/video/20260901-181201-joined-cut-of-4-clips.mp4 — 34.0s with sound, 1280×720 at 24fps, 12.4MB of mp4 video, joined from 4 clips
 ```
 
 Limits, in its own words. At most **64 clips** in one call — `a join takes at
@@ -533,7 +533,7 @@ The answer names the whole absolute path, the picture's measured shape, and whic
 frame of which clip it is:
 
 ```
-/home/you/work/.codeaf-v3/images/20260901-181330-the-closing-frame.png — 1280×720 png, 812.4KB, the closing frame of ferry.mp4
+/home/you/work/.codeaf/images/20260901-181330-the-closing-frame.png — 1280×720 png, 812.4KB, the closing frame of ferry.mp4
 ```
 
 ## Can you put music under a video, or add a soundtrack?
@@ -597,7 +597,7 @@ In one of three places, decided by whose folder the workspace is:
 - If the workspace is **your repository**, they land in the session's own
   `artifacts/` folder instead, so nothing of codeaf's is dropped in your project.
 - With no session folder at all, they land under
-  `<workspace>/.codeaf-v3/images`, `/audio`, `/music` or `/video`.
+  `<workspace>/.codeaf/images`, `/audio`, `/music` or `/video`.
 
 Either way every generated file gets a row in the deliverables index, so
 `/files` finds it again later by name and date, from any directory. Give the

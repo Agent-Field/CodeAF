@@ -211,7 +211,7 @@ func errorKey(updates map[string]any) string {
 // beside it.)
 //
 // WHAT IT DOES NOT SEE, stated plainly: a config.json edited by hand in another
-// process, and a project file (`<workspace>/.codeaf-v3/config.json`) edited by
+// process, and a project file (`<workspace>/.codeaf/config.json`) edited by
 // anything. Both are the same as the behaviour before a counter existed — those
 // changes have always landed on the next launch — and a counter that pretended
 // otherwise would need a watcher on two files per session.

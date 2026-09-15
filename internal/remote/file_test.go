@@ -132,6 +132,33 @@ func TestTwoAttachmentsUnderOneNameDoNotOverwriteEachOther(t *testing.T) {
 	}
 }
 
+func TestFlatAttachmentsReadCurrentFirstAndNewWritesNeverUseTheFormerDirectory(t *testing.T) {
+	workspace := t.TempDir()
+	former := filepath.Join(workspace, filepath.FromSlash(attachmentsFormerDirectory))
+	if err := os.MkdirAll(former, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := AttachmentsDir(session.Place{}, workspace); got != former {
+		t.Fatalf("former attachment directory was not found: %q", got)
+	}
+	current := filepath.Join(workspace, filepath.FromSlash(attachmentsFlatDirectory))
+	if err := os.MkdirAll(current, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := AttachmentsDir(session.Place{}, workspace); got != current {
+		t.Fatalf("current attachment directory did not win: %q", got)
+	}
+	if err := os.RemoveAll(current); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeAttachment(session.Place{}, workspace, WireFile{Name: "new.txt", Bytes: []byte("new")}); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := os.ReadDir(current); err != nil || len(entries) != 1 {
+		t.Fatalf("new attachment did not use current directory: %v %v", entries, err)
+	}
+}
+
 // A BOUNDARY THAT TRUSTS ITS INPUT IS NOT A BOUNDARY. The name is joined to a
 // directory of the engine's choosing, so a name that walked out of it would be
 // this wire handing a remote surface an arbitrary write.

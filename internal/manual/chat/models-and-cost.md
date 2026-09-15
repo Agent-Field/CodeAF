@@ -694,7 +694,7 @@ hold an id with a thinking instruction on it.
 ## Why is my crew thinking at low — the pin is being ignored, effort=low in the log
 
 A level written onto a class value is a pin, and it reaches the wire on **every** request the
-seat that holds it sends — the conversation's one-shot role calls, and every call of an
+seat that holds it sends — the conversation's one-shot role calls, and every call of a
 `codeaf do`, `exec`, `plan` or `run`. It is not a preference something further in gets to
 reconsider.
 
@@ -2265,7 +2265,7 @@ them back at any time.
 project**: a stubbed result is the harness's own droppings, not your work. That holds for a
 task's worker too, however long the files it reads — its stubs are filed with the
 conversation that sent it out, not in the checkout it is working in. Only a conversation
-with no folder at all falls back to `<workspace>/.codeaf-v3/stubs/`.
+with no folder at all falls back to `<workspace>/.codeaf/stubs/`.
 **The journal is never stubbed** — the record on disk keeps the whole result. An interrupted
 or failed turn is left alone, and a session with no workspace does nothing here.
 
@@ -2289,9 +2289,9 @@ note at the end costs only the note.
 photographed: rendered verbatim to monospaced page images that the model reads back. No model
 call, nothing paraphrased. This rung is chosen only when you gave `/compact` no focus, there
 is a workspace, there is page budget, and the model in use can read images. Pages are 120
-columns by 64 lines, greyscale, deterministic, footed `<title> | context page 1 of 4`, and
-saved under `<workspace>/.codeaf-v3/frames/`. The ceiling is **8 pages**; anything past it is
-folded to a marker after the pages.
+columns by 64 lines, greyscale, deterministic, and footed
+`<title> | context page 1 of 4`. The ceiling is **8 pages**; anything past it is folded to a
+marker after the pages.
 
 **Rung 3 — the fold.** If the transcript is still too big after stubbing, the oldest
 **assistant** work is replaced by one marker line. It is not a summary: nothing is described

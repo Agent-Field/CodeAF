@@ -55,7 +55,7 @@ import (
 //     draws one and takes keys for the other.
 //   - Every write goes through [config.Setting.Apply], which validates in plain
 //     language and persists to the GLOBAL profile. The project layer
-//     (<workspace>/.codeaf-v3/config.json) is deliberately not writable from here:
+//     (<workspace>/.codeaf/config.json) is deliberately not writable from here:
 //     it is a file a repository commits, and a panel that edited it would be
 //     this surface committing to somebody's repository on their behalf.
 //   - A refusal is SHOWN, never swallowed. A pinned row, a seam the door did

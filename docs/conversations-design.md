@@ -1534,7 +1534,7 @@ two workspaces in one process it becomes a visible one. It rides on the
 - **`subharness.Store.Save` has no lock** (`store.go:77`, `:105`). Not this
   feature's, and not fixed here.
 - The comment at `chatv3.go:727` names the project config directory as
-  `.codeaf/config.json`; the code says `.codeaf-v3` (`projectconfig.go:69`). One
+  `.codeaf/config.json`; the code says `.codeaf/config.json` (`projectconfig.go`). One
   line, in a file K2 is already in.
 
 ### A9 — the test plan, in one place

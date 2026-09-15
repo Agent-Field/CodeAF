@@ -49,12 +49,13 @@ import (
 const attachmentStampFormat = "20060102-150405"
 
 // attachmentsDirectory is the leaf a session's attachments land under, and
-// attachmentsLegacyDirectory is where a session with no folder of its own puts
+// attachmentsFlatDirectory is where a session with no folder of its own puts
 // them — the flat layout's dot directory, on the same scheme every other
 // dropping uses (internal/session's landing.go).
 const (
 	attachmentsDirectory       = "attachments"
-	attachmentsLegacyDirectory = ".codeaf-v3/attachments"
+	attachmentsFlatDirectory   = ".codeaf/attachments"
+	attachmentsFormerDirectory = ".aforge-v3/attachments" // legacy-name
 )
 
 // maxFetchBytes is the most one file may weigh coming the OTHER way, and the
@@ -204,7 +205,22 @@ func AttachmentsDir(place session.Place, workspace string) string {
 	if dir := strings.TrimSpace(place.Dir); dir != "" {
 		return filepath.Join(dir, attachmentsDirectory)
 	}
-	return filepath.Join(workspace, filepath.FromSlash(attachmentsLegacyDirectory))
+	current := filepath.Join(workspace, filepath.FromSlash(attachmentsFlatDirectory))
+	if _, err := os.Stat(current); err == nil || !os.IsNotExist(err) {
+		return current
+	}
+	former := filepath.Join(workspace, filepath.FromSlash(attachmentsFormerDirectory))
+	if _, err := os.Stat(former); err == nil || !os.IsNotExist(err) {
+		return former
+	}
+	return current
+}
+
+func attachmentsWriteDir(place session.Place, workspace string) string {
+	if dir := strings.TrimSpace(place.Dir); dir != "" {
+		return filepath.Join(dir, attachmentsDirectory)
+	}
+	return filepath.Join(workspace, filepath.FromSlash(attachmentsFlatDirectory))
 }
 
 // writeAttachment puts one arriving file on disk under a name that cannot
@@ -222,7 +238,7 @@ func writeAttachment(place session.Place, workspace string, file WireFile) (stri
 	if err != nil {
 		return "", err
 	}
-	directory := AttachmentsDir(place, workspace)
+	directory := attachmentsWriteDir(place, workspace)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", fmt.Errorf("engine: create the attachments directory: %w", err)
 	}

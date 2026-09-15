@@ -93,13 +93,13 @@ func TestAnAbsolutePathBeatsARelativeOne(t *testing.T) {
 func TestWhereNoPictureCanBeDrawnTheWholePathIsShownInstead(t *testing.T) {
 	for _, tool := range []struct{ name, args, output string }{
 		{"generate_image", `{"prompt":"a harbour"}`,
-			".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"},
-		{"view_image", `{"path":".codeaf-v3/images/harbour.png"}`,
+			".codeaf/images/harbour.png — 64×32 png, 1.2KB, generated on paint/model"},
+		{"view_image", `{"path":".codeaf/images/harbour.png"}`,
 			"seen by look/model: a harbour at dawn"},
 	} {
 		t.Run(tool.name, func(t *testing.T) {
 			a, path := pictureRowApp(t, newPalette(tokens.ANSI16, false),
-				".codeaf-v3/images/harbour.png",
+				".codeaf/images/harbour.png",
 				call(tool.name, tool.args, tool.output))
 
 			rows := openFirst(t, a)
@@ -120,8 +120,8 @@ func TestWhereNoPictureCanBeDrawnTheWholePathIsShownInstead(t *testing.T) {
 // trade one missing half for another.
 func TestTheFallbackKeepsWhatTheLookSaid(t *testing.T) {
 	a, _ := pictureRowApp(t, newPalette(tokens.ANSI16, false),
-		".codeaf-v3/images/harbour.png",
-		call("view_image", `{"path":".codeaf-v3/images/harbour.png"}`,
+		".codeaf/images/harbour.png",
+		call("view_image", `{"path":".codeaf/images/harbour.png"}`,
 			"seen by look/model: the mast leans a little to the left"))
 
 	body := strings.Join(openFirst(t, a), "\n")

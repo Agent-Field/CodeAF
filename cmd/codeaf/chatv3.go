@@ -1289,7 +1289,7 @@ func hostHeldRefusal(err error) bool {
 // meant to close it.
 //
 // THE PROJECT LAYER ENTERS HERE. cfg.Workspace is the directory this session
-// runs in, so <workspace>/.codeaf-v3/config.json is the repository's own answer to
+// runs in, so <workspace>/.codeaf/config.json is the repository's own answer to
 // these rows, and every read below resolves project → profile → default
 // (internal/config's projectconfig.go). A caller with no workspace — a test, a
 // door that has not resolved a directory — gets an empty layer rather than a

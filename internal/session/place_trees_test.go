@@ -42,7 +42,7 @@ func TestAWorktreeLandsInsideTheSessionFolder(t *testing.T) {
 	}
 	// NOTHING OF OURS IN THEIR REPOSITORY. The old directory is not created, not
 	// even empty.
-	if _, err := os.Stat(filepath.Join(repo, ".codeaf-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".codeaf")); !os.IsNotExist(err) {
 		t.Fatalf("the repository was littered anyway (%v)", err)
 	}
 	// And the branch law is untouched: a branch off HEAD that merges home.
@@ -428,7 +428,7 @@ func TestAPieceOfATasksWorkKeepsToTheSameSessionFolder(t *testing.T) {
 	if want := filepath.Join(place.Trees(), strconv.FormatUint(piece.id, 10)); tree.dir != want {
 		t.Fatalf("the piece works in %q, want %q — inside the session that commissioned the family", tree.dir, want)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".codeaf-v3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".codeaf")); !os.IsNotExist(err) {
 		t.Fatalf("a piece littered the person's repository anyway (%v)", err)
 	}
 	// AND ITS TRANSCRIPT SITS BESIDE ITS PARENT'S, which is the same question

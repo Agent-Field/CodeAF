@@ -60,8 +60,8 @@ func TestAnUnknownImageModelAddsNothingToTheRow(t *testing.T) {
 // and the model that drew under it.
 func TestOpeningAnImageStepShowsThePromptAndTheModel(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image",
-		`{"prompt":"a harbour at dawn","path":".codeaf-v3/images/harbour.png"}`,
-		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on vendor/paint-5"))
+		`{"prompt":"a harbour at dawn","path":".codeaf/images/harbour.png"}`,
+		".codeaf/images/harbour.png — 64×32 png, 1.2KB, generated on vendor/paint-5"))
 
 	body := strings.Join(openFirst(t, a), "\n")
 	if !strings.Contains(body, `"a harbour at dawn"`) {
@@ -80,8 +80,8 @@ func TestOpeningAnImageStepShowsThePromptAndTheModel(t *testing.T) {
 // say again, and what actually ran.
 func TestAnImageStepThatAskedForAModelSaysWhatItGot(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image",
-		`{"prompt":"a harbour","path":".codeaf-v3/images/harbour.png","model":"best"}`,
-		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on vendor/paint-5"))
+		`{"prompt":"a harbour","path":".codeaf/images/harbour.png","model":"best"}`,
+		".codeaf/images/harbour.png — 64×32 png, 1.2KB, generated on vendor/paint-5"))
 
 	body := strings.Join(openFirst(t, a), "\n")
 	if !strings.Contains(body, "asked for best · drawn with paint-5") {
@@ -92,8 +92,8 @@ func TestAnImageStepThatAskedForAModelSaysWhatItGot(t *testing.T) {
 // And an expansion with no model anywhere says nothing about one.
 func TestAnImageStepWithNoModelAnywhereSaysNothingAboutOne(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image",
-		`{"prompt":"a harbour","path":".codeaf-v3/images/harbour.png"}`,
-		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB"))
+		`{"prompt":"a harbour","path":".codeaf/images/harbour.png"}`,
+		".codeaf/images/harbour.png — 64×32 png, 1.2KB"))
 
 	body := strings.Join(openFirst(t, a), "\n")
 	if !strings.Contains(body, `"a harbour"`) {
@@ -108,9 +108,9 @@ func TestAnImageStepWithNoModelAnywhereSaysNothingAboutOne(t *testing.T) {
 // line at all.
 func TestTheImageStepShowsTheInputsItWasGiven(t *testing.T) {
 	a, _ := pictureApp(t, call("generate_image",
-		`{"prompt":"a harbour","path":".codeaf-v3/images/harbour.png","size":"1024x1024",`+
+		`{"prompt":"a harbour","path":".codeaf/images/harbour.png","size":"1024x1024",`+
 			`"reference_paths":["art/sketch.png"]}`,
-		".codeaf-v3/images/harbour.png — 64×32 png, 1.2KB, generated on vendor/paint-5"))
+		".codeaf/images/harbour.png — 64×32 png, 1.2KB, generated on vendor/paint-5"))
 
 	body := strings.Join(openFirst(t, a), "\n")
 	for _, want := range []string{"1024x1024", "from art/sketch.png"} {

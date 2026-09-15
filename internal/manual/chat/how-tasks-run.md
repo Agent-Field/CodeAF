@@ -667,7 +667,7 @@ live context to save room, both land under the conversation's `logs/` — the sa
 conversation's own do. A worker reads a lot of files, and none of what the harness keeps
 about that reading is your work: nothing of codeaf's is written into your repository or
 into the task's copy of it. Only a conversation with no folder at all falls back to
-`<workspace>/.codeaf-v3/`.
+`<workspace>/.codeaf/`.
 
 The worker's **working set is a cleanup target, not a memory cliff**. Crossing it retires
 read results and assistant reasoning only after the worker has successfully changed the
@@ -1041,7 +1041,7 @@ carries the whole of that final message — read back off the task's own journal
 `what it said at the end`.
 
 When a task's work does come home, the paths it wrote are staged by name — never
-`git add -A`, and never `.codeaf-v3` — then committed on its own branch as
+`git add -A`, and never `.codeaf` or its former `.aforge-v3` spelling — then committed on its own branch as <!-- legacy-name -->
 `task: <first line of title, at most 72 chars>` with the identity
 `codeaf <codeaf@localhost>`, then merged into an ordinary branch with `git merge --no-edit`.
 A checkout on a protected branch, on a different branch than when the work was cut, on the
@@ -1269,7 +1269,7 @@ for a task cutting a film: joining clips, saving a frame and scoring the cut are
 **It changed its working copy.** Any step at all — whatever tool it was — that left the task's
 working copy different from how the step before it found it. This is the backstop under
 everything else, so a tool nobody classified still counts when it actually produced
-something. Anything under `.codeaf-v3` is excluded: what the harness leaves there is not
+something. Anything under `.codeaf` is excluded: what the harness leaves there is not
 the task's work. Job logs and stubbed tool results are not even there any more — they are
 kept with the conversation, under its own `logs/` — and the exclusion stays as the floor
 under everything else codeaf may leave in a checkout.
@@ -1702,7 +1702,7 @@ untracked, the block says so in as many words, and the checker is told to open t
 
 Two things bound it. The listing stops at 100 paths and then says how many more there are,
 so a checker knows it is looking at a prefix and can run the command itself. And codeaf's
-own metadata directory (`.codeaf-v3`, where a job's log lives) is left out — that is this
+own metadata directory (`.codeaf`, where a job's log lives) is left out — that is this
 program's droppings and never the work's. A workspace that is not a repository gets no
 manifest at all, and the packet already says so in its own sentence: `this workspace is not
 a repository, so there is no diff to read: check the files themselves`.

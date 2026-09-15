@@ -327,7 +327,7 @@ func TestGenerateMusicComposesOnItsOwnLaneAndNeverThroughSpeak(t *testing.T) {
 	if !notesContain(agent, "composed by compose/model") {
 		t.Fatalf("the note does not say who composed it; notes = %v", sessionNotes(agent))
 	}
-	directory := filepath.Join(workspace, ".codeaf-v3", "music")
+	directory := filepath.Join(workspace, ".codeaf", "music")
 	entries, err := os.ReadDir(directory)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("%s holds %v (%v), want one file", directory, entries, err)

@@ -283,7 +283,7 @@ func TestRecoveryInterruptsARunningNodeExactlyOnce(t *testing.T) {
 	// The branch and the worktree directory a killed node would have left.
 	branch := "task/fix-the-reconciler-9c1a2f"
 	mustGit(t, repo, "branch", branch)
-	worktree := filepath.Join(repo, ".codeaf-v3", "tasks", "2")
+	worktree := filepath.Join(repo, ".codeaf", "tasks", "2")
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
 		t.Fatal(err)
 	}

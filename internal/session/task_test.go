@@ -891,7 +891,7 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); strings.TrimSpace(branches) != "" {
 		t.Fatalf("the merged branch was kept: %q", branches)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".codeaf-v3", "tasks", "1")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".codeaf", "tasks", "1")); !os.IsNotExist(err) {
 		t.Fatal("the merged worktree was left behind")
 	}
 	if len(notice.Changed) != 1 || notice.Changed[0] != "hello.txt" {

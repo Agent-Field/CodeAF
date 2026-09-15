@@ -124,7 +124,7 @@ func (t taskTree) landsInThePersonsRepository() bool {
 	}
 	// AND THE LEGACY LAYOUT'S TASK FOLDERS ARE THE HARNESS'S TOO. A session with
 	// no folder of its own puts a family's mirror and a part's worktree under the
-	// repository's `.codeaf-v3/` (task_run.go's [taskOwnFolder]), where no Trees()
+	// repository's `.codeaf/` (task_run.go's [taskOwnFolder]), where no Trees()
 	// prefix can name them; a mirror opened there sits on git's default branch,
 	// and reading that as the person's trunk would keep every part of the family
 	// off the tree its parent is waiting to merge.
@@ -134,7 +134,7 @@ func (t taskTree) landsInThePersonsRepository() bool {
 		}
 	}
 	// A LEGACY SESSION HAS NO Place, but its family trees still live below the
-	// old .codeaf-v3/tasks path. Those repositories are codeaf's working
+	// old .codeaf/tasks path. Those repositories are codeaf's working
 	// material too; treating git's default branch there as the person's would
 	// keep every part out of its parent and break the family landing.
 	for _, dropping := range taskDroppingNames() {

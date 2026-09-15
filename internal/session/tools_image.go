@@ -56,7 +56,7 @@ var _ MediaGenerator = (*provider.MediaClient)(nil)
 // A session WITH a folder answers differently and [ImagesDir] holds the whole
 // rule: the workspace itself when the session owns it, the session's own
 // artifacts/ when the workspace is somebody's repository.
-const imageDirectory = ".codeaf-v3/images"
+const imageDirectory = ".codeaf/images"
 
 // The tool's own words name no directory, because the answer is not one
 // directory any more ([ImagesDir]) and a description that named the wrong one

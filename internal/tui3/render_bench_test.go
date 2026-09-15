@@ -252,7 +252,7 @@ func BenchmarkFramePictures(b *testing.B) {
 	a.welcome = welcome{spent: true}
 	a.pal = newPalette(tokens.TrueColor, false)
 	for i := 0; i < 12; i++ {
-		name := fmt.Sprintf(".codeaf-v3/images/plate-%d.png", i)
+		name := fmt.Sprintf(".codeaf/images/plate-%d.png", i)
 		writeBenchPicture(b, filepath.Join(dir, name))
 		a.entries = append(a.entries,
 			entry{kind: entryUser, text: fmt.Sprintf("draw plate %d", i)},

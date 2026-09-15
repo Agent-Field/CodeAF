@@ -1988,7 +1988,7 @@ func hintFitBeside(hint, note string, room int) string {
 // narrow frame may never take. A note is the other way round: it is a sentence
 // whose FIRST clause is what happened and whose later clauses elaborate on it.
 // The settings foot is the worked example — `saved to your profile · a project's
-// own .codeaf-v3/config.json is a hand edit` — where the first clause answers
+// own .codeaf/config.json is a hand edit` — where the first clause answers
 // the question a person asked ("where did that go?") and the second is an aside
 // about a file most people will never open. A character ruler took sixty columns
 // through the middle of that path; [hintFit] would have kept the aside and
