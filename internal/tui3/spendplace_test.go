@@ -947,8 +947,8 @@ func TestWhatItWasForIsDrawnForAConversationTheLedgerOnlyHasAnIdFor(t *testing.T
 	b.home.world = a.home.world
 	b.rebuildSpend()
 	text := placeFrameText(b)
-	if !strings.Contains(text, "what it was for") {
-		t.Fatalf("a ledger that names a conversation drew no `what it was for`:\n%s", text)
+	if !strings.Contains(text, spendSubjectsWord) {
+		t.Fatalf("a ledger that names a conversation drew no %q:\n%s", spendSubjectsWord, text)
 	}
 	if !strings.Contains(strings.ToLower(text), "porting the picker") {
 		t.Fatalf("the conversation kept its id where the world knows its title:\n%s", text)
