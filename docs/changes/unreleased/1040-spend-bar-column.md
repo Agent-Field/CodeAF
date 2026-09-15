@@ -18,17 +18,21 @@ invalidates:
     the figures are the whole of the comparison. The unit word rides behind each
     numeral (`9,400 calls`, `163M tokens`) because this surface has no header
     row."
-  - "`what ran it` is name · calls · tokens · ROLE · money, the role second-last
-    and immediately left of the figures, where reading down the column says which
-    binding is paying the bill. It held a reserved column of its own floored at
-    the widest `config.ModelSlots()` label — that existed only to keep one bound
+  - "`what ran it` is name · ROLE · calls · tokens · money, the role first after
+    the name: what a model IS on this machine reads with the name it follows,
+    while the calls, the tokens and the money are three readings of one quantity
+    and stand together. It held a reserved column of its own floored at the
+    widest `config.ModelSlots()` label — that existed only to keep one bound
     row's bar in line — and `spendReading.modelCols` and `roleCol` are deleted."
   - "The role no longer wears the `·` that used to introduce it. A column needs
     no mark saying a column has begun."
   - "The token column carries NO UNIT WORD: `3.2B`, not `3.2B tokens`. Beside
     `128,400 calls` it is already plainly a different kind of number, and the
     word repeated down a column said nothing the k/M/B did not."
-  - "`what it was for` is name · project · kind · money."
+  - "`what it was for` is name · KIND · project · money, the kind word first
+    after the name for the role's reason. Where a field stands and what it is
+    worth are two different questions: the kind word leads the block and is still
+    the first thing a narrow frame gives up."
   - "THE NAME IS LEFT-ALIGNED AND EVERY OTHER COLUMN IS PUSHED RIGHT AND
     RIGHT-ALIGNED. Fields used to start in their columns and run left to right
     behind the name. What a row is about is read from the left; what it cost and

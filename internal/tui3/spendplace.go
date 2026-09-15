@@ -1112,9 +1112,9 @@ func (r spendReading) modelNameField(model session.ModelSpend) string {
 // and the row painter cannot disagree about which one is the money.
 const (
 	spendModelName = iota
+	spendModelRole
 	spendModelCalls
 	spendModelTokens
-	spendModelRole
 	spendModelMoney
 )
 
@@ -1122,10 +1122,13 @@ const (
 // model, its calls, its token volume, the role it is bound to, and what it cost
 // — and where the columns fell.
 //
-// THE ROLE STANDS SECOND-LAST, BESIDE THE MONEY. It is the fact the caption
-// promises and the one a person acts on: reading that the dearest row is the
-// conversation's own model sends them to the chip that changes it, and that
-// reading is made by looking down the column immediately left of the figures.
+// THE ROLE LEADS THE BLOCK, FIRST AFTER THE NAME. It is not a measurement and
+// it does not belong among the figures: what a model IS on this machine reads
+// with the name it follows — `opus 4.1 · conversation` is one thought — while
+// the calls, the tokens and the money are three readings of one quantity and
+// want to stand together. It sat second-last for a build, wedged between the
+// token volume and the money, where a word in the middle of a run of numbers
+// broke the run.
 //
 // THE TOKEN COLUMN CARRIES NO UNIT WORD. `3.2B` beside `128,400 calls` is
 // already two different kinds of number, and `tokens` repeated down a column
@@ -1139,9 +1142,9 @@ func (r spendReading) modelTable(width, rule int) ([][]string, spendTable) {
 	for _, model := range r.models {
 		rows = append(rows, []string{
 			r.modelNameField(model),
+			strings.TrimSpace(r.modelRole(model.Model)),
 			spendFigureWord(spendCountFigure(model.Calls), plural("call", model.Calls), calls),
 			spendTokenFigure(model.Tokens),
-			strings.TrimSpace(r.modelRole(model.Model)),
 			spendMoneyWord(model.USD),
 		})
 	}
@@ -1200,15 +1203,18 @@ func (r spendReading) subjectTable(subjects []session.SubjectSpend, width, rule 
 	for _, subject := range subjects {
 		rows = append(rows, []string{
 			tokens.GlyphProseBullet + " " + r.name(subject),
-			spendProjectField(subject),
 			subject.Label,
+			spendProjectField(subject),
 			spendMoneyWord(subject.USD),
 		})
 	}
-	// The kind word goes first on a narrow frame, because the name already says
-	// which thing this is, and then the project.
-	drop := []int{spendColSecond, spendColFirst}
-	return rows, spendMeasured(rows, drop, map[int]int{spendColFirst: spendProjectCap}, rule, width)
+	// THE KIND WORD LEADS THE BLOCK, for [spendReading.modelTable]'s reason: what
+	// a row IS reads with the name it follows, and the project and the figure
+	// behind it are facts about where the money went. It is also still the first
+	// field given up on a narrow frame, because the name usually says which thing
+	// this is; the project goes next.
+	drop := []int{spendColFirst, spendColSecond}
+	return rows, spendMeasured(rows, drop, map[int]int{spendColSecond: spendProjectCap}, rule, width)
 }
 
 // standingTable is `what kept running` measured — the promises, in the two facts

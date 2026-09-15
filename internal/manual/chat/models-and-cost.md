@@ -2009,9 +2009,10 @@ same three-second beat every place runs on, and it draws three things:
   at the left, and at the right the last one, called `today` when it is today. There is no
   money on the axis — the money is the line above it;
 - **what ran it**, by the model and **the role it is bound to**, dearest first, each row
-  carrying its call count, its token volume, its role and what it cost. The role stands
-  second-last, immediately left of the money, because that is where you read down the
-  column to see which binding is paying the bill. The role is the **crew binding** — `execution`,
+  carrying its role, its call count, its token volume and what it cost. The role stands
+  **first after the name**, because what a model *is* on this machine reads with the name it
+  follows, while the calls, the tokens and the money are three readings of one quantity and
+  belong together. The role is the **crew binding** — `execution`,
   `conversation`, `verification`, `naming`, `planning` — read from the settings as they
   stand right now, and never the auxiliary word one call gave itself. That is the point of
   the column: seeing that execution is most of the bill sends you to the one row that
@@ -2050,11 +2051,12 @@ of the same money:
 
 | | | | | |
 | --- | --- | --- | --- | --- |
-| *what ran it* | the model | its calls | its tokens | the role it is bound to · what it cost |
-| *what it was for* | the task or the conversation | its project | `task` or `chat` | what it cost |
+| *what ran it* | the model | the role it is bound to | its calls · its tokens | what it cost |
+| *what it was for* | the task or the conversation | `task` or `chat` | its project | what it cost |
 | *what kept running* | the standing order | its firings | what a firing cost | what it cost |
 
-The kind word is `task` and `chat` — column words, not sentences. It read `a task` and
+**What a row *is* stands first, right after its name**; the figures stand together behind
+it. The kind word is `task` and `chat` — column words, not sentences. It read `a task` and
 `a conversation`, which is how prose names those things and twice what a column needs.
 
 **The name is left-aligned and everything else is pushed right and right-aligned.** What a
@@ -2080,7 +2082,9 @@ A name column is the width of what it holds and is **never squeezed** to keep a 
 it; a name wider than its column keeps every cell of itself and starts the next field one
 space late. On a frame too narrow for the whole table, **whole fields go** in order of what
 they are worth — the token volume first, then the role, then the calls; the kind word before
-the project — never a figure with its tail cut off, and never the money.
+the project — never a figure with its tail cut off, and never the money. Where a field
+*stands* and what it is *worth* are two different questions: the kind word leads the block
+and is still the first thing given up.
 
 **Figures are written the same way wherever they appear.** Money over a thousand carries the
 mark — `$4,210.55`, and a limit `$50,000` — and so do call and firing counts: `128,400 calls`. Token

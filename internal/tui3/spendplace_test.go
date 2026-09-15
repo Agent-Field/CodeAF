@@ -326,6 +326,16 @@ func TestASpendRoleWordKeepsTheFiguresBehindItInColumn(t *testing.T) {
 			if strings.Contains(row, tokens.GlyphProseBullet+" conversation") {
 				t.Fatalf("the role still wears the mark that introduced it: %q", row)
 			}
+			// AND IT LEADS THE BLOCK RATHER THAN STANDING AMONG THE FIGURES. What
+			// a model IS reads with the name it follows; the calls, the tokens and
+			// the money are three readings of one quantity and stand together.
+			at := strings.Index(row, "conversation")
+			if at < 0 {
+				continue
+			}
+			if calls := strings.Index(row, " calls"); calls >= 0 && calls < at {
+				t.Fatalf("the role stands right of the figures: %q", row)
+			}
 		}
 	}
 }
@@ -376,16 +386,18 @@ func TestASpendNameColumnIsNeverSqueezedToKeepAField(t *testing.T) {
 		}
 	}
 	// AND THE FIELDS GO IN ORDER OF WHAT THEY ARE WORTH: the kind word first,
-	// because the name already says which thing this is, then the project.
+	// because the name already says which thing this is, then the project. The
+	// kind word LEADS the block and is still the first thing given up — where a
+	// field stands and what it is worth are two different questions.
 	if _, wide := r.subjectTable(work, 200, 200); drawn(wide) != 4 {
 		t.Fatalf("a frame with room to spare draws %d of the 4 fields", drawn(wide))
 	}
 	_, narrow := r.subjectTable(work, 46, 46)
-	if drawn(narrow) != 3 || narrow.drawn[spendColSecond] {
+	if drawn(narrow) != 3 || narrow.drawn[spendColFirst] {
 		t.Fatalf("a 46-cell frame draws %d fields, want the name, the project and the money", drawn(narrow))
 	}
 	_, tight := r.subjectTable(work, 30, 30)
-	if drawn(tight) != 2 || tight.drawn[spendColFirst] {
+	if drawn(tight) != 2 || tight.drawn[spendColSecond] {
 		t.Fatalf("a 30-cell frame draws %d fields, want the name and the money", drawn(tight))
 	}
 	// AND THE MONEY NEVER GOES. It is the one figure every row is read for.
@@ -442,8 +454,14 @@ func TestTheSpendSubjectFactsStandInColumns(t *testing.T) {
 			if !strings.Contains(row, r.name(subject)) {
 				t.Fatalf("at %d cells row %d does not name %q:\n%s", width, at, r.name(subject), row)
 			}
+			tail := row[strings.Index(row, r.name(subject)):]
 			projects[spendEndAt(t, row, spendProjectField(subject))] = true
 			kinds[spendEndAt(t, row, subject.Label)] = true
+			// THE KIND WORD LEADS THE BLOCK, for the role's reason on the other
+			// table: what a row IS reads with the name it follows.
+			if strings.Index(tail, subject.Label) > strings.Index(tail, spendProjectField(subject)) {
+				t.Fatalf("at %d cells the kind word stands right of the project: %q", width, row)
+			}
 		}
 		if len(projects) != 1 || len(kinds) != 1 {
 			t.Fatalf("at %d cells the projects end in columns %v and the kind words in %v, want one of each:\n%s",
