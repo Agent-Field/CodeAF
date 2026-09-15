@@ -128,20 +128,48 @@ func TestTheSpendChartUsesTheRoomItHasAndItsAxisIsTwoDates(t *testing.T) {
 // right-aligned the bare noun `tasks`, which reads as a fourth fact about the
 // day, and at 60 columns it abutted the ellipsis of the sentence in front of it:
 // `rebuild-the-frame… tasks`.
+//
+// THE ROW IS GONE AND THE AUDIT'S POINT SURVIVES IT. The loudest day is a clause
+// on the head line now and the key is named on the heading directly over the
+// rows it works on — which is the same law the audit was applying: a door is
+// said where it can be walked through.
 func TestTheLoudestDaySaysWhereItsDoorGoes(t *testing.T) {
 	r := spendTestReading()
 	pal := newPalette(tokens.NoColor, false)
-	wide, _, opens := r.loudestRow(140, pal)
-	if !strings.Contains(plain(wide), "enter opens it in tasks") || !opens {
-		t.Fatalf("the wide loudest row reads %q, want it to name the key that opens it", plain(wide))
+	rows := plainSpendRows(r.rows(140, pal))
+	for _, row := range rows {
+		if strings.Contains(row, "was the loudest day") {
+			t.Fatalf("the loudest day still has a row of its own: %q", row)
+		}
 	}
-	narrow, _, _ := r.loudestRow(70, pal)
-	if got := plain(narrow); !strings.Contains(got, "in tasks") || strings.Contains(got, "enter opens") {
-		t.Fatalf("the 70-cell loudest row reads %q, want the shorter spelling `in tasks`", got)
+	// THE HEAD CARRIES IT, with the figure, the date and what it went on.
+	if got := rows[1]; !strings.Contains(got, "loudest day: $21.40 aug 20 (the-filings-sweep)") {
+		t.Fatalf("the head line reads %q", got)
 	}
-	tight, _, tightOpens := r.loudestRow(56, pal)
-	if got := plain(tight); strings.Contains(got, "tasks") || tightOpens {
-		t.Fatalf("the 56-cell loudest row reads %q, want the sentence alone — a door that will not fit is dropped whole", got)
+	// AND THE DOOR IS NAMED OVER THE ROWS IT OPENS, not four lines above a table
+	// it was never about.
+	heading, table := -1, -1
+	for at, row := range rows {
+		if strings.Contains(row, spendSubjectsWord) {
+			heading = at
+		}
+		if heading >= 0 && at > heading && strings.Contains(row, "the-filings-sweep") {
+			table = at
+			break
+		}
+	}
+	if heading < 0 || table != heading+1 {
+		t.Fatalf("the heading and its first row are not neighbours:\n%s", strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(rows[heading], spendOpensWord) {
+		t.Fatalf("the heading over the doors does not name the key: %q", rows[heading])
+	}
+	// AND A FRAME WITH NO ROOM FOR BOTH KEEPS THE CAPTION. rowfit's law 1: the
+	// identity survives and the fact about it goes.
+	for _, row := range plainSpendRows(r.rows(40, pal)) {
+		if strings.Contains(row, spendSubjectsWord) && strings.Contains(row, "enter") {
+			t.Fatalf("a 40-cell frame kept a door word it has no room for: %q", row)
+		}
 	}
 }
 

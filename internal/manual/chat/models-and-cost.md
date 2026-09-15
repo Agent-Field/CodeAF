@@ -2008,6 +2008,13 @@ same three-second beat every place runs on, and it draws three things:
   read rather than fourteen cells in the corner. Its axis is **two dates**: the first bucket
   at the left, and at the right the last one, called `today` when it is today. There is no
   money on the axis — the money is the line above it;
+- **which day was loudest**, as the last clause of that same head line:
+  `14 days came to $34.10 · 41.2M tokens · loudest day: $21.40 aug 20 (the-filings-sweep)`.
+  It had a row of its own between the chart and the first table, which is a sentence saying
+  what the line above it already says three facts of. On a narrower frame it gives up what
+  the day was mostly spent on — that name is a row of *what it was for* a few lines below —
+  and then the clause altogether, before ever crowding `shift+↑ coarser` off the line: a
+  key that is not drawn is a key that does not work, so the sentence yields to the control;
 - **what ran it**, by the model and **the role it is bound to**, dearest first, each row
   carrying its role, its call count, its token volume and what it cost. The role stands
   **first after the name**, because what a model *is* on this machine reads with the name it
@@ -2095,15 +2102,14 @@ The ledger holds **ids and no titles**, so the place joins each id against the r
 already reading — the project's own index of what it ran, and the standing store — to put a
 name on the row. A thing neither of them knows keeps its id.
 
-**`enter` on any row under "what it was for" or "what kept running" opens what it was
-for**: a task goes to the tasks place, a standing promise to the standing place, a
-conversation to home.
-
-**The loudest day is a row like those.** It reads
-`aug 20 was the loudest day — $21.40, the-filings-sweep` with the door out at its right —
-`enter opens it in tasks`, or `in tasks` on a narrower frame, or nothing at all where the
-sentence needs the whole row. `enter` on it opens that thing, exactly as it does on the rows
-under *what it was for*.
+**`enter` on any row under "what it was for" or "what kept running" opens the thing
+itself**, and each heading says so: `enter opens it`, out at the right-hand edge of the
+table it heads. A task opens **its own record card** in the tasks place, with the list
+behind it parked on that row; a standing promise opens the standing place **on that
+order**; and a conversation **opens** — brought forward if this terminal already has it,
+otherwise opened beside the one you are in, with all of that door's refusals (a folder that
+has since gone says so). It used to open the *place* and leave you to find your own row, and
+a conversation went to home rather than into the conversation.
 
 **There is no budget editor here and there will not be one.** The page answers *what did it
 cost*; *what may it spend* is the Spending tab, and this page **points** at it rather than

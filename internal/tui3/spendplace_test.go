@@ -90,10 +90,27 @@ func TestReadSpendKeepsARowWhoseWrittenDayIsInsideTheWindow(t *testing.T) {
 	}
 }
 
+// THE LOUDEST DAY IS A CLAUSE ON THE HEAD LINE, not a row between the chart and
+// the first table. It said `aug 20 was the loudest day — $21.40,
+// the-filings-sweep` there, which is a sentence saying what the line above it
+// already says three facts of: three readings of one window belong on one line.
 func TestTheSpendPageSaysWhichDayWasLoudest(t *testing.T) {
-	text := strings.Join(plainSpendRows(spendTestReading().rows(120, newPalette(tokens.NoColor, false))), "\n")
-	if !strings.Contains(text, "aug 20 was the loudest day — $21.40, the-filings-sweep") || !strings.Contains(text, "tasks") {
-		t.Fatalf("the loudest day and its door are missing:\n%s", text)
+	rows := plainSpendRows(spendTestReading().rows(150, newPalette(tokens.NoColor, false)))
+	if want := "loudest day: $21.40 aug 20 (the-filings-sweep)"; !strings.Contains(rows[1], want) {
+		t.Fatalf("the head line does not carry %q:\n%s", want, rows[1])
+	}
+	// AND WHAT IT WENT ON IS THE FIRST THING OFF A NARROWER FRAME: the name is a
+	// row of `what it was for` four lines below, and the figure and the date are
+	// said nowhere else.
+	narrow := plainSpendRows(spendTestReading().rows(120, newPalette(tokens.NoColor, false)))[1]
+	if !strings.Contains(narrow, "loudest day: $21.40 aug 20") || strings.Contains(narrow, "(the-filings-sweep)") {
+		t.Fatalf("the 120-cell head line reads %q", narrow)
+	}
+	// AND THE ZOOM KEYS SURVIVE IT. A head long enough to crowd the grain clause
+	// off the line does not hide the key, it UNBINDS it ([placeWindowFits]), so
+	// the sentence gives up a clause first.
+	if !strings.Contains(narrow, placeCoarserWords) {
+		t.Fatalf("the loudest clause pushed the zoom control off the head line: %q", narrow)
 	}
 }
 
@@ -511,10 +528,12 @@ func TestTheSpendPromisesAreATableOfTheirOwn(t *testing.T) {
 			t.Fatalf("the promise row does not carry %q: %q", want, table[0])
 		}
 	}
-	// AND NOTHING SAYS `standing` TWICE, which is what the old shared table did
-	// the moment it was not suppressed.
-	if strings.Count(strings.Join(rows, "\n"), "standing") != 1 {
-		t.Fatalf("the word `standing` is said more than once on the page:\n%s", strings.Join(rows, "\n"))
+	// AND NO ROW SAYS `standing` TWICE, which is what the old shared table did the
+	// moment its kind word was not suppressed.
+	for _, row := range rows {
+		if strings.Count(row, "standing") > 1 {
+			t.Fatalf("a row says `standing` twice: %q", row)
+		}
 	}
 	// AND A PROMISE THAT COSTS A SLIVER A RUN READS AS THE MONEY COLUMN'S FLOOR
 	// rather than as the words `under a cent a run`, which used to stand in the
@@ -753,7 +772,13 @@ func spendLab(t *testing.T, lines []session.UsageLine) *app {
 	if err := os.WriteFile(path, []byte(file.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	a := placeApp(t)
+	return spendLabOn(t, placeApp(t), path)
+}
+
+// spendLabOn stands an app a test has already furnished in the spend place over
+// a ledger that test wrote. [spendLab] is this with the ordinary place app.
+func spendLabOn(t *testing.T, a *app, path string) *app {
+	t.Helper()
 	// THE LAB OPENS ON THE FIXTURE'S CLOCK, NOT THE WALL'S. [app.openSpend]
 	// windows the ledger with session.LastDays(a.now(), 14), which is arithmetic
 	// on the moment of the open, while every line above is written on a fixed
@@ -899,6 +924,12 @@ func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
 
 // `enter` ON A ROW OF "WHAT IT WAS FOR" OPENS WHAT IT WAS FOR — the money is
 // the reading and the thing it went on is the door.
+//
+// THIS TEST USED TO ASSERT THE DEFECT. It waited for `pageHome` — the switcher —
+// because that is what the arm did, on the argument that home is the one screen
+// which can resolve a conversation id into a window. What a person pressing
+// `enter` on a row of their own bill got from it was the home page, with the
+// conversation they had named nowhere on it.
 func TestEnterOnASpendRowOpensTheThingTheMoneyWentOn(t *testing.T) {
 	talk := session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2, Input: 100, Output: 20,
 		USD: 4.25, Session: "aaaa000000000001", Workspace: "/work/alpha"}
@@ -914,7 +945,12 @@ func TestEnterOnASpendRowOpensTheThingTheMoneyWentOn(t *testing.T) {
 		t.Fatalf("the only door is a %q row", stop.subject.Kind)
 	}
 	drive(t, a, key("enter"))
-	if a.page != pageHome {
+	if a.page == pageHome {
+		t.Fatal("enter on a conversation's row landed on home instead of in the conversation")
+	}
+	// This lab's window is already holding that transcript, so the door brings it
+	// forward and the frame is the conversation's again — no place standing.
+	if a.page != pageNone {
 		t.Fatalf("enter on a conversation's row landed on %q", a.page.word())
 	}
 }
@@ -950,33 +986,19 @@ func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 		}
 		seen++
 	}
-	// THE LOUDEST DAY IS A DOOR TOO, because its row names a thing money was
-	// spent on and now says `enter opens it in tasks` out at the right — a key
-	// drawn is a key bound (spendplace.go's [spendReading.loudestRow]).
-	if want := spendSubjectCap + 1; seen != want {
-		t.Fatalf("%d doors were drawn, want %d — the %d shown subjects and the loudest day", seen, want, spendSubjectCap)
+	// THE DOORS ARE THE SUBJECT ROWS AND NOTHING ELSE. The loudest day was one
+	// too, on a row of its own between the chart and the first table; it is a
+	// clause on the head line now and the key is named on the headings over the
+	// rows it actually works on (spendplace.go's [spendOpensWord]).
+	if seen != spendSubjectCap {
+		t.Fatalf("%d doors were drawn, want the %d shown subjects", seen, spendSubjectCap)
 	}
 	if len(a.spend.reading.subjects) > spendSubjectCap && folds != 1 {
 		t.Fatalf("%d fold doors were drawn under %d subjects, want 1", folds, len(a.spend.reading.subjects))
 	}
-	if !a.spend.stops[a.loudestSpendRow(t)].ok {
-		t.Fatal("the loudest day names a task and says so, but nothing opens there")
-	}
 	if got := plain(a.spend.reading.rows(120, newPalette(tokens.NoColor, false))[0]); !strings.Contains(got, "/budget sets the limits") {
 		t.Fatalf("the pointer line reads %q", got)
 	}
-}
-
-// loudestSpendRow is the drawn row that says which day was loudest.
-func (a *app) loudestSpendRow(t *testing.T) int {
-	t.Helper()
-	for at, row := range plainSpendRows(a.spend.reading.rows(120, newPalette(tokens.NoColor, false))) {
-		if strings.Contains(row, "was the loudest day") {
-			return at
-		}
-	}
-	t.Fatal("no row says which day was loudest")
-	return 0
 }
 
 // THE POINTER LINE IS A POINTER AND NOT AN EDITOR, which is what keeps this
@@ -1068,4 +1090,81 @@ func TestSpendFocusWakesOnTheFirstThingTheMoneyWentOn(t *testing.T) {
 	if row := plainSpendRows(a.spend.reading.rows(120, newPalette(tokens.NoColor, false)))[a.spend.cursor]; strings.Contains(row, "loudest day") {
 		t.Fatalf("focus woke on the loudest day and not under `what it was for`: %q", row)
 	}
+}
+
+// ── the doors: a row opens THE THING, not the page it is filed on ───────────
+
+// `enter` ON A ROW OF `what it was for` OPENS WHAT IT WAS FOR, and that used to
+// be three quarters true.
+//
+// A task opened the tasks place and left the person to find their own row in a
+// list of everything this machine has ever run; a conversation opened HOME — the
+// switcher — on the argument that home is the one screen that can resolve a
+// conversation id into a window, which from a row of somebody's own bill reads
+// as a keypress that went to the wrong place. Both open the thing they name now,
+// through the doors the rest of the surface already uses: [app.openTaskRecord]
+// and [app.openConversationRow].
+func TestASpendRowOpensTheThingItNames(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker",
+		lab.workspace("alpha"), spendTestNow.Add(-2*time.Minute))
+	lab.task("-alpha", session.TaskIndexEntry{ID: "7", SessionID: "aaaa000000000001",
+		Name: "rebuild-the-frame", Label: "rebuild the frame", Title: "rebuild the frame"})
+	line := func(task string, usd float64) session.UsageLine {
+		return session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 4, Input: 900, Output: 90,
+			USD: usd, Session: "aaaa000000000001", Task: task, Workspace: lab.workspace("alpha")}
+	}
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	var file strings.Builder
+	for _, one := range []session.UsageLine{line("7", 9.40), line("", 3.10)} {
+		raw, err := json.Marshal(one)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file.Write(raw)
+		file.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, []byte(file.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// THE TASK ROW OPENS THAT PIECE OF WORK'S OWN RECORD CARD.
+	a := spendLabOn(t, lab.app(mine), path)
+	a.spend.cursor = spendRowFor(t, a, session.SubjectTask)
+	drive(t, a, key("enter"))
+	if a.page != pageTasks {
+		t.Fatalf("enter on a task landed on %q", a.page.word())
+	}
+	if !a.taskSheet.detailOn || a.taskSheet.detail.ID != "7" {
+		t.Fatalf("the tasks place opened on %+v, want the record for task 7", a.taskSheet.detail)
+	}
+
+	// AND THE CONVERSATION ROW OPENS THAT CONVERSATION. This one is the window's
+	// own, so the door brings it forward rather than reopening it — which is the
+	// first check every door onto a transcript makes, and the reason none of them
+	// may be a bare `showPage` (place_search.go's [app.openConversationRow]).
+	b := spendLabOn(t, lab.app(mine), path)
+	b.spend.cursor = spendRowFor(t, b, session.SubjectConversation)
+	if row, ok := b.spendSessionRow(b.spendStopAt(b.spend.cursor).subject); !ok || row.Transcript != mine {
+		t.Fatalf("the conversation row does not join to its transcript: %+v", row)
+	}
+	drive(t, b, key("enter"))
+	if b.page == pageHome {
+		t.Fatal("enter on a conversation landed on home instead of in the conversation")
+	}
+	if b.page != pageNone {
+		t.Fatalf("enter on the window's own conversation landed on %q", b.page.word())
+	}
+}
+
+// spendRowFor is the drawn row that names a subject of one kind.
+func spendRowFor(t *testing.T, a *app, kind string) int {
+	t.Helper()
+	for at, stop := range a.spend.stops {
+		if stop.ok && stop.subject.Kind == kind {
+			return at
+		}
+	}
+	t.Fatalf("no row of the spend place names a %s", kind)
+	return 0
 }

@@ -489,13 +489,87 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	}
 	switch stop.subject.Kind {
 	case session.SubjectTask:
+		// THE RECORD CARD FOR THAT PIECE OF WORK, and not merely the page it is
+		// filed on. `enter opens it in tasks` was three quarters true: it opened
+		// the place and left the person to find their own row in a list of
+		// everything this machine has ever run.
+		if record := a.spendTaskRecord(stop.subject); record != nil {
+			return a.openTaskRecord(record), true
+		}
 		return a.showPage(pageTasks), true
 	case session.SubjectStanding:
-		return a.showPage(pageStanding), true
+		return a.openStandingAt(stop.subject.ID), true
 	case session.SubjectConversation:
+		// AND A CONVERSATION IS OPENED, not merely pointed at. This arm went to
+		// home — the switcher — on the argument that home is the one screen that
+		// can resolve a conversation id into a window; what a person pressing
+		// `enter` on a row of their own bill actually gets from that is the home
+		// page, with the conversation they named nowhere on it.
+		//
+		// [app.openConversationRow] is the door every place that is not home
+		// already uses (place_search.go), with all of its refusals: a transcript
+		// this terminal is already holding is brought forward rather than
+		// reopened, a folder that has since gone says so, and the conversation
+		// this window was in is detached rather than closed.
+		if row, ok := a.spendSessionRow(stop.subject); ok {
+			return a.openConversationRow(row), true
+		}
 		return a.showPage(pageHome), true
 	}
 	return nil, false
+}
+
+// spendTaskRecord is the record row for a task subject, out of the world this
+// place is already holding.
+//
+// IT MATCHES ON THE PAIR AND SETTLES FOR THE ID. An id alone is not unique
+// across the record — ids restart with every conversation
+// ([session.TaskIndexEntry.ID]) — so the conversation that ran it is tried
+// first. It settles because the two authorities spell that conversation from
+// different ends: the ledger line records the journal the call was written
+// under, the index records the session that started the work, and a row found
+// by id alone is a better answer than no row at all.
+func (a *app) spendTaskRecord(subject session.SubjectSpend) *session.TaskIndexEntry {
+	id := strings.TrimSpace(subject.ID)
+	if id == "" {
+		return nil
+	}
+	var loose *session.TaskIndexEntry
+	for _, project := range a.spend.world.Projects {
+		for _, row := range project.Sessions {
+			for at := range row.Tasks.Rows {
+				entry := &row.Tasks.Rows[at]
+				if strings.TrimSpace(entry.ID) != id {
+					continue
+				}
+				if strings.TrimSpace(entry.SessionID) == strings.TrimSpace(subject.Session) {
+					return entry
+				}
+				if loose == nil {
+					loose = entry
+				}
+			}
+		}
+	}
+	return loose
+}
+
+// spendSessionRow is the world's record of a conversation subject, in the shape
+// every door onto a conversation on this surface takes
+// ([app.openConversationRow]).
+func (a *app) spendSessionRow(subject session.SubjectSpend) (session.SessionRow, bool) {
+	id := strings.TrimSpace(subject.ID)
+	if id == "" {
+		return session.SessionRow{}, false
+	}
+	for _, project := range a.spend.world.Projects {
+		for _, row := range project.Sessions {
+			if strings.TrimSpace(row.ID) == id {
+				return row, true
+			}
+		}
+	}
+	return session.SessionRow{}, false
 }
 
 // spendWindowKey is [app.placeWindow]'s spend arm: the four drawn arrow chords,

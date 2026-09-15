@@ -375,17 +375,6 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			out = append(out, placeLead+axis)
 		}
 	}
-	if loud, subject, door := r.loudestRowIn(inner, placeFactInk(on(len(out)), pal)); loud != "" {
-		// AND THE LOUDEST DAY IS A DOOR, because the row names a thing money was
-		// spent on exactly as the rows under `what it was for` do — and the word
-		// on its right now says `enter opens it`, which is a key drawn and
-		// therefore a key that has to work.
-		if door {
-			doors[len(out)] = subject
-		}
-		out = append(out, placeLead+loud)
-	}
-
 	if len(r.models) > 0 || len(r.crew.unbound) > 0 {
 		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendModelsWord, inner), pal))
 		// THE COLUMNS ARE MEASURED ONCE FOR THE WHOLE TABLE and handed to every
@@ -423,7 +412,7 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			work = append(work, subject)
 		}
 		if len(work) > 0 {
-			out = appendPlaceSection(out, placeLead+placeHeading(fit(spendSubjectsWord, inner), pal))
+			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendSubjectsWord, spendOpensWord, rule, inner, pal))
 			fields, table := r.subjectTable(work, inner, rule)
 			for at, subject := range work {
 				doors[len(out)] = subject
@@ -431,7 +420,7 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			}
 		}
 		if len(promises) > 0 {
-			out = appendPlaceSection(out, placeLead+placeHeading(fit(spendStandingWord, inner), pal))
+			out = appendPlaceSection(out, placeLead+r.subjectHeading(spendStandingWord, spendOpensWord, rule, inner, pal))
 			fields, table := r.standingTable(promises, inner, rule)
 			for at, subject := range promises {
 				doors[len(out)] = subject
@@ -591,6 +580,18 @@ func (r spendReading) headWords(width int) string {
 	if room < 1 {
 		room = width
 	}
+	// THE ZOOM CLAUSE IS RESERVED AHEAD OF THIS FIELD'S OWN FACTS, because a key
+	// drawn is a key BOUND and a key undrawn does nothing at all
+	// ([placeWindowFits] answers the paint and the keys with one predicate). A
+	// head long enough to crowd `shift+↑ coarser` off the line does not merely
+	// hide it, it unbinds it — so the sentence gives up a clause first and the
+	// two arrow axes keep working. It was the loudest day's arrival that made
+	// this reachable: the head was a short line until that clause joined it.
+	if keys := room - ansi.StringWidth(placeGrainWords(r.window)) - placeHeadGap; keys > 0 {
+		if words := rowTail(fields, keys); words != "" {
+			return words
+		}
+	}
 	if words := rowTail(fields, room); words != "" {
 		return words
 	}
@@ -600,14 +601,22 @@ func (r spendReading) headWords(width int) string {
 	return spendMoneyWord(r.totals.USD)
 }
 
-// headFields is the head's ranked facts: what the window came to, then how many
-// tokens it took. The lead spelling carries the span in words and the shorter
-// ones give it up before the figure it labels ever goes.
+// headFields is the head's ranked facts: what the window came to, how many
+// tokens it took, and WHICH DAY WAS LOUDEST. The lead spelling carries the span
+// in words and the shorter ones give it up before the figure it labels ever
+// goes.
+//
+// THE LOUDEST DAY IS A CLAUSE HERE AND NOT A ROW OF ITS OWN. It had a line to
+// itself between the chart and the first table — `aug 20 was the loudest day —
+// $21.40, the-filings-sweep` — which is a sentence saying what the line above it
+// already says three facts of: the window, its total, and one bucket standing
+// taller than the rest. Three readings of one window belong on one line, and the
+// row it vacates is a row the tables move up into.
 func (r spendReading) headFields() []rowField {
 	if r.totals.USD <= 0 && r.totals.Tokens <= 0 {
 		return nil
 	}
-	fields := make([]rowField, 0, 2)
+	fields := make([]rowField, 0, 3)
 	if r.totals.USD > 0 {
 		money := spendMoneyWord(r.totals.USD)
 		if span := spendSpanWord(r.window); span != "" {
@@ -619,7 +628,34 @@ func (r spendReading) headFields() []rowField {
 	if r.totals.Tokens > 0 {
 		fields = append(fields, rowSay(tokenWord(r.totals.Tokens)+" tokens", tokenWord(r.totals.Tokens)))
 	}
+	if loud := r.loudFields(); loud.known() {
+		fields = append(fields, loud)
+	}
 	return fields
+}
+
+// spendLoudestWord introduces the loudest day's clause on the head line.
+const spendLoudestWord = "loudest day: "
+
+// loudFields is the loudest day as the head line says it, in three spellings:
+//
+//	loudest day: $21.40 aug 20 (the-filings-sweep)
+//	loudest day: $21.40 aug 20
+//	$21.40 aug 20
+//
+// WHAT IT WAS MOSTLY SPENT ON IS THE FIRST THING OFF, because the name is
+// already a row of `what it was for` four lines below and the figure and the
+// date are not said anywhere else on the page. A window with nothing in it says
+// nothing here at all.
+func (r spendReading) loudFields() rowField {
+	if r.loudest.USD <= 0 || r.loudest.Label == "" {
+		return rowSay()
+	}
+	said := spendMoneyWord(r.loudest.USD) + " " + r.loudest.Label
+	if name := strings.TrimSpace(r.name(r.loudFor)); name != "" {
+		return rowSay(spendLoudestWord+said+" ("+name+")", spendLoudestWord+said, said)
+	}
+	return rowSay(spendLoudestWord+said, said)
 }
 
 // spendSpanWord is HOW MUCH TIME the head's figure is the total of, in the
@@ -667,6 +703,7 @@ func (r spendReading) paintedHead(width int, pal palette) string {
 		return pal.dim(plain)
 	}
 	money, toks := spendMoneyWord(r.totals.USD), tokenWord(r.totals.Tokens)
+	loud := spendMoneyWord(r.loudest.USD)
 	parts := strings.Split(plain, rowSep)
 	for at, part := range parts {
 		switch {
@@ -674,6 +711,12 @@ func (r spendReading) paintedHead(width int, pal palette) string {
 			parts[at] = pal.dim(strings.TrimSuffix(part, money)) + placeMoneyInk(pal)(money)
 		case r.totals.Tokens > 0 && toks != "" && strings.HasPrefix(part, toks):
 			parts[at] = pal.data(toks) + pal.dim(strings.TrimPrefix(part, toks))
+		// AND THE LOUDEST DAY'S OWN FIGURE WEARS THE MONEY HUE. It is a second
+		// amount on one line, so a reader tells the two apart by what introduces
+		// them; drawing one of them dim would make it look like a label.
+		case r.loudest.USD > 0 && strings.Contains(part, loud):
+			before, after, _ := strings.Cut(part, loud)
+			parts[at] = pal.dim(before) + placeMoneyInk(pal)(loud) + pal.dim(after)
 		default:
 			parts[at] = pal.dim(part)
 		}
@@ -763,56 +806,13 @@ func (r spendReading) sparkAxis(width int, pal palette) string {
 	return spendSides(width, left, right, pal.dim, pal.dim)
 }
 
-// loudestRow is the day that cost the most, what it was mostly spent on, and —
-// where the sentence leaves room for it — the door onto that thing.
-//
-// THE DOOR IS SAID THE WAY THIS SURFACE SAYS A DOOR. It was the bare noun
-// `tasks`, right-aligned with nothing joining it to the sentence, which reads as
-// a fourth fact about the day: a person cannot tell whether `tasks` is a count, a
-// category or a place. It names the key now — and because it names the key, the
-// row is a stop, so `enter` on it does what the word says.
-//
-// AND IT IS THE FIRST THING OFF THE ROW. rowfit's law 1: the sentence is the
-// identity, the door is a fact about it, so a frame that cannot hold both keeps
-// the sentence whole and draws no door at all — never `rebuild-the-frame… tasks`,
-// which was the reading at 60 columns.
-func (r spendReading) loudestRow(width int, pal palette) (string, session.SubjectSpend, bool) {
-	return r.loudestRowIn(width, pal.dim)
-}
-
-// loudestRowIn is [spendReading.loudestRow] in the ink the row is drawn in.
-func (r spendReading) loudestRowIn(width int, ink func(string) string) (string, session.SubjectSpend, bool) {
-	if r.loudest.USD <= 0 {
-		return "", session.SubjectSpend{}, false
-	}
-	name := r.name(r.loudFor)
-	left := r.loudest.Label + " was the loudest day — " + spendMoneyWord(r.loudest.USD)
-	if name != "" {
-		left += ", " + name
-	}
-	door, opens := "", false
-	if word := spendDoorWord(r.loudFor); word.known() && strings.TrimSpace(r.loudFor.ID) != "" {
-		door = rowTail([]rowField{word}, width-ansi.StringWidth(left)-rowGutter-1)
-		opens = door != ""
-	}
-	return spendSides(width, left, door, ink, ink), r.loudFor, opens
-}
-
-// spendDoorWord is where `enter` on a row goes, in the words of the place it
-// opens ([app.openSpendRow] is the same three-way switch). A subject of a kind
-// this build has no door for says nothing at all rather than naming a key that
-// would do nothing.
-func spendDoorWord(subject session.SubjectSpend) rowField {
-	switch subject.Kind {
-	case session.SubjectTask:
-		return rowSay("enter opens it in tasks", "in tasks")
-	case session.SubjectStanding:
-		return rowSay("enter opens it in standing", "in standing")
-	case session.SubjectConversation:
-		return rowSay("enter opens it on home", "on home")
-	}
-	return rowSay()
-}
+// THE LOUDEST DAY HAD A ROW OF ITS OWN AND NO LONGER DOES. It read `aug 20 was
+// the loudest day — $21.40, the-filings-sweep` with `enter opens it in tasks`
+// out at the right, between the chart and the first table: a sentence saying
+// what the line above it already says three facts of, and the only door on this
+// page standing nowhere near a table of doors. It is a clause on the head line
+// now ([spendReading.loudFields]) and the two subject headings name the key
+// ([spendOpensWord]).
 
 // spendModelsWord is the models table's caption, and it is SCREEN 2c's own. The
 // column says the role each model was BOUND to — the crew binding a person can
@@ -822,6 +822,40 @@ const spendModelsWord = "what ran it · by the model, and the role it was bound 
 
 // spendSubjectsWord is the subjects table's caption.
 const spendSubjectsWord = "what it was for"
+
+// spendOpensWord says THAT THESE ROWS ARE DOORS, on the heading directly over
+// them.
+//
+// THE PAGE USED TO SAY IT ONCE, ON THE LOUDEST DAY'S OWN ROW, four lines above a
+// heading and a table the sentence was not about — and that row is the one row
+// of the page a cursor cannot reach any more, because the loudest day is a
+// clause on the head line now ([spendReading.loudFields]). A key is drawn where
+// it works or it is drawn nowhere.
+//
+// IT NAMES NO DESTINATION. `what it was for` holds two kinds — a task opens in
+// tasks and a conversation opens where it was left — so a heading over both can
+// promise only what they have in common; and the promises below stand under a
+// caption that has already said `standing orders`, where `enter opens it in
+// standing` would be the same word twice on one line.
+const spendOpensWord = "enter opens it"
+
+// subjectHeading is one table's caption with the door word out at the rule — the
+// same edge every figure under it ends on ([spendReading.rule]), so the heading
+// is the width of the table it heads rather than of the frame.
+//
+// THE DOOR IS THE FIRST THING OFF A NARROW FRAME. The caption says what the
+// table is and the door word says what a key does; rowfit's law 1 is that the
+// identity survives and the fact about it goes.
+func (r spendReading) subjectHeading(caption, door string, rule, width int, pal palette) string {
+	ink := placeHeadingInk(pal)
+	if rule > width {
+		rule = width
+	}
+	if ansi.StringWidth(caption)+rowGutter+ansi.StringWidth(door) > rule {
+		return ink(fit(caption, width))
+	}
+	return spendSides(rule, caption, door, ink, ink)
+}
 
 // spendStandingWord heads the STANDING PROMISES, which answer the same question
 // as the rows above them and answer it with different facts.

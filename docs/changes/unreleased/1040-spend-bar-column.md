@@ -4,6 +4,32 @@ title: the spend place is three tables in four columns each — no bars, one rig
 pr: 1040
 surface: [chat]
 invalidates:
+  - "`enter` ON A ROW OF `what it was for` NOW OPENS THE THING. A task opened the
+    tasks PLACE and left the person to find their own row in a list of everything
+    the machine has run; it opens that piece of work's own record card now
+    ([app.openTaskRecord]), with the list behind it parked on that row. A
+    conversation opened HOME — the switcher — which from a row of somebody's own
+    bill is a keypress that went to the wrong screen; it goes through
+    [app.openConversationRow] now, the door every place that is not home already
+    uses, with all of its refusals. A standing promise opens the standing place ON
+    that order ([app.openStandingAt]) rather than at the top of the list."
+  - "THE LOUDEST DAY HAS NO ROW OF ITS OWN. It read `aug 20 was the loudest day —
+    $21.40, the-filings-sweep` between the chart and the first table — a sentence
+    saying what the head line above it already says three facts of — and it is the
+    head line's last clause now: `14 days came to $34.10 · 41.2M tokens · loudest
+    day: $21.40 aug 20 (the-filings-sweep)`. It gives up the name first and then
+    the clause; `spendReading.loudestRow`, `loudestRowIn` and `spendDoorWord` are
+    deleted, and with them a door that stood four lines from any table."
+  - "THE HEAD LINE NOW RESERVES THE ZOOM CLAUSE before its own optional facts.
+    [placeWindowFits] answers the paint and the keys with one predicate, so a head
+    long enough to crowd `shift+↑ coarser` off the line does not hide that key, it
+    UNBINDS it. The head was short enough for this never to arise until the
+    loudest day joined it."
+  - "The two subject headings carry `enter opens it` at the right-hand edge of the
+    table they head. The page said it once, on the loudest day's row, four lines
+    above a heading and a table the sentence was not about — and that row no
+    longer exists. It names no destination: `what it was for` holds tasks and
+    conversations, which open in different places."
   - "THE MODEL BARS ARE GONE. Every model row on the spend place carried a bar —
     that model's share of the dearest one — and the row now reads `· opus 4.1 ·
     conversation · 312 calls · 18.1M tokens · $21.40` and nothing else. The list
