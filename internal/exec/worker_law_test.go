@@ -206,6 +206,7 @@ var removedNames = []string{
 // would be falsifying the record rather than removing a feature.
 var namesLawSkipped = map[string]string{
 	"docs/changes":                     "the changelog says what was removed, by name",
+	"CHANGELOG.md":                     "the same record, once a version has been rolled up into it",
 	"BENCHMARKS.md":                    "dated measurements of what ran at the time",
 	"audit-notes":                      "an audit of the tree as it was",
 	"bench/deepswe":                    "a benchmark track, named for the task set and not for a worker",
