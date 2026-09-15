@@ -154,9 +154,6 @@ func TestTheWalkFindsRepositoriesAndPlainFoldersAndLeadsWithRepositories(t *test
 	if answer.Denied != 0 || answer.Bound {
 		t.Fatalf("a walk of a small tree was refused %d and bound %v", answer.Denied, answer.Bound)
 	}
-	if got := folderIndexWord(answer); got != "" {
-		t.Fatalf("a walk that saw everything said %q", got)
-	}
 }
 
 func TestTheWalkNeverDescendsIntoARepositoryOrASkippedName(t *testing.T) {
@@ -225,13 +222,11 @@ func TestTheWalkStopsOnItsCapAndSaysThatItDid(t *testing.T) {
 	if len(answer.Roots) != 5 {
 		t.Fatalf("a cap of 5 collected %d roots", len(answer.Roots))
 	}
+	// AN INDEX THAT IS A PREFIX OF THE TRUTH IS A DIFFERENT THING FROM ONE
+	// THAT IS THE TRUTH, and only [folderIndexAnswer.Bound] can say which is
+	// in hand.
 	if !answer.Bound {
 		t.Fatal("a walk that stopped on its cap did not say so")
-	}
-	// AN INDEX THAT IS A PREFIX OF THE TRUTH IS A DIFFERENT THING FROM ONE
-	// THAT IS THE TRUTH, and only the answer can say which is in hand.
-	if got := folderIndexWord(answer); got == "" {
-		t.Fatal("a bound walk said nothing about being bound")
 	}
 }
 
@@ -270,10 +265,6 @@ func TestTheWalkCountsWhatItWasRefusedAndSaysSo(t *testing.T) {
 	answer := folderIndexWalk(context.Background(), folderIndexDefaults(base))
 	if answer.Denied != 1 {
 		t.Fatalf("the walk counted %d refusals, wanted one", answer.Denied)
-	}
-	word := folderIndexWord(answer)
-	if !strings.Contains(word, "1 folder ") || !strings.Contains(word, "could not be read") {
-		t.Fatalf("a refused walk said %q", word)
 	}
 	// AND IT STILL ANSWERED. An index that refused to exist because of one
 	// permission is worth less than an index with one directory missing.
@@ -369,5 +360,68 @@ func TestAWalkWithNoBaseDoesNothingRatherThanWalkingTheDisk(t *testing.T) {
 	answer := folderIndexWalk(context.Background(), folderIndexOpts{})
 	if len(answer.Roots) != 0 || answer.Denied != 0 || answer.Bound {
 		t.Fatalf("a walk with no base answered %v", answer)
+	}
+}
+
+// TestTheBudgetIsMeasuredAgainstEveryEntryAndNotOnlyDirectories is the law the
+// three-second bound needs in order to be a bound at all.
+//
+// THE BUG IT REPRODUCES. The clock check stood below the walk's
+// `!entry.IsDir()` return, so a FILE never consulted it and the walk got a turn
+// to stop only BETWEEN DIRECTORIES. The directory that ends a home walk on a
+// Mac is `~/Library/Caches`, which is one directory holding hundreds of
+// thousands of files, and a bound that is never read while those stream past is
+// not a bound. Measured on the owner's laptop before this change:
+// `scanFolderRoots` took 5m58s under a three-second budget, which is what took
+// the folder picker's background read past the test driver's own budget and
+// panicked `TestThePicksLandingMidBrowseKeepTheChoicesAndThePreview`.
+//
+// THE CLOCK IS DRIVEN AND NOT RACED, and it advances once per reading, which is
+// what makes this a regression test rather than a restatement. A walk that
+// measures only directories reads this clock four times in the tree below and
+// never runs out; a walk that measures every entry runs out among the files —
+// so the two disagree about whether `z-repo` is ever reached, and that is the
+// assertion.
+func TestTheBudgetIsMeasuredAgainstEveryEntryAndNotOnlyDirectories(t *testing.T) {
+	base := t.TempDir()
+	// One directory whose whole content is files, which is the shape that runs
+	// away, and a repository AFTER it that a bounded walk never gets to.
+	deep := filepath.Join(base, "a-files")
+	if err := os.MkdirAll(filepath.Join(base, "z-repo", ".git"), 0o755); err != nil {
+		t.Fatalf("building the tree: %v", err)
+	}
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatalf("building the tree: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		if err := os.WriteFile(filepath.Join(deep, "f"+strconv.Itoa(i)), nil, 0o644); err != nil {
+			t.Fatalf("building the tree: %v", err)
+		}
+	}
+
+	// A clock that spends one second of the budget every time it is read. Six
+	// seconds is more than the four readings a directories-only walk of this
+	// tree ever takes, and far less than the twenty-three an every-entry walk
+	// would take if nothing stopped it.
+	at := time.Unix(1_700_000_000, 0)
+	opts := folderIndexDefaults(base)
+	opts.Budget = 6 * time.Second
+	opts.Now = func() time.Time {
+		at = at.Add(time.Second)
+		return at
+	}
+
+	answer := folderIndexWalk(context.Background(), opts)
+
+	if !answer.Bound {
+		t.Fatal("a walk that spent its whole budget among the files reported itself complete — " +
+			"which is the surface saying it saw everything when it saw a fraction, and is the " +
+			"budget being read only on the way into a directory")
+	}
+	for _, root := range answer.Roots {
+		if filepath.Base(root.Path) == "z-repo" {
+			t.Fatal("the walk carried on to a later directory after its budget was spent: the " +
+				"files it crossed to get there cost time and were never measured against it")
+		}
 	}
 }

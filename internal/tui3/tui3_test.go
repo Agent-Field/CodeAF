@@ -119,6 +119,16 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "tui3 tests: could not clear %s: %v\n", config.ProfileDirEnv, err)
 		return 1
 	}
+	// THE FOLDER INDEX IS THE ONE WALK THAT LEAVES THE TEMPORARY ROOT. The
+	// state root above moves every path this package READS; the picker's
+	// background scan asks os.UserHomeDir and walks the person's actual home,
+	// which no CODEAF_HOME can move. A suite that does that is slow in
+	// proportion to the developer's disk and fast on a runner whose home is
+	// empty — so it passed in CI and blew the driver's budget on a laptop
+	// (folderplace.go's [folderRootScan]). An empty answer is the honest one
+	// here: a machine with no indexed roots is a machine somebody has just
+	// installed on, which every layer below already handles.
+	folderRootScan = func() []string { return nil }
 	return m.Run()
 }
 

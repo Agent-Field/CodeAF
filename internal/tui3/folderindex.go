@@ -34,7 +34,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -259,6 +258,12 @@ type folderIndexOpts struct {
 	Budget time.Duration
 	// Skip are directory names never entered, over and above the dot ones.
 	Skip map[string]bool
+	// Now is the clock the budget is measured on. Nil is [time.Now], which is
+	// what every caller outside a test passes; a test drives the deadline
+	// itself rather than racing a real one, because the thing being proved
+	// here is WHEN the walk stops and a threshold in wall clock is a coin
+	// toss on a loaded box.
+	Now func() time.Time
 }
 
 // The bounds a walk takes when nobody names its own.
@@ -267,8 +272,12 @@ type folderIndexOpts struct {
 // `node_modules` nobody asked about. TWO THOUSAND roots is more directories
 // than any list can rank usefully. THREE SECONDS is longer than a background
 // walk of a normal home directory takes. Cancellation and the clock are checked
-// before traversal and at each directory; an active filesystem call itself
-// cannot be interrupted, so a blocked mount can exceed this elapsed time.
+// before traversal and AT EVERY ENTRY THE WALK IS HANDED — files included, and
+// not only the directories: one directory holding a hundred thousand files is
+// how a home directory stops being normal, and a budget consulted only on the
+// way into a directory never gets a turn while those stream past. An active
+// filesystem call itself cannot be interrupted, so a blocked mount can still
+// exceed this elapsed time.
 const (
 	folderIndexDepth      = 6
 	folderIndexPlainDepth = 3
@@ -302,17 +311,21 @@ func folderIndexDefaults(base string) folderIndexOpts {
 // a directory of notes — and a chooser that could only see repositories was a
 // chooser that had decided what counts as work.
 func folderIndexWalk(ctx context.Context, opts folderIndexOpts) folderIndexAnswer {
-	started := time.Now()
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
+	started := now()
 	answer := folderIndexAnswer{}
 	if opts.Base == "" {
-		answer.Took = time.Since(started)
+		answer.Took = now().Sub(started)
 		return answer
 	}
 	base := filepath.Clean(opts.Base)
 	deadline := started.Add(opts.Budget)
 	if ctx.Err() != nil {
 		answer.Bound = true
-		answer.Took = time.Since(started)
+		answer.Took = now().Sub(started)
 		return answer
 	}
 	_ = filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
@@ -326,12 +339,20 @@ func folderIndexWalk(ctx context.Context, opts folderIndexOpts) folderIndexAnswe
 			}
 			return nil
 		}
-		if !entry.IsDir() {
-			return nil
-		}
-		if ctx.Err() != nil || (opts.Budget > 0 && time.Now().After(deadline)) {
+		// THE BUDGET IS SPENT BY EVERY ENTRY, SO EVERY ENTRY IS MEASURED. This
+		// check stood below the `!entry.IsDir()` return, which meant a file
+		// never consulted the clock — and a walk only gets a turn to stop
+		// between directories. `~/Library/Caches` is one directory with
+		// hundreds of thousands of files in it, so on an ordinary Mac the
+		// three-second bound above was not a bound at all: the walk ran for
+		// minutes. It is not the depth or the cap that saves you there, and
+		// the elapsed time is the only one of the three that can.
+		if ctx.Err() != nil || (opts.Budget > 0 && now().After(deadline)) {
 			answer.Bound = true
 			return fs.SkipAll
+		}
+		if !entry.IsDir() {
+			return nil
 		}
 		name := entry.Name()
 		if path != base && (opts.Skip[name] || strings.HasPrefix(name, ".")) {
@@ -368,7 +389,7 @@ func folderIndexWalk(ctx context.Context, opts folderIndexOpts) folderIndexAnswe
 		}
 		return answer.Roots[i].At.After(answer.Roots[j].At)
 	})
-	answer.Took = time.Since(started)
+	answer.Took = now().Sub(started)
 	return answer
 }
 
@@ -389,20 +410,6 @@ func folderIndexPaths(answer folderIndexAnswer) []string {
 		out = append(out, root.Path)
 	}
 	return out
-}
-
-// folderIndexWord says what a walk COULD NOT SEE, and nothing when it saw
-// everything. It is the honest half of the answer, and it is a sentence rather
-// than a number because the number on its own is machinery.
-func folderIndexWord(answer folderIndexAnswer) string {
-	switch {
-	case answer.Denied > 0:
-		return strconv.Itoa(answer.Denied) + plural(" folder", answer.Denied) +
-			" could not be read, so this list may be short"
-	case answer.Bound:
-		return "there was more to look through than this list holds"
-	}
-	return ""
 }
 
 // ── the walk, off the loop ──────────────────────────────────────────────────
