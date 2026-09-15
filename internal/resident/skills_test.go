@@ -126,11 +126,12 @@ printf '%s' "$PWD" > "$CODEAF_SKILL_DIR/CHECK_CWD"
 // H7: a skill check receives the current and legacy skill-directory spellings
 // with the same value.
 func TestH7SkillCheckExportsBothDirectorySpellings(t *testing.T) {
-	dir := writeSkillArtifact(t, "both-envs", `#!/bin/sh
-set -eu
-test "$CODEAF_SKILL_DIR" = "$AFORGE_SKILL_DIR" # legacy-name
-test "$CODEAF_SKILL_DIR" != ""
-`)
+	// The old spelling is named on its own Go line so the name law can see
+	// the exemption; a marker inside the script's string cannot open one.
+	const legacySpelling = "AFORGE_SKILL_DIR" // legacy-name
+	dir := writeSkillArtifact(t, "both-envs", "#!/bin/sh\nset -eu\n"+
+		"test \"$CODEAF_SKILL_DIR\" = \"$"+legacySpelling+"\"\n"+
+		"test \"$CODEAF_SKILL_DIR\" != \"\"\n")
 	if err := runSkillCheck(context.Background(), dir); err != nil {
 		t.Fatal(err)
 	}
