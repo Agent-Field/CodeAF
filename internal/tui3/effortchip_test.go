@@ -181,10 +181,10 @@ func TestAFreshConversationSaysAutoAndIsPressable(t *testing.T) {
 	}
 }
 
-// AND THE WAY BACK IS BY NAME. The wheel has five stops on purpose, so `/effort
-// auto` (and the legacy `off`) is the only gesture that hands the scope back —
-// and it must land on the seam, or a conversation dialled up once could never
-// be put back to what it shipped at.
+// AND THE WAY BACK IS ALSO BY NAME. The wheel reaches `auto` off the top now,
+// but `/effort auto` (and the legacy `off`) hands the scope back in one move
+// from any rung — and it must land on the seam, or a conversation dialled up
+// once could only be put back by walking it.
 func TestEffortAutoPutsTheCellBackToAuto(t *testing.T) {
 	for _, word := range []string{"auto", "off"} {
 		agent, a := shipped(t)
@@ -301,25 +301,92 @@ func TestANarrowSeamDropsTheRungRatherThanCuttingIt(t *testing.T) {
 
 // ── 2. the chord ────────────────────────────────────────────────────────────
 
-// THE CHORD WALKS THE FIVE RUNGS AND WRAPS, and every step goes through the
-// session's own setter — the chip is drawn from the resolver, so a step the
-// surface only remembered would be a step nothing else in the process saw.
-func TestCtrlVCyclesTheConversationRungAndWraps(t *testing.T) {
-	agent, a := dialled(t)
+// THE CHORD WALKS THE SIX STOPS AND COMES BACK TO auto, and every step goes
+// through the session's own setter — the chip is drawn from the resolver, so a
+// step the surface only remembered would be a step nothing else in the process
+// saw.
+//
+// THE SIXTH STOP IS THE POINT OF THE WHEEL. It had five until 2026-09-15 and the
+// state an install ships at was the one the walk could not reach, so a
+// conversation dialled up once had to be put back through `/effort` — a
+// different door for the one stop people most want back.
+func TestCtrlVCyclesTheConversationRungAndComesBackToAuto(t *testing.T) {
+	agent, a := shipped(t)
+	a.slash("/effort high")
+	agent.sets = nil
 
-	// The shipped rung is high, so the ladder is walked from there.
-	want := []string{"xhigh", "max", "low", "medium", "high", "xhigh"}
+	// The walk starts at high, climbs to the top, clears, and begins again.
+	want := []string{"xhigh", "max", "", "low", "medium", "high"}
 	for at, rung := range want {
 		drive(t, a, key(effortKey))
 		if got := agent.ConversationEffort(); got != rung {
 			t.Fatalf("press %d left the conversation at %q, want %q", at+1, got, rung)
 		}
-		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+rung) {
-			t.Fatalf("press %d drew %q, want %q", at+1, line, rung)
+		word := rung
+		if word == "" {
+			word = effortAutoWord
+		}
+		if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+word) {
+			t.Fatalf("press %d drew %q, want %q", at+1, line, word)
 		}
 	}
 	if len(agent.sets) != len(want) {
 		t.Fatalf("the chord wrote %d rungs for %d presses: %v", len(agent.sets), len(want), agent.sets)
+	}
+}
+
+// AND THE PRESS ON THE CELL REACHES THE SAME STOP, because the press and the
+// chord are one function: a wheel that cleared under the key and wrapped under
+// the pointer would be two wheels wearing one word.
+func TestPressingTheRungOnMaxHandsTheConversationBackToAuto(t *testing.T) {
+	agent, a := shipped(t)
+	a.slash("/effort max")
+
+	_ = frame(a)
+	drive(t, a, clickAt(a.seamEffortSpan.from+1, seamRowY(a)))
+
+	if got := agent.ConversationEffort(); got != "" {
+		t.Fatalf("the press off max left the conversation at %q, want absence", got)
+	}
+	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" "+effortAutoWord) {
+		t.Fatalf("the press off max did not put the cell back to auto: %q", line)
+	}
+	// It says what decides now, because `auto` on the seam reads like the dial
+	// went away rather than like a state somebody walked onto.
+	if got := plain(frame(a)); !strings.Contains(got, "thinking · "+effortAutoWord+" · the model decides") {
+		t.Fatalf("clearing by the wheel said nothing about what decides now:\n%s", got)
+	}
+	// And the next press starts the walk again from the cheapest rung.
+	drive(t, a, clickAt(a.seamEffortSpan.from+1, seamRowY(a)))
+	if got := agent.ConversationEffort(); got != "low" {
+		t.Fatalf("the press off auto left the conversation at %q, want low", got)
+	}
+}
+
+// ON A MACHINE WHOSE OWN ROW IS SET, CLEARING LANDS ON THAT ROW AND SAYS SO.
+// The resolver hands a cleared conversation to the install's `thinking` row
+// (internal/effort's Resolve), so the seam keeps a word — and the note must name
+// the scope that caught it. It used to blame the model's own level and point at
+// `ctrl+t`, which moves a different scope entirely; that sentence was
+// unreachable while `/effort auto` was the only way back and is one press away
+// now.
+func TestClearingOnAnInstallWithItsOwnRungNamesThatRow(t *testing.T) {
+	agent, a := dialled(t) // the install's row is high
+	a.slash("/effort max")
+
+	drive(t, a, key(effortKey))
+	if got := agent.ConversationEffort(); got != "" {
+		t.Fatalf("the press off max left the conversation at %q, want absence", got)
+	}
+	if line := seamLine(t, a); !strings.Contains(line, glyphEffort+" high") {
+		t.Fatalf("the seam did not fall back to the install's rung: %q", line)
+	}
+	got := plain(frame(a))
+	if !strings.Contains(got, "thinking · "+effortAutoWord+" for this chat · high · "+effortInstallDecides) {
+		t.Fatalf("clearing did not name the row that decides now:\n%s", got)
+	}
+	if strings.Contains(got, "ctrl+t") {
+		t.Fatalf("clearing pointed at ctrl+t, which moves the model's level and not this:\n%s", got)
 	}
 }
 
@@ -394,6 +461,38 @@ func TestTheChordSaysSoWhenTheModelsOwnLevelIsWinning(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the note is missing %q:\n%s", want, got)
 		}
+	}
+}
+
+// AND WHERE THE MODEL'S OWN LEVEL IS WHAT CATCHES IT, THE NOTE STILL POINTS AT
+// ctrl+t. Clearing lands on whichever scope stands above this one, and the two
+// that can be there — the install's `thinking` row and a level dialled onto the
+// model — are answered by different doors. Naming the wrong one is a person
+// pressing a key that cannot move what they are looking at.
+func TestClearingUnderAModelsOwnLevelStillPointsAtCtrlT(t *testing.T) {
+	agent, a := shipped(t)
+	// The wheel steps from the RESOLVED word, so the one press that clears under a
+	// level on the model is the press off the top: the cell says `max` because the
+	// model is dialled to it.
+	agent.turn = effort.Max
+	agent.levels = map[string]string{"deepseek/deepseek-v4": "max"}
+	// And the surface has not been told about that level yet, which is the state
+	// this note must survive: the press asks the agent rather than reading a table
+	// that would answer "nobody dialled one" ([app.modelOwnLevel]).
+	clear(a.levels)
+
+	drive(t, a, key(effortKey))
+	if got := agent.ConversationEffort(); got != "" {
+		t.Fatalf("the press off max left the conversation at %q, want absence", got)
+	}
+	got := plain(frame(a))
+	for _, want := range []string{"thinking stays max", "deepseek-v4", "ctrl+t"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the note is missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, effortInstallDecides) {
+		t.Fatalf("clearing blamed the settings row for a level on the model:\n%s", got)
 	}
 }
 
