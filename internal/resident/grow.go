@@ -23,12 +23,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -173,7 +173,7 @@ func GrowthStopped(cause string) (string, bool) {
 // GrowthGate is the wave's rollback switch. Off, the governor keeps the three
 // free checks — rounds, ceiling, rail — and never asks the paid question, which
 // is today's behaviour plus the revision fix and the journal.
-var GrowthGate = os.Getenv("CODEAF_GROWTH_GATE") != "0"
+var GrowthGate = env.Get("CODEAF_GROWTH_GATE") != "0"
 
 // Satisfier answers the positive stopping question. It is an interface rather
 // than a direct call into the plan package because the graph layer must not

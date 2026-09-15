@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -555,7 +556,7 @@ func firingPrefix(charterID string, wakeSeq int64) string {
 
 func tenureAfter() int {
 	const fallback = 3
-	raw := strings.TrimSpace(os.Getenv("CODEAF_TENURE_AFTER"))
+	raw := strings.TrimSpace(env.Get("CODEAF_TENURE_AFTER"))
 	if raw == "" {
 		return fallback
 	}

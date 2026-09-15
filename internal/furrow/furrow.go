@@ -47,6 +47,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
+
 	"github.com/Agent-Field/codeaf/internal/furrowbin"
 )
 
@@ -275,7 +277,7 @@ var embedded = furrowbin.Ensure
 // road not taken, and if none of them answer the seam is absent exactly as it
 // always was.
 func lookBinary() (string, error) {
-	if configured := strings.TrimSpace(os.Getenv(BinaryEnvVar)); configured != "" {
+	if configured := strings.TrimSpace(env.Get(BinaryEnvVar)); configured != "" {
 		info, err := os.Stat(configured)
 		if err != nil {
 			return "", err

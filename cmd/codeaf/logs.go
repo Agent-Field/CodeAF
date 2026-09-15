@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -59,7 +60,7 @@ func runLogs(args []string) error {
 	// codeaf file is, rather than from the running log's own singleton: this
 	// process has not loaded a config and has opened nothing.
 	return runLogsWith(args, os.Stdout,
-		calllog.PathFor(strings.TrimSpace(os.Getenv("CODEAF_PROFILE_DIR"))), time.Now)
+		calllog.PathFor(strings.TrimSpace(env.Get("CODEAF_PROFILE_DIR"))), time.Now)
 }
 
 // runLogsWith is the command with its two outside readings injectable: where

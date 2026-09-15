@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -2632,7 +2633,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// test hands one in ([Options.Env] says why a test must).
 	env := opts.Env
 	if env == nil {
-		env = os.Getenv
+		env = internalenv.Value
 	}
 	host := strings.TrimSpace(opts.Host)
 	place := strings.TrimSpace(opts.Workspace)

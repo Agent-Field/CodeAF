@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -109,7 +109,7 @@ func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source)
 }
 
 func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
-	return strings.TrimSpace(firstNonEmpty(os.Getenv(strings.TrimSpace(src.KeyEnv)), row.Key, os.Getenv(strings.TrimSpace(row.KeyEnv))))
+	return strings.TrimSpace(firstNonEmpty(env.Value(strings.TrimSpace(src.KeyEnv)), row.Key, env.Value(strings.TrimSpace(row.KeyEnv))))
 }
 
 // ResolveSources builds the whole registry: the synthesised default service

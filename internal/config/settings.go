@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
@@ -1548,7 +1549,7 @@ func (s Setting) PinnedBy() (string, bool) {
 	if s.Env == "" {
 		return "", false
 	}
-	if strings.TrimSpace(os.Getenv(s.Env)) == "" {
+	if strings.TrimSpace(env.Value(s.Env)) == "" {
 		return "", false
 	}
 	return s.Env, true
@@ -1721,7 +1722,7 @@ func (s *Settings) Groups() []SettingGroup {
 func (s *Settings) EnvironmentPins() []string {
 	set := make([]string, 0, len(OperatorEnvPins))
 	for _, name := range OperatorEnvPins {
-		if strings.TrimSpace(os.Getenv(name)) != "" {
+		if strings.TrimSpace(env.Value(name)) != "" {
 			set = append(set, name)
 		}
 	}
@@ -2739,7 +2740,7 @@ func MediaSlotModelAt(profileDir, slot string) string {
 		return ""
 	}
 	if name, ok := modelSlotEnvDefault(slot); ok {
-		if raw := strings.TrimSpace(os.Getenv(name)); raw != "" {
+		if raw := strings.TrimSpace(env.Value(name)); raw != "" {
 			return raw
 		}
 	}
@@ -2950,7 +2951,7 @@ func modelSlotHint(slot ModelSlot) string {
 
 // PlanConsentUSDAt resolves the estimate above which a plan asks first.
 func PlanConsentUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_PLAN_CONSENT")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_PLAN_CONSENT")); raw != "" {
 		return validateDailyBudgetValue(raw, "CODEAF_PLAN_CONSENT")
 	}
 	if value, ok := persistedFloat(profileDir, KeyPlanConsent); ok && value >= 0 {
@@ -2961,7 +2962,7 @@ func PlanConsentUSDAt(profileDir string) (float64, error) {
 
 // PracticeBudgetUSDAt resolves the daily self-practice carve-out.
 func PracticeBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_PRACTICE_BUDGET")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_PRACTICE_BUDGET")); raw != "" {
 		return validateDailyBudgetValue(raw, "CODEAF_PRACTICE_BUDGET")
 	}
 	if value, ok := persistedFloat(profileDir, KeyPracticeBudget); ok && value >= 0 {
@@ -2981,7 +2982,7 @@ func BriefAfterAt(profileDir string) (time.Duration, error) {
 }
 
 func durationAt(profileDir, envName, key string, fallback time.Duration) (time.Duration, error) {
-	if raw := strings.TrimSpace(os.Getenv(envName)); raw != "" {
+	if raw := strings.TrimSpace(env.Value(envName)); raw != "" {
 		value, err := time.ParseDuration(raw)
 		if err != nil || value < 0 {
 			return 0, fmt.Errorf("%s: want a non-negative duration, got %q", envName, raw)
@@ -2996,7 +2997,7 @@ func durationAt(profileDir, envName, key string, fallback time.Duration) (time.D
 
 // TenureAfterAt resolves the clean-firing count that earns a charter tenure.
 func TenureAfterAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_TENURE_AFTER")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_TENURE_AFTER")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -3021,7 +3022,7 @@ func TenureAfterAt(profileDir string) int {
 // user. A malformed pin reads as the default rather than refusing a launch over
 // a signature.
 func AttributionAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_ATTRIBUTION")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_ATTRIBUTION")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
 			return value
 		}
@@ -3037,7 +3038,7 @@ func AttributionAt(profileDir string) bool {
 // into ~/.codeaf/v3/history.jsonl. A malformed pin reads as the default
 // rather than refusing a launch over a recall list.
 func HistoryEnabledAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_HISTORY")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_HISTORY")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
 			return value
 		}
@@ -3052,7 +3053,7 @@ func HistoryEnabledAt(profileDir string) bool {
 // DraftPersistAt resolves whether the v3 chat surface keeps the unsent draft on
 // disk between sessions. Shaped exactly like [HistoryEnabledAt].
 func DraftPersistAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_DRAFT_PERSIST")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_DRAFT_PERSIST")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
 			return value
 		}
@@ -3109,7 +3110,7 @@ func HintsAt(profileDir string) bool {
 
 // DocumentEngineAt resolves the document-reading rung.
 func DocumentEngineAt(profileDir string) (string, error) {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_DOC_ENGINE")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_DOC_ENGINE")); raw != "" {
 		engine := strings.ToLower(raw)
 		if !knownDocumentEngine(engine) {
 			return "", fmt.Errorf("CODEAF_DOC_ENGINE: unknown engine %q (auto, local, free, ocr)", engine)
@@ -3127,7 +3128,7 @@ func DocumentEngineAt(profileDir string) (string, error) {
 // VisionModelAt resolves the image-inspection proxy slot. Empty means resolve
 // from the live catalog at use.
 func VisionModelAt(profileDir string) string {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_VISION_MODEL")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_VISION_MODEL")); raw != "" {
 		return raw
 	}
 	if value, ok := persistedString(profileDir, KeyVisionModel); ok {
@@ -3141,7 +3142,7 @@ func VisionModelAt(profileDir string) string {
 // relaunch without a second lookup path. A variable the user actually set is
 // never overwritten — the environment still wins.
 func InstallPersistedEnv(profileDir string) {
-	if strings.TrimSpace(os.Getenv("CODEAF_TENURE_AFTER")) != "" {
+	if strings.TrimSpace(env.Get("CODEAF_TENURE_AFTER")) != "" {
 		return
 	}
 	if value, ok := persistedInt(profileDir, KeyTenureAfter); ok && value > 0 {
@@ -3301,8 +3302,8 @@ func slackOAuthClientAt(profileDir string) string {
 	return credentialAt(profileDir, "SLACK_OAUTH_CLIENT", KeySlackOAuthClient)
 }
 
-func credentialAt(profileDir, env, key string) string {
-	if raw := strings.TrimSpace(os.Getenv(env)); raw != "" {
+func credentialAt(profileDir, envName, key string) string {
+	if raw := strings.TrimSpace(env.Value(envName)); raw != "" {
 		return raw
 	}
 	if value, ok := persistedString(profileDir, key); ok {
@@ -3616,7 +3617,7 @@ func MemoryAt(profileDir string) string {
 // list does not have falls through to the row, exactly as an unset variable
 // does.
 func PromptProfileAt(profileDir string) string {
-	if raw := strings.ToLower(strings.TrimSpace(os.Getenv(EnvPromptProfile))); raw != "" {
+	if raw := strings.ToLower(strings.TrimSpace(env.Get(EnvPromptProfile))); raw != "" {
 		for _, mode := range PromptProfileModes {
 			if mode == raw {
 				return mode
@@ -3949,7 +3950,7 @@ func ResponseLimitsAt(profileDir string) taxonomy.Limits {
 // for three times the patience now — which is a reading of their row this change
 // cannot avoid and says so in its change entry.
 func ResponseAttemptsAt(profileDir string) float64 {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_RESPONSE_ATTEMPTS")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_RESPONSE_ATTEMPTS")); raw != "" {
 		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 1 {
 			return value
 		}
@@ -3963,7 +3964,7 @@ func ResponseAttemptsAt(profileDir string) float64 {
 
 // ResponseLiftAfterAt resolves K, the same way.
 func ResponseLiftAfterAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_RESPONSE_LIFT_AFTER")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_RESPONSE_LIFT_AFTER")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
 			return value
 		}
@@ -3981,7 +3982,7 @@ func ResponseLiftAfterAt(profileDir string) int {
 // 0 means no cap, and somebody who wrote it must not find one back in the
 // morning.
 func ResponseLiftCapAt(profileDir string) float64 {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_RESPONSE_LIFT_CAP")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_RESPONSE_LIFT_CAP")); raw != "" {
 		if value, err := strconv.ParseFloat(raw, 64); err == nil && value >= 0 {
 			return value
 		}
@@ -4303,7 +4304,7 @@ func writeText(profileDir, key, raw string) error {
 // ContextFillAt resolves the fill law: environment pin, then the persisted
 // row, then the package default. A malformed pin reads as the default.
 func ContextFillAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_CONTEXT_FILL_PCT")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_CONTEXT_FILL_PCT")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -4317,7 +4318,7 @@ func ContextFillAt(profileDir string) int {
 
 // CompletionReserveAt resolves the answer-and-reasoning reserve the same way.
 func CompletionReserveAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_COMPLETION_RESERVE")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_COMPLETION_RESERVE")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -4331,7 +4332,7 @@ func CompletionReserveAt(profileDir string) int {
 
 // WorkingSetAt resolves the cap on the live working set the same way.
 func WorkingSetAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_WORKING_SET")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_WORKING_SET")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}
@@ -4345,7 +4346,7 @@ func WorkingSetAt(profileDir string) int {
 
 // ContextReuseAt resolves the cumulative re-send allowance the same way.
 func ContextReuseAt(profileDir string) int {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_CONTEXT_REUSE_PCT")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_CONTEXT_REUSE_PCT")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
 			return value
 		}

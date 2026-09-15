@@ -57,6 +57,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -113,7 +114,7 @@ const (
 var on atomic.Bool
 
 func init() {
-	if envEnabled(os.Getenv) {
+	if envEnabled(env.Get) {
 		on.Store(true)
 	}
 }
@@ -417,7 +418,7 @@ func For(ctx context.Context) *Recorder {
 	if recorder, ok := runs.by[run]; ok {
 		return recorder
 	}
-	recorder := &Recorder{run: run, dir: Dir(run), max: maxRunBytes(os.Getenv), keep: keepRuns(os.Getenv)}
+	recorder := &Recorder{run: run, dir: Dir(run), max: maxRunBytes(env.Get), keep: keepRuns(env.Get)}
 	runs.by[run] = recorder
 	return recorder
 }

@@ -22,9 +22,10 @@
 package ctxbudget
 
 import (
-	"os"
 	"strconv"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // BytesPerToken is the estimator used everywhere a budget is spent in bytes.
@@ -446,7 +447,7 @@ func (b Budget) Share(weight, total, fallback int) int {
 }
 
 func envInt(key string) (int, bool) {
-	raw := os.Getenv(key)
+	raw := env.Value(key)
 	if raw == "" {
 		return 0, false
 	}

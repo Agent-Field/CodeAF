@@ -95,8 +95,9 @@ package session
 // arm would be a diet nobody measured.
 
 import (
-	"os"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 )
@@ -187,7 +188,7 @@ func settlePromptProfile(c Config) promptProfile { return resolvePromptProfile(c
 // changes it. Both answer `auto` by saying nothing, and then the window decides
 // exactly as it did before either existed.
 func resolvePromptProfile(c Config) promptProfile {
-	if pinned, ok := promptProfileWord(os.Getenv(promptProfileEnv)); ok {
+	if pinned, ok := promptProfileWord(env.Get(promptProfileEnv)); ok {
 		return pinned
 	}
 	if chosen, ok := promptProfileWord(c.PromptProfile); ok {

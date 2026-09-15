@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -20,7 +21,7 @@ import (
 // remains the explicit headless override; /budget default writes the middle
 // layer used by both chat and one-shot runs.
 func DailyBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_DAILY_BUDGET")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_DAILY_BUDGET")); raw != "" {
 		return parseDailyBudget(raw, "CODEAF_DAILY_BUDGET")
 	}
 	values, err := readProfileConfig(profileDir)

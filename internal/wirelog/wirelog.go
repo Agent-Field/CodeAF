@@ -39,6 +39,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // EnvVar names the file the meter appends to. Empty or unset means no meter.
@@ -98,7 +100,7 @@ type Meter struct {
 // alternative is refusing to start a chat because a debugging aid could not
 // write its log, and no measurement is worth a door that will not open.
 func FromEnv(out *os.File) *Meter {
-	path := os.Getenv(EnvVar)
+	path := env.Get(EnvVar)
 	if path == "" {
 		return nil
 	}

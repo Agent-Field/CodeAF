@@ -1,8 +1,9 @@
 package splitgate
 
 import (
-	"os"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // Which reading of "is this division real" a run is on.
@@ -71,7 +72,7 @@ const (
 // under somebody's divisions. So the two words that arm it are exact, and
 // everything else — including nothing at all — is off.
 func Mode() GateMode {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("CODEAF_SPLITGATE"))) {
+	switch strings.ToLower(strings.TrimSpace(env.Get("CODEAF_SPLITGATE"))) {
 	case string(ModeCount):
 		return ModeCount
 	case string(ModeJudgment):

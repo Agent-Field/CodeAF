@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -326,7 +326,7 @@ const ProfileDirEnv = "CODEAF_PROFILE_DIR"
 // ProfileDir is the profile this process reads and writes. Empty is the ordinary
 // answer and means the state root's own profile; the readers below take it as
 // such, so a caller never has to know what the default expands to.
-func ProfileDir() string { return os.Getenv(ProfileDirEnv) }
+func ProfileDir() string { return env.Get(ProfileDirEnv) }
 
 // Load resolves configuration from the environment, falling back to the
 // defaults above. Only the API key has no default; everything else runs
@@ -359,12 +359,12 @@ func load(requireKey bool) (Config, error) {
 	// empty model_sources field does not add a launch-path read.
 	profileValues, _ := readProfileConfig(profileDir)
 	apiKey := apiKeyFrom(profileValues)
-	baseURL := firstNonEmpty(os.Getenv("CODEAF_BASE_URL"), DefaultBaseURL)
+	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
 	config := Config{
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
-		Model:             firstNonEmpty(os.Getenv(ModelEnv), DefaultModel),
-		PlanModel:         strings.TrimSpace(os.Getenv(PlanModelEnv)),
+		Model:             firstNonEmpty(env.Get(ModelEnv), DefaultModel),
+		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,
 		ExecReasoning:     DefaultExecReasoning,
@@ -445,14 +445,14 @@ func load(requireKey bool) (Config, error) {
 	if config.PlanConsentUSD, err = PlanConsentUSDAt(config.ProfileDir); err != nil {
 		return Config{}, err
 	}
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_REASONING")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_REASONING")); raw != "" {
 		effort, ok := provider.ParseEffort(raw)
 		if !ok {
 			return Config{}, fmt.Errorf("CODEAF_REASONING: unknown effort %q (off, low, medium, high)", raw)
 		}
 		config.Reasoning = effort
 	}
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_EXEC_REASONING")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_EXEC_REASONING")); raw != "" {
 		effort, ok := provider.ParseEffort(raw)
 		if !ok {
 			return Config{}, fmt.Errorf("CODEAF_EXEC_REASONING: unknown effort %q (off, low, medium, high)", raw)
@@ -467,7 +467,7 @@ func load(requireKey bool) (Config, error) {
 		{"CODEAF_MAX_DEPTH", &config.MaxDepth},
 		{"CODEAF_NODE_BUDGET", &config.NodeBudget},
 	} {
-		raw := strings.TrimSpace(os.Getenv(knob.name))
+		raw := strings.TrimSpace(env.Value(knob.name))
 		if raw == "" {
 			continue
 		}
@@ -477,7 +477,7 @@ func load(requireKey bool) (Config, error) {
 		}
 		*knob.target = value
 	}
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_MECHANISM")); raw == "quorum" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_MECHANISM")); raw == "quorum" {
 		config.Quorum = true
 	}
 	// THE SENSE OF THIS SWITCH TURNED OVER. It was the arming switch for a wave
@@ -485,14 +485,14 @@ func load(requireKey bool) (Config, error) {
 	// out of it — `CODEAF_SWARM=0`. The reading is unchanged, because
 	// [strconv.ParseBool] already answered both directions; what changed is
 	// which direction anybody has a reason to write.
-	if raw := strings.TrimSpace(os.Getenv("CODEAF_SWARM")); raw != "" {
+	if raw := strings.TrimSpace(env.Get("CODEAF_SWARM")); raw != "" {
 		swarm, err := strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, fmt.Errorf("CODEAF_SWARM: want 0 or 1, got %q", raw)
 		}
 		config.Swarm = swarm
 	}
-	panel, err := router.LoadPanel(os.Getenv("CODEAF_MODELS"))
+	panel, err := router.LoadPanel(env.Get("CODEAF_MODELS"))
 	if err != nil {
 		return Config{}, err
 	}

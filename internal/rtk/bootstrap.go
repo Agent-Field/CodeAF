@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 const (
@@ -56,7 +58,7 @@ func Bootstrap(ctx context.Context) {
 	if _, ok := Available(); ok {
 		return
 	}
-	if strings.TrimSpace(os.Getenv(EnvBinary)) != "" {
+	if strings.TrimSpace(env.Get(EnvBinary)) != "" {
 		// Someone named a binary, or turned this off. Either way the choice has
 		// been made and downloading over it would be presumptuous.
 		return

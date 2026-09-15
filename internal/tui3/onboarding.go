@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"os"
 	"strings"
 	"time"
 
@@ -9,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -1300,7 +1300,7 @@ func (a *app) setupModelSource() string {
 	if row.EnvDefault == "" || config.ChatModelAt(a.profileDir) != "" {
 		return ""
 	}
-	if strings.TrimSpace(os.Getenv(row.EnvDefault)) == "" {
+	if strings.TrimSpace(env.Value(row.EnvDefault)) == "" {
 		return ""
 	}
 	return controlFromLead + row.EnvDefault

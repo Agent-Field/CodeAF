@@ -1,9 +1,10 @@
 package config
 
 import (
-	"os"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // THE FIRST-RUN SETUP'S THREE FACTS, AND ITS ONE PREFERENCE MARKER.
@@ -75,7 +76,7 @@ func CrewConfigured(profileDir string) bool {
 // DailyBudgetConfigured is whether a person has answered the daily ceiling: the
 // environment pins it, or the profile file holds it.
 func DailyBudgetConfigured(profileDir string) bool {
-	if strings.TrimSpace(os.Getenv("CODEAF_DAILY_BUDGET")) != "" {
+	if strings.TrimSpace(env.Get("CODEAF_DAILY_BUDGET")) != "" {
 		return true
 	}
 	_, ok := persistedValue(profileDir, KeyDailyBudget)

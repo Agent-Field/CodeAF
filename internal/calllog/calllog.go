@@ -44,6 +44,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -423,7 +424,7 @@ func ClipError(message string) string {
 // ledger of the person who started it (undertest.go says why, and what a test
 // that wants a log does instead).
 func PathFor(dir string) string {
-	if pinned := strings.TrimSpace(os.Getenv(EnvVar)); pinned != "" {
+	if pinned := strings.TrimSpace(env.Get(EnvVar)); pinned != "" {
 		if strings.EqualFold(pinned, OffValue) {
 			return ""
 		}
@@ -438,7 +439,7 @@ func PathFor(dir string) string {
 // Bodies reports whether this process was asked to record the request and
 // response bodies as well as the shape of a call.
 func Bodies() bool {
-	value := strings.TrimSpace(os.Getenv(BodiesEnvVar))
+	value := strings.TrimSpace(env.Get(BodiesEnvVar))
 	return value != "" && value != "0" && !strings.EqualFold(value, "false") && !strings.EqualFold(value, OffValue)
 }
 

@@ -1,8 +1,9 @@
 package config
 
 import (
-	"os"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // THE TWO SEATS EVERY DOOR SITS SOMEBODY IN, RESOLVED ONE WAY.
@@ -540,7 +541,7 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 		seat.Model, seat.Source = value, SeatFlag
 		return seat
 	}
-	if value := strings.TrimSpace(os.Getenv(seat.Env())); value != "" {
+	if value := strings.TrimSpace(env.Value(seat.Env())); value != "" {
 		seat.Model, seat.Source = value, SeatEnv
 		return seat
 	}

@@ -33,6 +33,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -205,7 +207,7 @@ func Available() (*Tool, bool) {
 // locate walks the resolution order: an explicit choice, then the user's own
 // installation, then ours.
 func locate() (string, bool) {
-	if chosen := strings.TrimSpace(os.Getenv(EnvBinary)); chosen != "" {
+	if chosen := strings.TrimSpace(env.Get(EnvBinary)); chosen != "" {
 		if strings.EqualFold(chosen, Off) {
 			return "", false
 		}

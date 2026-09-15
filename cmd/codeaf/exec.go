@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -89,7 +90,7 @@ func runExec(args []string) error {
 	}
 	traced := openDebugRecord("exec", *model, *workspace)
 	defer trace.Announce(traced, os.Stderr)
-	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, &wall); err != nil {
+	if err := applyExecEnv(flags, env.Value, maxTurns, maxTokens, &wall); err != nil {
 		return err
 	}
 	if *maxTurns <= 0 || *maxTokens <= 0 {

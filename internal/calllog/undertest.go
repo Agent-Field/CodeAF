@@ -1,11 +1,11 @@
 package calllog
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -54,7 +54,7 @@ func chosenPath(path string) string {
 	// from under the state root when CODEAF_PROFILE_DIR is exported, and a log
 	// refused at one of them while landing in the other would be the same
 	// defect with a rarer environment.
-	for _, root := range []string{home.Dir(), os.Getenv(profileDirEnv)} {
+	for _, root := range []string{home.Dir(), env.Get(profileDirEnv)} {
 		if inside(root, path) {
 			return ""
 		}

@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
@@ -736,7 +737,7 @@ func chatBudget(hours, cost float64) session.Budget {
 // every launch — and the command line still wins, because a flag's own value
 // replaces its default.
 func envFloat(name string) float64 {
-	value, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(name)), 64)
+	value, err := strconv.ParseFloat(strings.TrimSpace(env.Value(name)), 64)
 	if err != nil {
 		return 0
 	}

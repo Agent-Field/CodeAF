@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/head"
 	homepkg "github.com/Agent-Field/codeaf/internal/home"
@@ -520,7 +521,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// consulted deep inside a worker goroutine and the answer has to reach the
 	// watcher above it.
 	refused := make(chan planEstimate, 1)
-	preauthorized := spendPreauthorized(request.yesSpend, os.Getenv)
+	preauthorized := spendPreauthorized(request.yesSpend, env.Value)
 	consent := func(_ store.Node, estimate planEstimate) bool {
 		if preauthorized {
 			return true

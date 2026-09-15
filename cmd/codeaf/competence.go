@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/profile"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -45,8 +46,8 @@ func runCompetenceTo(args []string, output io.Writer, now time.Time) error {
 	defer graph.Close()
 
 	prefs := loadChatPrefs(filepath.Dir(path))
-	model := firstNonEmptyString(*modelFlag, prefs.TaskModel, os.Getenv("CODEAF_MODEL"), config.DefaultModel)
-	competence, err := measureCompetence(graph, os.Getenv("CODEAF_PROFILE_DIR"), model, now)
+	model := firstNonEmptyString(*modelFlag, prefs.TaskModel, env.Get("CODEAF_MODEL"), config.DefaultModel)
+	competence, err := measureCompetence(graph, env.Get("CODEAF_PROFILE_DIR"), model, now)
 	if err != nil {
 		return err
 	}

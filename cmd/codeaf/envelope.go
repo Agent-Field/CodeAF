@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -229,7 +229,7 @@ func exitMeaning(code exitStatus) string {
 // thing is ever tempted to read this variable, that is the signal to give that
 // thing its own switch and its own removal date, not to widen this one.
 func legacyExitCodes() bool {
-	return strings.TrimSpace(os.Getenv("CODEAF_EXIT_CODES")) == "legacy"
+	return strings.TrimSpace(env.Get("CODEAF_EXIT_CODES")) == "legacy"
 }
 
 // legacyExitCodesHelp is the one line `--help` carries about the hatch. It is

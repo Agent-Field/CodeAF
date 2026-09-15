@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/plan"
@@ -388,7 +389,7 @@ func runGraph(name string, args []string) error {
 	}
 	scheduler := exec.NewScheduler(registry, space, *concurrency)
 	scheduler.Budget = *runBudget
-	preauthorized := spendPreauthorized(*yesSpend, os.Getenv)
+	preauthorized := spendPreauthorized(*yesSpend, env.Value)
 	interactive := stdinIsTerminal(os.Stdin)
 	var spendGate sync.Mutex
 	beforeSpend := func(additional float64) error {
