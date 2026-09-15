@@ -132,7 +132,7 @@ invalidates:
     than what it holds is a column the longest rows fall out of."
   - "The demo home's ledger was a fortnight of small change, so `make demo-home`
     could not show the spend page at the top of its range. It now carries a
-    four-day heavy stretch (`demoHeavy` in cmd/aforge-demo-home/seed_spend.go)
+    four-day heavy stretch (`demoHeavy` in cmd/codeaf-demo-home/seed_spend.go)
     across three models within a few per cent of each other, which puts
     five-figure call counts and hundred-million token volumes into the columns —
     the arrangement where a table of figures has to be read digit by digit."

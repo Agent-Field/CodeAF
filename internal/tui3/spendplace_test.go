@@ -566,7 +566,7 @@ func TestASpendSubjectWithNoProjectDrawsNoTag(t *testing.T) {
 // billions of tokens and four-figure money are where a layout that measured one
 // field and drew another finally runs off the edge, and where a numeral that was
 // not right-aligned is finally visible as a fault. The demo home carries a heavy
-// stretch for the same reason (cmd/aforge-demo-home's demoHeavy); this pins what
+// stretch for the same reason (cmd/codeaf-demo-home's demoHeavy); this pins what
 // the page does with one.
 func TestTheSpendTableHoldsWithLargeFigures(t *testing.T) {
 	heavy := func(model string, calls, in, out int, usd float64) session.UsageLine {
@@ -718,7 +718,7 @@ func TestTheSpendPageShowsTwentyPurposesThenFoldsTheRest(t *testing.T) {
 	for at := range spendSubjectCap + 5 {
 		many = append(many, session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2,
 			Input: 100, Output: 10, USD: float64(spendSubjectCap + 5 - at), Session: "talk-1",
-			Task: "piece-" + itoa(at), Workspace: "/work/aforge"})
+			Task: "piece-" + itoa(at), Workspace: "/work/codeaf"})
 	}
 	r := readSpend(many, session.LastDays(spendTestNow, 14), spendTestNow)
 	rows := plainSpendRows(r.rows(120, newPalette(tokens.NoColor, false)))
