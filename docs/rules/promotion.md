@@ -84,6 +84,10 @@ dispatches continue it regardless of the component choice.
 channel and name an existing tag. The workflow rebuilds its commit, replaces the
 assets, and reapplies the stable or prerelease marks without creating a tag.
 
+Every release carries `THIRD-PARTY-NOTICES.md` beside its binaries, inside the
+same `checksums.txt`; `go run ./cmd/codeaf-notices generate` refreshes it when
+the dependencies move.
+
 ## Rolling back
 
 Users can pin a known tag while a repair moves forward:

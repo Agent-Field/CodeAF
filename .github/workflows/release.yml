@@ -247,7 +247,10 @@ jobs:
               -o "dist/codeaf-${goos}-${goarch}${extension}" \
               ./cmd/codeaf
           done
-          (cd dist && sha256sum codeaf-* > checksums.txt)
+          # THE NOTICE TRAVELS WITH THE BINARIES for BSD-3-Clause clause 2, and
+          # its checksum accounts for the copied document.
+          cp THIRD-PARTY-NOTICES.md dist/
+          (cd dist && sha256sum codeaf-* THIRD-PARTY-NOTICES.md > checksums.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: codeaf-release

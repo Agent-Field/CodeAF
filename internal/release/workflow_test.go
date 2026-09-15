@@ -54,6 +54,16 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 			t.Errorf("workflow does not run %q", command)
 		}
 	}
+	// THE NOTICE TRAVELS WITH THE BINARIES. Its licence obligation belongs to
+	// the distribution, and its checksum makes the copied document accountable.
+	for _, source := range []string{
+		"cp THIRD-PARTY-NOTICES.md dist/",
+		"sha256sum codeaf-* THIRD-PARTY-NOTICES.md > checksums.txt",
+	} {
+		if !strings.Contains(workflow, source) {
+			t.Errorf("a release does not carry the third-party notices beside its binaries: missing %q", source)
+		}
+	}
 	if strings.Contains(workflow, "awk -v tag=") {
 		t.Fatal("the stable notes are copied straight out of CHANGELOG.md, which GitHub refuses once the section outgrows a release body")
 	}
