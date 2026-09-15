@@ -175,9 +175,18 @@ jobs:
       - name: Test release surface
         run: |
           set -euo pipefail
-          # The known-red ledger only shrinks, so an empty ledger is a success
-          # state and must not leave an empty -skip expression in the way.
-          skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt 2>/dev/null | paste -sd'|' -)"
+          # THE LEDGER ONLY SHRINKS, AND IT IS ALLOWED TO BE GONE. An empty or
+          # absent .github/known-red.txt is the success state and must leave
+          # no -skip expression in the way. It is read only when it is there,
+          # the way scripts/laws.sh reads it: under pipefail an awk over a file
+          # that does not exist is an exit inside this assignment, and that
+          # ended this step before go test ran on the first staging build
+          # after the ledger was deleted — no staging, rc or stable build
+          # could publish, and dev never noticed because it skips this job.
+          skip=""
+          if [ -s .github/known-red.txt ]; then
+            skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"
+          fi
           test_args=()
           [ -z "$skip" ] || test_args=(-skip "^(${skip})$")
           go test "${test_args[@]}" \
