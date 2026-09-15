@@ -1193,47 +1193,63 @@ func (a *app) homeGridCross(msg tea.KeyPressMsg) bool {
 	return true
 }
 
-// The chords the foot names for a row whose `→` crosses columns. Each is the
-// strip's own word for the verb, after the key that reaches it without the strip.
-const (
-	homeFolderChordWord = "ctrl+o " + homeProjectFolderWord
-	homePauseChordWord  = "ctrl+e " + homeItemPauseWord
-	homeStopChordWord   = "ctrl+x " + stopActWord
-)
+// homeFolderChordWord is the ONE chord the foot names for a row whose `→`
+// crosses columns: the strip's own word for the verb, after the key that
+// reaches it without the strip.
+const homeFolderChordWord = "ctrl+o " + homeProjectFolderWord
 
-// homeCrossChord is the ONE verb chord the foot names on a grid row whose `→`
-// crosses into the next column, and "" everywhere else.
+// homeCrossChord is the one chord the foot names on a grid row whose `→` crosses
+// into the next column, and "" everywhere else.
 //
 // COLUMNS WIN THE ARROW (DESIGN §6 ruling 6), so a row with a column of rows to
 // its right has verbs `→` cannot reach. The chords still reach them, and a door
 // a person cannot see is a door they never learn (docs/DESIGN-LANGUAGE.md: every
-// chord keeps a visible door beside it) — so the foot says one, the one that
-// ends nothing on the key: a watch's pause, the stop on a piece of work this
-// window holds — which asks first and defaults to keep going, and is the one
-// verb such a row has — and otherwise a conversation's or a project's folder.
+// chord keeps a visible door beside it) — so the foot says one.
+//
+// AND IT IS THE SAME ONE ON EVERY ROW: THE FOLDER. It used to be the row's own
+// verb — `ctrl+e pause` on a standing order, `ctrl+x stop` on work this window
+// holds, the folder otherwise — so the foot changed as the cursor walked from a
+// conversation to an order to a task, three sentences for one gesture (owner,
+// 2026-09-15: "it flops between a few redundant alternatives"). One sentence on
+// every row of the field is a thing a person stops reading, which is what a
+// resting foot is for; pause and stop are still on their chords and on the
+// `alt+.` map. The folder is the one verb every kind of row has, because every
+// row of the field belongs to a project — a conversation's workspace, an
+// order's, the conversation a landing ran in — and a row with none, or whose
+// folder has been deleted, or on a machine whose folders are not this one's,
+// says the four keys alone rather than a chord that would refuse.
 func (a *app) homeCrossChord(line homeLine) string {
 	if !a.home.gridOn() || a.home.gridCrossTarget(1) < 0 {
 		return ""
 	}
-	switch {
-	case line.kind == homeItem:
-		return homePauseChordWord
-	case len(a.runningVerbs(line)) > 0:
-		return homeStopChordWord
-	case homeRowFolder(line) != "" && !a.hosted() && !a.home.gone[homeRowFolder(line)]:
+	if folder := homeRowFolder(line); folder != "" && !a.hosted() && !a.home.gone[folder] {
 		return homeFolderChordWord
 	}
 	return ""
 }
 
-// homeRowFolder is the folder `ctrl+o` opens for a row: a conversation's
-// workspace, or a project's own path.
+// homeRowFolder is the folder `ctrl+o` opens for a row, and "" for a row that
+// belongs to no folder — a spend row, a fold.
+//
+// EVERY ROW OF THE FIELD ANSWERS, not only a conversation's: a standing order
+// carries the workspace it stands over, and a `since you left` line carries the
+// conversation the news happened in, so the foot's one chord is true on all of
+// them ([app.homeCrossChord]).
 func homeRowFolder(line homeLine) string {
 	switch line.kind {
 	case homeSession:
 		return strings.TrimSpace(line.row.Workspace)
 	case homeProjectRow:
 		return strings.TrimSpace(line.proj.Path)
+	case homeItem:
+		return strings.TrimSpace(line.item.Workspace)
+	case homeLedger:
+		if line.item.ID != "" {
+			return strings.TrimSpace(line.item.Workspace)
+		}
+		if line.cell != nil && line.cell.row != nil {
+			return strings.TrimSpace(line.cell.row.session.Workspace)
+		}
 	}
 	return ""
 }

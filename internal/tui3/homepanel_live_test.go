@@ -463,14 +463,16 @@ func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
 // ON A THREE-COLUMN HOME A `running` ROW IS IN THE FIELD — it has rows, and
 // that is what the field is (law 2, ruled 2026-09-15) — so `→` on it crosses to
 // the rail rather than opening the strip, and the stop the strip offers keeps a
-// door (DESIGN §6 ruling 6). At 180×45 the foot on a task this window holds
-// names `ctrl+x stop it`, in the tasks place's own spelling of the verb
-// ([stopActWord]), and the chord raises the stop card.
+// door: `ctrl+x` raises the stop card from the row. THE FOOT DOES NOT NAME IT.
+// It used to say `ctrl+x stop it` on this row and something else on every
+// other, and the owner ruled the same day that every row of the field rests on
+// the one sentence — the four keys and `ctrl+o open folder`, which is as true
+// of a task's conversation as of any other row ([app.homeCrossChord]).
 //
 // THE CROSSING SKIPS THE EMPTY MIDDLE. A field that fits in one column leaves
 // the next one white, and `→` reaches the rail over it rather than stopping on
 // air — a key that lands nowhere is the one state this surface may not be in.
-func TestAThreeColumnRunningRowNamesItsStopOnTheFoot(t *testing.T) {
+func TestAThreeColumnRunningRowRestsOnTheOneFootAndStillStops(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
 		{ID: "5", Title: "mine", State: "running", StartedAt: l.now.Add(-time.Minute)},
@@ -488,9 +490,8 @@ func TestAThreeColumnRunningRowNamesItsStopOnTheFoot(t *testing.T) {
 	if verbs := a.runningVerbs(a.home.lines[mine]); len(verbs) != 1 || verbs[0].word != stopActWord {
 		t.Fatalf("the row's strip offers %+v, want the tasks place's `%s`", verbs, stopActWord)
 	}
-	lines := strings.Split(homeText(a), "\n")
-	if foot := lines[len(lines)-1]; !strings.Contains(foot, "ctrl+x "+stopActWord) {
-		t.Fatalf("the foot on a running row this window holds is %q, want it to name `ctrl+x %s`", foot, stopActWord)
+	if foot := a.homeHint(); foot != homeFootWord+rowSep+homeFolderChordWord+" · tab next place" {
+		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and the folder chord", foot)
 	}
 	a.placeKeyPress(key("right"))
 	if a.strip.open || a.home.columnOf(a.home.cursor) != homeRailCol(a.home.cols) {

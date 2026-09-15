@@ -49,11 +49,15 @@ in the right-hand rail instead — heading and one dim line each — so the left
 is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
-nothing was sent while you were looking. The resting foot reads `type to search or start
-something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place` — the chord is
-there because `→` on a field row crosses to the rail rather than opening the row's verbs, and
-a door you cannot see is a door you never learn. `alt+.` draws the whole map over the cells
-you are already reading.
+nothing was sent while you were looking. The foot reads `type to search or start
+something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`, **and it is the
+same sentence on every row of the field** — a conversation, a question, a running task, a
+standing order on `next up`, a line of `since you left`. It does not change as the cursor
+walks, so it is something you read once. The chord is there because `→` on a field row
+crosses to the rail rather than opening the row's verbs, and a door you cannot see is a door
+you never learn; `ctrl+o` opens the folder each row belongs to — a conversation's workspace,
+the workspace an order stands over, the conversation a landing ran in. `alt+.` draws the
+whole map over the cells you are already reading.
 
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
@@ -289,8 +293,9 @@ column or `◐` mark any more; this panel is that list.
 conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
 from any column with no strip. A `running` row with rows in it is in the field, and the rail
 is always a column with rows to its right — so `→` crosses to the rail instead of opening
-the verbs, and the foot names the chord: `ctrl+x stop it`. Where the column the arrow would
-reach is empty, it steps over it to the next one that has a row. **A task another window runs cannot be stopped from here** — the row
+the verbs; `ctrl+x` still asks, and the foot does not name it — the foot under every row of
+the field is the one resting sentence, and the stop is on the `alt+.` map. Where the column
+the arrow would reach is empty, it steps over it to the next one that has a row. **A task another window runs cannot be stopped from here** — the row
 offers no stop at all; bring it here with `enter` and stop it there.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
@@ -476,9 +481,12 @@ while the pointer is on it.
 **Columns win the arrow: `→` opens a row's verbs only where no column with rows lies to its
 right** — on the rail, and everywhere at one column. Where the next column along is empty
 the arrow steps over it to the next one that has a row, so the rail is always reachable. On a row where `→` crosses
-instead, **the foot names the chord that still reaches them** — `ctrl+o open folder`, or
-`ctrl+e pause` on a standing order — and the rest are on their chords too: `ctrl+y` copy
-path, `ctrl+e` put away. `ctrl+o` on a `projects` row opens that project's folder.
+instead, **the foot names the one chord that is true on every row** — `ctrl+o open folder`,
+which opens a conversation's workspace, the workspace a standing order stands over, or the
+conversation a `since you left` line happened in — and the rest are on their chords too:
+`ctrl+y` copy path, `ctrl+e` put away or pause, `ctrl+x` stop. The foot does not change
+from row to row; `alt+.` draws the map when you want the rest. `ctrl+o` on a `projects` row
+opens that project's folder.
 
 A digit answers the one row of `needs you` drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
@@ -1869,8 +1877,8 @@ window runs, `s stop`; a project's `its chats` and `open folder`.
 **In the field `→` crosses to the rail instead** — columns win the arrow, and the rail
 always has rows in it because `projects` is pinned there — so a question in the field is
 answered with its digit, and a conversation's verbs are on their chords —
-`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that matters on such a row:
-`ctrl+o open folder`, or `ctrl+e pause` on a standing order.
+`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that is true on every row,
+`ctrl+o open folder`, and says the same sentence on all of them.
 
 ## The work on the right of home — what each task came to
 

@@ -2068,9 +2068,13 @@ The line under the box is the foot, and **at rest it is exactly**
 still closes home from anywhere; the resting foot does not spend a cell naming it, and
 `alt+.` draws the whole map when you want it.
 
-On a row with keys of its own the foot says what THAT row's keys do and gains the two that
-are true everywhere — `enter opens the place this happened in · alt+. map · tab next place ·
-esc close` on a `since you left` line, a spend or `next up` row, or a fold door, and
+On the grid every row under a moving heading — a conversation, a question, a running task,
+a `next up` order, a `since you left` line — rests on the one sentence,
+`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`,
+and it does not change as the cursor walks. Elsewhere, on a row with keys of its own, the
+foot says what THAT row's keys do and gains the two that are true everywhere —
+`enter opens the place this happened in · alt+. map · tab next place · esc close` on a
+`since you left` line or a `next up` row of the phone's list, on a spend row, or on a fold door, and
 `enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
 on the action row — and
 `enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
@@ -2852,7 +2856,7 @@ answer:
 | `ctrl+k` | **The switcher**: the card of every conversation this terminal has open. Inside a harness design's room, while its approval row is up, it saves the design instead — that row is modal and takes the key first |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before codeaf ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
-| `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `running` row of home that this window holds it asks to stop that task (`ctrl+x stop it`, which the foot names where `→` crosses columns). Not bound anywhere else |
+| `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `running` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |

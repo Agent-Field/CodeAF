@@ -2655,12 +2655,21 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.say("folders on the other machine do not open here", "")
 			return nil
 		}
-		// A PROJECT ROW OPENS ITS FOLDER TOO, because on a two-column grid its
-		// `→` crosses to the right-hand column and this chord is the way to the
-		// strip's `open folder` there (homegrid.go's [app.homeCrossChord]).
-		if line, ok := h.previewLine(); ok && (line.kind == homeSession || line.kind == homeProjectRow) {
+		// EVERY ROW WITH A FOLDER OPENS IT — a conversation's workspace, a
+		// project's path, the workspace a standing order stands over, the
+		// conversation a `since you left` line happened in — because the foot
+		// names this chord on every row of the field and a key the foot names
+		// must work (homegrid.go's [app.homeCrossChord] and [homeRowFolder]). A
+		// row with no folder says nothing, which is the emptiness law on a key.
+		if line, ok := h.previewLine(); ok {
 			path := homeRowFolder(line)
-			if path == "" || processOpener(path) != nil {
+			if path == "" {
+				if line.kind == homeSession || line.kind == homeProjectRow {
+					h.say("could not open "+path, "")
+				}
+				return nil
+			}
+			if processOpener(path) != nil {
 				h.say("could not open "+path, "")
 				return nil
 			}
@@ -5368,6 +5377,18 @@ func (a *app) homeHintWords() string {
 			return "enter runs this command · ↑ ask here · ↑↑ pick a match · esc clear"
 		}
 		return "enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear"
+	case a.home.gridOn() && (line.kind == homeSession || line.kind == homeItem || line.kind == homeLedger):
+		// ONE SENTENCE ON EVERY ROW OF THE GRID. A conversation, a standing
+		// order, a landing, a line of news: each used to say its own thing here
+		// — `enter opens the place this happened in`, `enter open where it was
+		// asked · ctrl+e pause` — and the foot changed under the hand on every
+		// step of the cursor. The owner ruled (2026-09-15) that the rows under
+		// the moving headings all rest on the resting sentence, so the foot is
+		// something a person reads once and then stops reading; `enter open` is
+		// true of every one of them, and the chord the tail adds is the one true
+		// on all of them too ([app.homeCrossChord]). The rows' own sentences
+		// below still serve the phone and the filtered list, where there is no
+		// grid to be consistent across.
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:
