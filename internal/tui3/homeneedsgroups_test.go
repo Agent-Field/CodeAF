@@ -137,7 +137,7 @@ func TestADigitStillReachesTheTopQuestionFromALandingThatCannotAnswer(t *testing
 }
 
 // SAID ONCE ACROSS THE COLUMNS: `since you left` does not repeat a landing that
-// `to check` is showing, and shows it again once the landing has aged out of the
+// `unread` is showing, and shows it again once the landing has aged out of the
 // group.
 func TestSinceYouLeftOmitsALandingToCheckIsShowing(t *testing.T) {
 	l := newLiveLab(t)
@@ -183,8 +183,12 @@ func TestToCheckFoldsBeforeANeedsYouRowGoes(t *testing.T) {
 	if !strings.Contains(frame, "Pricing Site") {
 		t.Fatalf("the question gave way before the landings did:\n%s", frame)
 	}
-	if strings.Contains(frame, needsCheckClause) {
-		t.Fatalf("the group line survived the squeeze:\n%s", frame)
+	// The group's own line is the word on a line of its own; the fold that
+	// stands for it says `3 unread · tasks`, and only the fold may be here.
+	for _, row := range strings.Split(frame, "\n") {
+		if strings.TrimSpace(row) == needsCheckWord {
+			t.Fatalf("the group line survived the squeeze:\n%s", frame)
+		}
 	}
 	if !strings.Contains(frame, "3 "+needsCheckWord+" · tasks") {
 		t.Fatalf("the fold does not say what the folded group is:\n%s", frame)
@@ -238,14 +242,14 @@ func TestAPausedRunKeepsItsRowBesideItsOwnLanding(t *testing.T) {
 }
 
 // WORK IN A CONVERSATION SOMEBODY PUT AWAY IS NOT WAITING ON THEM: no row on
-// `to check`, and nothing in the count.
+// `unread`, and nothing in the count.
 func TestAnArchivedConversationsLandingIsNotOnToCheck(t *testing.T) {
 	l := newLiveLab(t)
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	l.archive("aaaa000000000002")
 	a := l.open()
 	if rows := panelRows(a, panelNeeds); len(rows) != 0 {
-		t.Fatalf("an archived conversation's landing is on to check: %+v", rows)
+		t.Fatalf("an archived conversation's landing is on unread: %+v", rows)
 	}
 	if a.machine.wants != 0 {
 		t.Fatalf("the pulse counts an archived conversation's landing: %d", a.machine.wants)

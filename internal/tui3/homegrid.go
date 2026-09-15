@@ -123,9 +123,7 @@ type homePanelSlot struct {
 	// beside the heading drops it rather than cutting the heading for it
 	// ([homeCellHead]). A panel has none where the heading already says what it
 	// is: spend carries its right-hand money clause, and needs you carries its
-	// own group line (`to check · 2 — finished, nobody has checked it`) — and its
-	// heading is the one that counts live questions, so a gloss there would
-	// repeat the panel and stack a third clause on the count.
+	// own group line (`unread`) — so a gloss there would repeat the panel.
 	explainer string
 	// pinned is a panel that stands in the rail whatever it holds. It is for a
 	// panel whose height is the same on every machine on every day — spend is
@@ -294,7 +292,7 @@ type homeGridInput struct {
 	rows []switcherRow
 	// ledger is the `since you left` lines the switcher reads.
 	ledger []switcherRow
-	// calls is every landing whose check is the person's, as the `to check`
+	// calls is every landing whose check is the person's, as the `unread`
 	// group draws them, and older how many aged out of it. IT IS READ ONCE,
 	// HERE, because three readers need the same answer: the group's rows, the
 	// `since you left` line that steps aside for a landing already on the
@@ -387,12 +385,12 @@ type homePanelGroup struct {
 	// at is where the group's rows begin in [homePanelRows.lines]; everything
 	// before it is the panel's own.
 	at int
-	// word is the group's name — the left of its line, and the word the panel's
-	// fold uses instead of `more` while the group is shut.
+	// word is the group's name — the whole of its line, and the word the
+	// panel's fold uses instead of `more` while the group is shut. A group line
+	// carries no count and no clause: the rows are under it, and the fold counts
+	// what it hides (owner, 2026-09-15; it used to say `to check · 8` with
+	// `finished, nobody has checked it` at its right).
 	word string
-	// said is the count after the word, and right the dim clause the line
-	// carries at its margin.
-	said, right string
 }
 
 // homeCellKind is which shape one line of a panel is drawn in.
@@ -406,8 +404,7 @@ const (
 	cellWhisper
 	cellFold
 	// cellGroup is a group's own line inside a panel: its word and count dim at
-	// the left, its clause dim at the right ([homePanelGroup]). It is not a
-	// stop and it is never lit.
+	// the left ([homePanelGroup]). It is not a stop and it is never lit.
 	cellGroup
 	// cellBar, cellSpark and cellFacts are the spend panel's three lines: the
 	// day against its allowance, the fortnight, and who it went to and what for
@@ -509,7 +506,7 @@ func (l homeLine) height() int {
 // purpose is that a person reads what is waiting on them WITHOUT walking the
 // cursor onto it. A question you must select to read is a question you can miss.
 //
-// It is the permanent one only. A `to check` landing in the same panel grows its
+// It is the permanent one only. A `unread` landing in the same panel grows its
 // sentence under the cursor and has never been readable at a glance, so it is
 // drawn only while it is the selected row, like every other row's.
 func (c *homeCell) alwaysSaid() bool {
@@ -772,7 +769,7 @@ func growColumn(column []*homeGridPanel, room int) {
 // IT TAKES ROWS FROM THE BOTTOM, WHICH IS WHY A GROUP NEEDS NO RULE OF ITS OWN.
 // A group's rows sit at the foot of the panel's list ([homePanelGroup]), so the
 // walk down from the natural height spends them first and the group's line goes
-// with the last of them — the `to check` landings fold before a `needs you` row
+// with the last of them — the `unread` landings fold before a `needs you` row
 // is given up, without this function knowing that either exists.
 func (p *homeGridPanel) shrink() {
 	for p.shown > 0 && p.height() > p.slot.least {
@@ -976,7 +973,7 @@ func (p homeGridPanel) lines() []homeLine {
 			out = append(out, homeLine{kind: homeBlank})
 		}
 		out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellGroup,
-			panel: id, title: group.word + rowSep + group.said, right: group.right}})
+			panel: id, title: group.word}})
 		out = append(out, p.read.lines[group.at:p.shown]...)
 	} else {
 		out = append(out, p.read.lines[:p.shown]...)
@@ -1017,7 +1014,7 @@ const homeFoldMoreWord = "more"
 
 // foldMoreWord is what the fold calls the rows it is standing for: the GROUP's
 // name where every one of them is the group's and the group's own line is not on
-// the screen — `8 to check · tasks` is the whole of what a squeezed panel says
+// the screen — `8 unread · tasks` is the whole of what a squeezed panel says
 // about its landings — and `more` everywhere else.
 func (p homeGridPanel) foldMoreWord() string {
 	group := p.read.group

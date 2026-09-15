@@ -23,7 +23,7 @@ import (
 type leftPanel struct{ homePanelBase }
 
 // SAID ONCE ACROSS THE COLUMNS. A landing whose check is still the person's is
-// drawn by `needs you`'s `to check` group, one column over and higher up the
+// drawn by `needs you`'s `unread` group, one column over and higher up the
 // page ([needsChecking]); this panel drew it a second time, as an ordinary thing
 // that happened while nobody was looking. It comes back here the moment it stops
 // being a question — answered, or aged out of the group — because then it IS
@@ -56,7 +56,7 @@ func leftLine(row switcherRow) homeLine {
 // taskLedgerKey is ONE piece of work's identity across home's columns: the
 // conversation that ran it and the node's number, which is the only pair that
 // is unique ([session.TaskIndexEntry.ID] repeats across sessions). It is spelled
-// here because three readers ask it — this panel's own key, the `to check`
+// here because three readers ask it — this panel's own key, the `unread`
 // group's set of what it is already drawing, and the comparison between them
 // (homepanel_needs.go's [needsChecking]).
 func taskLedgerKey(task session.TaskIndexEntry) string {

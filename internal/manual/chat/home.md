@@ -11,13 +11,13 @@ answering one question you would ask walking up to a colleague's desk:
   home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you · 2                                   projects · folders you've opened
+ needs you                                       projects · folders you've opened
  ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
    needs your ok to run bash  1 allow once  2 always  ~/pricing-site   5 chats
  ? Clever Bet Prediction Model              6h
    the 2024 season only, or all three?  enter     spend                    today $0.14 of $20
                                                     ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
- to check · 3       finished, nobody has checked it  opus 63%  ·  3 chats and 1 task today
+ unread                                             opus 63%  ·  3 chats and 1 task today
    tier-B subs                      3 files · 1d
    built the tier-B flow   1 accept   2 not right
    package release radar                      1d
@@ -87,7 +87,7 @@ at the left is that your eye has a single place to go.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
-| `needs you` | a question waiting on a person, anywhere, and under them the `to check` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
+| `needs you` | a question waiting on a person, anywhere, and under them the `unread` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
 | `where you were` | a conversation | opens it | `your conversations · what you type below starts one` |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `running` | a task, a background job, a watch firing | brings its conversation here | `work you send off with /task runs here on its own` |
@@ -116,9 +116,9 @@ something has stopped and cannot go on without you, from any project:
 - a reminder, watch or rule that stopped and wants an answer.
 
 Each is **two lines**: the title with **how long it has waited** at the right, and under it
-what it is asking, in the question's own words. **The longest wait is at the top**, and the
-heading counts these rows and no others: `needs you · 2`. A frame where nothing is stopped
-draws the heading with no number at all.
+what it is asking, in the question's own words. **The longest wait is at the top.** The
+heading is the two words alone — it carries no count, whether two things are stopped or
+none; the rows under it are the count.
 
 **A permission question is repeated exactly and nothing is added to it.** The session that
 is stopped writes one sentence — `needs your ok to run ` and the tool's name — and the row
@@ -130,14 +130,14 @@ conversation is costing you something and a landing is not.
 Four rows show, eight in a tall window, then `N more · tasks`. Amber is spent on the `?`
 mark and on nothing else; a machine with nothing waiting has no accent on it at all.
 
-## to check — the group of landings nobody has checked
+## unread — the group of landings nobody has checked, work that finished and wants a look
 
-**`to check` is every task whose call is yours: work that finished, where nobody could say
-whether it is right.** It is a dim line inside the `needs you` panel — `to check · 8` at the
-left, and at the right the one clause that says what the group is:
+**`unread` is every task whose call is yours: work that finished, where nobody could say
+whether it is right.** It is a dim line inside the `needs you` panel, and the line is the
+one word — no count after it, no clause at its right:
 
 ```
- to check · 8                                    finished, nobody has checked it
+ unread
    tier-B subs                                                       3 files · 1d
    package release radar                                                      1d
 ```
@@ -173,11 +173,11 @@ panel's last line counts it instead — `3 older · tasks` — and `enter` there
 place, where every one of them still is. A question a conversation is stopped on, and a
 watch that needs somebody, never age off home.
 
-**A landing on `to check` is not repeated by `since you left`.** It goes back to that panel
+**A landing on `unread` is not repeated by `since you left`.** It goes back to that panel
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 to check · tasks`, which opens the tasks place.
+`8 unread · tasks`, which opens the tasks place.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
@@ -188,12 +188,12 @@ screen twice with two meanings. The words are that question's own and nothing he
 into a vocabulary of home's; there is no `y`/`n` anywhere on this screen.
 
 **The keys are the question's own wherever those keys are digits**, which is every card a
-conversation stops on. The one place they are not is a landing in `to check`: its keys are
+conversation stops on. The one place they are not is a landing in `unread`: its keys are
 `[a]`/`[n]` everywhere else and `1`/`2` here, because a bare letter on home types.
 
 **Which row is it?** The row under the cursor when that row can take an answer, and the top
 answerable row otherwise. So a digit works on a frame you have not walked, and once you have
-walked onto a landing in `to check` its `1`/`2` are the keys that are live.
+walked onto a landing in `unread` its `1`/`2` are the keys that are live.
 
 Every kind of question can be answered this way: the whole question is in the file home
 reads, and the answer goes back through the one door that knows which part of the engine
@@ -216,7 +216,7 @@ With something typed in the box a digit is a character going into it, never an a
 ## What opens when I press a landed row on home — I clicked a needs you row and it opened the chat
 
 **A task's row opens its conversation with the task's record in front.** `enter` on a
-`to check` row opens the conversation that ran the work, on the task's record, where the
+`unread` row opens the conversation that ran the work, on the task's record, where the
 question, its whole report and its two answers are — whatever project it belongs to, with
 the conversation you were in left running behind it. You do not have to open it to answer:
 `1` and `2` on the row itself send the same two answers.
@@ -241,7 +241,7 @@ Three ways to settle it, and they are the same door:
   whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
   `s tell it`, which opens the task's page rather than answering, and a dimmer
   `d let codeaf decide this one`;
-- **home** — walk onto its row in `to check` and press `1` or `2`. The conversation applies
+- **home** — walk onto its row in `unread` and press `1` or `2`. The conversation applies
   it on its own beat; if it is not running, the answer waits on its doorstep and is applied
   the moment that conversation next opens — the constructor drains the doorstep before
   anything else — and the row says `answered · waiting for it to pick that up` meanwhile;

@@ -383,9 +383,8 @@ func homeSparkCells(values []float64) []string {
 	return out
 }
 
-// homeCellGroup is a group's own line inside a panel: its word and count at the
-// left and its clause at the right, both dim, under the rows' own lead
-// ([homePanelGroup]).
+// homeCellGroup is a group's own line inside a panel: its word, dim, under the
+// rows' own lead ([homePanelGroup]).
 //
 // IT IS DIMMER THAN A HEADING ON PURPOSE. A panel's heading is the places' one
 // heading ink and marks itself when the cursor is in it ([homeCellHead]); a

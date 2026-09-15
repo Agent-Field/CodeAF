@@ -31,8 +31,8 @@ func TestNeedsYouCarriesTheQuestionAndItsAnswersOnTheRow(t *testing.T) {
 	if !strings.Contains(under, "needs your ok to run bash") || !strings.Contains(under, "1 allow once") {
 		t.Fatalf("the row does not carry its question and answers:\n%s", frame)
 	}
-	if !strings.Contains(frame, "needs you · 1") {
-		t.Fatalf("the heading does not count what is waiting:\n%s", frame)
+	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
+		t.Fatalf("the heading counts what is waiting, and it should be the word alone:\n%s", frame)
 	}
 }
 

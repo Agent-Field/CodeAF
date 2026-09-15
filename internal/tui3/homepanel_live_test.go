@@ -115,12 +115,14 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || !strings.Contains(under, "enter") {
 		t.Fatalf("the second row drew a second set of answers:\n%s", frame)
 	}
-	if !strings.Contains(frame, "needs you · 2") {
-		t.Fatalf("the heading does not count what waits:\n%s", frame)
+	// AND THE HEADING IS THE WORD ALONE. It used to count the questions
+	// (`needs you · 2`); the rows are under it (owner, 2026-09-15).
+	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
+		t.Fatalf("the heading counts its rows:\n%s", frame)
 	}
 }
 
-// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF THE `to check` GROUP, one
+// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF THE `unread` GROUP, one
 // line of its own, under a group line that says what the group is. enter aims at
 // the task rather than at the conversation's live edge.
 func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
@@ -137,8 +139,12 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		t.Fatalf("a landing wears a mark: %+v", rows[0])
 	}
 	frame := homeText(a)
-	if !strings.Contains(frame, needsCheckWord+" · 1") || !strings.Contains(frame, needsCheckClause) {
-		t.Fatalf("the group line does not name the group and say what it is:\n%s", frame)
+	// THE GROUP LINE IS THE WORD ALONE — no count after it and no clause at its
+	// right (owner, 2026-09-15; it used to say `to check · 1` and `finished,
+	// nobody has checked it`).
+	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") ||
+		strings.Contains(frame, "nobody has checked") {
+		t.Fatalf("the group line does not name the group, or says more than its name:\n%s", frame)
 	}
 	if strings.Contains(frame, "landed unchecked") {
 		t.Fatalf("the retired sub-line is still drawn:\n%s", frame)
@@ -157,7 +163,7 @@ func TestToCheckDrawsNoGroupLineWithoutLandings(t *testing.T) {
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-2*time.Hour))})
 	a := l.open()
-	if frame := homeText(a); strings.Contains(frame, needsCheckClause) {
+	if frame := homeText(a); strings.Contains(frame, needsCheckWord) {
 		t.Fatalf("a group with no rows drew its line:\n%s", frame)
 	}
 	for _, line := range panelLines(a, panelNeeds) {
@@ -203,7 +209,7 @@ func TestToCheckDrawsTheNewestLandingFirst(t *testing.T) {
 	}
 	a := l.open()
 	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
-		t.Fatalf("to check is not newest first: %+v", rows)
+		t.Fatalf("unread is not newest first: %+v", rows)
 	}
 }
 
@@ -284,14 +290,17 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 		t.Fatalf("needs you is not the two fresh calls: %+v", rows)
 	}
 	frame := homeText(a)
-	// AND THE HEADING COUNTS THE QUESTIONS, NOT THE LANDINGS. With nothing
-	// stopped it draws its word alone (the emptiness law); the landings are
-	// counted on the group's own line and the aged ones on the fold.
+	// AND NEITHER THE HEADING NOR THE GROUP LINE COUNTS ANYTHING: the rows are
+	// under them. The one count is the fold's, for the aged landings that are
+	// not on the screen.
 	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
 		t.Fatalf("the heading counted the landings:\n%s", frame)
 	}
-	if !strings.Contains(frame, needsCheckWord+" · 2") || !strings.Contains(frame, "3 older · tasks") {
-		t.Fatalf("the group does not count what is listed, or the fold what aged:\n%s", frame)
+	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") {
+		t.Fatalf("the group line says more than its name:\n%s", frame)
+	}
+	if !strings.Contains(frame, "3 older · tasks") {
+		t.Fatalf("the fold does not count what aged:\n%s", frame)
 	}
 }
 

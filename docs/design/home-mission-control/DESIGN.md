@@ -24,7 +24,7 @@ own keys, each a door to the place that owns it. The chat list is one panel.
  home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you · 2                                   projects
+ needs you                                       projects
  ? Searching for Apartments Near Minto      2h      ~/codeaf      12 chats · 1 running   master, 2 dirty
    needs your ok to run bash   1 yes  2 not now     ~/pricing-site   5 chats · a job up   main
  ? Clever Bet Prediction Model              6h      ~/infra          3 chats · quiet 4d
@@ -100,9 +100,9 @@ is the reading that produced the 2026-09-15 amendment.
    way first, then `since you left`, then `running`; `needs you` and `where you
    were` shrink last. A squeezed panel keeps its heading and `N more · <place>`.
    A GROUP INSIDE A PANEL folds before the panel gives up a row above it: the
-   rows of `needs you`'s `to check` group sit at the foot of the panel's list, so
+   rows of `needs you`'s `unread` group sit at the foot of the panel's list, so
    the ordinary bottom-up cut spends them first, and when none is left the
-   group's line goes and the fold names it — `8 to check · tasks` (#884).
+   group's line goes and the fold names it — `8 unread · tasks` (#884).
 6. **Preselect the previous thing.** On double-space the cursor is on the chat
    you were in before this one (this window's own stack, `chattabs.go`
    `tabList`). Enter is a switch in two keys; esc goes back.
@@ -113,7 +113,7 @@ is the reading that produced the 2026-09-15 amendment.
    the row the key means. The answers are drawn on the row so the key is never a
    guess. THE WORDS ARE THE QUESTION'S OWN EVERYWHERE; the KEYS are too wherever
    the question's own keys are digits, which is every card a conversation stops
-   on. The one exception is a landing in `to check`, whose keys are `[a]`/`[n]`
+   on. The one exception is a landing in `unread`, whose keys are `[a]`/`[n]`
    on its card, in its room and on its record and are `1`/`2` here — because a
    bare letter on home types (home.go: the foot promises "type to search or start
    something new" and the promise has no asterisk), and the drawn digit is the
@@ -121,7 +121,7 @@ is the reading that produced the 2026-09-15 amendment.
    `session.LandingYesKey`/`LandingNoKey` before the answer leaves the surface.
 8. **Two marks, one accent, one hint line.** `GlyphNeedsHuman` in `hueWarn` for
    a person — a conversation or a watch that has STOPPED, never a landing on
-   `to check`, which has already finished — the single spinner cell for work. Nothing else wears a glyph or a
+   `unread`, which has already finished — the single spinner cell for work. Nothing else wears a glyph or a
    colour. Money is a number. Key hints live on the foot and the alt map, never
    inside a panel.
 9. **Nothing grows past its budget.** Every panel folds inside itself with
