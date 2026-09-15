@@ -109,8 +109,9 @@ in `.github/known-red.txt`, [docs/rules/changelog.md](docs/rules/changelog.md)
 for what an entry carries, [docs/rules/promotion.md](docs/rules/promotion.md)
 for the promote-and-release runbook.
 
-None of it is enforced by the server yet — the org is on the free plan and a
-private repository gets no branch rules there, so today every line above is
+Server enforcement depends on the repository's visibility or plan — the org is
+on the free plan, and a private repository gets no branch rules there. Until the
+org moves to GitHub Team or the repository is public, every line above is
 convention. `.github/rulesets/` holds the rules ready to apply.
 
 ## Build and ship — the owner's standing orders

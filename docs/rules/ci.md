@@ -220,10 +220,11 @@ adding their job names to `required_status_checks` in
 `.github/rulesets/promotion-pointers.json` as soon as each has been green twice
 in a row.** That is the next piece of work here, not a someday.
 
-## None of it is enforced yet
+## When GitHub enforces it
 
-`Agent-Field` is on the free plan with a private repository, and that combination
-has no branch rules — the API answers `403 Upgrade to GitHub Pro`. The checks
-above run and show red, but nothing stops a merge on top of red, and nothing
-stops a direct push. **Until the org moves to GitHub Team, all of this is
-convention.** `.github/rulesets/README.md` has the state of that.
+While `Agent-Field` is on the free plan and the repository is private, that
+combination has no branch rules — the API answers `403 Upgrade to GitHub Pro`;
+the checks above run and show red, but nothing stops a merge on top of red, and
+nothing stops a direct push. **Until the org moves to GitHub Team or the
+repository is public, all of this is convention.** `.github/rulesets/README.md`
+has the state of that.

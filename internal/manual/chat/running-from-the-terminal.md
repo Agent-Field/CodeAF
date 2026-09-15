@@ -2,35 +2,65 @@
 
 ## How do I install or update codeaf to the latest version — the curl line, dev, staging, rc and stable
 
-Today, clone the repository and run `make build`. It writes `bin/codeaf`; run that
-binary from the checkout.
-
-The curl installer exists at `scripts/install.sh` and installs into
-`~/.codeaf/bin/codeaf`, but the repository is private today, so the published URL
-answers 404 to anyone who is not signed in. When the repository is public, the
-line to use is:
-
-```sh
-curl -fsSL https://agentfield.ai/get/codeaf | bash
-```
-
-Add `/dev`, `/staging` or `/rc` to that URL for another channel. To pin one
-complete tag, replace the final pipe with `| VERSION=<tag> bash`; for example:
-
-```sh
-curl -fsSL https://agentfield.ai/get/codeaf | VERSION=v0.3.0 bash
-```
-
-That address is a proxy for the script kept here, and it is not serving yet
-either. The script itself is:
+Build from source needs nothing published: clone the repository, run `make build`,
+then run `bin/codeaf` from the checkout. While the repository is private, both the
+clone and the raw installer need repository access and the raw address answers 404
+to anyone who is not signed in. Once it is public and `scripts/install.sh` is on
+`main`, this road works:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash
 ```
 
-The installer's last line is `codeaf version`; it shows the tag installed, when it
-was built, and the Go and operating-system target. Nothing self-updates: run the
-installer again when you want a newer build.
+A push to `dev` publishes a `dev-*` build, a push to `staging` publishes a
+`staging-*` build, and a push to `main` publishes an rc. Each is marked as a
+prerelease. Stable is published only when a person dispatches `Release` on `main`.
+A channel with nothing published stops with `no <channel> build has been published
+yet`.
+
+Once the script can be read, `--stable` is the default and reads GitHub's
+`releases/latest`, which excludes prereleases. The bare curl line therefore stops
+with `no stable build has been published yet` until a person dispatches `Release`
+on `main` for stable. Pass `--dev`, `--staging`, or `--rc` after `bash -s --` for
+another channel. To pin one complete tag, replace the final pipe with
+`| VERSION=<tag> bash`; for example:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | VERSION=v0.3.0 bash
+```
+
+`https://agentfield.ai/get/codeaf` is not serving yet. Once it serves, it is the
+supported proxy for the same script, with `/dev`, `/staging`, or `/rc` selecting
+another channel. The installer writes `~/.codeaf/bin/codeaf`; its last line is
+`codeaf version`. Nothing self-updates: run it again when you want a newer build.
+
+## Why codeaf do may download rtk — compressed shell output and how to turn it off
+
+When `codeaf do` starts local workers, it starts one background attempt to find or
+fetch rtk v0.45.0. rtk is a third party's program from `github.com/rtk-ai/rtk`; it
+compresses the output of its named read and check filters before the work model pays
+to read it. Anything that writes runs plain, and a wrapped result codeaf cannot trust
+is run again without rtk.
+
+If no rtk is already resolvable and `CODEAF_RTK` is unset, codeaf downloads
+`rtk-<target>.tar.gz` and `checksums.txt` from that repository's release. The whole
+fetch has two minutes and every downloaded response is capped at 64 MB. Its sha256
+must match the published checksums; a mismatch or missing entry is refused. The
+managed fetch supports only macOS arm64, macOS amd64, Linux amd64, and Linux arm64;
+on any other platform it fetches nothing. A copy you name or put on `PATH` can still
+be used there.
+
+The archive contributes only its file named `rtk`. It is installed atomically with
+mode `0700` at `$CODEAF_HOME/bin/rtk`, or `~/.codeaf/bin/rtk` when `CODEAF_HOME` is
+unset or empty. Nothing waits for it: commands run plain until it lands. Success logs
+once per process as `note: installed rtk v0.45.0 for compressed shell output`; failure
+logs once as `note: shell output will not be compressed — <err>`.
+
+`CODEAF_RTK=off` disables rtk everywhere. Set `CODEAF_RTK` to an executable path to
+use your own; naming a path that is not executable also prevents fallback and fetch.
+Without that variable, codeaf looks for `rtk` on `PATH`, then its managed copy. Calls
+to rtk carry `RTK_TELEMETRY_DISABLED=1` and `RTK_NO_TOML=1`: codeaf does not opt you
+into a third party's collection.
 
 ## Running codeaf from the terminal — can I run this without the chat
 
