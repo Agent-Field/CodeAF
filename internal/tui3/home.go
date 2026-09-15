@@ -2262,6 +2262,19 @@ func (h *homeView) previewLine() (homeLine, bool) {
 	return h.focusedLine()
 }
 
+// previewAt is [homeView.previewLine]'s line NUMBER, for the readers that need
+// to find where that line was drawn rather than what it holds
+// ([homeDescTop]).
+func (h *homeView) previewAt() int {
+	if h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
+		return h.hover
+	}
+	if _, ok := h.focusedLine(); !ok {
+		return homeNoLine
+	}
+	return h.cursor
+}
+
 // point puts the cursor on the row holding a transcript, and leaves it where it
 // is when that conversation is not on the list any more.
 func (h *homeView) point(transcript string) {

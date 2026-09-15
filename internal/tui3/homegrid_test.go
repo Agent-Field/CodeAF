@@ -122,15 +122,16 @@ func TestTheRailKeepsTheQuietPanelsAnExtraRowBelowThePinnedPair(t *testing.T) {
 	}
 }
 
-// AT A HUNDRED AND EIGHTY THE RAIL IS THE LAST COLUMN AND THE FIELD STILL FILLS
-// FROM THE LEFT — so the rail is flush with the right edge at every width it
-// exists at, and a frame whose panels fit in one column leaves the middle of the
-// screen empty rather than spreading them over it.
+// AT A HUNDRED AND EIGHTY THE FIELD IS THE FIRST COLUMN, THE RAIL IS THE LAST,
+// AND THE MIDDLE BELONGS TO THE SELECTED ROW'S DESCRIPTION — so the rail is
+// flush with the right edge at every width it exists at, and no panel is ever
+// drawn between them.
 //
-// THE EMPTY MIDDLE IS THE RULING, not a gap in it (owner, 2026-09-15): the point
-// of the column that has something in it standing alone at the left is that the
-// eye has one place to go.
-func TestAtOneEightyTheRailIsTheLastColumnAndTheFieldFillsFromTheLeft(t *testing.T) {
+// THE FIELD NEVER SPILLS SIDEWAYS (owner, 2026-09-15). What will not fit in one
+// column folds, the way it always has at the widths with no second column, so
+// the middle means one thing at every size instead of being a description
+// sometimes and a panel other times.
+func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	frame := homeText(a)
 	needs, needsCol := homeRowOf(frame, "needs you")
@@ -155,10 +156,58 @@ func TestAtOneEightyTheRailIsTheLastColumnAndTheFieldFillsFromTheLeft(t *testing
 	// AND NOTHING AT ALL STANDS BETWEEN THEM. The middle column is the air the
 	// ruling spends to put the field at one edge and the rail at the other.
 	for at := range a.home.lines {
-		if got := a.home.columnOf(at); got == 1 {
-			t.Fatalf("line %d stands in the middle column, which this frame has nothing to put there:\n%s", at, frame)
+		if got := a.home.columnOf(at); got == homeDescCol(a.home.cols) {
+			t.Fatalf("line %d stands in the description column, which no panel may be drawn in:\n%s", at, frame)
 		}
 	}
+}
+
+// THE MIDDLE COLUMN IS WHAT THE SELECTED ROW SAYS ABOUT ITSELF, on the row's own
+// line — and the row is one line, because the line it used to grow is over there
+// now.
+func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
+	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+	a := lab.a
+	a.width, a.height = 180, 45
+	homeText(a)
+	homeLineOf(t, a, func(l homeLine) bool {
+		return l.cell != nil && l.cell.panel == panelNeeds && strings.TrimSpace(l.cell.sub) != ""
+	})
+	line, _ := a.home.focusedLine()
+	said := strings.TrimSpace(line.cell.sub)
+	frame := homeText(a)
+
+	// THE SENTENCE IS IN THE MIDDLE COLUMN and not under its row.
+	row, at := homeRowOf(frame, firstWordsOf(said))
+	if row < 0 {
+		t.Fatalf("the selected row's sentence %q is nowhere on the frame:\n%s", said, frame)
+	}
+	_, field := homeRowOf(frame, "needs you")
+	_, rail := homeRowOf(frame, "projects")
+	if at <= field || at >= rail {
+		t.Fatalf("the sentence is at cell %d, want it between the field at %d and the rail at %d:\n%s", at, field, rail, frame)
+	}
+	// AND IT STARTS ON THE ROW IT IS ABOUT, so the two read as one thing.
+	title, _ := homeRowOf(frame, line.cell.title)
+	if title != row {
+		t.Fatalf("the sentence is on row %d and its row is on %d:\n%s", row, title, frame)
+	}
+	// AND THE ROW ITSELF IS ONE LINE: the line under it is another row, not its
+	// own second line.
+	lines := strings.Split(frame, "\n")
+	if title+1 < len(lines) && strings.Contains(lines[title+1], firstWordsOf(said)) {
+		t.Fatalf("the row still draws its own second line:\n%s", frame)
+	}
+}
+
+// firstWordsOf is enough of a sentence to find it on a frame that may have
+// wrapped the rest of it.
+func firstWordsOf(said string) string {
+	words := strings.Fields(said)
+	if len(words) > 4 {
+		words = words[:4]
+	}
+	return strings.Join(words, " ")
 }
 
 // A SHORT TERMINAL SQUEEZES IN PRIORITY ORDER (law 5): next up gives way first,

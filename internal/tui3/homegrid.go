@@ -512,6 +512,10 @@ type homeGridPanel struct {
 	// gone from the page.
 	shown   int
 	dropped bool
+	// desc is that this frame draws the description column, which changes what
+	// a ROW is: its second line is drawn there instead of under it, so the panel
+	// neither draws that line nor reserves the room for it ([homeDescOn]).
+	desc bool
 	// gapAbove is a second blank row over this panel's heading. It is set on the
 	// first quiet panel of the rail, so the pinned pair at the top is read as a
 	// group that lives there and the panels under it as the ones that are only
@@ -551,6 +555,12 @@ func (p homeGridPanel) height() int {
 	}
 	n := 1
 	for _, line := range p.read.lines[:p.shown] {
+		// A ROW IS ONE LINE WHERE THE DESCRIPTION COLUMN HAS ITS SECOND, and the
+		// reservation below goes with it.
+		if p.desc {
+			n++
+			continue
+		}
 		n += line.height()
 	}
 	// A GROUP'S LINE AND THE AIR OVER IT ARE THE PANEL'S ROWS TOO, drawn only
@@ -565,7 +575,7 @@ func (p homeGridPanel) height() int {
 	// belongs to the paint; that one of them will grow is known here, and
 	// reserving it is what keeps the column the same height whichever row the
 	// cursor is standing on ([homeCell.grows]).
-	if p.growsARow() {
+	if p.growsARow() && !p.desc {
 		n++
 	}
 	if p.folds() {
@@ -749,38 +759,31 @@ func (p *homeGridPanel) shrink() {
 // order, each in the column its own content puts it in ([homeColumnOf]), at
 // that column's width.
 //
-// THE FIELD IS EVERY COLUMN LEFT OF THE RAIL, AND IT FILLS FROM THE LEFT. A
-// panel with rows takes the first field column its height still fits in, and
-// the next only when that one is full — so the first panel with rows is at the
-// top left corner at every width, and a frame with one column's worth of
-// content leaves the middle of the screen empty rather than spreading two short
-// columns over it.
+// THE FIELD IS ONE COLUMN AT EVERY WIDTH, and what will not fit in it FOLDS
+// rather than spilling sideways — the same squeeze that has always run at the
+// widths with no second column to spill into (law 5). So the first panel with
+// rows is at the top left corner always, and the cursor's panel is in column
+// zero always, which is what keeps `↓` off the tab bar landing on the same line
+// at every width ([homeView.placesTop], homebridge.go): a landing that moved
+// with the frame is a landing nobody can build a habit on.
 //
-// IT DOES NOT BALANCE THE COLUMNS, and that is the point rather than a
-// shortcoming. Balancing put whichever panel the cursor was resting in into
-// whichever column had room, so `↓` off the tab bar landed on a different panel
-// at 120 cells than at 200 — and the landing is the same line at every width
-// ([homeView.placesTop], homebridge.go), because a landing that moves with the
-// frame is a landing nobody can build a habit on. Filling from the left keeps
-// the cursor's panel in the same column at every width the content fits in.
+// AND THE COLUMN IT NO LONGER SPILLS INTO IS THE DESCRIPTION'S (owner,
+// 2026-09-15). A field that could take the middle when it ran out of room made
+// the middle a column that was a description sometimes and a panel other times;
+// reserving it costs a squeeze on a short frame and buys a column that means one
+// thing at every size ([homeDescCol]).
 func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel {
 	columns := make([][]*homeGridPanel, cols)
 	_, widths := homeGridGeometry(width, cols)
 	rail := homeRailCol(cols)
-	field := make([]int, max(1, rail))
 	for _, slot := range homePanelOrder {
 		read := slot.panel.rows(in)
 		p := &homeGridPanel{slot: slot, read: read}
 		p.shown = p.natural()
+		p.desc = homeDescOn(cols)
 		at := homeColumnOf(slot, cols, p.empty())
-		if at != rail {
-			at = fillField(field, p.height(), room)
-		}
 		if p.empty() {
 			p.whisper = homeWhisperLines(slot.panel.whisper(), widths[at])
-		}
-		if at != rail {
-			field[at] += p.height() + 1
 		}
 		columns[at] = append(columns[at], p)
 	}
@@ -798,22 +801,25 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 	return columns
 }
 
-// fillField is the field column a panel this tall goes in: the first from the
-// left with the room for it, and the last when none has ([homeGridLayout] says
-// why it fills rather than balances). A frame with no room at all — the build
-// before the first one knows a height — keeps everything in the first column,
-// where the squeeze will find it.
-func fillField(field []int, height, room int) int {
-	if room <= 0 {
-		return 0
+// homeDescCol is the column the selected row's description stands in, and
+// [homeNoLine] where this frame has no room for one.
+//
+// IT IS THE MIDDLE COLUMN AND ONLY EXISTS AT THREE (owner, 2026-09-15). Two
+// columns are the field and the rail with nothing between them, and one column
+// is the whole screen read top to bottom — so at both of those a row keeps its
+// description under itself, exactly as every row did before this column existed.
+func homeDescCol(cols int) int {
+	if !homeDescOn(cols) {
+		return homeNoLine
 	}
-	for at, filled := range field {
-		if filled == 0 || filled+height <= room {
-			return at
-		}
-	}
-	return len(field) - 1
+	return 1
 }
+
+// homeDescOn reports that this frame draws the description column, which is the
+// question the ROW asks: a row whose description is drawn elsewhere does not
+// draw it under itself, and does not reserve the line for it either
+// ([homeGridPanel.height]).
+func homeDescOn(cols int) bool { return cols >= 3 }
 
 // orderRail puts the pinned panels at the top of the rail and the quiet ones
 // under them, each group in table order. THE TOP OF THE RAIL IS THE PART THAT

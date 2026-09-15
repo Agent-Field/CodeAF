@@ -56,11 +56,67 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 		c := min(h.grid.col[at], len(xs)-1)
 		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at))...)
 	}
+	if at := homeDescCol(h.grid.cols); at != homeNoLine && at < len(columns) {
+		columns[at] = a.homeDescLines(widths[at], room, pal, homeDescTop(columns, a.home.previewAt()))
+	}
 	rows := make([]placeRow, room)
 	for y := range rows {
 		rows[y] = homeGridZip(columns, y, xs)
 	}
 	return rows
+}
+
+// homeDescLines is the middle column: what the SELECTED ROW says about itself,
+// wrapped, and nothing at all where the row has nothing to say.
+//
+// IT IS BUILT AT PAINT TIME AND NOT AT BUILD TIME, which is the whole reason it
+// can follow the cursor: the grid's lines are settled when the room or the width
+// moves ([homeView.buildGrid]) and an arrow key moves neither, so a column
+// assembled up there would answer about whichever row the cursor happened to be
+// on when the frame was last rebuilt.
+//
+// IT FOLLOWS THE POINTER TOO, through the same [homeView.previewLine] the card
+// beside the search has always used — hovering a row reads that row here without
+// moving the cursor, and a pointer that leaves the column gives the description
+// back to the cursor's row.
+//
+// NOTHING IN IT IS A STOP. The column holds no row a cursor may stand on, which
+// is what makes `→` step over it to the rail ([homeView.gridCrossTarget]) rather
+// than parking the cursor on a sentence about the row it just left.
+func (a *app) homeDescLines(width, room int, pal palette, top int) []homeCellLine {
+	line, ok := a.home.previewLine()
+	if !ok || line.cell == nil || room <= 0 {
+		return nil
+	}
+	said := strings.TrimSpace(line.cell.sub)
+	if said == "" {
+		return nil
+	}
+	// IT STARTS ON THE ROW IT IS ABOUT. A sentence at the top of a column while
+	// the row it describes is eight lines down is a sentence a person has to
+	// work out the owner of; on the row's own line the two read as one thing,
+	// which is what the second line under the row did for free.
+	out := make([]homeCellLine, 0, room)
+	for y := 0; y < top && y < room; y++ {
+		out = append(out, homeCellLine{at: homeNoLine, head: -1})
+	}
+	// The lead is the rows' own, so the sentence starts in the column every
+	// title on the screen starts in.
+	for _, words := range wrap(said, max(1, width-homeGridLead)) {
+		if len(out) >= room {
+			break
+		}
+		out = append(out, homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + pal.dim(words)})
+	}
+	// AND THE ANSWERS UNDER IT, on a line of their own — they were at the right
+	// of the row's second line, and that line is here now.
+	if answers := strings.TrimSpace(a.homeRowAnswers(line, a.home.cursor)); answers != "" && len(out) < room {
+		out = append(out, homeCellLine{at: homeNoLine, head: -1})
+		if len(out) < room {
+			out = append(out, homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + paintHint(answers, pal, pal.dim)})
+		}
+	}
+	return out
 }
 
 // homeGridZip is one body row: each column's row at its x, and the mark that
@@ -282,7 +338,9 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 	cell := line.cell
 	body := homeCellBody(a.homeCellDoor(cell, at, width-homeGridLead), width-homeGridLead, pal, lit)
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
-	if cell.sub == "" || (cell.grows && at != a.home.cursor) {
+	// THE DESCRIPTION COLUMN HAS THIS LINE WHERE THERE IS ONE, so the row is one
+	// line and the panel above it is that much shorter ([homeDescCol]).
+	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.cursor) {
 		return rows
 	}
 	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
@@ -453,4 +511,19 @@ func homeCellWidth(title string, pad int, note, tag, right string) int {
 		n += 1 + ansi.StringWidth(tail)
 	}
 	return n
+}
+
+// homeDescTop is the body row the described line was drawn on, so the
+// description can start there. It is the FIELD's own column that is searched,
+// because that is the only one whose rows have descriptions.
+func homeDescTop(columns [][]homeCellLine, at int) int {
+	if at == homeNoLine || len(columns) == 0 {
+		return 0
+	}
+	for y, line := range columns[0] {
+		if line.at == at {
+			return y
+		}
+	}
+	return 0
 }
