@@ -57,11 +57,11 @@ func resolve() string {
 		return ".codeaf"
 	}
 	current := DefaultUnder(base)
-	if exists(current) {
+	if directoryExists(current) {
 		return current
 	}
 	legacy := legacyUnder(base)
-	if exists(legacy) {
+	if directoryExists(legacy) {
 		return legacy
 	}
 	return current
@@ -76,9 +76,9 @@ func DefaultUnder(base string) string { return filepath.Join(base, ".codeaf") }
 
 func legacyUnder(base string) string { return filepath.Join(base, ".aforge") } // legacy-name
 
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+func directoryExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // Join names a file inside the state root.

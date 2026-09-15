@@ -1,6 +1,7 @@
 package home
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -32,6 +33,7 @@ func adoptLogin(logf Logf) {
 	}
 	adopt(base, logf, adoptionOS{
 		lstat:   os.Lstat,
+		stat:    os.Stat,
 		rename:  os.Rename,
 		symlink: os.Symlink,
 	})
@@ -39,6 +41,7 @@ func adoptLogin(logf Logf) {
 
 type adoptionOS struct {
 	lstat   func(string) (os.FileInfo, error)
+	stat    func(string) (os.FileInfo, error)
 	rename  func(string, string) error
 	symlink func(string, string) error
 }
@@ -46,6 +49,15 @@ type adoptionOS struct {
 func adopt(base string, logf Logf, operations adoptionOS) {
 	current, legacy := DefaultUnder(base), legacyUnder(base)
 	if _, err := operations.lstat(current); err == nil {
+		info, statErr := operations.stat(current)
+		if statErr == nil && info.IsDir() {
+			return
+		}
+		if statErr != nil {
+			adoptionFailed(logf, fmt.Errorf("%s cannot be used as the state folder: %w", current, statErr))
+		} else {
+			adoptionFailed(logf, fmt.Errorf("%s is not a directory", current))
+		}
 		return
 	} else if !os.IsNotExist(err) {
 		adoptionFailed(logf, err)

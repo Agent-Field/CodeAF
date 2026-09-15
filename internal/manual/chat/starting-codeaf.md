@@ -38,13 +38,13 @@ Three things you already have keep working, so nothing on your machine has to be
 moved by hand:
 
 - **Your state folder.** The first time the renamed build starts it renames
-  `~/.aforge` to `~/.codeaf` and leaves a link behind at the old path, so a
+  `~/.aforge` to `~/.codeaf` and tries to leave a link behind at the old path, so a
   `PATH` line pointing at `~/.aforge/bin`, a login item, a running daemon or a
   script of your own still resolves. It happens once, it never overwrites a
-  `~/.codeaf` that is already there, and if it cannot be done it says so and
-  carries on reading the old folder.
+  `~/.codeaf` directory that is already there. If the move itself cannot be done,
+  it says so and carries on reading the old folder.
 - **Your environment variables.** A variable spelled `AFORGE_…` is still read
-  wherever the `CODEAF_…` one is unset — `AFORGE_HOME` still moves the state
+  wherever the `CODEAF_…` one is unset or empty — `AFORGE_HOME` still moves the state
   folder, for example. Set the new spelling when you next edit that file;
   `codeaf help env` lists the names.
 - **A repository you have already used.** `.aforge-v3/config.json` inside a

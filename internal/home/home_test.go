@@ -2,8 +2,10 @@ package home
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -158,8 +160,31 @@ func TestH2FailedAdoptionLogsOnceAndPreservesFallback(t *testing.T) {
 	}
 }
 
+func TestARegularFileAtTheCurrentNameDoesNotHideFormerState(t *testing.T) {
+	login := t.TempDir()
+	t.Setenv("HOME", login)
+	current := DefaultUnder(login)
+	if err := os.WriteFile(current, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacy := legacyUnder(login)
+	if err := os.Mkdir(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var logs []string
+	adopt(login, func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}, realAdoptionOS())
+	if got := resolve(); got != legacy {
+		t.Fatalf("state root = %q, want usable former directory %q", got, legacy)
+	}
+	if len(logs) != 1 || !strings.Contains(logs[0], current) || !strings.Contains(logs[0], "not a directory") {
+		t.Fatalf("unusable current root logged %v", logs)
+	}
+}
+
 func realAdoptionOS() adoptionOS {
-	return adoptionOS{lstat: os.Lstat, rename: os.Rename, symlink: os.Symlink}
+	return adoptionOS{lstat: os.Lstat, stat: os.Stat, rename: os.Rename, symlink: os.Symlink}
 }
 
 func TestDirDefaultsUnderTheUserHome(t *testing.T) {
