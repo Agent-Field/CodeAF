@@ -353,7 +353,7 @@ func TestTheCrewChooserNamesTheTwoFamiliesAboveThePresets(t *testing.T) {
 // person last committed to, not on the default.
 func TestTheCrewChooserOpensOnThePersistedFamily(t *testing.T) {
 	a, dir := sheetApp(t)
-	seed := map[string]any{crewSourceKey: crewSourceAll}
+	seed := map[string]any{config.KeyCrewSource: config.CrewSourceAll}
 	encoded, err := json.Marshal(seed)
 	if err != nil {
 		t.Fatal(err)
@@ -379,7 +379,7 @@ func TestTheCrewChooserOpensOnThePersistedFamily(t *testing.T) {
 	// nothing, for the esc test's own reason.
 	a.crewPickerKey(key("right"))
 	a.crewPickerKey(key("esc"))
-	if got := crewSourceAt(dir); got != crewSourceAll {
+	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
 		t.Fatalf("esc wrote the family to %q", got)
 	}
 }
@@ -407,7 +407,7 @@ func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
 	if a.crewPick.open {
 		t.Fatal("enter left the chooser open")
 	}
-	if got := crewSourceAt(dir); got != crewSourceAll {
+	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
 		t.Fatalf("enter wrote the family %q, want all", got)
 	}
 	if got := config.CrewAt(dir); got != config.CrewBalanced {
@@ -438,7 +438,7 @@ func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
 // is not a third.
 func TestTheCrewSourceRowDefaultsToOpen(t *testing.T) {
 	dir := t.TempDir()
-	if got := crewSourceAt(dir); got != crewSourceOpen {
+	if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
 		t.Fatalf("a profile with no row read %q", got)
 	}
 	for _, row := range []string{
@@ -449,14 +449,14 @@ func TestTheCrewSourceRowDefaultsToOpen(t *testing.T) {
 		if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(row), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if got := crewSourceAt(dir); got != crewSourceOpen {
+		if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
 			t.Fatalf("the row %s read %q, want open", row, got)
 		}
 	}
 	if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(`{"models.crew.source": "all"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := crewSourceAt(dir); got != crewSourceAll {
+	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
 		t.Fatalf("the all row read %q", got)
 	}
 }
