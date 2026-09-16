@@ -64,18 +64,38 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 // row's own time ([session.SessionRow.At] is the person's last word, and zero on
 // a shell nobody has spoken in), so no tail read off the journal can put a line
 // under it first.
+//
+// `here` IS THE FIRST WORD OF ITS DESCRIPTION, not its margin. THE RIGHT MARGIN
+// OF EVERY ROW OF THE FIELD IS A TIME (owner, 2026-09-15): this row's is when
+// its person last spoke in it, like every row under it, and the word that says
+// it is this window's own stands where the row's other facts do — permanently,
+// because it is true whether or not the cursor is here. On a frame with no
+// description column the word is not said at all: it would cost the column a
+// row on the frames that have the fewest, and the bold already says it.
 func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
 	said := ""
 	if !row.session.At.IsZero() {
 		said = switcherFirstLine(in.last[row.session.Transcript].LastUser)
 	}
-	return &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row), hold: true, bold: true, sub: said}
+	if in.desc {
+		said = rowClauses(homeHereWord, said)
+	}
+	return &homeCell{panel: panelRecent, title: row.title, right: row.age, bold: true, sub: said}
 }
 
-// recentCell is any other row: its age, or the one fact that decides what enter
-// will do, at the margin — and its project's name beside that only when it is
-// not this window's own folder, where the tag would be the same word on every
-// row, and only when the folder has a name ([chatProjectTag]).
+// recentCell is any other row: its age at the margin — or the one fact that
+// decides what enter will do, `another window`, `folder gone`, which is the one
+// thing allowed to stand in a time's place because it is the truth about the
+// key — and, under the cursor, its project's name and the last thing its person
+// said in it.
+//
+// THE PROJECT IS A DESCRIPTION AND NOT A TAG. It used to stand beside the age
+// (`infra  3h`) on a row from another folder and nowhere on a row from this
+// window's own, so the margin was one word wide on some rows and two on others
+// (owner, 2026-09-15: "what are these and why are they absent elsewhere?"). It
+// is the first clause of the description now, still only where it says
+// something — a row of this window's own folder, a scratch folder or the home
+// directory has no project word ([chatProjectTag]).
 func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 	// THE LAST THING THIS PERSON SAID IN IT, under the cursor — which is the one
 	// fact that tells two conversations with similar names apart, and the same
@@ -84,17 +104,33 @@ func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 	// the row being read, off the draw), and a row with nothing to say draws
 	// nothing rather than a gap.
 	cell := &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row)}
-	if in.desc {
-		cell.grows, cell.sub = true, switcherFirstLine(in.last[row.session.Transcript].LastUser)
+	project := ""
+	if homeBucketOf(row.session.Transcript) != in.bucket {
+		project = chatProjectTag(row, in.tilde)
 	}
+	said := ""
+	if in.desc {
+		said = switcherFirstLine(in.last[row.session.Transcript].LastUser)
+	}
+	cell.sub = rowClauses(project, said)
+	cell.grows = cell.sub != ""
 	cell.hold = cell.right != row.age
 	if row.door && cell.right == homeHeldShort {
 		cell.door = takeoverHeldDoorWord
 	}
-	if homeBucketOf(row.session.Transcript) != in.bucket {
-		cell.tag = chatProjectTag(row, in.tilde)
-	}
 	return cell
+}
+
+// rowClauses joins the clauses of one row's description that are not empty, so
+// a row with a project and nothing said yet reads `infra` and not `infra · `.
+func rowClauses(clauses ...string) string {
+	var kept []string
+	for _, clause := range clauses {
+		if clause = strings.TrimSpace(clause); clause != "" {
+			kept = append(kept, clause)
+		}
+	}
+	return strings.Join(kept, rowSep)
 }
 
 // chatProjectTag is the project word a chat row wears, and NOTHING FOR A

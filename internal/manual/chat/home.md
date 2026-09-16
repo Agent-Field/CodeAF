@@ -18,7 +18,7 @@ answering one question you would ask walking up to a colleague's desk:
    the 2024 season only, or all three?  enter     spend                    today $0.14 of $20
                                                     ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
  unread                                             opus 63%  ·  3 chats and 1 task today
-   tier-B subs                      3 files · 1d
+   tier-B subs                                1d
    built the tier-B flow   1 accept   2 not right
    package release radar                      1d
    1 more · 15 older · tasks
@@ -142,7 +142,7 @@ one word — no count after it, no clause at its right:
 
 ```
  unread
-   tier-B subs                                                       3 files · 1d
+   tier-B subs                                                                 1d
    package release radar                                                      1d
 ```
 
@@ -150,15 +150,18 @@ The line is drawn only while the group has rows, and the rows are **newest first
 opposite of the questions above them, because nothing here is waiting and the freshest
 landing is the one still in your head.
 
-**A landing is one line at rest**: its name, its file count and how long ago. A landing
-with no files to its name draws nothing where the count would be, never `0 files`.
+**A landing is one line at rest**: its name and how long ago it landed. **The right margin
+of every row of the field is a time** — how long a question has waited, how long ago a
+landing landed, when you last spoke in a conversation, how long a task has run, when an
+order is due — and nothing else stands there.
 
-**The row under the cursor grows a second line** — the first sentence of what the work came
-to, and its two answers at the right:
+**The row under the cursor grows a second line** — how many files it wrote, the first
+sentence of what the work came to, and its two answers at the right. A landing with no files
+to its name starts straight at the sentence, never `0 files`:
 
 ```
-   tier-B subs                                                       3 files · 1d
-   built the tier-B subscription flow          1 accept   2 not right
+   tier-B subs                                                                 1d
+   3 files · built the tier-B subscription flow          1 accept   2 not right
 ```
 
 The two words are the task's own — `accept` and `not right` for work nobody could check,
@@ -335,9 +338,11 @@ Four kinds of line, newest first, four of them — eight in a tall window — th
 `N more · tasks`:
 
 - **a task that landed** — its name and what it came to, the first sentence of its report,
-  with its cost at the right when it cost anything. A task that stopped without finishing
-  says why instead: `lost the connection`, `went in circles`, `out of steps`;
-- **a file a conversation made** — `made <name>`, with that conversation's name at the right;
+  with how long ago it landed at the right and its cost under the cursor when it cost
+  anything. A task that stopped without finishing says why instead: `lost the connection`,
+  `went in circles`, `out of steps`;
+- **a file a conversation made** — `made <name>`, with how long ago at the right and that
+  conversation's name under the cursor;
 - **a standing item that fired** — its own last-look line, in its own words; a one-off that
   fired and stood down reads `fired 3 minutes ago — it told you`;
 - **what memory learned or let go** — `learned 2 things, let go of 1`.
@@ -354,22 +359,24 @@ nothing.
 
 **The `where you were` panel is your conversations**, under `needs you`:
 
-- **this window's own conversation first**, in bold, with `here` at the right and **the last
-  thing you said in it** on the line under it — your own words, never a note the session
-  left for itself. A conversation this launch has only just started is one line,
-  `new conversation` and `here`, until you say something in it;
+- **this window's own conversation first**, in bold, with when you last spoke in it at the
+  right and **`here` and the last thing you said in it** in its description — your own
+  words, never a note the session left for itself. A conversation this launch has only just
+  started is one bold line, `new conversation`, until you say something in it. On a frame
+  too narrow for the description column the bold alone says it is this window's;
 - then **the most recently spoken-in of the rest**, each with its age at the right. A
-  conversation in another project wears that project's name beside the age; one in this
-  window's folder wears none, and neither does one in your home directory or in a scratch
-  folder at the top of `/tmp`;
+  conversation in another project carries that project's name in its description, under
+  the cursor, before the last thing you said; one in this window's folder carries none, and
+  neither does one in your home directory or in a scratch folder at the top of `/tmp`;
 - then `N more · type to find one` — typing finds any conversation on the machine.
 
 A conversation waiting on you is on `needs you` and not here too. One that is mid-reply or
 on its way here stays. Five rows show, ten in a tall window.
 
-**The margin says what `enter` will do**: the age for an ordinary row, `another window` for
-one a terminal is sitting in, `coming here` while one moves over, `folder gone` for one whose
-folder was deleted. An `ask here` errand you started a minute ago sits at the very top.
+**The margin is a time, unless it has to say what `enter` will do**: the age for an
+ordinary row, and in its place `another window` for one a terminal is sitting in, `coming
+here` while one moves over, `folder gone` for one whose folder was deleted — the one kind
+of word allowed to stand where a time does, because it is the truth about the key. An `ask here` errand you started a minute ago sits at the very top.
 
 **On `space` `space` the cursor is already on the chat you were in before this one**, so a
 switch back is two keys — `space` `space`, then `enter` — and `esc` still goes back to the

@@ -321,8 +321,9 @@ func needsCallAt(entry session.TaskIndexEntry) time.Time {
 	return entry.StartedAt
 }
 
-// needsCall is one of those rows: the title, how many files it wrote and how
-// long ago, and — under the cursor — what it came to and its two answers.
+// needsCall is one of those rows: the title, how long ago it landed, and —
+// under the cursor — how many files it wrote, what it came to and its two
+// answers.
 func needsCall(project session.Project, row session.SessionRow, entry session.TaskIndexEntry, status session.TaskStatus, now time.Time) needsItem {
 	title := strings.TrimSpace(entry.Label)
 	if title == "" {
@@ -333,9 +334,9 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// and will not move until somebody answers it; a landing has already
 	// finished, and a column of question marks over work that is DONE was the
 	// screen saying the opposite of what was true.
-	cell := &homeCell{panel: panelNeeds, title: title, right: needsCallFacts(entry, asked, now),
+	cell := &homeCell{panel: panelNeeds, title: title, right: sinceAt(asked, now),
 		key:   needsCallKey + entry.ID,
-		grows: true, sub: needsCallSub(entry, status), answers: needsCallAnswers(status)}
+		grows: true, sub: rowClauses(needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,
 		dir: homeBucketOf(row.Transcript), task: &entry, cell: cell}
 	return needsItem{asked: asked, line: line}
@@ -355,24 +356,20 @@ func needsCallSub(entry session.TaskIndexEntry, status session.TaskStatus) strin
 	return status.Word
 }
 
-// needsCallFacts is a landing's right margin: how many files it wrote and how
-// long ago, as ONE clause — `3 files · 1d`.
+// needsCallFiles is how many files a landing wrote, for the head of its
+// description — `3 files · <what it came to>` — and "" for one that wrote none,
+// never `0 files` (the emptiness law).
 //
-// IT IS ONE CLAUSE AND NOT TWO FACTS SIDE BY SIDE because they are read as one
-// sentence about the same piece of work, and because a row cut between them
-// would leave `3 files` with no age beside a column of rows that all have one.
-// A landing that wrote no files says NOTHING where the count would be, never
-// `0 files` (the emptiness law).
-func needsCallFacts(entry session.TaskIndexEntry, asked, now time.Time) string {
-	age := sinceAt(asked, now)
+// IT USED TO BE THE RIGHT MARGIN, as one clause with the age (`3 files · 1d`),
+// so a landing that wrote nothing read `10h` beside one that read `1 file · 1d`
+// — two shapes in one column for one kind of row. THE RIGHT MARGIN OF EVERY ROW
+// OF THE FIELD IS A TIME (owner, 2026-09-15), and everything that is not a time
+// is in the description column ([homeDescLines]).
+func needsCallFiles(entry session.TaskIndexEntry) string {
 	if entry.FilesChanged <= 0 {
-		return age
+		return ""
 	}
-	files := itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged)
-	if age == "" {
-		return files
-	}
-	return files + rowSep + age
+	return itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged)
 }
 
 // The two keys a landing is answered with ON HOME, and the landing keys they

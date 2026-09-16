@@ -140,19 +140,19 @@ func runningDoing(task session.PresenceTask) string {
 	return doing
 }
 
-// runningJobLine is one background job: one line, because a dev server has no
-// activity to report — only where it is ([chatProjectTag]'s word for its
-// folder) and how long it has been up.
+// runningJobLine is one background job: `<command> · a background job`, how
+// long it has been up at the margin, and — under the cursor — where it is
+// ([chatProjectTag]'s word for its folder), because a dev server has no
+// activity to report. The project used to ride inside the title; it is a fact
+// like every other row's project and stands where theirs do (owner,
+// 2026-09-15: the right margin is a time, the rest is description).
 func runningJobLine(row switcherRow, job session.PresenceJob, project string, now time.Time) homeLine {
-	title := strings.TrimSpace(job.Title)
-	if project != "" {
-		title += rowSep + project
-	}
 	clock := ""
 	if age := sinceAt(job.StartedAt, now); age != "" {
 		clock = runningUpWord + age
 	}
-	cell := &homeCell{panel: panelRunning, title: title + rowSep + runningJobWord, key: runningJobKey + job.ID}
+	cell := &homeCell{panel: panelRunning, title: strings.TrimSpace(job.Title) + rowSep + runningJobWord,
+		key: runningJobKey + job.ID, sub: project, grows: project != ""}
 	homeLiveMargin(cell, row, clock)
 	return switcherRowLine(row, cell)
 }

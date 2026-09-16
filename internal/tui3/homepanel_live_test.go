@@ -132,8 +132,11 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		FilesChanged: 3})
 	a := l.open()
 	rows := panelRows(a, panelNeeds)
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "3 files · 30m" {
-		t.Fatalf("the task's call is not a one-line row of needs you: %+v", rows)
+	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; the files it wrote open its
+	// description (owner, 2026-09-15: the right margin of every field row is a
+	// time). It used to read `3 files · 30m`.
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || !strings.HasPrefix(rows[0].sub, "3 files · ") {
+		t.Fatalf("the task's call is not a one-line row of needs you with its files in its description: %+v", rows)
 	}
 	if rows[0].mark != cellMarkNone {
 		t.Fatalf("a landing wears a mark: %+v", rows[0])
@@ -337,8 +340,8 @@ func consentQuestionAt(id uint64, text string, asked time.Time) session.Presence
 
 // ── where you were ──────────────────────────────────────────────────────────
 
-// A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` and `here`, no
-// age and nothing under it — whatever the journal's tail has on hand — until
+// A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` in bold, no age
+// and nothing under it — whatever the journal's tail has on hand — until
 // its person says something, and then the line under it is what they said.
 func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 	l := newLiveLab(t)
@@ -364,8 +367,8 @@ func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 	}
 	a := openOn()
 	own := panelRows(a, panelRecent)[0]
-	if own.title != unnamedConversationWord || own.right != homeHereWord || own.sub != "" {
-		t.Fatalf("the fresh launch's row is not one line saying here: %+v", own)
+	if own.title != unnamedConversationWord || own.right != "" || own.sub != "" || !own.bold {
+		t.Fatalf("the fresh launch's row is not one bold line with nothing at its right: %+v", own)
 	}
 	if next := homeLineAfter(homeText(a), unnamedConversationWord); !strings.Contains(next, "Porting the Resume Picker") {
 		t.Fatalf("the fresh launch's row carries a line under it:\n%s", homeText(a))
@@ -404,7 +407,7 @@ func TestRunningDrawsEachTaskAndJobWithWhatItIsDoing(t *testing.T) {
 	}
 	if !strings.HasSuffix(job.title, rowSep+runningJobWord) || !strings.HasPrefix(job.title, "npm run dev · ") ||
 		job.right != "up 3h" || job.mark != cellMarkNone {
-		t.Fatalf("the job row is not `<title> · <project> · a background job` up its age: %+v", job)
+		t.Fatalf("the job row is not `<title> · a background job` up its age: %+v", job)
 	}
 	if frame := homeText(a); !strings.Contains(frame, "running · 2") {
 		t.Fatalf("the heading does not count the work:\n%s", frame)
@@ -590,8 +593,14 @@ func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 			t.Fatalf("line %d is %q, want %q", i, rows[i].title, title)
 		}
 	}
-	if rows[0].right != "Pricing Site" || rows[2].right != "$0.42" || rows[1].right != "" {
-		t.Fatalf("the right margins are not the conversation and the cost: %+v", rows)
+	// THE MARGIN IS WHEN EACH HAPPENED, and the conversation a file was made in
+	// and what a task cost are the rows' descriptions (owner, 2026-09-15). They
+	// used to be the margins — a name on one row, money on the next.
+	if rows[0].right != "1h" || rows[1].right != "2h" || rows[2].right != "3h" {
+		t.Fatalf("the right margins are not when each happened: %+v", rows)
+	}
+	if rows[0].sub != "Pricing Site" || rows[2].sub != "$0.42" || rows[1].sub != "" || !rows[0].grows || !rows[2].grows {
+		t.Fatalf("the descriptions are not the conversation and the cost, under the cursor: %+v", rows)
 	}
 	if frame := homeText(a); !strings.Contains(frame, "since you left · 12h") {
 		t.Fatalf("the heading does not say how long you were away:\n%s", frame)

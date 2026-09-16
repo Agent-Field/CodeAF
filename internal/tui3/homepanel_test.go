@@ -103,8 +103,11 @@ func TestSinceYouLeftIsItsOwnPanelOfDoors(t *testing.T) {
 	}
 }
 
-// WHERE YOU WERE: this window's own conversation first with `here`, the last
-// thing said in it under it, then the most recent quiet ones.
+// WHERE YOU WERE: this window's own conversation first, in bold, the last thing
+// said in it under it, then the most recent quiet ones. A row from another
+// folder carries its project as its description, under the cursor — the margin
+// is a time on every row (owner, 2026-09-15; the project used to be a tag
+// beside the age, and `here` the own row's margin).
 func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)
@@ -117,14 +120,20 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 		t.Fatalf("this window's own conversation is not the first row of where you were:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
-	if !strings.Contains(lines[own], homeHereWord) || !strings.Contains(lines[own+1], "explain open addressing") {
-		t.Fatalf("the own row does not say here with its last words under it:\n%s", frame)
+	// (The rail beside it may say `here` in a whisper of its own, so the row is
+	// asked for its words rather than the screen line searched for the word.)
+	if mine := panelRows(a, panelRecent)[0]; mine.right == homeHereWord || !mine.bold || !strings.Contains(lines[own+1], "explain open addressing") {
+		t.Fatalf("the own row does not carry its last words under it, with nothing but a time at its right:\n%s", frame)
 	}
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
 	// not. The conversation mid-turn is here too: `running` lists the work a
 	// conversation sent out and never the conversation, so this is its panel.
-	if moving := lines[own+2]; !strings.Contains(moving, "Bounty Reward Companies") || !strings.Contains(moving, "beta") {
-		t.Fatalf("a row from another folder does not carry its project:\n%s", frame)
+	if moving := lines[own+2]; !strings.Contains(moving, "Bounty Reward Companies") || strings.Contains(moving, "beta") {
+		t.Fatalf("a row from another folder wears its project on its own line:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Bounty Reward Companies" })
+	if bounty := a.home.lines[a.home.cursor]; bounty.cell.sub != "beta" || !bounty.cell.grows {
+		t.Fatalf("a row from another folder does not carry its project as its description: %+v", bounty.cell)
 	}
 	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
 		t.Fatalf("the quiet rows do not follow in recency order:\n%s", frame)
