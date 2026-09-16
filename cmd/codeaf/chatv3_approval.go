@@ -21,6 +21,69 @@ type v3Gate interface {
 	SetApprovalPolicy(policy *approval.Policy)
 }
 
+// v3Rebuilder is the newer door on the same agent: a session that knows its
+// own posture rebuilds the gate FOR that posture (internal/session's
+// approvalposture.go), so a rule banked inside a conversation walked to allow
+// lands on an allow gate. [refreshV3Policy] and [applyV3Approvals] prefer it
+// and keep the plain push for a gate that does not have it.
+type v3Rebuilder interface {
+	RebuildApprovalGate() error
+}
+
+// v3ApprovalGate is the door a conversation moves its own gate through
+// ([session.ApprovalGate]): the same three rows, the same project layer, the
+// same floors as the launch, asked for by posture instead of by flag.
+//
+// THE POSTURE IS A WORD FOR A PAIR. The ladder folds the guardian row into the
+// mode (internal/session's approvalposture.go says why), so `ask` is prompt
+// with the guardian stood down, `guardian` is prompt with it up, and `allow`
+// and `deny` are the row's own words with the guardian irrelevant. An empty
+// posture is the rows exactly as they stand — which is what an untouched
+// conversation runs at and what `auto` hands back to.
+type v3ApprovalGate struct {
+	workspace, profileDir string
+}
+
+func (g v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
+	mode := ""
+	guardian := config.GuardianEnabledAt(g.profileDir)
+	switch posture {
+	case session.PostureAsk:
+		mode, guardian = string(approval.ActionPrompt), false
+	case session.PostureGuardian:
+		mode, guardian = string(approval.ActionPrompt), true
+	case session.PostureAllow:
+		mode, guardian = string(approval.ActionAllow), false
+	case session.PostureDeny:
+		mode, guardian = string(approval.ActionDeny), false
+	}
+	policy, err := v3PolicyMode(g.workspace, g.profileDir, mode)
+	if err != nil {
+		return nil, false, err
+	}
+	return policy, guardian, nil
+}
+
+// Standing is the rows as they stand, said in the ladder's words. An unreadable
+// mode row reads as the strictest answer it could be, which is internal/config's
+// own law for that row and the one direction a garbled setting may be wrong in.
+func (g v3ApprovalGate) Standing() string {
+	mode, err := config.ProjectStringAt(g.workspace, g.profileDir, config.KeyToolApprovalMode)
+	if err != nil {
+		mode = string(approval.ActionPrompt)
+	}
+	switch mode {
+	case string(approval.ActionAllow):
+		return session.PostureAllow
+	case string(approval.ActionDeny):
+		return session.PostureDeny
+	}
+	if config.GuardianEnabledAt(g.profileDir) {
+		return session.PostureGuardian
+	}
+	return session.PostureAsk
+}
+
 // The consent card's door back to disk: where "always" is written down.
 //
 // It is a PAIR — one seam for a tool, one for a shell command — handed to the
@@ -114,6 +177,9 @@ func bankBashApproval(agent v3Gate, workspace, profileDir string, yolo bool) fun
 // names the next session rather than claiming the line is already gone.
 func applyV3Approvals(agent v3Gate, workspace, profileDir string, yolo bool) func() error {
 	return func() error {
+		if rebuilder, ok := agent.(v3Rebuilder); ok {
+			return rebuilder.RebuildApprovalGate()
+		}
 		policy, err := v3Policy(workspace, profileDir, yolo)
 		if err != nil {
 			return err
@@ -155,6 +221,10 @@ func v3CurrentGate(cfg session.Config, workspace, profileDir string, yolo bool) 
 // answer to "I could not read the rules" is the gate that is already there.
 func refreshV3Policy(agent v3Gate, workspace, profileDir string, yolo bool) {
 	if agent == nil {
+		return
+	}
+	if rebuilder, ok := agent.(v3Rebuilder); ok {
+		_ = rebuilder.RebuildApprovalGate()
 		return
 	}
 	policy, err := v3Policy(workspace, profileDir, yolo)

@@ -1770,8 +1770,8 @@ func (a *app) compactRow(e *entry, width int) string {
 // The bottom of this surface is TWO ROWS, and every element on them has exactly
 // one job (foot.go states the whole law):
 //
-//	─ porting the parser · gpt-4.1-mini · via deepinfra ──── space space home · / commands ─
-//	$0.14 · ⟲ saved $0.02 · 89% cached   12.4k/128k · 10%   2 jobs   YOLO      92 tok/s · ⠹ working · 4s
+//	─ porting the parser · gpt-4.1-mini · ⠿ high · ◇ asks · via deepinfra ──── space space home · / commands ─
+//	$0.14 · ⟲ saved $0.02 · 89% cached   12.4k/128k · 10%   2 jobs      92 tok/s · ⠹ working · 4s
 //
 // THE SEAM IS IDENTITY — which conversation, what is answering it, and the keys
 // that work now. THE STATUS ROW IS NUMBERS AND ALIVENESS — the ledger on the
@@ -2654,7 +2654,9 @@ func splitReserve(text string) (room, figure string) {
 //	⟲ saved $0.02 · 89%  what the cache gave back
 //	1.2k tok/s avg       output over this turn's elapsed time
 //	compaction in ~3     what is about to happen to it
-//	YOLO                 the gate is open (and nothing when it is not)
+//	YOLO                 the gate is open — only on the frames whose seam is
+//	                     not carrying the approvals chip (approvalchip.go);
+//	                     the phone sheet says the posture at every posture
 //	38 tok/s             what the stream is producing right now
 //	⠹ working · 4s       what it is DOING — always last, because it is the one
 //	                     segment that is true of the whole line
@@ -2681,7 +2683,7 @@ func (a *app) telemetry(width int) []hudPart {
 	}
 	add(segETA, a.etaSegment())
 	add(segAmbient, a.ambientSegment())
-	add(segYolo, a.yoloSegment())
+	add(segYolo, a.approvalSegment())
 	// THE FACTS OFF THE LINE. The crew word, the session delta, the per-turn
 	// burn, the open count and the standing count are not drawn on the status
 	// row (foot.go's [groupOff]) — the phone sheet and /status still say all
@@ -2824,11 +2826,8 @@ func (a *app) paintPart(part hudPart) string {
 		return a.pal.warn(part.text)
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
-		// because of when it changed. It is a door onto /permissions and it
-		// brightens under the pointer to say so, one step up from its own hue.
-		if a.hoveringPosture() {
-			return a.pal.ink(part.text)
-		}
+		// because of when it changed. It is a reading here and not a door: the
+		// control is the chip on the seam (approvalchip.go).
 		return a.pal.bad(part.text)
 	case segCache:
 		// THE CACHE IS THE OTHER HALF OF THE MONEY DOOR: it brightens with the
@@ -3157,21 +3156,9 @@ func (a *app) compactionETA() (int, bool) {
 
 // ── NEGATIVE-SPACE SAFETY ───────────────────────────────────────────────────
 //
-// The approval posture is the one fact on this line that is drawn ONLY when it
-// is unsafe. In the default posture — the gate asks before it runs anything —
-// the segment does not exist, because a permanent "SAFE" badge is a badge
-// nobody reads and therefore a badge that says nothing on the day it changes.
-//
-// ABSENCE IS THE SAFE STATE, and its presence is the whole message: "allow"
-// means every tool call this session makes runs without asking, and a person
-// who has forgotten they turned that on must be reminded by the screen rather
-// than by the outcome.
-func (a *app) yoloSegment() string {
-	if a.approval == "allow" {
-		return "YOLO"
-	}
-	return ""
-}
+// The gate's posture on this row is [app.approvalSegment] (approvalchip.go):
+// `YOLO`, only when the gate is open, and only on the frames whose seam is not
+// carrying the chip that says it at every posture.
 
 // stateSegment is the last segment: what this surface is DOING, plain and
 // painted.
@@ -3512,7 +3499,7 @@ func (a *app) legend(width int) string {
 	// not cleared down there).
 	a.homeDoor = hudSpan{}
 	if !a.roomOpen() {
-		a.seamModelSpan, a.seamEffortSpan = hudSpan{}, hudSpan{}
+		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 	}
 	right := a.legendRight(width)
 	// EACH RUNG IS BUILT ONCE, SPAN AND ALL. The left label and the columns its
@@ -3526,8 +3513,8 @@ func (a *app) legend(width int) string {
 	// and measures again, preserving the fixed order rather than inventing a
 	// second short sentence. Every other state has one rung and stops here.
 	for rung := right; rung != ""; {
-		if left, span, dial, named := a.legendLeftSpan(width, legendRoom(width, rung)); named {
-			attempts = append(attempts, legendAttempt{left: left, right: rung, span: span, dial: dial})
+		if left, span, dial, gate, named := a.legendLeftSpan(width, legendRoom(width, rung)); named {
+			attempts = append(attempts, legendAttempt{left: left, right: rung, span: span, dial: dial, gate: gate})
 		}
 		next := a.hintShorter(rung)
 		if next == "" {
@@ -3535,37 +3522,41 @@ func (a *app) legend(width int) string {
 		}
 		rung = next
 	}
-	bare, bareSpan, bareDial, _ := a.legendLeftSpan(width, legendRoom(width, ""))
-	attempts = append(attempts, legendAttempt{left: bare, right: "", span: bareSpan, dial: bareDial})
-	// TWO CELLS ON THIS LINE ARE DOORS. The model's columns and the thinking
-	// rung's are those the chosen attempt drew them at, offset by the border's
-	// own two cells, and each brightens under the pointer to say so (foot.go's
-	// [app.legendModelPress] and [app.legendEffortPress]). The lift closure reads
-	// the attempt being tried through these two variables rather than being built
-	// again inside the loop, for the allocation law's sake.
+	bare, bareSpan, bareDial, bareGate, _ := a.legendLeftSpan(width, legendRoom(width, ""))
+	attempts = append(attempts, legendAttempt{left: bare, right: "", span: bareSpan, dial: bareDial, gate: bareGate})
+	// THREE CELLS ON THIS LINE ARE DOORS. The model's columns, the thinking
+	// rung's and the approvals chip's are those the chosen attempt drew them at,
+	// offset by the border's own two cells, and each brightens under the pointer
+	// to say so (foot.go's [app.legendModelPress], [app.legendEffortPress] and
+	// [app.legendApprovalPress]). The lift closure reads the attempt being tried
+	// through these variables rather than being built again inside the loop,
+	// for the allocation law's sake.
 	//
-	// ONE OF THE TWO IS LIFTED PER FRAME AND NEVER BOTH, because these hues are
-	// raw SGR with an explicit reset and a second lift inside the first would end
-	// at that reset ([paintSpan] states it). They cannot both want it: the model
-	// lifts only under the pointer, and the pointer is on one cell at a time.
-	seam, dial := hudSpan{}, hudSpan{}
+	// THE LIFTS ARE PAINTED SIDE BY SIDE AND NEVER NESTED, because these hues
+	// are raw SGR with an explicit reset and a lift inside a lift would end at
+	// the inner reset ([paintSpan] states it). Two of the three could not both
+	// want it — the model lifts only under the pointer, which is on one cell at
+	// a time — but the chip is lit for as long as the gate is open, so it can be
+	// lit beside a hovered model or a flashing rung. [paintSpans] walks the three
+	// disjoint spans in order and paints the plain runs between them.
+	seam, dial, gate := hudSpan{}, hudSpan{}, hudSpan{}
 	lift := func(text string) string {
-		if a.effortSeamLit() && dial.pressable() {
-			return paintSpan(text, dial, paint, a.paintEffortChip, true)
-		}
-		return paintSpan(text, seam, paint, a.pal.accent, a.hoveringStatusModel())
+		return paintSpans(text, paint,
+			spanLift{span: seam, lift: a.pal.accent, on: a.hoveringStatusModel()},
+			spanLift{span: dial, lift: a.paintEffortChip, on: a.effortSeamLit()},
+			spanLift{span: gate, lift: a.paintApprovalChip, on: a.approvalSeamLit()})
 	}
 	for _, attempt := range attempts {
-		seam, dial = hudSpan{}, hudSpan{}
+		seam, dial, gate = hudSpan{}, hudSpan{}, hudSpan{}
 		if !a.roomOpen() {
-			seam, dial = attempt.span, attempt.dial
-			a.seamModelSpan, a.seamEffortSpan = shiftIntoBorder(attempt.span), shiftIntoBorder(attempt.dial)
+			seam, dial, gate = attempt.span, attempt.dial, attempt.gate
+			a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = shiftIntoBorder(attempt.span), shiftIntoBorder(attempt.dial), shiftIntoBorder(attempt.gate)
 		}
 		if line, ok := a.legendLine(attempt.left, attempt.right, width, lift); ok {
 			return line
 		}
 		if !a.roomOpen() {
-			a.seamModelSpan, a.seamEffortSpan = hudSpan{}, hudSpan{}
+			a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 		}
 	}
 	return a.rule(width)
@@ -3584,12 +3575,14 @@ func shiftIntoBorder(span hudSpan) hudSpan {
 }
 
 // legendAttempt is one rung of the ladder above: the two labels it would draw,
-// and where the model segment and the thinking rung fell inside the left one.
+// and where the model segment, the thinking rung and the approvals chip fell
+// inside the left one.
 type legendAttempt struct {
 	left  string
 	right string
 	span  hudSpan
 	dial  hudSpan
+	gate  hudSpan
 }
 
 // legendGap is the shortest run of rule the two labels will leave between them.
@@ -3714,14 +3707,15 @@ func (a *app) branchWord() string {
 // THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
 // branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
-	left, _, _, named := a.legendLeftSpan(width, room)
+	left, _, _, _, named := a.legendLeftSpan(width, room)
 	return left, named
 }
 
-// legendLeftSpan is that label AND the columns its two doors occupy within it —
-// the model's name, then the thinking rung — which is what [app.legend] needs to
-// make both pressable without building the cluster a second time.
-func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, bool) {
+// legendLeftSpan is that label AND the columns its three doors occupy within it
+// — the model's name, the thinking rung, then the approvals chip — which is
+// what [app.legend] needs to make all three pressable without building the
+// cluster a second time.
+func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, hudSpan, bool) {
 	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
 	// the path: none of them is a fact about the page on screen, and the one
 	// thing a person in here needs from this slot is the key that gets them out
@@ -3733,20 +3727,20 @@ func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, bool) {
 		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
 		// slot is here to promise the NEXT keystroke, so it has to move with it.
 		if a.recalling() {
-			return roomLegendRecallWord, hudSpan{}, hudSpan{}, true
+			return roomLegendRecallWord, hudSpan{}, hudSpan{}, hudSpan{}, true
 		}
 		if a.roomOrganized() {
-			return "", hudSpan{}, hudSpan{}, true
+			return "", hudSpan{}, hudSpan{}, hudSpan{}, true
 		}
-		return roomLegendWord, hudSpan{}, hudSpan{}, true
+		return roomLegendWord, hudSpan{}, hudSpan{}, hudSpan{}, true
 	}
 	if room < 1 {
-		return "", hudSpan{}, hudSpan{}, true
+		return "", hudSpan{}, hudSpan{}, hudSpan{}, true
 	}
 	// THE NAME, THE MODEL AND ITS THINKING RUNG ARE HERE NOW, and the branch
 	// rides after them (foot.go's [app.seamIdentity] holds the ladder).
-	cluster, span, dial := a.seamIdentity(width, room)
-	return cluster, span, dial, true
+	cluster, span, dial, gate := a.seamIdentity(width, room)
+	return cluster, span, dial, gate, true
 }
 
 // legendJoin is the separator between the legend's facts, and dotted threads any

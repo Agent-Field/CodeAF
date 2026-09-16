@@ -503,10 +503,12 @@ registry yet. They name that machine and refuse; they do not report its registry
    `always · saved — /permissions to change`. That is the truth: the answer holds for this
    session, on the far machine, and is written down nowhere.
 
-7. **The YOLO badge is drawn from the far machine's posture.** It is carried once when the
-   connection opens, read from that machine's own profile rather than off this laptop: a
-   badge read off the wrong machine would be a safety claim about a machine nobody
-   consulted.
+7. **The approvals cell is the far machine's posture, and moving it moves the far gate.**
+   The posture is read from that machine's own rows rather than off this laptop — a cell
+   read off the wrong machine would be a safety claim about a machine nobody consulted —
+   and `alt+y`, a press on it and `/approvals` set it there. An engine too old to have
+   the door says so when the connection opens; the cell is then a reading of the posture
+   carried once at the welcome, and every door says the far machine's rules decide.
 
 8. **`/harness` is unavailable.** The registry is the far machine's and this build has no
    door onto it over the wire, so the command says `<machine> owns harnesses ·
@@ -699,9 +701,11 @@ Two consequences you can see:
   `always · saved — /permissions to change`. That is the truth: the answer holds for this
   session, on the far machine, and is written down nowhere. To make an approval stick, set
   it with `/permissions` on the far machine.
-- **The YOLO badge is drawn from the far machine's posture.** It is carried once when the
-  connection opens, read from the far machine's own profile — not off this laptop. A badge
-  read off the wrong machine would be a safety claim about a machine nobody consulted.
+- **The approvals cell is the far machine's posture, and moving it moves the far gate.**
+  It is read from the far machine's own rows — not off this laptop; a cell read off the
+  wrong machine would be a safety claim about a machine nobody consulted — and `alt+y`, the
+  press and `/approvals` set it there. An engine too old to have the door leaves the cell
+  a reading of the posture carried once at the welcome, and every door says so.
 
 ## Harnesses over --host
 

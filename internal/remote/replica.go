@@ -142,6 +142,15 @@ func (r *replica) setThinking(rung string) {
 	r.facts.Thinking = rung
 }
 
+// setApproval is the same optimism for the conversation's posture on the tool
+// gate, written with the engine's own answer for [replica.setThinking]'s reason
+// (approval.go's [Agent.SetApprovalPosture] reads it back).
+func (r *replica) setApproval(posture string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.facts.Approval = posture
+}
+
 // referPlace and removePlace are the same optimism for the folders a person
 // attaches, and they are here for the same reason: the folder indicator is drawn
 // in the frame that follows the keystroke, and a chip that took a round trip to

@@ -71,6 +71,12 @@ type Facts struct {
 	// the dial itself — and a fact named one thing in the protocol and another on
 	// the screen is two vocabularies for one ladder.
 	Thinking string `json:"thinking,omitempty"`
+	// Approval is the RESOLVED posture this conversation's tool gate is
+	// standing at ([Agent.ResolvedApprovalPosture]) — ask, guardian, allow or
+	// deny, whichever scope decided it, and "" for a session with no gate. It
+	// rides the photograph for Thinking's reason: the approvals chip beside the
+	// rung is drawn on every frame (internal/tui3's approvalchip.go).
+	Approval string `json:"approval,omitempty"`
 	// Places is the folders this conversation is about, newest first
 	// ([Agent.Places]) — the person's own attachments among them, told apart by
 	// [PlaceRef.Arrival].
@@ -159,6 +165,10 @@ func FactsOf(source FactSource) Facts {
 	// the dial is simply not drawn.
 	if door, ok := source.(interface{ ResolvedEffort() string }); ok {
 		facts.Thinking = door.ResolvedEffort()
+	}
+	// AND THE GATE'S POSTURE, on the same terms.
+	if door, ok := source.(interface{ ResolvedApprovalPosture() string }); ok {
+		facts.Approval = door.ResolvedApprovalPosture()
 	}
 	return facts
 }

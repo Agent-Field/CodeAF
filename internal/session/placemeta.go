@@ -67,7 +67,7 @@ func (a *Agent) stampUserLocked(text string) {
 	title := placeholderTitle(text)
 	a.metaStamp().Owe(func() {
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
-			meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 			meta.LastUserAt = at
 			if strings.TrimSpace(meta.Title) == "" {
@@ -265,7 +265,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Created = snapshot.Created
 		}
 		if meta.Model == "" {
-			meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 		}
 		if meta.Places == nil {
 			meta.Places = snapshot.Places
@@ -304,6 +304,10 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	// a value a person can choose their way back to: a session dialled to max
 	// and then turned off again has to come back off rather than back at max.
 	meta.Effort = a.effort.String()
+	// And the gate's posture, written whatever it is for the same reason: auto
+	// is a value a person chose their way back to, and a conversation opened
+	// wide and then handed back has to come back handed back.
+	meta.Approval = a.approvalPosture
 	// Configuration stamps own the folders this conversation is about. Title
 	// and spend patches preserve the latest stored set instead of replacing it
 	// with a snapshot captured before a folder was named (places.go).
@@ -350,12 +354,12 @@ func (a *Agent) stampTrees() { a.stampMeta() }
 
 // stampMeta updates the configuration and working context those three stamps
 // share. The transaction reads the latest title and spending from disk and
-// preserves them; this snapshot owns only model, effort, places and trees.
+// preserves them; this snapshot owns only model, effort, approval, places and trees.
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
 func (a *Agent) stampMeta() {
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
-		meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})
 }

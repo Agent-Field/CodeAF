@@ -2313,26 +2313,29 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 
 // ── negative-space safety ───────────────────────────────────────────────────
 
-// ABSENCE IS THE SAFE STATE: the posture is drawn only when the gate is open.
+// ABSENCE IS THE SAFE STATE ON THE ROW: the posture is drawn there only when the
+// gate is open — and only on a frame whose seam is not carrying the approvals
+// chip, which says every posture and is the control (approvalchip.go). This
+// app has no dial, so its seam has no chip and the row is where the badge is.
 func TestTheApprovalPostureIsDrawnOnlyWhenItIsUnsafe(t *testing.T) {
 	a, _, _ := hudApp(t)
 
 	for _, mode := range []string{"", "prompt", "deny"} {
 		a.approval = mode
-		if got := a.yoloSegment(); got != "" {
+		if got := a.approvalSegment(); got != "" {
 			t.Fatalf("the %q posture drew %q — absence is the safe state", mode, got)
 		}
-		if strings.Contains(plain(a.status(200)), "YOLO") {
+		if strings.Contains(plain(a.status(200)), approvalYoloWord) {
 			t.Fatalf("the %q posture is shouting on the line", mode)
 		}
 	}
 
 	a.approval = "allow"
 	line := a.status(200)
-	if !strings.Contains(plain(line), "YOLO") {
+	if !strings.Contains(plain(line), approvalYoloWord) {
 		t.Fatalf("an open gate said nothing:\n%q", plain(line))
 	}
-	if !strings.Contains(line, a.pal.bad("YOLO")) {
+	if !strings.Contains(line, a.pal.bad(approvalYoloWord)) {
 		t.Fatalf("the open gate is not painted as one:\n%q", line)
 	}
 }

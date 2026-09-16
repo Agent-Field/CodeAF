@@ -645,8 +645,10 @@ goes through the ordinary shell-command rules, including prompts and denials.
 `codeaf chat --yolo` and `codeaf resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
 default becomes allow".
-A session launched with the flag draws the `YOLO` badge on the status line for
-as long as it runs, so that posture is never invisible.
+A session launched with the flag says `◇ YOLO` on the legend above the message
+box, in the warning hue, for as long as the gate is open — and `YOLO` on the
+status line while the welcome box or a task's page is up instead — so that
+posture is never invisible.
 
 It replaces **the default and nothing else**. If you wrote `bash:prompt`, you
 are still asked about bash, and your ordered shell command rules are untouched.
@@ -656,6 +658,46 @@ And the row cannot close a gate the flag opened. Cycling "ask before running" to
 on `allow` — so the badge stays up, because it reports the posture in force.
 
 `--yolo` cannot lift either of the two floors below.
+
+**You do not have to relaunch to get it.** The same posture is one keystroke
+inside a running conversation — see the next section — and `codeaf resume
+--yolo` outranks whatever that conversation last set, for that launch.
+
+## Turning YOLO on or off mid-conversation — stop asking me for this chat, run without asking from now on, the approvals chip, `alt+y`, `/approvals`
+
+"Stop asking me for this chat" is one keystroke, and so is asking again. Every
+conversation has its own posture on the gate, moved from inside it. The
+legend above the message box names it after the thinking rung — `◇ asks`,
+`◇ guardian`, `◇ YOLO` or `◇ refuses` — and three doors move it:
+
+- **`alt+y`** walks `asks → guardian → YOLO → asks`. It never lands on
+  `refuses`.
+- **a press on the cell** is the same step.
+- **`/approvals <word>`** sets one outright: `ask`, `guardian`, `yolo`, `deny`,
+  or `auto` to follow the settings rows again. `/yolo` is the same command.
+
+The change is **live** — the next tool call is decided under it — and
+**sticky**: it is written into this session's `meta.json` and is still in force
+after `/resume`. It changes **this conversation only**; every other conversation
+follows the "ask before running" and guardian rows on `/settings`' Safety tab.
+
+What each posture is, in the gate's terms:
+
+| posture | blanket answer | guardian |
+|---|---|---|
+| `ask` | `prompt` | stood down, whatever the row says |
+| `guardian` | `prompt` | standing in |
+| `yolo` | `allow` | — |
+| `deny` | `deny` | — |
+| `auto` | the rows as they stand | the row as it stands |
+
+Your named exceptions, your shell command rules and both floors below are the
+same at every posture: `yolo` here is exactly `--yolo`, built by the same code.
+
+Over `--host` the posture is set on the engine machine, whose gate it is, and
+the word on your legend is the one that machine resolved. An engine too old to
+have the door says so when the connection opens; the cell is then a reading of
+the far machine's row and every door answers: "what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings".
 
 ## The guardian: a model answering the easy ones for you
 

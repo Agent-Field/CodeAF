@@ -571,6 +571,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed |
+| `alt+y` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -1210,6 +1211,64 @@ changes — the cell takes a lit ground and its `⠿` goes cyan — so you can s
 without looking away from what you are typing, and then it goes quiet again. Walking it
 back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
+
+## The approvals chip above the message box — `alt+y`, `/approvals`, `/yolo`, turning YOLO on inside a chat, stop asking me for this conversation
+
+After the thinking rung, the legend names what this conversation runs **without asking**:
+
+```
+─ porting the parser · glm-5.3-flash · ⠿ high · ◇ asks · via deepinfra · main* ─── / commands ─
+› what changed in the relay this week
+```
+
+The cell is the permissions panel's own mark for "a whole tool" and one word, and it is
+there **at every posture** — a control you cannot see until you have used it is not a
+control. The word is what is in force, whichever setting decided it:
+
+| word | what it means |
+|---|---|
+| `asks` | every call the rules say to ask about is asked about |
+| `guardian` | a small model answers the plainly safe ones first; you get the rest |
+| `YOLO` | every tool runs without asking — the posture `--yolo` opens. Painted in the warning hue for as long as it is true |
+| `refuses` | every call the rules do not name is refused. Also painted as a warning |
+
+**`alt+y` walks it**: asks → guardian → YOLO → asks. Three stops, each more autonomy than
+the last, and **the wheel never lands on `refuses`** — a press past YOLO that refused every
+call would break the session you are in. It works with a sentence half typed and leaves
+your draft and caret where they were. **Pressing the cell walks it too**, one stop per
+press; it brightens under the pointer over exactly its own cells first.
+
+Why not `ctrl+y` or `shift+tab`: `ctrl+y` copies a path on home and in `/files`, and one
+chord means one thing on this surface; `shift+tab` walks backwards through the fields of
+every question card, and on some terminals arrives as a plain `tab`.
+
+**`/approvals` prints the stops** with what each one buys and the one in force marked, and
+**`/approvals <word>`** sets one outright: `ask` (or `prompt`), `guardian`, `yolo` (or
+`allow`), `deny` (or `refuse`), and `auto`, which hands the conversation back to whatever
+the settings rows say. `/yolo` is the same command. A word that is none of those changes
+nothing and prints them all.
+
+What it changes and what it does not:
+
+- It sets **this conversation's** posture, live — the very next tool call is decided under
+  it. It is sticky, kept in this session's own `meta.json`, so it is still there after you
+  close codeaf and `/resume`. `codeaf resume --yolo` outranks the saved word for that
+  launch.
+- It does **not** change other conversations. Their answer is the **"ask before running"**
+  row and the **guardian** row on `/settings`' Safety tab — `/approvals auto` is how this
+  conversation goes back to following them.
+- **Neither floor moves.** Dangerous shell commands and anything sent in your name are
+  asked about at every stop, `YOLO` included, exactly as under `--yolo`.
+- **It works on a `--host` conversation.** The posture is set on the engine machine, where
+  the gate is, and the word on your legend is the one that machine resolved. An engine
+  too old to have the door says so when the connection opens: the cell is then a reading
+  of the far machine's own row, and `alt+y`, the press and `/approvals` all answer:
+  *what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings*.
+
+The cell flashes for about two seconds after it changes and writes one line —
+*approvals · YOLO · every tool runs without asking · dangerous commands still ask* — and
+then settles. While the welcome box or a task's page is on screen there is no legend, and
+the status line carries the old `YOLO` badge instead, drawn only while the gate is open.
 
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
 

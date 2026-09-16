@@ -517,6 +517,12 @@ func (a *app) deckItems() []deckItem {
 				text += " " + spark
 			}
 		}
+		// THE GATE'S POSTURE IS NOT READ OFF THE ROW'S SEGMENT: that one is the
+		// badge, present only while the gate is open and the seam has no chip.
+		// This page says the posture at every posture, below.
+		if part.kind == segYolo {
+			continue
+		}
 		if int(part.kind) < len(deckSegWords) {
 			add(deckSegWords[part.kind], text, deckActNone)
 		}
@@ -533,6 +539,11 @@ func (a *app) deckItems() []deckItem {
 			add(compactsAtLabel, a.compactionRuleWord(), deckActNone)
 		}
 	}
+	// AND WHAT RUNS WITHOUT ASKING, AT EVERY POSTURE. The row says it only when
+	// the gate is open; this is a page a person asked for, and a row that went
+	// blank at `asks` would be the emptiness law applied to a fact somebody
+	// chose (approvalchip.go's [app.approvalWord]).
+	add(deckSegWords[segYolo], a.approvalWord(), deckActNone)
 	add("tasks", a.deckTaskWord(), deckActNone)
 	// phone lane: AND WHETHER ANYTHING IS KEEPING WATCH WITH NO WINDOW OPEN. It
 	// is the one fact here that is not a status-line segment at any width — the

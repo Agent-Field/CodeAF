@@ -995,6 +995,9 @@ type app struct {
 	// tray's chip (effortchip.go) records itself here too, so lighting a task's
 	// card is the same act as taking the emphasis off the chip.
 	effortLit effortMoved
+	// approvalLit is when the approvals chip last moved, for its own two-second
+	// emphasis (approvalchip.go). Zero is never.
+	approvalLit time.Time
 
 	state runState
 	model string
@@ -1147,9 +1150,12 @@ type app struct {
 	// existed.
 	tilde string
 	// approval is the tool gate's blanket posture — "prompt", "allow", "deny" —
-	// as the profile last said. It is on this surface for exactly one reason:
-	// "allow" means nothing will ever be asked, and that is the one posture a
-	// person must not be able to forget they are in (render.go's YOLO segment).
+	// as the profile last said, or as the launch handed it down. It is what the
+	// approvals chip falls back to on a session with no dial of its own — a
+	// hosted one, whose gate is the far machine's (approvalchip.go's
+	// [app.approvalPostureWord]) — because "allow" means nothing will ever be
+	// asked, and that is the one posture a person must not be able to forget
+	// they are in.
 	approval string
 	// mouse is whether the surface reports the mouse at all (config's ui.mouse
 	// row): on buys hover and click, off hands every drag back to the
@@ -1189,6 +1195,10 @@ type app struct {
 	// two cells do two different things, and hover.go's law is that what lights
 	// is what the press acts on.
 	seamEffortSpan hudSpan
+	// seamApprovalSpan is the approvals chip's own columns on that line, drawn
+	// after the rung and pressed to walk the gate's wheel one stop
+	// (approvalchip.go), a third span on the same terms as the second.
+	seamApprovalSpan hudSpan
 	// doors is every pressable segment of the status row, recorded as the row
 	// is laid out and cleared before it (foot.go).
 	doors []statusDoor
@@ -3899,6 +3909,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.legendEffortPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE APPROVALS CHIP AFTER IT IS THE SIXTH, on its own columns:
+			// pressing it walks the gate's wheel one stop (approvalchip.go).
+			if cmd, took := a.legendApprovalPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
 			// the right end of the room's pinned header with a hit box three rows
@@ -4044,6 +4059,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The thinking chip's change expiring on an idle frame: one repaint, so
 		// the emphasis comes down and the dial goes back to being furniture
 		// (effortchip.go). It is the message above read for the other flash.
+		a.touch()
+		return a, nil
+
+	case approvalFlashMsg:
+		// And the approvals chip's, on the same terms (approvalchip.go).
 		a.touch()
 		return a, nil
 
@@ -7003,6 +7023,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// outright. An unknown word shows the five and changes nothing, which is
 		// the shape every choice row on this surface refuses in.
 		return a.runEffort(rest)
+
+	case "approvals":
+		// What THIS conversation runs without asking (approvalchip.go). Bare it
+		// prints the postures with what each buys; a word after it sets that
+		// posture outright, through the path the chord and the press share.
+		return a.runApprovals(rest)
 
 	case "task":
 		return a.runTaskCommand(rest)

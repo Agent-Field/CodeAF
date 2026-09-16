@@ -932,7 +932,10 @@ nothing. Space is the separator — no pipe, no bracket, no rule. The groups, le
   now: the **tab strip** above the transcript names every open conversation, and
   `◦ 2 standing orders` is a line at the foot of the **task column** (see *The column on
   the right*).
-- **the posture** — `YOLO`, drawn only when the gate is open. Absence is the safe state.
+- **the posture** — `YOLO`, drawn only when the gate is open **and** the legend above the
+  box is not carrying the approvals chip: while the welcome box or a task's page is up.
+  In an open conversation the chip on the legend says the posture at every posture
+  (`◇ asks`, `◇ YOLO`…) and this row says nothing. Absence is the safe state here.
 
 Across the gap, at the right edge: the live rate `38 tok/s` while the answer is being
 thought or written (or the phase's own words while the turn is in one that is producing
@@ -947,10 +950,10 @@ with its clock — `idle`,
 | --- | --- |
 | `$0.27` or `⟲ saved …` | the **Spending** tab of `/settings` (`/budget` is the keyboard door) |
 | `66.8k/1.3M · 5%` or `compaction in …` | `/status`, one fact per line |
-| `YOLO` | `/permissions` |
 
 Jobs and watches are not a door — the column's `jobs` section is where they are read —
-and the rate, the connection and the state word are readings, not controls.
+and the rate, the connection, the state word and the `YOLO` badge are readings, not
+controls. The control for the gate is the `◇` cell on the legend (the keys page).
 
 While a task **room** is open the row's left grows the room chip, the room's model and the
 machine answering for it — `⠋ Ship the parser fix · task glm-5.2 · via friendli` — in
@@ -998,7 +1001,7 @@ and are listed here with the row they left:
 | — | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question. **Off the row since 2026-09-09** — the tab strip names them all — and on `/status` and the phone sheet | absent whenever only one is open; the `· N waiting` clause is absent when none is waiting |
 | 5 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
 | — | standing | `◦ 2 standing orders` | the active standing orders reaching this project; the mark moves while one is being acted on. **Off the row since 2026-09-09**: it is a line at the foot of the task column, still dim, still pressable, still opening `/standing` | absent when nothing stands here |
-| 6 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens. **A door onto `/permissions`** | empty in every other posture — absence is the safe state |
+| 6 | yolo | `YOLO` | the gate is open — this conversation's own posture is `yolo`, the `tools.approvalMode` row is `allow`, or the session was launched with `--yolo` — over `--host` it is the far machine's row, carried once when the connection opens. Drawn **only while the legend has no approvals chip**: the welcome box, or a task's page | empty in every other posture, and empty whenever the `◇` cell on the legend is saying the posture instead |
 | 7 | rate | `38 tok/s` | what the stream is producing **right now** — tokens over elapsed, measured on the live stream by the layer holding it — while the answer is being thought or written; or the phase's own words while the turn is in a phase that is producing nothing (`connecting · 1.2s`, `paced · retry in 6s`, `slow · trying coreweave…`). It is about **whichever work this window is a window onto**: the conversation out here, and the open room's task inside one | empty unless that rate is being measured this instant, for this window's own work: never the last answer's average, never the per-turn burn, never another task's, and never `0 tok/s` |
 | 8 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
 | 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |

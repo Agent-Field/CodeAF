@@ -209,6 +209,13 @@ type Meta struct {
 	// written to fix: a person set it, worked in it, closed the terminal, and
 	// came back to a conversation that had quietly forgotten.
 	Effort string `json:"effort,omitempty"`
+	// Approval is the posture this conversation set on its own tool gate —
+	// ask, guardian, allow, deny, or auto for "the settings rows decide"
+	// (approvalposture.go). Empty is "nobody moved it here", which is every
+	// session until somebody does, and it is here for the reason Effort is:
+	// a gate a person opened from inside a conversation must be open when they
+	// come back to it.
+	Approval string `json:"approval,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on

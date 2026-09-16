@@ -106,6 +106,8 @@ func TestTheSeamSaysViaWhenTheVendorServesItsOwnModel(t *testing.T) {
 	PostLaneNews(LaneNews{Model: flash, Lane: "DeepSeek", Role: lane.RoleTalk, At: now})
 
 	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash · via deepseek") {
+		// (An approvals chip between the two would be a dialled session; this
+		// one has no dial, so the rider follows the model directly.)
 		t.Fatalf("the vendor serving its own model took `via` off the seam:\n%q", seam)
 	}
 	// THE SHEET KEEPS THE OLD RULE, because the row above its `served` line is

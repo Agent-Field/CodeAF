@@ -534,6 +534,14 @@ const (
 	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
 	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
 
+	// The conversation's own posture on the tool gate (internal/session's
+	// approvalposture.go), the dial above one door over: the resolved posture
+	// rides [session.Facts] unasked for the frame, and these are the keystroke's
+	// doors (approval.go). The set answers the refusal as a sentence rather than
+	// a bool because the local door answers an error and the surface prints it.
+	MethodResolvedApproval = "ResolvedApproval" // nothing → string (the posture in force)
+	MethodSetApproval      = "SetApproval"      // string → string ("" took, else the refusal)
+
 	// MethodAnswerLaneOffer answers the one question the phase seam can raise:
 	// the machine a person PINNED has gone quiet, there is somewhere else to
 	// go, and a pin is asked rather than overridden ([provider] offer.go). The
@@ -1060,6 +1068,14 @@ type Welcome struct {
 	// nothing, and nothing on the screen offers to move a knob the far engine
 	// has never heard of.
 	Effort bool `json:"effort,omitempty"`
+
+	// Approval says this engine HAS A DIAL ON THE CONVERSATION'S OWN POSTURE ON
+	// THE TOOL GATE — that its agent answers [MethodResolvedApproval] and
+	// [MethodSetApproval] rather than refusing them (approval.go). It is
+	// carried for [Welcome.Effort]'s reason, and false is the safe reading for
+	// the same reason: the surface then draws the chip as a reading of
+	// [Welcome.ApprovalMode] and says the far machine's rules decide.
+	Approval bool `json:"approval,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather

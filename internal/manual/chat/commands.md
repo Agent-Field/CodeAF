@@ -201,6 +201,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
+| `/approvals` | `/yolo` | — | prints this conversation's approval postures — asks, guardian, YOLO, refuses — with the one in force marked; `alt+y` walks them |
+| `/approvals` | `/yolo` | `<posture>` | sets it outright: `ask`, `guardian`, `yolo`, `deny` or `auto` |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
@@ -1111,6 +1113,24 @@ one left alone may be let go of; that is not a refusal of the one you asked for.
 A task another window is running cannot be stopped from home: its `running` row says
 `another window` and offers no stop.
 
+## /approvals and /yolo — what this conversation runs without asking, YOLO from inside a chat
+
+`/approvals` (or `/yolo`) is the typed door onto the approvals chip on the legend above the
+message box. Bare, it prints four lines — `ask`, `guardian`, `yolo`, `deny` — each with what
+it buys, the one in force marked, and a last line naming `auto`. With a word after it, it
+sets that posture for **this conversation** straight away: `/approvals yolo` opens the gate,
+`/approvals ask` closes it, `/approvals guardian` puts the small model in front of you,
+`/approvals deny` refuses every unnamed call, `/approvals auto` hands the conversation back
+to the settings rows. `prompt`, `allow`, `refuse` and `off` are accepted spellings of the
+same five.
+
+The wheel — `alt+y`, or a press on the cell — walks `asks → guardian → YOLO` and never onto
+`deny`; the command is the only way to that one. The keys page covers the chip, and the
+permissions page covers what each posture means for the floors.
+
+Over `--host` the posture is set on the engine machine. An engine too old to have the door
+gets the answer that the far machine's rules decide, and nothing changes.
+
 ## /permissions — what runs without asking
 
 `/permissions` (or `/perms`) lists the answers you have banked, and gives you the way to
@@ -1153,7 +1173,7 @@ own approval rules, that project's row replaces yours wholesale at launch — so
 line here changes what you carry everywhere and nothing inside that repository.
 
 **Over `--host`, this page still reads this machine's saved rows, not the other machine's.**
-The badge on the chat is the far session's actual approval posture, but `/permissions` has
+The `◇` cell on the legend is the far session's actual approval posture, but `/permissions` has
 no way to list or remove the far profile's individual rules yet. The page does not print a
 host-specific warning in this build, so do not treat its rows as the rules governing the
 remote conversation.
