@@ -368,10 +368,9 @@ func TestTheCrewChooserOpensOnThePersistedFamily(t *testing.T) {
 		t.Fatalf("the chooser opened on a family other than the persisted one:\n%q", rows[2])
 	}
 	// THE SEGMENT DOES NOT CARRY THE FAMILY, and the frame-disk law is why
-	// (the family section in crew.go says it once): the chooser is the one
-	// surface that reads the row until config lands its memoised reader, so the
-	// segment keeps its exact old shape over an all profile, which is the
-	// non-regression the HUD was promised.
+	// (the family section in crew.go says it once): it reads the crew word and
+	// nothing else, so a profile on the all family keeps the same segment shape,
+	// which is the non-regression the HUD was promised.
 	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
 		t.Fatalf("the crew segment reads %q over an all profile", got)
 	}

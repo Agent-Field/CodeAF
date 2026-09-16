@@ -132,8 +132,7 @@ var crewModels = map[string]map[string]string{
 // there: a DIFFERENT VENDOR from the worker in every preset, and the reflex
 // and low columns still never vary. The ids are locked the way the open ones
 // were, off the catalog's own published scores against blended price, and
-// closed models live here and only here: the open table is the shipped
-// default and stays byte-for-byte what it was.
+// closed models live here and only here.
 //
 // TWO COLUMNS SPEND DIFFERENTLY HERE. The worker column is [crewModels]'s dial
 // but moves once, not per preset: gpt-5.6-sol holds frugal and balanced, and
@@ -207,18 +206,38 @@ func CrewModelsForSource(source, preset string) (map[string]string, bool) {
 	return out, true
 }
 
-// crewLines is the one line each preset says about itself. It is what /crew
-// prints beside each option and what the settings chooser shows under it — the
-// same words in both places, because they are one sentence about one thing.
-var crewLines = map[string]string{
-	CrewFrugal:   "deepseek works, glm-5.3 thinks · pennies a day",
-	CrewBalanced: "glm-flash works, kimi-k3 checks and thinks",
-	CrewMax:      "glm-5.3 works, kimi-k3 thinks and checks",
+// crewLines is the one line each preset says about itself, IN THE FAMILY IT
+// DRAWS FROM. It is what /crew prints beside each option and what the settings
+// chooser shows under it, so it must name the models the preset actually picks
+// in the family on screen: a line naming open models above frontier ids is the
+// contradiction the chooser exists to prevent.
+var crewLines = map[string]map[string]string{
+	CrewSourceOpen: {
+		CrewFrugal:   "deepseek works, glm-5.3 thinks · pennies a day",
+		CrewBalanced: "glm-flash works, kimi-k3 checks and thinks",
+		CrewMax:      "glm-5.3 works, kimi-k3 thinks and checks",
+	},
+	CrewSourceAll: {
+		CrewFrugal:   "gpt-5.6-sol works, gemini-flash checks, opus thinks",
+		CrewBalanced: "gpt-5.6-sol works, opus checks, fable thinks",
+		CrewMax:      "fable works, astra checks and thinks",
+	},
 }
 
-// CrewLine is one preset's own line, empty for a word that is not a preset.
+// CrewLine is one preset's own line in the OPEN family, empty for a word that is
+// not a preset. The family-aware spelling is [CrewLineFor].
 func CrewLine(preset string) string {
-	return crewLines[strings.ToLower(strings.TrimSpace(preset))]
+	return CrewLineFor(CrewSourceOpen, preset)
+}
+
+// CrewLineFor is one preset's own line in one family, empty for a word that is
+// not a preset or a family this build does not know (which reads as open).
+func CrewLineFor(source, preset string) string {
+	source = strings.ToLower(strings.TrimSpace(source))
+	if _, known := crewLines[source]; !known {
+		source = CrewSourceOpen
+	}
+	return crewLines[source][strings.ToLower(strings.TrimSpace(preset))]
 }
 
 // CrewModels is the five models one preset would set in the OPEN family, by
@@ -307,10 +326,15 @@ func writeCrew(profileDir, raw string) error {
 // family nothing reads.
 func SetCrewSource(profileDir, source string) error {
 	source = strings.ToLower(strings.TrimSpace(source))
-	if source != CrewSourceOpen && source != CrewSourceAll {
-		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
+	// The accepted set is [CrewSources], spelled once: a family added to that slice
+	// is accepted here and by the settings row's choice widget at the same time,
+	// so the command and the panel can never disagree about what is a family.
+	for _, known := range CrewSources {
+		if source == known {
+			return writeProfileValue(profileDir, KeyCrewSource, source)
+		}
 	}
-	return writeProfileValue(profileDir, KeyCrewSource, source)
+	return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
 }
 
 // CrewSummary is the one line a crew change confirms itself with:
@@ -330,7 +354,7 @@ func CrewSummary(profileDir string) string {
 
 // CrewClasses is the three class names alone:
 //
-//	brain glm-5.3 · hands glm-5.3-flash · checks qwen3.8-27b
+//	brain kimi-k3 · hands glm-5.3-flash · checks kimi-k3
 //
 // It is the tail of [CrewSummary] lifted out because a second surface prints the
 // crew now — /status, where the word already has a label of its own and "crew →"
