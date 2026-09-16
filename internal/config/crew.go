@@ -128,13 +128,22 @@ var crewModels = map[string]map[string]string{
 
 // crewAllModels is the same three presets answered from the whole catalog
 // rather than its open-weight shelf, which is what the `all` family of
-// [KeyCrewSource] draws from. The shape is [crewModels]'s and the laws are its
-// laws: the worker column is still the dial, the careful column is still a
-// DIFFERENT VENDOR from the worker in every preset, and the reflex and low
-// columns still never vary. The ids are locked the way the open ones were, off
-// the catalog's own published scores against blended price, and closed models
-// live here and only here: the open table is the shipped default and stays
-// byte-for-byte what it was.
+// [KeyCrewSource] draws from. The careful column is the same law here as
+// there: a DIFFERENT VENDOR from the worker in every preset, and the reflex
+// and low columns still never vary. The ids are locked the way the open ones
+// were, off the catalog's own published scores against blended price, and
+// closed models live here and only here: the open table is the shipped
+// default and stays byte-for-byte what it was.
+//
+// TWO COLUMNS SPEND DIFFERENTLY HERE. The worker column is [crewModels]'s dial
+// but moves once, not per preset: gpt-5.6-sol holds frugal and balanced, and
+// only max buys claude-fable-5.1, because on the catalog the coding ceiling is
+// the expensive step and the two steps below it are the same model. What
+// frugal-to-balanced buys here is the careful seat (gemini-3.8-flash to
+// claude-opus-5) and a smarter mastermind, not a dearer worker. And max's
+// mastermind sits on the worker's own model on purpose: fable-5.1 is the
+// catalog's ceiling, so there is no better planner to buy above it and the top
+// seat adds generation behavior, not a bigger model.
 var crewAllModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "google/gemini-2.5-flash",
@@ -180,7 +189,7 @@ func CrewSourceAt(profileDir string) string {
 			return CrewSourceAll
 		}
 	}
-	return CrewSourceOpen
+	return DefaultCrewSource
 }
 
 // CrewModelsForSource is the five models one preset would set under one
