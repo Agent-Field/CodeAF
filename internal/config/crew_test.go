@@ -288,14 +288,23 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 	// THE LINES ARE PART OF THE TABLE, and they are the words a person reads while
 	// deciding to spend frontier money: a line naming a model the preset does not
 	// pick is the contradiction the chooser exists to prevent.
-	wantLines := map[string]string{
-		CrewFrugal:   "gpt-5.6-sol works, gemini-flash checks, opus thinks",
-		CrewBalanced: "gpt-5.6-sol works, opus checks, fable thinks",
-		CrewMax:      "fable works and thinks, astra checks",
+	wantLines := map[string]map[string]string{
+		CrewSourceOpen: {
+			CrewFrugal:   "deepseek works, glm-5.3 thinks · pennies a day",
+			CrewBalanced: "glm-flash works, kimi-k3 checks and thinks",
+			CrewMax:      "glm-5.3 works, kimi-k3 thinks and checks",
+		},
+		CrewSourceAll: {
+			CrewFrugal:   "gpt-5.6-sol works, gemini-flash checks, opus thinks",
+			CrewBalanced: "gpt-5.6-sol works, opus checks, fable thinks",
+			CrewMax:      "fable works and thinks, astra checks",
+		},
 	}
-	for preset, line := range wantLines {
-		if got := CrewLineFor(CrewSourceAll, preset); got != line {
-			t.Errorf("the all family's %s line is %q, want %q", preset, got, line)
+	for family, lines := range wantLines {
+		for preset, line := range lines {
+			if got := CrewLineFor(family, preset); got != line {
+				t.Errorf("the %s family's %s line is %q, want %q", family, preset, got, line)
+			}
 		}
 	}
 }
