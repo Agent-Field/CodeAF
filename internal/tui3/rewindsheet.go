@@ -718,7 +718,10 @@ func (a *app) rewindSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.rewSheet.query.deleteBackward()
 		a.rewindSheetTyped()
 	case "ctrl+u":
-		a.rewSheet.query.reset()
+		a.rewSheet.query.killToStart()
+		a.rewindSheetTyped()
+	case "ctrl+k":
+		a.rewSheet.query.killToEnd()
 		a.rewindSheetTyped()
 	case "ctrl+w":
 		a.rewSheet.query.deleteWord()

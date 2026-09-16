@@ -600,7 +600,7 @@ var settingUI = map[string]settingMeta{
 	config.KeyQuickSwitch: {
 		tab: tabDisplay, label: "quick switch", widget: widgetToggle,
 		about: "ctrl+tab switches on the press where the terminal can send it. " +
-			"Off, it waits for enter. Ctrl+k always opens the list and waits for your choice.",
+			"Off, it waits for enter. alt+k always opens the list and waits for your choice.",
 	},
 	config.KeyHints: {
 		tab: tabDisplay, label: "hints", widget: widgetToggle,
@@ -1942,7 +1942,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		s.query.deleteBackward()
 		s.build()
 	case "ctrl+u":
-		s.query.reset()
+		s.query.killToStart()
+		s.build()
+	case "ctrl+k":
+		s.query.killToEnd()
 		s.build()
 	case "ctrl+w":
 		s.query.deleteWord()
@@ -2239,6 +2242,8 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 	// filterable overlay (input.go, palette.go's [listNavigate]).
 	case "ctrl+u", "super+backspace":
 		edit.box.killToStart()
+	case "ctrl+k":
+		edit.box.killToEnd()
 	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		edit.box.deleteWord()
 	case "left", "ctrl+b":

@@ -11,8 +11,8 @@ import (
 // THE DEFECT: "option left right and cmd and clicking does not seem to work".
 //
 // The terminal was never the problem. iTerm2's Natural Text Editing mappings —
-// which the reporter's only profile carries — send `esc b` for ⌥←, `esc f` for
-// ⌥→, the byte 0x01 for ⌘← and 0x05 for ⌘→, and the decoder hands those to this
+// which the reporter's only profile carries — send `esc b` for Option+←, `esc f` for
+// Option+→, the byte 0x01 for ⌘← and 0x05 for ⌘→, and the decoder hands those to this
 // surface as `alt+b`, `alt+f`, `ctrl+a` and `ctrl+e`. The message box has bound
 // all four for as long as it has existed. What had none of them was every OTHER
 // box on the program — home's, the errand pane's, the settings and task and
@@ -101,7 +101,7 @@ func TestTheWordAndLineJumpsAnswerToEveryNameATerminalSendsThemBy(t *testing.T) 
 
 // THE WORD KILL ANSWERS TO THE TWO NAMES A HAND ACTUALLY PRESSES. `ctrl+w` stays
 // with each box because each has its own rebuild to do after it; what was
-// missing everywhere but the message box was ⌥⌫ and ctrl+⌫.
+// missing everywhere but the message box was Option+⌫ and ctrl+⌫.
 func TestTheWordKillAnswersToTheNamesAHandPresses(t *testing.T) {
 	for _, key := range []string{"alt+backspace", "ctrl+backspace"} {
 		e := &editor{}
@@ -172,7 +172,7 @@ func TestTheMacJumpsMoveTheCaretInHomesBox(t *testing.T) {
 	if got := a.home.box.String()[:a.home.box.cursor]; got != "fix" {
 		t.Fatalf("option+→ on home left %q behind the caret", got)
 	}
-	a.homeKey(macKey('\x7f', tea.ModAlt)) // ⌥⌫, which iTerm2 sends as esc-del
+	a.homeKey(macKey('\x7f', tea.ModAlt)) // Option+⌫, which iTerm2 sends as esc-del
 	if got := a.home.box.String(); got != " the flaky test" {
 		t.Fatalf("option+backspace on home left %q", got)
 	}
@@ -292,8 +292,8 @@ func TestTheSharedListKeyMapCarriesTheWordAndLineJumps(t *testing.T) {
 }
 
 // A WORD JUMP IS NOT PROOF THAT THE OPTION KEY IS META. iTerm2's Natural Text
-// Editing preset sends `esc b` and `esc f` for ⌥←/⌥→ on a profile where Option
-// is still composing accents, so those two chords arrive while ⌥1 goes on typing
+// Editing preset sends `esc b` and `esc f` for Option+←/Option+→ on a profile where Option
+// is still composing accents, so those two chords arrive while Option+1 goes on typing
 // `¡`. Letting them retire the note settled the question wrongly on the
 // commonest Mac profile there is: the first word jump of the session silenced
 // the one line that would have explained why the places do not answer.
@@ -311,7 +311,7 @@ func TestAWordJumpDoesNotSettleWhetherTheOptionKeyIsMeta(t *testing.T) {
 	// composed.
 	a.chordWatch(tea.KeyPressMsg{Code: '£', Text: "£"})
 	if !a.chordLost {
-		t.Fatal("⌥3 typing £ on a place drew no note")
+		t.Fatal("Option+3 typing £ on a place drew no note")
 	}
 	if a.chordNote(60) == "" {
 		t.Fatal("the note armed and drew nothing")

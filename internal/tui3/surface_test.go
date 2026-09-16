@@ -835,7 +835,7 @@ func TestHelpPrintsTheAliasesFromTheSameTable(t *testing.T) {
 	// One source, two renderings: every row's tail is the same string the list
 	// draws from ([command.note]).
 	for _, c := range commands {
-		if !strings.Contains(text, c.note()) {
+		if !strings.Contains(text, c.note(chordSpelling{meta: chordAltWord})) {
 			t.Fatalf("help lost the tail of /%s:\n%s", c.name, text)
 		}
 	}

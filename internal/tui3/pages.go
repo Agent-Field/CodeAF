@@ -1744,7 +1744,7 @@ func (a *app) placeRestWord() string {
 // other place says the router's own line.
 //
 // WHAT THIS TERMINAL ACTUALLY DRAWS IS [app.placeHint], one call above it: on a
-// Mac the modifier is called `⌥` rather than `alt+`, and chords.go is the single
+// Mac the modifier is called `opt+` rather than `alt+`, and chords.go is the single
 // door that substitutes it, so a sentence built here is the same sentence the
 // manual quotes wherever a lane greps for it.
 func (a *app) placeHintSaid() string {
