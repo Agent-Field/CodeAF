@@ -32,6 +32,14 @@ review, measured at card heights 8 through 13). A card too short for the blanks
 gives them up, and one too short for the word gives that up too rather than give
 up the rows the key was pressed for.
 
+A LIMIT THAT REMAINS, KNOWINGLY: on a terminal of about twenty rows or fewer the
+card holds three rows, and where all three are tabs `→ show closed` changes only
+the foot — the closed rows are below the scroll line rather than missing, and `↓`
+reaches them. Moving the cursor onto the first closed row would hide it, at the
+cost of `enter` right after `→` opening a conversation the person had not
+selected; the owner looked at both and kept the cursor where it is. `keys.md`
+says so on the page.
+
 Not changed: the `✕` itself. That a person presses `✕` to close a tab and reads
 `✕` as a refusal one line below is a real collision in the vocabulary, but the
 mark is `tokens.GlyphFailed` through the one door every surface uses, and moving

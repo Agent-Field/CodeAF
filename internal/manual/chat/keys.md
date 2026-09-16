@@ -1809,7 +1809,12 @@ open. It is there only while there is something behind the fold.
 word has a tab on the row; everything below it does not. It is spaced the way the head's
 `open` is — a blank line above it and a blank below, so it reads as a heading over the rows
 under it. On a card too short for that it gives up the blanks, then the word itself: the
-rows you asked for are what a short card spends its lines on. It is not a row: the cursor
+rows you asked for are what a short card spends its lines on.
+
+**On a terminal of about twenty rows or fewer, `→` can change only the foot.** The card
+gets a handful of lines there, and if every one of them is already a tab then the closed
+rows are below the scroll line rather than missing — the head's `3 of 7` still counts them,
+and `↓` walks down to them. A taller frame draws them straight away. It is not a row: the cursor
 skips it and a click on it does nothing. It is not drawn at all while the list is only
 tabs.
 
