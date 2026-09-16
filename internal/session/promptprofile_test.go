@@ -243,7 +243,7 @@ func TestALeanPageDropsExactlyTheSectionsTheTableNames(t *testing.T) {
 	// A SECTION NOBODY RULED ON IS KEPT. A law written into the page tomorrow
 	// reaches both arms until somebody decides otherwise; dropping by default is
 	// how the lean arm would quietly lose everything written after this file.
-	for _, kept := range []string{"# The answer", "# Words or work", "# When corrected", "# Messages from codeaf", "# Tool Policy", "# Workflow", "# Critical", "# Session facts"} {
+	for _, kept := range []string{"# The answer", "# Answer or change", "# When corrected", "# Messages from codeaf", "# Tool Policy", "# Workflow", "# Critical", "# Session facts"} {
 		if !strings.Contains(lean, "\n"+kept+"\n") {
 			t.Errorf("a lean page dropped %q, which no row rules on", kept)
 		}

@@ -429,17 +429,18 @@ const fixedPrefixTarget = 48_000
 // just bought.
 //
 // 2026-09-16, #1065 round one. `# Tone` and `# Delivery` became `# The answer`,
-// `# Words or work`, `# When corrected` and `# Messages from codeaf`, in the
-// wording the issue fixed, and that paid 1,779 bytes on both arms (fixed 53,276 to
-// 55,055, lean 45,051 to 46,830). Fifteen of them came out of room both arms
-// already had, so both waivers rise by 1,764 and now sit exactly on the
-// measurement, on purpose and with this name on it: the issue that
+// `# Answer or change`, `# When corrected` and `# Messages from codeaf`, in the
+// wording the issue fixed and with the five rules the old two carried restored
+// inside them, and that paid 2,035 bytes on both arms (fixed 53,276 to 55,311,
+// lean 45,051 to 47,086). Fifteen of them came out of room both arms already had,
+// so both waivers rise by 2,020 and now sit exactly on the measurement, on
+// purpose and with this name on it: the issue that
 // bought the sections is the one that puts the page's overall length to its
 // second round, and cutting other laws in the first would be that round done
 // early and unreviewed.
 const (
-	fixedPrefixWaiver = 7_055
-	leanPrefixWaiver  = 15_330
+	fixedPrefixWaiver = 7_311
+	leanPrefixWaiver  = 15_586
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
