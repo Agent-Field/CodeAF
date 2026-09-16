@@ -338,22 +338,15 @@ func (a *app) hopAvailable() bool {
 // router and so does not pass through either of their own arbitration.
 func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
-// hopOpen builds the reading and raises the card.
-// hopOpenAll is [app.hopOpen] with the fold already open: every conversation
-// this machine has, not only the ones this window is holding. It is what the
-// `Chats ▾` control at the right end of the tab row presses (chattabs.go) —
-// the label says every chat, so a list that showed three of somebody's twelve
-// would be the control lying about what it opens.
-func (a *app) hopOpenAll() {
-	rows, rest := a.hopReading(true)
-	if len(rows) < 2 && rest == 0 {
-		return
-	}
-	a.dropHover()
-	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
-	a.touch()
-}
+// THERE USED TO BE A SECOND DOOR HERE, `hopOpenAll`: the card raised with its
+// fold already open, which is what the `Chats ▾` control at the right end of the
+// tab row pressed. That control is deleted (chattabs.go) and this went with it,
+// because the state is not gone — `→` on the card opens the fold
+// ([app.hopSpread], [hopFoldKey]) and always has. A second constructor for a
+// state one keystroke away, with no caller left, is a second thing to keep in
+// step with the first for nothing.
 
+// hopOpen builds the reading and raises the card.
 func (a *app) hopOpen() {
 	// A shared engine handle can only have one open conversation. Show its
 	// other saved chats immediately; an open-only list would offer no choice.
@@ -1467,7 +1460,7 @@ func (a *app) hopFadeRail(line string) string {
 // hopMapWords names the switcher on a place's map — the one line on a place
 // whose job is to say what the keys are (pages.go's [app.placeHintSaid] states
 // why it is that line and not the resting foot).
-const hopMapWords = hopOpenKey + " switch conversation"
+const hopMapWords = hopOpenKey + " chats"
 
 // ── how many there are, asked off the loop ──────────────────────────────────
 

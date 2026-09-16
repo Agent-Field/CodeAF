@@ -1679,7 +1679,7 @@ It **does nothing at all** when there is nowhere to go: one conversation open, o
 terminal has been in before. A key that cannot act says so by not being advertised — and
 when it can, the legend line above the box says `space space home · tab last · / commands`.
 
-With **three or more** open, that slot says `alt+k switch` instead, and `alt+k` opens the
+With **three or more** open, that slot says `alt+k chats` instead, and `alt+k` opens the
 card of all of them — see *Switch between open conversations*. `tab` still works and still
 goes to the last one.
 
@@ -1757,8 +1757,9 @@ has that one row, and the fold has the rest of the machine in it.
 
 **The tabs above a conversation are the same journey with a mouse.** The conversations
 this window has been in are drawn there, the one you are in bright and underlined;
-clicking one switches to it, and the `Chats ▾` control (or `Chats +3 ▾` where the row is
-too narrow for every tab) at its right end opens this card with its fold already open. The
+clicking one switches to it. **The `Chats ▾` control that used to sit at the row's right
+end is deleted** — the legend under the box names this key instead — and what is left there
+is a dim `+3` counting the tabs the row could not spell, which does nothing when pressed. The
 `×` on a tab dismisses its view, and `ctrl+w` is that `×` on
 the tab you are in. See *Conversation tabs* and
 *Closing a tab* on the screen page.
@@ -1787,8 +1788,8 @@ The cursor opens on the **first row you can actually go to**, never on `you are 
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
 else — and says so by not being there: no card, and the legend above the box does not name
-it. Everywhere else the legend reads `space space home · tab last · alt+k switch ·
-/ commands` — `⌥k switch` on a Mac — dropping clauses from the left as the frame narrows.
+it. Everywhere else the legend reads `space space home · tab last · alt+k chats ·
+/ commands` — `⌥k chats` on a Mac — dropping clauses from the left as the frame narrows.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -1901,7 +1902,7 @@ before this one, in one key, with no card. Use `tab` to flick between two and `a
 there are more.
 
 The legend above the box names **every door that would act**: `tab last` appears once a
-second conversation is open, `alt+k switch` whenever there is anywhere at all to go. On a
+second conversation is open, `alt+k chats` whenever there is anywhere at all to go. On a
 place the switcher is named on the map (`alt+.`) instead, because a place's foot is four
 fixed clauses the design sets word for word.
 
