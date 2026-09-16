@@ -2759,7 +2759,14 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		h.build()
 		return nil
 	case "ctrl+u":
-		h.box.reset()
+		// KILL TO THE START OF THE LINE, WHICH IS WHAT THE CHORD MEANS EVERYWHERE
+		// ELSE. This box emptied itself outright until the `ctrl+k` beside it
+		// landed and made the asymmetry visible: `abcdef`, three lefts, `ctrl+u`
+		// threw away `def` as well, while `ctrl+k` on the same caret correctly
+		// took only the tail. One gesture cannot mean "to the start" in the
+		// composer and "all of it" here — a person cannot hold two readings of
+		// one key, and the one they have is readline's.
+		h.box.killToStart()
 		h.build()
 		return nil
 	case "ctrl+k":
