@@ -283,8 +283,8 @@ var leanPageSections = []leanSection{{
 }, {
 	heading: "Messages from codeaf",
 	keeps:   true,
-	why: "THE ONE PLACE THE PAGE SAYS WHO WRITES A BRACKETED MESSAGE, and it is not the " +
-		"section below. Each continuation carries its own instruction, but none of them can " +
+	why: "THE ONE PLACE THE PAGE IDENTIFIES SESSION-AUTHORED BRACKETED MESSAGES, and it is not the " +
+		"section below. Each live nudge carries its own instruction, but none of them can " +
 		"say that the person never sees it: a model that answered `[carry on]` as though the " +
 		"person had typed it left an argument with the completion check standing as the " +
 		"answer (#1065), and a small model is the likeliest to do it.",

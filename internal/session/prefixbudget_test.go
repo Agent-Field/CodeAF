@@ -438,9 +438,17 @@ const fixedPrefixTarget = 48_000
 // bought the sections is the one that puts the page's overall length to its
 // second round, and cutting other laws in the first would be that round done
 // early and unreviewed.
+//
+// 2026-09-16, #1067 review. The provenance list had to grow because compaction
+// and standing news also write user-role tags into the conversation: `[folded
+// …]`, `[context compacted]` and `[something you set up fired]`. It also stopped
+// calling the tool-only `[held]` a user message or declaring every unlisted tag
+// the person's. Tightening the surrounding sentence paid for that truth and
+// one byte more: fixed is 55,310 and lean is 47,085, so both waivers shrink by
+// one and again sit exactly on the measurement.
 const (
-	fixedPrefixWaiver = 7_311
-	leanPrefixWaiver  = 15_586
+	fixedPrefixWaiver = 7_310
+	leanPrefixWaiver  = 15_585
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
