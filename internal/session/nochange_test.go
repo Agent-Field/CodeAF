@@ -117,7 +117,9 @@ func TestACarryOnAnsweredNoChangeEndsItAndKeepsTheAnswer(t *testing.T) {
 			return textResponse(table), nil
 		}
 	}
-	agent := checkpointAgent(t, &scriptedCompleter{steps: steps})
+	completer := &scriptedCompleter{steps: steps}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.Memory = openTestBrain(t) })
+	learned := observeMemoryExtraction(completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
 	events, err := agent.Submit(context.Background(), "compare the models per seat in a table; do not change any files")
@@ -156,6 +158,14 @@ func TestACarryOnAnsweredNoChangeEndsItAndKeepsTheAnswer(t *testing.T) {
 	}
 	if last != table {
 		t.Errorf("the answer left standing is not the table:\n%s", last)
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	exchange := learnedExchange(t, learned)
+	if !strings.Contains(exchange, "ASSISTANT:\n| seat | model | why |") ||
+		!strings.Contains(exchange, "| seat 01 |") || strings.Contains(exchange, "ASSISTANT:\n"+NoChangeReply) {
+		t.Errorf("the memory reflex did not receive the answer before the withdrawn token:\n%s", exchange)
 	}
 }
 
@@ -220,7 +230,9 @@ func TestNoChangeAfterCallsMadeForTheNoteIsReadAgain(t *testing.T) {
 			return textResponse(perSeatTable()), nil
 		}
 	}
-	agent := checkpointAgent(t, &scriptedCompleter{steps: steps})
+	completer := &scriptedCompleter{steps: steps}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.Memory = openTestBrain(t) })
+	learned := observeMemoryExtraction(completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
 	events, err := agent.Submit(context.Background(), "compare the models per seat in a table")
@@ -230,6 +242,43 @@ func TestNoChangeAfterCallsMadeForTheNoteIsReadAgain(t *testing.T) {
 	collect(t, events)
 	if got := remainsAsks.Load(); got != 2 {
 		t.Errorf("the reader was spent %d times, want twice: a token after calls must not end the turn unread", got)
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if exchange := learnedExchange(t, learned); !strings.Contains(exchange, "ASSISTANT:\n"+NoChangeReply) {
+		t.Errorf("the memory reflex was not handed the non-withdrawn token reply:\n%s", exchange)
+	}
+}
+
+// observeMemoryExtraction reads the existing reflex seam without adding a
+// production hook. The checkpoint fixture already routes concurrent readers
+// through scriptedCompleter.aside; this wraps that route so the post-turn
+// extractor can answer without consuming one of the conversation's steps.
+func observeMemoryExtraction(completer *scriptedCompleter) <-chan string {
+	learned := make(chan string, 1)
+	prior := completer.aside
+	completer.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if len(messages) > 1 && strings.Contains(messageText(messages[0]), "worth remembering after this session ends") {
+			learned <- messageText(messages[1])
+			return textResponse(`{"mem":0}`), true
+		}
+		if prior != nil {
+			return prior(messages)
+		}
+		return nil, false
+	}
+	return learned
+}
+
+func learnedExchange(t *testing.T, learned <-chan string) string {
+	t.Helper()
+	select {
+	case exchange := <-learned:
+		return exchange
+	default:
+		t.Fatal("the memory reflex never read the exchange")
+		return ""
 	}
 }
 

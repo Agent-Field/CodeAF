@@ -1143,12 +1143,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// [Agent.applyRouteJudge] below is the only thing with an effect in it
 			// (route_judge.go). A reading that starts work from inside its own
 			// goroutine is this mechanism used in name and broken in fact.
-			// A REPLY THAT IS ONLY [NoChangeReply] IS NO ANSWER TO JUDGE OR LEARN FROM.
-			// It withdrew itself in favour of the answer before it (checkpoint.go), so
-			// the judge is not asked whether a token should have been work, and the
-			// memory reflex below reads the answer the person was left with.
+			// A REPLY THAT ANSWERS THE READER'S NOTE WITH [NoChangeReply] IS NO ANSWER
+			// TO JUDGE OR LEARN FROM. The transcript decides whether the token really
+			// answered that note; elsewhere it is an ordinary reply, even though every
+			// surface still leaves a reply containing only the token undrawn.
 			answer := response.Text()
-			withdrawn := IsNoChangeReply(answer)
+			withdrawn := IsNoChangeReply(answer) && answeredNoteUnchanged(a.snapshot())
 			if withdrawn {
 				answer = checkpointLastSaid(a.snapshot())
 			}

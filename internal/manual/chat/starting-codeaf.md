@@ -516,10 +516,11 @@ things:
   line, so it has to carry the whole deliverable again.
 - **The note is wrong.** The model replies with exactly `[no change]` and nothing else.
   That ends the reply. The check is not asked again, the same note is not sent again,
-  and `[no change]` is never drawn as the answer: the answer it gave before the note
-  stays in view, in the chat and when the conversation is opened again. It counts only
-  as the model's very next reply to the note. After tool calls, after your own message
-  typed in between, or with any other words beside it, the reply is checked again as usual.
+  and the answer it gave before the note stays in view, in the chat and when the
+  conversation is opened again. It counts only as the model's very next reply to the
+  note. After tool calls, after your own message typed in between, or with any other
+  words beside it, the reply is checked again as usual. A reply that is only
+  `[no change]` is never drawn, whether or not it counted.
   Headless `--once` output is printed as it streams, so if a check runs there the token
   can appear in it.
 
