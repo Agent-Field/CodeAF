@@ -19,11 +19,11 @@ make census TOP=40 DAYS=7 MIN=10 CHAINS=20   # widen what it prints
 
 It is pure Go with no dependencies, and it never writes to the log it reads.
 
-## Nightly, on the Spark
+## Nightly, on the bench host
 
 The measurement is the point: five waves of recovery work each move a number in
 that table, and without a run that happens without anybody asking, every one of
-them is an argument about anecdotes. So the Spark syncs the laptop's log and
+them is an argument about anecdotes. So the bench host syncs the work machine's log and
 runs the same target once a night, keeping one file per day:
 
 ```sh

@@ -233,7 +233,7 @@ func TestATaskThatWorkedQuietlyDoesNotGoInCircles(t *testing.T) {
 	// all: the tree moved on every one of them, which resets the silent ladder
 	// and answers the "read nothing new" rule in the same reading.
 	for _, note := range []string{"[silent]", "[stuck]"} {
-		if completer.childSaw(note) {
+		if completer.childWasHanded(note) {
 			t.Fatalf("a quiet landing was handed a %s note", note)
 		}
 	}

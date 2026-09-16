@@ -183,7 +183,7 @@ report, not a line to add back — the ledger does not return.
 
 It is a bug report, and it never goes on the ledger above. Reproduce it under
 load — a focused `-count=50` at `GOMAXPROCS=2` with a few `yes > /dev/null`
-beside it, **on Spark and never on the laptop**, since the point is to starve
+beside it, **on the bench host and never on a work machine**, since the point is to starve
 the machine — and fix the CAUSE, which is almost always that the test measured
 the SCHEDULER and called it the road:
 

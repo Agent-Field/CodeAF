@@ -4177,6 +4177,15 @@ const legacyCheckpointCarryOnLead = "[carry on] You stopped, but what was asked 
 	"Somebody reading the work against the request says this is what is left. " +
 	"Carry on with it, and do not summarise what you have already done:\n"
 
+// explainingCheckpointCarryOnLead is the continuation prefix journals wrote
+// before [NoChangeReply] existed, when a model that found the note mistaken was
+// told to explain itself (#1065). Its complete prefix is matched for the same
+// reason as [legacyCheckpointCarryOnLead]'s.
+const explainingCheckpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
+	"Check it against the actual current work and the person's request before changing anything. " +
+	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
+	"explain the evidence briefly, and finish; do not invent a change to satisfy the observation.\n"
+
 // entryRows is how many rows the shaping above makes of ONE message: none at
 // all for system messages and private continuation context, and otherwise the
 // message's own row plus one for every tool call riding it. It is the rule the loop appends by, written
@@ -4197,9 +4206,16 @@ func entryRows(msg ai.Message) int {
 		// The continuation's full reserved lead identifies older journals too:
 		// they wrote it as an unmarked user message even though nobody typed it.
 		// Keep the model's record intact; only its display projection omits it.
-		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) || strings.HasPrefix(text, legacyCheckpointCarryOnLead) {
+		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) ||
+			strings.HasPrefix(text, explainingCheckpointCarryOnLead) || strings.HasPrefix(text, legacyCheckpointCarryOnLead) {
 			return 0
 		}
+	}
+	// A CARRY-ON ANSWERED [NoChangeReply] WITHDREW ITSELF AS THE ANSWER. The model
+	// needs the token in its record; a person reading the history needs the
+	// settled answer before it, which is what a missing row leaves standing.
+	if msg.Role == "assistant" && len(msg.ToolCalls) == 0 && IsNoChangeReply(messageContentText(msg)) {
+		return 0
 	}
 	return 1 + len(msg.ToolCalls)
 }
