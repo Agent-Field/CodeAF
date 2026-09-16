@@ -2,37 +2,46 @@
 
 ## How do I install or update codeaf to the latest version — the curl line, dev, staging, rc and stable
 
-Build from source needs nothing published: clone the repository, run `make build`,
-then run `bin/codeaf` from the checkout. While the repository is private, both the
-clone and the raw installer need repository access and the raw address answers 404
-to anyone who is not signed in. Once it is public and `scripts/install.sh` is on
-`main`, this road works:
+The install line is one curl, the same one the README prints:
+
+```sh
+curl -fsSL https://agentfield.ai/get/codeaf | bash
+```
+
+`https://agentfield.ai/get/codeaf` serves `scripts/install.sh` from the `main` branch of
+the public repository, byte for byte. The script under it can be run directly:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash
 ```
 
+Pipe it to `bash`, not `sh`: the script uses `set -o pipefail` and `[[ ]]`, and `sh` is
+dash on Debian and Ubuntu, which rejects both.
+
 A push to `dev` publishes a `dev-*` build, a push to `staging` publishes a
 `staging-*` build, and a push to `main` publishes an rc. Each is marked as a
 prerelease. Stable is published only when a person dispatches `Release` on `main`.
-A channel with nothing published stops with `no <channel> build has been published
-yet`.
-
-Once the script can be read, `--stable` is the default and reads GitHub's
-`releases/latest`, which excludes prereleases. The bare curl line therefore stops
-with `no stable build has been published yet` until a person dispatches `Release`
-on `main` for stable. Pass `--dev`, `--staging`, or `--rc` after `bash -s --` for
-another channel. To pin one complete tag, replace the final pipe with
-`| VERSION=<tag> bash`; for example:
+`--stable` is the default and reads GitHub's `releases/latest`, which excludes
+prereleases. To take another channel, put it on the path —
+`https://agentfield.ai/get/codeaf/dev`, `/staging` or `/rc` — or pass `--dev`,
+`--staging` or `--rc` after `bash -s --`. A channel with nothing published stops with
+`no <channel> build has been published yet`. To pin one complete tag, replace the
+final pipe with `| VERSION=<tag> bash`; for example:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | VERSION=v0.3.0 bash
+curl -fsSL https://agentfield.ai/get/codeaf | VERSION=v0.2.0 bash
 ```
 
-`https://agentfield.ai/get/codeaf` is not serving yet. Once it serves, it is the
-supported proxy for the same script, with `/dev`, `/staging`, or `/rc` selecting
-another channel. The installer writes `~/.codeaf/bin/codeaf`; its last line is
-`codeaf version`. Nothing self-updates: run it again when you want a newer build.
+For the bare address the proxy hands the script out unchanged; for a channel path it
+rewrites the one line that sets the default channel. If it cannot find that line exactly
+once, or what it fetched is not a shell script, it answers 502 rather than serve the
+wrong thing.
+
+Building from source needs nothing published: clone the repository, run `make build`,
+then run `bin/codeaf` from the checkout.
+
+The installer writes `~/.codeaf/bin/codeaf`; its last line is `codeaf version`. Nothing
+self-updates: run the line again when you want a newer build.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 
