@@ -2,8 +2,8 @@
 
 ## Current evidence
 
-Calibration runs (36 frozen cells across codeaf, Pi and OMP) recorded at
-calibration time. codeaf was not yet at the target: the observed small-task cost gap
+Calibration runs (36 frozen cells across codeaf, Pi and OMP) were recorded at
+calibration time. codeaf is not yet at the target: the observed small-task cost gap
 remains, and each chat slice passed only one of two attempts. The next priority
 is unnecessary handoff/checking and the rendered request size. Bounded cache
 accounting and request-specific attribution landed after those measurements;

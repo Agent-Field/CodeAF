@@ -273,10 +273,10 @@ useful.
 
 ## 7. Where the work runs
 
-Lanes E, G and K run as Claude Code instances on the bench host under fleet
+Lanes E, G and K run as Claude Code instances on the bench host
 (`af-home-e`, `af-home-g`, `af-home-k`; worktrees `~/af-home-<lane>` on the
 bench host, branches `home/mc-<lane>`, briefs in `benchhost:~/af-home-briefs/`, logs
 `benchhost:~/af-home-<lane>.log`, reports `benchhost:~/af-home-<lane>.report.md`).
 The integrator merges each into `home/mission-control`, builds `bin/codeaf`
-for the owner after every viewable step, and runs the full suites once, at
+after every viewable step, and runs the full suites once, at
 the end, on the bench host.
