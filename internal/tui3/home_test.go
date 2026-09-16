@@ -1323,7 +1323,13 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 		t.Fatalf("the query could not see behind the collapse:\n%s", homeText(a))
 	}
 	a.homeKey(key("ctrl+u"))
-	if !strings.Contains(homeText(a), "more · "+homeFindWord) {
+	// A SHUT FOLD IS `N more` AND NOTHING ELSE ([homeGridPanel.fold]), because
+	// the fold became a toggle rather than a door. So the collapse coming back
+	// is the panel standing on its own fold again, and the fold is read from the
+	// grid rather than from the text: the words alone would also match the
+	// `→ more` a legend can carry. It used to read `N more · type to find one`,
+	// and waiting for that clause waits for a line the grid no longer draws.
+	if fold := a.home.lines[homeFoldDoor(t, a, panelRecent)]; !strings.HasSuffix(fold.cell.title, " "+homeFoldMoreWord) {
 		t.Fatalf("the collapse did not come back on an empty query:\n%s", homeText(a))
 	}
 	if strings.Contains(homeText(a), "Buried Treasure") {
