@@ -346,11 +346,11 @@ func TestASourceNobodyAnsweredReadsTheOpenFamily(t *testing.T) {
 	}
 }
 
-// FLIPPING TO ALL MAKES THE SAME WORDS MEAN THE ALL FAMILY, and nothing else
-// moves until the person picks the crew again. The five ids already written
-// are theirs: a family flip is a meaning change, not a write, so the five rows
-// in place read custom against the new family until one keystroke re-applies
-// them.
+// FLIPPING TO ALL MAKES THE SAME WORDS MEAN THE ALL FAMILY. Seats nobody pinned
+// move at once, because an unwritten seat is the default crew resolved in the
+// current family; the five ids already written are theirs, so a flip is a
+// meaning change to them rather than a write, and they read custom against the
+// new family until one keystroke re-applies them.
 func TestFlippingToAllMakesTheWordsMeanTheAllFamily(t *testing.T) {
 	dir := t.TempDir()
 	rows := registry(t, dir)
@@ -504,5 +504,24 @@ func TestSetCrewSourceRefusesAWordThatIsNotAFamily(t *testing.T) {
 	}
 	if CrewConfigured(dir) {
 		t.Fatal("a refused write marked the crew as answered")
+	}
+}
+
+// AN UNWRITTEN SEAT FOLLOWS THE FAMILY, which is what makes the hint true: a
+// profile on the all family with no rows runs the frontier crew without anyone
+// picking it, and the crew word already reads the default preset.
+func TestAnUnwrittenSeatFollowsTheFamily(t *testing.T) {
+	dir := t.TempDir()
+	if err := SetCrewSource(dir, CrewSourceAll); err != nil {
+		t.Fatal(err)
+	}
+	if got := TierModelAt(dir, ModelTierWorker); got != "openai/gpt-5.6-sol" {
+		t.Fatalf("the worker on an all profile with no row is %q, want the all default", got)
+	}
+	if got := TierModelAt(dir, ModelTierMastermind); got != "anthropic/claude-fable-5.1" {
+		t.Fatalf("the mastermind is %q, want the all default", got)
+	}
+	if got := CrewAt(dir); got != CrewBalanced {
+		t.Fatalf("an all profile with no rows reads the crew as %q, want %q", got, CrewBalanced)
 	}
 }

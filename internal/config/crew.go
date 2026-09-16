@@ -172,10 +172,25 @@ var crewAllModels = map[string]map[string]string{
 // later build retired) names the open one, because a family nobody asked for
 // is the one this build can defend.
 func crewTableFor(source string) map[string]map[string]string {
-	if strings.EqualFold(strings.TrimSpace(source), CrewSourceAll) {
+	if normalCrewSource(source) == CrewSourceAll {
 		return crewAllModels
 	}
 	return crewModels
+}
+
+// normalCrewSource folds a source word to one of the two this build knows. It is
+// the ONE place the fold is spelled: [CrewSourceAt], [crewTableFor] and
+// [CrewLineFor] all call it, so a third family added to [CrewSources] is
+// accepted everywhere at once, and a blank, unknown or retired word reads as the
+// default family.
+func normalCrewSource(source string) string {
+	source = strings.ToLower(strings.TrimSpace(source))
+	for _, known := range CrewSources {
+		if source == known {
+			return source
+		}
+	}
+	return DefaultCrewSource
 }
 
 // CrewSourceAt is which family the preset words draw from on this profile,
@@ -184,9 +199,7 @@ func crewTableFor(source string) map[string]map[string]string {
 // this sheet.
 func CrewSourceAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyCrewSource); ok {
-		if strings.EqualFold(strings.TrimSpace(value), CrewSourceAll) {
-			return CrewSourceAll
-		}
+		return normalCrewSource(value)
 	}
 	return DefaultCrewSource
 }
@@ -234,11 +247,7 @@ func CrewLine(preset string) string {
 // not a preset. A family this build does not know reads as open, the way the
 // row does.
 func CrewLineFor(source, preset string) string {
-	source = strings.ToLower(strings.TrimSpace(source))
-	if _, known := crewLines[source]; !known {
-		source = CrewSourceOpen
-	}
-	return crewLines[source][strings.ToLower(strings.TrimSpace(preset))]
+	return crewLines[normalCrewSource(source)][strings.ToLower(strings.TrimSpace(preset))]
 }
 
 // CrewModels is the five models one preset would set in the OPEN family, by

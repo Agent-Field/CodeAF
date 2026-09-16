@@ -1332,7 +1332,7 @@ func (a *app) setupCrewDetail() string {
 		// The three roles are spelled the way internal/config spells them for the
 		// live reading below, because a person opening this twice must not be
 		// shown one sentence in two shapes.
-		seats = crewPickSeats(a.setup.crewPick)
+		seats = crewPickSeats(config.CrewSourceAt(a.profileDir), a.setup.crewPick)
 	}
 	if seats == "" {
 		seats = strings.TrimSpace(config.CrewClasses(a.profileDir))
@@ -1348,8 +1348,8 @@ func (a *app) setupCrewDetail() string {
 // itself rather than the profile it has not been written to yet. It answers ""
 // for a word that is not a preset, which is the emptiness law: there is no crew
 // to describe and no placeholder that would be true.
-func crewPickSeats(preset string) string {
-	models, ok := config.CrewModels(preset)
+func crewPickSeats(source, preset string) string {
+	models, ok := config.CrewModelsForSource(source, preset)
 	if !ok {
 		return ""
 	}
@@ -1487,11 +1487,11 @@ var crewChoiceWords = map[string]string{
 // for a preset this table has not been taught — which is the one-source rule
 // applied to a gap: a new preset gets a real sentence rather than a blank row,
 // and the blank row is what would have shipped if this map were the only source.
-func crewChoiceWord(preset string) string {
+func crewChoiceWord(source, preset string) string {
 	if word := crewChoiceWords[strings.ToLower(strings.TrimSpace(preset))]; word != "" {
 		return word
 	}
-	return config.CrewLine(preset)
+	return config.CrewLineFor(source, preset)
 }
 
 // setupCrewRows is the chooser under the crew row: the three presets, each with
@@ -1509,7 +1509,7 @@ func (a *app) setupCrewRows(width int) []string {
 		out = append(out, lead+name)
 		// The sentence is wrapped rather than cut, on its own line, so the three
 		// read as three comparable things at any width this screen has.
-		for _, line := range wrap(crewChoiceWord(preset), width-6) {
+		for _, line := range wrap(crewChoiceWord(config.CrewSourceAt(a.profileDir), preset), width-6) {
 			out = append(out, strings.Repeat(" ", 6)+pal.muted(line))
 		}
 	}

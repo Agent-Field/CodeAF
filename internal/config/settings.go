@@ -2287,8 +2287,9 @@ func (s *Settings) build() []Setting {
 				"seat an open-weight model, so a crew nobody chose is never a bet on one " +
 				"vendor's pricing. `all` reads the same three words, frugal, balanced and " +
 				"max, off the whole catalog, closed and frontier models included, and " +
-				"costs what those models cost. Flip it and pick the crew again; the five " +
-				"rows already written keep their ids until you do.",
+				"costs what those models cost. Seats nobody pinned move with the family at " +
+				"once, because an unwritten seat is the default crew; rows already written " +
+				"keep their ids until you pick the crew again.",
 			read:  func() string { return CrewSourceAt(dir) },
 			write: func(raw string) error { return SetCrewSource(dir, raw) },
 		},

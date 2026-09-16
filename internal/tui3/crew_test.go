@@ -377,8 +377,7 @@ func TestTheCrewChooserOpensOnThePersistedFamily(t *testing.T) {
 	}
 	// THE SEGMENT DOES NOT CARRY THE FAMILY, and the frame-disk law is why
 	// (the family section in crew.go says it once): it reads the crew word and
-	// nothing else, so a profile on the all family keeps the same segment shape,
-	// which is the non-regression the HUD was promised.
+	// nothing else, so a profile on the all family keeps the same segment shape.
 	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
 		t.Fatalf("the crew segment reads %q over an all profile", got)
 	}
@@ -432,8 +431,7 @@ func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
 	if string(held["test.neighbour"]) != "true" {
 		t.Fatalf("the family write lost its neighbour: %s", data)
 	}
-	// AND THE SEGMENT KEEPS ITS SHAPE: the family is the chooser's until the
-	// config half lands the memoised reader the segment can read through
+	// AND THE SEGMENT KEEPS ITS SHAPE: it reads the crew word and not the family
 	// (the family section in crew.go says it once).
 	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
 		t.Fatalf("the crew segment reads %q after the write", got)

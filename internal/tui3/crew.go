@@ -99,8 +99,8 @@ func (a *app) applyCrew(preset string) {
 
 // applyCrewUnder is the chooser's enter: the family and the preset are ONE
 // decision, and the family row is written FIRST. The resolution that turns a
-// family and a preset into five ids reads the row (the config half of this
-// wave owns it), so a picker that applied the preset before writing the
+// family and a preset into five ids reads the row, so a picker that applied
+// the preset before writing the
 // family would hand the resolver yesterday's row on the one enter that
 // changed it. A failed family write refuses the preset with it: half of one
 // decision applied is the family saying all while the five rows say open, and
@@ -406,12 +406,10 @@ func (a *app) sayWorkSeat() {
 // the gate): the chooser reads it once at its open ([app.runCrew]) and enter
 // writes it once, and neither happens on the frame clock, which is why the
 // status segment does not name the family.
-const (
-	// crewSourceLead is the family row's label. It is the key's own word
-	// because the two options beside it are the row's answer and the row is
-	// one line.
-	crewSourceLead = "source"
-)
+// crewSourceLead is the family row's label. It is `family` and not `source`
+// because that is the word the settings panel and the manual use for the same
+// row: one thing, one name.
+const crewSourceLead = "family"
 
 // crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
 // zero value is closed, like [picker], and its cursor is an index into
@@ -436,16 +434,10 @@ type crewPicker struct {
 }
 
 func (p *crewPicker) start(current, source, inherited string) {
-	*p = crewPicker{open: true, current: current, inherited: inherited, source: config.CrewSourceOpen}
-	// A WORD THIS BUILD DOES NOT KNOW READS AS THE DEFAULT. The only caller
-	// passes [config.CrewSourceAt], which already folds blank, unknown and retired
-	// words back to open, so this is that same law one hop earlier: a caller that
-	// ever hands this a raw word still cannot make a third option.
-	for _, known := range config.CrewSources {
-		if source == known {
-			p.source = source
-		}
-	}
+	// source is already a word this build knows: every caller hands it
+	// [config.CrewSourceAt]'s answer, which folds blank, unknown and retired words
+	// back to open. The fold lives there and nowhere else.
+	*p = crewPicker{open: true, current: current, inherited: inherited, source: source}
 	for i, preset := range config.CrewPresets {
 		if preset == current {
 			p.cursor = i

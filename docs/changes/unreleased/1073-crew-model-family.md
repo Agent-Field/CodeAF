@@ -8,6 +8,7 @@ invalidates:
   - "The careful seat was only ever required to be a different vendor from the worker by convention. It is now asserted by a test over both families: within each preset of `crewModels` and `crewAllModels`, the worker and high ids name different providers."
   - "`models.crew` was the only crew setting. The crew row's derivation and `ApplyCrew` now also read `models.crew.source`, so the preset word and the five ids it summarizes can never be drawn from different families; flipping the family reads the crew as `custom` until a preset is re-applied, which is the point of a meaning toggle rather than a write."
   - "The open table was said to be untouched. It is not: the shipped open table moved onto the roster chosen seat by seat (frugal's mastermind, balanced's careful and mastermind), and the shipped default crew, which is exactly the balanced row, moved with it. Only the default moved; a profile that answered the crew keeps its rows."
+  - "A profile that applied the old `frugal` or the old `balanced` now matches no preset in the open table, because the roster moved: the crew word, the `/crew` highlight and the seat rung read `custom` until the preset is re-applied, which writes the new roster."
   - "`CrewConfigured` counted only the tier rows, so a person who chose a family and never pinned a tier could still be handed a preset by the first-run setup. It now counts `models.crew.source` too: a chosen family is an answered crew."
 ---
 
