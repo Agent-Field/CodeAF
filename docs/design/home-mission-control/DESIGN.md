@@ -39,9 +39,9 @@ own keys, each a door to the place that owns it. The chat list is one panel.
    70 more                                           working · checking
                                                     npm run dev · pricing-site           up 3h
  since you left · 12h
-   Spark Fleet Ssh Audit · 2 hosts up, 1 not       next up
-   made reports/apartments-minto-street.md           the 6am repo watch                in 20h
-   the 6am repo watch found nothing changed          top movers before the open      mon 8:30
+   Spark Fleet Ssh Audit · 2 hosts up, 1 not       scheduled
+   made reports/apartments-minto-street.md           the 6am repo watch
+   the 6am repo watch found nothing changed          top movers before the open
    learned 2 things about codeaf                     2 rules hold
 
  ───────────────────────────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ own keys, each a door to the place that owns it. The chat list is one panel.
 
 The field on the left is every panel with rows, in the order table's order; the
 rail on the right is the pinned pair and, under a blank row, whatever is quiet
-today — here `running`, `since you left` and `next up` all hold something, so the
+today — here `running`, `since you left` and `scheduled` all hold something, so the
 rail is only its pinned top. THE SCREEN A PERSON ACTUALLY SEES MOST DAYS is the
 inverse of this one: one panel in the field and six headings in the rail, which
 is the reading that produced the 2026-09-15 amendment.
@@ -96,7 +96,7 @@ is the reading that produced the 2026-09-15 amendment.
    force for numbers (`$0.00`, `0 tasks`, a blank age all still draw nothing)
    and yields for panels, because a panel that vanishes teaches nothing. The
    whispers are in §4 and are the only prose about the product on the screen.
-5. **A short terminal squeezes in priority order.** `next up` and `spend` give
+5. **A short terminal squeezes in priority order.** `scheduled` and `spend` give
    way first, then `since you left`, then `running`; `needs you` and `where you
    were` shrink last. A squeezed panel keeps its heading and its `N more` fold.
    A GROUP INSIDE A PANEL folds before the panel gives up a row above it: the
@@ -136,12 +136,12 @@ is the reading that produced the 2026-09-15 amendment.
    (law 8). A tall frame hands
    its spare rows out — only once every panel has its natural height — in the
    squeeze's order reversed, one row each round: `needs you` and `running` to 8,
-   `where you were` from 5 to 10, `since you left` to 8, `projects` to 8, `next
-   up` from 3 to 5; `spend` never grows. The air that is left sits under the
+   `where you were` from 5 to 10, `since you left` to 8, `projects` to 8,
+   `scheduled` from 3 to 5; `spend` never grows. The air that is left sits under the
    shortest column (owner, 2026-09-10: a 55-row terminal was two short columns
    over thirty rows of air). The budgets are the order table's `rest`/`most`.
 10. **Home is the summary of the tabs.** `running` opens tasks, `spend` opens
-    spend, `next up` opens standing. The bar is four places: `home tasks spend
+    spend, `scheduled` opens standing. The bar is four places: `home tasks spend
     settings`. Memory, standing and search stay reachable by their slash
     commands and return to the bar when they are in daily use.
 11. **The pulse leaves its counts at home.** On home the pulse is the budget and
@@ -179,7 +179,7 @@ Verified 2026-09-10. "On disk" means readable by any window without a live agent
 | where you were | `Meta.Title` (the `title` role, low tier); `Summary.LastUser` via `Peek`; `SessionRow.At`; this window's tab stack in-process | — | the existing `title` call only |
 | projects | `World.Project{Name, Dir, Sessions}`, `Running()`, `At()`; git status cached 5s (`homeband_repo.go`) | — | none |
 | spend | `usage.jsonl`; `UsageByDay`, `LastDays(14)`, `UsageByModel`; `DailyBudgetUSD` in config | one function: today against the ceiling | none |
-| next up | `standing.Item{NextDue, When.Kind, LastChecked}`; `homeband_nextup.go` clause logic | — | none |
+| scheduled | `standing.Item{NextDue, When.Kind, LastChecked, LastFired, LastOutcome}`; `homepanel_next.go`'s one sentence per kind | — | none |
 | something is wrong | `lanes/<model>.json` vendor health; `calls.jsonl` when enabled | host reachability (live 2s dial), ladder moves (narrated, not written), missing key (derivable, not stored) | none |
 
 **Zero new model calls.** The one candidate, a `receipt` role at the low tier
@@ -281,7 +281,7 @@ lines would read as the screen running out of room (owner, 2026-09-10).
 | since you left | `what watches and tasks did while the terminal was shut` |
 | where you were | `your conversations · what you type below starts one` |
 | spend | `every chat and task is priced here` |
-| next up | `reminders and routines · "remind me at 6" or "every morning at 9"` |
+| scheduled | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
 | projects | never empty: the launch folder is always a row |
 
 ## 5. Lanes
@@ -329,3 +329,17 @@ Spark, branches `home/mc-<lane>`, briefs in `spark:~/af-home-briefs/`, logs
 The integrator merges each into `home/mission-control`, builds `bin/codeaf`
 for the owner after every viewable step, and runs the full suites once, at
 the end, on the Spark.
+
+### Amended 2026-09-15 — `next up` is `scheduled`, and its rows carry no clock
+
+The seventh panel was `next up · reminders & routines`, and each row carried its
+clock at the right (`in 20h`, `mon 8:30`, `holds`) beside a title that usually
+said the schedule too. The owner renamed it `scheduled` — one word, no
+explainer, because it holds four kinds of order and the explainer named two —
+and struck the margin. A row is the person's own words and nothing at its
+right; its time is said once, in its description under the cursor, in the one
+sentence its kind has: `reminder · goes off tomorrow 9:00am`, `routine · every
+morning at nine · next tomorrow 9:00am · last: …`, `watch · every five minutes
+· last looked 3m ago · found: …`, `rule · always`. An order stopped on a person
+is not on it: it is a row of `needs you`, and one thing is said once across the
+columns.

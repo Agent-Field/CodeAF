@@ -2005,7 +2005,7 @@ what each holds), and its keys are a small grammar:
 | `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the column you are in, from one panel into the next; `↑` off the top of a column reaches **the tab bar** (*The tab bar is a row the cursor can stand on*) |
 | `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
-| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a spend or `next up` row opens spend or standing, a fold line opens the place it names |
+| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a spend or `scheduled` row opens spend or standing, a fold line opens or shuts its panel |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
 | `esc` | clears the box if anything is in it, and closes home otherwise |
@@ -2069,12 +2069,12 @@ still closes home from anywhere; the resting foot does not spend a cell naming i
 `alt+.` draws the whole map when you want it.
 
 On the grid every row under a moving heading — a conversation, a question, a running task,
-a `next up` order, a `since you left` line — rests on the one sentence,
+a `scheduled` order, a `since you left` line — rests on the one sentence,
 `type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`,
 and it does not change as the cursor walks. Elsewhere, on a row with keys of its own, the
 foot says what THAT row's keys do and gains the two that are true everywhere —
 `enter opens the place this happened in · alt+. map · tab next place · esc close` on a
-`since you left` line or a `next up` row of the phone's list, on a spend row, or on a fold door, and
+`since you left` line or a standing order's row of the phone's list, on a spend row, or on a fold door, and
 `enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
 on the action row — and
 `enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`

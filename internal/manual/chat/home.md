@@ -38,8 +38,8 @@ answering one question you would ask walking up to a colleague's desk:
    Spark Fleet Ssh Audit · 2 hosts up, 1 not
    made apartments-minto-street.md
 
- next up
-   the 6am repo watch                      in 20h
+ scheduled
+   the 6am repo watch
 ```
 
 Everything with rows in it is on the **left**, in the fixed order of the seven panels.
@@ -52,7 +52,7 @@ is only ever the things that are actually going on.
 nothing was sent while you were looking. The foot reads `type to search or start
 something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`, **and it is the
 same sentence on every row of the field** — a conversation, a question, a running task, a
-standing order on `next up`, a line of `since you left`. It does not change as the cursor
+standing order on `scheduled`, a line of `since you left`. It does not change as the cursor
 walks, so it is something you read once. The chord is there because `→` on a field row
 crosses to the rail rather than opening the row's verbs, and a door you cannot see is a door
 you never learn; `ctrl+o` opens the folder each row belongs to — a conversation's workspace,
@@ -81,7 +81,7 @@ panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
 always `needs you`, `where you were`, `projects`, `running`, `since you left`, `spend`,
-`next up` — so two panels that both fill never swap places.
+`scheduled` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
 two columns from 110; three from 170, where the rail is the third and the field fills the
@@ -97,7 +97,7 @@ at the left is that your eye has a single place to go.
 | `running` | a task, a background job, a watch firing | brings its conversation here | `work you send off with /task runs here on its own` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | opens the spend place | `every chat and task is priced here` |
-| `next up` | a reminder or routine, soonest first | opens the standing place | `reminders and routines · "remind me at 6" or "every morning at 9"` |
+| `scheduled` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
 
 **An empty panel keeps its heading and that one dim line** — it names what arrives there and
 the one thing that puts it there, and it never says the panel is empty. On a narrow column
@@ -567,10 +567,10 @@ on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
 `needs you`, `running`, `since you left` and `projects` to eight rows, `where you were` from
-five to ten, `next up` from three to five. `spend` never grows. What is left over is air
+five to ten, `scheduled` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
-**A short terminal squeezes them in a fixed order**: `next up` gives way first, then `spend`,
+**A short terminal squeezes them in a fixed order**: `scheduled` gives way first, then `spend`,
 then `since you left`, then `running`, then `projects`; `where you were` and `needs you`
 shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
@@ -589,7 +589,7 @@ panels, and `enter` again folds it. The box at the foot still searches every con
 the machine as you type — a project's name, a folder's name or a word from what a task came
 to all find them — whether or not a panel is drawing the row.
 
-Every panel's fold works the same way: `N more` under `running`, `since you left`, `next up`
+Every panel's fold works the same way: `N more` under `running`, `since you left`, `scheduled`
 and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
 tab bar and their slash commands, not behind the folds.
 
@@ -640,14 +640,14 @@ cent — one reading of one file, wherever you are standing.
 words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
 memory and search open exactly as they did:
 
-- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `next up` row or its fold;
+- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `scheduled` row;
 - **`/memory`** (or `/memories`), `alt+6`, or `enter` on memory's line in `since you left`;
 - **`/search`**, `alt+7`, or the typed door on home's box.
 
 While you stand in one of the three, its word is drawn after the four so you can see where
 you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
 numbers. Home's own panels already summarise the three on the bar: `running` is a glimpse of
-tasks, `spend` of spend, `next up` of standing.
+tasks, `spend` of spend, `scheduled` of standing.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -740,7 +740,7 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A click on a panel's **heading** opens the place the heading names:
-`needs you`, `running` and `since you left` open tasks, `spend` opens spend, `next up` opens
+`needs you`, `running` and `since you left` open tasks, `spend` opens spend, `scheduled` opens
 standing, `where you were` opens search, and `projects` opens nothing. A click never starts
 a paid turn, so on the row of what you typed, on `ask here` and on a `/` command it only
 puts the cursor there, and `enter` does the rest.
@@ -1591,11 +1591,11 @@ three ways:**
 - **while it is firing**, it is a row of `running`: your own words, what the pass is doing,
   and how long ago the pass began. It is still the item — `→` offers `pause`, and `ctrl+v`
   raises how hard it thinks;
-- **while it is simply waiting for its time**, it is a row of `next up`, soonest first, with
+- **while it is simply waiting for its time**, it is a row of `scheduled`, soonest first, with
   when it goes off at the right — `in 20h`, `mon 8:30`.
 
 `enter` on a `needs you` or `running` row opens the conversation that asked for it; on a
-`next up` row it opens the standing place.
+`scheduled` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
@@ -1833,7 +1833,7 @@ drawn only when it has something to say:
 4. **the work** — each task and what it came to, three of them, then `▸ N more tasks`;
 5. **the files it made**, as links;
 6. **where you left off**, the last exchange;
-7. **what is next up** and **news since you last looked**;
+7. **what is scheduled** and **news since you last looked**;
 8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
 9. one dim line naming the strip: `→ verbs: put it away, new chat here, open folder,
@@ -2048,35 +2048,47 @@ timed-out Git check draws nothing. The reading arrives a moment after home opens
 that is no longer on this disk says `that folder is gone` in place of the branch it cannot
 have.
 
-## What is next up on home — reminders and routines coming soon
+## What is scheduled on home — reminders, routines, watches and rules, what is next up and when
 
-**The `next up` panel, last of the seven**: every reminder and routine this
-machine will act on, from every project, **soonest first**, with the rules that simply hold
-at the end. Each row is your own words, with the clock at the right — `in 20h` or `mon 8:30`
-for a reminder or routine, `checked 3m ago` for a watch that has looked, `holds` for a rule:
+**The `scheduled` panel, last of the seven**: every standing order this machine will act
+on, from every project, **soonest first**, with the rules that simply hold at the end.
+Four kinds of order stand on it — a **reminder** (`remind me at 6`), a **routine** (`every
+morning at nine`), a **watch** (`tell me when CI goes red`, `when go.sum changes`) and a
+**rule** (`never change the public API without telling me`). Each row is your own words
+and **nothing at its right**:
 
 ```
- next up
-   the 6am repo watch                in 20h
-   top movers before the open      mon 8:30
-   tell me when CI goes red   checked 3m ago
+ scheduled
+   the 6am repo watch
+   top movers before the open
+   tell me when CI goes red on master
    never change the public API without telling me first
 ```
 
-**Under the cursor the description is what the order found, never its schedule** — the
-schedule is already in your own words on the row and in the clock at its right. A watch that
-has looked says the line it found, or `found nothing`; a reminder or routine that has gone
-off says what its last firing came to (`done: two branches landed, both in internal/tui3`);
-one that has never woken says nothing at all. An order stopped on you says `your call` and
-why, and one in the middle of a pass says what the pass is doing.
+**When it happens is said once, in the row's description under the cursor, and each kind
+says it one way** — a fixed sentence you learn once, the kind word first:
 
-Three rows show, five in a tall window, then `N more`, which `enter` opens. Paused, stopped
-and retired items are not on it. **Every row is a door into the standing place**, where the
-orders are kept and changed.
+- a reminder: `reminder · goes off tomorrow 9:00am`
+- a routine: `routine · every morning at nine · next tomorrow 9:00am · last: done, two branches landed`
+- a watch: `watch · every five minutes · last looked 3m ago · found: the last five runs are green`
+  — or `found nothing`, which for a watch is the commonest finding and a real one
+- a rule: `rule · always`
+
+Moments read `today 6:00pm`, `tomorrow 9:00am`, a weekday inside the week (`mon 9:00am`),
+a date beyond it (`21 sep 9:00am`), and `now` once they have arrived. A routine that has
+never fired has no `last:`; a watch that has never looked has no `last looked`. An order in
+the middle of a pass says what the pass is doing instead of its clock.
+
+**An order stopped on you is not on `scheduled`** — it is a row of `needs you`, with its
+question, and comes back here the moment you answer. Paused, stopped and retired orders are
+not on it either.
+
+Three rows show, five in a tall window, then `N more`, which `enter` opens. **Every row is a
+door into the standing place**, where the orders are kept and changed.
 
 With nothing standing it keeps its heading and
-`reminders and routines · "remind me at 6" or "every morning at 9"` — the words that set one
-up. On a short terminal `next up` is the first panel to give way.
+`reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` — the
+words that set one up. On a short terminal `scheduled` is the first panel to give way.
 
 ## How much did today cost — the spend panel on home
 

@@ -14,6 +14,11 @@ import (
 // whole machine. Every row opens the standing place, where the orders are kept.
 type nextPanel struct{ homePanelBase }
 
+// homeScheduledWord is the panel's heading: one word, no explainer (owner,
+// 2026-09-15; it was `next up · reminders & routines`, which named two of the
+// four kinds of order that stand on it).
+const homeScheduledWord = "scheduled"
+
 func (nextPanel) rows(in *homeGridInput) homePanelRows {
 	views := nextActive(in)
 	standByNextDue(views)
@@ -21,13 +26,14 @@ func (nextPanel) rows(in *homeGridInput) homePanelRows {
 	lines := make([]homeLine, 0, shown)
 	for _, view := range views[:shown] {
 		item := view.Item
+		// A ROW IS THE PERSON'S OWN WORDS AND NOTHING AT ITS RIGHT (owner,
+		// 2026-09-15). The clock used to stand at the margin — `in 2h`, `in
+		// now`, `holds` — beside a title that usually said the schedule too;
+		// the row's time is said ONCE, in its description, in the one form its
+		// kind of order has ([nextUpSaid]), under the cursor.
 		lines = append(lines, homeLine{kind: homeLedger, project: pageStanding.word(), dir: item.ID,
 			view: view, item: item, cell: &homeCell{panel: panelNext,
-				title: strings.TrimSpace(item.Words), right: standWhenClause(item, in.now),
-				// WHAT IT FOUND, under the cursor. The row's right-hand clause is
-				// the clock; this is what the order did the last time it woke
-				// ([nextUpSaid]), and it is drawn only for the row being read
-				// ([homeDescLines]).
+				title: strings.TrimSpace(item.Words),
 				grows: in.desc, sub: nextUpSaidOn(in, view)}})
 	}
 	return homePanelRows{lines: lines, more: len(views) - shown}
@@ -41,7 +47,11 @@ func nextActive(in *homeGridInput) []StandingItemView {
 	seen := map[string]bool{}
 	for _, project := range in.world.Projects {
 		for _, view := range in.items[project.Dir] {
-			if view.Item.Status != standing.StatusActive || seen[view.Item.ID] {
+			// AN ORDER STOPPED ON A PERSON IS NOT COMING UP, IT IS STOPPED. It is
+			// a row of `needs you` already, with its question on it, and a second
+			// row here would say one thing twice across the columns (owner,
+			// 2026-09-15). It comes back the moment the person answers.
+			if view.Item.Status != standing.StatusActive || view.Item.NeedsPerson != "" || seen[view.Item.ID] {
 				continue
 			}
 			seen[view.Item.ID] = true
@@ -51,7 +61,7 @@ func nextActive(in *homeGridInput) []StandingItemView {
 	return views
 }
 
-// nextUpSaidOn is the sentence the description column draws for a `next up`
+// nextUpSaidOn is the sentence the description column draws for a `scheduled`
 // row, and nothing on a frame with no such column.
 func nextUpSaidOn(in *homeGridInput, view StandingItemView) string {
 	if !in.desc {
@@ -60,47 +70,114 @@ func nextUpSaidOn(in *homeGridInput, view StandingItemView) string {
 	return nextUpSaid(view, in.now)
 }
 
-// nextUpSaid is THE FINDING, NOT THE CLOCK. The margin already says when the
-// order next wakes, and the title is the person's own words, which usually
-// carry the cadence too (`sweep the repo every morning at nine…`); so a
-// description that said `every morning at nine` was the third copy of one fact
-// on one row (owner, 2026-09-15: "these seem redundant"). What the row has NOT
-// said is what happened the last time the order woke, and that is what a
-// person deciding whether to open it wants: a watch's last finding — the line
-// it found, or that it found nothing, which for a watch is the most common
-// finding and a real one ([standRollup] says the same) — and a reminder's or
-// routine's last outcome. An order stopped on a person says so first, and one
-// in the middle of a pass says what the pass is doing, in the card's own words.
+// nextUpSaid is ONE SENTENCE PER KIND OF ORDER, and the only place a row says
+// its time (owner, 2026-09-15: "communicate time information clearly and in a
+// standardized way appropriate for each type — one way for each"). The row's
+// title is the person's own words; this is the machine's account of the same
+// order, in a fixed shape a person learns once:
 //
-// THE EMPTINESS LAW REACHES IT: an order that has never woken has no finding
-// and draws nothing, rather than a schedule the row has already said.
+//	reminder · goes off tomorrow 9:00am
+//	routine · every morning at nine · next tomorrow 9:00am · last: done, two branches landed
+//	watch · every five minutes · last looked 3m ago · found: the last five runs are green
+//	rule · always
+//
+// The kind word comes first because the panel holds four kinds under one
+// heading and nothing else on the row says which this is. A reminder has no
+// cadence and no last time — it retires in the pass that fires it — so its
+// sentence is the one moment it goes off. A routine says its cadence in the
+// person's words, when the next one is, and what the last one came to. A watch
+// says how often it looks, when it last looked, and what it found — `found
+// nothing` being the commonest finding and a real one ([standRollup] says the
+// same). A rule has no clock at all; it is its own words, or `holds`. An order
+// in the middle of a pass says what the pass is doing instead of its clock.
+//
+// THE EMPTINESS LAW REACHES EVERY CLAUSE: a routine that has never fired has no
+// `last:`, a watch that has never looked has no `last looked`, and a clause
+// with nothing behind it is not drawn as a blank.
 func nextUpSaid(view StandingItemView, now time.Time) string {
 	item := view.Item
-	switch {
-	case item.NeedsPerson != "":
-		return tierYourCallWord + tierReasonSep + item.NeedsPerson
-	case view.Running:
-		return standRunWord(view, now)
+	if view.Running {
+		return rowClauses(nextUpKindWord(item), standRunWord(view, now))
 	}
+	words := strings.TrimSpace(item.When.Words)
 	switch item.When.Kind {
 	case standing.WhenHold:
-		return ""
+		if words == "" {
+			words = standHoldsWord
+		}
+		return rowClauses(nextUpKindWord(item), words)
 	case standing.WhenProbe, standing.WhenFile, standing.WhenIdle:
-		if item.LastChecked.IsZero() {
-			return ""
+		looked, found := "", ""
+		if !item.LastChecked.IsZero() {
+			looked = nextUpLastLookedWord + sinceAt(item.LastChecked, now) + " ago"
+			found = nextUpFoundNothingWord
+			if line := switcherFirstLine(item.LastCheckLine); line != "" {
+				found = nextUpFoundWord + line
+			}
 		}
-		if found := switcherFirstLine(item.LastCheckLine); found != "" {
-			return found
+		return rowClauses(nextUpKindWord(item), words, looked, found)
+	case standing.WhenAt:
+		return rowClauses(nextUpKindWord(item), nextUpGoesOffWord+homeClockAt(item.NextDue, now))
+	}
+	next, last := "", ""
+	if !item.NextDue.IsZero() {
+		next = nextUpNextWord + homeClockAt(item.NextDue, now)
+	}
+	if !item.LastFired.IsZero() {
+		if outcome := switcherFirstLine(item.LastOutcome); outcome != "" {
+			last = nextUpLastWord + outcome
 		}
-		return nextUpFoundNothingWord
 	}
-	if item.LastFired.IsZero() {
-		return ""
-	}
-	return switcherFirstLine(item.LastOutcome)
+	return rowClauses(nextUpKindWord(item), words, next, last)
 }
 
-// nextUpFoundNothingWord is a watch that looked and found nothing, said as a
-// sentence because it stands alone in the description column — the rollup's
-// bare `nothing` reads as a gap there rather than as the finding it is.
-const nextUpFoundNothingWord = "found nothing"
+// The fixed words of a `scheduled` row's sentence, spelled once.
+const (
+	nextUpGoesOffWord      = "goes off "
+	nextUpNextWord         = "next "
+	nextUpLastWord         = "last: "
+	nextUpLastLookedWord   = "last looked "
+	nextUpFoundWord        = "found: "
+	nextUpFoundNothingWord = "found nothing"
+)
+
+// nextUpKindWord is the one word for what kind of order a row is: the four the
+// standing store distinguishes, in the person's own vocabulary for them.
+func nextUpKindWord(item standing.Item) string {
+	switch item.When.Kind {
+	case standing.WhenAt:
+		return "reminder"
+	case standing.WhenEvery:
+		return "routine"
+	case standing.WhenProbe, standing.WhenFile, standing.WhenIdle:
+		return "watch"
+	case standing.WhenHold:
+		return "rule"
+	}
+	return ""
+}
+
+// homeClockAt is a moment said the way a person says one: `today 6:00pm`,
+// `tomorrow 9:00am`, `mon 9:00am` inside the week, `21 sep 9:00am` beyond it,
+// and `now` for a moment already here. The clock is the pulse's twelve-hour
+// clock with its am or pm ([pulseClock] says why never a bare `9:41`).
+func homeClockAt(at, now time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	if !at.After(now) {
+		return "now"
+	}
+	clock := strings.ToLower(at.Format("3:04pm"))
+	day := func(t time.Time) time.Time { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location()) }
+	days := int(day(at).Sub(day(now)).Hours() / 24)
+	switch {
+	case days == 0:
+		return "today " + clock
+	case days == 1:
+		return "tomorrow " + clock
+	case days < 7:
+		return strings.ToLower(at.Format("Mon")) + " " + clock
+	}
+	return strings.ToLower(at.Format("2 Jan")) + " " + clock
+}

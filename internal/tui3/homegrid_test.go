@@ -152,7 +152,7 @@ func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	}
 	// AND THE QUIET PANELS ARE ALL IN THE LAST COLUMN, none of them left behind
 	// in the field beside a panel that has something to say.
-	for _, word := range []string{"spend", "since you left", "next up"} {
+	for _, word := range []string{"spend", "since you left", homeScheduledWord} {
 		if _, at := homeRowOf(frame, word); at != railCol {
 			t.Fatalf("%q is at cell %d, want the rail at %d:\n%s", word, at, railCol, frame)
 		}
@@ -179,12 +179,27 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	said := strings.TrimSpace(line.cell.sub)
 	frame := homeText(a)
 
-	// THE SENTENCE IS IN THE MIDDLE COLUMN and not under its row.
-	row, at := homeRowOf(frame, firstWordsOf(said))
-	if row < 0 {
-		t.Fatalf("the selected row's sentence %q is nowhere on the frame:\n%s", said, frame)
-	}
+	// THE SENTENCE IS IN THE MIDDLE COLUMN and not under its row. It is looked
+	// for THERE — at a cell past the field — because a short sentence can be a
+	// substring of a heading (`here` is inside `where you were`), and the
+	// first place the letters happen to appear is not the place the column
+	// draws them.
 	_, rail := homeRowOf(frame, "projects · ")
+	xs, _ := homeGridGeometry(a.home.gridWidth, a.home.cols)
+	descX := xs[homeDescCol(a.home.cols)]
+	row, at := -1, -1
+	for y, text := range strings.Split(frame, "\n") {
+		if y < placeHeadRows {
+			continue
+		}
+		if i := strings.Index(text, firstWordsOf(said)); i >= 0 && ansi.StringWidth(text[:i]) >= descX {
+			row, at = y, ansi.StringWidth(text[:i])
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatalf("the selected row's sentence %q is nowhere in the description column:\n%s", said, frame)
+	}
 	if at <= homeGridMargin || at >= rail {
 		t.Fatalf("the sentence is at cell %d, want it between the field at %d and the rail at %d:\n%s", at, homeGridMargin, rail, frame)
 	}
@@ -195,8 +210,10 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	}
 	// AND THE ROW ITSELF IS ONE LINE: the line under it is another row, not its
 	// own second line.
+	// (Only the field's cells of that line are read: the rail beside it may
+	// say the same word in a whisper of its own — `…priced here`.)
 	lines := strings.Split(frame, "\n")
-	if title+1 < len(lines) && strings.Contains(lines[title+1], firstWordsOf(said)) {
+	if title+1 < len(lines) && strings.Contains(ansi.Truncate(lines[title+1], descX, ""), firstWordsOf(said)) {
 		t.Fatalf("the row still draws its own second line:\n%s", frame)
 	}
 }

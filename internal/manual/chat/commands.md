@@ -1048,7 +1048,7 @@ other place.
 `where you were` (this window's conversation, then the most recent, then
 `N more · type to find one`) and `projects` (every folder, `enter` starts a chat there) on
 the left; `running` (every task, job and firing watch), `since you left` (what landed while
-you were away), `spend` (today and the fortnight) and `next up` (reminders, soonest first)
+you were away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first)
 on the right. An empty panel keeps its heading and one dim line naming what arrives there.
 
 `↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the

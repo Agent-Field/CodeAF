@@ -181,7 +181,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", explainer: "reminders & routines", keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
 
 // homeFindWord is what a fold says where the rest are reached by typing rather
@@ -212,7 +212,7 @@ var homeWhisper = map[homePanelID]string{
 	panelLeft:    "what watches and tasks did while the terminal was shut",
 	panelRecent:  "your conversations · what you type below starts one",
 	panelSpend:   "every chat and task is priced here",
-	panelNext:    `reminders and routines · "remind me at 6" or "every morning at 9"`,
+	panelNext:    `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
 }
 
 // homePanelCut is a panel's rows cut at its cap, with the count of what the

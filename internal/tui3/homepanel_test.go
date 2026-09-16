@@ -487,8 +487,15 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	frame := homeText(a)
 	first, _ := homeRowOf(frame, "top movers before the open")
 	second, _ := homeRowOf(frame, "water the plants")
-	if first < 0 || second != first+1 || !strings.Contains(strings.Split(frame, "\n")[first], " in 1h") {
-		t.Fatalf("next up is not soonest first with its clause:\n%s", frame)
+	// AND NOTHING AT THE ROW'S RIGHT: the time is said once, in the description
+	// (owner, 2026-09-15). It used to read `in 1h` at the margin.
+	if first < 0 || second != first+1 || strings.Contains(strings.Split(frame, "\n")[first], " in 1h") {
+		t.Fatalf("scheduled is not soonest first with nothing at its right:\n%s", frame)
+	}
+	for _, cell := range panelRows(a, panelNext) {
+		if cell.right != "" {
+			t.Fatalf("a scheduled row carries %q at its right, want nothing", cell.right)
+		}
 	}
 	if row, _ := homeRowOf(frame, "1 more"); row < 0 {
 		t.Fatalf("the fourth order is not behind the fold:\n%s", frame)
@@ -500,47 +507,59 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	}
 }
 
-// A `next up` ROW'S DESCRIPTION IS THE FINDING, NOT THE CLOCK (owner,
-// 2026-09-15). The margin says when the order next wakes — and for a watch that
-// has looked, when it looked — and the description says what it found or what
-// its last firing came to; an order that has never woken describes nothing,
-// and the schedule is never said a second time.
-func TestNextUpDescribesTheLastFindingAndNeverRepeatsTheClock(t *testing.T) {
+// A `scheduled` ROW SAYS ITS TIME ONCE, IN ITS DESCRIPTION, IN THE ONE SHAPE
+// ITS KIND HAS (owner, 2026-09-15): a reminder the moment it goes off, a routine
+// its cadence, its next and its last outcome, a watch how often it looks, when
+// it last looked and what it found, a rule its own words. Nothing at the
+// margin, and an order that has never woken has no `last`.
+func TestScheduledSaysEachKindsTimeOneWayInItsDescription(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(180, 45)
 	dir := a.home.world.Projects[0].Dir
+	now := a.home.world.Read
 	watch := StandingItemView{Item: standing.Item{ID: "w", Words: "tell me when CI goes red", Status: standing.StatusActive,
-		When: standing.When{Kind: standing.WhenProbe, Words: "every five minutes"}, NextDue: lab.now.Add(2 * time.Minute),
-		LastChecked: lab.now.Add(-3 * time.Minute), LastCheckLine: "the last five runs on master are green"}}
+		When: standing.When{Kind: standing.WhenProbe, Words: "every five minutes"}, NextDue: now.Add(2 * time.Minute),
+		LastChecked: now.Add(-3 * time.Minute), LastCheckLine: "the last five runs on master are green"}}
 	quiet := StandingItemView{Item: standing.Item{ID: "q", Words: "watch the lockfile", Status: standing.StatusActive,
-		When: standing.When{Kind: standing.WhenFile, Words: "when go.sum changes"}, LastChecked: lab.now.Add(-time.Hour)}}
+		When: standing.When{Kind: standing.WhenFile, Words: "when go.sum changes"}, LastChecked: now.Add(-time.Hour)}}
 	routine := StandingItemView{Item: standing.Item{ID: "r", Words: "sweep the repo every morning at nine", Status: standing.StatusActive,
-		When: standing.When{Kind: standing.WhenEvery, Words: "every morning at nine"}, NextDue: lab.now.Add(13*time.Hour + 30*time.Minute),
-		LastFired: lab.now.Add(-11 * time.Hour), LastOutcome: "done: two branches landed, both in internal/tui3"}}
+		When: standing.When{Kind: standing.WhenEvery, Words: "every morning at nine"}, NextDue: now.Add(26 * time.Hour),
+		LastFired: now.Add(-11 * time.Hour), LastOutcome: "done: two branches landed, both in internal/tui3"}}
 	fresh := StandingItemView{Item: standing.Item{ID: "f", Words: "remind me at six to leave", Status: standing.StatusActive,
-		When: standing.When{Kind: standing.WhenAt, Words: "at 6 today"}, NextDue: lab.now.Add(4*time.Hour + 30*time.Minute)}}
-	a.home.items = map[string][]StandingItemView{dir: {watch, quiet, routine, fresh}}
+		When: standing.When{Kind: standing.WhenAt, Words: "at 6 today"}, NextDue: now.Add(4 * time.Hour)}}
+	rule := StandingItemView{Item: standing.Item{ID: "h", Words: "never change the public API without telling me", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenHold, Words: "always"}}}
+	stopped := StandingItemView{Item: standing.Item{ID: "s", Words: "keep main green", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenProbe, Words: "when CI goes red"}, NeedsPerson: "the fix touches migrations"}}
+	a.home.items = map[string][]StandingItemView{dir: {watch, quiet, routine, fresh, rule, stopped}}
 	a.home.build()
 	rows := map[string]*homeCell{}
 	for _, cell := range panelRows(a, panelNext) {
 		rows[cell.title] = cell
 	}
-	want := []struct{ title, right, sub string }{
-		{"tell me when CI goes red", "checked 3m ago", "the last five runs on master are green"},
-		{"watch the lockfile", "checked 1h ago", nextUpFoundNothingWord},
-		{"sweep the repo every morning at nine", "in 13h", "done: two branches landed, both in internal/tui3"},
-		{"remind me at six to leave", "in 4h", ""},
+	if _, drawn := rows["keep main green"]; drawn {
+		t.Fatalf("an order stopped on a person is drawn on scheduled as well as needs you:\n%s", homeText(a))
+	}
+	want := []struct{ title, sub string }{
+		{"tell me when CI goes red", "watch · every five minutes · last looked 3m ago · found: the last five runs on master are green"},
+		{"watch the lockfile", "watch · when go.sum changes · last looked 1h ago · found nothing"},
+		{"sweep the repo every morning at nine", "routine · every morning at nine · next " + homeClockAt(routine.Item.NextDue, now) + " · last: done: two branches landed, both in internal/tui3"},
+		{"remind me at six to leave", "reminder · goes off " + homeClockAt(fresh.Item.NextDue, now)},
+		{"never change the public API without telling me", "rule · always"},
 	}
 	for _, w := range want {
 		cell, ok := rows[w.title]
 		if !ok {
-			t.Fatalf("next up does not draw %q:\n%s", w.title, homeText(a))
+			t.Fatalf("scheduled does not draw %q:\n%s", w.title, homeText(a))
 		}
-		if cell.right != w.right || cell.sub != w.sub {
-			t.Fatalf("%q reads %q / %q, want the clock %q and the finding %q", w.title, cell.right, cell.sub, w.right, w.sub)
+		if cell.right != "" || cell.sub != w.sub {
+			t.Fatalf("%q reads %q / %q, want nothing at the right and the sentence %q", w.title, cell.right, cell.sub, w.sub)
 		}
-		if strings.Contains(cell.sub, "every") || strings.Contains(cell.sub, "at 6") {
-			t.Fatalf("%q repeats its schedule in its description: %q", w.title, cell.sub)
-		}
+	}
+	if !strings.HasPrefix(homeClockAt(fresh.Item.NextDue, now), "today ") && !strings.HasPrefix(homeClockAt(fresh.Item.NextDue, now), "tomorrow ") {
+		t.Fatalf("a moment four hours off reads %q, want today or tomorrow with a clock", homeClockAt(fresh.Item.NextDue, now))
+	}
+	if got := homeClockAt(now.Add(10*24*time.Hour), now); !strings.Contains(got, " ") || strings.HasPrefix(got, "today") {
+		t.Fatalf("a moment ten days off reads %q, want a date and a clock", got)
 	}
 }
