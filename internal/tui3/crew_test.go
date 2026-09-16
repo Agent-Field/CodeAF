@@ -341,6 +341,14 @@ func TestTheCrewChooserNamesTheTwoFamiliesAboveThePresets(t *testing.T) {
 	if !strings.Contains(rows[2], a.pal.accent("all models")) {
 		t.Fatalf("← did not walk the family to all:\n%q", rows[2])
 	}
+	// AND THE PRESETS BELOW IT ANSWER IN THAT FAMILY: a header saying all above
+	// rows still naming open models is the contradiction this chooser exists to
+	// prevent, and it is the one regression a header-only check would pass.
+	for i, preset := range config.CrewPresets {
+		if row := plain(rows[3+2*i]); !strings.Contains(row, config.CrewLineFor(config.CrewSourceAll, preset)) {
+			t.Errorf("row %d under the all family is not %s's all line:\n%q", 3+2*i, preset, row)
+		}
+	}
 	if a.crewPick.cursor != 1 {
 		t.Fatalf("walking the family moved the preset cursor to row %d", a.crewPick.cursor)
 	}

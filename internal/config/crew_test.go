@@ -490,3 +490,19 @@ func TestEverySettingsWriteBumpsTheGeneration(t *testing.T) {
 		t.Fatalf("a refused write moved the generation to %d", got)
 	}
 }
+
+// THE FAMILY ROW REFUSES A WORD THAT IS NOT A FAMILY, the way the crew row
+// refuses a word that is not a preset, and a refused write leaves the row absent
+// rather than half-written.
+func TestSetCrewSourceRefusesAWordThatIsNotAFamily(t *testing.T) {
+	dir := t.TempDir()
+	if err := SetCrewSource(dir, "wide"); err == nil {
+		t.Fatal("SetCrewSource accepted a word that is not a family")
+	}
+	if got := CrewSourceAt(dir); got != DefaultCrewSource {
+		t.Fatalf("a refused write left the row reading %q", got)
+	}
+	if CrewConfigured(dir) {
+		t.Fatal("a refused write marked the crew as answered")
+	}
+}

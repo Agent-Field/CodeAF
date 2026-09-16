@@ -231,7 +231,8 @@ func CrewLine(preset string) string {
 }
 
 // CrewLineFor is one preset's own line in one family, empty for a word that is
-// not a preset or a family this build does not know (which reads as open).
+// not a preset. A family this build does not know reads as open, the way the
+// row does.
 func CrewLineFor(source, preset string) string {
 	source = strings.ToLower(strings.TrimSpace(source))
 	if _, known := crewLines[source]; !known {
