@@ -191,6 +191,16 @@ func (a *Agent) trailingBashEnvelopeRejections() int {
 				return count
 			}
 		case "user":
+			// THE HARNESS'S OWN OPENINGS ARE TRANSPARENT TO THE COUNT. The frame
+			// ([bashBeltFrameOpening]) and the other two volatile openings land
+			// between every rejection and the next, and they are nobody's answer
+			// to anything — the count walks over them the same way the replay
+			// history never lets them stand for a person's words
+			// ([isVolatileNote]'s whole job). Breaking on them instead would
+			// leave the count at zero on a belt where a frame lands every step.
+			if isVolatileNote(messageContentText(message)) {
+				continue
+			}
 			if !strings.HasPrefix(messageContentText(message), bashEnvelopeMark) {
 				return count
 			}
