@@ -261,7 +261,7 @@ func CrewLineFor(source, preset string) string {
 
 // CrewModels is the five models one preset would set in the OPEN family, by
 // tier word: the family a profile nobody has touched reads, and the spelling
-// every existing caller and page already holds. The family-aware spelling is
+// the callers hold. The family-aware spelling is
 // [CrewModelsForSource]. It returns a copy, because a caller printing the
 // table must not be able to edit it.
 func CrewModels(preset string) (map[string]string, bool) {

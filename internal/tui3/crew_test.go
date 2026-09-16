@@ -349,6 +349,13 @@ func TestTheCrewChooserNamesTheTwoFamiliesAboveThePresets(t *testing.T) {
 			t.Errorf("row %d under the all family is not %s's all line:\n%q", 3+2*i, preset, row)
 		}
 	}
+	// AND THE IN-FORCE MARK DOES NOT MOVE WITH THE FAMILY. The row that wears the
+	// selected ground is the preset the profile holds IN THE FAMILY IT HOLDS, so
+	// once ←→ lifts the family no row on screen is in force: one that kept the
+	// mark would name models the profile does not run.
+	if strings.Contains(rows[3+2*1], a.pal.accent("balanced — "+config.CrewLineFor(config.CrewSourceAll, config.CrewBalanced))) {
+		t.Errorf("the balanced row is still marked in force after ←:\n%q", rows[3+2*1])
+	}
 	if a.crewPick.cursor != 1 {
 		t.Fatalf("walking the family moved the preset cursor to row %d", a.crewPick.cursor)
 	}

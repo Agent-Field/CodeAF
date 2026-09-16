@@ -428,6 +428,12 @@ type crewPicker struct {
 	// preset rows take it, then commit. esc leaves the row exactly as it
 	// was.
 	source string
+	// persistedSource is the family the SAVED crew is in, read at the door beside
+	// current. The row in force is the one the profile holds IN THE FAMILY THE
+	// PROFILE HOLDS: once ←→ moves the staged family, no preset on screen is in
+	// force any more, and a row that kept the mark would name models the profile
+	// does not run.
+	persistedSource string
 	// inherited is the line naming the seat this profile has no row for, or
 	// empty when every row was written. IT IS READ AT THE DOOR AND NOT AT THE
 	// DRAW: the rows are built every frame and the answer is three lines of a
@@ -440,7 +446,7 @@ func (p *crewPicker) start(current, source, inherited string) {
 	// source is already a word this build knows: every caller hands it
 	// [config.CrewSourceAt]'s answer, which folds blank, unknown and retired words
 	// back to open. The fold lives there and nowhere else.
-	*p = crewPicker{open: true, current: current, inherited: inherited, source: source}
+	*p = crewPicker{open: true, current: current, persistedSource: source, inherited: inherited, source: source}
 	for i, preset := range config.CrewPresets {
 		if preset == current {
 			p.cursor = i
@@ -587,7 +593,7 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		// first, the cursor's `›` disappeared the moment the cursor landed on the
 		// preset already in force — which is the one row a person is most likely
 		// to arrow onto, and the one moment they most need to know enter is aimed.
-		oncursor, current := i == p.cursor, preset == p.current
+		oncursor, current := i == p.cursor, preset == p.current && p.source == p.persistedSource
 		hovered := hover == len(out) || hover == len(out)+1
 		lead := "  "
 		switch {
@@ -623,7 +629,7 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		}
 		out = append(out, head, tail)
 	}
-	if p.current == config.CrewCustom {
+	if p.current == config.CrewCustom && p.source == p.persistedSource {
 		out = append(out, pal.dim(fit(crewCustomLine, width)))
 	}
 	// AND THE ROW NOBODY WROTE, said last among the readings and before the door
