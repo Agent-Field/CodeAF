@@ -1348,8 +1348,14 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 // would draw the twelfth card byte-identical to the first (#1077). A subject
 // with no done card in the transcript has no sentence to double.
 func (a *app) questionReasonIsNews(q session.Question, reason string) bool {
-	for i := range a.entries {
-		if e := &a.entries[i]; e.kind == entryDone && e.done != nil && e.done.id == q.Subject.ID {
+	// NEWEST FIRST: the newest done card is the one that says where the work
+	// stands now, and older ones are frozen at older states — a state
+	// round-trip leaves two done cards on one id, and the oldest-first walk
+	// compared against a card no screen draws. [app.doneEntryFor] walks
+	// entries the same way for the same reason.
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.kind == entryDone && e.done != nil && e.done.id == q.Subject.ID {
 			drawn := strings.TrimSpace(e.done.status.Ask.Reason)
 			return reason != drawn && !strings.HasPrefix(reason, drawn+" · ")
 		}

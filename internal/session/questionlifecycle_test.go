@@ -341,3 +341,56 @@ func TestADeciderChangeDuringAFlightRedrawsTheCard(t *testing.T) {
 		t.Fatalf("the redraw banked the standing card: policy %q did not move", redrawn.Question.Policy)
 	}
 }
+
+// THE FLIGHT STAMP DIES WITH THE FLIGHT (#1077's review round 2): the redraw
+// during a settle banks `handed it to codeaf 18:20 · still working on it`, and
+// the settle's terminal notice must not re-emit that bank verbatim — a card
+// saying the work is still running after it finished is the stale-card class
+// the fix is about. The terminal raise mints fresh: the record's fate, the
+// ask's own reason, no flight stamp.
+func TestTheTerminalNoticeRetiresTheFlightStamp(t *testing.T) {
+	agent, _ := questionSession(t, "landing-flight-stamp", nil)
+	lane, stop := agent.WatchQuestions()
+	defer stop()
+
+	notice := TaskNotice{ID: 1, Title: "write the sheet", State: TaskUnverified}
+	agent.publishLandingQuestion(notice)
+	<-lane
+
+	q := agent.landingQuestion(PendingDecision{Notice: notice})
+	agent.recordDecision(decisionRecordOf(q, Answer{
+		At:        time.Date(2026, time.September, 16, 18, 20, 0, 0, time.Local),
+		Kind:      QuestionLanding,
+		ID:        1,
+		Key:       LandingDecideKey,
+		DecidedBy: DecidedByPerson,
+	}))
+
+	// the decider change during the flight redraws with the flight stamp
+	agent.publishLandingQuestion(TaskNotice{
+		ID: 1, Title: "write the sheet", State: TaskUnverified,
+		Settling: "your accept", Decider: TaskAskOwnerModel,
+	})
+	redrawn := <-lane
+	if redrawn.Kind != EventQuestion || redrawn.Question == nil {
+		t.Fatalf("the redraw did not go out: %+v", redrawn)
+	}
+	if !strings.Contains(redrawn.Question.Reason, "still working on it") {
+		t.Fatalf("the redraw during the flight does not carry the flight stamp: %q", redrawn.Question.Reason)
+	}
+
+	// and the terminal notice retires it
+	agent.publishLandingQuestion(TaskNotice{
+		ID: 1, Title: "write the sheet", State: TaskUnverified, Decider: TaskAskOwnerModel,
+	})
+	terminal := <-lane
+	if terminal.Kind != EventQuestion || terminal.Question == nil {
+		t.Fatalf("the terminal raise did not go out: %+v", terminal)
+	}
+	if strings.Contains(terminal.Question.Reason, "still working on it") {
+		t.Fatalf("the flight stamp outlived the flight: %q", terminal.Question.Reason)
+	}
+	if !strings.HasPrefix(terminal.Question.Reason, "handed it to codeaf 18:20") {
+		t.Fatalf("the terminal card does not lead with the answer's fate: %q", terminal.Question.Reason)
+	}
+}
