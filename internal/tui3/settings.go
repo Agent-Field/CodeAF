@@ -1944,6 +1944,9 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+u":
 		s.query.reset()
 		s.build()
+	case "ctrl+k":
+		s.query.killToEnd()
+		s.build()
 	case "ctrl+w":
 		s.query.deleteWord()
 		s.build()

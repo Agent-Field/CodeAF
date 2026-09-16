@@ -809,9 +809,10 @@ at and filtered, not edited by pointer.
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
 
 The kills above work the same way in **every** box codeaf has, not only the
-message box: the model picker, the sessions roster, the deliverables list, the
-connect key box and panel, the memory panel, the settings filter and its value
-editor, and the task page's filter. In those boxes `ctrl+w` is a word kill too —
+message box: **home's own box**, the errand pane beside it, the model picker, the
+sessions roster, the deliverables list, the connect key box and panel, the memory
+panel, the settings filter and its value editor, the rewind search, and the task
+page's filter. In those boxes `ctrl+w` is a word kill too —
 they are the whole screen while they are up, and no tab could be closed from
 inside one.
 
