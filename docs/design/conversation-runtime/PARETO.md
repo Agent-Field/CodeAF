@@ -2,8 +2,8 @@
 
 ## Current evidence
 
-[Calibration 02](CALIBRATION-20260905.md) records 36 frozen runs across codeaf,
-Pi and OMP. codeaf is not yet at the target: the observed small-task cost gap
+Calibration runs (36 frozen cells across codeaf, Pi and OMP) recorded at
+calibration time. codeaf was not yet at the target: the observed small-task cost gap
 remains, and each chat slice passed only one of two attempts. The next priority
 is unnecessary handoff/checking and the rendered request size. Bounded cache
 accounting and request-specific attribution landed after those measurements;
@@ -50,7 +50,7 @@ Small repeated samples are calibration, not a demonstrated frontier. Use paired 
 4. **Optimize one measured bottleneck at a time.** First isolate unnecessary auxiliary work, repeated static context, admission/rephrasing rounds, task opening latency, polling, serial dependencies, and verification loops. Evaluate minimal ablations on development fixtures. Keep the simplest change that improves the declared objective without breaking another gate. Never replace a general failure with a hard-coded benchmark answer.
 5. **Test adaptive task orchestration.** Add independent work, dependency fan-in, shared-file conflicts, cancellation, nested steering, task-room steering, ambiguity, long tool output, compaction, provider stall/failover, and restart/detach cases. Assert artifacts and visible behavior, rather than insisting on a fixed task graph. Measure the critical path and integrate cost of failures; spawning more tasks is not inherently faster.
 6. **Confirm on held-out variants.** Freeze candidate and acceptance margins before opening an unseen fixture set. New datasets, different document constraints, independent code defects, changed correction timing, and longer histories must exercise the same capabilities. Do not use the public reversal fixture as a proxy for all conversational correctness.
-7. **Keep the result production-safe.** Regression suites and the real chat door must pass. Document actual limits, status semantics, and capability availability in the manual whenever behavior changes. Roll out only through the owner's requested local integration until explicitly authorized otherwise.
+7. **Keep the result production-safe.** Regression suites and the real chat door must pass. Document actual limits, status semantics, and capability availability in the manual whenever behavior changes. Roll out through the normal review-and-merge path before claiming the result.
 
 ## Initial acceptance targets, to preregister before confirmation
 
