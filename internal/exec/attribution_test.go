@@ -13,15 +13,15 @@ import (
 // that only looked for the word "attribution".
 var attributionStrings = []string{
 	"Co-Authored-By: codeaf <agentfield-bot@users.noreply.github.com>",
-	"Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author",
-	"Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author",
+	"Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author",
+	"Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author",
 	// THE COMMENT LINE IS PINNED THE HARDEST OF THE FOUR, because every part of
 	// it is doing a job that is easy to edit away: `<sub>` is what makes it muted
 	// rather than a shout in somebody's thread, the lowercase `drafted` is what
 	// keeps it a remark rather than a heading, `utm_medium=comment` is what makes
 	// a comment countable apart from a body, and there is deliberately no
 	// "reviewed and owned by the author" tail.
-	"<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>",
+	"<sub>drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>",
 }
 
 func TestAttributionConstantsAreTheExactStrings(t *testing.T) {
