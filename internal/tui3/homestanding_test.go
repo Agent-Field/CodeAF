@@ -561,11 +561,58 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 	a.openHome()
 	a.home.pointItemForTest("one")
 	drive(t, a, key("enter"))
-	if a.home.msg != homeItemNoDoor {
-		t.Fatalf("an item made at home said %q, want %q", a.home.msg, homeItemNoDoor)
+	// AN ITEM MADE AT HOME OPENS ON STANDING, which is where it lives. It used to
+	// refuse in a sentence and leave the cursor where it was, which is the worst
+	// of both — nothing happens AND the screen explains why on the row a person
+	// is trying to leave (owner, 2026-09-15).
+	if a.at(pageHome) {
+		t.Fatalf("enter on an item made at home stayed on home, saying %q", a.home.msg)
 	}
-	if !a.at(pageHome) {
-		t.Fatal("home closed on a door that goes nowhere")
+	if !a.at(pageStanding) {
+		t.Fatal("enter on an item made at home did not open the standing place")
+	}
+	// AND THE CURSOR IS ON THE ITEM, not at the top of a list the person then
+	// has to find it in again: a press on a row lands on that row (review of
+	// #1046, [app.openStandingAt]).
+	if got, ok := a.orders.current(); !ok || got.ID != item.ID {
+		t.Fatalf("enter on an item made at home landed standing on %q (%v), want the item %q", got.ID, ok, item.ID)
+	}
+}
+
+// A WATCH ASKED FOR IN ANOTHER PROJECT STILL OPENS FROM HERE. It used to refuse
+// any origin outside the window's own bucket — `elsewhere · <path>` on the foot
+// — which meant a watch answered nothing at all from every window not launched
+// inside the folder that made it. A `where you were` row in another project has
+// opened from here for as long as the grid has existed; this path was the last
+// one holding the repealed rule (owner, 2026-09-15).
+func TestAWatchAskedForInAnotherProjectStillOpensFromHere(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", now.Add(-time.Hour))
+	asked := lab.session("beta", "s2", "Standing Up the Watches", "/w/beta", now.Add(-2*time.Hour))
+
+	band := &standBand{}
+	watch := bandItem("watch", "tell me when CI goes red", "/w/beta", standing.WhenProbe, "when CI goes red")
+	watch.NeedsPerson = "may I re-run it?"
+	watch.LastChecked = now.Add(-time.Minute)
+	watch.Created = now.Add(-time.Hour)
+	watch.Origin = standing.Origin{SessionID: "s2", Transcript: asked}
+	band.items = []standing.Item{watch}
+
+	a := lab.app(mine)
+	a.workspace = "/w/alpha"
+	band.wire(a)
+	a.width, a.height = 180, 40
+	openHomeOn(a, mine)
+	homeText(a)
+
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeItem })
+	drive(t, a, key("enter"))
+	if a.at(pageHome) {
+		t.Fatalf("enter on a watch from another project stayed on home, saying %q", a.home.msg)
+	}
+	if a.file != asked {
+		t.Fatalf("enter opened %q, want the conversation that asked for it %q", a.file, asked)
 	}
 }
 

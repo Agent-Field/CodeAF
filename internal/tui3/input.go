@@ -184,6 +184,33 @@ func (e *editor) killToStart() {
 	e.cursor = at
 }
 
+// killToEnd is ctrl+k, and it is [editor.killToStart] read the other way: to the
+// end of THIS line, never past the newline that ends it. That is the pair every
+// shell on this machine has, and the half that was missing here until the
+// switcher gave the letter back (hop.go's [hopOpenKey] states the trade).
+//
+// IT STOPS AT THE NEWLINE RATHER THAN EATING IT, which is where readline's own
+// ctrl+k and this one part company on purpose. In a shell the line IS the
+// buffer, so joining has nothing to join; here a draft is a paragraph somebody
+// is writing and an emptied line that silently swallowed its successor is a
+// gesture that took two lines while looking like it took one. A second press on
+// an already-empty line does nothing, and the way to join two lines is the
+// backspace that has always done it.
+func (e *editor) killToEnd() {
+	if e.cutPick() {
+		return
+	}
+	at := e.lineEnd()
+	if at == e.cursor {
+		// NOTHING TO TAKE, SO NOTHING IS REMEMBERED EITHER. An undo step recorded
+		// for an edit that changed no rune is a press of ctrl+z that appears to
+		// do nothing, which is the same defect one layer down.
+		return
+	}
+	e.remember(runWhole, true)
+	e.value = append(e.value[:e.cursor], e.value[at:]...)
+}
+
 // ── EVERY CARET MOTION DROPS THE SELECTION ─────────────────────────────────
 //
 // A highlight left standing while the caret walked out of it would be a box
@@ -353,7 +380,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		case closeTabChord:
 			cmd, _ := a.closeTabKey(msg)
 			return cmd
-		case "ctrl+k":
+		case hopOpenKey:
 			cmd, _ := a.hopKey(msg)
 			return cmd
 		case newChatChord:
@@ -1051,6 +1078,27 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		from, to := a.input.lineStart(), a.input.cursor
 		a.input.killToStart()
+		a.editTags(from, to, 0)
+		return a.edited()
+	case "ctrl+k":
+		// AND KILL TO THE END OF THE LINE, the other half of readline's pair. It
+		// is bound here rather than on the switcher because the switcher moved to
+		// `alt+k` to give this letter back (hop.go's [hopOpenKey]) — so this case
+		// is the whole point of that move and not a convenience added beside it.
+		//
+		// THE SAME FLUSH GOES ON THE KILL RING FIRST, under ctrl+u's reasoning
+		// read from the other end (draftring.go): caret at the START of a
+		// one-line draft is the one shape of THIS key after which nothing is
+		// left, and nothing-left is the mistake the ring exists for. A kill from
+		// the middle of a line, or on any line of a longer draft, leaves words
+		// standing and is not a loss the ring is for. A walk's box holds a
+		// RECALLED line rather than a draft, so killing it kills nothing that is
+		// not already kept.
+		if !a.recalling() && a.input.cursor == 0 && a.input.lineEnd() == len(a.input.value) {
+			a.noteKilled()
+		}
+		from, to := a.input.cursor, a.input.lineEnd()
+		a.input.killToEnd()
 		a.editTags(from, to, 0)
 		return a.edited()
 	case "alt+backspace", "ctrl+backspace":

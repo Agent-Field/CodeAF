@@ -111,7 +111,7 @@ func TestTheBillIsRightAlignedInTheRoomItsOwnSpellingsNeed(t *testing.T) {
 	// two things the room is the larger of never shrink, so the segment cannot
 	// narrow again as the session goes on.
 	big := costCell(123456.78)
-	if want := "$123456.78"; big != want {
+	if want := "$123,456.78"; big != want {
 		t.Fatalf("a bill past the reservation draws as %q, want %q with no padding at all", big, want)
 	}
 	if ansi.StringWidth(big) <= costFloorCells {

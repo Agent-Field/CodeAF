@@ -29,7 +29,7 @@ const homeProjectRow homeRowKind = 244
 
 func (projectsPanel) rows(in *homeGridInput) homePanelRows {
 	ordered := projectsOrdered(in)
-	shown := min(homeSlotOf(panelProjects).most, len(ordered))
+	shown := min(in.cap(panelProjects), len(ordered))
 	pad := 0
 	for _, project := range ordered[:shown] {
 		pad = max(pad, min(homeProjectPad, len([]rune(projectWord(project, in.tilde)))))

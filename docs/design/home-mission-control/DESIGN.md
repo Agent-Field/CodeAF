@@ -5,6 +5,14 @@
 picker artifact is the visual record). Status: **ruled 2026-09-10** — the owner took every default in §6. Everything in §2 and §3 is verified against the tree
 on 2026-09-10; file references are to `dev` at `893d66067`.*
 
+*Amended 2026-09-15: **laws 2 and 3 were re-ruled** by the owner after reading a
+real quiet home — six of the seven panels whispering over a screen that was five
+sixths scaffolding. A panel's column is now its content's to say: what has rows
+is the field at the left, what has none gathers in a rail down the right edge,
+and `projects` and `spend` are pinned to the top of that rail. The laws below
+carry the change and say what each of them used to say; §1's screen is redrawn
+under it.*
+
 ## 1. The ruling in one screen
 
 Home is not a list of chats. It is a fixed set of **panels**, each answering one
@@ -13,43 +21,76 @@ own keys, each a door to the place that owns it. The chat list is one panel.
 
 ```
  codeaf                                                      $0.14 / $20.00 · thu 9:49am
- home   tasks 1   spend   settings
+ home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you · 2                                   running · 2
- ? Searching for Apartments Near Minto      2h   ◐ Generate and Display First 200 Primes   4m
-   needs your ok to run bash   1 yes  2 not now     working · checking
- ? Clever Bet Prediction Model              6h     npm run dev · pricing-site           up 3h
+ needs you                                       projects
+ ? Searching for Apartments Near Minto      2h      ~/codeaf      12 chats · 1 running   master, 2 dirty
+   needs your ok to run bash   1 yes  2 not now     ~/pricing-site   5 chats · a job up   main
+ ? Clever Bet Prediction Model              6h      ~/infra          3 chats · quiet 4d
    the 2024 season only, or all three?  enter
-                                                 since you left · 12h
- where you were                                    Spark Fleet Ssh Audit · 2 hosts up, 1 not
- › Understanding Hash Tables in Data …    here     made reports/apartments-minto-street.md
-   explain open addressing vs chaining             the 6am repo watch found nothing changed
-   Understanding Bloom Filters in Eight …   11h    learned 2 things about codeaf
-   AI Influencers and Developers in …       11h
-   Locate Recent Sandbox Task in …           1d   spend                    today $0.14 of $20
-   70 more · type to find one                      ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪  under a cent per chat
-                                                   ▁▂▁▃▅▂▁▁▇▃▂▅▂▁   14 days $34.10 · opus 63%
- projects
- ~/codeaf      12 chats · 1 running   master, 2 dirty
- ~/pricing-site   5 chats · a job up     main       next up
- ~/infra          3 chats · quiet 4d                 the 6am repo watch                in 20h
-                                                     top movers before the open      mon 8:30
-                                                     2 rules hold
+                                                  spend                    today $0.14 of $20
+ where you were                                     ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪  under a cent per chat
+ › Understanding Hash Tables in Data …      2m      ▁▂▁▃▅▂▁▁▇▃▂▅▂▁   14 days $34.10 · opus 63%
+   here · explain open addressing vs chaining
+   Understanding Bloom Filters in Eight …   11h
+   AI Influencers and Developers in …       11h    running · 2
+   Locate Recent Sandbox Task in …           1d    ◐ Generate and Display First 200 Primes   4m
+   70 more                                           working · checking
+                                                    npm run dev · pricing-site           up 3h
+ since you left · 12h
+   Spark Fleet Ssh Audit · 2 hosts up, 1 not       scheduled
+   made reports/apartments-minto-street.md           the 6am repo watch
+   the 6am repo watch found nothing changed          top movers before the open
+   learned 2 things about codeaf                     2 rules hold
+
  ───────────────────────────────────────────────────────────────────────────────────────
  › say what you want done                                               here ~/codeaf
    type to reach anything · ↑↓ ←→ move · enter open · 1 2 answer · alt for the map
 ```
 
+The field on the left is every panel with rows, in the order table's order; the
+rail on the right is the pinned pair and, under a blank row, whatever is quiet
+today — here `running`, `since you left` and `scheduled` all hold something, so the
+rail is only its pinned top. THE SCREEN A PERSON ACTUALLY SEES MOST DAYS is the
+inverse of this one: one panel in the field and six headings in the rail, which
+is the reading that produced the 2026-09-15 amendment.
+
 ### The laws
 
 1. **One primary action.** The box. Everything above it sets up what you type or
    where you press enter.
-2. **Act left, watch right.** Left column is the person's: `needs you`, `where
-   you were`, `projects`. Right column is the machine's: `running`, `since you
-   left`, `spend`, `next up`. One column under 110 cells, two to 170, three past it.
-3. **Stable order, flexible height.** A panel keeps its column and its rank in
-   it. Its height is what it holds. Position is a rank, not a pixel.
+2. **The field and the rail** (ruled 2026-09-15, replacing *act left, watch
+   right*). A panel with rows stands in the **field** — the columns left of the
+   last one, filled from the top left corner down. A panel with nothing in it
+   stands in the **rail**, the last column, flush with the right edge, as its
+   heading and its whisper. `projects` and `spend` are **pinned** to the top of
+   the rail whatever they hold, because their height is the same on every
+   machine on every day; one blank row separates that pair from the panels that
+   are in the rail only because they are quiet today. One column under 110
+   cells, two to 170, three past it — and the field FILLS rather than balances,
+   so a frame whose panels fit in one column never spreads two short columns
+   over a wide screen. The middle column at three is the DESCRIPTIONS': a
+   row's sentence stands beside it there, and a question raised from home
+   stands there as a card; no panel of headings is ever laid in it.
+
+   *What this law was.* Until 2026-09-15 the column was a fact about the panel:
+   the person's three on the left, the machine's four on the right. It was
+   replaced because on a quiet machine — which is most machines most of the time
+   — six of the seven panels held nothing, and the screen was five sixths
+   scaffolding standing over the one panel with anything in it. The trade is
+   named in law 3.
+3. **Stable RANK, flexible column and height** (ruled 2026-09-15). A panel keeps
+   its rank in whichever column it lands in, so two panels that both fill never
+   swap places. Its height is what it holds. Its column is its content's to say
+   (law 2). Position is a rank, not a pixel.
+
+   *What this law was.* It read "a panel keeps its column and its rank in it".
+   The column half was struck knowingly: home's geography now moves, and a
+   person cannot learn that `running` is on the right the way they could before.
+   What is bought with it is that the left of the screen is only ever the things
+   that are actually going on, which is the thing a person walks up to home to
+   find. The rank never moving is what keeps the cost to one axis.
 4. **An empty panel whispers.** It stays as its heading and one dim line that
    names what arrives here and the one thing that puts it there — never that
    the panel is empty.
@@ -57,13 +98,13 @@ own keys, each a door to the place that owns it. The chat list is one panel.
    force for numbers (`$0.00`, `0 tasks`, a blank age all still draw nothing)
    and yields for panels, because a panel that vanishes teaches nothing. The
    whispers are in §4 and are the only prose about the product on the screen.
-5. **A short terminal squeezes in priority order.** `next up` and `spend` give
+5. **A short terminal squeezes in priority order.** `scheduled` and `spend` give
    way first, then `since you left`, then `running`; `needs you` and `where you
-   were` shrink last. A squeezed panel keeps its heading and `N more · <place>`.
+   were` shrink last. A squeezed panel keeps its heading and its `N more` fold.
    A GROUP INSIDE A PANEL folds before the panel gives up a row above it: the
-   rows of `needs you`'s `to check` group sit at the foot of the panel's list, so
+   rows of `needs you`'s `unread` group sit at the foot of the panel's list, so
    the ordinary bottom-up cut spends them first, and when none is left the
-   group's line goes and the fold names it — `8 to check · tasks` (#884).
+   group's line goes and the fold names it — `8 unread · tasks` (#884).
 6. **Preselect the previous thing.** On double-space the cursor is on the chat
    you were in before this one (this window's own stack, `chattabs.go`
    `tabList`). Enter is a switch in two keys; esc goes back.
@@ -74,7 +115,7 @@ own keys, each a door to the place that owns it. The chat list is one panel.
    the row the key means. The answers are drawn on the row so the key is never a
    guess. THE WORDS ARE THE QUESTION'S OWN EVERYWHERE; the KEYS are too wherever
    the question's own keys are digits, which is every card a conversation stops
-   on. The one exception is a landing in `to check`, whose keys are `[a]`/`[n]`
+   on. The one exception is a landing in `unread`, whose keys are `[a]`/`[n]`
    on its card, in its room and on its record and are `1`/`2` here — because a
    bare letter on home types (home.go: the foot promises "type to search or start
    something new" and the promise has no asterisk), and the drawn digit is the
@@ -82,19 +123,28 @@ own keys, each a door to the place that owns it. The chat list is one panel.
    `session.LandingYesKey`/`LandingNoKey` before the answer leaves the surface.
 8. **Two marks, one accent, one hint line.** `GlyphNeedsHuman` in `hueWarn` for
    a person — a conversation or a watch that has STOPPED, never a landing on
-   `to check`, which has already finished — the single spinner cell for work. Nothing else wears a glyph or a
+   `unread`, which has already finished — the single spinner cell for work. Nothing else wears a glyph or a
    colour. Money is a number. Key hints live on the foot and the alt map, never
    inside a panel.
-9. **Nothing grows past its budget.** Every panel folds inside itself with
-   `N more` and the name of its place; the fold is the door. A tall frame hands
+9. **Nothing grows past its budget — unless you open it.** Every panel folds
+   inside itself with `N more`, and THE FOLD IS A TOGGLE (owner, 2026-09-15; it
+   used to read `N more · <place>` and be a door into the place, and `where you
+   were`'s `N more · type to find one` was not a stop at all). `enter` on it
+   opens the panel: its cap is lifted, the other panels squeeze in law 5's order
+   to their floors, and it takes the column; the fold reads `N fewer` and enter
+   shuts it. One panel is open at a time. An open panel taller than the column
+   shows what fits and its fold still counts the rest — `3 fewer · 40 more` —
+   and NAMES NO PLACE, because a line that named a place `enter` did not go to
+   would be a door drawn on a wall; the panel's heading is the door to the
+   place that holds them (law 10). The fold wears no mark (law 8). A tall frame hands
    its spare rows out — only once every panel has its natural height — in the
    squeeze's order reversed, one row each round: `needs you` and `running` to 8,
-   `where you were` from 5 to 10, `since you left` to 8, `projects` to 8, `next
-   up` from 3 to 5; `spend` never grows. The air that is left sits under the
+   `where you were` from 5 to 10, `since you left` to 8, `projects` to 8,
+   `scheduled` from 3 to 5; `spend` never grows. The air that is left sits under the
    shortest column (owner, 2026-09-10: a 55-row terminal was two short columns
    over thirty rows of air). The budgets are the order table's `rest`/`most`.
 10. **Home is the summary of the tabs.** `running` opens tasks, `spend` opens
-    spend, `next up` opens standing. The bar is four places: `home tasks spend
+    spend, `scheduled` opens standing. The bar is four places: `home tasks spend
     settings`. Memory, standing and search stay reachable by their slash
     commands and return to the bar when they are in daily use.
 11. **The pulse leaves its counts at home.** On home the pulse is the budget and
@@ -132,7 +182,7 @@ Verified 2026-09-10. "On disk" means readable by any window without a live agent
 | where you were | `Meta.Title` (the `title` role, low tier); `Summary.LastUser` via `Peek`; `SessionRow.At`; this window's tab stack in-process | — | the existing `title` call only |
 | projects | `World.Project{Name, Dir, Sessions}`, `Running()`, `At()`; git status cached 5s (`homeband_repo.go`) | — | none |
 | spend | `usage.jsonl`; `UsageByDay`, `LastDays(14)`, `UsageByModel`; `DailyBudgetUSD` in config | one function: today against the ceiling | none |
-| next up | `standing.Item{NextDue, When.Kind, LastChecked}`; `homeband_nextup.go` clause logic | — | none |
+| scheduled | `standing.Item{NextDue, When.Kind, LastChecked, LastFired, LastOutcome}`; `homepanel_next.go`'s one sentence per kind | — | none |
 | something is wrong | `lanes/<model>.json` vendor health; `calls.jsonl` when enabled | host reachability (live 2s dial), ladder moves (narrated, not written), missing key (derivable, not stored) | none |
 
 **Zero new model calls.** The one candidate, a `receipt` role at the low tier
@@ -234,7 +284,7 @@ lines would read as the screen running out of room (owner, 2026-09-10).
 | since you left | `what watches and tasks did while the terminal was shut` |
 | where you were | `your conversations · what you type below starts one` |
 | spend | `every chat and task is priced here` |
-| next up | `reminders and routines · "remind me at 6" or "every morning at 9"` |
+| scheduled | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
 | projects | never empty: the launch folder is always a row |
 
 ## 5. Lanes
@@ -262,8 +312,10 @@ useful.
 4. **The emptiness law narrows for panels** — written into `docs/DESIGN-LANGUAGE.md`
    ("presence over labels") and CLAUDE.md's design-laws list in this branch.
 5. **Cross-window stop stays absent**, not broken; the row says `another window`.
-6. **Columns win the arrow.** `←→` cross columns, and `→` opens a row's verb strip
-   only where no column with rows lies to its right. A row whose verbs `→` cannot
+6. **Columns win the arrow.** `←→` cross columns, stepping over a column with
+   nothing to stand on to the next that has a row — without which the rail would
+   be out of the arrows' reach on a wide frame whose field fills one column. `→`
+   opens a row's verb strip only where no column with rows lies to its right. A row whose verbs `→` cannot
    reach keeps them on their chords (`ctrl+o`, `ctrl+e`, …), and the foot names one
    so the door is never invisible.
 7. **A whisper never outranks a row.** When a squeeze has to drop a whole panel, every
@@ -280,3 +332,17 @@ bench host, branches `home/mc-<lane>`, briefs in `benchhost:~/af-home-briefs/`, 
 The integrator merges each into `home/mission-control`, builds `bin/codeaf`
 after every viewable step, and runs the full suites once, at
 the end, on the bench host.
+
+### Amended 2026-09-15 — `next up` is `scheduled`, and its rows carry no clock
+
+The seventh panel was `next up · reminders & routines`, and each row carried its
+clock at the right (`in 20h`, `mon 8:30`, `holds`) beside a title that usually
+said the schedule too. The owner renamed it `scheduled` — one word, no
+explainer, because it holds four kinds of order and the explainer named two —
+and struck the margin. A row is the person's own words and nothing at its
+right; its time is said once, in its description under the cursor, in the one
+sentence its kind has: `reminder · goes off tomorrow 9:00am`, `routine · every
+morning at nine · next tomorrow 9:00am · last: …`, `watch · every five minutes
+· last looked 3m ago · found: …`, `rule · always`. An order stopped on a person
+is not on it: it is a row of `needs you`, and one thing is said once across the
+columns.

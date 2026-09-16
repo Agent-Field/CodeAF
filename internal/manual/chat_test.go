@@ -372,6 +372,22 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is there a conversation switcher", "keys"},
 		{"how do I get to my other conversation without going home", "keys"},
 		{"what does ctrl+k do", "keys"},
+		{"what does alt+k do", "keys"},
+		// AND THE SPELLING ITSELF, asked the way somebody looking at the screen
+		// asks it: they can see `opt+` and the manual is full of `alt+`, or they
+		// expected the ⌥ symbol their other Mac apps draw.
+		{"why does it say opt instead of the option symbol", "screen"},
+		{"is opt the same as alt", "screen"},
+		// AND THE CHORD THAT MOVED, ASKED BOTH WAYS ROUND. Somebody whose hands
+		// know the old key presses it and watches half a line disappear; somebody
+		// who read that the switcher exists goes looking for the key. Both have to
+		// land on the page that explains the trade, and the second pair is the Mac
+		// question that follows immediately after: the chord types a character.
+		{"ctrl+k does not open the switcher any more", "keys"},
+		{"why did ctrl+k delete the rest of my line", "keys"},
+		{"how do I delete to the end of the line", "keys"},
+		{"what key opens the conversation switcher now", "keys"},
+		{"alt+k types a character instead of switching", "keys"},
 		{"why does ctrl+tab do nothing", "keys"},
 		{"what did my other chats do while I was away", "keys"},
 		// AND THE CHORD THAT MOVED. ctrl+t is the new tab now and the task roster
@@ -2273,7 +2289,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I move between the columns on home", "home"},
 		{"why is the cursor on my previous chat when I open home", "home"},
 		{"why did home cut off panels on a small terminal", "home"},
-		{"what does 3 older tasks mean on home", "home"},
+		{"what does 3 more mean on home", "home"},
+		{"how do I expand a panel on home to see the rest", "home"},
 		{"where did the card on home go", "home"},
 		{"where did standing and memory go from the tab bar", "home"},
 		{"can I stop another window task from home", "home"},
@@ -2408,7 +2425,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// THE PLATFORM QUESTION, in the four shapes it actually arrives in: the Mac
 		// user whose option key is composing accents (which is what they SEE, so
 		// they ask about the character rather than about the modifier), the person
-		// wondering whether the manual's `alt+` is their `⌥`, the one who tried
+		// wondering whether the manual's `alt+` is their `opt+`, the one who tried
 		// `ctrl+1` because the number is drawn on the tab, and the Windows user
 		// checking whether any of it applies to them.
 		{"why does option type ¡ instead of jumping to a place", "screen"},

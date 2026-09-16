@@ -56,11 +56,138 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 		c := min(h.grid.col[at], len(xs)-1)
 		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at))...)
 	}
+	if at := homeDescCol(h.grid.cols); at != homeNoLine && at < len(columns) {
+		columns[at] = a.homeDescLines(widths[at], room, pal, columns[0])
+	}
 	rows := make([]placeRow, room)
 	for y := range rows {
 		rows[y] = homeGridZip(columns, y, xs)
 	}
 	return rows
+}
+
+// homeDescLines is the middle column: what the rows have to say about
+// themselves, each sentence standing ON THE LINE OF THE ROW IT BELONGS TO.
+//
+// TWO KINDS SHARE IT. A `needs you` question is drawn WHETHER OR NOT its row is
+// selected ([homeCell.alwaysSaid]) — the panel exists so a person reads what is
+// waiting on them at a glance. Every other row's sentence is drawn only while it
+// is the row under the cursor, because a gloss on forty rows at once is a wall.
+//
+// ALIGNMENT IS WHAT MAKES THE TWO LEGIBLE TOGETHER. Each note starts on its own
+// row's line, so which row a sentence is about is a fact about where it is
+// rather than something the reader works out, and a note runs down only as far
+// as the next note's row so two of them never overlap.
+//
+// IT IS BUILT AT PAINT TIME AND NOT AT BUILD TIME, which is the whole reason it
+// can follow the cursor: the grid's lines are settled when the room or the width
+// moves ([homeView.buildGrid]) and an arrow key moves neither, so a column
+// assembled up there would answer about whichever row the cursor happened to be
+// on when the frame was last rebuilt.
+//
+// IT FOLLOWS THE POINTER TOO, through the same [homeView.previewLine] the card
+// beside the search has always used.
+//
+// NOTHING IN IT IS A STOP. The column holds no row a cursor may stand on, which
+// is what makes `→` step over it to the rail ([homeView.gridCrossTarget]) rather
+// than parking the cursor on a sentence about the row it just left.
+func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) []homeCellLine {
+	h := &a.home
+	if room <= 0 || width <= homeGridLead {
+		return nil
+	}
+	// A QUESTION HOME HAS RAISED TAKES THE WHOLE COLUMN, beside the row it is
+	// about. One decision is drawn once and nothing is drawn beside it: the
+	// column is otherwise a set of notes about rows, and notes stacked around a
+	// question a person has to answer are the screen talking over it.
+	//
+	// IT IS ASKED BEFORE THE ROOM IS CLAMPED TO THE FIELD'S OWN HEIGHT. A card is
+	// not a note about a row and is not bounded by how many rows there are: a
+	// frame with two conversations on it has the whole column for the question,
+	// and clamping it to the field's length refused to draw one on every quiet
+	// machine.
+	if rows := a.homeAskNote(field, width, room); rows != nil {
+		return rows
+	}
+	room = min(room, len(field))
+	preview := h.previewAt()
+	type note struct {
+		y     int
+		words []string
+	}
+	var notes []note
+	for y := 0; y < room; y++ {
+		at := field[y].at
+		if at == homeNoLine || at < 0 || at >= len(h.lines) {
+			continue
+		}
+		line := h.lines[at]
+		if line.cell == nil {
+			continue
+		}
+		said := strings.TrimSpace(line.cell.sub)
+		selected := at == preview
+		if said == "" || (!line.cell.alwaysSaid() && !selected) {
+			continue
+		}
+		notes = append(notes, note{y: y, words: a.homeDescNote(line, at, said, width, selected, pal)})
+	}
+	if len(notes) == 0 {
+		return nil
+	}
+	out := make([]homeCellLine, room)
+	for i := range out {
+		out[i] = homeCellLine{at: homeNoLine, head: -1}
+	}
+	for i, n := range notes {
+		// A NOTE RUNS DOWN ONLY AS FAR AS THE NEXT ONE'S ROW. The rest of a
+		// sentence that does not fit is dropped rather than drawn over somebody
+		// else's row: the column's whole promise is that a line belongs to the
+		// row beside it.
+		stop := room
+		if i+1 < len(notes) {
+			stop = notes[i+1].y
+		}
+		for j, words := range n.words {
+			if n.y+j >= stop {
+				break
+			}
+			out[n.y+j] = homeCellLine{at: homeNoLine, head: -1, text: words}
+		}
+	}
+	return out
+}
+
+// homeDescNote is one row's note as the lines it takes.
+//
+// THE KEYS ARE THE SELECTED ROW'S AND NOBODY ELSE'S. A permanent note — a
+// `needs you` question standing over rows the cursor is not on — is the sentence
+// alone: `enter` beside a row a person is not standing on is a key that would do
+// something else if they pressed it, and the surface may never advertise one of
+// those (law 7 draws a row's answers so the key is never a guess). The moment the
+// row IS the one being read, its keys join it at the right of its own line, in
+// the one place they have ever been.
+//
+// AND A PERMANENT NOTE IS ONE LINE, SELECTED OR NOT. It shares the column with
+// rows above and below it and may not grow into them; only a note that is there
+// BECAUSE it is selected has the column to itself and wraps.
+func (a *app) homeDescNote(line homeLine, at int, said string, width int, selected bool, pal palette) []string {
+	room := max(1, width-homeDescLeadCells)
+	answers := ""
+	if selected {
+		answers = strings.TrimSpace(a.homeRowAnswers(line, at))
+	}
+	if line.cell.alwaysSaid() {
+		return []string{a.homeDescLead(line.cell, pal) + switcherSides(room, said, answers, pal.dim, pal.muted)}
+	}
+	var out []string
+	for _, words := range wrap(said, room) {
+		out = append(out, homeDescLeadBlank+pal.dim(words))
+	}
+	if answers != "" {
+		out = append(out, "", homeDescLeadBlank+paintHint(answers, pal, pal.dim))
+	}
+	return out
 }
 
 // homeGridZip is one body row: each column's row at its x, and the mark that
@@ -145,6 +272,15 @@ func (h *homeView) marksPanel(at int) bool {
 
 // homeCellLeadBlank is the lead of a row that wears no mark.
 var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
+
+// homeDescLeadCells is what a note in the description column stands in, and it
+// is ONE CELL WIDER THAN A ROW'S LEAD so the mark and the first letter of the
+// sentence it leads are not touching (owner, 2026-09-15). Every note takes it,
+// marked or not, because notes are read down the column against each other
+// rather than against the rows in the column beside them.
+const homeDescLeadCells = homeGridLead + 1
+
+var homeDescLeadBlank = strings.Repeat(" ", homeDescLeadCells)
 
 // homeCellHead is a panel's heading: its word in the places' one heading ink
 // (placeprose.go's [placeHeadingInk]), its explainer beside it dim, its clause at
@@ -247,9 +383,8 @@ func homeSparkCells(values []float64) []string {
 	return out
 }
 
-// homeCellGroup is a group's own line inside a panel: its word and count at the
-// left and its clause at the right, both dim, under the rows' own lead
-// ([homePanelGroup]).
+// homeCellGroup is a group's own line inside a panel: its word, dim, under the
+// rows' own lead ([homePanelGroup]).
 //
 // IT IS DIMMER THAN A HEADING ON PURPOSE. A panel's heading is the places' one
 // heading ink and marks itself when the cursor is in it ([homeCellHead]); a
@@ -282,7 +417,9 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 	cell := line.cell
 	body := homeCellBody(a.homeCellDoor(cell, at, width-homeGridLead), width-homeGridLead, pal, lit)
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
-	if cell.sub == "" || (cell.grows && at != a.home.cursor) {
+	// THE DESCRIPTION COLUMN HAS THIS LINE WHERE THERE IS ONE, so the row is one
+	// line and the panel above it is that much shorter ([homeDescCol]).
+	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.cursor) {
 		return rows
 	}
 	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
@@ -299,6 +436,16 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 	if spin := a.homeSpinCell(at); spin != "" && cell.mark != cellMarkNeeds {
 		return pal.accent(spin) + " "
+	}
+	// THE MARK LEADS THE QUESTION AND NOT THE ROW where the description column
+	// draws that question ([homeDescNote]). The `?` means "this has stopped and
+	// is waiting on you", and the thing it is true of is the QUESTION — so on a
+	// frame that draws the question, the mark belongs beside the words rather
+	// than beside the title of the conversation they came from (owner,
+	// 2026-09-15). The row keeps the two blank cells, so every title on the
+	// screen still starts in the same column.
+	if cell.mark == cellMarkNeeds && homeDescOn(a.home.grid.cols) && cell.alwaysSaid() {
+		return homeCellLeadBlank
 	}
 	switch cell.mark {
 	case cellMarkNeeds:
@@ -453,4 +600,98 @@ func homeCellWidth(title string, pad int, note, tag, right string) int {
 		n += 1 + ansi.StringWidth(tail)
 	}
 	return n
+}
+
+// homeAskNote is the question home is holding, drawn in the description column
+// on the line of the row whose `enter` raised it, and nil where there is no
+// question or its row is not in the field.
+//
+// IT IS THE QUESTION BLOCK'S OWN CARD ([app.homeAskRows]) and not a second
+// drawing of the same facts, so a person who has learnt one question on this
+// surface has learnt this one. Until this column existed the grid had nowhere to
+// put it: the card belongs to the detail column beside the typed search, which
+// is not up at rest, so a raised question left only its one-line foot version —
+// appended to the resting sentence, where it read as a run-on and was missed
+// (owner, 2026-09-15).
+//
+// IT IS PULLED UP RATHER THAN CUT where the card is taller than the room under
+// its row. A decision with its last answer off the bottom of the screen is worse
+// than one drawn a few lines above the row it belongs to.
+func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine {
+	h := &a.home
+	if _, ok := a.homeAsking(); !ok {
+		return nil
+	}
+	// THE CARD DRAWS WHEREVER THE QUESTION CAME FROM, and it must: the foot stops
+	// saying a question once this column can draw one ([app.sayHomeAsk]), so a
+	// question with no row to stand beside would be a decision on the screen with
+	// nothing on the screen about it. A question raised by `enter` has the row
+	// its key was pressed on ([homeView.armed]); one raised by the LAUNCH — a
+	// window that met a lock on the conversation it was opening — has no row at
+	// all, and stands at the top of the column instead.
+	at := 0
+	if armed := strings.TrimSpace(h.armed); armed != "" {
+		for y := 0; y < min(room, len(field)); y++ {
+			line := field[y].at
+			if line == homeNoLine || line < 0 || line >= len(h.lines) {
+				continue
+			}
+			if h.lines[line].kind == homeSession && strings.TrimSpace(h.lines[line].row.Transcript) == armed {
+				at = y
+				break
+			}
+		}
+	}
+	said := a.homeAskRows(max(1, width-homeGridLead))
+	// A CARD TALLER THAN THE ROOM IS NOT DRAWN AT ALL. Cutting it takes the
+	// closing edge, the keys and usually an answer off the bottom of the screen,
+	// and a decision whose answers a person cannot see is worse than the same
+	// decision said in one line on the foot — which is exactly what the foot
+	// version is for, and what [app.sayHomeAsk] falls back to when this refuses
+	// ([app.homeAskFitsColumn] is the one predicate both of them ask).
+	if len(said) == 0 || len(said) > room {
+		return nil
+	}
+	top := min(at, max(0, room-len(said)))
+	out := make([]homeCellLine, room)
+	for i := range out {
+		out[i] = homeCellLine{at: homeNoLine, head: -1}
+	}
+	for i, words := range said {
+		if top+i >= room {
+			break
+		}
+		out[top+i] = homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + words}
+	}
+	return out
+}
+
+// homeDescLead is what a note stands in: the row's own mark where the row gave
+// it up ([app.homeCellLead]), and the same two blank cells otherwise — so a note
+// with a mark and a note without one start their words in the same column.
+func (a *app) homeDescLead(cell *homeCell, pal palette) string {
+	if cell.mark == cellMarkNeeds {
+		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + strings.Repeat(" ", homeDescLeadCells-1)
+	}
+	return homeDescLeadBlank
+}
+
+// homeAskFitsColumn reports that a question home is holding can be drawn WHOLE
+// in the description column of the frame as it last stood.
+//
+// IT IS THE ONE PREDICATE, asked by the column that draws the card and by the
+// foot that would otherwise say it. Two answers to "is the card on this frame"
+// is a question drawn twice on a tall frame and drawn nowhere at all on a short
+// one, and both of those have happened.
+func (a *app) homeAskFitsColumn() bool {
+	if _, ok := a.homeAsking(); !ok || !a.home.gridOn() || !homeDescOn(a.home.cols) {
+		return false
+	}
+	col := homeDescCol(a.home.cols)
+	_, widths := homeGridGeometry(a.home.gridWidth, a.home.cols)
+	if col < 0 || col >= len(widths) {
+		return false
+	}
+	said := a.homeAskRows(max(1, widths[col]-homeGridLead))
+	return len(said) > 0 && len(said) <= a.home.room
 }

@@ -51,7 +51,7 @@ func TestTheKeySheetSpellsTheEscapeGestureOneWay(t *testing.T) {
 		{"the places row's continuation", "on a place, tab is the next place", "esc back"},
 		{"the task roster", railHoldChord + " ", "esc back"},
 		{"the new chat", newChatChord + " ", "esc back"},
-		{"the conversation switcher", "ctrl+k ", "esc cancel"},
+		{"the conversation switcher", hopOpenKey + " ", "esc cancel"},
 		{"space space, over an empty box", "space space", "esc back"},
 	} {
 		found := ""

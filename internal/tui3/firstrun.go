@@ -270,9 +270,10 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 		// The local chat door always wires the browser seam above.
 		a.noteFacts(setupNoKeyWord, "/settings", config.APIKeyEnv)
 	}
-	// AND THE ONE LINE A MAC IS OWED BEFORE IT COSTS ANYBODY ANYTHING. Every
-	// chord this surface binds is `⌥`, and most macOS terminals send Option as an
-	// accent-composing key until a setting is turned on — so the first minute is
+	// AND THE ONE LINE A MAC IS OWED BEFORE IT COSTS ANYBODY ANYTHING. The places
+	// are built on `alt+` chords — drawn `opt+` on a Mac — and most macOS
+	// terminals send Option as an accent-composing key until a setting is turned
+	// on, so the first minute is
 	// where that is worth saying, while a person is being told how the program
 	// works rather than after a chord has silently typed `¡` into their sentence.
 	//

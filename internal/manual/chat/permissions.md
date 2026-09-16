@@ -174,8 +174,8 @@ chat behind it. Nothing typed on that page can allow, deny, postpone or otherwis
 answer the waiting question.
 
 The question block is not drawn on the start page because its answer keys do
-nothing there. The chat that is asking keeps `?` on its tab, and **Chats** says
-`asking you something`. Press `esc` or select that chat to go back; the same
+nothing there. The chat that is asking keeps `?` on its tab, and its row on the chats
+card (`alt+k`) says `asking you something`. Press `esc` or select that chat to go back; the same
 question returns with its numbered answers live.
 
 Walking away does not turn silence into a no. If an approval countdown reaches
@@ -551,10 +551,10 @@ nothing.
 A stored glob is stored as a glob. `ls *.go` approved becomes `ls *.go` allowed,
 wildcard and all — the dialect has no escape for `*`.
 
-## The approval modes, and the default
+## The approval modes, and the default — does changing "ask before running" affect the conversation I am in
 
 `tools.approvalMode` decides what happens when the model asks to run a tool and
-nothing more specific applies. It is in `/settings`, under Spending, on the row
+nothing more specific applies. It is in `/settings`, under **Safety**, on the row
 labelled **"ask before running"**.
 
 | value | what it means |
@@ -565,7 +565,27 @@ labelled **"ask before running"**.
 
 The row's own hint reads: "what happens when the model asks to run a tool:
 prompt asks you, allow runs it, deny refuses it. Dangerous shell commands are
-asked about whichever way this is set. A change lands on the next session."
+asked about whichever way this is set. A change reaches this conversation
+straight away, unless the panel says it lands on the next session."
+
+**Cycling the row changes the gate you are already behind — or says it could
+not.** The rules are rebuilt from this row and the two under it on the same
+keystroke, the `YOLO` badge on the status line moves with them, and `/status`
+says the posture in words under `approvals`. There is no turn to wait for.
+
+Where the running gate cannot be reached, the row is still saved and the panel
+says, under the list:
+
+```
+saved · from the next session
+```
+
+and this conversation keeps the gate it has, badge included: the badge follows
+the gate in force, never the file. That is the answer on a plain launch, where
+this machine's engine holds the conversation and there is no take-back door to
+its gate — the same answer `/permissions` gives when it drops a rule.
+`--no-host` lands the change at once; over `--host` the gate is the far
+machine's.
 
 A persisted value codeaf does not recognise reads as the default. A garbled
 setting must never be the one that opens the gate.
@@ -581,6 +601,10 @@ bypass.
 like `read:allow, bash:prompt`. The consent card's always writes here one entry
 at a time.
 
+Editing the row in the panel takes the same road as the mode above it: the rules
+are rebuilt for the conversation you are in on the keystroke, or the panel says
+`saved · from the next session` and this session keeps the gate it has.
+
 A rule about a tool beats the default for that tool.
 
 Entries are `name:action`, separated by comma, semicolon or newline. The action
@@ -591,7 +615,9 @@ Duplicate names are an error too, not last-one-wins.
 
 `tools.bashPatterns` holds ordered answers for individual shell commands, first
 match wins. It is the `/settings` row **"shell command rules"**, e.g.
-`allow git status*, deny rm -rf *`. A bash "always" lands here.
+`allow git status*, deny rm -rf *`. A bash "always" lands here. Editing it in the
+panel lands on the running gate, or says `saved · from the next session`, exactly
+as the two rows above it do.
 
 The dialect is `*` and literal text and nothing else. `?`, `[` and `\` are all
 literal, matching is case-sensitive, and `*` spans path separators.
@@ -624,6 +650,10 @@ as long as it runs, so that posture is never invisible.
 
 It replaces **the default and nothing else**. If you wrote `bash:prompt`, you
 are still asked about bash, and your ordered shell command rules are untouched.
+
+And the row cannot close a gate the flag opened. Cycling "ask before running" to
+`prompt` in `/settings` writes the row for the next launch, while this run stays
+on `allow` — so the badge stays up, because it reports the posture in force.
 
 `--yolo` cannot lift either of the two floors below.
 
