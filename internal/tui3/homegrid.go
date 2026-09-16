@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -193,10 +194,6 @@ const homeFindWord = "type to find one"
 // `N older · tasks` instead ([needsFresh]).
 const homeNeedsTaskFresh = 48 * time.Hour
 
-// homeFoldOlderWord is what the fold says after the count of rows a panel aged
-// out rather than folded.
-const homeFoldOlderWord = "older"
-
 // homeWhisper is what an empty panel says under its heading — THE COPY OF
 // RECORD is DESIGN.md §4, and the manual quotes it from here.
 //
@@ -218,17 +215,31 @@ var homeWhisper = map[homePanelID]string{
 	panelNext:    `reminders and routines · "remind me at 6" or "every morning at 9"`,
 }
 
-// homePanelCut is a panel's rows cut at its growth budget, with the count of
-// what the fold stands for past it. Which of the kept rows are drawn is the
-// layout's to say ([homeGridLayout]); a panel only ever hands it at most this
-// many, so a machine with four hundred conversations builds ten lines and not
-// four hundred.
-func homePanelCut(id homePanelID, lines []homeLine) homePanelRows {
-	most := homeSlotOf(id).most
+// homePanelCut is a panel's rows cut at its cap, with the count of what the
+// fold stands for past it. Which of the kept rows are drawn is the layout's to
+// say ([homeGridLayout]); a panel only ever hands it at most this many, so a
+// machine with four hundred conversations builds ten lines and not four hundred
+// — unless it is THE panel somebody opened, whose cap is lifted
+// ([homeGridInput.cap]).
+func homePanelCut(in *homeGridInput, id homePanelID, lines []homeLine) homePanelRows {
+	most := in.cap(id)
 	if len(lines) <= most {
 		return homePanelRows{lines: lines}
 	}
 	return homePanelRows{lines: lines[:most], more: len(lines) - most}
+}
+
+// cap is how many rows a panel hands the layout: its growth budget, the order
+// table's `most` — or every row it has, for the one panel whose fold somebody
+// opened ([homeView.opened]). The layout still fits that panel to the column,
+// so opening a panel with four hundred rows on a forty-row frame shows the
+// forty and folds the rest; what the lifted cap buys is that the rows are
+// THERE to be shown when the column has room.
+func (in *homeGridInput) cap(id homePanelID) int {
+	if in.openedOn && in.opened == id {
+		return math.MaxInt
+	}
+	return homeSlotOf(id).most
 }
 
 // homeSlotOf is one panel's row of the table.
@@ -319,6 +330,11 @@ type homeGridInput struct {
 	spend homeSpendReading
 	seen  time.Time
 	now   time.Time
+	// opened is the one panel whose fold somebody opened, and openedOn that
+	// there is one: its cap is lifted ([homeGridInput.cap]) and, for `needs
+	// you`, its aged landings come back into the group ([homeView.gridInput]).
+	opened   homePanelID
+	openedOn bool
 	// desc is that this frame HAS a description column ([homeDescOn]). A row
 	// whose sentence only exists to be drawn there does not carry one on a frame
 	// with nowhere to draw it — a sub reserves a line in its panel's height
@@ -335,7 +351,16 @@ func (h *homeView) gridInput() homeGridInput {
 	here := switcherHere{session: h.here, coming: h.claim, hosted: h.far}
 	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read, h.ledger)
 	calls, older := needsFresh(needsCalls(world, h.world.Read), h.world.Read)
+	// AN OPENED `needs you` SHOWS ITS AGED LANDINGS TOO. They aged out of the
+	// group as history ([needsFresh]) and the shut fold counts them with the rest
+	// it hides; opening the fold is asking for all of it, and a `▸ 3 more` that
+	// opened to show one row and kept two behind another word would be a fold
+	// that lied about its own count.
+	if h.openedOn && h.opened == panelNeeds {
+		calls, older = needsCalls(world, h.world.Read), 0
+	}
 	return homeGridInput{rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
+		opened: h.opened, openedOn: h.openedOn,
 		desc: homeDescOn(h.cols), world: world, items: h.items,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
 		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
@@ -542,11 +567,21 @@ type homeGridPanel struct {
 	// group that lives there and the panels under it as the ones that are only
 	// passing through ([homeGridLayout]).
 	gapAbove bool
+	// expanded is the panel whose fold somebody opened: it wants every row it
+	// has, the squeeze takes from it last, and its fold is the way back
+	// ([homeGridPanel.fold]).
+	expanded bool
 }
 
-// natural is how many rows the panel shows at its natural height: its rest,
-// or all it holds when that is fewer.
-func (p homeGridPanel) natural() int { return min(p.slot.rest, len(p.read.lines)) }
+// natural is how many rows the panel shows at its natural height: its rest, or
+// all it holds when that is fewer — and all it holds, however many, for the
+// panel somebody opened.
+func (p homeGridPanel) natural() int {
+	if p.expanded {
+		return len(p.read.lines)
+	}
+	return min(p.slot.rest, len(p.read.lines))
+}
 
 // empty reports a panel with no rows at all, which draws its whisper instead.
 // A panel whose every row aged out is not empty: its fold is the door to them.
@@ -557,8 +592,9 @@ func (p homeGridPanel) empty() bool {
 // hidden is how many rows the fold stands for.
 func (p homeGridPanel) hidden() int { return len(p.read.lines) - p.shown + p.read.more }
 
-// folds reports that the panel draws its fold line.
-func (p homeGridPanel) folds() bool { return p.hidden() > 0 || p.read.older > 0 }
+// folds reports that the panel draws its fold line: while it is hiding rows,
+// and while it is open — an open panel's fold is the way to shut it again.
+func (p homeGridPanel) folds() bool { return p.hidden() > 0 || p.read.older > 0 || p.expanded }
 
 // height is how many screen rows the panel draws: its heading, its rows or its
 // whisper, and its fold.
@@ -665,10 +701,18 @@ func fitColumn(column []*homeGridPanel, room int) {
 }
 
 // byKeep is a column's panels in the order a squeeze takes from them: the
-// lowest keep first.
+// lowest keep first — and THE OPEN PANEL LAST, whatever its keep. Somebody
+// asked to see all of it, so every other panel goes to its floor before that
+// one gives up a row; and since the regrow hands rows back from the end of this
+// order, it is also the first to get them.
 func byKeep(column []*homeGridPanel) []*homeGridPanel {
 	order := append([]*homeGridPanel(nil), column...)
-	sort.SliceStable(order, func(i, j int) bool { return order[i].slot.keep < order[j].slot.keep })
+	sort.SliceStable(order, func(i, j int) bool {
+		if order[i].expanded != order[j].expanded {
+			return order[j].expanded
+		}
+		return order[i].slot.keep < order[j].slot.keep
+	})
 	return order
 }
 
@@ -800,7 +844,7 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 	rail := homeRailCol(cols)
 	for _, slot := range homePanelOrder {
 		read := slot.panel.rows(in)
-		p := &homeGridPanel{slot: slot, read: read}
+		p := &homeGridPanel{slot: slot, read: read, expanded: in.openedOn && in.opened == slot.panel.id()}
 		p.shown = p.natural()
 		p.desc = homeDescOn(cols)
 		at := homeColumnOf(slot, cols, p.empty())
@@ -984,29 +1028,56 @@ func (p homeGridPanel) lines() []homeLine {
 	return out
 }
 
-// fold is `N more · <place>` (law 9: nothing grows, and the fold is the door),
-// with `M older` between the two when the panel aged rows out. A fold that names
-// a place is a door into it, the same [homeLedger] line a `since you left` row
-// is; one that names only a count or an instruction is not a stop.
+// fold is the panel's last line, and IT IS A TOGGLE (owner, 2026-09-15). Shut,
+// it is `N more`, counting everything the panel is not showing — the rows past
+// its budget, the rows the squeeze took, and the landings `needs you` aged out
+// — and enter opens the panel: its cap is lifted, the other panels squeeze to
+// their floors (law 5), and it takes the column. Open, it is `N fewer`, and
+// enter shuts it again.
+//
+// IT WEARS NO MARK. The places' fold doors are `▸ 11 more` and `▾ 11 fewer`
+// ([foldDoor]); this one is the words alone, because the grid has two marks and
+// no other (law 8) — the amber question and the one moving cell — and a third
+// glyph down the column, one per panel, would be the thing that law exists to
+// refuse. The words say which way it goes: `more` opens, `fewer` shuts.
+//
+// THE PLACE IS NAMED ONLY FOR WHAT STILL WILL NOT FIT. An open panel taller
+// than the column shows what it can and its fold reads `3 fewer · 40 more ·
+// tasks` — the way back first, then where the rest are — because a fold that
+// opened and still hid rows without saying where they were would leave them
+// nowhere. It used to be the other way round: law 9 said the fold IS the door,
+// `N more · tasks` opened the tasks place, and `where you were`'s `N more · type
+// to find one` was not a stop at all because typing was its door; the owner
+// found one line that opened somewhere and another that could not be stood on
+// and asked for one thing that expands.
 func (p homeGridPanel) fold() homeLine {
-	var counts []string
-	if n := p.hidden(); n > 0 {
-		counts = append(counts, groupedInt(n)+" "+p.foldMoreWord())
-	}
-	if n := p.read.older; n > 0 {
-		counts = append(counts, groupedInt(n)+" "+homeFoldOlderWord)
-	}
-	words := strings.Join(counts, rowSep)
-	word := p.slot.foldWord()
-	if word != "" {
-		words += rowSep + word
+	words := ""
+	rest := p.hidden() + p.read.older
+	if p.expanded {
+		words = foldWords(true, p.opened(), "")
+		if rest > 0 {
+			words += rowSep + groupedInt(rest) + " " + p.foldMoreWord() + rowSep + p.slot.foldWord()
+		}
+	} else {
+		// The group's word where the group's own line is not on the screen,
+		// so `8 unread` is still the whole of what a squeezed panel says about
+		// its landings ([homeGridPanel.foldMoreWord]).
+		words = groupedInt(rest) + " " + p.foldMoreWord()
 	}
 	cell := &homeCell{kind: cellFold, panel: p.slot.panel.id(), title: words}
-	if p.slot.more == "" && word != "" {
-		return homeLine{kind: homeLedger, project: word, dir: homeFoldKey, cell: cell}
-	}
-	return homeLine{kind: homeSwitchHead, cell: cell}
+	return homeLine{kind: homeFold, project: p.slot.foldWord(), dir: homeFoldKey, folded: !p.expanded, quiet: rest, cell: cell}
 }
+
+// opened is how many rows opening the panel showed that its resting height
+// would not have: what the open fold's `N fewer` counts, and never fewer than
+// one, because a fold that reads `0 fewer` is a line about nothing.
+func (p homeGridPanel) opened() int {
+	return max(1, p.shown-min(p.slot.rest, len(p.read.lines)))
+}
+
+// homeFold is a panel's fold line on the grid ([homeGridPanel.fold]): a stop,
+// a toggle on enter, and the same line whichever way it is standing.
+const homeFold homeRowKind = 245
 
 // homeFoldMoreWord is what the fold calls the rows it is standing for when they
 // are simply more of the panel's own.

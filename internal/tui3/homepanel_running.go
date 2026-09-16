@@ -76,7 +76,7 @@ func (runningPanel) rows(in *homeGridInput) homePanelRows {
 	if len(lines) > 0 {
 		lines[0].cell.mark = cellMarkSpin
 	}
-	out := homePanelCut(panelRunning, lines)
+	out := homePanelCut(in, panelRunning, lines)
 	out.said = countWord(len(lines))
 	return out
 }

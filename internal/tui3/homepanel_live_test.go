@@ -294,16 +294,24 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 	}
 	frame := homeText(a)
 	// AND NEITHER THE HEADING NOR THE GROUP LINE COUNTS ANYTHING: the rows are
-	// under them. The one count is the fold's, for the aged landings that are
-	// not on the screen.
+	// under them. The one count is the fold's, which counts the aged landings
+	// with everything else it hides — `3 more`, no longer `3 older · tasks`.
 	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
 		t.Fatalf("the heading counted the landings:\n%s", frame)
 	}
 	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") {
 		t.Fatalf("the group line says more than its name:\n%s", frame)
 	}
-	if !strings.Contains(frame, "3 older · tasks") {
-		t.Fatalf("the fold does not count what aged:\n%s", frame)
+	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
+	if fold != "3 more" {
+		t.Fatalf("the fold reads %q, want the three aged landings counted as `3 more`", fold)
+	}
+	// AND OPENING THE FOLD BRINGS THEM BACK: a fold that opened to show nothing
+	// of what it counted would have lied about its own number.
+	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
+	drive(t, a, key("enter"))
+	if rows := panelRows(a, panelNeeds); len(rows) != 5 {
+		t.Fatalf("opening needs you drew %d rows, want all five landings:\n%s", len(rows), homeText(a))
 	}
 }
 
@@ -527,7 +535,7 @@ func TestRunningGrowsToItsBudgetAndFoldsTheRestIntoTasks(t *testing.T) {
 	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most {
 		t.Fatalf("running drew %d rows, want its budget of %d", len(rows), most)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more · tasks") || !strings.Contains(frame, "running · 10") {
+	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "running · 10") {
 		t.Fatalf("the fold does not name what it holds:\n%s", frame)
 	}
 }

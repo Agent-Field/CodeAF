@@ -21,13 +21,13 @@ answering one question you would ask walking up to a colleague's desk:
    tier-B subs                                1d
    built the tier-B flow   1 accept   2 not right
    package release radar                      1d
-   1 more · 15 older · tasks
+   16 more
 
  where you were
    Understanding Hash Tables                here
    explain open addressing vs chaining
    Understanding Bloom Filters               11h
-   70 more · type to find one
+   70 more
 
  running · 2
  ⠋ Generate and Display First 200 Primes     4m
@@ -131,7 +131,7 @@ is that sentence, whole. A question with a paragraph shows only its first line.
 **A question stands above every landing**, however old the landing is: a stopped
 conversation is costing you something and a landing is not.
 
-Four rows show, eight in a tall window, then `N more · tasks`. Amber is spent on the `?`
+Four rows show, eight in a tall window, then `N more`. Amber is spent on the `?`
 mark and on nothing else; a machine with nothing waiting has no accent on it at all.
 
 ## unread — the group of landings nobody has checked, work that finished and wants a look
@@ -176,7 +176,7 @@ and on its record. `enter` opens the conversation on the task's record.
 work has already finished.
 
 **Only a landing ages.** A `your call` is a row for two days after it landed; after that the
-panel's last line counts it instead — `3 older · tasks` — and `enter` there opens the tasks
+panel's last line counts it with the rest it hides — `3 more` — and `enter` there opens the
 place, where every one of them still is. A question a conversation is stopped on, and a
 watch that needs somebody, never age off home.
 
@@ -240,7 +240,8 @@ A conversation another terminal is holding is not refused: `enter` brings it her
 Work that landed as `your call` **waits until you decide about it**, however many days that
 is: nothing more happens to that work until somebody answers it. Only its row on home ages —
 two days after it landed it leaves `needs you` for the count on the panel's last line,
-`3 older · tasks`, and the tasks place still lists it.
+`3 more`, and the tasks place still lists it; `enter` on that line opens the panel and shows
+it again.
 
 Three ways to settle it, and they are the same door:
 
@@ -289,7 +290,7 @@ has been `up`. A watch mid-pass is its own
 words, what the pass is doing and how long ago it began. A row another terminal holds says
 `another window`, and `enter` brings its conversation here.
 
-Four rows show, eight in a tall window, then `N more · tasks`. There is no separate "moving"
+Four rows show, eight in a tall window, then `N more`. There is no separate "moving"
 column or `◐` mark any more; this panel is that list.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
@@ -335,7 +336,7 @@ away:
 ```
 
 Four kinds of line, newest first, four of them — eight in a tall window — then
-`N more · tasks`:
+`N more`:
 
 - **a task that landed** — its name and what it came to, the first sentence of its report,
   with how long ago it landed at the right and its cost under the cursor when it cost
@@ -355,7 +356,7 @@ the panel keeps its heading and `what watches and tasks did while the terminal w
 The memory line is not wired yet: its figures read zero on this surface, and a zero draws
 nothing.
 
-## Where you were — this window's chat, the one before it, and N more · type to find one
+## Where you were — this window's chat, the one before it, and N more
 
 **The `where you were` panel is your conversations**, under `needs you`:
 
@@ -368,7 +369,8 @@ nothing.
   conversation in another project carries that project's name in its description, under
   the cursor, before the last thing you said; one in this window's folder carries none, and
   neither does one in your home directory or in a scratch folder at the top of `/tmp`;
-- then `N more · type to find one` — typing finds any conversation on the machine.
+- then `N more` — `enter` on it opens the panel and shows them; typing finds any
+  conversation on the machine whether or not it is drawn.
 
 A conversation waiting on you is on `needs you` and not here too. One that is mid-reply or
 on its way here stays. Five rows show, ten in a tall window.
@@ -404,8 +406,8 @@ folder, so its own name and the counts stay on the row.
 
 **`→` on a project row offers `its chats`** — which types the project's name into the box,
 so the search lists every conversation in it — **and `open folder`**. Five rows show, eight
-in a tall window, then `N more · type to find one`; typing a folder's name or path finds the
-rest, and a typed path starts a conversation there too (*Start something new from home*).
+in a tall window, then `N more`, which `enter` opens; typing a folder's name or path finds
+the rest, and a typed path starts a conversation there too (*Start something new from home*).
 
 `ctrl+t` on a conversation's row still starts one in that row's folder, but the projects
 panel is the way home offers it now.
@@ -430,9 +432,8 @@ Where to go for the whole figure instead:
 panel, and conversations are rows of `where you were`, each wearing its project's name when
 it is not this window's.
 
-What is folded is **the tail of each panel** — `N more · tasks`, `N more · standing`,
-`N more · type to find one` — and a fold line that names a place is a door: `enter` on it
-opens that place.
+What is folded is **the tail of each panel** — one `N more` line under it — and the fold
+is a toggle: `enter` on it opens the panel (see *Where did the rest of my chats go*).
 
 **Under 60 columns** — the phone shape — home is an inbox with the projects under it, and
 there a project other than this window's *is* one folded `▸` line, which `enter` or a tap
@@ -450,7 +451,7 @@ each of those is a panel of its own now.
 | --- | --- |
 | `?` rows at the top of the list | the `needs you` panel |
 | `◐` rows under them | the `running` panel |
-| the quiet rows and `▸ 15 more, quiet since 6d` | `where you were`, then `N more · type to find one` |
+| the quiet rows and `▸ 15 more, quiet since 6d` | `where you were`, then `N more` |
 | project headings, `alt+g` | the `projects` panel |
 | the `since you left` ledger above the list | the `since you left` panel |
 | the card on the right | nothing at rest; a card still stands beside a search on a wide frame |
@@ -470,7 +471,7 @@ project's name into the box, so the search lists every conversation in it — an
 ones out of the way: `needs you` and `running` hold what wants you or is moving, and
 `where you were` shows this window's conversation — the last thing you typed in it on the
 line under it — and the four most recent, nine in a tall window, folding the rest behind
-`N more · type to find one`. Typing finds any conversation on the machine.
+`N more`, which `enter` opens. Typing finds any conversation on the machine.
 
 ## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
 
@@ -550,13 +551,19 @@ conversation: "…"` rise out of the box, and `enter` starts the conversation.
 Over `--host`, in the fraction of a second before the far machine answers, home draws no
 panels at all — a whisper over a server full of work would be untrue.
 
-## Where did the rest of my chats go — N more, and panels cut off on a short or small terminal
+## Where did the rest of my chats go — N more, expand a panel, and panels cut off on a short or small terminal
 
-**Every panel folds inside itself**, with how many more it is holding and the name of where
-they are: `12 more · tasks` under `running`, `3 more · standing` under `next up`,
-`70 more · type to find one` under `where you were`. `needs you` can say both halves —
-`2 more · 3 older · tasks`. A fold that names a place is a door: `enter` on it opens the
-place.
+**Every panel folds inside itself** with one dim line, `N more`, counting everything it is
+not showing — the rows past its budget, the rows a short window took, and on `needs you` the
+landings that aged off it. **The fold is a toggle.** Walk onto it and press `enter` (or
+click it): the panel opens and takes the column — every row it has, with the other panels
+squeezed to their floors in the order below — and the line reads `N fewer`. `enter` again
+folds it. One panel is open at a time; opening a second folds the first. An open panel
+taller than the window shows what fits and its line names where the rest are —
+`3 fewer · 40 more · tasks` — so nothing is left without a door. The foot under a fold says
+which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
+as the window; a relaunch starts folded. The fold wears no mark: home spends its two marks
+on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
 `needs you`, `running`, `since you left` and `projects` to eight rows, `where you were` from
@@ -576,14 +583,15 @@ machine, including the ones no panel is drawing.
 
 ## How do I see the collapsed sessions — 13 more
 
-**Type.** `where you were` shows the most recent conversations and then
-`13 more · type to find one`: the box at the foot searches every conversation on the machine
-as you type, and a project's name, a folder's name or a word from what a task came to all
-find them.
+**Open the fold, or type.** `where you were` shows the most recent conversations and then
+`13 more`; `enter` on that line opens the panel and shows them all, squeezing the other
+panels, and `enter` again folds it. The box at the foot still searches every conversation on
+the machine as you type — a project's name, a folder's name or a word from what a task came
+to all find them — whether or not a panel is drawing the row.
 
-The other panels' fold lines are doors into their places — `N more · tasks` opens tasks,
-`N more · standing` opens standing — and `where you were`'s is an instruction, because the
-rest of your conversations are found by typing rather than by a place.
+Every panel's fold works the same way: `N more` under `running`, `since you left`, `next up`
+and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
+tab bar and their slash commands, not behind the folds.
 
 Per-project folds — `▸ 13 more, quiet since 1d` under a project's own heading — belong only
 to the **phone shape**, under 60 columns, where home is still an inbox with the projects
@@ -1922,8 +1930,8 @@ margin rather than unfolding, because a card is not the place that holds them; `
 `▸ …3 more files`, and a click on that line — or `→` with the strip closed — opens it, and
 `▾ …3 fewer` folds it back. The fold always cuts between tasks, never through one.
 
-**On the resting panels, `running` folds as `N more · tasks`**, and `enter` on that line
-opens the tasks place. The phone sheet folds its work band by family and counts all the
+**On the resting panels, `running` folds as `N more`**, and `enter` on that line opens the
+panel. The phone sheet folds its work band by family and counts all the
 tasks hidden behind its fold.
 
 ## I clicked a task on home and nothing happened — open a task from the card
@@ -2054,9 +2062,9 @@ at the end. Each row is your own words, with when it goes off at the right — `
    never change the public API without telling me first
 ```
 
-Three rows show, five in a tall window, then `N more · standing`. Paused, stopped and retired
-items are not on it. **Every row is a door into the standing place**, where the orders are
-kept and changed; so is the fold line.
+Three rows show, five in a tall window, then `N more`, which `enter` opens. Paused, stopped
+and retired items are not on it. **Every row is a door into the standing place**, where the
+orders are kept and changed.
 
 With nothing standing it keeps its heading and
 `reminders and routines · "remind me at 6" or "every morning at 9"` — the words that set one

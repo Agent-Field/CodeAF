@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -472,7 +473,7 @@ func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
 	if got := len(panelRows(a, panelRecent)); got != homeSlotOf(panelRecent).most {
 		t.Fatalf("where you were drew %d rows at 120×55, want %d:\n%s", got, homeSlotOf(panelRecent).most, frame)
 	}
-	if row, _ := homeRowOf(frame, "66 more · "+homeFindWord); row < 0 {
+	if row, _ := homeRowOf(frame, "66 more"); row < 0 {
 		t.Fatalf("the fold does not count the other sixty-six:\n%s", frame)
 	}
 	a.width, a.height = 120, 24
@@ -810,5 +811,109 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 	a.placeKeyPress(key("ctrl+o"))
 	if opened == "" || !strings.HasSuffix(opened, "alpha") {
 		t.Fatalf("ctrl+o on a landing opened %q, want the folder of the conversation that ran it", opened)
+	}
+}
+
+// A PANEL'S FOLD IS A TOGGLE (owner, 2026-09-15). `66 more` under `where you
+// were` is a stop; enter on it opens the panel — every conversation the column
+// can hold, the other panels squeezed to their floors — and the fold now reads
+// `N fewer`, with the cursor still on it. Enter again shuts it. It used to be
+// `66 more · type to find one`, which could not be stood on at all.
+func TestEnterOnAFoldOpensThePanelAndAgainShutsIt(t *testing.T) {
+	lab := newHomeLab(t)
+	alpha := filepath.Join(lab.root, "alpha")
+	now := time.Now()
+	mine := lab.session("-alpha", "aaaa000000000001", "the one I am in", alpha, now)
+	for i := 0; i < 30; i++ {
+		id := fmt.Sprintf("bbbb%012d", i+1)
+		lab.session("-alpha", id, fmt.Sprintf("older chat %d", i), alpha, now.Add(-time.Duration(i+1)*time.Hour))
+	}
+	a := lab.app(mine)
+	a.width, a.height = 120, 55
+	a.openHome()
+	frame := homeText(a)
+	shown := len(panelRows(a, panelRecent))
+	if shown != homeSlotOf(panelRecent).most {
+		t.Fatalf("where you were drew %d rows at rest, want its budget of %d:\n%s", shown, homeSlotOf(panelRecent).most, frame)
+	}
+	a.home.cursor = homeFoldDoor(t, a, panelRecent)
+	if !strings.HasSuffix(a.home.lines[a.home.cursor].cell.title, " more") {
+		t.Fatalf("the shut fold reads %q, want `N more`", a.home.lines[a.home.cursor].cell.title)
+	}
+	if hint := a.homeHint(); !strings.Contains(hint, foldEnterWord(false)) {
+		t.Fatalf("the foot on a shut fold is %q, want it to say %q", hint, foldEnterWord(false))
+	}
+	drive(t, a, key("enter"))
+	frame = homeText(a)
+	if !a.at(pageHome) {
+		t.Fatal("enter on the fold left home")
+	}
+	if opened := len(panelRows(a, panelRecent)); opened <= shown {
+		t.Fatalf("opening the fold showed %d rows, no more than the %d at rest:\n%s", opened, shown, frame)
+	}
+	fold := a.home.lines[a.home.cursor]
+	if fold.kind != homeFold || fold.cell.panel != panelRecent || !strings.Contains(fold.cell.title, " fewer") {
+		t.Fatalf("after opening, the cursor is on %+v, want the same panel's fold reading `N fewer`", fold.cell)
+	}
+	if hint := a.homeHint(); !strings.Contains(hint, foldEnterWord(true)) {
+		t.Fatalf("the foot on an open fold is %q, want it to say %q", hint, foldEnterWord(true))
+	}
+	drive(t, a, key("enter"))
+	if a.home.openedOn || len(panelRows(a, panelRecent)) != shown {
+		t.Fatalf("enter on the open fold did not shut it:\n%s", homeText(a))
+	}
+}
+
+// ONE PANEL IS OPEN AT A TIME. Opening a second shuts the first, and the first's
+// fold says `more` again. Ten questions fold `needs you` and ten running tasks
+// fold `running`, on one frame.
+func TestOpeningASecondFoldShutsTheFirst(t *testing.T) {
+	l := newLiveLab(t)
+	beta := l.workspace("beta")
+	for i := 0; i < 10; i++ {
+		id := fmt.Sprintf("cccc%012d", i+1)
+		l.session("-beta", id, "question "+itoa(i), beta, l.now.Add(-time.Duration(i+1)*time.Hour))
+		l.live("-beta", id, session.SessionPresence{State: session.PresenceWaiting,
+			Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-time.Duration(i+1)*time.Hour))})
+	}
+	var tasks []session.PresenceTask
+	for i := 0; i < 10; i++ {
+		tasks = append(tasks, session.PresenceTask{ID: itoa(i + 1), Title: "part " + itoa(i+1), State: "running",
+			StartedAt: l.now.Add(-time.Duration(i+1) * time.Minute)})
+	}
+	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: tasks})
+	a := l.open()
+	a.width, a.height = 180, 60
+	homeText(a)
+	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
+	drive(t, a, key("enter"))
+	if !a.home.openedOn || a.home.opened != panelNeeds {
+		t.Fatal("enter did not open needs you")
+	}
+	a.home.cursor = homeFoldDoor(t, a, panelRunning)
+	drive(t, a, key("enter"))
+	if !a.home.openedOn || a.home.opened != panelRunning {
+		t.Fatalf("opening running left %v open", a.home.opened)
+	}
+	if fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)]; !strings.Contains(fold.cell.title, " more") {
+		t.Fatalf("the first panel's fold still reads %q after a second was opened", fold.cell.title)
+	}
+}
+
+// AN OPEN PANEL TALLER THAN THE COLUMN NAMES WHERE THE REST ARE. On a short
+// frame the opened `needs you` shows what fits and its fold reads `N fewer · M
+// more · tasks` — the way back first, then the place that holds the rest — so
+// nothing an open fold could not show is left with no door.
+func TestAnOpenFoldOnAShortFrameStillNamesThePlaceForTheRest(t *testing.T) {
+	lab := newSwitchLab(t)
+	for i := 0; i < 9; i++ {
+		lab.presence("-beta", "cccc00000000000"+string(rune('1'+i)), session.PresenceWaiting, "question "+itoa(i), lab.now)
+	}
+	a := lab.open(120, 20)
+	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
+	drive(t, a, key("enter"))
+	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
+	if !strings.Contains(fold, " fewer · ") || !strings.HasSuffix(fold, " more · "+pageTasks.word()) {
+		t.Fatalf("the open fold on a short frame reads %q, want `N fewer · M more · tasks`", fold)
 	}
 }

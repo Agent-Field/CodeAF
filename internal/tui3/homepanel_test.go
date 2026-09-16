@@ -490,7 +490,7 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	if first < 0 || second != first+1 || !strings.Contains(strings.Split(frame, "\n")[first], " in 1h") {
 		t.Fatalf("next up is not soonest first with its clause:\n%s", frame)
 	}
-	if row, _ := homeRowOf(frame, "1 more · standing"); row < 0 {
+	if row, _ := homeRowOf(frame, "1 more"); row < 0 {
 		t.Fatalf("the fourth order is not behind the fold:\n%s", frame)
 	}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelNext && l.stop() })

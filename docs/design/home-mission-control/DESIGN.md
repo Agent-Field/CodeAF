@@ -36,7 +36,7 @@ own keys, each a door to the place that owns it. The chat list is one panel.
    Understanding Bloom Filters in Eight …   11h
    AI Influencers and Developers in …       11h    running · 2
    Locate Recent Sandbox Task in …           1d    ◐ Generate and Display First 200 Primes   4m
-   70 more · type to find one                        working · checking
+   70 more                                           working · checking
                                                     npm run dev · pricing-site           up 3h
  since you left · 12h
    Spark Fleet Ssh Audit · 2 hosts up, 1 not       next up
@@ -98,7 +98,7 @@ is the reading that produced the 2026-09-15 amendment.
    whispers are in §4 and are the only prose about the product on the screen.
 5. **A short terminal squeezes in priority order.** `next up` and `spend` give
    way first, then `since you left`, then `running`; `needs you` and `where you
-   were` shrink last. A squeezed panel keeps its heading and `N more · <place>`.
+   were` shrink last. A squeezed panel keeps its heading and its `N more` fold.
    A GROUP INSIDE A PANEL folds before the panel gives up a row above it: the
    rows of `needs you`'s `unread` group sit at the foot of the panel's list, so
    the ordinary bottom-up cut spends them first, and when none is left the
@@ -124,8 +124,16 @@ is the reading that produced the 2026-09-15 amendment.
    `unread`, which has already finished — the single spinner cell for work. Nothing else wears a glyph or a
    colour. Money is a number. Key hints live on the foot and the alt map, never
    inside a panel.
-9. **Nothing grows past its budget.** Every panel folds inside itself with
-   `N more` and the name of its place; the fold is the door. A tall frame hands
+9. **Nothing grows past its budget — unless you open it.** Every panel folds
+   inside itself with `N more`, and THE FOLD IS A TOGGLE (owner, 2026-09-15; it
+   used to read `N more · <place>` and be a door into the place, and `where you
+   were`'s `N more · type to find one` was not a stop at all). `enter` on it
+   opens the panel: its cap is lifted, the other panels squeeze in law 5's order
+   to their floors, and it takes the column; the fold reads `N fewer` and enter
+   shuts it. One panel is open at a time. An open panel taller than the column
+   shows what fits and its fold names the place for the rest — `3 fewer · 40
+   more · tasks` — so nothing is left without a door. The fold wears no mark
+   (law 8). A tall frame hands
    its spare rows out — only once every panel has its natural height — in the
    squeeze's order reversed, one row each round: `needs you` and `running` to 8,
    `where you were` from 5 to 10, `since you left` to 8, `projects` to 8, `next

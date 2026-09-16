@@ -797,6 +797,13 @@ type homeView struct {
 	// The phone tier's own state (homephone.go, homesheet.go): the sheet over
 	// the inbox, the triage sections somebody folded, the machine's news as the
 	// `since you left` section reads it, and where the action bar landed.
+	// opened is the one grid panel whose fold somebody opened, and openedOn
+	// that there is one — the accordion: one panel at a time takes the column
+	// and the rest squeeze (homegrid.go's [homeGridPanel.fold]). It lives as
+	// long as the window; a relaunch starts folded.
+	opened   homePanelID
+	openedOn bool
+
 	phone     bool
 	sheet     homeSheet
 	sheetHits []homeSheetHit
@@ -2005,6 +2012,9 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.item.ID != "" && l.item.ID == other.item.ID
 	case homeQuiet, homeItemFold, homeProject, homeProjectRow:
 		return l.dir != "" && l.dir == other.dir
+	// a grid panel's fold: one per panel, told apart by the panel.
+	case homeFold:
+		return l.cell != nil && other.cell != nil && l.cell.panel == other.cell.panel
 	case homeExchangeRow:
 		return l.ex != nil && l.ex == other.ex
 	// the router's lane: an offered place and an offered command
@@ -2325,7 +2335,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow, homeProjectRow:
+		homeProject, homeExchangeRow, homeProjectRow, homeFold:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -3118,6 +3128,12 @@ func (a *app) homeEnter() tea.Cmd {
 		return nil
 	case homeItemFold:
 		h.foldItems(line.dir, line.folded)
+		return nil
+	case homeFold:
+		// A PANEL'S FOLD OPENS THE PANEL, AND SHUTS IT AGAIN (homegrid.go's
+		// [homeGridPanel.fold]). The cursor stays on the fold whichever way it
+		// went, so the gesture reverses without a walk.
+		h.toggleFold(line)
 		return nil
 	case homeProject:
 		// A WHOLE PROJECT, OPENED WHERE IT STANDS. enter is the same key it is on
@@ -5389,6 +5405,11 @@ func (a *app) homeHintWords() string {
 		// on all of them too ([app.homeCrossChord]). The rows' own sentences
 		// below still serve the phone and the filtered list, where there is no
 		// grid to be consistent across.
+	case line.kind == homeFold:
+		// The panel's fold is a toggle and the foot says which way it will go;
+		// the words are the ones every fold door on every place uses
+		// (placeprose.go's [foldEnterWord]).
+		return foldEnterWord(!line.folded) + " · esc close"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:
@@ -5489,4 +5510,28 @@ func homeProjectPath(project session.Project) string {
 		return path
 	}
 	return project.Dir
+}
+
+// toggleFold opens the panel whose fold this is, or shuts the one that is open
+// — ONE AT A TIME: opening a second panel shuts the first, because two open
+// panels on one column would be two panels fighting the squeeze for the same
+// rows and the fold line of each would be lying about what it could show. The
+// cursor is put back on the same panel's fold, which has moved.
+func (h *homeView) toggleFold(line homeLine) {
+	if line.cell == nil {
+		return
+	}
+	panel := line.cell.panel
+	if h.openedOn && h.opened == panel {
+		h.openedOn = false
+	} else {
+		h.opened, h.openedOn = panel, true
+	}
+	h.rebuild()
+	for at, l := range h.lines {
+		if l.kind == homeFold && l.cell != nil && l.cell.panel == panel {
+			h.cursor = at
+			return
+		}
+	}
 }

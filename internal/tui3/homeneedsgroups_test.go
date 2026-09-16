@@ -184,13 +184,13 @@ func TestToCheckFoldsBeforeANeedsYouRowGoes(t *testing.T) {
 		t.Fatalf("the question gave way before the landings did:\n%s", frame)
 	}
 	// The group's own line is the word on a line of its own; the fold that
-	// stands for it says `3 unread · tasks`, and only the fold may be here.
+	// stands for it says `3 unread`, and only the fold may be here.
 	for _, row := range strings.Split(frame, "\n") {
 		if strings.TrimSpace(row) == needsCheckWord {
 			t.Fatalf("the group line survived the squeeze:\n%s", frame)
 		}
 	}
-	if !strings.Contains(frame, "3 "+needsCheckWord+" · tasks") {
+	if !strings.Contains(frame, "3 "+needsCheckWord) || strings.Contains(frame, needsCheckWord+" · tasks") {
 		t.Fatalf("the fold does not say what the folded group is:\n%s", frame)
 	}
 }

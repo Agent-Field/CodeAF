@@ -40,7 +40,7 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 	lines := append([]homeLine(nil), in.errands...)
 	// The panel hands the layout as many conversations as its budget in the
 	// order table, and the layout draws five of them or, in a tall frame, more.
-	room := homeSlotOf(panelRecent).most
+	room := in.cap(panelRecent)
 	if own != nil {
 		lines = append(lines, switcherRowLine(*own, recentOwnCell(*own, in)))
 		room--

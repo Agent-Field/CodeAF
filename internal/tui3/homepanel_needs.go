@@ -84,7 +84,7 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 	for _, item := range append(asked, calls...) {
 		lines = append(lines, item.line)
 	}
-	out := homePanelCut(panelNeeds, lines)
+	out := homePanelCut(in, panelNeeds, lines)
 	// NEITHER THE HEADING NOR THE GROUP LINE CARRIES A COUNT. The heading used
 	// to count the live questions (`needs you · 2`) and the group line the
 	// landings (`to check · 8`); the owner cut both on 2026-09-15, because the

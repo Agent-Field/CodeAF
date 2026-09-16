@@ -2026,8 +2026,8 @@ of the list down by its own height, and while that strip is drawn its letters ar
 and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
-with no verbs the arrows cross home's columns, and on a fold line (`N more · tasks`,
-`N more · type to find one`) `enter` opens the place or the search that holds the rest.
+with no verbs the arrows cross home's columns, and on a panel's fold line (`N more`) `enter`
+opens the panel and shows the rest; on `N fewer` it folds them again.
 While something is typed the two arrows move the caret in the box instead.
 
 **A letter always types**, unless the verb strip that names it is on screen — that visible

@@ -16,7 +16,7 @@ type nextPanel struct{ homePanelBase }
 func (nextPanel) rows(in *homeGridInput) homePanelRows {
 	views := nextActive(in)
 	standByNextDue(views)
-	shown := min(homeSlotOf(panelNext).most, len(views))
+	shown := min(in.cap(panelNext), len(views))
 	lines := make([]homeLine, 0, shown)
 	for _, view := range views[:shown] {
 		item := view.Item
