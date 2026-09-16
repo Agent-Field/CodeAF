@@ -106,6 +106,23 @@ func (c *routedCompleter) childSaw(needle string) bool {
 	return false
 }
 
+// childWasHanded is [routedCompleter.childSaw] for a NOTE: it reads the
+// conversation a worker was sent and never its system page, because the page
+// names every bracketed note by its tag to say who writes them (prompts/system.md's
+// `# Messages from codeaf`) and a page is not a note anybody handed it.
+func (c *routedCompleter) childWasHanded(needle string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, request := range c.childRequests {
+		for _, message := range request {
+			if message.Role != "system" && strings.Contains(messageText(message), needle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // childWorkTurns is how many times the node's lane was asked to WORK — the
 // harness's own title call rides the same lane and is not a turn anybody took on
 // the task. It is where "the work was handed back" and "it never was" are told

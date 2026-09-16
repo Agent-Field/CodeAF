@@ -62,7 +62,7 @@ would have to be written was describing a session that never saved one.
 
 ## 1. The baseline — `dev` at `6aa6a946e`
 
-Measured on the Spark, 2026-09-10.
+Measured on a bench host, 2026-09-10.
 
 ### The static prefix (layer A)
 
@@ -127,7 +127,7 @@ every lane of the pinned model refusing.
 
 `dev` at `6aa6a946e` against `prompt-diet/integrate` at `2a90be7e8` (its tip when
 the run fetched it; the branch has moved since). Same rig, same pin, same cells,
-back to back on the Spark so the provider's weather fell on both. Layers A, C
+back to back on a bench host so the provider's weather fell on both. Layers A, C
 and D at first; layer B followed and is folded in below.
 
 ### The prefix
@@ -616,14 +616,14 @@ to `internal/e2e`, which this lane does not own.
 
 ## 3. The recipes
 
-Everything runs on the Spark. Go is at `~/.local/bin/go` and is not on the
-non-interactive PATH; the key is in `~/.config/fleet/secrets.env`; `tmux`,
+Everything runs on a bench host. Go is at `~/.local/bin/go` and is not on the
+non-interactive PATH; the key is in `~/secrets.env`; `tmux`,
 `sqlite3`, `timeout` and `python3` are all present.
 
 The rig is a worktree of the branch carrying `bench/prompt-diet`:
 
 ```sh
-ssh spark 'export PATH=$HOME/.local/bin:$PATH
+ssh benchhost 'export PATH=$HOME/.local/bin:$PATH
   git -C ~/src/codeaf fetch -q origin prompt-diet/h
   git -C ~/src/codeaf worktree add -f --detach ~/bench-diet/rig origin/prompt-diet/h'
 ```
@@ -643,18 +643,18 @@ Then, per label:
 
 ```sh
 # free, seconds — the static bill only
-ssh spark 'export PATH=$HOME/.local/bin:$PATH
+ssh benchhost 'export PATH=$HOME/.local/bin:$PATH
   ~/bench-diet/rig/bench/prompt-diet/run.sh 6aa6a946e dev --layers a'
 
 # the default sweep: prefix, cells, wire
-ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
+ssh benchhost 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/secrets.env; set +a
   ~/bench-diet/rig/bench/prompt-diet/run.sh 6aa6a946e dev'
 
 # everything, ~40 minutes
-ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
+ssh benchhost 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/secrets.env; set +a
   ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet --layers a,b,c,d'
 
-ssh spark '~/bench-diet/rig/bench/prompt-diet/compare.py dev diet'
+ssh benchhost '~/bench-diet/rig/bench/prompt-diet/compare.py dev diet'
 ```
 
 `compare.py` exits non-zero when an outcome got worse, so it is usable as a
@@ -670,7 +670,7 @@ frontier seat and are recorded **separately** — never averaged into the flash
 rows, which would produce a number describing no run that ever happened:
 
 ```sh
-ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
+ssh benchhost 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/secrets.env; set +a
   ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet-frontier \
     --layers a,c,d --model <frontier id> --allowlist <frontier id>'
 ```
@@ -694,10 +694,10 @@ DESIGN.md §3's verdict on the lean profile is explicit: it "exists only if
 cell, and it has now been run.
 
 ```sh
-ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
+ssh benchhost 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/secrets.env; set +a
   CODEAF_PROMPT_PROFILE=lean CONV_PASS_ENV=CODEAF_PROMPT_PROFILE \
     ~/bench-diet/rig/bench/prompt-diet/run.sh post-diet/owed lean-owed2 --layers a,c,d'
-ssh spark '~/bench-diet/rig/bench/prompt-diet/compare.py diet-k lean-owed2 --out-root ~/bench-diet-out'
+ssh benchhost '~/bench-diet/rig/bench/prompt-diet/compare.py diet-k lean-owed2 --out-root ~/bench-diet-out'
 ```
 
 `post-diet/owed` at `071d75f2f`, the pin `deepseek/deepseek-v4-flash-0731`, layers
@@ -883,7 +883,7 @@ as a pass nor as a regression.
 ## 7. What is owed
 
 - **The two candidate regressions in §1a need their repeats read.** Queued on
-  the Spark as `~/bench-diet-repeat.sh`, two runs a side of each, logs at
+  the bench host as `~/bench-diet-repeat.sh`, two runs a side of each, logs at
   `~/bench-diet-out/repeat-{taskroom,askroad}-{dev,diet}-{1,2}.log`. Two greens
   a side clears one; a second red confirms it. Nothing merges past a confirmed
   one.
@@ -929,7 +929,7 @@ as a pass nor as a regression.
   The first attempt was discarded because the rig clobbered `CONV_PASS_ENV` and
   the conversation cells measured the full profile; §4a has the autopsy.
 
-- **The raw wire evidence** is on the Spark and needs no re-capture. This is
+- **The raw wire evidence** is on a bench host and needs no re-capture. This is
   what §1c was run against and what a re-run of `prefixdiff.py` reads.
   Per label — `dev` and `diet`:
 
