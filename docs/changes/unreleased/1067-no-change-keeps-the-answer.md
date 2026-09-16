@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: a completion check that was wrong is answered with [no change], and the answer before it stays in view
+title: a wrong completion check is answered with [no change], and the answer before it stays in view
 pr: 1067
 surface: [chat, engine, docs]
 invalidates:
