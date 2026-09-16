@@ -145,14 +145,11 @@ type homePanelSlot struct {
 	// place is where the fold line opens; the zero page opens nothing.
 	place page
 	// head is where a press on the heading goes: THE PLACE THE HEADING NAMES
-	// (law 10, home is the summary of the tabs). It is its own column rather
-	// than the fold's, because `where you were` has a place to name — the typed
-	// search — and a fold that says `type to find one`, and the two are
-	// different answers. The zero page is a heading that names only its panel.
+	// (law 10, home is the summary of the tabs). It is the ONLY door to the
+	// rows a panel is not drawing, because the fold under them is a toggle and
+	// names no place ([homeGridPanel.fold]). The zero page is a heading that
+	// names only its panel.
 	head page
-	// more is what the fold says after its count when it is not a place's
-	// word — the recent panel's fold is an instruction rather than a door.
-	more string
 }
 
 // homePanelOrder is THE ORDER TABLE (DESIGN §1 law 2 and law 5). Its row order
@@ -176,22 +173,17 @@ type homePanelSlot struct {
 // clause a heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
-	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
+	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10, head: pageSearch},
+	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
 
-// homeFindWord is what a fold says where the rest are reached by typing rather
-// than by a place: the box at the foot is a live query over every conversation
-// and every project on the machine.
-const homeFindWord = "type to find one"
-
 // homeNeedsTaskFresh is how long a task's call stays a row of `needs you` after
-// it landed. Past it the call is counted on the panel's fold as
-// `N older · tasks` instead ([needsFresh]).
+// it landed. Past it the call is counted in the panel's fold, `N more`, and
+// comes back when the panel is opened ([needsFresh]).
 const homeNeedsTaskFresh = 48 * time.Hour
 
 // homeWhisper is what an empty panel says under its heading — THE COPY OF
@@ -281,14 +273,6 @@ func homeColumnOf(slot homePanelSlot, cols int, empty bool) int {
 		return homeRailCol(cols)
 	}
 	return 0
-}
-
-// foldWord is what the fold says after `N more · `, and "" for a bare count.
-func (s homePanelSlot) foldWord() string {
-	if s.more != "" {
-		return s.more
-	}
-	return s.place.word()
 }
 
 // ── the reading every panel is taken from ──────────────────────────────────
@@ -1041,22 +1025,25 @@ func (p homeGridPanel) lines() []homeLine {
 // glyph down the column, one per panel, would be the thing that law exists to
 // refuse. The words say which way it goes: `more` opens, `fewer` shuts.
 //
-// THE PLACE IS NAMED ONLY FOR WHAT STILL WILL NOT FIT. An open panel taller
-// than the column shows what it can and its fold reads `3 fewer · 40 more ·
-// tasks` — the way back first, then where the rest are — because a fold that
-// opened and still hid rows without saying where they were would leave them
-// nowhere. It used to be the other way round: law 9 said the fold IS the door,
-// `N more · tasks` opened the tasks place, and `where you were`'s `N more · type
-// to find one` was not a stop at all because typing was its door; the owner
-// found one line that opened somewhere and another that could not be stood on
-// and asked for one thing that expands.
+// AN OPEN PANEL TALLER THAN THE COLUMN STILL COUNTS WHAT IT CANNOT SHOW: its
+// fold reads `3 fewer · 40 more` — the way back first, then how many are past
+// the frame. THE FOLD NAMES NO PLACE, because `enter` on it toggles the panel
+// and a line that named a place `enter` did not go to would be a door drawn on
+// a wall (review of #1046). The way to the rest is the panel's HEADING, which
+// opens the place that owns the panel (law 10): tasks for `needs you`,
+// `running` and `since you left`, standing for `scheduled`, the search for
+// `where you were`. It used to be the other way round: law 9 said the fold IS
+// the door, `N more · tasks` opened the tasks place, and `where you were`'s `N
+// more · type to find one` was not a stop at all because typing was its door;
+// the owner found one line that opened somewhere and another that could not be
+// stood on and asked for one thing that expands.
 func (p homeGridPanel) fold() homeLine {
 	words := ""
 	rest := p.hidden() + p.read.older
 	if p.expanded {
 		words = foldWords(true, p.opened(), "")
 		if rest > 0 {
-			words += rowSep + groupedInt(rest) + " " + p.foldMoreWord() + rowSep + p.slot.foldWord()
+			words += rowSep + groupedInt(rest) + " " + p.foldMoreWord()
 		}
 	} else {
 		// The group's word where the group's own line is not on the screen,
@@ -1065,7 +1052,7 @@ func (p homeGridPanel) fold() homeLine {
 		words = groupedInt(rest) + " " + p.foldMoreWord()
 	}
 	cell := &homeCell{kind: cellFold, panel: p.slot.panel.id(), title: words}
-	return homeLine{kind: homeFold, project: p.slot.foldWord(), dir: homeFoldKey, folded: !p.expanded, quiet: rest, cell: cell}
+	return homeLine{kind: homeFold, dir: homeFoldKey, folded: !p.expanded, quiet: rest, cell: cell}
 }
 
 // opened is how many rows opening the panel showed that its resting height
@@ -1085,8 +1072,8 @@ const homeFoldMoreWord = "more"
 
 // foldMoreWord is what the fold calls the rows it is standing for: the GROUP's
 // name where every one of them is the group's and the group's own line is not on
-// the screen — `8 unread · tasks` is the whole of what a squeezed panel says
-// about its landings — and `more` everywhere else.
+// the screen — `8 unread` is the whole of what a squeezed panel says about its
+// landings — and `more` everywhere else.
 func (p homeGridPanel) foldMoreWord() string {
 	group := p.read.group
 	if group == nil || p.groupOpen() || p.shown < group.at {
@@ -1095,10 +1082,10 @@ func (p homeGridPanel) foldMoreWord() string {
 	return group.word
 }
 
-// homeFoldKey is the identity a fold door carries beside its place word, so the
-// cursor on `3 more · tasks` is told apart from a `since you left` line that
-// opens the same place ([homeLine.sameRow]). It starts with a NUL, which no
-// directory path contains.
+// homeFoldKey is the identity a fold line carries in its dir, so the cursor on
+// `3 more` is told apart from every row that carries a real directory there
+// ([homeLine.sameRow] tells folds apart by their panel). It starts with a NUL,
+// which no directory path contains.
 const homeFoldKey = "\x00fold"
 
 // gridOn reports that the resting column is the grid: not the phone's inbox,

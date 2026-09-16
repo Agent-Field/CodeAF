@@ -31,10 +31,17 @@ func (nextPanel) rows(in *homeGridInput) homePanelRows {
 		// now`, `holds` — beside a title that usually said the schedule too;
 		// the row's time is said ONCE, in its description, in the one form its
 		// kind of order has ([nextUpSaid]), under the cursor.
+		//
+		// AND THE DESCRIPTION IS THERE AT EVERY WIDTH. With nothing at the
+		// right, the sentence is the only place the row says what kind of order
+		// it is and when it acts; a frame too narrow for the description column
+		// draws it as the second line under the cursor's row, the way a `where
+		// you were` row's description is drawn there, rather than showing a bare
+		// title with no time on it at all (review of #1046).
 		lines = append(lines, homeLine{kind: homeLedger, project: pageStanding.word(), dir: item.ID,
 			view: view, item: item, cell: &homeCell{panel: panelNext,
 				title: strings.TrimSpace(item.Words),
-				grows: in.desc, sub: nextUpSaidOn(in, view)}})
+				grows: true, sub: nextUpSaid(view, in.now)}})
 	}
 	return homePanelRows{lines: lines, more: len(views) - shown}
 }
@@ -59,15 +66,6 @@ func nextActive(in *homeGridInput) []StandingItemView {
 		}
 	}
 	return views
-}
-
-// nextUpSaidOn is the sentence the description column draws for a `scheduled`
-// row, and nothing on a frame with no such column.
-func nextUpSaidOn(in *homeGridInput, view StandingItemView) string {
-	if !in.desc {
-		return ""
-	}
-	return nextUpSaid(view, in.now)
 }
 
 // nextUpSaid is ONE SENTENCE PER KIND OF ORDER, and the only place a row says

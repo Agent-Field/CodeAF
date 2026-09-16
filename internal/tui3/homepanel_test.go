@@ -562,4 +562,32 @@ func TestScheduledSaysEachKindsTimeOneWayInItsDescription(t *testing.T) {
 	if got := homeClockAt(now.Add(10*24*time.Hour), now); !strings.Contains(got, " ") || strings.HasPrefix(got, "today") {
 		t.Fatalf("a moment ten days off reads %q, want a date and a clock", got)
 	}
+	// AND THE SENTENCE IS THERE AT EVERY WIDTH. With nothing at the right it is
+	// the only place the row says its kind and its time, so a frame too narrow
+	// for the description column draws it as the line under the cursor's row
+	// rather than a bare title (review of #1046).
+	for _, width := range []int{120, 80} {
+		// The column count reaches the panels through the draw, as it does on a
+		// terminal ([switchLab.open] states why).
+		a.width = width
+		homeText(a)
+		if homeDescOn(a.home.cols) {
+			t.Fatalf("%d columns has a description column; the test wants a frame without one", width)
+		}
+		// A narrow frame squeezes `scheduled` first (law 5), so the claim is
+		// about every row it still draws and not about how many those are.
+		sentence := map[string]string{}
+		for _, w := range want {
+			sentence[w.title] = w.sub
+		}
+		drawn := panelRows(a, panelNext)
+		if len(drawn) == 0 {
+			t.Fatalf("scheduled draws no row at all at %d columns:\n%s", width, homeText(a))
+		}
+		for _, cell := range drawn {
+			if cell.sub != sentence[cell.title] || !cell.grows {
+				t.Fatalf("at %d columns %q reads %q (grows %v), want the sentence %q under the cursor", width, cell.title, cell.sub, cell.grows, sentence[cell.title])
+			}
+		}
+	}
 }

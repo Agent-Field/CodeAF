@@ -744,10 +744,12 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 		// refusing. It was a dead key with a sentence beside it, which is the
 		// worst of both: nothing happens AND the screen explains why on the row
 		// a person is trying to leave. The item's own page is the honest answer
-		// to "show me this thing", and it is the same door a `next up` row takes
-		// ([app.homeLedgerEnter]).
+		// to "show me this thing", and the cursor lands ON THE ITEM rather than
+		// at the top of a list the person then has to find it in again — the
+		// margin's door ([app.openStandingAt]), because a press on a row should
+		// land on that row (review of #1046).
 		a.closeHome()
-		return a.showPage(pageStanding)
+		return a.openStandingAt(line.item.ID)
 	}
 	// THE CAPABILITY IS ASKED THROUGH THE ONE PREDICATE, never off a single seam:
 	// a door may answer the whole conversation ([Options.Open]) rather than the

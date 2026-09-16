@@ -2064,7 +2064,7 @@ nowhere else**, and it says what the box is a draft *for*:
 that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
 opens the model list in home's own body; pressing either label does the same as its chord.
 The line under the box is the foot, and **at rest it is exactly**
-`type to search or start something new · ↑↓ pick · enter open · tab next place`. `esc`
+`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`. `esc`
 still closes home from anywhere; the resting foot does not spend a cell naming it, and
 `alt+.` draws the whole map when you want it.
 

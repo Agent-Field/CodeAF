@@ -921,7 +921,10 @@ func TestOpeningASecondFoldShutsTheFirst(t *testing.T) {
 // frame the opened `needs you` shows what fits and its fold reads `N fewer · M
 // more · tasks` — the way back first, then the place that holds the rest — so
 // nothing an open fold could not show is left with no door.
-func TestAnOpenFoldOnAShortFrameStillNamesThePlaceForTheRest(t *testing.T) {
+// An open panel taller than the column still counts what it cannot show, and
+// names no place for it: `enter` on the fold toggles the panel, so a line that
+// said `· tasks` would be a door `enter` does not take. The heading is that door.
+func TestAnOpenFoldOnAShortFrameCountsTheRestAndNamesNoPlace(t *testing.T) {
 	lab := newSwitchLab(t)
 	for i := 0; i < 9; i++ {
 		lab.presence("-beta", "cccc00000000000"+string(rune('1'+i)), session.PresenceWaiting, "question "+itoa(i), lab.now)
@@ -930,7 +933,10 @@ func TestAnOpenFoldOnAShortFrameStillNamesThePlaceForTheRest(t *testing.T) {
 	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
 	drive(t, a, key("enter"))
 	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
-	if !strings.Contains(fold, " fewer · ") || !strings.HasSuffix(fold, " more · "+pageTasks.word()) {
-		t.Fatalf("the open fold on a short frame reads %q, want `N fewer · M more · tasks`", fold)
+	if !strings.Contains(fold, " fewer · ") || !strings.HasSuffix(fold, " "+homeFoldMoreWord) {
+		t.Fatalf("the open fold on a short frame reads %q, want `N fewer · M more`", fold)
+	}
+	if strings.Contains(fold, rowSep+pageTasks.word()) {
+		t.Fatalf("the open fold names a place enter does not go to: %q", fold)
 	}
 }

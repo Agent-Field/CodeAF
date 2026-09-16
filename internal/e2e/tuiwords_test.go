@@ -207,13 +207,9 @@ var tuiWords = map[string]tuiWord{
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
 	},
-	"homeFindWord": {
-		screen: "type to find one",
-		why:    "the fold under `where you were` — an instruction rather than a door, because the rest are found by typing",
-	},
 	"foldMoreWord": {
 		screen: " more",
-		why:    "every panel's fold counts what it stands over — `14 more · type to find one`",
+		why:    "every panel's fold counts what it stands over — `14 more` — and is a toggle, not a door",
 		pkg:    tui3Pkg,
 	},
 	"barHomeWord": {

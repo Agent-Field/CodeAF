@@ -90,7 +90,7 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 	// landings (`to check · 8`); the owner cut both on 2026-09-15, because the
 	// rows are right there under the words and a figure beside them is a second
 	// thing to read that says nothing the rows do not. The fold still counts what
-	// it hides (`3 unread · tasks`), which is the one place a count stands for
+	// it hides (`3 unread`, `N more`), which is the one place a count stands for
 	// rows that are NOT on the screen. The aged-out landings are counted on the
 	// same fold ([needsFresh]).
 	out.older = in.callsOlder
@@ -106,8 +106,9 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 // A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION (owner,
 // 2026-09-10: a machine with twenty-four week-old landings drew twenty-four rows
 // over rows nobody was going to answer, and a live question arriving under them
-// would have been the twenty-fifth). They stay one door away — the fold counts
-// them into the tasks place, where every one of them still is. Only a task's
+// would have been the twenty-fifth). They stay one press away — the fold counts
+// them, opening the panel shows them, and the heading opens the tasks place,
+// where every one of them still is. Only a task's
 // call ages: a conversation stopped on a question and a watch that needs
 // somebody are live, and are never aged out. A landing with no time on it is
 // not known to be old, and stays.

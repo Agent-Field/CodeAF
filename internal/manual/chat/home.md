@@ -85,9 +85,11 @@ always `needs you`, `where you were`, `projects`, `running`, `since you left`, `
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
 two columns from 110; three from 170, where the rail is the third and the field fills the
-first. **A field that fits in one column leaves the middle of a wide screen empty** rather
-than spreading two short columns over it — the point of the one busy column standing alone
-at the left is that your eye has a single place to go.
+first. **A field that fits in one column never spreads two short columns over a wide
+screen** — the point of the one busy column standing alone at the left is that your eye has
+a single place to go. From 170 cells the middle column is the **descriptions'**: the
+sentence under a row is drawn beside it there, level with its row, and a question raised
+from home stands there as a card. Nothing else stands in it.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
@@ -184,7 +186,7 @@ watch that needs somebody, never age off home.
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 unread · tasks`, which opens the tasks place.
+`8 unread`. `enter` on it opens the panel; the `needs you` heading opens the tasks place.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
@@ -559,8 +561,10 @@ landings that aged off it. **The fold is a toggle.** Walk onto it and press `ent
 click it): the panel opens and takes the column — every row it has, with the other panels
 squeezed to their floors in the order below — and the line reads `N fewer`. `enter` again
 folds it. One panel is open at a time; opening a second folds the first. An open panel
-taller than the window shows what fits and its line names where the rest are —
-`3 fewer · 40 more · tasks` — so nothing is left without a door. The foot under a fold says
+taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
+more` — and names no place, because `enter` on it folds rather than opens. The way to
+those rows is the panel's **heading**: `needs you`, `running` and `since you left` open the
+tasks place, `scheduled` opens standing, `where you were` opens the search. The foot under a fold says
 which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
 as the window; a relaunch starts folded. The fold wears no mark: home spends its two marks
 on the amber `?` and the one moving cell.
@@ -759,7 +763,7 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The foot line reads exactly:
 
 ```
-type to search or start something new · ↑↓ pick · enter open · tab next place
+type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place
 ```
 
 and it says what THAT row's keys do on a row that has its own — a `since you left` line,
@@ -997,12 +1001,14 @@ exists — `enter` on a row of `projects`.
 launched in used to carry a dim `elsewhere`, and `enter` on one of its rows opened nothing.
 That is gone: `enter` opens any conversation on home, in any project.
 
-**One refusal still uses the word.** Pressing `enter` on a **standing item** — a reminder,
-a watch, a rule — asks to open the conversation that set it up, and where that conversation
-belongs to another project this window cannot resume it. Home says
-`elsewhere · <the item's workspace>` at the foot and opens nothing. An item that was set up
-from home and never became a conversation says `made from home — no conversation to open`
-instead.
+**Home never says it on a standing item either, any more.** Pressing `enter` on a
+**standing item** — a reminder, a watch, a rule — opens the conversation that set it up,
+whichever project it belongs to; it used to refuse with `elsewhere · <the item's workspace>`
+at the foot when that project was not this window's, and that refusal is gone. An item that
+was set up from home and never became a conversation opens the **standing place with the
+cursor on that item** — its own page is the honest answer to "show me this thing". The one
+place the sentence `made from home — no conversation to open` is still said is the standing
+place itself, when `enter` there asks for the conversation behind such an item.
 
 A second project is a second **conversation**, built the way the first one was, on its own
 workspace, with its own gate. A conversation still never moves between projects — though it
@@ -1632,7 +1638,7 @@ it` rather than pretending.
 
 `enter` on the row **opens the conversation that asked for it** — that is the answer to
 "why did I get this?", whatever project it belongs to. Something you set up from home that
-never became a conversation says `made from home — no conversation to open`.
+never became a conversation opens the standing place with the cursor on it instead.
 
 ## Make a reminder think harder — how hard a standing item thinks, and ctrl+v on its row
 
@@ -2066,7 +2072,9 @@ and **nothing at its right**:
 ```
 
 **When it happens is said once, in the row's description under the cursor, and each kind
-says it one way** — a fixed sentence you learn once, the kind word first:
+says it one way** — a fixed sentence you learn once, the kind word first. It is there at
+every width: beside the row in the middle column from 170 cells, and as the line under the
+cursor's row on a narrower frame.
 
 - a reminder: `reminder · goes off tomorrow 9:00am`
 - a routine: `routine · every morning at nine · next tomorrow 9:00am · last: done, two branches landed`
@@ -2240,5 +2248,7 @@ are said where they happen: in the conversation that met them, and on `/status`.
 
 **Show a preview card at rest.** The card is only beside a search, on a wide frame.
 
-**Change a panel's place or turn one off.** The seven panels, their columns and their order
-are fixed; only their heights move with the terminal.
+**Change a panel's place or turn one off.** The seven panels and their order are fixed, and
+which column each stands in is read off what it holds — a panel with rows is in the field at
+the left, a quiet one in the rail at the right — so nothing about them is yours to set; only
+their heights and their sides move with the terminal and the day.

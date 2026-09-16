@@ -181,7 +181,7 @@ func TestAQuietMachineDrawsNothingForAStateItIsNotIn(t *testing.T) {
 	for _, width := range []int{80, 120, homeCardMin, 200} {
 		a.width = width
 		text := homeText(a)
-		for _, claim := range []string{"what wants you first", "more, quiet", "more · " + homeFindWord} {
+		for _, claim := range []string{"what wants you first", "more, quiet", "more · type to find one"} {
 			if strings.Contains(text, claim) {
 				t.Fatalf("a %d-column quiet machine claimed %q:\n%s", width, claim, text)
 			}
@@ -235,7 +235,7 @@ func TestNoArrowLeavesTheCursorOnAHeadingOrABlank(t *testing.T) {
 // the quiet clause, the way to the rest — may not smuggle one back in a quieter
 // voice.
 func TestTheGridsOwnWordsNeverAnnounceAbsence(t *testing.T) {
-	for _, word := range []string{foldLine(15, "quiet since aug 21"), homeFindWord} {
+	for _, word := range []string{foldLine(15, "quiet since aug 21"), groupedInt(15) + " " + homeFoldMoreWord} {
 		for _, banned := range []string{"nothing", "empty", " yet", "no "} {
 			if strings.Contains(word, banned) {
 				t.Fatalf("%q announces absence with %q", word, banned)
@@ -521,7 +521,7 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 		t.Fatal("typing into the box did not put home into a search")
 	}
 	text := homeText(a)
-	for _, gone := range []string{"where you were", "since you left", "more · " + homeFindWord} {
+	for _, gone := range []string{"where you were", "since you left", " " + homeFoldMoreWord} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("a search kept the switcher's %q:\n%s", gone, text)
 		}

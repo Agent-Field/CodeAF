@@ -69,8 +69,10 @@ is the reading that produced the 2026-09-15 amendment.
    machine on every day; one blank row separates that pair from the panels that
    are in the rail only because they are quiet today. One column under 110
    cells, two to 170, three past it — and the field FILLS rather than balances,
-   so a frame whose panels fit in one column leaves the middle of a wide screen
-   empty rather than spreading two short columns over it.
+   so a frame whose panels fit in one column never spreads two short columns
+   over a wide screen. The middle column at three is the DESCRIPTIONS': a
+   row's sentence stands beside it there, and a question raised from home
+   stands there as a card; no panel of headings is ever laid in it.
 
    *What this law was.* Until 2026-09-15 the column was a fact about the panel:
    the person's three on the left, the machine's four on the right. It was
@@ -131,9 +133,10 @@ is the reading that produced the 2026-09-15 amendment.
    opens the panel: its cap is lifted, the other panels squeeze in law 5's order
    to their floors, and it takes the column; the fold reads `N fewer` and enter
    shuts it. One panel is open at a time. An open panel taller than the column
-   shows what fits and its fold names the place for the rest — `3 fewer · 40
-   more · tasks` — so nothing is left without a door. The fold wears no mark
-   (law 8). A tall frame hands
+   shows what fits and its fold still counts the rest — `3 fewer · 40 more` —
+   and NAMES NO PLACE, because a line that named a place `enter` did not go to
+   would be a door drawn on a wall; the panel's heading is the door to the
+   place that holds them (law 10). The fold wears no mark (law 8). A tall frame hands
    its spare rows out — only once every panel has its natural height — in the
    squeeze's order reversed, one row each round: `needs you` and `running` to 8,
    `where you were` from 5 to 10, `since you left` to 8, `projects` to 8,

@@ -571,6 +571,12 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 	if !a.at(pageStanding) {
 		t.Fatal("enter on an item made at home did not open the standing place")
 	}
+	// AND THE CURSOR IS ON THE ITEM, not at the top of a list the person then
+	// has to find it in again: a press on a row lands on that row (review of
+	// #1046, [app.openStandingAt]).
+	if got, ok := a.orders.current(); !ok || got.ID != item.ID {
+		t.Fatalf("enter on an item made at home landed standing on %q (%v), want the item %q", got.ID, ok, item.ID)
+	}
 }
 
 // A WATCH ASKED FOR IN ANOTHER PROJECT STILL OPENS FROM HERE. It used to refuse

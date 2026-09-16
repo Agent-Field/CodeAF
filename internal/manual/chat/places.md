@@ -413,9 +413,12 @@ being held down — it only reports what arrived.
 ## home — what wants you, as seven panels
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
-project, as **seven panels** in one, two or three columns: `needs you`, `where you were` and
-`projects` on the left; `running`, `since you left`, `spend` and `scheduled` on the right. An
-empty panel keeps its heading and one dim line naming what arrives there.
+project, as **seven panels** in one, two or three columns — `needs you`, `where you were`,
+`projects`, `running`, `since you left`, `spend`, `scheduled`, always in that order. Which
+column a panel stands in follows what it holds: every panel with rows is in the **field** at
+the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
+them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
+naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
 answers the one row of `needs you` drawing its answers, and `enter` opens a row. `tab` is the way to the
