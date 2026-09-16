@@ -24,11 +24,10 @@ import (
 // class models underneath — and the seat above them is the one thing on the
 // list no key can move ([crewPicker.rows] says why it is there anyway).
 //
-// EVERY CREW WRITE GOES THROUGH [config.ApplyCrew], the same function the
-// panel's row writes through, and the one row that does not, the family, the
-// pool the presets draw from, goes through [config.SetCrewSource] beside the
-// five. A second writer anywhere else is how a command and a panel end up
-// disagreeing about which crew is on.
+// EVERY CREW WRITE GOES THROUGH config's own writers: a preset through
+// [config.ApplyCrew], and the chooser's family-and-preset decision through
+// [config.ApplyCrewUnder] in one file write. A second writer anywhere else is how
+// a command and a panel end up disagreeing about which crew is on.
 
 // runCrew is /crew: the three presets with the current one marked, or one applied.
 func (a *app) runCrew(arg string) {
@@ -402,17 +401,18 @@ func (a *app) sayWorkSeat() {
 //
 // models.crew.source says whether the three presets pick their five ids from
 // open models or from all models. THE CONFIG PACKAGE OWNS THE ROW:
-// [config.CrewSourceAt] reads it, [config.SetCrewSource] writes it, and the two
-// tables behind them answer it. This package draws the choice and commits it.
+// [config.CrewSourceAt] reads it. [config.SetCrewSource] writes it alone for the
+// settings row, and [config.ApplyCrewUnder] commits it with a preset as one write
+// for this chooser. The two tables behind them answer it.
 //
 // THE ROW IS DOOR-ONLY, and the frame-disk law is why (framedisk_law_test.go is
 // the gate): the chooser reads it once at its open ([app.runCrew]) and enter
 // writes it once, and neither happens on the frame clock, which is why the
 // status segment does not name the family.
 
-// crewSourceLead is the family row's label. It is `family` and not `source`
-// because that is the word the settings panel and the manual use for the same
-// row: one thing, one name.
+// crewSourceLead is this row's one word in the chooser. The settings panel labels
+// the same row `model family`; here it is abbreviated to fit one line, and both
+// name the family the presets draw from.
 const crewSourceLead = "family"
 
 // crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
