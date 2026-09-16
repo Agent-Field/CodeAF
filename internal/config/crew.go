@@ -319,25 +319,17 @@ func sameCrew(live, preset map[string]string) bool {
 // the write cannot disagree about which table the word means: flip to `all`,
 // press the crew again, and the five ids that land are the all-family ones.
 func ApplyCrew(profileDir, preset string) error {
-	preset = strings.ToLower(strings.TrimSpace(preset))
-	models, ok := CrewModelsForSource(CrewSourceAt(profileDir), preset)
-	if !ok {
-		return fmt.Errorf("pick one of: %s", strings.Join(CrewPresets, ", "))
-	}
-	values := make(map[string]any, len(models))
-	for tier, model := range models {
-		values[tierKeyFor(tier)] = model
-	}
-	return writeProfileValues(profileDir, values)
+	// The family is whatever the profile already holds, so passing it writes no
+	// family row and the write is exactly the five tiers. One resolve-and-write
+	// serves both callers rather than two that can drift apart.
+	return ApplyCrewUnder(profileDir, CrewSourceAt(profileDir), preset)
 }
 
 // ApplyCrewUnder writes a FAMILY AND A PRESET AS ONE DECISION, IN ONE FILE
 // WRITE. The family row and the five tier rows are one state, so writing them
 // apart leaves a window in which a reader sees the family set to `all` while the
 // rows still hold open ids, which is the half-written crew [ApplyCrew] forbids, read as
-// `custom` about a state nobody chose. One call is also what makes the chooser's
-// promise real: it writes the family first because the resolution reads it, and
-// here there is no "first" for a reader to catch.
+// `custom` about a state nobody chose.
 //
 // The family row rides along ONLY WHEN IT CHANGES, so an enter that keeps the
 // family does not pin a setting the person never answered: the five tier rows are

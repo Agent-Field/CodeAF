@@ -629,7 +629,9 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		}
 		out = append(out, head, tail)
 	}
-	if p.current == config.CrewCustom && p.source == p.persistedSource {
+	// The custom line is about the SAVED crew, so it shows whichever family is
+	// staged: hiding it would drop a row [crewPicker.height] still counts.
+	if p.current == config.CrewCustom {
 		out = append(out, pal.dim(fit(crewCustomLine, width)))
 	}
 	// AND THE ROW NOBODY WROTE, said last among the readings and before the door

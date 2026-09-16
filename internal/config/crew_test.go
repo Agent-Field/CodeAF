@@ -359,7 +359,7 @@ func TestFlippingToAllMakesTheWordsMeanTheAllFamily(t *testing.T) {
 	if got := CrewSourceAt(dir); got != CrewSourceAll {
 		t.Fatalf("the source row reads %q after all was set", got)
 	}
-	// The row is the one place the source is written: a stored tier id is not a
+	// The crew row never writes the source: a stored tier id is not a family claim: a stored tier id is not a
 	// family claim, and the family is not stored in the crew row either.
 	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
 		t.Fatalf("setting the crew to balanced: %v", err)
