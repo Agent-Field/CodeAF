@@ -499,3 +499,48 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 		t.Fatal("enter on a next-up row did not open standing")
 	}
 }
+
+// A `next up` ROW'S DESCRIPTION IS THE FINDING, NOT THE CLOCK (owner,
+// 2026-09-15). The margin says when the order next wakes — and for a watch that
+// has looked, when it looked — and the description says what it found or what
+// its last firing came to; an order that has never woken describes nothing,
+// and the schedule is never said a second time.
+func TestNextUpDescribesTheLastFindingAndNeverRepeatsTheClock(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 45)
+	dir := a.home.world.Projects[0].Dir
+	watch := StandingItemView{Item: standing.Item{ID: "w", Words: "tell me when CI goes red", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenProbe, Words: "every five minutes"}, NextDue: lab.now.Add(2 * time.Minute),
+		LastChecked: lab.now.Add(-3 * time.Minute), LastCheckLine: "the last five runs on master are green"}}
+	quiet := StandingItemView{Item: standing.Item{ID: "q", Words: "watch the lockfile", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenFile, Words: "when go.sum changes"}, LastChecked: lab.now.Add(-time.Hour)}}
+	routine := StandingItemView{Item: standing.Item{ID: "r", Words: "sweep the repo every morning at nine", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenEvery, Words: "every morning at nine"}, NextDue: lab.now.Add(13*time.Hour + 30*time.Minute),
+		LastFired: lab.now.Add(-11 * time.Hour), LastOutcome: "done: two branches landed, both in internal/tui3"}}
+	fresh := StandingItemView{Item: standing.Item{ID: "f", Words: "remind me at six to leave", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenAt, Words: "at 6 today"}, NextDue: lab.now.Add(4*time.Hour + 30*time.Minute)}}
+	a.home.items = map[string][]StandingItemView{dir: {watch, quiet, routine, fresh}}
+	a.home.build()
+	rows := map[string]*homeCell{}
+	for _, cell := range panelRows(a, panelNext) {
+		rows[cell.title] = cell
+	}
+	want := []struct{ title, right, sub string }{
+		{"tell me when CI goes red", "checked 3m ago", "the last five runs on master are green"},
+		{"watch the lockfile", "checked 1h ago", nextUpFoundNothingWord},
+		{"sweep the repo every morning at nine", "in 13h", "done: two branches landed, both in internal/tui3"},
+		{"remind me at six to leave", "in 4h", ""},
+	}
+	for _, w := range want {
+		cell, ok := rows[w.title]
+		if !ok {
+			t.Fatalf("next up does not draw %q:\n%s", w.title, homeText(a))
+		}
+		if cell.right != w.right || cell.sub != w.sub {
+			t.Fatalf("%q reads %q / %q, want the clock %q and the finding %q", w.title, cell.right, cell.sub, w.right, w.sub)
+		}
+		if strings.Contains(cell.sub, "every") || strings.Contains(cell.sub, "at 6") {
+			t.Fatalf("%q repeats its schedule in its description: %q", w.title, cell.sub)
+		}
+	}
+}

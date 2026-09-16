@@ -2052,15 +2052,23 @@ have.
 
 **The `next up` panel, last of the seven**: every reminder and routine this
 machine will act on, from every project, **soonest first**, with the rules that simply hold
-at the end. Each row is your own words, with when it goes off at the right — `in 20h`,
-`mon 8:30`, `holds`:
+at the end. Each row is your own words, with the clock at the right — `in 20h` or `mon 8:30`
+for a reminder or routine, `checked 3m ago` for a watch that has looked, `holds` for a rule:
 
 ```
  next up
    the 6am repo watch                in 20h
    top movers before the open      mon 8:30
+   tell me when CI goes red   checked 3m ago
    never change the public API without telling me first
 ```
+
+**Under the cursor the description is what the order found, never its schedule** — the
+schedule is already in your own words on the row and in the clock at its right. A watch that
+has looked says the line it found, or `found nothing`; a reminder or routine that has gone
+off says what its last firing came to (`done: two branches landed, both in internal/tui3`);
+one that has never woken says nothing at all. An order stopped on you says `your call` and
+why, and one in the middle of a pass says what the pass is doing.
 
 Three rows show, five in a tall window, then `N more`, which `enter` opens. Paused, stopped
 and retired items are not on it. **Every row is a door into the standing place**, where the
