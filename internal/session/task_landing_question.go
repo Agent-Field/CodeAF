@@ -33,6 +33,17 @@ package session
 // rather than stacking a second (internal/tui3's [app.raiseQuestion] matches on
 // the token); a node that settles takes it back.
 //
+// TWO MOVES ARE NOT NEW QUESTIONS. A move that is the ANSWER'S OWN WORK IN
+// FLIGHT — the accept whose merge is still deciding, the re-audit still
+// spending its window — raises nothing and withdraws nothing: the notice
+// carries [TaskNotice.Settling], and asking again within seconds with no new
+// fact is how one card got answered twelve times in an hour (#1077). And a
+// question somebody ANSWERED carries that answer's fate when it is raised
+// again — what was answered, when, and what became of it — so the re-asked
+// card never reads as though the last answer was ignored (question.go's
+// [Agent.landingQuestion] consults the decision record, the raise owing the
+// record what the replay already owed it).
+//
 // IT RIDES [Agent.emitTaskUpdate] BECAUSE THAT IS THE ONE DOOR EVERY MOVE GOES
 // THROUGH. A second list of which landings have been asked about would be a
 // second source of truth for a fact the graph already holds, which is the defect
@@ -41,6 +52,7 @@ package session
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -87,6 +99,16 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 	standing := a.landingAsked(notice.ID)
 	if notice.State != TaskUnverified {
 		a.retireLandingQuestion(notice, standing)
+		return
+	}
+	if strings.TrimSpace(notice.Settling) != "" {
+		// THE ANSWER'S OWN WORK IN FLIGHT IS NOT A NEW QUESTION, so a notice
+		// naming a resolution in flight raises nothing — and withdraws
+		// nothing, leaving the standing map at the last DRAWN shape, which is
+		// exactly what a later shape-change withdrawal must take back. The
+		// settle's own terminal notice is not blanketed by this: resettle
+		// hands the claim back inside its locked write, before the notice is
+		// built (task_run.go's [TaskGraph.resettle]).
 		return
 	}
 	q := a.landingQuestion(PendingDecision{Notice: notice})
@@ -154,4 +176,50 @@ func (a *Agent) retireLandingQuestion(notice TaskNotice, standing QuestionKind) 
 // caller holding the id and the shape rather than the object.
 func landingQuestionToken(kind QuestionKind, id uint64) string {
 	return questionToken(kind, strconv.FormatUint(id, 10))
+}
+
+// landingAnsweredStamp is how a re-raised landing says what became of the last
+// answer: the lane's own word for the key that was pressed, and the minute it
+// landed. `accepted 18:20` under `nobody could check it` is one card carrying
+// both halves — the half the twelve identical cards in #1077 never said.
+//
+// THE MAP IS THE LANE'S VOCABULARY AND NOTHING ELSE: the keys answers.go fixes
+// for a landing, each in the words the receipt lines beside it already use
+// (task_audit.go's acceptedLine and family), and a custom ask's own label as
+// the fallback. The decider leads only when it was not the person — `another
+// window accepted 18:20` — because your own answer needs no attribution and
+// somebody else's does.
+func landingAnsweredStamp(record DecisionRecord) string {
+	word := ""
+	for _, key := range record.Picked {
+		switch key {
+		case LandingYesKey:
+			word = "accepted"
+			if record.Kind == QuestionConflict {
+				word = "said resolve it"
+			}
+		case LandingNoKey:
+			word = "said not right"
+		case LandingAgainKey:
+			word = "asked for a re-check"
+		case LandingDecideKey:
+			word = "handed it to codeaf"
+		case LandingTakeBackKey:
+			word = "took it back"
+		}
+		if word != "" {
+			break
+		}
+	}
+	if word == "" {
+		word = "answered"
+		if len(record.Labels) > 0 && strings.TrimSpace(record.Labels[0]) != "" {
+			word = "answered " + strings.TrimSpace(record.Labels[0])
+		}
+	}
+	stamp := word + " " + record.At.Format("15:04")
+	if by := strings.TrimSpace(string(record.By)); by != "" && record.By != DecidedByPerson {
+		stamp = by + " " + stamp
+	}
+	return stamp
 }

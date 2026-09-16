@@ -1997,11 +1997,20 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	}
 	// THE RECORD IS WRITTEN FROM THE QUESTION AND THE ANSWER TOGETHER, and it is
 	// written after the lane took it: a decision recorded for work that was never
-	// resolved is a record that refuses the next question for no reason. A lane
-	// that banked no words leaves no record — there is no head to keep, and a
-	// record whose question cannot be read back is a line nobody can act on.
-	if said {
+	// resolved is a record that refuses the next question for no reason.
+	//
+	// A LANDING ANSWERED WITH NOTHING BANKED IS RECORDED TOO. Its words are
+	// synthesized ([Agent.questionForLandingAnswer]) with the head and subject
+	// the next raise consults ([decidedAlready] in [Agent.landingQuestion]),
+	// so the record CAN be read back — and an unrecorded landing answer is the
+	// next attach asking as though it never happened, which is the replay
+	// half of #1077. Other lanes still leave no record when nothing was
+	// banked: there is no head to keep, and a record whose question cannot be
+	// read back is a line nobody can act on.
+	if said || landingSaid {
 		a.recordDecision(decisionRecordOf(q, answer))
+	}
+	if said {
 		a.rememberOverride(q, answer)
 	}
 	if said || landingSaid {
@@ -2932,7 +2941,7 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		kind = QuestionConflict
 	}
 	token := strconv.FormatUint(notice.ID, 10)
-	return a.said(kind, token, Question{
+	q := Question{
 		ID:      notice.ID,
 		Kind:    kind,
 		Ask:     AskLanding,
@@ -2956,7 +2965,28 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		// one fact as the policy this object spells it in rather than minting a
 		// second holder to disagree with it.
 		Policy: landingPolicy(status.Ask.Owner),
-	})
+	}
+	// AND A QUESTION SOMEBODY ANSWERED CARRIES THAT ANSWER'S FATE. The raise
+	// owes the record the same consultation the replay owes it (this file's
+	// [questionAsked]): an answered landing re-asked with the same words reads
+	// as though the earlier answers were ignored (#1077). The stamp leads
+	// because it is the new information; the ask's own reason stays after it
+	// because what became of the answer IS why it is asking again. A
+	// resolution still in flight says so instead — the person is not being
+	// asked twice, they are being told their answer is still working. The
+	// consultation is the gate's own helper on the gate's terms
+	// ([decidedAlready] over [Agent.Decisions]), and it costs what the gate's
+	// own check costs: one record read per derived landing question, no cache
+	// and so no second source of truth. Banked words are an unanswered
+	// question and carry no fate — [Agent.said] returns them untouched.
+	if record, found := decidedAlready(a.Decisions(), q); found {
+		if strings.TrimSpace(notice.Settling) != "" {
+			q.Reason = landingAnsweredStamp(record) + " · still working on it"
+		} else {
+			q.Reason = landingAnsweredStamp(record) + " · " + q.Reason
+		}
+	}
+	return a.said(kind, token, q)
 }
 
 // landingForm is which shape a landing asks to be drawn in, and it is decided

@@ -2901,6 +2901,15 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 			// KILLED IS NOT A VERDICT. The node is left exactly as it was —
 			// unverified, waiting on somebody — because a re-audit that was
 			// stopped is a re-audit that never happened.
+			//
+			// AND THE QUESTION IS HANDED BACK, not held down: a notice built
+			// while the claim stands carries it and would suppress the raise
+			// (task_landing_question.go's [Agent.publishLandingQuestion]), so
+			// the release comes first and the deferred one below is the no-op.
+			// The re-raised card carries the answer's fate — `asked for a
+			// re-check 18:20 · nobody could check it` (#1077).
+			node.releaseSettle()
+			a.emitTaskUpdate(node.notice())
 			return
 		}
 		a.landAudit(node, tree, verdict, changed)

@@ -1315,8 +1315,16 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 	} else {
 		out = append(out, a.questionRowOffer(q, width))
 	}
-	if reason := strings.TrimSpace(q.question.Reason); reason != "" && a.questionSubjectAt(q.question) < 0 {
-		out = append(out, a.pal.dim(fit("  "+reason, width)))
+	if reason := strings.TrimSpace(q.question.Reason); reason != "" {
+		// SUPPRESSED ONLY WHILE IT IS THE SENTENCE THE SUBJECT CARD IS ALREADY
+		// DRAWING (questionAttribution): the two are the same sentence while
+		// the question is unanswered, and an answered-and-re-raised landing's
+		// reason carries the answer's fate, which the card cannot have —
+		// suppressing it would draw the twelfth card byte-identical to the
+		// first (session's landingAnsweredStamp, #1077).
+		if a.questionSubjectAt(q.question) < 0 || a.questionReasonIsNews(q.question, reason) {
+			out = append(out, a.pal.dim(fit("  "+reason, width)))
+		}
 	}
 	// AND WHILE THE BOX IS WRITING TO THE QUESTION, that row says what the box
 	// means now instead of naming keys that are letters and type.
@@ -1328,6 +1336,25 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 		out = append(out, keys)
 	}
 	return out
+}
+
+// questionReasonIsNews says the question's reason is NOT the sentence the
+// landed subject's own card is already drawing under itself (taskdone.go's
+// [app.doneUnder]). While the question is unanswered it is: the reason is the
+// ask's own sentence, or that sentence with the decider clause appended
+// (session's landingReason) — both are the card's to say. An answered-and-
+// re-raised landing's reason LEADS with the answer's fate instead (session's
+// landingAnsweredStamp), which the card cannot have — and suppressing it
+// would draw the twelfth card byte-identical to the first (#1077). A subject
+// with no done card in the transcript has no sentence to double.
+func (a *app) questionReasonIsNews(q session.Question, reason string) bool {
+	for i := range a.entries {
+		if e := &a.entries[i]; e.kind == entryDone && e.done != nil && e.done.id == q.Subject.ID {
+			drawn := strings.TrimSpace(e.done.status.Ask.Reason)
+			return reason != drawn && !strings.HasPrefix(reason, drawn+" · ")
+		}
+	}
+	return false
 }
 
 // questionRowOffer is that row: the mark, the head, and every answer beside it,

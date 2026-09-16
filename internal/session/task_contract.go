@@ -636,6 +636,25 @@ type TaskNotice struct {
 	// run across a restart, so a restored row comes back settled and never paused
 	// (task_store.go's [runRecord]).
 	Paused bool
+	// Settling names the RESOLUTION IN FLIGHT over a landed node, in the plain
+	// words the claim was taken in — "your accept", "your refute", "a
+	// re-audit" (task_audit.go's [Agent.ResolveUnverified]) — or "a merge
+	// round" while a conflict round runs (task_merge_round.go's
+	// [TaskNode.claimResolving]). It is "" at every other moment.
+	//
+	// A SURFACE DRAWS NOTHING FROM IT. It rides the notice so the question
+	// machinery can hold a landed node's question down while the answer's own
+	// work is still running — the accept whose merge is still deciding, the
+	// re-audit still spending its window — rather than ask it again with no
+	// new fact (task_landing_question.go's [Agent.publishLandingQuestion]).
+	//
+	// IT IS A REPORT OF RIGHT NOW, like Mending and Waiting: the graph's own
+	// claim fields, copied onto the notice at the one place node-update
+	// notices are built (task_run.go's [TaskNode.noticeLocked]), never stored
+	// beside them. And it is A FACT OF THIS PROCESS AND NOT OF THE CHECKPOINT:
+	// a restored session has no resolution in flight, so a zero value after a
+	// restore is the truth and not a gap.
+	Settling string
 	// Stopped says a PERSON ended this node ([Agent.Cancel]) rather than the
 	// work ending on its own. It rides beside State rather than replacing it —
 	// a stopped node still settles as `failed`, because nothing merged and its
