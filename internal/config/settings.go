@@ -1931,7 +1931,7 @@ func (s *Settings) build() []Setting {
 			Label: "ask before running", Choices: ToolApprovalModes,
 			Hint: "what happens when the model asks to run a tool: prompt asks you, allow runs it, " +
 				"deny refuses it. Dangerous shell commands are asked about whichever way this is set. " +
-				"A change lands on the next session.",
+				"A change reaches this conversation straight away, unless the panel says it lands on the next session.",
 			read:  func() string { return ToolApprovalModeAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyToolApprovalMode, raw, ToolApprovalModes) },
 		},

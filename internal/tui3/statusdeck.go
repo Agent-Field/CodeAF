@@ -469,11 +469,39 @@ func (a *app) deckItems() []deckItem {
 		add("search", a.searchStatus(), deckActNone)
 	}
 
+	// AND WHAT HAPPENS WHEN THE MODEL ASKS TO RUN SOMETHING, which is the one
+	// fact on this page the status row states only when it is UNSAFE. The row
+	// draws `YOLO` over an open gate and nothing at all otherwise, on purpose
+	// (render.go's NEGATIVE-SPACE SAFETY): a permanent badge is a badge nobody
+	// reads. A PAGE IS THE OTHER MEDIUM AND OWES THE WHOLE ANSWER — /status is
+	// described as everything the status line knows, and "am I being asked before
+	// things run" was the one question it could not be asked, because the only
+	// spelling of it was a badge whose absence a person has to know how to read.
+	// So the posture is a row here whichever of the three it is, in the words the
+	// `ask before running` row uses for them.
+	//
+	// IT IS [app.approval] AND NOT A READING OF ITS OWN. That field is the gate's
+	// posture as the badge states it — the launch's handed-down answer, the
+	// engine's over --host, or the profile read live ([app.approvalPosture]) —
+	// and this page saying anything else would be the second reading that
+	// #322 was about. A hosted session whose engine carried no posture has no
+	// answer to give and grows no line, which is the emptiness law and the same
+	// silence the badge keeps there.
+	add(deckSegWords[segYolo], a.approval, deckActNone)
+
 	for _, part := range a.telemetry(hudWide) {
 		// The crew's segment is the word alone and this page already carries the
 		// whole reading under the model, so the segment is not written a second
 		// time as a shorter line further down.
 		if part.kind == segCrew {
+			continue
+		}
+		// AND THE GATE IS ALREADY ABOVE, in full. Its segment is the badge — one
+		// word, and only over an open gate — so letting it through here would put
+		// `approvals YOLO` on the page under the row that already says
+		// `approvals allow`, twice for one fact and once with a label the JSON
+		// form cannot repeat ([app.statusJSON] keys these labels).
+		if part.kind == segYolo {
 			continue
 		}
 		text := part.text
@@ -563,7 +591,12 @@ var deckSegWords = [segCount]string{
 	segBurn:    "rate",
 	segRate:    "speed",
 	segETA:     "compaction",
-	segYolo:    "approvals",
+	// The gate's word is read by [app.deckItems] and the segment it belongs to is
+	// not: the badge says `YOLO` over an open gate and nothing over a closed one,
+	// and this page states the posture in the `ask before running` row's own
+	// words instead — under this label, which is what makes the two spellings one
+	// fact rather than two.
+	segYolo: "approvals",
 	// phone lane: the link's healthy reading fits the row, while its reconnecting
 	// sentence is fifty cells and reaches a phone through the SHEET — the same
 	// road nine of the eleven facts on this line already take (hostlink.go, and

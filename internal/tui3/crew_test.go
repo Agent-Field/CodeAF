@@ -413,8 +413,8 @@ func TestAnEmptyProfileDirectoryIsTheOrdinaryProfileAndStillHasACrew(t *testing.
 		t.Fatalf("the ordinary launch's crew segment reads %q", got)
 	}
 	a.slash("/status")
-	if !strings.Contains(lastNote(t, a), "\ncrew     "+config.CrewBalanced+" ·") {
-		t.Fatalf("/status says nothing about the crew on an ordinary launch:\n%s", lastNote(t, a))
+	if got := noteFact(lastNote(t, a), "crew"); !strings.HasPrefix(got, config.CrewBalanced+" ·") {
+		t.Fatalf("/status says the crew as %q on an ordinary launch:\n%s", got, lastNote(t, a))
 	}
 }
 
@@ -556,8 +556,8 @@ func TestTheCrewWordIsSaidTheSameWayOnEveryPageThatSaysIt(t *testing.T) {
 		t.Fatalf("the hint says %q and the segment says %q", a.crewHint(), a.crewSegment())
 	}
 	a.slash("/status")
-	if !strings.Contains(lastNote(t, a), "\ncrew     max ·") {
-		t.Fatalf("/status does not read the same word:\n%s", lastNote(t, a))
+	if got := noteFact(lastNote(t, a), "crew"); !strings.HasPrefix(got, "max ·") {
+		t.Fatalf("/status reads %q rather than the same word:\n%s", got, lastNote(t, a))
 	}
 	// A hand-set seat turns every reading to custom at once.
 	a.openSettings()
