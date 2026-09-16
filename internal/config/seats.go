@@ -229,11 +229,19 @@ func crewRow(profileDir, tier string) (model, from string, source SeatSource, cl
 // from the ladder — five extra file reads per row, and a cycle. A surface that
 // wants both facts asks for both.
 func TierSeatAt(profileDir, tier string) Seat {
+	return tierSeatUnder(profileDir, CrewSourceAt(profileDir), tier)
+}
+
+// tierSeatUnder is [TierSeatAt] with the family already read, so a caller that
+// walks every tier ([CrewAt]) reads the profile ONCE for the family instead of
+// once per unwritten seat, and the five seats cannot be resolved under one
+// family while the preset table is resolved under another.
+func tierSeatUnder(profileDir, family, tier string) Seat {
 	model, from, source, cleared := crewRow(profileDir, tier)
 	if source == "" {
 		source = SeatDefault
 		if !cleared {
-			model = defaultTierModel(profileDir, tier)
+			model = defaultTierModel(family, tier)
 		}
 	}
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}

@@ -405,10 +405,10 @@ func (a *app) sayWorkSeat() {
 // settings row, and [config.ApplyCrewUnder] commits it with a preset as one write
 // for this chooser. The two tables behind them answer it.
 //
-// THE ROW IS DOOR-ONLY, and the frame-disk law is why (framedisk_law_test.go is
-// the gate): the chooser reads it once at its open ([app.runCrew]) and enter
-// writes it once, and neither happens on the frame clock, which is why the
-// status segment does not name the family.
+// THE SEGMENT DOES NOT NAME THE FAMILY. The chooser reads the row at its open
+// ([app.runCrew]) and enter writes it through [config.ApplyCrewUnder], and the
+// crew word the status segment shows resolves through the same row: it is read
+// there, and it is not printed above the presets.
 
 // crewSourceLead is this row's one word in the chooser. The settings panel labels
 // the same row `model family`; here it is abbreviated to fit one line, and both

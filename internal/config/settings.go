@@ -1023,8 +1023,8 @@ const (
 	// it without a vision detour.
 	DefaultWorkerModel = "z-ai/glm-5.3-flash"
 	// The careful tier is ALWAYS A DIFFERENT VENDOR FROM THE WORKER, in every
-	// preset, and always a model that sees images: a check from a second family
-	// catches what the first family's blind spots let through, and the vision
+	// preset, and always a model that sees images: a check from a second vendor
+	// catches what the first vendor's blind spots let through, and the vision
 	// role rides this row.
 	DefaultHighModel = "moonshotai/kimi-k3"
 	// The mastermind names a capable planning model. Its generation behavior is
@@ -3791,8 +3791,8 @@ func tierKeyFor(tier string) string {
 // answer is the constant, which is what [DefaultWorkerModel] and its kin name,
 // because the open table's default row and the builtin five name the same set by
 // construction (crew_test.go pins it).
-func defaultTierModel(profileDir, tier string) string {
-	if table, ok := CrewModelsForSource(CrewSourceAt(profileDir), DefaultCrew); ok {
+func defaultTierModel(family, tier string) string {
+	if table, ok := CrewModelsForSource(family, DefaultCrew); ok {
 		if model, held := table[tier]; held {
 			return model
 		}

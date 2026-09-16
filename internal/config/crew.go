@@ -99,9 +99,10 @@ const DefaultCrewSource = CrewSourceOpen
 // a dial.
 //
 // Every id is an open-weight model, picked off the catalog's own published
-// scores against blended price: the worker, reflex and small-work seats on
-// 2026-09-01, and the frugal mastermind and the balanced careful and mastermind
-// seats on 2026-09-16 (settings.go's DefaultWorkerModel says how). No closed model is here: the open family is the
+// scores against blended price: 2026-09-01 for the roster as a whole, with the
+// frugal mastermind and the balanced careful and mastermind re-picked on
+// 2026-09-16 (the manual's open table lists every seat; settings.go's
+// DefaultWorkerModel says how). No closed model is here: the open family is the
 // shelf that has to stand on price alone, and the `all` family is where a closed
 // model goes.
 var crewModels = map[string]map[string]string{
@@ -284,11 +285,12 @@ func CrewModels(preset string) (map[string]string, bool) {
 // family wrote matches nothing, which reads as custom and is true, because
 // five open ids are not any all-family preset either.
 func CrewAt(profileDir string) string {
+	family := CrewSourceAt(profileDir)
 	live := make(map[string]string, len(ModelTiers))
 	for _, tier := range ModelTiers {
-		live[tier] = TierModelAt(profileDir, tier)
+		live[tier] = tierSeatUnder(profileDir, family, tier).Model
 	}
-	table := crewTableFor(CrewSourceAt(profileDir))
+	table := crewTableFor(family)
 	for _, preset := range CrewPresets {
 		if sameCrew(live, table[preset]) {
 			return preset
@@ -320,10 +322,11 @@ func sameCrew(live, preset map[string]string) bool {
 // the write cannot disagree about which table the word means: flip to `all`,
 // press the crew again, and the five ids that land are the all-family ones.
 func ApplyCrew(profileDir, preset string) error {
-	// The family is whatever the profile already holds, so passing it writes no
-	// family row and the write is exactly the five tiers. One resolve-and-write
-	// serves both callers rather than two that can drift apart.
-	return ApplyCrewUnder(profileDir, CrewSourceAt(profileDir), preset)
+	// An empty family means KEEP THE ONE THE PROFILE HOLDS, so this path reads the
+	// profile once inside ApplyCrewUnder rather than once here and again there, and
+	// the write is exactly the five tiers. One resolve-and-write serves both callers
+	// rather than two that can drift apart.
+	return ApplyCrewUnder(profileDir, "", preset)
 }
 
 // ApplyCrewUnder writes a FAMILY AND A PRESET AS ONE DECISION, IN ONE FILE
@@ -337,6 +340,13 @@ func ApplyCrew(profileDir, preset string) error {
 // written and the family row stays unanswered, free to follow a later default
 // family.
 func ApplyCrewUnder(profileDir, source, preset string) error {
+	// An empty source keeps the family the profile holds, which is how [ApplyCrew]
+	// asks for the five tiers alone. The profile is read ONCE here, so there is no
+	// window between a check and the write in which the family could move.
+	persisted := CrewSourceAt(profileDir)
+	if strings.TrimSpace(source) == "" {
+		source = persisted
+	}
 	known, ok := knownCrewSource(source)
 	if !ok {
 		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
@@ -350,7 +360,7 @@ func ApplyCrewUnder(profileDir, source, preset string) error {
 	for tier, model := range models {
 		values[tierKeyFor(tier)] = model
 	}
-	if known != CrewSourceAt(profileDir) {
+	if known != persisted {
 		values[KeyCrewSource] = known
 	}
 	return writeProfileValues(profileDir, values)
