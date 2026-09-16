@@ -21,6 +21,7 @@
 //	PROBE-PWD          calls `bash` with `pwd`, then quotes the answer back
 //	PROBE-READ <path>  calls `read` on the path, then quotes the answer back
 //	PROBE-SLOW         a reply spread over seconds, for the link that dies
+//	PROBE-NOCHANGE <path> replays the completion-check rejection from #1065
 //
 // QUOTING THE TOOL OUTPUT BACK IS THE WHOLE TRICK. `--once` prints the model's
 // reply on stdout and the tool's own output nowhere at all, so a scenario that
@@ -106,9 +107,10 @@ func models(w http.ResponseWriter, r *http.Request) {
 // ignored: this is a script, not a model, and a field it pretended to honour
 // would be a second opinion about a protocol it does not own.
 type request struct {
-	Model    string    `json:"model"`
-	Stream   bool      `json:"stream"`
-	Messages []message `json:"messages"`
+	Model    string          `json:"model"`
+	Stream   bool            `json:"stream"`
+	Messages []message       `json:"messages"`
+	Tools    json.RawMessage `json:"tools"`
 }
 
 // message holds Content as a raw message because the dialect sends it two ways
@@ -160,7 +162,12 @@ func completions(w http.ResponseWriter, r *http.Request) {
 	log.Printf("POST /chat/completions model=%q stream=%v messages=%d ask=%q phase=%s",
 		body.Model, body.Stream, len(body.Messages), shorten(ask, 120), phaseWord(answered))
 
-	reply := compose(ask, answered)
+	reply, branch, handled := noChangeReply(body)
+	if !handled {
+		reply = compose(ask, answered)
+	} else {
+		log.Printf("%s %s", markerNoChange, branch)
+	}
 	if !body.Stream {
 		// Nothing in codeaf asks for a whole completion today, but a stub that
 		// only spoke one of the two shapes would fail mysteriously the day
@@ -226,17 +233,19 @@ type reply struct {
 	// pause is held between chunks.
 	pause time.Duration
 	// tool, when named, makes this a tool call instead of an answer.
-	tool string
-	args string
+	tool   string
+	args   string
+	callID string
 }
 
 // The markers. They are spelled in the person's own message and nowhere else,
 // so a scenario reads as a sentence somebody could actually type.
 const (
-	markerEcho = "PROBE-ECHO"
-	markerPwd  = "PROBE-PWD"
-	markerRead = "PROBE-READ"
-	markerSlow = "PROBE-SLOW"
+	markerEcho     = "PROBE-ECHO"
+	markerPwd      = "PROBE-PWD"
+	markerRead     = "PROBE-READ"
+	markerSlow     = "PROBE-SLOW"
+	markerNoChange = "PROBE-NOCHANGE"
 	// markerJob starts the command after it in the BACKGROUND, which is the one
 	// thing the other four markers cannot reach: every one of them is a turn that
 	// finishes, and a background job is by definition the work that outlives the
@@ -251,6 +260,12 @@ const (
 	markerJob = "PROBE-JOB"
 )
 
+// noChangeToolRounds is checkpointMarkAt(1) + 1. The stub cannot import an
+// internal package, so this value moves by hand if the first checkpoint does.
+const noChangeToolRounds = 11
+
+var noChangeReaderCalls atomic.Int64
+
 // The prefixes the harness asserts on. They are constants here and constants in
 // the test, because a string that appears in two places drifts.
 const (
@@ -261,6 +276,78 @@ const (
 	slowEnd = "SLOW-END"
 	sayJob  = "ENGINE-JOB: "
 )
+
+// noChangeReply is the deterministic live replay of #1065. The main
+// conversation carries tools; the completion reader does not, so the tools
+// field keeps a title or another private errand that quotes the person's marker
+// from accidentally running the scenario.
+func noChangeReply(body request) (reply, string, bool) {
+	markerAt, markerText := -1, ""
+	for index, message := range body.Messages {
+		text := message.text()
+		if strings.Contains(text, markerNoChange) {
+			markerAt, markerText = index, text
+			break
+		}
+	}
+	if markerAt < 0 {
+		return reply{}, "", false
+	}
+
+	for _, message := range body.Messages {
+		if strings.Contains(message.text(), "[still asked]") {
+			call := noChangeReaderCalls.Add(1)
+			return reply{chunks: []string{fmt.Sprintf("the table was cut off mid-row (look %d)", call)}},
+				fmt.Sprintf("reader %d", call), true
+		}
+	}
+	if !requestHasTools(body.Tools) {
+		return reply{}, "", false
+	}
+
+	for index := len(body.Messages) - 1; index >= 0; index-- {
+		message := body.Messages[index]
+		if !strings.EqualFold(message.Role, "user") {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(message.text()), "[carry on]") {
+			return reply{chunks: []string{"[no change]"}}, "no change", true
+		}
+		break
+	}
+
+	rounds := 0
+	for _, message := range body.Messages[markerAt+1:] {
+		if strings.EqualFold(message.Role, "tool") {
+			rounds++
+		}
+	}
+	if rounds < noChangeToolRounds {
+		round := rounds + 1
+		path := pathAfter(markerText, markerNoChange)
+		return reply{
+			chunks: []string{fmt.Sprintf("Reading replay round %d.", round)},
+			tool:   "read",
+			args:   fmt.Sprintf(`{"path":"%s","offset":%d,"limit":1}`, jsonEscape(path), round),
+			callID: fmt.Sprintf("call_nochange_%02d", round),
+		}, fmt.Sprintf("round %d tool", round), true
+	}
+	return reply{chunks: []string{noChangeTable()}}, "table", true
+}
+
+func requestHasTools(tools json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(tools))
+	return trimmed != "" && trimmed != "null" && trimmed != "[]"
+}
+
+func noChangeTable() string {
+	var table strings.Builder
+	table.WriteString("| seat | model | why |\n| --- | --- | --- |\n")
+	for seat := 1; seat <= 30; seat++ {
+		fmt.Fprintf(&table, "| seat %02d | stub/scripted | deterministic replay row %02d |\n", seat, seat)
+	}
+	return strings.TrimSpace(table.String())
+}
 
 // compose is the script itself.
 func compose(ask, answered string) reply {
@@ -370,9 +457,16 @@ func writeStream(w http.ResponseWriter, answer reply) {
 
 	send(chunk(id, `{"role":"assistant","content":""}`, ""))
 	if answer.tool != "" {
+		callID := answer.callID
+		if callID == "" {
+			callID = "call_1"
+		}
+		for _, text := range answer.chunks {
+			send(chunk(id, fmt.Sprintf(`{"content":%q}`, text), ""))
+		}
 		send(chunk(id, fmt.Sprintf(
-			`{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":%q,"arguments":%q}}]}`,
-			answer.tool, answer.args), ""))
+			`{"tool_calls":[{"index":0,"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}]}`,
+			callID, answer.tool, answer.args), ""))
 		send(finish(id, "tool_calls"))
 		send("[DONE]")
 		return
@@ -413,8 +507,12 @@ func finish(id, reason string) string {
 func writeWhole(w http.ResponseWriter, answer reply) {
 	w.Header().Set("Content-Type", "application/json")
 	if answer.tool != "" {
-		fmt.Fprintf(w, `{"id":"stub","object":"chat.completion","model":"stub/scripted","choices":[{"index":0,"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0}}`,
-			answer.tool, answer.args)
+		callID := answer.callID
+		if callID == "" {
+			callID = "call_1"
+		}
+		fmt.Fprintf(w, `{"id":"stub","object":"chat.completion","model":"stub/scripted","choices":[{"index":0,"message":{"role":"assistant","content":%q,"tool_calls":[{"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0}}`,
+			strings.Join(answer.chunks, ""), callID, answer.tool, answer.args)
 		return
 	}
 	fmt.Fprintf(w, `{"id":"stub","object":"chat.completion","model":"stub/scripted","choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0}}`,
