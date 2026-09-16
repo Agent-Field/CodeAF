@@ -311,9 +311,8 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 // A SOURCE NOBODY SET IS THE OPEN FAMILY. The all table may exist, but a profile
 // that never answered the row resolves the open family: the shipped defaults,
 // the open presets under the same words, and a write that lands the open ids.
-// This is the default-preservation law for the FAMILY; the open roster moved in
-// the same change, which the change entry owns. An unknown word is held to the
-// same law, silently, the way a retired choice reads everywhere else.
+// This is the default-preservation law for the FAMILY. An unknown word is held
+// to the same law, silently, the way a retired choice reads everywhere else.
 func TestASourceNobodyAnsweredReadsTheOpenFamily(t *testing.T) {
 	dir := t.TempDir()
 	if got := CrewSourceAt(dir); got != DefaultCrewSource {
