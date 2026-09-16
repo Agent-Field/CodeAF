@@ -23,7 +23,7 @@ import (
 type leftPanel struct{ homePanelBase }
 
 // SAID ONCE ACROSS THE COLUMNS. A landing whose check is still the person's is
-// drawn by `needs you`'s `to check` group, one column over and higher up the
+// drawn by `needs you`'s `unread` group, one column over and higher up the
 // page ([needsChecking]); this panel drew it a second time, as an ordinary thing
 // that happened while nobody was looking. It comes back here the moment it stops
 // being a question — answered, or aged out of the group — because then it IS
@@ -35,9 +35,9 @@ func (leftPanel) rows(in *homeGridInput) homePanelRows {
 		if row.task != nil && checking[taskLedgerKey(*row.task)] {
 			continue
 		}
-		lines = append(lines, leftLine(row))
+		lines = append(lines, leftLine(row, in.now))
 	}
-	out := homePanelCut(panelLeft, lines)
+	out := homePanelCut(in, panelLeft, lines)
 	if len(lines) > 0 {
 		out.said = sinceAt(in.seen, in.now)
 	}
@@ -47,8 +47,15 @@ func (leftPanel) rows(in *homeGridInput) homePanelRows {
 // leftLine is one ledger row as a door of home's column. The place word rides
 // [homeLine.project] as it always has; the row itself rides the cell, because a
 // task's and a file's doors are the row's own and not a place's.
-func leftLine(row switcherRow) homeLine {
-	cell := &homeCell{panel: panelLeft, title: row.title, right: row.margin, row: &row}
+//
+// THE MARGIN IS WHEN IT HAPPENED. It used to be a task's cost on one row and a
+// conversation's name on the next — two unrelated facts down one edge of one
+// panel — and both are the row's description now, drawn under the cursor
+// ([switcherRow.note]); the edge reads `3h`, `1h`, like every row of the field
+// (owner, 2026-09-15).
+func leftLine(row switcherRow, now time.Time) homeLine {
+	cell := &homeCell{panel: panelLeft, title: row.title, right: sinceAt(row.at, now), row: &row,
+		sub: strings.TrimSpace(row.note), grows: strings.TrimSpace(row.note) != ""}
 	return homeLine{kind: homeLedger, project: row.place, dir: leftKey(row),
 		view: row.item, item: row.item.Item, cell: cell}
 }
@@ -56,7 +63,7 @@ func leftLine(row switcherRow) homeLine {
 // taskLedgerKey is ONE piece of work's identity across home's columns: the
 // conversation that ran it and the node's number, which is the only pair that
 // is unique ([session.TaskIndexEntry.ID] repeats across sessions). It is spelled
-// here because three readers ask it — this panel's own key, the `to check`
+// here because three readers ask it — this panel's own key, the `unread`
 // group's set of what it is already drawing, and the comparison between them
 // (homepanel_needs.go's [needsChecking]).
 func taskLedgerKey(task session.TaskIndexEntry) string {
@@ -88,7 +95,7 @@ const (
 )
 
 // ledgerLanded is a line per piece of work that landed since the look stamp:
-// `<label> · <outcome>`, with the cost at the right when there was one.
+// `<label> · <outcome>`, with the cost as its description when there was one.
 //
 // ONE LINE PER PIECE OF WORK. [session.LandedSince] hands back a task's parts
 // and an adaptive run's workers too, and a person away for a night asked for
@@ -100,12 +107,12 @@ func ledgerLanded(world session.World, seen time.Time) []switcherRow {
 			continue
 		}
 		entry := landed.Entry
-		margin := ""
+		note := ""
 		if entry.Cost > 0 {
-			margin = dollars(entry.Cost)
+			note = dollars(entry.Cost)
 		}
 		out = append(out, switcherRow{kind: switcherLedger, session: landed.Session, title: ledgerTaskLine(entry, landed.Session),
-			place: pageTasks.word(), at: entry.EndedAt, task: &entry, margin: margin})
+			place: pageTasks.word(), at: entry.EndedAt, task: &entry, note: note})
 	}
 	return out
 }
@@ -138,13 +145,13 @@ func ledgerTaskLine(entry session.TaskIndexEntry, row session.SessionRow) string
 }
 
 // ledgerMade is a line per file a conversation made since the look stamp:
-// `made <name>`, with the conversation's title at the right.
+// `made <name>`, with the conversation's title as its description.
 func ledgerMade(world session.World, made []session.Artifact) []switcherRow {
 	out := make([]switcherRow, 0, len(made))
 	for _, artifact := range made {
 		out = append(out, switcherRow{kind: switcherLedger, title: ledgerMadeWord + filepath.Base(artifact.Path),
 			place: ledgerMadePlace, at: artifact.Created, path: artifact.Path,
-			margin: ledgerMadeIn(world, artifact.Session)})
+			note: ledgerMadeIn(world, artifact.Session)})
 	}
 	return out
 }

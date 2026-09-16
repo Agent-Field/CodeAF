@@ -118,8 +118,8 @@ const (
 	// chat nothing else on the frame says that two things have stopped on you.
 	pulseWhole pulseMode = iota
 	// pulseBudget is the budget and the clock alone, and it is home's. HOME IS
-	// THE SUMMARY OF THE TABS and its panels ARE the counts — `needs you · 2`
-	// over the rows that need you — so a `2 want you` above them would be the
+	// THE SUMMARY OF THE TABS and its panels ARE the counts — `needs you` over
+	// the very rows that need you — so a `2 want you` above them would be the
 	// same news said twice on one frame (DESIGN.md's laws 10 and 11).
 	pulseBudget
 )

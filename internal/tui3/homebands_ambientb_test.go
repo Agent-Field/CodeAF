@@ -77,7 +77,16 @@ func TestKeysBandDrawsBothLegendsAndObeysWidth(t *testing.T) {
 		t.Fatalf("session keys = %q", got)
 	}
 	assertNarrowRows(t, "keys", drawKeysBand(a, ambientBandContextAt(a, 30, time.Now())), 30, "→ more")
+	// AN ITEM NAMES THE DOOR IT ACTUALLY HAS. One asked for in a conversation
+	// opens that conversation; one made at home has none — its exchange is kept
+	// under the item's folder rather than as a session — and `enter` opens it on
+	// standing instead ([app.homeItemEnter]). Two doors, two words, and neither
+	// row advertises the other's.
 	ctx.subject.kind = bandKindItem
+	if got := plain(drawKeysBand(a, ctx)[0]); !strings.HasPrefix(got, homeItemStandingWord) {
+		t.Fatalf("an item with no conversation behind it says %q, want %q", got, homeItemStandingWord)
+	}
+	ctx.subject.item.Item.Origin.Transcript = "/work/.codeaf/v3/projects/-work/s1/transcript.jsonl"
 	if got := plain(drawKeysBand(a, ctx)[0]); !strings.HasPrefix(got, "enter open where") {
 		t.Fatalf("item keys = %q", got)
 	}
