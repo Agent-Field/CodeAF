@@ -427,9 +427,30 @@ const fixedPrefixTarget = 48_000
 // figure here, in this diff, on purpose: the rule says a raise is a decision
 // with a name on it, and the alternative was cutting the sentence the merge
 // just bought.
+//
+// 2026-09-16, #1065 round one. `# Tone` and `# Delivery` became `# The answer`,
+// `# Answer or change`, `# When corrected` and `# Messages from codeaf`, in the
+// wording the issue fixed and with the five rules the old two carried restored
+// inside them, and that paid 2,035 bytes on both arms (fixed 53,276 to 55,311,
+// lean 45,051 to 47,086). Fifteen of them came out of room both arms already had,
+// so both waivers rise by 2,020 and now sit exactly on the measurement, on
+// purpose and with this name on it: the issue that
+// bought the sections is the one that puts the page's overall length to its
+// second round, and cutting other laws in the first would be that round done
+// early and unreviewed.
+//
+// 2026-09-16, #1067 review. The provenance list had to grow because compaction
+// also writes user-role tags into the conversation: `[folded …]` and `[context
+// compacted]`. It also stopped calling the tool-only `[held]` a user message or
+// declaring every unlisted tag the person's, and it does NOT name standing
+// news's `[something you set up fired]`: that line carries its own instruction
+// under the event, and TestTheSteeringLineReadsAsNewsAndNotAsARequest refuses
+// the page's copy as one law paid for twice. Tightening the surrounding
+// sentence paid for the truth with room to spare: fixed is 55,280 and lean is
+// 47,055, so both waivers fall by 31 and again sit exactly on the measurement.
 const (
-	fixedPrefixWaiver = 5_291
-	leanPrefixWaiver  = 13_566
+	fixedPrefixWaiver = 7_280
+	leanPrefixWaiver  = 15_555
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
