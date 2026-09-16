@@ -169,7 +169,7 @@ Everything else is new files: `task_quick.go`, `task_quick_test.go`,
 | C ceiling | `~/af-quick-c`, branch `quick/ceiling` | `launchRouteTask`: a write-free turn's sketch becomes a quick node's items; test |
 | F fork | `~/af-quick-f`, branch `quick/fork-off` | `fork` off the belt, belt bullet, manual sections, probes, actioncategory; keep the scope functions |
 
-Merge order K → S → M → C → F, one PR against `dev`, suites on the Spark.
+Merge order K → S → M → C → F, one PR against `dev`, suites on the bench host.
 
 ## Acceptance, end to end first
 
@@ -183,18 +183,18 @@ Merge order K → S → M → C → F, one PR against `dev`, suites on the Spark
    reaches the task's worker, not the conversation.
 5. `internal/tui3`: a `TaskNotice{Kind: quick, Doing: "quick · 1/3 · …"}` draws a rail row
    with that doing line and no branch or merge word; a done card shows the result body.
-6. Real model, `deepseek/deepseek-v4.1-flash`, person-style in tmux on the Spark: ask the
+6. Real model, `deepseek/deepseek-v4.1-flash`, person-style in tmux on the bench host: ask the
    chat to compare four files in parallel and summarise; expect four `quick` rows at once,
    each done within a minute, the summary as a reply, no branch anywhere.
 
 ## Testing law for every lane
 
-NO FULL SUITE ON THE LAPTOP. `go build ./...`, `go vet`, gofmt, `make test-quick`, and
+No full suite on the work machine. `go build ./...`, `go vet`, gofmt, `make test-quick`, and
 single named tests (`make test-focus PKGS=./internal/session RUN='^TestX$$'`) run here.
-Every package suite runs on the Spark:
+Every package suite runs on the bench host:
 
 ```sh
-ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a; \
+ssh benchhost 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/secrets.env; set +a; \
   git -C ~/src/codeaf fetch -q origin <branch> && \
   git -C ~/src/codeaf worktree add -f --detach /tmp/af-<lane> origin/<branch> && \
   go -C /tmp/af-<lane> build ./... && go -C /tmp/af-<lane> test ./internal/session/ -count=1 -timeout 20m 2>&1 | tail -60; \
