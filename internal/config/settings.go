@@ -1367,7 +1367,7 @@ const (
 	DefaultTaskColumn = true
 
 	// DefaultQuickSwitch controls immediate switching with ctrl+tab where the
-	// terminal can deliver it. Ctrl+k always browses before opening a chat.
+	// terminal can deliver it. alt+k always browses before opening a chat.
 	DefaultQuickSwitch = true
 
 	// DefaultHints shows the v3 chat's tips to a profile that has never said
@@ -2448,7 +2448,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyQuickSwitch, Category: CategoryInterface, Kind: SettingBool,
 			Label: "quick switch",
 			Hint: "whether ctrl+tab switches immediately where the terminal sends it. " +
-				"Off, it waits for enter. Ctrl+k always browses before opening a chat.",
+				"Off, it waits for enter. alt+k always browses before opening a chat.",
 			read:  func() string { return formatBool(QuickSwitchAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyQuickSwitch, raw) },
 		},

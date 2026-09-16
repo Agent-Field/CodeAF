@@ -800,7 +800,7 @@ at and filtered, not edited by pointer.
 |---|---|
 | `backspace` | Delete the character behind the caret. Over an empty box with attachments, it removes the last attached picture instead — and its `[image #n]` token with it |
 | `delete` | Delete the character in front of the caret |
-| `ctrl+u` | Delete to the start of **this line** — not the whole message |
+| `ctrl+u` | Delete to the start of **this line** — not the whole message, and not the whole box. From the middle of `abcdef` it leaves `def` |
 | `ctrl+k` | Delete to the end of **this line** — the other half of the pair. It stops at the newline rather than joining the next line onto this one, so a second press on an emptied line does nothing. This chord used to open the conversation switcher, which is now `alt+k` |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
 | `alt+backspace` | Delete the word behind the caret. This is the word kill in the message box |
@@ -3170,7 +3170,7 @@ There is nothing to turn on inside codeaf, and the only test is pressing it.
 ## Switching chats while an account asks for a key
 
 Ctrl+W offers Keep running, Stop work and Cancel while an account asks for typed
-input, just as it does during tool permission. Ctrl+K opens Chats and Ctrl+T
+input, just as it does during tool permission. `alt+k` opens the chats card and `ctrl+t`
 opens another conversation without answering the question. Cancel leaves the
 pending input untouched. Stop work cancels this conversation's pending question;
 reopening it does not restart the work.

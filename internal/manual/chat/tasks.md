@@ -5411,8 +5411,9 @@ A loading or failed hosted read does not overwrite the saved position.
 
 ## Breadcrumbs — which chat am I in, parent tasks, and switching chats by clicking
 
-The main chat's top bar names the conversation. Its `▾` opens the same picker as
-Ctrl+k without changing chats until you choose. Inside a task it becomes a trail:
+The main chat's top bar names the conversation. `alt+k` opens the chats card from
+there without changing chats until you choose — the top bar has no `▾` control of its
+own, and the tab row's `Chats ▾` is deleted. Inside a task it becomes a trail:
 `Shipping the parser ▸ Fix validation ▸ Add boundary checks`. Click the conversation
 name to return to the main chat, or an ancestor to open that task. The current task is
 inert. Narrow frames fold ancestors into `…`; clicking it opens the nearest ancestor
@@ -5436,7 +5437,8 @@ conversation's tab, and must not show a new chat under a previous chat's name.
 
 The entry line `closed · <previous chat> — a connection holds one conversation at a time`
 belongs to a door that has no way to dial a second connection, and is not something any
-shipped door says today. Merely browsing Ctrl+k does not select or close anything.
+shipped door says today. Merely browsing the chats card (`alt+k`) does not select or
+close anything.
 
 **What ends a conversation is explicit.** `stop work` on the card that appears when you
 close a working tab ends the turn and the running nodes in that one conversation and

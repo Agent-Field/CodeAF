@@ -1340,7 +1340,7 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		ex.box.deleteBackward()
 		return nil
 	case "ctrl+u":
-		ex.box.reset()
+		ex.box.killToStart()
 		return nil
 	case "ctrl+k":
 		ex.box.killToEnd()

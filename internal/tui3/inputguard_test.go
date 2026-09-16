@@ -360,6 +360,57 @@ func TestTheLineKillsReachHomesOwnBoxToo(t *testing.T) {
 	}
 }
 
+// TestBothLineKillsAreLineKillsInEveryBoxThatHasThem is the claim the law beside
+// it could not make. killpairlaw_test.go reads the SOURCE and can see that a
+// switch answers both chords; it cannot see that the two answers are the same
+// gesture — and for a while they were not. Five boxes with their own key switch
+// answered `ctrl+u` by emptying the whole field, so on Home `abcdef` + three
+// lefts + `ctrl+u` threw `def` away while `ctrl+k` on that same caret correctly
+// kept the head. One chord meaning "to the start of the line" in the composer
+// and "all of it" on Home is two readings of one key.
+//
+// SO THIS DRIVES THE BOXES a person actually meets and asserts the pair from a
+// caret in the MIDDLE, which is the only place the two readings differ.
+func TestBothLineKillsAreLineKillsInEveryBoxThatHasThem(t *testing.T) {
+	for _, box := range []struct {
+		name string
+		open func(t *testing.T) (*app, func(*app) string)
+	}{
+		{"the composer", func(t *testing.T) (*app, func(*app) string) {
+			_, a := wired(nil)
+			return a, func(a *app) string { return a.input.String() }
+		}},
+		{"home's box", func(t *testing.T) (*app, func(*app) string) {
+			_, a := wired(nil)
+			a.openHome()
+			return a, func(a *app) string { return a.home.box.String() }
+		}},
+	} {
+		t.Run(box.name, func(t *testing.T) {
+			// ctrl+u keeps the tail.
+			a, read := box.open(t)
+			for _, r := range "abcdef" {
+				drive(t, a, key(string(r)))
+			}
+			drive(t, a, key("left"), key("left"), key("left"))
+			drive(t, a, key("ctrl+u"))
+			if got := read(a); got != "def" {
+				t.Fatalf("ctrl+u from the middle left %q, want %q", got, "def")
+			}
+			// ctrl+k keeps the head.
+			a, read = box.open(t)
+			for _, r := range "abcdef" {
+				drive(t, a, key(string(r)))
+			}
+			drive(t, a, key("left"), key("left"), key("left"))
+			drive(t, a, key("ctrl+k"))
+			if got := read(a); got != "abc" {
+				t.Fatalf("ctrl+k from the middle left %q, want %q", got, "abc")
+			}
+		})
+	}
+}
+
 // TestCtrlKInTheComposerIsAnEditAndNotTheSwitcher is the regression this whole
 // move exists to prevent. The chord used to raise the card over a draft
 // somebody was editing; now the card is on `alt+k` and this key belongs to the

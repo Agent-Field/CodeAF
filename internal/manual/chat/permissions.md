@@ -174,8 +174,8 @@ chat behind it. Nothing typed on that page can allow, deny, postpone or otherwis
 answer the waiting question.
 
 The question block is not drawn on the start page because its answer keys do
-nothing there. The chat that is asking keeps `?` on its tab, and **Chats** says
-`asking you something`. Press `esc` or select that chat to go back; the same
+nothing there. The chat that is asking keeps `?` on its tab, and its row on the chats
+card (`alt+k`) says `asking you something`. Press `esc` or select that chat to go back; the same
 question returns with its numbered answers live.
 
 Walking away does not turn silence into a no. If an approval countdown reaches
