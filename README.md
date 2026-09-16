@@ -55,6 +55,12 @@ The script puts the release binary for your platform in `~/.codeaf/bin`. To
 build it yourself: `git clone`, `make build`, `bin/codeaf`
 ([guide](docs/GUIDE.md#install)). Release assets, checksums and version
 pinning are on the [releases page](https://github.com/Agent-Field/codeaf/releases).
+To pin one complete tag instead of the latest, pipe the installer through
+`VERSION=<tag> bash`; for example:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | VERSION=v0.2.0 bash
+```
 
 On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi, MiniMax or
 Qwen. Ollama needs none.

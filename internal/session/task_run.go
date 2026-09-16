@@ -91,6 +91,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -7350,9 +7351,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// the one `bash` tool plus the hands that cannot be a shell command.
 		// Unset, every byte of this worker is where it was, which is what lets
 		// both arms of the comparison run from one binary. Read here and
-		// nowhere else, and asked only through [Config.mayBashBelt], so a
-		// conversation can never be handed it.
-		bashBelt: strings.TrimSpace(os.Getenv("CODEAF_TASK_BELT")) == "bash",
+		// nowhere else, through internal/env's door like every owned name so
+		// the one-release legacy spelling answers too, and asked only through
+		// [Config.mayBashBelt], so a conversation can never be handed it.
+		bashBelt: strings.TrimSpace(env.Get("CODEAF_TASK_BELT")) == "bash",
 		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
 		//
 		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this
