@@ -114,6 +114,66 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 	}
 }
 
+// THE DOOR WORD IS UNDER THE CURSOR AND NOWHERE ELSE. On a two-column frame
+// every question draws its second line, and every one of them used to end in
+// `enter` — a column of legends for a key only one row is about to take (owner,
+// 2026-09-16). The answering row keeps its chips; the cursor's row says its door;
+// the rest say nothing at their right.
+func TestOnlyTheCursorsQuestionSaysEnter(t *testing.T) {
+	l := newLiveLab(t)
+	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
+		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-2*time.Hour))})
+	l.live("-alpha", "aaaa000000000002", session.SessionPresence{State: session.PresenceWaiting,
+		Question: consentQuestionAt(9, "needs your ok to run write", l.now.Add(-5*time.Minute))})
+	l.landed("4", "fix the flaky sieve", 30*time.Minute)
+	a := l.openAt(120, 40)
+	if homeDescOn(a.home.cols) {
+		t.Fatal("120 columns has a description column; the test wants the second-line shape")
+	}
+	var questions []int
+	landing := -1
+	for at, line := range a.home.lines {
+		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelNeeds && line.cell.subRight != "" {
+			questions = append(questions, at)
+		}
+		if line.task != nil && line.task.ID == "4" {
+			landing = at
+		}
+	}
+	if len(questions) != 2 || landing < 0 {
+		t.Fatalf("want two question rows and a landing, found %d and %d:\n%s", len(questions), landing, homeText(a))
+	}
+	// Cursor on the second question: the cursor outranks the top row (law 7),
+	// so the second draws its chips and the first — no longer the answering row,
+	// not under the cursor — says nothing at its right where it used to say
+	// `enter`.
+	a.home.cursor = questions[1]
+	if got := a.homeRowAnswers(a.home.lines[questions[1]], questions[1]); got == "" || got == needsOpenWord {
+		t.Fatalf("the cursor's question reads %q, want its chips", got)
+	}
+	if got := a.homeRowAnswers(a.home.lines[questions[0]], questions[0]); got != "" {
+		t.Fatalf("the question above the cursor reads %q, want nothing at its right", got)
+	}
+	frame := homeText(a)
+	if under := homeLineAfter(frame, "Pricing Site"); strings.Contains(under, needsOpenWord) {
+		t.Fatalf("the question above the cursor says a door word:\n%s", frame)
+	}
+	// Cursor on the landing: the chips follow it, and NEITHER question says
+	// `enter` — the whole column of legends is gone.
+	a.home.cursor = landing
+	for _, at := range questions {
+		if got := a.homeRowAnswers(a.home.lines[at], at); got != "" {
+			t.Fatalf("a question the cursor is not on reads %q, want nothing at its right", got)
+		}
+	}
+	frame = homeText(a)
+	for _, title := range []string{"Pricing Site", "Prime Sieve"} {
+		if under := homeLineAfter(frame, title); strings.Contains(under, needsOpenWord) {
+			t.Fatalf("%q says a door word with the cursor elsewhere:\n%s", title, frame)
+		}
+	}
+}
+
 // A DIGIT WITH THE CURSOR ON NOTHING ANSWERABLE STILL REACHES THE TOP QUESTION,
 // which is law 7 and did not change.
 func TestADigitStillReachesTheTopQuestionFromALandingThatCannotAnswer(t *testing.T) {
@@ -137,7 +197,7 @@ func TestADigitStillReachesTheTopQuestionFromALandingThatCannotAnswer(t *testing
 }
 
 // SAID ONCE ACROSS THE COLUMNS: `since you left` does not repeat a landing that
-// `to check` is showing, and shows it again once the landing has aged out of the
+// `unread` is showing, and shows it again once the landing has aged out of the
 // group.
 func TestSinceYouLeftOmitsALandingToCheckIsShowing(t *testing.T) {
 	l := newLiveLab(t)
@@ -183,10 +243,14 @@ func TestToCheckFoldsBeforeANeedsYouRowGoes(t *testing.T) {
 	if !strings.Contains(frame, "Pricing Site") {
 		t.Fatalf("the question gave way before the landings did:\n%s", frame)
 	}
-	if strings.Contains(frame, needsCheckClause) {
-		t.Fatalf("the group line survived the squeeze:\n%s", frame)
+	// The group's own line is the word on a line of its own; the fold that
+	// stands for it says `3 unread`, and only the fold may be here.
+	for _, row := range strings.Split(frame, "\n") {
+		if strings.TrimSpace(row) == needsCheckWord {
+			t.Fatalf("the group line survived the squeeze:\n%s", frame)
+		}
 	}
-	if !strings.Contains(frame, "3 "+needsCheckWord+" · tasks") {
+	if !strings.Contains(frame, "3 "+needsCheckWord) || strings.Contains(frame, needsCheckWord+" · tasks") {
 		t.Fatalf("the fold does not say what the folded group is:\n%s", frame)
 	}
 }
@@ -238,14 +302,14 @@ func TestAPausedRunKeepsItsRowBesideItsOwnLanding(t *testing.T) {
 }
 
 // WORK IN A CONVERSATION SOMEBODY PUT AWAY IS NOT WAITING ON THEM: no row on
-// `to check`, and nothing in the count.
+// `unread`, and nothing in the count.
 func TestAnArchivedConversationsLandingIsNotOnToCheck(t *testing.T) {
 	l := newLiveLab(t)
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	l.archive("aaaa000000000002")
 	a := l.open()
 	if rows := panelRows(a, panelNeeds); len(rows) != 0 {
-		t.Fatalf("an archived conversation's landing is on to check: %+v", rows)
+		t.Fatalf("an archived conversation's landing is on unread: %+v", rows)
 	}
 	if a.machine.wants != 0 {
 		t.Fatalf("the pulse counts an archived conversation's landing: %d", a.machine.wants)

@@ -13,6 +13,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -27,6 +28,16 @@ type demoOrder struct {
 	// as the ticker applies it, because Create refuses to make anything that is
 	// not active and has never run.
 	after func(item *standing.Item, now time.Time)
+	// asked is the TITLE of the conversation this order was made in, and it
+	// becomes the item's [standing.Origin] — the door home opens on `enter`,
+	// which answers "why did I get this?".
+	//
+	// EVERY ORDER NEEDS ONE. An item with no origin is a row whose `enter`
+	// refuses, and a fixture full of them is a fixture that never exercises the
+	// door at all — which is the join discipline seed.go already states for
+	// tasks and ledger lines: a join that points at nothing draws a row a person
+	// cannot open.
+	asked string
 	// spent is the ledger this order has left behind: one entry per element,
 	// oldest first, counted back in days from today.
 	spent []demoFiring
@@ -52,6 +63,7 @@ var demoOrders = []demoOrder{
 		// The one that is ASKING. Its latest run stopped on a question, which is
 		// the field home sorts on and the reason this row is drawn first.
 		project: firstProjectName,
+		asked:   "Standing Up the Watches",
 		item: standing.Item{
 			ID:       "watch-ci",
 			Words:    "tell me when CI goes red on master",
@@ -82,6 +94,7 @@ var demoOrders = []demoOrder{
 		// The one that FIRED TODAY and has come back clean three times running,
 		// which is the count the rope column's middle rung is drawn from.
 		project: firstProjectName,
+		asked:   "Standing Up the Watches",
 		item: standing.Item{
 			ID:       "morning-sweep",
 			Words:    "sweep the repo every morning at nine and tell me what changed under me",
@@ -118,6 +131,7 @@ var demoOrders = []demoOrder{
 		// card in a conversation and only a yes makes an item — so the pause is a
 		// Save afterwards, exactly as the surface's own `p` writes it.
 		project: "infra",
+		asked:   "The Backup Window",
 		item: standing.Item{
 			ID:       "deps-weekly",
 			Words:    "check the dependency advisories every Monday morning",
@@ -140,6 +154,7 @@ var demoOrders = []demoOrder{
 		// The RULE. A hold never wakes, so it can never spend, which is why it
 		// alone needs no rails and no action — and why it leaves no ledger line.
 		project: firstProjectName,
+		asked:   "The Manual's Missing Page",
 		item: standing.Item{
 			ID:       "public-api-hold",
 			Words:    "never change the public API without telling me first",
@@ -152,7 +167,7 @@ var demoOrders = []demoOrder{
 
 // writeStanding creates the four orders, writes the quiet half onto them, and
 // leaves the day ledgers their cost-per-firing is summed from.
-func writeStanding(root string, projects map[string]*demoProject, now time.Time) (int, error) {
+func writeStanding(root string, projects map[string]*demoProject, ids map[string]string, now time.Time) (int, error) {
 	orders, err := standing.Open(root)
 	if err != nil {
 		return 0, fmt.Errorf("open the standing store: %w", err)
@@ -165,6 +180,16 @@ func writeStanding(root string, projects map[string]*demoProject, now time.Time)
 		}
 		item := order.item
 		item.Workspace = project.dir
+		// THE ORDER REMEMBERS WHERE IT WAS ASKED FOR, so `enter` on its home row
+		// has a conversation to open ([app.homeItemEnter]).
+		id, ok := ids[order.asked]
+		if !ok {
+			return written, fmt.Errorf("the standing order %q was asked for in %q, which is not a conversation this fixture writes", item.ID, order.asked)
+		}
+		item.Origin = standing.Origin{
+			SessionID:  id,
+			Transcript: filepath.Join(project.bucket, id, "transcript.jsonl"),
+		}
 		made, err := orders.Create(item)
 		if err != nil {
 			return written, fmt.Errorf("create the standing order %q: %w", item.ID, err)

@@ -11,33 +11,53 @@ answering one question you would ask walking up to a colleague's desk:
   home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you · 2                                   running · 2
- ? Searching for Apartments Near Minto      2h   ⠋ Generate and Display First 200 Primes   4m
-   needs your ok to run bash  1 allow once  2 always  3 deny    bash · 12s · 2 of 5
- ? Clever Bet Prediction Model              6h     npm run dev · pricing-site · a background job
-   the 2024 season only, or all three?  enter
-                                                 since you left · 12h
- to check · 3       finished, nobody has checked it  Spark Fleet Ssh Audit · 2 hosts up, 1 not
-   tier-B subs                      3 files · 1d    made apartments-minto-street.md
+ needs you                                       projects · folders you've opened
+ ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
+   needs your ok to run bash  1 allow once  2 always  ~/pricing-site   5 chats
+ ? Clever Bet Prediction Model              6h
+   the 2024 season only, or all three?  enter     spend                    today $0.14 of $20
+                                                    ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
+ unread                                             opus 63%  ·  3 chats and 1 task today
+   tier-B subs                                1d
    built the tier-B flow   1 accept   2 not right
-   package release radar                      1d  spend                    today $0.14 of $20
-   1 more · 15 older · tasks                         ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10 · loudest mon $9.20
-                                                  opus 63%  ·  3 chats and 1 task today
- where you were
-   Understanding Hash Tables                here  next up
-   explain open addressing vs chaining              the 6am repo watch                in 20h
-   Understanding Bloom Filters               11h
-   70 more · type to find one
+   package release radar                      1d
+   16 more
 
- projects                                        next up
-   ~/codeaf      12 chats · 1 running  master     the 6am repo watch                in 20h
-   ~/pricing-site   5 chats
+ where you were
+   Understanding Hash Tables                here
+   explain open addressing vs chaining
+   Understanding Bloom Filters               11h
+   70 more
+
+ running · 2
+ ⠋ Generate and Display First 200 Primes     4m
+   bash · 12s · 2 of 5
+   npm run dev · pricing-site · a background job
+
+ since you left · 12h
+   Spark Fleet Ssh Audit · 2 hosts up, 1 not
+   made apartments-minto-street.md
+
+ scheduled
+   the 6am repo watch
 ```
 
+Everything with rows in it is on the **left**, in the fixed order of the seven panels.
+`projects` and `spend` are pinned at the **top right** and stay there. On a quieter machine
+most of those left-hand panels have nothing in them, and they gather under the pinned pair
+in the right-hand rail instead — heading and one dim line each — so the left of the screen
+is only ever the things that are actually going on.
+
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
-nothing was sent while you were looking. The resting foot reads exactly `type to search or
-start something new · ↑↓ pick · enter open · tab next place`, and `alt+.` draws the whole
-map over the cells you are already reading.
+nothing was sent while you were looking. The foot reads `type to search or start
+something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`, **and it is the
+same sentence on every row of the field** — a conversation, a question, a running task, a
+standing order on `scheduled`, a line of `since you left`. It does not change as the cursor
+walks, so it is something you read once. The chord is there because `→` on a field row
+crosses to the rail rather than opening the row's verbs, and a door you cannot see is a door
+you never learn; `ctrl+o` opens the folder each row belongs to — a conversation's workspace,
+the workspace an order stands over, the conversation a landing ran in. `alt+.` draws the
+whole map over the cells you are already reading.
 
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
@@ -48,20 +68,38 @@ things stand, and you either act on something or leave.
 
 ## See everything at once — what is on the home screen, the seven panels, and what an empty one says
 
-**Act on the left, watch on the right.** The left column is yours — `needs you`, `where
-you were`, `projects`. The right column is the machine's — `running`, `since you left`,
-`spend`, `next up`. One column under 110 cells, in that order; two columns from 110; three
-from 170, where `projects` and `spend` take the third.
+**What has something in it is on the left; everything else is a rail down the right
+edge.** A panel with rows stands in the **field** — the left of the screen, filled from the
+top left corner down. A panel with nothing in it stands in the **rail**, flush with the
+right edge, as its heading and its one dim line. So the panels move between the two sides as
+work arrives and finishes, and the side a panel is on tells you whether it holds anything
+before you have read a word of it.
+
+**`projects` and `spend` are pinned to the top of the rail** and never move, because their
+height is the same on every machine on every day. A blank row separates that pair from the
+panels below them, which are in the rail only because they are quiet today.
+
+**The rank never moves, only the side.** Within the field and within the rail the order is
+always `needs you`, `where you were`, `projects`, `running`, `since you left`, `spend`,
+`scheduled` — so two panels that both fill never swap places.
+
+One column under 110 cells, where every panel is in that one order and there is no rail;
+two columns from 110; three from 170, where the rail is the third and the field fills the
+first. **A field that fits in one column never spreads two short columns over a wide
+screen** — the point of the one busy column standing alone at the left is that your eye has
+a single place to go. From 170 cells the middle column is the **descriptions'**: the
+sentence under a row is drawn beside it there, level with its row, and a question raised
+from home stands there as a card. Nothing else stands in it.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
-| `needs you` | a question waiting on a person, anywhere, and under them the `to check` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
+| `needs you` | a question waiting on a person, anywhere, and under them the `unread` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
 | `where you were` | a conversation | opens it | `your conversations · what you type below starts one` |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `running` | a task, a background job, a watch firing | brings its conversation here | `work you send off with /task runs here on its own` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | opens the spend place | `every chat and task is priced here` |
-| `next up` | a reminder or routine, soonest first | opens the standing place | `reminders and routines · "remind me at 6" or "every morning at 9"` |
+| `scheduled` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
 
 **An empty panel keeps its heading and that one dim line** — it names what arrives there and
 the one thing that puts it there, and it never says the panel is empty. On a narrow column
@@ -71,8 +109,10 @@ while a number still draws nothing at zero — never `$0.00`, never `0 tasks`.
 
 ## What needs me — the needs you panel, the ? rows at the top of home
 
-**The top of the left column.** The panel holds **two groups**: the questions that have
-stopped something, then the work that landed and has not been checked.
+**The first panel of the field whenever it holds anything**, so a question waiting on you
+is at the top left corner of the screen. The panel holds **two groups**: the questions that
+have stopped something, then the work that landed and has not been checked. With nothing
+waiting it is in the rail down the right edge, as its heading and its dim line.
 
 **The first group is the questions, and only they wear the amber `?`.** A row is there when
 something has stopped and cannot go on without you, from any project:
@@ -82,9 +122,9 @@ something has stopped and cannot go on without you, from any project:
 - a reminder, watch or rule that stopped and wants an answer.
 
 Each is **two lines**: the title with **how long it has waited** at the right, and under it
-what it is asking, in the question's own words. **The longest wait is at the top**, and the
-heading counts these rows and no others: `needs you · 2`. A frame where nothing is stopped
-draws the heading with no number at all.
+what it is asking, in the question's own words. **The longest wait is at the top.** The
+heading is the two words alone — it carries no count, whether two things are stopped or
+none; the rows under it are the count.
 
 **A permission question is repeated exactly and nothing is added to it.** The session that
 is stopped writes one sentence — `needs your ok to run ` and the tool's name — and the row
@@ -93,18 +133,18 @@ is that sentence, whole. A question with a paragraph shows only its first line.
 **A question stands above every landing**, however old the landing is: a stopped
 conversation is costing you something and a landing is not.
 
-Four rows show, eight in a tall window, then `N more · tasks`. Amber is spent on the `?`
+Four rows show, eight in a tall window, then `N more`. Amber is spent on the `?`
 mark and on nothing else; a machine with nothing waiting has no accent on it at all.
 
-## to check — the group of landings nobody has checked
+## unread — the group of landings nobody has checked, work that finished and wants a look
 
-**`to check` is every task whose call is yours: work that finished, where nobody could say
-whether it is right.** It is a dim line inside the `needs you` panel — `to check · 8` at the
-left, and at the right the one clause that says what the group is:
+**`unread` is every task whose call is yours: work that finished, where nobody could say
+whether it is right.** It is a dim line inside the `needs you` panel, and the line is the
+one word — no count after it, no clause at its right:
 
 ```
- to check · 8                                    finished, nobody has checked it
-   tier-B subs                                                       3 files · 1d
+ unread
+   tier-B subs                                                                 1d
    package release radar                                                      1d
 ```
 
@@ -112,15 +152,18 @@ The line is drawn only while the group has rows, and the rows are **newest first
 opposite of the questions above them, because nothing here is waiting and the freshest
 landing is the one still in your head.
 
-**A landing is one line at rest**: its name, its file count and how long ago. A landing
-with no files to its name draws nothing where the count would be, never `0 files`.
+**A landing is one line at rest**: its name and how long ago it landed. **The right margin
+of every row of the field is a time** — how long a question has waited, how long ago a
+landing landed, when you last spoke in a conversation, how long a task has run, when an
+order is due — and nothing else stands there.
 
-**The row under the cursor grows a second line** — the first sentence of what the work came
-to, and its two answers at the right:
+**The row under the cursor grows a second line** — how many files it wrote, the first
+sentence of what the work came to, and its two answers at the right. A landing with no files
+to its name starts straight at the sentence, never `0 files`:
 
 ```
-   tier-B subs                                                       3 files · 1d
-   built the tier-B subscription flow          1 accept   2 not right
+   tier-B subs                                                                 1d
+   3 files · built the tier-B subscription flow          1 accept   2 not right
 ```
 
 The two words are the task's own — `accept` and `not right` for work nobody could check,
@@ -135,31 +178,32 @@ and on its record. `enter` opens the conversation on the task's record.
 work has already finished.
 
 **Only a landing ages.** A `your call` is a row for two days after it landed; after that the
-panel's last line counts it instead — `3 older · tasks` — and `enter` there opens the tasks
+panel's last line counts it with the rest it hides — `3 more` — and `enter` there opens the
 place, where every one of them still is. A question a conversation is stopped on, and a
 watch that needs somebody, never age off home.
 
-**A landing on `to check` is not repeated by `since you left`.** It goes back to that panel
+**A landing on `unread` is not repeated by `since you left`.** It goes back to that panel
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 to check · tasks`, which opens the tasks place.
+`8 unread`. `enter` on it opens the panel; the `needs you` heading opens the tasks place.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
 **Exactly one row of the frame draws its answers** — `1 allow once  2 always  3 deny`,
 three at most, then `enter` — and **the key answers that row from anywhere on home**,
-wherever the cursor is. Every other row says `enter` instead, so one `1` is never on the
-screen twice with two meanings. The words are that question's own and nothing here is put
+wherever the cursor is. No other row draws answers, so one `1` is never on the screen twice
+with two meanings; the row the cursor is on says `enter` instead, and the rest say nothing at
+their right. The words are that question's own and nothing here is put
 into a vocabulary of home's; there is no `y`/`n` anywhere on this screen.
 
 **The keys are the question's own wherever those keys are digits**, which is every card a
-conversation stops on. The one place they are not is a landing in `to check`: its keys are
+conversation stops on. The one place they are not is a landing in `unread`: its keys are
 `[a]`/`[n]` everywhere else and `1`/`2` here, because a bare letter on home types.
 
 **Which row is it?** The row under the cursor when that row can take an answer, and the top
 answerable row otherwise. So a digit works on a frame you have not walked, and once you have
-walked onto a landing in `to check` its `1`/`2` are the keys that are live.
+walked onto a landing in `unread` its `1`/`2` are the keys that are live.
 
 Every kind of question can be answered this way: the whole question is in the file home
 reads, and the answer goes back through the one door that knows which part of the engine
@@ -182,7 +226,7 @@ With something typed in the box a digit is a character going into it, never an a
 ## What opens when I press a landed row on home — I clicked a needs you row and it opened the chat
 
 **A task's row opens its conversation with the task's record in front.** `enter` on a
-`to check` row opens the conversation that ran the work, on the task's record, where the
+`unread` row opens the conversation that ran the work, on the task's record, where the
 question, its whole report and its two answers are — whatever project it belongs to, with
 the conversation you were in left running behind it. You do not have to open it to answer:
 `1` and `2` on the row itself send the same two answers.
@@ -199,7 +243,8 @@ A conversation another terminal is holding is not refused: `enter` brings it her
 Work that landed as `your call` **waits until you decide about it**, however many days that
 is: nothing more happens to that work until somebody answers it. Only its row on home ages —
 two days after it landed it leaves `needs you` for the count on the panel's last line,
-`3 older · tasks`, and the tasks place still lists it.
+`3 more`, and the tasks place still lists it; `enter` on that line opens the panel and shows
+it again.
 
 Three ways to settle it, and they are the same door:
 
@@ -207,7 +252,7 @@ Three ways to settle it, and they are the same door:
   whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
   `s tell it`, which opens the task's page rather than answering, and a dimmer
   `d let codeaf decide this one`;
-- **home** — walk onto its row in `to check` and press `1` or `2`. The conversation applies
+- **home** — walk onto its row in `unread` and press `1` or `2`. The conversation applies
   it on its own beat; if it is not running, the answer waits on its doorstep and is applied
   the moment that conversation next opens — the constructor drains the doorstep before
   anything else — and the row says `answered · waiting for it to pick that up` meanwhile;
@@ -224,8 +269,9 @@ not where it is settled.**
 
 ## What is running — the running panel: what is running on this machine right now, and what went in the moving column
 
-**The `running` panel, at the top of the right column, is every piece of work out on the
-machine** — every task and adaptive run, every background job a conversation started, and
+**The `running` panel is every piece of work out on the machine**, in the field with the
+other panels that hold something — under `needs you` and `where you were`, which outrank it
+— and in the rail on the right when nothing is out — every task and adaptive run, every background job a conversation started, and
 every watch or reminder in the middle of firing — the most recently started first. A row is
 a piece of work and not a conversation: a chat with three tasks out is three rows.
 
@@ -247,14 +293,16 @@ has been `up`. A watch mid-pass is its own
 words, what the pass is doing and how long ago it began. A row another terminal holds says
 `another window`, and `enter` brings its conversation here.
 
-Four rows show, eight in a tall window, then `N more · tasks`. There is no separate "moving"
+Four rows show, eight in a tall window, then `N more`. There is no separate "moving"
 column or `◐` mark any more; this panel is that list.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
 conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
-from any column with no strip. On a three-column home `running` is the middle column, so
-`→` crosses to the next column instead of opening the verbs, and the foot names the chord:
-`ctrl+x stop it`. **A task another window runs cannot be stopped from here** — the row
+from any column with no strip. A `running` row with rows in it is in the field, and the rail
+is always a column with rows to its right — so `→` crosses to the rail instead of opening
+the verbs; `ctrl+x` still asks, and the foot does not name it — the foot under every row of
+the field is the one resting sentence, and the stop is on the `alt+.` map. Where the column
+the arrow would reach is empty, it steps over it to the next one that has a row. **A task another window runs cannot be stopped from here** — the row
 offers no stop at all; bring it here with `enter` and stop it there.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
@@ -279,8 +327,9 @@ spinner. In screen-reader (linear) mode nothing turns at all.
 
 ## What did it do while I was away — the since you left panel, what happened while the terminal was shut
 
-**What happened on its own while you were not looking**, in the right column under
-`running`, headed with how long you were away:
+**What happened on its own while you were not looking**, under `running` — in the field
+when it holds anything and in the rail when it does not — headed with how long you were
+away:
 
 ```
  since you left · 12h
@@ -290,12 +339,14 @@ spinner. In screen-reader (linear) mode nothing turns at all.
 ```
 
 Four kinds of line, newest first, four of them — eight in a tall window — then
-`N more · tasks`:
+`N more`:
 
 - **a task that landed** — its name and what it came to, the first sentence of its report,
-  with its cost at the right when it cost anything. A task that stopped without finishing
-  says why instead: `lost the connection`, `went in circles`, `out of steps`;
-- **a file a conversation made** — `made <name>`, with that conversation's name at the right;
+  with how long ago it landed at the right and its cost under the cursor when it cost
+  anything. A task that stopped without finishing says why instead: `lost the connection`,
+  `went in circles`, `out of steps`;
+- **a file a conversation made** — `made <name>`, with how long ago at the right and that
+  conversation's name under the cursor;
 - **a standing item that fired** — its own last-look line, in its own words; a one-off that
   fired and stood down reads `fired 3 minutes ago — it told you`;
 - **what memory learned or let go** — `learned 2 things, let go of 1`.
@@ -308,26 +359,29 @@ the panel keeps its heading and `what watches and tasks did while the terminal w
 The memory line is not wired yet: its figures read zero on this surface, and a zero draws
 nothing.
 
-## Where you were — this window's chat, the one before it, and N more · type to find one
+## Where you were — this window's chat, the one before it, and N more
 
 **The `where you were` panel is your conversations**, under `needs you`:
 
-- **this window's own conversation first**, in bold, with `here` at the right and **the last
-  thing you said in it** on the line under it — your own words, never a note the session
-  left for itself. A conversation this launch has only just started is one line,
-  `new conversation` and `here`, until you say something in it;
+- **this window's own conversation first**, in bold, with when you last spoke in it at the
+  right and **`here` and the last thing you said in it** in its description — your own
+  words, never a note the session left for itself. A conversation this launch has only just
+  started is one bold line, `new conversation`, until you say something in it. On a frame
+  too narrow for the description column the bold alone says it is this window's;
 - then **the most recently spoken-in of the rest**, each with its age at the right. A
-  conversation in another project wears that project's name beside the age; one in this
-  window's folder wears none, and neither does one in your home directory or in a scratch
-  folder at the top of `/tmp`;
-- then `N more · type to find one` — typing finds any conversation on the machine.
+  conversation in another project carries that project's name in its description, under
+  the cursor, before the last thing you said; one in this window's folder carries none, and
+  neither does one in your home directory or in a scratch folder at the top of `/tmp`;
+- then `N more` — `enter` on it opens the panel and shows them; typing finds any
+  conversation on the machine whether or not it is drawn.
 
 A conversation waiting on you is on `needs you` and not here too. One that is mid-reply or
 on its way here stays. Five rows show, ten in a tall window.
 
-**The margin says what `enter` will do**: the age for an ordinary row, `another window` for
-one a terminal is sitting in, `coming here` while one moves over, `folder gone` for one whose
-folder was deleted. An `ask here` errand you started a minute ago sits at the very top.
+**The margin is a time, unless it has to say what `enter` will do**: the age for an
+ordinary row, and in its place `another window` for one a terminal is sitting in, `coming
+here` while one moves over, `folder gone` for one whose folder was deleted — the one kind
+of word allowed to stand where a time does, because it is the truth about the key. An `ask here` errand you started a minute ago sits at the very top.
 
 **On `space` `space` the cursor is already on the chat you were in before this one**, so a
 switch back is two keys — `space` `space`, then `enter` — and `esc` still goes back to the
@@ -355,8 +409,8 @@ folder, so its own name and the counts stay on the row.
 
 **`→` on a project row offers `its chats`** — which types the project's name into the box,
 so the search lists every conversation in it — **and `open folder`**. Five rows show, eight
-in a tall window, then `N more · type to find one`; typing a folder's name or path finds the
-rest, and a typed path starts a conversation there too (*Start something new from home*).
+in a tall window, then `N more`, which `enter` opens; typing a folder's name or path finds
+the rest, and a typed path starts a conversation there too (*Start something new from home*).
 
 `ctrl+t` on a conversation's row still starts one in that row's folder, but the projects
 panel is the way home offers it now.
@@ -381,9 +435,8 @@ Where to go for the whole figure instead:
 panel, and conversations are rows of `where you were`, each wearing its project's name when
 it is not this window's.
 
-What is folded is **the tail of each panel** — `N more · tasks`, `N more · standing`,
-`N more · type to find one` — and a fold line that names a place is a door: `enter` on it
-opens that place.
+What is folded is **the tail of each panel** — one `N more` line under it — and the fold
+is a toggle: `enter` on it opens the panel (see *Where did the rest of my chats go*).
 
 **Under 60 columns** — the phone shape — home is an inbox with the projects under it, and
 there a project other than this window's *is* one folded `▸` line, which `enter` or a tap
@@ -401,9 +454,9 @@ each of those is a panel of its own now.
 | --- | --- |
 | `?` rows at the top of the list | the `needs you` panel |
 | `◐` rows under them | the `running` panel |
-| the quiet rows and `▸ 15 more, quiet since 6d` | `where you were`, then `N more · type to find one` |
+| the quiet rows and `▸ 15 more, quiet since 6d` | `where you were`, then `N more` |
 | project headings, `alt+g` | the `projects` panel |
-| the `since you left` ledger above the list | the `since you left` panel, right column |
+| the `since you left` ledger above the list | the `since you left` panel |
 | the card on the right | nothing at rest; a card still stands beside a search on a wide frame |
 
 ## How do I group home by project — alt+g
@@ -421,7 +474,7 @@ project's name into the box, so the search lists every conversation in it — an
 ones out of the way: `needs you` and `running` hold what wants you or is moving, and
 `where you were` shows this window's conversation — the last thing you typed in it on the
 line under it — and the four most recent, nine in a tall window, folding the rest behind
-`N more · type to find one`. Typing finds any conversation on the machine.
+`N more`, which `enter` opens. Typing finds any conversation on the machine.
 
 ## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
 
@@ -437,10 +490,14 @@ wears the same ground and its title goes bold; the row under your mouse pointer 
 while the pointer is on it.
 
 **Columns win the arrow: `→` opens a row's verbs only where no column with rows lies to its
-right** — on the right column, and everywhere at one column. On a row where `→` crosses
-instead, **the foot names the chord that still reaches them** — `ctrl+o open folder`, or
-`ctrl+e pause` on a standing order — and the rest are on their chords too: `ctrl+y` copy
-path, `ctrl+e` put away. `ctrl+o` on a `projects` row opens that project's folder.
+right** — on the rail, and everywhere at one column. Where the next column along is empty
+the arrow steps over it to the next one that has a row, so the rail is always reachable. On a row where `→` crosses
+instead, **the foot names the one chord that is true on every row** — `ctrl+o open folder`,
+which opens a conversation's workspace, the workspace a standing order stands over, or the
+conversation a `since you left` line happened in — and the rest are on their chords too:
+`ctrl+y` copy path, `ctrl+e` put away or pause, `ctrl+x` stop. The foot does not change
+from row to row; `alt+.` draws the map when you want the rest. `ctrl+o` on a `projects` row
+opens that project's folder.
 
 A digit answers the one row of `needs you` drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
@@ -497,20 +554,28 @@ conversation: "…"` rise out of the box, and `enter` starts the conversation.
 Over `--host`, in the fraction of a second before the far machine answers, home draws no
 panels at all — a whisper over a server full of work would be untrue.
 
-## Where did the rest of my chats go — N more, and panels cut off on a short or small terminal
+## Where did the rest of my chats go — N more, expand a panel, and panels cut off on a short or small terminal
 
-**Every panel folds inside itself**, with how many more it is holding and the name of where
-they are: `12 more · tasks` under `running`, `3 more · standing` under `next up`,
-`70 more · type to find one` under `where you were`. `needs you` can say both halves —
-`2 more · 3 older · tasks`. A fold that names a place is a door: `enter` on it opens the
-place.
+**Every panel folds inside itself** with one dim line, `N more`, counting everything it is
+not showing — the rows past its budget, the rows a short window took, and on `needs you` the
+landings that aged off it. **The fold is a toggle.** Walk onto it and press `enter` (or
+click it): the panel opens and takes the column — every row it has, with the other panels
+squeezed to their floors in the order below — and the line reads `N fewer`. `enter` again
+folds it. One panel is open at a time; opening a second folds the first. An open panel
+taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
+more` — and names no place, because `enter` on it folds rather than opens. The way to
+those rows is the panel's **heading**: `needs you`, `running` and `since you left` open the
+tasks place, `scheduled` opens standing, `where you were` opens the search. The foot under a fold says
+which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
+as the window; a relaunch starts folded. The fold wears no mark: home spends its two marks
+on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
 `needs you`, `running`, `since you left` and `projects` to eight rows, `where you were` from
-five to ten, `next up` from three to five. `spend` never grows. What is left over is air
+five to ten, `scheduled` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
-**A short terminal squeezes them in a fixed order**: `next up` gives way first, then `spend`,
+**A short terminal squeezes them in a fixed order**: `scheduled` gives way first, then `spend`,
 then `since you left`, then `running`, then `projects`; `where you were` and `needs you`
 shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
@@ -523,14 +588,15 @@ machine, including the ones no panel is drawing.
 
 ## How do I see the collapsed sessions — 13 more
 
-**Type.** `where you were` shows the most recent conversations and then
-`13 more · type to find one`: the box at the foot searches every conversation on the machine
-as you type, and a project's name, a folder's name or a word from what a task came to all
-find them.
+**Open the fold, or type.** `where you were` shows the most recent conversations and then
+`13 more`; `enter` on that line opens the panel and shows them all, squeezing the other
+panels, and `enter` again folds it. The box at the foot still searches every conversation on
+the machine as you type — a project's name, a folder's name or a word from what a task came
+to all find them — whether or not a panel is drawing the row.
 
-The other panels' fold lines are doors into their places — `N more · tasks` opens tasks,
-`N more · standing` opens standing — and `where you were`'s is an instruction, because the
-rest of your conversations are found by typing rather than by a place.
+Every panel's fold works the same way: `N more` under `running`, `since you left`, `scheduled`
+and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
+tab bar and their slash commands, not behind the folds.
 
 Per-project folds — `▸ 13 more, quiet since 1d` under a project's own heading — belong only
 to the **phone shape**, under 60 columns, where home is still an inbox with the projects
@@ -579,14 +645,14 @@ cent — one reading of one file, wherever you are standing.
 words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
 memory and search open exactly as they did:
 
-- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `next up` row or its fold;
+- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `scheduled` row;
 - **`/memory`** (or `/memories`), `alt+6`, or `enter` on memory's line in `since you left`;
 - **`/search`**, `alt+7`, or the typed door on home's box.
 
 While you stand in one of the three, its word is drawn after the four so you can see where
 you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
 numbers. Home's own panels already summarise the three on the bar: `running` is a glimpse of
-tasks, `spend` of spend, `next up` of standing.
+tasks, `spend` of spend, `scheduled` of standing.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -679,7 +745,7 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A click on a panel's **heading** opens the place the heading names:
-`needs you`, `running` and `since you left` open tasks, `spend` opens spend, `next up` opens
+`needs you`, `running` and `since you left` open tasks, `spend` opens spend, `scheduled` opens
 standing, `where you were` opens search, and `projects` opens nothing. A click never starts
 a paid turn, so on the row of what you typed, on `ask here` and on a `/` command it only
 puts the cursor there, and `enter` does the rest.
@@ -698,7 +764,7 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The foot line reads exactly:
 
 ```
-type to search or start something new · ↑↓ pick · enter open · tab next place
+type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place
 ```
 
 and it says what THAT row's keys do on a row that has its own — a `since you left` line,
@@ -936,12 +1002,14 @@ exists — `enter` on a row of `projects`.
 launched in used to carry a dim `elsewhere`, and `enter` on one of its rows opened nothing.
 That is gone: `enter` opens any conversation on home, in any project.
 
-**One refusal still uses the word.** Pressing `enter` on a **standing item** — a reminder,
-a watch, a rule — asks to open the conversation that set it up, and where that conversation
-belongs to another project this window cannot resume it. Home says
-`elsewhere · <the item's workspace>` at the foot and opens nothing. An item that was set up
-from home and never became a conversation says `made from home — no conversation to open`
-instead.
+**Home never says it on a standing item either, any more.** Pressing `enter` on a
+**standing item** — a reminder, a watch, a rule — opens the conversation that set it up,
+whichever project it belongs to; it used to refuse with `elsewhere · <the item's workspace>`
+at the foot when that project was not this window's, and that refusal is gone. An item that
+was set up from home and never became a conversation opens the **standing place with the
+cursor on that item** — its own page is the honest answer to "show me this thing". The one
+place the sentence `made from home — no conversation to open` is still said is the standing
+place itself, when `enter` there asks for the conversation behind such an item.
 
 A second project is a second **conversation**, built the way the first one was, on its own
 workspace, with its own gate. A conversation still never moves between projects — though it
@@ -1435,8 +1503,8 @@ see the next section.
 
 **You can answer it here, without opening the window it is in.** The top `needs you` row
 that has answers draws them on its own second line, out at the right — and **pressing the
-digit answers it, from anywhere on home**. Every row under it says `enter`, which opens the
-conversation to answer it there.
+digit answers it, from anywhere on home**. The row the cursor is on says `enter`, which opens
+the conversation to answer it there; the other rows say nothing at their right.
 
 The chips are the ones the question has:
 
@@ -1530,11 +1598,11 @@ three ways:**
 - **while it is firing**, it is a row of `running`: your own words, what the pass is doing,
   and how long ago the pass began. It is still the item — `→` offers `pause`, and `ctrl+v`
   raises how hard it thinks;
-- **while it is simply waiting for its time**, it is a row of `next up`, soonest first, with
+- **while it is simply waiting for its time**, it is a row of `scheduled`, soonest first, with
   when it goes off at the right — `in 20h`, `mon 8:30`.
 
 `enter` on a `needs you` or `running` row opens the conversation that asked for it; on a
-`next up` row it opens the standing place.
+`scheduled` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
@@ -1571,7 +1639,7 @@ it` rather than pretending.
 
 `enter` on the row **opens the conversation that asked for it** — that is the answer to
 "why did I get this?", whatever project it belongs to. Something you set up from home that
-never became a conversation says `made from home — no conversation to open`.
+never became a conversation opens the standing place with the cursor on it instead.
 
 ## Make a reminder think harder — how hard a standing item thinks, and ctrl+v on its row
 
@@ -1772,7 +1840,7 @@ drawn only when it has something to say:
 4. **the work** — each task and what it came to, three of them, then `▸ N more tasks`;
 5. **the files it made**, as links;
 6. **where you left off**, the last exchange;
-7. **what is next up** and **news since you last looked**;
+7. **what is scheduled** and **news since you last looked**;
 8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
 9. one dim line naming the strip: `→ verbs: put it away, new chat here, open folder,
@@ -1828,10 +1896,11 @@ conversation's `a put it away` and, where it has a folder, `t new chat here`,
 `o open folder`, `c copy path`; a standing item's `p pause it` or `r resume it`; a task this
 window runs, `s stop`; a project's `its chats` and `open folder`.
 
-**On the left column `→` crosses to the right instead** — columns win the arrow — so a
-question there is answered with its digit, and a conversation's verbs are on their chords —
-`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that matters on such a row:
-`ctrl+o open folder`, or `ctrl+e pause` on a standing order.
+**In the field `→` crosses to the rail instead** — columns win the arrow, and the rail
+always has rows in it because `projects` is pinned there — so a question in the field is
+answered with its digit, and a conversation's verbs are on their chords —
+`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that is true on every row,
+`ctrl+o open folder`, and says the same sentence on all of them.
 
 ## The work on the right of home — what each task came to
 
@@ -1868,8 +1937,8 @@ margin rather than unfolding, because a card is not the place that holds them; `
 `▸ …3 more files`, and a click on that line — or `→` with the strip closed — opens it, and
 `▾ …3 fewer` folds it back. The fold always cuts between tasks, never through one.
 
-**On the resting panels, `running` folds as `N more · tasks`**, and `enter` on that line
-opens the tasks place. The phone sheet folds its work band by family and counts all the
+**On the resting panels, `running` folds as `N more`**, and `enter` on that line opens the
+panel. The phone sheet folds its work band by family and counts all the
 tasks hidden behind its fold.
 
 ## I clicked a task on home and nothing happened — open a task from the card
@@ -1986,31 +2055,53 @@ timed-out Git check draws nothing. The reading arrives a moment after home opens
 that is no longer on this disk says `that folder is gone` in place of the branch it cannot
 have.
 
-## What is next up on home — reminders and routines coming soon
+## What is scheduled on home — reminders, routines, watches and rules, what is next up and when
 
-**The `next up` panel, at the foot of the right column**: every reminder and routine this
-machine will act on, from every project, **soonest first**, with the rules that simply hold
-at the end. Each row is your own words, with when it goes off at the right — `in 20h`,
-`mon 8:30`, `holds`:
+**The `scheduled` panel, last of the seven**: every standing order this machine will act
+on, from every project, **soonest first**, with the rules that simply hold at the end.
+Four kinds of order stand on it — a **reminder** (`remind me at 6`), a **routine** (`every
+morning at nine`), a **watch** (`tell me when CI goes red`, `when go.sum changes`) and a
+**rule** (`never change the public API without telling me`). Each row is your own words
+and **nothing at its right**:
 
 ```
- next up
-   the 6am repo watch                in 20h
-   top movers before the open      mon 8:30
+ scheduled
+   the 6am repo watch
+   top movers before the open
+   tell me when CI goes red on master
    never change the public API without telling me first
 ```
 
-Three rows show, five in a tall window, then `N more · standing`. Paused, stopped and retired
-items are not on it. **Every row is a door into the standing place**, where the orders are
-kept and changed; so is the fold line.
+**When it happens is said once, in the row's description under the cursor, and each kind
+says it one way** — a fixed sentence you learn once, the kind word first. It is there at
+every width: beside the row in the middle column from 170 cells, and as the line under the
+cursor's row on a narrower frame.
+
+- a reminder: `reminder · goes off tomorrow 9:00am`
+- a routine: `routine · every morning at nine · next tomorrow 9:00am · last: done, two branches landed`
+- a watch: `watch · every five minutes · last looked 3m ago · found: the last five runs are green`
+  — or `found nothing`, which for a watch is the commonest finding and a real one
+- a rule: `rule · always`
+
+Moments read `today 6:00pm`, `tomorrow 9:00am`, a weekday inside the week (`mon 9:00am`),
+a date beyond it (`21 sep 9:00am`), and `now` once they have arrived. A routine that has
+never fired has no `last:`; a watch that has never looked has no `last looked`. An order in
+the middle of a pass says what the pass is doing instead of its clock.
+
+**An order stopped on you is not on `scheduled`** — it is a row of `needs you`, with its
+question, and comes back here the moment you answer. Paused, stopped and retired orders are
+not on it either.
+
+Three rows show, five in a tall window, then `N more`, which `enter` opens. **Every row is a
+door into the standing place**, where the orders are kept and changed.
 
 With nothing standing it keeps its heading and
-`reminders and routines · "remind me at 6" or "every morning at 9"` — the words that set one
-up. On a short terminal `next up` is the first panel to give way.
+`reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` — the
+words that set one up. On a short terminal `scheduled` is the first panel to give way.
 
 ## How much did today cost — the spend panel on home
 
-**The `spend` panel, in the right column**, is the day and the fortnight in three dim lines,
+**The `spend` panel, pinned in the rail under `projects`**, is the day and the fortnight in three dim lines,
 and every line is a door into the spend place:
 
 ```
@@ -2158,5 +2249,7 @@ are said where they happen: in the conversation that met them, and on `/status`.
 
 **Show a preview card at rest.** The card is only beside a search, on a wide frame.
 
-**Change a panel's place or turn one off.** The seven panels, their columns and their order
-are fixed; only their heights move with the terminal.
+**Change a panel's place or turn one off.** The seven panels and their order are fixed, and
+which column each stands in is read off what it holds — a panel with rows is in the field at
+the left, a quiet one in the rail at the right — so nothing about them is yours to set; only
+their heights and their sides move with the terminal and the day.

@@ -286,7 +286,10 @@ func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 		name  string
 		shape func(t *testing.T, a *app)
 	}{
-		{"as opened", func(*testing.T, *app) {}},
+		// THE FRAME IS DRAWN ONCE BEFORE THE WALK on this shape too: home lays
+		// its lines out for the room it is drawn in, and a list built before
+		// any frame has a fold where the drawn list has a row.
+		{"as opened", func(t *testing.T, a *app) { _ = placeFrameText(a) }},
 		{"squeezed and scrolled", func(t *testing.T, a *app) {
 			a.width, a.height = 60, 16
 			// THE FRAME IS DRAWN ONCE AT THE NEW SIZE BEFORE THE WALK, as the
@@ -522,10 +525,10 @@ func homeHeadingAt(a *app, word string) (x, y int, ok bool) {
 	return 0, 0, false
 }
 
-// A FOLD THAT NAMES A PLACE IS `enter` ON ONE CLICK. Ten questions are more than
-// `needs you` holds, so its fold says `2 more · tasks` — and a press on it lands
-// where walking onto it and pressing enter does, not on a selection that waits
-// for a second press.
+// A FOLD IS `enter` ON ONE CLICK. Ten questions are more than `needs you` holds,
+// so its fold says `2 more` — and a press on it opens the panel exactly as
+// walking onto it and pressing enter does, not a selection that waits for a
+// second press.
 func TestAClickOnAHomeFoldIsEnterOnIt(t *testing.T) {
 	open := func() *app {
 		lab := newSwitchLab(t)
@@ -539,12 +542,12 @@ func TestAClickOnAHomeFoldIsEnterOnIt(t *testing.T) {
 	homeClickAt(t, clicked, homeFoldDoor(t, clicked, panelNeeds))
 	keyed.home.cursor = homeFoldDoor(t, keyed, panelNeeds)
 	drive(t, keyed, key("enter"))
-	if keyed.page != pageTasks {
-		t.Fatalf("enter on the fold of `needs you` landed on %q, want tasks", keyed.page.word())
+	if !keyed.at(pageHome) || !keyed.home.openedOn || keyed.home.opened != panelNeeds {
+		t.Fatalf("enter on the fold of `needs you` did not open the panel (page %q, opened %v)", keyed.page.word(), keyed.home.openedOn)
 	}
-	if clicked.page != keyed.page {
-		t.Fatalf("a click on the fold of `needs you` landed on %q and enter on it on %q",
-			clicked.page.word(), keyed.page.word())
+	if !clicked.at(pageHome) || clicked.home.openedOn != keyed.home.openedOn || clicked.home.opened != keyed.home.opened {
+		t.Fatalf("a click on the fold of `needs you` landed on %q (opened %v) and enter on it on %q (opened %v)",
+			clicked.page.word(), clicked.home.openedOn, keyed.page.word(), keyed.home.openedOn)
 	}
 }
 

@@ -31,8 +31,8 @@ func TestNeedsYouCarriesTheQuestionAndItsAnswersOnTheRow(t *testing.T) {
 	if !strings.Contains(under, "needs your ok to run bash") || !strings.Contains(under, "1 allow once") {
 		t.Fatalf("the row does not carry its question and answers:\n%s", frame)
 	}
-	if !strings.Contains(frame, "needs you · 1") {
-		t.Fatalf("the heading does not count what is waiting:\n%s", frame)
+	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
+		t.Fatalf("the heading counts what is waiting, and it should be the word alone:\n%s", frame)
 	}
 }
 
@@ -103,8 +103,11 @@ func TestSinceYouLeftIsItsOwnPanelOfDoors(t *testing.T) {
 	}
 }
 
-// WHERE YOU WERE: this window's own conversation first with `here`, the last
-// thing said in it under it, then the most recent quiet ones.
+// WHERE YOU WERE: this window's own conversation first, in bold, the last thing
+// said in it under it, then the most recent quiet ones. A row from another
+// folder carries its project as its description, under the cursor — the margin
+// is a time on every row (owner, 2026-09-15; the project used to be a tag
+// beside the age, and `here` the own row's margin).
 func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)
@@ -117,14 +120,20 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 		t.Fatalf("this window's own conversation is not the first row of where you were:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
-	if !strings.Contains(lines[own], homeHereWord) || !strings.Contains(lines[own+1], "explain open addressing") {
-		t.Fatalf("the own row does not say here with its last words under it:\n%s", frame)
+	// (The rail beside it may say `here` in a whisper of its own, so the row is
+	// asked for its words rather than the screen line searched for the word.)
+	if mine := panelRows(a, panelRecent)[0]; mine.right == homeHereWord || !mine.bold || !strings.Contains(lines[own+1], "explain open addressing") {
+		t.Fatalf("the own row does not carry its last words under it, with nothing but a time at its right:\n%s", frame)
 	}
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
 	// not. The conversation mid-turn is here too: `running` lists the work a
 	// conversation sent out and never the conversation, so this is its panel.
-	if moving := lines[own+2]; !strings.Contains(moving, "Bounty Reward Companies") || !strings.Contains(moving, "beta") {
-		t.Fatalf("a row from another folder does not carry its project:\n%s", frame)
+	if moving := lines[own+2]; !strings.Contains(moving, "Bounty Reward Companies") || strings.Contains(moving, "beta") {
+		t.Fatalf("a row from another folder wears its project on its own line:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Bounty Reward Companies" })
+	if bounty := a.home.lines[a.home.cursor]; bounty.cell.sub != "beta" || !bounty.cell.grows {
+		t.Fatalf("a row from another folder does not carry its project as its description: %+v", bounty.cell)
 	}
 	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
 		t.Fatalf("the quiet rows do not follow in recency order:\n%s", frame)
@@ -478,15 +487,107 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	frame := homeText(a)
 	first, _ := homeRowOf(frame, "top movers before the open")
 	second, _ := homeRowOf(frame, "water the plants")
-	if first < 0 || second != first+1 || !strings.Contains(strings.Split(frame, "\n")[first], " in 1h") {
-		t.Fatalf("next up is not soonest first with its clause:\n%s", frame)
+	// AND NOTHING AT THE ROW'S RIGHT: the time is said once, in the description
+	// (owner, 2026-09-15). It used to read `in 1h` at the margin.
+	if first < 0 || second != first+1 || strings.Contains(strings.Split(frame, "\n")[first], " in 1h") {
+		t.Fatalf("scheduled is not soonest first with nothing at its right:\n%s", frame)
 	}
-	if row, _ := homeRowOf(frame, "1 more · standing"); row < 0 {
+	for _, cell := range panelRows(a, panelNext) {
+		if cell.right != "" {
+			t.Fatalf("a scheduled row carries %q at its right, want nothing", cell.right)
+		}
+	}
+	if row, _ := homeRowOf(frame, "1 more"); row < 0 {
 		t.Fatalf("the fourth order is not behind the fold:\n%s", frame)
 	}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelNext && l.stop() })
 	a.homeKey(key("enter"))
 	if !a.at(pageStanding) {
 		t.Fatal("enter on a next-up row did not open standing")
+	}
+}
+
+// A `scheduled` ROW SAYS ITS TIME ONCE, IN ITS DESCRIPTION, IN THE ONE SHAPE
+// ITS KIND HAS (owner, 2026-09-15): a reminder the moment it goes off, a routine
+// its cadence, its next and its last outcome, a watch how often it looks, when
+// it last looked and what it found, a rule its own words. Nothing at the
+// margin, and an order that has never woken has no `last`.
+func TestScheduledSaysEachKindsTimeOneWayInItsDescription(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(180, 45)
+	dir := a.home.world.Projects[0].Dir
+	now := a.home.world.Read
+	watch := StandingItemView{Item: standing.Item{ID: "w", Words: "tell me when CI goes red", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenProbe, Words: "every five minutes"}, NextDue: now.Add(2 * time.Minute),
+		LastChecked: now.Add(-3 * time.Minute), LastCheckLine: "the last five runs on master are green"}}
+	quiet := StandingItemView{Item: standing.Item{ID: "q", Words: "watch the lockfile", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenFile, Words: "when go.sum changes"}, LastChecked: now.Add(-time.Hour)}}
+	routine := StandingItemView{Item: standing.Item{ID: "r", Words: "sweep the repo every morning at nine", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenEvery, Words: "every morning at nine"}, NextDue: now.Add(26 * time.Hour),
+		LastFired: now.Add(-11 * time.Hour), LastOutcome: "done: two branches landed, both in internal/tui3"}}
+	fresh := StandingItemView{Item: standing.Item{ID: "f", Words: "remind me at six to leave", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenAt, Words: "at 6 today"}, NextDue: now.Add(4 * time.Hour)}}
+	rule := StandingItemView{Item: standing.Item{ID: "h", Words: "never change the public API without telling me", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenHold, Words: "always"}}}
+	stopped := StandingItemView{Item: standing.Item{ID: "s", Words: "keep main green", Status: standing.StatusActive,
+		When: standing.When{Kind: standing.WhenProbe, Words: "when CI goes red"}, NeedsPerson: "the fix touches migrations"}}
+	a.home.items = map[string][]StandingItemView{dir: {watch, quiet, routine, fresh, rule, stopped}}
+	a.home.build()
+	rows := map[string]*homeCell{}
+	for _, cell := range panelRows(a, panelNext) {
+		rows[cell.title] = cell
+	}
+	if _, drawn := rows["keep main green"]; drawn {
+		t.Fatalf("an order stopped on a person is drawn on scheduled as well as needs you:\n%s", homeText(a))
+	}
+	want := []struct{ title, sub string }{
+		{"tell me when CI goes red", "watch · every five minutes · last looked 3m ago · found: the last five runs on master are green"},
+		{"watch the lockfile", "watch · when go.sum changes · last looked 1h ago · found nothing"},
+		{"sweep the repo every morning at nine", "routine · every morning at nine · next " + homeClockAt(routine.Item.NextDue, now) + " · last: done: two branches landed, both in internal/tui3"},
+		{"remind me at six to leave", "reminder · goes off " + homeClockAt(fresh.Item.NextDue, now)},
+		{"never change the public API without telling me", "rule · always"},
+	}
+	for _, w := range want {
+		cell, ok := rows[w.title]
+		if !ok {
+			t.Fatalf("scheduled does not draw %q:\n%s", w.title, homeText(a))
+		}
+		if cell.right != "" || cell.sub != w.sub {
+			t.Fatalf("%q reads %q / %q, want nothing at the right and the sentence %q", w.title, cell.right, cell.sub, w.sub)
+		}
+	}
+	if !strings.HasPrefix(homeClockAt(fresh.Item.NextDue, now), "today ") && !strings.HasPrefix(homeClockAt(fresh.Item.NextDue, now), "tomorrow ") {
+		t.Fatalf("a moment four hours off reads %q, want today or tomorrow with a clock", homeClockAt(fresh.Item.NextDue, now))
+	}
+	if got := homeClockAt(now.Add(10*24*time.Hour), now); !strings.Contains(got, " ") || strings.HasPrefix(got, "today") {
+		t.Fatalf("a moment ten days off reads %q, want a date and a clock", got)
+	}
+	// AND THE SENTENCE IS THERE AT EVERY WIDTH. With nothing at the right it is
+	// the only place the row says its kind and its time, so a frame too narrow
+	// for the description column draws it as the line under the cursor's row
+	// rather than a bare title (review of #1046).
+	for _, width := range []int{120, 80} {
+		// The column count reaches the panels through the draw, as it does on a
+		// terminal ([switchLab.open] states why).
+		a.width = width
+		homeText(a)
+		if homeDescOn(a.home.cols) {
+			t.Fatalf("%d columns has a description column; the test wants a frame without one", width)
+		}
+		// A narrow frame squeezes `scheduled` first (law 5), so the claim is
+		// about every row it still draws and not about how many those are.
+		sentence := map[string]string{}
+		for _, w := range want {
+			sentence[w.title] = w.sub
+		}
+		drawn := panelRows(a, panelNext)
+		if len(drawn) == 0 {
+			t.Fatalf("scheduled draws no row at all at %d columns:\n%s", width, homeText(a))
+		}
+		for _, cell := range drawn {
+			if cell.sub != sentence[cell.title] || !cell.grows {
+				t.Fatalf("at %d columns %q reads %q (grows %v), want the sentence %q under the cursor", width, cell.title, cell.sub, cell.grows, sentence[cell.title])
+			}
+		}
 	}
 }

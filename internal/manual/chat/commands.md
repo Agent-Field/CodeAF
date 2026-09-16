@@ -1042,13 +1042,16 @@ There is no argument form. There are three other ways in: **`alt+1`**, home bein
 of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
-**It is seven panels**, in one column under 110 cells, two from 110 and three from 170:
-`needs you` (every question waiting on you, a digit answers the top one from anywhere),
-`where you were` (this window's conversation, then the most recent, then
-`N more · type to find one`) and `projects` (every folder, `enter` starts a chat there) on
-the left; `running` (every task, job and firing watch), `since you left` (what landed while
-you were away), `spend` (today and the fortnight) and `next up` (reminders, soonest first)
-on the right. An empty panel keeps its heading and one dim line naming what arrives there.
+**It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
+always in one order: `needs you` (every question waiting on you, a digit answers the top one
+from anywhere), `where you were` (this window's conversation, then the most recent, then a
+`N more` fold that opens the rest), `projects` (every folder, `enter` starts a chat there),
+`running` (every task, job and firing watch), `since you left` (what landed while you were
+away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
+Which column a panel stands in follows what it holds: the panels with rows fill the **field**
+at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
+quiet panels under them. An empty panel keeps its heading and one dim line naming what
+arrives there.
 
 `↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
 conversation you came from. **Typing does two things at once**: what you type is a new
@@ -1057,7 +1060,7 @@ panels give way to the matches, with `start a new conversation: "…"` directly 
 holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open · tab next place`.
+`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including

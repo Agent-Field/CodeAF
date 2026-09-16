@@ -228,7 +228,7 @@ pane fills the frame; drag it wide again and it goes back beside the list.
 
 ## Why can't I click a row while asking — you can, and it opens it
 
-You can, and it does. A click on any row of the left column puts the cursor on it, gives
+You can, and it does. A click on any row of the list puts the cursor on it, gives
 the keyboard to the column and opens the row, exactly as `enter` on it would — one click,
 the same as on every place. A click on the exchange's own row gives its pane the keyboard,
 and a click on `ask here` or on the row of what you typed only puts the cursor there,

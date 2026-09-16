@@ -79,6 +79,9 @@ const (
 	// line from the verbs the row under the cursor actually has and needs this
 	// half without the other two ([standingPlace.hint]).
 	homeItemEnterWord = "enter open where it was asked"
+	// homeItemStandingWord is the same key on an item made at home, which has no
+	// conversation behind it to open ([app.homeItemEnter]).
+	homeItemStandingWord = "enter open it on standing"
 	// homeItemNoDoor is what enter says on an item that was made at home and
 	// never became a conversation ([standing.Origin.Exchange]). It is a fact and
 	// not a refusal: there genuinely is no transcript to open, and saying so is
@@ -736,20 +739,40 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 	h := &a.home
 	transcript := strings.TrimSpace(line.item.Origin.Transcript)
 	if transcript == "" {
-		h.say(homeItemNoDoor, "")
-		return nil
+		// AN ITEM MADE AT HOME HAS NO CONVERSATION TO OPEN, and the standing
+		// place is where it does live — so `enter` goes there rather than
+		// refusing. It was a dead key with a sentence beside it, which is the
+		// worst of both: nothing happens AND the screen explains why on the row
+		// a person is trying to leave. The item's own page is the honest answer
+		// to "show me this thing", and the cursor lands ON THE ITEM rather than
+		// at the top of a list the person then has to find it in again — the
+		// margin's door ([app.openStandingAt]), because a press on a row should
+		// land on that row (review of #1046).
+		a.closeHome()
+		return a.openStandingAt(line.item.ID)
 	}
 	// THE CAPABILITY IS ASKED THROUGH THE ONE PREDICATE, never off a single seam:
 	// a door may answer the whole conversation ([Options.Open]) rather than the
 	// older agent-alone [Options.Resume], and a row that read only the second
 	// would refuse to open a conversation this window can plainly open
 	// (app.go's [app.canOpen]).
-	if !a.canOpen() || filepath.Clean(homeBucketOf(transcript)) != h.bucket {
-		// The same limit a conversation in another project meets, said in the
-		// same words and naming the same place to go (home.go's header).
-		h.say(homeElsewhereWord+" · "+standWhere(line), strings.TrimSpace(line.item.Workspace))
+	if !a.canOpen() {
+		// The same sentence a conversation row says when this window has no door
+		// to open one with ([app.homeOpenLine]).
+		h.say(resumeUnavailableWord, "")
 		return nil
 	}
+	// AND THE PROJECT THE CONVERSATION IS IN IS NOT A LIMIT. This used to refuse
+	// any origin outside the window's own bucket — `elsewhere · <path>` on the
+	// foot — on the reading that a conversation in another project is out of
+	// reach. That reading was repealed for conversations and the word itself
+	// says so ([homeElsewhereWord]: "IT NO LONGER MARKS A ROW THIS WINDOW CANNOT
+	// OPEN, because there is no such row: enter opens any project on this
+	// screen"), and a `where you were` row in another project has opened from
+	// here ever since. Only this path kept the old guard, so a watch asked for in
+	// one project answered nothing at all from a window standing in another —
+	// which is every window that did not happen to be launched inside that
+	// folder (owner, 2026-09-15).
 	if transcript == a.file {
 		a.closeHome()
 		return nil

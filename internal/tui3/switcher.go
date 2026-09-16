@@ -93,11 +93,13 @@ type switcherRow struct {
 	options []session.AnswerOption
 	// task is the landed piece of work a `since you left` line names, and path
 	// the file one names; each is the line's door (place_home.go's
-	// [app.homeLedgerEnter]). margin is what such a line carries at its right —
-	// a task's cost, the conversation a file was made in.
-	task   *session.TaskIndexEntry
-	path   string
-	margin string
+	// [app.homeLedgerEnter]). note is the one fact such a line carries besides
+	// its title — a task's cost, the conversation a file was made in — and it is
+	// the line's DESCRIPTION, drawn under the cursor, and not its margin: the
+	// margin is when it happened, like every row of the field (owner,
+	// 2026-09-15).
+	task *session.TaskIndexEntry
+	path string
 }
 
 // switcherReading is the whole of what the grid's panels read off the machine:

@@ -43,6 +43,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -1231,10 +1232,10 @@ func testHover(t *testing.T) {
 //
 // THE FOLD IS NOT A DOOR ANY MORE, AND THAT IS WHAT IS TESTED. The old list had
 // one fold at its foot — `▸ 15 more, quiet since 6d` — that `→` opened and `←`
-// shut. Every panel folds inside itself now (DESIGN.md §1 law 9), and the fold
-// under `where you were` is an instruction rather than a place: `N more · type to
-// find one`. So the claim is the fold's words, a row it stands over being off the
-// screen, and typing reaching that row anyway.
+// shut. Every panel folds inside itself now (DESIGN.md §1 law 9) with one dim
+// line, `N more`, that names no place: `enter` on it opens the panel. So the
+// claim is the fold's words, a row it stands over being off the screen, and
+// typing reaching that row anyway.
 func testFold(t *testing.T) {
 	home := newHome(t, nil)
 	// MORE CONVERSATIONS THAN THE PANEL'S BUDGET, WHICH IS WHAT MAKES A FOLD.
@@ -1250,10 +1251,12 @@ func testFold(t *testing.T) {
 	ws := newWorkspace(t, "foldws", false)
 	r := start(t, "afe2e_fold", home, ws, tuiWide, 20)
 
-	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "homeFindWord"))
+	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "foldMoreWord"))
 	t.Logf("`where you were` with a fold at its foot:\n%s", screen)
-	if fold := firstMatch(screen, say(t, "homeFindWord")); !strings.Contains(fold, say(t, "foldMoreWord")) {
-		t.Errorf("the fold does not count what it stands over: %q", fold)
+	// THE FOLD IS A COUNT AND THE WORD, AND NOTHING AFTER: a place word after it
+	// would be a door `enter` does not take.
+	if fold := firstMatch(screen, say(t, "foldMoreWord")); !foldCounts.MatchString(fold) {
+		t.Errorf("the fold does not read `N more` alone: %q", fold)
 	}
 	// THE OLDEST SEED IS BEHIND THE FOLD. The panel is the most recent first, and
 	// the twentieth project is the quietest, so it is the one the fold stands over.
@@ -1278,10 +1281,14 @@ func testFold(t *testing.T) {
 	r.keys("Escape")
 	time.Sleep(1500 * time.Millisecond)
 	back := r.capture()
-	if !strings.Contains(back, say(t, "homeFindWord")) {
+	if !strings.Contains(back, say(t, "foldMoreWord")) {
 		t.Errorf("esc did not put the panels back with their fold:\n%s", back)
 	}
 }
+
+// foldCounts is the shape of a shut fold as a person reads it off the frame: a
+// count, the word, and nothing after it but the row's own padding.
+var foldCounts = regexp.MustCompile(`\b\d+ more\s*$`)
 
 // ── 8 ───────────────────────────────────────────────────────────────────────
 

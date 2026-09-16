@@ -181,7 +181,7 @@ func TestAQuietMachineDrawsNothingForAStateItIsNotIn(t *testing.T) {
 	for _, width := range []int{80, 120, homeCardMin, 200} {
 		a.width = width
 		text := homeText(a)
-		for _, claim := range []string{"what wants you first", "more, quiet", "more · " + homeFindWord} {
+		for _, claim := range []string{"what wants you first", "more, quiet", "more · type to find one"} {
 			if strings.Contains(text, claim) {
 				t.Fatalf("a %d-column quiet machine claimed %q:\n%s", width, claim, text)
 			}
@@ -235,7 +235,7 @@ func TestNoArrowLeavesTheCursorOnAHeadingOrABlank(t *testing.T) {
 // the quiet clause, the way to the rest — may not smuggle one back in a quieter
 // voice.
 func TestTheGridsOwnWordsNeverAnnounceAbsence(t *testing.T) {
-	for _, word := range []string{foldLine(15, "quiet since aug 21"), homeFindWord} {
+	for _, word := range []string{foldLine(15, "quiet since aug 21"), groupedInt(15) + " " + homeFoldMoreWord} {
 		for _, banned := range []string{"nothing", "empty", " yet", "no "} {
 			if strings.Contains(word, banned) {
 				t.Fatalf("%q announces absence with %q", word, banned)
@@ -267,7 +267,13 @@ func TestOneBlankRowSeparatesTheBlocksOfTheList(t *testing.T) {
 		if at == 0 || h.columnOf(at-1) != h.columnOf(at) {
 			t.Fatalf("a column opened with a blank row:\n%s", homeText(a))
 		}
-		if h.lines[at-1].kind == homeBlank {
+		// THE RAIL'S ONE GROUP GAP IS THE EXCEPTION AND THE ONLY ONE. A second
+		// blank row is allowed where the rail stops being the panels that live
+		// there and starts being the panels that are quiet today
+		// ([markRailGap]) — the grid draws no rules, so air is the only thing it
+		// has to tell two groups apart with. Anywhere else two blanks are still
+		// a bug.
+		if h.lines[at-1].kind == homeBlank && !railGapAt(h, at) {
 			t.Fatalf("two blank rows stand between two blocks at line %d:\n%s", at, homeText(a))
 		}
 		if at+1 >= len(h.lines) || h.columnOf(at+1) != h.columnOf(at) {
@@ -277,6 +283,26 @@ func TestOneBlankRowSeparatesTheBlocksOfTheList(t *testing.T) {
 	if blanks == 0 {
 		t.Fatalf("this column has no block boundary in it at all, so it proves nothing:\n%s", homeText(a))
 	}
+}
+
+// railGapAt reports the second blank of the rail's own group gap: the rail's
+// column, and the next line a cursor may see is the heading of a panel that is
+// in the rail because it is quiet rather than because it is pinned.
+func railGapAt(h *homeView, at int) bool {
+	if h.cols < 2 || h.columnOf(at) != homeRailCol(h.cols) {
+		return false
+	}
+	for next := at + 1; next < len(h.lines); next++ {
+		if h.columnOf(next) != h.columnOf(at) {
+			return false
+		}
+		line := h.lines[next]
+		if line.kind == homeBlank {
+			continue
+		}
+		return line.cell != nil && line.cell.kind == cellHead && !homeSlotOf(line.cell.panel).pinned
+	}
+	return false
 }
 
 // A ROW OF THE LIST IS A DOOR OF THE KIND IT ALWAYS WAS. The card beside it is
@@ -495,7 +521,7 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 		t.Fatal("typing into the box did not put home into a search")
 	}
 	text := homeText(a)
-	for _, gone := range []string{"where you were", "since you left", "more · " + homeFindWord} {
+	for _, gone := range []string{"where you were", "since you left", " " + homeFoldMoreWord} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("a search kept the switcher's %q:\n%s", gone, text)
 		}

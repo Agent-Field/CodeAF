@@ -129,7 +129,7 @@ func (a *app) answerSent(row session.SessionRow, question session.PresenceQuesti
 //
 // ONE SLOT PER QUESTION, NOT PER CONVERSATION. A conversation used to have at
 // most one answerable row on this screen, so its folder was identity enough.
-// `to check` gives one conversation a row per landing it is holding
+// `unread` gives one conversation a row per landing it is holding
 // (homepanel_needs.go), and a single slot meant answering the second landing
 // forgot the first — whose chips came back, and whose key could be pressed
 // again, sending a second answer for a question already answered from here.

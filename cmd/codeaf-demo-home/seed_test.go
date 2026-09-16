@@ -364,11 +364,15 @@ func TestTheDemoHomeRefusesADirectoryThatIsNotItsOwn(t *testing.T) {
 	}
 
 	// An empty directory, and one this program has already built, are the two it
-	// will take.
+	// will take — and what comes back is the directory with its SYMLINKS
+	// FOLLOWED. On a Mac t.TempDir() is under `/var`, which is a symlink to
+	// `/private/var`, and the fixture has to write the spelling a codeaf launched
+	// inside it will resolve for itself or the two disagree about what the
+	// project folder is called ([resolveDemoDir]).
 	empty := t.TempDir()
 	dir, fresh, err := demoDir(empty, false)
-	if err != nil || !fresh || dir != empty {
-		t.Fatalf("an empty directory came back as (%q, fresh=%v, %v)", dir, fresh, err)
+	if err != nil || !fresh || dir != resolveDemoDir(empty) {
+		t.Fatalf("an empty directory came back as (%q, fresh=%v, %v), want %q", dir, fresh, err, resolveDemoDir(empty))
 	}
 	if _, err := seedDemoHome(empty, time.Now()); err != nil {
 		t.Fatal(err)

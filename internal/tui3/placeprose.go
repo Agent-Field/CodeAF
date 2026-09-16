@@ -96,21 +96,19 @@ const (
 	standNotOursWord = "that one does not stand over this conversation"
 )
 
-// The two words the `to check` group of `needs you` is drawn with
-// (homepanel_needs.go), spelled once here because the heading, the fold and the
-// manual all quote them.
+// needsCheckWord is the name of the `unread` group of `needs you`
+// (homepanel_needs.go), spelled once here because the group line, the fold and
+// the manual all quote it.
 //
-// THE CLAUSE IS THE WHOLE EXPLANATION AND IT IS SAID ONCE. The difference
-// between a row that has stopped a conversation and a landing nobody has looked
-// at is not obvious from a title and an age, and it used to be spelled under
-// every landing — `landed unchecked · enter to look`, the same sub-line on nine
-// rows (owner, 2026-09-11). It is seven words on the group's own line now, in
-// the place a heading's clause already lives, and the rows under it are one line
-// each.
-const (
-	needsCheckWord   = "to check"
-	needsCheckClause = "finished, nobody has checked it"
-)
+// THE WORD IS THE WHOLE EXPLANATION. The difference between a row that has
+// stopped a conversation and a landing nobody has looked at used to be spelled
+// under every landing — `landed unchecked · enter to look`, the same sub-line on
+// nine rows (owner, 2026-09-11) — then once, as a clause at the group line's
+// right margin (`finished, nobody has checked it`). The owner cut the clause on
+// 2026-09-15: `unread` says it in one word, the way a mailbox does, and the
+// group line carries neither a clause nor a count. The rows under it are one
+// line each.
+const needsCheckWord = "unread"
 
 // ── THE FIVE-LEVEL SCALE (SCREEN 2a) ────────────────────────────────────────
 //

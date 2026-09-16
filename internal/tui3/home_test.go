@@ -894,6 +894,46 @@ func TestHomeWithNothingTypedHangsFromTheTop(t *testing.T) {
 	}
 }
 
+// THE CARET STANDS IN THE RESTING BOX, on the first cell a character will land
+// on — so the one primary action on the screen (DESIGN §1 law 1) looks like
+// somewhere to type before anything has been typed into it.
+//
+// IT IS THE SAME CARET THE CONVERSATION HAS: [app.View] draws one blinking
+// [tea.CursorBar] wherever the frame puts it, and this frame puts it behind the
+// dim sentence exactly as a placeholder sits behind a caret in any text field.
+// Hiding it here was the old reading — home at rest is read, not typed at — and
+// the owner overturned it on 2026-09-15.
+func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
+	a, _ := homeRestLab(t, 120)
+	a.caret = true
+	width, height := a.size()
+	lines, _, caretX, caretY := a.homeFrame(width, height)
+	if !a.caret {
+		t.Fatal("the resting box has no caret in it")
+	}
+	if caretY < 0 || caretY >= len(lines) {
+		t.Fatalf("caret row %d is outside the frame of %d rows", caretY, len(lines))
+	}
+	row := ansi.Strip(lines[caretY])
+	if !strings.Contains(row, placeRestWord) {
+		t.Fatalf("the caret stands on row %d %q, not on the box", caretY, row)
+	}
+	// AND ON THE SENTENCE'S FIRST LETTER, not on the prompt and not at the
+	// frame's origin — the two places an unplaced caret ends up.
+	if want := 1 + ansi.StringWidth(prompt); caretX != want {
+		t.Fatalf("the caret is at column %d, want %d — the cell after the prompt", caretX, want)
+	}
+	at := strings.Index(row, placeRestWord)
+	if at < 0 {
+		t.Fatalf("the resting sentence is not on the caret's row: %q", row)
+	}
+	// The column is CELLS, and `›` is three bytes of one — so the byte offset is
+	// measured rather than compared.
+	if cells := ansi.StringWidth(row[:at]); cells != caretX {
+		t.Fatalf("column %d is not the first letter of %q (that is at cell %d): %q", caretX, placeRestWord, cells, row)
+	}
+}
+
 // HOME'S RESTING FOOT, WORD FOR WORD — the two rows the design spells and the
 // clause it deliberately leaves out (SCREEN 1a and 2b, FIDELITY.md item 3).
 //
@@ -922,8 +962,21 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	}
 	// The last row is the hint and the row above it is the box, which is the
 	// order pages.go assembles every place's foot in.
-	if got := strings.TrimSpace(ansi.Strip(lines[len(lines)-1])); got != design {
-		t.Fatalf("the resting hint reads %q, want %q", got, design)
+	//
+	// THE RESTING ROW CARRIES ONE CHORD BESIDE THE DESIGN'S FOUR KEYS, and it is
+	// the door §6.6 refuses to leave invisible: the rail is a column with rows in
+	// it (projects is pinned there and is never empty), so `→` on a field row
+	// crosses columns rather than opening the row's verbs, and the foot names the
+	// one key that still reaches them ([app.homeCrossChord]). It was already on
+	// this row on any machine whose right column had rows; what the 2026-09-15
+	// ruling changed is that the right column now always does.
+	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
+	want := strings.Replace(design, " · tab next place", rowSep+homeFolderChordWord+" · tab next place", 1)
+	if rest != want {
+		t.Fatalf("the resting hint reads %q, want %q", rest, want)
+	}
+	if !strings.HasPrefix(rest, "type to search or start something new · ↑↓ pick · enter open") {
+		t.Fatalf("the resting hint no longer opens with the design's own words: %q", rest)
 	}
 	// THE BOX ROW IS THE SAME SENTENCE AS EVERY OTHER PLACE'S (SCREEN 2b). What
 	// home's box ALSO does — filter the list — is said on the hint above, which is
@@ -936,7 +989,7 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	}
 	// AND THE CLAUSE THAT LEFT IS REALLY GONE from the foot — not merely absent
 	// from the constant this test already compared.
-	for _, row := range []string{box, design} {
+	for _, row := range []string{box, rest} {
 		if strings.Contains(row, "esc") {
 			t.Fatalf("the resting foot names esc: %q", row)
 		}
@@ -1270,7 +1323,13 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 		t.Fatalf("the query could not see behind the collapse:\n%s", homeText(a))
 	}
 	a.homeKey(key("ctrl+u"))
-	if !strings.Contains(homeText(a), "more · "+homeFindWord) {
+	// A SHUT FOLD IS `N more` AND NOTHING ELSE ([homeGridPanel.fold]), because
+	// the fold became a toggle rather than a door. So the collapse coming back
+	// is the panel standing on its own fold again, and the fold is read from the
+	// grid rather than from the text: the words alone would also match the
+	// `→ more` a legend can carry. It used to read `N more · type to find one`,
+	// and waiting for that clause waits for a line the grid no longer draws.
+	if fold := a.home.lines[homeFoldDoor(t, a, panelRecent)]; !strings.HasSuffix(fold.cell.title, " "+homeFoldMoreWord) {
 		t.Fatalf("the collapse did not come back on an empty query:\n%s", homeText(a))
 	}
 	if strings.Contains(homeText(a), "Buried Treasure") {
