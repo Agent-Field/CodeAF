@@ -30,6 +30,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -366,11 +367,13 @@ func awaitLanding(agent *session.Agent, place session.Place, iv invocation) (*se
 }
 
 // applyBeltEnv sets the arm's belt switch and answers the restore. Arm A
-// unsets it: the belt as shipped.
+// unsets it: the belt as shipped. The save and the restore are writes, which
+// os owns; the read is env's static door — the one door every owned name
+// reads through.
 func applyBeltEnv(arm Arm) (func(), error) {
 	value := beltEnvFor(arm)
 	if value == "" {
-		oldValue, had := os.LookupEnv(beltEnvVar)
+		oldValue, had := env.Lookup(beltEnvVar)
 		if err := os.Unsetenv(beltEnvVar); err != nil {
 			return nil, err
 		}
@@ -380,7 +383,7 @@ func applyBeltEnv(arm Arm) (func(), error) {
 			}
 		}, nil
 	}
-	oldValue, had := os.LookupEnv(beltEnvVar)
+	oldValue, had := env.Lookup(beltEnvVar)
 	if err := os.Setenv(beltEnvVar, value); err != nil {
 		return nil, err
 	}
@@ -411,9 +414,11 @@ func copyProfileInto(homeDir string) error {
 	return os.WriteFile(filepath.Join(homeDir, "config.json"), raw, 0o600)
 }
 
-// setEnvVar sets one variable and answers the restore.
+// setEnvVar sets one variable and answers the restore. The name arrives at
+// runtime, so the read is env's dynamic door: an owned name keeps its
+// fallback, a foreign one passes through exactly as os records it.
 func setEnvVar(name, value string) (func(), error) {
-	oldValue, had := os.LookupEnv(name)
+	oldValue, had := env.LookupValue(name)
 	if err := os.Setenv(name, value); err != nil {
 		return nil, err
 	}
