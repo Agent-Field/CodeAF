@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -296,6 +298,169 @@ func TestTheTierWordsAndTheClassKeysAreTheSameSet(t *testing.T) {
 	}
 }
 
+// ── THE FAMILY ROW: WHICH POOL THE PRESETS DRAW FROM ─────────────────────
+//
+// models.crew.source is one row, and the chooser is where it moves: a header
+// the ←→ keys walk, above the presets it steers, staged until enter commits it
+// beside the preset as one decision.
+
+// THE FAMILY IS SAID ABOVE THE PRESETS, with the keys that move it named in
+// the hint under the ladder: a header row that takes ←→ while the presets
+// below keep ↑↓, so the two axes stay two axes.
+func TestTheCrewChooserNamesTheTwoFamiliesAboveThePresets(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.width = 240
+	a.slash("/crew")
+
+	rows := a.overlayRows(a.width, a.overlayHeight())
+	text := plain(strings.Join(rows, "\n"))
+	// The two families are one row, third on the sheet, sitting directly above
+	// the first preset after the scope line and seat one.
+	family := plain(rows[2])
+	if !strings.Contains(family, "open models") || !strings.Contains(family, "all models") {
+		t.Fatalf("the two families are not one row above the presets:\n%s", text)
+	}
+	for i, preset := range config.CrewPresets {
+		if row := plain(rows[3+2*i]); !strings.Contains(row, preset+" — "+config.CrewLine(preset)) {
+			t.Errorf("row %d is not %s's:\n%q", 3+2*i, preset, row)
+		}
+	}
+	// THE SHIPPED FAMILY IS THE WORD LIFTED, and it is the only one: the word
+	// the next enter writes is the fact the row answers, and a second lifted
+	// word would be a second answer on a row with one question.
+	if !strings.Contains(rows[2], a.pal.accent("open models")) {
+		t.Fatalf("the open family is not the word in force:\n%q", rows[2])
+	}
+	if strings.Contains(rows[2], a.pal.accent("all models")) {
+		t.Fatalf("both families are lifted at once:\n%q", rows[2])
+	}
+	// AND ←→ MOVES THE WORD while the preset cursor keeps its place and its
+	// mark: the family is a second axis, not a row the ↑↓ list gained.
+	a.crewPickerKey(key("left"))
+	rows = a.overlayRows(a.width, a.overlayHeight())
+	if !strings.Contains(rows[2], a.pal.accent("all models")) {
+		t.Fatalf("← did not walk the family to all:\n%q", rows[2])
+	}
+	if a.crewPick.cursor != 1 {
+		t.Fatalf("walking the family moved the preset cursor to row %d", a.crewPick.cursor)
+	}
+	if !strings.Contains(strings.Join(rows, "\n"), a.pal.accent("› ")) {
+		t.Fatalf("the preset cursor lost its mark to the family row:\n%s", plain(strings.Join(rows, "\n")))
+	}
+}
+
+// THE FAMILY IS READ FROM THE PROFILE, and the chooser opens on the word the
+// person last committed to, not on the default.
+func TestTheCrewChooserOpensOnThePersistedFamily(t *testing.T) {
+	a, dir := sheetApp(t)
+	seed := map[string]any{crewSourceKey: crewSourceAll}
+	encoded, err := json.Marshal(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(dir), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a.slash("/crew")
+	rows := a.overlayRows(a.width, a.overlayHeight())
+	if !strings.Contains(rows[2], a.pal.accent("all models")) {
+		t.Fatalf("the chooser opened on a family other than the persisted one:\n%q", rows[2])
+	}
+	// THE SEGMENT DOES NOT CARRY THE FAMILY, and the frame-disk law is why
+	// (the family section in crew.go says it once): the chooser is the one
+	// surface that reads the row until config lands its memoised reader, so the
+	// segment keeps its exact old shape over an all profile, which is the
+	// non-regression the HUD was promised.
+	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
+		t.Fatalf("the crew segment reads %q over an all profile", got)
+	}
+	// AND ESC LEAVES THE ROW ALONE: walking a family and walking away writes
+	// nothing, for the esc test's own reason.
+	a.crewPickerKey(key("right"))
+	a.crewPickerKey(key("esc"))
+	if got := crewSourceAt(dir); got != crewSourceAll {
+		t.Fatalf("esc wrote the family to %q", got)
+	}
+}
+
+// CHOOSING A FAMILY AND A PRESET WRITES BOTH ROWS, as one decision: the family
+// first, because the resolution that turns family and preset into five ids
+// reads the row, and the preset under it.
+func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
+	a, dir := sheetApp(t)
+	// A NEIGHBOUR THE WRITE MUST NOT TOUCH, because the family row lands
+	// through the same whole-file read-and-replace config's own writer uses.
+	seed := map[string]any{"test.neighbour": true}
+	encoded, err := json.Marshal(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(dir), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a.slash("/crew")
+	a.crewPickerKey(key("left"))
+	a.crewPickerKey(key("enter"))
+
+	if a.crewPick.open {
+		t.Fatal("enter left the chooser open")
+	}
+	if got := crewSourceAt(dir); got != crewSourceAll {
+		t.Fatalf("enter wrote the family %q, want all", got)
+	}
+	if got := config.CrewAt(dir); got != config.CrewBalanced {
+		t.Fatalf("enter applied %q, want balanced", got)
+	}
+	// The neighbour survived both writes, the family's and the preset's.
+	data, err := os.ReadFile(config.BudgetConfigPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(data, &held); err != nil {
+		t.Fatal(err)
+	}
+	if string(held["test.neighbour"]) != "true" {
+		t.Fatalf("the family write lost its neighbour: %s", data)
+	}
+	// AND THE SEGMENT KEEPS ITS SHAPE: the family is the chooser's until the
+	// config half lands the memoised reader the segment can read through
+	// (the family section in crew.go says it once).
+	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
+		t.Fatalf("the crew segment reads %q after the write", got)
+	}
+}
+
+// A ROW NOBODY WROTE READS AS THE SHIPPED FAMILY, and so does a word this build
+// does not know: the chooser offers two options and a stray string off the disk
+// is not a third.
+func TestTheCrewSourceRowDefaultsToOpen(t *testing.T) {
+	dir := t.TempDir()
+	if got := crewSourceAt(dir); got != crewSourceOpen {
+		t.Fatalf("a profile with no row read %q", got)
+	}
+	for _, row := range []string{
+		`{"models.crew.source": true}`,
+		`{"models.crew.source": "everyone"}`,
+		`{`,
+	} {
+		if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(row), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := crewSourceAt(dir); got != crewSourceOpen {
+			t.Fatalf("the row %s read %q, want open", row, got)
+		}
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(`{"models.crew.source": "all"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := crewSourceAt(dir); got != crewSourceAll {
+		t.Fatalf("the all row read %q", got)
+	}
+}
+
 // ── THE CREW IS READABLE WHERE PEOPLE GO TO CHECK ───────────────────────────
 //
 // /crew writes four class models and the session picks them up on its next
@@ -515,10 +680,11 @@ func TestBareCrewReadsTheFiveSeats(t *testing.T) {
 	if a.crewPick.cursor != 1 {
 		t.Fatalf("the cursor opened on row %d, want balanced at 1", a.crewPick.cursor)
 	}
-	// The presets follow, in their own order, after the two reading lines.
+	// The presets follow, in their own order, after the three reading lines: the
+	// scope line, seat one and the family selector.
 	for i, preset := range config.CrewPresets {
-		if row := plain(rows[2+2*i]); !strings.Contains(row, preset+" — "+config.CrewLine(preset)) {
-			t.Errorf("row %d is not %s's:\n%q", 2+2*i, preset, row)
+		if row := plain(rows[3+2*i]); !strings.Contains(row, preset+" — "+config.CrewLine(preset)) {
+			t.Errorf("row %d is not %s's:\n%q", 3+2*i, preset, row)
 		}
 	}
 	// And enter still applies the preset under the cursor, seat one untouched.
