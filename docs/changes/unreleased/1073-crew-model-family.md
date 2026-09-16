@@ -7,6 +7,8 @@ invalidates:
   - "The three crew preset words (frugal, balanced, max) always resolved to open-weight models, and `crewModels` in `internal/config/crew.go` was the whole table of what they meant. There is now a second table `crewAllModels`, and `CrewModelsForSource(source, preset)` picks between them on the new `models.crew.source` setting (`open` default, `all` for closed and frontier). A profile that never answers the row still resolves the open table."
   - "The careful seat was only ever required to be a different vendor from the worker by convention. It is now asserted by a test over both families: within each preset of `crewModels` and `crewAllModels`, the worker and high ids name different providers."
   - "`models.crew` was the only crew setting. The crew row's derivation and `ApplyCrew` now also read `models.crew.source`, so the preset word and the five ids it summarizes can never be drawn from different families; flipping the family reads the crew as `custom` until a preset is re-applied, which is the point of a meaning toggle rather than a write."
+  - "The open table was said to be untouched. It is not: the shipped open table moved onto the roster chosen seat by seat (frugal's mastermind, balanced's careful and mastermind), and the shipped default crew, which is exactly the balanced row, moved with it. Only the default moved; a profile that answered the crew keeps its rows."
+  - "`CrewConfigured` counted only the tier rows, so a person who chose a family and never pinned a tier could still be handed a preset by the first-run setup. It now counts `models.crew.source` too: a chosen family is an answered crew."
 ---
 
 The crew shipped open-weight models for a reason: a default nobody's pricing can
@@ -16,5 +18,6 @@ has decided the frontier models are worth it on a given machine, and wants the s
 three preset words to mean them.
 
 The two families are a table apiece, not a filter over one, because the picks are
-argued seat by seat rather than chosen by a rule about vendors or price. The open
-table is untouched; the all table is new and mirrors its three presets.
+argued seat by seat rather than chosen by a rule about vendors or price. The all
+table is new and mirrors the open one's three presets; the open table moved onto the
+roster this work chose, which is the one edit here that changes a shipped default.
