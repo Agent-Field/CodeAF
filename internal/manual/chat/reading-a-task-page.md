@@ -581,7 +581,7 @@ task's foot spends its cells on the half nothing else on the screen is saying.
 The header is the other half of the answer, and it has always been true: if it says the work
 is running, it is running. The next section lists every word it draws.
 
-## How long did a call take in a task — the 1.4s at the end of a call's row on a task's page, and the dim lines between its calls
+## How long did a call take in a task — the 1.4s at the end of a call's row on a task's page, and the dim lines between its calls: `guardian allowed`, `stuck? nudged`, `Retry 1/3` on my task page
 
 A task's page draws the same facts about work in flight that the conversation
 draws, and until recently it drew none of them: the page was built from a

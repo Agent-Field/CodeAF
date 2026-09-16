@@ -695,19 +695,21 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 ## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
-the words the `/settings` row **"ask before running"** uses for it: `prompt` (it asks you),
-`allow` (it runs things without asking) or `deny` (it refuses). `/status --json` carries the
-same fact under the `approvals` key, and the phone's status sheet has the same row.
+the words `/approvals` takes: `ask` (it asks you), `guardian` (a small model answers the
+plainly safe ones first), `allow` (it runs things without asking) or `deny` (it refuses).
+It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
+setting decided it. `/status --json` carries the same fact under the `approvals` key, and
+the phone's status sheet has the same row.
 
-The status line spells that fact differently. It draws `YOLO` only while the gate is open,
-and nothing at all otherwise, because a permanent badge is a badge nobody reads — the
-absence IS the claim that you will be asked first. A page has room for the whole answer, so
-it names the posture whichever of the three it is.
+The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ refuses`. The
+status line draws `YOLO` only while the gate is open **and** the legend has no cell — the
+welcome box, a task's page — because there a permanent badge is a badge nobody reads. A
+page has room for the whole answer, so it names the posture whichever it is.
 
-The badge and the line always agree, because both read one posture: the one this
-conversation's gate was built from. Change "ask before running" in `/settings` and both
-move together on the keystroke, or neither does and the panel says
-`saved · from the next session`.
+The cell, the badge and the line always agree, because all three read one posture. Walk
+it with `alt+y` and all three move on the keystroke; change "ask before running" in
+`/settings` and they move together for a conversation that follows the rows, or the panel
+says `saved · from the next session`.
 
 The one session with no `approvals` line is a remote one whose engine carried no posture
 over the wire. The gate there is the far machine's, and a line drawn from this laptop's

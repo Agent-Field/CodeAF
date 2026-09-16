@@ -570,8 +570,14 @@ straight away, unless the panel says it lands on the next session."
 
 **Cycling the row changes the gate you are already behind — or says it could
 not.** The rules are rebuilt from this row and the two under it on the same
-keystroke, the `YOLO` badge on the status line moves with them, and `/status`
-says the posture in words under `approvals`. There is no turn to wait for.
+keystroke, the `◇` cell on the legend moves with them (and the `YOLO` badge on
+the status line, where the legend has no cell), and `/status` says the posture
+in words under `approvals`. There is no turn to wait for.
+
+**A conversation that set its own posture keeps it.** `alt+y` and `/approvals`
+give this conversation a posture of its own (the next section); while it has
+one, the rows are what every *other* conversation follows, and `/approvals
+auto` is how this one goes back to following them too.
 
 Where the running gate cannot be reached, the row is still saved and the panel
 says, under the list:
