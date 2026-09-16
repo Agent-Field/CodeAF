@@ -1816,13 +1816,17 @@ func (a *app) hopAway() tea.Cmd {
 		return nil
 	}
 	row := a.hop.rows[a.hop.at]
-	// A ROW WITH NO TAB HAS NOTHING FOR THIS KEY TO CLOSE, and that is now both
-	// halves of the fold: a conversation this terminal never opened, and one
-	// whose tab was dismissed a moment ago and which is drawn below the fold for
-	// exactly that reason ([app.hopTabbed]).
+	// A ROW WITH NO TAB HAS NOTHING FOR THIS KEY TO CLOSE, AND SAYS NOTHING ABOUT
+	// IT. That is both halves of the fold: a conversation this terminal never
+	// opened, and one whose tab was closed a moment ago and which is drawn below
+	// the fold for exactly that reason ([app.hopTabbed]).
+	//
+	// THE REFUSAL USED TO BE A SENTENCE and the owner took it out: `ctrl+w` on a
+	// tab that is already closed is a key doing what the person asked for — there
+	// is no tab on the row — and a line explaining that is the surface answering
+	// a question nobody asked. The state the key is for is already the state it
+	// found. Nothing is said, nothing moves, and the card stays exactly as it is.
 	if !a.hopTabbed(row) {
-		a.hop.say = hopNotOpenWord
-		a.touch()
 		return nil
 	}
 	if row.here {
@@ -1864,10 +1868,11 @@ func (a *app) hopRunning(row hopRow) int {
 	return 0
 }
 
-// The three sentences the card says about closing.
+// The two sentences the card says about closing. There used to be a third,
+// refusing a row with no tab; it is gone, because a `ctrl+w` that finds no tab
+// has already got what it was pressed for ([app.hopAway]).
 const (
-	hopNotOpenWord = "that one is not open here — enter opens it"
-	hopClosedWord  = "closed"
+	hopClosedWord = "closed"
 	// hopAwayWord is what the card says after a tab has been put away, and it
 	// says what actually happened rather than "closed": the conversation is still
 	// running and still on this list, and a word claiming otherwise would be the

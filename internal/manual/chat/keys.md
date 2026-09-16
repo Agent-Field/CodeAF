@@ -1760,7 +1760,7 @@ the tab you are in. See *Conversation tabs* and
 | `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Close the tab of the conversation under the cursor. A row that is not the conversation you are in closes at once with no question, says `tab closed · <the conversation's name>`, and leaves the list for the fold — so a second press closes the next tab. Only the conversation you are in raises `keep running` / `stop work` / `cancel` when it is working. A row below the fold has no tab to close and answers `that one is not open here — enter opens it`. See *Closing a tab* on the screen page |
+| `ctrl+w` | Close the tab of the conversation under the cursor. A row that is not the conversation you are in closes at once with no question, says `tab closed · <the conversation's name>`, and leaves the list for the fold — so a second press closes the next tab. Only the conversation you are in raises `keep running` / `stop work` / `cancel` when it is working. A row below the fold has no tab to close, so nothing happens and nothing is said. See *Closing a tab* on the screen page |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
@@ -1944,11 +1944,11 @@ recently used remaining tab, or Home when none remain. This is the same action a
 conversation is working. The work keeps running over every door; selecting another tab
 ends nothing. Closing the final tab opens Home, leaving that conversation behind it.
 
-**`ctrl+w` on a row below the fold does nothing** and says
-`that one is not open here — enter opens it`. There is no tab down there to close —
-whether this terminal never opened that conversation, or you closed its tab a moment ago
-and this is where it went. Nothing is dismissed and nothing joins the
-`ctrl+shift+t` stack.
+**`ctrl+w` on a row below the fold does nothing, and says nothing.** There is no tab down
+there to close — whether this terminal never opened that conversation, or you closed its
+tab a moment ago and this is where it went — so the key has already got what it was pressed
+for. Nothing is dismissed, nothing joins the `ctrl+shift+t` stack, and the card
+stays exactly as it was.
 
 **What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
 the conversation in front — leaving codeaf when it was the last one this terminal held.

@@ -1171,10 +1171,11 @@ func TestCtrlWOnTheCardTakesTheRowOffTheCardAtOnce(t *testing.T) {
 	}
 }
 
-// TestCtrlWBelowTheFoldSaysThereIsNoTabToClose is the other half: a row with no
-// tab — one this terminal never opened, or one whose tab was closed a moment ago
-// — answers in words rather than closing something that is not there.
-func TestCtrlWBelowTheFoldSaysThereIsNoTabToClose(t *testing.T) {
+// TestCtrlWBelowTheFoldClosesNothingAndSaysNothing is the other half: a row with
+// no tab — one this terminal never opened, or one whose tab was closed a moment
+// ago — is a key press that has already got what it asked for, so nothing closes
+// and nothing is said about it.
+func TestCtrlWBelowTheFoldClosesNothingAndSaysNothing(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.hopOpen()
 	shut := a.convKey(a.hop.rows[0].file)
@@ -1192,9 +1193,15 @@ func TestCtrlWBelowTheFoldSaysThereIsNoTabToClose(t *testing.T) {
 		t.Fatalf("the closed conversation is not behind the fold: %+v", a.hop.rows)
 	}
 	a.hop.at = at
+	rows := append([]hopRow(nil), a.hop.rows...)
 	drive(t, a, key(hopAwayKey))
-	if a.hop.say != hopNotOpenWord {
+	// IT SAYS NOTHING AT ALL. The tab this key exists to close is already closed,
+	// so there is nothing for the card to report and no sentence to read.
+	if a.hop.say != "" {
 		t.Fatalf("ctrl+w on a row with no tab said %q", a.hop.say)
+	}
+	if len(a.hop.rows) != len(rows) {
+		t.Fatalf("ctrl+w on a row with no tab re-read the card: %d rows, was %d", len(a.hop.rows), len(rows))
 	}
 	if a.behind[shut] == nil {
 		t.Fatal("a second ctrl+w took the conversation out of the keeper")
@@ -1375,7 +1382,7 @@ func TestCtrlWOnAConversationThisWindowNeverOpenedClosesNothing(t *testing.T) {
 
 	a.hop.at = at
 	drive(t, a, key(hopAwayKey))
-	if a.hop.say != hopNotOpenWord {
+	if a.hop.say != "" {
 		t.Fatalf("ctrl+w on a conversation this window never opened said %q", a.hop.say)
 	}
 	// AND IT LEFT NO MARK BEHIND. A dismissal recorded against a conversation

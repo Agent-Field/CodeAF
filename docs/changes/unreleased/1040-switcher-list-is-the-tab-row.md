@@ -8,6 +8,7 @@ invalidates:
   - "`app.hopOpenRows` was a walk of the rows counting `open`. It is now the `tabs` figure `app.hopReading` returned, kept on `hopCard` — the rows gain the rest of the machine when the fold opens, and a walk taken then said the window had twelve conversations open. The head's `3 of 12` is how many TABS are on the row, of how many conversations the machine has."
   - "A second `ctrl+w` on the card used to re-close the row already closed and merely re-say its receipt. Each press now closes the next row, because the closed one has left the list — the same thing the key does on the strip. `TestDismissingARunningTabNeverStopsItsWork` asserts two presses closing two tabs."
   - "`internal/manual/chat/keys.md` said a row below the fold means `this terminal is not holding it`. That is no longer the only case: a conversation whose tab you closed is held, running, and down there. Both that page and `screen.md` now say so."
+  - "`hopNotOpenWord` — `that one is not open here — enter opens it` — is DELETED, and `ctrl+w` on a row with no tab now does nothing and says nothing. The key exists to close a tab; a row below the fold has none, so the state it was pressed for is the state it found, and a sentence explaining that is the surface answering a question nobody asked. Ruled by the owner. Anything quoting that string is stale."
 ---
 
 Reported by the owner: the tab disappears and the entry does not. These are two
