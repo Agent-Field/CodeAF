@@ -178,17 +178,26 @@ func crewTableFor(source string) map[string]map[string]string {
 	return crewModels
 }
 
-// normalCrewSource folds a source word to one of the two this build knows. It is
-// the ONE place the fold is spelled: [CrewSourceAt], [crewTableFor] and
-// [CrewLineFor] all call it, so a third family added to [CrewSources] is
-// accepted everywhere at once, and a blank, unknown or retired word reads as the
-// default family.
-func normalCrewSource(source string) string {
+// knownCrewSource folds a word and says whether it is one of the families this
+// build knows. It is the ONE place the fold is spelled: [normalCrewSource],
+// [ApplyCrewUnder] and [SetCrewSource] all go through it, so a family added to
+// [CrewSources] is accepted everywhere at once. A reader folds a word it does
+// not know to the default family; a writer refuses it.
+func knownCrewSource(source string) (string, bool) {
 	source = strings.ToLower(strings.TrimSpace(source))
 	for _, known := range CrewSources {
 		if source == known {
-			return source
+			return known, true
 		}
+	}
+	return "", false
+}
+
+// normalCrewSource folds a source word to one of the two this build knows,
+// reading a word it does not know as the default family.
+func normalCrewSource(source string) string {
+	if known, ok := knownCrewSource(source); ok {
+		return known
 	}
 	return DefaultCrewSource
 }
@@ -325,7 +334,7 @@ func ApplyCrew(profileDir, preset string) error {
 // ApplyCrewUnder writes a FAMILY AND A PRESET AS ONE DECISION, IN ONE FILE
 // WRITE. The family row and the five tier rows are one state, so writing them
 // apart leaves a window in which a reader sees the family set to `all` while the
-// rows still hold open ids — the half-written crew [ApplyCrew] forbids, read as
+// rows still hold open ids, which is the half-written crew [ApplyCrew] forbids, read as
 // `custom` about a state nobody chose. One call is also what makes the chooser's
 // promise real: it writes the family first because the resolution reads it, and
 // here there is no "first" for a reader to catch.
@@ -334,14 +343,8 @@ func ApplyCrew(profileDir, preset string) error {
 // family does not pin a setting the person never answered: a profile that never
 // touched /crew stays free to follow a later default.
 func ApplyCrewUnder(profileDir, source, preset string) error {
-	source = strings.ToLower(strings.TrimSpace(source))
-	known := ""
-	for _, word := range CrewSources {
-		if source == word {
-			known = word
-		}
-	}
-	if known == "" {
+	known, ok := knownCrewSource(source)
+	if !ok {
 		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
 	}
 	preset = strings.ToLower(strings.TrimSpace(preset))
@@ -365,23 +368,16 @@ func writeCrew(profileDir, raw string) error {
 	return ApplyCrew(profileDir, raw)
 }
 
-// SetCrewSource writes the family row alone, in one file write, for the chooser
-// that promises the family and the preset as ONE decision: it lands this row
-// first and then applies the preset, so the resolution that turns the two into
-// five ids reads the family this same enter chose and not yesterday's. The word
-// is refused the way every choice row refuses one, so a typo cannot land a
-// family nothing reads.
+// SetCrewSource writes the family row ALONE, in one file write. The settings
+// row is its caller; the chooser commits the family and the preset together
+// through [ApplyCrewUnder]. The word is refused the way every choice row refuses
+// one, so a typo cannot land a family nothing reads.
 func SetCrewSource(profileDir, source string) error {
-	source = strings.ToLower(strings.TrimSpace(source))
-	// The accepted set is [CrewSources], spelled once: a family added to that slice
-	// is accepted here and by the settings row's choice widget at the same time,
-	// so the command and the panel can never disagree about what is a family.
-	for _, known := range CrewSources {
-		if source == known {
-			return writeProfileValue(profileDir, KeyCrewSource, source)
-		}
+	known, ok := knownCrewSource(source)
+	if !ok {
+		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
 	}
-	return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
+	return writeProfileValue(profileDir, KeyCrewSource, known)
 }
 
 // CrewSummary is the one line a crew change confirms itself with:

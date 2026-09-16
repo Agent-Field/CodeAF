@@ -390,9 +390,9 @@ func TestTheCrewChooserOpensOnThePersistedFamily(t *testing.T) {
 	}
 }
 
-// CHOOSING A FAMILY AND A PRESET WRITES BOTH ROWS, as one decision: the family
-// first, because the resolution that turns family and preset into five ids
-// reads the row, and the preset under it.
+// CHOOSING A FAMILY AND A PRESET WRITES BOTH ROWS, as one decision and one file
+// write: the family and the five ids land together through
+// [config.ApplyCrewUnder].
 func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
 	a, dir := sheetApp(t)
 	// A NEIGHBOUR THE WRITE MUST NOT TOUCH, because the family row lands
@@ -419,7 +419,7 @@ func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
 	if got := config.CrewAt(dir); got != config.CrewBalanced {
 		t.Fatalf("enter applied %q, want balanced", got)
 	}
-	// The neighbour survived both writes, the family's and the preset's.
+	// The neighbour survived the one write.
 	data, err := os.ReadFile(config.BudgetConfigPath(dir))
 	if err != nil {
 		t.Fatal(err)

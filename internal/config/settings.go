@@ -2268,11 +2268,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyCrew, Category: CategoryModels, Kind: SettingChoice,
 			Label: "crew", Choices: CrewPresets,
-			Hint: "the five models codeaf works with, chosen as one word. `frugal` is deepseek " +
-				"working and glm-5.3 thinking, `balanced` is glm-5.3-flash working with kimi-k3 " +
-				"thinking and checking, `max` is glm-5.3 working with kimi-k3 thinking and " +
-				"checking. Which shelf those words draw from is the `model family` row below. " +
-				"Change one of the five rows below and this reads `custom`.",
+			Hint: "the five models codeaf works with, chosen as one word. Each preset's own " +
+				"line is in the crew row at the top, and which shelf those words draw from " +
+				"is the `model family` row below. Change one of the five rows below and this " +
+				"reads `custom`.",
 			read:  func() string { return CrewAt(dir) },
 			write: func(raw string) error { return writeCrew(dir, raw) },
 		},
