@@ -1637,7 +1637,7 @@ number rather than one per kind for a reason worth writing down, because the
 obvious change was made and taken back out (#846). A person's keystroke on a
 question is a call too — internal/tui3's `answerQuestion` asks its door straight
 from Update rather than from a command — so a longer window for an act would be
-a longer time the terminal can sit without drawing. Measured on the Spark:
+a longer time the terminal can sit without drawing. Measured on the bench host:
 eighteen copies of the questions e2e, six at a time, and with a thirty-second
 act window two of them took 53 seconds where every other copy took 22, both
 losing the receipt because nothing repainted. Twelve copies of the parent commit

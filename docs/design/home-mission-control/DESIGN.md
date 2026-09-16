@@ -240,7 +240,7 @@ lines would read as the screen running out of room (owner, 2026-09-10).
 ## 5. Lanes
 
 Worktrees off `origin/dev` at `~/af-<name>`, pull requests against `dev`, full
-suites on the Spark, Opus for the mechanical lanes, one change entry per PR.
+suites on the bench host, Opus for the mechanical lanes, one change entry per PR.
 
 | Lane | Owns | Depends on | Size |
 |---|---|---|---|
@@ -273,10 +273,10 @@ useful.
 
 ## 7. Where the work runs
 
-Lanes E, G and K run as Claude Code instances on the Spark under fleet
+Lanes E, G and K run as Claude Code instances on the bench host under fleet
 (`af-home-e`, `af-home-g`, `af-home-k`; worktrees `~/af-home-<lane>` on the
-Spark, branches `home/mc-<lane>`, briefs in `spark:~/af-home-briefs/`, logs
-`spark:~/af-home-<lane>.log`, reports `spark:~/af-home-<lane>.report.md`).
+bench host, branches `home/mc-<lane>`, briefs in `benchhost:~/af-home-briefs/`, logs
+`benchhost:~/af-home-<lane>.log`, reports `benchhost:~/af-home-<lane>.report.md`).
 The integrator merges each into `home/mission-control`, builds `bin/codeaf`
 for the owner after every viewable step, and runs the full suites once, at
-the end, on the Spark.
+the end, on the bench host.

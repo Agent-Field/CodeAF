@@ -20,8 +20,8 @@
 # rather than two prompts.
 #
 # IT RUNS ON THE BENCH HOST. Layer B alone is seventeen minutes of a real binary in a
-# real terminal against a real model, and the owner's standing order is that no
-# full suite runs on the laptop. Nothing here refuses to run elsewhere — a
+# real terminal against a real model, and the full suite is not meant to run on a
+# work machine. Nothing here refuses to run elsewhere — a
 # refusal keyed off a hostname would be a lie on the next machine — but every
 # recipe in docs/design/prompt-diet/BENCH.md is spelled for `ssh benchhost`.
 #
