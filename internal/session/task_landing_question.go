@@ -122,6 +122,16 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 	if strings.TrimSpace(notice.Settling) != "" && !a.landingDeciderChanged(notice) {
 		return
 	}
+	// AND THE REDRAW TAKES THE STANDING CARD OFF THE BOOK FIRST, because
+	// [Agent.landingQuestion] returns banked words untouched ([Agent.said]):
+	// a holder change over a still-banked question would re-raise the OLD
+	// card — the standing shape, the standing policy — and change nothing. The
+	// take-down is the answer's own claim ([Agent.claimQuestion]), taken here by
+	// the one road that redraws without an answer, so the words minted below
+	// carry the new holder.
+	if strings.TrimSpace(notice.Settling) != "" && standing != "" {
+		_, _ = a.claimQuestion(standing, strconv.FormatUint(notice.ID, 10), false)
+	}
 	q := a.landingQuestion(PendingDecision{Notice: notice})
 	// AND A LANDING THAT CHANGED SHAPE TAKES THE OLD SHAPE BACK FIRST. The two
 	// lanes are two tokens — `landing:7` and `conflict:7` — so a node that lands

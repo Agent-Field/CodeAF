@@ -3213,6 +3213,14 @@ func (n *TaskNode) claimSettle(what string) error {
 	if n.settling != "" {
 		return fmt.Errorf("task %d is already being resolved — %s is in flight — so wait for that to land rather than putting a second answer on top of it", n.id, n.settling)
 	}
+	// THE OTHER CLAIM'S DOOR IS THE SAME DOOR. A merge round and a settle
+	// are both work in the node's own working copy ([TaskNode.claimResolving]),
+	// so neither may start over the other's claim — two doors refusing on their
+	// own field alone let a settle start under a round and then un-guard the
+	// round's door when it landed first.
+	if n.resolving {
+		return fmt.Errorf("task %d is already being resolved — a merge round is in flight — so wait for that to land rather than putting a second answer on top of it", n.id)
+	}
 	n.settling = what
 	return nil
 }

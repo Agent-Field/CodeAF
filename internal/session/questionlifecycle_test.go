@@ -246,3 +246,98 @@ func toolCallNamed(id, name string) ai.ToolCall {
 	call.Function.Name = name
 	return call
 }
+
+// THE LANDING THAT SOMEBODY ANSWERED CARRIES THE ANSWER'S FATE WHEN IT IS
+// RAISED AGAIN (#1077): the twelfth identical card read as though the first
+// eleven were ignored, so a re-raise over a recorded answer leads with what
+// became of it — `accepted 18:20 · nobody could check it`.
+func TestAReRaisedLandingCarriesItsAnswerFate(t *testing.T) {
+	agent, _ := questionSession(t, "landing-fate", nil)
+	lane, stop := agent.WatchQuestions()
+	defer stop()
+
+	notice := TaskNotice{ID: 1, Title: "write the sheet", State: TaskUnverified}
+	agent.publishLandingQuestion(notice)
+	first := <-lane
+	if first.Kind != EventQuestion || first.Question == nil || first.Question.Kind != QuestionLanding {
+		t.Fatalf("the landing did not raise on the landing lane: %+v", first)
+	}
+	if strings.Contains(first.Question.Reason, "accepted") {
+		t.Fatalf("a raise nobody answered already carries a stamp: %q", first.Question.Reason)
+	}
+
+	// The answer lands on the record the way the lane writes it, and the
+	// answer's own claim takes the bank down.
+	q := agent.landingQuestion(PendingDecision{Notice: notice})
+	agent.recordDecision(decisionRecordOf(q, Answer{
+		At:        time.Date(2026, time.September, 16, 18, 20, 0, 0, time.Local),
+		Kind:      QuestionLanding,
+		ID:        1,
+		Key:       LandingYesKey,
+		DecidedBy: DecidedByPerson,
+	}))
+	agent.claimQuestion(QuestionLanding, "1", false)
+
+	agent.publishLandingQuestion(notice)
+	again := <-lane
+	if again.Kind != EventQuestion || again.Question == nil {
+		t.Fatalf("the re-raise did not go out: %+v", again)
+	}
+	if !strings.HasPrefix(again.Question.Reason, "accepted 18:20") {
+		t.Fatalf("the re-raised card does not lead with the answer's fate: %q", again.Question.Reason)
+	}
+}
+
+// AN IN-FLIGHT SETTLE HOLDS THE QUESTION DOWN, and the settle's own terminal
+// notice still raises (#1077): the card that came back within seconds was the
+// answer's own work asking again.
+func TestAnInFlightSettleHoldsTheQuestionDown(t *testing.T) {
+	agent := &Agent{}
+	lane, stop := agent.WatchQuestions()
+	defer stop()
+
+	agent.publishLandingQuestion(TaskNotice{
+		ID: 1, Title: "write the sheet", State: TaskUnverified, Settling: "your accept",
+	})
+	select {
+	case ev := <-lane:
+		t.Fatalf("an in-flight settle raised %v", ev.Kind)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if kind := agent.landingAsked(1); kind != "" {
+		t.Fatalf("a held-down publish still banked a %q question", kind)
+	}
+
+	// AND THE TERMINAL NOTICE RAISES: resettle hands the claim back inside its
+	// locked write, before the notice is built, so the settle's own last word
+	// is not blanketed by the hold-down.
+	agent.publishLandingQuestion(TaskNotice{ID: 1, Title: "write the sheet", State: TaskUnverified})
+	ev := <-lane
+	if ev.Kind != EventQuestion || ev.Question == nil {
+		t.Fatalf("the terminal notice did not raise: %v", ev.Kind)
+	}
+}
+
+// A DECIDER CHANGE DURING A FLIGHT REDRAWS THE CARD (#1077's review round 1):
+// `let codeaf decide` pressed mid-re-audit must reach every window at once, and
+// the redraw must mint the NEW shape — the standing bank would return the old
+// card unchanged.
+func TestADeciderChangeDuringAFlightRedrawsTheCard(t *testing.T) {
+	agent := &Agent{}
+	lane, stop := agent.WatchQuestions()
+	defer stop()
+
+	agent.publishLandingQuestion(TaskNotice{ID: 1, Title: "write the sheet", State: TaskUnverified})
+	first := <-lane
+	agent.publishLandingQuestion(TaskNotice{
+		ID: 1, Title: "write the sheet", State: TaskUnverified,
+		Settling: "your accept", Decider: TaskAskOwnerModel,
+	})
+	redrawn := <-lane
+	if redrawn.Kind != EventQuestion || redrawn.Question == nil {
+		t.Fatalf("a changed holder mid-flight raised %v", redrawn.Kind)
+	}
+	if redrawn.Question.Policy == first.Question.Policy {
+		t.Fatalf("the redraw banked the standing card: policy %q did not move", redrawn.Question.Policy)
+	}
+}

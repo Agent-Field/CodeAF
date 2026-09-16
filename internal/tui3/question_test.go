@@ -1702,3 +1702,48 @@ func TestEnterOnTheEnginesOwnPermissionDeniesTheCall(t *testing.T) {
 			lab.answer, ask.Options[safe].Key)
 	}
 }
+
+// THE RE-RAISED LANDING DRAWS WHAT BECAME OF THE ANSWER (#1077): the subject's
+// own card already says the ask's reason, so an unchanged reason stays
+// suppressed beside it — but the answer's fate is a sentence the card cannot
+// have, and suppressing it drew the twelfth card byte-identical to the first.
+func TestAReRaisedLandingDrawsItsAnswerFate(t *testing.T) {
+	card := func() []entry {
+		return []entry{
+			{kind: entryTask, card: &taskCard{id: 7}},
+			{kind: entryDone, done: &taskDone{id: 7, status: session.TaskStatus{
+				Ask: session.TaskAsk{Reason: "nobody could check it"},
+			}}},
+		}
+	}
+
+	stamped := newQuestionLab(t)
+	stamped.a.entries = append(stamped.a.entries, card()...)
+	stamped.raise(session.Question{
+		ID: 7, Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 7, Name: "write the sheet"},
+		Head:    "write the sheet",
+		Reason: "accepted 18:20 · nobody could check it",
+		Options: []session.AnswerOption{
+			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
+		},
+	})
+	if out := stamped.plain(); !strings.Contains(out, "accepted 18:20") {
+		t.Fatalf("the re-raised card does not say what became of the answer:\n%s", out)
+	}
+
+	unchanged := newQuestionLab(t)
+	unchanged.a.entries = append(unchanged.a.entries, card()...)
+	unchanged.raise(session.Question{
+		ID: 7, Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 7, Name: "write the sheet"},
+		Head:    "write the sheet",
+		Reason: "nobody could check it",
+		Options: []session.AnswerOption{
+			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
+		},
+	})
+	if out := unchanged.plain(); strings.Contains(out, "nobody could check it") {
+		t.Fatalf("the unchanged reason is drawn beside the card that already says it:\n%s", out)
+	}
+}
