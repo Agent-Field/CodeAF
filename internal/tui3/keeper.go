@@ -1046,8 +1046,8 @@ func leaveOffFrame(agent Agent) {
 }
 
 // workOutlivesExit reports whether this conversation's work would keep going
-// after the window closed. It is what the quit warning is written from
-// (quitarm.go), so the sentence and the act cannot disagree.
+// after the window closed. It is what the switcher's rows and the close-a-tab
+// card are written from, so the sentence and the act cannot disagree.
 func workOutlivesExit(agent Agent) bool {
 	hosted, ok := agent.(detachable)
 	return ok && hosted.WorkOutlivesExit()
@@ -1228,7 +1228,7 @@ func (a *app) sweepKept() {
 		}
 		// Both read while the conversation is still held, and said after it is
 		// gone: the name comes off its own agent, and whether its work outlives
-		// this window is what picks the sentence (quitarm.go's own question).
+		// this window is what picks the sentence ([workOutlivesExit]).
 		name, running := hopTitle(held.conv.Agent, held.side), workOutlivesExit(held.conv.Agent)
 		a.letGoKept(key, held, leaveOffFrame)
 		said := keptSweptWord

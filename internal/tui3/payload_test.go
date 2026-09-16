@@ -215,16 +215,20 @@ func TestTheLegendsChordReadsAboveItsExplanation(t *testing.T) {
 }
 
 // THE GRAMMAR NEVER LIFTS AN ARTICLE. The one-letter key and English's own
-// one-letter word are the same character, and the quit warning — the line a
-// person reads in a second and a half — is where they collide.
+// one-letter word are the same character, and a segment that is a SENTENCE
+// rather than a key and its verb is where they collide — four words, one past
+// [chordSegmentWords]. The line is spelled here rather than quoted from a live
+// hint because no hint on the surface has this shape today; the rule is what
+// the next one to grow an article will meet.
 func TestTheHintGrammarNeverLiftsAnArticle(t *testing.T) {
-	got := chordSpans("ctrl+c again to quit · a task will stop")
+	said := "esc no · a task will stop"
+	got := chordSpans(said)
 	if len(got) != 1 {
-		t.Fatalf("the quit warning wanted one chord, got %d: %v", len(got), got)
+		t.Fatalf("%q wanted one chord, got %d: %v", said, len(got), got)
 	}
-	value := []rune("ctrl+c again to quit · a task will stop")
-	if lifted := string(value[got[0].from:got[0].to]); lifted != "ctrl+c" {
-		t.Fatalf("the quit warning lifted %q rather than its key", lifted)
+	value := []rune(said)
+	if lifted := string(value[got[0].from:got[0].to]); lifted != "esc" {
+		t.Fatalf("%q lifted %q rather than its key", said, lifted)
 	}
 }
 
@@ -239,7 +243,6 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 	}
 	cases := []hintGrammarCase{
 		{"drag to select · any key ends it", nil},
-		{"ctrl+c again to quit", []string{"ctrl+c"}},
 		{"esc interrupt", []string{"esc"}},
 		{pickerKeysSwitch, []string{"enter", "esc"}},
 		// The picker's slot follows its cursor (palette.go's [picker.keysHint]).

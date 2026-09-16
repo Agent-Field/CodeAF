@@ -3019,8 +3019,8 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 | `ctrl+.` | close the page |
 
 `ctrl+c` still works and still means what it always means: mid-turn it interrupts,
-and at rest it takes two presses within 1.5 seconds to quit — the page stays up while
-the door is armed, and the armed line names any task that would stop.
+and at rest it quits codeaf on the press that lands — with this page still up, because
+leaving is never modal and nothing on the way out asks about the tasks on it.
 
 **What `enter` opens depends on the row**, and the last line of the page says which you are
 going to get:

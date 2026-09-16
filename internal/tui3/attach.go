@@ -892,9 +892,6 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	if a.stream == nil {
 		a.turn++
 	}
-	// And a turn starting disarms the door here too, for [app.submitting]'s
-	// reason: from this moment ctrl+c is the interrupt again (quitarm.go).
-	a.disarmQuit()
 	a.sel = -1
 	// The person's line goes in WITHOUT cutting a reply that is still streaming
 	// in two — see [feed.said], which is the whole of this wave's render-order fix

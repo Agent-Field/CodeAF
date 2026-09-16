@@ -605,7 +605,7 @@ func (a *app) mainDraftText() string {
 //
 // MAIN IS DELIBERATELY NOT IN IT. The conversation's own sentence travels as
 // [aside.draft], which is that string plus everything still parked behind a turn
-// (quitarm.go's [app.leavingDraft]), and having it in two places on one aside
+// (leaving.go's [app.leavingDraft]), and having it in two places on one aside
 // would be two answers to what the person was typing.
 func (a *app) composersAside() map[recipient]composerState {
 	out := map[recipient]composerState{}

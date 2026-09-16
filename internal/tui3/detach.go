@@ -51,7 +51,7 @@ type aside struct {
 	// what /new and /resume do — they say "2 waiting messages dropped" because
 	// the turn those messages were queued behind is about to stop existing. A
 	// switch is not a close: the turn is still running and the words are still
-	// the person's, so they go back where they can see them (quitarm.go's
+	// the person's, so they go back where they can see them (leaving.go's
 	// [app.leavingDraft] assembles exactly this string for the same reason).
 	draft string
 	// draftCursor is optional for older sidecars assembled without a caret.
@@ -254,7 +254,7 @@ func (a *app) detachConversation() *aside {
 	main := a.mainComposer()
 	side := &aside{
 		// The box and the parked messages, in the order they would have been
-		// sent (quitarm.go's [app.leavingDraft] is the same assembly the door
+		// sent (leaving.go's [app.leavingDraft] is the same assembly the door
 		// out of the program makes, and for the same reason).
 		//
 		// THE THREE ARE READ THROUGH MAIN AND NOT OFF THE SCREEN (recipient.go).
@@ -330,9 +330,6 @@ func (a *app) clearConversation() {
 	a.echoAt = -1
 	a.dropAsks()
 	a.follows = nil
-	// A warm ctrl+c names what a second press would stop IN THIS CONVERSATION,
-	// and after this line that is a different one (quitarm.go).
-	a.disarmQuit()
 	// The offers and the sign-ins belong to the conversation that raised them
 	// (connect.go), and a browser standing open on one is a browser nobody is
 	// coming back to.

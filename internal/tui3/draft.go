@@ -227,7 +227,7 @@ func (a *app) keepMainDraft() {
 // person is typing.
 //
 // THE WORDS ARE THE CALLER'S, because they are not always the box: the door out
-// of the program folds every parked message in under the draft (quitarm.go's
+// of the program folds every parked message in under the draft (leaving.go's
 // [app.leavingDraft]), and submit passes the empty string.
 //
 // A FAILURE IS SAID OUT LOUD. This is the write a person's only copy depends on.

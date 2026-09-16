@@ -176,7 +176,7 @@ func TestASurfaceNoteNeverReadsAsTheModelsNextBullet(t *testing.T) {
 		entry{kind: entryAssistant, settled: true, text: "Try these:\n\n- one\n- two\n- three"},
 	)
 	a.note("3 standing orders here — /standing")
-	a.note("esc interrupts · ctrl+c twice quits")
+	a.note("esc interrupts · ctrl+c quits")
 	a.touch()
 
 	var drawn []string

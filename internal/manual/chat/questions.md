@@ -111,7 +111,7 @@ cheapest rung on the ladder the most expensive. It goes up, the work carries on,
 and an answer — `put it back` — reaches the model as a message whenever you give
 it. No window says this conversation is waiting on you because of one.
 
-## The record — where your answers are saved
+## The record — where your answers are saved, and why it does not ask the same thing twice
 
 Every answer you give is written down, in the conversation's own folder, in a
 file called `decisions.jsonl`. One line each: what was asked, what you

@@ -338,10 +338,38 @@ func (c *tabCloseCard) question() string {
 	return said
 }
 
-// tabCloseWork is what is running in this conversation, counted the way the quit
-// warning counts it so the two cannot disagree (quitarm.go).
-func (a *app) tabCloseWork(tab chatTab, here bool) quitWorkCount {
-	count := quitWorkCount{}
+// workCount is running work in one conversation: its nodes, and the background
+// jobs this surface can see for it.
+type workCount struct{ tasks, jobs int }
+
+// workCountWord spells one of those counts — "a task", "2 tasks and a job" —
+// and "" when there is nothing on it, which is the emptiness law said about a
+// clause.
+func workCountWord(count workCount) string {
+	var parts []string
+	if count.tasks > 0 {
+		parts = append(parts, workUnitWord(count.tasks, "task"))
+	}
+	if count.jobs > 0 {
+		parts = append(parts, workUnitWord(count.jobs, "job"))
+	}
+	return strings.Join(parts, " and ")
+}
+
+// workUnitWord spells one count the way a person would say it out loud: "a
+// task", "2 tasks". One is an ARTICLE rather than the digit, because "1 task
+// running" is a sentence written by a machine and this one is a warning
+// somebody reads on the way out of a conversation.
+func workUnitWord(n int, unit string) string {
+	if n == 1 {
+		return "a " + unit
+	}
+	return itoa(n) + " " + plural(unit, n)
+}
+
+// tabCloseWork is what is running in this conversation.
+func (a *app) tabCloseWork(tab chatTab, here bool) workCount {
+	count := workCount{}
 	if here {
 		for _, id := range a.taskOrder {
 			if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
@@ -360,8 +388,8 @@ func (a *app) tabCloseWork(tab chatTab, here bool) quitWorkCount {
 
 // tabCloseClauses spells that count for the card's first line, or "" when there
 // is nothing to spell — the emptiness law, said about a clause.
-func tabCloseClauses(count quitWorkCount) string {
-	if word := quitWorkWord(count); word != "" {
+func tabCloseClauses(count workCount) string {
+	if word := workCountWord(count); word != "" {
 		return word + " running"
 	}
 	return ""
@@ -400,7 +428,7 @@ func (a *app) tabCloseKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if msg.String() == "ctrl+c" {
-		// Leaving is never modal (quitarm.go), and the card goes on its way past.
+		// Leaving is never modal (leaving.go), and the card goes on its way past.
 		a.dropTabClose()
 		return nil, false
 	}

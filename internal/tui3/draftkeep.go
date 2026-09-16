@@ -882,7 +882,7 @@ func (a *app) missingPaste(line string) string {
 //
 // THE CONVERSATION'S WORDS ARE PASSED IN because they are not always the box:
 // the door out of the program writes the draft with every parked message folded
-// in under it (quitarm.go's [app.leavingDraft]), and submit passes the empty
+// in under it (leaving.go's [app.leavingDraft]), and submit passes the empty
 // string because the sentence has gone to the model.
 func (a *app) draftKeepBuild(text string) draftKeep {
 	a.readKeptElsewhere()

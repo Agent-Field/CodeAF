@@ -22,7 +22,7 @@ This is the chat flow in a real terminal:
  codeaf                                                                 $0.0010 / $500 · sun 7:32pm
    Home      [key lookup] ×   +
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-    · esc interrupts · ctrl+c twice quits · ? for help
+    · esc interrupts · ctrl+c quits · ? for help
 
   › read ./apikey.go and tell me in two lines where codeaf looks for an API key
 
@@ -142,7 +142,7 @@ codeaf resume
 
 `enter` sends a message or steers a running answer. `ctrl+enter` makes a standing
 order. `esc` interrupts or, pressed twice at rest, opens rewind. `ctrl+c` interrupts
-mid-turn; twice within 1.5 seconds while idle quits.
+mid-turn and quits at rest, on the press that lands.
 
 <details>
 <summary>Chat launch flags and terminal keys</summary>
