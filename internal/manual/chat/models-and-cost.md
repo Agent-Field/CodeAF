@@ -369,7 +369,7 @@ the one expensive step. What `frugal` to `balanced` buys instead is the careful 
 smarter mastermind. The `max` mastermind sits on the worker's own model on purpose: it is the
 catalog's ceiling, so the top seat adds generation behavior rather than a bigger model.
 
-**Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
+**Why the open ids.** They were picked on 2026-09-01 off the catalog's own published scores —
 OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
 — against blended price, open weights only. The worker seat is the dial: `glm-5.3-flash`
 scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
