@@ -499,11 +499,20 @@ func (c command) aliasNote() string {
 // what else it answers to. It is ONE function because the list and /help both
 // draw it, and because the height that reserves the rows and the fill that draws
 // them have to be counting the same string (see [menu.height]).
-func (c command) note() string {
+//
+// AND IT IS WHERE A ROW'S CHORD IS SPELLED FOR THIS KEYBOARD. Two of these
+// descriptions carry a place's own chord ([placeChord]), baked in at init where
+// no terminal has been detected yet — so on a Mac the list said `/spend … alt+3`
+// while the map two keystrokes away said `⌥1…⌥7`. The substitution has to happen
+// HERE rather than at either paint, because `⌥3` is two cells where `alt+3` is
+// five and [menu.fit] counts the lines this string will take before
+// [menu.rows] draws it: measuring one spelling and drawing the other is a list
+// that pushes the status line off the frame.
+func (c command) note(chords chordSpelling) string {
 	if tail := c.aliasNote(); tail != "" {
-		return c.desc + " · " + tail
+		return chords.say(c.desc + " · " + tail)
 	}
-	return c.desc
+	return chords.say(c.desc)
 }
 
 // menuNote is [command.note] cut to what is left of a row after the command's
@@ -518,8 +527,8 @@ func (c command) note() string {
 //
 // At [tierPhone] nothing is cut here: the tail has a line of its own there and
 // fits itself to it (see [overlayLines]).
-func (c command) menuNote(width int) string {
-	note := c.note()
+func (c command) menuNote(width int, chords chordSpelling) string {
+	note := c.note(chords)
 	if phoneList(width) {
 		return note
 	}
@@ -787,7 +796,7 @@ func (m *menu) choice() (command, bool) {
 // and a row of conversation have taken theirs ([app.overlayHeight] does that
 // arithmetic once, for every list). So the frame passes the figure and this
 // decides what to do with it, rather than either of them guessing at the other.
-func (m *menu) height(width, room int) int {
+func (m *menu) height(width, room int, chords chordSpelling) int {
 	if !m.open {
 		return 0
 	}
@@ -798,7 +807,7 @@ func (m *menu) height(width, room int) int {
 	if room > ceiling {
 		ceiling = room
 	}
-	shown, lines := m.fit(width, ceiling)
+	shown, lines := m.fit(width, ceiling, chords)
 	if m.top+shown >= len(m.hits) || ceiling <= 1 {
 		return lines
 	}
@@ -806,7 +815,7 @@ func (m *menu) height(width, room int) int {
 	// counted here rather than added on top, because the frame subtracts this
 	// figure from the conversation before the rows are drawn: a list that came
 	// back a line longer than it promised would push the status line off.
-	_, lines = m.fit(width, ceiling-1)
+	_, lines = m.fit(width, ceiling-1, chords)
 	return lines + 1
 }
 
@@ -814,9 +823,9 @@ func (m *menu) height(width, room int) int {
 // a ceiling of screen lines. Two numbers rather than one because the fold has to
 // know how many commands were left over, and at [tierPhone] a row is two lines —
 // so a count of lines cannot answer that on its own.
-func (m *menu) fit(width, ceiling int) (rows, lines int) {
+func (m *menu) fit(width, ceiling int, chords chordSpelling) (rows, lines int) {
 	for at := m.top; at < len(m.hits) && lines < ceiling; at++ {
-		take := overlayItemLines(width, commands[m.hits[at]].note())
+		take := overlayItemLines(width, commands[m.hits[at]].note(chords))
 		if lines+take > ceiling {
 			break
 		}
@@ -826,7 +835,7 @@ func (m *menu) fit(width, ceiling int) (rows, lines int) {
 	return rows, lines
 }
 
-func (m *menu) rows(width, n int, pal palette, hover int) []string {
+func (m *menu) rows(width, n int, pal palette, hover int, chords chordSpelling) []string {
 	if n <= 0 || len(m.hits) == 0 {
 		return nil
 	}
@@ -835,7 +844,7 @@ func (m *menu) rows(width, n int, pal palette, hover int) []string {
 	// what is said about the remainder is true of the rows actually drawn. A fold
 	// appended after the fact would be counting a row that is on the screen.
 	room := n
-	if shown, _ := m.fit(width, n); m.top+shown < len(m.hits) && n > 1 {
+	if shown, _ := m.fit(width, n, chords); m.top+shown < len(m.hits) && n > 1 {
 		room = n - 1
 		m.follow(overlayItems(room, width))
 	}
@@ -843,7 +852,7 @@ func (m *menu) rows(width, n int, pal palette, hover int) []string {
 	past := m.top
 	for at := m.top; at < len(m.hits) && fill.room(); at++ {
 		c := commands[m.hits[at]]
-		if !fill.add(at, c.typed(), c.menuNote(width), at == m.cursor, false) {
+		if !fill.add(at, c.typed(), c.menuNote(width, chords), at == m.cursor, false) {
 			break
 		}
 		past = at + 1
@@ -980,7 +989,7 @@ func helpText(file string, chords chordSpelling) string {
 		// The aliases are printed here as they are on the row, and nothing is cut:
 		// /help is prose in the transcript, which wraps, rather than a list drawn
 		// into a fixed block (see [command.menuNote]).
-		lines = append(lines, c.typed()+strings.Repeat(" ", width-len(c.typed())+2)+c.note())
+		lines = append(lines, c.typed()+strings.Repeat(" ", width-len(c.typed())+2)+c.note(chords))
 	}
 	lines = append(lines,
 		// THE KEY THAT GETS A PERSON HERE IS THE FIRST KEY ON THE SHEET. `?` over
@@ -1100,7 +1109,7 @@ func helpText(file string, chords chordSpelling) string {
 		// on this row until it became the close-tab chord above, and a sheet that
 		// went on offering it would be teaching a keystroke that shuts the window
 		// you are typing in.
-		"alt+backspace  delete the word behind the caret · ctrl+u the line",
+		helpKeyRow(chords.say("alt+backspace"), "delete the word behind the caret · ctrl+u the line · ctrl+k the rest of it"),
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",

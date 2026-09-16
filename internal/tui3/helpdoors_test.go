@@ -114,11 +114,11 @@ func TestThePaletteFillsTheFrameAndSaysWhatIsHidden(t *testing.T) {
 	// them free is not a frame that should draw eight commands and thirty-six
 	// blanks.
 	m := open(120, 30)
-	if want := m.height(120, 30); want <= menuRows {
+	if want := m.height(120, 30, chordSpelling{meta: chordAltWord}); want <= menuRows {
 		t.Fatalf("with 30 rows of room the list still wants %d (the old ceiling was %d) — it is not filling the frame", want, menuRows)
 	}
-	tall := m.height(120, 30)
-	rows := m.rows(120, tall, newPalette(0, false), -1)
+	tall := m.height(120, 30, chordSpelling{meta: chordAltWord})
+	rows := m.rows(120, tall, newPalette(0, false), -1, chordSpelling{meta: chordAltWord})
 	if len(rows) != tall {
 		t.Fatalf("the list promised %d lines and drew %d", tall, len(rows))
 	}
@@ -127,7 +127,7 @@ func TestThePaletteFillsTheFrameAndSaysWhatIsHidden(t *testing.T) {
 	// what puts /help and /manual on the screen at all: `/` is the one door the
 	// greeting advertises, and both of them used to be below an eight-row fold.
 	roomy := len(m.hits) + 4
-	all := m.rows(120, m.height(120, roomy), newPalette(0, false), -1)
+	all := m.rows(120, m.height(120, roomy, chordSpelling{meta: chordAltWord}), newPalette(0, false), -1, chordSpelling{meta: chordAltWord})
 	drawn := strings.Join(all, "\n")
 	for _, want := range []string{"/help", "/manual"} {
 		if !strings.Contains(drawn, want) {
@@ -138,13 +138,13 @@ func TestThePaletteFillsTheFrameAndSaysWhatIsHidden(t *testing.T) {
 	// A SHORT FRAME KEEPS THE FLOOR. Eight is the least it ever shows, whatever
 	// the room says, and [app.overlayHeight]'s own clamp is what protects the
 	// status line.
-	if want := m.height(120, 2); want < menuRows {
+	if want := m.height(120, 2, chordSpelling{meta: chordAltWord}); want < menuRows {
 		t.Errorf("with 2 rows of room the list wants %d — the floor of %d was lost", want, menuRows)
 	}
 
 	// AND WHERE ROWS ARE STILL HIDDEN, THE COUNT IS SAID. Every other list on
 	// this surface draws that line and this one drew nothing at all.
-	short := m.rows(120, menuRows, newPalette(0, false), -1)
+	short := m.rows(120, menuRows, newPalette(0, false), -1, chordSpelling{meta: chordAltWord})
 	last := ansi.Strip(short[len(short)-1])
 	hidden := len(m.hits) - (menuRows - 1)
 	if !strings.Contains(last, "more") {
@@ -159,7 +159,7 @@ func TestThePaletteFillsTheFrameAndSaysWhatIsHidden(t *testing.T) {
 	// AND A LIST THAT FITS WHOLE SAYS NOTHING ABOUT A REMAINDER THAT IS NOT THERE.
 	whole := &menu{}
 	whole.sync(&editor{value: []rune("/quit"), cursor: 5})
-	lines := whole.rows(120, whole.height(120, 20), newPalette(0, false), -1)
+	lines := whole.rows(120, whole.height(120, 20, chordSpelling{meta: chordAltWord}), newPalette(0, false), -1, chordSpelling{meta: chordAltWord})
 	if strings.Contains(strings.Join(lines, "\n"), "more") {
 		t.Errorf("a list with nothing hidden drew a fold line:\n%s", strings.Join(lines, "\n"))
 	}
