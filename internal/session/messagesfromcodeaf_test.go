@@ -24,7 +24,6 @@ func TestMessagesFromCodeafNamesEveryUserRoleOpening(t *testing.T) {
 		"checkpointChoiceLead":  checkpointChoiceLead,
 		"foldMarkerPrefix":      foldMarkerPrefix,
 		"legacyFramesNote":      legacyFramesNote,
-		"standingNewsFrame":     standingNewsFrame,
 		"silent loop note":      "[silent]",
 		"stuck loop note":       "[stuck]",
 	}
@@ -56,9 +55,17 @@ func TestMessagesFromCodeafNamesEveryUserRoleOpening(t *testing.T) {
 	// These voices never enter the running conversation as user messages. A
 	// tool result and a private reader instruction must not be taught as though
 	// they were turns the conversation model receives.
+	//
+	// AND A NOTE THAT CARRIES ITS OWN INSTRUCTION IS NOT REPEATED ON THE PAGE.
+	// Standing news opens with [standingNewsFrame] and says under the news
+	// itself what it is and what not to do about it, so the page's copy would
+	// be one law bought on every request of every turn for a turn most
+	// sessions never have — the WITH THE EVENT class of the prompt diet, which
+	// TestTheSteeringLineReadsAsNewsAndNotAsARequest pins from the other side.
 	for source, tag := range map[string]string{
 		"process-rule tool result": "[held]",
 		"completion reader":        "[still asked]",
+		"standing news":            bracketedOpening(t, "standingNewsFrame", standingNewsFrame),
 	} {
 		if strings.Contains(section, tag) {
 			t.Errorf("# Messages from codeaf names %s's private %s tag", source, tag)

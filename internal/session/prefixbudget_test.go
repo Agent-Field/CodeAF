@@ -440,15 +440,17 @@ const fixedPrefixTarget = 48_000
 // early and unreviewed.
 //
 // 2026-09-16, #1067 review. The provenance list had to grow because compaction
-// and standing news also write user-role tags into the conversation: `[folded
-// …]`, `[context compacted]` and `[something you set up fired]`. It also stopped
-// calling the tool-only `[held]` a user message or declaring every unlisted tag
-// the person's. Tightening the surrounding sentence paid for that truth and
-// one byte more: fixed is 55,310 and lean is 47,085, so both waivers shrink by
-// one and again sit exactly on the measurement.
+// also writes user-role tags into the conversation: `[folded …]` and `[context
+// compacted]`. It also stopped calling the tool-only `[held]` a user message or
+// declaring every unlisted tag the person's, and it does NOT name standing
+// news's `[something you set up fired]`: that line carries its own instruction
+// under the event, and TestTheSteeringLineReadsAsNewsAndNotAsARequest refuses
+// the page's copy as one law paid for twice. Tightening the surrounding
+// sentence paid for the truth with room to spare: fixed is 55,280 and lean is
+// 47,055, so both waivers fall by 31 and again sit exactly on the measurement.
 const (
-	fixedPrefixWaiver = 7_310
-	leanPrefixWaiver  = 15_585
+	fixedPrefixWaiver = 7_280
+	leanPrefixWaiver  = 15_555
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
