@@ -233,7 +233,7 @@ func TierSeatAt(profileDir, tier string) Seat {
 	if source == "" {
 		source = SeatDefault
 		if !cleared {
-			model = defaultTierModel(tier)
+			model = defaultTierModel(profileDir, tier)
 		}
 	}
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}

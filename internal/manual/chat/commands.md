@@ -1422,7 +1422,7 @@ opens the six-seat reading, bottom-anchored like the model picker. From the top:
 ```
 the five models codeaf uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
-  frugal — deepseek works, glm-flash checks and glm-5.3 thinks · pennies a day
+  frugal — deepseek works, glm-5.3 thinks · pennies a day
     reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3
 › balanced — glm-flash works, kimi-k3 checks and thinks
     reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3

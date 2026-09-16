@@ -396,7 +396,7 @@ say rather than the default.
 | careful work | `glm-5.3-flash` | `kimi-k3` | `kimi-k3` |
 | mastermind | `glm-5.3` | `kimi-k3` | `kimi-k3` |
 
-- **frugal** — deepseek works, glm-flash checks and glm-5.3 thinks · pennies a day
+- **frugal** — deepseek works, glm-5.3 thinks · pennies a day
 - **balanced** — glm-flash works, kimi-k3 checks and thinks
 - **max** — glm-5.3 works, kimi-k3 thinks and checks
 

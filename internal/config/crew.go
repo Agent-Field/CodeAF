@@ -211,7 +211,7 @@ func CrewModelsForSource(source, preset string) (map[string]string, bool) {
 // prints beside each option and what the settings chooser shows under it — the
 // same words in both places, because they are one sentence about one thing.
 var crewLines = map[string]string{
-	CrewFrugal:   "deepseek works, glm-flash checks and glm-5.3 thinks · pennies a day",
+	CrewFrugal:   "deepseek works, glm-5.3 thinks · pennies a day",
 	CrewBalanced: "glm-flash works, kimi-k3 checks and thinks",
 	CrewMax:      "glm-5.3 works, kimi-k3 thinks and checks",
 }
