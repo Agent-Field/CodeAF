@@ -268,7 +268,7 @@ gone, the returning window simply has it and says nothing.
 Closing the surface deliberately and losing a connection are different events, and only
 one of them is a person leaving.
 
-- **You quit** (`ctrl+c` twice, or closing the window): the connection is closed on
+- **You quit** (`ctrl+c`, or closing the window): the connection is closed on
   purpose and nothing is redialled, because you did not lose it. What becomes of the
   conversation is the far machine's answer — one that does not keep sessions alive stops
   the work and flushes the session file, one that does keeps going and the same command

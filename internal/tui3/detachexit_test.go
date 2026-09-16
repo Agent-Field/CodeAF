@@ -8,12 +8,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// quitStoppingWord is the half of the quit warning about work that ends with the
-// window, which is what every test written before hosting existed was asking
-// for.
-func quitStoppingWord(a *app) string {
-	stopping, _ := a.quitWorkCounts()
-	return quitWorkWord(stopping)
+// frontWorkWord is what the close-a-tab card says is running in the conversation
+// on screen (tabclose.go) — the one sentence left on this surface that counts a
+// conversation's nodes and its background jobs into words a person reads.
+func frontWorkWord(a *app) string {
+	return workCountWord(a.tabCloseWork(chatTab{}, true))
 }
 
 // stowAgent puts the conversation on screen into the keeper and attaches
@@ -112,57 +111,6 @@ func TestQuittingHandlesAMixOfHostedAndLocalConversations(t *testing.T) {
 	}
 }
 
-// THE WARNING SAYS WHAT IS ACTUALLY ABOUT TO HAPPEN. Telling somebody a hosted
-// task will stop asks them to keep a window open for a reason that is not real.
-func TestTheArmedHintSaysHostedWorkKeepsRunning(t *testing.T) {
-	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
-	a := newTestApp(hosted)
-	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan behindStirMsg, stirDepth)
-	a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
-	a.taskOrder = []uint64{1}
-
-	hint := a.quitHint()
-	if !strings.Contains(hint, "a task keeps running") {
-		t.Errorf("the armed hint is %q about hosted work", hint)
-	}
-	if strings.Contains(hint, "will stop") {
-		t.Errorf("the armed hint threatens hosted work: %q", hint)
-	}
-
-	// Two of them agree with themselves.
-	a.tasks[2] = &taskNode{id: 2, state: session.TaskRunning}
-	a.taskOrder = []uint64{1, 2}
-	if hint := a.quitHint(); !strings.Contains(hint, "2 tasks keep running") {
-		t.Errorf("the armed hint is %q about two hosted tasks", hint)
-	}
-}
-
-// AND A MIXED TERMINAL SAYS BOTH THINGS, in the order they cost: what ends
-// first, what survives after it.
-func TestTheArmedHintSeparatesWorkThatEndsFromWorkThatSurvives(t *testing.T) {
-	// The in-process conversation with two running nodes goes into the keeper,
-	// and the hosted one with a node of its own is the one on screen.
-	a := newTestApp(&busyAgent{fakeAgent: &fakeAgent{model: "m"}})
-	a.file = "/tmp/lab/two/transcript.jsonl"
-	a.stirs = make(chan behindStirMsg, stirDepth)
-	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
-	stowAgent(t, a, hosted, "/tmp/lab/one/transcript.jsonl")
-	a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
-	a.taskOrder = []uint64{1}
-
-	hint := a.quitHint()
-	if !strings.Contains(hint, "2 tasks will stop") {
-		t.Errorf("the armed hint lost the in-process tasks: %q", hint)
-	}
-	if !strings.Contains(hint, "a task keeps running") {
-		t.Errorf("the armed hint lost the hosted task: %q", hint)
-	}
-	if strings.Index(hint, "will stop") > strings.Index(hint, "keeps running") {
-		t.Errorf("the armed hint puts what survives before what ends: %q", hint)
-	}
-}
-
 // LEAVING KEEPS THE PERSON'S WORDS AND THE CONVERSATION'S QUESTIONS. The draft
 // and everything parked behind it go to disk on the way out, and a hosted
 // conversation's pending question is not answered or cancelled by the window
@@ -234,9 +182,9 @@ func TestASignalStillClosesAnInProcessConversation(t *testing.T) {
 // A ONE-SHOT ENGINE ANSWERS THE DETACH SEAM AND ITS WORK STILL STOPS. Reading
 // the seam itself as "this keeps running" would promise survival to exactly the
 // connection that cannot offer it — `codeaf engine` on a pipe, and a --host
-// launch against one — so the warning asks for the lifetime instead of the
-// capability.
-func TestAOneShotRemoteIsWarnedAboutHonestly(t *testing.T) {
+// launch against one — so every sentence about a conversation's lifetime asks
+// for the lifetime instead of the capability.
+func TestAOneShotRemoteEndsWithTheWindow(t *testing.T) {
 	oneShot := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}, oneShot: true}
 	a := newTestApp(oneShot)
 	a.file = "/tmp/lab/one/transcript.jsonl"
@@ -244,14 +192,11 @@ func TestAOneShotRemoteIsWarnedAboutHonestly(t *testing.T) {
 	a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
 	a.taskOrder = []uint64{1}
 
-	if hint := a.quitHint(); !strings.Contains(hint, "a task will stop") {
-		t.Errorf("the armed hint is %q about a one-shot engine's task", hint)
-	}
-	if hint := a.quitHint(); strings.Contains(hint, "keeps running") {
-		t.Errorf("the armed hint promised survival on a one-shot engine: %q", hint)
+	if workOutlivesExit(oneShot) {
+		t.Error("a one-shot engine claimed its work outlives the window")
 	}
 
-	// And leaving still goes through the agent's own door, which ends it.
+	// And leaving goes through the agent's own door, which ends it.
 	a.leaveEverything()
 	if oneShot.detaches != 1 {
 		t.Errorf("leaving asked the agent %d times", oneShot.detaches)
@@ -308,27 +253,24 @@ func remoteFront(t *testing.T, persistent bool) (*app, *remote.Agent) {
 	return a, agent
 }
 
-// THE WARNING IS WRITTEN FROM THE ENGINE'S OWN STATEMENT OF ITS LIFETIME, and
-// this is the case that catches a surface reading the detach seam instead: every
-// remote agent answers Detach, and only the hosted one keeps working afterwards.
-func TestTheArmedHintFollowsARealClientsLifetime(t *testing.T) {
+// EVERY SENTENCE ABOUT A CONVERSATION'S LIFETIME IS WRITTEN FROM THE ENGINE'S
+// OWN STATEMENT OF IT, and this is the case that catches a surface reading the
+// detach seam instead: every remote agent answers Detach, and only the hosted
+// one keeps working afterwards.
+func TestARealClientStatesItsOwnLifetime(t *testing.T) {
 	hostedApp, hosted := remoteFront(t, true)
 	if !hosted.WorkOutlivesExit() {
 		t.Fatal("a session host's agent said its work ends with the window")
 	}
-	if hint := hostedApp.quitHint(); !strings.Contains(hint, "a task keeps running") {
-		t.Errorf("the armed hint is %q on a hosted conversation", hint)
+	if !workOutlivesExit(hostedApp.agent) {
+		t.Error("the surface read a hosted conversation as ending with the window")
 	}
 
 	oneShotApp, oneShot := remoteFront(t, false)
 	if oneShot.WorkOutlivesExit() {
 		t.Fatal("a one-shot engine's agent claimed to outlive the window")
 	}
-	hint := oneShotApp.quitHint()
-	if !strings.Contains(hint, "a task will stop") {
-		t.Errorf("the armed hint is %q on a one-shot engine", hint)
-	}
-	if strings.Contains(hint, "keeps running") {
-		t.Errorf("the armed hint promised survival on a one-shot engine: %q", hint)
+	if workOutlivesExit(oneShotApp.agent) {
+		t.Error("the surface read a one-shot engine as outliving the window")
 	}
 }
