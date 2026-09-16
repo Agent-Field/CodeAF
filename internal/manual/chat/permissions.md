@@ -925,9 +925,11 @@ cannot change this row for you — ask it to and it says so and points you at
 piece of work handed off, and on the next codeaf you start.
 
 The commit a task writes when its work lands carries the same trailer. Those
-commits are authored as `codeaf <codeaf@localhost>` and always have been: codeaf
-reads that name to tell its own commits from yours when it lands a branch. Your
-own commits are authored by you and are never touched.
+commits are authored as `codeaf <agentfield-bot@users.noreply.github.com>`: codeaf
+reads that identity to tell its own commits from yours when it lands a branch.
+Older task commits authored `codeaf <codeaf@localhost>` or `aforge
+<aforge@localhost>` are still recognised as codeaf's own work. Your own commits
+are authored by you and are never touched.
 
 ## A timeout is not a deny — why it said "denied by the person" when nobody said no
 
