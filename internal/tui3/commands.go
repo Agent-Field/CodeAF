@@ -439,6 +439,7 @@ var commands = []command{
 	// behind a scroll.
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf and restart on it", alias: []string{"upgrade"}},
+	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag, then restart"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "close this conversation", alias: []string{"exit", "q"}},
 }

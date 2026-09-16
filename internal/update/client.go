@@ -100,17 +100,34 @@ func (c *Client) userAgent() string {
 }
 
 type statusError struct {
-	code int
-	url  string
+	code     int
+	resource string
 }
 
 func (e *statusError) Error() string {
-	return fmt.Sprintf("%s answered HTTP %d", e.url, e.code)
+	return fmt.Sprintf("%s answered HTTP %d", e.resource, e.code)
 }
+
+type requestError struct{ cause error }
+
+func (e *requestError) Error() string { return "release request failed: " + e.cause.Error() }
+func (e *requestError) Unwrap() error { return e.cause }
 
 func isStatus(err error, code int) bool {
 	var status *statusError
 	return errors.As(err, &status) && status.code == code
+}
+
+func nameReleaseResource(err error, resource string) error {
+	var status *statusError
+	if errors.As(err, &status) {
+		return &statusError{code: status.code, resource: resource}
+	}
+	var request *requestError
+	if errors.As(err, &request) {
+		return fmt.Errorf("%s request failed: %w", resource, request.cause)
+	}
+	return err
 }
 
 func (c *Client) get(ctx context.Context, rawURL, accept string, api bool) ([]byte, error) {
@@ -127,16 +144,20 @@ func (c *Client) get(ctx context.Context, rawURL, accept string, api bool) ([]by
 	}
 	resp, err := c.requestClient().Do(req)
 	if err != nil {
-		return nil, err
+		var requestURL *url.Error
+		if errors.As(err, &requestURL) {
+			err = requestURL.Err
+		}
+		return nil, &requestError{cause: err}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return nil, &statusError{code: resp.StatusCode, url: rawURL}
+		return nil, &statusError{code: resp.StatusCode, resource: "release API"}
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", rawURL, err)
+		return nil, fmt.Errorf("read the release response: %w", err)
 	}
 	return body, nil
 }

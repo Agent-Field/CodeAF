@@ -119,6 +119,7 @@ func installRepositories(first string) []string {
 }
 
 func (c *Client) downloadRelease(ctx context.Context, release Release, asset, goos, goarch, extension string) ([]byte, string, []byte, error) {
+	shownAsset := asset
 	body, err := c.get(ctx, c.assetURL(release, asset), "application/octet-stream", false)
 	if isStatus(err, http.StatusNotFound) {
 		legacyAsset := "aforge-" + goos + "-" + goarch + extension // legacy-name
@@ -128,11 +129,11 @@ func (c *Client) downloadRelease(ctx context.Context, release Release, asset, go
 		}
 	}
 	if err != nil {
-		return nil, asset, nil, err
+		return nil, asset, nil, nameReleaseResource(err, shownAsset)
 	}
 	checksums, err := c.get(ctx, c.assetURL(release, "checksums.txt"), "application/octet-stream", false)
 	if err != nil {
-		return nil, asset, nil, err
+		return nil, asset, nil, nameReleaseResource(err, "checksums.txt")
 	}
 	return body, asset, checksums, nil
 }

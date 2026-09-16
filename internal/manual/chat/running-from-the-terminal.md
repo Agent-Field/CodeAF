@@ -2,28 +2,34 @@
 
 ## Is there a newer version — how do I update codeaf — /update — codeaf update — why does it say this every time I start
 
-At launch, a stable release that is behind the newest stable release gets one dim
-line naming both versions. The line offers `/update`, which downloads the release,
-checks its sha256, replaces this executable and restarts the same conversation. Its
-alias is `/upgrade`. Finish a running turn or task first. A matching release says
-`you are on the newest codeaf, <tag>` and does not restart.
+At launch, a stable release behind the newest stable gets one dim line naming both
+versions and offering `/update`. That command downloads the release, checks its
+sha256, replaces this executable and restarts the same conversation; `/upgrade` is
+its alias. Finish a running turn or task first. A matching release says `you are on
+the newest codeaf, <tag>` and does not restart.
 
 Release candidates get the launch line once their stable line is published. A
-stable build already newest or ahead gets nothing. Dev and staging channel builds,
-source builds and unstamped builds make no launch request and draw nothing. Set
-`CODEAF_NO_UPDATE_CHECK=1` to skip this launch check only; `/update` and `codeaf
-update` still work. The answer is cached in `update-check.json` beside the profile's
-`config.json` for 24 hours for the same running build. A cached newer release is
-still shown at every launch, because the reminder is the useful part.
+stable build already newest or ahead gets no launch line. That silence does not
+authorize a downgrade: if this build is `v0.3.0` and stable is `v0.2.0`, `/update`
+refuses with `this codeaf is v0.3.0, ahead of the newest stable v0.2.0 — /update
+v0.2.0 installs it anyway`. Naming the tag is the deliberate road and installs it.
+Dev, staging, source and unstamped builds make no launch request. Set
+`CODEAF_NO_UPDATE_CHECK=1` to skip only this check. Its answer is cached in
+`update-check.json` beside `config.json` for 24 hours for the same running build;
+a cached newer release is still shown at every launch.
 
-From a shell, `codeaf update --check` checks without installing; it exits 3 when a
-newer stable exists, 0 when this release is newest, and 1 when it could not check.
-`codeaf update` installs stable by default. `--rc`, `--dev`, `--staging`, or
-`--version <tag>` selects another release. A binary built from source refuses an
-in-place install and names its path: rebuild it with `make build`, or install a
-release with the curl line below. An unwritable executable is also left untouched
-and offered that line; codeaf never tries sudo. A failed download or checksum leaves
-the original executable in place.
+From a shell, `codeaf update --check` exits 3 for a newer selected stable or rc,
+or a different selected dev or staging tag; 0 when a stable or rc build is equal
+or ahead, or a channel tag is equal; and 1 when it could not check. `--version
+<tag>` exits 0 only on that tag and 3 otherwise. Every answer names the selected
+tag. `codeaf update` installs stable by default;
+`--rc`, `--dev`, and `--staging` select another channel. On `v0.3.0` with stable
+at `v0.2.0`, it exits 2 with `this codeaf is v0.3.0, ahead of the newest stable
+v0.2.0 — pass --version v0.2.0 to install it anyway`. `--version v0.2.0` installs
+what was named. A source build refuses and names its path: rebuild with `make
+build`, or use the curl line below. An unwritable target, failed download or bad
+checksum leaves the original in place and offers that line; codeaf never tries
+sudo.
 
 ## The curl installer — dev, staging, rc and stable channels
 
