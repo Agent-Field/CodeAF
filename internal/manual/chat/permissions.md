@@ -885,7 +885,7 @@ then one sentence:
 
 ```
 —
-Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author
+Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author
 ```
 
 On an issue that link reads `utm_medium=issue` instead.
@@ -894,7 +894,7 @@ On an issue that link reads `utm_medium=issue` instead.
 with one small muted line, no em dash above it:
 
 ```
-<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
+<sub>drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
 ```
 
 `agentfield-bot` is codeaf's own GitHub account and the address is the one GitHub
