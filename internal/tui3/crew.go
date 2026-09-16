@@ -562,9 +562,8 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 	// two options are drawn beside each other so the move it offers is visible
 	// before it is taken.
 	//
-	// THE WORD THE NEXT ENTER WRITES IS THE WORD LIFTED, and the lifted step is
-	// the accent for the cursor's own reason: it is the fact this row answers
-	// and the only fact on it. The
+	// THE WORD THE NEXT ENTER WRITES IS THE WORD LIFTED, and the lifted word is
+	// the accent: it is the fact this row answers and the only fact on it. This
 	// row takes no `›` lead and no ground of its own, for a reason of its own
 	// rather than seat one's: it is not on the ↑↓ axis, so no cursor sits on it
 	// for a lead to mark, and the lifted word is its whole mark.
@@ -694,6 +693,12 @@ func (a *app) crewListing() string {
 	current := config.CrewAt(a.profileDir)
 	source := config.CrewSourceAt(a.profileDir)
 	var out strings.Builder
+	// THE WORDS ARE THE SAME IN EITHER FAMILY, so the listing names the pool
+	// whenever it is not the shipped one: an all listing that looked exactly like
+	// an open one is the ambiguity this whole feature is about.
+	if source != config.CrewSourceOpen {
+		out.WriteString(crewSourceLead + " · " + source + " models\n")
+	}
 	for at, preset := range config.CrewPresets {
 		if at > 0 {
 			out.WriteString("\n")
