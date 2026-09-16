@@ -23,3 +23,9 @@ one `→` `enter` from being in front of you again.
 `hopTabbed` asks `tabShut` rather than the drawn strip on purpose. The strip is a
 frame behind the keystroke, so a card rebuilt from it after its own `ctrl+w` kept
 the row it had just closed until something else redrew the row.
+
+It also asks `row.open`, and that half is not decoration: nothing ever dismissed a
+conversation this window has never held, so `tabShut` is silent about one and
+silence read as "it has a tab". `hopReading` never noticed, because every row it
+splits is one the keeper is holding — `hopAway` did, and answered `ctrl+w` on a
+machine row with `tab closed · <title>` while closing nothing. Found in review.

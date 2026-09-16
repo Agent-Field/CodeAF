@@ -1802,9 +1802,10 @@ open. It is there only while there is something behind the fold.
 **With the fold open, one dim `closed` marks where the tabs stop.** Everything above that
 word has a tab on the row; everything below it does not. It is spaced the way the head's
 `open` is — a blank line above it and a blank below, so it reads as a heading over the rows
-under it — and on a card too short for air it keeps the word and gives up the blanks. It is
-not a row: the cursor skips it and a click on it does nothing. It is not drawn at all while
-the list is only tabs.
+under it. On a card too short for that it gives up the blanks, then the word itself: the
+rows you asked for are what a short card spends its lines on. It is not a row: the cursor
+skips it and a click on it does nothing. It is not drawn at all while the list is only
+tabs.
 
 **The `✕` on a row does not mean the tab is closed.** It means that row will not open, and
 it is always beside the reason: `open in another window`, or `that folder is gone`. A
@@ -1929,7 +1930,8 @@ ends nothing. Closing the final tab opens Home, leaving that conversation behind
 **`ctrl+w` on a row below the fold does nothing** and says
 `that one is not open here — enter opens it`. There is no tab down there to close —
 whether this terminal never opened that conversation, or you closed its tab a moment ago
-and this is where it went.
+and this is where it went. Nothing is dismissed and nothing joins the
+`ctrl+shift+t` stack.
 
 **What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
 the conversation in front — leaving codeaf when it was the last one this terminal held.

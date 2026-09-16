@@ -523,11 +523,20 @@ func (a *app) hopReading(all bool) (rows []hopRow, tabs, rest int) {
 // be without ([app.tabList] appends it whatever else it found), and a `you are
 // here` row below the fold would be the card saying the person is standing
 // somewhere it is not showing.
+//
+// AND A ROW THIS WINDOW IS NOT HOLDING IS NOT TABBED EITHER, WHICH IS THE HALF
+// `tabShut` CANNOT ANSWER. Nothing ever dismissed a conversation this terminal
+// never opened, so the map says nothing about it and said so as `false` — which
+// read as "it has a tab". [app.hopReading] never noticed, because every row it
+// splits is one the keeper is holding; [app.hopAway] did, and closed a tab that
+// was not there: it swore `tab closed · <title>` at a machine row, marked a
+// conversation it had never held as dismissed, and changed nothing on the row.
+// `dev` refused that correctly before this card learned to fold. Found in review.
 func (a *app) hopTabbed(row hopRow) bool {
 	if row.here {
 		return true
 	}
-	return !a.tabShut[a.convKey(row.file)]
+	return row.open && !a.tabShut[a.convKey(row.file)]
 }
 
 // hopStripOrder lays the open rows out in the order the tab row above them is
@@ -1356,11 +1365,45 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 		label = a.hop.tabs
 	}
 	available := max(1, height-len(lines)-topEdge-foot)
-	if label >= 0 {
-		available = max(1, available-1-2*seamAir)
+	// THE SEAM'S LINES ARE ONLY SPENT WHERE THE SEAM IS DRAWN, and it is drawn
+	// only when the scroll window actually reaches the first closed row.
+	//
+	// Charged unconditionally they were charged on every short card: the window
+	// lost three rows, the rows it lost were the closed ones, and pressing
+	// `→ show closed` on a small terminal made the list SHORTER and showed
+	// nothing — with the foot cheerfully offering `← hide closed`. Found in
+	// review; measured at card heights 8 through 13, where the fold drew no
+	// closed row at all.
+	//
+	// SO THE THREE LINES ARE GIVEN UP IN THE ORDER THEY CAN BE AFFORDED: the air
+	// first, on the card's own rule that air yields before anything else
+	// (`verticalPad` above), then the word — and a card too short even for the
+	// word draws the closed rows without it rather than drawing none of them,
+	// because a person who pressed `show closed` asked for the rows.
+	window := func(rows int) (int, int) {
+		start := max(0, a.hop.at-rows+1)
+		return start, min(len(a.hop.rows), start+rows)
 	}
-	start := max(0, a.hop.at-available+1)
-	end := min(len(a.hop.rows), start+available)
+	start, end := window(available)
+	if label >= start && label < end {
+		for _, cost := range []int{1 + 2*seamAir, 1} {
+			rows := max(1, available-cost)
+			if from, to := window(rows); label >= from && label < to {
+				available, start, end = rows, from, to
+				seamAir = (cost - 1) / 2
+				break
+			}
+			// The word alone did not fit either: the seam is not drawn, and the
+			// window keeps every row it already had.
+			if cost == 1 {
+				label = -1
+			}
+		}
+	} else {
+		// The window does not reach the closed rows at all, so there is no seam on
+		// this card and nothing to pay for it with.
+		label = -1
+	}
 	for at := start; at < end; at++ {
 		if at == label {
 			// THE BLANK ABOVE IS NOT DRAWN AT THE TOP OF THE LIST, where the head's

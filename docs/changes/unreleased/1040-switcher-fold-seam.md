@@ -24,7 +24,13 @@ outlined and this surface separates things with ink. It is the fold's half of th
 blank above and a blank below, the same three lines as `open`, its blank and its
 first row. Drawn tight against the rows it sat between two lists and read as
 belonging to neither. The air yields on a short card and the word does not, which
-is the rule the card's own top and bottom air already follows.
+is the rule the card's own top and bottom air already follows. Its three lines
+are charged only where the seam is actually drawn: reserved unconditionally they
+came off every short card, and `→ show closed` then made the list SHORTER and
+drew no closed row at all while the foot offered `← hide closed` (found in
+review, measured at card heights 8 through 13). A card too short for the blanks
+gives them up, and one too short for the word gives that up too rather than give
+up the rows the key was pressed for.
 
 Not changed: the `✕` itself. That a person presses `✕` to close a tab and reads
 `✕` as a refusal one line below is a real collision in the vocabulary, but the

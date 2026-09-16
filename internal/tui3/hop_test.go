@@ -1329,3 +1329,85 @@ func seamAt(lines []string) int {
 	}
 	return -1
 }
+
+// TestCtrlWOnAConversationThisWindowNeverOpenedClosesNothing is the half of the
+// fold `tabShut` cannot answer on its own: nothing ever dismissed a conversation
+// this terminal has not held, so the map is silent about it — and silence read as
+// "it has a tab". The key swore `tab closed` at a machine row, marked a
+// conversation it had never held as dismissed, and changed nothing on the row.
+func TestCtrlWOnAConversationThisWindowNeverOpenedClosesNothing(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	never := filepath.Join(dir, "never.jsonl")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "n", Title: "never opened here", Transcript: never, ProjectDir: dir},
+			},
+		}}}, true
+	}
+	a.hopOpenAll()
+	at := -1
+	for i, row := range a.hop.rows {
+		if a.convKey(row.file) == a.convKey(never) {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the never-opened row is not on the card: %+v", a.hop.rows)
+	}
+
+	a.hop.at = at
+	drive(t, a, key(hopAwayKey))
+	if a.hop.say != hopNotOpenWord {
+		t.Fatalf("ctrl+w on a conversation this window never opened said %q", a.hop.say)
+	}
+	// AND IT LEFT NO MARK BEHIND. A dismissal recorded against a conversation
+	// this window has never held is a lie the strip would have to be told to
+	// forget (keeper.go's [app.rememberOpen] is the only door that clears it).
+	if a.tabShut[a.convKey(never)] {
+		t.Fatal("ctrl+w marked a conversation this window never held as dismissed")
+	}
+	if len(a.closedTabs) != 0 {
+		t.Fatalf("ctrl+w put %d tabs on the reopen stack", len(a.closedTabs))
+	}
+}
+
+// TestAShortCardStillShowsWhatTheFoldOpened is the seam's own cost, charged only
+// where it is drawn. The three lines used to come off every short card whether or
+// not the window reached a closed row, so `→ show closed` made the list SHORTER
+// and showed nothing at all while the foot offered `← hide closed`.
+func TestAShortCardStillShowsWhatTheFoldOpened(t *testing.T) {
+	dir := t.TempDir()
+	a, _, _ := tabApp(t)
+	rows := []session.SessionRow{{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir}}
+	for i := 0; i < 6; i++ {
+		rows = append(rows, session.SessionRow{
+			ID: itoa(i), Title: "a closed chat " + itoa(i),
+			Transcript: filepath.Join(dir, itoa(i)+".jsonl"), ProjectDir: dir,
+		})
+	}
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{Name: "lab", Dir: dir, Sessions: rows}}}, true
+	}
+
+	// Card heights a small terminal actually hands this card. Eleven is where the
+	// window first reaches a closed row at all; below it the list is three rows
+	// long and every one of them is a tab, which is honest.
+	for _, height := range []int{11, 12, 13, 14, 16} {
+		a.hopOpen()
+		a.hopSpread(true)
+		body := plain(strings.Join(a.hopCardLines(100, height, a.pal), "\n"))
+		if !strings.Contains(body, "Closed Chat") {
+			t.Fatalf("the fold opened on a %d-line card and drew no closed row:\n%s", height, body)
+		}
+		// AND THE OPEN ROWS DID NOT PAY FOR A SEAM NOBODY DREW: every row the card
+		// has room for is a row, and the word is only there when it is earned.
+		if seamAt(a.hopCardLines(100, height, a.pal)) < 0 && height >= 12 {
+			t.Fatalf("a %d-line card reached the closed rows without the word:\n%s", height, body)
+		}
+	}
+}
