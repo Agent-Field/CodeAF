@@ -331,6 +331,35 @@ func TestCtrlKKillsToTheEndOfTheLineAndNeverEatsTheNewline(t *testing.T) {
 	}
 }
 
+// TestTheLineKillsReachHomesOwnBoxToo is the defect the law beside it was
+// written from (killpairlaw_test.go). Home's box has its own key switch, so
+// `ctrl+k` landing in the conversation's composer proved nothing about the box a
+// launch actually lands on — and there it did nothing at all. The law catches the
+// binding; this catches the ROUTE, which is the half go/ast cannot see.
+func TestTheLineKillsReachHomesOwnBoxToo(t *testing.T) {
+	_, a := wired(nil)
+	a.openHome()
+	for _, letter := range "read the config file" {
+		drive(t, a, key(string(letter)))
+	}
+	if got := a.home.box.String(); got != "read the config file" {
+		t.Fatalf("home's box holds %q before the kill", got)
+	}
+	for range "config file" {
+		drive(t, a, key("left"))
+	}
+	drive(t, a, key("ctrl+k"))
+	if got := a.home.box.String(); got != "read the " {
+		t.Fatalf("ctrl+k on home left %q, want the tail killed", got)
+	}
+	// AND IT IS AN EDIT RATHER THAN THE SWITCHER, on this page as in the
+	// conversation. Home is drawn over the surface the card is drawn over, so a
+	// stale binding here would raise it with nothing to say.
+	if a.hop.open {
+		t.Fatal("ctrl+k raised the conversation switcher from home")
+	}
+}
+
 // TestCtrlKInTheComposerIsAnEditAndNotTheSwitcher is the regression this whole
 // move exists to prevent. The chord used to raise the card over a draft
 // somebody was editing; now the card is on `alt+k` and this key belongs to the

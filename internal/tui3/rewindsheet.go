@@ -720,6 +720,9 @@ func (a *app) rewindSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+u":
 		a.rewSheet.query.reset()
 		a.rewindSheetTyped()
+	case "ctrl+k":
+		a.rewSheet.query.killToEnd()
+		a.rewindSheetTyped()
 	case "ctrl+w":
 		a.rewSheet.query.deleteWord()
 		a.rewindSheetTyped()

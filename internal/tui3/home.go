@@ -2762,6 +2762,17 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		h.box.reset()
 		h.build()
 		return nil
+	case "ctrl+k":
+		// KILL TO THE END OF THE LINE, THE SAME KEY IT IS IN THE CONVERSATION.
+		// This box is the one people meet FIRST — home is where a launch lands —
+		// so a kill that worked in the conversation and did nothing here would
+		// teach the surface's newest chord as broken at the first place it was
+		// tried. editkeys.go's header states that defect in full; it is the
+		// reason the word-and-line motions were pulled into one vocabulary, and
+		// this key belongs to the same family.
+		h.box.killToEnd()
+		h.build()
+		return nil
 	case "ctrl+w":
 		h.box.deleteWord()
 		h.build()
