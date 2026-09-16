@@ -68,11 +68,11 @@ goes to home from a conversation and `esc` comes back untouched.
 
 ### Build from the repository
 
-The road that works today is a source checkout. The module needs Go 1.26.5, and
-`make build` is the one supported build command; it writes `bin/codeaf`.
+The source road needs nothing published. The module needs Go 1.26.5, and `make
+build` is the one supported build command; it writes `bin/codeaf`.
 
 ```bash
-git clone https://github.com/Agent-Field/codeaf.git  # needs repository access while it is private
+git clone https://github.com/Agent-Field/codeaf.git  # while the repository is private, this needs access
 cd codeaf
 make build   # fetches the pinned Furrow artifact, so it needs the network;
              # FURROW_ARTIFACT=/path/to/furrow supplies it offline
@@ -82,25 +82,28 @@ bin/codeaf
 ### The installer, and what it is waiting on
 
 ```bash
-curl -fsSL https://agentfield.ai/get/codeaf | bash                                                    # the preferred form
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash     # the script under it
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash  # works once public and on main
+curl -fsSL https://agentfield.ai/get/codeaf | bash                                               # supported once it serves
 ```
 
-The first is the road that will be supported, and it is not serving yet — the route is
-written and unmerged. The second answers 404 to anyone not signed in, and starts working
-when the repository is public and `scripts/install.sh` has reached `main`.
+While the repository is private, the raw GitHub address answers 404 to anyone not signed
+in; once it is public and `scripts/install.sh` is on `main`, that road works. The proxied
+address is not serving yet and will be the supported form once it serves.
 
 <details>
 <summary>Installer channels, flags, and checks</summary>
 
-The repository currently has no rc or staging publication. Those channel selections
-therefore stop with `no <channel> build has been published yet`. Recognizing a channel
-does not mean a matching release exists.
+A push to `dev` publishes a `dev-*` build, a push to `staging` publishes a `staging-*`
+build, and a push to `main` publishes an rc; all three are marked as prereleases. Stable
+exists only when a person dispatches `Release` on `main`. A channel with nothing
+published stops with `no <channel> build has been published yet`, and because `--stable`
+is the default and reads GitHub's `releases/latest`, which excludes prereleases, the bare
+curl line says `no stable build has been published yet` until that stable dispatch lands.
 
 ```bash
-curl -fsSL https://agentfield.ai/get/codeaf/dev | bash
-curl -fsSL https://agentfield.ai/get/codeaf/staging | bash
-curl -fsSL https://agentfield.ai/get/codeaf/rc | bash
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash -s -- --dev
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | VERSION=<tag> bash
+curl -fsSL https://agentfield.ai/get/codeaf/dev | bash   # once the proxy serves, /dev, /staging and /rc pick a channel
 curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 ```
 
@@ -116,7 +119,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 | `GITHUB_TOKEN` or `GH_TOKEN` | Raise GitHub's anonymous API limit. |
 
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
-`checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
+`checksums.txt` and refuses a sha256 mismatch. Every release also carries
+`THIRD-PARTY-NOTICES.md` beside its binaries, covered by that same
+`checksums.txt`. Unless `--no-modify-path` is set, it
 appends one `export PATH=… # codeaf installer` line to the applicable shell file. Its
 last action is `codeaf version`. Release builds cover darwin, linux, and windows on
 amd64 and arm64.
@@ -325,6 +330,15 @@ language to reach an answering page.
 - `codeaf do "<task>"` does one task and exits: the same living agent as chat, with nobody watching.
 - `codeaf exec ["<prompt>"]` runs one worker for one pass, with no planning.
 - `codeaf run <program> --input <file.json|->` runs one saved typed program and writes typed output to stdout.
+
+When `codeaf do` starts local workers, no rtk is resolvable, and `CODEAF_RTK` is unset,
+it begins a background fetch of the pinned third-party rtk executable from
+`github.com/rtk-ai/rtk` on the four supported macOS and Linux architectures, to compress
+eligible shell output before the model reads it. Nothing waits for the fetch: the whole
+attempt has two minutes, each downloaded response is capped at 64 MB, its sha256 must
+match the published checksums, and calls to rtk have telemetry switched off. It installs
+at `$CODEAF_HOME/bin/rtk`, or `~/.codeaf/bin/rtk` when that variable is unset or empty;
+set `CODEAF_RTK=off` to refuse it, or set `CODEAF_RTK` to the path of your own executable.
 
 None takes `--yolo`, and all three end the same way — `--json` carries the reason
 in its `stop` field.

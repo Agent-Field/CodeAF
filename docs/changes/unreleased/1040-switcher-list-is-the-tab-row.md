@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: A closed tab leaves the ctrl+k list at the same moment it leaves the row
+title: A closed tab leaves the switcher's list at the same moment it leaves the row
 pr: 1040
 surface: [chat, docs]
 invalidates:

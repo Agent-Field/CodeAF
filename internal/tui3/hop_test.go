@@ -58,7 +58,7 @@ func TestTheSwitcherDrawsEveryOpenConversationInTheStripsOrder(t *testing.T) {
 
 	drive(t, a, key(hopOpenKey))
 	if !a.hopShowing() {
-		t.Fatal("ctrl+k did not raise the switcher")
+		t.Fatal(hopOpenKey + " did not raise the switcher")
 	}
 	rows := a.hop.rows
 	if len(rows) != 3 {
@@ -88,7 +88,7 @@ func TestTheSwitcherDrawsEveryOpenConversationInTheStripsOrder(t *testing.T) {
 	if a.hop.at != 0 {
 		t.Fatalf("the cursor opened on row %d", a.hop.at)
 	}
-	// AND NEVER ON `you are here`, which is what makes `ctrl+k enter` land
+	// AND NEVER ON `you are here`, which is what makes `alt+k enter` land
 	// somewhere on a session holding one conversation ([hopFirstStop]).
 	if a.hop.rows[a.hop.at].here {
 		t.Fatal("the cursor opened on the conversation the person is already in")
@@ -123,7 +123,7 @@ func TestTheSwitcherWalksWrapsAndGoes(t *testing.T) {
 	// this alt+tab rather than a menu: the gesture is one key, tapped.
 	drive(t, a, key(hopOpenKey))
 	if a.hop.at != 0 {
-		t.Fatalf("a second ctrl+k left the cursor on %d", a.hop.at)
+		t.Fatalf("a second %s left the cursor on %d", hopOpenKey, a.hop.at)
 	}
 
 	drive(t, a, key("tab"), key("enter"))
@@ -389,7 +389,7 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 		t.Fatalf("a quiet closed row says %q", a.hop.rows[1].note)
 	}
 	// OPENING THE FOLD MOVED THE CURSOR OFF `you are here`, which is what makes
-	// the whole gesture `ctrl+k → enter` on a session holding one conversation.
+	// the whole gesture `alt+k → enter` on a session holding one conversation.
 	if a.hop.at != 1 {
 		t.Fatalf("the cursor is on row %d after the fold opened", a.hop.at)
 	}
@@ -529,29 +529,39 @@ func (b *busyAgent) TaskIndex() []session.TaskIndexEntry {
 	}
 }
 
-// TestTheReverseChordIsBoundOnlyWhereTheTerminalCanSpellIt is `ctrl+shift+k`,
-// which an ordinary terminal sends as a bare `ctrl+k` — so it is bound under the
-// same law as `ctrl+tab`, and `shift+tab` is the spelling that always works.
-func TestTheReverseChordIsBoundOnlyWhereTheTerminalCanSpellIt(t *testing.T) {
+// TestTheReverseChordArrivesEverywhereAndItsAliasStillDoesNot is the asymmetry
+// the move to `alt+` bought (hop.go's [hopBackKey]): `alt+shift+k` is
+// escape-then-`K`, a different byte from the forward chord's escape-then-`k`, so
+// it is bound flat — while `ctrl+shift+tab` is still `ctrl+tab`'s own reverse and
+// still only real where the terminal answered the keyboard query. Under the old
+// `ctrl+shift+k` spelling BOTH were gated, because an ordinary terminal sent it
+// as a bare `ctrl+k`.
+func TestTheReverseChordArrivesEverywhereAndItsAliasStillDoesNot(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	keepThree(t, a)
 
 	a.keysDisambiguated = false
-	if a.hopBacks(hopBackKey) || a.hopBacks(hopBackAlias) {
-		t.Fatal("the reverse chords are bound on a terminal that cannot send them")
+	if !a.hopBacks(hopBackKey) {
+		t.Fatal("the reverse chord is not bound on a terminal that can plainly send it")
+	}
+	if a.hopBacks(hopBackAlias) {
+		t.Fatal("the alias's reverse is bound on a terminal that cannot send it")
 	}
 	a.keysDisambiguated = true
 	if !a.hopBacks(hopBackKey) || !a.hopBacks(hopBackAlias) {
 		t.Fatal("the reverse chords are not bound where the terminal answered")
 	}
+	// AND IT WALKS THE RING ON THE PLAINEST TERMINAL THERE IS, which is the whole
+	// of what changed: this is the same gesture the old spelling could only make
+	// where the keyboard query had been answered.
+	a.keysDisambiguated = false
 	drive(t, a, key(hopOpenKey), key(hopBackKey))
 	if a.hop.at != len(a.hop.rows)-1 {
-		t.Fatalf("ctrl+shift+k left the cursor on %d of %d", a.hop.at, len(a.hop.rows))
+		t.Fatalf("%s left the cursor on %d of %d", hopBackKey, a.hop.at, len(a.hop.rows))
 	}
-	// AND `shift+tab` DOES IT ON EVERY TERMINAL, which is why the chord above
-	// being absent on half of them costs nothing.
-	a.keysDisambiguated = false
+	// AND `shift+tab` STILL DOES IT TOO, on every terminal, because it is the
+	// spelling a hand reaches for once the card is up.
 	drive(t, a, key("shift+tab"))
 	if a.hop.at != len(a.hop.rows)-2 {
 		t.Fatalf("shift+tab left the cursor on %d", a.hop.at)
@@ -1224,7 +1234,8 @@ func TestTheFoldSaysWhereTheTabsStop(t *testing.T) {
 	}
 
 	// WITH IT OPEN THE WORD STANDS WHERE THE TABS STOP.
-	a.hopOpenAll()
+	a.hopOpen()
+	a.hopSpread(true)
 	body := a.hopCardLines(120, 20, a.pal)
 	label, first := seamAt(body), -1
 	for at, line := range body {
@@ -1293,7 +1304,8 @@ func TestEveryRowThatRefusesSaysWhy(t *testing.T) {
 			},
 		}}}, true
 	}
-	a.hopOpenAll()
+	a.hopOpen()
+	a.hopSpread(true)
 	for _, row := range a.hop.rows {
 		if !row.held && !row.gone {
 			continue
@@ -1349,7 +1361,8 @@ func TestCtrlWOnAConversationThisWindowNeverOpenedClosesNothing(t *testing.T) {
 			},
 		}}}, true
 	}
-	a.hopOpenAll()
+	a.hopOpen()
+	a.hopSpread(true)
 	at := -1
 	for i, row := range a.hop.rows {
 		if a.convKey(row.file) == a.convKey(never) {

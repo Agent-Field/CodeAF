@@ -119,6 +119,16 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "tui3 tests: could not clear %s: %v\n", config.ProfileDirEnv, err)
 		return 1
 	}
+	// THE FOLDER INDEX IS THE ONE WALK THAT LEAVES THE TEMPORARY ROOT. The
+	// state root above moves every path this package READS; the picker's
+	// background scan asks os.UserHomeDir and walks the person's actual home,
+	// which no CODEAF_HOME can move. A suite that does that is slow in
+	// proportion to the developer's disk and fast on a runner whose home is
+	// empty — so it passed in CI and blew the driver's budget on a laptop
+	// (folderplace.go's [folderRootScan]). An empty answer is the honest one
+	// here: a machine with no indexed roots is a machine somebody has just
+	// installed on, which every layer below already handles.
+	folderRootScan = func() []string { return nil }
 	return m.Run()
 }
 
@@ -795,7 +805,7 @@ func newTestApp(agent Agent) *app {
 	a.railAway = false
 	// AND IT PINS THE CHORD SPELLING, for the fifth time for the same reason.
 	// [newApp] reads GOOS and the environment to decide whether a chord is CALLED
-	// `alt+1` or `⌥1` (chords.go), so every hint assertion in this suite would
+	// `alt+1` or `opt+1` (chords.go), so every hint assertion in this suite would
 	// read one way on a Mac and another way on Linux. The spelling has a table
 	// test of its own that states both, and [TestEveryPlaceSpellsItsChordsTheWayThisTerminalDoes]
 	// asserts the Mac reading against every place on purpose.
@@ -933,11 +943,14 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl}
 	case "ctrl+shift+tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl | tea.ModShift}
-	case "ctrl+shift+k":
+	case "alt+shift+k":
 		// The switcher's reverse (hop.go), spelled out for the reason above it:
-		// the ctrl fall-through builds single-rune chords with one modifier, and
-		// this one carries two.
-		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl | tea.ModShift}
+		// the alt fall-through builds single-rune chords with one modifier, and
+		// this one carries two. THE LOWERED RUNE IS THE POINT — a terminal sends
+		// this chord as escape-then-`K` and ultraviolet's decoder hands it back
+		// as shift+alt over `k`, which is what makes the reverse arrive without
+		// the keyboard query its `ctrl+shift+k` spelling needed.
+		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModAlt | tea.ModShift}
 	case "alt+shift+s":
 		// The tasks place's `sort the other way round` (taskstable.go). It is
 		// spelled out because the alt fall-through above builds single-rune

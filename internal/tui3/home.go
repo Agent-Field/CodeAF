@@ -2759,7 +2759,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		h.build()
 		return nil
 	case "ctrl+u":
-		h.box.reset()
+		// KILL TO THE START OF THE LINE, WHICH IS WHAT THE CHORD MEANS EVERYWHERE
+		// ELSE. This box emptied itself outright until the `ctrl+k` beside it
+		// landed and made the asymmetry visible: `abcdef`, three lefts, `ctrl+u`
+		// threw away `def` as well, while `ctrl+k` on the same caret correctly
+		// took only the tail. One gesture cannot mean "to the start" in the
+		// composer and "all of it" here — a person cannot hold two readings of
+		// one key, and the one they have is readline's.
+		h.box.killToStart()
+		h.build()
+		return nil
+	case "ctrl+k":
+		// KILL TO THE END OF THE LINE, THE SAME KEY IT IS IN THE CONVERSATION.
+		// This box is the one people meet FIRST — home is where a launch lands —
+		// so a kill that worked in the conversation and did nothing here would
+		// teach the surface's newest chord as broken at the first place it was
+		// tried. editkeys.go's header states that defect in full; it is the
+		// reason the word-and-line motions were pulled into one vocabulary, and
+		// this key belongs to the same family.
+		h.box.killToEnd()
 		h.build()
 		return nil
 	case "ctrl+w":

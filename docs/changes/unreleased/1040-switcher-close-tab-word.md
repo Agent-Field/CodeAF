@@ -4,7 +4,7 @@ title: The switcher's close key says close tab, because put away is home's word 
 pr: 1040
 surface: [chat, docs]
 invalidates:
-  - "The `ctrl+k` switcher's legend read `ctrl+w put away`. It now reads `ctrl+w close tab`. The key never archived anything: `hopAway` takes the row off this window's tab row and the conversation keeps running and stays on the list, which is what the card's own receipt (`tab closed · <title>`) already said."
+  - "The switcher's legend read `ctrl+w put away`. It now reads `ctrl+w close tab`. The key never archived anything: `hopAway` takes the row off this window's tab row and the conversation keeps running and stays on the list, which is what the card's own receipt (`tab closed · <title>`) already said."
   - "`put away` belongs to ONE act and it is home's: `ctrl+e` on a home row archives a conversation and says `put away · type its name to find it again`. Nothing on the switcher puts a conversation away. `internal/manual/chat/keys.md` used the phrase for the switcher's `ctrl+w` in four places and no longer does; its section is now headed *Close a tab from the switcher*, not *Put a conversation away from the switcher*."
 ---
 

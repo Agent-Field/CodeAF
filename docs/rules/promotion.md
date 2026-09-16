@@ -72,8 +72,9 @@ already on `staging`.
 Cut stable by opening Actions → `Release` on `main`, choosing `stable`, and
 dispatching it. `component=patch` closes the highest open rc line; `minor` or
 `major` starts that new stable line from the latest stable tag. Stable notes come
-from its `## <tag>` section in `CHANGELOG.md` and the release takes the *Latest*
-badge. [changelog.md](changelog.md) says why the roll-up lands first.
+from its `## <tag>` section in `CHANGELOG.md` — shortened to the headline lines
+when the section is bigger than a release body may be — and the release takes
+the *Latest* badge. [changelog.md](changelog.md) says why the roll-up lands first.
 
 To open a new minor rc line without moving `main` again, dispatch `Release` on
 `main` with `channel=rc` and `component=minor`. Once an rc line is open, later rc
@@ -82,6 +83,10 @@ dispatches continue it regardless of the component choice.
 `existing_version` is the repair road: dispatch on the branch required by that
 channel and name an existing tag. The workflow rebuilds its commit, replaces the
 assets, and reapplies the stable or prerelease marks without creating a tag.
+
+Every release carries `THIRD-PARTY-NOTICES.md` beside its binaries, inside the
+same `checksums.txt`; `go run ./cmd/codeaf-notices generate` refreshes it when
+the dependencies move.
 
 ## Rolling back
 

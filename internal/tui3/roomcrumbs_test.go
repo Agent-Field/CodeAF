@@ -60,26 +60,29 @@ func TestBreadcrumbRootReturnsToTheNamedChat(t *testing.T) {
 	}
 }
 
-func TestTheStripsOwnControlOpensThePickerWithoutSwitching(t *testing.T) {
+// THE STRIP HAS NO CONTROL OF ITS OWN ANY MORE. `Chats ▾` opened the switcher
+// from the row's right end and is deleted; the card is reached by its key, which
+// the legend under the box names wherever it would open. What this asserts is
+// that the row did not keep a silent door where the label used to be — a press
+// on the right end of the strip must fall through to the page under it rather
+// than opening something nothing on screen says is there.
+func TestTheStripHasNoSilentDoorWhereItsControlWas(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.title = "Shipping the parser"
 	keepThree(t, a)
 	a.width, a.height = 100, 40
-	before := a.title
-	_ = a.tabsRow(a.width)
-	var more tabHit
+	strip := plain(a.tabsRow(a.width))
 	for _, hit := range a.chatTabHits {
-		if hit.kind == tabMore {
-			more = hit
+		if hit.kind == tabFold && hit.door(a) {
+			t.Fatalf("the count at the row's end is still a door:\n%q", strip)
 		}
 	}
-	if more.span.to == 0 {
-		t.Fatalf("the strip drew no way to the picker: %q\n%+v", plain(a.tabsRow(a.width)), a.chatTabHits)
+	if strings.Contains(strip, "Chats") {
+		t.Fatalf("the strip still draws its own control:\n%q", strip)
 	}
-	if cmd, took := a.tabPress(more.span.from, placeTabRow); !took || cmd != nil {
-		t.Fatalf("the strip's control did not take the press: took=%v", took)
-	}
-	if !a.hop.open || a.title != before {
-		t.Fatal("the strip's control must open a preview, without switching")
+	// AND THE KEY IS STILL THE WAY IN, which is the half that has to keep working.
+	drive(t, a, key(hopOpenKey))
+	if !a.hop.open {
+		t.Fatalf("%s no longer opens the card from a task room", hopOpenKey)
 	}
 }
