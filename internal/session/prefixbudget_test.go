@@ -427,9 +427,17 @@ const fixedPrefixTarget = 48_000
 // figure here, in this diff, on purpose: the rule says a raise is a decision
 // with a name on it, and the alternative was cutting the sentence the merge
 // just bought.
+//
+// 2026-09-16, #1065 round one. `# Tone` and `# Delivery` became `# The answer`,
+// `# Words or work`, `# When corrected` and `# Messages from codeaf`, in the
+// wording the issue fixed, and that paid 1,705 bytes on both arms. Both waivers
+// rise by that figure here, on purpose and with this name on it: the issue that
+// bought the sections is the one that puts the page's overall length to its
+// second round, and cutting other laws in the first would be that round done
+// early and unreviewed.
 const (
-	fixedPrefixWaiver = 5_291
-	leanPrefixWaiver  = 13_566
+	fixedPrefixWaiver = 6_996
+	leanPrefixWaiver  = 15_271
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

@@ -504,6 +504,31 @@ correctly reported that a file did not exist, and the reader claimed three times
 running that the missing file had not been reported: the reply spent three turns
 explaining that the observation was mistaken, and all three were on the screen.
 
+## It said my answer was cut off when it was not · it argued with the check instead of answering · my table disappeared under worked · [no change]
+
+When a reply ends, codeaf's completion check can read a summary of the turn and send the
+model a note that starts with `[carry on]`. You never see that note, and you did not
+write it. The model compares it with your request and its own work, then does one of two
+things:
+
+- **The note found a real gap.** The model closes the gap and ends with a complete final
+  answer. Only that last message stays in view when the turn folds under its `worked`
+  line, so it has to carry the whole deliverable again.
+- **The note is wrong.** The model replies with exactly `[no change]` and nothing else.
+  That ends carrying on for this request. The check is not asked again, the same note is
+  not sent again, and `[no change]` is never drawn as the answer: the answer it gave
+  before the note stays in view, in the chat and when the conversation is opened again.
+  A `--once` run prints its reply as it streams, so the token can appear on that output.
+
+The summary shows the check up to 8 KB of the reply's last message. A longer message is
+cut to fit and ends with `[clipped by codeaf: N of M bytes]`, and the check is told that
+this cut belongs to the summary and is never a sign that you saw a cut-off answer. A
+table or report under that size reaches the check whole.
+
+Before this, the check saw only the first 600 bytes and the model was told to explain
+itself when the note was wrong. A long table read as "cut off", the note was sent three
+times, and the model's explanation ended up as the only visible answer.
+
 ## A task waiting on one that did not finish · work that will never start · it says something is still running
 
 **Work that is still going is never a standstill, and never finished either.** A

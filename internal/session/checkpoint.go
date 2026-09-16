@@ -423,11 +423,41 @@ const (
 
 	// checkpointSaidBytes is how much of the turn's last words the reader is
 	// shown. It is the one part of the digest that is the model's own account of
-	// where it has got to, and a paragraph of it is the whole of what a reader
-	// needs to place the ledger above it — the same bound a sketch's own halves
-	// are held to, for the same reason.
-	checkpointSaidBytes = checkpointSketchBytes
+	// where it has got to — and, on a turn that answered in words, it IS the
+	// deliverable.
+	//
+	// IT WAS A SKETCH'S SIX HUNDRED BYTES, AND THAT WAS MEASURED WRONG (#1065). A
+	// person asked for a per-seat model table, the model wrote it, and the reader
+	// — shown its first six hundred bytes — said three times running that the
+	// table was cut off. The model reprinted it twice and then argued, and the
+	// argument was the only thing left standing under the fold. Eight kilobytes
+	// holds any table or report a turn ends on and is still under half of
+	// [checkpointDigestBytes], so the ledger keeps its room.
+	checkpointSaidBytes = 8 * 1024
 )
+
+// checkpointClippedMark is the line that ends last words the digest had to
+// shorten. A bare `…` was the old marker and a reader took it for the answer
+// itself breaking off; this one says in words that the cut is the SUMMARY'S, who
+// made it, and how much was kept.
+const checkpointClippedMark = "[clipped by codeaf: %d of %d bytes]"
+
+// checkpointClipSaid fits the turn's last words into [checkpointSaidBytes],
+// marker included, and names the cut with [checkpointClippedMark] when it makes
+// one. Words that already fit are returned untouched.
+func checkpointClipSaid(said string) string {
+	if len(said) <= checkpointSaidBytes {
+		return said
+	}
+	// The room for the mark is measured at its WIDEST — the kept count can never
+	// exceed the bound — so saying how much was kept cannot push past it.
+	widest := "\n" + fmt.Sprintf(checkpointClippedMark, checkpointSaidBytes, len(said))
+	cut := checkpointSaidBytes - len(widest)
+	for cut > 0 && !utf8RuneStart(said[cut]) {
+		cut--
+	}
+	return said[:cut] + "\n" + fmt.Sprintf(checkpointClippedMark, cut, len(said))
+}
 
 // The digest's headings. They are SHOUTED and they are few, because what they
 // have to do is let a reader tell four kinds of evidence apart at a glance in
@@ -694,6 +724,7 @@ const checkpointRemainsAsk = "[still asked] Above is what the person asked for a
 	"A successful write confirms only that bytes were written; it does not prove their contents meet the request. " +
 	"Tool failures and exact data mismatches outweigh an assistant claim of success. " +
 	"Abbreviated or omitted content is unknown, not evidence of a defect. " +
+	"Text marked as clipped was shortened for this summary only; it is never evidence that the person saw a cut-off answer. " +
 	"Ground any claimed defect in the evidence shown; if a necessary check is missing, name that check instead of inventing its result. " +
 	"In one line, say what of the ASK is still not done. " +
 	"If everything they asked for is done, answer with the single line " + checkpointNothingLeft +
@@ -909,10 +940,32 @@ func partsText(message ai.Message) string {
 	return text.String()
 }
 
-const checkpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
-	"Check it against the actual current work and the person's request before changing anything. " +
-	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
-	"explain the evidence briefly, and finish; do not invent a change to satisfy the observation.\n"
+const checkpointCarryOnLead = "[carry on] codeaf's completion check read a clipped summary of this turn and raised the note below.\n" +
+	"The person did not write it and does not see it. Compare it with the person's request and your work.\n" +
+	"If there is a real gap, close it and end with a complete final answer.\n" +
+	"If the note is wrong, reply with exactly " + NoChangeReply + " and nothing else.\n"
+
+// NoChangeReply is the whole of the model's answer to a carry-on it judges
+// mistaken, and the harness's token for "the answer already given stands".
+//
+// IT REPLACED "EXPLAIN THE EVIDENCE BRIEFLY, AND FINISH" (#1065). An explanation
+// is words at the end of a turn, and words at the end of a turn are what a
+// surface folds the turn down to — so a model that rightly refused a false
+// "the table was cut off" left the person a rebuttal where the table had been.
+// A token is a thing the model chose to say rather than a phrase the harness
+// thought it heard, for [checkpointNothingLeft]'s reason, and it ends two things
+// at once: carrying on for this ask ([Agent.checkpointReopen]), and its own
+// place as the answer — the transcript keeps it for the model, and every surface
+// leaves it undrawn ([IsNoChangeReply]) so the settled answer before it stands.
+const NoChangeReply = "[no change]"
+
+// IsNoChangeReply says whether a response's words are [NoChangeReply] and
+// nothing else. It is the ONE reading of the token, used by the harness and by
+// every surface that draws an answer, so the two can never disagree about which
+// reply was withdrawn.
+func IsNoChangeReply(text string) bool {
+	return strings.TrimSpace(text) == NoChangeReply
+}
 
 // ── the meter ───────────────────────────────────────────────────────────────
 
@@ -943,6 +996,11 @@ type checkpointMeter struct {
 	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
 	// that has decided, and a second nudge would be an argument.
 	loadNudged bool
+	// declined says the model has answered a carry-on of this turn with
+	// [NoChangeReply]. It ends carrying on for the ask: a reader whose note the
+	// model has already checked and rejected is not asked again, and the same
+	// observation is never put back in front of it (#1065).
+	declined bool
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -2385,7 +2443,7 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 		tail.WriteString(line)
 		tail.WriteString("\n\n")
 	}
-	if said := clip(checkpointLastSaid(messages), checkpointSaidBytes); said != "" {
+	if said := checkpointClipSaid(checkpointLastSaid(messages)); said != "" {
 		tail.WriteString(checkpointDigestSaid)
 		tail.WriteString("\n")
 		tail.WriteString(said)
@@ -3198,6 +3256,16 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		return false, false
 	}
 	said := response.Text()
+	// A CARRY-ON ANSWERED WITH [NoChangeReply] ENDS CARRYING ON, AND IT COSTS NO
+	// READER. The model was handed the reader's note, compared it with the ask and
+	// the work, and said the note was wrong — so the turn ends on the answer it
+	// already gave, and nothing below may spend a reading to re-raise what was
+	// just rejected. It is honoured only after a carry-on this turn actually made:
+	// the token is an answer to a [carry on], never a way to end a turn unread.
+	if meter != nil && (meter.declined || (meter.carriedOn > 0 && IsNoChangeReply(said))) {
+		meter.declined = true
+		return false, false
+	}
 	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,
 	// AND THIS COSTS NO READER. It stands ahead of every gate below because it is
 	// not a reading of the work at all: it is the harness finishing something it
