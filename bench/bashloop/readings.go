@@ -124,12 +124,13 @@ type checkpointNode struct {
 const truncationMarker = "[output truncated; full output: "
 
 // invalidActionMarkers are the one-action envelope's rejection diagnostics,
-// counted in tool results. The envelope's exact wording is wave 2's to fix;
-// these are the design's own words for what a rejection says, and the
-// README says the list out loud so a reader knows what was counted.
+// counted in tool results, in the spelling the belt actually writes
+// (internal/session's bashbelt_envelope.go): every rejection leads with
+// "no action executed", and the design's own words ("invalid action") never
+// reach a transcript. The README says the list out loud so a reader knows
+// what was counted.
 var invalidActionMarkers = []string{
-	"invalid action",
-	"one action per response",
+	"no action executed",
 }
 
 // ── collection ──────────────────────────────────────────────────────────────
