@@ -189,6 +189,15 @@ func (c Config) mayProposeSubharness() bool {
 	return c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
 }
 
+// mayBashBelt says whether this agent's belt is the experiment's bash belt
+// (bashbelt.go, docs/design/bash-task-loop/DESIGN.md): the one `bash` tool
+// plus the hands that cannot be a shell command. InTask is half of the
+// predicate so no road can hand the experiment to a conversation, and the
+// flag is asked ONLY here — the one-reading law every belt verb follows —
+// so the prompt and the belt cannot disagree about which belt a worker is
+// on.
+func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt }
+
 // ── the facts ───────────────────────────────────────────────────────────────
 
 // beltFact is one run of session-facts bullets that names a tool, together with

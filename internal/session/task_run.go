@@ -7345,6 +7345,14 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// reading it — so a line steered at it has to START one or it is a
 		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
 		roomThread: node.kind == TaskKindHarness,
+		// THE EXPERIMENT'S ONE DOOR (docs/design/bash-task-loop/DESIGN.md,
+		// wave 0): CODEAF_TASK_BELT=bash builds this worker on the bash belt —
+		// the one `bash` tool plus the hands that cannot be a shell command.
+		// Unset, every byte of this worker is where it was, which is what lets
+		// both arms of the comparison run from one binary. Read here and
+		// nowhere else, and asked only through [Config.mayBashBelt], so a
+		// conversation can never be handed it.
+		bashBelt: strings.TrimSpace(os.Getenv("CODEAF_TASK_BELT")) == "bash",
 		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
 		//
 		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this
