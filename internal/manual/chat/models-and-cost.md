@@ -345,6 +345,14 @@ router are deliberately not in any preset; you can still pin one on any row.
 You can also connect that vendor yourself as a direct service; the
 [services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
+**The `model family` row** (`models.crew.source`, just under the crew row) decides which family
+the three preset words draw from. `open` is the default and is the table above: open weights only,
+so a crew nobody chose is never a bet on one vendor's pricing. `all` reads the same three words,
+`frugal`, `balanced` and `max`, off the whole catalog instead, closed and frontier models included,
+and costs what those models cost. Flip the row and pick the crew again: the five rows already on
+disk keep their ids until you do, and the crew word reads `custom` in the meantime when they
+match no preset in the family you flipped to.
+
 **Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
 OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
 — against blended price, open weights only. The worker seat is the dial: `glm-5.3-flash`

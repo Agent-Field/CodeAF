@@ -250,6 +250,12 @@ var settingReaders = map[string]string{
 	// rather than the writer, because a row that could be set and never read
 	// would be exactly the dial-wired-to-nothing this table exists to catch.
 	KeyCrew: "CrewAt",
+	// The source row is read wherever the crew word is read: /crew's picker, the
+	// panel's crew row and /status all read the word out of the crew derivation
+	// (internal/tui3's crew.go and onboarding.go), which resolves the live five
+	// against the family this row names, and the crew's writer takes its table
+	// from the same place. Naming the derivation names the whole path.
+	KeyCrewSource: "CrewAt",
 	// The reflex row names the ROLE that reaches it rather than TierKey, which
 	// its two neighbours share: internal/reflex resolves [roles.RoleReflex] and
 	// nothing else lands on this key, so naming the shared spelling a third
