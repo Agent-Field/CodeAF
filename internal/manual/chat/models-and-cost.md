@@ -334,8 +334,8 @@ preset:
 | reflex | `mistralai/mistral-nemo` |
 | small work | `deepseek/deepseek-v4-flash-0731` |
 | worker | `z-ai/glm-5.3-flash` |
-| careful work | `qwen/qwen3.8-27b` |
-| mastermind | `z-ai/glm-5.3` |
+| careful work | `moonshotai/kimi-k3` |
+| mastermind | `moonshotai/kimi-k3` |
 
 They are all open-weight models, and none of them is the model you are talking to. A crew
 that followed your conversation would put the most expensive model in the build on the
@@ -376,8 +376,8 @@ scores 58 on the agentic index and 72 on coding at about $0.12 per million token
 one point under `glm-5.3` at a twentieth of its price, and it can see images. The
 mastermind buys the thinking rung rather than a bigger model, because its calls are few.
 The careful class is always a different vendor from the worker and always sees images:
-`qwen/qwen3.8-27b` scores 68 on coding at $0.42/M input and $2.55/M output with a 1M-token
-window. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose —
+`moonshotai/kimi-k3` scores 76 on coding and is the open field's strongest checker, so
+`balanced` and `max` put it on both the careful and the mastermind seat. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose —
 the bare `deepseek/deepseek-v4-flash` id resolves to the April build, and the July build at
 the same price scores thirteen coding points higher.
 
@@ -393,11 +393,11 @@ say rather than the default.
 | reflex | `mistral-nemo` | `mistral-nemo` | `mistral-nemo` |
 | small work | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` |
 | worker | `deepseek-v4-flash-0731` | `glm-5.3-flash` | `glm-5.3` |
-| careful work | `glm-5.3-flash` | `qwen3.8-27b` | `kimi-k3` |
-| mastermind | `glm-5.3-flash` | `glm-5.3` | `kimi-k3` |
+| careful work | `glm-5.3-flash` | `kimi-k3` | `kimi-k3` |
+| mastermind | `glm-5.3` | `kimi-k3` | `kimi-k3` |
 
-- **frugal** — deepseek works, glm-flash thinks · pennies a day
-- **balanced** — glm-flash works, glm-5.3 thinks, qwen checks
+- **frugal** — deepseek works, glm-flash checks and glm-5.3 thinks · pennies a day
+- **balanced** — glm-flash works, kimi-k3 checks and thinks
 - **max** — glm-5.3 works, kimi-k3 thinks and checks
 
 The worker column climbs the open-weight front one step per preset, because it is the seat

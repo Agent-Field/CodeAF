@@ -45,14 +45,14 @@ func TestCrewPresetsNameTheApprovedModels(t *testing.T) {
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 			ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
 			ModelTierHigh:       "z-ai/glm-5.3-flash",
-			ModelTierMastermind: "z-ai/glm-5.3-flash",
+			ModelTierMastermind: "z-ai/glm-5.3",
 		},
 		CrewBalanced: {
 			ModelTierReflex:     "mistralai/mistral-nemo",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 			ModelTierWorker:     "z-ai/glm-5.3-flash",
-			ModelTierHigh:       "qwen/qwen3.8-27b",
-			ModelTierMastermind: "z-ai/glm-5.3",
+			ModelTierHigh:       "moonshotai/kimi-k3",
+			ModelTierMastermind: "moonshotai/kimi-k3",
 		},
 		CrewMax: {
 			ModelTierReflex:     "mistralai/mistral-nemo",

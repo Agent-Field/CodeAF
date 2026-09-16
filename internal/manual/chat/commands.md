@@ -1422,10 +1422,10 @@ opens the six-seat reading, bottom-anchored like the model picker. From the top:
 ```
 the five models codeaf uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
-  frugal — deepseek works, glm-flash thinks · pennies a day
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3-flash
-› balanced — glm-flash works, glm-5.3 thinks, qwen checks
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work qwen/qwen3.8-27b · mastermind   z-ai/glm-5.3
+  frugal — deepseek works, glm-flash checks and glm-5.3 thinks · pennies a day
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3
+› balanced — glm-flash works, kimi-k3 checks and thinks
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3
   max — glm-5.3 works, kimi-k3 thinks and checks
     reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3
 each of the five can be pinned on its own in /settings → Providers

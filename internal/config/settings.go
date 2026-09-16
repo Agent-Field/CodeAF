@@ -1026,10 +1026,10 @@ const (
 	// preset, and always a model that sees images: a check from a second family
 	// catches what the first family's blind spots let through, and the vision
 	// role rides this row.
-	DefaultHighModel = "qwen/qwen3.8-27b"
+	DefaultHighModel = "moonshotai/kimi-k3"
 	// The mastermind names a capable planning model. Its generation behavior is
 	// left to the provider unless an operator adds a level to the model id.
-	DefaultMastermindModel = "z-ai/glm-5.3"
+	DefaultMastermindModel = "moonshotai/kimi-k3"
 )
 
 // DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.
