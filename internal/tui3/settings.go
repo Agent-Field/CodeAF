@@ -371,9 +371,10 @@ var settingUI = map[string]settingMeta{
 		about: "near-free · reads every turn — memory, titles, safety",
 	},
 
-	// The row directly under the crew word, because it changes what that word
-	// means rather than pinning a model of its own: the three presets answer
-	// from open weights or from the whole catalog, and this is the switch.
+	// The row is placed by build(), not by this map, and it sits directly under
+	// the crew word because it changes what that word means rather than pinning a
+	// model of its own: the three presets answer from open weights or from the
+	// whole catalog, and this is the switch.
 	config.KeyCrewSource: {
 		tab: tabProviders, label: "model family", widget: widgetCycle,
 		about: "which models the crew word draws from: open weights, or the whole " +
