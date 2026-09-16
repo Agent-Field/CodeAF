@@ -2,6 +2,7 @@ package release
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -45,10 +46,26 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 	for _, command := range []string{
 		"go run ./cmd/codeaf-release next",
 		"go run ./cmd/codeaf-release prune",
+		// The stable notes are rendered for the page and never copied whole:
+		// a rolled-up section is bigger than a release body may be.
+		`go run ./cmd/codeaf-changes notes "$TAG"`,
 	} {
 		if !strings.Contains(workflow, command) {
 			t.Errorf("workflow does not run %q", command)
 		}
+	}
+	// THE NOTICE TRAVELS WITH THE BINARIES. Its licence obligation belongs to
+	// the distribution, and its checksum makes the copied document accountable.
+	for _, source := range []string{
+		"cp THIRD-PARTY-NOTICES.md dist/",
+		"sha256sum codeaf-* THIRD-PARTY-NOTICES.md > checksums.txt",
+	} {
+		if !strings.Contains(workflow, source) {
+			t.Errorf("a release does not carry the third-party notices beside its binaries: missing %q", source)
+		}
+	}
+	if strings.Contains(workflow, "awk -v tag=") {
+		t.Fatal("the stable notes are copied straight out of CHANGELOG.md, which GitHub refuses once the section outgrows a release body")
 	}
 	if strings.Contains(workflow, "40") {
 		t.Fatal("the retention count was copied into the workflow instead of read from codeaf-release")
@@ -86,15 +103,114 @@ func TestReleaseWorkflowKeepsTheChannelContract(t *testing.T) {
 		}
 	}
 	for _, source := range []string{
-		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt 2>/dev/null | paste -sd'|' -)"`,
+		`if [ -s .github/known-red.txt ]; then`,
+		`skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"`,
 		`test_args=()`,
 		`go test "${test_args[@]}"`,
 	} {
 		if !strings.Contains(workflow, source) {
-			t.Errorf("the release-surface test is not safe for an empty known-red ledger: missing %q", source)
+			t.Errorf("the release-surface test is not safe for an empty or absent known-red ledger: missing %q", source)
 		}
 	}
+	if strings.Contains(workflow, "known-red.txt 2>/dev/null") {
+		t.Fatal("the release-surface test reads the ledger unguarded: under pipefail an absent file ends the step before go test runs")
+	}
 }
+
+// releaseSurfacePrologue is the shell of the "Test release surface" step up to
+// its go test line, with the go test replaced by a line that prints the
+// arguments it would have been given.
+func releaseSurfacePrologue(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "- name: Test release surface" {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatal("release.yml has no step named Test release surface")
+	}
+	var script []string
+	inRun := false
+	for _, line := range lines[start:] {
+		trimmed := strings.TrimSpace(line)
+		if !inRun {
+			if trimmed == "run: |" {
+				inRun = true
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "go test ") {
+			script = append(script, `printf 'ARG:%s\n' "${test_args[@]}"`)
+			return strings.Join(script, "\n") + "\n"
+		}
+		script = append(script, trimmed)
+	}
+	t.Fatal("the Test release surface step has no go test line")
+	return ""
+}
+
+// THE STEP MUST SURVIVE EVERY STATE THE LEDGER CAN BE IN. The ledger only
+// shrinks, so absent is its final state; empty and comment-only are the states
+// on the way there; and a ledger with a name must still turn into a -skip. The
+// first staging build after the ledger was deleted died in this prologue with
+// nothing printed, because under `set -euo pipefail` an awk over a missing file
+// is an exit inside an assignment — so this runs the real prologue under the
+// real shell options in each state, rather than asserting a string.
+func TestTheReleaseSurfaceTestSurvivesEveryLedgerState(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not on PATH")
+	}
+	prologue := releaseSurfacePrologue(t)
+	cases := []struct {
+		name   string
+		ledger *string
+		skips  string
+	}{
+		{name: "absent", ledger: nil},
+		{name: "empty", ledger: ptr("")},
+		{name: "comments only", ledger: ptr("# owed\n\n# and paid\n")},
+		{name: "one name", ledger: ptr("# owed\nTestStillRed\n"), skips: "^(TestStillRed)$"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.ledger != nil {
+				if err := os.MkdirAll(filepath.Join(dir, ".github"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, ".github", "known-red.txt"), []byte(*tc.ledger), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.Command("bash", "-c", prologue)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("the prologue died with the ledger %s: %v\n%s", tc.name, err, out)
+			}
+			got := string(out)
+			if tc.skips == "" {
+				if strings.Contains(got, "-skip") {
+					t.Fatalf("a ledger with nothing owed produced a -skip:\n%s", got)
+				}
+				return
+			}
+			if !strings.Contains(got, "ARG:-skip\nARG:"+tc.skips+"\n") {
+				t.Fatalf("a ledger with a name did not become -skip %s:\n%s", tc.skips, got)
+			}
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
 
 func TestPublishedPinExamplesGiveVersionToBash(t *testing.T) {
 	root := repositoryRoot(t)

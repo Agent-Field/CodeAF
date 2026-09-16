@@ -384,8 +384,8 @@ moment the link does.
 above your message box names it beside the model — `glm-5.3-flash · ⠿ high` — and all
 three doors reach across: `ctrl+v` walks it a step, pressing it walks it a step, and
 `/effort` opens the six rows or takes one outright (`/effort max`). A hosted conversation
-nobody has dialled reads `⠿ auto`, exactly as a local one does, and `/effort auto` clears
-it back there.
+nobody has dialled reads `⠿ auto`, exactly as a local one does; the wheel comes back to
+`auto` off the top over there too, and `/effort auto` clears it back there in one move.
 
 The word you see is the rung **that machine** resolved, not the one this one would have
 picked: the ladder is decided where the turn is made, so a level dialled onto the model

@@ -193,7 +193,7 @@ func TestTheConversationsDraftFileNeverKeepsALineTypedAtATask(t *testing.T) {
 		t.Fatalf("the draft file kept a line typed at a task: %q", got)
 	}
 	// The same fact asked the way the door out of the program asks it
-	// (quitarm.go's [app.leavingDraft], which is what quit writes).
+	// (leaving.go's [app.leavingDraft], which is what quit writes).
 	if got := a.leavingDraft(); got != "half a sentence for the model" {
 		t.Fatalf("quitting from a task's page would keep %q as the conversation's draft", got)
 	}

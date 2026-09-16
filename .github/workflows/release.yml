@@ -175,9 +175,18 @@ jobs:
       - name: Test release surface
         run: |
           set -euo pipefail
-          # The known-red ledger only shrinks, so an empty ledger is a success
-          # state and must not leave an empty -skip expression in the way.
-          skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt 2>/dev/null | paste -sd'|' -)"
+          # THE LEDGER ONLY SHRINKS, AND IT IS ALLOWED TO BE GONE. An empty or
+          # absent .github/known-red.txt is the success state and must leave
+          # no -skip expression in the way. It is read only when it is there,
+          # the way scripts/laws.sh reads it: under pipefail an awk over a file
+          # that does not exist is an exit inside this assignment, and that
+          # ended this step before go test ran on the first staging build
+          # after the ledger was deleted — no staging, rc or stable build
+          # could publish, and dev never noticed because it skips this job.
+          skip=""
+          if [ -s .github/known-red.txt ]; then
+            skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"
+          fi
           test_args=()
           [ -z "$skip" ] || test_args=(-skip "^(${skip})$")
           go test "${test_args[@]}" \
@@ -238,7 +247,10 @@ jobs:
               -o "dist/codeaf-${goos}-${goarch}${extension}" \
               ./cmd/codeaf
           done
-          (cd dist && sha256sum codeaf-* > checksums.txt)
+          # THE NOTICE TRAVELS WITH THE BINARIES for BSD-3-Clause clause 2, and
+          # its checksum accounts for the copied document.
+          cp THIRD-PARTY-NOTICES.md dist/
+          (cd dist && sha256sum codeaf-* THIRD-PARTY-NOTICES.md > checksums.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: codeaf-release
@@ -289,8 +301,14 @@ jobs:
 
           EOF
           if [ "$CHANNEL" = "stable" ]; then
-            if awk -v tag="## ${TAG} " 'index($0, tag) == 1 {f=1; next} f && /^## / {exit} f' \
-                 CHANGELOG.md > changelog-notes.md && [ -s changelog-notes.md ]; then
+            # THE SECTION IS RENDERED FOR THE PAGE, NOT COPIED ONTO IT. GitHub
+            # refuses a release body over its character ceiling, and a rolled-up
+            # section carries every fold of every entry — the first roll-up here
+            # weighed 1.7 MB. codeaf-changes prints the section whole when it
+            # fits and the headline layer with a pointer to the record when it
+            # does not; it prints nothing for a tag the changelog has no
+            # section for, which is the fall-back below.
+            if go run ./cmd/codeaf-changes notes "$TAG" > changelog-notes.md && [ -s changelog-notes.md ]; then
               { cat changelog-notes.md; echo; cat install.md; } > notes.md
               echo "generated=false" >> "$GITHUB_OUTPUT"
               echo "Release notes taken from the ${TAG} section of CHANGELOG.md."

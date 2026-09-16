@@ -359,7 +359,7 @@ typed something and this terminal can deliver `shift+enter`. A foreground comman
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
-`esc interrupts · ctrl+c twice quits · ? for help`.
+`esc interrupts · ctrl+c quits · ? for help`.
 
 **Stopping it and saying something new at once.** `shift+enter` does both in one key —
 see "Interrupt and say something new in one key" above. `esc` on its own stops without
@@ -371,10 +371,12 @@ past, and any open list or overlay takes the key before the message box sees it.
 `esc` while the command list or the `@` list is open closes that list and does
 **not** interrupt.
 
-**Mid-turn `ctrl+c` only ever interrupts — it never leaves.** Pressing it a second
-time straight away does not quit either: the press that stopped the turn does not
-arm the door, so the second press only arms it and a third one is needed to leave.
-See "Quitting codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
+**Mid-turn `ctrl+c` only ever interrupts — that press never leaves.** It is spent on
+the model. The NEXT press is read at rest, and at rest `ctrl+c` is the way out — so the
+two-tap people make mid-turn, press it again harder because the first did not seem to
+land, stops the answer and then quits. Nothing you typed is lost when it does: the box
+and anything waiting for an answer are written to disk on the way out. See "Quitting
+codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
 
 ## Esc is not stopping it — why the turn is still finishing, how long stopping takes, and what happens if it will not let go
 
@@ -405,8 +407,8 @@ that was **already** on screen reports its own result if it returns in that mome
 what the turn spent is still counted.
 
 **No key makes it stop harder, because the second stage is a clock and not a key.** A
-second `esc` inside half a second is the rewind's door and `ctrl+c` is the quit arm, so
-neither is free — and you do not need one. The `esc` you already pressed started the
+second `esc` inside half a second is the rewind's door and `ctrl+c` at rest is the way
+out, so neither is free — and you do not need one. The `esc` you already pressed started the
 10-second window, and when it runs out codeaf stops waiting on its own.
 
 **What happens at 10 seconds.** codeaf detaches from the turn: the waits codeaf holds are
@@ -427,66 +429,49 @@ answered rather than when a turn ends.
 
 **You should almost never see this.** Ten seconds is well above the longest ordinary
 letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
-something is wedged even further down, `ctrl+c` twice still quits and takes the whole
+something is wedged even further down, `ctrl+c` at rest still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.
 
 ## Quitting codeaf — how do I exit codeaf, how do I close codeaf, or why did ctrl+c not quit
 
-**`ctrl+c` twice.** One press does not leave. The first press *arms* the door and the
-right end of the row under the message box reads exactly:
+**`ctrl+c`, once.** With nothing running, the press that lands is the way out: codeaf
+writes your draft to disk and exits. There is no second press to make, no window to
+beat, and nothing asking you to confirm it.
 
-```
-ctrl+c again to quit
-```
+**If `ctrl+c` did not quit, a turn was running.** Mid-turn that key is the interrupt —
+the same thing `esc` does — and the press is spent on the model. Press it again once the
+answer has stopped and codeaf leaves.
 
-Press `ctrl+c` again within **1.5 seconds** and codeaf exits. Anything else — any
-other key, or letting the 1.5 seconds lapse — puts the door back and the hint leaves
-the screen. Press it once more and you get the same arm again.
+**Nothing you typed is lost by leaving.** The unsent sentence in the box goes to disk,
+with any message that was still waiting for an answer folded in underneath it, and the
+next launch puts them back in the box. See "What quitting saves and closes" below.
 
-**Why it takes two.** One keystroke used to end the session outright, and that
-keystroke is the one every terminal habit tells you to hit when something seems stuck.
-It could end a session that was running tasks, holding live background jobs, and still
-carrying a message you had typed and pressed `enter` on.
+**What is running is NOT named first.** codeaf used to arm the door on a first press and
+spend a second and a half telling you how many conversations were open and what leaving
+would stop. That warning went with the second press. Two things still hold without it: a
+conversation this machine's codeaf service is running **keeps working** after the window
+closes — its tasks, its questions and its journal are all there when you open the same
+workspace again — and a conversation running inside this terminal (`--no-host`, or a host
+that could not be reached) stops with it. To see what is running before you go, the task
+column (`ctrl+g`) and `/status` both say.
 
-**What is running is named before you leave, across every conversation this terminal
-holds.** If there is more than one open, the armed line says how many first — a person who
-has forgotten they left something open in another project needs that number before the work
-count means anything:
-
-```
-ctrl+c again to quit · a task keeps running
-ctrl+c again to quit · a task will stop
-ctrl+c again to quit · 2 tasks and a job will stop
-ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
-```
-
-**The verb is the truth about where the work is.** A conversation this machine's codeaf
-service is running keeps going after the window closes, so the line says `keeps running`
-and leaving costs nothing. A conversation running inside this terminal — `--no-host`, or a
-host that could not be reached — stops with the window, and the line says `will stop`. A
-terminal holding both says both, what ends first.
-
-Each clause is absent when it is zero: one conversation drops the first, nothing running
-drops the second, and a quiet single conversation reads exactly `ctrl+c again to quit`.
-
-**The task count covers every open conversation; the background-job count covers only the
-one on screen.** There is no way to ask an agent you are not drawing what shells it has
-promoted, so the line is short of a fact there rather than guessing at one.
+**Closing one tab still asks.** `ctrl+w` on a conversation with work running raises a card
+that names that work — `a task and a job running` — and waits for an answer. Leaving the
+program is the gesture that does not ask; closing one conversation out of several is the
+one that does.
 
 ## Quitting from a running answer, picker, or panel — why ctrl+c stopped the turn instead
 
-The ordinary quit gesture is `ctrl+c` twice within **1.5 seconds**, but where the first
-press lands changes what it does.
+The quit gesture is one `ctrl+c`, but where the press lands changes what it does.
 
-**Mid-turn it is still only the interrupt.** While an answer is streaming, `ctrl+c` is
-the same key `esc` is: it stops the turn and does **not** arm the door. So the two-tap
-people make mid-turn — press it again, harder — stops the model once and then arms;
-you would have to press a third time to leave.
+**Mid-turn it is only the interrupt.** While an answer is streaming, `ctrl+c` is the same
+key `esc` is: it stops the turn, and that press does not leave. The next one, at rest,
+does — so the two-tap people make mid-turn stops the model once and then quits.
 
 **It works over everything.** `ctrl+c` is read above every picker, panel, room, mode
 and paste bracket — leaving is never modal. Pressing it with the model picker or the
-settings panel up does not close them: it arms the door underneath, the hint slot
-shows `ctrl+c again to quit`, and the second press leaves with the panel still up.
+settings panel up does not close them: it leaves codeaf, with the panel still up. `esc`
+is the key that closes the thing in front of you.
 
 ## What quitting saves and closes — kill, SIGTERM, SIGHUP, terminal closed, or hung up
 
@@ -507,22 +492,22 @@ running.
 - **`/quit` closes one conversation, not the program.** It is typed out on purpose, so it
   is not asked twice — but what it closes is the conversation in front, and codeaf stays up
   with the previous one forward when this terminal is holding another. It leaves only when
-  that was the last one. `ctrl+c` twice is the key that closes everything. `/exit` and `/q`
+  that was the last one. `ctrl+c` is the key that closes everything. `/exit` and `/q`
   are the same command.
 - A real signal — `kill -INT`, `kill -TERM`, `kill -HUP`, a closed terminal window,
   or `^C` on a terminal that is not in raw mode — also leaves through the same clean
-  exit: draft written, session closed, status 0. Only the keystroke asks twice. A second
-  signal ends the process at once with status `128 + the signal's number`. The screen is
-  handed back on a bounded best effort first; if that could not finish, the terminal may
-  need `reset` afterwards.
-- The 1.5-second window cannot be changed.
+  exit: draft written, session closed, status 0. A second signal ends the process at once
+  with status `128 + the signal's number`. The screen is handed back on a bounded best
+  effort first; if that could not finish, the terminal may need `reset` afterwards.
+- Nothing asks you to confirm leaving. A `ctrl+c` struck by accident at rest ends the
+  session, and what you had typed comes back at the next launch.
 
 ## Quitting while a task is running — what happens to tasks and background work when the session closes
 
-**A hosted conversation keeps working.** Closing the window, `ctrl+c` twice, `kill -HUP`
+**A hosted conversation keeps working.** Closing the window, `ctrl+c`, `kill -HUP`
 and a terminal that went away all detach: the task goes on running in this machine's codeaf
 service, its questions stay waiting for you, and you rejoin it by opening the same
-workspace again. The armed line says `keeps running` when that is what will happen.
+workspace again.
 
 **A conversation running inside this terminal stops with it.** That is `--no-host`, and a
 launch where no host could be reached. Every task the session is running is stopped when it
@@ -560,7 +545,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
 | `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
-| `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: arm the door; press it again within 1.5 seconds to quit |
+| `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: quit codeaf, on that press |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | A foreground command that can be kept: send that command to the background. Otherwise: close the task column, or bring it back. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `enter` while a turn runs | Stop the current generation, keep its partial reply, and steer the words into the same turn |
@@ -585,7 +570,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+v` | Walk this conversation's thinking rung one step: low → medium → high → xhigh → max, and round again. Works with a sentence half typed |
+| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -687,7 +672,7 @@ key away would be the worse trade.
 
 **`ctrl+z` does not suspend codeaf.** In an ordinary shell that chord stops the program
 and hands you back the prompt; codeaf runs the terminal in raw mode, so the key arrives
-as an ordinary keystroke and is the undo instead. To leave, press `ctrl+c` twice.
+as an ordinary keystroke and is the undo instead. To leave, press `ctrl+c`.
 
 ## Click to move the cursor — clicking the message box places the caret
 
@@ -907,7 +892,7 @@ your sent message too. It adds no characters and no cells; see "Slash commands a
 as chips" in the commands page for the whole of it.
 
 **A key chord is never given that background.** Where codeaf names a key — the hint slot
-on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits · ? for
+on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c quits · ? for
 help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
 tinted background always means a slash command and only ever that, so the two marks
@@ -920,8 +905,7 @@ line. Bracketed paste is on. CRLF and bare CR become LF at the door.
 Inside an open paste bracket, every key is text: `enter` and `ctrl+j` become a
 newline, `tab` becomes a tab, everything else contributes its text. Nothing between
 the brackets can submit, interrupt, or answer a question. `ctrl+c` is the one
-exception and still works — it arms the door without closing the bracket, and a
-second press within 1.5 seconds quits. A bracket that goes quiet for 2 seconds is treated as
+exception and still works — it leaves codeaf without closing the bracket. A bracket that goes quiet for 2 seconds is treated as
 abandoned, flushed, and the keyboard handed back.
 
 A paste while copy mode is up is **declined** — nothing happens, and your clipboard
@@ -1162,13 +1146,13 @@ whole ladder and for what each rung asks the provider for.
 **A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
 says on every fresh conversation. See *What `auto` means beside the model* below.
 
-**`ctrl+v` walks it.** Each press moves one rung up and wraps off the top:
-low → medium → high → xhigh → max → low. It works with a sentence half typed — it is a
-chord, it carries no text of its own, and it leaves your draft and your caret exactly
-where they were. Ordinary letters keep typing.
+**`ctrl+v` walks it.** Each press moves one rung up, and off the top it comes back to
+`auto`: auto → low → medium → high → xhigh → max → auto. It works with a sentence half
+typed — it is a chord, it carries no text of its own, and it leaves your draft and your
+caret exactly where they were. Ordinary letters keep typing.
 
-**Pressing the rung walks it too**, one step per press, which is the same gesture as
-pressing a task's thinking row inside that task. It brightens under the pointer over
+**Pressing the rung walks it too**, one step per press — the same six stops, `auto`
+included — which is the same gesture as pressing a task's thinking row inside that task. It brightens under the pointer over
 exactly its own cells first, and the press never moves the caret in your draft. It does
 not open a list: the list is `/effort`.
 
@@ -1204,9 +1188,10 @@ What it changes and what it does not:
 - The rung reaches the work this conversation hands out: task workers start at it too.
 - It does **not** change other conversations. The default for those is the **thinking**
   row in `/settings`, which ships at `auto` (the provider default).
-- **`auto` is on the legend and it is the ladder's top row.** With thinking at `auto` and
-  no more specific level chosen — which is what a shipped install is — the cell reads
-  `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+- **`auto` is on the legend, it is the ladder's top row, and it is a stop on the wheel.**
+  With thinking at `auto` and no more specific level chosen — which is what a shipped
+  install is — the cell reads `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+  One more press past `max` brings it back to `auto`.
 - **It works on a `--host` conversation.** The rung is set on the engine machine, where
   the conversation lives, and the word on your legend is the one that machine resolved.
   An engine too old to know the ladder says so at the door and there is then no rung on
@@ -1220,8 +1205,8 @@ model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation'
 
 The rung is dim, like the rest of that line. It brightens for about two seconds after it
 changes — the cell takes a lit ground and its `⠿` goes cyan — so you can see the new word
-without looking away from what you are typing, and then it goes quiet again. Setting it
-back to `auto` flashes the same way and writes one line: *thinking · auto · the model
+without looking away from what you are typing, and then it goes quiet again. Walking it
+back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
 
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
@@ -1236,15 +1221,24 @@ so until you dial something — this conversation with `ctrl+v`, `/effort` or a 
 cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
 itself in `/settings` — every conversation reads `⠿ auto`.
 
-**To put it back to `auto`:** type `/effort auto` (or `/effort off`, the older name for
-the same thing), or open `/effort` and pick the top row. **`ctrl+v` and pressing the cell
-will not get you there** — the wheel has five stops and wraps from `max` back to `low`, on
-purpose: clearing a rung hands the conversation back to whatever stands over it, which is
-a decision rather than something a wheel should do on its way past.
+**To put it back to `auto`:** keep pressing `ctrl+v` or the cell — the wheel's stop after
+`max` is `auto` — or type `/effort auto` (or `/effort off`, the older name for the same
+thing), or open `/effort` and pick the top row. The typed word and the top row do it in
+one move from any rung; the wheel gets there by walking. Until 2026-09-15 the wheel had
+five stops and could not reach `auto` at all, which left the state a fresh install starts
+at as the one thing the control in front of you could not say.
 
-Clearing it does not always change the word on the line. If a level is dialled onto the
-model itself (`ctrl+t` in `/model`, or `--reasoning` at launch), that level wins and the
-cell keeps saying it — codeaf says so in a note naming the model and the key that moves it.
+Clearing it does not always change the word on the line, and codeaf says why in a note
+either way:
+
+- Nothing else is set: the cell reads `⠿ auto` and the note is *thinking · auto · the
+  model decides*.
+- The **thinking** row in `/settings` is set on this machine: a cleared conversation
+  falls back to that row, so the cell keeps its word and the note is *thinking · auto for
+  this chat · \<rung\> · the thinking row in /settings decides now*.
+- A level is dialled onto the model itself (`ctrl+t` in `/model`, or `--reasoning` at
+  launch): that level beats every rung here, the cell keeps saying it, and the note names
+  the model and points at `ctrl+t`.
 
 Until 2026-09-09 there was **no cell at all** on a conversation nobody had dialled, which
 on a shipped install meant every conversation — so the dial was invisible to anyone who
@@ -1500,8 +1494,7 @@ one. Every other key dismisses the greeting and then does whatever it normally d
 first letter you type lands in the box, which is drawn inside the greeting until then.
 
 Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to it.
-`ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
-seconds quits codeaf with the picker still up.
+`ctrl+c` does not close the picker — it quits codeaf, with the picker still up.
 
 ## Keys when codeaf asks you a question — what key answers switch to auto, and the other offers
 
@@ -1511,7 +1504,7 @@ question to the chip and answers nothing. It is **not modal**: every other key b
 to your message box, and a key it does read also **stops the countdown**. A key pressed
 in the first quarter-second is dropped, so a question landing under a moving hand is not
 answered by a keystroke aimed at your sentence. `ctrl+c` is handed back to the message
-box, where it arms the door and a second press within 1.5 seconds quits. On the second
+box, where it quits codeaf. On the second
 beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
 while that beat is up the digits are the shapes', not the answers'.
 
@@ -1551,7 +1544,7 @@ its own, and the same three digits answer it from inside the design's room. It w
 
 **The steer guard**, raised when you press `enter` in a room whose node is not
 listening: `r` revive and send · `m` send to main · `esc` cancel and keep your words ·
-`ctrl+c` handed back to the door, where two presses quit · everything else does nothing.
+`ctrl+c` handed back to the door, where it quits · everything else does nothing.
 Its row reads
 `[r] revive and send · [m] send to main · [esc] cancel`. When the task is still
 running — refused mid-check, or while its work lands — the guard offers no `r`: its row
@@ -1655,8 +1648,7 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 `esc close · ↑↓ scroll`, or `esc close · ↑↓ scroll · tap … for the rest`.
 
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
-`ctrl+c` does not close the panel — it arms the door, and a second press within 1.5
-seconds quits codeaf.
+`ctrl+c` does not close the panel — it quits codeaf, with the panel still up.
 
 ## Go back to the last conversation — tab
 
@@ -2081,8 +2073,7 @@ keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab 
 `esc` or `tab` hands it back (*Asking from home*).
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
-to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
-seconds quits codeaf.
+to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
@@ -2805,14 +2796,15 @@ default, open `/settings` and walk to the **`thinking`** row, which is the setti
 roads always wrote.
 
 **It climbs, and what happens off the top is the scope's own answer.** Each press goes one
-rung up. A conversation's rung and a standing item's rung wrap from `max` back to `low` and
-never return to "nobody said" — clearing one hands the work back to whatever stands over
-it, which is a decision rather than something a wheel does on its way past. Clear the
-conversation with `/effort auto` or the top row of `/effort`; clear an item where its rung
-is written down.
-A task's rung, and the level `ctrl+t` dials onto one model in `/model`, come back to `auto`
-off the top instead, because the surface is the only door that sets either and so has to be
-the door that clears them.
+rung up. This conversation's rung, a task's rung, and the level `ctrl+t` dials onto one
+model in `/model` come back to `auto` off the top — the surface is the only door that sets
+any of them, so it has to be the door that clears them, and clearing hands the work back
+to whatever stands over it. `/effort auto` and the top row of `/effort` clear the
+conversation in one move instead of walking to it. (This conversation's rung wrapped from
+`max` back to `low` until 2026-09-15, which left `auto` — the state a fresh install is in
+— reachable only by name.) **A standing item's rung is the one that never returns to
+"nobody said"**: it wraps from `max` back to `low`, and it is cleared where its rung is
+written down.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 under `Task setup` (or `Next run setup` after it settles) in the expanded

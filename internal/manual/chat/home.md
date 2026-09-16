@@ -1001,9 +1001,9 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
   ones stopped on a question.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves codeaf
   only when that was the last one.
-- **`ctrl+c` twice** closes all of them, and the warm line says how many:
-  `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop` — and
-  `keeps running` in place of `will stop` for work the codeaf service is running.
+- **`ctrl+c`** closes all of them, on the press that lands and with nothing asked
+  first. Work the codeaf service is running keeps going and is waiting when you open the
+  workspace again; work running inside this terminal stops with it.
 
 ## How do I switch to my other chat — and is it still running
 

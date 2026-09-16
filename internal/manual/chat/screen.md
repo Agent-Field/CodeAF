@@ -668,9 +668,10 @@ placeholder.
 
 **Two of those are doors.** Press the model's name and the model picker opens, exactly as
 typing `/model` does. Press the thinking rung and it walks one step up the ladder —
-low → medium → high → xhigh → max, and round again — which is the same thing `ctrl+v`
-does and the same thing pressing a task's thinking row does inside a task. From `auto` the
-first press lands on `low`; the way back to `auto` is `/effort auto`, never the wheel. Each brightens
+auto → low → medium → high → xhigh → max, and back to auto — which is the same thing
+`ctrl+v` does and the same thing pressing a task's thinking row does inside a task. From
+`auto` the first press lands on `low`, and one press past `max` hands the conversation
+back to `auto` again; `/effort auto` gets there in one move. Each brightens
 under the pointer over exactly its own cells, so you can see which of the two you are
 about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `ctrl+v`
 do all three jobs. See "The thinking chip above the message box" on the keys page.
@@ -820,7 +821,7 @@ What steps up, in the lines you will see it in:
 | the legend's hint slot | the key, never the verb beside it |
 | `/help` | the key at the head of each row, never its explanation |
 | `/status` and `/cost` | the figure in the second column, never its label |
-| the opening `esc interrupts · ctrl+c twice quits · ? for help` | the three keys |
+| the opening `esc interrupts · ctrl+c quits · ? for help` | the three keys |
 
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
@@ -1171,7 +1172,7 @@ line. The word becomes `interrupted` the moment the turn is actually over.
 
 **The second stop is a clock, not a key.** There is no key to press, and there does not
 need to be: `esc` again is the rewind's door (see the sessions and rewind page) and
-`ctrl+c` is the quit arm, so neither is free, and a stop you have to ask for twice is a
+`ctrl+c` at rest is the door, so neither is free, and a stop you have to ask for twice is a
 stop that did not work the first time. So the window is bounded at 10 seconds from the
 key you already pressed. The status line counts it down — `stopping · detaching in 7s` —
 and at the bound codeaf detaches: the waits inside the tool are ended, whatever request

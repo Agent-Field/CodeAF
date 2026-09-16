@@ -119,6 +119,16 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "tui3 tests: could not clear %s: %v\n", config.ProfileDirEnv, err)
 		return 1
 	}
+	// THE FOLDER INDEX IS THE ONE WALK THAT LEAVES THE TEMPORARY ROOT. The
+	// state root above moves every path this package READS; the picker's
+	// background scan asks os.UserHomeDir and walks the person's actual home,
+	// which no CODEAF_HOME can move. A suite that does that is slow in
+	// proportion to the developer's disk and fast on a runner whose home is
+	// empty — so it passed in CI and blew the driver's budget on a laptop
+	// (folderplace.go's [folderRootScan]). An empty answer is the honest one
+	// here: a machine with no indexed roots is a machine somebody has just
+	// installed on, which every layer below already handles.
+	folderRootScan = func() []string { return nil }
 	return m.Run()
 }
 
@@ -1771,7 +1781,7 @@ func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	}
 }
 
-func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
+func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
 	}}}
@@ -1790,26 +1800,14 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
-	// AND THE DOOR TAKES TWO PRESSES (quitarm.go). The first one arms and closes
-	// nothing; the second one inside the window leaves.
-	// The first press returns the frame clock rather than nothing — the window
-	// it opened has an end to reach — so what is asserted is that it is not the
-	// door and that nothing was closed.
+	// AND THE DOOR ANSWERS ON THE PRESS THAT LANDS (leaving.go). The turn was
+	// stopped by the esc above, so this key is read at rest and it leaves.
 	_, cmd := a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	if cmd != nil {
-		if _, quit := cmd().(tea.QuitMsg); quit {
-			t.Fatal("the first ctrl+c quit")
-		}
-	}
-	if agent.closes != 0 {
-		t.Fatalf("the first ctrl+c closed the agent (%d)", agent.closes)
-	}
-	_, cmd = a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("the second ctrl+c returned no command")
+		t.Fatal("ctrl+c returned no command")
 	}
 	if _, quit := cmd().(tea.QuitMsg); !quit {
-		t.Fatal("the second ctrl+c has to quit")
+		t.Fatal("ctrl+c has to quit")
 	}
 	if agent.closes != 1 {
 		t.Fatalf("ctrl+c closed the agent %d times", agent.closes)
