@@ -3990,13 +3990,20 @@ func (a *app) questionSegment() string {
 		return ""
 	}
 	mark := a.icon(tokens.GNeedsHuman) + " "
+	// THE CHORD IS SPELLED FOR THIS KEYBOARD, through the one door every
+	// person-facing sentence about a chord goes through (chords.go's
+	// [chordSpelling.say]). It was drawn straight out of its constant, so a Mac
+	// that says `opt+1…opt+7` on the map and `opt+t` on the roster said `alt+a` on
+	// this chip — one modifier under two names, on screens a person moves between
+	// in one keystroke.
+	key := a.chords.say(questionChipKey)
 	if count > 1 {
-		return mark + itoa(count) + " questions · " + questionChipKey
+		return mark + itoa(count) + " questions · " + key
 	}
 	if head := a.questionChipWords(); head != "" {
-		return mark + head + " · " + questionChipKey
+		return mark + head + " · " + key
 	}
-	return mark + "1 question · " + questionChipKey
+	return mark + "1 question · " + key
 }
 
 // questionChipWords is the head the chip carries, cut to what a status segment

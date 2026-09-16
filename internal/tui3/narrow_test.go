@@ -440,7 +440,7 @@ func TestTheSettingsFootDropsWholeClausesNotCharacters(t *testing.T) {
 
 // THE macOS CHORD NOTE DROPS ITS REMEDY WHOLE RATHER THAN SLICING IT.
 //
-// `your terminal sends ⌥ as a letter — turn on "use option as meta" in Terminal:
+// `your terminal sends opt as a letter — turn on "use option as meta" in Terminal:
 // Profiles › Keyboard` came to sixty columns as a quoted menu item with its end
 // eaten, which is the worst thing a line about a SETTING can do: it named the
 // setting and then refused to finish saying it. The dash clause goes whole now

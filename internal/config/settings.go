@@ -247,11 +247,19 @@ const (
 	// nothing whatever about v2's three rungs.
 	KeyTaskColumn = "ui.task_column"
 	// KeyQuickSwitch is whether the conversation switcher (internal/tui3's
-	// hop.go) SWITCHES ON EACH PRESS of its chord — `ctrl+k` lands you in the
+	// hop.go) SWITCHES ON EACH PRESS of `ctrl+tab` — that chord lands you in the
 	// previous conversation at once and pressing again keeps going — or opens as
 	// a card that waits for `enter`. It is a BOOLEAN because the two behaviours
 	// are the whole of the choice: there is no third rung between "the key is
 	// the switch" and "the key is the menu".
+	//
+	// IT IS `ctrl+tab` AND NOT THE BINDING, which this doc said for a long while
+	// and which the code has never done ([app.hopKey] reads the setting only for
+	// the alias and its reverse). The binding always browses: it is the chord
+	// everybody has, so it is the one that has to behave the same on every
+	// machine, and a card that waits for `enter` is the behaviour that needs
+	// nothing from the terminal. Neither gesture watches for a modifier being
+	// RELEASED — ordinary terminals do not report that at all (hop.go).
 	KeyQuickSwitch = "ui.quick_switch"
 	// KeyHints is whether the v3 chat shows its earned hints — the one-line tips
 	// in the slot above the message box that each retire once the key or command
@@ -1359,7 +1367,7 @@ const (
 	DefaultTaskColumn = true
 
 	// DefaultQuickSwitch controls immediate switching with ctrl+tab where the
-	// terminal can deliver it. Ctrl+k always browses before opening a chat.
+	// terminal can deliver it. alt+k always browses before opening a chat.
 	DefaultQuickSwitch = true
 
 	// DefaultHints shows the v3 chat's tips to a profile that has never said
@@ -2440,7 +2448,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyQuickSwitch, Category: CategoryInterface, Kind: SettingBool,
 			Label: "quick switch",
 			Hint: "whether ctrl+tab switches immediately where the terminal sends it. " +
-				"Off, it waits for enter. Ctrl+k always browses before opening a chat.",
+				"Off, it waits for enter. alt+k always browses before opening a chat.",
 			read:  func() string { return formatBool(QuickSwitchAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyQuickSwitch, raw) },
 		},

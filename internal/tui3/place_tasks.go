@@ -887,7 +887,10 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheet.query.deleteBackward()
 		a.taskSheetTyped()
 	case "ctrl+u":
-		a.taskSheet.query.reset()
+		a.taskSheet.query.killToStart()
+		a.taskSheetTyped()
+	case "ctrl+k":
+		a.taskSheet.query.killToEnd()
 		a.taskSheetTyped()
 	case "ctrl+w":
 		a.taskSheet.query.deleteWord()

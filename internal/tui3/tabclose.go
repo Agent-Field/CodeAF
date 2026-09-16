@@ -12,7 +12,7 @@ import (
 //
 // Taking a tab off the row has never ended work and does not now: the ✕ closes a
 // VIEW, the agent behind it goes on running, and the conversation is still on the
-// switcher `ctrl+k` opens (chattabs.go states that law and is the only place it is
+// switcher `alt+k` opens (chattabs.go states that law and is the only place it is
 // decided). What was missing was that a person could not SEE that this was what
 // happened, and could not ask for the other thing without leaving the tab row.
 //
@@ -22,7 +22,7 @@ import (
 //
 //	 ?  Close this tab? the tree walk is working · 2 tasks running
 //	      nothing here is deleted
-//	      1  keep running  it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+//	      1  keep running  it keeps going here; find it with alt+k, and ctrl+shift+t brings the tab back
 //	      2  stop work     the reply, tasks and jobs stop; nothing is deleted
 //	      3  cancel        nothing changes
 //	    [enter] take the pick · [esc] cancel · [←→] pick
@@ -180,7 +180,7 @@ const tabCloseReason = "nothing here is deleted"
 // one place the cursor's home is decided.
 func (a *app) tabCloseOptions(card *tabCloseCard) []session.AnswerOption {
 	return []session.AnswerOption{
-		{Key: "1", Label: tabCloseAnswers[tabCloseKeepAt], Safe: true, Consequence: tabCloseKeepSays},
+		{Key: "1", Label: tabCloseAnswers[tabCloseKeepAt], Safe: true, Consequence: a.chords.say(tabCloseKeepSays)},
 		{Key: "2", Label: tabCloseAnswers[tabCloseStopAt], Consequence: a.tabCloseStopSays(card)},
 		{Key: "3", Label: tabCloseAnswers[tabCloseCancelAt], Consequence: tabCloseCancelSays},
 	}
@@ -409,7 +409,13 @@ func (a *app) tabCloseStopSays(card *tabCloseCard) string {
 const (
 	// tabCloseKeepSays names both ways back to a conversation whose tab has gone,
 	// because "where did it go" is the one question this answer raises.
-	tabCloseKeepSays   = "it keeps going here; find it under Chats, and " + reopenTabChord + " brings the tab back"
+	//
+	// IT NAMED `Chats` — the labelled control at the tab row's right end — until
+	// that control was deleted (chattabs.go), and a sentence pointing at furniture
+	// that is not on the screen any more is worse than no sentence at all. It
+	// names the KEY now, which is the door that actually opens the card, and it
+	// goes through [chordSpelling.say] at the point of use so a Mac reads `opt+k`.
+	tabCloseKeepSays   = "it keeps going here; find it with " + hopOpenKey + ", and " + reopenTabChord + " brings the tab back"
 	tabCloseCancelSays = "nothing changes"
 	// tabCloseStopSaysFloor is what `stop work` says on a conversation with
 	// nothing but a reply in flight. It is the floor [app.tabCloseStopSays]

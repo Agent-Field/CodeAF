@@ -136,6 +136,51 @@ func TestAWholeBoxFlushLandsOnTheRing(t *testing.T) {
 	}
 }
 
+// TestCtrlKFlushesToTheRingOnlyWhenItTakesTheWholeBox is ctrl+u's law read from
+// the other end of the line (input.go). The ring is for the sentence somebody
+// lost, so the one shape of THIS key that reaches it is the caret at the head of
+// a one-line draft — after which nothing is left.
+func TestCtrlKFlushesToTheRingOnlyWhenItTakesTheWholeBox(t *testing.T) {
+	a, _ := recallApp(t)
+	typeInto(t, a, "half a sentence")
+	drive(t, a, key("ctrl+a"))
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "" {
+		t.Fatalf("ctrl+k left %q in the box", got)
+	}
+	entries := a.drafts.list()
+	if len(entries) != 1 || string(entries[0].text) != "half a sentence" {
+		t.Fatalf("the flush landed on the ring as %+v", entries)
+	}
+
+	// A kill that takes only the tail leaves the rest of the draft standing, and
+	// a draft still standing is nothing the ring is about.
+	typeInto(t, a, "hello")
+	drive(t, a, key("left"), key("left"))
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "hel" {
+		t.Fatalf("a line-tail kill left %q", got)
+	}
+	if got := len(a.drafts.list()); got != 1 {
+		t.Fatalf("a partial kill grew the ring to %d entries", got)
+	}
+
+	// And one line of two is the same gesture, not a flush: the second line is
+	// still there, so nothing was lost.
+	a, _ = recallApp(t)
+	typeInto(t, a, "one")
+	drive(t, a, keyed("alt+enter"))
+	typeInto(t, a, "two")
+	drive(t, a, key("ctrl+a"))
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "one\n" {
+		t.Fatalf("ctrl+k on the second line left %q", got)
+	}
+	if got := len(a.drafts.list()); got != 0 {
+		t.Fatalf("a line kill on a multi-line draft grew the ring to %d entries", got)
+	}
+}
+
 func TestTheWalkVisitsKilledDraftsDimInFrontOfSentHistory(t *testing.T) {
 	a, _ := recallApp(t,
 		history.Entry{Text: "somewhere else", Cwd: "/tmp/other"},

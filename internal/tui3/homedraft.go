@@ -127,6 +127,18 @@ const (
 	// payload and the noun says what it moves (payload.go).
 	targetFolderKeyWord = "alt+w folder"
 	targetModelKeyWord  = "alt+o model"
+	// targetSwitcherKeyWord is the third chord, and it is the only one on this
+	// line that does not edit the draft the line is about — it is the way to the
+	// conversations this machine already has (hop.go).
+	//
+	// IT SAYS `chats` WHERE THE CONVERSATION'S OWN LEGEND SAYS `switch`, and that
+	// is this line's grammar rather than a second name for one door. Every clause
+	// here is a key and the NOUN IT MOVES — `alt+w folder`, `alt+o model` — so
+	// the noun is what the third one has to carry too, and `chats` is the word
+	// the tab bar's own control used to use before it was deleted (chattabs.go).
+	// The conversation's legend is a list of VERBS in the same slot (`tab last`,
+	// `space space home`), which is why the same door is `alt+k switch` there.
+	targetSwitcherKeyWord = "alt+k chats"
 	// targetPinnedModelWord is what home's message line says when a model has
 	// been pinned onto the draft. It names the slug and then the SCOPE of what
 	// just happened, because "did that change the conversation behind home"
@@ -160,13 +172,33 @@ func (a *app) targetLegendRight() string {
 	if a.targetMovable() {
 		right = dotted(targetFolderKeyWord, targetModelKeyWord)
 	}
+	// AND THE SWITCHER AFTER THE TWO THAT EDIT THIS LINE'S OWN SUBJECT, under
+	// the same clause as everything else here: it is named where it would act
+	// and nowhere else ([app.hopAvailable] is the conversation legend's own
+	// gate, and it answers off a remembered count rather than walking the disk
+	// on the paint path). Its position IS its priority — [targetRightShorter]
+	// drops from the right — so a narrow frame keeps the folder and the model,
+	// which are the facts this rule states, and gives up the door to elsewhere.
+	if a.hopAvailable() {
+		right = dotted(right, targetSwitcherKeyWord)
+	}
 	// AND `/ commands` GOES THE MOMENT SOMETHING IS TYPED, because the drop-up
 	// it names is already open over the box and a pointer at a list a person is
 	// looking at is furniture (render.go's [microcopy] holds the original).
 	if a.home.box.empty() {
-		return dotted(right, microcopy)
+		right = dotted(right, microcopy)
 	}
-	return right
+	// AND THE WHOLE LINE IS SPELLED FOR THIS KEYBOARD ON THE WAY OUT — ONCE,
+	// HERE, ABOVE THE MEASURING. Every chord on this rule wears a modifier with
+	// two keycaps, and this line drew them straight out of their constants: a
+	// Mac that spells `opt+s` on the memory place and `opt+1…opt+7` on the map
+	// was spelling `alt+w` on home, which is one modifier under two names on one
+	// screen. chords.go states that [chordSpelling.say] is the one door every
+	// person-facing sentence about a chord goes through, and this line was not
+	// going through it. It has to happen before the return rather than at the
+	// paint because `⌘` is one cell where `cmd+` is four, and the ladder in
+	// [app.targetLegend] measures what it is about to draw.
+	return a.chords.say(right)
 }
 
 // targetLegendLeft is the left of home's rule, built to a budget, and the

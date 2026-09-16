@@ -39,22 +39,22 @@ func TestTheChordSpellingIsOnePerPlatformAndTerminal(t *testing.T) {
 			meta: "alt+"},
 		{name: "freebsd says alt", goos: "freebsd", meta: "alt+"},
 		{name: "a mac in iTerm2", goos: "darwin", env: map[string]string{"TERM_PROGRAM": "iTerm.app"},
-			meta: "⌥", terminal: "iTerm2", setting: "Profiles › Keys › Left Option: Esc+"},
+			meta: chordMetaWord, terminal: "iTerm2", setting: "Profiles › Keys › Left Option: Esc+"},
 		{name: "a mac in Terminal.app", goos: "darwin", env: map[string]string{"TERM_PROGRAM": "Apple_Terminal"},
-			meta: "⌥", terminal: "Terminal", setting: "Profiles › Keyboard › Use Option as Meta key"},
+			meta: chordMetaWord, terminal: "Terminal", setting: "Profiles › Keyboard › Use Option as Meta key"},
 		{name: "a mac in kitty", goos: "darwin", env: map[string]string{"TERM": "xterm-kitty"},
-			meta: "⌥", terminal: "kitty", setting: "macos_option_as_alt yes"},
+			meta: chordMetaWord, terminal: "kitty", setting: "macos_option_as_alt yes"},
 		{name: "a mac in kitty by its window id", goos: "darwin", env: map[string]string{"KITTY_WINDOW_ID": "3"},
-			meta: "⌥", terminal: "kitty", setting: "macos_option_as_alt yes"},
+			meta: chordMetaWord, terminal: "kitty", setting: "macos_option_as_alt yes"},
 		{name: "a mac in ghostty", goos: "darwin", env: map[string]string{"TERM_PROGRAM": "ghostty"},
-			meta: "⌥", terminal: "ghostty", setting: "macos-option-as-alt = true"},
+			meta: chordMetaWord, terminal: "ghostty", setting: "macos-option-as-alt = true"},
 		{name: "a mac in wezterm", goos: "darwin", env: map[string]string{"TERM_PROGRAM": "WezTerm"},
-			meta: "⌥", terminal: "WezTerm", setting: "send_composed_key_when_left_alt_is_pressed = false"},
+			meta: chordMetaWord, terminal: "WezTerm", setting: "send_composed_key_when_left_alt_is_pressed = false"},
 		{name: "a mac in alacritty", goos: "darwin", env: map[string]string{"ALACRITTY_WINDOW_ID": "7"},
-			meta: "⌥", terminal: "alacritty", setting: `option_as_alt = "Both"`},
+			meta: chordMetaWord, terminal: "alacritty", setting: `option_as_alt = "Both"`},
 		{name: "a mac in something nobody named", goos: "darwin", env: map[string]string{"TERM": "xterm-256color"},
-			meta: "⌥"},
-		{name: "a mac with no environment at all", goos: "darwin", meta: "⌥"},
+			meta: chordMetaWord},
+		{name: "a mac with no environment at all", goos: "darwin", meta: chordMetaWord},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var env func(string) string
@@ -75,14 +75,14 @@ func TestTheChordSpellingIsOnePerPlatformAndTerminal(t *testing.T) {
 
 // A SENTENCE IS AUTHORED ONCE AND SPELLED AT THE DOOR. Every chord constant on
 // this surface is written `alt+`, which is what the manual quotes and what Linux
-// draws unchanged; the Mac's `⌥` is one substitution at the moment of drawing.
+// draws unchanged; the Mac's `opt+` is one substitution at the moment of drawing.
 func TestTheSpellingDoorRewritesOnlyTheModifier(t *testing.T) {
 	mac := chordSpelling{meta: chordMetaWord}
 	got := mac.say(placeHintWords)
 	if strings.Contains(got, chordAltWord) {
 		t.Fatalf("a mac's hint still says alt+:\n%s", got)
 	}
-	for _, want := range []string{"⌥enter send it off as a task", "⌥. for the map", "tab next place"} {
+	for _, want := range []string{"opt+enter send it off as a task", "opt+. for the map", "tab next place"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the mac spelling lost %q:\n%s", want, got)
 		}
@@ -210,7 +210,7 @@ func TestTheMapNamesTheCtrlAliasExactlyWhenItIsBound(t *testing.T) {
 	// AND ON A MAC IT IS THE MAC'S SPELLING OF THE FIRST AND THE PLAIN ONE OF THE
 	// SECOND: `ctrl` is `ctrl` on every keyboard there is.
 	a.chords = detectChords("darwin", envOf(map[string]string{"TERM_PROGRAM": "kitty"}))
-	if mac := a.placeHint(); !strings.Contains(mac, "⌥1…7 or ctrl+1…7 go to a place") {
+	if mac := a.placeHint(); !strings.Contains(mac, "opt+1…7 or ctrl+1…7 go to a place") {
 		t.Fatalf("the mac map reads wrong:\n%s", mac)
 	}
 }
@@ -230,7 +230,7 @@ func TestTheOptionAsMetaNoteAppearsOnceAndNeverAfterARealChord(t *testing.T) {
 		t.Fatal("a place met the character option composes for alt+1 and said nothing")
 	}
 	note := plain(strings.Join(a.placeNote(a.width), "\n"))
-	want := `your terminal sends ⌥ as a letter — turn on "use option as meta" in iTerm2: Profiles › Keys › Left Option: Esc+`
+	want := `your terminal sends opt as a letter — turn on "use option as meta" in iTerm2: Profiles › Keys › Left Option: Esc+`
 	if !strings.Contains(note, "use option as meta") || !strings.Contains(note, "iTerm2") {
 		t.Fatalf("the note does not name the setting:\n%s\nwanted the words of\n%s", note, want)
 	}
@@ -280,7 +280,7 @@ func TestTheOptionAsMetaNoteIsNeitherDrawnOffAMacNorInAConversation(t *testing.T
 func TestTheFirstRunLineNamesTheChordsAndTheSettingOnAMacOnly(t *testing.T) {
 	mac := detectChords("darwin", envOf(map[string]string{"TERM_PROGRAM": "Apple_Terminal"}))
 	words := mac.chordSetupWords()
-	for _, want := range []string{"⌥1…⌥7", "if ⌥ types a character instead", "use option as meta", "Terminal: Profiles › Keyboard › Use Option as Meta key"} {
+	for _, want := range []string{"opt+1…opt+7", "if opt types a character instead", "use option as meta", "Terminal: Profiles › Keyboard › Use Option as Meta key"} {
 		if !strings.Contains(words, want) {
 			t.Fatalf("the first-run line lost %q:\n%s", want, words)
 		}

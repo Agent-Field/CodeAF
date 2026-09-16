@@ -290,6 +290,145 @@ func TestTheWordAndLineKillsAnswerToEveryNameTheySendUnder(t *testing.T) {
 	}
 }
 
+// TestCtrlKKillsToTheEndOfTheLineAndNeverEatsTheNewline is the other half of
+// readline's pair, and it is the reason the switcher moved to `alt+k` at all
+// (hop.go's [hopOpenKey]). Everything it asserts is [editor.killToEnd]'s stated
+// contract, including the one place it parts company with a shell.
+func TestCtrlKKillsToTheEndOfTheLineAndNeverEatsTheNewline(t *testing.T) {
+	// FROM THE HEAD OF A ONE-LINE DRAFT IT TAKES THE LOT, which is the gesture
+	// ctrl+u makes from the other end.
+	_, a := wired(nil)
+	a.input.setText("read the config file")
+	a.input.cursor = 0
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "" {
+		t.Fatalf("ctrl+k from the head left %q, want the line killed", got)
+	}
+
+	// FROM THE MIDDLE IT TAKES THE TAIL AND NOTHING BEHIND THE CARET.
+	_, a = wired(nil)
+	a.input.setText("read the config file")
+	a.input.cursor = len("read the ")
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "read the " {
+		t.Fatalf("ctrl+k from the middle left %q", got)
+	}
+
+	// AND IT STOPS AT THE NEWLINE RATHER THAN JOINING THE LINES. A press on an
+	// already-empty line is a no-op, which is what makes the second press safe:
+	// in a shell the line is the buffer and there is nothing to join, but a draft
+	// is a paragraph and a silent join takes two lines while looking like one.
+	_, a = wired(nil)
+	a.input.setText("first line\nsecond line")
+	a.input.cursor = 0
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "\nsecond line" {
+		t.Fatalf("ctrl+k killed across the newline: %q", got)
+	}
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "\nsecond line" {
+		t.Fatalf("a second ctrl+k on an emptied line ate the newline: %q", got)
+	}
+}
+
+// TestTheLineKillsReachHomesOwnBoxToo is the defect the law beside it was
+// written from (killpairlaw_test.go). Home's box has its own key switch, so
+// `ctrl+k` landing in the conversation's composer proved nothing about the box a
+// launch actually lands on — and there it did nothing at all. The law catches the
+// binding; this catches the ROUTE, which is the half go/ast cannot see.
+func TestTheLineKillsReachHomesOwnBoxToo(t *testing.T) {
+	_, a := wired(nil)
+	a.openHome()
+	for _, letter := range "read the config file" {
+		drive(t, a, key(string(letter)))
+	}
+	if got := a.home.box.String(); got != "read the config file" {
+		t.Fatalf("home's box holds %q before the kill", got)
+	}
+	for range "config file" {
+		drive(t, a, key("left"))
+	}
+	drive(t, a, key("ctrl+k"))
+	if got := a.home.box.String(); got != "read the " {
+		t.Fatalf("ctrl+k on home left %q, want the tail killed", got)
+	}
+	// AND IT IS AN EDIT RATHER THAN THE SWITCHER, on this page as in the
+	// conversation. Home is drawn over the surface the card is drawn over, so a
+	// stale binding here would raise it with nothing to say.
+	if a.hop.open {
+		t.Fatal("ctrl+k raised the conversation switcher from home")
+	}
+}
+
+// TestBothLineKillsAreLineKillsInEveryBoxThatHasThem is the claim the law beside
+// it could not make. killpairlaw_test.go reads the SOURCE and can see that a
+// switch answers both chords; it cannot see that the two answers are the same
+// gesture — and for a while they were not. Five boxes with their own key switch
+// answered `ctrl+u` by emptying the whole field, so on Home `abcdef` + three
+// lefts + `ctrl+u` threw `def` away while `ctrl+k` on that same caret correctly
+// kept the head. One chord meaning "to the start of the line" in the composer
+// and "all of it" on Home is two readings of one key.
+//
+// SO THIS DRIVES THE BOXES a person actually meets and asserts the pair from a
+// caret in the MIDDLE, which is the only place the two readings differ.
+func TestBothLineKillsAreLineKillsInEveryBoxThatHasThem(t *testing.T) {
+	for _, box := range []struct {
+		name string
+		open func(t *testing.T) (*app, func(*app) string)
+	}{
+		{"the composer", func(t *testing.T) (*app, func(*app) string) {
+			_, a := wired(nil)
+			return a, func(a *app) string { return a.input.String() }
+		}},
+		{"home's box", func(t *testing.T) (*app, func(*app) string) {
+			_, a := wired(nil)
+			a.openHome()
+			return a, func(a *app) string { return a.home.box.String() }
+		}},
+	} {
+		t.Run(box.name, func(t *testing.T) {
+			// ctrl+u keeps the tail.
+			a, read := box.open(t)
+			for _, r := range "abcdef" {
+				drive(t, a, key(string(r)))
+			}
+			drive(t, a, key("left"), key("left"), key("left"))
+			drive(t, a, key("ctrl+u"))
+			if got := read(a); got != "def" {
+				t.Fatalf("ctrl+u from the middle left %q, want %q", got, "def")
+			}
+			// ctrl+k keeps the head.
+			a, read = box.open(t)
+			for _, r := range "abcdef" {
+				drive(t, a, key(string(r)))
+			}
+			drive(t, a, key("left"), key("left"), key("left"))
+			drive(t, a, key("ctrl+k"))
+			if got := read(a); got != "abc" {
+				t.Fatalf("ctrl+k from the middle left %q, want %q", got, "abc")
+			}
+		})
+	}
+}
+
+// TestCtrlKInTheComposerIsAnEditAndNotTheSwitcher is the regression this whole
+// move exists to prevent. The chord used to raise the card over a draft
+// somebody was editing; now the card is on `alt+k` and this key belongs to the
+// box, so BOTH halves are asserted together — a lane that rebinds one without
+// the other fails here rather than in somebody's terminal.
+func TestCtrlKInTheComposerIsAnEditAndNotTheSwitcher(t *testing.T) {
+	_, a := wired(nil)
+	a.input.setText("read the config file")
+	a.input.cursor = len("read the ")
+	drive(t, a, key("ctrl+k"))
+	if a.hop.open {
+		t.Fatal("ctrl+k still raises the conversation switcher over the draft")
+	}
+	if got := a.input.String(); got != "read the " {
+		t.Fatalf("ctrl+k did not edit the draft: %q", got)
+	}
+}
+
 // AND THE NAMES ARE THE ONES A TERMINAL ACTUALLY SENDS UNDER. Every table above
 // is written in the spelling this surface's key switches match on, and that
 // spelling is a fact about a library rather than about this repo: the names come

@@ -2499,7 +2499,7 @@ this session has run something.
 
 ## Using the roster from the keyboard
 
-`alt+t` (`⌥t`) hands the keyboard to the roster. It is asked for, never taken: the draft is the
+`alt+t` (`opt+t`) hands the keyboard to the roster. It is asked for, never taken: the draft is the
 rest state, so a person who starts typing is typing, not navigating.
 
 | key | what it does |
@@ -3377,7 +3377,7 @@ local conversation the same page tails that log live.
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; `Chats ▾` at the strip's right end opens the chat picker | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
+| pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; a dim `+N` at the strip's right end counts the tabs it could not spell, and `alt+k` opens the chats card | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
 | legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
@@ -3390,7 +3390,7 @@ local conversation the same page tails that log live.
 The focus header is **two pinned rows**, under the tab strip:
 
 ```
-  │ main ×│ the tree walk    │                                  Chats ▾
+  │ main ×│ the tree walk    │
   ─ main ▸ Ship the port ▸ Fix the nil-map crash ───────────── esc/← main ─
   ─ ⠙ working · 2m 12s · $0.04 · 6 tool calls ───────────────────── Stop ───
 ```
@@ -5411,8 +5411,9 @@ A loading or failed hosted read does not overwrite the saved position.
 
 ## Breadcrumbs — which chat am I in, parent tasks, and switching chats by clicking
 
-The main chat's top bar names the conversation. Its `▾` opens the same picker as
-Ctrl+k without changing chats until you choose. Inside a task it becomes a trail:
+The main chat's top bar names the conversation. `alt+k` opens the chats card from
+there without changing chats until you choose — the top bar has no `▾` control of its
+own, and the tab row's `Chats ▾` is deleted. Inside a task it becomes a trail:
 `Shipping the parser ▸ Fix validation ▸ Add boundary checks`. Click the conversation
 name to return to the main chat, or an ancestor to open that task. The current task is
 inert. Narrow frames fold ancestors into `…`; clicking it opens the nearest ancestor
@@ -5436,7 +5437,8 @@ conversation's tab, and must not show a new chat under a previous chat's name.
 
 The entry line `closed · <previous chat> — a connection holds one conversation at a time`
 belongs to a door that has no way to dial a second connection, and is not something any
-shipped door says today. Merely browsing Ctrl+k does not select or close anything.
+shipped door says today. Merely browsing the chats card (`alt+k`) does not select or
+close anything.
 
 **What ends a conversation is explicit.** `stop work` on the card that appears when you
 close a working tab ends the turn and the running nodes in that one conversation and

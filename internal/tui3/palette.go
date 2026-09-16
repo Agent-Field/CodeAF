@@ -2310,6 +2310,13 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 	case "ctrl+u", "super+backspace":
 		filter.killToStart()
 		rank()
+	case "ctrl+k":
+		// AND THE OTHER HALF OF THE PAIR, which reached this box the day the
+		// switcher gave the letter back (hop.go's [hopOpenKey]). It is here for
+		// the reason directly above: a kill that works in the composer and does
+		// nothing in the model picker is a kill a person stops trusting anywhere.
+		filter.killToEnd()
+		rank()
 	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		filter.deleteWord()
 		rank()
@@ -2394,7 +2401,7 @@ func (a *app) overlayHeight() int {
 	room := height - 2 - a.inputHeight() - a.questionHeight() -
 		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
-		want = a.menu.height(width, room)
+		want = a.menu.height(width, room, a.chords)
 	}
 	if want > room {
 		want = room
@@ -2436,7 +2443,7 @@ func (a *app) overlayRows(width, n int) []string {
 	case a.subPage.open:
 		return a.subPage.draw(a, width, n, hover)
 	case a.menu.open:
-		return a.menu.rows(width, n, a.pal, hover)
+		return a.menu.rows(width, n, a.pal, hover, a.chords)
 	case a.comp.open:
 		return a.comp.rows(width, n, a.pal, hover)
 	}

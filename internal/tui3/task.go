@@ -4301,8 +4301,8 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 		}
 	}
 	// IN THIS TERMINAL'S OWN SPELLING of the modifier (chords.go), because the
-	// offer names a chord now rather than a bare letter and a Mac's keycap says
-	// `⌥`.
+	// offer names a chord now rather than a bare letter and a Mac calls that
+	// modifier Option.
 	hintText := a.chords.say(railWideHint)
 	if a.railWide {
 		hintText = a.chords.say(railNarrowHint)

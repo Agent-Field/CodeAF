@@ -188,9 +188,15 @@ func TestClosingFromTabBrowseAndOpeningNewChatRevealTheirSelection(t *testing.T)
 	}
 }
 
-// Controls travel with a short run of tabs and settle at the edge only once the
-// scrolling viewport fills the row. A sparse strip must not leave a long gap.
-func TestNewChatAndChatsFollowTheLastVisibleTab(t *testing.T) {
+// The new-chat door travels with a short run of tabs and settles at the edge
+// only once the scrolling viewport fills the row. A sparse strip must not leave
+// a long gap.
+//
+// IT USED TO CHECK THE `Chats ▾` CONTROL BESIDE IT, which is deleted
+// (chattabs.go). With every tab spelled there is now nothing at all after the
+// `+`, which is the other half of what this test is for: a row with no gap in
+// the middle and no furniture on the end.
+func TestNewChatFollowsTheLastVisibleTab(t *testing.T) {
 	lab := newStartLab(t)
 	a := lab.app()
 	a.width, a.height = 160, 40
@@ -203,19 +209,26 @@ func TestNewChatAndChatsFollowTheLastVisibleTab(t *testing.T) {
 		}
 	}
 	plus := tabScrollTarget(t, a, tabNew)
-	chats := tabScrollTarget(t, a, tabMore)
-	if plus.span.from != last+1 || chats.span.from != plus.span.to+tabsMoreGap {
-		t.Fatalf("controls left the tabs: last=%d plus=%+v chats=%+v", last, plus.span, chats.span)
+	if plus.span.from != last+1 {
+		t.Fatalf("the new-chat door left the tabs: last=%d plus=%+v", last, plus.span)
 	}
-	if chats.span.to >= a.width-10 {
+	if plus.span.to >= a.width-10 {
 		t.Fatal("sparse tabs pushed navigation to the far edge")
 	}
-	for _, hit := range []tabHit{plus, chats} {
-		for x := hit.span.from; x < hit.span.to; x++ {
-			got, ok := a.tabAt(x, placeTabRow)
-			if !ok || got.kind != hit.kind {
-				t.Fatalf("adjacent control has wrong hit ownership: %+v", got)
-			}
+	// EVERY TAB IS SPELLED AT THIS WIDTH, so there is no count and nothing else
+	// after the door — the row simply stops.
+	for _, hit := range a.chatTabHits {
+		if hit.kind == tabFold {
+			t.Fatalf("a row that spelled every tab drew a count anyway: %+v", hit.span)
+		}
+		if hit.span.from >= plus.span.to {
+			t.Fatalf("something is drawn after the new-chat door: %+v", hit)
+		}
+	}
+	for x := plus.span.from; x < plus.span.to; x++ {
+		got, ok := a.tabAt(x, placeTabRow)
+		if !ok || got.kind != plus.kind {
+			t.Fatalf("adjacent control has wrong hit ownership: %+v", got)
 		}
 	}
 }
