@@ -99,8 +99,9 @@ const DefaultCrewSource = CrewSourceOpen
 // a dial.
 //
 // Every id is an open-weight model, picked off the catalog's own published
-// scores against blended price, most recently on 2026-09-16 (settings.go's
-// DefaultWorkerModel says how). No closed model is here: the open family is the
+// scores against blended price: the worker, reflex and small-work seats on
+// 2026-09-01, and the frugal mastermind and the balanced careful and mastermind
+// seats on 2026-09-16 (settings.go's DefaultWorkerModel says how). No closed model is here: the open family is the
 // shelf that has to stand on price alone, and the `all` family is where a closed
 // model goes.
 var crewModels = map[string]map[string]string{
@@ -132,7 +133,7 @@ var crewModels = map[string]map[string]string{
 // [KeyCrewSource] draws from. The careful column is the same law here as
 // there: a DIFFERENT VENDOR from the worker in every preset, and the reflex
 // and low columns still never vary. The ids are locked the way the open ones
-// were, off the catalog's own published scores against blended price, and
+// are, off the catalog's own published scores against blended price, and
 // closed models live here and only here.
 //
 // TWO COLUMNS SPEND DIFFERENTLY HERE. The worker column is [crewModels]'s dial

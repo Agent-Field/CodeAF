@@ -373,8 +373,8 @@ catalog's ceiling, so there is no bigger planner to buy above it.
 
 **Why the open ids.** They were picked off the catalog's own published scores (OpenRouter
 republishes Artificial Analysis's coding and agentic indexes on every model row) against
-blended price, open weights only, and the mastermind and balanced careful seats were
-picked on 2026-09-16. The worker seat is the dial: `glm-5.3-flash`
+blended price, open weights only, and the `frugal` mastermind and the `balanced` careful and mastermind seats were
+picked on 2026-09-16, the rest on 2026-09-01. The worker seat is the dial: `glm-5.3-flash`
 scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
 one point under `glm-5.3` at a twentieth of its price, and it can see images. The
 mastermind is the one seat whose price may be the model rather than the rung: it answers a

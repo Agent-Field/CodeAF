@@ -308,12 +308,12 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 	}
 }
 
-// A SOURCE NOBODY SET IS THE OPEN FAMILY, BYTE FOR BYTE. The all table may
-// exist, but a profile that never answered the row must resolve exactly what it
-// resolved before the row was invented: the shipped defaults, the open presets
-// under the same words, and a write that lands the open ids. This is the
-// default-preservation law, and an unknown word is held to it too, silently,
-// the way a retired choice reads everywhere else.
+// A SOURCE NOBODY SET IS THE OPEN FAMILY. The all table may exist, but a profile
+// that never answered the row resolves the open family: the shipped defaults,
+// the open presets under the same words, and a write that lands the open ids.
+// This is the default-preservation law for the FAMILY; the open roster moved in
+// the same change, which the change entry owns. An unknown word is held to the
+// same law, silently, the way a retired choice reads everywhere else.
 func TestASourceNobodyAnsweredReadsTheOpenFamily(t *testing.T) {
 	dir := t.TempDir()
 	if got := CrewSourceAt(dir); got != DefaultCrewSource {
@@ -359,8 +359,8 @@ func TestFlippingToAllMakesTheWordsMeanTheAllFamily(t *testing.T) {
 	if got := CrewSourceAt(dir); got != CrewSourceAll {
 		t.Fatalf("the source row reads %q after all was set", got)
 	}
-	// The crew row never writes the source: a stored tier id is not a family claim: a stored tier id is not a
-	// family claim, and the family is not stored in the crew row either.
+	// The crew row never writes the source: a stored tier id is not a family claim,
+	// and the family is not stored in the crew row either.
 	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
 		t.Fatalf("setting the crew to balanced: %v", err)
 	}
