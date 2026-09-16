@@ -588,6 +588,12 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 	if !verdict.verified {
 		fmt.Fprintf(log, "merge round: the check did not pass what the round left — %s\n", verdict.report())
 		a.undoMergeRound(node, tree, log)
+		// AND THE QUESTION COMES BACK WITH THE FAILURE AS ITS FATE. The release
+		// comes before the notice is built: a notice carrying the round's claim
+		// would suppress the very raise this emit exists to make
+		// (task_landing_question.go's [Agent.publishLandingQuestion]).
+		node.releaseResolving()
+		a.emitTaskUpdate(node.notice())
 		return
 	}
 	landed, merge, detail, why := landHome(node, tree, outcome.changed, a.signsGitWork())
@@ -603,6 +609,8 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 	}
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "merge round: it still would not land — %s\n", detail)
+		node.releaseResolving()
+		a.emitTaskUpdate(node.notice())
 		return
 	}
 	fmt.Fprintf(log, "merge round: resolved, and %s landed\n", tree.branch)
@@ -630,6 +638,10 @@ func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, rep
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "resolve: your own copies could not be carried aside — %s\n", detail)
 		node.finish(withReport(withYourCallLead(node.landingFacts(merge), detail), report), landed, tree.branch, merge)
+		// RELEASED BEFORE THE NOTICE IS BUILT: the notice carries
+		// [TaskNotice.Settling] now, and one built while the round's claim is
+		// still held would suppress the very raise this emit exists to make.
+		node.releaseResolving()
 		a.emitTaskUpdate(node.notice())
 		return
 	}

@@ -2072,6 +2072,18 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
 	node.ended = time.Now()
+	// AND THE RESOLUTION'S CLAIM IS HANDED BACK IN THE SAME WRITE. The claim
+	// covers everything down to the resettle ([TaskNode.claimSettle]), so the
+	// resettle is where it ends: cleared here, under the lock, the
+	// announcement below is built AFTER it and carries an empty
+	// [TaskNotice.Settling] — which is what lets the terminal notice of an
+	// accept or a re-audit still raise the node's question with the answer's
+	// fate on it. Every caller also defers its own release, and that release
+	// is now an idempotent no-op; the checkpoint below persists the cleared
+	// Resolving record in the same breath (task_store.go's
+	// [taskRecord.Resolving]).
+	node.settling = ""
+	node.resolving = false
 	g.mu.Unlock()
 
 	g.checkpoint()
@@ -3207,6 +3219,22 @@ func (n *TaskNode) releaseSettle() {
 	n.graph.mu.Unlock()
 }
 
+// resolutionInFlightLocked is [TaskNotice.Settling]'s source: the name of the
+// resolution in flight over this node, read from the graph's own claim fields
+// with the lock already held. A settle claims the node in plain words
+// ([TaskNode.claimSettle]); a merge round claims it only in the flag
+// ([TaskNode.claimResolving]), so the round borrows its two words here rather
+// than growing a second claiming vocabulary.
+func (n *TaskNode) resolutionInFlightLocked() string {
+	if n.settling != "" {
+		return n.settling
+	}
+	if n.resolving {
+		return "a merge round"
+	}
+	return ""
+}
+
 // keepClaim records the work's own account of itself, and clears nothing: a
 // round that came back with nothing to say leaves the last thing that was said
 // standing. See [TaskNode.claim].
@@ -3640,6 +3668,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Context:     n.context,
 		Mending:     n.mend,
 		Waiting:     waiting,
+		Settling:    n.resolutionInFlightLocked(),
 		Stopped:     n.stopped,
 		Ending:      n.endingLocked(),
 		// AND WHAT CLASHED, WHICH ROAD PUT IT THERE, AND WHOSE DECISION IT IS. None
