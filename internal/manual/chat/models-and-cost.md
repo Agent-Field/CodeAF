@@ -349,8 +349,9 @@ You can also connect that vendor yourself as a direct service; the
 the three preset words draw from. `open` is the default and is the table above: open weights only,
 so a crew nobody chose is never a bet on one vendor's pricing. `all` reads the same three words,
 `frugal`, `balanced` and `max`, off the whole catalog instead, closed and frontier models included,
-and costs what those models cost. Flip the row and pick the crew again: the five rows already on
-disk keep their ids until you do, and the crew word reads `custom` in the meantime when they
+and costs what those models cost. Flip the row and the seats nobody pinned move with it at once,
+because an unwritten seat is the default crew resolved in the family you are on; the rows already
+on disk keep their ids until you pick the crew again, and the crew word reads `custom` while they
 match no preset in the family you flipped to.
 
 Under `all`, the same three words resolve to these:
@@ -369,8 +370,8 @@ the one expensive step. What `frugal` to `balanced` buys instead is the careful 
 smarter mastermind. The `max` mastermind sits on the worker's own model on purpose: it is the
 catalog's ceiling, so the top seat adds generation behavior rather than a bigger model.
 
-**Why the open ids.** They were picked off the catalog's own published scores — OpenRouter
-republishes Artificial Analysis's coding and agentic indexes on every model row — against
+**Why the open ids.** They were picked off the catalog's own published scores (OpenRouter
+republishes Artificial Analysis's coding and agentic indexes on every model row) against
 blended price, open weights only, and the mastermind and balanced careful seats were
 re-picked on 2026-09-16. The worker seat is the dial: `glm-5.3-flash`
 scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
@@ -380,7 +381,7 @@ few times a task, so `frugal` pays for `glm-5.3` while the work below it stays o
 `glm-5.3-flash` and DeepSeek.
 The careful class is always a different vendor from the worker and always sees images:
 `moonshotai/kimi-k3` scores 76 on coding and is the open field's strongest checker, so
-`balanced` and `max` put it on both the careful and the mastermind seat. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose —
+`balanced` and `max` put it on both the careful and the mastermind seat. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose:
 the bare `deepseek/deepseek-v4-flash` id resolves to the April build, and the July build at
 the same price scores thirteen coding points higher.
 
