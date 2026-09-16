@@ -353,6 +353,22 @@ and costs what those models cost. Flip the row and pick the crew again: the five
 disk keep their ids until you do, and the crew word reads `custom` in the meantime when they
 match no preset in the family you flipped to.
 
+Under `all`, the same three words resolve to these:
+
+| class | frugal | balanced | max |
+| --- | --- | --- | --- |
+| reflex | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` |
+| small work | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` |
+| worker | `openai/gpt-5.6-sol` | `openai/gpt-5.6-sol` | `anthropic/claude-fable-5.1` |
+| careful work | `google/gemini-3.8-flash` | `anthropic/claude-opus-5` | `openai/gpt-6-astra` |
+| mastermind | `anthropic/claude-opus-5` | `anthropic/claude-fable-5.1` | `anthropic/claude-fable-5.1` |
+
+Two of the columns spend differently here. The worker is the same model in `frugal` and
+`balanced`, and only `max` buys the frontier coder, because on the catalog the coding ceiling is
+the one expensive step. What `frugal` to `balanced` buys instead is the careful seat and a
+smarter mastermind. The `max` mastermind sits on the worker's own model on purpose: it is the
+catalog's ceiling, so the top seat adds generation behavior rather than a bigger model.
+
 **Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
 OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
 — against blended price, open weights only. The worker seat is the dial: `glm-5.3-flash`

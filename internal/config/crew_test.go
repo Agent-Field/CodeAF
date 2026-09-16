@@ -214,8 +214,8 @@ func TestTheCrewRowRefusesAWordThatIsNotAPreset(t *testing.T) {
 // ── the family the three words draw from ────────────────────────────────────
 
 // THE CAREFUL SEAT IS ALWAYS A SECOND VENDOR, IN EVERY PRESET OF EVERY FAMILY.
-// A check from the same family as the work it checks is a check that shares the
-// first family's blind spots, and the two tables are one law: a preset that
+// A check from the same vendor as the work it checks is a check that shares
+// that vendor's blind spots, and the two tables are one law: a preset that
 // moved to the all family and put the same vendor on worker and careful would
 // break the property the open crew was built on while pretending to keep it.
 func TestTheCarefulSeatIsAlwaysASecondVendorInEveryFamily(t *testing.T) {
@@ -225,19 +225,16 @@ func TestTheCarefulSeatIsAlwaysASecondVendorInEveryFamily(t *testing.T) {
 		}
 		return id
 	}
-	for _, family := range []struct{ source, word string }{
-		{CrewSourceOpen, CrewSourceOpen},
-		{CrewSourceAll, CrewSourceAll},
-	} {
+	for _, family := range CrewSources {
 		for _, preset := range CrewPresets {
-			models, ok := CrewModelsForSource(family.source, preset)
+			models, ok := CrewModelsForSource(family, preset)
 			if !ok {
-				t.Fatalf("there is no %s preset in the %s family", preset, family.word)
+				t.Fatalf("there is no %s preset in the %s family", preset, family)
 			}
 			if vendor(models[ModelTierWorker]) == vendor(models[ModelTierHigh]) {
 				t.Errorf("%s under %s has %q working and %q checking, and a check from "+
 					"the same vendor catches what that vendor lets through",
-					preset, family.word, models[ModelTierWorker], models[ModelTierHigh])
+					preset, family, models[ModelTierWorker], models[ModelTierHigh])
 			}
 		}
 	}
@@ -298,8 +295,8 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 // the way a retired choice reads everywhere else.
 func TestASourceNobodyAnsweredReadsTheOpenFamily(t *testing.T) {
 	dir := t.TempDir()
-	if got := CrewSourceAt(dir); got != CrewSourceOpen {
-		t.Fatalf("an untouched profile reads the source as %q, want %q", got, CrewSourceOpen)
+	if got := CrewSourceAt(dir); got != DefaultCrewSource {
+		t.Fatalf("an untouched profile reads the source as %q, want %q", got, DefaultCrewSource)
 	}
 	if got := CrewAt(dir); got != DefaultCrew {
 		t.Fatalf("an untouched profile reads the crew as %q, want %q", got, DefaultCrew)
