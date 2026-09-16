@@ -113,6 +113,17 @@ func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
 // person's machine that no transcript ever showed them — and the node was
 // briefed to do one piece of work, not to retune the product around it.
 //
+// AND ON THE EXPERIMENT BRANCH THERE IS A THIRD ANSWER, WHERE THE SIX PI TOOLS
+// COME OFF ENTIRELY. spark/bash-task-loop hands a task worker ONE bash tool —
+// bare's, with the branch's head+tail+path cut and the session's background
+// argument — and the kept hands that cannot be a shell command, under a strict
+// one-action-per-response envelope (bashbelt.go, bashbelt_envelope.go). It is
+// a SECOND composition behind [Config.mayBashBelt], set from CODEAF_TASK_BELT
+// at the one place a worker's Config is built (task_run.go's
+// [Agent.newTaskAgentOn]); unset, the belt above is byte for byte what it was,
+// and internal/exec/bare is untouched — the hands stay its, and the
+// experiment is a wire change, never an engine change.
+//
 // propose_task and tasks STAY, and they are one pair. A node may hand parts of
 // its own work further out (task.go's fan-out law) — the proposals join the
 // conversation's own graph under the node that made them, so there is no second
@@ -132,6 +143,15 @@ func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
 // is exactly what the conversation has, which is the point: it is the same
 // worker, working somewhere quieter.
 func (a *Agent) belt() []bare.Tool {
+	// THE EXPERIMENT'S SECOND BELT, AND THE ONE DELEGATION THIS FUNCTION MAKES.
+	// A task worker built with CODEAF_TASK_BELT=bash reads a belt of one shell
+	// and the hands that cannot be a shell command, under a strict one-action
+	// envelope — the branch named in [bashBelt] — and unset, not one byte of
+	// what is composed here moves. The conversation never reads the switch:
+	// [Config.mayBashBelt] is the predicate and it answers InTask first.
+	if a.config.mayBashBelt() {
+		return a.bashBelt()
+	}
 	tools := bare.AllToolsCapped(a.config.Workspace, a.resultCaps())
 	for index, tool := range tools {
 		switch tool.Name {

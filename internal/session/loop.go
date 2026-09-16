@@ -1246,6 +1246,24 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			continue
 		}
 
+		// THE ENVELOPE RIDES THE ONE SEAM EVERY EXECUTION PASSES THROUGH. A bash-belt
+		// worker's submission is validated HERE, before anything runs — the branch
+		// bash never starts early (earlyTools admits read-only calls and the branch
+		// belt carries none of them), so nothing can have reached the world before
+		// this check, and a rejected batch is answered with nothing run at all.
+		// See bashbelt_envelope.go for the envelope and its reject roads.
+		if skip, ended := a.enforceBashEnvelope(ctx, hub, calls, &turn, started, model); ended {
+			return true
+		} else if skip {
+			// The reads this response started early are dropped exactly as a
+			// provider retry drops them, and for the same reason the early-start
+			// law admits read-only calls only: a discarded read costs the work and
+			// nothing else, and the model must not be handed the answer to a call
+			// the harness has just refused to run.
+			warm.reset()
+			continue
+		}
+
 		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
 		// THE GAP THE LAW IS ABOUT STARTS HERE. Everything between this line and
 		// the next request leaving is the turn's own work — recording the results,
