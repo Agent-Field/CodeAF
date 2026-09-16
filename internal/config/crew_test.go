@@ -211,6 +211,174 @@ func TestTheCrewRowRefusesAWordThatIsNotAPreset(t *testing.T) {
 	}
 }
 
+// ── the family the three words draw from ────────────────────────────────────
+
+// THE CAREFUL SEAT IS ALWAYS A SECOND VENDOR, IN EVERY PRESET OF EVERY FAMILY.
+// A check from the same family as the work it checks is a check that shares the
+// first family's blind spots, and the two tables are one law: a preset that
+// moved to the all family and put the same vendor on worker and careful would
+// break the property the open crew was built on while pretending to keep it.
+func TestTheCarefulSeatIsAlwaysASecondVendorInEveryFamily(t *testing.T) {
+	vendor := func(id string) string {
+		if at := strings.Index(id, "/"); at > 0 {
+			return id[:at]
+		}
+		return id
+	}
+	for _, family := range []struct{ source, word string }{
+		{CrewSourceOpen, CrewSourceOpen},
+		{CrewSourceAll, CrewSourceAll},
+	} {
+		for _, preset := range CrewPresets {
+			models, ok := CrewModelsForSource(family.source, preset)
+			if !ok {
+				t.Fatalf("there is no %s preset in the %s family", preset, family.word)
+			}
+			if vendor(models[ModelTierWorker]) == vendor(models[ModelTierHigh]) {
+				t.Errorf("%s under %s has %q working and %q checking, and a check from "+
+					"the same vendor catches what that vendor lets through",
+					preset, family.word, models[ModelTierWorker], models[ModelTierHigh])
+			}
+		}
+	}
+}
+
+// THE ALL FAMILY IS LOCKED, not derived: the ids are the ones the decision
+// settled on, and this is the page that says so. A wrong id here is a person's
+// bill, and a silent rewrite of the locked table would be a decision made by a
+// diff.
+func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
+	want := map[string]map[string]string{
+		CrewFrugal: {
+			ModelTierReflex:     "google/gemini-2.5-flash",
+			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+			ModelTierWorker:     "openai/gpt-5.6-sol",
+			ModelTierHigh:       "google/gemini-3.8-flash",
+			ModelTierMastermind: "anthropic/claude-opus-5",
+		},
+		CrewBalanced: {
+			ModelTierReflex:     "google/gemini-2.5-flash",
+			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+			ModelTierWorker:     "openai/gpt-5.6-sol",
+			ModelTierHigh:       "anthropic/claude-opus-5",
+			ModelTierMastermind: "anthropic/claude-fable-5.1",
+		},
+		CrewMax: {
+			ModelTierReflex:     "google/gemini-2.5-flash",
+			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+			ModelTierWorker:     "anthropic/claude-fable-5.1",
+			ModelTierHigh:       "openai/gpt-6-astra",
+			ModelTierMastermind: "anthropic/claude-fable-5.1",
+		},
+	}
+	for preset, expected := range want {
+		got, ok := CrewModelsForSource(CrewSourceAll, preset)
+		if !ok {
+			t.Fatalf("there is no %s preset in the all family", preset)
+		}
+		for _, tier := range ModelTiers {
+			if got[tier] != expected[tier] {
+				t.Errorf("%s under all sets %s to %q, want %q", preset, tier, got[tier], expected[tier])
+			}
+			if !strings.Contains(got[tier], "/") {
+				t.Errorf("%s under all sets %s to %q, which is not a provider-qualified id", preset, tier, got[tier])
+			}
+			if err := ValidateTierValue(got[tier]); err != nil {
+				t.Errorf("%s under all sets %s to %q, which its own row would refuse: %v", preset, tier, got[tier], err)
+			}
+		}
+	}
+}
+
+// A SOURCE NOBODY SET IS THE OPEN FAMILY, BYTE FOR BYTE. The all table may
+// exist, but a profile that never answered the row must resolve exactly what it
+// resolved before the row was invented: the shipped defaults, the open presets
+// under the same words, and a write that lands the open ids. This is the
+// default-preservation law, and an unknown word is held to it too, silently,
+// the way a retired choice reads everywhere else.
+func TestASourceNobodyAnsweredReadsTheOpenFamily(t *testing.T) {
+	dir := t.TempDir()
+	if got := CrewSourceAt(dir); got != CrewSourceOpen {
+		t.Fatalf("an untouched profile reads the source as %q, want %q", got, CrewSourceOpen)
+	}
+	if got := CrewAt(dir); got != DefaultCrew {
+		t.Fatalf("an untouched profile reads the crew as %q, want %q", got, DefaultCrew)
+	}
+	if err := ApplyCrew(dir, CrewMax); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := CrewModels(CrewMax)
+	for _, tier := range ModelTiers {
+		if got := TierModelAt(dir, tier); got != want[tier] {
+			t.Errorf("with no source set, max wrote %s to %q, want the open %q", tier, got, want[tier])
+		}
+	}
+	// A WORD THIS BUILD DOES NOT KNOW READS AS OPEN, silently. Being told a
+	// preference from an older build is now an error is the one thing a
+	// retirement must never do, and a family is not a thing to guess either.
+	if err := writeProfileValue(dir, KeyCrewSource, "wide"); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewSourceAt(dir); got != CrewSourceOpen {
+		t.Fatalf("an unknown source word reads as %q, want %q", got, CrewSourceOpen)
+	}
+	if got := CrewAt(dir); got != CrewMax {
+		t.Fatalf("an unknown source word moved the crew to %q", got)
+	}
+}
+
+// FLIPPING TO ALL MAKES THE SAME WORDS MEAN THE ALL FAMILY, and nothing else
+// moves until the person picks the crew again. The five ids already written
+// are theirs: a family flip is a meaning change, not a write, so the five rows
+// in place read custom against the new family until one keystroke re-applies
+// them.
+func TestFlippingToAllMakesTheWordsMeanTheAllFamily(t *testing.T) {
+	dir := t.TempDir()
+	rows := registry(t, dir)
+	if err := mustRow(t, rows, KeyCrewSource).Apply(CrewSourceAll); err != nil {
+		t.Fatalf("setting the family to all: %v", err)
+	}
+	if got := CrewSourceAt(dir); got != CrewSourceAll {
+		t.Fatalf("the source row reads %q after all was set", got)
+	}
+	// The row is the one place the source is written: a stored tier id is not a
+	// family claim, and the family is not stored in the crew row either.
+	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
+		t.Fatalf("setting the crew to balanced: %v", err)
+	}
+	want, _ := CrewModelsForSource(CrewSourceAll, CrewBalanced)
+	for _, tier := range ModelTiers {
+		if got := TierModelAt(dir, tier); got != want[tier] {
+			t.Errorf("under all, balanced wrote %s to %q, want the all-family %q", tier, got, want[tier])
+		}
+	}
+	if got := CrewAt(dir); got != CrewBalanced {
+		t.Fatalf("the crew reads %q after balanced was applied under all", got)
+	}
+
+	// And the same five ids are NOT balanced in the open family, which is the
+	// point of the toggle: the words changed family, and the reading follows.
+	if err := mustRow(t, registry(t, dir), KeyCrewSource).Apply(CrewSourceOpen); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewAt(dir); got != CrewCustom {
+		t.Fatalf("after flipping back to open, the all-family five read %q, want %q", got, CrewCustom)
+	}
+	// One keystroke heals it, and heals it open.
+	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewAt(dir); got != CrewBalanced {
+		t.Fatalf("the crew reads %q after balanced was applied under open again", got)
+	}
+	open, _ := CrewModels(CrewBalanced)
+	for _, tier := range ModelTiers {
+		if got := TierModelAt(dir, tier); got != open[tier] {
+			t.Errorf("after re-applying under open, %s reads %q, want the open %q", tier, got, open[tier])
+		}
+	}
+}
+
 // ── the level on a tier value ───────────────────────────────────────────────
 
 // A LEVEL IS ACCEPTED AND ANY OTHER SUFFIX IS REFUSED IN WORDS.

@@ -214,6 +214,19 @@ const (
 	// "balanced" over a hand-pinned tier would be lying in the one place a person
 	// went to check.
 	KeyCrew = "models.crew"
+	// KeyCrewSource is which family the crew words draw from: `open`, the
+	// open-weight table this build ships, or `all`, the same three words
+	// resolved over the whole catalog with closed and frontier models in it.
+	// IT IS A ROW RATHER THAN A SECOND VOCABULARY because the three words are
+	// the only thing anybody learns: the question a person arrives with is how
+	// much to spend, and which shelf the answer comes off is one more answer to
+	// the same question, not six new preset words. The row is read by the
+	// crew's own machinery (crew.go's [CrewSourceAt]) and never by a caller
+	// spelling the ids itself, so the family and the tables cannot disagree
+	// about what a preset means. It is PROFILE-ONLY with the tier rows, for the
+	// worker row's own reason: a repository that could answer it could send a
+	// visitor's work, and their credit, to a vendor they never chose.
+	KeyCrewSource = "models.crew.source"
 	// KeyMouse is whether the surface reports the mouse at all. ON is the
 	// default ([DefaultMouse]), because hover, click and the wheel are v3's own
 	// language and the thing they cost is bought back by a key: an alt-screen
@@ -2261,6 +2274,23 @@ func (s *Settings) build() []Setting {
 				"thinking and checking. Change one of the five rows below and this reads `custom`.",
 			read:  func() string { return CrewAt(dir) },
 			write: func(raw string) error { return writeCrew(dir, raw) },
+		},
+		// THE FAMILY THE THREE WORDS DRAW FROM, one row under the crew. It sits
+		// beside the crew row because it is the same decision read one level up:
+		// the crew row says which five models, and this says which shelf those
+		// five come off. Open is the default and the law the shipped crew rests
+		// on; `all` is the opt-in that spends what the frontier costs.
+		Setting{
+			Key: KeyCrewSource, Category: CategoryModels, Kind: SettingChoice,
+			Label: "model family", Choices: CrewSources,
+			Hint: "which family the crew words draw from. `open` is the default: every " +
+				"seat an open-weight model, so a crew nobody chose is never a bet on one " +
+				"vendor's pricing. `all` reads the same three words, frugal, balanced and " +
+				"max, off the whole catalog, closed and frontier models included, and " +
+				"costs what those models cost. Flip it and pick the crew again; the five " +
+				"rows already written keep their ids until you do.",
+			read:  func() string { return CrewSourceAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyCrewSource, raw, CrewSources) },
 		},
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
