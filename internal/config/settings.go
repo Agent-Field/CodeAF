@@ -1009,7 +1009,8 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelT
 //
 // The ids are OPEN-WEIGHT MODELS, chosen off the catalog's own published
 // scores (OpenRouter republishes Artificial Analysis's coding and agentic
-// indexes on every row) against the blended price, on 2026-09-01. The low row is
+// indexes on every row) against the blended price, most recently on 2026-09-16 (crew.go's crewModels
+// comment owns the date). The low row is
 // pinned to a DATED build on purpose: the bare `deepseek/deepseek-v4-flash` id
 // resolves to the April build, and the July build at the same price scores
 // thirteen coding points higher.
@@ -2268,10 +2269,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyCrew, Category: CategoryModels, Kind: SettingChoice,
 			Label: "crew", Choices: CrewPresets,
-			Hint: "the five models codeaf works with, chosen as one word. Each preset's own " +
-				"line is in the crew row at the top, and which shelf those words draw from " +
-				"is the `model family` row below. Change one of the five rows below and this " +
-				"reads `custom`.",
+			Hint: "the five models codeaf works with, chosen as one word. `frugal`, " +
+				"`balanced` and `max` each pick their own roster, listed by /crew and under " +
+				"the crew row, and which shelf they draw from is the `model family` row " +
+				"below. Change one of the five rows below and this reads `custom`.",
 			read:  func() string { return CrewAt(dir) },
 			write: func(raw string) error { return writeCrew(dir, raw) },
 		},

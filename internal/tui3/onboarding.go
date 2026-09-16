@@ -1487,11 +1487,15 @@ var crewChoiceWords = map[string]string{
 // for a preset this table has not been taught — which is the one-source rule
 // applied to a gap: a new preset gets a real sentence rather than a blank row,
 // and the blank row is what would have shipped if this map were the only source.
-func crewChoiceWord(source, preset string) string {
+func crewChoiceWord(preset string) string {
 	if word := crewChoiceWords[strings.ToLower(strings.TrimSpace(preset))]; word != "" {
 		return word
 	}
-	return config.CrewLineFor(source, preset)
+	// The fallback is for a preset this screen has not been taught, and it is the
+	// open family's line: reading the profile here would put a disk read on the
+	// frame clock (this runs inside setupCrewRows, which is drawn every frame),
+	// and the row above already names the family on screen.
+	return config.CrewLine(preset)
 }
 
 // setupCrewRows is the chooser under the crew row: the three presets, each with
@@ -1509,7 +1513,7 @@ func (a *app) setupCrewRows(width int) []string {
 		out = append(out, lead+name)
 		// The sentence is wrapped rather than cut, on its own line, so the three
 		// read as three comparable things at any width this screen has.
-		for _, line := range wrap(crewChoiceWord(config.CrewSourceAt(a.profileDir), preset), width-6) {
+		for _, line := range wrap(crewChoiceWord(preset), width-6) {
 			out = append(out, strings.Repeat(" ", 6)+pal.muted(line))
 		}
 	}
