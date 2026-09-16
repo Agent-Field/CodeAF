@@ -1389,10 +1389,12 @@ means "the cursor is here". The keyboard and the pointer share it: this sheet ha
 open on it, so there is no second, louder background to keep apart from the first.
 
 The items, in order: `session`, `task` (in a room), `model` (the full routing address
-with its `:level` — the one actable row), `task model` (in a room), `served`, then every
-telemetry segment under its own word — `background`, `changes`, `spend`, `context`,
-`cache`, `rate`, `compaction`, `approvals`, `connection`, `state` — then `tasks`, `place` (full path,
-branch and dirty star) and `keys`.
+with its `:level` — the one actable row), `task model` (in a room), `served`, `approvals`
+(the tool gate's posture — `prompt`, `allow` or `deny`, where the status line draws only
+the `YOLO` badge and only over an open gate), then every telemetry segment under its own
+word — `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
+`connection`, `state` — then `tasks`, `place` (full path, branch and dirty star) and
+`keys`.
 
 A press selects a row; a second press on the already-selected row answers it. A press
 outside the list — the title, the rules, the keys line, the empty rows under a short

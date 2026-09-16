@@ -656,13 +656,13 @@ session holds right now.
 
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
-reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`, then the
-telemetry words — `spend`, `cache`, `context`, `compacts at`, `compaction`, `background`,
-`approvals`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`, `state` — then
-`tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`. Labels are padded
-into two aligned columns.
+reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`,
+`approvals`, then the telemetry words — `spend`, `cache`, `context`, `compacts at`,
+`compaction`, `background`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`,
+`state` — then `tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`.
+Labels are padded into two aligned columns.
 
-Four of those words are facts this command and the phone's sheet carry and the status row
+Four other words are facts this command and the phone's sheet carry and the status row
 does not: `changes` (`Σ +128 −14`), `rate` (`1.2k tok/s avg`, this turn's output over its
 whole wall time — the right edge of the row shows the live `38 tok/s` instead), `open`
 (`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
@@ -690,6 +690,27 @@ belongs to the other machine.
   showing `$0.00`; a note in the transcript must not.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
+
+## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
+
+`/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
+the words the `/settings` row **"ask before running"** uses for it: `prompt` (it asks you),
+`allow` (it runs things without asking) or `deny` (it refuses). `/status --json` carries the
+same fact under the `approvals` key, and the phone's status sheet has the same row.
+
+The status line spells that fact differently. It draws `YOLO` only while the gate is open,
+and nothing at all otherwise, because a permanent badge is a badge nobody reads — the
+absence IS the claim that you will be asked first. A page has room for the whole answer, so
+it names the posture whichever of the three it is.
+
+The badge and the line always agree, because both read one posture: the one this
+conversation's gate was built from. Change "ask before running" in `/settings` and both
+move together on the keystroke, or neither does and the panel says
+`saved · from the next session`.
+
+The one session with no `approvals` line is a remote one whose engine carried no posture
+over the wire. The gate there is the far machine's, and a line drawn from this laptop's
+settings would be a claim about a machine nobody consulted.
 
 ## /status --json — status as JSON, machine-readable status for a script
 
