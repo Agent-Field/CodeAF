@@ -36,11 +36,11 @@ Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
   the one before. From standing, memory or search, `tab` goes on round the bar to home.
-- **`alt+1`** … **`alt+7`** (**`⌥1`** … **`⌥7`** on a Mac) — jump straight to one, **from a
+- **`alt+1`** … **`alt+7`** (**`opt+1`** … **`opt+7`** on a Mac) — jump straight to one, **from a
   place or from a conversation**. `alt+1` … `alt+4` are the tab bar's own order — home,
   tasks, spend, settings — and `alt+5`, `alt+6`, `alt+7` are the three places off the bar:
-  standing, memory, search. Hold `alt` and press the digit. macOS draws the modifier as `⌥`
-  because that is what the keycap says; Linux and Windows draw it `alt+`, and it is the same
+  standing, memory, search. Hold `alt` and press the digit. macOS draws the modifier as `opt`
+  because that is the key's name on a Mac keycap; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
   place key that means the same thing wherever you are standing.
@@ -205,12 +205,12 @@ fit. Home used to draw it in full while every other place shortened it; both are
 
 **Home has no chip.** It says the same thing one row up, on its rule, and says more:
 `→ new conversation in ~/src/parser · glm-5.3-flash` is where a sentence will land *and*
-what it will answer on, with `alt+w folder · alt+o model` naming the two chords that change
+what it will answer on, with `alt+w folder · alt+o model · alt+k chats` naming the chords that change
 either. The chip on home was a reading nothing acted on — `enter` opened a conversation in
 this window's folder whatever the chip said — and the rule is that reading with `enter`
 honouring it. Home's own page has the whole gesture.
 
-## The composer layer — set which project, pick the model and set a spend limit before starting a task
+## The composer layer — `alt+w` and `alt+o`, what does alt+w do, set which project, pick the model and set a spend limit before starting a task
 
 Press **`alt+enter`** with something typed into the composer, on any place, and the layer
 opens. It is not a new screen: **the page behind dims to the faintest tier instead of being
@@ -278,7 +278,7 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place — and `↑` off the first row of the page moves onto the **tab bar**, which is a row the cursor can stand on (*How do I move between the tabs with the arrow keys*) |
 | any printable key | goes to the composer, always |
 | `alt+enter` | send what you typed off as a task |
-| `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) | jump straight to a place |
+| `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) | jump straight to a place |
 | `ctrl+1` … `ctrl+7` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
 | `alt+w` `alt+o` | inside the composer layer only: move the task, change its model |
@@ -381,9 +381,9 @@ They are two different kinds of line and they are fitted by two different rules.
   the **front**, so the front is protected and the line gives up its later clauses. Settings
   says `saved to your profile · a project's own .codeaf/config.json is a hand edit`; at
   sixty columns that becomes `saved to your profile`, which is the half you asked for. The
-  macOS chord note behaves the same way: `your terminal sends ⌥ as a letter — turn on "use
+  macOS chord note behaves the same way: `your terminal sends opt as a letter — turn on "use
   option as meta" in Terminal: Profiles › Keyboard` shortens to
-  `your terminal sends ⌥ as a letter`.
+  `your terminal sends opt as a letter`.
 
 Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
@@ -413,9 +413,12 @@ being held down — it only reports what arrived.
 ## home — what wants you, as seven panels
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
-project, as **seven panels** in one, two or three columns: `needs you`, `where you were` and
-`projects` on the left; `running`, `since you left`, `spend` and `next up` on the right. An
-empty panel keeps its heading and one dim line naming what arrives there.
+project, as **seven panels** in one, two or three columns — `needs you`, `where you were`,
+`projects`, `running`, `since you left`, `spend`, `scheduled`, always in that order. Which
+column a panel stands in follows what it holds: every panel with rows is in the **field** at
+the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
+them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
+naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
 answers the one row of `needs you` drawing its answers, and `enter` opens a row. `tab` is the way to the

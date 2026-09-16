@@ -797,6 +797,13 @@ type homeView struct {
 	// The phone tier's own state (homephone.go, homesheet.go): the sheet over
 	// the inbox, the triage sections somebody folded, the machine's news as the
 	// `since you left` section reads it, and where the action bar landed.
+	// opened is the one grid panel whose fold somebody opened, and openedOn
+	// that there is one — the accordion: one panel at a time takes the column
+	// and the rest squeeze (homegrid.go's [homeGridPanel.fold]). It lives as
+	// long as the window; a relaunch starts folded.
+	opened   homePanelID
+	openedOn bool
+
 	phone     bool
 	sheet     homeSheet
 	sheetHits []homeSheetHit
@@ -2005,6 +2012,9 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.item.ID != "" && l.item.ID == other.item.ID
 	case homeQuiet, homeItemFold, homeProject, homeProjectRow:
 		return l.dir != "" && l.dir == other.dir
+	// a grid panel's fold: one per panel, told apart by the panel.
+	case homeFold:
+		return l.cell != nil && other.cell != nil && l.cell.panel == other.cell.panel
 	case homeExchangeRow:
 		return l.ex != nil && l.ex == other.ex
 	// the router's lane: an offered place and an offered command
@@ -2262,6 +2272,19 @@ func (h *homeView) previewLine() (homeLine, bool) {
 	return h.focusedLine()
 }
 
+// previewAt is [homeView.previewLine]'s line NUMBER, for the readers that need
+// to find where that line was drawn rather than what it holds
+// ([homeDescTop]).
+func (h *homeView) previewAt() int {
+	if h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
+		return h.hover
+	}
+	if _, ok := h.focusedLine(); !ok {
+		return homeNoLine
+	}
+	return h.cursor
+}
+
 // point puts the cursor on the row holding a transcript, and leaves it where it
 // is when that conversation is not on the list any more.
 func (h *homeView) point(transcript string) {
@@ -2312,7 +2335,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow, homeProjectRow:
+		homeProject, homeExchangeRow, homeProjectRow, homeFold:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -2642,12 +2665,21 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.say("folders on the other machine do not open here", "")
 			return nil
 		}
-		// A PROJECT ROW OPENS ITS FOLDER TOO, because on a two-column grid its
-		// `→` crosses to the right-hand column and this chord is the way to the
-		// strip's `open folder` there (homegrid.go's [app.homeCrossChord]).
-		if line, ok := h.previewLine(); ok && (line.kind == homeSession || line.kind == homeProjectRow) {
+		// EVERY ROW WITH A FOLDER OPENS IT — a conversation's workspace, a
+		// project's path, the workspace a standing order stands over, the
+		// conversation a `since you left` line happened in — because the foot
+		// names this chord on every row of the field and a key the foot names
+		// must work (homegrid.go's [app.homeCrossChord] and [homeRowFolder]). A
+		// row with no folder says nothing, which is the emptiness law on a key.
+		if line, ok := h.previewLine(); ok {
 			path := homeRowFolder(line)
-			if path == "" || processOpener(path) != nil {
+			if path == "" {
+				if line.kind == homeSession || line.kind == homeProjectRow {
+					h.say("could not open "+path, "")
+				}
+				return nil
+			}
+			if processOpener(path) != nil {
 				h.say("could not open "+path, "")
 				return nil
 			}
@@ -2759,7 +2791,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		h.build()
 		return nil
 	case "ctrl+u":
-		h.box.reset()
+		// KILL TO THE START OF THE LINE, WHICH IS WHAT THE CHORD MEANS EVERYWHERE
+		// ELSE. This box emptied itself outright until the `ctrl+k` beside it
+		// landed and made the asymmetry visible: `abcdef`, three lefts, `ctrl+u`
+		// threw away `def` as well, while `ctrl+k` on the same caret correctly
+		// took only the tail. One gesture cannot mean "to the start" in the
+		// composer and "all of it" here — a person cannot hold two readings of
+		// one key, and the one they have is readline's.
+		h.box.killToStart()
+		h.build()
+		return nil
+	case "ctrl+k":
+		// KILL TO THE END OF THE LINE, THE SAME KEY IT IS IN THE CONVERSATION.
+		// This box is the one people meet FIRST — home is where a launch lands —
+		// so a kill that worked in the conversation and did nothing here would
+		// teach the surface's newest chord as broken at the first place it was
+		// tried. editkeys.go's header states that defect in full; it is the
+		// reason the word-and-line motions were pulled into one vocabulary, and
+		// this key belongs to the same family.
+		h.box.killToEnd()
 		h.build()
 		return nil
 	case "ctrl+w":
@@ -3096,6 +3146,12 @@ func (a *app) homeEnter() tea.Cmd {
 		return nil
 	case homeItemFold:
 		h.foldItems(line.dir, line.folded)
+		return nil
+	case homeFold:
+		// A PANEL'S FOLD OPENS THE PANEL, AND SHUTS IT AGAIN (homegrid.go's
+		// [homeGridPanel.fold]). The cursor stays on the fold whichever way it
+		// went, so the gesture reverses without a walk.
+		h.toggleFold(line)
 		return nil
 	case homeProject:
 		// A WHOLE PROJECT, OPENED WHERE IT STANDS. enter is the same key it is on
@@ -5355,6 +5411,23 @@ func (a *app) homeHintWords() string {
 			return "enter runs this command · ↑ ask here · ↑↑ pick a match · esc clear"
 		}
 		return "enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear"
+	case a.home.gridOn() && (line.kind == homeSession || line.kind == homeItem || line.kind == homeLedger):
+		// ONE SENTENCE ON EVERY ROW OF THE GRID. A conversation, a standing
+		// order, a landing, a line of news: each used to say its own thing here
+		// — `enter opens the place this happened in`, `enter open where it was
+		// asked · ctrl+e pause` — and the foot changed under the hand on every
+		// step of the cursor. The owner ruled (2026-09-15) that the rows under
+		// the moving headings all rest on the resting sentence, so the foot is
+		// something a person reads once and then stops reading; `enter open` is
+		// true of every one of them, and the chord the tail adds is the one true
+		// on all of them too ([app.homeCrossChord]). The rows' own sentences
+		// below still serve the phone and the filtered list, where there is no
+		// grid to be consistent across.
+	case line.kind == homeFold:
+		// The panel's fold is a toggle and the foot says which way it will go;
+		// the words are the ones every fold door on every place uses
+		// (placeprose.go's [foldEnterWord]).
+		return foldEnterWord(!line.folded) + " · esc close"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:
@@ -5455,4 +5528,28 @@ func homeProjectPath(project session.Project) string {
 		return path
 	}
 	return project.Dir
+}
+
+// toggleFold opens the panel whose fold this is, or shuts the one that is open
+// — ONE AT A TIME: opening a second panel shuts the first, because two open
+// panels on one column would be two panels fighting the squeeze for the same
+// rows and the fold line of each would be lying about what it could show. The
+// cursor is put back on the same panel's fold, which has moved.
+func (h *homeView) toggleFold(line homeLine) {
+	if line.cell == nil {
+		return
+	}
+	panel := line.cell.panel
+	if h.openedOn && h.opened == panel {
+		h.openedOn = false
+	} else {
+		h.opened, h.openedOn = panel, true
+	}
+	h.rebuild()
+	for at, l := range h.lines {
+		if l.kind == homeFold && l.cell != nil && l.cell.panel == panel {
+			h.cursor = at
+			return
+		}
+	}
 }

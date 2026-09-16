@@ -252,8 +252,8 @@ func TestUnderOneModelTheCrewSurfacesNameTheFlagAndNoSeatReceiptIsPosted(t *test
 	// they make is the one thing this run must not print.
 	a.slash("/status")
 	page := lastNote(t, a)
-	if !strings.Contains(page, "\ncrew     "+crewOneModelWord) {
-		t.Errorf("/status does not read the same word:\n%s", page)
+	if got := noteFact(page, "crew"); got != crewOneModelWord {
+		t.Errorf("/status reads %q rather than the same word:\n%s", got, page)
 	}
 	if strings.Contains(page, config.CrewCustom) {
 		t.Errorf("/status names the crew the flag overrode:\n%s", page)

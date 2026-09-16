@@ -19,16 +19,16 @@ import (
 // group is the live questions — a conversation stopped on a question or on a
 // consent card, a watch that needs somebody — longest wait first
 // ([attentionOlder]), each wearing the amber mark and carrying its own sentence.
-// Under them the `to check` group is every task whose call is the person's,
+// Under them the `unread` group is every task whose call is the person's,
 // newest first, one line each. A live question is always above a landing however
 // old the landing is, because a landing costs nothing while it waits and a
 // stopped conversation costs everything.
 //
-// THE DIFFERENCE BETWEEN THE TWO GROUPS IS SAID ONCE, ON THE GROUP'S OWN LINE:
-// `to check · 8` at the left and `finished, nobody has checked it` at the right
-// (placeprose.go's [needsCheckWord] and [needsCheckClause]). It used to be said
-// under every landing row, which was the same nine words nine times and pushed
-// `where you were` off a forty-row frame (owner, 2026-09-11).
+// THE DIFFERENCE BETWEEN THE TWO GROUPS IS SAID ONCE, ON THE GROUP'S OWN LINE,
+// and it is one word: `unread` (placeprose.go's [needsCheckWord]). It used to be
+// said under every landing row, which was the same nine words nine times and
+// pushed `where you were` off a forty-row frame (owner, 2026-09-11); then as a
+// clause at the group line's right, which the owner cut on 2026-09-15.
 //
 // A LANDING IS ONE LINE AT REST AND TWO UNDER THE CURSOR. The second line is the
 // first sentence of what the work came to and the two answers the task itself
@@ -48,11 +48,15 @@ const (
 	// opens it.
 	//
 	// A LANDING NEVER SAYS IT. Its second line only exists under the cursor, and
-	// there the answers are the thing the line is for; a `to check` row that this
+	// there the answers are the thing the line is for; a `unread` row that this
 	// window cannot answer draws the report's sentence and nothing at its right,
 	// which is the emptiness law rather than an instruction repeated on every
 	// row. enter still opens the record ([app.homeLandOnTask]).
 	needsOpenWord = "enter"
+	// needsStandingWord is the same key on a watch with no conversation behind
+	// it: `enter` opens the item on the standing place, which is where an item
+	// made at home lives.
+	needsStandingWord = "enter on standing"
 	// needsAnswersCap is how many of a question's answers fit on its row. A
 	// question with more draws the first ones and then [needsOpenWord], because
 	// every answer is still one enter away.
@@ -80,16 +84,18 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 	for _, item := range append(asked, calls...) {
 		lines = append(lines, item.line)
 	}
-	out := homePanelCut(panelNeeds, lines)
-	// THE HEADING COUNTS THE QUESTIONS AND THE GROUP LINE COUNTS THE LANDINGS.
-	// A frame holding only landings draws `needs you` with no count at all
-	// rather than `needs you · 0`, which is the emptiness law applied to a
-	// heading ([countWord]).
-	out.said = countWord(len(asked))
+	out := homePanelCut(in, panelNeeds, lines)
+	// NEITHER THE HEADING NOR THE GROUP LINE CARRIES A COUNT. The heading used
+	// to count the live questions (`needs you · 2`) and the group line the
+	// landings (`to check · 8`); the owner cut both on 2026-09-15, because the
+	// rows are right there under the words and a figure beside them is a second
+	// thing to read that says nothing the rows do not. The fold still counts what
+	// it hides (`3 unread`, `N more`), which is the one place a count stands for
+	// rows that are NOT on the screen. The aged-out landings are counted on the
+	// same fold ([needsFresh]).
 	out.older = in.callsOlder
 	if len(calls) > 0 {
-		out.group = &homePanelGroup{at: len(asked), word: needsCheckWord,
-			said: countWord(len(calls)), right: needsCheckClause}
+		out.group = &homePanelGroup{at: len(asked), word: needsCheckWord}
 	}
 	return out
 }
@@ -98,10 +104,11 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 // history.
 //
 // A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION (owner,
-// 2026-09-10: a machine with twenty-four week-old landings drew `needs you · 24`
+// 2026-09-10: a machine with twenty-four week-old landings drew twenty-four rows
 // over rows nobody was going to answer, and a live question arriving under them
-// would have been the twenty-fifth). They stay one door away — the fold counts
-// them into the tasks place, where every one of them still is. Only a task's
+// would have been the twenty-fifth). They stay one press away — the fold counts
+// them, opening the panel shows them, and the heading opens the tasks place,
+// where every one of them still is. Only a task's
 // call ages: a conversation stopped on a question and a watch that needs
 // somebody are live, and are never aged out. A landing with no time on it is
 // not known to be old, and stays.
@@ -128,7 +135,7 @@ func needsAged(asked, now time.Time) bool {
 // A CONVERSATION WAITING ONLY ON ITS OWN LANDING IS NOT ONE OF THEM — THE
 // LANDING IS. [session.Agent.waitingOnPerson] reads a pending decision LAST and
 // writes the sentence `your call on <title>` into the presence with no question
-// object, so such a session drew as a question ABOVE the `to check` row for the
+// object, so such a session drew as a question ABOVE the `unread` row for the
 // very same piece of work: once under the CONVERSATION's name with a bare
 // `enter`, once under the TASK's name with its files and its two answers. The
 // second row is the better one and this drops the first (the spec of record's
@@ -140,18 +147,31 @@ func needsAsked(in *homeGridInput) []needsItem {
 			needsLandingsSpeakFor(row.session, needsCallTitlesOn(in, row.session.ID))) {
 			continue
 		}
-		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title, subRight: needsOpenWord}
+		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title}
 		homeLiveMargin(cell, row, sinceAt(row.at, in.now))
 		item := needsItem{asked: row.at}
 		switch row.kind {
 		case switcherConversation:
 			head, whole := needsSentence(row.session)
 			cell.sub = head
+			// A CONVERSATION ALWAYS HAS A DOOR: it is the conversation the
+			// question was asked in, and enter goes to it.
+			cell.subRight = needsOpenWord
 			if _, ok := answerable(row.session, in.now); ok && whole {
 				cell.answers = answersWord(row.session.Presence.Question)
 			}
 		case switcherStanding:
 			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
+			// AND THE KEY SAYS WHICH DOOR IT IS. A watch asked for in a
+			// conversation opens that conversation; one made from home's own box
+			// has none — its exchange is kept under the item's folder rather than
+			// as a session ([standing.Origin.Exchange]) — and `enter` opens the
+			// item where it does live, on standing ([app.homeItemEnter]). Two
+			// doors, two words, and neither row advertises the other's.
+			cell.subRight = needsOpenWord
+			if strings.TrimSpace(row.item.Item.Origin.Transcript) == "" {
+				cell.subRight = needsStandingWord
+			}
 		}
 		item.line = switcherRowLine(row, cell)
 		items = append(items, item)
@@ -168,7 +188,7 @@ func needsAsked(in *homeGridInput) []needsItem {
 const needsYourCallLead = tierYourCallWord + " on "
 
 // needsLandingsSpeakFor reports that the WHOLE of what a conversation is waiting
-// on is one of its own landings, which the `to check` group is already drawing
+// on is one of its own landings, which the `unread` group is already drawing
 // under the work's own name.
 //
 // IT IS THE ENGINE'S SENTENCE AND NOT AN ABSENCE. The first cut of this test was
@@ -197,7 +217,7 @@ func needsLandingsSpeakFor(row session.SessionRow, titles []string) bool {
 	return false
 }
 
-// needsCallTitlesOn is the titles the `to check` group is drawing for one
+// needsCallTitlesOn is the titles the `unread` group is drawing for one
 // conversation, read out of the reading the beat already took.
 func needsCallTitlesOn(in *homeGridInput, id string) []string {
 	var titles []string
@@ -210,7 +230,7 @@ func needsCallTitlesOn(in *homeGridInput, id string) []string {
 }
 
 // needsWants is how many rows of `needs you` ONE conversation is: one per
-// landing of its own that the `to check` group draws, and its own question where
+// landing of its own that the `unread` group draws, and its own question where
 // the panel keeps that row.
 //
 // THE PANEL BUILDS ITS ROWS FROM THESE READINGS AND THE PULSE COUNTS THEM FROM
@@ -225,7 +245,7 @@ func needsWants(row session.SessionRow, now time.Time) int {
 	return n
 }
 
-// needsCallTitles is one conversation's landings as the `to check` group would
+// needsCallTitles is one conversation's landings as the `unread` group would
 // draw them, by title, taken straight off the index row.
 func needsCallTitles(row session.SessionRow, now time.Time) []string {
 	if row.Archived {
@@ -270,7 +290,7 @@ func needsCalls(world session.World, now time.Time) []needsItem {
 // needsCallOf is THE ONE READING OF "THIS LANDING IS WAITING ON THE PERSON",
 // and its status.
 //
-// THREE READERS AND ONE ANSWER. The `to check` group draws these rows, `since
+// THREE READERS AND ONE ANSWER. The `unread` group draws these rows, `since
 // you left` drops the landings this group is already drawing ([leftPanel.rows]),
 // and the pulse counts them beside the questions ([machineCounts]). A second
 // spelling of this test anywhere would be a `3 want you` over four rows, which
@@ -302,8 +322,9 @@ func needsCallAt(entry session.TaskIndexEntry) time.Time {
 	return entry.StartedAt
 }
 
-// needsCall is one of those rows: the title, how many files it wrote and how
-// long ago, and — under the cursor — what it came to and its two answers.
+// needsCall is one of those rows: the title, how long ago it landed, and —
+// under the cursor — how many files it wrote, what it came to and its two
+// answers.
 func needsCall(project session.Project, row session.SessionRow, entry session.TaskIndexEntry, status session.TaskStatus, now time.Time) needsItem {
 	title := strings.TrimSpace(entry.Label)
 	if title == "" {
@@ -314,9 +335,9 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// and will not move until somebody answers it; a landing has already
 	// finished, and a column of question marks over work that is DONE was the
 	// screen saying the opposite of what was true.
-	cell := &homeCell{panel: panelNeeds, title: title, right: needsCallFacts(entry, asked, now),
+	cell := &homeCell{panel: panelNeeds, title: title, right: sinceAt(asked, now),
 		key:   needsCallKey + entry.ID,
-		grows: true, sub: needsCallSub(entry, status), answers: needsCallAnswers(status)}
+		grows: true, sub: rowClauses(needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,
 		dir: homeBucketOf(row.Transcript), task: &entry, cell: cell}
 	return needsItem{asked: asked, line: line}
@@ -336,24 +357,20 @@ func needsCallSub(entry session.TaskIndexEntry, status session.TaskStatus) strin
 	return status.Word
 }
 
-// needsCallFacts is a landing's right margin: how many files it wrote and how
-// long ago, as ONE clause — `3 files · 1d`.
+// needsCallFiles is how many files a landing wrote, for the head of its
+// description — `3 files · <what it came to>` — and "" for one that wrote none,
+// never `0 files` (the emptiness law).
 //
-// IT IS ONE CLAUSE AND NOT TWO FACTS SIDE BY SIDE because they are read as one
-// sentence about the same piece of work, and because a row cut between them
-// would leave `3 files` with no age beside a column of rows that all have one.
-// A landing that wrote no files says NOTHING where the count would be, never
-// `0 files` (the emptiness law).
-func needsCallFacts(entry session.TaskIndexEntry, asked, now time.Time) string {
-	age := sinceAt(asked, now)
+// IT USED TO BE THE RIGHT MARGIN, as one clause with the age (`3 files · 1d`),
+// so a landing that wrote nothing read `10h` beside one that read `1 file · 1d`
+// — two shapes in one column for one kind of row. THE RIGHT MARGIN OF EVERY ROW
+// OF THE FIELD IS A TIME (owner, 2026-09-15), and everything that is not a time
+// is in the description column ([homeDescLines]).
+func needsCallFiles(entry session.TaskIndexEntry) string {
 	if entry.FilesChanged <= 0 {
-		return age
+		return ""
 	}
-	files := itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged)
-	if age == "" {
-		return files
-	}
-	return files + rowSep + age
+	return itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged)
 }
 
 // The two keys a landing is answered with ON HOME, and the landing keys they
@@ -416,7 +433,7 @@ func needsLandingKey(key string) (string, bool) {
 	return "", false
 }
 
-// needsChecking is every landing the `to check` group is drawing, by the
+// needsChecking is every landing the `unread` group is drawing, by the
 // identity a `since you left` line carries for the same task
 // (homepanel_left.go's [leftKey]) — so one piece of work is one row of home's
 // column and never two.
@@ -490,7 +507,7 @@ func answersWord(question session.PresenceQuestion) string {
 
 // ── answering a landing from home ───────────────────────────────────────────
 
-// needsLandingQuestion is the landing question a `to check` row stands for, as
+// needsLandingQuestion is the landing question a `unread` row stands for, as
 // the answer doors want it: the kind, the node's id, and the two options in the
 // task's own words. It is false for a row that is not a landing or whose id the
 // index never recorded.

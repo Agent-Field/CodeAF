@@ -128,13 +128,24 @@ never opened.
 // safe is somebody typing --into over a directory that is not a demo home at
 // all. So an existing directory is only accepted when it is empty, or when the
 // caller says --keep and the directory looks like something this program wrote.
+// THE DIRECTORY IS RESOLVED THROUGH ITS SYMLINKS BEFORE ANYTHING IS WRITTEN IN
+// IT, and on a Mac that is not a nicety: `/tmp` is a symlink to `/private/tmp`,
+// os.MkdirTemp hands back the `/tmp` spelling, and a codeaf launched in the
+// fixture resolves its own working directory to the `/private/tmp` one. The two
+// spellings are two PROJECT BUCKETS for one folder — the fixture's conversations
+// under `-tmp-…-codeaf` and the window's own under `-private-tmp-…-codeaf` — so
+// home drew the demo project twice, and `enter` on a standing order refused
+// because the conversation that asked for it was "elsewhere"
+// ([app.homeItemEnter]'s bucket guard). Every path this fixture writes is the
+// resolved one, so the fixture and the binary agree about what the folder is
+// called.
 func demoDir(into string, reuse bool) (dir string, fresh bool, err error) {
 	if into == "" {
 		made, err := os.MkdirTemp("", "codeaf-demo-home-")
 		if err != nil {
 			return "", false, fmt.Errorf("make a directory to build in: %w", err)
 		}
-		return made, true, nil
+		return resolveDemoDir(made), true, nil
 	}
 	dir, err = filepath.Abs(into)
 	if err != nil {
@@ -145,13 +156,13 @@ func demoDir(into string, reuse bool) (dir string, fresh bool, err error) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return "", false, fmt.Errorf("make %s: %w", dir, err)
 		}
-		return dir, true, nil
+		return resolveDemoDir(dir), true, nil
 	}
 	if err != nil {
 		return "", false, fmt.Errorf("read %s: %w", dir, err)
 	}
 	if len(entries) == 0 {
-		return dir, true, nil
+		return resolveDemoDir(dir), true, nil
 	}
 	if !reuse {
 		return "", false, fmt.Errorf("%s is not empty; pass --keep to reuse a demo home that is already there", dir)
@@ -159,7 +170,7 @@ func demoDir(into string, reuse bool) (dir string, fresh bool, err error) {
 	if _, err := os.Stat(filepath.Join(dir, ".codeaf", "v3", "projects")); err != nil {
 		return "", false, fmt.Errorf("%s is not empty and does not hold a demo home", dir)
 	}
-	return dir, false, nil
+	return resolveDemoDir(dir), false, nil
 }
 
 // launchAgainst runs the surface against the demo home and keeps the live
@@ -207,4 +218,14 @@ func launchAgainst(dir, binary string) error {
 // that could silently send a demo launch at the owner's own state root.
 func demoEnviron() []string {
 	return env.EnvironWithout("HOME", home.EnvVar)
+}
+
+// resolveDemoDir is the directory with its symlinks followed, and the directory
+// itself where they cannot be — a path that does not resolve is not a reason to
+// refuse to build a fixture in it.
+func resolveDemoDir(dir string) string {
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		return real
+	}
+	return dir
 }

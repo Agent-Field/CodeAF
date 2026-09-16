@@ -4,7 +4,7 @@ package tui3
 //
 // THE DEFECT THIS FILE EXISTS FOR. `option+←` and `cmd+←` "did not work", and
 // the reason was not the terminal: iTerm2's own Natural Text Editing mappings
-// send `esc b` for ⌥← and the byte 0x01 for ⌘← — which arrive here as `alt+b`
+// send `esc b` for Option+← and the byte 0x01 for ⌘← — which arrive here as `alt+b`
 // and `ctrl+a`, both of them bound in the message box (input.go) and neither
 // of them bound anywhere else. So the jumps worked in the conversation and
 // were silently dead in home's box, the errand pane, the settings filter, the
@@ -38,7 +38,7 @@ package tui3
 //	super+left / meta+left / ctrl+a  the start of the line
 //	super+right / meta+right         the end of the line
 //
-// `alt+left` is what ⌥← is on a terminal that keeps option a modifier; `alt+b`
+// `alt+left` is what Option+← is on a terminal that keeps option a modifier; `alt+b`
 // is the same gesture from a profile that sends `esc b` instead — iTerm2's
 // Natural Text Editing preset does, and it is readline's own word-back besides;
 // `ctrl+left` is Windows' and Linux's. `super+` and `meta+` are ONE key under
@@ -71,7 +71,7 @@ func editorMotion(e *editor, key string) bool {
 // `ctrl+w` is left with each box rather than claimed here, because every box
 // already binds it and each one has its own thing to do afterwards; what was
 // missing everywhere but the message box is the other two names — the ones a
-// Mac hand and a Windows hand actually press. ⌥⌫ arrives as `alt+backspace`
+// Mac hand and a Windows hand actually press. Option+⌫ arrives as `alt+backspace`
 // under iTerm2's preset (it sends `esc del`) and as itself everywhere option is
 // a modifier; `ctrl+backspace` is what the kitty-protocol terminals send.
 func editorWordKill(e *editor, key string) bool {

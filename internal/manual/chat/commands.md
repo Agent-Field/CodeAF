@@ -261,11 +261,11 @@ alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…7` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
-back` — the places row, the task roster on `alt+t`, the conversation switcher on `ctrl+k`,
+back` — the places row, the task roster on `alt+t`, the conversation switcher on `alt+k`,
 `space space` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you
@@ -655,13 +655,13 @@ session holds right now.
 
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
-reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`, then the
-telemetry words — `spend`, `cache`, `context`, `compacts at`, `compaction`, `background`,
-`approvals`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`, `state` — then
-`tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`. Labels are padded
-into two aligned columns.
+reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`,
+`approvals`, then the telemetry words — `spend`, `cache`, `context`, `compacts at`,
+`compaction`, `background`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`,
+`state` — then `tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`.
+Labels are padded into two aligned columns.
 
-Four of those words are facts this command and the phone's sheet carry and the status row
+Four other words are facts this command and the phone's sheet carry and the status row
 does not: `changes` (`Σ +128 −14`), `rate` (`1.2k tok/s avg`, this turn's output over its
 whole wall time — the right edge of the row shows the live `38 tok/s` instead), `open`
 (`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
@@ -689,6 +689,27 @@ belongs to the other machine.
   showing `$0.00`; a note in the transcript must not.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
+
+## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
+
+`/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
+the words the `/settings` row **"ask before running"** uses for it: `prompt` (it asks you),
+`allow` (it runs things without asking) or `deny` (it refuses). `/status --json` carries the
+same fact under the `approvals` key, and the phone's status sheet has the same row.
+
+The status line spells that fact differently. It draws `YOLO` only while the gate is open,
+and nothing at all otherwise, because a permanent badge is a badge nobody reads — the
+absence IS the claim that you will be asked first. A page has room for the whole answer, so
+it names the posture whichever of the three it is.
+
+The badge and the line always agree, because both read one posture: the one this
+conversation's gate was built from. Change "ask before running" in `/settings` and both
+move together on the keystroke, or neither does and the panel says
+`saved · from the next session`.
+
+The one session with no `approvals` line is a remote one whose engine carried no posture
+over the wire. The gate there is the far machine's, and a line drawn from this laptop's
+settings would be a claim about a machine nobody consulted.
 
 ## /status --json — status as JSON, machine-readable status for a script
 
@@ -1042,13 +1063,16 @@ There is no argument form. There are three other ways in: **`alt+1`**, home bein
 of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
-**It is seven panels**, in one column under 110 cells, two from 110 and three from 170:
-`needs you` (every question waiting on you, a digit answers the top one from anywhere),
-`where you were` (this window's conversation, then the most recent, then
-`N more · type to find one`) and `projects` (every folder, `enter` starts a chat there) on
-the left; `running` (every task, job and firing watch), `since you left` (what landed while
-you were away), `spend` (today and the fortnight) and `next up` (reminders, soonest first)
-on the right. An empty panel keeps its heading and one dim line naming what arrives there.
+**It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
+always in one order: `needs you` (every question waiting on you, a digit answers the top one
+from anywhere), `where you were` (this window's conversation, then the most recent, then a
+`N more` fold that opens the rest), `projects` (every folder, `enter` starts a chat there),
+`running` (every task, job and firing watch), `since you left` (what landed while you were
+away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
+Which column a panel stands in follows what it holds: the panels with rows fill the **field**
+at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
+quiet panels under them. An empty panel keeps its heading and one dim line naming what
+arrives there.
 
 `↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
 conversation you came from. **Typing does two things at once**: what you type is a new
@@ -1057,7 +1081,7 @@ panels give way to the matches, with `start a new conversation: "…"` directly 
 holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open · tab next place`.
+`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
@@ -1999,5 +2023,5 @@ There is no slash command that reopens a tab you closed. **`ctrl+shift+t` does i
 through the ones before it. The keys page has the whole of it under *Reopen a tab
 you closed*, including what a terminal that cannot send the key does instead.
 
-`ctrl+k` is the other way back: it lists every conversation on this machine, closed
+`alt+k` is the other way back: it lists every conversation on this machine, closed
 tabs included, and opening a row brings the tab and its draft back too.

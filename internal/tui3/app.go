@@ -2162,7 +2162,7 @@ type app struct {
 	// exactly one keystroke.
 	mapShowing bool
 	// chords is HOW THIS TERMINAL SPELLS THE CHORD CLASSES and what its option
-	// key is called — `alt+` everywhere, `⌥` on a Mac (chords.go). It is decided
+	// key is called — `alt+` everywhere, `opt+` on a Mac (chords.go). It is decided
 	// once at boot from the platform and the environment, because neither of
 	// those changes while a process runs, and every sentence a person reads about
 	// a chord is drawn through it.
@@ -2230,7 +2230,7 @@ type app struct {
 	// and not on a place's state — the three facts it settles are the same three
 	// wherever a person typed the sentence.
 	composer composerLayer
-	// hop is the conversation switcher — `ctrl+k`, the card over everything
+	// hop is the conversation switcher — `alt+k`, the card over everything
 	// (hop.go). It is a field of the app rather than of a place because it
 	// belongs to no place: it is drawn over the conversation and over all seven.
 	hop hopCard
@@ -2721,7 +2721,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		remote:              remoteLink(env),
 		wsl:                 bootWSLPaths(env),
 		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
-		// whether the modifier is called `alt+` or `⌥`, and the environment names
+		// whether the modifier is called `alt+` or `opt+`, and the environment names
 		// which emulator is running so the one option-as-meta line can name the
 		// setting instead of waving at "your terminal".
 		chords: detectChords(runtime.GOOS, env),

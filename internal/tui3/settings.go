@@ -600,7 +600,7 @@ var settingUI = map[string]settingMeta{
 	config.KeyQuickSwitch: {
 		tab: tabDisplay, label: "quick switch", widget: widgetToggle,
 		about: "ctrl+tab switches on the press where the terminal can send it. " +
-			"Off, it waits for enter. Ctrl+k always opens the list and waits for your choice.",
+			"Off, it waits for enter. alt+k always opens the list and waits for your choice.",
 	},
 	config.KeyHints: {
 		tab: tabDisplay, label: "hints", widget: widgetToggle,
@@ -1942,7 +1942,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		s.query.deleteBackward()
 		s.build()
 	case "ctrl+u":
-		s.query.reset()
+		s.query.killToStart()
+		s.build()
+	case "ctrl+k":
+		s.query.killToEnd()
 		s.build()
 	case "ctrl+w":
 		s.query.deleteWord()
@@ -2175,6 +2178,23 @@ func (a *app) cycleLane(item sheetItem) {
 }
 
 // applySetting writes one row and keeps whatever the registry said about it.
+// gateNextSessionWord is the foot line when one of the three safety rows
+// reached the disk and the gate this conversation is behind could not be rebuilt
+// from it — the row is saved, and this session keeps the gate it already has.
+//
+// IT IS /permissions' OWN SENTENCE, SUFFIX AND ALL ([nextSessionWord]): the two
+// surfaces answer the same question about the same seam, and a person who has
+// read "from the next session" on one of them has read it on both. Over --host
+// there is no local gate to push into at all, and the same words are the honest
+// ones there for the same reason — this machine's row is read by the engine on
+// the other one when it next starts.
+const gateNextSessionWord = "saved" + nextSessionWord
+
+// THE SETUP SCREENS ARE DELIBERATELY NOT ON THIS SEAM. firstrun.go writes only
+// the key row, and onboarding.go's review READS `ask before running` off the
+// registry without ever writing it ([setupReviewKeys]) — and both run before this
+// window has a conversation to push a gate into. A push from there would be a
+// seam called with nothing on the other end.
 func (a *app) applySetting(item sheetItem, raw string) {
 	if err := item.row.Apply(raw); err != nil {
 		a.sheet.msg = err.Error()
@@ -2193,6 +2213,20 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	// it (lanes.go's laneRowChanged): a settings row that a person watched
 	// themselves change, and that then did nothing to the very next answer,
 	// would be the panel telling them something untrue.
+	//
+	// AND THE THREE SAFETY ROWS LAND ON THE GATE THIS CONVERSATION IS BEHIND,
+	// which is the same law said about the one row where breaking it is a SAFETY
+	// CLAIM rather than a slow answer. `ask before running` is what the gate was
+	// built from at launch (cmd/codeaf's v3Policy), the two rows under it are its
+	// exceptions, and none of the three reached the running gate from here: a
+	// person who turned the asking off in this panel watched the badge come on
+	// and was then asked about every call anyway, and a person who turned it back
+	// ON watched the badge go out over a gate that was still wide open. That
+	// second one is the false-safety claim [app.approvalPosture] exists to
+	// prevent (#322, #325), because the badge reads the profile live and the gate
+	// did not. [app.applyApprovals] is the seam /permissions already drops a
+	// banked rule through, and it rebuilds the policy from these same three rows.
+	note := ""
 	switch item.row.Key {
 	case config.LaneSettingKey(talkSlot), config.LaneBorrowKey(talkSlot):
 		a.laneRowChanged()
@@ -2200,8 +2234,31 @@ func (a *app) applySetting(item sheetItem, raw string) {
 		provider.SetLaneGuard(config.LaneGuardAt(a.profileDir))
 	case config.KeyRouting:
 		a.routingRowChanged()
+	case config.KeyToolApprovalMode, config.KeyToolApprovals, config.KeyBashApprovals:
+		// THE BADGE MOVES ON THE SAME KEYSTROKE AS THE GATE, AND ONLY WITH IT.
+		// The reading is refreshed here rather than at the next turn end, which is
+		// where [app.settle] takes it: a badge that agreed with the gate only
+		// after the next answer disagrees with it for exactly as long as a person
+		// sits reading the panel they just changed. And it is refreshed on the
+		// branch where the push LANDED, because the badge is a claim about the
+		// gate and never about the file — a rebuild that failed leaves the gate
+		// this conversation is behind exactly as it was, and following the row
+		// there would be the same false claim by the other road.
+		//
+		// A SEAM THAT COULD NOT BE TOLD IS SAID OUT LOUD AND NEVER SWALLOWED
+		// (applyV3Approvals states the law from the other end): the row is on the
+		// disk either way, so the next session is right, and what this panel may
+		// not do is let a person walk away believing the conversation in front of
+		// them has already changed. It is [app.approvalsReloaded] and
+		// [nextSessionWord] — the same question and the same words /permissions
+		// prints on its own receipt (permissions.go).
+		if a.approvalsReloaded() {
+			a.approval = a.approvalPosture()
+		} else {
+			note = gateNextSessionWord
+		}
 	}
-	a.sheet.msg = ""
+	a.sheet.msg = note
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 }
@@ -2239,6 +2296,8 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 	// filterable overlay (input.go, palette.go's [listNavigate]).
 	case "ctrl+u", "super+backspace":
 		edit.box.killToStart()
+	case "ctrl+k":
+		edit.box.killToEnd()
 	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		edit.box.deleteWord()
 	case "left", "ctrl+b":
