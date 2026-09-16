@@ -374,7 +374,7 @@ catalog's ceiling, so there is no bigger planner to buy above it.
 **Why the open ids.** They were picked off the catalog's own published scores (OpenRouter
 republishes Artificial Analysis's coding and agentic indexes on every model row) against
 blended price, open weights only, and the mastermind and balanced careful seats were
-re-picked on 2026-09-16. The worker seat is the dial: `glm-5.3-flash`
+picked on 2026-09-16. The worker seat is the dial: `glm-5.3-flash`
 scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
 one point under `glm-5.3` at a twentieth of its price, and it can see images. The
 mastermind is the one seat whose price may be the model rather than the rung: it answers a
@@ -401,9 +401,9 @@ say rather than the default.
 | careful work | `glm-5.3-flash` | `kimi-k3` | `kimi-k3` |
 | mastermind | `glm-5.3` | `kimi-k3` | `kimi-k3` |
 
-- **frugal** — deepseek works, glm-5.3 thinks · pennies a day
-- **balanced** — glm-flash works, kimi-k3 checks and thinks
-- **max** — glm-5.3 works, kimi-k3 thinks and checks
+- **frugal**: deepseek works, glm-5.3 thinks · pennies a day
+- **balanced**: glm-flash works, kimi-k3 checks and thinks
+- **max**: glm-5.3 works, kimi-k3 thinks and checks
 
 The worker column climbs the open-weight front one step per preset, because it is the seat
 that pays most of a task's bill. The reflex and small-work columns never vary — they are the

@@ -696,6 +696,9 @@ func (a *app) startSetupControls() {
 	s.closeChoosers()
 	s.reviewOpen, s.detail = false, false
 	s.crewPick = ""
+	// The family is read HERE, arriving on the screen, and not in the draw: this
+	// screen's rows are drawn every frame and a profile read belongs at a door.
+	s.crewSource = config.CrewSourceAt(a.profileDir)
 	s.crewAt = a.setupCrewCursor()
 	s.example = exampleForControl(controlLimit)
 	// ARRIVING ON THE SCREEN IS THE FIRST OF THE TWO DELIBERATE ACTS, so the
@@ -1332,7 +1335,7 @@ func (a *app) setupCrewDetail() string {
 		// The three roles are spelled the way internal/config spells them for the
 		// live reading below, because a person opening this twice must not be
 		// shown one sentence in two shapes.
-		seats = crewPickSeats(config.CrewSourceAt(a.profileDir), a.setup.crewPick)
+		seats = crewPickSeats(a.setup.crewSource, a.setup.crewPick)
 	}
 	if seats == "" {
 		seats = strings.TrimSpace(config.CrewClasses(a.profileDir))
@@ -1492,9 +1495,9 @@ func crewChoiceWord(preset string) string {
 		return word
 	}
 	// The fallback is for a preset this screen has not been taught, and it is the
-	// open family's line: reading the profile here would put a disk read on the
-	// frame clock (this runs inside setupCrewRows, which is drawn every frame),
-	// and the row above already names the family on screen.
+	// open family's line: setupCrewRows runs inside the draw, so reading the profile
+	// here would put a profile read on the frame clock, and the seats this screen
+	// shows already take the family from a value read at the door.
 	return config.CrewLine(preset)
 }
 
