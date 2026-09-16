@@ -92,8 +92,9 @@ func panelRows(a *app, panel homePanelID) []*homeCell {
 // ── needs you ───────────────────────────────────────────────────────────────
 
 // TWO QUESTIONS, THE LONGEST WAIT FIRST, AND THE ANSWERS ON THE TOP ONE ONLY: the
-// consent line is the gate's own sentence, and the row below says `enter`
-// because a second `1` on screen would be a guess.
+// consent line is the gate's own sentence, and the row below draws no second
+// `1` because it would be a guess — and no `enter` either, because the door
+// word is said under the cursor alone ([app.homeRowAnswers]).
 func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
@@ -112,8 +113,8 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	if under := homeLineAfter(frame, "Pricing Site"); !strings.Contains(under, "1 allow once  2 always  3 deny") {
 		t.Fatalf("the top row does not draw its answers:\n%s", frame)
 	}
-	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || !strings.Contains(under, "enter") {
-		t.Fatalf("the second row drew a second set of answers:\n%s", frame)
+	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || strings.Contains(under, "enter") {
+		t.Fatalf("the second row drew answers or a door word the cursor is not on:\n%s", frame)
 	}
 	// AND THE HEADING IS THE WORD ALONE. It used to count the questions
 	// (`needs you · 2`); the rows are under it (owner, 2026-09-15).

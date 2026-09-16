@@ -1517,12 +1517,15 @@ func (a *app) homeRowOffer(line homeLine) string {
 
 // homeRowAnswers is what the line under one row carries at its right: the
 // answers where this is the frame's one answering row, the waiting word where
-// this window has already answered it, and the row's own door word everywhere
-// else.
+// this window has already answered it, and the row's own door word — `enter`,
+// `enter on standing` — on the row the cursor is standing on.
 //
-// A ROW THAT SAYS `enter` KEEPS SAYING IT. It is an instruction rather than an
-// answer — the row is not the answering row, or its question has a paragraph —
-// and the gate is about answers (homepanel_needs.go).
+// THE DOOR WORD IS SAID ONCE, UNDER THE CURSOR. It is a key legend, and a legend
+// is for the key a person is about to press; drawn on every question at once it
+// was a column of `enter`s that told nobody anything (owner, 2026-09-16, seen on
+// a narrow frame where the second line is under every question rather than
+// beside the cursor's). The description column already drew it only for the
+// selected row ([app.homeDescNote]); this makes the second-line shape agree.
 func (a *app) homeRowAnswers(line homeLine, at int) string {
 	if line.cell == nil {
 		return ""
@@ -1531,6 +1534,9 @@ func (a *app) homeRowAnswers(line homeLine, at int) string {
 		if words == answerWaitingWord || at == a.homeAnswerAt() {
 			return words
 		}
+	}
+	if at != a.home.cursor {
+		return ""
 	}
 	return line.cell.subRight
 }

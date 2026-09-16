@@ -192,8 +192,9 @@ as an ordinary line once it has been answered or has aged out of the group.
 
 **Exactly one row of the frame draws its answers** — `1 allow once  2 always  3 deny`,
 three at most, then `enter` — and **the key answers that row from anywhere on home**,
-wherever the cursor is. Every other row says `enter` instead, so one `1` is never on the
-screen twice with two meanings. The words are that question's own and nothing here is put
+wherever the cursor is. No other row draws answers, so one `1` is never on the screen twice
+with two meanings; the row the cursor is on says `enter` instead, and the rest say nothing at
+their right. The words are that question's own and nothing here is put
 into a vocabulary of home's; there is no `y`/`n` anywhere on this screen.
 
 **The keys are the question's own wherever those keys are digits**, which is every card a
@@ -1502,8 +1503,8 @@ see the next section.
 
 **You can answer it here, without opening the window it is in.** The top `needs you` row
 that has answers draws them on its own second line, out at the right — and **pressing the
-digit answers it, from anywhere on home**. Every row under it says `enter`, which opens the
-conversation to answer it there.
+digit answers it, from anywhere on home**. The row the cursor is on says `enter`, which opens
+the conversation to answer it there; the other rows say nothing at their right.
 
 The chips are the ones the question has:
 
