@@ -3905,7 +3905,6 @@ const hopDoorWord = hopOpenKey + " chats"
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
 //	the pointer is theirs drag to select · any key ends it
-//	the door is armed     ctrl+c again to quit · a task will stop  (quitarm.go)
 //	the picker is open    → lanes · enter switch · esc · crew max
 //	  inside a fold       enter choose · ← back · esc · crew max
 //	the sessions are up   enter open · esc
@@ -3929,13 +3928,13 @@ const hopDoorWord = hopOpenKey + " chats"
 // AND THE ORDER IS input.go's OWN ROUTING ORDER, top to bottom, because that is
 // the only thing that makes the slot true: what a key does is decided by which
 // handler reads it first, so a hint ranked any other way is a hint that names
-// the keys of a state the keyboard has already been taken away from. THE ARMED
-// DOOR LEADS, under only the pointer handover, because ctrl+c is read above
-// every modal on this surface — leaving is never modal — so while it is warm the
-// next keystroke's meaning is settled before any picker or panel gets a say.
-// Copy mode is the rung under those; the typed lists come last of the modal
-// ones, since they take only the four keys that move and commit a list and give
-// every other one back to the draft.
+// the keys of a state the keyboard has already been taken away from. The
+// pointer handover leads, because it is read first; copy mode is the rung under
+// the modals; the typed lists come last of those, since they take only the four
+// keys that move and commit a list and give every other one back to the draft.
+// ctrl+c is on none of these rungs and never was a state this slot could name —
+// it is the door, read above every modal, and it acts on the press that lands
+// (leaving.go).
 //
 // COPY MODE IS THE ONE THIS SLOT WAS MOST WRONG ABOUT. While the viewport is
 // frozen every key on this surface means something else, and the slot was
@@ -3950,19 +3949,6 @@ func (a *app) hintWord() string {
 		// that a person cannot see any other way: the pointer being somewhere else
 		// looks exactly like the pointer being broken until a line says otherwise.
 		return "drag to select · any key ends it"
-	case a.quitArmed():
-		// AND THE ARMED DOOR RANKS DIRECTLY UNDER IT, above every modal on this
-		// slot, because that is where ctrl+c is READ: the routing order is this
-		// slot's ordering law, and ctrl+c is excepted from every picker, panel,
-		// room and paste bracket in input.go — leaving is never modal. So while
-		// the door is warm, the next keystroke's meaning is settled before any
-		// of the states below get a say in it, and a slot that named their keys
-		// instead would be promising the wrong thing about the one key the
-		// person has already pressed once.
-		//
-		// The sentence names what leaving would STOP when anything is running
-		// (quitarm.go's [app.quitHint]), and nothing at all when nothing is.
-		return a.quitHint()
 	case a.pick.open:
 		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
 		// person lands when the crew they just set did not change anything they

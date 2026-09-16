@@ -359,7 +359,7 @@ typed something and this terminal can deliver `shift+enter`. A foreground comman
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
-`esc interrupts · ctrl+c twice quits · ? for help`.
+`esc interrupts · ctrl+c quits · ? for help`.
 
 **Stopping it and saying something new at once.** `shift+enter` does both in one key —
 see "Interrupt and say something new in one key" above. `esc` on its own stops without
@@ -371,10 +371,12 @@ past, and any open list or overlay takes the key before the message box sees it.
 `esc` while the command list or the `@` list is open closes that list and does
 **not** interrupt.
 
-**Mid-turn `ctrl+c` only ever interrupts — it never leaves.** Pressing it a second
-time straight away does not quit either: the press that stopped the turn does not
-arm the door, so the second press only arms it and a third one is needed to leave.
-See "Quitting codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
+**Mid-turn `ctrl+c` only ever interrupts — that press never leaves.** It is spent on
+the model. The NEXT press is read at rest, and at rest `ctrl+c` is the way out — so the
+two-tap people make mid-turn, press it again harder because the first did not seem to
+land, stops the answer and then quits. Nothing you typed is lost when it does: the box
+and anything waiting for an answer are written to disk on the way out. See "Quitting
+codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
 
 ## Esc is not stopping it — why the turn is still finishing, how long stopping takes, and what happens if it will not let go
 
@@ -405,8 +407,8 @@ that was **already** on screen reports its own result if it returns in that mome
 what the turn spent is still counted.
 
 **No key makes it stop harder, because the second stage is a clock and not a key.** A
-second `esc` inside half a second is the rewind's door and `ctrl+c` is the quit arm, so
-neither is free — and you do not need one. The `esc` you already pressed started the
+second `esc` inside half a second is the rewind's door and `ctrl+c` at rest is the way
+out, so neither is free — and you do not need one. The `esc` you already pressed started the
 10-second window, and when it runs out codeaf stops waiting on its own.
 
 **What happens at 10 seconds.** codeaf detaches from the turn: the waits codeaf holds are
@@ -427,66 +429,49 @@ answered rather than when a turn ends.
 
 **You should almost never see this.** Ten seconds is well above the longest ordinary
 letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
-something is wedged even further down, `ctrl+c` twice still quits and takes the whole
+something is wedged even further down, `ctrl+c` at rest still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.
 
 ## Quitting codeaf — how do I exit codeaf, how do I close codeaf, or why did ctrl+c not quit
 
-**`ctrl+c` twice.** One press does not leave. The first press *arms* the door and the
-right end of the row under the message box reads exactly:
+**`ctrl+c`, once.** With nothing running, the press that lands is the way out: codeaf
+writes your draft to disk and exits. There is no second press to make, no window to
+beat, and nothing asking you to confirm it.
 
-```
-ctrl+c again to quit
-```
+**If `ctrl+c` did not quit, a turn was running.** Mid-turn that key is the interrupt —
+the same thing `esc` does — and the press is spent on the model. Press it again once the
+answer has stopped and codeaf leaves.
 
-Press `ctrl+c` again within **1.5 seconds** and codeaf exits. Anything else — any
-other key, or letting the 1.5 seconds lapse — puts the door back and the hint leaves
-the screen. Press it once more and you get the same arm again.
+**Nothing you typed is lost by leaving.** The unsent sentence in the box goes to disk,
+with any message that was still waiting for an answer folded in underneath it, and the
+next launch puts them back in the box. See "What quitting saves and closes" below.
 
-**Why it takes two.** One keystroke used to end the session outright, and that
-keystroke is the one every terminal habit tells you to hit when something seems stuck.
-It could end a session that was running tasks, holding live background jobs, and still
-carrying a message you had typed and pressed `enter` on.
+**What is running is NOT named first.** codeaf used to arm the door on a first press and
+spend a second and a half telling you how many conversations were open and what leaving
+would stop. That warning went with the second press. Two things still hold without it: a
+conversation this machine's codeaf service is running **keeps working** after the window
+closes — its tasks, its questions and its journal are all there when you open the same
+workspace again — and a conversation running inside this terminal (`--no-host`, or a host
+that could not be reached) stops with it. To see what is running before you go, the task
+column (`ctrl+g`) and `/status` both say.
 
-**What is running is named before you leave, across every conversation this terminal
-holds.** If there is more than one open, the armed line says how many first — a person who
-has forgotten they left something open in another project needs that number before the work
-count means anything:
-
-```
-ctrl+c again to quit · a task keeps running
-ctrl+c again to quit · a task will stop
-ctrl+c again to quit · 2 tasks and a job will stop
-ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
-```
-
-**The verb is the truth about where the work is.** A conversation this machine's codeaf
-service is running keeps going after the window closes, so the line says `keeps running`
-and leaving costs nothing. A conversation running inside this terminal — `--no-host`, or a
-host that could not be reached — stops with the window, and the line says `will stop`. A
-terminal holding both says both, what ends first.
-
-Each clause is absent when it is zero: one conversation drops the first, nothing running
-drops the second, and a quiet single conversation reads exactly `ctrl+c again to quit`.
-
-**The task count covers every open conversation; the background-job count covers only the
-one on screen.** There is no way to ask an agent you are not drawing what shells it has
-promoted, so the line is short of a fact there rather than guessing at one.
+**Closing one tab still asks.** `ctrl+w` on a conversation with work running raises a card
+that names that work — `a task and a job running` — and waits for an answer. Leaving the
+program is the gesture that does not ask; closing one conversation out of several is the
+one that does.
 
 ## Quitting from a running answer, picker, or panel — why ctrl+c stopped the turn instead
 
-The ordinary quit gesture is `ctrl+c` twice within **1.5 seconds**, but where the first
-press lands changes what it does.
+The quit gesture is one `ctrl+c`, but where the press lands changes what it does.
 
-**Mid-turn it is still only the interrupt.** While an answer is streaming, `ctrl+c` is
-the same key `esc` is: it stops the turn and does **not** arm the door. So the two-tap
-people make mid-turn — press it again, harder — stops the model once and then arms;
-you would have to press a third time to leave.
+**Mid-turn it is only the interrupt.** While an answer is streaming, `ctrl+c` is the same
+key `esc` is: it stops the turn, and that press does not leave. The next one, at rest,
+does — so the two-tap people make mid-turn stops the model once and then quits.
 
 **It works over everything.** `ctrl+c` is read above every picker, panel, room, mode
 and paste bracket — leaving is never modal. Pressing it with the model picker or the
-settings panel up does not close them: it arms the door underneath, the hint slot
-shows `ctrl+c again to quit`, and the second press leaves with the panel still up.
+settings panel up does not close them: it leaves codeaf, with the panel still up. `esc`
+is the key that closes the thing in front of you.
 
 ## What quitting saves and closes — kill, SIGTERM, SIGHUP, terminal closed, or hung up
 
@@ -507,22 +492,22 @@ running.
 - **`/quit` closes one conversation, not the program.** It is typed out on purpose, so it
   is not asked twice — but what it closes is the conversation in front, and codeaf stays up
   with the previous one forward when this terminal is holding another. It leaves only when
-  that was the last one. `ctrl+c` twice is the key that closes everything. `/exit` and `/q`
+  that was the last one. `ctrl+c` is the key that closes everything. `/exit` and `/q`
   are the same command.
 - A real signal — `kill -INT`, `kill -TERM`, `kill -HUP`, a closed terminal window,
   or `^C` on a terminal that is not in raw mode — also leaves through the same clean
-  exit: draft written, session closed, status 0. Only the keystroke asks twice. A second
-  signal ends the process at once with status `128 + the signal's number`. The screen is
-  handed back on a bounded best effort first; if that could not finish, the terminal may
-  need `reset` afterwards.
-- The 1.5-second window cannot be changed.
+  exit: draft written, session closed, status 0. A second signal ends the process at once
+  with status `128 + the signal's number`. The screen is handed back on a bounded best
+  effort first; if that could not finish, the terminal may need `reset` afterwards.
+- Nothing asks you to confirm leaving. A `ctrl+c` struck by accident at rest ends the
+  session, and what you had typed comes back at the next launch.
 
 ## Quitting while a task is running — what happens to tasks and background work when the session closes
 
-**A hosted conversation keeps working.** Closing the window, `ctrl+c` twice, `kill -HUP`
+**A hosted conversation keeps working.** Closing the window, `ctrl+c`, `kill -HUP`
 and a terminal that went away all detach: the task goes on running in this machine's codeaf
 service, its questions stay waiting for you, and you rejoin it by opening the same
-workspace again. The armed line says `keeps running` when that is what will happen.
+workspace again.
 
 **A conversation running inside this terminal stops with it.** That is `--no-host`, and a
 launch where no host could be reached. Every task the session is running is stopped when it
@@ -560,7 +545,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
 | `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
-| `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: arm the door; press it again within 1.5 seconds to quit |
+| `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: quit codeaf, on that press |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | A foreground command that can be kept: send that command to the background. Otherwise: close the task column, or bring it back. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `enter` while a turn runs | Stop the current generation, keep its partial reply, and steer the words into the same turn |
@@ -687,7 +672,7 @@ key away would be the worse trade.
 
 **`ctrl+z` does not suspend codeaf.** In an ordinary shell that chord stops the program
 and hands you back the prompt; codeaf runs the terminal in raw mode, so the key arrives
-as an ordinary keystroke and is the undo instead. To leave, press `ctrl+c` twice.
+as an ordinary keystroke and is the undo instead. To leave, press `ctrl+c`.
 
 ## Click to move the cursor — clicking the message box places the caret
 
@@ -909,7 +894,7 @@ your sent message too. It adds no characters and no cells; see "Slash commands a
 as chips" in the commands page for the whole of it.
 
 **A key chord is never given that background.** Where codeaf names a key — the hint slot
-on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits · ? for
+on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c quits · ? for
 help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
 tinted background always means a slash command and only ever that, so the two marks
@@ -922,8 +907,7 @@ line. Bracketed paste is on. CRLF and bare CR become LF at the door.
 Inside an open paste bracket, every key is text: `enter` and `ctrl+j` become a
 newline, `tab` becomes a tab, everything else contributes its text. Nothing between
 the brackets can submit, interrupt, or answer a question. `ctrl+c` is the one
-exception and still works — it arms the door without closing the bracket, and a
-second press within 1.5 seconds quits. A bracket that goes quiet for 2 seconds is treated as
+exception and still works — it leaves codeaf without closing the bracket. A bracket that goes quiet for 2 seconds is treated as
 abandoned, flushed, and the keyboard handed back.
 
 A paste while copy mode is up is **declined** — nothing happens, and your clipboard
@@ -1512,8 +1496,7 @@ one. Every other key dismisses the greeting and then does whatever it normally d
 first letter you type lands in the box, which is drawn inside the greeting until then.
 
 Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to it.
-`ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
-seconds quits codeaf with the picker still up.
+`ctrl+c` does not close the picker — it quits codeaf, with the picker still up.
 
 ## Keys when codeaf asks you a question — what key answers switch to auto, and the other offers
 
@@ -1523,7 +1506,7 @@ question to the chip and answers nothing. It is **not modal**: every other key b
 to your message box, and a key it does read also **stops the countdown**. A key pressed
 in the first quarter-second is dropped, so a question landing under a moving hand is not
 answered by a keystroke aimed at your sentence. `ctrl+c` is handed back to the message
-box, where it arms the door and a second press within 1.5 seconds quits. On the second
+box, where it quits codeaf. On the second
 beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
 while that beat is up the digits are the shapes', not the answers'.
 
@@ -1563,7 +1546,7 @@ its own, and the same three digits answer it from inside the design's room. It w
 
 **The steer guard**, raised when you press `enter` in a room whose node is not
 listening: `r` revive and send · `m` send to main · `esc` cancel and keep your words ·
-`ctrl+c` handed back to the door, where two presses quit · everything else does nothing.
+`ctrl+c` handed back to the door, where it quits · everything else does nothing.
 Its row reads
 `[r] revive and send · [m] send to main · [esc] cancel`. When the task is still
 running — refused mid-check, or while its work lands — the guard offers no `r`: its row
@@ -1667,8 +1650,7 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 `esc close · ↑↓ scroll`, or `esc close · ↑↓ scroll · tap … for the rest`.
 
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
-`ctrl+c` does not close the panel — it arms the door, and a second press within 1.5
-seconds quits codeaf.
+`ctrl+c` does not close the panel — it quits codeaf, with the panel still up.
 
 ## Go back to the last conversation — tab
 
@@ -2194,8 +2176,7 @@ keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab 
 `esc` or `tab` hands it back (*Asking from home*).
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
-to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
-seconds quits codeaf.
+to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 

@@ -82,7 +82,7 @@ directly above the message box.
 | `1` | run it |
 | `2` | not now — the ordinary turn goes ahead |
 | `esc` | **later**. Nothing is decided, the offer stays open, and the status line keeps counting it |
-| `ctrl+c` | not swallowed; mid-turn it is still the interrupt, which releases the held turn. It never quits on one press — the door takes two |
+| `ctrl+c` | not swallowed; mid-turn it is still the interrupt, which releases the held turn. At rest it quits codeaf, offer and all |
 
 **`enter` and `y` no longer answer it, and `esc` is no longer the no.** Every question in
 codeaf now answers to the number beside the answer, and `esc` means *later* on all of them.

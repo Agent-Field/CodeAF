@@ -576,24 +576,21 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// door, and every terminal habit in the world says that keystroke stops
 		// the RUNNING thing.
 		//
-		// AND A PRESS THAT INTERRUPTED DOES NOT ARM. It was aimed at the model
-		// and it hit the model; arming there is what made the two-tap — press it
-		// again, harder, because the first one did not seem to land — end the
-		// session, since [app.interrupt] leaves stateWorking on the spot and the
-		// second press was read at rest.
+		// AND A PRESS THAT INTERRUPTED IS SPENT ON THE MODEL. It was aimed at
+		// the turn and it hit the turn; it never reaches the door, which is why
+		// this rung is read before the one below it.
 		if a.state == stateWorking {
 			a.interrupt()
 			return nil
 		}
-		// AND AT REST IT TAKES TWO (quitarm.go). One press arms and says what
-		// leaving would cost; the next one inside the window is the door. Nothing
-		// else on this surface can end a session by accident, and until this wave
-		// this key could end one holding running tasks, live background jobs and
-		// a message still parked for an answer.
-		if a.quitArmed() {
-			return a.quit()
-		}
-		return a.armQuit()
+		// AND AT REST IT IS THE DOOR, ON THE FIRST PRESS (leaving.go). ctrl+c
+		// at rest means leave, in this program as in every other one a person
+		// has ever typed it into, and a surface that asked for it twice was
+		// asking somebody to press a key they had already pressed on purpose.
+		// What the second press used to buy — the draft and everything parked
+		// above it written down before the program ends — is bought by
+		// [app.quit] itself, on this press, and is owed to a real SIGINT too.
+		return a.quit()
 	}
 
 	// THE REWIND TIMELINE IS MODAL AT THIS RUNG AND FOR THE SETTINGS PANEL'S

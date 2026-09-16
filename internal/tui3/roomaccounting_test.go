@@ -48,12 +48,12 @@ func TestABackgroundJobATaskStartedReachesTheAmbientCounts(t *testing.T) {
 	if got := a.hudStats().jobs; got != 1 {
 		t.Fatalf("a task started a background job and the session counts %d", got)
 	}
-	// AND THE QUIT WARNING NAMES IT. This is the reason the count is worth
-	// having: walking away from a server a task started is the same mistake as
-	// walking away from one you started yourself, and the warning is the only
-	// place the surface says so.
-	if word := quitStoppingWord(a); !strings.Contains(word, "job") {
-		t.Errorf("the quit warning says %q while a task's background job is up", word)
+	// AND THE CLOSE-A-TAB CARD NAMES IT. This is the reason the count is worth
+	// having: closing a tab on a server a task started is the same mistake as
+	// closing one on a server you started yourself, and that card is where the
+	// surface says so.
+	if word := frontWorkWord(a); !strings.Contains(word, "job") {
+		t.Errorf("the card says %q while a task's background job is up", word)
 	}
 }
 

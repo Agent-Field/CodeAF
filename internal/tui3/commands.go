@@ -999,10 +999,10 @@ func helpText(file string, chords chordSpelling) string {
 		// binding).
 		helpKeyRow(helpAskKey, helpAskWord),
 		"@path          complete a file · a picture attaches",
-		// THE DOOR IS NAMED HERE BECAUSE IT NO LONGER BEHAVES THE WAY THE HABIT
-		// EXPECTS (quitarm.go): one press does not leave, and a person whose
-		// ctrl+c "did nothing" looks here before anywhere else.
-		"ctrl+c         twice quits everything · mid-turn one press interrupts, like esc",
+		// THE DOOR IS NAMED HERE BECAUSE ONE KEY CARRIES TWO MEANINGS
+		// (leaving.go): at rest it leaves, mid-turn it stops the model, and a
+		// person whose ctrl+c "only interrupted" looks here before anywhere else.
+		"ctrl+c         quits everything · mid-turn it interrupts instead, like esc",
 		// tab is the seventeenth rung of the key router (input.go) and does
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
