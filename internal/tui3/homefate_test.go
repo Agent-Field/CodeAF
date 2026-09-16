@@ -47,7 +47,7 @@ func TestEveryCommandHasAFateAtHome(t *testing.T) {
 func TestTheFateLeadsTheCommandRowAndIsNeverCut(t *testing.T) {
 	for _, c := range commands {
 		label := c.typed()
-		margin := commandMargin(label, c, 80)
+		margin := commandMargin(label, c, 80, chordSpelling{meta: chordAltWord})
 		fate := homeFate(c.name, c.args)
 		if !strings.HasPrefix(margin, fate) {
 			t.Fatalf("/%s %s draws %q, which does not lead with %q", c.name, c.args, margin, fate)

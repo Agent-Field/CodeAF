@@ -2077,10 +2077,15 @@ there is no hover on glass. Home's own page has the whole shape.
 
 The box row reads `› say what you want done`. **The rule above it is a legend on home and
 nowhere else**, and it says what the box is a draft *for*:
-`─ → new conversation in ~/codeaf · glm-5.3-flash ── alt+w folder · alt+o model · / commands ─`
-— the folder the next conversation opens in, the model it will answer on, and the two chords
+`─ → new conversation in ~/codeaf · glm-5.3-flash ── alt+w folder · alt+o model · alt+k chats · / commands ─`
+
+— the folder the next conversation opens in, the model it will answer on, and the chords
 that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
 opens the model list in home's own body; pressing either label does the same as its chord.
+`alt+k chats` is the conversation switcher, named here for the same reason it is named on
+the conversation's own legend, and it is absent when there is nowhere to go.
+**On a Mac the right-hand side reads `⌥w folder · ⌥o model · ⌥k chats · / commands`** —
+the same keys, drawn with the modifier your keycaps wear.
 The line under the box is the foot, and **at rest it is exactly**
 `type to search or start something new · ↑↓ pick · enter open · tab next place`. `esc`
 still closes home from anywhere; the resting foot does not spend a cell naming it, and

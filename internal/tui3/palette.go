@@ -2401,7 +2401,7 @@ func (a *app) overlayHeight() int {
 	room := height - 2 - a.inputHeight() - a.questionHeight() -
 		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
-		want = a.menu.height(width, room)
+		want = a.menu.height(width, room, a.chords)
 	}
 	if want > room {
 		want = room
@@ -2443,7 +2443,7 @@ func (a *app) overlayRows(width, n int) []string {
 	case a.subPage.open:
 		return a.subPage.draw(a, width, n, hover)
 	case a.menu.open:
-		return a.menu.rows(width, n, a.pal, hover)
+		return a.menu.rows(width, n, a.pal, hover, a.chords)
 	case a.comp.open:
 		return a.comp.rows(width, n, a.pal, hover)
 	}

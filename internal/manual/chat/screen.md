@@ -65,7 +65,7 @@ naming the four (and the one you stand in, when it is off the bar), a dim rule, 
 hint line last. See the **Places** page.
 
 On **home** that second rule is not a plain line: it is a legend reading
-`→ new conversation in ~/codeaf · glm-5.3-flash` with `alt+w folder · alt+o model ·
+`→ new conversation in ~/codeaf · glm-5.3-flash` with `alt+w folder · alt+o model · alt+k chats ·
 / commands` at its right, and home draws no scope chip at all — the rule says where the next
 conversation opens and what it will run on, which is the same fact said better. Home's own
 page has that whole gesture.

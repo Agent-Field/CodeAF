@@ -90,15 +90,15 @@ func (h *homeView) commandLines() []homeLine {
 func (a *app) homeCommandRow(line homeLine, at, width int, pal palette) string {
 	h := &a.home
 	label := line.cmd.typed()
-	return overlayRow(label, commandMargin(label, *line.cmd, width),
+	return overlayRow(label, commandMargin(label, *line.cmd, width, a.chords),
 		at == h.cursor, false, at == h.hover, width, pal)
 }
 
 // commandMargin is that margin: the fate, and the note if there is room for a
 // readable amount of it.
-func commandMargin(label string, c command, width int) string {
+func commandMargin(label string, c command, width int, chords chordSpelling) string {
 	fate := homeFate(c.name, c.args)
-	note := c.note()
+	note := c.note(chords)
 	switch {
 	case fate == "":
 		// A COMMAND WITH NO FATE IS A PROGRAMMING MISTAKE and not a row that
