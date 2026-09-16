@@ -3802,6 +3802,17 @@ func (a *app) legendRight(width int) string {
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
+	// AND UNDER THE STATES, BUT OVER EVERY TIP AND DOOR: THE CHORD THAT DID NOT
+	// ARRIVE. A Mac whose Option key is composing accents answers the switcher's
+	// chord with the character `˚`, and the legend's own door would go on naming
+	// a key that is not reaching this program — which is the phantom this
+	// surface's whole key law exists to forbid. It outranks the earned tips
+	// because it is a diagnosis and they are suggestions, and it says nothing at
+	// all on every other terminal (chords.go's [app.chordWatch] arms it only on a
+	// Mac, and only after a chord was actually aimed and missed).
+	if a.chordLost && a.chords.meta == chordMetaWord {
+		return a.chords.chordShortWords()
+	}
 	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
 	// lowest rung there is — a tip about a gesture the person has not used yet,
 	// drawn only over an idle box — and it takes the slot from the rest state
@@ -3845,7 +3856,14 @@ func (a *app) legendRight(width int) string {
 		doors = append(doors, lastDoorWord)
 	}
 	if a.hopAvailable() {
-		doors = append(doors, hopDoorWord)
+		// AND IT IS SPELLED THE WAY THIS KEYBOARD SPELLS IT. The switcher took an
+		// `alt+` chord when it gave `ctrl+k` back to the draft (hop.go), so this
+		// clause is the one door on the line with a modifier that has two
+		// keycaps, and it goes through the same substitution every other sentence
+		// about a chord goes through (chords.go's [chordSpelling.say]). It is
+		// said HERE rather than on the way to the paint because `⌥k` is two cells
+		// where `alt+k` is five, and the ladder below measures what it draws.
+		doors = append(doors, a.chords.say(hopDoorWord))
 	}
 	return strings.Join(append(doors, microcopy), " · ")
 }
@@ -3856,7 +3874,7 @@ func (a *app) legendRight(width int) string {
 // `cd -` makes.
 const lastDoorWord = "tab last"
 
-// hopDoorWord advertises the switcher, and it names `ctrl+k` rather than the
+// hopDoorWord advertises the switcher, and it names the binding rather than the
 // `ctrl+tab` alias because this line is drawn on every terminal and the alias is
 // only real on some of them (hop.go states the whole argument). A hint may only
 // name a key that works.

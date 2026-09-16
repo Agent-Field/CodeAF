@@ -68,45 +68,65 @@ import (
 // [switcherLine]) — because a person who has read home once should not have to
 // learn a second list.
 //
-// Ctrl+k is a browsing gesture: highlight first, Enter or a click to open.
+// The switcher is a browsing gesture: highlight first, Enter or a click to open.
 // A pause must never dismiss the list while somebody is reading its titles.
 // The optional quick-switch setting applies only to the terminal's distinct
 // ctrl+tab chord. Modifier releases are not delivered by ordinary terminals,
 // so neither gesture guesses that silence means a key was released.
 
-// hopOpenKey is the key that opens the switcher, and it is `ctrl+k` for four
+// hopOpenKey is the key that opens the switcher, and it is `alt+k` for four
 // reasons stated in the order they were weighed:
 //
-//  1. IT ARRIVES IN EVERY TERMINAL. `ctrl+k` has a legacy encoding (0x0B), so it
-//     needs no protocol negotiation, no kitty keyboard flag and no cooperation
-//     from a multiplexer in between. That is the first question asked of any
-//     chord on this surface, because a capability that cannot work is absent
-//     rather than broken (bargein.go states the law).
-//  2. NOTHING TAKES IT FIRST. No window manager claims it, and no common
-//     emulator binds it — unlike `ctrl+tab`, which WezTerm and Windows Terminal
-//     both spend on their own tabs by default, and unlike `alt+tab`, which the
-//     window manager takes on Windows and on most Linux desktops.
-//  3. IT ALREADY MEANS THIS. `ctrl+k` / `cmd+k` is "jump to a conversation" in
-//     Slack, and the switcher in VS Code, Linear and Notion. A person who has
-//     used any of them has already learned this key.
-//  4. IT IS FREE HERE. The one other place this surface binds it is the harness
-//     design's approval row (roomapproval.go), which is a modal that owns the
-//     whole keyboard while it is up and is read before this claim — so the two
-//     never contend for one keystroke on one screen, exactly as `ctrl+.` means
-//     two things on two screens (chords.go's [chordMapAlias]).
-const hopOpenKey = "ctrl+k"
-
-// hopBackKey is the same gesture the other way. It is `ctrl+shift+k` and it is
-// bound ONLY where the terminal can spell it, for `ctrl+tab`'s reason exactly: an
-// ordinary terminal sends `ctrl+shift+k` and `ctrl+k` as the same byte, so
-// nothing can tell them apart until the kitty keyboard protocol's disambiguation
-// flag has been taken ([app.ctrlDigits]).
+//  1. IT LEAVES THE LETTER IN THE DRAFT. This key was `ctrl+k` and that is
+//     readline's kill-to-the-end-of-the-line, which the composer now does with
+//     it (input.go's [editor.killToEnd]) beside the `ctrl+u` it has always had.
+//     EVERY `ctrl+<letter>` ON THIS SURFACE IS SPENT — a through z, with only
+//     `h`, `i` and `m` left, and each of those three is a byte the terminal
+//     already spends on backspace, tab and enter. So a door that wanted a
+//     letter back had to leave the modifier the box edits under, and `alt+` is
+//     the class the places are already built on (chords.go).
+//  2. IT ARRIVES WITH NO PROTOCOL NEGOTIATION. `alt+k` is escape-then-`k`, which
+//     every terminal that sends Alt as Meta emits unasked — no kitty keyboard
+//     flag, no cooperation from a multiplexer in between. That is the first
+//     question asked of any chord on this surface, because a capability that
+//     cannot work is absent rather than broken (bargein.go states the law).
+//  3. THE REVERSE COMES FREE, AND EVERYWHERE. See [hopBackKey]: `alt+shift+k` is
+//     escape-then-`K`, a different byte from escape-then-`k`, so the backwards
+//     gesture stops being a thing only a kitty terminal could spell. Under
+//     `ctrl+` it was the same byte as the forward one and half the world lost it.
+//  4. NOTHING TAKES IT FIRST, OUTSIDE OR IN. No window manager claims it and no
+//     common emulator binds it — unlike `ctrl+tab`, which WezTerm and Windows
+//     Terminal both spend on their own tabs by default, and unlike `alt+tab`,
+//     which the window manager takes on Windows and on most Linux desktops.
+//     Inside this surface the `alt+` letters already spent are `b`, `f`, `g`,
+//     `i`, `o`, `q`, `s`, `t` and `w`; `k` is free.
 //
-// THE ALWAYS-AVAILABLE REVERSE IS `shift+tab`, which every terminal sends as
-// CSI Z and which the card takes while it is up. That is why this chord being
-// absent on half the terminals in the world costs nothing: the gesture has a
-// spelling that always works, and this is the one people's hands reach for.
-const hopBackKey = chordCtrlWord + "shift+k"
+// AND THE ONE COST, SAID PLAINLY RATHER THAN LEFT TO BE DISCOVERED. On a Mac,
+// Option composes accents unless the terminal profile says otherwise, and `⌥k`
+// is then the character `˚` rather than a chord — which is the tax every `alt+`
+// chord on this surface already pays. chords.go is the whole of the answer: it
+// spells the chord `⌥k` on a Mac ([chordSpelling.say]), it watches for `˚`
+// arriving where the chord was aimed ([chordDeadKeys]), and it draws one dim
+// line naming that terminal's own setting until a real `alt+` chord retires it.
+// `ctrl+k` needed none of that, and this is what was traded for the letter.
+const hopOpenKey = chordAltWord + "k"
+
+// hopBackKey is the same gesture the other way, and it is `alt+shift+k` on EVERY
+// terminal rather than on the few that negotiated for it.
+//
+// THIS IS THE ONE THING THE MOVE OFF `ctrl+` BOUGHT OUTRIGHT. `ctrl+shift+k` and
+// `ctrl+k` are the same byte in an ordinary terminal, so nothing could tell them
+// apart until the kitty keyboard protocol's disambiguation flag had been taken
+// and the reverse was simply absent everywhere else ([app.ctrlDigits]). The
+// escape-prefixed spelling has no such collision: escape-then-`K` is a different
+// byte from escape-then-`k`, and ultraviolet's decoder reads the uppercase rune
+// back as shift+alt over the lowered letter. So the chord is bound flat, with no
+// capability question in front of it.
+//
+// `shift+tab` REMAINS THE REVERSE THE CARD ITSELF TAKES, on every terminal, as
+// CSI Z. It is the one people's hands reach for once the card is up; this chord
+// is the one that opens the ring at its far end without the card being up first.
+const hopBackKey = chordAltWord + "shift+k"
 
 // hopFoldKey and hopShutKey open and shut the fold at the foot of the card —
 // `→` and `←`, the two keys this surface already folds with everywhere
@@ -215,8 +235,8 @@ type hopCard struct {
 	originY, left, right, top, bottom int
 	// at is the cursor, an index into rows. It opens on ZERO, which is the most
 	// recently open conversation behind this one — the same place `tab` goes —
-	// so the commonest journey is `ctrl+k enter` and the second commonest is one
-	// more `ctrl+k` before the `enter`.
+	// so the commonest journey is `alt+k enter` and the second commonest is one
+	// more `alt+k` before the `enter`.
 	at int
 	// rows are frozen at open. See the header: a stir must never renumber a list
 	// somebody is aiming at.
@@ -934,10 +954,13 @@ func (a *app) hopOpens(key string) bool {
 	return key == hopOpenKey || (key == hopAlias && a.ctrlDigits())
 }
 
-// hopBacks is the same question for the reverse: `ctrl+shift+k` and `ctrl+tab`'s
-// own reverse, both of them only where the terminal can spell them.
+// hopBacks is the same question for the reverse, and the two chords no longer
+// answer it on the same terms. `alt+shift+k` is escape-then-`K` and arrives
+// everywhere, so it is bound flat; `ctrl+shift+tab` is still `ctrl+tab`'s own
+// reverse and still only real where the terminal answered the keyboard query
+// ([hopBackKey] states why the asymmetry is the point of the spelling).
 func (a *app) hopBacks(key string) bool {
-	return (key == hopBackKey || key == hopBackAlias) && a.ctrlDigits()
+	return key == hopBackKey || (key == hopBackAlias && a.ctrlDigits())
 }
 
 // hopWalk moves the cursor, wrapping at both ends. It wraps because this is a

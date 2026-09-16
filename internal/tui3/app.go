@@ -2230,7 +2230,7 @@ type app struct {
 	// and not on a place's state — the three facts it settles are the same three
 	// wherever a person typed the sentence.
 	composer composerLayer
-	// hop is the conversation switcher — `ctrl+k`, the card over everything
+	// hop is the conversation switcher — `alt+k`, the card over everything
 	// (hop.go). It is a field of the app rather than of a place because it
 	// belongs to no place: it is drawn over the conversation and over all seven.
 	hop hopCard

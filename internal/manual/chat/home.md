@@ -859,7 +859,7 @@ terminal hold*.
 ## How many conversations can one terminal hold — is there a limit, too many open, why can I not open another, let go, quiet a while, does codeaf close old chats
 
 **Opening another is never refused**, over every door. The ninth and the fiftieth open
-like the first, from home's `enter`, a typed path, the switcher (`ctrl+k`), search or
+like the first, from home's `enter`, a typed path, the switcher (`alt+k`), search or
 `/new`. There used to be a cap of eight, and taking a ninth said `8 open is as many as
 codeaf holds — /quit closes this one`. That sentence is gone.
 
@@ -884,7 +884,7 @@ completely alone keeps what it holds; opening another conversation, or one of th
 others finishing, is what collects a quiet one.
 
 Each conversation that is still held is fully alive whether or not you are looking at it.
-`/quit` closes the one in front. `ctrl+k` shows the first twelve as rows; home's
+`/quit` closes the one in front. `alt+k` shows the first twelve as rows; home's
 `where you were` panel reaches every one. `/status` carries the count as `2 open · 1 waiting`.
 
 ## let go · quiet a while — a conversation this window let go of, too many open
