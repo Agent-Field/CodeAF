@@ -66,6 +66,12 @@ func (a *app) applyCrew(preset string) {
 		a.note("could not set the crew · " + err.Error())
 		return
 	}
+	a.crewApplied()
+}
+
+// crewApplied is the tail both crew writes share: the panel rebuild and the
+// person-facing confirmation.
+func (a *app) crewApplied() {
 	// The panel may be holding rows read before this write, so it is rebuilt if
 	// it is open. Everything else is live: the crew source the session resolves
 	// through re-reads on its next call (cmd/codeaf's v3RolesSource).
@@ -98,19 +104,16 @@ func (a *app) applyCrew(preset string) {
 }
 
 // applyCrewUnder is the chooser's enter: the family and the preset are ONE
-// decision, and the family row is written FIRST. The resolution that turns a
-// family and a preset into five ids reads the row, so a picker that applied
-// the preset before writing the
-// family would hand the resolver yesterday's row on the one enter that
-// changed it. A failed family write refuses the preset with it: half of one
-// decision applied is the family saying all while the five rows say open, and
-// the chooser is where the two are promised as one.
+// decision, and [config.ApplyCrewUnder] lands them as one file write. Landing
+// them apart would leave a window in which a reader sees the family set to `all`
+// while the five rows still hold open ids, which is the half-written crew the
+// chooser is the one place to promise against.
 func (a *app) applyCrewUnder(source, preset string) {
-	if err := config.SetCrewSource(a.profileDir, source); err != nil {
-		a.note("could not set the crew's source · " + err.Error())
+	if err := config.ApplyCrewUnder(a.profileDir, source, preset); err != nil {
+		a.note("could not set the crew · " + err.Error())
 		return
 	}
-	a.applyCrew(preset)
+	a.crewApplied()
 }
 
 // crewUnchangedClause is the tail of every crew confirmation: the model the
@@ -406,6 +409,7 @@ func (a *app) sayWorkSeat() {
 // the gate): the chooser reads it once at its open ([app.runCrew]) and enter
 // writes it once, and neither happens on the frame clock, which is why the
 // status segment does not name the family.
+
 // crewSourceLead is the family row's label. It is `family` and not `source`
 // because that is the word the settings panel and the manual use for the same
 // row: one thing, one name.
@@ -420,8 +424,7 @@ type crewPicker struct {
 	current string
 	// source is the family the presets below draw from: open models or all
 	// models. IT IS STAGED AND NOT WRITTEN: ←→ moves the word, and enter
-	// writes it beside the preset as one decision ([app.applyCrewUnder]),
-	// which is the shape the person asked for, flip the family, watch the
+	// writes it beside the preset as one decision ([app.applyCrewUnder]): flip the family, watch the
 	// preset rows take it, then commit. esc leaves the row exactly as it
 	// was.
 	source string
