@@ -1999,15 +1999,17 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	// written after the lane took it: a decision recorded for work that was never
 	// resolved is a record that refuses the next question for no reason.
 	//
-	// A LANDING ANSWERED WITH NOTHING BANKED IS RECORDED TOO. Its words are
-	// synthesized ([Agent.questionForLandingAnswer]) with the head and subject
-	// the next raise consults ([decidedAlready] in [Agent.landingQuestion]),
-	// so the record CAN be read back — and an unrecorded landing answer is the
-	// next attach asking as though it never happened, which is the replay
-	// half of #1077. Other lanes still leave no record when nothing was
-	// banked: there is no head to keep, and a record whose question cannot be
-	// read back is a line nobody can act on.
-	if said || landingSaid {
+	// A LANDING ANSWERED WITH NOTHING BANKED IS RECORDED TOO, when the record
+	// can be read back. Its words are synthesized
+	// ([Agent.questionForLandingAnswer]) with the head and subject the next
+	// raise consults ([decidedAlready] in [Agent.landingQuestion]); the one
+	// road that synthesizes no head — the pending decision already gone, the
+	// restore race — writes nothing, because a record whose question cannot
+	// be read back is a line nobody can act on and a gate that never matches.
+	// The answered event still goes out: the window holding the card closes on
+	// the event, not on the record. Other lanes banked nothing and leave no
+	// record for the same law.
+	if said || (landingSaid && strings.TrimSpace(q.Head) != "") {
 		a.recordDecision(decisionRecordOf(q, answer))
 	}
 	if said {
@@ -2980,10 +2982,17 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 	// and so no second source of truth. Banked words are an unanswered
 	// question and carry no fate — [Agent.said] returns them untouched.
 	if record, found := decidedAlready(a.Decisions(), q); found {
-		if strings.TrimSpace(notice.Settling) != "" {
-			q.Reason = landingAnsweredStamp(record) + " · still working on it"
-		} else {
-			q.Reason = landingAnsweredStamp(record) + " · " + q.Reason
+		stamp := landingAnsweredStamp(record)
+		switch {
+		case strings.TrimSpace(notice.Settling) != "":
+			q.Reason = stamp + " · still working on it"
+		case strings.TrimSpace(q.Reason) == "":
+			// A LANDING WITH NOTHING TO EXPLAIN CARRIES THE STAMP ALONE — a
+			// plain `your call` has no ask reason, and a separator after it
+			// would dangle.
+			q.Reason = stamp
+		default:
+			q.Reason = stamp + " · " + q.Reason
 		}
 	}
 	return a.said(kind, token, q)

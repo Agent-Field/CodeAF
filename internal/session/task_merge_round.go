@@ -459,7 +459,12 @@ func (n *TaskNode) claimResolving() bool {
 		return false
 	}
 	n.graph.mu.Lock()
-	if n.resolving {
+	if n.resolving || n.settling != "" {
+		// THE SETTLE'S CLAIM IS THIS DOOR'S TOO. A round and a settle are both
+		// work in the node's own working copy
+		// ([TaskNode.claimSettle]), so a round may not start over an
+		// accept, refute or re-audit in flight — the same refusal the
+		// settle's own door gives the round.
 		n.graph.mu.Unlock()
 		return false
 	}

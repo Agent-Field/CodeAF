@@ -2072,18 +2072,22 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
 	node.ended = time.Now()
-	// AND THE RESOLUTION'S CLAIM IS HANDED BACK IN THE SAME WRITE. The claim
-	// covers everything down to the resettle ([TaskNode.claimSettle]), so the
-	// resettle is where it ends: cleared here, under the lock, the
+	// AND THE SETTLE'S OWN CLAIM IS HANDED BACK IN THE SAME WRITE — the claim
+	// covers everything down to the resettle ([TaskNode.claimSettle]), so
+	// the resettle is where it ends: cleared here, under the lock, the
 	// announcement below is built AFTER it and carries an empty
-	// [TaskNotice.Settling] — which is what lets the terminal notice of an
+	// [TaskNotice.Settling], which is what lets the terminal notice of an
 	// accept or a re-audit still raise the node's question with the answer's
 	// fate on it. Every caller also defers its own release, and that release
-	// is now an idempotent no-op; the checkpoint below persists the cleared
-	// Resolving record in the same breath (task_store.go's
-	// [taskRecord.Resolving]).
+	// is an idempotent no-op.
+	//
+	// THE ROUND'S CLAIM IS NOT THIS CLAIM'S TO CLEAR. A merge round's flag
+	// survives the resettle ([TaskNode.claimResolving] clears it only when the
+	// round itself hands it back): the round may still be running under this
+	// settle, and wiping its guard would un-guard its door mid-flight. The
+	// settle's own release is the no-op above; the round's own defer is what
+	// lets it go.
 	node.settling = ""
-	node.resolving = false
 	g.mu.Unlock()
 
 	g.checkpoint()
