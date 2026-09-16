@@ -198,8 +198,8 @@ var tuiWords = map[string]tuiWord{
 		why:    "the day and the fortnight on home, and the third word of the four-place bar",
 	},
 	"homePanelNext": {
-		screen: "next up",
-		why:    "the reminders and routines this machine will act on, soonest first",
+		screen: "scheduled",
+		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
 		screen: "work you send off with /task runs here on its own",
@@ -207,13 +207,9 @@ var tuiWords = map[string]tuiWord{
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
 	},
-	"homeFindWord": {
-		screen: "type to find one",
-		why:    "the fold under `where you were` — an instruction rather than a door, because the rest are found by typing",
-	},
 	"foldMoreWord": {
 		screen: " more",
-		why:    "every panel's fold counts what it stands over — `14 more · type to find one`",
+		why:    "every panel's fold counts what it stands over — `14 more` — and is a toggle, not a door",
 		pkg:    tui3Pkg,
 	},
 	"barHomeWord": {
@@ -545,7 +541,7 @@ var tuiWords = map[string]tuiWord{
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
 	},
 	"landingKeysWord": {
-		screen: "esc interrupts · ctrl+c twice quits",
+		screen: "esc interrupts · ctrl+c quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
 	},
 	"questionWaitingWord": {

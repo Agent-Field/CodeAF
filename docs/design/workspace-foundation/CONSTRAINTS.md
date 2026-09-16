@@ -23,8 +23,8 @@ Earlier references:
 
 - Pinned Codex task **UX ideation**, September 5–6, 2026; task ID
   `01a07405-1f03-7803-a56b-211a6f41fa8a`.
-- [Math Frameworks for Org Design](https://chatgpt.com/c/6a98518e-78ac-83ea-9a91-7f396296c097).
-- [org-design ideation repository](https://github.com/santoshkumarradha/org-design),
+- A conversation titled **Math Frameworks for Org Design** (private; not linked).
+- The private **org-design** ideation repository,
   especially `docs/screens.md`, `docs/architecture.md`, and `docs/coordination.md`.
 - Earlier mathematical counterexamples informed the discussion; their theoretical
   proposals are not all settled product decisions.

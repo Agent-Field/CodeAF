@@ -68,45 +68,65 @@ import (
 // [switcherLine]) — because a person who has read home once should not have to
 // learn a second list.
 //
-// Ctrl+k is a browsing gesture: highlight first, Enter or a click to open.
+// The switcher is a browsing gesture: highlight first, Enter or a click to open.
 // A pause must never dismiss the list while somebody is reading its titles.
 // The optional quick-switch setting applies only to the terminal's distinct
 // ctrl+tab chord. Modifier releases are not delivered by ordinary terminals,
 // so neither gesture guesses that silence means a key was released.
 
-// hopOpenKey is the key that opens the switcher, and it is `ctrl+k` for four
+// hopOpenKey is the key that opens the switcher, and it is `alt+k` for four
 // reasons stated in the order they were weighed:
 //
-//  1. IT ARRIVES IN EVERY TERMINAL. `ctrl+k` has a legacy encoding (0x0B), so it
-//     needs no protocol negotiation, no kitty keyboard flag and no cooperation
-//     from a multiplexer in between. That is the first question asked of any
-//     chord on this surface, because a capability that cannot work is absent
-//     rather than broken (bargein.go states the law).
-//  2. NOTHING TAKES IT FIRST. No window manager claims it, and no common
-//     emulator binds it — unlike `ctrl+tab`, which WezTerm and Windows Terminal
-//     both spend on their own tabs by default, and unlike `alt+tab`, which the
-//     window manager takes on Windows and on most Linux desktops.
-//  3. IT ALREADY MEANS THIS. `ctrl+k` / `cmd+k` is "jump to a conversation" in
-//     Slack, and the switcher in VS Code, Linear and Notion. A person who has
-//     used any of them has already learned this key.
-//  4. IT IS FREE HERE. The one other place this surface binds it is the harness
-//     design's approval row (roomapproval.go), which is a modal that owns the
-//     whole keyboard while it is up and is read before this claim — so the two
-//     never contend for one keystroke on one screen, exactly as `ctrl+.` means
-//     two things on two screens (chords.go's [chordMapAlias]).
-const hopOpenKey = "ctrl+k"
-
-// hopBackKey is the same gesture the other way. It is `ctrl+shift+k` and it is
-// bound ONLY where the terminal can spell it, for `ctrl+tab`'s reason exactly: an
-// ordinary terminal sends `ctrl+shift+k` and `ctrl+k` as the same byte, so
-// nothing can tell them apart until the kitty keyboard protocol's disambiguation
-// flag has been taken ([app.ctrlDigits]).
+//  1. IT LEAVES THE LETTER IN THE DRAFT. This key was `ctrl+k` and that is
+//     readline's kill-to-the-end-of-the-line, which the composer now does with
+//     it (input.go's [editor.killToEnd]) beside the `ctrl+u` it has always had.
+//     EVERY `ctrl+<letter>` ON THIS SURFACE IS SPENT — a through z, with only
+//     `h`, `i` and `m` left, and each of those three is a byte the terminal
+//     already spends on backspace, tab and enter. So a door that wanted a
+//     letter back had to leave the modifier the box edits under, and `alt+` is
+//     the class the places are already built on (chords.go).
+//  2. IT ARRIVES WITH NO PROTOCOL NEGOTIATION. `alt+k` is escape-then-`k`, which
+//     every terminal that sends Alt as Meta emits unasked — no kitty keyboard
+//     flag, no cooperation from a multiplexer in between. That is the first
+//     question asked of any chord on this surface, because a capability that
+//     cannot work is absent rather than broken (bargein.go states the law).
+//  3. THE REVERSE COMES FREE, AND EVERYWHERE. See [hopBackKey]: `alt+shift+k` is
+//     escape-then-`K`, a different byte from escape-then-`k`, so the backwards
+//     gesture stops being a thing only a kitty terminal could spell. Under
+//     `ctrl+` it was the same byte as the forward one and half the world lost it.
+//  4. NOTHING TAKES IT FIRST, OUTSIDE OR IN. No window manager claims it and no
+//     common emulator binds it — unlike `ctrl+tab`, which WezTerm and Windows
+//     Terminal both spend on their own tabs by default, and unlike `alt+tab`,
+//     which the window manager takes on Windows and on most Linux desktops.
+//     Inside this surface the `alt+` letters already spent are `b`, `f`, `g`,
+//     `i`, `o`, `q`, `s`, `t` and `w`; `k` is free.
 //
-// THE ALWAYS-AVAILABLE REVERSE IS `shift+tab`, which every terminal sends as
-// CSI Z and which the card takes while it is up. That is why this chord being
-// absent on half the terminals in the world costs nothing: the gesture has a
-// spelling that always works, and this is the one people's hands reach for.
-const hopBackKey = chordCtrlWord + "shift+k"
+// AND THE ONE COST, SAID PLAINLY RATHER THAN LEFT TO BE DISCOVERED. On a Mac,
+// Option composes accents unless the terminal profile says otherwise, and `opt+k`
+// is then the character `˚` rather than a chord — which is the tax every `alt+`
+// chord on this surface already pays. chords.go is the whole of the answer: it
+// spells the chord `opt+k` on a Mac ([chordSpelling.say]), it watches for `˚`
+// arriving where the chord was aimed ([chordDeadKeys]), and it draws one dim
+// line naming that terminal's own setting until a real `alt+` chord retires it.
+// `ctrl+k` needed none of that, and this is what was traded for the letter.
+const hopOpenKey = chordAltWord + "k"
+
+// hopBackKey is the same gesture the other way, and it is `alt+shift+k` on EVERY
+// terminal rather than on the few that negotiated for it.
+//
+// THIS IS THE ONE THING THE MOVE OFF `ctrl+` BOUGHT OUTRIGHT. `ctrl+shift+k` and
+// `ctrl+k` are the same byte in an ordinary terminal, so nothing could tell them
+// apart until the kitty keyboard protocol's disambiguation flag had been taken
+// and the reverse was simply absent everywhere else ([app.ctrlDigits]). The
+// escape-prefixed spelling has no such collision: escape-then-`K` is a different
+// byte from escape-then-`k`, and ultraviolet's decoder reads the uppercase rune
+// back as shift+alt over the lowered letter. So the chord is bound flat, with no
+// capability question in front of it.
+//
+// `shift+tab` REMAINS THE REVERSE THE CARD ITSELF TAKES, on every terminal, as
+// CSI Z. It is the one people's hands reach for once the card is up; this chord
+// is the one that opens the ring at its far end without the card being up first.
+const hopBackKey = chordAltWord + "shift+k"
 
 // hopFoldKey and hopShutKey open and shut the fold at the foot of the card —
 // `→` and `←`, the two keys this surface already folds with everywhere
@@ -215,8 +235,8 @@ type hopCard struct {
 	originY, left, right, top, bottom int
 	// at is the cursor, an index into rows. It opens on ZERO, which is the most
 	// recently open conversation behind this one — the same place `tab` goes —
-	// so the commonest journey is `ctrl+k enter` and the second commonest is one
-	// more `ctrl+k` before the `enter`.
+	// so the commonest journey is `alt+k enter` and the second commonest is one
+	// more `alt+k` before the `enter`.
 	at int
 	// rows are frozen at open. See the header: a stir must never renumber a list
 	// somebody is aiming at.
@@ -235,6 +255,11 @@ type hopCard struct {
 	// rest is how many conversations the fold is standing for, and it is zero
 	// once the fold is open, because nothing is behind it any more.
 	rest int
+	// tabs is how many of the rows are tabs on the row above — the leading run of
+	// them, since [app.hopReading] draws them first. It is the head's `3 of 12`,
+	// and it is kept rather than counted off the rows because opening the fold
+	// puts conversations with no tab on the list beside them.
+	tabs int
 	// total is how many conversations this machine has, counted once when the
 	// card opened and kept through the fold. It is what the head's `1 of 12`
 	// reads, and it may NOT be derived from rest: opening the fold empties rest,
@@ -318,33 +343,26 @@ func (a *app) hopAvailable() bool {
 // router and so does not pass through either of their own arbitration.
 func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
-// hopOpen builds the reading and raises the card.
-// hopOpenAll is [app.hopOpen] with the fold already open: every conversation
-// this machine has, not only the ones this window is holding. It is what the
-// `Chats ▾` control at the right end of the tab row presses (chattabs.go) —
-// the label says every chat, so a list that showed three of somebody's twelve
-// would be the control lying about what it opens.
-func (a *app) hopOpenAll() {
-	rows, rest := a.hopReading(true)
-	if len(rows) < 2 && rest == 0 {
-		return
-	}
-	a.dropHover()
-	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
-	a.touch()
-}
+// THERE USED TO BE A SECOND DOOR HERE, `hopOpenAll`: the card raised with its
+// fold already open, which is what the `Chats ▾` control at the right end of the
+// tab row pressed. That control is deleted (chattabs.go) and this went with it,
+// because the state is not gone — `→` on the card opens the fold
+// ([app.hopSpread], [hopFoldKey]) and always has. A second constructor for a
+// state one keystroke away, with no caller left, is a second thing to keep in
+// step with the first for nothing.
 
+// hopOpen builds the reading and raises the card.
 func (a *app) hopOpen() {
 	// A shared engine handle can only have one open conversation. Show its
 	// other saved chats immediately; an open-only list would offer no choice.
-	rows, rest := a.hopReading(a.shared)
+	rows, tabs, rest := a.hopReading(a.shared)
 	if len(rows) < 2 && rest == 0 {
 		// Nowhere to go. The guard above has already refused this, and this is
 		// the same refusal said where the rows are actually counted.
 		return
 	}
 	a.dropHover()
-	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
+	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, tabs: tabs, total: len(rows) + rest, at: a.hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -364,27 +382,44 @@ func (a *app) hopSpread(all bool) {
 	}
 	a.dropHover()
 	at := a.hop.at
-	rows, rest := a.hopReading(all)
-	a.hop.rows, a.hop.rest, a.hop.all, a.hop.armed, a.hop.say = rows, rest, all, -1, ""
+	rows, tabs, rest := a.hopReading(all)
+	a.hop.rows, a.hop.rest, a.hop.tabs, a.hop.all, a.hop.armed, a.hop.say = rows, rest, tabs, all, -1, ""
 	a.hop.at = min(at, max(0, len(rows)-1))
 	// AND THE CURSOR LEAVES `you are here` THE MOMENT THERE IS SOMEWHERE ELSE TO
 	// BE. Opening the fold on a session holding one conversation is a person
 	// asking for the others; leaving the cursor on the row they are already in
 	// would make `enter` do nothing at the end of that gesture.
 	if a.hop.at < len(rows) && rows[a.hop.at].here {
-		a.hop.at = hopFirstStop(rows)
+		a.hop.at = a.hopFirstStop(rows)
 	}
 	a.touch()
 }
 
-// hopFirstStop is where the cursor opens: the first row that is not the one you
-// are already standing in.
+// hopFirstStop is where the cursor opens: THE ROW `tab` WOULD HAVE GONE TO —
+// the conversation this window was in before this one — and the first row that
+// is not `you are here` when there is no such conversation.
 //
-// IT IS NOT SIMPLY ZERO. With conversations in the keeper, row zero is the one
-// `tab` would go to and the cursor belongs there; on a fresh session the only
-// open conversation IS the front one, so zero would open the card with the
-// cursor on `you are here` and make `enter` do nothing.
-func hopFirstStop(rows []hopRow) int {
+// IT IS NOT SIMPLY ZERO, AND IT STOPPED BEING ROW ZERO WHEN THE ROWS TOOK THE
+// STRIP'S ORDER ([app.hopStripOrder]). The two keystrokes this card exists for
+// are `ctrl+k` `enter`, and what they have always meant is "the last one" — so
+// the cursor follows the recency stack even though the LIST no longer does.
+// Losing that would have made the commonest journey through the card a walk.
+//
+// On a fresh session the only open conversation IS the front one, so a cursor
+// left at zero would open the card on `you are here` and make `enter` do
+// nothing; the walk below is what answers that.
+func (a *app) hopFirstStop(rows []hopRow) int {
+	for at := len(a.prev) - 1; at >= 0; at-- {
+		key := a.prev[at]
+		if key == a.convKey(a.file) {
+			continue
+		}
+		for i, row := range rows {
+			if !row.here && a.convKey(row.file) == key {
+				return i
+			}
+		}
+	}
 	for at, row := range rows {
 		if !row.here {
 			return at
@@ -439,17 +474,19 @@ func (a *app) hopTick() tea.Cmd {
 	return surfaceTick(hopSettle, func(time.Time) tea.Msg { return hopSettleMsg{pulse: pulse} })
 }
 
-// hopReading is the card's whole reading: the conversations in the keeper,
-// most recently in front first, and then the one on screen.
+// hopReading is the card's whole reading: the conversations this window is
+// holding, IN THE ORDER THE TAB ROW DRAWS THEM, and then everything else on the
+// machine behind the fold.
 //
 // IT WALKS THE PREVIOUS-STACK AND NEVER THE MAP. Go's map order is random, and a
 // switcher whose rows moved between two presses of the same key would be
-// unusable; [app.prev] is the order the keeper already keeps and the order `tab`
-// already walks (keeper.go's [app.rememberOpen]), so the card and the key agree
-// about what "the last one" means by construction.
-func (a *app) hopReading(all bool) ([]hopRow, int) {
+// unusable; [app.prev] is the order the keeper already keeps (keeper.go's
+// [app.rememberOpen]). That walk is what BUILDS the rows; [app.hopStripOrder]
+// then lays them out the way the strip above them is laid out, and the recency
+// walk survives as the tie-break for a conversation with no tab on the row.
+func (a *app) hopReading(all bool) (rows []hopRow, tabs, rest int) {
 	now := a.now()
-	rows := make([]hopRow, 0, hopShown)
+	rows = make([]hopRow, 0, hopShown)
 	for at := len(a.prev) - 1; at >= 0; at-- {
 		held := a.behind[a.prev[at]]
 		if held == nil {
@@ -460,13 +497,109 @@ func (a *app) hopReading(all bool) ([]hopRow, int) {
 		rows = append(rows, a.hopKept(held, now))
 	}
 	rows = append(rows, a.hopFront(now))
-	rest := a.hopRest(rows, now)
+	rows = a.hopStripOrder(rows)
+	// AND THE LIST IS CUT WHERE THE TAB ROW IS. A conversation whose tab was
+	// dismissed is still held and still running, and it belongs with everything
+	// else this window is not showing rather than on a list that claims to BE the
+	// tab row ([app.hopTabbed]).
+	open, loose := make([]hopRow, 0, len(rows)), []hopRow(nil)
+	for _, row := range rows {
+		if a.hopTabbed(row) {
+			open = append(open, row)
+			continue
+		}
+		loose = append(loose, row)
+	}
+	// The held set hopRest skips is BOTH halves: a conversation this window holds
+	// must not be drawn a second time off the machine's own reading, where it
+	// would come back wearing the lock this very process is holding.
+	behind := append(loose, a.hopRest(append(append([]hopRow(nil), open...), loose...), now)...)
 	if !all {
 		// THE COUNT IS STILL TAKEN. The fold has to say what is behind it, and a
 		// door that could not name what it holds is a door nobody opens.
-		return rows, len(rest)
+		return open, len(open), len(behind)
 	}
-	return append(rows, rest...), 0
+	return append(open, behind...), len(open), 0
+}
+
+// hopTabbed is whether a row has a tab on the row above the card — the one
+// question that decides which side of the fold it is drawn on.
+//
+// IT ASKS [app.tabShut] AND NEVER THE DRAWN STRIP. `tabShut` is set the instant a
+// tab is dismissed, by the `✕`, by `ctrl+w` in the conversation and by `ctrl+w`
+// on this card alike, and it is cleared in [app.rememberOpen] — the one door
+// every road back to the front goes through. The drawn strip is a frame behind
+// that: the card rebuilt from it after its own `ctrl+w` would have kept the row
+// it had just closed until something else redrew the row.
+//
+// THE CONVERSATION IN FRONT IS ALWAYS TABBED. It is the one tab the strip cannot
+// be without ([app.tabList] appends it whatever else it found), and a `you are
+// here` row below the fold would be the card saying the person is standing
+// somewhere it is not showing.
+//
+// AND A ROW THIS WINDOW IS NOT HOLDING IS NOT TABBED EITHER, WHICH IS THE HALF
+// `tabShut` CANNOT ANSWER. Nothing ever dismissed a conversation this terminal
+// never opened, so the map says nothing about it and said so as `false` — which
+// read as "it has a tab". [app.hopReading] never noticed, because every row it
+// splits is one the keeper is holding; [app.hopAway] did, and closed a tab that
+// was not there: it swore `tab closed · <title>` at a machine row, marked a
+// conversation it had never held as dismissed, and changed nothing on the row.
+// `dev` refused that correctly before this card learned to fold. Found in review.
+func (a *app) hopTabbed(row hopRow) bool {
+	if row.here {
+		return true
+	}
+	return row.open && !a.tabShut[a.convKey(row.file)]
+}
+
+// hopStripOrder lays the open rows out in the order the tab row above them is
+// drawn in: the leftmost tab is the first row on the card.
+//
+// ── WHY THE CARD FOLLOWS THE STRIP AND NOT THE RING ─────────────────────────
+//
+// These are two readings of one set of conversations shown one line apart, and a
+// person uses them together: they see `Chats` on the row, press `ctrl+k`, and
+// look for the conversation they were just looking at. Ordered by recency the
+// card put it somewhere else — the third tab could be the first row — so the two
+// lines disagreed about the same five conversations and neither position meant
+// anything. Asked for by the owner.
+//
+// THE STRIP'S ORDER IS FIRST-ENTERED AND IT NEVER MOVES (chattabs.go says why: a
+// person reaches for the position, not for the word). Taking that order here
+// buys the card the same stability, and it is what makes the digits worth
+// drawing — `3` on the card is the third tab on the row.
+//
+// A CONVERSATION WITH NO TAB KEEPS ITS PLACE AFTER THE ONES THAT HAVE ONE. A tab
+// dismissed with `ctrl+w` leaves the conversation held, running and on this card
+// (hop.go's [app.hopAway]), and a row the strip never drew has no position to
+// borrow — so those sort after the tabbed rows, most recently in front first,
+// which is the order this function was handed. The sort is STABLE for exactly
+// that reason.
+//
+// AND IT READS THE STRIP THAT WAS DRAWN, never [app.tabList], which rebuilds the
+// row in place and would have the card writing to the thing it is reading. On a
+// frame too short to draw the strip at all there is no visible order to follow
+// and the rows keep the one they came in with.
+func (a *app) hopStripOrder(rows []hopRow) []hopRow {
+	if len(a.chatTabs) == 0 || len(rows) < 2 {
+		return rows
+	}
+	at := make(map[string]int, len(a.chatTabs))
+	for i, tab := range a.chatTabs {
+		if tab.key != "" && !tab.start {
+			if _, seen := at[tab.key]; !seen {
+				at[tab.key] = i
+			}
+		}
+	}
+	place := func(row hopRow) int {
+		if i, ok := at[a.convKey(row.file)]; ok {
+			return i
+		}
+		return len(a.chatTabs)
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return place(rows[i]) < place(rows[j]) })
+	return rows
 }
 
 // hopRest is every OTHER conversation on this machine, ranked the way home ranks
@@ -527,10 +660,16 @@ func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
 		if len(open)+len(rest) >= hopShown {
 			break
 		}
+		// THE FOLDER IS ASKED ABOUT ONCE AND BOTH READINGS TAKE THAT ANSWER. It
+		// used to be asked here for the GLYPH and left false on the row
+		// [hopRestNote] reads, so a conversation whose project had gone was drawn
+		// with the refusing `✕` and no clause saying why — a mark a person cannot
+		// account for, which is the whole of what the owner's report was about.
+		row.gone = !homeFolderThere(row.place)
 		rest = append(rest, hopRow{
 			file: row.session.Transcript, title: row.title, project: row.project,
 			note: hopRestNote(row), age: row.age, needs: row.needs, moving: row.moving,
-			where: row.place, held: row.held, gone: !homeFolderThere(row.place),
+			where: row.place, held: row.held, gone: row.gone,
 		})
 	}
 	return rest
@@ -849,7 +988,8 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // hopLastStop is where the reverse chord enters the ring: the last row that is
-// not the one you are standing in — the open conversation longest unlooked-at.
+// not the one you are standing in — which is the last tab on the row, now that
+// the rows are laid out the way the strip is ([app.hopStripOrder]).
 func hopLastStop(rows []hopRow) int {
 	for at := len(rows) - 1; at >= 0; at-- {
 		if !rows[at].here {
@@ -908,6 +1048,11 @@ func (a *app) hopSlide() tea.Cmd {
 	}
 	a.hop.rows[a.hop.at].here = true
 	a.hop.rows[a.hop.at].note = hopHereWord
+	// AND THE PLACE COMES DOWN ON THE BURST'S FIRST SWITCH, exactly as `enter`
+	// does: quick switching is the same act on a different chord, and a card
+	// fading over home while the conversation changed underneath it is the bug
+	// [app.hopLand] is about.
+	cmd = a.hopLand(cmd)
 	a.touch()
 	return tea.Batch(cmd, a.hopTick())
 }
@@ -934,10 +1079,13 @@ func (a *app) hopOpens(key string) bool {
 	return key == hopOpenKey || (key == hopAlias && a.ctrlDigits())
 }
 
-// hopBacks is the same question for the reverse: `ctrl+shift+k` and `ctrl+tab`'s
-// own reverse, both of them only where the terminal can spell them.
+// hopBacks is the same question for the reverse, and the two chords no longer
+// answer it on the same terms. `alt+shift+k` is escape-then-`K` and arrives
+// everywhere, so it is bound flat; `ctrl+shift+tab` is still `ctrl+tab`'s own
+// reverse and still only real where the terminal answered the keyboard query
+// ([hopBackKey] states why the asymmetry is the point of the spelling).
 func (a *app) hopBacks(key string) bool {
-	return (key == hopBackKey || key == hopBackAlias) && a.ctrlDigits()
+	return key == hopBackKey || (key == hopBackAlias && a.ctrlDigits())
 }
 
 // hopWalk moves the cursor, wrapping at both ends. It wraps because this is a
@@ -958,10 +1106,11 @@ func (a *app) hopWalk(by int) {
 
 // hopTake goes to the row under the cursor.
 //
-// THE ROW YOU ARE ALREADY ON IS NOT A SWITCH. Committing `you are here` closes
-// the card and does nothing else — [app.bringForward] answers the same way for
-// the same reason, and doing it here as well means the card never depends on
-// that agreement holding.
+// THE ROW YOU ARE ALREADY ON IS NOT A SWITCH. Committing `you are here` brings
+// nothing forward — [app.bringForward] answers the same way for the same reason,
+// and doing it here as well means the card never depends on that agreement
+// holding — but it still LANDS, because a place standing over the conversation
+// is a place `enter` has to come down off ([app.hopLand]).
 func (a *app) hopTake() (cmd tea.Cmd) {
 	if a.startingChat() {
 		back := a.parkChatStart()
@@ -974,7 +1123,7 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 	row := a.hop.rows[a.hop.at]
 	a.hopClose()
 	if row.here {
-		return nil
+		return a.hopLand(nil)
 	}
 	if !row.open {
 		return a.hopStart(row)
@@ -984,10 +1133,61 @@ func (a *app) hopTake() (cmd tea.Cmd) {
 		// The conversation went away between the card opening and this key —
 		// another window took it over (takeover.go), or it was closed. The card
 		// is already down; saying so is better than a keystroke that did nothing.
-		a.note(hopGoneWord)
+		a.hopSay(hopGoneWord)
 		return nil
 	}
+	return a.hopLand(cmd)
+}
+
+// hopLand is the last step of every take that succeeded: the place a person was
+// standing on comes down, so `enter` on the card leaves them looking at the
+// conversation it named.
+//
+// ── WHY THE CARD HAS TO DO THIS AT ALL ──────────────────────────────────────
+//
+// The switcher is drawn over the screen rather than being a screen of its own,
+// which is what lets it open on home, tasks, standing, memory, spend, search and
+// settings alike. The cost of that is that taking a row moved the conversation
+// UNDERNEATH a place and left the place in front: from home, `enter` looked like
+// a key that did nothing, while it had in fact quietly swapped the conversation
+// behind the screen the person was reading. Reported by the owner, who pressed
+// `ctrl+k` on home, chose a conversation, and stayed on home.
+//
+// EVERY OTHER DOOR BETWEEN CONVERSATIONS ALREADY DOES IT, and each spells it for
+// itself: home's own `enter` ends in [app.closeHome] (home.go's
+// [app.homeWalkIn]), search's row door in [app.standDownFullscreen]
+// (place_search.go's [app.openConversationRow]), and `ctrl+shift+t` in
+// [app.closeHome] again (tabreopen.go). This is that same statement, made once
+// for the one door that can be opened from ANY place — which is why it asks
+// [app.pageShowing] rather than naming home.
+//
+// IT RUNS ONLY WHERE THE TAKE SUCCEEDED. A refusal leaves the place standing,
+// with its sentence on that place's own line ([app.hopSay]), because a person
+// who has just been told no must still be able to read it.
+func (a *app) hopLand(cmd tea.Cmd) tea.Cmd {
+	if a.pageShowing() {
+		a.leavePlace()
+	}
 	return cmd
+}
+
+// hopSay puts one of the card's refusals on whichever line the person can
+// actually see it on: home's own sentence, a place's one line, or the entry line
+// of the conversation underneath when no place is standing.
+//
+// IT IS [app.sayWhereQuestionWent] WITH THE THIRD CASE, and it exists for the
+// same reason that one does — there is no line invented for this. A refusal said
+// with [app.note] while home was up went into a transcript nobody was looking at,
+// which is the quietest way to answer a keystroke.
+func (a *app) hopSay(note string) {
+	switch {
+	case a.at(pageHome):
+		a.home.say(note, "")
+	case a.pageShowing():
+		a.pageMsg = note
+	default:
+		a.note(note)
+	}
 }
 
 // hopGoneWord is what the switcher says about a row that stopped existing while
@@ -1001,33 +1201,31 @@ const hopGoneWord = "that conversation is no longer open"
 // refuse. Nothing asks how many are already open — a window holds as many
 // conversations as somebody opens (keeper.go).
 //
-// IT SAYS THE REFUSAL WHERE THE PERSON IS. The card is already down by the time
-// this runs, so the sentence goes on the entry line of the conversation they are
-// standing in — which is where every other refusal made on a keystroke is said.
+// IT SAYS THE REFUSAL WHERE THE PERSON IS ([app.hopSay]). The card is already
+// down by the time this runs, so the sentence goes on the line the screen they
+// are looking at already has for saying things — home's own, a place's one line,
+// or the entry line of the conversation when nothing is standing over it.
 func (a *app) hopStart(row hopRow) tea.Cmd {
 	if !homeFolderThere(row.where) {
-		a.note(WorkspaceGoneWord + " · " + row.where)
+		a.hopSay(WorkspaceGoneWord + " · " + row.where)
 		return nil
 	}
 	cmd, refusal := a.openBeside(row.where, row.file)
 	if refusal != "" {
-		a.note(refusal)
+		a.hopSay(refusal)
 		return nil
 	}
-	return cmd
+	return a.hopLand(cmd)
 }
 
-// hopOpenRows is how many of the card's rows this process is already holding: the
-// count the head row says, and the seam the rule is drawn on.
-func (a *app) hopOpenRows() int {
-	n := 0
-	for _, row := range a.hop.rows {
-		if row.open {
-			n++
-		}
-	}
-	return n
-}
+// hopOpenRows is how many conversations are OPEN IN THIS WINDOW — how many tabs
+// are on the row above — and it is the figure the head says `3 of 12` with.
+//
+// IT IS WHAT THE CARD WAS READ WITH and not a walk of the rows, because the rows
+// gain the rest of the machine when the fold opens and a count taken off them
+// then would say the window had twelve conversations open the moment somebody
+// looked at what else there was.
+func (a *app) hopOpenRows() int { return a.hop.tabs }
 
 // ── what the card looks like ────────────────────────────────────────────────
 //
@@ -1051,15 +1249,33 @@ const (
 	hopSideInset = 6
 	// hopPad is the air inside the box, between its border and its rows.
 	hopPad = 3
-	// The fixed columns, in cells.
+	// The columns, in cells. THE SUBJECT IS THE ONE THAT GROWS: every other
+	// column holds a phrase of known length, and the names are what a person is
+	// actually reading down the card, so the room a wide terminal has to spare
+	// belongs to them. It used to be the clause that took it, which left
+	// `Investigate the parsing regression…` cut at thirty-four cells beside forty
+	// cells of `nothing new`.
 	hopGlyphCol   = 2
-	hopSubjectCol = 34
+	hopNoteCol    = 32
 	hopProjectCol = 12
 	hopAgeCol     = 5
-	// hopTightSubject is what the subject column narrows to before the tail
-	// columns start being dropped: a name cut to twenty cells is still a name,
-	// and one cut to eight is a shrug.
+	// hopSubjectMax is where the subject stops growing and hands the rest back to
+	// the clause. A name is read in one glance; past about this many cells the
+	// card is a page of sentences and the straight edge stops doing its work.
+	hopSubjectMax = 64
+	// hopTightSubject is the least the subject is cut to while any other column
+	// still has cells to give: a name cut to twenty cells is still a name, and one
+	// cut to eight is a shrug.
 	hopTightSubject = 20
+	// hopTightNote is what the clause narrows to on the way down, which is
+	// `3 tasks running` whole.
+	hopTightNote = 16
+	// hopGutter is the air kept at the right-hand end of the subject column, so a
+	// name that fills its column does not touch the clause beside it. Without it
+	// the two run together as one word — `…parsing regres…nothing new` — which is
+	// the reading the owner reported, and no amount of extra column width fixes
+	// it, because a long enough name fills whatever it is given.
+	hopGutter = 2
 )
 
 // hopMinBody is the shortest body the card will draw itself into: two border
@@ -1144,39 +1360,82 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	if footWord != "" {
 		foot++
 	}
-	// The selected title gets its own reading space when columns abbreviate it.
-	// It explains the highlighted choice without switching the chat beneath it.
-	var preview []string
-	if a.hop.at >= 0 && a.hop.at < len(a.hop.rows) {
-		title := a.hop.rows[a.hop.at].title
-		if ansi.StringWidth(title) > min(hopSubjectCol, room-hopGlyphCol-2) {
-			preview = railWrap(title, room)
-			maxLines := min(3, max(0, height-len(lines)-topEdge-foot-2))
-			if len(preview) > maxLines {
-				preview = preview[:maxLines]
-				if maxLines > 0 {
-					preview[maxLines-1] = glyphMore + " " + ansi.Cut(title, max(0, ansi.StringWidth(title)-room+2), ansi.StringWidth(title))
-				}
+	// THERE IS NO SECOND READING OF THE SELECTED TITLE. A block under the rows
+	// used to re-wrap the highlighted row's name whenever the subject column had
+	// abbreviated it — but it only ever repeated the row the cursor was already
+	// on, it appeared on some rows and not others depending on how long that one
+	// name was, and it cost the rows underneath it their places on a short card.
+	// The name is worth more room on the row itself, which is what the subject
+	// column now takes ([hopLine]). Asked for by the owner.
+	// AND THE WORD THAT SAYS WHERE THE OPEN ONES STOP, which is the fold's own
+	// half of the head's `open` ([hopClosedLabel]).
+	//
+	// IT IS SPACED THE WAY THE HEAD IS SPACED, which is the whole of why it reads
+	// as a heading and not as a row: one blank above it and one below, exactly as
+	// `open` has the card's own air above it and a blank under it before the first
+	// row. Drawn tight against the rows it sat between two lists and belonged to
+	// neither. The air goes on a short card, on the same rule as the card's own
+	// (`verticalPad` above): air yields first, and the heading itself does not.
+	label, seamAir := -1, verticalPad
+	if a.hop.all && a.hop.tabs > 0 && a.hop.tabs < len(a.hop.rows) {
+		label = a.hop.tabs
+	}
+	available := max(1, height-len(lines)-topEdge-foot)
+	// THE SEAM'S LINES ARE ONLY SPENT WHERE THE SEAM IS DRAWN, and it is drawn
+	// only when the scroll window actually reaches the first closed row.
+	//
+	// Charged unconditionally they were charged on every short card: the window
+	// lost three rows, the rows it lost were the closed ones, and pressing
+	// `→ show closed` on a small terminal made the list SHORTER and showed
+	// nothing — with the foot cheerfully offering `← hide closed`. Found in
+	// review; measured at card heights 8 through 13, where the fold drew no
+	// closed row at all.
+	//
+	// SO THE THREE LINES ARE GIVEN UP IN THE ORDER THEY CAN BE AFFORDED: the air
+	// first, on the card's own rule that air yields before anything else
+	// (`verticalPad` above), then the word — and a card too short even for the
+	// word draws the closed rows without it rather than drawing none of them,
+	// because a person who pressed `show closed` asked for the rows.
+	window := func(rows int) (int, int) {
+		start := max(0, a.hop.at-rows+1)
+		return start, min(len(a.hop.rows), start+rows)
+	}
+	start, end := window(available)
+	if label >= start && label < end {
+		for _, cost := range []int{1 + 2*seamAir, 1} {
+			rows := max(1, available-cost)
+			if from, to := window(rows); label >= from && label < to {
+				available, start, end = rows, from, to
+				seamAir = (cost - 1) / 2
+				break
+			}
+			// The word alone did not fit either: the seam is not drawn, and the
+			// window keeps every row it already had.
+			if cost == 1 {
+				label = -1
 			}
 		}
+	} else {
+		// The window does not reach the closed rows at all, so there is no seam on
+		// this card and nothing to pay for it with.
+		label = -1
 	}
-	previewHeight := len(preview)
-	if previewHeight > 0 {
-		previewHeight++
-	}
-	available := max(1, height-len(lines)-topEdge-foot-previewHeight)
-	start := max(0, a.hop.at-available+1)
-	end := min(len(a.hop.rows), start+available)
 	for at := start; at < end; at++ {
+		if at == label {
+			// THE BLANK ABOVE IS NOT DRAWN AT THE TOP OF THE LIST, where the head's
+			// own blank is already the air above this word and a second one would be
+			// a gap nobody put there.
+			if seamAir > 0 && at > start {
+				lines = append(lines, inside("", false, false))
+			}
+			lines = append(lines, inside(pal.dim(hopClosedLabel), false, false))
+			if seamAir > 0 {
+				lines = append(lines, inside("", false, false))
+			}
+		}
 		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: at})
 		hovered := a.hot.kind == hoverHop && a.hot.index == at
 		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
-	}
-	if len(preview) > 0 {
-		lines = append(lines, inside("", false, false))
-		for _, line := range preview {
-			lines = append(lines, inside(pal.ink(line), false, false))
-		}
 	}
 	if footWord != "" && len(lines)+topEdge+1+verticalPad < height {
 		hovered := a.hop.say == "" && a.hot.kind == hoverHop && a.hot.index == -1
@@ -1208,18 +1467,31 @@ func (a *app) hopFoot() string {
 	}
 	switch {
 	case a.hop.all:
-		return tokens.GlyphExpanded + " " + hopShutKeyWord
+		return hopShutKeyWord
 	case a.hop.rest > 0:
-		return tokens.GlyphCollapsed + " " + itoa(a.hop.rest) + " more on this machine · " + hopFoldKeyWord
+		return hopFoldKeyWord
 	}
 	return ""
 }
 
 // The two halves of the fold's own sentence, spelled once and quoted in the
 // manual exactly as they are here.
+//
+// THEY NAME THE KEY AND WHAT IT DOES, AND NOTHING ELSE. This line used to read
+// `▸ 9 more on this machine · → reach them`, which spent a whole row on a figure
+// the head already carries — `3 of 12` says both halves of it — and then said
+// the same thing twice, once in a triangle nobody reads as a verb and once in
+// words. A foot is the one row a person looks at to find out what else they can
+// press; it is worth exactly one instruction. Asked for by the owner.
+//
+// `closed` IS THE WORD FOR WHAT IS DOWN THERE. Every row behind the fold is a
+// conversation with no tab on the row above — one this terminal never opened,
+// or one whose tab was closed ([app.hopTabbed]) — and that is the one thing they
+// have in common. The arrow is the key, so the line names it without a glyph
+// in front of it.
 const (
-	hopFoldKeyWord = "→ reach them"
-	hopShutKeyWord = "← just the open ones"
+	hopFoldKeyWord = "→ show closed"
+	hopShutKeyWord = "← hide closed"
 )
 
 // hopHead is the line above the list: what this card is on the left, and what
@@ -1257,8 +1529,37 @@ func (a *app) hopHead(width int, pal palette) string {
 // states the law: `open`, never `behind`).
 const hopOpenWord = "open"
 
+// hopClosedLabel is the one dim word drawn between the tabs and everything else,
+// and it exists because WITHOUT IT THE FOLD OPENS INTO ONE UNDIFFERENTIATED
+// LIST.
+//
+// The head says `open` over the rows that are tabs. `→ show closed` then adds
+// rows that are not, and a conversation whose tab was closed a minute ago comes
+// back wearing the same `○` and the same live clause it had when it was open —
+// because it IS still open in every sense but the tab row's. Reported by the
+// owner, who read the `✕` on the rows below as "this tab is closed" and asked
+// why the ones they had closed did not have it. They do not: `✕` is
+// [tokens.GlyphFailed] and on this card it means the row REFUSES TO OPEN —
+// another window is holding that conversation, or its project folder has gone.
+// Two different facts, and only one of them had a mark.
+//
+// SO THE SEAM IS DRAWN AS A WORD AND NOT AS A RULE. The house rule is that
+// nothing is outlined (the card's own header states it), the ladder this surface
+// separates things with is ink, and one dim word at the seam answers the whole
+// question — everything under it has no tab.
+const hopClosedLabel = "closed"
+
 // hopClauses are the keys the card owns, in the order a person meets them.
-var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " put away"}
+//
+// THE CLOSE CLAUSE SAYS `close tab` AND NOT `put away`, because `put away` is
+// already home's word for a different act: `ctrl+e` on a home row ARCHIVES a
+// conversation, hides it from the list until its name is typed, and says so
+// (`put away · type its name to find it again`, place_home.go). This key takes
+// a row off this window's tab row and leaves the conversation running on the
+// list — which is exactly what the receipt two lines below already says
+// ([hopAwayWord]). A legend that spelled the lighter act with the heavier act's
+// verb had the card contradicting its own answer.
+var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " close tab"}
 
 // hopFootWords is the foot of the FRAME while the card is up — the same clauses
 // from the same list, so a person reading the bottom of the screen and a person
@@ -1284,45 +1585,53 @@ func hopLine(row hopRow, at int, sel, hovered bool, width int, pal palette) stri
 	if at < hopDigits {
 		mark = itoa(at+1) + " "
 	}
-	// THE SUBJECT KEEPS ITS COLUMN AND THE TAIL GIVES WAY. Narrowing the subject
-	// first would break the straight edge the whole layout is for, so the
-	// clauses go before it does: the clock last, because it is two cells and is
-	// the one thing every row has.
-	subject, project, age := hopSubjectCol, hopProjectCol, hopAgeCol
-	fixed := func() int { return len(mark) + hopGlyphCol + subject + project + age }
-	for fixed()+2 > width {
-		switch {
-		case project > 0:
-			project = 0
-		case subject > hopTightSubject:
-			subject = max(hopTightSubject, width-len(mark)-hopGlyphCol-age-2)
-		case age > 0:
-			age = 0
-		default:
-			subject = max(4, width-len(mark)-hopGlyphCol)
-		}
-		if project == 0 && age == 0 && subject <= hopTightSubject {
-			break
-		}
+	// THE SUBJECT TAKES WHAT IS LEFT AND THE TAIL GIVES WAY BEFORE IT DOES. The
+	// straight edge the layout is for is the LEFT edge of the names, and that is
+	// fixed by the two columns in front of them; what the name needs is room to
+	// finish, so every cell the frame has to spare is its. On the way down the
+	// columns are given up in the order a person can most afford to lose them —
+	// the project, then the clause's own tail, then the clock, then the clause.
+	room := max(0, width-len(mark)-hopGlyphCol)
+	project, age, note := hopProjectCol, hopAgeCol, hopNoteCol
+	if room-project-age-note < hopTightSubject {
+		project = 0
 	}
-	note := max(0, width-fixed())
+	if room-project-age-note < hopTightSubject {
+		note = hopTightNote
+	}
+	if room-project-age-note < hopTightSubject {
+		age = 0
+	}
+	if room-project-age-note < hopTightSubject {
+		note = 0
+	}
+	subject := max(4, room-project-age-note)
+	if subject > hopSubjectMax {
+		// AND THE CELLS PAST A NAME'S WORTH GO BACK TO THE CLAUSE, so the project
+		// and the clock stay on the frame's own right edge rather than floating in
+		// the middle of a very wide card.
+		note, subject = note+subject-hopSubjectMax, hopSubjectMax
+	}
 	// A ROW WITH NEWS IS AT FULL INK AND A QUIET ONE IS A STEP BACK, which is
 	// what lets the two or three that want you separate from the eight that do
 	// not with no heading saying so (SCREEN 2b's own clause).
-	name := pal.narr(fitPad(row.title, subject))
+	// THE NAME IS CUT SHORT OF ITS OWN COLUMN and then padded out to it, which is
+	// what keeps the clause a column and not a suffix ([hopGutter]).
+	title := fit(row.title, max(1, subject-hopGutter))
+	name := pal.narr(fitPad(title, subject))
 	clause := pal.dim(fitPad(row.note, note))
 	if row.needs || row.moving {
-		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
+		name, clause = pal.ink(fitPad(title, subject)), pal.narr(fitPad(row.note, note))
 	}
 	if hovered {
-		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
+		name, clause = pal.ink(fitPad(title, subject)), pal.narr(fitPad(row.note, note))
 	}
 	if sel {
 		// THE ROW THE KEYBOARD IS ON TAKES THE GROUND AND THE WEIGHT. The band is
 		// applied around this line by the card; the subject going bold is the
 		// other half, and the tail steps up with it because dim grey on a raised
 		// ground is grey on grey (switcher.go holds the same rule for home).
-		name, clause = pal.bold(pal.ink(fitPad(row.title, subject))), pal.narr(fitPad(row.note, note))
+		name, clause = pal.bold(pal.ink(fitPad(title, subject))), pal.narr(fitPad(row.note, note))
 	}
 	line := pal.dim(mark) + glyphInk(fitPad(glyph, hopGlyphCol)) + name + clause
 	if project > 0 {
@@ -1444,7 +1753,7 @@ func (a *app) hopFadeRail(line string) string {
 // hopMapWords names the switcher on a place's map — the one line on a place
 // whose job is to say what the keys are (pages.go's [app.placeHintSaid] states
 // why it is that line and not the resting foot).
-const hopMapWords = hopOpenKey + " switch conversation"
+const hopMapWords = hopOpenKey + " chats"
 
 // ── how many there are, asked off the loop ──────────────────────────────────
 
@@ -1507,9 +1816,17 @@ func (a *app) hopAway() tea.Cmd {
 		return nil
 	}
 	row := a.hop.rows[a.hop.at]
-	if !row.open && !tabsHold(a.chatTabs, a.convKey(row.file)) {
-		a.hop.say = hopNotOpenWord
-		a.touch()
+	// A ROW WITH NO TAB HAS NOTHING FOR THIS KEY TO CLOSE, AND SAYS NOTHING ABOUT
+	// IT. That is both halves of the fold: a conversation this terminal never
+	// opened, and one whose tab was closed a moment ago and which is drawn below
+	// the fold for exactly that reason ([app.hopTabbed]).
+	//
+	// THE REFUSAL USED TO BE A SENTENCE and the owner took it out: `ctrl+w` on a
+	// tab that is already closed is a key doing what the person asked for — there
+	// is no tab on the row — and a line explaining that is the surface answering
+	// a question nobody asked. The state the key is for is already the state it
+	// found. Nothing is said, nothing moves, and the card stays exactly as it is.
+	if !a.hopTabbed(row) {
 		return nil
 	}
 	if row.here {
@@ -1521,11 +1838,15 @@ func (a *app) hopAway() tea.Cmd {
 		return a.tabDismiss(chatTab{key: a.frontTabKey(), file: a.file, where: a.workspace, word: row.title})
 	}
 	a.tabShutKey(a.convKey(row.file))
-	// THE CARD STAYS UP AND RE-READS ITSELF. Putting conversations away is
-	// something a person does two or three of in a row, and a card that dropped
-	// after each one would make tidying up cost three openings.
-	rows, rest := a.hopReading(a.hop.all)
-	a.hop.rows, a.hop.rest, a.hop.armed = rows, rest, -1
+	// THE CARD STAYS UP AND RE-READS ITSELF, and the row it just closed LEAVES
+	// THE LIST — down behind the fold, or off the card entirely while the fold is
+	// shut. That is the whole of what the person asked for by pressing it, and
+	// the re-read sees it because [app.hopTabbed] asks [app.tabShut], which the
+	// line above has already set. Closing tabs is something a person does two or
+	// three of in a row, so the card stays up rather than making tidying up cost
+	// three openings.
+	rows, tabs, rest := a.hopReading(a.hop.all)
+	a.hop.rows, a.hop.rest, a.hop.tabs, a.hop.armed = rows, rest, tabs, -1
 	a.hop.at = min(a.hop.at, max(0, len(rows)-1))
 	a.hop.say = hopAwayWord + " · " + row.title
 	a.touch()
@@ -1547,10 +1868,11 @@ func (a *app) hopRunning(row hopRow) int {
 	return 0
 }
 
-// The three sentences the card says about closing.
+// The two sentences the card says about closing. There used to be a third,
+// refusing a row with no tab; it is gone, because a `ctrl+w` that finds no tab
+// has already got what it was pressed for ([app.hopAway]).
 const (
-	hopNotOpenWord = "that one is not open here — enter opens it"
-	hopClosedWord  = "closed"
+	hopClosedWord = "closed"
 	// hopAwayWord is what the card says after a tab has been put away, and it
 	// says what actually happened rather than "closed": the conversation is still
 	// running and still on this list, and a word claiming otherwise would be the

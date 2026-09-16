@@ -8,7 +8,6 @@ package tui3
 // clock: callers hand [readSpend] both the lines and the instant called now.
 
 import (
-	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,17 +22,37 @@ import (
 )
 
 const (
-	spendModelBarCap = 12
-	spendSubjectCap  = 3
+	// spendSubjectCap is how many of the things money went on are drawn before
+	// the rest go behind a fold ([spendReading.unfolding]).
+	//
+	// IT WAS THREE, AND THREE IS A HEADLINE RATHER THAN AN ANSWER. `what it was
+	// for` is the table this page exists for, and a fortnight of work on a
+	// working machine is twenty or thirty things — so a person who came here to
+	// find what their money went on met the three dearest and a fold, and had to
+	// press a key to see the page they had already opened. The body scrolls and
+	// the cursor carries the window with it ([placeSpend.body]), so a long table
+	// costs a short terminal nothing it was not already paying.
+	//
+	// IT IS STILL A CAP AND NOT A LIFTING OF ONE. A machine that has spent on
+	// three hundred things has a page nobody can read by scrolling, and the fold
+	// says how many are behind it in a word.
+	spendSubjectCap = 20
+	// spendProjectCap bounds the PROJECT column, which is a secondary fact and
+	// must not spend the frame a name and its figures need. Every other column on
+	// this page is the width of what it holds ([spendMeasured]).
+	spendProjectCap = 26
 )
 
 // spendReading is the complete, immutable answer drawn by one spend page.
 // The original lines are deliberately absent: once the window has been read,
 // no later draw should be able to count a line outside it by accident.
 type spendReading struct {
-	// unfolded is whether `what it was for` draws every subject rather than the
+	// unfolded is whether `by topic` draws every subject rather than the
 	// first [spendSubjectCap] and a fold line ([spendReading.unfolding]).
 	unfolded bool
+	// slice is WHICH CUT OF THE LEDGER THIS FRAME DRAWS ([spendSlice]). One is
+	// drawn at a time and the heading is the control that swaps them.
+	slice    spendSlice
 	window   session.UsageWindow
 	now      time.Time
 	totals   session.DaySpend
@@ -100,9 +119,10 @@ func (r spendReading) unpriced(calls int64) spendReading {
 // THE ROLE IS THE BINDING AND NEVER THE CALL. The ledger's own role word is the
 // auxiliary name one call gave itself — `title`, `taskname` — and a table headed
 // with it answers a question nobody can act on. The design's caption says which
-// question this column answers: `by the model, and the role it was bound to`, and
-// the point of the column is that reading "execution is 63% of the bill" sends
-// you to the one chip that changes it.
+// question this column answers: which slot each model is bound to, so that
+// reading "execution is most of the bill" sends you to the one chip that changes
+// it. The unbound-slot rows under that table are the other half of the same
+// join.
 type spendCrew struct {
 	// role is the slot's plain word — `execution`, `conversation`,
 	// `verification`, `naming`, `planning` — by model id, lower-cased, because
@@ -206,15 +226,26 @@ type spendStop struct {
 	// (place_spend.go's [app.openSpendRow]). It is a flag and not a fourth
 	// subject kind because it is not a subject at all: nothing was spent on it.
 	rails bool
-	// fold marks the fold line under `what it was for`, whose `enter` opens the
+	// fold marks the fold line under the subject tables, whose `enter` opens the
 	// rest of the subjects or folds them back.
 	fold bool
+	// slice marks THE HEADING THAT IS ALSO A CONTROL: the one row of this page
+	// whose `←`, `→` and `enter` swap which cut of the ledger is drawn
+	// ([spendSlice]).
+	slice bool
 }
 
 // unfolding is this reading with the subjects' fold open or shut. It answers a
 // copy, for [spendReading.naming]'s reason.
 func (r spendReading) unfolding(open bool) spendReading {
 	r.unfolded = open
+	return r
+}
+
+// slicing is this reading cut the other way ([spendSlice]). It answers a copy,
+// for [spendReading.naming]'s reason.
+func (r spendReading) slicing(cut spendSlice) spendReading {
+	r.slice = cut
 	return r
 }
 
@@ -346,6 +377,10 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 	}
 	on := func(at int) bool { return lit != nil && lit(at) }
 	inner := width - len(placeLead)
+	// THE TABLES END WHERE THE CHART ENDS ([spendReading.rule]), so the whole
+	// page is one measure wide rather than a chart on one scale and two tables
+	// flushed to the frame.
+	rule := r.rule(inner)
 	fold := -1
 	var out []string
 	// doors are recorded BY THE INDEX THE ROW LANDED AT, taken as it is appended.
@@ -369,21 +404,43 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			out = append(out, placeLead+axis)
 		}
 	}
-	if loud, subject, door := r.loudestRowIn(inner, placeFactInk(on(len(out)), pal)); loud != "" {
-		// AND THE LOUDEST DAY IS A DOOR, because the row names a thing money was
-		// spent on exactly as the rows under `what it was for` do — and the word
-		// on its right now says `enter opens it`, which is a key drawn and
-		// therefore a key that has to work.
-		if door {
-			doors[len(out)] = subject
-		}
-		out = append(out, placeLead+loud)
+	// ONE CUT OF THE LEDGER IS DRAWN, AND ITS HEADING IS THE CONTROL THAT SWAPS
+	// IT ([spendSlice]). Both used to stand on one page — the same money added up
+	// two ways, every dollar under one heading also a dollar under the other — so
+	// the page asked a person to read one bill twice.
+	cut := -1
+	// walk is every row the cursor may stand on that opens nothing: the models
+	// and the unbound slots. They are stops so that the body's window follows a
+	// person down a long table, and doors would be a promise this page cannot
+	// keep — a model is not a thing money was spent on.
+	var walk []int
+	// THE CONTROL'S ROW IS TAKEN AFTER THE SECTION IS OPENED AND NOT BEFORE.
+	// [appendPlaceSection] eats a trailing blank and writes its own, so the row
+	// the heading lands on is not the row the caller was standing at — and a cut
+	// recorded ahead of the call put the cursor, the band and the arrows on the
+	// blank line above the heading.
+	head := func(caption func(int) string) int {
+		out = appendPlaceSection(out, "")
+		at := len(out) - 1
+		out[at] = caption(at)
+		return at
 	}
-
-	if len(r.models) > 0 || len(r.crew.unbound) > 0 {
-		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendModelsWord, inner), pal))
-		for _, model := range r.models {
-			out = append(out, placeLead+r.modelRow(model, inner, pal))
+	switch {
+	case r.slice == spendByModel && (len(r.models) > 0 || len(r.crew.unbound) > 0):
+		cut = head(func(at int) string { return placeLead + r.sliceHeading(inner, on(at), pal) })
+		// THE COLUMNS ARE MEASURED ONCE FOR THE WHOLE TABLE and handed to every
+		// row, because a row that measured the table itself would be free to
+		// disagree with the row above it about where the table's own columns are.
+		fields, table := r.modelTable(inner, rule)
+		for at, model := range r.models {
+			// EVERY ROW OF THIS TABLE IS A ROW THE CURSOR CAN STAND ON, and that
+			// is what makes it scroll: the body's window follows the cursor
+			// ([placeSpend.body]), so a table whose rows nothing could stop on was
+			// a table a person could not read past the fold of their terminal.
+			// They open nothing — a model is not a thing money was spent ON — and
+			// the foot says so by not offering a key ([placeSpend.hint]).
+			walk = append(walk, len(out))
+			out = append(out, placeLead+r.modelRow(model, fields[at], table, inner, pal))
 		}
 		// AND THE SLOTS NOTHING ANSWERS FOR, under the models that do. A slot with
 		// no binding has no line in the ledger to be found on and would simply be
@@ -391,18 +448,44 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		// this column must not give, because "planning costs nothing" and "nothing
 		// is bound to planning" are opposite facts about the same blank.
 		for _, slot := range r.crew.unbound {
+			walk = append(walk, len(out))
 			out = append(out, placeLead+spendUnboundRow(slot, inner, pal))
 		}
-	}
-	if len(r.subjects) > 0 {
-		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendSubjectsWord, inner), pal))
+	case r.slice == spendByTopic && len(r.subjects) > 0:
 		shown := len(r.subjects)
 		if shown > spendSubjectCap && !r.unfolded {
 			shown = spendSubjectCap
 		}
+		// THE PROMISES ARE DRAWN APART FROM THE WORK, under a heading of their own
+		// and measured into their own columns ([spendStandingWord]). They are not
+		// a third CUT — a promise is one of the things money was for — so the
+		// control stays on `by topic` above them and the fold still counts the
+		// whole list.
+		var work, promises []session.SubjectSpend
 		for _, subject := range r.subjects[:shown] {
+			if subject.Kind == session.SubjectStanding {
+				promises = append(promises, subject)
+				continue
+			}
+			work = append(work, subject)
+		}
+		// THE CUT'S HEADING IS DRAWN WHETHER OR NOT THE WORK HAS ROWS, because it
+		// is the only way back to the other cut: a window whose whole bill was
+		// standing orders would otherwise strand a person on a page with no
+		// control on it.
+		cut = head(func(at int) string { return placeLead + r.sliceHeading(inner, on(at), pal) })
+		fields, table := r.subjectTable(work, inner, rule)
+		for at, subject := range work {
 			doors[len(out)] = subject
-			out = append(out, placeLead+spendSubjectRowLit(subject, r.name(subject), inner, on(len(out)), pal))
+			out = append(out, placeLead+spendSubjectRowLit(fields[at], table, inner, on(len(out)), pal))
+		}
+		if len(promises) > 0 {
+			out = appendPlaceSection(out, placeLead+placeHeading(fit(spendStandingWord, inner), pal))
+			fields, table := r.standingTable(promises, inner, rule)
+			for at, subject := range promises {
+				doors[len(out)] = subject
+				out = append(out, placeLead+spendSubjectRowLit(fields[at], table, inner, on(len(out)), pal))
+			}
 		}
 		// THE FOLD LINE IS A DOOR BOTH WAYS: `▸ 11 more` opens the rest where
 		// they stand and `▾ 11 fewer` puts them back, on `enter` or a click —
@@ -418,6 +501,12 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 	}
 	if fold >= 0 {
 		stops[fold] = spendStop{ok: true, fold: true}
+	}
+	for _, at := range walk {
+		stops[at] = spendStop{ok: true}
+	}
+	if cut >= 0 {
+		stops[cut] = spendStop{ok: true, slice: true}
 	}
 	stops[rails] = spendStop{ok: true, rails: true}
 	return out, stops
@@ -557,25 +646,52 @@ func (r spendReading) headWords(width int) string {
 	if room < 1 {
 		room = width
 	}
+	// THE ZOOM CLAUSE IS RESERVED AHEAD OF THIS FIELD'S OWN FACTS, because a key
+	// drawn is a key BOUND and a key undrawn does nothing at all
+	// ([placeWindowFits] answers the paint and the keys with one predicate). A
+	// head long enough to crowd `shift+↑ coarser` off the line does not merely
+	// hide it, it unbinds it — so the sentence gives up a clause first and the
+	// two arrow axes keep working. It was the loudest day's arrival that made
+	// this reachable: the head was a short line until that clause joined it.
+	if keys := room - ansi.StringWidth(placeGrainWords(r.window)) - placeHeadGap; keys > 0 {
+		if words := rowTail(fields, keys); words != "" {
+			return words
+		}
+	}
 	if words := rowTail(fields, room); words != "" {
 		return words
 	}
 	// A FRAME WITH ROOM FOR NOTHING STILL SAYS THE MONEY. The fitter answers ""
 	// when even the shortest spelling is over the room, and a head row with no
 	// head on it would leave the control floating against an empty line.
-	return spendMoneyWord(r.totals.USD)
+	return dollars(r.totals.USD)
 }
 
-// headFields is the head's ranked facts: what the window came to, then how many
-// tokens it took. The lead spelling carries the span in words and the shorter
-// ones give it up before the figure it labels ever goes.
+// THE HEAD LINE KEEPS THE EXACT ARITHMETIC AND THE TABLES KEEP THE FLOOR.
+// [spendMoneyWord] says the heading, the pointer line and the Spending tab all
+// keep it, and the head was using the floored word — so a fortnight that came to
+// $0.0068 read `$0.01` against a `/cost` and a Spending tab still saying the
+// real figure. A floor is a COLUMN'S rule, because every figure in a column has
+// to be the same shape; a total in a sentence has nothing to line up with.
+//
+// headFields is the head's ranked facts: what the window came to, how many
+// tokens it took, and WHICH DAY WAS LOUDEST. The lead spelling carries the span
+// in words and the shorter ones give it up before the figure it labels ever
+// goes.
+//
+// THE LOUDEST DAY IS A CLAUSE HERE AND NOT A ROW OF ITS OWN. It had a line to
+// itself between the chart and the first table — `aug 20 was the loudest day —
+// $21.40, the-filings-sweep` — which is a sentence saying what the line above it
+// already says three facts of: the window, its total, and one bucket standing
+// taller than the rest. Three readings of one window belong on one line, and the
+// row it vacates is a row the tables move up into.
 func (r spendReading) headFields() []rowField {
 	if r.totals.USD <= 0 && r.totals.Tokens <= 0 {
 		return nil
 	}
-	fields := make([]rowField, 0, 2)
+	fields := make([]rowField, 0, 3)
 	if r.totals.USD > 0 {
-		money := spendMoneyWord(r.totals.USD)
+		money := dollars(r.totals.USD)
 		if span := spendSpanWord(r.window); span != "" {
 			fields = append(fields, rowSay(span+" came to "+money, span+" · "+money, money))
 		} else {
@@ -585,7 +701,34 @@ func (r spendReading) headFields() []rowField {
 	if r.totals.Tokens > 0 {
 		fields = append(fields, rowSay(tokenWord(r.totals.Tokens)+" tokens", tokenWord(r.totals.Tokens)))
 	}
+	if loud := r.loudFields(); loud.known() {
+		fields = append(fields, loud)
+	}
 	return fields
+}
+
+// spendLoudestWord introduces the loudest day's clause on the head line.
+const spendLoudestWord = "loudest day: "
+
+// loudFields is the loudest day as the head line says it, in three spellings:
+//
+//	loudest day: $21.40 aug 20 (the-filings-sweep)
+//	loudest day: $21.40 aug 20
+//	$21.40 aug 20
+//
+// WHAT IT WAS MOSTLY SPENT ON IS THE FIRST THING OFF, because the name is
+// already a row of `by topic` four lines below and the figure and the
+// date are not said anywhere else on the page. A window with nothing in it says
+// nothing here at all.
+func (r spendReading) loudFields() rowField {
+	if r.loudest.USD <= 0 || r.loudest.Label == "" {
+		return rowSay()
+	}
+	said := dollars(r.loudest.USD) + " " + r.loudest.Label
+	if name := strings.TrimSpace(r.name(r.loudFor)); name != "" {
+		return rowSay(spendLoudestWord+said+" ("+name+")", spendLoudestWord+said, said)
+	}
+	return rowSay(spendLoudestWord+said, said)
 }
 
 // spendSpanWord is HOW MUCH TIME the head's figure is the total of, in the
@@ -632,7 +775,8 @@ func (r spendReading) paintedHead(width int, pal palette) string {
 	if plain == spendNothingWord {
 		return pal.dim(plain)
 	}
-	money, toks := spendMoneyWord(r.totals.USD), tokenWord(r.totals.Tokens)
+	money, toks := dollars(r.totals.USD), tokenWord(r.totals.Tokens)
+	loud := dollars(r.loudest.USD)
 	parts := strings.Split(plain, rowSep)
 	for at, part := range parts {
 		switch {
@@ -640,6 +784,12 @@ func (r spendReading) paintedHead(width int, pal palette) string {
 			parts[at] = pal.dim(strings.TrimSuffix(part, money)) + placeMoneyInk(pal)(money)
 		case r.totals.Tokens > 0 && toks != "" && strings.HasPrefix(part, toks):
 			parts[at] = pal.data(toks) + pal.dim(strings.TrimPrefix(part, toks))
+		// AND THE LOUDEST DAY'S OWN FIGURE WEARS THE MONEY HUE. It is a second
+		// amount on one line, so a reader tells the two apart by what introduces
+		// them; drawing one of them dim would make it look like a label.
+		case r.loudest.USD > 0 && strings.Contains(part, loud):
+			before, after, _ := strings.Cut(part, loud)
+			parts[at] = pal.dim(before) + placeMoneyInk(pal)(loud) + pal.dim(after)
 		default:
 			parts[at] = pal.dim(part)
 		}
@@ -729,65 +879,146 @@ func (r spendReading) sparkAxis(width int, pal palette) string {
 	return spendSides(width, left, right, pal.dim, pal.dim)
 }
 
-// loudestRow is the day that cost the most, what it was mostly spent on, and —
-// where the sentence leaves room for it — the door onto that thing.
+// THE LOUDEST DAY HAD A ROW OF ITS OWN AND NO LONGER DOES. It read `aug 20 was
+// the loudest day — $21.40, the-filings-sweep` with `enter opens it in tasks`
+// out at the right, between the chart and the first table: a sentence saying
+// what the line above it already says three facts of, and the only door on this
+// page standing nowhere near a table of doors. It is a clause on the head line
+// now ([spendReading.loudFields]), and the foot names the key on every row that
+// is a door (place_spend.go's [spendEnterWord]).
+
+// spendSlice is WHICH WAY THE ONE LEDGER IS CUT on this page, and only one cut
+// is drawn at a time.
 //
-// THE DOOR IS SAID THE WAY THIS SURFACE SAYS A DOOR. It was the bare noun
-// `tasks`, right-aligned with nothing joining it to the sentence, which reads as
-// a fourth fact about the day: a person cannot tell whether `tasks` is a count, a
-// category or a place. It names the key now — and because it names the key, the
-// row is a stop, so `enter` on it does what the word says.
+// THE PAGE USED TO DRAW BOTH AT ONCE. `by model` and `by topic` are the same
+// money added up two ways — every dollar under one heading is a dollar under the
+// other — so a page showing both asked a person to read one bill twice and gave
+// them no way to tell which half they were looking at. One cut, and a control
+// that swaps it, is the same information in half the rows.
+type spendSlice int
+
+const (
+	// spendByTopic is the cut this page opens on: what the money was FOR, which
+	// is the question a person walks in with. `by model` answers a narrower one —
+	// which engine ran it — and is a keystroke away.
+	spendByTopic spendSlice = iota
+	spendByModel
+)
+
+// spendSlices is the ring `←` and `→` walk, in the order they walk it.
+var spendSlices = []spendSlice{spendByTopic, spendByModel}
+
+// word is the heading this cut stands under, which is also the label inside the
+// control: the caption and the control are ONE object, exactly as the window's
+// own label is ("the label between the arrows is the control and the reading at
+// once", SCREEN 3d).
+func (s spendSlice) word() string {
+	if s == spendByModel {
+		return spendModelsWord
+	}
+	return spendSubjectsWord
+}
+
+// step walks the ring and wraps, so neither arrow is ever a key that does
+// nothing — there are two cuts, and both arrows reach the other one.
+func (s spendSlice) step(by int) spendSlice {
+	for at, one := range spendSlices {
+		if one == s {
+			return spendSlices[((at+by)%len(spendSlices)+len(spendSlices))%len(spendSlices)]
+		}
+	}
+	return spendByTopic
+}
+
+// spendSliceBack and spendSliceOn are the arrows the cut's heading wears WHILE
+// THE CURSOR IS ON IT, and they are drawn there and nowhere else.
 //
-// AND IT IS THE FIRST THING OFF THE ROW. rowfit's law 1: the sentence is the
-// identity, the door is a fact about it, so a frame that cannot hold both keeps
-// the sentence whole and draws no door at all — never `rebuild-the-frame… tasks`,
-// which was the reading at 60 columns.
-func (r spendReading) loudestRow(width int, pal palette) (string, session.SubjectSpend, bool) {
-	return r.loudestRowIn(width, pal.dim)
-}
+// A KEY IS DRAWN WHERE IT IS BOUND. `→` on any other row of this place opens
+// that row's verbs (verbstrip.go's first law), so the cycle cannot be bound
+// everywhere — and arrows drawn on a heading the cursor is not standing on would
+// advertise a key that does nothing from where the person actually is. Gaining
+// them on arrival is the strip's own grammar: drawn before it works.
+const (
+	spendSliceBack = "← "
+	spendSliceOn   = " →"
+)
 
-// loudestRowIn is [spendReading.loudestRow] in the ink the row is drawn in.
-func (r spendReading) loudestRowIn(width int, ink func(string) string) (string, session.SubjectSpend, bool) {
-	if r.loudest.USD <= 0 {
-		return "", session.SubjectSpend{}, false
-	}
-	name := r.name(r.loudFor)
-	left := r.loudest.Label + " was the loudest day — " + spendMoneyWord(r.loudest.USD)
-	if name != "" {
-		left += ", " + name
-	}
-	door, opens := "", false
-	if word := spendDoorWord(r.loudFor); word.known() && strings.TrimSpace(r.loudFor.ID) != "" {
-		door = rowTail([]rowField{word}, width-ansi.StringWidth(left)-rowGutter-1)
-		opens = door != ""
-	}
-	return spendSides(width, left, door, ink, ink), r.loudFor, opens
-}
+// THE THREE CAPTIONS ARE ONE SET, AND THE TAB ALREADY SAID `spend`.
+//
+// They were sentences — `what ran it · by the model, and the role it was bound
+// to`, `what it was for`, `what kept running · standing orders, and what a
+// firing cost` — each naming the page's subject again before saying how this
+// table cuts it. A person reading them has walked in through a tab marked
+// `spend` and read a pointer line of money; what they still do not know is which
+// way each table is sliced, and that is the whole of what a heading here owes
+// them.
+//
+// AND `usage` IS NOT THE WORD. It is what the CODE calls the ledger
+// ([session.UsageLine], [session.UsageByModel]) and a person has never been
+// shown it: this surface calls the thing money, spending, and the tab `spend`.
+// A heading introducing a second word for the page's own subject is the
+// one-source-of-truth law applied to vocabulary.
 
-// spendDoorWord is where `enter` on a row goes, in the words of the place it
-// opens ([app.openSpendRow] is the same three-way switch). A subject of a kind
-// this build has no door for says nothing at all rather than naming a key that
-// would do nothing.
-func spendDoorWord(subject session.SubjectSpend) rowField {
-	switch subject.Kind {
-	case session.SubjectTask:
-		return rowSay("enter opens it in tasks", "in tasks")
-	case session.SubjectStanding:
-		return rowSay("enter opens it in standing", "in standing")
-	case session.SubjectConversation:
-		return rowSay("enter opens it on home", "on home")
-	}
-	return rowSay()
-}
-
-// spendModelsWord is the models table's caption, and it is SCREEN 2c's own. The
-// column says the role each model was BOUND to — the crew binding a person can
-// go and change — and not the auxiliary word one call gave itself, which is what
-// the caption used to promise and what the table used to draw.
-const spendModelsWord = "what ran it · by the model, and the role it was bound to"
+// spendModelsWord is the models table's caption.
+//
+// IT NO LONGER ENUMERATES THE COLUMNS. It promised `and the role it was bound
+// to` while every heading here was a sentence; a heading in this set says how
+// its table cuts the money and leaves the columns to say what they hold.
+const spendModelsWord = "by model"
 
 // spendSubjectsWord is the subjects table's caption.
-const spendSubjectsWord = "what it was for"
+//
+// `topic` COVERS BOTH KINDS OF ROW, which is what this table needs and what no
+// exact word does: it holds a piece of work and a conversation, and `work` is
+// wrong for `britney spears albums ranked by sales` exactly as `topic` is loose
+// for a task. The row itself says which of the two it is, in its own column.
+const spendSubjectsWord = "by topic"
+
+// THE HEADING NO LONGER SAYS `enter opens it`, AND THE FOOT ALWAYS DID.
+//
+// The clause was put on these headings when the only statement of the door was
+// four lines above, on the loudest day's own row. The foot names the key on
+// every row that is one — `enter opens what spent it` (place_spend.go's
+// [spendEnterWord]) — so the heading was saying it twice, and the heading has a
+// job now: it is the control that swaps which cut of the ledger is drawn, and a
+// control with an unrelated instruction after it is two objects on one line.
+
+// sliceHeading is THE CAPTION AND THE CONTROL AT ONCE — SCREEN 3d's own law for
+// the window control, applied to the other thing on this page a person steps
+// through.
+//
+// IT WEARS ITS ARROWS ONLY WHILE THE CURSOR IS ON IT ([spendSliceBack]). A key
+// is drawn where it is bound, and `→` on every other row of this place opens
+// that row's verbs — so the cycle is the heading's key and the arrows are the
+// heading's ink.
+//
+// AND IT KEEPS THE HEADING INK IN BOTH STATES. It came up to the reading tier
+// under the band for one build, which made the cursor land on a row that changed
+// colour as well as gaining arrows — two signals for one fact, and the colour was
+// the one that stopped it reading as a heading. THE BAND IS WHAT SAYS THE CURSOR
+// IS HERE, on this row exactly as on every other row of every place
+// ([placeSpend.body] draws it); what the arrows add is what the KEYS do, which
+// the band cannot say.
+func (r spendReading) sliceHeading(width int, lit bool, pal palette) string {
+	said := r.slice.word()
+	if lit {
+		said = spendSliceBack + said + spendSliceOn
+	}
+	return placeHeading(fit(said, width), pal)
+}
+
+// spendStandingWord heads the STANDING PROMISES, which answer the same question
+// as the rows above them and answer it with different facts.
+//
+// A PROMISE'S FACTS ARE NOT A TASK'S. What a person wants of a task or a
+// conversation is where it ran and what kind of thing it was; what they want of
+// a promise is how often it went off and what one firing costs — and neither of
+// those is a column the rows above could fill. Mixed into one table the promises
+// wore a `standing · 88 firings` tag crammed into the project's column and a
+// kind word that had to be suppressed to stop the row saying `standing` twice.
+// Given a table of their own they simply have their own columns, which is the
+// whole of the fix.
+const spendStandingWord = "by standing order"
 
 // spendUnboundRow is one role slot with nothing bound to it:
 //
@@ -812,107 +1043,507 @@ func spendUnboundRow(slot config.ModelSlot, width int, pal palette) string {
 // what runs in the meantime.
 const spendUnboundWord = "unbound"
 
-func (r spendReading) modelRow(model session.ModelSpend, width int, pal palette) string {
-	name := r.modelName(model.Model)
-	role := strings.TrimSpace(r.modelRole(model.Model))
-	money := spendMoneyWord(model.USD)
-	left := tokens.GlyphProseBullet
-	if name != "" {
-		left += " " + name
+// ── the two tables ──────────────────────────────────────────────────────────
+//
+// BOTH TABLES ARE THE SAME TABLE. `by model` and `by topic` are two partitions
+// of ONE ledger — the same money asked two questions — and they were
+// drawn by two layouts that had drifted apart, each measuring its own fields its
+// own way. They share the machinery below instead: a row is its fields, and
+// every field stands in a column measured over the rows about to be drawn.
+//
+// THE NAME IS LEFT-ALIGNED AND EVERYTHING ELSE IS PUSHED RIGHT AND RIGHT-ALIGNED
+// AGAINST ONE EDGE. What a row is about is read from the left, where the eye
+// already is; what it cost, how many calls it took and what it was bound to are
+// read by COMPARING them with the row above, and a comparison is made on the
+// right-hand edge of a figure. So the facts travel together in a block against
+// that edge and the names run out to meet them.
+//
+// AND THE BARS ARE GONE, which is what made half of this hard. A bar was one
+// model's share of the dearest one — a reading the figure at the end of the same
+// row already gives — and it cost a reserved column, an alignment law, and a
+// second reservation in front of it to stop a role word on one row moving it.
+// The list is sorted dearest first and every row says what it cost; that is the
+// same comparison in figures a person can also subtract.
+
+// spendGutter is the air between two columns. ONE SPACE IS A SEPARATOR AND NOT
+// A COLUMN: two fields that happen to fill their columns read as one run of
+// words at a single space, and the eye stops finding the edge between them.
+const spendGutter = 2
+
+// rule is THE RIGHT EDGE EVERY TABLE ON THIS PAGE ENDS AT, and it is where the
+// chart at the top of the page ends — the `today` point, with the last bucket's
+// date already standing under it ([spendReading.sparkAxis]).
+//
+// THE MONEY USED TO BE FLUSHED TO THE FRAME. On a wide terminal that put the one
+// figure every row is read for forty cells away from the counts it belongs with,
+// with nothing in between, so a row was two fragments rather than a line — and
+// the page already draws a horizontal scale a person has read by the time they
+// reach the tables. Ending the tables on it makes the whole page one measure
+// wide instead of two.
+//
+// A PAGE WITH NO CHART FALLS BACK TO THE FRAME, which is what these tables
+// always did: a window nothing was spent in draws no chart, and there is then no
+// second edge to prefer.
+func (r spendReading) rule(width int) int {
+	if chart := ansi.StringWidth(r.sparkline(width)); chart > 0 {
+		return chart
 	}
-	if role != "" {
-		if name != "" {
-			left += " ·"
-		}
-		left += " " + role
-	}
-	stats := spendModelStats(model)
-	if width >= 80 {
-		bar := spendBar(model.USD/r.models[0].USD, spendModelBarCap)
-		if bar != "" {
-			left += " " + bar
-		}
-	}
-	if width >= 80 && stats != "" {
-		left += " " + stats
-	}
-	return spendSides(width, left, money, func(s string) string {
-		// The model is the payload; the role and counts remain quiet even though
-		// they share one fitted left field at narrow widths.
-		prefix := tokens.GlyphProseBullet + " " + name
-		if name != "" && strings.HasPrefix(s, prefix) {
-			return pal.dim(tokens.GlyphProseBullet+" ") + pal.data(name) + pal.dim(strings.TrimPrefix(s, prefix))
-		}
-		return pal.dim(s)
-	}, placeMoneyInk(pal))
+	return width
 }
 
-func spendModelStats(model session.ModelSpend) string {
-	var parts []string
-	if model.Calls > 0 {
-		parts = append(parts, fmt.Sprintf("%s calls", groupedInt(model.Calls)))
-	}
-	if model.Tokens > 0 {
-		parts = append(parts, tokenWord(model.Tokens))
-	}
-	return strings.Join(parts, " · ")
+// spendTable is where each field of a table's rows stands: the column it begins
+// in, how wide that column is, and whether this frame carries it at all.
+type spendTable struct {
+	at    []int
+	wide  []int
+	drawn []bool
 }
 
-func spendBar(fraction float64, cap int) string {
-	if !(fraction > 0) || cap < 1 {
+// spendMeasured measures a whole table before a cell of it is drawn, so that
+// every row's fields stand in one set of columns. THE COLUMNS ARE MEASURED ONCE
+// FOR THE WHOLE TABLE and handed to every row, because a row that measured the
+// table itself would be free to disagree with the row above it about where the
+// table's own columns are.
+//
+// THE NAME COLUMN IS THE WIDTH OF WHAT IT HOLDS AND IS NEVER SQUEEZED TO KEEP A
+// FIELD BEHIND IT. A column narrower than what it holds is not a narrower
+// column, it is a column the longest rows fall out of. A frame that cannot carry
+// the whole table GIVES UP WHOLE FIELDS instead, in the order `drop` names them
+// — the least actionable first — because a field that is absent says nothing and
+// a field with its tail cut off says something wrong.
+//
+// caps bounds a column by field index, for the secondary facts. A capped column
+// still keeps every cell of an over-long field ([spendColumnAt]); what the cap
+// buys is that one very long project name cannot move a whole table right.
+//
+// AND A TABLE THAT WILL NOT FIT INSIDE THE RULE USES THE FRAME. The rule is
+// where this page would LIKE its tables to end ([spendReading.rule]); a row it
+// cannot hold is a row whose figures would be pushed off the frame altogether,
+// and a figure drawn late is better than a figure not drawn.
+func spendMeasured(rows [][]string, drop []int, caps map[int]int, rule, width int) spendTable {
+	count := 0
+	for _, row := range rows {
+		count = max(count, len(row))
+	}
+	if count == 0 {
+		return spendTable{}
+	}
+	table := spendTable{at: make([]int, count), wide: make([]int, count), drawn: make([]bool, count)}
+	for at := range table.drawn {
+		table.drawn[at] = true
+	}
+	for _, row := range rows {
+		for at, field := range row {
+			table.wide[at] = max(table.wide[at], ansi.StringWidth(field))
+		}
+	}
+	for at, bound := range caps {
+		if at < count {
+			table.wide[at] = min(table.wide[at], bound)
+		}
+	}
+	// THE RULE IS TRIED FIRST AND THE FRAME IS THE FALLBACK, and each edge is
+	// tried with EVERY FIELD BACK. A window zoomed to a single day draws a chart
+	// eight cells wide, and a table measured against that rule would give up
+	// every field it has before discovering that the frame behind it had room
+	// for all of them.
+	edge := rule
+	for {
+		for at := range table.drawn {
+			table.drawn[at] = true
+		}
+		for given := 0; !table.fits(edge) && given < len(drop); given++ {
+			table.drawn[drop[given]] = false
+		}
+		if table.fits(edge) || edge == width {
+			break
+		}
+		edge = width
+	}
+	// THE FIELDS ARE LAID OUT FROM THE RIGHT EDGE INWARDS, which is the whole
+	// point of the block: the last column ends on that edge whatever the table
+	// holds, and everything before it stacks back from there.
+	end := edge
+	for at := count - 1; at > 0; at-- {
+		if !table.drawn[at] {
+			continue
+		}
+		table.at[at] = end - table.wide[at]
+		end = table.at[at] - spendGutter
+	}
+	return table
+}
+
+// fits reports whether the name column and every field still drawn stand inside
+// one edge without overlapping.
+func (t spendTable) fits(edge int) bool {
+	if len(t.wide) == 0 {
+		return true
+	}
+	need := t.wide[0]
+	for at := 1; at < len(t.wide); at++ {
+		if t.drawn[at] {
+			need += spendGutter + t.wide[at]
+		}
+	}
+	return need <= edge
+}
+
+// spendColumnAt carries a row out to one of the table's columns.
+//
+// A ROW ALREADY AT OR PAST THE COLUMN GETS ONE SPACE AND KEEPS EVERY CELL OF
+// ITSELF. The name is this row's payload — [spendReading.modelRow]'s own ink
+// says so — so a name wider than its column starts the field behind it one space
+// late rather than being cut down to line a neighbour's up. One row out of
+// column is the shape these tables had everywhere before; a name cut in half to
+// buy it back is a fact lost.
+//
+// THE FRAME IS WHERE THAT STOPS. A name may push every field behind it as far as
+// the last cells the money needs and no further ([spendRowIn] fits the words
+// against what is left after the figure): pushing a row off its own edge does
+// not keep a fact, it loses the one fact the row was read for.
+//
+// It measures in printable cells, so a field that has already been painted lines
+// up with one that has not.
+func spendColumnAt(left string, col int) string {
+	gap := col - ansi.StringWidth(left)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap)
+}
+
+// spendRowIn lays one row's fields into the table's columns: the name from the
+// left edge, and every field behind it RIGHT-ALIGNED in its own column. ink
+// paints field n — the name is what the row is about, the money wears the money
+// hue, and what is true of the row in between stays quiet.
+//
+// AN EMPTY FIELD IS DRAWN AS NOTHING AND ITS COLUMN IS STILL HELD. A
+// conversation with no project leaves that column blank rather than pulling the
+// kind word into it: a field that closes up when it is empty moves every field
+// behind it on that row alone, which is the ragged table this machinery
+// replaced.
+// THE MONEY IS FITTED FIRST AND IS NEVER THE THING CUT. Every field was laid
+// left to right and the whole row trimmed to the frame at the end, so a name or
+// a project wide enough to push the row past the edge had its TAIL trimmed — and
+// the tail is the figure every row is read for (`$21.…`). A capped column was
+// capped on the measure and drawn uncapped, which is a cap that moves the table
+// without bounding anything. Both are the same mistake: the frame's last cells
+// belong to the money, and what gives way is the words.
+func spendRowIn(fields []string, table spendTable, ink func(int, string) string, width int) string {
+	last := -1
+	for at := range fields {
+		if at < len(table.drawn) && table.drawn[at] && fields[at] != "" {
+			last = at
+		}
+	}
+	left := ""
+	for at, field := range fields {
+		if at >= len(table.drawn) || !table.drawn[at] || at == last {
+			continue
+		}
+		if at > 0 {
+			if field == "" {
+				continue
+			}
+			// A CAPPED COLUMN IS CAPPED WHERE IT IS DRAWN AS WELL AS WHERE IT IS
+			// MEASURED ([spendMeasured]'s caps). Every other column is the width
+			// of what it holds, so this cuts nothing there.
+			field = fit(field, table.wide[at])
+			left = spendColumnAt(left, table.at[at]+table.wide[at]-ansi.StringWidth(field))
+		}
+		left += ink(at, field)
+	}
+	if last < 0 {
+		return fit(left, width)
+	}
+	money := fields[last]
+	// ONE CELL OF AIR IS RESERVED WITH IT, because a row pushed hard enough that
+	// its words reach the figure would read as one word.
+	room := max(0, width-ansi.StringWidth(money)-1)
+	left = fit(left, room)
+	return fit(spendColumnAt(left, table.at[last]+table.wide[last]-ansi.StringWidth(money))+ink(last, money), width)
+}
+
+// spendFigureWord is one figure and the word for what it counts — `9,400 calls`,
+// `88 firings` — with the UNIT PADDED to the widest spelling in its own column.
+//
+// DIGITS ARE COMPARED FROM THE RIGHT, and the column right-aligns whole fields,
+// so a row saying `1 call` beside one saying `9,400 calls` would line its `call`
+// up with the other's `calls` and put its digit one cell out. Padding the unit
+// makes every field in the column one width, which leaves the numerals ending
+// where the numerals above them end.
+//
+// A FIGURE OF NONE IS NO FIELD AT ALL, which is the emptiness law: a row that
+// made no calls draws nothing in that column rather than a nought.
+func spendFigureWord(figure, unit string, pad int) string {
+	if figure == "" {
 		return ""
 	}
-	cells := int(fraction*float64(cap) + 0.5)
-	if cells < 1 {
-		cells = 1
-	}
-	if cells > cap {
-		cells = cap
-	}
-	return strings.Repeat("█", cells)
+	return figure + " " + unit + strings.Repeat(" ", max(0, pad-ansi.StringWidth(unit)))
 }
 
-func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal palette) string {
-	return spendSubjectRowLit(subject, name, width, false, pal)
+// spendCountFigure is a count as every reading layer on this surface writes one,
+// and nothing at all for a count of none.
+func spendCountFigure(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return groupedInt(n)
 }
 
-// spendSubjectRowLit is [spendSubjectRow] on the scale: the subject in ink, bold
-// under the band, and its facts dim at rest and ink under it.
-func spendSubjectRowLit(subject session.SubjectSpend, name string, width int, lit bool, pal palette) string {
-	tag := filepath.Base(strings.TrimSpace(subject.Workspace))
-	if subject.Kind == session.SubjectStanding && subject.Calls > 0 {
-		tag = fmt.Sprintf("standing · %d firings", subject.Calls)
+// spendTokenFigure is a token volume as this page writes one — `842`, `12.4k`,
+// `1.2M`, `3.2B` — and nothing at all for none.
+func spendTokenFigure(n int) string {
+	if n <= 0 {
+		return ""
 	}
-	kind := subject.Label
-	switch {
-	case subject.Kind == session.SubjectStanding && subject.Calls > 0 && subject.USD/float64(subject.Calls) < 0.005:
-		kind = "under a cent a run"
-	case subject.Kind == session.SubjectStanding && strings.HasPrefix(tag, subject.Label):
-		// A PROMISE'S TAG ALREADY SAYS WHAT KIND OF THING IT IS — `standing · 14
-		// firings` — so the label after it is that word a second time on one row,
-		// which is the drift the one-source-of-truth law is about. The design's own
-		// row spends that field on something a person did not already know.
-		kind = ""
-	}
-	facts := placeFactInk(lit, pal)
-	var left strings.Builder
-	left.WriteString(pal.dim(tokens.GlyphProseBullet + " "))
-	left.WriteString(placeSubject(name, lit, pal))
-	for _, word := range nonempty(tag, kind) {
-		left.WriteString(facts(" · " + word))
-	}
-	return spendSides(width, left.String(), spendMoneyWord(subject.USD), func(s string) string { return s }, placeMoneyInk(pal))
+	return tokenWord(n)
 }
 
-// spendMoneyWord keeps tui3's one dollar formatter while applying the page's
-// extra rule for a measured sliver: a table of many rows reads better with a
-// word than with a column of four-decimal fractions
-// (docs/design/home-rethink/FIDELITY.md retains the rule).
+// modelNameField is the name field of a model row: the bullet and the model as
+// a person says it out loud.
 //
-// IT IS FOR THIS PAGE'S ROWS AND NOT FOR A TOTAL ANOTHER SURFACE ALSO QUOTES. The
-// pointer line quotes the same day figure the Spending tab does, so it uses
-// [dollars] like every other surface that quotes it ([spendReading.railsRow]).
+// THE ROLE IS NOT IN IT ANY MORE. It rode here for one build, because the caption
+// used to pair the two — `by the model, and the role it was bound to` — but a
+// word glued to the end of a name is a name of a different length on one row, and
+// every column behind it moved for the row that wore it. The role has a column of
+// its own now, at the head of the block on the right.
+//
+// IT IS ONE FUNCTION because the pass that measures this table's columns and the
+// pass that draws its rows must not be able to build the same field two ways —
+// the law every hit map and every measured layout on this surface is held to. A
+// column measured off a string the draw did not produce is a column the rows
+// stand beside rather than in.
+func (r spendReading) modelNameField(model session.ModelSpend) string {
+	if name := r.modelName(model.Model); name != "" {
+		return tokens.GlyphProseBullet + " " + name
+	}
+	return tokens.GlyphProseBullet
+}
+
+// spendModelFields names the model table's columns by index, so that the builder
+// and the row painter cannot disagree about which one is the money.
+const (
+	spendModelName = iota
+	spendModelRole
+	spendModelCalls
+	spendModelTokens
+	spendModelMoney
+)
+
+// modelTable is `by model` measured: each model's row as its fields — the model,
+// the role it is bound to, its calls, its token volume and what it cost — and
+// where the columns fell.
+//
+// THE ROLE LEADS THE BLOCK, FIRST AFTER THE NAME. It is the crew binding this
+// machine has that model BOUND to — never the auxiliary word one call gave
+// itself — and it is the one fact on the row a person can go and change: reading
+// that the dearest model is the conversation's own sends them to the chip that
+// changes it.
+//
+// IT IS NOT A MEASUREMENT AND DOES NOT BELONG AMONG THE FIGURES. What a model IS
+// on this machine reads with the name it follows, while the calls, the tokens
+// and the money are three readings of one quantity and want to stand together.
+// It sat second-last for a build, wedged between the token volume and the money,
+// where a word in the middle of a run of numbers broke the run.
+//
+// THE CAPTION DOES NOT PROMISE IT, and no longer needs to. It read `what ran it ·
+// by the model, and the role it was bound to` while every heading on this page
+// was a sentence; the headings are `by model`, `by topic`, `by standing order`
+// now and name only how each table cuts the money — the calls and the tokens are
+// not enumerated up there either.
+//
+// THE TOKEN COLUMN CARRIES NO UNIT WORD. `3.2B` beside `128,400 calls` is
+// already two different kinds of number, and `tokens` repeated down a column
+// buys nothing a person did not know from the volume's own k/M/B.
+func (r spendReading) modelTable(width, rule int) ([][]string, spendTable) {
+	calls := 0
+	for _, model := range r.models {
+		calls = max(calls, ansi.StringWidth(plural("call", model.Calls)))
+	}
+	rows := make([][]string, 0, len(r.models))
+	for _, model := range r.models {
+		rows = append(rows, []string{
+			r.modelNameField(model),
+			strings.TrimSpace(r.modelRole(model.Model)),
+			spendFigureWord(spendCountFigure(model.Calls), plural("call", model.Calls), calls),
+			spendTokenFigure(model.Tokens),
+			spendMoneyWord(model.USD),
+		})
+	}
+	// THE FIELDS GO IN ORDER OF WHAT THEY ARE WORTH ON A FRAME THAT CANNOT HOLD
+	// THEM ALL: the token volume first, because the money beside it already says
+	// what that volume came to; then the role, which the crew chips also say;
+	// then the calls. The money never goes.
+	drop := []int{spendModelTokens, spendModelRole, spendModelCalls}
+	return rows, spendMeasured(rows, drop, nil, rule, width)
+}
+
+// modelRow draws one measured model row: the model at the reading tier because
+// it is what the row is about, and everything true of it quiet behind.
+func (r spendReading) modelRow(model session.ModelSpend, fields []string, table spendTable, width int, pal palette) string {
+	name := r.modelName(model.Model)
+	return spendRowIn(fields, table, func(at int, field string) string {
+		switch {
+		case at == spendModelName && name != "":
+			return pal.dim(tokens.GlyphProseBullet+" ") + pal.data(name)
+		case at == spendModelMoney:
+			return placeMoneyInk(pal)(field)
+		}
+		return pal.dim(field)
+	}, width)
+}
+
+// spendProjectField is WHICH PROJECT the money was spent in — the folder's own
+// name — and nothing at all where the ledger named none.
+//
+// AN UNKNOWN WORKSPACE IS NOTHING AND NOT A DOT. [filepath.Base] answers "." for
+// the empty string, so a ledger line that named no project drew a row with a
+// lone dot standing in for a fact nobody recorded, which is the emptiness law's
+// own failure mode. It is guarded here rather than at the call sites because
+// this is the one place the field is made.
+func spendProjectField(subject session.SubjectSpend) string {
+	if workspace := strings.TrimSpace(subject.Workspace); workspace != "" {
+		return filepath.Base(workspace)
+	}
+	return ""
+}
+
+// spendSubjectFields names the subject tables' columns by index. The two share
+// them: a name, two facts, and the money, which is what makes one row painter
+// enough for both.
+const (
+	spendColName = iota
+	spendColFirst
+	spendColSecond
+	spendColMoney
+)
+
+// subjectTable is `by topic` measured: the work and the conversations,
+// each with the project it ran in and the word for what kind of thing it is.
+func (r spendReading) subjectTable(subjects []session.SubjectSpend, width, rule int) ([][]string, spendTable) {
+	rows := make([][]string, 0, len(subjects))
+	for _, subject := range subjects {
+		rows = append(rows, []string{
+			tokens.GlyphProseBullet + " " + r.name(subject),
+			subject.Label,
+			spendProjectField(subject),
+			spendMoneyWord(subject.USD),
+		})
+	}
+	// THE KIND WORD LEADS THE BLOCK, for [spendReading.modelTable]'s reason: what
+	// a row IS reads with the name it follows, and the project and the figure
+	// behind it are facts about where the money went. It is also still the first
+	// field given up on a narrow frame, because the name usually says which thing
+	// this is; the project goes next.
+	drop := []int{spendColFirst, spendColSecond}
+	return rows, spendMeasured(rows, drop, map[int]int{spendColSecond: spendProjectCap}, rule, width)
+}
+
+// standingTable is `by standing order` measured — the promises, in the two facts
+// that are theirs and nobody else's ([spendStandingWord] says why they are a
+// table apart).
+func (r spendReading) standingTable(subjects []session.SubjectSpend, width, rule int) ([][]string, spendTable) {
+	firings := 0
+	for _, subject := range subjects {
+		firings = max(firings, ansi.StringWidth(plural("firing", subject.Calls)))
+	}
+	rows := make([][]string, 0, len(subjects))
+	for _, subject := range subjects {
+		rows = append(rows, []string{
+			tokens.GlyphProseBullet + " " + r.name(subject),
+			spendFigureWord(spendCountFigure(subject.Calls), plural("firing", subject.Calls), firings),
+			spendFigureWord(spendEachFigure(subject), spendEachWord, 0),
+			spendMoneyWord(subject.USD),
+		})
+	}
+	drop := []int{spendColSecond, spendColFirst}
+	return rows, spendMeasured(rows, drop, nil, rule, width)
+}
+
+// spendEachWord is the unit behind a promise's per-firing figure.
+const spendEachWord = "a run"
+
+// spendEachFigure is WHAT ONE FIRING COST, which is the figure a person acts on:
+// a promise that has gone off two hundred times is cheap or dear by this column
+// and not by its total.
+//
+// It is written by the money column's own rule ([spendMoneyWord]), so a firing
+// that cost a twentieth of a cent reads `$0.01 a run` — the smallest figure this
+// page can say — rather than the words `under a cent a run` that used to stand
+// in the kind word's column and say nothing a person could line up.
+func spendEachFigure(subject session.SubjectSpend) string {
+	if subject.Calls <= 0 || subject.USD <= 0 {
+		return ""
+	}
+	return spendMoneyWord(subject.USD / float64(subject.Calls))
+}
+
+// spendSubjectRowLit draws one row of EITHER subject table: the subject in ink,
+// bold under the band, and its facts dim at rest and ink under it — SCREEN 2a's
+// band on every place (placeprose.go's [placeSubject]).
+func spendSubjectRowLit(fields []string, table spendTable, width int, lit bool, pal palette) string {
+	facts := placeFactInk(lit, pal)
+	lead := tokens.GlyphProseBullet + " "
+	return spendRowIn(fields, table, func(at int, field string) string {
+		switch at {
+		case spendColName:
+			return pal.dim(lead) + placeSubject(strings.TrimPrefix(field, lead), lit, pal)
+		case spendColMoney:
+			return placeMoneyInk(pal)(field)
+		}
+		return facts(field)
+	}, width)
+}
+
+// spendCentFloor is the smallest figure this page's money column writes. It is
+// a number rather than the string `$0.01` because [spendMoneyWord] both compares
+// against it and prints it, and the two must not be able to disagree.
+const spendCentFloor = 0.01
+
+// spendMoneyWord is how THIS PAGE'S MONEY COLUMN writes one amount, and it is a
+// column of cents with a floor under it.
+//
+// EVERY FIGURE IN A COLUMN IS THE SAME SHAPE OR IT IS NOT A COLUMN. Left to
+// [dollars] alone the column mixed three grammars — `$21.40`, `$0.0068`, and
+// the words `under a cent` — so three rows of the same table were three
+// different kinds of thing, none of them comparable at a glance with the one
+// above it. `$0.0068` is also a figure nobody acts on: four decimals are a
+// receipt's precision spent in a place that is answering "where did it go".
+//
+// SO EVERYTHING UNDER A CENT IS DRAWN AS A CENT, which is the smallest amount
+// this column can say and still be read. It is the emptiness law's other half —
+// a figure that rounded to `$0.00` would report a real, positive, spent amount
+// as nothing at all, which is the reading [subCent] was written to prevent and
+// this floor prevents the same way with two decimals instead of four.
+//
+// IT ROUNDS UP AND THE ROWS CAN THEREFORE OUT-TOTAL THE HEADING. Twenty rows of
+// a tenth of a cent each are twenty `$0.01`s over a window whose own total says
+// `$0.02`. That is the trade a floor makes anywhere it is used: the alternative
+// is a column that says either nothing or `$0.0007`, and neither of those is a
+// figure a person can put beside the row above. The heading, the pointer line
+// and the Spending tab all keep the exact arithmetic ([dollars]).
+//
+// IT IS FOR THIS PAGE AND NOT FOR A SENTENCE. A sub-cent amount inside a
+// sentence has nothing to line up with and room for the phrase, so the detached
+// turn's note keeps its own words ([spendSliverWord]).
 func spendMoneyWord(usd float64) string {
+	if usd > 0 && usd < spendCentFloor {
+		return dollars(spendCentFloor)
+	}
+	return dollars(usd)
+}
+
+// spendSliverWord is a sub-cent amount IN A SENTENCE: `it spent under a cent`,
+// which is what the detached-turn note says and what the manual quotes in those
+// words (internal/manual/chat/keys.md).
+//
+// IT IS THE RULE THIS PAGE'S COLUMN USED TO KEEP and no longer does. A phrase
+// where a figure belongs is fine in prose and wrong in a table, so the two
+// readings parted company rather than one of them being bent to the other
+// ([spendMoneyWord] says which is which).
+func spendSliverWord(usd float64) string {
 	if usd > 0 && usd < 0.005 {
 		return "under a cent"
 	}

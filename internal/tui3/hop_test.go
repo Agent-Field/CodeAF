@@ -44,38 +44,51 @@ func emptyMachine(a *app) {
 	a.world = func() (session.World, bool) { return session.World{}, true }
 }
 
-// TestTheSwitcherDrawsEveryOpenConversationWithHereLast is the reading, asserted
-// row by row: the order, the seam, and where the cursor opens.
-func TestTheSwitcherDrawsEveryOpenConversationWithHereLast(t *testing.T) {
+// TestTheSwitcherDrawsEveryOpenConversationInTheStripsOrder is the reading,
+// asserted row by row: the order, the seam, and where the cursor opens.
+func TestTheSwitcherDrawsEveryOpenConversationInTheStripsOrder(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	keepThree(t, a)
+	// THE STRIP IS DRAWN FIRST, because it is what the card's order comes from
+	// now (hop.go's [app.hopStripOrder]) and a card read against a row nobody
+	// laid out is a card asserted on its fallback.
+	a.width, a.height = 160, 40
+	_ = a.tabsRow(a.width)
 
 	drive(t, a, key(hopOpenKey))
 	if !a.hopShowing() {
-		t.Fatal("ctrl+k did not raise the switcher")
+		t.Fatal(hopOpenKey + " did not raise the switcher")
 	}
 	rows := a.hop.rows
 	if len(rows) != 3 {
 		t.Fatalf("the card holds %d rows, and three conversations are open", len(rows))
 	}
-	// MOST RECENTLY IN FRONT FIRST, which is the order `tab` already walks.
+	// THE LEFTMOST TAB IS THE FIRST ROW, and on a window that has entered its
+	// three conversations in this order the strip reads rail-scope, price-scrape,
+	// the one in front.
 	if !strings.Contains(rows[0].title, "rail scope") {
-		t.Fatalf("the first row is %q, and the last conversation was rail-scope", rows[0].title)
+		t.Fatalf("the first row is %q, and the leftmost tab is rail-scope", rows[0].title)
+	}
+	if words := tabWords(a); len(words) != 3 || !strings.Contains(words[0], "rail scope") {
+		t.Fatalf("the strip this card is asserted against reads %+v", words)
 	}
 	if !strings.Contains(rows[1].title, "price scrape") {
 		t.Fatalf("the second row is %q", rows[1].title)
 	}
-	// AND THE ONE ON SCREEN IS LAST, WITH THE SEAM ON IT.
+	// AND THE ONE ON SCREEN IS THE LAST TAB HERE, WITH THE SEAM ON IT. It is last
+	// because it is the newest tab on this row and not because the card puts the
+	// front conversation anywhere in particular — see the strip-order test below.
 	if !rows[2].here || rows[2].note != hopHereWord {
 		t.Fatalf("the front conversation came out as %+v", rows[2])
 	}
 	// THE CURSOR OPENS ON THE ROW `tab` WOULD HAVE GONE TO, so the commonest
-	// journey through this card is two keys.
+	// journey through this card is two keys. Here that is also row zero; the test
+	// below is the one that holds them apart.
 	if a.hop.at != 0 {
 		t.Fatalf("the cursor opened on row %d", a.hop.at)
 	}
-	// AND NEVER ON `you are here`, which is what makes `ctrl+k enter` land
+	// AND NEVER ON `you are here`, which is what makes `alt+k enter` land
 	// somewhere on a session holding one conversation ([hopFirstStop]).
 	if a.hop.rows[a.hop.at].here {
 		t.Fatal("the cursor opened on the conversation the person is already in")
@@ -110,7 +123,7 @@ func TestTheSwitcherWalksWrapsAndGoes(t *testing.T) {
 	// this alt+tab rather than a menu: the gesture is one key, tapped.
 	drive(t, a, key(hopOpenKey))
 	if a.hop.at != 0 {
-		t.Fatalf("a second ctrl+k left the cursor on %d", a.hop.at)
+		t.Fatalf("a second %s left the cursor on %d", hopOpenKey, a.hop.at)
 	}
 
 	drive(t, a, key("tab"), key("enter"))
@@ -355,7 +368,7 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 	if len(a.hop.rows) != 1 || a.hop.rest != 1 {
 		t.Fatalf("the shut card holds %d rows and folds %d: %+v", len(a.hop.rows), a.hop.rest, a.hop.rows)
 	}
-	if !strings.Contains(plain(a.hopFoot()), "1 more on this machine") {
+	if plain(a.hopFoot()) != hopFoldKeyWord {
 		t.Fatalf("the fold says %q", plain(a.hopFoot()))
 	}
 	// `→` REACHES THEM.
@@ -376,7 +389,7 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 		t.Fatalf("a quiet closed row says %q", a.hop.rows[1].note)
 	}
 	// OPENING THE FOLD MOVED THE CURSOR OFF `you are here`, which is what makes
-	// the whole gesture `ctrl+k → enter` on a session holding one conversation.
+	// the whole gesture `alt+k → enter` on a session holding one conversation.
 	if a.hop.at != 1 {
 		t.Fatalf("the cursor is on row %d after the fold opened", a.hop.at)
 	}
@@ -413,9 +426,9 @@ func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
 	if len(a.hop.rows) != 1 || a.hop.rest != 4 {
 		t.Fatalf("the shut card holds %d rows and folds %d", len(a.hop.rows), a.hop.rest)
 	}
-	// THE FOLD SAYS WHAT OPENING IT WOULD BE WORTH, and names the key.
-	foot := plain(a.hopFoot())
-	if !strings.Contains(foot, "4 more on this machine") || !strings.Contains(foot, hopFoldKeyWord) {
+	// THE FOLD IS ONE INSTRUCTION: the key, and what pressing it does. The count
+	// it used to carry is the head's job and the head is one row above it.
+	if foot := plain(a.hopFoot()); foot != hopFoldKeyWord {
 		t.Fatalf("the fold reads %q", foot)
 	}
 	// AND THE HEAD COUNTS ONLY WHAT IS OPEN, which is what the card is about.
@@ -470,7 +483,10 @@ func TestCtrlWDismissesATabAndKeepsItsConversation(t *testing.T) {
 	}
 }
 
-// Repeated dismissal remains harmless even while work is running.
+// Repeated dismissal remains harmless even while work is running — and each
+// press closes the NEXT row, because the one just closed has left the list
+// (hop.go's [app.hopTabbed]). That is what the key does on the strip, and it is
+// why the card stays up for it.
 func TestDismissingARunningTabNeverStopsItsWork(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
@@ -478,15 +494,26 @@ func TestDismissingARunningTabNeverStopsItsWork(t *testing.T) {
 	busy := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.stow(Conversation{Agent: busy, SessionFile: "/tmp/lab/busy.jsonl", Place: "lab"},
 		&aside{since: a.now(), title: "the busy one"})
+	quiet := &fakeAgent{model: "m"}
+	a.stow(Conversation{Agent: quiet, SessionFile: "/tmp/lab/quiet.jsonl", Place: "lab"},
+		&aside{since: a.now().Add(-time.Hour), title: "the quiet one"})
+
 	drive(t, a, key(hopOpenKey), key(hopAwayKey), key(hopAwayKey))
-	if a.openCount() != 2 || busy.closes != 0 || busy.stops != 0 {
+	if a.openCount() != 3 || busy.closes != 0 || busy.stops != 0 {
 		t.Fatalf("dismissing stopped work: open=%d closes=%d stops=%d", a.openCount(), busy.closes, busy.stops)
 	}
-	if !a.tabShut[a.convKey("/tmp/lab/busy.jsonl")] {
-		t.Fatal("dismissal did not hide the running tab")
+	// BOTH BACKGROUND TABS ARE OFF THE ROW and neither conversation was touched.
+	for _, file := range []string{"/tmp/lab/busy.jsonl", "/tmp/lab/quiet.jsonl"} {
+		if !a.tabShut[a.convKey(file)] {
+			t.Fatalf("dismissal did not take %s off the row", file)
+		}
 	}
 	if !strings.Contains(a.hop.say, hopAwayWord) {
 		t.Fatalf("dismissal was not acknowledged: %q", a.hop.say)
+	}
+	// AND THE ONLY ROW LEFT IS THE ONE THE PERSON IS STANDING IN.
+	if len(a.hop.rows) != 1 || !a.hop.rows[0].here {
+		t.Fatalf("the card still lists %+v", a.hop.rows)
 	}
 }
 
@@ -502,29 +529,39 @@ func (b *busyAgent) TaskIndex() []session.TaskIndexEntry {
 	}
 }
 
-// TestTheReverseChordIsBoundOnlyWhereTheTerminalCanSpellIt is `ctrl+shift+k`,
-// which an ordinary terminal sends as a bare `ctrl+k` — so it is bound under the
-// same law as `ctrl+tab`, and `shift+tab` is the spelling that always works.
-func TestTheReverseChordIsBoundOnlyWhereTheTerminalCanSpellIt(t *testing.T) {
+// TestTheReverseChordArrivesEverywhereAndItsAliasStillDoesNot is the asymmetry
+// the move to `alt+` bought (hop.go's [hopBackKey]): `alt+shift+k` is
+// escape-then-`K`, a different byte from the forward chord's escape-then-`k`, so
+// it is bound flat — while `ctrl+shift+tab` is still `ctrl+tab`'s own reverse and
+// still only real where the terminal answered the keyboard query. Under the old
+// `ctrl+shift+k` spelling BOTH were gated, because an ordinary terminal sent it
+// as a bare `ctrl+k`.
+func TestTheReverseChordArrivesEverywhereAndItsAliasStillDoesNot(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	keepThree(t, a)
 
 	a.keysDisambiguated = false
-	if a.hopBacks(hopBackKey) || a.hopBacks(hopBackAlias) {
-		t.Fatal("the reverse chords are bound on a terminal that cannot send them")
+	if !a.hopBacks(hopBackKey) {
+		t.Fatal("the reverse chord is not bound on a terminal that can plainly send it")
+	}
+	if a.hopBacks(hopBackAlias) {
+		t.Fatal("the alias's reverse is bound on a terminal that cannot send it")
 	}
 	a.keysDisambiguated = true
 	if !a.hopBacks(hopBackKey) || !a.hopBacks(hopBackAlias) {
 		t.Fatal("the reverse chords are not bound where the terminal answered")
 	}
+	// AND IT WALKS THE RING ON THE PLAINEST TERMINAL THERE IS, which is the whole
+	// of what changed: this is the same gesture the old spelling could only make
+	// where the keyboard query had been answered.
+	a.keysDisambiguated = false
 	drive(t, a, key(hopOpenKey), key(hopBackKey))
 	if a.hop.at != len(a.hop.rows)-1 {
-		t.Fatalf("ctrl+shift+k left the cursor on %d of %d", a.hop.at, len(a.hop.rows))
+		t.Fatalf("%s left the cursor on %d of %d", hopBackKey, a.hop.at, len(a.hop.rows))
 	}
-	// AND `shift+tab` DOES IT ON EVERY TERMINAL, which is why the chord above
-	// being absent on half of them costs nothing.
-	a.keysDisambiguated = false
+	// AND `shift+tab` STILL DOES IT TOO, on every terminal, because it is the
+	// spelling a hand reaches for once the card is up.
 	drive(t, a, key("shift+tab"))
 	if a.hop.at != len(a.hop.rows)-2 {
 		t.Fatalf("shift+tab left the cursor on %d", a.hop.at)
@@ -759,14 +796,638 @@ func TestSwitcherMouseOpensOnlyVisibleRowsAndKeepsSelectionVisible(t *testing.T)
 	}
 }
 
-func TestSwitcherShowsLongSelectedTitleBelowTheList(t *testing.T) {
+// A LONG NAME IS GIVEN ROOM ON ITS OWN ROW AND IS NEVER READ OUT TWICE. The card
+// used to re-wrap the selected row's title in a block under the list — a second
+// reading of the row the cursor was already on, present or absent depending on
+// how long that one name happened to be. The room went to the subject column
+// instead (hop.go's [hopLine]).
+func TestALongNameTakesTheRoomAndIsNotRepeatedUnderTheList(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	keepThree(t, a)
 	drive(t, a, key(hopOpenKey))
-	a.hop.rows[0].title = "Investigate the parsing regression in weekly reports"
-	lines := a.hopCardLines(60, 18, a.pal)
-	if !strings.Contains(plain(strings.Join(lines, "\n")), "weekly reports") {
-		t.Fatal("selected title still clipped its distinguishing suffix")
+	long := "Investigate the parsing regression in weekly reports"
+	a.hop.rows[0].title = long
+	a.hop.at = 0
+
+	// ON A WIDE FRAME THE WHOLE NAME IS ON ITS OWN ROW, once.
+	body := plain(strings.Join(a.hopCardLines(140, 18, a.pal), "\n"))
+	if !strings.Contains(body, long) {
+		t.Fatalf("the name did not fit its row on a wide card:\n%s", body)
+	}
+	if strings.Count(body, "weekly reports") != 1 {
+		t.Fatalf("the name is drawn %d times:\n%s", strings.Count(body, "weekly reports"), body)
+	}
+	// AND THE CLAUSE IS STILL A COLUMN BESIDE IT, not a suffix stuck to the name.
+	if strings.Contains(body, "reports"+hopNothingWord) || strings.Contains(body, "reports "+hopNothingWord) {
+		t.Fatalf("the name and the clause ran together:\n%s", body)
+	}
+	// ON A NARROW ONE THE NAME IS CUT AND NOTHING IS DRAWN UNDER THE LIST TO MAKE
+	// UP FOR IT: the rows, the foot, and no second reading.
+	narrow := a.hopCardLines(60, 18, a.pal)
+	rows := 0
+	for _, line := range narrow {
+		if strings.Contains(plain(line), "Investigate") {
+			rows++
+		}
+	}
+	if rows != 1 {
+		t.Fatalf("the cut name appears on %d rows:\n%s", rows, plain(strings.Join(narrow, "\n")))
+	}
+}
+
+// ── THE CARD LANDS YOU IN WHAT YOU TOOK, FROM WHEREVER YOU TOOK IT ──────────
+//
+// The switcher opens over a place as readily as over a conversation, and for a
+// while taking a row from one only moved the conversation UNDERNEATH the place:
+// from home, `enter` read as a key that did nothing while it had quietly swapped
+// what was behind the screen. These four are that door, asserted from a place
+// (hop.go's [app.hopLand]).
+
+// TestTakingARowFromHomeLandsInTheConversation is the owner's own report: home
+// up, `ctrl+k`, `enter`, and you are IN the conversation you chose.
+func TestTakingARowFromHomeLandsInTheConversation(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageHome))
+	if !a.at(pageHome) {
+		t.Fatal("the fixture is not standing on home")
+	}
+
+	drive(t, a, key(hopOpenKey))
+	if !a.hopShowing() {
+		t.Fatal("ctrl+k did not raise the switcher on home")
+	}
+	drive(t, a, key("enter"))
+	if a.file != "/tmp/lab/rail-scope.jsonl" {
+		t.Fatalf("enter left the surface on %q", a.file)
+	}
+	// THE PLACE CAME DOWN WITH THE TAKE. This is the whole defect: the line above
+	// passed while home stood in front of the conversation it had just switched.
+	if a.pageShowing() {
+		t.Fatalf("enter on the card left %v standing over the conversation", a.page)
+	}
+	// AND THE ONE HOME WAS OVER IS STILL RUNNING, the bargain every door between
+	// conversations makes (keeper.go).
+	if a.openCount() != 3 {
+		t.Fatalf("%d conversations are open after taking a row from home", a.openCount())
+	}
+}
+
+// TestTakingARowFromAnyOtherPlaceLandsToo holds the same law one door wider: the
+// card asks whether A place is standing and never whether HOME is, because it
+// opens on all seven.
+func TestTakingARowFromAnyOtherPlaceLandsToo(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageSpend))
+	if !a.at(pageSpend) {
+		t.Fatal("the fixture is not standing on the spend place")
+	}
+
+	drive(t, a, key(hopOpenKey), key("enter"))
+	if a.file != "/tmp/lab/rail-scope.jsonl" {
+		t.Fatalf("enter left the surface on %q", a.file)
+	}
+	if a.pageShowing() {
+		t.Fatalf("enter on the card left %v standing over the conversation", a.page)
+	}
+}
+
+// TestTakingTheRowYouAreOnFromHomeStillLandsInIt is the one row that is not a
+// switch and is still a door. `you are here` brings nothing forward — but from
+// home it is the person saying "that one", and answering with nothing at all
+// would leave them on the screen they pressed a conversation on.
+func TestTakingTheRowYouAreOnFromHomeStillLandsInIt(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageHome))
+
+	drive(t, a, key(hopOpenKey))
+	here := -1
+	for at, row := range a.hop.rows {
+		if row.here {
+			here = at
+		}
+	}
+	if here < 0 {
+		t.Fatalf("no row is marked `you are here`: %+v", a.hop.rows)
+	}
+	a.hop.at = here
+	drive(t, a, key("enter"))
+	if a.file != "/tmp/lab/this-one.jsonl" {
+		t.Fatalf("taking `you are here` moved the surface to %q", a.file)
+	}
+	if a.pageShowing() {
+		t.Fatalf("taking `you are here` from home left %v standing", a.page)
+	}
+}
+
+// TestARefusedRowLeavesHomeStandingAndSaysSoThere is the other half of the law:
+// a take that did not happen must not move the person, and its sentence goes on
+// the line home already has for saying things rather than into a transcript
+// nobody is looking at (hop.go's [app.hopSay]).
+func TestARefusedRowLeavesHomeStandingAndSaysSoThere(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	other := filepath.Join(dir, "other.jsonl")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "b", Title: "the other one", Transcript: other, ProjectDir: dir},
+			},
+		}}}, true
+	}
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		return Conversation{}, session.ErrSessionLocked
+	}
+	drain(t, a, a.showPage(pageHome))
+
+	// `→` opens the fold and puts the cursor on the closed row, which is the row
+	// the door refuses.
+	drive(t, a, key(hopOpenKey), key("right"), key("enter"))
+	if a.file != filepath.Join(dir, "this-one.jsonl") {
+		t.Fatalf("a refused row moved the surface to %q", a.file)
+	}
+	if !a.at(pageHome) {
+		t.Fatalf("a refused row took home down and left %v", a.page)
+	}
+	if a.home.msg != sessionBusyWord {
+		t.Fatalf("home said %q about a row the door refused", a.home.msg)
+	}
+}
+
+// TestTakingAClosedRowFromHomeLandsInItToo is the fold's half of the door: a row
+// this terminal was NOT holding is opened beside the others, and the person ends
+// up looking at it rather than at the home they pressed it from.
+func TestTakingAClosedRowFromHomeLandsInItToo(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	other := filepath.Join(dir, "other.jsonl")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "b", Title: "the other one", Transcript: other, ProjectDir: dir},
+			},
+		}}}, true
+	}
+	opened := ""
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		opened = transcript
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: transcript, Workspace: workspace}, nil
+	}
+	drain(t, a, a.showPage(pageHome))
+
+	drive(t, a, key(hopOpenKey), key("right"), key("enter"))
+	if opened != other {
+		t.Fatalf("enter opened %q", opened)
+	}
+	if a.pageShowing() {
+		t.Fatalf("opening a closed row from home left %v standing over it", a.page)
+	}
+}
+
+// TestQuickSwitchingFromHomeLandsToo holds the chord that switches without a
+// choice to the same law: it is the same act on a different key.
+func TestQuickSwitchingFromHomeLandsToo(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick, a.keysDisambiguated = true, true
+	keepThree(t, a)
+	drain(t, a, a.showPage(pageHome))
+
+	drive(t, a, key(hopAlias))
+	if a.file != "/tmp/lab/rail-scope.jsonl" {
+		t.Fatalf("the press left the surface on %q", a.file)
+	}
+	if a.pageShowing() {
+		t.Fatalf("quick switching from home left %v standing over the conversation", a.page)
+	}
+}
+
+// ── THE CARD IS LAID OUT THE WAY THE TAB ROW IS ─────────────────────────────
+//
+// The strip and the card are two readings of one set of conversations, drawn one
+// line apart and used together. The card used to be ordered by recency, so the
+// third tab could be the first row and neither position meant anything; it now
+// takes the strip's own order (hop.go's [app.hopStripOrder]).
+
+// stripKeys is the strip's order, as the keys the card is addressed by.
+func stripKeys(a *app) []string {
+	keys := make([]string, 0, len(a.chatTabs))
+	for _, tab := range a.chatTabs {
+		if tab.key != "" && !tab.start {
+			keys = append(keys, tab.key)
+		}
+	}
+	return keys
+}
+
+// openKeys is the card's order, open rows only — the half the strip draws.
+func openKeys(a *app) []string {
+	keys := make([]string, 0, len(a.hop.rows))
+	for _, row := range a.hop.rows {
+		if row.open {
+			keys = append(keys, a.convKey(row.file))
+		}
+	}
+	return keys
+}
+
+// TestTheCardHoldsTheStripsOrderWhenRecencyDoesNot is the claim with the two
+// orders pulled apart: going to the middle tab and opening the card must not
+// move a single row, because the strip did not move either.
+func TestTheCardHoldsTheStripsOrderWhenRecencyDoesNot(t *testing.T) {
+	a, _, _ := tabApp(t)
+	before := stripKeys(a)
+	if len(before) != 3 {
+		t.Fatalf("the fixture drew %d tabs: %+v", len(before), tabWords(a))
+	}
+
+	// GO TO THE MIDDLE TAB. Recency now says this one, then the one just left;
+	// the strip still says what it said.
+	a.hopOpen()
+	a.hop.at = 1
+	drive(t, a, key("enter"))
+	_ = a.tabsRow(a.width)
+	if now := stripKeys(a); !equalStrings(now, before) {
+		t.Fatalf("the strip re-ordered itself on a switch: %+v then %+v", before, now)
+	}
+
+	a.hopOpen()
+	if got := openKeys(a); !equalStrings(got, before) {
+		t.Fatalf("the card reads %+v and the strip reads %+v", got, before)
+	}
+	// AND THE ONE IN FRONT IS WHEREVER ITS TAB IS — the middle — rather than at
+	// either end. This is the row the old reading always drew last.
+	if !a.hop.rows[1].here {
+		t.Fatalf("the `you are here` mark is not on the middle row: %+v", a.hop.rows)
+	}
+	// THE CURSOR STILL OPENS ON THE ONE `tab` WOULD GO TO, which is now row two
+	// rather than row zero: the LIST follows the strip and the CURSOR follows
+	// recency, and `ctrl+k` `enter` still means "the last one" (hopFirstStop).
+	if a.hop.at != 2 || a.convKey(a.hop.rows[a.hop.at].file) != before[2] {
+		t.Fatalf("the cursor opened on row %d of %+v", a.hop.at, a.hop.rows)
+	}
+}
+
+// TestClosingATabTakesItOffTheCardAsWellAsTheRow is the sync, from the `✕`: the
+// list and the strip are one reading, so a tab dismissed with the pointer leaves
+// both. The conversation is still held and still running — it is BEHIND THE
+// FOLD, with everything else this window is not showing, and `enter` on it there
+// brings it and its tab back.
+func TestClosingATabTakesItOffTheCardAsWellAsTheRow(t *testing.T) {
+	a, _, _ := tabApp(t)
+	shut := stripKeys(a)[0]
+	span := tabCloseSpanFor(t, a, "Refactor the rail scope model")
+	clickTab(t, a, span.from)
+	_ = a.tabsRow(a.width)
+	if keysHold(stripKeys(a), shut) {
+		t.Fatalf("the dismissed tab is still on the row: %+v", tabWords(a))
+	}
+	if a.behind[shut] == nil {
+		t.Fatal("dismissing the tab took its conversation out of the keeper")
+	}
+
+	a.hopOpen()
+	if keys := openKeys(a); !equalStrings(keys, stripKeys(a)) {
+		t.Fatalf("the card reads %+v and the strip reads %+v", keys, stripKeys(a))
+	}
+	if a.hop.rest != 1 {
+		t.Fatalf("the fold stands for %d conversations and one tab was closed", a.hop.rest)
+	}
+	// THE HEAD COUNTS TABS, so it cannot say three while the row shows two.
+	if a.hopOpenRows() != len(stripKeys(a)) {
+		t.Fatalf("the head says %d open and the row has %d tabs", a.hopOpenRows(), len(stripKeys(a)))
+	}
+
+	// AND IT IS BEHIND THE FOLD, ALIVE, AND ONE `enter` FROM COMING BACK.
+	a.hopSpread(true)
+	at := -1
+	for i, row := range a.hop.rows {
+		if a.convKey(row.file) == shut {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the closed conversation left the card entirely: %+v", a.hop.rows)
+	}
+	if !a.hop.rows[at].open || a.hop.rows[at].held || a.hop.rows[at].gone {
+		t.Fatalf("the closed conversation is drawn as unreachable: %+v", a.hop.rows[at])
+	}
+	a.hop.at = at
+	drive(t, a, key("enter"))
+	if a.convKey(a.file) != shut {
+		t.Fatalf("enter on the fold landed on %q", a.file)
+	}
+	_ = a.tabsRow(a.width)
+	if !keysHold(stripKeys(a), shut) {
+		t.Fatalf("its tab did not come back: %+v", tabWords(a))
+	}
+}
+
+// TestCtrlWOnTheCardTakesTheRowOffTheCardAtOnce is the same sync from the card's
+// own key: the row the person just closed leaves the list under their hand,
+// rather than sitting there looking open until something else redrew the strip.
+func TestCtrlWOnTheCardTakesTheRowOffTheCardAtOnce(t *testing.T) {
+	a, _, _ := tabApp(t)
+	a.hopOpen()
+	if len(a.hop.rows) != 3 {
+		t.Fatalf("the card opened with %d rows: %+v", len(a.hop.rows), a.hop.rows)
+	}
+	shut := a.convKey(a.hop.rows[0].file)
+
+	a.hop.at = 0
+	drive(t, a, key(hopAwayKey))
+	// THE CARD IS STILL UP — closing tabs is done two or three at a time — and
+	// the row is gone from it WITHOUT a frame having been drawn in between.
+	if !a.hopShowing() {
+		t.Fatal("the card came down on a close")
+	}
+	for _, row := range a.hop.rows {
+		if a.convKey(row.file) == shut {
+			t.Fatalf("the row ctrl+w closed is still on the card: %+v", a.hop.rows)
+		}
+	}
+	if a.hop.rest != 1 || a.hopOpenRows() != 2 {
+		t.Fatalf("the card says %d open and %d behind the fold", a.hopOpenRows(), a.hop.rest)
+	}
+	// AND THE STRIP AGREES THE MOMENT IT IS DRAWN.
+	_ = a.tabsRow(a.width)
+	if keysHold(stripKeys(a), shut) {
+		t.Fatalf("the strip still draws the closed tab: %+v", tabWords(a))
+	}
+	if !equalStrings(openKeys(a), stripKeys(a)) {
+		t.Fatalf("the card reads %+v and the strip reads %+v", openKeys(a), stripKeys(a))
+	}
+}
+
+// TestCtrlWBelowTheFoldClosesNothingAndSaysNothing is the other half: a row with
+// no tab — one this terminal never opened, or one whose tab was closed a moment
+// ago — is a key press that has already got what it asked for, so nothing closes
+// and nothing is said about it.
+func TestCtrlWBelowTheFoldClosesNothingAndSaysNothing(t *testing.T) {
+	a, _, _ := tabApp(t)
+	a.hopOpen()
+	shut := a.convKey(a.hop.rows[0].file)
+	a.hop.at = 0
+	drive(t, a, key(hopAwayKey))
+
+	a.hopSpread(true)
+	at := -1
+	for i, row := range a.hop.rows {
+		if a.convKey(row.file) == shut {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the closed conversation is not behind the fold: %+v", a.hop.rows)
+	}
+	a.hop.at = at
+	rows := append([]hopRow(nil), a.hop.rows...)
+	drive(t, a, key(hopAwayKey))
+	// IT SAYS NOTHING AT ALL. The tab this key exists to close is already closed,
+	// so there is nothing for the card to report and no sentence to read.
+	if a.hop.say != "" {
+		t.Fatalf("ctrl+w on a row with no tab said %q", a.hop.say)
+	}
+	if len(a.hop.rows) != len(rows) {
+		t.Fatalf("ctrl+w on a row with no tab re-read the card: %d rows, was %d", len(a.hop.rows), len(rows))
+	}
+	if a.behind[shut] == nil {
+		t.Fatal("a second ctrl+w took the conversation out of the keeper")
+	}
+}
+
+// ── THE SEAM THE FOLD OPENS INTO ────────────────────────────────────────────
+
+// TestTheFoldSaysWhereTheTabsStop is the owner's own question — why the
+// conversations they closed look like the ones that are open, and what the `✕`
+// on some rows means. It is answered by a word at the seam (hop.go's
+// [hopClosedLabel]) and by every refusing row saying why it refuses.
+func TestTheFoldSaysWhereTheTabsStop(t *testing.T) {
+	dir := t.TempDir()
+	a, _, _ := tabApp(t)
+	gone := filepath.Join(dir, "vanished")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "x", Title: "a chat from last week", Transcript: filepath.Join(dir, "x.jsonl"), ProjectDir: dir},
+				{ID: "y", Title: "held elsewhere", Transcript: filepath.Join(dir, "y.jsonl"), ProjectDir: dir, Open: true},
+				{ID: "z", Title: "no folder", Transcript: filepath.Join(dir, "z.jsonl"), ProjectDir: gone},
+			},
+		}}}, true
+	}
+	// A closed tab, so the fold holds one of each kind: a conversation this
+	// window is still holding, and three it is not.
+	span := tabCloseSpanFor(t, a, "Refactor the rail scope model")
+	clickTab(t, a, span.from)
+	_ = a.tabsRow(a.width)
+
+	// WITH THE FOLD SHUT THERE IS NO SEAM TO DRAW, because every row is a tab.
+	a.hopOpen()
+	if seamAt(a.hopCardLines(120, 20, a.pal)) >= 0 {
+		t.Fatal("the shut card drew the closed label over a list that is all tabs")
+	}
+
+	// WITH IT OPEN THE WORD STANDS WHERE THE TABS STOP.
+	a.hopOpen()
+	a.hopSpread(true)
+	body := a.hopCardLines(120, 20, a.pal)
+	label, first := seamAt(body), -1
+	for at, line := range body {
+		if strings.Contains(plain(line), "Refactor the rail scope model") {
+			first = at
+		}
+	}
+	if label < 0 {
+		t.Fatalf("the open fold drew no seam:\n%s", plain(strings.Join(body, "\n")))
+	}
+	// AND IT IS SPACED THE WAY THE HEAD IS: one blank line above it and one
+	// below, so it reads as a heading over the rows under it rather than as a row
+	// wedged between two lists. The head is the measure — `open`, a blank, then
+	// its first row — and this is the same three lines.
+	blank := func(at int) bool {
+		return at >= 0 && at < len(body) && strings.TrimSpace(strings.Trim(plain(body[at]), "│")) == ""
+	}
+	if !blank(label - 1) {
+		t.Fatalf("no air above the seam:\n%s", plain(strings.Join(body, "\n")))
+	}
+	if !blank(label + 1) {
+		t.Fatalf("no air below the seam:\n%s", plain(strings.Join(body, "\n")))
+	}
+	if first != label+2 {
+		t.Fatalf("the seam is at %d and the first closed row at %d:\n%s", label, first, plain(strings.Join(body, "\n")))
+	}
+	// THE HEAD IS SPACED THE SAME WAY, which is what "equally spaced" means here:
+	// the word, a blank, the first row of its own list.
+	head := -1
+	for at, line := range body {
+		if strings.Contains(plain(line), hopOpenWord) && strings.Contains(plain(line), "enter open") {
+			head = at
+		}
+	}
+	if head < 0 || !blank(head+1) {
+		t.Fatalf("the head is at %d and is not followed by its blank:\n%s", head, plain(strings.Join(body, "\n")))
+	}
+	if first := head + 2; !strings.Contains(plain(body[first]), "openrouter price scrape") {
+		t.Fatalf("the head's own first row is not two lines under it:\n%s", plain(strings.Join(body, "\n")))
+	}
+	// AND THE SEAM IS NOT A ROW: the cursor cannot land on it and a press on it
+	// opens nothing.
+	for _, spot := range a.hop.spots {
+		if spot.row == label {
+			t.Fatalf("the seam answered as a row: %+v", spot)
+		}
+	}
+}
+
+// TestEveryRowThatRefusesSaysWhy is the other half of that report: the `✕` means
+// this row will not open, and a mark a person cannot account for is worse than
+// no mark. A conversation another window holds said so already; one whose folder
+// has gone wore the mark with an empty clause.
+func TestEveryRowThatRefusesSaysWhy(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	gone := filepath.Join(dir, "vanished")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "y", Title: "held elsewhere", Transcript: filepath.Join(dir, "y.jsonl"), ProjectDir: dir, Open: true},
+				{ID: "z", Title: "no folder", Transcript: filepath.Join(dir, "z.jsonl"), ProjectDir: gone},
+			},
+		}}}, true
+	}
+	a.hopOpen()
+	a.hopSpread(true)
+	for _, row := range a.hop.rows {
+		if !row.held && !row.gone {
+			continue
+		}
+		if strings.TrimSpace(row.note) == "" {
+			t.Fatalf("a row drawn with the refusing mark says nothing about why: %+v", row)
+		}
+	}
+	// AND THE TWO REASONS ARE THE TWO SENTENCES, not one sentence for both.
+	var words []string
+	for _, row := range a.hop.rows {
+		if row.held || row.gone {
+			words = append(words, row.note)
+		}
+	}
+	if len(words) != 2 {
+		t.Fatalf("the card drew %d refusing rows: %+v", len(words), a.hop.rows)
+	}
+	if !keysHold(words, hopHeldWord) || !keysHold(words, homeGoneWord) {
+		t.Fatalf("the refusing rows say %+v", words)
+	}
+}
+
+// seamAt is which drawn line is the fold's seam, and it is matched WHOLE: the
+// foot says `show closed` and `hide closed`, so a substring match finds the foot
+// on every card that has one.
+func seamAt(lines []string) int {
+	for at, line := range lines {
+		inside := strings.TrimSpace(plain(strings.Trim(plain(line), "│")))
+		if inside == hopClosedLabel {
+			return at
+		}
+	}
+	return -1
+}
+
+// TestCtrlWOnAConversationThisWindowNeverOpenedClosesNothing is the half of the
+// fold `tabShut` cannot answer on its own: nothing ever dismissed a conversation
+// this terminal has not held, so the map is silent about it — and silence read as
+// "it has a tab". The key swore `tab closed` at a machine row, marked a
+// conversation it had never held as dismissed, and changed nothing on the row.
+func TestCtrlWOnAConversationThisWindowNeverOpenedClosesNothing(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file, a.workspace = filepath.Join(dir, "this-one.jsonl"), dir
+	never := filepath.Join(dir, "never.jsonl")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "n", Title: "never opened here", Transcript: never, ProjectDir: dir},
+			},
+		}}}, true
+	}
+	a.hopOpen()
+	a.hopSpread(true)
+	at := -1
+	for i, row := range a.hop.rows {
+		if a.convKey(row.file) == a.convKey(never) {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the never-opened row is not on the card: %+v", a.hop.rows)
+	}
+
+	a.hop.at = at
+	drive(t, a, key(hopAwayKey))
+	if a.hop.say != "" {
+		t.Fatalf("ctrl+w on a conversation this window never opened said %q", a.hop.say)
+	}
+	// AND IT LEFT NO MARK BEHIND. A dismissal recorded against a conversation
+	// this window has never held is a lie the strip would have to be told to
+	// forget (keeper.go's [app.rememberOpen] is the only door that clears it).
+	if a.tabShut[a.convKey(never)] {
+		t.Fatal("ctrl+w marked a conversation this window never held as dismissed")
+	}
+	if len(a.closedTabs) != 0 {
+		t.Fatalf("ctrl+w put %d tabs on the reopen stack", len(a.closedTabs))
+	}
+}
+
+// TestAShortCardStillShowsWhatTheFoldOpened is the seam's own cost, charged only
+// where it is drawn. The three lines used to come off every short card whether or
+// not the window reached a closed row, so `→ show closed` made the list SHORTER
+// and showed nothing at all while the foot offered `← hide closed`.
+func TestAShortCardStillShowsWhatTheFoldOpened(t *testing.T) {
+	dir := t.TempDir()
+	a, _, _ := tabApp(t)
+	rows := []session.SessionRow{{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir}}
+	for i := 0; i < 6; i++ {
+		rows = append(rows, session.SessionRow{
+			ID: itoa(i), Title: "a closed chat " + itoa(i),
+			Transcript: filepath.Join(dir, itoa(i)+".jsonl"), ProjectDir: dir,
+		})
+	}
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{Name: "lab", Dir: dir, Sessions: rows}}}, true
+	}
+
+	// Card heights a small terminal actually hands this card. Eleven is where the
+	// window first reaches a closed row at all; below it the list is three rows
+	// long and every one of them is a tab, which is honest.
+	for _, height := range []int{11, 12, 13, 14, 16} {
+		a.hopOpen()
+		a.hopSpread(true)
+		body := plain(strings.Join(a.hopCardLines(100, height, a.pal), "\n"))
+		if !strings.Contains(body, "Closed Chat") {
+			t.Fatalf("the fold opened on a %d-line card and drew no closed row:\n%s", height, body)
+		}
+		// AND THE OPEN ROWS DID NOT PAY FOR A SEAM NOBODY DREW: every row the card
+		// has room for is a row, and the word is only there when it is earned.
+		if seamAt(a.hopCardLines(100, height, a.pal)) < 0 && height >= 12 {
+			t.Fatalf("a %d-line card reached the closed rows without the word:\n%s", height, body)
+		}
 	}
 }

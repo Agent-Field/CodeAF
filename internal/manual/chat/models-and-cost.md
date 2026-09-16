@@ -992,21 +992,23 @@ Several things can name a rung, and the most specific one wins:
 **this conversation's** rung, which is named on the line above the box, beside the model:
 `glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
 inside — it moves that task's rung. On a standing item's card it moves that item's. A
-conversation's rung and an item's rung climb one step each press and wrap from `max` back
-to `low`; they never go back to "nobody said". For this conversation, `/effort auto` and
-the top row of `/effort` clear it instead. A task's rung, and the level `ctrl+t` dials onto
-one model in `/model`, come back to `auto` off the top — that is how you hand this piece of
-work, or this model, back to whatever stands above it. The **thinking** row in `/settings`
-stays what it is: the answer for every conversation that has not been dialled by hand. The
-keys page has the whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
+conversation's rung, a task's rung, and the level `ctrl+t` dials onto one model in
+`/model` all climb one step each press and come back to `auto` off the top — that is how
+you hand this chat, this piece of work, or this model back to whatever stands above it.
+(This conversation's rung joined them on 2026-09-15; its wheel had five stops until then
+and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` still clear
+this conversation in one move from any rung. A standing item's rung is the one that never
+walks back to "nobody said": it is cleared in the item's own document. The **thinking**
+row in `/settings` stays what it is: the answer for every conversation that has not been
+dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
 thing you are looking at thinks*.
 
 **Three doors, one rung.** `ctrl+v`, a press on the rung itself, and `/effort`:
 
 | What you do | What happens |
 |---|---|
-| `ctrl+v` | one step up the ladder, wrapping off the top |
-| press the rung on the line above the box | the same one step, and it lights under the pointer first |
+| `ctrl+v` | one step up the ladder, and back to `auto` off the top |
+| press the rung on the line above the box | the same one step, the same six stops, and it lights under the pointer first |
 | `/effort` (or `/thinking`, `/think`) | six rows — `auto` and the five rungs — with what each one buys and the one in force marked |
 | `/effort max` | that rung, outright |
 | `/effort auto` (or `/effort off`) | clears this conversation's rung and hands it back to whatever stands over it |
@@ -2008,15 +2010,43 @@ same three-second beat every place runs on, and it draws three things:
   read rather than fourteen cells in the corner. Its axis is **two dates**: the first bucket
   at the left, and at the right the last one, called `today` when it is today. There is no
   money on the axis — the money is the line above it;
-- **what ran it**, by the model and **the role it is bound to**, dearest first, each row with
-  a bar, its call count and its tokens. The role is the **crew binding** — `execution`,
-  `conversation`, `verification`, `naming`, `planning` — read from the settings as they
-  stand right now, and never the auxiliary word one call gave itself. That is the point of
-  the column: seeing that execution is most of the bill sends you to the one row that
-  changes it. A model that is on the bill and is bound to nothing today draws **no role word
-  at all**, and a model bound to two slots says both. A model is drawn by the word you say
-  out loud — `claude-opus-4-1`, not `anthropic/claude-opus-4-1` — which is the spelling
-  `/model`, the crew chips and the status line all use;
+- **which day was loudest**, as the last clause of that same head line:
+  `14 days came to $34.10 · 41.2M tokens · loudest day: $21.40 aug 20 (the-filings-sweep)`.
+  It had a row of its own between the chart and the first table, which is a sentence saying
+  what the line above it already says three facts of. On a narrower frame it gives up what
+  the day was mostly spent on — that name is a row of *by topic* a few lines below —
+  and then the clause altogether, before ever crowding `shift+↑ coarser` off the line: a
+  key that is not drawn is a key that does not work, so the sentence yields to the control.
+  **Both figures on this line are exact** — `$0.0068`, not the `$0.01` the tables floor to —
+  because a floor is a column's rule and a total in a sentence has nothing to line up with.
+  `/cost` and Settings→Spending say the same figure;
+- **one cut of the ledger at a time**, and its heading is the control that swaps them.
+  `by model` and `by topic` are the same money added up two ways — every dollar under one
+  heading is also a dollar under the other — so a page drawing both asked you to read one
+  bill twice. Walk the cursor onto the heading and it wears arrows: `← by topic →`.
+  **`←`, `→` and `enter` all step it**, and the ring wraps, so neither arrow is ever a key
+  that does nothing. The arrows are drawn only while the cursor is on that row, because `→`
+  on every other row of this place opens that row's verbs — a key is drawn where it is
+  bound — and the heading keeps its own colour in both states: the **band** is what says the
+  cursor is there, and the arrows say what the keys do. The foot names the cut the arrows
+  lead to. **An empty window keeps the control**, for the reason it keeps the window
+  header: paged back onto a quiet fortnight it is the only thing on the frame a key can act
+  on, and without it `by model` had no way back;
+- **by model**, dearest first and **walkable like any list here**, each row carrying
+  **the role it is bound to**, its call
+  count, its token volume and what it cost. The role stands **first after the name**,
+  because what a model *is* on this machine reads with the name it follows, while the
+  calls, the tokens and the money are three readings of one quantity and belong together.
+  It is the **crew binding** — `execution`, `conversation`, `verification`, `naming`,
+  `planning` — read from the settings as they stand right now, and never the auxiliary word
+  one call gave itself. That is the point of the column: seeing that execution is most of
+  the bill sends you to the one row that changes it. A model that is on the bill and is
+  bound to nothing today draws **no role word at all**, and a model bound to two slots says
+  both. The rows **open nothing** — a model is not a thing money was spent *on* — so the
+  foot over one keeps `→ the limits` and never promises `enter`; they are stops so that a
+  long table scrolls under the cursor. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
+  `anthropic/claude-opus-4-1` — which is the spelling `/model`, the crew chips and the
+  status line all use;
 - **a role slot with nothing bound to it** gets a row of its own under the models —
   `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
   is bound to planning" are opposite facts about the same blank. There is no figure on that
@@ -2025,24 +2055,104 @@ same three-second beat every place runs on, and it draws three things:
   model you are talking to and for no other; the five crew slots are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
-- **what it was for** — the three things money is ever spent on, because the ledger holds
-  three ids: a piece of work, a standing promise, or a conversation. The dearest three are
-  shown and the rest fold into one line. Work with **no id of its own** — the hands a reply
+- **by topic** — the three things money is ever spent on, because the ledger holds
+  three ids: a piece of work, a standing promise, or a conversation. **The dearest twenty
+  are shown** and the rest fold into one line — the body scrolls and the cursor carries the
+  window with it, so a long table costs a short terminal nothing. It showed three, which is
+  a headline rather than an answer to the question this page is for. Work with **no id of its own** — the hands a reply
   forks, the check that reads what a piece of work left — is on the row of the conversation
-  it belongs to, because that is the only name it has.
+  it belongs to, because that is the only name it has;
+- **by standing order** — the standing promises, under a heading and columns of their own,
+  **drawn with `by topic`**. A promise is one of the things money was *for*, so it is a
+  third heading rather than a third cut, and the control above it stays on `by topic`.
+  A promise's facts are not a task's: what you want of one is how often it went off and what
+  a single firing costs, so its row reads `repo-watch · 88 firings · $0.04 a run · $3.31`
+  rather than carrying a project and a kind word it has no use for.
+
+**A row gives up its words before its figure.** A long name or project pushes the fields
+behind it, but only as far as the cells the money needs: what gives way is the words, never
+the figure the row is read for. The project column is bounded where it is drawn as well as
+where it is measured, so a folder named `agentfield-control-plane-web-ui` reads
+`agentfield-control-plane-…` rather than shoving the money off the edge.
+
+**The money on every row of both tables is a column of cents.** A row that cost less than
+a cent reads `$0.01` — the smallest figure the column can say and still be read — rather
+than `$0.0068` or the words `under a cent`, both of which this page used to draw and
+neither of which a person can line up against the row above. It rounds up, so a window
+full of slivers can show rows that add to more than the heading above them; the heading,
+the `today` pointer line and the Spending tab all keep the exact arithmetic. A call that
+cost nothing has no row at all, which is the emptiness law and not a rounding.
+
+**The three headings are one set, and the tab already said `spend`.** They read `by model`,
+`by topic` and `by standing order` — four to eight cells each — and each says only which way
+that table cuts the money. They were sentences (`what ran it · by the model, and the role it
+was bound to`, `what it was for`, `what kept running · standing orders, and what a firing
+cost`), each naming the page's subject again before getting to the point. A heading in
+this set says how its table cuts the money and leaves the columns to say what they hold —
+the role, the calls and the tokens are all unnamed up there.
+
+**Every table on this page has four columns**, and they are the same four questions asked
+of the same money:
+
+| | | | | |
+| --- | --- | --- | --- | --- |
+| *by model* | the model | the role it is bound to | its calls · its tokens | what it cost |
+| *by topic* | the task or the conversation | `task` or `chat` | its project | what it cost |
+| *by standing order* | the standing order | its firings | what a firing cost | what it cost |
+
+**What a row *is* stands first, right after its name**; the figures stand together behind
+it. The kind word is `task` and `chat` — column words, not sentences. It read `a task` and
+`a conversation`, which is how prose names those things and twice what a column needs.
+
+**The name is left-aligned and everything else is pushed right and right-aligned.** What a
+row is *about* is read from the left, where your eye already is; what it *cost*, how many
+calls it took and what it was bound to are read by comparing them with the row above, and a
+comparison is made on a figure's right-hand edge. So the facts travel together in one block
+and the names run out to meet them. The call count keeps its unit word — `9,400 calls` —
+because the page has no header row; the token column does not, since `3.2B` beside
+`128,400 calls` is already plainly a different kind of number.
+
+**That block ends where the chart above it ends** — the `today` point, with the last
+bucket's date already standing under it. The money used to be flushed to the frame, which
+on a wide terminal put the one figure every row is read for forty cells away from the counts
+it belongs with. A window zoomed so far in that its chart is only a few cells wide falls
+back to the frame, because a table has to be drawn somewhere.
+
+**There used to be a bar beside every model**, its share of the dearest one. It is gone: the
+list is sorted dearest first and every row says what it cost, which is the same comparison
+in figures you can also subtract — and the bar cost a reserved column, plus a second
+reservation in front of it so a role word on one row could not push it out of line.
+
+A name column is the width of what it holds and is **never squeezed** to keep a field behind
+it; a name wider than its column keeps every cell of itself and starts the next field one
+space late. On a frame too narrow for the whole table, **whole fields go** in order of what
+they are worth — the token volume first, then the role, then the calls; the kind word before
+the project — never a figure with its tail cut off, and never the money. Where a field
+*stands* and what it is *worth* are two different questions: the kind word leads the block
+and is still the first thing given up.
+
+**Figures are written the same way wherever they appear.** Money over a thousand carries the
+mark — `$4,210.55`, and a limit `$50,000` — and so do call and firing counts: `128,400 calls`. Token
+volumes climb `842`, `12.4k`, `1.2M`, `3.2B`, one decimal and no more, so a number never
+keeps a unit it has outgrown.
 
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
 already reading — the project's own index of what it ran, and the standing store — to put a
 name on the row. A thing neither of them knows keeps its id.
 
-**`enter` on a row of "what it was for" opens what it was for**: a task goes to the tasks
-place, a standing promise to the standing place, a conversation to home.
-
-**The loudest day is a row like those.** It reads
-`aug 20 was the loudest day — $21.40, the-filings-sweep` with the door out at its right —
-`enter opens it in tasks`, or `in tasks` on a narrower frame, or nothing at all where the
-sentence needs the whole row. `enter` on it opens that thing, exactly as it does on the rows
-under *what it was for*.
+**`enter` on any row under "by topic" or "by standing order" opens the thing itself**, and
+the foot says so on every row that is a door — `enter opens what spent it`. The headings
+said it too for a while; the heading over the cut is the control that swaps cuts now, and
+a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the tasks place, with the list
+behind it parked on that row; a standing promise opens the standing place **on that
+order**; and a conversation **opens** — brought forward if this terminal already has it,
+otherwise opened beside the one you are in, with all of that door's refusals (a folder that
+has since gone says so). A task is found by the pair that identifies one, **its id and the
+conversation that ran it**, because ids restart with every conversation — two conversations
+each holding a task `7` are two different pieces of work. A row whose thing the record no
+longer holds refuses where it stands: `that piece of work is not on this machine any more`,
+or `that conversation is not on this machine any more`. It used to open the *place* and leave you to find your own row, and
+a conversation went to home rather than into the conversation.
 
 **There is no budget editor here and there will not be one.** The page answers *what did it
 cost*; *what may it spend* is the Spending tab, and this page **points** at it rather than
@@ -2077,7 +2187,9 @@ Time is two questions, so it gets two arrow axes and no letters:
 | `shift+↑` | coarser — a fortnight of days becomes a fortnight of weeks, then of months |
 | `shift+↓` | finer, the exact inverse |
 
-The window opens on **the last 14 days, by the day**. The label between the arrows is the
+The cut of the ledger is its own control and has nothing to do with time: walk onto the
+heading and `←`/`→` swap `by topic` for `by model`. The window opens on **the last 14 days,
+by the day**. The label between the arrows is the
 reading and the control at once, and the same head row is drawn on the tasks place and the
 standing place. A terminal too narrow to draw the control has no window there at all — the
 keys do nothing rather than moving something nothing on screen reports — and the zoom keys

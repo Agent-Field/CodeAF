@@ -83,6 +83,13 @@ func standByNextDue(views []StandingItemView) {
 // THE APPOINTMENT OUTRANKS THE CADENCE, because "in 2h" is the thing a person
 // is deciding with and "every weekday at 9" is how it got there. It is shared by
 // the project band and the machine's watchlist for [standByNextDue]'s reason.
+//
+// AND A WATCH THAT HAS LOOKED SAYS WHEN IT LOOKED, not when it will look again
+// (owner, 2026-09-15). A probe on a five-minute clock is always about to be due,
+// so `in now` beside it said nothing a person could use, and beside a
+// description of what it found the honest time is the one the finding is as
+// old as: `checked 3m ago`. A watch that has never looked still says when it
+// first will.
 func standWhenClause(item standing.Item, now time.Time) string {
 	// AND A RULE IS ASKED BEFORE THE CLOCK IS. A hold has no NextDue and never
 	// will, so every clause below it would fall through to whatever cadence words
@@ -91,11 +98,14 @@ func standWhenClause(item standing.Item, now time.Time) string {
 	if item.When.Kind == standing.WhenHold {
 		return standHoldsWord
 	}
+	switch item.When.Kind {
+	case standing.WhenProbe, standing.WhenFile, standing.WhenIdle:
+		if !item.LastChecked.IsZero() {
+			return "checked " + sinceAt(item.LastChecked, now) + " ago"
+		}
+	}
 	if !item.NextDue.IsZero() {
 		return "in " + nextUpAge(item.NextDue.Sub(now))
-	}
-	if item.When.Kind == standing.WhenProbe && !item.LastChecked.IsZero() {
-		return "checked " + sinceAt(item.LastChecked, now) + " ago"
 	}
 	return strings.TrimSpace(item.When.Words)
 }

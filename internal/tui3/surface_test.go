@@ -100,12 +100,11 @@ func TestReplayDrawsOnlyTheTail(t *testing.T) {
 // ── 2. ctrl+c ───────────────────────────────────────────────────────────────
 //
 // THE RULE THESE TESTS PIN: mid-turn ctrl+c is the interrupt and nothing else;
-// at rest it takes TWO presses inside [quitArmWindow] to leave, and the first
-// one says so in the hint slot (quitarm.go).
+// at rest it is the door, on the press that lands, with the draft and everything
+// parked above it written down on the way out (leaving.go).
 
-// quitting is a surface with a pinned clock, so the arm window can be walked
-// rather than waited out.
-func quitting(t *testing.T, agent Agent) (*app, func(time.Duration)) {
+// quitting is a surface with a pinned clock and a legend wide enough to read.
+func quitting(t *testing.T, agent Agent) *app {
 	t.Helper()
 	a := newTestApp(agent)
 	// Wide enough for the legend to carry its hint slot at all: under hudTight
@@ -113,11 +112,7 @@ func quitting(t *testing.T, agent Agent) (*app, func(time.Duration)) {
 	a.width = 100
 	now := time.Now()
 	a.clock = func() time.Time { return now }
-	return a, func(d time.Duration) {
-		now = now.Add(d)
-		// The frame clock is what runs the window down — no goroutine of its own.
-		drive(t, a, frameMsg{})
-	}
+	return a
 }
 
 // quitCmd presses ctrl+c and hands back whatever command came of it, without
@@ -136,11 +131,11 @@ func isQuit(cmd tea.Cmd) bool {
 	return quit
 }
 
-func TestCtrlCInterruptsAWorkingTurnAndTakesTwoPressesAtRest(t *testing.T) {
+func TestCtrlCInterruptsAWorkingTurnAndQuitsAtRest(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
 	}}}
-	a, _ := quitting(t, agent)
+	a := quitting(t, agent)
 	typeLine(t, a, "long one")
 	if a.state != stateWorking {
 		t.Fatalf("state is %v, want working", a.state)
@@ -156,10 +151,6 @@ func TestCtrlCInterruptsAWorkingTurnAndTakesTwoPressesAtRest(t *testing.T) {
 	if agent.closes != 0 {
 		t.Fatal("ctrl+c mid-turn closed the session")
 	}
-	// AND IT DID NOT ARM. The press was aimed at the model and it hit the model.
-	if a.quitArmed() {
-		t.Fatal("an interrupting ctrl+c armed the door")
-	}
 	// AND THE STATUS LINE SAYS THE STOP LANDED. It is asked of the line rather
 	// than of the whole frame, which is what this assertion always meant to say:
 	// the stop's own note is in the transcript on the same frame, so a search
@@ -168,115 +159,43 @@ func TestCtrlCInterruptsAWorkingTurnAndTakesTwoPressesAtRest(t *testing.T) {
 		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
-	// At rest the first press arms and says so, and nothing closes. It returns
-	// the frame clock rather than nothing — the window has an end to reach — so
-	// what is asserted is that it is not the DOOR.
-	if cmd := quitCmd(a); isQuit(cmd) {
-		t.Fatal("the first ctrl+c at rest quit")
-	}
-	if !a.quitArmed() {
-		t.Fatal("the first ctrl+c at rest did not arm the door")
-	}
-	if agent.closes != 0 {
-		t.Fatalf("the first ctrl+c closed the agent (%d)", agent.closes)
-	}
-	if got := a.hintWord(); got != quitArmWord {
-		t.Fatalf("hint slot = %q, want %q", got, quitArmWord)
-	}
-	if got := plain(frame(a)); !strings.Contains(got, quitArmWord) {
-		t.Fatalf("the armed frame does not say so:\n%s", got)
-	}
-
-	// The second press inside the window is the door.
+	// And at rest the very next press is the door.
 	if cmd := quitCmd(a); !isQuit(cmd) {
-		t.Fatal("the second ctrl+c inside the window has to quit")
+		t.Fatal("ctrl+c at rest did not quit")
 	}
 	if agent.closes != 1 {
 		t.Fatalf("ctrl+c closed the agent %d times", agent.closes)
 	}
 }
 
-// THE TWO-TAP MID-TURN IS THE DEFECT THIS WAVE EXISTS FOR: press it again,
-// harder, because the first one did not seem to land. It stops the model and
-// then arms — and it must not leave.
-func TestADoubleTapMidTurnInterruptsAndArmsWithoutQuitting(t *testing.T) {
+// THE TWO-TAP MID-TURN LEAVES, and that is the price of a door that answers on
+// the first press: the first ctrl+c stops the model, the state settles on the
+// spot, and a second press struck out of habit — again, harder, because the
+// first did not seem to land — is read at rest and is the way out. Nothing is
+// lost by it (the draft and everything parked go to disk below), and the
+// alternative was asking for a second press from everybody, forever.
+func TestADoubleTapMidTurnStopsTheModelAndThenLeaves(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
 	}}}
-	a, _ := quitting(t, agent)
+	a := quitting(t, agent)
 	typeLine(t, a, "long one")
 
 	if cmd := quitCmd(a); cmd != nil {
 		t.Fatal("the first ctrl+c mid-turn returned a command")
 	}
-	if cmd := quitCmd(a); isQuit(cmd) {
-		t.Fatal("a double-tap mid-turn quit — the second press has to arm, not leave")
-	}
-	if !a.quitArmed() {
-		t.Fatal("the second press of the double-tap did not arm the door")
-	}
-	if agent.closes != 0 {
-		t.Fatalf("a double-tap mid-turn closed the agent (%d)", agent.closes)
-	}
 	if agent.stops != 1 {
-		t.Fatalf("the second press interrupted a turn that was already stopped (%d)", agent.stops)
+		t.Fatalf("the first press interrupted %d times", agent.stops)
+	}
+	if cmd := quitCmd(a); !isQuit(cmd) {
+		t.Fatal("the second press at rest did not take the door")
 	}
 }
 
-// A WINDOW THAT LAPSES TAKES THE MEANING WITH IT: the next press arms again
-// rather than leaving, and the hint slot has already let go of the sentence.
-func TestTheQuitArmLapsesAndTheNextPressArmsAgain(t *testing.T) {
-	agent := &fakeAgent{model: "m"}
-	a, advance := quitting(t, agent)
-
-	if cmd := quitCmd(a); isQuit(cmd) {
-		t.Fatal("the first ctrl+c quit")
-	}
-	advance(quitArmWindow + time.Millisecond)
-	if a.quitArmed() || !a.quitArm.IsZero() {
-		t.Fatal("the arm survived its window")
-	}
-	if got := a.hintWord(); got == quitArmWord {
-		t.Fatal("the hint slot still offers the door after the window lapsed")
-	}
-
-	if cmd := quitCmd(a); isQuit(cmd) {
-		t.Fatal("a press after the window quit instead of arming again")
-	}
-	if !a.quitArmed() {
-		t.Fatal("the press after the window did not re-arm")
-	}
-	if agent.closes != 0 {
-		t.Fatalf("a lapsed window still closed the agent (%d)", agent.closes)
-	}
-}
-
-// ANY OTHER KEY ANSWERS THE QUESTION. A person who armed the door and then went
-// on typing has said no.
-func TestAnotherKeyDisarmsTheDoor(t *testing.T) {
-	agent := &fakeAgent{model: "m"}
-	a, _ := quitting(t, agent)
-
-	quitCmd(a)
-	if !a.quitArmed() {
-		t.Fatal("the first ctrl+c did not arm the door")
-	}
-	drive(t, a, key("a"))
-	if a.quitArmed() {
-		t.Fatal("a keystroke left the door armed underneath it")
-	}
-	if cmd := quitCmd(a); isQuit(cmd) {
-		t.Fatal("ctrl+c after another key quit on the first press")
-	}
-	if agent.closes != 0 {
-		t.Fatalf("the agent was closed (%d)", agent.closes)
-	}
-}
-
-// THE MODAL STAYS UP. ctrl+c is read above every overlay — leaving is never
-// modal — so the first press arms without closing anything, and the hint slot
-// says the door's word rather than the overlay's keys.
-func TestCtrlCWithTheModelPickerUpArmsWithoutClosingIt(t *testing.T) {
+// THE MODAL STAYS OUT OF THE WAY. ctrl+c is read above every overlay — leaving
+// is never modal — so it leaves with the picker up rather than being spent on
+// closing it.
+func TestCtrlCWithTheModelPickerUpQuits(t *testing.T) {
 	agent := &fakeAgent{model: "openai/gpt-4.1-mini"}
 	a := pickerApp(t, agent, pickerCatalog)
 	now := time.Now()
@@ -287,32 +206,23 @@ func TestCtrlCWithTheModelPickerUpArmsWithoutClosingIt(t *testing.T) {
 		t.Fatal("/model did not open the picker")
 	}
 
-	if cmd := quitCmd(a); isQuit(cmd) {
-		t.Fatal("ctrl+c over the picker quit on the first press")
-	}
-	if !a.pick.open {
-		t.Fatal("ctrl+c closed the picker instead of arming the door")
-	}
-	if !a.quitArmed() {
-		t.Fatal("ctrl+c over the picker did not arm the door")
-	}
-	if got := a.hintWord(); got != quitArmWord {
-		t.Fatalf("hint slot = %q, want the door's word %q", got, quitArmWord)
-	}
-
 	if cmd := quitCmd(a); !isQuit(cmd) {
-		t.Fatal("the second ctrl+c over the picker has to quit")
+		t.Fatal("ctrl+c over the picker did not quit")
+	}
+	if agent.closes != 1 {
+		t.Fatalf("ctrl+c over the picker closed the agent %d times", agent.closes)
 	}
 }
 
-// A TURN THAT FINISHED BETWEEN THE TWO PRESSES DOES NOT SHORTEN THE ROAD OUT.
+// A TURN THAT FINISHED A MOMENT AGO STILL TAKES ITS PARKED MESSAGES WITH IT.
 // session.EventTurnDone flips the state to idle one Update cycle before the
-// stream close drains what is parked, and a press landing in that gap used to
-// leave and take the parked message with it.
-func TestATurnFinishingBetweenPressesStillNeedsTheSecond(t *testing.T) {
-	a, agent := streaming(t, "reading the tree. ")
+// stream close drains what is parked, and a press landing in that gap leaves —
+// so what was parked has to be on disk rather than dropped on the floor.
+func TestAQuitInTheGapAtTheEndOfATurnKeepsWhatWasParked(t *testing.T) {
+	a, _ := streaming(t, "reading the tree. ")
 	now := time.Now()
 	a.clock = func() time.Time { return now }
+	a.draftFile = filepath.Join(t.TempDir(), "drafts", "one")
 	parkLine(t, a, "do much more of a deep research please")
 	if len(a.parks) != 1 {
 		t.Fatalf("the second message was not parked: %+v", a.parks)
@@ -325,17 +235,11 @@ func TestATurnFinishingBetweenPressesStillNeedsTheSecond(t *testing.T) {
 		t.Fatal("the turn did not settle — this test is not standing in the gap it is about")
 	}
 
-	if cmd := quitCmd(a); isQuit(cmd) {
-		t.Fatal("a press in the gap at the end of a turn quit on the first press")
-	}
-	if len(a.parks) != 1 {
-		t.Fatalf("the parked message was lost: %+v", a.parks)
-	}
-	if agent.closes != 0 {
-		t.Fatalf("the agent was closed (%d)", agent.closes)
-	}
 	if cmd := quitCmd(a); !isQuit(cmd) {
-		t.Fatal("the second press has to quit")
+		t.Fatal("a press in the gap at the end of a turn did not quit")
+	}
+	if kept := readDraft(a.draftFile); !strings.Contains(kept, "do much more of a deep research please") {
+		t.Fatalf("the parked message was lost on the way out, draft is %q", kept)
 	}
 }
 
@@ -360,48 +264,6 @@ func TestQuitFoldsParkedMessagesIntoTheDraft(t *testing.T) {
 	}
 }
 
-// WHAT THE SECOND PRESS WOULD STOP IS NAMED BEFORE IT HAPPENS — and named
-// NOTHING when nothing is running, which is the emptiness law.
-func TestTheArmedHintNamesRunningWorkAndOnlyWhenThereIsSome(t *testing.T) {
-	agent := &fakeAgent{model: "m"}
-	a, _ := quitting(t, agent)
-
-	if got := quitStoppingWord(a); got != "" {
-		t.Fatalf("an idle surface named %q as running work", got)
-	}
-	if got := a.quitHint(); got != quitArmWord {
-		t.Fatalf("the armed hint is %q with nothing running, want %q", got, quitArmWord)
-	}
-
-	a.tasks = map[uint64]*taskNode{
-		1: {id: 1, state: session.TaskRunning},
-		2: {id: 2, state: session.TaskRunning},
-	}
-	a.taskOrder = []uint64{1, 2}
-	if got := quitStoppingWord(a); got != "2 tasks" {
-		t.Fatalf("two running tasks are %q", got)
-	}
-
-	a.taskOrder = []uint64{1}
-	if got := quitStoppingWord(a); got != "a task" {
-		t.Fatalf("one running task is %q, want the article rather than the digit", got)
-	}
-	if got := a.quitHint(); got != quitArmWord+" · a task will stop" {
-		t.Fatalf("the armed hint is %q", got)
-	}
-
-	// And a background job counts on the same terms, from the number the frame
-	// already draws (render.go's ambient segment).
-	a.entries = append(a.entries, entry{
-		kind: entryTool, tool: "bash", status: toolOK,
-		detail: toolDetail{Args: `{"command":"serve","background":"true"}`, Output: "job 1 started"},
-	})
-	a.hudStale = true
-	if got := quitStoppingWord(a); got != "a task and a job" {
-		t.Fatalf("a task and a job are %q", got)
-	}
-}
-
 func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab"})
 	a.width, a.height = 90, 30
@@ -409,20 +271,20 @@ func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	// THE EXIT IS TAUGHT AFTER THE ENTRANCE (welcome.go's [app.dismissWelcome]):
 	// the greeting's frame carries no line about leaving, and the line lands the
 	// moment the conversation begins.
-	if strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c twice quits") {
+	if strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("the greeting teaches the way out before the way in:\n%s", plain(frame(a)))
 	}
 	drive(t, a, key("h"))
 	// IT HAS TO BE TRUE ON THAT FRAME, where nothing is running: esc is the
-	// interrupt when there is a turn, and ctrl+c takes two presses always.
-	if !strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c twice quits") {
+	// interrupt when there is a turn, and ctrl+c at rest always leaves.
+	if !strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("the hint has to name both doors truthfully:\n%s", plain(frame(a)))
 	}
 	// And a session that opens on a transcript gets it on its first frame.
 	resumed := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m", past: []session.DisplayEntry{{Role: "user", Text: "hi"}}},
 		Workspace: "/tmp/lab", Resumed: true})
 	resumed.width, resumed.height = 90, 30
-	if !strings.Contains(plain(frame(resumed)), "esc interrupts · ctrl+c twice quits") {
+	if !strings.Contains(plain(frame(resumed)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("a resumed session lost its opening line:\n%s", plain(frame(resumed)))
 	}
 	if !strings.Contains(helpText("", chordSpelling{}), "alt+enter") {
@@ -973,7 +835,7 @@ func TestHelpPrintsTheAliasesFromTheSameTable(t *testing.T) {
 	// One source, two renderings: every row's tail is the same string the list
 	// draws from ([command.note]).
 	for _, c := range commands {
-		if !strings.Contains(text, c.note()) {
+		if !strings.Contains(text, c.note(chordSpelling{meta: chordAltWord})) {
 			t.Fatalf("help lost the tail of /%s:\n%s", c.name, text)
 		}
 	}

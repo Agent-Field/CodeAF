@@ -142,7 +142,7 @@ http_get() {
 }
 
 api_problem() {
-  fail "GitHub's API could not be reached or refused (a rate limit?); pin VERSION=<tag>, or export GITHUB_TOKEN to raise the limit"
+  fail "GitHub's API could not be reached or refused (a rate limit, or a repository you cannot read?); pin VERSION=<tag>, or export GITHUB_TOKEN"
 }
 
 release_api_get() {
@@ -166,6 +166,64 @@ extract_tags() {
     sed -E 's/^"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)"$/\1/'
 }
 
+# GitHub's release-list order is not publish order, so the LAW carries each tag's own timestamp into channel selection.
+extract_dated_tags() {
+  awk '
+    {
+      if (NR > 1) {
+        json = json "\n"
+      }
+      json = json $0
+    }
+    END {
+      tag_pattern = "\"tag_name\"[ \t]*:[ \t]*\"[^\"]*\""
+      published_pattern = "\"published_at\"[ \t]*:[ \t]*\"[^\"]*\""
+      created_pattern = "\"created_at\"[ \t]*:[ \t]*\"[^\"]*\""
+      while (match(json, tag_pattern)) {
+        tag_field = substr(json, RSTART, RLENGTH)
+        tail = substr(json, RSTART + RLENGTH)
+        if (match(tail, tag_pattern)) {
+          segment = substr(tail, 1, RSTART - 1)
+          json = substr(tail, RSTART)
+        } else {
+          segment = tail
+          json = ""
+        }
+
+        tag = tag_field
+        sub(/^"tag_name"[ \t]*:[ \t]*"/, "", tag)
+        sub(/"$/, "", tag)
+
+        # Only fields before assets belong to the release itself.
+        release_fields = segment
+        if (match(release_fields, /"assets"[ \t]*:/)) {
+          release_fields = substr(release_fields, 1, RSTART - 1)
+        }
+        published = ""
+        if (match(release_fields, published_pattern)) {
+          published = substr(release_fields, RSTART, RLENGTH)
+          sub(/^"published_at"[ \t]*:[ \t]*"/, "", published)
+          sub(/"$/, "", published)
+        }
+        created = ""
+        if (match(release_fields, created_pattern)) {
+          created = substr(release_fields, RSTART, RLENGTH)
+          sub(/^"created_at"[ \t]*:[ \t]*"/, "", created)
+          sub(/"$/, "", created)
+        }
+        stamp = published
+        if (stamp == "") {
+          stamp = created
+        }
+        if (stamp == "") {
+          stamp = "-"
+        }
+        print stamp " " tag
+      }
+    }
+  ' "$1"
+}
+
 release_file="$TMP_ROOT/release.json"
 if [[ -n "$VERSION" ]]; then
   TAG="$VERSION"
@@ -186,16 +244,18 @@ else
         api_problem
       fi
       TAG=""
-      while IFS= read -r candidate; do
-        if [[ "$CHANNEL" == "rc" && "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]]; then
-          TAG="$candidate"
-        elif [[ "$CHANNEL" == "dev" && "$candidate" == dev-* ]]; then
-          TAG="$candidate"
-        elif [[ "$CHANNEL" == "staging" && "$candidate" == staging-* ]]; then
-          TAG="$candidate"
+      TAG_STAMP=""
+      # GitHub's list order is not publish order, so the LAW chooses a matching candidate by its own release timestamp.
+      while IFS=' ' read -r stamp candidate; do
+        if [[ "$CHANNEL" == "rc" && "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]] ||
+          [[ "$CHANNEL" == "dev" && "$candidate" == dev-* ]] ||
+          [[ "$CHANNEL" == "staging" && "$candidate" == staging-* ]]; then
+          if [[ -z "$TAG" || "$stamp" > "$TAG_STAMP" ]]; then
+            TAG="$candidate"
+            TAG_STAMP="$stamp"
+          fi
         fi
-        [[ -z "$TAG" ]] || break
-      done < <(extract_tags "$list_file")
+      done < <(extract_dated_tags "$list_file")
       if [[ -z "$TAG" ]]; then
         fail "no $CHANNEL build has been published yet"
       fi
