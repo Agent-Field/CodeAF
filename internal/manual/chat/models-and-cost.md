@@ -341,7 +341,8 @@ They are all open-weight models, and none of them is the model you are talking t
 that followed your conversation would put the most expensive model in the build on the
 cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
 agreed to. Closed models that are cheaper on their own vendor's platform than through the
-router are deliberately not in any preset; you can still pin one on any row.
+router are not in any open-family preset; the `all` family is where they are, and you
+can still pin one on any row.
 You can also connect that vendor yourself as a direct service; the
 [services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
@@ -368,7 +369,7 @@ Two of the columns spend differently here. The worker is the same model in `frug
 `balanced`, and only `max` buys the frontier coder, because on the catalog the coding ceiling is
 the one expensive step. What `frugal` to `balanced` buys instead is the careful seat and a
 smarter mastermind. The `max` mastermind sits on the worker's own model on purpose: it is the
-catalog's ceiling, so the top seat adds generation behavior rather than a bigger model.
+catalog's ceiling, so there is no bigger planner to buy above it.
 
 **Why the open ids.** They were picked off the catalog's own published scores (OpenRouter
 republishes Artificial Analysis's coding and agentic indexes on every model row) against

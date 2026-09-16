@@ -240,10 +240,9 @@ func TestTheCarefulSeatIsAlwaysASecondVendorInEveryFamily(t *testing.T) {
 	}
 }
 
-// THE ALL FAMILY IS LOCKED, not derived: the ids are the ones the decision
-// settled on, and this is the page that says so. A wrong id here is a person's
-// bill, and a silent rewrite of the locked table would be a decision made by a
-// diff.
+// THE ALL FAMILY IS LOCKED, not derived: this is the page that says which ids
+// the three words mean. A wrong id here is a person's bill, and a silent
+// rewrite of the locked table would be a decision made by a diff.
 func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 	want := map[string]map[string]string{
 		CrewFrugal: {

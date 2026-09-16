@@ -99,9 +99,10 @@ const DefaultCrewSource = CrewSourceOpen
 // a dial.
 //
 // Every id is an open-weight model, picked off the catalog's own published
-// scores against blended price on 2026-09-01 (settings.go's DefaultWorkerModel
-// says how); the closed models that are cheaper on their own vendor's platform
-// than through the router are deliberately not here.
+// scores against blended price, most recently on 2026-09-16 (settings.go's
+// DefaultWorkerModel says how). No closed model is here: the open family is the
+// shelf that has to stand on price alone, and the `all` family is where a closed
+// model goes.
 var crewModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
@@ -141,8 +142,7 @@ var crewModels = map[string]map[string]string{
 // frugal-to-balanced buys here is the careful seat (gemini-3.8-flash to
 // claude-opus-5) and a smarter mastermind, not a dearer worker. And max's
 // mastermind sits on the worker's own model on purpose: fable-5.1 is the
-// catalog's ceiling, so there is no better planner to buy above it and the top
-// seat adds generation behavior, not a bigger model.
+// catalog's ceiling, so there is no better planner to buy above it.
 var crewAllModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "google/gemini-2.5-flash",
@@ -322,6 +322,43 @@ func ApplyCrew(profileDir, preset string) error {
 	return writeProfileValues(profileDir, values)
 }
 
+// ApplyCrewUnder writes a FAMILY AND A PRESET AS ONE DECISION, IN ONE FILE
+// WRITE. The family row and the five tier rows are one state, so writing them
+// apart leaves a window in which a reader sees the family set to `all` while the
+// rows still hold open ids — the half-written crew [ApplyCrew] forbids, read as
+// `custom` about a state nobody chose. One call is also what makes the chooser's
+// promise real: it writes the family first because the resolution reads it, and
+// here there is no "first" for a reader to catch.
+//
+// The family row rides along ONLY WHEN IT CHANGES, so an enter that keeps the
+// family does not pin a setting the person never answered: a profile that never
+// touched /crew stays free to follow a later default.
+func ApplyCrewUnder(profileDir, source, preset string) error {
+	source = strings.ToLower(strings.TrimSpace(source))
+	known := ""
+	for _, word := range CrewSources {
+		if source == word {
+			known = word
+		}
+	}
+	if known == "" {
+		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
+	}
+	preset = strings.ToLower(strings.TrimSpace(preset))
+	models, ok := CrewModelsForSource(known, preset)
+	if !ok {
+		return fmt.Errorf("pick one of: %s", strings.Join(CrewPresets, ", "))
+	}
+	values := make(map[string]any, len(models)+1)
+	for tier, model := range models {
+		values[tierKeyFor(tier)] = model
+	}
+	if known != CrewSourceAt(profileDir) {
+		values[KeyCrewSource] = known
+	}
+	return writeProfileValues(profileDir, values)
+}
+
 // writeCrew is the row's writer: the same refusal wording every choice row uses,
 // and then the atomic write.
 func writeCrew(profileDir, raw string) error {
@@ -380,7 +417,7 @@ func CrewClasses(profileDir string) string {
 // CrewClassModels is the three ids [CrewClasses] names, in that order and
 // without the role words in front of them:
 //
-//	glm-5.3, glm-5.3-flash, qwen3.8-27b
+//	kimi-k3, glm-5.3-flash, kimi-k3
 //
 // It exists because a surface drawing the crew line has to be able to say which
 // runs of it are the ANSWER — the ids a person typed /crew to change — and which
