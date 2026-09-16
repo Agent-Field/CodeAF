@@ -1009,9 +1009,8 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelT
 //
 // The ids are OPEN-WEIGHT MODELS, chosen off the catalog's own published
 // scores (OpenRouter republishes Artificial Analysis's coding and agentic
-// indexes on every row) against the blended price (crew.go's crewModels comment owns the date). The low
-// row is
-// pinned to a DATED build on purpose: the bare `deepseek/deepseek-v4-flash` id
+// indexes on every row) against the blended price (crew.go's crewModels comment
+// owns the date). The low row is pinned to a DATED build on purpose: the bare `deepseek/deepseek-v4-flash` id
 // resolves to the April build, and the July build at the same price scores
 // thirteen coding points higher.
 const (
@@ -3801,7 +3800,8 @@ func defaultTierModel(profileDir, tier string) string {
 	return builtinTierModel(tier)
 }
 
-// builtinTierModel is the build's own five, for a tier no family table names.
+// builtinTierModel is the build's own five. It is reachable only for a tier word
+// no family table holds, because both tables answer every tier this build knows.
 func builtinTierModel(tier string) string {
 	switch tier {
 	case ModelTierReflex:
