@@ -505,12 +505,19 @@ than anything this conversation did: every window, every task and every standing
 this machine writes into that one ledger, including a session opened from another machine
 over `--host` whose calls are still made here. For this session alone, ask `/cost`.
 
-Three blocks: the window with its sparkline, `what ran it` by the model and the role that
-model is **bound** to, and `what it was for`. `enter` on a row of the last one opens the
-thing the money went on — a task, a standing promise, or a conversation. The first three
-are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer` folds them
-back. The cursor arrives on the first of them — the biggest thing the money went on. `shift+←` and `shift+→` move the window by its own length;
-`shift+↑` and `shift+↓` change how coarse it is.
+The window with its sparkline, and then **one cut of the ledger**: `by topic` — what the
+money was for — or `by model`, which is the same money added up the other way. The heading
+is the control that swaps them: walk the cursor onto it and it wears arrows, `← by topic →`,
+and `←`, `→` or `enter` step between the two. It opens on `by topic`. Standing orders get a
+heading of their own under that cut, because a promise is one of the things money was for.
+
+`enter` on a row of `by topic` opens the thing the money went on — a task opens its own
+record card, a standing promise opens the standing place on that order, and a conversation
+opens where you left it. A thing the record no longer holds says so and stays put. The
+dearest twenty are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer`
+folds them back. The cursor arrives on the first of them — the biggest thing the money went
+on. `shift+←` and `shift+→` move the window by its own length; `shift+↑` and `shift+↓`
+change how coarse it is.
 
 **There is nothing to set here, and the page says where to go instead.** Its first line is
 one dim pointer — `today $3.42 of $500 · /budget sets the limits` — and `enter` on that line

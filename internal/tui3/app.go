@@ -7903,7 +7903,7 @@ func stopDetachedNote(spend session.Usage) string {
 	if spend.CostUSD <= 0 {
 		return stopDetachedWord
 	}
-	return stopDetachedWord + " — it spent " + spendMoneyWord(spend.CostUSD)
+	return stopDetachedWord + " — it spent " + spendSliverWord(spend.CostUSD)
 }
 
 // stopDetachedWord is what a detached turn is called, once, wherever it is
@@ -9025,8 +9025,29 @@ func dollars(usd float64) string {
 	case usd < 0.01:
 		return subCent(usd)
 	default:
-		return fmt.Sprintf("$%.2f", usd)
+		return groupedDollars(usd)
 	}
+}
+
+// groupedDollars is an amount of a cent or more, with its thousands marked.
+//
+// A FIGURE IN THE THOUSANDS IS READ BY ITS GROUPS AND NOT BY COUNTING DIGITS.
+// `$12491.05` takes a second look to tell from `$1249.10`, and the second look
+// is the whole cost: these figures are met in passing, on a status line and
+// down a column. The spend place made the case plainest by drawing `128,400
+// calls` and `$4210.55` on one row — the count grouped and the money not — so
+// the two halves of one row disagreed about how a number is written.
+//
+// IT GROUPS THE ALREADY-ROUNDED SPELLING ([groupDigits], placeprose.go), which
+// is the same mark [groupedInt] puts in a count. Rounding is done once, by the
+// format below, and the comma goes into the digits it produced.
+func groupedDollars(usd float64) string {
+	plain := fmt.Sprintf("%.2f", usd)
+	point := strings.IndexByte(plain, '.')
+	if point < 0 {
+		return "$" + groupDigits(plain)
+	}
+	return "$" + groupDigits(plain[:point]) + plain[point:]
 }
 
 // savedWord formats what a cache read was worth, and it is deliberately NOT
@@ -9044,12 +9065,19 @@ func savedWord(usd float64) string {
 	return fmt.Sprintf("$%.4f", usd)
 }
 
-// tokenWord is a token count at a glance: "842", "12.4k", "1.2M". One
+// tokenWord is a token count at a glance: "842", "12.4k", "1.2M", "3.2B". One
 // significant decimal and no more — the meter is read in passing, and a figure
 // that changes in its fourth digit every step is a figure nobody can read.
 //
 // The trailing ".0" is dropped so a round number is round: a 128k window is
 // "128k" and never "128.0k".
+//
+// THE LADDER GOES UP TO THE BILLION BECAUSE THE COUNTS DO. It stopped at the
+// million, so a fortnight of agent work came out of the spend place as
+// `7062.1M tokens` and one model's row as `3210M` — which is not a unit anybody
+// reads, it is a number with the wrong unit left on it, and it is exactly the
+// reading `1000.0k` was avoided for one rung lower. A person running a swarm
+// meets these figures on their first look at the page.
 func tokenWord(tokens int) string {
 	switch {
 	case tokens <= 0:
@@ -9057,11 +9085,14 @@ func tokenWord(tokens int) string {
 	case tokens < 1000:
 		return strconv.Itoa(tokens)
 	// 999_950 and not 1_000_000: one decimal rounds anything above it to
-	// "1000.0k", which is a figure with the wrong unit on it.
+	// "1000.0k", which is a figure with the wrong unit on it. Each rung above
+	// stops the same distance short of the next for the same reason.
 	case tokens < 999_950:
 		return trimUnit(float64(tokens)/1000, "k")
-	default:
+	case tokens < 999_950_000:
 		return trimUnit(float64(tokens)/1_000_000, "M")
+	default:
+		return trimUnit(float64(tokens)/1_000_000_000, "B")
 	}
 }
 

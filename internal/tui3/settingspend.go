@@ -177,14 +177,18 @@ func railSpell(value string) string {
 func railFigure(usd float64) string {
 	switch {
 	case usd == float64(int64(usd)):
-		return "$" + strconv.FormatInt(int64(usd), 10)
+		// A WHOLE LIMIT KEEPS ITS THOUSANDS MARK even though it keeps no pence:
+		// `$50,000` and `$5,000` are told apart at a glance and `$50000` and
+		// `$5000` are not, and a limit is a figure somebody checks in passing.
+		// It is the same mark the cost beside it wears ([groupDigits]).
+		return "$" + groupDigits(strconv.FormatInt(int64(usd), 10))
 	case usd < 0.01:
 		// AND A SUB-CENT LIMIT IS STILL A LIMIT. Two decimals turn a tenth of a
 		// cent into `$0.00`, which is the one reading this tab exists to never
 		// give: the figure a person typed rendered as its own opposite.
 		return subCent(usd)
 	}
-	return fmt.Sprintf("$%.2f", usd)
+	return groupedDollars(usd)
 }
 
 // moneyFloor is the smallest amount this surface writes as a figure: a

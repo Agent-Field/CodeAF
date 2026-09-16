@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── A PLACE THAT DOES NOT SAY ITS OWN KEYS IS LYING WITH SOMEBODY ELSE'S ─────
@@ -162,8 +164,8 @@ func TestTheSpendFootNamesTheKeysAPersonWouldPress(t *testing.T) {
 			bare, placeHintTail+" · esc")
 	}
 
-	// A row under the cursor: enter, the one verb, and the window.
-	a.spend.stops = []spendStop{{ok: true}}
+	// A row that opens something: enter, the one verb, and the window.
+	a.spend.stops = []spendStop{{ok: true, subject: session.SubjectSpend{Kind: session.SubjectTask, ID: "7"}}}
 	a.spend.cursor = 0
 	line := (placeSpend{}).hint(a)
 	for _, want := range []string{spendEnterWord, spendVerbLead + "the limits"} {
@@ -173,6 +175,19 @@ func TestTheSpendFootNamesTheKeysAPersonWouldPress(t *testing.T) {
 	}
 	if strings.Contains(line, "talk about it") || strings.Contains(line, "send it off as a task") {
 		t.Errorf("the spend foot still carries the router's default clauses: %q", line)
+	}
+
+	// AND A ROW THAT OPENS NOTHING IS NOT PROMISED A DOOR. The rows of `by model`
+	// are stops so that a long table scrolls under the cursor, and a model is not
+	// a thing money was spent ON — so the foot keeps the limits and drops the
+	// enter clause rather than naming a key that does nothing.
+	a.spend.stops = []spendStop{{ok: true}}
+	still := (placeSpend{}).hint(a)
+	if strings.Contains(still, spendEnterWord) {
+		t.Errorf("the spend foot promises a door on a row that has none: %q", still)
+	}
+	if !strings.Contains(still, spendVerbLead+"the limits") {
+		t.Errorf("the spend foot dropped the limits with the door: %q", still)
 	}
 }
 
