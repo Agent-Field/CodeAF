@@ -101,14 +101,25 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 		a.retireLandingQuestion(notice, standing)
 		return
 	}
-	if strings.TrimSpace(notice.Settling) != "" {
-		// THE ANSWER'S OWN WORK IN FLIGHT IS NOT A NEW QUESTION, so a notice
-		// naming a resolution in flight raises nothing — and withdraws
-		// nothing, leaving the standing map at the last DRAWN shape, which is
-		// exactly what a later shape-change withdrawal must take back. The
-		// settle's own terminal notice is not blanketed by this: resettle
-		// hands the claim back inside its locked write, before the notice is
-		// built (task_run.go's [TaskGraph.resettle]).
+	// THE ANSWER'S OWN WORK IN FLIGHT IS NOT A NEW QUESTION: a notice naming a
+	// resolution in flight raises nothing and withdraws nothing, leaving the
+	// standing map at the last DRAWN shape, which is exactly what a later
+	// shape-change withdrawal must take back. The settle's own terminal notice
+	// is not blanketed by this: resettle hands the claim back inside its
+	// locked write, before the notice is built (task_run.go's
+	// [TaskGraph.resettle]).
+	//
+	// A DECIDER CHANGE IS STILL A NEW FACT, and it survives the flight. `let
+	// codeaf decide this one` or `take it back` pressed while a re-audit runs
+	// changes who holds the decision — the ask's own shape — and a card drawing
+	// `codeaf is deciding` for the five minutes of the flight, after the person
+	// took it back, contradicts the person's own act. So a flight holds down
+	// only the moves that are the loop (#1077's re-raises with no new fact) —
+	// spend, heartbeat, done-phase — and lets a changed holder through to the
+	// redraw below, which carries the flight's own stamp (`accepted 18:20 ·
+	// still working on it`) so the person reads what they answered AND that it
+	// is still running.
+	if strings.TrimSpace(notice.Settling) != "" && !a.landingDeciderChanged(notice) {
 		return
 	}
 	q := a.landingQuestion(PendingDecision{Notice: notice})
@@ -172,6 +183,32 @@ func (a *Agent) retireLandingQuestion(notice TaskNotice, standing QuestionKind) 
 	a.emitQuestion(EventQuestionWithdrawn, gone, nil)
 }
 
+// landingDeciderChanged says the ask's own HOLDER moved while a resolution is
+// in flight over this node — the decision handed to codeaf, or taken back
+// ([TaskAsk.Owner], the one holder task-states keeps, dressed as the
+// question's Policy by [landingPolicy]). It is the one change a flight must
+// not hold down: every other fact the offer draws (effort, retarget) is
+// redrawn by the flight's own terminal notice, but a card saying `codeaf is
+// deciding` after the person took it back contradicts the person's own act
+// for as long as the flight runs.
+//
+// THE COMPARISON IS THE BANKED QUESTION'S OWN POLICY, read through
+// [Agent.questionSaid] — no second holder is minted here — against the holder
+// the notice carries. A flight whose holder did not move answers false, and
+// the flight goes on holding the question down.
+func (a *Agent) landingDeciderChanged(notice TaskNotice) bool {
+	kind := a.landingAsked(notice.ID)
+	if kind == "" {
+		return false
+	}
+	q, said := a.questionSaid(kind, strconv.FormatUint(notice.ID, 10))
+	if !said {
+		return false
+	}
+	status := ProjectTask(notice.StatusFacts())
+	return q.Policy != landingPolicy(status.Ask.Owner)
+}
+
 // landingQuestionToken is the string one landing question is known by, for a
 // caller holding the id and the shape rather than the object.
 func landingQuestionToken(kind QuestionKind, id uint64) string {
@@ -218,8 +255,23 @@ func landingAnsweredStamp(record DecisionRecord) string {
 		}
 	}
 	stamp := word + " " + record.At.Format("15:04")
-	if by := strings.TrimSpace(string(record.By)); by != "" && record.By != DecidedByPerson {
-		stamp = by + " " + stamp
+	// AND WHO ANSWERED, IN THE WORDS A PERSON READS — only when it was not
+	// this person. The record's own value is machinery vocabulary
+	// (answers.go's [DecidedBy]), and `window accepted 18:20` is a card a
+	// person reads; the lane's receipts already say these in plain words
+	// (`another window`, `the dial`), so the stamp says them the same way.
+	switch record.By {
+	case "", DecidedByPerson:
+		return stamp
+	case DecidedByWindow:
+		return "another window " + stamp
+	case DecidedByDial:
+		return "the dial " + stamp
+	case DecidedByRecord:
+		return "an earlier decision " + stamp
+	case DecidedByAsker:
+		return "the asker " + stamp
+	default:
+		return string(record.By) + " " + stamp
 	}
-	return stamp
 }
