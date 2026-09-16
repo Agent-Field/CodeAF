@@ -233,10 +233,10 @@ const AttributionTrailer = "Co-Authored-By: codeaf <agentfield-bot@users.noreply
 const AttributionSeparator = "—"
 
 // AttributionPullFooter is the one footer line on a pull request codeaf opens.
-const AttributionPullFooter = "Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author"
+const AttributionPullFooter = "Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author"
 
 // AttributionIssueFooter is the same line for an issue; only the medium differs.
-const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author"
+const AttributionIssueFooter = "Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author"
 
 // AttributionCommentFooter is the mark on a COMMENT — an issue comment, a pull
 // request comment, a review comment — and it is the quietest of the three on
@@ -261,7 +261,7 @@ const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.
 // the three cases it is never right for at all — a one-line reply, anything
 // inside a code or suggestion block, and words the person dictated, which are
 // theirs and not codeaf's to sign.
-const AttributionCommentFooter = "<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>"
+const AttributionCommentFooter = "<sub>drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>"
 
 // AttributionLaw IS THE ONE WORDING, AND IT IS ONE BECAUSE TWO SURFACES SAY IT.
 // The resident's leaf loop appends it to its standing contract
