@@ -122,14 +122,19 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 	if strings.TrimSpace(notice.Settling) != "" && !a.landingDeciderChanged(notice) {
 		return
 	}
-	// AND THE REDRAW TAKES THE STANDING CARD OFF THE BOOK FIRST, because
-	// [Agent.landingQuestion] returns banked words untouched ([Agent.said]):
-	// a holder change over a still-banked question would re-raise the OLD
-	// card — the standing shape, the standing policy — and change nothing. The
-	// take-down is the answer's own claim ([Agent.claimQuestion]), taken here by
-	// the one road that redraws without an answer, so the words minted below
-	// carry the new holder.
-	if strings.TrimSpace(notice.Settling) != "" && standing != "" {
+	// AND THE TAKE-DOWN COMES BEFORE EVERY MINT, because the raise's own law
+	// is that a node that moves while it is there raises it again WITH THE
+	// NEW SHAPE — and the bank holds the old one, [Agent.said] returning
+	// banked words untouched. Left standing, the bank would re-emit the old
+	// card verbatim: a flight stamp whose flight has ended, the old holder's
+	// policy after the decision was handed back, the ask reason from before
+	// the re-check — the stale-card class #1077 is about. The take-down is
+	// the answer's own claim ([Agent.claimQuestion]), so the words minted
+	// below always carry the notice's own shape and whatever the record says
+	// became of the last answer. Nothing is lost by it: a landing's words
+	// are derived from the notice and the record, never typed by an asker,
+	// so a fresh mint is never the poorer card.
+	if standing != "" {
 		_, _ = a.claimQuestion(standing, strconv.FormatUint(notice.ID, 10), false)
 	}
 	q := a.landingQuestion(PendingDecision{Notice: notice})
