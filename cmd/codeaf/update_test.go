@@ -77,6 +77,52 @@ func TestC9UpdateCheckUsesTheRealDoorAndItsThreeExitCodes(t *testing.T) {
 	}
 }
 
+// TestC9bUpdateCheckNamesTheSelectedTagAndUsesItsChannelRules proves C9b.
+func TestC9bUpdateCheckNamesTheSelectedTagAndUsesItsChannelRules(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/releases/latest") {
+			fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+			return
+		}
+		fmt.Fprint(w, `[
+			{"tag_name":"v0.1.1-rc.2","published_at":"2026-09-14T12:00:00Z"},
+			{"tag_name":"dev-20260914-bbbbbbbbbbbb","published_at":"2026-09-14T13:00:00Z"},
+			{"tag_name":"staging-20260914-cccccccccccc","published_at":"2026-09-14T14:00:00Z"}
+		]`)
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+
+	for _, row := range []struct {
+		name     string
+		args     []string
+		running  string
+		selected string
+		want     int
+	}{
+		{"stable newer", []string{"--check", "--stable"}, "v0.1.0", "v0.2.0", 3},
+		{"stable equal", []string{"--check", "--stable"}, "v0.2.0", "v0.2.0", 0},
+		{"rc newer", []string{"--check", "--rc"}, "v0.1.1-rc.1", "v0.1.1-rc.2", 3},
+		{"rc equal", []string{"--check", "--rc"}, "v0.1.1-rc.2", "v0.1.1-rc.2", 0},
+		{"dev different", []string{"--check", "--dev"}, "dev-20260913-aaaaaaaaaaaa", "dev-20260914-bbbbbbbbbbbb", 3},
+		{"dev equal", []string{"--check", "--dev"}, "dev-20260914-bbbbbbbbbbbb", "dev-20260914-bbbbbbbbbbbb", 0},
+		{"staging different", []string{"--check", "--staging"}, "staging-20260913-dddddddddddd", "staging-20260914-cccccccccccc", 3},
+		{"staging equal", []string{"--check", "--staging"}, "staging-20260914-cccccccccccc", "staging-20260914-cccccccccccc", 0},
+		{"version different", []string{"--check", "--version", "v0.2.0"}, "v0.3.0", "v0.2.0", 3},
+		{"version equal", []string{"--check", "--version", "v0.2.0"}, "v0.2.0", "v0.2.0", 0},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			stdout, stderr := withUpdateDoor(t, row.running, client, filepath.Join(t.TempDir(), "codeaf"))
+			if got := updateExit(runUpdate(row.args)); got != row.want {
+				t.Fatalf("exit = %d, want %d; stdout %q stderr %q", got, row.want, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stdout.String(), row.selected) {
+				t.Fatalf("output does not name selected tag %q: %q", row.selected, stdout.String())
+			}
+		})
+	}
+}
+
 // TestC9SourceBuildRefusesBeforeTheNetwork proves C9.
 func TestC9SourceBuildRefusesBeforeTheNetwork(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "codeaf")
@@ -180,6 +226,87 @@ func TestC9AnInstallEndsWithTheNewBinarysVersionLine(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	if got := lines[len(lines)-1]; got != "codeaf v0.2.0 built 2026-09-15 12:00" {
 		t.Fatalf("last line = %q; all output:\n%s", got, stdout.String())
+	}
+}
+
+// TestC15TerminalUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls proves C15.
+func TestC15TerminalUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls(t *testing.T) {
+	asset := []byte("selected older release")
+	digest := sha256.Sum256(asset)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		case strings.Contains(r.URL.Path, "/releases/download/v0.2.0/"):
+			_, _ = w.Write(asset)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+
+	t.Run("implicit stable", func(t *testing.T) {
+		target := filepath.Join(t.TempDir(), "codeaf")
+		if err := os.WriteFile(target, []byte("ahead release"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr := withUpdateDoor(t, "v0.3.0", client, target)
+		if got := updateExit(runUpdate(nil)); got != 2 {
+			t.Fatalf("exit = %d, want 2; stdout %q stderr %q", got, stdout.String(), stderr.String())
+		}
+		want := "this codeaf is v0.3.0, ahead of the newest stable v0.2.0 — pass --version v0.2.0 to install it anyway\n"
+		if stderr.String() != want || stdout.Len() != 0 {
+			t.Fatalf("stdout %q stderr %q, want stderr %q", stdout.String(), stderr.String(), want)
+		}
+		if got, err := os.ReadFile(target); err != nil || string(got) != "ahead release" {
+			t.Fatalf("target = %q, %v", got, err)
+		}
+	})
+
+	t.Run("exact tag", func(t *testing.T) {
+		target := filepath.Join(t.TempDir(), "codeaf")
+		if err := os.WriteFile(target, []byte("ahead release"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		stdout, _ := withUpdateDoor(t, "v0.3.0", client, target)
+		if err := runUpdate([]string{"--version", "v0.2.0"}); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := os.ReadFile(target); err != nil || string(got) != string(asset) {
+			t.Fatalf("target = %q, %v", got, err)
+		}
+		if !strings.Contains(stdout.String(), "installed v0.2.0") {
+			t.Fatalf("stdout = %q", stdout.String())
+		}
+	})
+}
+
+// TestTerminalDownloadFailureEndsWithTheCurlFallback proves D9's failure line.
+func TestTerminalDownloadFailureEndsWithTheCurlFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/releases/latest") {
+			fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+	_, _ = withUpdateDoor(t, "v0.1.0", client, target)
+	err := runUpdate(nil)
+	if err == nil {
+		t.Fatal("download failure returned no error")
+	}
+	wantEnd := "; install a release with: " + codeupdate.CurlCommand
+	if !strings.HasSuffix(err.Error(), wantEnd) {
+		t.Fatalf("failure does not end with the curl fallback: %q", err)
 	}
 }
 

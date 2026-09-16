@@ -17,6 +17,7 @@ type updateCheckMsg struct {
 
 type updateResolveMsg struct {
 	release codeupdate.Release
+	choice  codeupdate.Choice
 	err     error
 }
 
@@ -86,7 +87,7 @@ func (a *app) runUpdateCommand(argument string) tea.Cmd {
 	a.updateActive = true
 	return func() tea.Msg {
 		release, err := resolve(context.Background(), choice)
-		return updateResolveMsg{release: release, err: err}
+		return updateResolveMsg{release: release, choice: choice, err: err}
 	}
 }
 
@@ -111,6 +112,17 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 		a.updateActive = false
 		a.note("you are on the newest codeaf, " + message.release.Tag)
 		return nil
+	}
+	if message.choice.Version == "" {
+		if comparison, comparable := codeupdate.CompareSemverTags(a.updateRunning, message.release.Tag); comparable && comparison > 0 {
+			channel := message.choice.Channel
+			if channel == "" {
+				channel = "stable"
+			}
+			a.updateActive = false
+			a.note("this codeaf is " + a.updateRunning + ", ahead of the newest " + channel + " " + message.release.Tag + " — /update " + message.release.Tag + " installs it anyway")
+			return nil
+		}
 	}
 	a.note("downloading codeaf " + message.release.Tag + " for " + runtimePlatform() + "…")
 	install := a.installUpdate

@@ -331,6 +331,33 @@ func TestC11RepositoryAndAssetFallbacksKeepOldReleasesInstallable(t *testing.T) 
 	}
 }
 
+// TestAssetFailureNamesTheCurrentAssetAndStatusWithoutExposingFallbacks proves D9.
+func TestAssetFailureNamesTheCurrentAssetAndStatusWithoutExposingFallbacks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Install(context.Background(), InstallOptions{
+		Client:  releaseClient(server, "v0.1.0"),
+		Release: Release{Tag: "v0.2.0", Repository: primaryRepository},
+		Target:  target,
+	})
+	if err == nil {
+		t.Fatal("missing asset returned no error")
+	}
+	want := fmt.Sprintf("codeaf-%s-%s answered HTTP 404", runtime.GOOS, runtime.GOARCH)
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
+	}
+	if strings.Contains(err.Error(), server.URL) || strings.Contains(err.Error(), "aforge") { // legacy-name
+		t.Fatalf("person-facing error exposes a fallback: %q", err)
+	}
+}
+
 // TestC14RestartArgumentsReopenTheSameConversation proves C14.
 func TestC14RestartArgumentsReopenTheSameConversation(t *testing.T) {
 	file := "/tmp/conversation.jsonl"

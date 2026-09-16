@@ -61,7 +61,7 @@ func runUpdate(args []string) error {
 		var err error
 		target, err = codeupdate.ExecutableTarget(updateExecutable)
 		if err != nil {
-			return err
+			return updateFailure(err)
 		}
 		if codeupdate.Kind(running) == "other" {
 			shown := strings.TrimSpace(running)
@@ -75,43 +75,79 @@ func runUpdate(args []string) error {
 	client := updateClient(running, 3*time.Second)
 	release, err := client.Select(context.Background(), choice)
 	if err != nil {
-		fmt.Fprintln(updateErr, "codeaf: could not check for an update:", err)
-		return exitStatus(1)
+		if *check {
+			fmt.Fprintln(updateErr, "codeaf: could not check for an update:", err)
+			return exitStatus(1)
+		}
+		return updateFailure(fmt.Errorf("could not select a release: %w", err))
 	}
 	if *check {
-		return sayUpdateCheck(running, release.Tag)
+		return sayUpdateCheck(running, release.Tag, choice)
+	}
+	if choice.Version == "" {
+		if comparison, comparable := codeupdate.CompareSemverTags(running, release.Tag); comparable && comparison > 0 {
+			fmt.Fprintf(updateErr, "this codeaf is %s, ahead of the newest %s %s — pass --version %s to install it anyway\n", running, choice.Channel, release.Tag, release.Tag)
+			return exitStatus(2)
+		}
 	}
 
 	result, err := codeupdate.Install(context.Background(), codeupdate.InstallOptions{
 		Client: client, Release: release, Target: target,
 	})
 	if err != nil {
-		return err
+		return updateFailure(err)
 	}
 	fmt.Fprintf(updateOut, "codeaf: installed %s at %s\n", result.Release.Tag, result.Path)
 	if err := updateVersionLine(result.Path, updateOut, updateErr); err != nil {
-		return fmt.Errorf("run the installed codeaf: %w", err)
+		return updateFailure(fmt.Errorf("run the installed codeaf: %w", err))
 	}
 	return nil
 }
 
-func sayUpdateCheck(running, latest string) error {
-	answer := codeupdate.Available{Latest: latest, Running: running}
-	switch {
-	case answer.Newer():
-		fmt.Fprintf(updateOut, "codeaf %s is available · you have %s\n", latest, running)
-		return exitStatus(3)
-	case codeupdate.Kind(running) == "stable" || codeupdate.Kind(running) == "rc":
-		fmt.Fprintf(updateOut, "you are on the newest codeaf, %s\n", running)
-		return nil
-	default:
-		shown := strings.TrimSpace(running)
-		if shown == "" {
-			shown = "an unstamped source build"
+func sayUpdateCheck(running, selected string, choice codeupdate.Choice) error {
+	shown := strings.TrimSpace(running)
+	if shown == "" {
+		shown = "an unstamped source build"
+	}
+	if choice.Version != "" {
+		if running == selected {
+			fmt.Fprintf(updateOut, "this codeaf matches the selected tag, %s\n", selected)
+			return nil
 		}
-		fmt.Fprintf(updateOut, "the newest stable codeaf is %s · this codeaf is %s\n", latest, shown)
+		fmt.Fprintf(updateOut, "selected codeaf %s differs · this codeaf is %s\n", selected, shown)
+		return exitStatus(3)
+	}
+	channel := choice.Channel
+	if channel == "dev" || channel == "staging" {
+		if running == selected {
+			fmt.Fprintf(updateOut, "you are on the newest %s codeaf, %s\n", channel, selected)
+			return nil
+		}
+		fmt.Fprintf(updateOut, "codeaf %s is available · you have %s\n", selected, shown)
+		return exitStatus(3)
+	}
+	comparison, comparable := codeupdate.CompareSemverTags(selected, running)
+	if comparable && comparison > 0 {
+		fmt.Fprintf(updateOut, "codeaf %s is available · you have %s\n", selected, shown)
+		return exitStatus(3)
+	}
+	if comparable && comparison == 0 {
+		if channel == "stable" {
+			fmt.Fprintf(updateOut, "you are on the newest codeaf, %s\n", selected)
+		} else {
+			fmt.Fprintf(updateOut, "you are on the newest %s codeaf, %s\n", channel, selected)
+		}
 		return nil
 	}
+	fmt.Fprintf(updateOut, "the newest %s codeaf is %s · this codeaf is %s\n", channel, selected, shown)
+	return nil
+}
+
+func updateFailure(err error) error {
+	if strings.Contains(err.Error(), codeupdate.CurlCommand) {
+		return err
+	}
+	return fmt.Errorf("%w; install a release with: %s", err, codeupdate.CurlCommand)
 }
 
 func runInstalledVersion(path string, stdout, stderr io.Writer) error {

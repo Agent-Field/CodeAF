@@ -75,6 +75,37 @@ type RCTag struct {
 	Counter int
 }
 
+// CompareSemverTags orders stable and release-candidate tags. A stable tag
+// follows every release candidate on its own version line.
+func CompareSemverTags(left, right string) (int, bool) {
+	leftVersion, leftStable := ParseStable(left)
+	leftRC, leftCandidate := ParseRC(left)
+	rightVersion, rightStable := ParseStable(right)
+	rightRC, rightCandidate := ParseRC(right)
+	if (!leftStable && !leftCandidate) || (!rightStable && !rightCandidate) {
+		return 0, false
+	}
+	if leftCandidate {
+		leftVersion = leftRC.Base
+	}
+	if rightCandidate {
+		rightVersion = rightRC.Base
+	}
+	if comparison := leftVersion.Compare(rightVersion); comparison != 0 {
+		return comparison, true
+	}
+	switch {
+	case leftStable && rightCandidate:
+		return 1, true
+	case leftCandidate && rightStable:
+		return -1, true
+	case leftCandidate && rightCandidate:
+		return compareInt(leftRC.Counter, rightRC.Counter), true
+	default:
+		return 0, true
+	}
+}
+
 func parseComponent(raw string) (int, bool) {
 	value, err := strconv.Atoi(raw)
 	// Every accepted component must leave room for the resolver's next bump.

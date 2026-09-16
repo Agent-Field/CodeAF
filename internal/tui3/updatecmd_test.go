@@ -142,6 +142,70 @@ func TestC6UpdateOnTheNewestBuildDoesNotInstallOrQuit(t *testing.T) {
 	}
 }
 
+// TestC15ChatUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls proves C15.
+func TestC15ChatUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls(t *testing.T) {
+	t.Run("implicit stable", func(t *testing.T) {
+		installed := false
+		restart := &codeupdate.Plan{}
+		a := newApp(context.Background(), Options{
+			Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab",
+			UpdateRunning: "v0.3.0", Restart: restart,
+			ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
+				return codeupdate.Release{Tag: "v0.2.0"}, nil
+			},
+			InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+				installed = true
+				return codeupdate.InstallResult{}, nil
+			},
+		})
+		command := a.slash("/update")
+		drive(t, a, command())
+		want := "this codeaf is v0.3.0, ahead of the newest stable v0.2.0 — /update v0.2.0 installs it anyway"
+		if installed || a.updateActive || restart.Path != "" || !strings.Contains(updateNotes(a), want) {
+			t.Fatalf("installed = %t active = %t restart = %+v notes:\n%s", installed, a.updateActive, restart, updateNotes(a))
+		}
+	})
+
+	t.Run("exact tag", func(t *testing.T) {
+		installed := false
+		restart := &codeupdate.Plan{}
+		a := newApp(context.Background(), Options{
+			Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab", SessionFile: "/tmp/this.jsonl",
+			UpdateRunning: "v0.3.0", Restart: restart,
+			ResolveUpdate: func(_ context.Context, choice codeupdate.Choice) (codeupdate.Release, error) {
+				if choice.Version != "v0.2.0" {
+					t.Fatalf("choice = %+v", choice)
+				}
+				return codeupdate.Release{Tag: "v0.2.0"}, nil
+			},
+			InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+				installed = true
+				return codeupdate.InstallResult{Release: codeupdate.Release{Tag: "v0.2.0"}, Path: "/tmp/codeaf"}, nil
+			},
+		})
+		command := a.slash("/update v0.2.0")
+		drive(t, a, command())
+		if !installed || restart.Path != "/tmp/codeaf" {
+			t.Fatalf("installed = %t restart = %+v notes:\n%s", installed, restart, updateNotes(a))
+		}
+	})
+}
+
+// TestUpdateCommandListNamesItsOptionalArgument proves the list agrees with the manual.
+func TestUpdateCommandListNamesItsOptionalArgument(t *testing.T) {
+	bare, withArgument := false, false
+	for _, row := range commands {
+		if row.name != "update" {
+			continue
+		}
+		bare = bare || row.args == ""
+		withArgument = withArgument || row.args == "<channel or tag>"
+	}
+	if !bare || !withArgument {
+		t.Fatalf("update rows: bare = %t argument = %t", bare, withArgument)
+	}
+}
+
 // TestC7UpdateInstallReturnsTheRestartPlanForThisTranscript proves C7.
 func TestC7UpdateInstallReturnsTheRestartPlanForThisTranscript(t *testing.T) {
 	restart := &codeupdate.Plan{}
