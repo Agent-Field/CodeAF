@@ -25,8 +25,8 @@ import (
 // list no key can move ([crewPicker.rows] says why it is there anyway).
 //
 // EVERY CREW WRITE GOES THROUGH [config.ApplyCrew], the same function the
-// panel's row writes through, and the one row that does not — the family, the
-// pool the presets draw from — goes through [config.SetCrewSource] beside the
+// panel's row writes through, and the one row that does not, the family, the
+// pool the presets draw from, goes through [config.SetCrewSource] beside the
 // five. A second writer anywhere else is how a command and a panel end up
 // disagreeing about which crew is on.
 
@@ -413,13 +413,6 @@ const (
 	crewSourceLead = "source"
 )
 
-// crewSourceAt and writeCrewSource lived here as an interim bridge while the
-// config half of the wave was in flight. They are gone: the row is read through
-// [config.CrewSourceAt] and written through [config.SetCrewSource].
-
-// crewPresetModels lived here as the swap point while the config half was in
-// flight; the rows now draw through [config.CrewModelsForSource].
-
 // crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
 // zero value is closed, like [picker], and its cursor is an index into
 // [config.CrewPresets].
@@ -444,10 +437,10 @@ type crewPicker struct {
 
 func (p *crewPicker) start(current, source, inherited string) {
 	*p = crewPicker{open: true, current: current, inherited: inherited, source: config.CrewSourceOpen}
-	// A WORD THIS BUILD DOES NOT KNOW READS AS THE DEFAULT, for the same
-	// reason every reader in internal/config folds an unreadable row back to
-	// its shipped value: the chooser is where a person answers a question,
-	// not where a stray word off a hand-edited file gets a third option.
+	// A WORD THIS BUILD DOES NOT KNOW READS AS THE DEFAULT. The only caller
+	// passes [config.CrewSourceAt], which already folds blank, unknown and retired
+	// words back to open, so this is that same law one hop earlier: a caller that
+	// ever hands this a raw word still cannot make a third option.
 	for _, known := range config.CrewSources {
 		if source == known {
 			p.source = source
@@ -608,7 +601,7 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		case hovered:
 			lead = pal.accent("· ")
 		}
-		label := preset + " — " + config.CrewLine(preset)
+		label := preset + " — " + config.CrewLineFor(p.source, preset)
 		switch {
 		case current:
 			label = pal.accent(label)
@@ -698,6 +691,7 @@ func (a *app) crewPickerKey(msg tea.KeyPressMsg) {
 // surface.
 func (a *app) crewListing() string {
 	current := config.CrewAt(a.profileDir)
+	source := config.CrewSourceAt(a.profileDir)
 	var out strings.Builder
 	for at, preset := range config.CrewPresets {
 		if at > 0 {
@@ -707,8 +701,8 @@ func (a *app) crewListing() string {
 		if preset == current {
 			lead = "· "
 		}
-		out.WriteString(lead + preset + " — " + config.CrewLine(preset) + "\n")
-		models, _ := config.CrewModels(preset)
+		out.WriteString(lead + preset + " — " + config.CrewLineFor(source, preset) + "\n")
+		models, _ := config.CrewModelsForSource(source, preset)
 		for _, tier := range roles.Tiers {
 			out.WriteString("    " + a.crewClassWord(tier) + "  " + models[string(tier)] + "\n")
 		}

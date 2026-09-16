@@ -2290,7 +2290,7 @@ func (s *Settings) build() []Setting {
 				"costs what those models cost. Flip it and pick the crew again; the five " +
 				"rows already written keep their ids until you do.",
 			read:  func() string { return CrewSourceAt(dir) },
-			write: func(raw string) error { return writeChoice(dir, KeyCrewSource, raw, CrewSources) },
+			write: func(raw string) error { return SetCrewSource(dir, raw) },
 		},
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,

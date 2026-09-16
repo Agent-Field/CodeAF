@@ -151,7 +151,7 @@ func TestTheAPIKeyRowMasksReadsTheShellFirstAndWritesTheProfile(t *testing.T) {
 
 // THE FAMILY IS AN OPINION TOO. A person who chose a family and never pinned a
 // tier has still answered the crew, so the setup must not paper over it with a
-// preset — the law the tier rows already carry, extended to the row above them.
+// preset: the law the tier rows already carry, extended to the row above them.
 // And a family nobody chose is the default, which is NOT an answer.
 func TestTheFamilyRowCountsAsAnAnsweredCrew(t *testing.T) {
 	dir := t.TempDir()
