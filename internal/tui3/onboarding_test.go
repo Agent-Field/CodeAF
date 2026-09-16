@@ -780,7 +780,7 @@ func TestTheCrewChooserDescribesTheChoiceAndPromisesNoPrice(t *testing.T) {
 	pressSetup(a, key("enter"))
 	screen := setupScreen(a)
 	for _, preset := range config.CrewPresets {
-		if word := crewChoiceWord(config.CrewSourceOpen, preset); !strings.Contains(screen, word) {
+		if word := crewChoiceWord(preset); !strings.Contains(screen, word) {
 			t.Fatalf("the %s row must carry %q whole; got:\n%s", preset, word, screen)
 		}
 	}

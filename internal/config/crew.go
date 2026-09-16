@@ -340,8 +340,9 @@ func ApplyCrew(profileDir, preset string) error {
 // here there is no "first" for a reader to catch.
 //
 // The family row rides along ONLY WHEN IT CHANGES, so an enter that keeps the
-// family does not pin a setting the person never answered: a profile that never
-// touched /crew stays free to follow a later default.
+// family does not pin a setting the person never answered: the five tier rows are
+// written and the family row stays unanswered, free to follow a later default
+// family.
 func ApplyCrewUnder(profileDir, source, preset string) error {
 	known, ok := knownCrewSource(source)
 	if !ok {

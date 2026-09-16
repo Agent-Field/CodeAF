@@ -514,11 +514,14 @@ func TestAnUnwrittenSeatFollowsTheFamily(t *testing.T) {
 	if err := SetCrewSource(dir, CrewSourceAll); err != nil {
 		t.Fatal(err)
 	}
-	if got := TierModelAt(dir, ModelTierWorker); got != "openai/gpt-5.6-sol" {
-		t.Fatalf("the worker on an all profile with no row is %q, want the all default", got)
+	want, ok := CrewModelsForSource(CrewSourceAll, DefaultCrew)
+	if !ok {
+		t.Fatal("there is no default preset in the all family")
 	}
-	if got := TierModelAt(dir, ModelTierMastermind); got != "anthropic/claude-fable-5.1" {
-		t.Fatalf("the mastermind is %q, want the all default", got)
+	for tier, model := range want {
+		if got := TierModelAt(dir, tier); got != model {
+			t.Fatalf("%s on an all profile with no row is %q, want the all default %q", tier, got, model)
+		}
 	}
 	if got := CrewAt(dir); got != CrewBalanced {
 		t.Fatalf("an all profile with no rows reads the crew as %q, want %q", got, CrewBalanced)
