@@ -220,7 +220,7 @@ var crewLines = map[string]map[string]string{
 	CrewSourceAll: {
 		CrewFrugal:   "gpt-5.6-sol works, gemini-flash checks, opus thinks",
 		CrewBalanced: "gpt-5.6-sol works, opus checks, fable thinks",
-		CrewMax:      "fable works, astra checks and thinks",
+		CrewMax:      "fable works and thinks, astra checks",
 	},
 }
 
@@ -339,7 +339,7 @@ func SetCrewSource(profileDir, source string) error {
 
 // CrewSummary is the one line a crew change confirms itself with:
 //
-//	crew → balanced · brain glm-5.3 · hands glm-5.3-flash · checks qwen3.8-27b
+//	crew → balanced · brain kimi-k3 · hands glm-5.3-flash · checks kimi-k3
 //
 // The three names are the classes a person actually asked about — what thinks,
 // what works, what checks — and HANDS IS THE WORKER: the seat that does the

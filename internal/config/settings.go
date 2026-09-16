@@ -3785,11 +3785,11 @@ func tierKeyFor(tier string) string {
 // defaultTierModel is what a tier answers on a profile that has never held its
 // key: the DEFAULT CREW, resolved in the family the profile chose. It is not the
 // build's constant alone, because a profile that answered the family row and no
-// tier row would otherwise run the open-weight crew under a frontier label — the
+// tier row would otherwise run the open-weight crew under a frontier label: the
 // family saying one thing and the ladder another. Under the shipped family the
 // answer is the constant, which is what [DefaultWorkerModel] and its kin name,
-// because the two tables' default row is the same set by construction
-// (crew_test.go pins it).
+// because the open table's default row and the builtin five name the same set by
+// construction (crew_test.go pins it).
 func defaultTierModel(profileDir, tier string) string {
 	if table, ok := CrewModelsForSource(CrewSourceAt(profileDir), DefaultCrew); ok {
 		if model, held := table[tier]; held {

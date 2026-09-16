@@ -369,12 +369,15 @@ the one expensive step. What `frugal` to `balanced` buys instead is the careful 
 smarter mastermind. The `max` mastermind sits on the worker's own model on purpose: it is the
 catalog's ceiling, so the top seat adds generation behavior rather than a bigger model.
 
-**Why the open ids.** They were picked on 2026-09-01 off the catalog's own published scores —
-OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
-— against blended price, open weights only. The worker seat is the dial: `glm-5.3-flash`
+**Why the open ids.** They were picked off the catalog's own published scores — OpenRouter
+republishes Artificial Analysis's coding and agentic indexes on every model row — against
+blended price, open weights only, and the mastermind and balanced careful seats were
+re-picked on 2026-09-16. The worker seat is the dial: `glm-5.3-flash`
 scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
 one point under `glm-5.3` at a twentieth of its price, and it can see images. The
-mastermind buys the thinking rung rather than a bigger model, because its calls are few.
+mastermind is the one seat whose price may be the model rather than the rung: it answers a
+few times a task, so `frugal` pays for `glm-5.3` while the work below it stays on
+`glm-5.3-flash` and DeepSeek.
 The careful class is always a different vendor from the worker and always sees images:
 `moonshotai/kimi-k3` scores 76 on coding and is the open field's strongest checker, so
 `balanced` and `max` put it on both the careful and the mastermind seat. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose —
