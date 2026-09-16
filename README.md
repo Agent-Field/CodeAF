@@ -18,7 +18,6 @@
 <a href="#subharnesses-specialists-built-for-one-job">Subharnesses</a> ·
 <a href="#benchmarks">Benchmarks</a> ·
 <a href="#headless-is-the-other-front-door">Headless</a> ·
-<a href="#switching-from-opencode-pi-or-aider">Switching</a> ·
 <a href="docs/GUIDE.md">Guide</a>
 </p>
 
@@ -26,12 +25,12 @@
 
 **Frontier-grade coding on open models, at a fraction of the cost.**
 
-CodeAF is a coding harness built from the ground up for open models, to get the
-most intelligence out of every dollar. It also changes how you work once more
-than one thing is going on. Instead of three terminals of agents with you in the
-middle of all of them, you get one place to hand work off, see what is moving
-across every project, and step in only where your judgment is needed. The more
-you hand it, the more you get done, and that holds as models get smarter.
+CodeAF is a coding harness built for open models, to get the most out of every
+dollar. It is also a different way to work once more than one thing is going on:
+instead of three terminals of agents with you in the middle, one window where you
+hand work off, see what is moving across every project, and step in only where
+your judgment is needed. A factory, on your own machine, and the more you hand it
+the more it does.
 
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
@@ -60,8 +59,6 @@ pinning are on the [releases page](https://github.com/Agent-Field/codeaf/release
 On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi, MiniMax or
 Qwen. Ollama needs none.
 
-<!-- TODO: binary size, cold start, idle memory. -->
-
 ## One window for every project
 
 An agent that lives in one folder means a terminal per repository, and a tmux
@@ -69,15 +66,15 @@ layout to remember which is which. CodeAF is one window.
 
 `home` lists every project and conversation on the machine. `enter` opens any
 of them in a tab, and the one you left keeps streaming with its tasks still
-running. `tab` flips back. `ctrl+k` jumps to any conversation, open or closed.
+running. `tab` flips back. `alt+k` jumps to any conversation, open or closed.
 Each keeps its own approval rules, models and spend limit.
 
 <img src="assets/readme/screens/projects.webp" alt="One window, every project: the tasks page listing work from codeaf, pricing-site and infra in one tree, a preview of the selected task with its files, branch, cost and 1 accept or 2 not right, and three projects open as tabs" width="100%">
 
-`home` answers what needs you, what to check, what is running and what it
+`home` answers what needs you, what is unread, what is running and what it
 cost, for all of them at once. A digit answers a question from its row.
 
-<img src="assets/readme/screens/home.webp" alt="Home in two columns: needs you, to check and where you were on the left; running, since you left and spend on the right" width="100%">
+<img src="assets/readme/screens/home.webp" alt="Home in two columns: needs you, unread, where you were, running and scheduled on the left; projects, spend and since you left on the right" width="100%">
 
 ## Talk, and it becomes tasks
 
@@ -94,7 +91,7 @@ shows every task and its subtasks.
 <img src="assets/readme/screens/conversation.webp" alt="One chat, a tree of tasks: a conversation that handed out four bug fixes, with its task rail beside it showing each task, its subtasks and which ones wait on your call" width="100%">
 
 Work that passes its check lands on your branch by itself, never on `main`,
-`dev` or a release branch. Work nothing could check waits under `to check`:
+`dev` or a release branch. Work nothing could check waits under `unread`:
 `1` accept, `2` not right.
 
 <img src="assets/readme/screens/tasks-tree.webp" alt="Every task is a tree you can open: the tasks page with a task family unfolded, subtasks marked done, your call and incomplete" width="100%">
@@ -128,33 +125,19 @@ A run is a task like any other, on `home`, with a room and a stop.
 
 - **Coming soon, native:** [PR-AF](https://github.com/Agent-Field/pr-af), the #1
   open-source code reviewer on Martian Code-Review-Bench.
-- **In the benchmark below:** `[SUBHARNESS]`, the developer subharness, against
+- **Coming soon, in the benchmark below:** the developer subharness against
   general harnesses on the same open model.
 - **Your own:** "make me a harness for triaging flaky tests" designs one, saves
   it, and `/subharness` runs it.
 
-<!-- TODO: name the developer subharness the benchmark ran, and the release that
-     ships PR-AF natively. -->
-
 ## Benchmarks
 
-<!-- TODO(C1): chart, two panels: pass rate vs cost, pass rate vs time.
-     Render from the launch run with bench/oneroad/plots/final_board.py. -->
-
-We ran `[N]` held-out GitHub issues, `[K]` seeds each, through CodeAF's
-developer subharness and every harness below on the same open model, `[MODEL]`. Versions and configs are in
-[BENCHMARKS.md](BENCHMARKS.md), with every failure, timeout and unpriced call.
-
-| harness | version | pass rate | cost per issue | time per issue |
-| --- | --- | --- | --- | --- |
-| CodeAF, `[SUBHARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
-| `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
-| `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
-| `[HARNESS]` | `[..]` | `[..]` | `[..]` | `[..]` |
-
-CodeAF is on the frontier: the harnesses that passed more cost more and took
-longer, and the ones that cost less passed fewer. Rerun it on your own
-repository with `bench/` and send us the numbers.
+Coming soon. The run is held-out GitHub issues, several seeds each, through
+CodeAF's developer subharness and the general harnesses on the same open model:
+pass rate, cost per issue and time per issue, with every failure, timeout and
+unpriced call written up in [BENCHMARKS.md](BENCHMARKS.md). The chart and the
+table land here when the run completes, and `bench/` runs it on your own
+repository.
 
 ## The right model for each call
 
@@ -171,12 +154,6 @@ crew, take the calls you did not type:
 
 `/crew frugal`, `balanced` or `max` sets all five in one word. Any seat can be
 pinned.
-
-| preset | worker | careful work | mastermind |
-| --- | --- | --- | --- |
-| frugal | deepseek-v4-flash | glm-5.3-flash | glm-5.3-flash |
-| balanced | glm-5.3-flash | qwen3.8-27b | glm-5.3 |
-| max | glm-5.3 | kimi-k3 | kimi-k3 |
 
 Every finished task is graded by the check it already had to pass. Work that
 keeps failing on the worker seat moves up to careful work on its own, and each
@@ -215,7 +192,8 @@ best answer and records the assumption. `exec` runs one worker with no plan;
 
 Most agents on a remote box mean ssh, tmux, and a terminal that lags on every
 key. CodeAF splits in two instead. The screen runs on the machine in front of
-you. The conversation runs on the machine that owns the work.
+you. The conversation runs on the machine that owns the work, and `home` shows
+that machine: its projects, tasks and standing orders.
 
 <img src="assets/readme/anywhere.webp" alt="one conversation on devbox; your terminal on the same machine, your laptop over ssh, and your phone from a mobile terminal over ssh all attach to it" width="100%">
 
@@ -226,13 +204,11 @@ codeaf chat --host devbox    # your own ssh: config, keys, jump hosts. nothing t
 - **Typing never waits on the network.** Drawing the screen makes no round
   trip. Pressing enter makes one.
 - **Close the lid, the work keeps going.** The conversation lives on devbox. A
-  dropped link redials for five minutes, and a question asked while you were
-  away is still waiting when you come back.
+  dropped link redials for five minutes, a question asked while you were away
+  is still waiting when you come back, and desk and laptop can watch the same
+  turn.
 - **Files cross both ways.** Paste a screenshot or drop a file and it lands on
   devbox. Click a path in a reply and it opens here, in your own editor.
-- **Two screens, one conversation.** Desk and laptop watch the same turn. The
-  newest window types; `enter` takes the keyboard back.
-- **Home shows that machine.** Its projects, tasks and standing orders.
 
 On your phone there is no app to install. ssh in from any mobile terminal, run
 `codeaf` in the project, and it joins the same live conversation, folded to fit
@@ -241,19 +217,8 @@ the screen.
 <img src="assets/readme/screens/phone.webp" alt="Native in the terminal on your phone: CodeAF home at phone width inside a mobile terminal over ssh, beside the same home on a wide screen" width="100%">
 
 Still local over a connection: spend, search and memory. Reaching a machine
-with no ssh at all, through a relay and a pairing code, is built and waits on a
-hosted relay. [How it works](docs/REMOTE.md).
-
-## What it is allowed to touch
-
-A task writes in its own copy, on its own branch, and lands only on a branch
-that is not protected. Nothing leaves your machine except the model calls you
-configured.
-
-<!-- TODO: confirm the telemetry sentence against the code before publishing. -->
-
-Apache 2.0, all of it. A program with write access to your repositories should
-be one you can read.
+with no ssh at all, through a relay and a pairing code, is built and switches on
+when the hosted relay does. [How it works](docs/REMOTE.md).
 
 ## What a copilot does, and what CodeAF does
 
@@ -265,43 +230,10 @@ be one you can read.
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
 | without you | it stops | headless, standing orders, a phone in your pocket |
 
-## Switching from opencode, pi or aider
-
-Your keys and providers carry over, and the conversation feels familiar. What
-changes is around it:
-
-- one window for every project, instead of a terminal per folder
-- what you ask for becomes tasks that land themselves, and only the unchecked
-  ones wait for you
-- a model per call, not per session
-- subharnesses: specialists for the work that comes round again
-- rules and reminders you say once
-- the session lives on your dev box, and the screen stays where you are
-
-## Roadmap
-
-v0.1.0 shipped on 2026-08-17. `[N]` changes since, each written up in
-[docs/changes](docs/changes/).
-
-| shipped | launch, `[DATE]` | next |
-| --- | --- | --- |
-| conversation, tasks, review, subharnesses you design | binaries and installer for every platform | native subharnesses, starting with PR-AF code review |
-| home, standing orders, memory | benchmark results and chart | team server: one machine, every engineer's factory |
-| six-seat crew, spend limits | `[..]` | no-ssh access through a hosted relay (`--at`), web view |
-| remote over ssh, phone-width terminal, headless | | identity and a signed record per task, through the AgentField control plane, Apache 2.0 like the rest |
-
-More is already being tested by teams inside AgentField, native subharnesses
-first, and it lands here as it holds up. [Discord](https://discord.gg/aBHaXMkpqh) is where it
-shows up first. Vote in [Discussions](https://github.com/Agent-Field/codeaf/discussions).
-Three things help most: run the benchmark on your own repository and send the
-run; add a provider that is missing; when a task goes wrong, `/why` and paste
-what it says into an issue.
-
-
 ## Docs
 
 - `codeaf manual`, or `alt+.` for the key map. The manual ships in the binary and the chat reads it too.
 - [Guide](docs/GUIDE.md): every flag, key, slash command and exit code.
 - [docs/](docs/README.md): architecture, headless, remote, limits.
 
-Built by [AgentField](https://github.com/Agent-Field/agentfield) team.
+Built by the [AgentField](https://github.com/Agent-Field/agentfield) team.
