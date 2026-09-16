@@ -497,7 +497,8 @@ func (a *app) commitSetupLimit() bool {
 // THE SETUP MAY NOT PAPER OVER AN OPINION. internal/config says why in its own
 // words: [config.CrewConfigured] is true when ANY of the tier rows, or the
 // family row above them, is in the profile, "because a person who pinned one tier
-// by hand has an opinion the setup must not paper over with a preset". So a preset is written on exactly two
+// by hand, or chose a family, has an opinion the setup must not paper over with a
+// preset". So a preset is written on exactly two
 // roads — the person chose one in the chooser on this screen, or the profile had
 // no crew of its own at all and the row they were shown is the shipped default,
 // which is the case the first-run flow exists for.

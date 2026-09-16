@@ -285,6 +285,19 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 			}
 		}
 	}
+	// THE LINES ARE PART OF THE TABLE, and they are the words a person reads while
+	// deciding to spend frontier money: a line naming a model the preset does not
+	// pick is the contradiction the chooser exists to prevent.
+	wantLines := map[string]string{
+		CrewFrugal:   "gpt-5.6-sol works, gemini-flash checks, opus thinks",
+		CrewBalanced: "gpt-5.6-sol works, opus checks, fable thinks",
+		CrewMax:      "fable works and thinks, astra checks",
+	}
+	for preset, line := range wantLines {
+		if got := CrewLineFor(CrewSourceAll, preset); got != line {
+			t.Errorf("the all family's %s line is %q, want %q", preset, got, line)
+		}
+	}
 }
 
 // A SOURCE NOBODY SET IS THE OPEN FAMILY, BYTE FOR BYTE. The all table may

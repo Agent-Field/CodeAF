@@ -564,9 +564,10 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 	//
 	// THE WORD THE NEXT ENTER WRITES IS THE WORD LIFTED, and the lifted step is
 	// the accent for the cursor's own reason: it is the fact this row answers
-	// and the only fact on it. The row takes no lead and no ground for seat
-	// one's reason, said above: nothing on this list applies it with enter,
-	// and a mark that said otherwise would be a promise no key keeps.
+	// and the only fact on it. The
+	// row takes no `›` lead and no ground of its own, for a reason of its own
+	// rather than seat one's: it is not on the ↑↓ axis, so no cursor sits on it
+	// for a lead to mark, and the lifted word is its whole mark.
 	words := make([]string, 0, len(config.CrewSources))
 	for _, source := range config.CrewSources {
 		if source == p.source {
