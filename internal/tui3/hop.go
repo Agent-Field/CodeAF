@@ -102,10 +102,10 @@ import (
 //     `i`, `o`, `q`, `s`, `t` and `w`; `k` is free.
 //
 // AND THE ONE COST, SAID PLAINLY RATHER THAN LEFT TO BE DISCOVERED. On a Mac,
-// Option composes accents unless the terminal profile says otherwise, and `⌥k`
+// Option composes accents unless the terminal profile says otherwise, and `opt+k`
 // is then the character `˚` rather than a chord — which is the tax every `alt+`
 // chord on this surface already pays. chords.go is the whole of the answer: it
-// spells the chord `⌥k` on a Mac ([chordSpelling.say]), it watches for `˚`
+// spells the chord `opt+k` on a Mac ([chordSpelling.say]), it watches for `˚`
 // arriving where the chord was aimed ([chordDeadKeys]), and it draws one dim
 // line naming that terminal's own setting until a real `alt+` chord retires it.
 // `ctrl+k` needed none of that, and this is what was traded for the letter.

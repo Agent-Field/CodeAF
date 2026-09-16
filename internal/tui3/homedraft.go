@@ -191,12 +191,12 @@ func (a *app) targetLegendRight() string {
 	// AND THE WHOLE LINE IS SPELLED FOR THIS KEYBOARD ON THE WAY OUT — ONCE,
 	// HERE, ABOVE THE MEASURING. Every chord on this rule wears a modifier with
 	// two keycaps, and this line drew them straight out of their constants: a
-	// Mac that spells `⌥s` on the memory place and `⌥1…⌥7` on the map was
-	// spelling `alt+w` on home, which is one modifier under two names on one
+	// Mac that spells `opt+s` on the memory place and `opt+1…opt+7` on the map
+	// was spelling `alt+w` on home, which is one modifier under two names on one
 	// screen. chords.go states that [chordSpelling.say] is the one door every
 	// person-facing sentence about a chord goes through, and this line was not
 	// going through it. It has to happen before the return rather than at the
-	// paint because `⌥w` is two cells where `alt+w` is five, and the ladder in
+	// paint because `⌘` is one cell where `cmd+` is four, and the ladder in
 	// [app.targetLegend] measures what it is about to draw.
 	return a.chords.say(right)
 }

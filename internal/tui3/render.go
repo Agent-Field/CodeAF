@@ -3861,8 +3861,12 @@ func (a *app) legendRight(width int) string {
 		// clause is the one door on the line with a modifier that has two
 		// keycaps, and it goes through the same substitution every other sentence
 		// about a chord goes through (chords.go's [chordSpelling.say]). It is
-		// said HERE rather than on the way to the paint because `⌥k` is two cells
-		// where `alt+k` is five, and the ladder below measures what it draws.
+		// said HERE rather than on the way to the paint because the ladder below
+		// measures what it is about to draw, and a line measured in one spelling
+		// and painted in another is a line that can overrun the frame. It costs
+		// nothing on THIS chord — `opt+k` and `alt+k` are both five cells — and
+		// the discipline is the door's, not this clause's: `cmd+` becomes the one
+		// cell `⌘` through the same call.
 		doors = append(doors, a.chords.say(hopDoorWord))
 	}
 	return strings.Join(append(doors, microcopy), " · ")

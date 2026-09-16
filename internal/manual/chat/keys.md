@@ -207,7 +207,7 @@ which one arrives is a fact about the road the bytes took rather than about your
 
 This page writes it `cmd+enter` throughout, which is the name it was chosen under; the key
 sheet substitutes the spelling for your platform at the moment it draws, exactly as it
-does for `alt+`/`⌥`.
+does for `alt+`/`opt`.
 
 ## ctrl+r means two things, and each says where it acts
 
@@ -591,7 +591,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, the same door as `enter` on a `projects` row |
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
-| `alt+t` (`⌥t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
+| `alt+t` (`opt+t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
@@ -873,7 +873,7 @@ The same is true of `alt+backspace` and `ctrl+backspace` for the word kill, and
 between the two of them every terminal sends one — which is what makes it safe
 for `ctrl+w`, their old third spelling, to close the tab instead. On iTerm2's
 Natural Text Editing preset
-`⌥⌫` is mapped to `esc del`, which arrives as `alt+backspace` and kills a word.
+`opt+⌫` is mapped to `esc del`, which arrives as `alt+backspace` and kills a word.
 codeaf does not detect what your terminal sends and cannot tell you which of
 these it will deliver; the only test is pressing it.
 
@@ -1710,9 +1710,9 @@ starting work here, so the box is still standing when you come back.
 ## Switch to another conversation without going home — alt+k, the conversation switcher, switch between my open chats, alt tab between conversations, ctrl+k does not switch any more
 
 **Press `alt+k` to choose a conversation without leaving the one you are reading.**
-On a Mac that is `⌥k`. **It was `ctrl+k` until this build**, and that chord is now an edit
+On a Mac that is `opt+k`. **It was `ctrl+k` until this build**, and that chord is now an edit
 in the message box — delete to the end of the line — so the switcher moved one modifier
-across. If `⌥k` types a `˚` into your message instead of opening the card, your terminal
+across. If `opt+k` types a `˚` into your message instead of opening the card, your terminal
 is composing accents with Option: see *Why option+left or cmd+left does nothing* above,
 which is the same setting.
 Press it again, use the arrows, or scroll to move the highlight. The list stays open
@@ -1766,9 +1766,9 @@ the tab you are in. See *Conversation tabs* and
 
 | Key | What it does |
 | --- | --- |
-| `alt+k` (`⌥k`) | Open the list; each further press moves the highlight without switching |
+| `alt+k` (`opt+k`) | Open the list; each further press moves the highlight without switching |
 | `ctrl+tab` | Switch immediately when quick switch is on, otherwise browse; requires a terminal that sends it |
-| `alt+shift+k` (`⌥K`) | Walk the list backwards. **Every terminal sends it**, unlike the `ctrl+shift+tab` beside it, which needs a terminal that can spell the alias |
+| `alt+shift+k` (`opt+K`) | Walk the list backwards. **Every terminal sends it**, unlike the `ctrl+shift+tab` beside it, which needs a terminal that can spell the alias |
 | `tab` / `↓` | Down one — cursor only, without switching, and the card stops fading |
 | `shift+tab` / `↑` | Up one. Both wrap round at the ends |
 | `1`…`9` | On the holding card, go to that row outright — the number is drawn on the rows that have one. While the card is fading, digits are typing and land in your message |
@@ -1789,7 +1789,7 @@ The cursor opens on the **first row you can actually go to**, never on `you are 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
 else — and says so by not being there: no card, and the legend above the box does not name
 it. Everywhere else the legend reads `space space home · tab last · alt+k chats ·
-/ commands` — `⌥k chats` on a Mac — dropping clauses from the left as the frame narrows.
+/ commands` — `opt+k chats` on a Mac — dropping clauses from the left as the frame narrows.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -1847,7 +1847,7 @@ already spent, so the switcher moved rather than the edit.
 
 `alt+k` arrives as escape-then-`k`, which every terminal sends with no setting to turn on
 and no protocol to negotiate — **except on a Mac**, where Option composes accents unless
-you tell the terminal otherwise and `⌥k` types `˚`. That is the one thing this chord costs
+you tell the terminal otherwise and `opt+k` types `˚`. That is the one thing this chord costs
 that the old one did not, and it is the same setting every other `alt+` chord in codeaf
 needs: *Why option+left or cmd+left does nothing* has the menu path for your terminal.
 Nothing else wants `alt+k` — no window manager, no emulator, and no other key in codeaf.
@@ -1908,8 +1908,8 @@ fixed clauses the design sets word for word.
 
 ## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
 
-On macOS every `alt+` below is drawn `⌥` — `alt+enter` is `⌥enter`, `alt+w` is `⌥w`, `alt+o`
-is `⌥o`. Same key, same chord, the spelling the keycap uses.
+On macOS every `alt+` below is drawn `opt+` — `alt+enter` is `opt+enter`, `alt+w` is
+`opt+w`, `alt+o` is `opt+o`. Same key, same chord, named the way the keycap names it.
 
 `alt+enter` with something typed into the composer on any place opens the **composer
 layer**: the page behind dims, the box stays where it is, and the three facts a task needs
@@ -1939,13 +1939,13 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of the four places on
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the four places on
 the tab bar — `home  tasks  spend  settings` — and each answers to its position there,
 `alt+1` through `alt+4`. **`alt+5`, `alt+6` and `alt+7` are kept**, on the three places that
 are off the bar — standing, memory and search — so those keys still open a room rather than
 doing nothing; `alt+.` draws all seven with their numbers. Hold
-`alt` and press the digit. On macOS codeaf draws the modifier as `⌥` because that is what the
-keycap says; it is the same key and the same chord, and on Linux and on Windows it is drawn
+`alt` and press the digit. On macOS codeaf draws the modifier as `opt+`, after the name on
+that keycap; it is the same key and the same chord, and on Linux and on Windows it is drawn
 `alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
 rather than on `ctrl`.
 
@@ -2085,7 +2085,7 @@ that change them. `alt+w` walks the folder round the projects on this machine an
 opens the model list in home's own body; pressing either label does the same as its chord.
 `alt+k chats` is the conversation switcher, named here for the same reason it is named on
 the conversation's own legend, and it is absent when there is nowhere to go.
-**On a Mac the right-hand side reads `⌥w folder · ⌥o model · ⌥k chats · / commands`** —
+**On a Mac the right-hand side reads `opt+w folder · opt+o model · opt+k chats · / commands`** —
 the same keys, drawn with the modifier your keycaps wear.
 The line under the box is the foot, and **at rest it is exactly**
 `type to search or start something new · ↑↓ pick · enter open · tab next place`. `esc`
@@ -2178,7 +2178,7 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 
 ## Keys in the task roster and inside a room
 
-**While the task roster holds the keyboard** (`alt+t`, `⌥t`): `esc` gives the keyboard
+**While the task roster holds the keyboard** (`alt+t`, `opt+t`): `esc` gives the keyboard
 back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
 `alt+w` widens the column and narrows it again. Its hint reads exactly
 `↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
@@ -2755,7 +2755,7 @@ the thing you are standing on — and its own section below has the table.
 | Where you are | What it does |
 | --- | --- |
 | in a conversation | every task this project has run — the same list `/history` opens |
-| on a place | draws the key map, exactly as `alt+.` (`⌥.`) does — **only** on terminals that report they can send `ctrl+<digit>` |
+| on a place | draws the key map, exactly as `alt+.` (`opt+.`) does — **only** on terminals that report they can send `ctrl+<digit>` |
 
 A place takes the whole frame, so while one is standing the conversation's keys are not
 under it at all. Where your terminal has not reported that it can send `ctrl+.`, the place
@@ -2769,9 +2769,9 @@ reading simply does not exist and the chord does nothing there.
 | Home | Start a fresh conversation **in the folder of the conversation row under the cursor** — `enter` on a `projects` row is the way home offers it |
 | Model picker only | Cycle the reasoning effort |
 
-It used to hand the keyboard to the task roster everywhere. **That is `alt+t` (`⌥t`) now** —
+It used to hand the keyboard to the task roster everywhere. **That is `alt+t` (`opt+t`) now** —
 the same letter under the other modifier, beside the roster's own `alt+w` widen chord. On
-macOS, `⌥t` types `†` instead unless your terminal is set to send Option as Meta — see
+macOS, `opt+t` types `†` instead unless your terminal is set to send Option as Meta — see
 *getting started*, "Option as meta, on macOS", for the setting and where it lives.
 
 **`ctrl+o` — five meanings:**
@@ -2875,13 +2875,13 @@ answer:
 | `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
 | `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
-| `ctrl+k` | **Bound, in every box**: delete from the caret to the end of the line, the pair to `ctrl+u`. It does not eat the newline. It was the conversation switcher until that moved to `alt+k` (`⌥k` on a Mac) to give this letter back to the message box |
-| `alt+k` | **The switcher**: the card of every conversation this terminal has open. On a Mac it is `⌥k`, and it needs "use option as meta" turned on in your terminal — see "Why alt+k and not ctrl+k or ctrl+tab" |
+| `ctrl+k` | **Bound, in every box**: delete from the caret to the end of the line, the pair to `ctrl+u`. It does not eat the newline. It was the conversation switcher until that moved to `alt+k` (`opt+k` on a Mac) to give this letter back to the message box |
+| `alt+k` | **The switcher**: the card of every conversation this terminal has open. On a Mac it is `opt+k`, and it needs "use option as meta" turned on in your terminal — see "Why alt+k and not ctrl+k or ctrl+tab" |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before codeaf ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `running` row of home that this window holds it asks to stop that task (`ctrl+x stop it`, which the foot names where `→` crosses columns). Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
-| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |

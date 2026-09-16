@@ -12,14 +12,14 @@ import (
 // chords.go's whole argument is that a chord has ONE spelling per keyboard and
 // that [chordSpelling.say] is the one door every person-facing sentence about
 // one goes through: the constants are authored `alt+`, the manual quotes them
-// that way, and a Mac's `⌥` is substituted in once, at the moment of drawing.
+// that way, and a Mac's `opt+` is substituted in once, at the moment of drawing.
 // The comment there says a table of chords would rot the first time a lane added
 // one without touching it — and what actually rotted was the other half, the
 // SENTENCES. Three lines were built straight out of their constants and never
 // passed through the door:
 //
 //   - home's rule, which said `alt+w folder · alt+o model` on a machine whose
-//     memory place said `⌥s` and whose map said `⌥1…⌥7` (homedraft.go);
+//     memory place said `opt+s` and whose map said `opt+1…opt+7` (homedraft.go);
 //   - the question chip on the status line, `alt+a` (question.go);
 //   - the switcher's own door on the legend, the day it moved onto this
 //     modifier (render.go's [hopDoorWord]).

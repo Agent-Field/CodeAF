@@ -805,7 +805,7 @@ func newTestApp(agent Agent) *app {
 	a.railAway = false
 	// AND IT PINS THE CHORD SPELLING, for the fifth time for the same reason.
 	// [newApp] reads GOOS and the environment to decide whether a chord is CALLED
-	// `alt+1` or `⌥1` (chords.go), so every hint assertion in this suite would
+	// `alt+1` or `opt+1` (chords.go), so every hint assertion in this suite would
 	// read one way on a Mac and another way on Linux. The spelling has a table
 	// test of its own that states both, and [TestEveryPlaceSpellsItsChordsTheWayThisTerminalDoes]
 	// asserts the Mac reading against every place on purpose.
