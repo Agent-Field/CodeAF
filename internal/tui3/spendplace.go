@@ -664,9 +664,16 @@ func (r spendReading) headWords(width int) string {
 	// A FRAME WITH ROOM FOR NOTHING STILL SAYS THE MONEY. The fitter answers ""
 	// when even the shortest spelling is over the room, and a head row with no
 	// head on it would leave the control floating against an empty line.
-	return spendMoneyWord(r.totals.USD)
+	return dollars(r.totals.USD)
 }
 
+// THE HEAD LINE KEEPS THE EXACT ARITHMETIC AND THE TABLES KEEP THE FLOOR.
+// [spendMoneyWord] says the heading, the pointer line and the Spending tab all
+// keep it, and the head was using the floored word — so a fortnight that came to
+// $0.0068 read `$0.01` against a `/cost` and a Spending tab still saying the
+// real figure. A floor is a COLUMN'S rule, because every figure in a column has
+// to be the same shape; a total in a sentence has nothing to line up with.
+//
 // headFields is the head's ranked facts: what the window came to, how many
 // tokens it took, and WHICH DAY WAS LOUDEST. The lead spelling carries the span
 // in words and the shorter ones give it up before the figure it labels ever
@@ -684,7 +691,7 @@ func (r spendReading) headFields() []rowField {
 	}
 	fields := make([]rowField, 0, 3)
 	if r.totals.USD > 0 {
-		money := spendMoneyWord(r.totals.USD)
+		money := dollars(r.totals.USD)
 		if span := spendSpanWord(r.window); span != "" {
 			fields = append(fields, rowSay(span+" came to "+money, span+" · "+money, money))
 		} else {
@@ -717,7 +724,7 @@ func (r spendReading) loudFields() rowField {
 	if r.loudest.USD <= 0 || r.loudest.Label == "" {
 		return rowSay()
 	}
-	said := spendMoneyWord(r.loudest.USD) + " " + r.loudest.Label
+	said := dollars(r.loudest.USD) + " " + r.loudest.Label
 	if name := strings.TrimSpace(r.name(r.loudFor)); name != "" {
 		return rowSay(spendLoudestWord+said+" ("+name+")", spendLoudestWord+said, said)
 	}
@@ -768,8 +775,8 @@ func (r spendReading) paintedHead(width int, pal palette) string {
 	if plain == spendNothingWord {
 		return pal.dim(plain)
 	}
-	money, toks := spendMoneyWord(r.totals.USD), tokenWord(r.totals.Tokens)
-	loud := spendMoneyWord(r.loudest.USD)
+	money, toks := dollars(r.totals.USD), tokenWord(r.totals.Tokens)
+	loud := dollars(r.loudest.USD)
 	parts := strings.Split(plain, rowSep)
 	for at, part := range parts {
 		switch {
@@ -1191,6 +1198,11 @@ func (t spendTable) fits(edge int) bool {
 // column is the shape these tables had everywhere before; a name cut in half to
 // buy it back is a fact lost.
 //
+// THE FRAME IS WHERE THAT STOPS. A name may push every field behind it as far as
+// the last cells the money needs and no further ([spendRowIn] fits the words
+// against what is left after the figure): pushing a row off its own edge does
+// not keep a fact, it loses the one fact the row was read for.
+//
 // It measures in printable cells, so a field that has already been painted lines
 // up with one that has not.
 func spendColumnAt(left string, col int) string {
@@ -1211,21 +1223,46 @@ func spendColumnAt(left string, col int) string {
 // kind word into it: a field that closes up when it is empty moves every field
 // behind it on that row alone, which is the ragged table this machinery
 // replaced.
+// THE MONEY IS FITTED FIRST AND IS NEVER THE THING CUT. Every field was laid
+// left to right and the whole row trimmed to the frame at the end, so a name or
+// a project wide enough to push the row past the edge had its TAIL trimmed — and
+// the tail is the figure every row is read for (`$21.…`). A capped column was
+// capped on the measure and drawn uncapped, which is a cap that moves the table
+// without bounding anything. Both are the same mistake: the frame's last cells
+// belong to the money, and what gives way is the words.
 func spendRowIn(fields []string, table spendTable, ink func(int, string) string, width int) string {
-	row := ""
+	last := -1
+	for at := range fields {
+		if at < len(table.drawn) && table.drawn[at] && fields[at] != "" {
+			last = at
+		}
+	}
+	left := ""
 	for at, field := range fields {
-		if at >= len(table.drawn) || !table.drawn[at] {
+		if at >= len(table.drawn) || !table.drawn[at] || at == last {
 			continue
 		}
 		if at > 0 {
 			if field == "" {
 				continue
 			}
-			row = spendColumnAt(row, table.at[at]+table.wide[at]-ansi.StringWidth(field))
+			// A CAPPED COLUMN IS CAPPED WHERE IT IS DRAWN AS WELL AS WHERE IT IS
+			// MEASURED ([spendMeasured]'s caps). Every other column is the width
+			// of what it holds, so this cuts nothing there.
+			field = fit(field, table.wide[at])
+			left = spendColumnAt(left, table.at[at]+table.wide[at]-ansi.StringWidth(field))
 		}
-		row += ink(at, field)
+		left += ink(at, field)
 	}
-	return fit(row, width)
+	if last < 0 {
+		return fit(left, width)
+	}
+	money := fields[last]
+	// ONE CELL OF AIR IS RESERVED WITH IT, because a row pushed hard enough that
+	// its words reach the figure would read as one word.
+	room := max(0, width-ansi.StringWidth(money)-1)
+	left = fit(left, room)
+	return fit(spendColumnAt(left, table.at[last]+table.wide[last]-ansi.StringWidth(money))+ink(last, money), width)
 }
 
 // spendFigureWord is one figure and the word for what it counts — `9,400 calls`,

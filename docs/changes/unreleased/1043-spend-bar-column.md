@@ -4,6 +4,43 @@ title: the spend place is three tables in four columns each — no bars, one rig
 pr: 1043
 surface: [chat]
 invalidates:
+  - "A TASK ROW COULD OPEN ANOTHER CONVERSATION'S TASK. `spendTaskRecord` joined
+    the index's `SessionID` — the conversation that ran the work — against
+    `SubjectSpend.Session`, which is the task node's OWN journal id, so the
+    exact-pair arm never fired on real ledger data and every task row fell
+    through to an id-only match. Task ids restart with every conversation, so
+    `enter` opened whichever conversation's `7` the world walked first.
+    `SubjectSpend` carries `Root` now (from `UsageLine.Root`, the conversation
+    the work belonged to) and the join is (id, Root); the id-only arm survives
+    only for a line that carries no Root at all. The fixture and the test were
+    green because they put the conversation in `Session`, which no real ledger
+    line does — both write the ledger's own shape now."
+  - "THE MONEY COULD BE TRUNCATED. Fields were laid left to right and the whole
+    row trimmed to the frame at the end, so a name or project wide enough to push
+    the row past the edge lost its TAIL — the figure every row is read for
+    (`$21.…`), from about 30 cells at 100 columns. `spendRowIn` fits the words
+    against what is left after the figure now, so what gives way is the words.
+    And `spendProjectCap` was a cap on the MEASURE only: the column was bounded
+    and the field inside it was not, so a long folder name moved the table
+    without being bounded by anything. A capped column is capped where it is
+    drawn too."
+  - "THE CUT'S CONTROL VANISHED ON AN EMPTY WINDOW. It lived only on the heading
+    over a table's rows, and a reading with nothing priced in it draws no rows —
+    so a window paged back onto a quiet fortnight had no heading, no arrows and
+    no foot, and `by model` had no way back to `by topic` except paging forward
+    again. The empty frame draws the control under the window header, for the
+    reason it keeps that header: it is the only thing there a key can act on."
+  - "The head line used the money COLUMN'S floored word, so a fortnight that came
+    to $0.0068 read `$0.01` while `/cost` and Settings→Spending kept the exact
+    figure — which is the law `spendMoneyWord`'s own comment states. The head
+    total and the loudest day's figure both go through `dollars` now. A floor is
+    a column's rule; a total in a sentence has nothing to line up with."
+  - "A row whose task or conversation the record no longer holds walked to the
+    tasks place or to home — a page about everything this machine has run, opened
+    in answer to `enter` on one row of a bill. It refuses where it stands now:
+    `that piece of work is not on this machine any more`, or `that conversation is
+    not on this machine any more`. The ledger outlives what it is about, so this
+    is an ordinary row and not a fault."
   - "THE PAGE DRAWS ONE CUT OF THE LEDGER AT A TIME, and the heading is the
     control that swaps them ([spendSlice]). `by model` and `by topic` stood on
     one page — the same money added up two ways, every dollar under one heading

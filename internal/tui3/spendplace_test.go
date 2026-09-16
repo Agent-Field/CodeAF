@@ -1184,13 +1184,18 @@ func TestASpendRowOpensTheThingItNames(t *testing.T) {
 		lab.workspace("alpha"), spendTestNow.Add(-2*time.Minute))
 	lab.task("-alpha", session.TaskIndexEntry{ID: "7", SessionID: "aaaa000000000001",
 		Name: "rebuild-the-frame", Label: "rebuild the frame", Title: "rebuild the frame"})
-	line := func(task string, usd float64) session.UsageLine {
+	// THE LEDGER'S OWN SHAPE, which is the whole point of this test: a task line
+	// carries the task node's OWN journal id in Session and the conversation in
+	// Root. A fixture that put the conversation in Session was green against an
+	// arm that never fired on a real machine.
+	line := func(task, journal string, usd float64) session.UsageLine {
 		return session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 4, Input: 900, Output: 90,
-			USD: usd, Session: "aaaa000000000001", Task: task, Workspace: lab.workspace("alpha")}
+			USD: usd, Session: journal, Root: "aaaa000000000001", Task: task,
+			Workspace: lab.workspace("alpha")}
 	}
 	path := filepath.Join(t.TempDir(), "usage.jsonl")
 	var file strings.Builder
-	for _, one := range []session.UsageLine{line("7", 9.40), line("", 3.10)} {
+	for _, one := range []session.UsageLine{line("7", "node-7-journal", 9.40), line("", "aaaa000000000001", 3.10)} {
 		raw, err := json.Marshal(one)
 		if err != nil {
 			t.Fatal(err)
@@ -1415,5 +1420,181 @@ func TestTheSpendCutsHeadingKeepsItsHeadingInkUnderTheBand(t *testing.T) {
 	}
 	if !strings.Contains(plain(lit[head]), spendSliceBack) || strings.Contains(plain(rest[head]), spendSliceBack) {
 		t.Fatalf("the arrows are not the thing that changes: %q then %q", plain(lit[head]), plain(rest[head]))
+	}
+}
+
+// THE MONEY IS NEVER THE THING CUT, AND A CAPPED COLUMN IS CAPPED WHERE IT IS
+// DRAWN.
+//
+// Every field was laid left to right and the whole row trimmed to the frame at
+// the end, so a name or a project wide enough to push the row past the edge had
+// its TAIL trimmed — and the tail is the figure every row is read for. A row
+// ended `$21.…`. `spendProjectCap` made it worse by being a cap on the MEASURE
+// only: the column was bounded and the field inside it was not, so the cap moved
+// the table without bounding anything.
+func TestASpendRowGivesUpItsWordsBeforeItsFigure(t *testing.T) {
+	line := func(task, workspace string, usd float64) session.UsageLine {
+		return session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 9, Input: 900, Output: 90,
+			USD: usd, Session: "talk-1", Task: task, Workspace: workspace}
+	}
+	r := readSpend([]session.UsageLine{
+		// The review's own repro: a project folder of thirty cells, and a name
+		// long enough to push the row off the edge on its own.
+		line("the-filings-sweep", "/work/agentfield-control-plane-web-ui", 21.40),
+		line(strings.Repeat("long-", 24)+"name", "/work/beta", 9.12),
+	}, session.LastDays(spendTestNow, 14), spendTestNow)
+
+	for _, width := range []int{80, 100, 120, 160} {
+		rows := plainSpendRows(r.rows(width, newPalette(tokens.NoColor, false)))
+		for at, subject := range r.subjects {
+			row := strings.TrimRight(spendSectionRows(t, rows, spendSubjectsWord)[at], " ")
+			money := spendMoneyWord(subject.USD)
+			if !strings.HasSuffix(row, money) {
+				t.Fatalf("at %d cells a row ends %q, want the whole of %q", width, row, money)
+			}
+			if got := ansi.StringWidth(row); got > width {
+				t.Fatalf("at %d cells a row is %d wide: %q", width, got, row)
+			}
+		}
+		// AND THE PROJECT IS BOUNDED WHERE IT IS DRAWN. A cap that only reaches
+		// the measure is a cap that moves the table and bounds nothing.
+		for _, row := range spendSectionRows(t, rows, spendSubjectsWord) {
+			if strings.Contains(row, "agentfield-control-plane-web-ui") {
+				t.Fatalf("at %d cells the project ran past its cap: %q", width, row)
+			}
+		}
+	}
+}
+
+// AN EMPTY WINDOW KEEPS THE CUT'S CONTROL, for the reason it keeps the window
+// header: it is the only thing on that frame a key can act on.
+//
+// The control lived only on the heading over a table's rows, so a window paged
+// back onto a quiet fortnight drew no heading, no arrows and no foot — and `by
+// model` then had no way back to `by topic` except paging the window forward
+// again. A control a person can be stranded away from is one they cannot rely
+// on.
+func TestAnEmptySpendWindowKeepsTheCutsControl(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.stepSpendSlice(1)
+	if a.spend.slice != spendByModel {
+		t.Fatalf("the page is on %q", a.spend.slice.word())
+	}
+	// A fortnight back, where this fixture spent nothing.
+	drive(t, a, key("shift+left"))
+	if !a.spend.reading.empty() {
+		t.Fatal("the window still has spending in it")
+	}
+	text := placeFrameText(a)
+	if !strings.Contains(text, spendSliceBack+spendModelsWord+spendSliceOn) {
+		t.Fatalf("the empty window drew no control:\n%s", text)
+	}
+	if !a.spendStopAt(a.spend.cursor).slice {
+		t.Fatalf("the cursor is not on the control, on row %d of %d", a.spend.cursor, len(a.spend.stops))
+	}
+	if got := (placeSpend{}).hint(a); !strings.Contains(got, spendSliceWord+spendSubjectsWord) {
+		t.Fatalf("the foot over an empty window reads %q", got)
+	}
+	// AND THE ARROWS WORK THERE, which is the whole of the point.
+	drive(t, a, key("right"))
+	if a.spend.slice != spendByTopic {
+		t.Fatalf("`→` on the empty window left the page on %q", a.spend.slice.word())
+	}
+	// AND A MACHINE THAT HAS SPENT NOTHING AT ALL STILL MEETS ITS WHISPER rather
+	// than a control over an empty page ([spendPage.held] tells the two apart).
+	b := spendLab(t, nil)
+	if got := placeFrameText(b); strings.Contains(got, spendSliceBack) {
+		t.Fatalf("an empty machine drew the cut's control:\n%s", got)
+	}
+}
+
+// TWO CONVERSATIONS EACH HOLDING A TASK `7` ARE TWO DIFFERENT PIECES OF WORK,
+// and `enter` opens the one the money was actually spent on.
+//
+// The pair that identifies a row of the record is (id, conversation) — ids
+// restart with every conversation — and this joined on
+// [session.SubjectSpend.Session] for one build, which is the task node's OWN
+// journal id and matches nothing in the index. Every task row fell through to an
+// id-only fallback, so `enter` opened whichever conversation's `7` the world
+// walked first. The fixtures were green because they put the conversation in
+// Session, which no real ledger line does.
+func TestASpendTaskRowOpensItsOwnConversationsTask(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker",
+		lab.workspace("alpha"), spendTestNow.Add(-2*time.Minute))
+	lab.session("-beta", "bbbb000000000001", "pricing research",
+		lab.workspace("beta"), spendTestNow.Add(-3*time.Hour))
+	// THE SAME ID UNDER BOTH, which is the ordinary shape of a record with two
+	// conversations in it.
+	lab.task("-alpha", session.TaskIndexEntry{ID: "7", SessionID: "aaaa000000000001",
+		Name: "the-alpha-one", Label: "the alpha one", Title: "the alpha one"})
+	lab.task("-beta", session.TaskIndexEntry{ID: "7", SessionID: "bbbb000000000001",
+		Name: "the-beta-one", Label: "the beta one", Title: "the beta one"})
+
+	// The money went on beta's `7`, and the ledger says so the way a ledger does:
+	// the node's own journal in Session, the conversation in Root.
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	raw, err := json.Marshal(session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 4,
+		Input: 900, Output: 90, USD: 9.40, Session: "node-7-journal", Root: "bbbb000000000001",
+		Task: "7", Workspace: lab.workspace("beta")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a := spendLabOn(t, lab.app(mine), path)
+	subject := a.spendStopAt(spendRowFor(t, a, session.SubjectTask)).subject
+	if subject.Root != "bbbb000000000001" {
+		t.Fatalf("the row carries root %q, want the conversation the work belonged to", subject.Root)
+	}
+	record := a.spendTaskRecord(subject)
+	if record == nil {
+		t.Fatal("the row joined to no record at all")
+	}
+	if record.SessionID != "bbbb000000000001" || record.Name != "the-beta-one" {
+		t.Fatalf("the row opened %q under %q, want beta's own task 7", record.Name, record.SessionID)
+	}
+
+	// AND A ROW WITH NO CONVERSATION ON IT — a line written before the ledger
+	// carried one — still finds the id, because there is nothing to tell the two
+	// apart with and no row at all is a worse answer.
+	subject.Root = ""
+	if got := a.spendTaskRecord(subject); got == nil || got.ID != "7" {
+		t.Fatalf("a rootless row found %v", got)
+	}
+}
+
+// AND A ROW WHOSE THING THE RECORD NO LONGER HOLDS REFUSES WHERE IT STANDS.
+//
+// It walked to the tasks place, or to home — a page about everything this
+// machine has run, opened in answer to `enter` on one row of a bill — and a
+// person had to work out for themselves that what they asked for was not there.
+// THE LEDGER OUTLIVES WHAT IT IS ABOUT, so this is an ordinary row and not a
+// fault, and the refusal says the fact.
+func TestASpendRowWhoseThingIsGoneSaysSoAndStaysPut(t *testing.T) {
+	for _, c := range []struct {
+		what string
+		line session.UsageLine
+		want string
+	}{
+		{"a task", session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2, Input: 100, Output: 20,
+			USD: 4.25, Session: "node-99-journal", Root: "nobody-knows-this-one", Task: "99"}, spendGoneTaskWord},
+		{"a conversation", session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2, Input: 100, Output: 20,
+			USD: 4.25, Session: "nobody-knows-this-one"}, spendGoneTalkWord},
+	} {
+		a := spendLab(t, []session.UsageLine{c.line})
+		a.moveSpend(1)
+		if !a.spendStopAt(a.spend.cursor).ok {
+			t.Fatalf("%s: the cursor did not reach the row", c.what)
+		}
+		drive(t, a, key("enter"))
+		if a.page != pageSpend {
+			t.Fatalf("%s: enter walked to %q instead of refusing", c.what, a.page.word())
+		}
+		if a.pageMsg != c.want {
+			t.Fatalf("%s: the page says %q, want %q", c.what, a.pageMsg, c.want)
+		}
 	}
 }

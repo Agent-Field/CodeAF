@@ -306,6 +306,15 @@ func (a *app) rebuildSpend() {
 	// the header until the first frame, which is a real state on a window that
 	// opened this place and has not painted yet.
 	_, p.stops = p.reading.body(a.width, a.pal)
+	// AN EMPTY WINDOW STILL HAS ITS ONE CONTROL, and it is settled here like
+	// every other stop rather than by the draw ([placeSpend.body] paints the
+	// matching rows). A reading with nothing priced in it answers no rows at
+	// all, so without this the cut's arrows would be unbound until the first
+	// frame — and on a window paged back onto a quiet fortnight that is the only
+	// row there is.
+	if len(p.stops) == 0 && p.held {
+		p.stops = []spendStop{{}, {ok: true, slice: true}}
+	}
 	p.cursor = a.nearestSpendStop(p.cursor)
 	// FOCUS WAKES ONCE, on the first reading that has anything to wake on —
 	// which is not always the one taken on the way in: a far machine's ledger
@@ -530,7 +539,16 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 		if record := a.spendTaskRecord(stop.subject); record != nil {
 			return a.openTaskRecord(record), true
 		}
-		return a.showPage(pageTasks), true
+		// AND A ROW WHOSE WORK THE RECORD NO LONGER HOLDS SAYS SO AND STAYS PUT.
+		// It walked to the tasks place instead — a page about everything this
+		// machine has run, opened in answer to `enter` on one row of a bill — and
+		// a person then had to work out for themselves that the thing they asked
+		// for was not there. A door onto a thing this build cannot find is worse
+		// than no door at all, and the place's own message line is where a
+		// refusal goes (place_search.go's [app.openConversationRow] says it the
+		// same way).
+		a.pageMsg = spendGoneTaskWord
+		return nil, true
 	case session.SubjectStanding:
 		return a.openStandingAt(stop.subject.ID), true
 	case session.SubjectConversation:
@@ -548,7 +566,8 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 		if row, ok := a.spendSessionRow(stop.subject); ok {
 			return a.openConversationRow(row), true
 		}
-		return a.showPage(pageHome), true
+		a.pageMsg = spendGoneTalkWord
+		return nil, true
 	}
 	return nil, false
 }
@@ -556,19 +575,29 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 // spendTaskRecord is the record row for a task subject, out of the world this
 // place is already holding.
 //
-// IT MATCHES ON THE PAIR AND SETTLES FOR THE ID. An id alone is not unique
-// across the record — ids restart with every conversation
-// ([session.TaskIndexEntry.ID]) — so the conversation that ran it is tried
-// first. It settles because the two authorities spell that conversation from
-// different ends: the ledger line records the journal the call was written
-// under, the index records the session that started the work, and a row found
-// by id alone is a better answer than no row at all.
+// IT MATCHES ON THE PAIR, AND THE PAIR IS (id, CONVERSATION). An id alone is not
+// unique across the record — ids restart with every conversation
+// ([session.TaskIndexEntry.ID]) — so two conversations each holding a task `7`
+// are two different pieces of work under one name.
+//
+// THE CONVERSATION IS [session.SubjectSpend.Root] AND NOT ITS Session. This
+// matched Session for one build and therefore matched nothing: the ledger writes
+// the task node's OWN journal id there, while the index's SessionID is the
+// conversation that ran it. Every task row fell through to an id-only fallback,
+// and `enter` opened whichever conversation's `7` the world walked first. The
+// fixtures were green because they put the conversation in Session, which no
+// real ledger line does.
+//
+// A LEDGER LINE WITH NO ROOT IS THE ONLY PLACE THE ID STANDS ALONE. Lines
+// written before that field was read carry no conversation, so there is nothing
+// to disambiguate with and the first row of that id is the honest answer — but
+// a row that HAS a conversation and does not match is a different piece of work,
+// and opening it would be worse than opening nothing.
 func (a *app) spendTaskRecord(subject session.SubjectSpend) *session.TaskIndexEntry {
-	id := strings.TrimSpace(subject.ID)
+	id, root := strings.TrimSpace(subject.ID), strings.TrimSpace(subject.Root)
 	if id == "" {
 		return nil
 	}
-	var loose *session.TaskIndexEntry
 	for _, project := range a.spend.world.Projects {
 		for _, row := range project.Sessions {
 			for at := range row.Tasks.Rows {
@@ -576,16 +605,13 @@ func (a *app) spendTaskRecord(subject session.SubjectSpend) *session.TaskIndexEn
 				if strings.TrimSpace(entry.ID) != id {
 					continue
 				}
-				if strings.TrimSpace(entry.SessionID) == strings.TrimSpace(subject.Session) {
+				if root == "" || strings.TrimSpace(entry.SessionID) == root {
 					return entry
-				}
-				if loose == nil {
-					loose = entry
 				}
 			}
 		}
 	}
-	return loose
+	return nil
 }
 
 // spendSessionRow is the world's record of a conversation subject, in the shape
@@ -706,12 +732,27 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 		}
 		// THE HEADER STAYS, because it is the only thing on this frame naming the
 		// window the four arrow keys move ([spendPage.held] holds the argument).
+		//
+		// AND SO DOES THE CUT'S CONTROL, for exactly that reason and no other.
+		// It lived only on the heading over a table's rows, so a window paged
+		// back onto a quiet fortnight drew no heading, no arrows and no foot —
+		// and `by model` then had no way back to `by topic` except paging the
+		// window forward again. A control a person can be stranded away from is
+		// a control they cannot rely on; this frame has room for it, and the cut
+		// is a fact about the page rather than about the rows.
 		rows := make([]placeRow, 0, room)
 		rows = append(rows, placeRow{text: a.spend.reading.windowHeaderRow(width, a.pal), hit: -1})
+		cut := len(rows)
+		on := cut == a.spend.cursor || cut == a.spend.hover
+		text := placeLead + a.spend.reading.sliceHeading(width-len(placeLead), on, a.pal)
+		if on {
+			text = placeBand(text, width, a.pal)
+		}
+		rows = append(rows, placeRow{text: text, hit: cut})
 		for len(rows) < room {
 			rows = append(rows, placeRow{text: "", hit: -1})
 		}
-		a.spend.stops, a.spend.top, a.spend.shown = nil, 0, 0
+		a.spend.top, a.spend.shown = 0, len(rows)
 		return rows
 	}
 	lit := func(i int) bool { return (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok }
@@ -799,6 +840,14 @@ const (
 	spendEnterWord  = "enter opens what spent it"
 	spendVerbLead   = "→ "
 	spendWindowWord = "shift+←→ move the days"
+	// spendGoneTaskWord and spendGoneTalkWord are what a row says when the thing
+	// money was spent on is no longer in the record. THE LEDGER OUTLIVES WHAT IT
+	// IS ABOUT: a line stays on the bill for as long as the window covers it,
+	// while the work it names can be forgotten, and the row is still a true
+	// reading of what was spent. So the refusal names the fact rather than a
+	// fault, in the words the search place already refuses in.
+	spendGoneTaskWord = "that piece of work is not on this machine any more"
+	spendGoneTalkWord = "that conversation is not on this machine any more"
 	// spendSliceWord introduces the OTHER cut on the foot, while the cursor is
 	// on the heading that swaps them.
 	spendSliceWord = "←→ "

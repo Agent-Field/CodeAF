@@ -525,6 +525,20 @@ type SubjectSpend struct {
 	// nothing joins on it: a page holding an ID finds the task index row by that
 	// ID alone. The conversation a piece of work belongs to is [UsageLine.Root].
 	Session string
+	// Root is THE CONVERSATION THE WORK BELONGED TO ([UsageLine.Root]), and it is
+	// the half of a task's identity that Session is not.
+	//
+	// A TASK ID IS NOT UNIQUE AND THE PAIR THAT IDENTIFIES ONE IS (id,
+	// conversation) — [TaskIndexEntry.ID] says so, and the index's own
+	// [TaskIndexEntry.SessionID] is that conversation. Session here is something
+	// else entirely: the ledger writes the task node's OWN journal id into it,
+	// so a page joining Session against the index matched nothing on real data
+	// and fell back to the id alone — which opens whichever conversation's task
+	// `7` the reader happened to walk first.
+	//
+	// It is empty on a row that is not a task, and on a task line written before
+	// this field was read, where the id alone is all there is.
+	Root string
 	// Workspace is the project the money was spent against, and empty where the
 	// line named none.
 	Workspace string
@@ -590,6 +604,7 @@ func UsageBySubject(lines []UsageLine) []SubjectSpend {
 				Kind:      kind,
 				ID:        id,
 				Session:   at.session,
+				Root:      strings.TrimSpace(line.Root),
 				Workspace: strings.TrimSpace(line.Workspace),
 				Label:     UsageSubjectWord(kind),
 			}

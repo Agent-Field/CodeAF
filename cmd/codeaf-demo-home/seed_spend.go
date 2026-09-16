@@ -168,13 +168,20 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 				model := demoModels[next()%len(demoModels)]
 				tokens := 6_000 + 1_500*(next()%5)
 				if err := record(path, session.UsageLine{
-					At:        demoMoment(now, day, spread+time.Duration(next()%7)*13*time.Minute),
-					Model:     model.slug,
-					Calls:     2 + next()%4,
-					Input:     tokens,
-					Output:    tokens / 3,
-					USD:       round(float64(tokens) * model.rate / 1000),
-					Session:   id,
+					At:     demoMoment(now, day, spread+time.Duration(next()%7)*13*time.Minute),
+					Model:  model.slug,
+					Calls:  2 + next()%4,
+					Input:  tokens,
+					Output: tokens / 3,
+					USD:    round(float64(tokens) * model.rate / 1000),
+					// THE LEDGER'S OWN SHAPE FOR TASK WORK: the task node's own
+					// journal in Session and the conversation in Root. The
+					// fixture wrote the conversation into Session, which no real
+					// ledger line does — and the spend place's join reads Root
+					// ([app.spendTaskRecord]), so a fixture spelling it the other
+					// way was a fixture that could not have caught the defect.
+					Session:   "node-" + task.entry.ID + "-" + id,
+					Root:      id,
 					Task:      task.entry.ID,
 					Workspace: project.dir,
 				}); err != nil {

@@ -2014,7 +2014,10 @@ same three-second beat every place runs on, and it draws three things:
   what the line above it already says three facts of. On a narrower frame it gives up what
   the day was mostly spent on — that name is a row of *by topic* a few lines below —
   and then the clause altogether, before ever crowding `shift+↑ coarser` off the line: a
-  key that is not drawn is a key that does not work, so the sentence yields to the control;
+  key that is not drawn is a key that does not work, so the sentence yields to the control.
+  **Both figures on this line are exact** — `$0.0068`, not the `$0.01` the tables floor to —
+  because a floor is a column's rule and a total in a sentence has nothing to line up with.
+  `/cost` and Settings→Spending say the same figure;
 - **one cut of the ledger at a time**, and its heading is the control that swaps them.
   `by model` and `by topic` are the same money added up two ways — every dollar under one
   heading is also a dollar under the other — so a page drawing both asked you to read one
@@ -2024,7 +2027,9 @@ same three-second beat every place runs on, and it draws three things:
   on every other row of this place opens that row's verbs — a key is drawn where it is
   bound — and the heading keeps its own colour in both states: the **band** is what says the
   cursor is there, and the arrows say what the keys do. The foot names the cut the arrows
-  lead to;
+  lead to. **An empty window keeps the control**, for the reason it keeps the window
+  header: paged back onto a quiet fortnight it is the only thing on the frame a key can act
+  on, and without it `by model` had no way back;
 - **by model**, dearest first and **walkable like any list here**, each row carrying
   **the role it is bound to**, its call
   count, its token volume and what it cost. The role stands **first after the name**,
@@ -2061,6 +2066,12 @@ same three-second beat every place runs on, and it draws three things:
   A promise's facts are not a task's: what you want of one is how often it went off and what
   a single firing costs, so its row reads `repo-watch · 88 firings · $0.04 a run · $3.31`
   rather than carrying a project and a kind word it has no use for.
+
+**A row gives up its words before its figure.** A long name or project pushes the fields
+behind it, but only as far as the cells the money needs: what gives way is the words, never
+the figure the row is read for. The project column is bounded where it is drawn as well as
+where it is measured, so a folder named `agentfield-control-plane-web-ui` reads
+`agentfield-control-plane-…` rather than shoving the money off the edge.
 
 **The money on every row of both tables is a column of cents.** A row that cost less than
 a cent reads `$0.01` — the smallest figure the column can say and still be read — rather
@@ -2134,7 +2145,11 @@ a control with an unrelated instruction after it is two objects on one line. A t
 behind it parked on that row; a standing promise opens the standing place **on that
 order**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that
-has since gone says so). It used to open the *place* and leave you to find your own row, and
+has since gone says so). A task is found by the pair that identifies one, **its id and the
+conversation that ran it**, because ids restart with every conversation — two conversations
+each holding a task `7` are two different pieces of work. A row whose thing the record no
+longer holds refuses where it stands: `that piece of work is not on this machine any more`,
+or `that conversation is not on this machine any more`. It used to open the *place* and leave you to find your own row, and
 a conversation went to home rather than into the conversation.
 
 **There is no budget editor here and there will not be one.** The page answers *what did it
