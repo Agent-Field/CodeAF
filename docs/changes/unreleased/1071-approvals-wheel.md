@@ -1,7 +1,7 @@
 ---
 kind: added
 title: The approvals chip — what a conversation runs without asking is a control on the seam
-pr: 0
+pr: 1071
 surface: [chat]
 invalidates:
   - "YOLO was a launch-only posture. If you remember `--yolo` as the only way to open the gate, a conversation now has its own posture on the tool gate, moved from inside it: `alt+y` walks `asks → guardian → YOLO → asks`, a press on the `◇` cell on the legend is the same step, and `/approvals <word>` (alias `/yolo`) sets `ask`, `guardian`, `yolo`, `deny` or `auto` outright. The posture is live — the next tool call is decided under it — and sticky in the session's `meta.json`, so it survives `/resume`. `codeaf resume --yolo` outranks the saved word for that launch."
