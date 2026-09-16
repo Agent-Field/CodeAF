@@ -299,6 +299,20 @@ func writeCrew(profileDir, raw string) error {
 	return ApplyCrew(profileDir, raw)
 }
 
+// SetCrewSource writes the family row alone, in one file write, for the chooser
+// that promises the family and the preset as ONE decision: it lands this row
+// first and then applies the preset, so the resolution that turns the two into
+// five ids reads the family this same enter chose and not yesterday's. The word
+// is refused the way every choice row refuses one, so a typo cannot land a
+// family nothing reads.
+func SetCrewSource(profileDir, source string) error {
+	source = strings.ToLower(strings.TrimSpace(source))
+	if source != CrewSourceOpen && source != CrewSourceAll {
+		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
+	}
+	return writeProfileValue(profileDir, KeyCrewSource, source)
+}
+
 // CrewSummary is the one line a crew change confirms itself with:
 //
 //	crew → balanced · brain glm-5.3 · hands glm-5.3-flash · checks qwen3.8-27b

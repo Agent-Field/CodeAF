@@ -1,12 +1,6 @@
 package tui3
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"maps"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"charm.land/bubbletea/v2"
@@ -31,10 +25,10 @@ import (
 // list no key can move ([crewPicker.rows] says why it is there anyway).
 //
 // EVERY CREW WRITE GOES THROUGH [config.ApplyCrew], the same function the
-// panel's row writes through, and the one row that does not go through it, the
-// family ([crewSourceKey]), reaches the disk through the single interim bridge
-// at the foot of the family section. A second writer anywhere else is how a
-// command and a panel end up disagreeing about which crew is on.
+// panel's row writes through, and the one row that does not — the family, the
+// pool the presets draw from — goes through [config.SetCrewSource] beside the
+// five. A second writer anywhere else is how a command and a panel end up
+// disagreeing about which crew is on.
 
 // runCrew is /crew: the three presets with the current one marked, or one applied.
 func (a *app) runCrew(arg string) {
@@ -45,7 +39,7 @@ func (a *app) runCrew(arg string) {
 	arg = strings.ToLower(strings.TrimSpace(arg))
 	if arg == "" {
 		a.closeLists()
-		a.crewPick.start(config.CrewAt(a.profileDir), crewSourceAt(a.profileDir), a.crewInheritedLine())
+		a.crewPick.start(config.CrewAt(a.profileDir), config.CrewSourceAt(a.profileDir), a.crewInheritedLine())
 		a.touch()
 		return
 	}
@@ -112,7 +106,7 @@ func (a *app) applyCrew(preset string) {
 // decision applied is the family saying all while the five rows say open, and
 // the chooser is where the two are promised as one.
 func (a *app) applyCrewUnder(source, preset string) {
-	if err := writeCrewSource(a.profileDir, source); err != nil {
+	if err := config.SetCrewSource(a.profileDir, source); err != nil {
 		a.note("could not set the crew's source · " + err.Error())
 		return
 	}
@@ -404,153 +398,27 @@ func (a *app) sayWorkSeat() {
 // ── the family row: which pool the presets draw from ──────────────────────────
 //
 // models.crew.source says whether the three presets pick their five ids from
-// open models or from all models. THE CONFIG PACKAGE OWNS THE ROW: the reader,
-// the writer and the two tables that answer it are the config half of this
-// wave, landing in parallel with this one. Until they land the picker is the
-// only surface that moves the row, and it reaches the disk through the two
-// functions at the foot of this section, so that when config takes the row
-// over there is exactly one block here to delete.
+// open models or from all models. THE CONFIG PACKAGE OWNS THE ROW:
+// [config.CrewSourceAt] reads it, [config.SetCrewSource] writes it, and the two
+// tables behind them answer it. This package draws the choice and commits it.
 //
-// THE BRIDGE IS DOOR-ONLY, and the frame-disk law is why (framedisk_law_test.go
-// is the gate): every config reader the frame reaches sits behind config's own
-// memo in another package, and this package's interim bridge reads raw, so a read on
-// the frame clock would be a law violation rather than a cache question. The
-// chooser reads the row at its open ([app.runCrew]) and nowhere else, which is
-// why the status segment does not name the family yet; when the config half
-// lands its memoised reader, the segment can take the family through it and
-// the bridge here dies with the literal.
+// THE ROW IS DOOR-ONLY, and the frame-disk law is why (framedisk_law_test.go is
+// the gate): the chooser reads it once at its open ([app.runCrew]) and enter
+// writes it once, and neither happens on the frame clock, which is why the
+// status segment does not name the family.
 const (
-	// crewSourceOpen is the shipped family: every model in every preset is
-	// an open-weight one, which is the property that makes a shipped default
-	// defensible (internal/config's crew.go says why).
-	crewSourceOpen = "open"
-	// crewSourceAll is the wider pool: every model the router knows, priced
-	// as it goes.
-	crewSourceAll = "all"
-	// crewSourceKey is the row the family selector writes.
-	// TODO(config.KeyCrewSource): the config half of this wave adds the
-	// constant; spell the row through it and delete this literal.
-	crewSourceKey = "models.crew.source"
 	// crewSourceLead is the family row's label. It is the key's own word
 	// because the two options beside it are the row's answer and the row is
 	// one line.
 	crewSourceLead = "source"
 )
 
-// crewSources is the selector's two options in the order ←→ walks them, open
-// first because it is the default and the walk starts there.
-var crewSources = []string{crewSourceOpen, crewSourceAll}
+// crewSourceAt and writeCrewSource lived here as an interim bridge while the
+// config half of the wave was in flight. They are gone: the row is read through
+// [config.CrewSourceAt] and written through [config.SetCrewSource].
 
-// crewSourceAt is the family as the profile holds it, or open when the row is
-// absent, unreadable or a word this build does not know, which is every
-// reader in internal/config's own answer to a row nobody wrote. IT IS READ
-// AT THE DOOR AND NOT AT THE DRAW, for [crewPicker.inherited]'s reason
-// exactly: the rows are drawn every frame and the answer is one small file.
-func crewSourceAt(profileDir string) string {
-	data, err := os.ReadFile(config.BudgetConfigPath(profileDir))
-	if err != nil {
-		return crewSourceOpen
-	}
-	values := make(map[string]json.RawMessage)
-	if json.Unmarshal(data, &values) != nil {
-		return crewSourceOpen
-	}
-	var source string
-	// A MISSING ROW UNMARSHALS AS AN ERROR, and so does one holding anything
-	// but a string, which is the whole point: both are a row this chooser
-	// cannot act on and both read as the default.
-	if json.Unmarshal(values[crewSourceKey], &source) != nil {
-		return crewSourceOpen
-	}
-	if source == crewSourceAll {
-		return crewSourceAll
-	}
-	return crewSourceOpen
-}
-
-// writeCrewSource lands the family row in config's own write's shape and for
-// its own reasons: the whole file is read, this one row is replaced, and the
-// result lands through a temporary file and a rename, so unrelated rows
-// survive byte for byte and a reader that arrives mid-write sees the old row
-// or the new one, never half of either. THE SHAPE IS COPIED FROM THE WRITER IT
-// STANDS IN FOR (internal/config's writeProfileValues) rather than invented
-// here; when the config half takes the row over, this function is the one
-// thing to delete.
-//
-// THE WRITE DOES NOT BUMP [config.SettingsGeneration], because that counter
-// belongs to the writer it stands in for, and it does not need to: the family
-// row is read at doors and never on the frame clock (the paragraph above), and
-// every reader in internal/config re-stats the file, so the row is seen
-// without the counter's help.
-func writeCrewSource(profileDir, source string) error {
-	if source != crewSourceOpen && source != crewSourceAll {
-		return fmt.Errorf("pick one of: %s, %s", crewSourceOpen, crewSourceAll)
-	}
-	path := config.BudgetConfigPath(profileDir)
-	data, readErr := os.ReadFile(path)
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return fmt.Errorf("write config %s: preserve existing file: %w", crewSourceKey, readErr)
-	}
-	values := make(map[string]json.RawMessage)
-	if readErr == nil {
-		held := make(map[string]json.RawMessage)
-		if err := json.Unmarshal(data, &held); err != nil {
-			return fmt.Errorf("write config %s: preserve existing file: %w", crewSourceKey, err)
-		}
-		maps.Copy(values, held)
-	}
-	encoded, err := json.Marshal(source)
-	if err != nil {
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	values[crewSourceKey] = encoded
-	whole, err := json.MarshalIndent(values, "", "  ")
-	if err != nil {
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".config-*.json")
-	if err != nil {
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	temporaryPath := temporary.Name()
-	removeTemporary := true
-	defer func() {
-		if removeTemporary {
-			_ = os.Remove(temporaryPath)
-		}
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	if _, err := temporary.Write(append(whole, '\n')); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("write config %s: %w", crewSourceKey, err)
-	}
-	removeTemporary = false
-	return nil
-}
-
-// crewPresetModels is the five ids a preset would write under one family. The
-// config half of this wave owns the two tables and the resolution that turns
-// family and preset into ids; until it lands, both families draw from the one
-// table that exists, and the picker hands the STAGED family in here so the
-// rows it draws are already asking the question the config half will answer.
-// TODO(config.KeyCrewSource): hand the family to the source-aware lookup when
-// the config half lands it, so a person sees the family's effect on the rows
-// before enter commits to it.
-func crewPresetModels(source, preset string) (map[string]string, bool) {
-	return config.CrewModels(preset)
-}
+// crewPresetModels lived here as the swap point while the config half was in
+// flight; the rows now draw through [config.CrewModelsForSource].
 
 // crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
 // zero value is closed, like [picker], and its cursor is an index into
@@ -575,12 +443,12 @@ type crewPicker struct {
 }
 
 func (p *crewPicker) start(current, source, inherited string) {
-	*p = crewPicker{open: true, current: current, inherited: inherited, source: crewSourceOpen}
+	*p = crewPicker{open: true, current: current, inherited: inherited, source: config.CrewSourceOpen}
 	// A WORD THIS BUILD DOES NOT KNOW READS AS THE DEFAULT, for the same
 	// reason every reader in internal/config folds an unreadable row back to
 	// its shipped value: the chooser is where a person answers a question,
 	// not where a stray word off a hand-edited file gets a third option.
-	for _, known := range crewSources {
+	for _, known := range config.CrewSources {
 		if source == known {
 			p.source = source
 		}
@@ -604,12 +472,12 @@ func (p *crewPicker) move(delta int) {
 // one of the two keys a dead key on the word it started at.
 func (p *crewPicker) moveSource(delta int) {
 	at := 0
-	for i, source := range crewSources {
+	for i, source := range config.CrewSources {
 		if source == p.source {
 			at = i
 		}
 	}
-	p.source = crewSources[(at+delta+len(crewSources))%len(crewSources)]
+	p.source = config.CrewSources[(at+delta+len(config.CrewSources))%len(config.CrewSources)]
 }
 
 // The chooser's fixed lines around the three presets, spelled once so the
@@ -706,8 +574,8 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 	// and the only fact on it. The row takes no lead and no ground for seat
 	// one's reason, said above: nothing on this list applies it with enter,
 	// and a mark that said otherwise would be a promise no key keeps.
-	words := make([]string, 0, len(crewSources))
-	for _, source := range crewSources {
+	words := make([]string, 0, len(config.CrewSources))
+	for _, source := range config.CrewSources {
 		if source == p.source {
 			words = append(words, pal.accent(source+" models"))
 			continue
@@ -716,7 +584,7 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 	}
 	out = append(out, fit("  "+pal.dim(crewSourceLead+" ‹ ")+strings.Join(words, pal.dim(" · "))+pal.dim(" ›"), width))
 	for i, preset := range config.CrewPresets {
-		models, _ := crewPresetModels(p.source, preset)
+		models, _ := config.CrewModelsForSource(p.source, preset)
 		parts := make([]string, 0, len(roles.Tiers))
 		for _, tier := range roles.Tiers {
 			parts = append(parts, strings.TrimSpace(a.crewClassWord(tier))+" "+models[string(tier)])
