@@ -19,11 +19,11 @@
 # side — and a rig that moved with the subject would be measuring two harnesses
 # rather than two prompts.
 #
-# IT RUNS ON THE SPARK. Layer B alone is seventeen minutes of a real binary in a
+# IT RUNS ON THE BENCH HOST. Layer B alone is seventeen minutes of a real binary in a
 # real terminal against a real model, and the owner's standing order is that no
 # full suite runs on the laptop. Nothing here refuses to run elsewhere — a
 # refusal keyed off a hostname would be a lie on the next machine — but every
-# recipe in docs/design/prompt-diet/BENCH.md is spelled for `ssh spark`.
+# recipe in docs/design/prompt-diet/BENCH.md is spelled for `ssh benchhost`.
 #
 # IT SPENDS REAL MONEY. Layers B and C call a real model. Layer A does not, and
 # is worth running on its own while editing.
@@ -72,7 +72,7 @@ LAYERS="a,c,d"
 # THE PIN IS THE ONE THE BATTERIES WERE CALIBRATED ON, and it is not the one
 # this wave started with.
 #
-# MEASURED on the Spark, 2026-09-10. Pinned to `deepseek/deepseek-v4.1-flash`,
+# MEASURED on a bench host, 2026-09-10. Pinned to `deepseek/deepseek-v4.1-flash`,
 # cells died mid-turn with the provider's own sentence: "0 endpoints out of 1
 # requested are available matching your guardrail restrictions and data policy
 # … Paid model training violation (account settings): 1 endpoint excluded". It
@@ -169,14 +169,14 @@ if git -C "$OUT" rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 1
 fi
 
-# GO IS NOT ON THE SPARK'S NON-INTERACTIVE PATH. Finding it here rather than
+# GO IS NOT ON THE BENCH HOST'S NON-INTERACTIVE PATH. Finding it here rather than
 # asking every caller to export it is what keeps the ssh recipes in BENCH.md to
 # one line, and a missing toolchain says so once instead of failing four layers
 # deep with "go: command not found".
 GO="${GO:-$(command -v go || true)}"
 [ -n "$GO" ] && [ -x "$GO" ] || GO="$HOME/.local/bin/go"
 if [ ! -x "$GO" ]; then
-  warn "no go toolchain: set GO=<path> (the Spark's lives at ~/.local/bin/go)"
+  warn "no go toolchain: set GO=<path> (the bench host's lives at ~/.local/bin/go)"
   exit 1
 fi
 

@@ -162,7 +162,7 @@ runs it.
 **Ablation as the arbiter.** The discipline paragraph earned its place with twelve
 unattended runs (3/3 vs 0/5). Nothing else on the page has that evidence. For the ten
 largest law units, run the same rig with the unit removed; keep what moves the outcome,
-file the rest as ON DEMAND. Critique: expensive (Spark, a day of runs). Verdict: do it for
+file the rest as ON DEMAND. Critique: expensive (bench host, a day of runs). Verdict: do it for
 the top ten only, and never cut a pinned law on bytes alone.
 
 ## 4. The tool block — contract, not policy
@@ -226,7 +226,7 @@ These are defects, not style, and they cost more on a small window than the whol
   not on the per-turn bill and do not move without rerunning that bench.
 - **Proof is the bench, not the byte count.** Before/after on the TUI e2e suite and the
   benchmark cells with a frontier model (must not drop), plus one local-model cell
-  (deepseek flash or a Qwen-class model) for the lean profile. Run on Spark.
+  (deepseek flash or a Qwen-class model) for the lean profile. Run on the bench host.
 
 ## 7. Sequence
 

@@ -21,7 +21,7 @@ tests passed and no skip was added. See the calibration report for exact scope.
 
 This is a local development wave, not a release or a claim that the harness is on a
 universal cost/time/quality frontier. The integration branch is
-`santosh/conversation-runtime`; the shared `dev` checkout and the prior consolidated
+`a local working branch`; the shared `dev` checkout and the prior consolidated
 QA branch were not used as mutable workspaces. Independent Claude Opus lanes were
 reviewed and merged locally. After the Opus session limit, the owner authorized OMP
 with GLM 5.3 for the remaining delegated review. All live comparison calls use
@@ -178,7 +178,7 @@ ledger has not grown. Focused budget tests passed under the race detector (2.207
 as did causal-wake and prefix regressions (10.353s). The unchanged fixed-prefix
 budget remains 48,000 bytes.
 
-Work is integrated locally on `santosh/conversation-runtime` in
+Work is integrated locally on `a local working branch` in
 `/private/tmp/af-conversation`, with its own `bin/codeaf`. The original QA checkout
 and shared `dev` were not modified by this wave. Owned merged delegate worktrees,
 CLI profile and GLM forwarding process were removed; raw evidence and its short

@@ -1,6 +1,6 @@
 # Conversation runtime implementation
 
-Local integration line: `santosh/conversation-runtime` (2026-09-04 working wave). This is a working record of what has merged into that
+Local integration line: `a local working branch` (2026-09-04 working wave). This is a working record of what has merged into that
 line, what is still open, and what the available evidence does and does not establish. It
 describes the local integration only; nothing here is published or claimed as released.
 

@@ -1,6 +1,6 @@
 # Modules: where the responsibilities are, and where the seams are
 
-**Read as of the local `santosh/conversation-runtime` wave, 2026-09-04.** Every row marked *implemented* names
+**Read as of the local `a local working branch` wave, 2026-09-04.** Every row marked *implemented* names
 code in this tree. Every row marked *proposed* is a plan and nothing more. `PLAN.md`,
 `PRODUCT.md` and `COMMUNICATION.md` describe intended behavior and are not claims about
 what ships.

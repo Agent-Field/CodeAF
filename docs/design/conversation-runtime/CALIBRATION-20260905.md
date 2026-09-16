@@ -1,6 +1,6 @@
 # Calibration 02 — measured candidate and next decisions
 
-Candidate `ec9f5a0c2`, local branch `santosh/conversation-runtime`. The full repository check passed before the binary and rig were frozen. This is calibration, not a demonstrated Pareto frontier.
+Candidate `ec9f5a0c2`, local branch `a local working branch`. The full repository check passed before the binary and rig were frozen. This is calibration, not a demonstrated Pareto frontier.
 
 ## Protocol and completeness
 
