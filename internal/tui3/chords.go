@@ -270,7 +270,25 @@ var chordDeadKeys = map[rune]string{
 	// a US layout exactly as Option+w composes to `∑`, so the chord belongs in
 	// this table for the same reason its neighbour does.
 	'†': "alt+t",
+	// AND THE SWITCHER, which took this modifier when `ctrl+k` went back to the
+	// draft (hop.go's [hopOpenKey]). Option+k composes to `˚`.
+	'˚': hopOpenKey,
 }
+
+// chordAnywhereDeadKey is the ONE character in [chordDeadKeys] that arms the note
+// in a conversation as well as on a place, and it is the switcher's.
+//
+// THE RULE UNDER IT IS "where is the chord bound", not "where is the table
+// convenient". Every other chord the table knows is a place's own — the jump,
+// the map, the views — and none of them does anything in a conversation, so a
+// `ø` typed there is a person writing a sentence and the note would be noise
+// ([app.chordWatch] states that gate). The switcher is the exception in the
+// surface and therefore here: it is drawn over the conversation and over every
+// place alike, so a Mac whose Option is composing accents loses it in the one
+// screen people spend their hours in — and would, without this, never be told
+// why. `˚` is not a rune English prose reaches for, which is what makes the
+// exception cheap.
+const chordAnywhereDeadKey = '˚'
 
 // chordWatch is the whole of the check, read at the top of the key router so
 // both roads feed it — the places, where the note is drawn, and the conversation,
@@ -291,18 +309,20 @@ func (a *app) chordWatch(msg tea.KeyPressMsg) {
 		a.chordReal, a.chordLost = true, false
 		return
 	}
-	// AND ONLY WHILE A PLACE IS STANDING. The chords the table is built from are
-	// the places' own — the jump, the map, the views — and a character typed into
-	// a conversation is a person writing a sentence, not a person missing a room.
-	if !a.pageShowing() {
-		return
-	}
+	// AND ONLY WHILE A PLACE IS STANDING, WITH ONE CHARACTER EXCEPTED. The chords
+	// the table is built from are the places' own — the jump, the map, the views
+	// — and a character typed into a conversation is a person writing a sentence,
+	// not a person missing a room. The switcher is the one chord bound in the
+	// conversation too, so its own dead key is read there as well
+	// ([chordAnywhereDeadKey] states the rule and why it is the only one).
+	here := a.pageShowing()
 	for _, r := range msg.Key().Text {
-		if _, ok := chordDeadKeys[r]; ok {
-			a.chordLost = true
-			a.touch()
-			return
+		if _, ok := chordDeadKeys[r]; !ok || !here && r != chordAnywhereDeadKey {
+			continue
 		}
+		a.chordLost = true
+		a.touch()
+		return
 	}
 }
 
@@ -341,6 +361,26 @@ func (c chordSpelling) chordFixWords() string {
 // the manual's own page about alt on macOS quotes.
 func (c chordSpelling) chordOptionWords() string {
 	return "your terminal sends " + chordMetaWord + " as a letter — " + c.chordFixWords()
+}
+
+// chordShortWords is the SAME DIAGNOSIS IN THE CELLS THE LEGEND CAN SPARE, and
+// it exists because the switcher moved onto this modifier (hop.go's
+// [hopOpenKey]). Until then every chord the dead-key table knew was a place's
+// own, so the long sentence had a place's note slot to live in and the
+// conversation needed no line at all. Now one of them is bound in the
+// conversation too, and a flag armed there that only ever drew somewhere else
+// would be machinery that half works — which this codebase would rather not
+// have than have.
+//
+// IT KEEPS THE REMEDY AND SPENDS THE DIAGNOSIS, which is the opposite of
+// [app.chordNote]'s trade and right for the opposite reason. The note has room
+// for both halves and drops the remedy when it does not; this slot has room for
+// one clause, and a person reading a hint slot in a conversation has just
+// pressed the chord and watched a character land in their message — they have
+// the diagnosis in front of them already. What they do not have is the words
+// "option as meta" to go looking for.
+func (c chordSpelling) chordShortWords() string {
+	return chordMetaWord + " types a letter · turn on option as meta"
 }
 
 // chordNote is that sentence as a row of the place's note slot: one dim line,

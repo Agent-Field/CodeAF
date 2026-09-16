@@ -801,6 +801,7 @@ at and filtered, not edited by pointer.
 | `backspace` | Delete the character behind the caret. Over an empty box with attachments, it removes the last attached picture instead — and its `[image #n]` token with it |
 | `delete` | Delete the character in front of the caret |
 | `ctrl+u` | Delete to the start of **this line** — not the whole message |
+| `ctrl+k` | Delete to the end of **this line** — the other half of the pair. It stops at the newline rather than joining the next line onto this one, so a second press on an emptied line does nothing. This chord used to open the conversation switcher, which is now `alt+k` |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
 | `alt+backspace` | Delete the word behind the caret. This is the word kill in the message box |
 | `ctrl+backspace` | Same as `alt+backspace` |
@@ -821,7 +822,7 @@ inside one.
 a browser.
 
 Your unsent sentence, caret and attachments stay with the conversation. The
-conversation remains in `ctrl+k` and Home, and reopening restores its tab and draft.
+conversation remains in `alt+k` and Home, and reopening restores its tab and draft.
 
 Closing the active tab selects the most recently used remaining open tab. With
 none left, the window goes **Home** with the current session behind it.
@@ -840,7 +841,7 @@ and the first message you had half typed is parked for the next time you open it
 Ending a conversation for good is a different act, and this key is not it:
 `Stop` on a task's page ends that work, and `/quit` closes the conversation in
 front. See *Put a conversation away from the switcher* below, which is the same
-gesture aimed at a row on the `ctrl+k` card instead of at the tab in front.
+gesture aimed at a row on the `alt+k` card instead of at the tab in front.
 
 The trade is that `ctrl+w` no longer deletes a word in the message box.
 **`alt+backspace` and `ctrl+backspace` still do**, and one of the two reaches
@@ -1677,7 +1678,7 @@ It **does nothing at all** when there is nowhere to go: one conversation open, o
 terminal has been in before. A key that cannot act says so by not being advertised — and
 when it can, the legend line above the box says `space space home · tab last · / commands`.
 
-With **three or more** open, that slot says `ctrl+k switch` instead, and `ctrl+k` opens the
+With **three or more** open, that slot says `alt+k switch` instead, and `alt+k` opens the
 card of all of them — see *Switch between open conversations*. `tab` still works and still
 goes to the last one.
 
@@ -1705,9 +1706,14 @@ The welcome box is the one exception worth naming: **`tab` does not dismiss it**
 other key does — that is the box's contract — but switching away is the opposite of
 starting work here, so the box is still standing when you come back.
 
-## Switch to another conversation without going home — ctrl+k, the conversation switcher, switch between my open chats, alt tab between conversations
+## Switch to another conversation without going home — alt+k, the conversation switcher, switch between my open chats, alt tab between conversations, ctrl+k does not switch any more
 
-**Press `ctrl+k` to choose a conversation without leaving the one you are reading.**
+**Press `alt+k` to choose a conversation without leaving the one you are reading.**
+On a Mac that is `⌥k`. **It was `ctrl+k` until this build**, and that chord is now an edit
+in the message box — delete to the end of the line — so the switcher moved one modifier
+across. If `⌥k` types a `˚` into your message instead of opening the card, your terminal
+is composing accents with Option: see *Why option+left or cmd+left does nothing* above,
+which is the same setting.
 Press it again, use the arrows, or scroll to move the highlight. The list stays open
 while you read its names; a pause never switches chats or dismisses the list.
 Moving the pointer over a row highlights that row without changing the keyboard
@@ -1758,9 +1764,9 @@ the tab you are in. See *Conversation tabs* and
 
 | Key | What it does |
 | --- | --- |
-| `ctrl+k` | Open the list; each further press moves the highlight without switching |
+| `alt+k` (`⌥k`) | Open the list; each further press moves the highlight without switching |
 | `ctrl+tab` | Switch immediately when quick switch is on, otherwise browse; requires a terminal that sends it |
-| `ctrl+shift+k` / `ctrl+shift+tab` | Reverse their respective forward gestures, on those same terminals |
+| `alt+shift+k` (`⌥K`) | Walk the list backwards. **Every terminal sends it**, unlike the `ctrl+shift+tab` beside it, which needs a terminal that can spell the alias |
 | `tab` / `↓` | Down one — cursor only, without switching, and the card stops fading |
 | `shift+tab` / `↑` | Up one. Both wrap round at the ends |
 | `1`…`9` | On the holding card, go to that row outright — the number is drawn on the rows that have one. While the card is fading, digits are typing and land in your message |
@@ -1776,12 +1782,12 @@ search, settings — because it is drawn over the screen rather than being a scr
 own. Nothing under it moves by a cell.
 
 The cursor opens on the **first row you can actually go to**, never on `you are here`, so
-`ctrl+k` `enter` always lands somewhere.
+`alt+k` `enter` always lands somewhere.
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
 else — and says so by not being there: no card, and the legend above the box does not name
-it. Everywhere else the legend reads `space space home · tab last · ctrl+k switch ·
-/ commands`, dropping clauses from the left as the frame narrows.
+it. Everywhere else the legend reads `space space home · tab last · alt+k switch ·
+/ commands` — `⌥k switch` on a Mac — dropping clauses from the left as the frame narrows.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -1825,11 +1831,24 @@ Escape returns to where the burst started. Typing dismisses the receipt and goes
 the new chat. An arrow turns the receipt into a list that waits for Enter.
 
 Turn it off under `/settings`, interface, `quick switch` to make `ctrl+tab` browse too.
-**`ctrl+k` always browses**, regardless of this setting. It never moves the underlying
+**`alt+k` always browses**, regardless of this setting. It never moves the underlying
 chat until Enter, a numbered shortcut, or a row click chooses one. Key releases are not
 available consistently across terminals, so there is no release-to-commit behavior.
 
-## Why ctrl+k and not ctrl+tab or alt+tab
+## Why alt+k and not ctrl+k or ctrl+tab or alt+tab — the switcher moved off ctrl+k
+
+**The switcher was `ctrl+k` and is now `alt+k`, because `ctrl+k` is kill-to-the-end-of-the-line
+and the message box wanted it back.** `ctrl+u` deletes to the start of the line here and
+always has; `ctrl+k` is the other half of that pair in every shell on your machine, and it
+could not be that while it opened a card. Every other `ctrl+<letter>` on this surface is
+already spent, so the switcher moved rather than the edit.
+
+`alt+k` arrives as escape-then-`k`, which every terminal sends with no setting to turn on
+and no protocol to negotiate — **except on a Mac**, where Option composes accents unless
+you tell the terminal otherwise and `⌥k` types `˚`. That is the one thing this chord costs
+that the old one did not, and it is the same setting every other `alt+` chord in codeaf
+needs: *Why option+left or cmd+left does nothing* has the menu path for your terminal.
+Nothing else wants `alt+k` — no window manager, no emulator, and no other key in codeaf.
 
 `ctrl+tab` **is** bound — but only on terminals that can send it, and many cannot.
 
@@ -1844,15 +1863,13 @@ tabs by default, so it would never reach codeaf there.
 `alt+tab` is not available at any price: the window manager takes it on Windows and on most
 Linux desktops.
 
-`ctrl+k` has none of those problems. Every terminal sends it, no window manager wants it,
-and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS Code.
-
-**`ctrl+shift+k` is the reverse, under the same rule.** An ordinary terminal sends
-`ctrl+shift+k` and `ctrl+k` as the same byte, so it is bound only where the terminal
-answered the keyboard query — and it costs nothing that half the terminals in the world
-cannot send it, because **`shift+tab` walks the card back on every one of them**. With the
-card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
-unlooked-at — and waits for your choice.
+**`alt+shift+k` is the reverse, and the move made it better.** It arrives as
+escape-then-`K`, a different byte from escape-then-`k`, so **every terminal can send it**.
+The old `ctrl+shift+k` could not be told apart from `ctrl+k` and was bound only where the
+terminal answered the keyboard query, which was about half of them. With the card down,
+`alt+shift+k` opens the ring at its far end — the open conversation longest unlooked-at —
+and waits for your choice. **`shift+tab` still walks the card back** once it is up, on
+every terminal, and that is the key most hands reach for.
 
 ## Put a conversation away from the switcher — ctrl+w, closing a chat, too many open
 
@@ -1879,11 +1896,11 @@ conversation left alone can be let go of on its own; this key is you putting one
 ## `tab` still goes straight to the last one
 
 `tab` on an empty message box has not changed: it goes to the conversation you were in
-before this one, in one key, with no card. Use `tab` to flick between two and `ctrl+k` when
+before this one, in one key, with no card. Use `tab` to flick between two and `alt+k` when
 there are more.
 
 The legend above the box names **every door that would act**: `tab last` appears once a
-second conversation is open, `ctrl+k switch` whenever there is anywhere at all to go. On a
+second conversation is open, `alt+k switch` whenever there is anywhere at all to go. On a
 place the switcher is named on the map (`alt+.`) instead, because a place's foot is four
 fixed clauses the design sets word for word.
 
@@ -2282,12 +2299,13 @@ also a button — press it anywhere along its width and you are back in the conv
 The `Stop` that ends the work is not on that row at all: it is at the right end of the
 quiet facts row underneath, so a press aimed at leaving can never end a task.
 
-**Inside a harness design's room, while its card is waiting on you**, two more chords
-appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
-are clickable. They are chords rather than letters because `esc` and `enter` are already
-spoken for and a bare letter would stop being a letter you can type — and they are bound
-only while that row is up. Every other key still goes to the message box, which is where
-you say what you want changed instead. The saved-shapes pages describe the row in full.
+**Inside a harness design's room, a finished design is answered by the same three digits
+the page in the conversation uses**: `1` save it · `2` change it · `3` drop it, with `esc`
+for later. There is no second row of chords in the room. It used to have one — `ctrl+k`
+saved the design and `ctrl+x` dropped it — and that row is deleted along with the
+`enter`/`e`/`esc` grammar that answered the card in the feed. Every other key goes to the
+message box, which is where you say what you want changed instead. The saved-shapes pages
+describe the answers in full.
 
 **`x` asks to stop the work.** It is taken on the roster's focused row and inside a
 room or an adaptive run's page, and only over an empty message box — the moment there
@@ -2783,9 +2801,10 @@ Two more chords surprise people:
   the tab in front; while the **switcher** is up it puts the conversation under the cursor
   away. The card has taken the whole keyboard by then. In the message box the word kill it
   used to be is `alt+backspace`.
-- **`ctrl+k` means two things**, and never on the same screen: it opens the switcher, and
-  inside a harness design's room, while its approval row is up, it saves the design. That
-  row is modal and takes the key first.
+- **`ctrl+k` means one thing now**, and it is an edit: delete to the end of the line, in
+  the message box and in every filter box. It opened the conversation switcher until that
+  card moved to `alt+k`, and it saved a harness design from inside that design's room until
+  the room's approval row was deleted. Neither is bound any more.
 
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.
@@ -2849,7 +2868,8 @@ answer:
 | `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
 | `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
-| `ctrl+k` | **The switcher**: the card of every conversation this terminal has open. Inside a harness design's room, while its approval row is up, it saves the design instead — that row is modal and takes the key first |
+| `ctrl+k` | **Bound, in every box**: delete from the caret to the end of the line, the pair to `ctrl+u`. It does not eat the newline. It was the conversation switcher until that moved to `alt+k` (`⌥k` on a Mac) to give this letter back to the message box |
+| `alt+k` | **The switcher**: the card of every conversation this terminal has open. On a Mac it is `⌥k`, and it needs "use option as meta" turned on in your terminal — see "Why alt+k and not ctrl+k or ctrl+tab" |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before codeaf ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `running` row of home that this window holds it asks to stop that task (`ctrl+x stop it`, which the foot names where `→` crosses columns). Not bound anywhere else |
@@ -3120,7 +3140,7 @@ the press this key most often undoes.
 What it will not do:
 
 - **A tab you already brought back yourself is skipped.** Reopening a conversation
-  from `ctrl+k` or from home takes it off the list, so the key moves on to the one
+  from `alt+k` or from home takes it off the list, so the key moves on to the one
   under it rather than spending a press on the tab in front of you.
 - **The same conversation is never on the list twice.** Shut it, reopen it, shut it
   again, and it is still one entry.

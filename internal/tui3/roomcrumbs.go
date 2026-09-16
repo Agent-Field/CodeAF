@@ -153,7 +153,7 @@ type crumbHit struct {
 func (a *app) roomCrumbs() []roomCrumb {
 	// THE CONVERSATION ITSELF IS ONE STEP AND IT IS THE PAGE YOU ARE ON, so it is
 	// inert. There is no trail row over a conversation any more — the tab strip
-	// above says which conversation this is, and the picker `ctrl+k` opens is the
+	// above says which conversation this is, and the picker `alt+k` opens is the
 	// control at that strip's own right end (chattabs.go) — but the model still
 	// answers here, because [app.roomTrail] is read by pages that ask what the
 	// trail SAYS without drawing one.

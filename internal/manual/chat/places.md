@@ -210,7 +210,7 @@ either. The chip on home was a reading nothing acted on — `enter` opened a con
 this window's folder whatever the chip said — and the rule is that reading with `enter`
 honouring it. Home's own page has the whole gesture.
 
-## The composer layer — set which project, pick the model and set a spend limit before starting a task
+## The composer layer — `alt+w` and `alt+o`, what does alt+w do, set which project, pick the model and set a spend limit before starting a task
 
 Press **`alt+enter`** with something typed into the composer, on any place, and the layer
 opens. It is not a new screen: **the page behind dims to the faintest tier instead of being

@@ -2310,6 +2310,13 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 	case "ctrl+u", "super+backspace":
 		filter.killToStart()
 		rank()
+	case "ctrl+k":
+		// AND THE OTHER HALF OF THE PAIR, which reached this box the day the
+		// switcher gave the letter back (hop.go's [hopOpenKey]). It is here for
+		// the reason directly above: a kill that works in the composer and does
+		// nothing in the model picker is a kill a person stops trusting anywhere.
+		filter.killToEnd()
+		rank()
 	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		filter.deleteWord()
 		rank()

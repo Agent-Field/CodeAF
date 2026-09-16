@@ -12,7 +12,7 @@ import (
 //
 // Taking a tab off the row has never ended work and does not now: the ✕ closes a
 // VIEW, the agent behind it goes on running, and the conversation is still on the
-// switcher `ctrl+k` opens (chattabs.go states that law and is the only place it is
+// switcher `alt+k` opens (chattabs.go states that law and is the only place it is
 // decided). What was missing was that a person could not SEE that this was what
 // happened, and could not ask for the other thing without leaving the tab row.
 //

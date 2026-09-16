@@ -125,7 +125,7 @@ func TestTheStripDrawsNoTabItCannotName(t *testing.T) {
 // ── THE DOORS ───────────────────────────────────────────────────────────────
 
 // PRESSING ANOTHER TAB GOES THERE, through the keeper's own door — the one
-// `ctrl+k`'s ring and home's `enter` use, which attaches rather than reopens.
+// `alt+k`'s ring and home's `enter` use, which attaches rather than reopens.
 func TestPressingAnotherTabSwitchesToThatConversation(t *testing.T) {
 	a, _, newer := tabApp(t)
 	span := tabSpanFor(t, a, "Refactor the rail scope model")
@@ -207,7 +207,7 @@ func TestANarrowStripKeepsTheTabInFrontAndCountsWhatItHid(t *testing.T) {
 	}
 }
 
-// AND THE COUNT IS A DOOR: it opens the picker `ctrl+k` opens, which is where
+// AND THE COUNT IS A DOOR: it opens the picker `alt+k` opens, which is where
 // every conversation on the machine is, ranked, with what each wants from you.
 func TestTheCountAtTheEndOpensThePicker(t *testing.T) {
 	a, _, _ := tabApp(t)

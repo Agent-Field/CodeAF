@@ -2239,6 +2239,8 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 	// filterable overlay (input.go, palette.go's [listNavigate]).
 	case "ctrl+u", "super+backspace":
 		edit.box.killToStart()
+	case "ctrl+k":
+		edit.box.killToEnd()
 	case "ctrl+w", "alt+backspace", "ctrl+backspace":
 		edit.box.deleteWord()
 	case "left", "ctrl+b":

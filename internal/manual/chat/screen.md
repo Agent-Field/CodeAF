@@ -100,7 +100,7 @@ including the one you are already in, and the highlight it wears as the *chosen*
 put when the pointer leaves. Without color, hovering adds a dot beside the tab’s
 close mark; Home, `+`, and the scroll arrows gain a pointer dot, and Chats changes to uppercase.
 
-**Clicking a tab goes to that conversation** — the same switch `ctrl+k` makes. Clicking the
+**Clicking a tab goes to that conversation** — the same switch `alt+k` makes. Clicking the
 tab you are already in does nothing while you are in the conversation itself, and takes you
 back out to it from a task page.
 
@@ -121,7 +121,7 @@ without spending its name on arrows.
 
 **`+` and `Chats ▾` follow the last visible tab**, with small gaps between their
 targets. They stay beside a short row of tabs; when the row fills, the tabs scroll
-and the controls remain at its edge. **`Chats ▾` opens the switcher** — the same card `ctrl+k` opens, with
+and the controls remain at its edge. **`Chats ▾` opens the switcher** — the same card `alt+k` opens, with
 every conversation on this machine in it, its fold already open. Where the row is too
 narrow for every tab the control reads `Chats +3 ▾`, counting the tabs that did not fit.
 On a narrower frame it drops the `▾`, then the count, and keeps the word `Chats`: the
@@ -131,7 +131,7 @@ alone (`+3`) and does nothing, because it is still true.
 ## Does opening a new chat close or stop the one I am in — no, opening another chat stops nothing
 
 No. Opening a new chat (`ctrl+t`, the `+` beside the tabs, `/new`) or switching to another
-one (`ctrl+k`, `tab`, clicking a tab) **closes nothing and stops nothing**. The chat you
+one (`alt+k`, `tab`, clicking a tab) **closes nothing and stops nothing**. The chat you
 were in keeps its turn, its tasks and its draft, and is one tab away. Only closing its tab
 (`ctrl+w`, the `×`) asks what to do with running work. The next heading says what stays
 alive and where your draft goes.
@@ -206,7 +206,7 @@ are limited to two words. Closing the session cancels unfinished naming. There i
 command or tab action to rename a conversation manually.
 
 **`new conversation` is the one name placeholder.** The tab, its breadcrumb root and the
-`ctrl+k` switcher row all use it, and no conversation-name surface calls the same unnamed
+`alt+k` switcher row all use it, and no conversation-name surface calls the same unnamed
 chat `Untitled`. The project in the status line is a separate fact. The placeholder is not
 `main` either — `main` is the conversation as a place, the one you get back to from a task
 page, which is what `esc/← main` and `say it to main` both mean.
@@ -248,7 +248,7 @@ ends that task; `/quit` ends the program.
 ## Keep running, stop work or cancel — closing a tab on a chat that is still working
 
 A tool permission question does not trap you in its tab. `ctrl+w` offers the same
-close actions while leaving the question unanswered; `ctrl+k` opens Chats and
+close actions while leaving the question unanswered; `alt+k` opens Chats and
 `ctrl+t` opens another chat. A hidden chat waiting on your answer is marked
 with `?`; Chats says `asking you something`. The question's answer keys do nothing
 while another chat or the **New chat** page is in front of you. Reopen the asking
@@ -409,7 +409,7 @@ the same width in all three states, so a name never moves sideways when a turn s
 terminal with no box characters `◐` is drawn `*`; `?` is already plain text, so the three
 stay apart with color off.
 
-**The `ctrl+k` switcher rows carry the same two marks from the same reading.** A tab and
+**The `alt+k` switcher rows carry the same two marks from the same reading.** A tab and
 its row cannot disagree, including the row for the conversation you are standing on. A
 queued or running piece of work, a turn, or a background job wears `◐` in both places.
 
@@ -438,7 +438,7 @@ nothing, because it will go ahead whether or not you look at it.
 
 A tab with neither mark is at rest or is one this window can no longer say anything about.
 For the same question asked about everything on the machine rather than about this window's
-tabs, the switcher's card (`ctrl+k`) and the home page both carry it.
+tabs, the switcher's card (`alt+k`) and the home page both carry it.
 
 ## The box says which room you are typing into
 

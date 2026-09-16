@@ -265,7 +265,7 @@ On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
-back` — the places row, the task roster on `alt+t`, the conversation switcher on `ctrl+k`,
+back` — the places row, the task roster on `alt+t`, the conversation switcher on `alt+k`,
 `space space` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you
@@ -2000,5 +2000,5 @@ There is no slash command that reopens a tab you closed. **`ctrl+shift+t` does i
 through the ones before it. The keys page has the whole of it under *Reopen a tab
 you closed*, including what a terminal that cannot send the key does instead.
 
-`ctrl+k` is the other way back: it lists every conversation on this machine, closed
+`alt+k` is the other way back: it lists every conversation on this machine, closed
 tabs included, and opening a row brings the tab and its draft back too.

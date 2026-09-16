@@ -55,7 +55,7 @@ import (
 // what the strip used to say. Dismissing a tab TAKES THE TAB OFF THE ROW and
 // does nothing else: the agent behind it goes on running, its draft, its caret
 // and its attachments are kept exactly where the person left them, and the
-// conversation is still on the switcher `ctrl+k` opens — which is where
+// conversation is still on the switcher `alt+k` opens — which is where
 // reopening it brings the tab, and the draft, back. Nothing on this row calls
 // [app.closeFront] or [app.closeKept], and nothing on it interrupts an agent.
 //
@@ -105,7 +105,7 @@ const (
 	tabsCap = 32
 	// tabsWord is the LABELLED control after the visible tabs, and the label is
 	// the whole point of it: a bare `▾` floating at the end of a row of words is
-	// a mark nobody can read as a door. It opens the switcher `ctrl+k` opens,
+	// a mark nobody can read as a door. It opens the switcher `alt+k` opens,
 	// showing every conversation on this machine rather than only the ones this
 	// window holds.
 	tabsWord = "Chats"
@@ -998,7 +998,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	case tabNew:
 		return a.openChatStart(), true
 	case tabMore:
-		// THE SWITCHER AND NOT A MENU OF ITS OWN. `ctrl+k` already draws every
+		// THE SWITCHER AND NOT A MENU OF ITS OWN. `alt+k` already draws every
 		// conversation this machine has, ranked, with what each of them wants from
 		// you on it (hop.go); a second list built here would be a second answer to
 		// the same question, kept in step with the first by nothing. It opens on

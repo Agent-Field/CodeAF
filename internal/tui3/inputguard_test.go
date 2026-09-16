@@ -290,6 +290,65 @@ func TestTheWordAndLineKillsAnswerToEveryNameTheySendUnder(t *testing.T) {
 	}
 }
 
+// TestCtrlKKillsToTheEndOfTheLineAndNeverEatsTheNewline is the other half of
+// readline's pair, and it is the reason the switcher moved to `alt+k` at all
+// (hop.go's [hopOpenKey]). Everything it asserts is [editor.killToEnd]'s stated
+// contract, including the one place it parts company with a shell.
+func TestCtrlKKillsToTheEndOfTheLineAndNeverEatsTheNewline(t *testing.T) {
+	// FROM THE HEAD OF A ONE-LINE DRAFT IT TAKES THE LOT, which is the gesture
+	// ctrl+u makes from the other end.
+	_, a := wired(nil)
+	a.input.setText("read the config file")
+	a.input.cursor = 0
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "" {
+		t.Fatalf("ctrl+k from the head left %q, want the line killed", got)
+	}
+
+	// FROM THE MIDDLE IT TAKES THE TAIL AND NOTHING BEHIND THE CARET.
+	_, a = wired(nil)
+	a.input.setText("read the config file")
+	a.input.cursor = len("read the ")
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "read the " {
+		t.Fatalf("ctrl+k from the middle left %q", got)
+	}
+
+	// AND IT STOPS AT THE NEWLINE RATHER THAN JOINING THE LINES. A press on an
+	// already-empty line is a no-op, which is what makes the second press safe:
+	// in a shell the line is the buffer and there is nothing to join, but a draft
+	// is a paragraph and a silent join takes two lines while looking like one.
+	_, a = wired(nil)
+	a.input.setText("first line\nsecond line")
+	a.input.cursor = 0
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "\nsecond line" {
+		t.Fatalf("ctrl+k killed across the newline: %q", got)
+	}
+	drive(t, a, key("ctrl+k"))
+	if got := a.input.String(); got != "\nsecond line" {
+		t.Fatalf("a second ctrl+k on an emptied line ate the newline: %q", got)
+	}
+}
+
+// TestCtrlKInTheComposerIsAnEditAndNotTheSwitcher is the regression this whole
+// move exists to prevent. The chord used to raise the card over a draft
+// somebody was editing; now the card is on `alt+k` and this key belongs to the
+// box, so BOTH halves are asserted together — a lane that rebinds one without
+// the other fails here rather than in somebody's terminal.
+func TestCtrlKInTheComposerIsAnEditAndNotTheSwitcher(t *testing.T) {
+	_, a := wired(nil)
+	a.input.setText("read the config file")
+	a.input.cursor = len("read the ")
+	drive(t, a, key("ctrl+k"))
+	if a.hop.open {
+		t.Fatal("ctrl+k still raises the conversation switcher over the draft")
+	}
+	if got := a.input.String(); got != "read the " {
+		t.Fatalf("ctrl+k did not edit the draft: %q", got)
+	}
+}
+
 // AND THE NAMES ARE THE ONES A TERMINAL ACTUALLY SENDS UNDER. Every table above
 // is written in the spelling this surface's key switches match on, and that
 // spelling is a fact about a library rather than about this repo: the names come

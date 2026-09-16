@@ -14,7 +14,7 @@ import (
 // made of typography, alignment and at most a hairline rule" — and three dim
 // rounded boxes shipped anyway, each with a written argument for being the
 // exception and each with its own copy of the six pieces: the `/folder` chooser
-// (contextmodal.go), the `ctrl+k` switcher card (hop.go) and the onboarding
+// (contextmodal.go), the `alt+k` switcher card (hop.go) and the onboarding
 // panel (onboarding.go). The owner's ruling of 2026-09-11 made a fourth kind of
 // thing framed on purpose — a QUESTION hangs above the box as one object — and
 // said the fourth must not be a fourth copy. So there is one frame, this one:

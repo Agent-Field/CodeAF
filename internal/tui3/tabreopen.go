@@ -9,7 +9,7 @@ import tea "charm.land/bubbletea/v2"
 // (tabclosekey.go), and this one puts the last thing you shut back. A person who
 // closed the wrong tab reaches for it without being told to, and until this wave
 // the only way back was to remember which conversation it had been and find it
-// again on `ctrl+k`.
+// again on `alt+k`.
 //
 // A held local conversation returns with its draft through the keeper. A
 // remembered remote conversation resumes through the existing connection's open
@@ -76,7 +76,7 @@ func (a *app) reopenTabKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 //
 // AN ENTRY WHOSE TAB IS ALREADY BACK IS DROPPED RATHER THAN OPENED. Every road
 // to the front lifts the dismissal through [app.rememberOpen], so a conversation
-// somebody reopened by hand from `ctrl+k` or from home is no longer shut — and a
+// somebody reopened by hand from `alt+k` or from home is no longer shut — and a
 // chord that "reopened" the tab a person is looking at would be a keystroke that
 // did nothing visible. The walk continues to the one under it, which is the tab
 // they meant.

@@ -98,7 +98,7 @@ const (
 // watching it saw it last.
 //
 // IT IS THE ONE READING OF A HELD CONVERSATION'S STATE. The strip draws it on
-// every frame and the card a person opens with ctrl+k reads it too, so the two
+// every frame and the card a person opens with alt+k reads it too, so the two
 // surfaces cannot answer the same question differently on one frame. The
 // watcher recomputes these cached facts after every event the conversation
 // produces (keeper.go), without opening a file or crossing a wire.
@@ -189,7 +189,7 @@ func (a *app) tasksInFlight() bool {
 // THE TWO MARKS ARE THE ONES THIS PROGRAM ALREADY USES for these two states —
 // the switcher's rows, home's rows and the task roster all spell them this way
 // (hop.go, home.go's own block about the two marks the design re-spelled) — so
-// the strip and the card a person opens with ctrl+k cannot disagree about what a
+// the strip and the card a person opens with alt+k cannot disagree about what a
 // conversation is doing.
 //
 // `?` IS ASCII AND NEEDS NO FALLBACK. `◐` is not, so it takes the stand-in this

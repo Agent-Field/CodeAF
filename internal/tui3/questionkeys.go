@@ -533,7 +533,7 @@ func questionKeyWord(key string) string {
 //
 // IT IS `alt+a` AND THE CHOICE IS ARITHMETIC RATHER THAN TASTE. Every ctrl
 // letter on this surface is already bound (`ctrl+g` is the rail's stow,
-// `ctrl+k` the switcher, `ctrl+q` the follow-up), and the two chords that read
+// `alt+k` the switcher, `ctrl+q` the follow-up), and the two chords that read
 // best on paper are the two that do not survive a real terminal: `ctrl+?` is
 // DEL on most of them and `ctrl+/` arrives as `ctrl+_`. `alt+a` is free in this
 // surface's whole table, it is the initial of the thing it does, and alt is
