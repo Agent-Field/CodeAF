@@ -507,7 +507,7 @@ arm_tui_argv() {
       # 2026-09-10 — after the seven-panel home landed — a fresh screen drew the
       # state word at the right edge of the status row with nothing in front of
       # it, so the needle matched nothing and every interactive codeaf cell
-      # recorded `unsupported` at the ready wait. Measured on the Spark that
+      # recorded `unsupported` at the ready wait. Measured on the bench host that
       # day: `followup-while-working` and `work-result-recalled` both ended
       # `noready` after 91s against a pane whose last line read `idle`.
       #
@@ -520,7 +520,7 @@ arm_tui_argv() {
       ARM_READY_RE='(· idle|idle[[:space:]]*$)'
       ARM_BUSY_RE='(· (working|interrupted)|(working|interrupted)[[:space:]]*$|[0-9]+ running)'
       ARM_ASK_RE='waiting · your call'
-      ARM_DOOR_NOTE='markers from internal/tui3/render.go (stateWord, waitingWord), matched against a live pane in /private/tmp/af-conversation-ops/host-live-01'
+      ARM_DOOR_NOTE='markers from internal/tui3/render.go (stateWord, waitingWord), matched against a live pane in a scratch bench-ops dir (host-live-01)'
       # Hosted, like any other conversation: the interactive door is the one
       # place this suite can measure the product's actual default, and passing
       # --no-host here would quietly measure something else. The cell's own
@@ -542,7 +542,7 @@ arm_tui_argv() {
       # whichever provider is in use, so a rig that wired pi to the guard and
       # then waited for "(openrouter)" waits forever: a live pane on a guarded
       # run reads "(guard) deepseek/deepseek-v4-flash-0731 • low"
-      # (/private/tmp/af-conversation-ops/live-interactive-peers-01/followup-while-working-pi/screen.txt).
+      # (a scratch bench-ops dir: live-interactive-peers-01/followup-while-working-pi/screen.txt).
       ARM_READY_RE="\\($(arm_provider_name)\\)"
       ARM_BUSY_RE='Working\.\.\.'
       ARM_ASK_RE='(\[y\]|approve|Allow\?)'
