@@ -44,7 +44,7 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			name: "the crew answers when it is the only thing said",
 			crew: CrewFrugal,
 			work: "deepseek/deepseek-v4-flash-0731", workRung: "crew frugal",
-			plan: "z-ai/glm-5.3-flash", planRung: "crew frugal",
+			plan: "z-ai/glm-5.3", planRung: "crew frugal",
 		},
 		{
 			name:    "the environment outranks the crew",
@@ -98,7 +98,7 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			// it: the same row a task handed off in conversation rides.
 			hand: map[string]string{ModelTierWorker: "vendor/my-own-worker"},
 			work: "vendor/my-own-worker", workRung: "crew custom",
-			plan: "z-ai/glm-5.3-flash", planRung: "crew custom",
+			plan: "z-ai/glm-5.3", planRung: "crew custom",
 		},
 		{
 			// A row cleared on purpose means "follow the conversation", and a
