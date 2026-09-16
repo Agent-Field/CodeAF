@@ -261,7 +261,7 @@ alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…7` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc

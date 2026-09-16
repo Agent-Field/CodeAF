@@ -48,7 +48,7 @@ session has tasks to come back to and no running-turn line owns that slot.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
 standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
-spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) jump
+spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) jump
 straight to any of the seven from wherever you are standing — a place or a conversation —
 and each
 has commands of its own (`/home`, `/history`, `/standing`,
@@ -127,7 +127,7 @@ every tab it has, `+3` says how many it could not. It is dim, it does nothing wh
 and it is drawn whole or not at all.
 
 **There is no `Chats ▾` button any more.** The row's right end carried one — a labelled
-door onto the switcher — and it is deleted. The way to that card is `alt+k` (`⌥k` on a
+door onto the switcher — and it is deleted. The way to that card is `alt+k` (`opt+k` on a
 Mac), which the legend under the message box names as `alt+k chats` wherever the card
 would open. The button was written when nothing on the screen said the key existed; the
 legend says it now, in your own keyboard's spelling, and a second door beside it was one
@@ -2783,18 +2783,27 @@ If characters come out as boxes or as `?`, the font is missing those ranges — 
 monospace, or start codeaf with `NO_COLOR=1` and a non-UTF-8 locale, where every mark falls
 back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 
-## alt or option or ⌥ — how the chords are spelled on a Mac, on Linux and on Windows
+## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `⌥` — `⌥1`…`⌥7`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`,
-`⌥s`, `⌥w`, `⌥o` — because that is what the keycap says. On Linux, on Windows, and everywhere
-else the same chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint
-line, the key map, the composer layer's rows and the key sheet `/help` draws read that one
-spelling, so what is on your screen is what is on your keyboard.
+running on.** On macOS every chord is drawn with `opt+` — `opt+1`…`opt+7`, `opt+.`,
+`opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
+calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
+chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint line, the key
+map, the composer layer's rows and the key sheet `/help` draws read that one spelling, so
+what is on your screen is what is on your keyboard.
 
-The manual names both spellings together — `alt+1` (`⌥1` on a Mac) — because it is one book
-for both platforms. If a page here says `alt+` and your screen says `⌥`, they are the same
-chord.
+**It is the word and not the `⌥` symbol, on purpose.** Every modifier on a Mac keycap
+carries both a word and a symbol — Control is `control` and `⌃`, Option is `option` and
+`⌥`, Command is `command` and `⌘` — so "what the keycap says" does not choose between
+them on its own. codeaf writes `ctrl+`: the keycap's word, cut short. `opt+` is that same
+move made twice, so one rule covers both and you never have to work out which modifier
+gets a symbol. It also measures the same as `alt+` — four cells — so a line that fits on
+Linux fits on a Mac, and no terminal has to own a font that has `⌥` in it.
+
+The manual names both spellings together — `alt+1` (`opt+1` on a Mac) — because it is one
+book for both platforms. If a page here says `alt+` and your screen says `opt+`, they are
+the same chord.
 
 **On Windows and on Linux, Alt is already meta and there is nothing to set.** Windows
 Terminal, conhost, the WSL consoles and every Linux terminal send `alt`+key the way codeaf
@@ -2803,21 +2812,21 @@ expects. There is no `option` key and no setting; the chords simply work.
 ## Why my option key types ¡ ™ £ instead of jumping — "use option as meta" on macOS
 
 **On macOS most terminals send Option as an accent-composing key rather than as meta until
-you turn that on.** Until you do, `⌥1` types `¡`, `⌥2` types `™`, `⌥.` types `≥` and
-`⌥enter` opens a line in the box instead of sending a task off.
+you turn that on.** Until you do, `opt+1` types `¡`, `opt+2` types `™`, `opt+.` types `≥` and
+`opt+enter` opens a line in the box instead of sending a task off.
 
 codeaf notices. The first time one of those characters arrives on a place, one dim line
 appears under the list:
 
-    your terminal sends ⌥ as a letter — turn on "use option as meta" in iTerm2: Profiles › Keys › Left Option: Esc+
+    your terminal sends opt as a letter — turn on "use option as meta" in iTerm2: Profiles › Keys › Left Option: Esc+
 
 It names the terminal you are actually in, it is said once, and the first real chord that
 arrives retires it for the rest of the session. The first-run setup says the same thing ahead
-of time, as a condition rather than a diagnosis: `the seven places answer ⌥1…⌥7 · if ⌥ types
+of time, as a condition rather than a diagnosis: `the seven places answer opt+1…opt+7 · if opt types
 a character instead, turn on "use option as meta" in …`.
 
 **`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
-Editing preset maps `⌥←` and `⌥→` to the escape sequences `esc b` and `esc f`, so those two
+Editing preset maps `opt+←` and `opt+→` to the escape sequences `esc b` and `esc f`, so those two
 chords arrive perfectly on a profile where Option is still composing accents — the mapping was
 written for the two arrows and not for the digits. On such a profile the **word jumps work and
 the place jumps do not**, which is exactly the case the line has to survive to explain. Every
@@ -2834,7 +2843,7 @@ Where the setting lives:
 | ghostty | `macos-option-as-alt = true` in `~/.config/ghostty/config` |
 | WezTerm | `send_composed_key_when_left_alt_is_pressed = false` in `~/.wezterm.lua` |
 
-**What "on" looks like:** `⌥1` arrives as the escape character followed by `1` — which is how
+**What "on" looks like:** `opt+1` arrives as the escape character followed by `1` — which is how
 meta has been sent for forty years, and is why codeaf puts the place numbers on Option rather
 than on Control.
 

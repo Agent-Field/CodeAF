@@ -13,13 +13,13 @@ import (
 // The owner's ask was "ensure you properly have alt or ctrl etc according to
 // windows or mac", and the honest half of the answer has to be said first: A
 // TUI CANNOT SEE WHETHER OPTION IS META. It sees what the emulator sent. On a
-// Mac, `⌥1` reaches this program as escape-then-`1` when the profile says
+// Mac, `opt+1` reaches this program as escape-then-`1` when the profile says
 // "option as meta" and as the single character `¡` when it does not, and there
 // is no query that asks which. So this file does three separate things and
 // never pretends one of them is another:
 //
 //  1. SPELLING. What the chord is CALLED on screen. On macOS the modifier's
-//     name is `⌥` and everywhere else it is `alt+`, which is a fact about the
+//     name is `opt+` and everywhere else it is `alt+`, which is a fact about the
 //     platform's keycaps and needs no capability at all. [chordSpelling.say] is
 //     the one door, and every sentence a person reads about a chord goes
 //     through it.
@@ -53,7 +53,7 @@ import (
 // `alt+` is what the constants already say.
 type chordSpelling struct {
 	// meta is what `alt+` is called on this platform's keycaps: "" or "alt+"
-	// everywhere but macOS, where it is "⌥".
+	// everywhere but macOS, where it is "opt+".
 	meta string
 	// terminal is the emulator's own name, for the option-as-meta note, and ""
 	// where the environment named nothing we can give a setting for.
@@ -69,8 +69,33 @@ type chordSpelling struct {
 // the manual quotes and what a test greps for — and [chordSpelling.say] is what
 // turns it into the other one at the moment it is drawn.
 const (
-	chordAltWord  = "alt+"
-	chordMetaWord = "⌥"
+	chordAltWord = "alt+"
+	// chordMetaWord is what the same modifier is called on a Mac, and it is the
+	// WORD rather than the keycap's glyph `⌥`.
+	//
+	// EVERY MODIFIER ON A MAC KEYCAP CARRIES BOTH A WORD AND A GLYPH — Control is
+	// `control` and `⌃`, Option is `option` and `⌥`, Command is `command` and `⌘`
+	// — so "what the keycap says" does not on its own choose between them, and
+	// this surface was picking differently for different keys: `ctrl+`, the
+	// keycap's word abbreviated, beside `⌥`, the keycap's glyph. Nothing
+	// predicted which one a reader would get. `opt+` is `ctrl+`'s own move made
+	// twice: the keycap word, cut short, joined with `+`.
+	//
+	// AND IT COSTS NOTHING TO MEASURE, which is what makes it safe to draw in
+	// every ladder on the surface: `opt+` is four cells, exactly as `alt+` is, so
+	// every line that fits the chord on a Linux box fits it on a Mac. The glyph
+	// was one cell by [ansi.StringWidth] and NOT reliably one cell on screen —
+	// U+2325 is East-Asian Ambiguous, which a terminal set to draw ambiguous
+	// characters wide renders in two, and a font without the codepoint
+	// substitutes at a width nobody measured. Every other mark a person sees is
+	// reached through `tokens.GlyphSet.Glyph` for that exact reason; this one was
+	// a literal that bypassed it, and a word needs no repertoire at all.
+	chordMetaWord = "opt+"
+	// chordMetaBare is the same key NAMED ON ITS OWN rather than in front of
+	// another: `if opt types a character instead`, not `if opt+ types one`. The
+	// trailing `+` is a joiner and a sentence that keeps it is a sentence with a
+	// dangling operator in it.
+	chordMetaBare = "opt"
 	// chordCmdWord is THE SECOND MODIFIER WITH TWO KEYCAPS, and it is here for
 	// the first one's reason exactly. The send-and-wait chord is authored
 	// `cmd+enter` (steer.go's [parkKey]) because that is what it is called on the
@@ -151,7 +176,7 @@ func chordTerminal(env tokens.Env) (name, setting string) {
 // say is THE ONE DOOR EVERY PERSON-FACING SENTENCE ABOUT A CHORD GOES THROUGH.
 // The constants stay authored in the `alt+` spelling — that is what the manual
 // quotes, what the gates grep for, and what a Linux terminal draws unchanged —
-// and this is where a Mac's `⌥` is substituted in, once, at the moment of
+// and this is where a Mac's `opt+` is substituted in, once, at the moment of
 // drawing.
 //
 // IT IS A SUBSTITUTION AND NOT A TABLE OF CHORDS, deliberately. A table would
@@ -164,6 +189,11 @@ func chordTerminal(env tokens.Env) (name, setting string) {
 // built on; `cmd+` is the one chord on the send (steer.go), and it is spelled
 // here for the same reason and through the same door — a sentence that named a
 // modifier straight out of a constant was the defect on both.
+//
+// ONLY ONE OF THE TWO CHANGES WIDTH. `alt+` and `opt+` are four cells each, so
+// the Mac reading of an `alt+` chord measures exactly as the Linux one does;
+// `cmd+` becomes the single cell `⌘`. That is why every caller still has to say
+// this BEFORE it measures rather than on the way to the paint.
 func (c chordSpelling) say(sentence string) string {
 	if c.meta == chordMetaWord {
 		sentence = strings.ReplaceAll(sentence, chordAltWord, c.meta)
@@ -177,7 +207,7 @@ func (c chordSpelling) say(sentence string) string {
 // THE ZERO VALUE ANSWERS `super+`, which is right rather than merely safe: a
 // spelling nobody detected is a spelling built without a door, and every
 // keyboard that is not a Mac's wears the same word on this key. The Mac reading
-// is the one that has to be discovered, exactly as `⌥` is.
+// is the one that has to be discovered, exactly as `opt+` is.
 func (c chordSpelling) cmdWord() string {
 	if c.meta == chordMetaWord {
 		return chordCmdGlyph
@@ -331,10 +361,10 @@ func (a *app) chordWatch(msg tea.KeyPressMsg) {
 // accents exactly as before.
 //
 // iTerm2's Natural Text Editing preset — the commonest Mac profile there is —
-// maps ⌥← to the escape sequence `esc b` and ⌥→ to `esc f`, which arrive here
+// maps Option+← to the escape sequence `esc b` and Option+→ to `esc f`, which arrive here
 // as `alt+b` and `alt+f` and are indistinguishable from the real chords. A
 // terminal doing that delivers the WORD JUMPS perfectly and still types `¡` for
-// ⌥1, because a mapping was written for the two arrows and not for the digits.
+// Option+1, because a mapping was written for the two arrows and not for the digits.
 //
 // SO THEY MAY NOT RETIRE THE NOTE. [app.chordWatch]'s bargain is that one real
 // `alt+` chord proves this terminal sends the class and settles the question for
@@ -360,7 +390,7 @@ func (c chordSpelling) chordFixWords() string {
 // chordOptionWords is the one sentence a place says, and it is the same sentence
 // the manual's own page about alt on macOS quotes.
 func (c chordSpelling) chordOptionWords() string {
-	return "your terminal sends " + chordMetaWord + " as a letter — " + c.chordFixWords()
+	return "your terminal sends " + chordMetaBare + " as a letter — " + c.chordFixWords()
 }
 
 // chordShortWords is the SAME DIAGNOSIS IN THE CELLS THE LEGEND CAN SPARE, and
@@ -380,7 +410,7 @@ func (c chordSpelling) chordOptionWords() string {
 // the diagnosis in front of them already. What they do not have is the words
 // "option as meta" to go looking for.
 func (c chordSpelling) chordShortWords() string {
-	return chordMetaWord + " types a letter · turn on option as meta"
+	return chordMetaBare + " types a letter · turn on option as meta"
 }
 
 // chordNote is that sentence as a row of the place's note slot: one dim line,
@@ -417,5 +447,5 @@ func (c chordSpelling) chordSetupWords() string {
 		return ""
 	}
 	return "the seven places answer " + chordMetaWord + "1…" + chordMetaWord +
-		"7 · if " + chordMetaWord + " types a character instead, " + c.chordFixWords()
+		"7 · if " + chordMetaBare + " types a character instead, " + c.chordFixWords()
 }

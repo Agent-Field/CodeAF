@@ -36,10 +36,10 @@ func TestTheKeySheetNamesTheWayToEveryPlace(t *testing.T) {
 	if !strings.Contains(sheet, "on a place, tab is the next place") {
 		t.Errorf("/help never says what tab does on a place:\n%s", sheet)
 	}
-	// THE CHORDS ARE SPELLED THROUGH THE ONE DOOR, so a Mac sheet says ⌥ and this
+	// THE CHORDS ARE SPELLED THROUGH THE ONE DOOR, so a Mac sheet says opt+ and this
 	// one does not (chords.go).
-	mac := helpText("", chordSpelling{meta: "⌥"})
-	if strings.Contains(mac, chordJumpWords) || !strings.Contains(mac, "⌥1…7") {
+	mac := helpText("", chordSpelling{meta: chordMetaWord})
+	if strings.Contains(mac, chordJumpWords) || !strings.Contains(mac, "opt+1…7") {
 		t.Errorf("the place rows are not spelled through chords.say — a Mac sheet still reads alt+:\n%s", mac)
 	}
 }

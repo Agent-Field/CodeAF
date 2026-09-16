@@ -373,6 +373,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I get to my other conversation without going home", "keys"},
 		{"what does ctrl+k do", "keys"},
 		{"what does alt+k do", "keys"},
+		// AND THE SPELLING ITSELF, asked the way somebody looking at the screen
+		// asks it: they can see `opt+` and the manual is full of `alt+`, or they
+		// expected the ⌥ symbol their other Mac apps draw.
+		{"why does it say opt instead of the option symbol", "screen"},
+		{"is opt the same as alt", "screen"},
 		// AND THE CHORD THAT MOVED, ASKED BOTH WAYS ROUND. Somebody whose hands
 		// know the old key presses it and watches half a line disappear; somebody
 		// who read that the switcher exists goes looking for the key. Both have to
@@ -2419,7 +2424,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// THE PLATFORM QUESTION, in the four shapes it actually arrives in: the Mac
 		// user whose option key is composing accents (which is what they SEE, so
 		// they ask about the character rather than about the modifier), the person
-		// wondering whether the manual's `alt+` is their `⌥`, the one who tried
+		// wondering whether the manual's `alt+` is their `opt+`, the one who tried
 		// `ctrl+1` because the number is drawn on the tab, and the Windows user
 		// checking whether any of it applies to them.
 		{"why does option type ¡ instead of jumping to a place", "screen"},

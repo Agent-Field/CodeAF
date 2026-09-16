@@ -503,9 +503,9 @@ func (c command) aliasNote() string {
 // AND IT IS WHERE A ROW'S CHORD IS SPELLED FOR THIS KEYBOARD. Two of these
 // descriptions carry a place's own chord ([placeChord]), baked in at init where
 // no terminal has been detected yet — so on a Mac the list said `/spend … alt+3`
-// while the map two keystrokes away said `⌥1…⌥7`. The substitution has to happen
-// HERE rather than at either paint, because `⌥3` is two cells where `alt+3` is
-// five and [menu.fit] counts the lines this string will take before
+// while the map two keystrokes away said `opt+1…opt+7`. The substitution has to
+// happen HERE rather than at either paint, because `⌘` is one cell where `cmd+`
+// is four and [menu.fit] counts the lines this string will take before
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
 // that pushes the status line off the frame.
 func (c command) note(chords chordSpelling) string {
@@ -1017,15 +1017,17 @@ func helpText(file string, chords chordSpelling) string {
 		// know how to open, which is a help sheet behind the thing it explains.
 		//
 		// The three rows are spelled through [chordSpelling.say] like the
-		// `alt+enter` row above them, so a Mac reads `⌥1…⌥7` and a Linux box reads
-		// what is authored here — one substitution, one door (chords.go).
+		// `alt+enter` row above them, so a Mac reads `opt+1…opt+7` and a Linux box
+		// reads what is authored here — one substitution, one door (chords.go).
 		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
 		"               on a place, tab is the next place · esc back",
-		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order.
-		// On a Mac `alt+enter` is drawn `⌥enter` — three cells narrower — and a
-		// literal padded to the ASCII spelling would put this one row's sentence
-		// out of the column every other row on the sheet sits in (chords.go).
+		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order,
+		// because [helpKeyRow] pads to a fixed column and a literal padded to one
+		// spelling would put this row's sentence out of the column every other row
+		// on the sheet sits in. `alt+` and `opt+` are the same four cells, so this
+		// row is safe either way today; `cmd+` against `⌘` is not, and the order
+		// is the sheet's rule rather than this row's luck (chords.go).
 		helpKeyRow(chords.say("alt+enter"), "open a line · enter sends"),
 		// THE MARKED SEND (standmark.go). It is on this sheet because it is the
 		// one key here that changes what a sentence MEANS rather than where it

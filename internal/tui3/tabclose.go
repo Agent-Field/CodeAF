@@ -386,7 +386,7 @@ const (
 	// that control was deleted (chattabs.go), and a sentence pointing at furniture
 	// that is not on the screen any more is worse than no sentence at all. It
 	// names the KEY now, which is the door that actually opens the card, and it
-	// goes through [chordSpelling.say] at the point of use so a Mac reads `⌥k`.
+	// goes through [chordSpelling.say] at the point of use so a Mac reads `opt+k`.
 	tabCloseKeepSays   = "it keeps going here; find it with " + hopOpenKey + ", and " + reopenTabChord + " brings the tab back"
 	tabCloseCancelSays = "nothing changes"
 	// tabCloseStopSaysFloor is what `stop work` says on a conversation with

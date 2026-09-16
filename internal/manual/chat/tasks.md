@@ -2499,7 +2499,7 @@ this session has run something.
 
 ## Using the roster from the keyboard
 
-`alt+t` (`⌥t`) hands the keyboard to the roster. It is asked for, never taken: the draft is the
+`alt+t` (`opt+t`) hands the keyboard to the roster. It is asked for, never taken: the draft is the
 rest state, so a person who starts typing is typing, not navigating.
 
 | key | what it does |
