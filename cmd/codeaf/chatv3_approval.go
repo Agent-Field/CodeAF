@@ -27,7 +27,23 @@ type v3Gate interface {
 // lands on an allow gate. [refreshV3Policy] and [applyV3Approvals] prefer it
 // and keep the plain push for a gate that does not have it.
 type v3Rebuilder interface {
+	ApprovalDial() bool
 	RebuildApprovalGate() error
+}
+
+// v3Rebuilt asks the agent to rebuild its own gate where it can, and reports
+// whether it could. AN AGENT WITH THE METHODS AND NO DOOR IS NOT REBUILT HERE:
+// a session assembled without [session.Config.ApprovalGate] — a test's, a
+// worker's — refuses the rebuild, and a refusal that silenced the plain push
+// left a banked rule reaching nobody's gate (the person was asked twice for
+// one command). So the door is asked first, and only a session that has one
+// takes this road.
+func v3Rebuilt(agent v3Gate) (bool, error) {
+	rebuilder, ok := agent.(v3Rebuilder)
+	if !ok || !rebuilder.ApprovalDial() {
+		return false, nil
+	}
+	return true, rebuilder.RebuildApprovalGate()
 }
 
 // v3ApprovalGate is the door a conversation moves its own gate through
@@ -177,8 +193,8 @@ func bankBashApproval(agent v3Gate, workspace, profileDir string, yolo bool) fun
 // names the next session rather than claiming the line is already gone.
 func applyV3Approvals(agent v3Gate, workspace, profileDir string, yolo bool) func() error {
 	return func() error {
-		if rebuilder, ok := agent.(v3Rebuilder); ok {
-			return rebuilder.RebuildApprovalGate()
+		if rebuilt, err := v3Rebuilt(agent); rebuilt {
+			return err
 		}
 		policy, err := v3Policy(workspace, profileDir, yolo)
 		if err != nil {
@@ -223,8 +239,7 @@ func refreshV3Policy(agent v3Gate, workspace, profileDir string, yolo bool) {
 	if agent == nil {
 		return
 	}
-	if rebuilder, ok := agent.(v3Rebuilder); ok {
-		_ = rebuilder.RebuildApprovalGate()
+	if rebuilt, _ := v3Rebuilt(agent); rebuilt {
 		return
 	}
 	policy, err := v3Policy(workspace, profileDir, yolo)
