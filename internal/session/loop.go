@@ -1143,7 +1143,19 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// [Agent.applyRouteJudge] below is the only thing with an effect in it
 			// (route_judge.go). A reading that starts work from inside its own
 			// goroutine is this mechanism used in name and broken in fact.
-			judge := a.judgeAhead(ctx, user, usedTools, response.Text())
+			// A REPLY THAT IS ONLY [NoChangeReply] IS NO ANSWER TO JUDGE OR LEARN FROM.
+			// It withdrew itself in favour of the answer before it (checkpoint.go), so
+			// the judge is not asked whether a token should have been work, and the
+			// memory reflex below reads the answer the person was left with.
+			answer := response.Text()
+			withdrawn := IsNoChangeReply(answer)
+			if withdrawn {
+				answer = checkpointLastSaid(a.snapshot())
+			}
+			var judge *judgeRace
+			if !withdrawn {
+				judge = a.judgeAhead(ctx, user, usedTools, answer)
+			}
 			a.tellPhase(provider.PhaseChecking, "whether the work is finished", time.Now())
 			again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response, marked)
 			a.endPhase()
@@ -1184,7 +1196,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// goroutine entirely and on the session's own lifetime rather than
 			// the turn's (memory.go). Nobody is waiting for it, nothing it finds
 			// reaches this turn, and it says nothing whatever happens to it.
-			a.learnFromTurn(user.text(), response.Text())
+			a.learnFromTurn(user.text(), answer)
 			return true
 		}
 

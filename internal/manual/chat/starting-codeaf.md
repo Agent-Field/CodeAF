@@ -515,12 +515,16 @@ things:
   answer. Only that last message stays in view when the turn folds under its `worked`
   line, so it has to carry the whole deliverable again.
 - **The note is wrong.** The model replies with exactly `[no change]` and nothing else.
-  That ends carrying on for this request. The check is not asked again, the same note is
-  not sent again, and `[no change]` is never drawn as the answer: the answer it gave
-  before the note stays in view, in the chat and when the conversation is opened again.
-  A `--once` run prints its reply as it streams, so the token can appear on that output.
+  That ends the reply. The check is not asked again, the same note is not sent again,
+  and `[no change]` is never drawn as the answer: the answer it gave before the note
+  stays in view, in the chat and when the conversation is opened again. It counts only
+  as the model's very next reply to the note. After tool calls, after your own message
+  typed in between, or with any other words beside it, the reply is checked again as usual.
+  Headless `--once` output is printed as it streams, so if a check runs there the token
+  can appear in it.
 
-The summary shows the check up to 8 KB of the reply's last message. A longer message is
+The summary shows the check up to 8 KB of the reply's last message, less when your request
+itself fills most of the summary. A longer message is
 cut to fit and ends with `[clipped by codeaf: N of M bytes]`, and the check is told that
 this cut belongs to the summary and is never a sign that you saw a cut-off answer. A
 table or report under that size reaches the check whole.

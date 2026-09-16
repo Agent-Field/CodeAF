@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -48,20 +49,43 @@ func TestTheReaderSeesALongAnswerWholeAndACutNamesItself(t *testing.T) {
 		t.Fatalf("an answer that fit was marked clipped:\n%s", digest)
 	}
 
-	huge := strings.Repeat("é long report line that keeps going\n", 2*checkpointSaidBytes/36)
-	said := checkpointClipSaid(huge)
-	if len(said) > checkpointSaidBytes {
-		t.Errorf("clipped last words are %d bytes, over the %d bound", len(said), checkpointSaidBytes)
+	// AN ASK THAT FILLS MOST OF THE PAGE LEAVES THE LAST WORDS LESS ROOM, AND THEY
+	// ARE STILL CUT BY NAME. The digest's backstop cuts from the end with a bare
+	// `…`, which is exactly the marker a reader took for a broken answer.
+	long := strings.Repeat("keep every seat's constraints in mind. ", 14_000/39)
+	report := strings.Repeat("| seat | model | why this seat |\n", 8_000/32)
+	page := checkpointCompletionPage(long, []ai.Message{textMessage("assistant", report)})
+	if len(page) > checkpointDigestBytes {
+		t.Errorf("the page is %d bytes, over the %d digest bound", len(page), checkpointDigestBytes)
 	}
-	kept := strings.LastIndex(said, "\n[clipped by codeaf: ")
-	if kept < 0 {
-		t.Fatalf("a cut was not named in words: %q", said[len(said)-80:])
+	if !strings.Contains(page, strings.TrimSpace(long)) {
+		t.Error("the ask did not reach the reader whole")
 	}
-	if want := fmt.Sprintf(checkpointClippedMark, kept, len(huge)); !strings.HasSuffix(said, want) {
-		t.Errorf("the mark miscounts the cut: got %q, want suffix %q", said[kept:], want)
+	if strings.HasSuffix(page, "…") || !strings.Contains(page, "[clipped by codeaf:") {
+		t.Errorf("last words squeezed by the ask were not cut by name; the page ends %q", page[len(page)-80:])
 	}
-	if !strings.HasPrefix(huge, said[:kept]) {
-		t.Error("the clipped words are not the head of what was said")
+
+	// EVERY BYTE OFFSET OF A TWO-BYTE RUN, so whichever parity the mark's width
+	// leaves the cut on, one of these lands it inside a rune.
+	for _, lead := range []string{"", "a"} {
+		huge := lead + strings.Repeat("é", checkpointSaidBytes)
+		said := checkpointClipSaid(huge, checkpointSaidBytes)
+		if len(said) > checkpointSaidBytes {
+			t.Errorf("clipped last words are %d bytes, over the %d bound", len(said), checkpointSaidBytes)
+		}
+		if !utf8.ValidString(said) {
+			t.Errorf("the cut split a character: %q", said[len(said)-60:])
+		}
+		kept := strings.LastIndex(said, "\n[clipped by codeaf: ")
+		if kept < 0 {
+			t.Fatalf("a cut was not named in words: %q", said[len(said)-80:])
+		}
+		if want := "\n" + fmt.Sprintf(checkpointClippedMark, kept, len(huge)); said[kept:] != want {
+			t.Errorf("the mark miscounts the cut: got %q, want %q", said[kept:], want)
+		}
+		if !strings.HasPrefix(huge, said[:kept]) {
+			t.Error("the clipped words are not the head of what was said")
+		}
 	}
 	// AND THE READER IS TOLD WHAT THE MARK MEANS, in the ask it is read with.
 	if !strings.Contains(checkpointRemainsAsk, "never evidence that the person saw a cut-off answer") {
@@ -111,8 +135,8 @@ func TestACarryOnAnsweredNoChangeEndsItAndKeepsTheAnswer(t *testing.T) {
 	if got := strings.Count(transcriptText(agent), checkpointCarryOnLead); got != 1 {
 		t.Errorf("%d continuations were written into the turn, want one", got)
 	}
-	if saidSomething(notices, checkpointCarriedOnNote(nil)[:20]) {
-		t.Errorf("the turn reached the carry-on cap instead of ending on [no change]: %q", notices)
+	if got := saidHowOften(notices, checkpointCarryOnNote); got != 1 || len(notices) != 1 {
+		t.Errorf("want exactly the one carry-on notice and nothing after it; notices were %q", notices)
 	}
 
 	// THE MODEL KEEPS ITS TOKEN; THE PERSON'S HISTORY DOES NOT.
@@ -164,5 +188,71 @@ func TestNoChangeWithoutACarryOnDoesNotEndTheReading(t *testing.T) {
 	collect(t, events)
 	if got := remainsAsks.Load(); got != 1 {
 		t.Errorf("the reader was spent %d times on a turn never carried on, want once", got)
+	}
+}
+
+// A TOKEN AFTER WORK IS NOT AN ANSWER TO THE NOTE. The model was carried on,
+// made calls, and then said [no change]: those calls may have changed what the
+// answer before the note says, so the turn is read again rather than ended on
+// it unread.
+func TestNoChangeAfterCallsMadeForTheNoteIsReadAgain(t *testing.T) {
+	var remainsAsks, rounds, afterNote atomic.Int64
+	steps := make([]step, checkpointMarkAt(1)+40)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForRemains(messages) {
+				if remainsAsks.Add(1) == 1 {
+					return textResponse("seat 3 has no model named"), nil
+				}
+				return textResponse(checkpointNothingLeft), nil
+			}
+			if last := messages[len(messages)-1]; last.Role == "user" && strings.HasPrefix(partsText(last), checkpointCarryOnLead) {
+				afterNote.Add(1)
+				return toolResponseWithText("call-note", "ls", `{"path":"./seat-3"}`, ""), nil
+			}
+			if afterNote.Load() > 0 {
+				return textResponse(NoChangeReply), nil
+			}
+			if call := rounds.Add(1); call <= int64(checkpointMarkAt(1)) {
+				return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
+					fmt.Sprintf(`{"path":"./%d"}`, call), ""), nil
+			}
+			return textResponse(perSeatTable()), nil
+		}
+	}
+	agent := checkpointAgent(t, &scriptedCompleter{steps: steps})
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "compare the models per seat in a table")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	if got := remainsAsks.Load(); got != 2 {
+		t.Errorf("the reader was spent %d times, want twice: a token after calls must not end the turn unread", got)
+	}
+}
+
+// THE TOKEN ANSWERS THE READER'S NOTE AND NOTHING ELSE THAT OPENS A TURN BACK UP.
+// A load or ask nudge also wears [carry on], and a person can steer in between;
+// neither is the note, so neither is ended by the token.
+func TestNoChangeAnswersOnlyTheReadersNote(t *testing.T) {
+	note := textMessage("user", checkpointCarryOnLead+"seat 3 has no model named")
+	token := textMessage("assistant", NoChangeReply)
+	for _, shape := range []struct {
+		name     string
+		messages []ai.Message
+		want     bool
+	}{
+		{"the note, then the token", []ai.Message{note, token}, true},
+		{"the note, a volatile note, then the token", []ai.Message{note, textMessage("user", volatileNoteOpening+" the clock moved"), token}, true},
+		{"a load nudge, then the token", []ai.Message{textMessage("user", checkpointLoadNudgeLead([]string{"ask"})), token}, false},
+		{"the note, the person steering, then the token", []ai.Message{note, textMessage("user", "leave seat 3 blank"), token}, false},
+		{"the note, then the token with more words", []ai.Message{note, textMessage("assistant", NoChangeReply+" the table is whole")}, false},
+		{"the token with nothing before it", []ai.Message{token}, false},
+	} {
+		if got := answeredNoteUnchanged(shape.messages); got != shape.want {
+			t.Errorf("%s: honoured %v, want %v", shape.name, got, shape.want)
+		}
 	}
 }

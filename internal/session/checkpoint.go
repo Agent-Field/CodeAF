@@ -442,17 +442,29 @@ const (
 // made it, and how much was kept.
 const checkpointClippedMark = "[clipped by codeaf: %d of %d bytes]"
 
-// checkpointClipSaid fits the turn's last words into [checkpointSaidBytes],
-// marker included, and names the cut with [checkpointClippedMark] when it makes
-// one. Words that already fit are returned untouched.
-func checkpointClipSaid(said string) string {
-	if len(said) <= checkpointSaidBytes {
+// checkpointClipSaid fits the turn's last words into room bytes — never more
+// than [checkpointSaidBytes] — marker included, and names the cut with
+// [checkpointClippedMark] when it makes one. Words that already fit are returned
+// untouched, and room too small to hold even the mark keeps nothing rather than
+// a mark with no words in front of it.
+//
+// THE ROOM IS THE CALLER'S BECAUSE THE ASK SHARES THE PAGE. An ask up to the
+// whole digest bound rides in the digest's head ([checkpointCompletionPage]),
+// and eight kilobytes of last words behind a twelve-kilobyte ask would reach
+// the digest's backstop clip — which cuts from the end with a bare `…`, the very
+// marker this function exists to replace.
+func checkpointClipSaid(said string, room int) string {
+	room = min(room, checkpointSaidBytes)
+	if len(said) <= room {
 		return said
 	}
 	// The room for the mark is measured at its WIDEST — the kept count can never
-	// exceed the bound — so saying how much was kept cannot push past it.
-	widest := "\n" + fmt.Sprintf(checkpointClippedMark, checkpointSaidBytes, len(said))
-	cut := checkpointSaidBytes - len(widest)
+	// exceed the room — so saying how much was kept cannot push past it.
+	widest := "\n" + fmt.Sprintf(checkpointClippedMark, max(room, 0), len(said))
+	cut := room - len(widest)
+	if cut <= 0 {
+		return ""
+	}
 	for cut > 0 && !utf8RuneStart(said[cut]) {
 		cut--
 	}
@@ -945,6 +957,27 @@ const checkpointCarryOnLead = "[carry on] codeaf's completion check read a clipp
 	"If there is a real gap, close it and end with a complete final answer.\n" +
 	"If the note is wrong, reply with exactly " + NoChangeReply + " and nothing else.\n"
 
+// answeredNoteUnchanged reads the transcript for the one shape [NoChangeReply]
+// is an answer to: the newest message is a tool-less reply that is only the
+// token, and the message it answers is the reader's continuation
+// ([checkpointCarryOnLead]). A volatile note that landed between the two is the
+// harness's own context and is walked through; anything else is not.
+func answeredNoteUnchanged(messages []ai.Message) bool {
+	last := len(messages) - 1
+	if last < 1 || messages[last].Role != "assistant" || len(messages[last].ToolCalls) > 0 ||
+		!IsNoChangeReply(partsText(messages[last])) {
+		return false
+	}
+	for index := last - 1; index >= 0; index-- {
+		text := partsText(messages[index])
+		if messages[index].Role == "user" && isVolatileNote(text) {
+			continue
+		}
+		return messages[index].Role == "user" && strings.HasPrefix(text, checkpointCarryOnLead)
+	}
+	return false
+}
+
 // NoChangeReply is the whole of the model's answer to a carry-on it judges
 // mistaken, and the harness's token for "the answer already given stands".
 //
@@ -996,11 +1029,6 @@ type checkpointMeter struct {
 	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
 	// that has decided, and a second nudge would be an argument.
 	loadNudged bool
-	// declined says the model has answered a carry-on of this turn with
-	// [NoChangeReply]. It ends carrying on for the ask: a reader whose note the
-	// model has already checked and rejected is not asked again, and the same
-	// observation is never put back in front of it (#1065).
-	declined bool
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -2443,7 +2471,8 @@ func checkpointDigest(asked string, messages []ai.Message) string {
 		tail.WriteString(line)
 		tail.WriteString("\n\n")
 	}
-	if said := checkpointClipSaid(checkpointLastSaid(messages)); said != "" {
+	room := checkpointDigestBytes - head.Len() - tail.Len() - len(checkpointDigestSaid) - len("\n\n")
+	if said := checkpointClipSaid(checkpointLastSaid(messages), room); said != "" {
 		tail.WriteString(checkpointDigestSaid)
 		tail.WriteString("\n")
 		tail.WriteString(said)
@@ -2825,7 +2854,10 @@ func checkpointLastSaid(messages []ai.Message) string {
 		for _, part := range messages[index].Content {
 			said.WriteString(part.Text)
 		}
-		if text := strings.TrimSpace(said.String()); text != "" {
+		// A WITHDRAWN REPLY IS NOT THE LAST THING SAID. [NoChangeReply] left the
+		// answer before it standing, and that answer is what a later reading is
+		// about.
+		if text := strings.TrimSpace(said.String()); text != "" && !IsNoChangeReply(text) {
 			return text
 		}
 	}
@@ -3260,10 +3292,15 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// READER. The model was handed the reader's note, compared it with the ask and
 	// the work, and said the note was wrong — so the turn ends on the answer it
 	// already gave, and nothing below may spend a reading to re-raise what was
-	// just rejected. It is honoured only after a carry-on this turn actually made:
-	// the token is an answer to a [carry on], never a way to end a turn unread.
-	if meter != nil && (meter.declined || (meter.carriedOn > 0 && IsNoChangeReply(said))) {
-		meter.declined = true
+	// just rejected. Ending the turn is what keeps the note from coming back: the
+	// meter that counts carry-ons dies with it.
+	//
+	// IT IS HONOURED ONLY AS THE VERY NEXT REPLY TO THE NOTE ([answeredNoteUnchanged]).
+	// A token after calls made in answer to the note would end the turn on an
+	// answer those calls may have made stale, unread; a token after the person's
+	// own words, or after a load or ask nudge, answers something that is not the
+	// reader's note at all.
+	if meter != nil && answeredNoteUnchanged(a.snapshot()) {
 		return false, false
 	}
 	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,

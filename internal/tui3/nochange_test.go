@@ -53,3 +53,23 @@ func TestANoChangeReplyLeavesThePriorAnswerAsTheFoldsAnswer(t *testing.T) {
 		t.Fatal("the table was folded away as work")
 	}
 }
+
+// ONLY THE TOKEN ALONE IS WITHDRAWN. Words that merely open with it, or quote it,
+// are an answer like any other and stay exactly as they arrived.
+func TestWordsThatOnlyMentionNoChangeStayTheAnswer(t *testing.T) {
+	for _, said := range []string{
+		session.NoChangeReply + " — the table above is whole.",
+		"Reply with `" + session.NoChangeReply + "` when the note is wrong.",
+	} {
+		f := &feed{live: -1, think: -1, turn: 1}
+		f.ingest(session.Event{Kind: session.EventTextDelta, Text: said})
+		f.ingest(session.Event{Kind: session.EventAssistantDone})
+		kept := false
+		for _, e := range f.entries {
+			kept = kept || (e.kind == entryAssistant && e.text == said)
+		}
+		if !kept {
+			t.Errorf("an answer that only mentions the token was dropped: %q", said)
+		}
+	}
+}
