@@ -86,7 +86,7 @@ while preserving the content's indentation.
 tabs in a row of their own, with a thin rule separating navigation from reading:
 
 ```
-  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +  Chats ▾
+  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +    +2
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -98,7 +98,7 @@ and has stronger text; brackets identify it on
 terminals without background color. **Every tab reacts to the pointer**,
 including the one you are already in, and the highlight it wears as the *chosen* tab stays
 put when the pointer leaves. Without color, hovering adds a dot beside the tab’s
-close mark; Home, `+`, and the scroll arrows gain a pointer dot, and Chats changes to uppercase.
+close mark; Home, `+`, and the scroll arrows gain a pointer dot.
 
 **Clicking a tab goes to that conversation** — the same switch `alt+k` makes. Clicking the
 tab you are already in does nothing while you are in the conversation itself, and takes you
@@ -116,17 +116,22 @@ are in never does. This is a presentation limit, not a limit on running work or 
 ASCII). Click an arrow, or wheel vertically or horizontally over the header, to browse
 the names. This changes neither the conversation, its draft nor the transcript position.
 The selected tab may leave view while you browse; choosing a conversation or closing a
-tab brings the selection back. Narrow frames keep the selected tab and `Chats` fallback
-without spending its name on arrows.
+tab brings the selection back. Narrow frames keep the selected tab without spending its
+name on arrows.
 
-**`+` and `Chats ▾` follow the last visible tab**, with small gaps between their
-targets. They stay beside a short row of tabs; when the row fills, the tabs scroll
-and the controls remain at its edge. **`Chats ▾` opens the switcher** — the same card `alt+k` opens, with
-every conversation on this machine in it, its fold already open. Where the row is too
-narrow for every tab the control reads `Chats +3 ▾`, counting the tabs that did not fit.
-On a narrower frame it drops the `▾`, then the count, and keeps the word `Chats`: the
-word is what says it is a door. Where the switcher cannot open at all, the count is drawn
-alone (`+3`) and does nothing, because it is still true.
+**`+` follows the last visible tab**, with a small gap before its target. It stays beside
+a short row of tabs; when the row fills, the tabs scroll and it remains at the edge.
+
+**The row's right end is a count, and nothing else.** Where the row is too narrow to spell
+every tab it has, `+3` says how many it could not. It is dim, it does nothing when pressed,
+and it is drawn whole or not at all.
+
+**There is no `Chats ▾` button any more.** The row's right end carried one — a labelled
+door onto the switcher — and it is deleted. The way to that card is `alt+k` (`⌥k` on a
+Mac), which the legend under the message box names as `alt+k chats` wherever the card
+would open. The button was written when nothing on the screen said the key existed; the
+legend says it now, in your own keyboard's spelling, and a second door beside it was one
+more thing to keep in step for nothing.
 
 ## Does opening a new chat close or stop the one I am in — no, opening another chat stops nothing
 
@@ -224,7 +229,7 @@ cells dismiss; the label beside them selects. With color disabled the newly
 visible `×` also identifies pointer hover.
 
 Unsent drafts, carets and attachments stay with their conversation. Reopen a
-closed tab from Chats, Home or `ctrl+shift+t` to retrieve them. The keyboard
+closed tab from the chats card (`alt+k`), Home or `ctrl+shift+t` to retrieve them. The keyboard
 shortcut needs a terminal that distinguishes Ctrl+Shift+T from Ctrl+T.
 
 **A closed tab's conversation keeps running unless you asked for it to stop**, over
@@ -248,9 +253,9 @@ ends that task; `/quit` ends the program.
 ## Keep running, stop work or cancel — closing a tab on a chat that is still working
 
 A tool permission question does not trap you in its tab. `ctrl+w` offers the same
-close actions while leaving the question unanswered; `alt+k` opens Chats and
+close actions while leaving the question unanswered; `alt+k` opens the chats card and
 `ctrl+t` opens another chat. A hidden chat waiting on your answer is marked
-with `?`; Chats says `asking you something`. The question's answer keys do nothing
+with `?`; the chats card says `asking you something`. The question's answer keys do nothing
 while another chat or the **New chat** page is in front of you. Reopen the asking
 chat to see the offer and answer the original question. Cancel on the close card
 leaves both the tab and permission untouched; `stop work` cancels that reply.
@@ -264,7 +269,7 @@ digit and its own dim sentence saying what taking it does:
 ```
 ?  Close this tab? the tree walk is working · 2 tasks running
      nothing here is deleted
-     1  keep running  it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+     1  keep running  it keeps going here; find it with alt+k, and ctrl+shift+t brings the tab back
      2  stop work     the reply, tasks and jobs stop; nothing is deleted
      3  cancel        nothing changes
    enter take it · esc cancel · ←→ choose
@@ -272,7 +277,7 @@ digit and its own dim sentence saying what taking it does:
 
 | Answer | What it does |
 | --- | --- |
-| `keep running` | The tab goes; the conversation does not. It keeps writing, its tasks keep running, and you find it again under `Chats`, on Home, or with `ctrl+shift+t`. Reopening it shows everything it did while it was out of sight — the same conversation, not a second run of it |
+| `keep running` | The tab goes; the conversation does not. It keeps writing, its tasks keep running, and you find it again with `alt+k`, on Home, or with `ctrl+shift+t`. Reopening it shows everything it did while it was out of sight — the same conversation, not a second run of it |
 | `stop work` | Ends the turn and cancels this conversation’s queued/running tasks, adaptive runs and jobs, then closes the tab. Nothing in any other chat is touched, and nothing is deleted |
 | `cancel` | Nothing happens. The tab stays, the work stays, your draft stays |
 
@@ -281,7 +286,7 @@ starts work again once cancellation finishes. If work is still stopping, the mes
 is refused with “this conversation is stopping; wait for its work to finish stopping before sending a new message”.
 Keeping or reopening a tab does not restart stopped work.
 
-Chats marks a hidden reply or background job `working` even when it has no tasks. A reply that
+The chats card marks a hidden reply or background job `working` even when it has no tasks. A reply that
 finishes while held there says `it finished while you were away`.
 
 ## The keys on the close-tab card — k and s do not answer it any more
@@ -339,7 +344,7 @@ leaves you exactly where you began. The conversation is made when you **submit t
 
 The page is the launch screen drawn inside the frame you are already in: the wordmark, the
 model and crew line, a blank message box with the caret in it, and this project's recent
-conversations under it. A selected **New chat** tab labels this page. The other chat tabs remain available, with overflow in Chats. The footer belongs to the start page and shows no previous conversation costs. The previous chat’s sidebar and compact task strip are hidden.
+conversations under it. A selected **New chat** tab labels this page. The other chat tabs remain available, with overflow reachable from the chats card (`alt+k`). The footer belongs to the start page and shows no previous conversation costs. The previous chat’s sidebar and compact task strip are hidden.
 
 | Key or click | What it does |
 | --- | --- |

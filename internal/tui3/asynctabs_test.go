@@ -342,9 +342,9 @@ func TestKeepRunningHidesTheTabAndKeepsTheConversation(t *testing.T) {
 	if !a.holding(front) {
 		t.Fatal("keep running let go of the conversation")
 	}
-	// AND IT IS STILL FINDABLE. `Chats` opens the switcher over every
-	// conversation on the machine, and this one is one of them.
-	a.hopOpenAll()
+	// AND IT IS STILL FINDABLE. The switcher's fold is every conversation on the
+	// machine, and this one is one of them.
+	hopSpreadAll(t, a)
 	found := false
 	for _, row := range a.hop.rows {
 		if row.file == front {

@@ -35,7 +35,7 @@ func tabWords(a *app) []string {
 	for _, hit := range a.chatTabHits {
 		// The close cells are a target of their own on every tab (chattabs.go),
 		// so a walk of the hit map that counted them would count every tab twice.
-		if hit.kind == tabMore || hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew || hit.kind == tabHome || hit.kind == tabScrollLeft || hit.kind == tabScrollRight {
+		if hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew || hit.kind == tabHome || hit.kind == tabScrollLeft || hit.kind == tabScrollRight {
 			continue
 		}
 		words = append(words, hit.tab.word)
@@ -207,29 +207,64 @@ func TestANarrowStripKeepsTheTabInFrontAndCountsWhatItHid(t *testing.T) {
 	}
 }
 
-// AND THE COUNT IS A DOOR: it opens the picker `alt+k` opens, which is where
-// every conversation on the machine is, ranked, with what each wants from you.
-func TestTheCountAtTheEndOpensThePicker(t *testing.T) {
+// hopSpreadAll raises the card and opens its fold, which is the gesture
+// `alt+k` then `→` makes — every conversation on this machine rather than only
+// the ones this window holds. It is spelled here rather than being a second
+// constructor in the surface: `hopOpenAll` was that, it existed for the deleted
+// `Chats ▾` control alone, and a door in the product that only tests press is a
+// door the product does not have (hop.go).
+func hopSpreadAll(t *testing.T, a *app) {
+	t.Helper()
+	drive(t, a, key(hopOpenKey), key(hopFoldKey))
+	if !a.hop.open {
+		t.Fatal("the switcher did not open")
+	}
+	// AND THE FOLD IS OPEN IF THERE WAS ANYTHING BEHIND IT. `→` is a no-op when
+	// the ring already holds every conversation the machine has
+	// ([app.hopSpread] returns on `rest == 0`), and on those fixtures the
+	// un-spread card is already the whole list — so demanding `all` there would
+	// be the helper asserting a flag rather than the thing the flag is for.
+	if a.hop.rest > 0 && !a.hop.all {
+		t.Fatalf("%s left %d conversations behind the fold", hopFoldKey, a.hop.rest)
+	}
+}
+
+// AND THE COUNT IS A FACT AND NOT A DOOR. It says this row could not spell
+// every tab it has — which the strip must never go quiet about, or it is back to
+// claiming the window holds exactly what fits — and pressing it does nothing.
+// The `Chats ▾` control that used to be wrapped around it is deleted: the way to
+// the card is the key, named on the legend under the box in this keyboard's own
+// spelling (render.go's [hopDoorWord]).
+func TestTheCountAtTheEndIsAFactAndNotADoor(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.width = 40
 	a.touch()
-	_ = a.tabsRow(a.width)
-	var more tabHit
+	strip := plain(a.tabsRow(a.width))
+	var fold tabHit
 	for _, hit := range a.chatTabHits {
-		if hit.kind == tabMore {
-			more = hit
+		if hit.kind == tabFold {
+			fold = hit
 		}
 	}
-	if more.span.to == 0 {
-		t.Fatalf("a forty-column strip hid tabs and offered no way to them:\n%q", plain(a.tabsRow(a.width)))
+	if fold.span.to == 0 {
+		t.Fatalf("a forty-column strip hid tabs and said nothing about them:\n%q", strip)
 	}
-	before := a.file
-	clickTab(t, a, more.span.from)
-	if !a.hop.open {
-		t.Fatal("the count did not open the picker")
+	if fold.door(a) || fold.lights() {
+		t.Fatal("the count answers the pointer as though it were a control")
+	}
+	// AND THE DELETED LABEL IS NOWHERE ON THE ROW, under either of its marks.
+	for _, gone := range []string{"Chats", "▾"} {
+		if strings.Contains(strip, gone) {
+			t.Fatalf("the strip still draws %q:\n%q", gone, strip)
+		}
+	}
+	before, open := a.file, a.hop.open
+	clickTab(t, a, fold.span.from)
+	if a.hop.open != open {
+		t.Fatal("pressing the count opened the picker")
 	}
 	if a.file != before {
-		t.Fatalf("the count switched conversations by itself: %q", a.file)
+		t.Fatalf("pressing the count switched conversations: %q", a.file)
 	}
 }
 

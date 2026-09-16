@@ -3878,7 +3878,17 @@ const lastDoorWord = "tab last"
 // `ctrl+tab` alias because this line is drawn on every terminal and the alias is
 // only real on some of them (hop.go states the whole argument). A hint may only
 // name a key that works.
-const hopDoorWord = hopOpenKey + " switch"
+//
+// THE NOUN IS `chats` AND IT USED TO BE THE VERB `switch`. One word for one door
+// is the rule the audit-words pass was written to keep (docs/design/polish/
+// audit-words.md found `esc` spelled three ways across two panels), and this
+// door had picked up two: the tab row's own control said `Chats`, home's rule
+// says `alt+k chats`, and this line said `switch`. The noun is the one that
+// survives — it is what the thing IS rather than what pressing it does, it is
+// the word on the page the card draws, and it is the word a person who has used
+// any other program already has for a list of conversations. The control that
+// was the third spelling is deleted (chattabs.go).
+const hopDoorWord = hopOpenKey + " chats"
 
 // ── CONTEXTUAL KEY HINTS ────────────────────────────────────────────────────
 //

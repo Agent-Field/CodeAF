@@ -66,7 +66,7 @@ func TestADismissedConversationIsStillOnTheSwitcher(t *testing.T) {
 	span := tabCloseSpanFor(t, a, "openrouter price scrape")
 	clickTab(t, a, span.from)
 
-	a.hopOpenAll()
+	hopSpreadAll(t, a)
 	found := false
 	for _, row := range a.hop.rows {
 		if row.title == "openrouter price scrape" {
@@ -258,7 +258,7 @@ func TestTheTabInFrontIsMarkedWithoutColour(t *testing.T) {
 // act the ✕ is, said with the key every browser closes a tab with.
 func TestCtrlWOnTheSwitcherPutsTheRowAwayWithoutClosingIt(t *testing.T) {
 	a, older, _ := tabApp(t)
-	a.hopOpenAll()
+	hopSpreadAll(t, a)
 	at := -1
 	for i, row := range a.hop.rows {
 		if row.title == "openrouter price scrape" {
@@ -289,63 +289,81 @@ func TestCtrlWOnTheSwitcherPutsTheRowAwayWithoutClosingIt(t *testing.T) {
 	}
 }
 
-// ── THE `Chats` CONTROL ─────────────────────────────────────────────────────
+// ── THE ROW'S RIGHT END ─────────────────────────────────────────────────────
 
-// IT IS LABELLED, IT FOLLOWS THE TABS, AND IT OPENS THE SWITCHER ON EVERY
-// CHAT — not on the ones this window happens to hold.
-func TestTheChatsControlOpensTheSwitcherOnEveryChat(t *testing.T) {
+// THE `Chats ▾` CONTROL IS DELETED AND THE COUNT IS WHAT IS LEFT. The control
+// was written when the switcher's chord was something a person had to already
+// know about; the legend under the box names it now, in this keyboard's own
+// spelling, so a labelled door beside it was a second way to say one thing —
+// and a third spelling of it, since that label said `Chats` where the legend
+// said `switch` (render.go's [hopDoorWord], now `alt+k chats`).
+//
+// WHAT MAY NOT GO WITH IT IS THE COUNT. `+3` is the row saying it could not
+// spell three of the tabs it has, and a strip that went quiet about them would
+// be back to claiming this window holds exactly what fits — which is the defect
+// the whole header was built to fix (chattabs.go's opening).
+func TestTheRowsRightEndIsTheCountAndNothingElse(t *testing.T) {
 	a, _, _ := tabApp(t)
+	a.width = 40
+	a.touch()
 	strip := plain(a.tabsRow(a.width))
-	if !strings.Contains(strip, tabsWord) {
-		t.Fatalf("the row's right end is not labelled:\n%q", strip)
-	}
-	var more tabHit
-	for _, hit := range a.chatTabHits {
-		if hit.kind == tabMore {
-			more = hit
+	for _, gone := range []string{"Chats", tabMoreWordGone} {
+		if strings.Contains(strip, gone) {
+			t.Fatalf("the row still draws %q:\n%q", gone, strip)
 		}
 	}
-	if more.span.to == 0 {
-		t.Fatalf("the row drew no switcher control:\n%q", strip)
+	var fold tabHit
+	for _, hit := range a.chatTabHits {
+		if hit.kind == tabFold {
+			fold = hit
+		}
 	}
-	// It ends the run of navigation controls, after the tabs and new-chat door.
-	if more.span.to < ansi.StringWidth(strip)-1 {
-		t.Fatalf("the control is not right-aligned: %+v on a %d-cell row", more.span, ansi.StringWidth(strip))
+	if fold.span.to == 0 {
+		t.Fatalf("the row hid tabs and drew no count:\n%q", strip)
 	}
-	clickTab(t, a, more.span.from)
-	if !a.hop.open || !a.hop.all {
-		t.Fatalf("Chats opened the card as open=%v all=%v", a.hop.open, a.hop.all)
+	// It still ends the run, after the tabs and the new-chat door.
+	if fold.span.to < ansi.StringWidth(strip)-1 {
+		t.Fatalf("the count is not right-aligned: %+v on a %d-cell row", fold.span, ansi.StringWidth(strip))
+	}
+	if fold.door(a) {
+		t.Fatal("the count is still a door")
 	}
 }
 
-// AND THE WORD SURVIVES A NARROW FRAME. What goes first is the `▾`, then the
-// count: both are decoration, and the word is what says the control is a door.
-func TestTheChatsWordOutlivesItsDecorationOnANarrowFrame(t *testing.T) {
-	a, _, _ := tabApp(t)
+// AND IT IS DRAWN WHOLE OR NOT AT ALL, at every width, with the row never
+// spilling past the frame. The old control had a ladder — the mark went, then
+// the count, and the word survived — and three cells of pure fact have nothing
+// to give up, so the ladder went with the word.
+func TestTheCountIsDrawnWholeOrNotAtAll(t *testing.T) {
 	seen := false
 	for _, width := range []int{160, 120, 100, 80, 70, 60, 50, 44, 40, 34, 30} {
+		a, _, _ := tabApp(t)
 		a.width = width
 		a.touch()
 		strip := plain(a.tabsRow(width))
 		if ansi.StringWidth(strip) > width {
 			t.Fatalf("at %d columns the row is %d cells:\n%q", width, ansi.StringWidth(strip), strip)
 		}
-		if !strings.Contains(strip, tabsWord) {
+		hidden := len(a.chatTabs) - len(tabWords(a))
+		if hidden <= 0 {
 			continue
 		}
 		seen = true
-		if strings.Contains(strip, tabMoreWord) {
-			continue // the widest spelling still fits
-		}
-		// The mark went and the word stayed, which is the whole of the ladder.
-		if !strings.Contains(strip, tabsWord) {
-			t.Fatalf("at %d columns the word went before its decoration:\n%q", width, strip)
+		// A partial count is worse than none: `+` alone, or a truncated figure,
+		// is a mark that says something is missing without saying how much.
+		if strings.Contains(strip, tabHiddenLead) && !strings.Contains(strip, tabHiddenLead+itoa(hidden)) {
+			t.Fatalf("at %d columns the count was drawn in pieces:\n%q", width, strip)
 		}
 	}
 	if !seen {
-		t.Fatal("no width drew the control at all")
+		t.Fatal("no width hid a tab, so the count was never under test")
 	}
 }
+
+// tabMoreWordGone is the mark the deleted control wore. It is spelled here, in
+// the test that proves it is gone, rather than left as a constant in the surface
+// for nothing to use.
+const tabMoreWordGone = "▾"
 
 // ── THE HEADER'S GEOMETRY ───────────────────────────────────────────────────
 

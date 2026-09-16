@@ -135,7 +135,7 @@ const (
 	// is this line's grammar rather than a second name for one door. Every clause
 	// here is a key and the NOUN IT MOVES — `alt+w folder`, `alt+o model` — so
 	// the noun is what the third one has to carry too, and `chats` is the word
-	// the tab bar's own control beside it already uses (`Chats ▾`, chattabs.go).
+	// the tab bar's own control used to use before it was deleted (chattabs.go).
 	// The conversation's legend is a list of VERBS in the same slot (`tab last`,
 	// `space space home`), which is why the same door is `alt+k switch` there.
 	targetSwitcherKeyWord = "alt+k chats"
