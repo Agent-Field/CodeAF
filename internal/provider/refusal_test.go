@@ -265,6 +265,57 @@ func ledgerClient(t *testing.T, handler http.Handler) *Client {
 	return client
 }
 
+// ── THE CUSTOM CONNECTION'S 400 (#1089) ─────────────────────────────────────
+//
+// A plain OpenAI-compatible base — the custom connection: no endpoints sheet,
+// no catalog row, nothing router-shaped about it — that does not know the
+// `provider` field at all. A request carrying one is refused whole with a bare
+// 400, in OpenAI's own words, before any model was asked anything.
+//
+// What is owed here is the ONE widened retry (#433's): the identical request
+// with the object taken off, whose landing is the whole of the evidence. No
+// reading of the words decides this, so the words are read by nothing.
+func TestABare400AboutTheProviderFieldFromACustomBaseIsRetriedWithoutIt(t *testing.T) {
+	forgetLanes(t)
+	var carried []bool
+	base := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, carriedObject := decodedBody(t, request)["provider"]
+		carried = append(carried, carriedObject)
+		writer.Header().Set("Content-Type", "application/json")
+		if carriedObject {
+			writer.WriteHeader(http.StatusBadRequest)
+			_, _ = writer.Write([]byte(`{"error":{"message":"Unrecognized request argument supplied: provider","type":"invalid_request_error","code":400}}`))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"model":"` + plainModel + `","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`))
+	})
+	client, err := NewClient(Config{
+		APIKey:     "test-key",
+		BaseURL:    "https://home-lab.example/v1",
+		Model:      plainModel,
+		Routing:    StaticRouting(RoutingLatency),
+		HTTPClient: handlerClient(base),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.velocity = newVelocityLedger()
+	client.pins = newEndpointPins()
+	// The pin is why a `provider` object went out at all: on a base nobody has
+	// asked, the only preference on the wire is one a person put there.
+	pinned(t, LanePin{Lane: "Harbor"})
+
+	if _, err := client.CompleteWithMessages(talking(), userMessages("hello")); err != nil {
+		t.Fatalf("the custom base's 400 about the provider field was not retried without it: %v", err)
+	}
+	if len(carried) != 2 {
+		t.Fatalf("%d requests reached the custom base, want the refused one and the widened one: %v", len(carried), carried)
+	}
+	if !carried[0] || carried[1] {
+		t.Fatalf("the retry did not take the object off: carried = %v", carried)
+	}
+}
+
 // decodedBody reads one request's JSON body.
 func decodedBody(t *testing.T, request *http.Request) map[string]any {
 	t.Helper()

@@ -297,7 +297,7 @@ func TestAConnectedModelServiceIsLiveInTheRunningEngineConversation(t *testing.T
 		}
 	}
 	if custom.ID == "" {
-		t.Fatal("the model-service catalog has no Something else door")
+		t.Fatal("the model-service catalog has no Custom OpenAI-compatible API door")
 	}
 	outcome, err := config.ConnectService(context.Background(), profileDir, config.PersistedSource{
 		ID: custom.ID, Written: "localhost", Address: directServer.URL(), Key: "direct-key", Order: 1,

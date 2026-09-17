@@ -963,6 +963,15 @@ type sheet struct {
 	// in the same keystroke — so a value copied when the panel opened would be
 	// the tail describing the pin before the one a person had just set.
 	force func() laneForce
+	// liveModel is this conversation's LIVE model, asked of the surface rather
+	// than copied, for the switcher's active-connection row
+	// (connectionSwitcherRow). IT IS A DOOR FOR THE SAME REASON `force` IS: a
+	// snapshot taken here would name the model the conversation had when the
+	// panel opened, and the switcher is exactly the row whose answer changes
+	// from underneath a panel — a move made from the tab itself, or the one
+	// waiting out a working turn ([app.deferredModelServiceModel]).
+	liveModel func() string
+
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
@@ -1268,6 +1277,7 @@ func (a *app) raiseSettings() {
 		autonomyDoor: a.hasAutonomyDoor(),
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
+		liveModel:    a.conversationModel,
 		sources:      a.sources,
 		force:        a.laneForceNow,
 		defaults:     settingDefaults(),
@@ -1369,13 +1379,25 @@ func (s *sheet) build() {
 		for _, row := range s.tabRows() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
-			if row.Key == config.KeyAPIKey {
+			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
+				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services
+				// head, no connection row, no switcher (the emptiness test pins the
+				// absence of the section), because a row that could do nothing is
+				// decoration. The add row is an action, not decoration — a profile with
+				// no custom connection yet is the one that needs the door — so it stands
+				// alone when no service row stands beside it (customAddRow).
 				services := modelServiceRows(s.profileDir, s.sources)
 				if len(services) > 0 {
 					s.items = append(s.items, sheetItem{head: "services"})
 					for _, service := range services {
 						s.items = append(s.items, sheetItem{service: service})
 					}
+					s.items = append(s.items, sheetItem{service: customAddRow()})
+					if switcher := s.connectionSwitcherRow(); switcher != nil {
+						s.items = append(s.items, sheetItem{service: switcher})
+					}
+				} else {
+					s.items = append(s.items, sheetItem{service: customAddRow()})
 				}
 			}
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
@@ -1988,7 +2010,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter", " ", "space":
 		return a.activate(), true
 	case "ctrl+r":
-		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause {
+		// The add and switcher rows are doors, not connections; a reconnect
+		// is asked of a connected service's own row and of nothing else here.
+		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause &&
+			!item.service.addCustom && !item.service.switcher {
 			return a.reconnectModelService(item.service.id), true
 		}
 
@@ -2056,6 +2081,19 @@ func (a *app) activate() tea.Cmd {
 			a.cyclePlanPause(item.service.id)
 			return nil
 		}
+		if item.service.addCustom {
+			// THE ADD ROW MINTS: the same PrepareCustomSource and
+			// ConnectService path /connect runs, never a second one
+			// (startCustomAdd).
+			return a.startCustomAdd(true)
+		}
+		if item.service.switcher {
+			a.switchActiveConnection()
+			return nil
+		}
+		// ENTER ON A CONNECTED SERVICE IS ITS EDIT: the id is kept, the
+		// answers prefill, and a changed name is a rename whose re-prefix the
+		// connect result carries (modelservices.go's reprefixRenamedModel).
 		source, ok := a.modelSource(item.service.id)
 		if !ok {
 			return nil

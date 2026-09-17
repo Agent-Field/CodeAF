@@ -80,7 +80,7 @@ func WriteSources(profileDir string, rows []PersistedSource) error {
 		if strings.TrimSpace(row.PlanPaused) != PlanPausedUseMeter {
 			row.PlanPaused = ""
 		}
-		if row.ID != "custom" {
+		if !modelsource.IsCustomID(row.ID) {
 			row.Address = ""
 		} else {
 			row.Address = strings.TrimSpace(row.Address)
@@ -135,8 +135,22 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 	for _, row := range rows {
 		source, ok := known[strings.TrimSpace(row.ID)]
 		if !ok {
-			continue
+			// A custom instance is not a row of its own in the vendored table: it
+			// resolves onto the vendored custom service as a TEMPLATE, and the row
+			// it was persisted under is stamped back on below. Without the stamp
+			// every instance would collapse into one Connected, and Set.ByID,
+			// the model-service rows, the model groups and the disconnect path
+			// would all see one connection where the person has two.
+			if !modelsource.IsCustomID(row.ID) {
+				continue
+			}
+			template, ok := known[modelsource.CustomID]
+			if !ok {
+				continue
+			}
+			source, ok = template, true
 		}
+		source.ID = strings.TrimSpace(row.ID)
 		if written := strings.TrimSpace(row.Written); written != "" {
 			source.Written = written
 		}
@@ -164,7 +178,7 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 }
 
 func resolvedSourceAddress(row PersistedSource, source modelsource.Source) string {
-	if source.ID == "custom" {
+	if modelsource.IsCustomID(source.ID) {
 		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
 	}
 	if door := resolvedSourceDoor(row, source); door.ID != "" {
