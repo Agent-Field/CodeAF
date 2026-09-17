@@ -17,12 +17,15 @@ package session
 // plan gate BEFORE admit takes the graph's mu, never inside it.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
@@ -164,7 +167,15 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 			}
 		}
 		g.plan = &planState{path: path}
-		g.plan.armShim()
+		if err := g.plan.armShim(); err != nil {
+			// A plan whose shim never landed is still the run's plan — the
+			// store is seeded and the runtime dispatches from it — but every
+			// plandb call the worker makes will miss its binary, and the
+			// worker reads that failure. The reason goes in the session's own
+			// log rather than being swallowed, which is the one shape this
+			// line must never take.
+			g.planNote("plandb shim not armed: " + err.Error())
+		}
 		if created {
 			// THE SEED: the contract went INTO the store as the root task's
 			// description, and the brief the worker will read is composed
@@ -500,40 +511,125 @@ func planBrief(task *plandb.Task, agent string, role planRole) string {
 
 // armShim writes the session's `plandb` shim and puts its directory first on
 // the PATH, once. THE SHIM IS WHY THE PAGE CAN SAY `plandb` PLAINLY: the
-// rust plandb that lives on this machine's PATH is a different store, and a
-// worker that reached it would write a plan the runtime could not read. The
-// shim execs the running codeaf binary's own `plandb` subcommand, so the
-// page's one word always names the CLI this run shares. Prepending the PATH
-// is safe where pointing an environment variable at one store would not be:
-// every shim is the same CLI, and the store a call binds to is found by
-// walking up from the caller's own working directory.
-func (p *planState) armShim() {
+// plandb that lives on this machine's PATH is a different store, and a worker
+// that reached it would write a plan the runtime could not read. The shim
+// execs the CLI the resolver reached (resolvePlanCLI), so the page's one word
+// always names the CLI this run shares. Prepending the PATH is safe where
+// pointing an environment variable at one store would not be: every shim is
+// the same CLI, and the store a call binds to is found by walking up from the
+// caller's own working directory.
+//
+// IT ANSWERS WHY IT COULD NOT, and the seed records that in the session's own
+// log (planNote): a plan whose shim never landed is a plan whose workers miss
+// every plandb call, and the one thing worse than that is missing it silently
+// — which is what the first shape did with every error it met.
+func (p *planState) armShim() error {
 	if p.shimmed {
-		return
+		return nil
 	}
-	p.shimmed = true
-	self, err := os.Executable()
-	if err != nil {
-		return
+	dir := filepath.Dir(p.path)
+	argv := resolvePlanCLI(dir)
+	if argv == nil {
+		return errors.New("no plandb CLI found: " + planCLIBinEnv + " unset, and neither the running binary nor a codeaf on PATH answered `plandb status`")
 	}
-	bin := filepath.Join(filepath.Dir(p.path), "bin")
+	bin := filepath.Join(dir, "bin")
 	if err := os.MkdirAll(bin, 0o700); err != nil {
-		return
+		return err
 	}
 	shim := filepath.Join(bin, "plandb")
-	script := "#!/bin/sh\nexec " + quoteShWord(self) + " plandb \"$@\"\n"
+	words := make([]string, 0, len(argv)+1)
+	for _, word := range argv {
+		words = append(words, quoteShWord(word))
+	}
+	script := "#!/bin/sh\nexec " + strings.Join(words, " ") + " \"$@\"\n"
 	if existing, err := os.ReadFile(shim); err != nil || string(existing) != script {
 		if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
-			return
+			return err
 		}
 	}
+	p.shimmed = true
 	path := os.Getenv("PATH")
 	for _, part := range strings.Split(path, string(os.PathListSeparator)) {
 		if part == bin {
-			return
+			return nil
 		}
 	}
 	_ = os.Setenv("PATH", bin+string(os.PathListSeparator)+path)
+	return nil
+}
+
+// planCLIBinEnv is the resolver's one override: it names a binary that
+// answers `<bin> plandb …` — the codeaf-shaped door — and it wins unprobed,
+// because an override that needs a probe is a suggestion.
+const planCLIBinEnv = "CODEAF_PLANDB_BIN"
+
+// resolvePlanCLI answers the argv the shim execs — the word or words that
+// reach the ported CLI (internal/plandb's Main) — or nil when no candidate
+// works, which is the answer the arming records rather than guesses past.
+//
+// THE RESOLUTION IS A PROBE, NOT A GUESS, because the one thing it must never
+// do is what it did first: exec os.Executable() blind. The engine is not
+// always the codeaf binary — a bench drives the task door in-process
+// (bench/bashloop), where os.Executable() is the DRIVER, so every plandb call
+// a worker made started the bench's grid instead of answering the store. The
+// probe is the CLI's own cheapest read, `<candidate> plandb status`, run
+// beside the run's store: exit 0 is the one proof the candidate answers as
+// the CLI, and the timeout is the defence against a binary that starts
+// instead of answering.
+//
+// THE ORDER IS HOW WELL EACH CANDIDATE KNOWS ITSELF: the explicit override
+// first; the running binary, only when it passes the probe (a driver that
+// routes the door passes — the bench's own binary is how the in-process arm
+// gets a CLI at all); the sibling `plandb` beside the executable, whose own
+// name is the whole contract — cmd/plandb builds it beside bin/codeaf — so
+// its existence is the proof and it takes no `plandb` argument; and a codeaf
+// found on PATH, probed again. A go test binary is never a candidate: handed
+// `plandb status` it would run its whole suite, and every arming test in it
+// would probe again — the .test suffix refuses it before that recursion can
+// start.
+func resolvePlanCLI(storeDir string) []string {
+	if override := strings.TrimSpace(os.Getenv(planCLIBinEnv)); override != "" {
+		return []string{override, "plandb"}
+	}
+	if self, err := os.Executable(); err == nil && !looksLikeTestBinary(self) {
+		if planCLIProbes(self, storeDir) {
+			return []string{self, "plandb"}
+		}
+		if sibling := filepath.Join(filepath.Dir(self), "plandb"); fileExecutable(sibling) {
+			return []string{sibling}
+		}
+	}
+	if onPath, err := exec.LookPath("codeaf"); err == nil && planCLIProbes(onPath, storeDir) {
+		return []string{onPath, "plandb"}
+	}
+	return nil
+}
+
+// planCLIProbes runs the CLI's cheapest read beside the store and answers
+// whether the candidate answered as the CLI. Ten seconds is the whole defence
+// against a candidate that is a door into something else: a binary that
+// starts instead of answering is killed and counted as failed.
+func planCLIProbes(bin, storeDir string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	probe := exec.CommandContext(ctx, bin, "plandb", "status")
+	probe.Dir = storeDir
+	return probe.Run() == nil
+}
+
+// looksLikeTestBinary names the one executable shape the probe must never
+// run: a go test binary answers an unknown argument by running its suite.
+func looksLikeTestBinary(path string) bool {
+	base := filepath.Base(path)
+	return strings.HasSuffix(base, ".test") || strings.HasSuffix(base, ".test.exe")
+}
+
+// fileExecutable answers whether the path is a regular file with any execute
+// bit — the whole contract a sibling `plandb` has to meet, since its name is
+// the contract's other half.
+func fileExecutable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
 }
 
 // quoteShWord makes one word safe as a shell argument in the shim's exec
