@@ -3,7 +3,7 @@
 ## Add a key — connect a service, add an api key for another provider, use a different model service
 
 An api key for another provider is added here. Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
-MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
+MiniMax, Alibaba Qwen, Ollama and **Custom OpenAI-compatible API**, followed by any service already
 connected and an `add custom connection` row.
 Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
@@ -66,7 +66,7 @@ region whose name starts with it, enter takes the row under the cursor and opens
 `your key`, and esc returns to the service row with nothing saved. The same choice
 opens when reconnecting one of these services from its Providers row in `/settings`.
 Z.ai is the direct service for GLM and Moonshot is the direct service for Kimi.
-MiniMax, Ollama and **Something else** are single-door services. MiniMax makes no plan
+MiniMax, Ollama and **Custom OpenAI-compatible API** are single-door services. MiniMax makes no plan
 claim because its plan and metered traffic currently have no wire-level difference
 codeaf can use to prove which balance answered.
 
@@ -92,7 +92,7 @@ is first and starts under the cursor, then `China`. Up and down, or `ctrl+p` and
 `ctrl+n`, move the cursor; a letter jumps to a region whose name starts with it;
 enter takes the row under the cursor and then opens `your key`; esc backs out with
 nothing saved. The region is a choice and cannot be typed. Ollama asks for nothing.
-**Something else** asks for `your base url` and then `your key`. A key may also be the
+**Custom OpenAI-compatible API** asks for `your base url` and then `your key`. A key may also be the
 name of an environment variable, such as `$DEEPSEEK_API_KEY`.
 
 A key with the wrong shape is stopped before any call:
@@ -222,7 +222,7 @@ belong to the default routed service and are not applied to a direct call.
 
 Choose **Ollama** in `/connect` to use its usual local OpenAI-compatible address;
 Ollama asks for no key. For LM Studio, vLLM, llama.cpp, or an Ollama address that is not
-the usual one, choose **Something else**, then enter its base URL and any key that server
+the usual one, choose **Custom OpenAI-compatible API**, then enter its base URL and any key that server
 requires.
 
 The connection check asks the local runner for its model list first. When it answers,
@@ -230,9 +230,9 @@ its models appear under the service's heading in `/model`; when that address is 
 the runner can still connect and its group asks for a model id. A local
 service has one provider, so there is nothing to choose between and that is not a fault.
 
-## Something else — a proxy, a gateway, or your own endpoint
+## Custom OpenAI-compatible API — a proxy, a gateway, or your own endpoint
 
-The **Something else** row in `/connect` accepts an OpenAI-compatible base URL and key.
+The **Custom OpenAI-compatible API** row in `/connect` accepts an OpenAI-compatible base URL and key.
 Use it for a proxy, gateway, self-hosted endpoint, or vendor not already named. codeaf
 checks the address before saving anything, then asks `name` before `your key`. The name
 box opens on the host's own spelling: `localhost` for a local runner, `127-0-0-1` for
@@ -251,9 +251,9 @@ every model id it serves, so a model on a connection named `homelab` reads
 names the connection by the name it was given; neither switches back to `custom`.
 
 Several custom connections coexist, each under the name you gave it, each with its own
-key, its own rows and its own picker group. On /connect the **Something else** row
+key, its own rows and its own picker group. On /connect the **Custom OpenAI-compatible API** row
 becomes that first connection's edit door once one is connected and an `add custom
-connection` row connects a new one; with none connected yet, **Something else** is the
+connection` row connects a new one; with none connected yet, **Custom OpenAI-compatible API** is the
 door onto the first.
 
 On the Providers tab in `/settings` each custom connection is a row of its own. `enter`
@@ -273,7 +273,7 @@ custom connection is connected, and when the next one has no model list yet the 
 says so instead: `no model list for homelab yet · reconnect it (ctrl+r on its row) or
 type a model id in /model`.
 
-In Phase 1 a **Something else** service must provide the compatible chat path. codeaf
+In Phase 1 a **Custom OpenAI-compatible API** service must provide the compatible chat path. codeaf
 tries `GET <base>/models` first; the models from an answered list fill its picker group.
 When that address is absent, codeaf connects the service without inventing rows and the
 picker asks you to type a model id. Direct calls record no cost in Phase 1 and have one provider.

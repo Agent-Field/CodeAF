@@ -1496,11 +1496,11 @@ status sheet. Change that machine's profile there.
 
 `/connect` (or `/connections`) opens the connection panel. Its pinned `models` group
 holds the five built-in model services plus every one already connected; the account
-catalog groups follow it. Pick a row and connect it. There is no argument form. **Something else** connects a custom service: it asks for a
+catalog groups follow it. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom service: it asks for a
 base URL, then a name of your own with the host's own spelling pre-filled (`127.0.0.1`
 becomes `127-0-0-1`), then a key. Several custom connections sit beside each other,
 each under its name; once one is connected an `add custom connection` row appears and
-the **Something else** row becomes that connection's edit door. The
+the **Custom OpenAI-compatible API** row becomes that connection's edit door. The
 [services page](services.md) covers model keys, and the accounts page covers what each
 account can do once it is connected.
 

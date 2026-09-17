@@ -333,11 +333,11 @@ func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
 		}
 	}
 	if rowAt < 0 {
-		t.Fatal("the models group did not contain Something else")
+		t.Fatal("the models group did not contain Custom OpenAI-compatible API")
 	}
 	a.connPanel.cursor = rowAt
 	if cmd := a.connectAct(rowAt); cmd != nil || a.connPanel.entry == nil {
-		t.Fatal("enter on Something else did not open the address box")
+		t.Fatal("enter on Custom OpenAI-compatible API did not open the address box")
 	}
 	a.connPanel.entry.box.setText(server.URL())
 	if cmd := a.connectEntryKey(key("enter")); cmd != nil || a.connPanel.entry == nil {

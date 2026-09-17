@@ -484,7 +484,7 @@ func Vendored() []Source {
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 		{
-			ID: CustomID, Written: CustomID, Name: "Something else",
+			ID: CustomID, Written: CustomID, Name: "Custom OpenAI-compatible API",
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 	}
