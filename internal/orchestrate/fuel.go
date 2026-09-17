@@ -93,13 +93,21 @@ func CatalogPrices(priceNow func(model string) (prompt, completion float64, know
 // cannot know. [Meter] is what answers when a response carries no figure at
 // all, which is common enough that a run metering only reported costs would
 // have a tank that never empties.
+//
+// The rows are the ids the shipped defaults and crew tables name, each copied
+// from the catalog's published price on the day its row was written; the
+// installed tariff ([CatalogPrices]) is what answers when a catalog is present,
+// and this table is only the fallback behind it.
 var prices = map[string]Price{
-	"deepseek/deepseek-v4-flash-0731": {In: 0.14, Out: 0.28},
-	"z-ai/glm-5.3":                    {In: 0.60, Out: 2.20},
-	"z-ai/glm-5.3-flash":              {In: 0.10, Out: 0.40},
-	"moonshotai/kimi-k3":              {In: 0.60, Out: 2.50},
-	"anthropic/claude-opus":           {In: 15.00, Out: 75.00},
-	"openai/gpt-5":                    {In: 1.25, Out: 10.00},
+	"google/gemini-2.5-flash":         {In: 0.30, Out: 2.50},
+	"mistralai/mistral-nemo":          {In: 0.02, Out: 0.03},
+	"deepseek/deepseek-v4-flash-0731": {In: 0.06, Out: 0.12},
+	"z-ai/glm-5.3-flash":              {In: 0.09, Out: 0.30},
+	"z-ai/glm-5.3":                    {In: 1.40, Out: 4.40},
+	"moonshotai/kimi-k3":              {In: 3.00, Out: 15.00},
+	"qwen/qwen3.8-max-0902":           {In: 2.00, Out: 6.00},
+	"anthropic/claude-fable-5.1":      {In: 10.00, Out: 50.00},
+	"anthropic/claude-opus-5":         {In: 5.00, Out: 25.00},
 }
 
 // unpriced is what a model nobody has a row for costs.
