@@ -8,7 +8,7 @@ package session
 // hold, so the file arrived and there was no room left to think about it. The
 // frontier case must not move a byte — the caps are in message[0], and a byte
 // there re-prices the whole conversation cold — so a 128k window still lands
-// exactly pi's own pair.
+// exactly the shipped pair.
 
 import (
 	"strings"
@@ -19,15 +19,15 @@ import (
 
 func TestTheBeltsCapsFollowTheWindow(t *testing.T) {
 	// The window nobody named. defaultContextWindow is 128,000 tokens, which is
-	// the window pi's caps were measured against, so nothing moves.
+	// the window the caps were measured against, so nothing moves.
 	ordinary, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	if got := ordinary.resultCaps(); got != bare.DefaultCaps() {
-		t.Fatalf("the default window got %+v, want pi's own %+v", got, bare.DefaultCaps())
+		t.Fatalf("the default window got %+v, want the shipped %+v", got, bare.DefaultCaps())
 	}
 	for _, name := range []string{"read", "bash"} {
 		description := beltTool(t, ordinary, name).Description
 		if !strings.Contains(description, "2000 lines") || !strings.Contains(description, "50KB") {
-			t.Errorf("%s stopped quoting pi's caps on a 128k model: %q", name, description)
+			t.Errorf("%s stopped quoting the shipped caps on a 128k model: %q", name, description)
 		}
 	}
 
@@ -36,15 +36,16 @@ func TestTheBeltsCapsFollowTheWindow(t *testing.T) {
 	})
 	caps := small.resultCaps()
 	if caps.MaxBytes >= bare.DefaultCaps().MaxBytes || caps.MaxLines >= bare.DefaultCaps().MaxLines {
-		t.Fatalf("a 16k window got %+v, which is no smaller than pi's", caps)
+		t.Fatalf("a 16k window got %+v, which is no smaller than the default", caps)
 	}
 	// Every hand that cuts a result quotes the pair it is cutting at. read and
-	// bash are pi's own; read_document is codeaf's and mirrors the same law on
-	// extracted text, which is what makes the offset it hands back usable.
+	// bash quote the pair they were built with; read_document mirrors the same
+	// law on extracted text, which is what makes the offset it hands back
+	// usable.
 	for _, name := range []string{"read", "bash", "read_document"} {
 		description := beltTool(t, small, name).Description
 		if strings.Contains(description, "2000 lines") || strings.Contains(description, "50KB") {
-			t.Errorf("%s still promises pi's caps on a 16k model: %q", name, description)
+			t.Errorf("%s still promises the 128k caps on a 16k model: %q", name, description)
 		}
 	}
 }

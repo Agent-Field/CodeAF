@@ -9,8 +9,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
-// belt is the session's tool inventory: the seven pi tools — read, bash, edit,
-// write, grep, find, ls — with their verbatim pi schemas and descriptions.
+// belt is the session's tool inventory: the seven file tools — read, bash,
+// edit, write, grep, find, ls — with their verbatim schemas and descriptions.
 //
 // The hands are bare's, not a second copy: the session works the way a
 // subharness leaf works, and a divergence between them would be a divergence
@@ -42,8 +42,8 @@ import (
 // records, unconditional because every session compacts), and web_search and web_fetch
 // reach outside the machine (tools_search.go) when a back end was wired, and
 // generate_image paints (tools_image.go) when an image model was. bare
-// is untouched — a subharness leaf gets pi's bash exactly as before, and the
-// session gets pi's bash plus one argument.
+// is untouched — a subharness leaf gets bare's bash exactly as before, and the
+// session gets bare's bash plus one argument.
 //
 // propose_task (task.go) is the one hand that gives work AWAY: the model grooms
 // a self-contained piece, the person gets a countdown to redirect it, and an
@@ -60,7 +60,7 @@ import (
 // resultCaps is how much of one tool result this conversation's model can
 // afford to be handed, and it is the answer the whole belt is built with.
 //
-// IT FOLLOWS THE WINDOW. pi's flat caps — 2000 lines or 50KB — were measured
+// IT FOLLOWS THE WINDOW. bare's flat caps — 2000 lines or 50KB — were measured
 // against a 128,000-token window, which is exactly what [Agent.window] answers
 // when no model card says otherwise, so a frontier conversation gets them
 // unchanged and is byte-identical to what it was. A model with a smaller window
@@ -113,7 +113,7 @@ func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
 // person's machine that no transcript ever showed them — and the node was
 // briefed to do one piece of work, not to retune the product around it.
 //
-// AND ON THE EXPERIMENT BRANCH THERE IS A THIRD ANSWER, WHERE THE SIX PI TOOLS
+// AND ON THE EXPERIMENT BRANCH THERE IS A THIRD ANSWER: THE SIX FILE TOOLS
 // COME OFF ENTIRELY. spark/bash-task-loop hands a task worker ONE bash tool —
 // bare's, with the branch's head+tail+path cut and the session's background
 // argument — and the kept hands that cannot be a shell command, under a strict

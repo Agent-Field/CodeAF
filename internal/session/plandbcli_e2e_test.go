@@ -713,12 +713,12 @@ func TestPlandbCliFlagOffTouchesNothing(t *testing.T) {
 	if !carried["propose_task"] {
 		t.Error("the flag-off task worker lost propose_task — the ordinary belt must be where it was")
 	}
-	// AND THE CHILD RAN THE ORDINARY PAGE: the pi-tool guidance where the
+	// AND THE CHILD RAN THE ORDINARY PAGE: the file-tool guidance where the
 	// bash belt's doctrine would be, read out of the very request the worker
 	// was handed.
 	page := messageContentText(completer.planE2EFirstAsk("child")[0])
 	if !strings.Contains(page, "## Specialized Tools") {
-		t.Error("the flag-off worker did not read the ordinary pi-tool page")
+		t.Error("the flag-off worker did not read the ordinary file-tool page")
 	}
 	if strings.Contains(page, "ONE ACTION PER RESPONSE") {
 		t.Error("the flag-off worker was handed the bash belt's doctrine page")

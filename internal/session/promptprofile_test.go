@@ -334,9 +334,9 @@ func TestALeanBeltShelvesWhatTheTableNamesAndCarriesAsk(t *testing.T) {
 			}
 		}
 	}
-	// THE SEVEN PI TOOLS AND THE VERBS A SMALL MODEL REACHES FOR EVERY TURN STAY
-	// CARRIED. A lean belt that had to load its way to `read` would spend the
-	// window it was built to save.
+	// THE SEVEN FILE TOOLS AND THE VERBS A SMALL MODEL REACHES FOR EVERY TURN
+	// STAY CARRIED. A lean belt that had to load its way to `read` would spend
+	// the window it was built to save.
 	for _, carried := range []string{"read", "write", "edit", "bash", "grep", "find", "ls", "manual"} {
 		if !agent.hasTool(carried) {
 			t.Errorf("`%s` is not carried on a lean belt", carried)

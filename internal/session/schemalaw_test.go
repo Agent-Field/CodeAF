@@ -74,9 +74,10 @@ type schemaLawException struct {
 //     propose_task's `brief` is the archetype — it is a specification of what a
 //     self-contained brief must contain, and every clause in it is a way briefs
 //     have actually come back wrong.
-//   - PI'S OWN WORDS. The seven verbs this belt takes verbatim from the lean
-//     baseline (internal/exec/bare) are byte-identical on purpose: they are what
-//     the diet is measured AGAINST, and editing them would move the ruler.
+//   - WORDS THIS PACKAGE DOES NOT OWN. The seven verbs this belt takes
+//     verbatim from the lean baseline (internal/exec/bare) are byte-identical
+//     on purpose: they are what the diet is measured AGAINST, and editing them
+//     would move the ruler.
 const schemaFieldOwnedElsewhere = "owned by another lane; registered so this law lands green and reported to it"
 
 var schemaLawAllowed = map[string]schemaLawException{
@@ -85,7 +86,7 @@ var schemaLawAllowed = map[string]schemaLawException{
 		reason: "a judge paragraph: the model writes a self-contained brief TO this " +
 			"specification, and each clause names a way briefs have come back wrong",
 	},
-	"edit.edits": {bytes: 240, reason: "pi's own words, byte-identical (internal/exec/bare); the diet is measured against them"},
+	"edit.edits": {bytes: 240, reason: "the baseline's own words, byte-identical (internal/exec/bare); the diet is measured against them"},
 	// Registered rather than edited, because the lane that owns the file is
 	// cutting it in this same wave and two lanes editing one string is a merge
 	// conflict for no gain. The quick-task wave's fields came into line on

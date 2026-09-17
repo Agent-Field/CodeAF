@@ -298,7 +298,7 @@ func TestPagingReusesTheExtractionRatherThanTheRung(t *testing.T) {
 		t.Fatalf("limit should cut the extraction: %q", first)
 	}
 	if !strings.Contains(first, "offset=3") {
-		t.Fatalf("pi's footer should say how to continue: %q", first)
+		t.Fatalf("the truncation footer should say how to continue: %q", first)
 	}
 	second, isError := documentTool(t, agent, map[string]any{"path": name, "offset": 3})
 	if isError {
