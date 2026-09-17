@@ -23,6 +23,9 @@ import (
 // [worktreeDirtIn]'s dirty fingerprint and [UnsavedEditsNote]'s status reading.
 // `git -C ""` is a no-op — git runs where the process is standing — so a direct
 // exec.Command with an empty directory slipped past the refusal in gitWith.
+// The repository the process stands in holds a TRACKED file with an unsaved
+// edit, because [UnsavedEditsNote] reads with --untracked-files=no and an
+// untracked file alone would leave it silent whether or not git ran.
 func TestStatusReadsWithNoDirectoryNeverRuns(t *testing.T) {
 	repo := t.TempDir()
 	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"config", "user.name", "codeaf"}} {
@@ -31,6 +34,19 @@ func TestStatusReadsWithNoDirectoryNeverRuns(t *testing.T) {
 		}
 	}
 	writeFile(t, filepath.Join(repo, "note.md"), "work\n")
+	mustGit(t, repo, "add", "-A", "--", ".")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "the note")
+	writeFile(t, filepath.Join(repo, "note.md"), "more work\n")
+
+	// Both readings see the edit when they are told where to look; that is what
+	// makes their silence below a refusal rather than an empty status.
+	if got := UnsavedEditsNote(repo); got != unsavedEditsWord {
+		t.Fatalf("UnsavedEditsNote(repo) = %q, so the edit is not visible to a status read", got)
+	}
+	if got := worktreeDirtIn(context.Background(), repo); got == "" {
+		t.Fatal("worktreeDirtIn(repo) answered \"\", so the edit is not visible to a status read")
+	}
+
 	t.Chdir(repo)
 
 	if got := worktreeDirtIn(context.Background(), ""); got != "" {
@@ -41,11 +57,6 @@ func TestStatusReadsWithNoDirectoryNeverRuns(t *testing.T) {
 	}
 	if got := UnsavedEditsNote(""); got != "" {
 		t.Errorf("UnsavedEditsNote with no directory returned %q, so a git command ran", got)
-	}
-	if staged, problem := stagedPaths(repo); problem != "" {
-		t.Fatalf("read the index: %s", problem)
-	} else if len(staged) > 0 {
-		t.Errorf("a refused command staged %v in the repository the process was standing in", staged)
 	}
 }
 
