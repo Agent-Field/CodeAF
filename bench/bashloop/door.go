@@ -163,14 +163,15 @@ func (r *runner) runDoDoor(iv invocation, cellDef cell, fixtureDir, homeDir stri
 	argv := []string{
 		"do",
 		"-w", fixtureDir,
-		"-model", iv.Model,
-		"-plan-model", iv.Model,
+	}
+	argv = append(argv, doModelFlags(iv)...)
+	argv = append(argv,
 		"-db", filepath.Join(homeDir, "graph.db"),
 		"-keep",
 		"-timeout", fmt.Sprintf("%ds", wallSeconds),
 		"-yes-spend",
 		"-json",
-	}
+	)
 	cmd := exec.Command(bin, argv...)
 	cmd.Stdin, err = os.Open(briefFile)
 	if err != nil {
@@ -264,7 +265,7 @@ func (r *runner) runDoDoor(iv invocation, cellDef cell, fixtureDir, homeDir stri
 	g := gradeCell(cellDef, fixtureDir, reading, pristine)
 	wallRead, wallFrom := reading.wallSeconds()
 	return row{
-		Date: r.date, Arm: iv.Arm, Cell: iv.Cell, Replicate: iv.Replicate,
+		Date: r.date, Arm: iv.Arm, Seats: iv.Seats, Cell: iv.Cell, Replicate: iv.Replicate,
 		Model: iv.Model, ModelsUsed: reading.modelsUsedLine(),
 		Graded: g.Pass, GradeDetail: g.Detail,
 		Ending: reading.Ending, Report: firstLine(env.Answer),
@@ -306,10 +307,25 @@ func doExitWord(code int, timedOut bool) string {
 // doDoorLine is the invocation the dry run prints for the do door — the
 // exact command a person could run by hand, the rig's own shape.
 func doDoorLine(iv invocation, fixtureDir, homeDir string) string {
-	return fmt.Sprintf("%s do -w %s -model %s -plan-model %s -db %s -keep -timeout %ds -yes-spend -json < %s",
-		binaryPath(), fixtureDir, iv.Model, iv.Model,
+	flags := " " + strings.Join(doModelFlags(iv), " ")
+	if flags == " " {
+		flags = ""
+	}
+	return fmt.Sprintf("%s do -w %s%s -db %s -keep -timeout %ds -yes-spend -json < %s",
+		binaryPath(), fixtureDir, flags,
 		filepath.Join(homeDir, "graph.db"), int(iv.Wall.Seconds()),
 		filepath.Join(iv.RunDir, "brief.md"))
+}
+
+// doModelFlags names the two seat flags the do door is given. A one-model arm
+// pins both seats to the one -model; a crew arm leaves them off, so the binary
+// resolves its seats from the throwaway profile's own five tier rows — the
+// same ladder a person's settings would climb.
+func doModelFlags(iv invocation) []string {
+	if iv.Seats == SeatsCrew {
+		return nil
+	}
+	return []string{"-model", iv.Model, "-plan-model", iv.Model}
 }
 
 // ── the do door's store reader ─────────────────────────────────────────────

@@ -42,6 +42,7 @@ import (
 type row struct {
 	Date        string
 	Arm         Arm
+	Seats       Seats
 	Cell        string
 	Replicate   int
 	Model       string
@@ -107,7 +108,7 @@ func seconds(s float64) string { return strconv.FormatFloat(s, 'f', 1, 64) }
 // oneLine is the progress line the driver prints as an invocation lands.
 func (r row) oneLine() string {
 	return fmt.Sprintf("%s  graded=%s  ending=%s  steps=%d  $%.4f  wall=%.0fs(%s)  changed=%d  parts=%d/%d  invalid=%d  trunc=%d  idiom=%d",
-		fmt.Sprintf("%s-%s-r%d", r.Arm, r.Cell, r.Replicate), gradeWord(r.Graded), r.Ending, r.Steps, r.CostUSD,
+		fmt.Sprintf("%s-%s-r%d", armLabel(r.Arm, r.Seats), r.Cell, r.Replicate), gradeWord(r.Graded), r.Ending, r.Steps, r.CostUSD,
 		r.WallSeconds, r.WallSource, r.ChangedFiles, r.ChildrenDone, r.ChildrenTotal,
 		r.InvalidActions, r.Truncations, r.EditIdiomFlags)
 }
@@ -120,6 +121,9 @@ type runner struct {
 	csv  string
 	date string
 	rows []row
+	// crew is the plan's resolved five seat rows, written into the throwaway
+	// home of every crew arm.
+	crew []crewRow
 }
 
 // live runs the plan, one invocation at a time, in the plan's order.
@@ -145,6 +149,7 @@ func live(p plan, out, errOut io.Writer) error {
 		out:  out,
 		csv:  filepath.Join(p.Out, "bashloop.csv"),
 		date: time.Now().Format("2006-01-02"),
+		crew: p.Crew,
 	}
 	if err := r.openCSV(); err != nil {
 		return err
@@ -203,15 +208,25 @@ func (r *runner) runOne(iv invocation) row {
 	if err := config.WriteAPIKey("", machineKey()); err != nil {
 		return r.failedRow(iv, fmt.Sprintf("write the key into the throwaway profile: %v", err))
 	}
-	if err := config.WriteChatModel("", iv.Model); err != nil {
+	// The seats are the second thing the env decides: a one-model arm writes
+	// the one -model as the profile's chat model, exactly as before; a crew arm
+	// writes the five tier rows the machine's own profile holds, so the run
+	// resolves its seats the way a person's own settings would.
+	if iv.Seats == SeatsCrew {
+		if err := writeCrewProfile(homeDir, r.crew); err != nil {
+			return r.failedRow(iv, fmt.Sprintf("write the crew into the throwaway profile: %v", err))
+		}
+	} else if err := config.WriteChatModel("", iv.Model); err != nil {
 		return r.failedRow(iv, fmt.Sprintf("write %s: %v", iv.Model, err))
 	}
 	settings, err := config.Load()
 	if err != nil {
 		return r.failedRow(iv, fmt.Sprintf("read the throwaway profile: %v", err))
 	}
-	if chosen := config.ChatModelAt(settings.ProfileDir); chosen != iv.Model {
-		return r.failedRow(iv, fmt.Sprintf("the door would open on %q, not %q", chosen, iv.Model))
+	if iv.Seats != SeatsCrew {
+		if chosen := config.ChatModelAt(settings.ProfileDir); chosen != iv.Model {
+			return r.failedRow(iv, fmt.Sprintf("the door would open on %q, not %q", chosen, iv.Model))
+		}
 	}
 	restoreBelt, err := applyBeltEnv(iv.Arm)
 	if err != nil {
@@ -232,7 +247,7 @@ func (r *runner) runOne(iv invocation) row {
 	if err != nil {
 		return r.failedRow(iv, fmt.Sprintf("load the approval policy: %v", err))
 	}
-	agent, place, err := openTaskAgent(settings, &policy, fixtureDir, homeDir)
+	agent, place, err := openTaskAgent(settings, &policy, fixtureDir, homeDir, iv, r.crew)
 	if err != nil {
 		return r.failedRow(iv, err.Error())
 	}
@@ -263,7 +278,7 @@ func (r *runner) runOne(iv invocation) row {
 	g := gradeCell(cellDef, treeDir, reading, pristine)
 
 	return row{
-		Date: r.date, Arm: iv.Arm, Cell: iv.Cell, Replicate: iv.Replicate,
+		Date: r.date, Arm: iv.Arm, Seats: iv.Seats, Cell: iv.Cell, Replicate: iv.Replicate,
 		Model: iv.Model, ModelsUsed: reading.modelsUsedLine(),
 		Graded: g.Pass, GradeDetail: g.Detail,
 		Ending: reading.Ending, Report: reading.Report,
@@ -299,9 +314,82 @@ func taskTreeDir(placeDir string) string {
 // ending naming the door that stopped it. The spend backstop's own honesty.
 func (r *runner) failedRow(iv invocation, why string) row {
 	return row{
-		Date: r.date, Arm: iv.Arm, Cell: iv.Cell, Replicate: iv.Replicate,
+		Date: r.date, Arm: iv.Arm, Seats: iv.Seats, Cell: iv.Cell, Replicate: iv.Replicate,
 		Model: iv.Model, Ending: "setup-failed", Report: why,
 		WallSource: "driver", RunDir: iv.RunDir,
+	}
+}
+
+// writeCrewProfile writes the five tier rows into the throwaway home, each to
+// the seat the machine's own profile holds. It goes through the settings rows'
+// own validated write, so a value the sheet could refuse is refused here too.
+func writeCrewProfile(homeDir string, crew []crewRow) error {
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: homeDir})
+	for _, row := range crew {
+		setting, ok := registry.Row(crewTierKey(row.Tier))
+		if !ok {
+			return fmt.Errorf("no settings row for the %s seat", row.Tier)
+		}
+		if err := setting.Apply(row.Model); err != nil {
+			return fmt.Errorf("write the %s seat: %w", row.Tier, err)
+		}
+	}
+	return nil
+}
+
+// crewTierKey names the settings row one tier word writes, so the surface and
+// the bench agree on the key rather than spelling it twice.
+func crewTierKey(tier string) string {
+	switch tier {
+	case config.ModelTierHigh:
+		return config.KeyTierHighModel
+	case config.ModelTierWorker:
+		return config.KeyTierWorkerModel
+	case config.ModelTierReflex:
+		return config.KeyTierReflexModel
+	case config.ModelTierMastermind:
+		return config.KeyTierMastermindModel
+	}
+	return config.KeyTierLowModel
+}
+
+// crewWorkModel answers the model a crew arm opens its conversation on: the
+// crew's own worker seat, the seat that does the work and pays most of a
+// task's bill. An empty worker row follows the conversation, so it falls back
+// to the pinned model rather than opening on nothing.
+func crewWorkModel(homeDir string, crew []crewRow) string {
+	for _, row := range crew {
+		if row.Tier == config.ModelTierWorker {
+			if model := strings.TrimSpace(config.TierSeatAt(homeDir, row.Tier).Model); model != "" {
+				return model
+			}
+		}
+	}
+	return pinModel
+}
+
+// crewRoles answers the seat one roles key resolves to, read off the throwaway
+// profile's tier rows. It is the seam internal/roles climbs its ladder through,
+// which is how a crew arm's worker, planner and auxiliary calls each land on
+// their own seat instead of the one pinned model.
+func crewRoles(profileDir string) func(string) (string, bool) {
+	byKey := map[string]string{
+		config.KeyTierReflexModel:     config.ModelTierReflex,
+		config.KeyTierLowModel:        config.ModelTierLow,
+		config.KeyTierWorkerModel:     config.ModelTierWorker,
+		config.KeyTierHighModel:       config.ModelTierHigh,
+		config.KeyTierMastermindModel: config.ModelTierMastermind,
+	}
+	return func(key string) (string, bool) {
+		tier, ok := byKey[key]
+		if !ok {
+			return "", false
+		}
+		model := strings.TrimSpace(config.TierSeatAt(profileDir, tier).Model)
+		if model == "" {
+			return "", false
+		}
+		return model, true
 	}
 }
 
@@ -312,7 +400,7 @@ func (r *runner) failedRow(iv invocation, why string) row {
 // assemble one: the run's model and key, an allow posture with the product's
 // own floor, and nobody watching — so the clock, not a reader, admits the
 // work, and every proposal the work itself makes is approved the same way.
-func openTaskAgent(settings config.Config, policy *approval.Policy, workspace, homeDir string) (*session.Agent, session.Place, error) {
+func openTaskAgent(settings config.Config, policy *approval.Policy, workspace, homeDir string, iv invocation, crew []crewRow) (*session.Agent, session.Place, error) {
 	id := session.NewSessionID()
 	dir := filepath.Join(homeDir, "v3", "projects", "bashloop", id)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -322,9 +410,21 @@ func openTaskAgent(settings config.Config, policy *approval.Policy, workspace, h
 	if err := session.SaveMeta(dir, session.Meta{ID: id, Workspace: workspace, Created: time.Now()}); err != nil {
 		return nil, session.Place{}, fmt.Errorf("write the session folder: %w", err)
 	}
+	// The seats decide the model the conversation opens on and the ladder every
+	// auxiliary call climbs. A one-model arm opens on the pin and leaves the
+	// ladder unwired — exactly the run the grid made before seats existed. A
+	// crew arm opens on the crew's own worker seat and wires the ladder to the
+	// throwaway profile's tier rows, so the worker, the planner and every
+	// auxiliary call each ride their own seat.
+	model, roles := pinModel, (func(string) (string, bool))(nil)
+	if iv.Seats == SeatsCrew {
+		model = crewWorkModel(homeDir, crew)
+		roles = crewRoles(homeDir)
+	}
 	cfg := session.Config{
 		Workspace:      workspace,
-		Model:          pinModel,
+		Model:          model,
+		RolesSource:    roles,
 		APIKey:         settings.APIKey,
 		BaseURL:        settings.BaseURL,
 		CompactEnabled: true,
@@ -723,8 +823,8 @@ func printTable(p plan, rows []row, out io.Writer) {
 	}
 }
 
-func labelOf(arm Arm, cell string, replicate int) string {
-	return fmt.Sprintf("%s-%s-r%d", arm, cell, replicate)
+func labelOf(arm Arm, seats Seats, cell string, replicate int) string {
+	return fmt.Sprintf("%s-%s-r%d", armLabel(arm, seats), cell, replicate)
 }
 
 // sortedKeys answers a string-keyed set as a sorted list.
@@ -768,7 +868,7 @@ func printPair(p plan, rows []row, out io.Writer) {
 	}
 	fmt.Fprintln(out)
 	for _, r := range rows {
-		fmt.Fprintf(out, "%s\n", labelOf(r.Arm, r.Cell, r.Replicate))
+		fmt.Fprintf(out, "%s\n", labelOf(r.Arm, r.Seats, r.Cell, r.Replicate))
 		fmt.Fprintf(out, "  graded: %s (%s)\n", gradeWord(r.Graded), r.GradeDetail)
 		fmt.Fprintf(out, "  ending: %s — %s\n", r.Ending, firstLine(r.Report))
 		fmt.Fprintf(out, "  steps=%d  $%.4f  wall=%.0fs(%s)  models=%s\n",
