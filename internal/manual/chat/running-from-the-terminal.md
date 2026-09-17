@@ -539,6 +539,17 @@ the crew reads them beside the index. `status` adds what is waiting to be sent
 and whether the mode allows sending and reading. `--json` prints the same
 answer as one object. Neither form touches the network.
 
+**The scores start here.** In a conversation, after a task lands, a model
+outside the crew is asked to score each seat the work ran on — the worker that
+carried it, and the seat that checked it when there was one. The scores stay
+in your install's own sheet (`own.json`) and feed the very next crew pick;
+nothing else reads them. With `model_pool` set to `on` the same scores also
+wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
+measurements; `read` keeps them local, and `off` asks no judge at all and
+writes nothing. The call itself is billed to the `judge` seat, so it shows up
+in the spend pages beside the crew seats rather than inside a task's own
+cost.
+
 `verify` fetches a fresh index and checks its detached ed25519 signature,
 then prints the version whose signature checked out:
 
