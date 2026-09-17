@@ -2241,14 +2241,24 @@ func (a *app) servedRiderAt(width int) string {
 }
 
 // modelRiderAt is the half of the rider that is ATTRIBUTION — who is answering
-// for this model — and it rides the model's name on the seam:
+// for this model — and it rides the model's name on the seam, inside the
+// model's own cell:
 //
-//	glm-5.3-flash · via deepinfra
-//	glm-5.3-flash · via z-ai
+//	glm-5.3-flash (deepinfra)
+//	glm-5.3-flash (z-ai)
 //	glm-5.3-flash · slow · trying coreweave…
 //
 // It never carries a rate. How fast the machine is writing is a claim about now
 // and stands beside the state word instead ([app.liveRiderAt]).
+//
+// IT IS WHOLE OR NOTHING, AND IT DOES NOT AGE OUT. Until 2026-09-17 it was
+// ` · via deepinfra`, said as `· deepinfra` on a tight line and gone ten
+// minutes after the last answer ([servedWindow]). The owner ruled that the
+// machine is written beside the model as one word — `deepseek-v4.1-flash
+// (baidu)` — and that the last machine to answer stays named until another
+// does: a conversation read half an hour later still ran on that machine.
+// The sheet's `served` row keeps the window, because the figures beside its
+// name are about one answer ([app.servedRiderAt]).
 //
 // IT IS DRAWN WHOEVER SERVED, AND THAT IS THE OWNER'S OWN RULING (2026-09-09).
 // It used to go silent when the server's name was already inside the model id —
@@ -2268,29 +2278,16 @@ func (a *app) servedRiderAt(width int) string {
 // asks [app.talkLaneRider], which never suppresses and which also names the
 // machine the request in flight is on, so `via` is there from the first answer.
 func (a *app) modelRiderAt(width int) string {
-	room := width
-	if room >= 0 {
-		room -= ansi.StringWidth(riderLead)
-		if room < 0 {
-			room = 0
+	rider := a.talkLaneRider()
+	if rider == "" {
+		sighting, ok := servedSighting(a.model)
+		if !ok || sighting.Provider == "" {
+			return ""
 		}
+		rider = riderWords(riderBeside, strings.ToLower(sighting.Provider), "")
 	}
-	if rider := a.talkLaneRider(); rider != "" {
-		if width < 0 || ansi.StringWidth(rider) <= width {
-			return rider
-		}
-		return ""
-	}
-	sighting, ok := servedSighting(a.model)
-	if !ok || sighting.Provider == "" {
-		return ""
-	}
-	if a.now().Sub(sighting.At) > servedWindow {
-		return ""
-	}
-	served := strings.ToLower(sighting.Provider)
-	if words := rowLed([]rowField{rowSay("via "+served, served)}, roomFor(room)); words != "" {
-		return riderLead + words
+	if width < 0 || ansi.StringWidth(rider) <= width {
+		return rider
 	}
 	return ""
 }

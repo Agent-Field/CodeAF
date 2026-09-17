@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -89,7 +90,7 @@ func TestAReasoningLevelNoLongerHidesTheLiveRate(t *testing.T) {
 	if line := statusRowText(a, 200); !strings.Contains(line, "38 tok/s") {
 		t.Fatalf("a model with a level dialled lost the live rate:\n%q", line)
 	}
-	if !strings.Contains(seamText(a), "kimi-k3 · via friendli") {
+	if !strings.Contains(seamText(a), "kimi-k3 (friendli)") {
 		t.Fatalf("a model with a level dialled lost its machine:\n%q", seamText(a))
 	}
 	// AND THE PHONE DECK STILL SPELLS THE LEVEL ON ITS CHIP, which is what the
@@ -113,10 +114,8 @@ func TestTheSeamSaysViaWhenTheVendorServesItsOwnModel(t *testing.T) {
 	a, now := newsApp(t, flash)
 	PostLaneNews(LaneNews{Model: flash, Lane: "DeepSeek", Role: lane.RoleTalk, At: now})
 
-	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash · via deepseek") {
-		// (An approvals chip between the two would be a dialled session; this
-		// one has no dial, so the rider follows the model directly.)
-		t.Fatalf("the vendor serving its own model took `via` off the seam:\n%q", seam)
+	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash (deepseek)") {
+		t.Fatalf("the vendor serving its own model took the machine off the seam:\n%q", seam)
 	}
 	// THE SHEET KEEPS THE OLD RULE, because the row above its `served` line is
 	// the model's whole address and already says `deepseek`.
@@ -133,7 +132,7 @@ func TestARoomSaysViaWhenTheVendorServesItsOwnModel(t *testing.T) {
 		Model: "z-ai/glm-5.2", Lane: "Z-AI", Role: lane.RoleLeafAttached,
 		Subject: nodeSubject(a, 9), At: a.now(),
 	})
-	if seam := plain(a.legend(a.width)); !strings.Contains(seam, roomModelLead+"glm-5.2") || !strings.Contains(seam, "· via z-ai") {
+	if seam := plain(a.legend(a.width)); !strings.Contains(seam, roomModelLead+"glm-5.2 (z-ai)") {
 		t.Fatalf("the room dropped its machine because the vendor served its own model:\n%q", seam)
 	}
 }
@@ -154,7 +153,7 @@ func TestAFailedRescueHandsViaBackToTheLastAnswer(t *testing.T) {
 	}
 
 	PostLaneNews(LaneNews{Model: flash, Alt: "CoreWeave", Role: lane.RoleTalk, Failed: true, Reason: provider.RescueSlow, At: now})
-	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash · via cloudflare") {
+	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash (cloudflare)") {
 		t.Fatalf("a failed rescue blanked the machine that last answered:\n%q", seam)
 	}
 }
@@ -173,7 +172,7 @@ func TestAnInterruptedTurnStopsPromisingARescue(t *testing.T) {
 	if strings.Contains(seam, "trying") {
 		t.Fatalf("an idle conversation still promises a rescue:\n%q", seam)
 	}
-	if !strings.Contains(seam, "via cloudflare") {
+	if !strings.Contains(seam, "(cloudflare)") {
 		t.Fatalf("an idle conversation lost the machine that last answered:\n%q", seam)
 	}
 }
@@ -192,14 +191,14 @@ func TestTheFirstAnswerNamesItsMachineWhileItIsWritten(t *testing.T) {
 		Phase: provider.PhaseWriting, Since: now.Add(-2 * time.Second), Lane: "Friendli", Rate: 38,
 		Model: phaseModel, Role: lane.RoleTalk, At: now,
 	})
-	if seam := seamText(a); !strings.Contains(seam, "kimi-k3 · via friendli") {
+	if seam := seamText(a); !strings.Contains(seam, "kimi-k3 (friendli)") {
 		t.Fatalf("the first answer is being written and the seam names no machine:\n%q", seam)
 	}
 
 	// A FOLLOW-UP ON ANOTHER MACHINE SAYS THAT MACHINE, not the one the last
 	// answer came from: who is writing now outranks who wrote last.
 	PostLaneNews(LaneNews{Model: phaseModel, Lane: "Parasail", Role: lane.RoleTalk, At: now.Add(-time.Minute)})
-	if seam := seamText(a); !strings.Contains(seam, "via friendli") || strings.Contains(seam, "parasail") {
+	if seam := seamText(a); !strings.Contains(seam, "(friendli)") || strings.Contains(seam, "parasail") {
 		t.Fatalf("the seam names the last answer's machine over the one writing now:\n%q", seam)
 	}
 }
@@ -227,7 +226,7 @@ func TestTheConversationsNewsIsFoundAfterTheModelMoved(t *testing.T) {
 	if line := statusRowText(a, 200); !strings.Contains(line, "38 tok/s") {
 		t.Fatalf("the rate was filed under the model the engine is on and never found:\n%q", line)
 	}
-	if seam := seamText(a); !strings.Contains(seam, "via friendli") {
+	if seam := seamText(a); !strings.Contains(seam, "(friendli)") {
 		t.Fatalf("the machine was filed under the model the engine is on and never found:\n%q", seam)
 	}
 }
@@ -299,5 +298,55 @@ func TestAnEngineWithTheNewsIsNeverCalledOlder(t *testing.T) {
 		if e.kind == entryNote && e.text == newsSilenceNote {
 			t.Fatal("an engine that sends the news was called older")
 		}
+	}
+}
+
+// ── 7. the machine stays ────────────────────────────────────────────────────
+
+// THE MACHINE IN BRACKETS DOES NOT AGE OUT. Until 2026-09-17 the seam's `via`
+// went quiet ten minutes after the last answer, so a conversation read after
+// lunch said `deepseek-v4-flash ·` and nothing — the owner read that as the
+// provider having gone missing. Who answered last is a fact until somebody
+// else answers, and the seam says it for as long as the window is open; the
+// sheet's `served` row keeps the window, because the figures beside its name
+// are about one answer (lanes.go's [riderBeside]).
+func TestTheSeamKeepsNamingTheLastMachineAfterTheWindowClosed(t *testing.T) {
+	a, now := newsApp(t, flash)
+	PostLaneNews(LaneNews{Model: flash, Lane: "Baidu", Role: lane.RoleTalk, At: now.Add(-servedWindow - time.Hour)})
+
+	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash (baidu)") {
+		t.Fatalf("the seam forgot the machine that answered last:\n%q", seam)
+	}
+	if got := a.servedRider(); got != "" {
+		t.Fatalf("the sheet's served row still carries an hour-old answer: %q", got)
+	}
+	// AND THE SIGHTING DESK'S ANSWER IS KEPT THE SAME WAY, where the lane
+	// layer has nothing to say — the in-process ledger's reading, aged past
+	// the window.
+	forgetLanes()
+	pinSighting(t, provider.Sighting{Model: flash, Provider: "Baidu", Rate: 40, At: now.Add(-servedWindow - time.Hour)}, true)
+	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash (baidu)") {
+		t.Fatalf("the seam forgot the sighting that answered last:\n%q", seam)
+	}
+}
+
+// THE DIRECT-SERVICE CHECK READS THE CONVERSATION'S OWN MODEL. A directly
+// connected service has one road and no machine to name, and the seam used to
+// ask that of the empty id it passes as the row's spelled name — answered by
+// whichever service is the default. It asks of the model now: a model on the
+// default service names its machine, and one on a direct service names none.
+func TestTheSeamAsksTheDirectServiceCheckOfTheModelItself(t *testing.T) {
+	a, now := newsApp(t, flash)
+	a.sources = modelsource.NewSet(testDefaultService("sk-or-default-1234567890"), testDirectService("https://api.deepseek.com"))
+	PostLaneNews(LaneNews{Model: flash, Lane: "Baidu", Role: lane.RoleTalk, At: now})
+	if seam := seamText(a); !strings.Contains(seam, "deepseek-v4-flash (baidu)") {
+		t.Fatalf("a routed model on the default service names no machine:\n%q", seam)
+	}
+
+	direct := "deepseek-direct/deepseek-v4-flash"
+	a.model = direct
+	PostLaneNews(LaneNews{Model: direct, Lane: "Baidu", Role: lane.RoleTalk, At: now})
+	if seam := seamText(a); strings.Contains(seam, "(baidu)") {
+		t.Fatalf("a directly connected model names a machine it has no choice of:\n%q", seam)
 	}
 }

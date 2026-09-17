@@ -1136,7 +1136,7 @@ The line above the message box — the legend — names how hard the model will 
 your next turn, immediately after the model that will be doing the thinking:
 
 ```
-─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ──── $0.27   66.8k/1.3M · 5%   idle ─
+─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ──── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1223,7 +1223,7 @@ decides*.
 After the thinking rung, the legend names what this conversation runs **without asking**:
 
 ```
-─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ─── $0.27   66.8k/1.3M · 5%   idle ─
+─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ─── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 

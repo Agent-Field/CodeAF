@@ -1869,7 +1869,7 @@ func TestTheSeamNamesTheMachineEvenWhereTheVendorServesItsOwnModel(t *testing.T)
 		Model: "deepseek/deepseek-v4-flash", Provider: "DeepSeek", Rate: 92, At: now.Add(-time.Second),
 	}, true)
 
-	if line := plain(a.legend(140)); !strings.Contains(line, "deepseek-v4-flash · via deepseek") {
+	if line := plain(a.legend(140)); !strings.Contains(line, "deepseek-v4-flash (deepseek)") {
 		t.Fatalf("the seam dropped the rider because the vendor served: %q", line)
 	}
 	// AND THE SHEET'S `served` ROW KEEPS THE OLD RULE, because the line above it
@@ -5062,7 +5062,7 @@ func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
 	// Wide enough for everything: model, rider, branch — and the rider rides
 	// the model, not the end of the line.
 	line := plain(a.legend(160))
-	if !strings.Contains(line, "deepseek-v4-flash · via relace · main") {
+	if !strings.Contains(line, "deepseek-v4-flash (relace) · main") {
 		t.Fatalf("with room for all of it, something was dropped or moved: %q", line)
 	}
 	if strings.Contains(line, "casual") || strings.Contains(line, "…") {
@@ -5076,7 +5076,7 @@ func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
 		if ansi.StringWidth(line) != width {
 			t.Fatalf("the legend is %d cells wide, want %d", ansi.StringWidth(line), width)
 		}
-		hasBranch, hasRider := strings.Contains(line, "· main"), strings.Contains(line, "via relace")
+		hasBranch, hasRider := strings.Contains(line, "· main"), strings.Contains(line, "(relace)")
 		if hasBranch && !hasRider {
 			t.Fatalf("at %d columns the branch stayed while the rider had no room: %q", width, line)
 		}
@@ -5102,7 +5102,7 @@ func TestTheSeamRiderNamesTheMachineAndNotTheLastAnswersFigures(t *testing.T) {
 	t.Cleanup(forgetLanes)
 
 	line := plain(a.legend(140))
-	if !strings.Contains(line, "· via relace") {
+	if !strings.Contains(line, "deepseek-v4-flash (relace)") {
 		t.Fatalf("the seam lost the machine: %q", line)
 	}
 	if strings.Contains(line, "t/s") || strings.Contains(line, "1.3s") {

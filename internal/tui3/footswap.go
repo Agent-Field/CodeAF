@@ -20,7 +20,7 @@ import (
 // different programs. The owner ruled that THE LOWEST LINE IS FOR KEYS on both,
 // and that the telemetry goes up onto the seam where the chords were:
 //
-//	─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
 //	 space space home · tab last · alt+k chats · / commands
 //

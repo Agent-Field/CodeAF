@@ -9,7 +9,7 @@ import (
 
 // ── THE FOOT OF THE FRAME: TWO ROWS, EACH WITH ONE JOB ──────────────────────
 //
-//	─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
 //	 space space home · tab last · alt+k chats · / commands
 //
@@ -18,11 +18,10 @@ import (
 // (footswap.go says why they moved up on 2026-09-17). It is the line a
 // person's eye crosses on the way into the box, which is why the facts they
 // most often want to change — which model, how hard, what it may run — are
-// written on it and pressable there. The `via <machine>` rider is ALWAYS on it
-// while a sighting is fresh, whoever served, and IT STANDS RIGHT AFTER THE
-// MODEL: the model is spelled as its basename, so the vendor half of the id
-// is not on the screen for the rider to repeat, and the two halves of "who is
-// answering" read as one cell.
+// written on it and pressable there. The machine answering for the model is
+// ALWAYS on it once one has answered, whoever served, and IT IS WRITTEN INTO
+// THE MODEL'S OWN CELL — `glm-5.3-flash (deepinfra)` — so the two halves of
+// "who is answering" read as one word (render.go's [app.modelRiderAt]).
 //
 // THE CONVERSATION'S NAME IS NOT ON IT. It was, from 2026-09-09 until
 // 2026-09-17, and the owner ruled it off: a title takes up the room the
@@ -430,7 +429,7 @@ func (a *app) runStatusNote() tea.Cmd {
 // seamIdentity is the legend's left cluster out of a room, built to a budget,
 // and the columns its three doors occupy within it.
 //
-//	devbox · glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main*
+//	devbox · glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main*
 //
 // THE LADDER IS [seamLadder], read top to bottom, and it never clips.
 //
@@ -496,10 +495,11 @@ func (t seamTry) on(tier seamTier) bool {
 // per frame so the ladder below is only ever choosing between them.
 type seamPieces struct {
 	host, name, model, rung, gate, branch string
-	// rider is the WHOLE rider — `· via relace`, `· via parasail · rescued` —
-	// and fit is the door that says it shorter when there is less room, or
-	// says nothing ([app.modelRiderAt]). The two are kept apart because the
-	// ladder needs to know whether a rung seated the rider entire.
+	// rider is the WHOLE rider — ` (relace)`, ` (parasail · rescued)`, or a
+	// rescue's own ` · slow · trying coreweave…` — and fit is the door that
+	// answers it for a given room, or says nothing ([app.modelRiderAt]). The
+	// two are kept apart because the ladder needs to know whether a rung
+	// seated the rider entire.
 	rider string
 	fit   func(room int) string
 }
@@ -579,7 +579,7 @@ const (
 //	3  the name is cut to seat the rider entire — which machine is answering
 //	   is the one fact on this line about NOW (the owner's ruling of
 //	   2026-09-10)
-//	4  the rider is said shorter, then not at all, with the branch back on
+//	4  the rider goes, with the branch back on
 //	5  and without it
 //	6  the thinking rung goes, WHOLE — half a rung word is a word somebody
 //	   reads as another rung, and its ladder is one command away
@@ -608,8 +608,8 @@ var seamLadder = []seamTry{
 // rung and the approvals chip fell, measured off the head that was actually
 // drawn, so a door is only ever recorded where its cell is.
 //
-// THE RIDER IS WRITTEN ONTO THE MODEL — `glm-5.3-flash · via deepinfra` — and
-// the rung and the gate come after the pair, so the two halves of "who is
+// THE RIDER IS WRITTEN ONTO THE MODEL — `glm-5.3-flash (deepinfra)` — and the
+// rung and the gate come after the pair, so the two halves of "who is
 // answering" are never separated by a cell about something else (the owner's
 // ruling of 2026-09-17).
 func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpan, bool) {

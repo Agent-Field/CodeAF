@@ -135,7 +135,7 @@ func TestTheRightEdgeSaysWhatTheStreamIsProducingRightNow(t *testing.T) {
 			t.Fatalf("the right edge still says %q:\n%q", gone, line)
 		}
 	}
-	if !strings.Contains(line, "kimi-k3 · via friendli") || strings.Count(line, "friendli") != 1 {
+	if !strings.Contains(line, "kimi-k3 (friendli)") || strings.Count(line, "friendli") != 1 {
 		t.Fatalf("the machine is not said once, beside the model:\n%q", line)
 	}
 
@@ -228,7 +228,7 @@ func TestTheLiveRateGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
 
 	// Wide enough for everything: the ledger whole and the right edge whole.
 	wide := plain(a.legend(200))
-	for _, want := range []string{"via coreweave", "$1.12", "⟲ 62% cached", "100k/200k · 50%"} {
+	for _, want := range []string{"kimi-k3 (coreweave)", "$1.12", "⟲ 62% cached", "100k/200k · 50%"} {
 		if !strings.Contains(wide, want) {
 			t.Fatalf("the wide row is missing %q:\n%q", want, wide)
 		}
@@ -240,7 +240,7 @@ func TestTheLiveRateGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
 	}
 
 	// The row is still whole where both ends fit, and the rider is untouched.
-	if line := plain(a.legend(110)); !strings.Contains(line, "via coreweave") ||
+	if line := plain(a.legend(110)); !strings.Contains(line, "(coreweave)") ||
 		!strings.Contains(line, "$1.12") {
 		t.Fatalf("a row with room for both ends gave one of them up:\n%q", line)
 	}

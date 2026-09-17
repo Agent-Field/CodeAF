@@ -281,12 +281,12 @@ The rule over a task page's message box is the same seam a conversation has over
 box, with the task's facts on it and the way out where the conversation's name would be:
 
 ```
-─ room · esc/←← main · task glm-5.2 · via friendli · ⠿ high · ◇ on its own ──── ↑↓ history ─
+─ room · esc/←← main · task glm-5.2 (friendli) · ⠿ high · ◇ on its own ──── ↑↓ history ─
 › steer the node
 ```
 
 Left to right: the way out, **the task's own model** (led by the word `task`, and
-`next model …` once you have retargeted it) with its `via` machine right beside it,
+`next model …` once you have retargeted it) with the machine answering for it in brackets,
 **how hard this task thinks** — the rung set on
 it, or the rung it inherited from your conversation — and **`◇ on its own`**, then the
 machine answering for it, `via friendli`, whoever served it.
@@ -319,7 +319,7 @@ writing — `38 tok/s` — or the task's own phase words while it is in a stage 
 producing nothing, exactly as the conversation's line reads them: `running go test · 41s`,
 `connecting · 1.2s`, `paced · retry in 6s`.
 
-**The machine is named whoever served it** — `task glm-5.2 · via z-ai` on the seam when the
+**The machine is named whoever served it** — `task glm-5.2 (z-ai)` on the seam when the
 vendor serves its own model — and while the task's first answer is still being written, as
 soon as the machine writing it has named itself.
 

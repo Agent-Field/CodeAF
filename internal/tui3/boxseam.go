@@ -18,7 +18,7 @@ import (
 // over it, in the same shape, with the same three cells and the same three
 // doors on them:
 //
-//	─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
+//	─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
 //	 › what changed in the relay this week
 //
 //	─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────

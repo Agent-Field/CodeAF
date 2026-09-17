@@ -662,14 +662,14 @@ and from then on new output keeps you at the edge again.
 Three things do deliberately put you back at the bottom, because in each you asked for
 it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 
-## The line above the message box (the legend) — the model, via which machine, the branch, and why the conversation's name is not on it
+## The line above the message box (the legend) — the model, the machine in brackets after it, the branch, and why the conversation's name is not on it
 
 The rule that separates the conversation from your own business carries **what is
 answering and where** on the left, and **the numbers** — the bill, the meter, the state
 word — on the right, like the legend on a fieldset:
 
 ```
-─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 ```
 
 **The conversation's name is not on this line.** It was, from 2026-09-09 to 2026-09-17,
@@ -684,15 +684,16 @@ that home and a conversation end in the same shape: a rule of facts, the box, a 
 keys.
 
 The left, in order: the machine on a `--host` session (`devbox · …`), the **model** as
-its basename (`glm-5.3-flash`), **immediately followed by** a `· via deepinfra` rider
-naming the endpoint that answered — the two read as one cell, "who is answering" (the
-name alone, never a timing: the last answer's wait and speed are the `served` row of
-`/status`) — then the **thinking rung** this conversation is running at (`⠿ high`, `~
-high` on a plain terminal — `⠿ auto` until something is dialled, which is what a fresh
-install says), the **approvals chip** (`◇ asks`), and the git **branch** with a `*` when
-the tree has uncommitted work. In a directory that is not a repository there is no
-branch. Until 2026-09-17 the rider came after the rung and the chip; it stands beside the
-model now so a cell about something else never separates the model from its machine.
+its basename (`glm-5.3-flash`) **with the endpoint that answered in brackets right after
+it** — `glm-5.3-flash (deepinfra)`, `deepseek-v4.1-flash (baidu)` — the two read as one
+word, "who is answering" (the name alone, never a timing: the last answer's wait and
+speed are the `served` row of `/status`); then the **thinking rung** this conversation is
+running at (`⠿ high`, `~ high` on a plain terminal — `⠿ auto` until something is dialled,
+which is what a fresh install says), the **approvals chip** (`◇ asks`), and the git
+**branch** with a `*` when the tree has uncommitted work. In a directory that is not a
+repository there is no branch. Until 2026-09-17 the machine was a `· via deepinfra`
+segment after the rung and the chip; it is written into the model's own cell now so
+nothing about something else ever separates the model from its machine.
 
 **Two of those are doors.** Press the model's name and the model picker opens, exactly as
 typing `/model` does. Press the thinking rung and it walks one step up the ladder —
@@ -713,21 +714,23 @@ The rate the endpoint is writing at is *not* on this line — while a turn runs 
 beside the state word on the status row (`38 tok/s · ⠹ working · 12s`), because how fast
 is a claim about now and who is attribution.
 
-**The `via` rider is drawn whoever served**, including a vendor serving its own model
-(`glm-5.3-flash · via z-ai`). It was hidden in that case until 2026-09-09, on the
+**The machine in brackets is drawn whoever served**, including a vendor serving its own
+model (`glm-5.3-flash (z-ai)`). It was hidden in that case until 2026-09-09, on the
 argument that the id already said it — but the model is spelled here as its basename,
-so the vendor half of the address is not on the screen at all, and a rider that came and
+so the vendor half of the address is not on the screen at all, and a name that came and
 went with the endpoint read as a lost sighting. It names the machine writing the answer
-in flight as soon as that machine has named itself, the one that answered last after
-that, and goes quiet only when nothing is being written and no answer has come back in
-the last ten minutes. "Provider missing or tok/s not showing" below lists every reason
-either one is absent.
+in flight as soon as that machine has named itself, and after that the one that answered
+last — **and it stays**: since 2026-09-17 the last machine to answer is named until
+another one does, however long the conversation sits idle. (Until then it went quiet ten
+minutes after the last answer; the `served` row of `/status` still does, because the
+figures beside its name are about one answer.) "Provider missing or tok/s not showing"
+below lists every reason it is absent.
 
 **When the line is too narrow, it says less rather than cutting.** The left end gives
 things up in this order, and each step is a shorter *true* sentence:
 
 1. the branch goes — the shell prompt behind this pane still says it;
-2. the `via` rider is said shorter (`glm-5.3-flash · relace`), then not at all;
+2. the machine in brackets goes, whole — it has no shorter spelling;
 3. the thinking rung goes, **whole** — half a rung word is a word you would read as
    another rung, and `/effort` says it in full;
 4. the approvals chip goes, whole, after the rung — what may run without asking
@@ -735,7 +738,7 @@ things up in this order, and each step is a shorter *true* sentence:
 5. the model goes — on a `--host` session the machine is the last thing standing.
 
 A long title costs this line nothing, because the title is not on it. Until 2026-09-17
-the name was, and a long one was cut with one `…` to seat the rider.
+the name was, and a long one was cut with one `…` to seat the machine's name.
 
 Under 70 columns the branch is dropped outright. Only a frame with no room for a label
 at either end falls back to the plain rule. Until 2026-09-09 this line carried only the
@@ -898,20 +901,27 @@ arrival order. A reply to something you just typed has no task line, and a task 
 recorded request shows its name without an empty quote. These lines return with the reply
 after `/resume`; the finished-task strip above the input is unchanged.
 
-## Provider missing or tok/s not showing — why via or the rate is not there, no rate after a follow-up
+## Provider missing or tok/s not showing — why via or the machine in brackets or the rate is not there, no rate after a follow-up
 
-`via <machine>` on the line above the message box and the live `38 tok/s` at the right
-edge of the status row are what the machine running the conversation reports as it
-works. When one is missing, it is one of these, and each is on purpose:
+The machine in brackets after the model on the line above the message box
+(`deepseek-v4.1-flash (baidu)`) and the live `38 tok/s` at the right edge of the status
+row are what the machine running the conversation reports as it works. When one is
+missing, it is one of these, and each is on purpose:
 
 - **Nothing is being written right now.** The rate is drawn only while the answer is
   being thought or written and its first few tokens have arrived. Waiting for the first
   word, a retry, a tool running, or idle: no rate — the phase words, or nothing.
 - **The working line is showing.** While the line under the conversation carries the
   phase words, the right edge does not repeat them.
-- **Nothing has answered for ten minutes and nothing is being written.** `via` names the
-  machine writing the answer as soon as it has named itself, then the one that answered
-  last, for ten minutes.
+- **Nothing has answered yet in this window.** The brackets name the machine writing the
+  answer as soon as it has named itself, then the one that answered last — and keep
+  naming it until another answers (until 2026-09-17 they went quiet after ten minutes).
+  A conversation reopened in a new window has no answer behind it yet, so the brackets
+  arrive with its first one.
+- **The model is on a directly connected service** (a coding plan, a local Ollama): one
+  road, no machine to name. Until 2026-09-17 this check misfired: with a directly
+  connected service listed first, the line above the box named no machine for ANY model,
+  routed ones included. It reads the conversation's own model now.
 - **A note saying** `this conversation's engine is an older codeaf, so the provider and
   tok/s are not shown — they come back once it picks up this build`. The session host
   holding the conversation predates these readings crossing to your window. It is said
@@ -983,8 +993,8 @@ controls. The control for the gate is the `◇` cell on the legend (the keys pag
 
 While a task **room** is open the task's own name is on the breadcrumb bar at the top of
 the frame (the room chip that used to lead this row is gone with the row), and the legend
-above the box becomes the task's: `room · esc/←← main · task glm-5.2 · via friendli · ⠿
-high · ◇ on its own`, with the conversation's numbers after it. **Pressing the model's name
+above the box becomes the task's: `room · esc/←← main · task glm-5.2 (friendli) · ⠿ high
+· ◇ on its own`, with the conversation's numbers after it. **Pressing the model's name
 there moves the task**, not the conversation: the same picker opens aimed at that node, and
 the task switches from its next request onward; pressing the rung, or `ctrl+v`, walks the
 task's thinking. One `esc` restores both lines. Where the pick could not land the name is
@@ -1007,8 +1017,8 @@ which piece of work.
 The numbers never take a second row: when the rule cannot hold the model and every
 figure, the figures go first, one at a time in the order "What the status line drops
 when it is narrow" gives, and the state word is the last thing standing on the right.
-The model gives way only when not even the state word fits beside it whole; a `via`
-machine on the seam outlasts the cheap figures (the jobs, the forecast, the cache's cash
+The model gives way only when not even the state word fits beside it whole; the machine
+in brackets after it outlasts the cheap figures (the jobs, the forecast, the cache's cash
 half, the rate) and gives way before the cache, the bill and the meter. The branch goes
 before any number does, and comes back whenever the numbers shrink enough to make room.
 

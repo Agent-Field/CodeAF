@@ -19,8 +19,8 @@ import (
 //	─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────
 //	 › type to search or start something new
 //
-// The conversation's own seam says `glm-5.3-flash · via deepinfra · ⠿
-// high · ◇ asks`; home's says `◎ new conversation in ~/src/parser ·
+// The conversation's own seam says `glm-5.3-flash (deepinfra) · ⠿ high · ◇
+// asks`; home's says `◎ new conversation in ~/src/parser ·
 // glm-5.3-flash · ⠿ auto · ◇ asks`. Same line, same position, the same three
 // cells and the same doors on them (boxseam.go is the whole of that
 // argument) — and THE MARK IS THE WHOLE DIFFERENCE between where I am and

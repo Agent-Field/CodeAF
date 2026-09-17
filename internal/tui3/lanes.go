@@ -1456,7 +1456,32 @@ func (a *app) openPickerFromChip() {
 // a machine the address already names is not said twice. The seam asks
 // [app.talkLaneRider] instead, which never suppresses.
 func (a *app) laneRider(timed bool) string {
-	return a.laneRiderFor(a.talkLaneStory(), a.model, "", timed, a.state == stateWorking)
+	return a.laneRiderFor(a.talkLaneStory(), a.model, a.model, "", riderVia, timed, a.state == stateWorking)
+}
+
+// riderStyle is how a lane rider is spelled.
+type riderStyle uint8
+
+const (
+	// riderVia is ` · via relace`: a segment of its own, on the sheet's
+	// `served` row and the phone deck's identity, said shorter when the row
+	// is tight.
+	riderVia riderStyle = iota
+	// riderBeside is ` (relace)`: the machine written onto the model's own
+	// cell on the seam — `deepseek-v4-flash (relace)` — whole or nothing, and
+	// never aged out. The owner's ruling of 2026-09-17: the model and the
+	// machine answering for it are one fact, read as one word, and the last
+	// machine to answer stays named until another does.
+	riderBeside
+)
+
+// riderWords spells a machine in one style, with an optional tail inside the
+// same cell (` · rescued`).
+func riderWords(style riderStyle, machine, tail string) string {
+	if style == riderBeside {
+		return " (" + machine + tail + ")"
+	}
+	return " · via " + machine + tail
 }
 
 // talkLaneRider is the conversation's rider ON THE SEAM: who is answering, with
@@ -1474,7 +1499,7 @@ func (a *app) talkLaneRider() string {
 	if news, ok := a.livePhase(); ok {
 		live = news.Lane
 	}
-	return a.laneRiderFor(a.talkLaneStory(), "", live, false, a.state == stateWorking)
+	return a.laneRiderFor(a.talkLaneStory(), a.model, "", live, riderBeside, false, a.state == stateWorking)
 }
 
 // roomLaneRider is that rider for THE OPEN ROOM'S NODE: which machine answered
@@ -1504,34 +1529,44 @@ func (a *app) roomLaneRider() string {
 	}
 	news, working := a.roomPhase()
 	story, _ := laneStoryFor(subject)
-	return a.laneRiderFor(story, "", news.Lane, false, working)
+	return a.laneRiderFor(story, a.roomNode().model, "", news.Lane, riderBeside, false, working)
 }
 
 // laneRiderFor is that rider for one window's story: the piece of work the
 // window asking is a window onto (phase.go's law and [newsDeskKeys]).
 //
+// model is the id the work runs on, asked one thing: whether it is a directly
+// connected service's, which has one road and no machine to name. It is
+// ALWAYS a real id: until 2026-09-17 the seam and a room asked this of the
+// empty string they pass as named, which [modelsource.Set.For] answers with
+// the default service — right by accident, and wrong the day the default is
+// a direct one.
+//
 // named is the id the row beside it spells IN FULL, read for one thing only —
 // the rule that a machine the id already carries is not said twice. Only the
 // sheet passes one ([app.laneRider]); the seam and a room spell a basename, so
 // the vendor is not on the screen and they pass nothing (the owner's ruling of
-// 2026-09-09: `via` always on the seam).
+// 2026-09-09: the machine always on the seam).
 //
 // live is the machine the request in flight has named, or "" — see
 // [app.talkLaneRider] for why it outranks the last answer's sighting.
+//
+// style is the spelling ([riderStyle]): the sheet's segment ages out with
+// [servedWindow], because a figure about an answer that finished ten minutes
+// ago is not a reading; the seam's word beside the model does not, because
+// who answered last is a fact until somebody else answers.
 //
 // working says whether the work this rider is about is RUNNING, because that is
 // what decides whether the rate may ride along and whether a rescue may still
 // be promised. It is the caller's answer and not `a.state`: the session's state
 // is the conversation's liveness, and a window onto a node must not go quiet
 // because the conversation it was launched from is idle.
-func (a *app) laneRiderFor(story laneStory, named, live string, timed, working bool) string {
+func (a *app) laneRiderFor(story laneStory, model, named, live string, style riderStyle, timed, working bool) string {
 	// A DIRECTLY CONNECTED SERVICE HAS ONE ROAD, so there is no machine to name
 	// and the lane desk holds none for it. The sighting this would otherwise
 	// find is the DEFAULT service's, matched on the full model id the sheet row
-	// names — which is how an ollama row came to say `via akashml`. The seam and
-	// task room pass no full id, so the default service's rescue rider remains
-	// available there.
-	if a.modelIsDirect(named) {
+	// names — which is how an ollama row came to say `via akashml`.
+	if a.modelIsDirect(model) {
 		return ""
 	}
 	now := a.now()
@@ -1545,15 +1580,15 @@ func (a *app) laneRiderFor(story laneStory, named, live string, timed, working b
 	// a sighting is the last one.
 	if live = strings.ToLower(strings.TrimSpace(live)); live != "" {
 		if named == "" || !strings.Contains(strings.ToLower(named), live) {
-			return " · via " + live
+			return riderWords(style, live, "")
 		}
 	}
 	news := story.seen
-	if !story.hasSeen || now.Sub(news.At) > servedWindow {
+	if !story.hasSeen || (style == riderVia && now.Sub(news.At) > servedWindow) {
 		return ""
 	}
 	if news.rescued() {
-		return " · via " + strings.ToLower(news.Winner) + " · rescued"
+		return riderWords(style, strings.ToLower(news.Winner), " · rescued")
 	}
 	if news.Lane == "" {
 		return ""
@@ -1566,7 +1601,7 @@ func (a *app) laneRiderFor(story laneStory, named, live string, timed, working b
 	if named != "" && strings.Contains(strings.ToLower(named), served) {
 		return ""
 	}
-	rider := " · via " + served
+	rider := riderWords(style, served, "")
 	if !timed {
 		return rider
 	}

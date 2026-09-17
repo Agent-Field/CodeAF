@@ -143,7 +143,7 @@ func TestARoomDrawsItsNodesRateWhileTheConversationIsIdle(t *testing.T) {
 	line := statusText(a)
 	// The rider rides after the node's cells, as the conversation's rides after
 	// its own (roomseam.go).
-	if seam := plain(a.legend(a.width)); !strings.Contains(seam, roomModelLead+"glm-5.2") || !strings.Contains(seam, "· via friendli") {
+	if seam := plain(a.legend(a.width)); !strings.Contains(seam, roomModelLead+"glm-5.2 (friendli)") {
 		t.Fatalf("the room's seam does not name the node's machine:\n%q", seam)
 	}
 	// The figures stay at the right edge and are not said twice: `via friendli ·

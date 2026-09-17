@@ -262,7 +262,7 @@ func TestAHostedConversationDrawsTheRungItsEngineAdmitsTo(t *testing.T) {
 // THE RIDER STANDS BETWEEN THE MODEL AND THE RUNG. Until 2026-09-17 the rung
 // was anchored to the model so that a rider coming and going on a sighting's
 // own clock could not slide it sideways; the owner ruled that day that the
-// model and its machine read as one cell — `deepseek-v4 · via quicksilver` —
+// model and its machine read as one cell — `deepseek-v4 (quicksilver)` —
 // so the rung stands past the pair and moves with it. What holds still is
 // the model's own column, and the recorded doors move with their cells
 // (foot.go's seamSpans).
@@ -278,7 +278,7 @@ func TestTheRungKeepsItsColumnsWhenTheRiderComesAndGoes(t *testing.T) {
 	served := seamLine(t, a)
 	_ = frame(a)
 
-	if !strings.Contains(served, "deepseek-v4 · via quicksilver · "+glyphEffort+" high") {
+	if !strings.Contains(served, "deepseek-v4 (quicksilver) · "+glyphEffort+" high") {
 		t.Fatalf("the rider does not stand between the model and the rung: %q", served)
 	}
 	if strings.Index(bare, "deepseek-v4") != strings.Index(served, "deepseek-v4") {
