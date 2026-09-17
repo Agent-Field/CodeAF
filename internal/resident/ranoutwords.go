@@ -6,8 +6,8 @@ import (
 	executor "github.com/Agent-Field/codeaf/internal/exec"
 )
 
-// The two sentences a node gets when the leaf holding it ran out. They are in
-// one file because they are one account of one event told to two different
+// The three sentences a node gets when the leaf holding it ran out. They are in
+// one file because they are one account of one event told to three different
 // endings, and a reader who meets them a day apart must not have to work out
 // whether they are describing the same thing.
 //
@@ -55,6 +55,18 @@ func outOfRoomFailure(result ExecResult, recorded int) string {
 		tail = ", with none of its work recorded, so there was nothing for another attempt to carry on from"
 	}
 	return ranOutWords(result.Stop) + tail + meterAside(result.Meter)
+}
+
+// outOfRoomRefusedFailure is the same fact when the re-dispatch that just ran
+// out banked nothing the attempt before it had not banked: more room was the
+// only thing a re-dispatch buys, the work did not move with it, and the node is
+// failed here rather than paid to reach the same point again. It says the
+// refusal and why, because a bare ending would read as a verdict on the work
+// rather than on buying a second copy of the same truncation.
+func outOfRoomRefusedFailure(result ExecResult, recorded int) string {
+	return ranOutWords(result.Stop) + " again, " + pluralTurns(recorded) +
+		" in and no further than the attempt before it, so the re-dispatch was refused: it added nothing" +
+		meterAside(result.Meter)
 }
 
 // A RELEASE REASON THAT HANDS WORK ON ENDS WITH THE SAME CLAUSE, AND IT IS
