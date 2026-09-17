@@ -4,6 +4,8 @@ title: The approvals chip — what a conversation runs without asking is a contr
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Home's resting message-box footer no longer advertises arrow-key picking or Enter opening; it starts with the available project, effort, approvals and chats controls, then commands. The navigation keys still work."
+  - "The conversation task panel put `ctrl+g hide` at its bottom, after the totals. The hide control is now immediately above `+ /task`, after the visible task rows, with the same click target, hover styling and foreground-command ownership of ctrl+g. Task rooms keep their own footer exit."
   - "The conversation footer advertised home first and included `tab last`. It now shares home's control order: `ctrl+v effort · alt+y approvals · alt+k chats · / commands`, followed by `space space home` over an empty box. Tab still works. Unsupported controls are absent, and narrow frames keep commands after giving up whole clauses. The home hint remains clickable in its new position."
   - "The conversation seam ended with the git branch. The branch is absent at every width now; `/status` still carries it. Both home and conversation seams use `model:effort` with no space after the colon, while retaining separate model and effort styling."
   - "Home's foot now names `ctrl+v effort` before `alt+y approvals`. Effort still cycles auto, low, medium, high, xhigh, max and back to auto; on a standing item's row the chord continues to belong to that item."

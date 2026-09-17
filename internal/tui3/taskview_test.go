@@ -730,13 +730,11 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 		!strings.Contains(painted, a.pal.dim(" "+taskSheetPastHead)) {
 		t.Fatalf("the page door does not use the shared hint palette:\n%q", painted)
 	}
-	// IT SITS ABOVE THE COLUMN'S OWN DOOR. The way out of anything is the last
-	// line of it, and this one is a way further in.
-	lines := strings.Split(strings.TrimRight(rail, "\n"), "\n")
-	last := strings.TrimSpace(lines[len(lines)-1])
-	if !strings.Contains(last, railStowHint) {
-		t.Fatalf("the column's own door is no longer its last line: %q", last)
+	// The history door stays in the footer after the task actions and hide control.
+	if hide, history := strings.Index(rail, railStowHint), strings.Index(rail, taskSheetPastHint); hide < 0 || history <= hide {
+		t.Fatalf("history does not follow the hide control:\n%s", rail)
 	}
+
 }
 
 // A FOLDED FAMILY EARNS IT TOO, because a folded root is one row standing for

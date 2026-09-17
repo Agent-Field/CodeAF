@@ -26,7 +26,7 @@ import (
 //
 //	─ glm-5.3-flash:auto · ◇ asks ───────────────── project: ~/codeaf ─
 //	 › type to search or start something new
-//	 ↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · / commands
+//	 alt+w project · ctrl+v effort · alt+y approvals · / commands
 //
 // THE SEAM IS WHAT ANSWERS AND HOW MUCH. Everything on it is a fact about the
 // conversation — its model and the machine serving it, its rung, its gate,

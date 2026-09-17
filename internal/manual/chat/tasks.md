@@ -2063,10 +2063,10 @@ session's spend and tokens are on the status row instead; there is no `Σ` line 
 anything stands over this project, a separate `◦ 2 standing orders` line follows and opens
 `/standing`.
 
-Below those are up to three door lines: `ctrl+. earlier` or `ctrl+. view more` when the
+Below those are up to two door lines: `ctrl+. earlier` or `ctrl+. view more` when the
 full-screen page holds something this column does not, `alt+w widen · click seam` when a
-wider column would stop cutting a title, and, always, the column's own way out. That last
-line reads `❯ ctrl+g hide` when no foreground command can be kept and only `❯ hide` while
+wider column would stop cutting a title. The column’s own way out sits immediately
+above `+ /task`, after the visible task rows. It reads `❯ ctrl+g hide` when no foreground command can be kept and only `❯ hide` while
 a command owns that key. Click either form and the column goes away. The `❯` is in ink and
 the words are dim, because the chevron is what the pointer presses and the words name only
 the keyboard action available now.
@@ -2432,7 +2432,7 @@ finished while it was gone — nothing here is a snapshot; the column is redrawn
 tasks every frame. While a foreground command can be kept, that command takes the key
 instead and the column stays exactly where it was.
 
-**The pointer can do the whole cycle on its own.** The last line of the column reads
+**The pointer can do the whole cycle on its own.** The line immediately above `+ /task` reads
 `❯ ctrl+g hide` with no foreground command to keep and `❯ hide` while one owns the
 key. The chevron is in ink: click either form and the column closes. What is left
 behind is a thin edge carrying `❮`: click that and the column comes back. One control, two
@@ -2479,7 +2479,7 @@ whenever no foreground command can be kept.
 - Under the pointer the handle brightens further and the whole two-cell strip takes a
   background, which is how everything pressable on this screen says so.
 - **The chevron points the way the column goes**, and it is the same control in its other
-  state: `❮` while the column is away, `❯` on the final door line while it stands.
+  state: `❮` while the column is away, `❯` above `+ /task` while it stands.
   That line says `ctrl+g hide` only when the key is available, and says `hide` otherwise.
   Clicking one gives you the other, so the pointer goes round the full cycle. On a terminal
   that cannot draw them they are `<` and `>`.

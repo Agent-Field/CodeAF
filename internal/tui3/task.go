@@ -3371,7 +3371,13 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	// nothing exists, while the emptiness law spends no pixels naming absence.
 	head := a.marginHead(room, len(entries) > 0)
 	lines := a.railLines(entries, room)
-	foot, marks := a.railFootRows(room, height)
+	// The hide control sits with the task actions, above + /task. Reserve its
+	// row before the scrolling list so long rosters cannot push it off screen.
+	stowRows := 0
+	if height >= 4 && !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= room {
+		stowRows = 1
+	}
+	foot, marks := a.railFootRows(room, height-stowRows)
 	body := height - len(foot)
 	if body < 1 {
 		body, foot, marks = height, nil, noRailFoot
@@ -3401,8 +3407,8 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	// AND THE ROSTER OUTRANKS THEM WHEN THERE IS NOTHING LEFT. A frame too short
 	// for both drops the reserved block rather than the work: the doors are
 	// geography and the work is the news.
-	margin := a.marginRows(room, marginRoomFor(body-len(head), len(lines)))
-	window := max(body-len(head)-len(margin), 0)
+	margin := a.marginRows(room, marginRoomFor(body-len(head)-stowRows, len(lines)))
+	window := max(body-len(head)-len(margin)-stowRows, 0)
 
 	// WORK THAT IS STILL GOING IS NEVER SCROLLED OFF THIS COLUMN. The families
 	// are already sorted so that everything live leads ([app.railForest]), and
@@ -3472,6 +3478,9 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	// a session with three tasks in it draws exactly the column it always drew —
 	// the door directly under the last row — and a session with three hundred
 	// draws the same block in the same order, one window further down.
+	if stowRows > 0 {
+		out = append(out, railLine{text: a.railDoorLine(), entry: -1, stow: true})
+	}
 	out = append(out, margin...)
 	// AND WHAT THE SESSION'S OWN ROWS DID NOT NEED IS LEFT BLANK. It used to be
 	// filled with a dulled sample of the project's record; that record is the task
@@ -3482,7 +3491,7 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	}
 	for i, text := range foot {
 		out = append(out, railLine{
-			text: text, entry: -1, hint: i == marks.hint, stow: i == marks.door,
+			text: text, entry: -1, hint: i == marks.hint,
 			more: i == marks.more, keeping: i == marks.keeping})
 	}
 	return out, focus
@@ -4225,19 +4234,15 @@ const railFootMax = 3
 // railFootMarks is where the footer's pressable lines landed, as indices into
 // the rows it returns, or -1 for a line this frame did not draw.
 //
-// IT IS A STRUCT AND NOT FOUR RETURNED INTEGERS because there are four of them
-// now: a caller unpacking `foot, hint, door, more, keeping :=` is four
-// positional ints nobody can read at the call site, and the fourth was added by
-// putting the standing count at the foot of the column (standdoor.go).
+// The named fields keep each pointer target attached to the row that drew it.
 type railFootMarks struct {
-	// hint is the widen offer, door the column's own way out, more the door onto
-	// the task page, and keeping the standing count.
-	hint, door, more, keeping int
+	// hint is the widen offer, more the task page, and keeping the standing count.
+	hint, more, keeping int
 }
 
 // noRailFoot is the answer for a frame with no footer at all: every line
 // missing.
-var noRailFoot = railFootMarks{hint: -1, door: -1, more: -1, keeping: -1}
+var noRailFoot = railFootMarks{hint: -1, more: -1, keeping: -1}
 
 // railFootRows is the aggregate: what the window cannot show, said once at the
 // bottom of the column.
@@ -4265,12 +4270,6 @@ var noRailFoot = railFootMarks{hint: -1, door: -1, more: -1, keeping: -1}
 // permanent "w widens" is chrome charged to every session that never grew a
 // tree. It reports which of its lines that offer landed on, or -1, because the
 // line is pressable and the press has to know where it was drawn.
-//
-// AND UNDER IT, THE COLUMN'S OWN DOOR ([railStowHint]). The chevron is always
-// live, while the chord is named only when the column actually owns it: a
-// promotable foreground command takes ctrl+g first. Widening is an offer the
-// column makes about itself when a title is being cut; hiding remains a pointer
-// answer at every moment and a keyboard answer whenever no command can be kept.
 //
 // AND THE STANDING COUNT IS A LINE OF IT SINCE 2026-09-09 ([app.railStandingLine],
 // standdoor.go). It was a segment of the status row; it belongs here, under the
@@ -4308,14 +4307,6 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 		hintText = a.chords.say(railNarrowHint)
 	}
 	offer := a.railOffersResize() && ansi.StringWidth(hintText) <= width
-	// THE DOOR IS ONLY DRAWN WHERE THERE IS A COLUMN TO CLOSE. Over the body the
-	// roster is an overlay a person raised with alt+t and drops with esc
-	// ([app.railFull]), and a second way out named at the bottom of it would be
-	// two exits from a room with one.
-	// The chevron and its space are charged for here, because the door is drawn
-	// with them ([app.railDoorLine]) and a width test that measured only the words
-	// would let the mark run off the end of a narrow column.
-	stow := !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= width
 	// THE DOOR ONTO THE TASK PAGE IS OFFERED ONLY WHEN THERE IS MORE BEHIND IT,
 	// which is the emptiness law applied to an affordance rather than to a figure.
 	// A door on a column that is already showing everything is a row that promises
@@ -4341,7 +4332,7 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	if ansi.StringWidth(standWord) > width {
 		standWord = ""
 	}
-	if len(segs) == 0 && standWord == "" && !offer && !stow && !view {
+	if len(segs) == 0 && standWord == "" && !offer && !view {
 		return nil, noRailFoot
 	}
 	// The footer never takes more than a third of the column: a roster that is
@@ -4366,10 +4357,9 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 		marks.keeping = len(out)
 		out = append(out, a.railStandingLine())
 	}
-	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the two lines about the
-	// column itself. The order is what the lines are ABOUT: the counts say what
-	// this session has, the door says where the rest of it is, and widening and
-	// hiding are answers to "how much of my screen is this taking". A person
+	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the width offer.
+	// The counts say what this session has, the door says where the rest of it
+	// is, and widening answers "how much of my screen is this taking". A person
 	// reading the tally and wanting more finds the next line saying so.
 	//
 	// IT IS DIM, which is the same weight the tally above it wears and the
@@ -4383,12 +4373,6 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	if offer && len(out)+1 < height {
 		marks.hint = len(out)
 		out = append(out, paintHint(hintText, a.pal, a.pal.dim))
-	}
-	// The door goes UNDER the width offer, at the very bottom of the column, which
-	// is where a person looks for the way out of anything.
-	if stow && len(out)+1 < height {
-		marks.door = len(out)
-		out = append(out, a.railDoorLine())
 	}
 	return out, marks
 }

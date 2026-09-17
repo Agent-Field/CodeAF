@@ -2242,7 +2242,7 @@ does. The model is always bold and bright cyan on both home's and a conversation
 **On a Mac these clauses read `opt+w project · ctrl+v effort · opt+y approvals · opt+k chats`.**
 
 With all controls available the resting foot is
-`↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
+`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
 The project and approvals hints are absent where those controls cannot act. `ctrl+o`
 still opens the selected row's folder and `tab` still moves to the next place, but neither
 has a hint in home's bottom row. `esc` still closes home; `alt+.` draws the whole map.

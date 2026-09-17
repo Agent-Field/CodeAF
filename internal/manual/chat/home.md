@@ -50,7 +50,7 @@ is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The resting foot reads
-`↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
+`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
 The project, approvals and chats hints appear only where those controls can act.
 The list's two keys stay the same as the cursor walks between rows.
 `ctrl+o` still opens the selected row's folder and `tab` still walks places, but neither
@@ -764,7 +764,7 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The resting foot reads, when all its controls are available:
 
 ```
-↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
+alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
 ```
 
 (the box above it says `› type to search or start something new`, which is where that

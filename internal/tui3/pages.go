@@ -1550,7 +1550,7 @@ const (
 	// every place until 2026-09-17, when the box came off every place but home
 	// and the owner ruled that the one box left says what it is for — both of
 	// its readings, the search and the start — and the foot under it keeps
-	// only the keys ([homeFootWord]).
+	// only the draft controls ([app.targetChordWords]).
 	placeRestWord = "type to search or start something new"
 	// placeHintWords is the second line of the composer, AND IT IS THE DESIGN'S
 	// OWN SENTENCE WORD FOR WORD (SCREEN 2b, and FIDELITY.md item 3 quotes it as

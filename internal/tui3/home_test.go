@@ -943,7 +943,7 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // one that carries the sentence.
 //
 // THE LAW THAT DIED IS `esc close` ON THE RESTING ROW. Home used to end every
-// hint it drew with the way out, and the box row used to say [homeFootWord]
+// hint it drew with the way out, and the box row used to carry the resting promise
 // instead of the shared prompt. The design's foot names four keys and no more,
 // so the fifth clause left the resting row — and only the resting row: `esc`
 // still closes home, and every other row's hint still ends with it, which is the
@@ -954,11 +954,6 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // left on a place says what it is for, and the lowest line is for keys
 // (footswap.go): the box row is the promise, the foot is the keys.
 func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
-	const design = "↑↓ pick · enter open"
-	if homeRestHint != design {
-		t.Fatalf("home's resting foot reads %q, want the design's own sentence %q", homeRestHint, design)
-	}
-
 	a, _ := homeRestLab(t, 120)
 	width, height := a.size()
 	lines, _, _, _ := a.homeFrame(width, height)
@@ -970,12 +965,12 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	//
 	// The resting row adds the available draft controls without navigation hints.
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
-	want := hintFit(dotted(design, a.targetChordWords()), a.width-2)
-	if rest != want {
+	want := hintFit(a.targetChordWords(), a.width-2)
+	if rest != want || strings.Contains(rest, "↑↓ pick") || strings.Contains(rest, "enter open") {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)
 	}
-	if !strings.HasPrefix(rest, "↑↓ pick · enter open") {
-		t.Fatalf("the resting hint no longer opens with the design's own words: %q", rest)
+	if !strings.HasPrefix(rest, a.chords.say(targetFolderKeyWord)) {
+		t.Fatalf("the resting hint does not start with the project control: %q", rest)
 	}
 	if strings.Contains(rest, "type to search") {
 		t.Fatalf("the foot repeats the box's promise: %q", rest)
@@ -1861,7 +1856,7 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	// The box's promise and the list's two keys identify home. Navigation
 	// chords still work but no longer appear in the resting foot.
 	frame, _, _ := a.frame()
-	if !strings.Contains(ansi.Strip(frame), homeFootWord) || !strings.Contains(ansi.Strip(frame), placeRestWord) {
+	if !strings.Contains(ansi.Strip(frame), microcopy) || !strings.Contains(ansi.Strip(frame), placeRestWord) {
 		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
 	}
 	// AND THE CURSOR IS VISIBLY ON THE CONVERSATION THE DOOR PICKED: home opens
@@ -2447,7 +2442,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	// The row wears its title cased the way every row does ([homeName]), so
 	// the look is case-blind: the claim is that the conversation is there.
 	text := strings.ToLower(homeText(a))
-	for _, want := range []string{strings.ToLower(ansi.Cut(lab.workspace("alpha"), 0, 12)), "the only one", homeFootWord} {
+	for _, want := range []string{strings.ToLower(ansi.Cut(lab.workspace("alpha"), 0, 12)), "the only one", microcopy} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
 		}
@@ -2512,7 +2507,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		// the design's own foot does not name it (FIDELITY.md item 3) — so what is
 		// demanded instead is the pair of sentences the design does spell, which
 		// is a stricter claim than the two fragments this asked for before.
-		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, homeFootWord)
+		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, microcopy)
 		for _, want := range want {
 			if !strings.Contains(text, want) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)

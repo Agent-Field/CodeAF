@@ -302,15 +302,6 @@ const homeDraftFloor = 3
 // The sentences this surface says. Each is quoted in the manual exactly as it
 // is spelled here.
 const (
-	// homeFootWord is the two keys, and it stays two. A footer that grew a key
-	// for everything this screen can do would be the cockpit this is
-	// deliberately not. It opened with `type to search or start something new`
-	// until 2026-09-17; that clause is the box's own now ([placeRestWord]) —
-	// the lowest line is for keys (footswap.go), and a promise about typing
-	// belongs where the typing lands.
-	homeFootWord = "↑↓ pick · enter open"
-	// homeRestHint is the resting sentence before the available draft controls.
-	homeRestHint = homeFootWord
 	// homeEmptyWord is a machine that has not held a conversation yet. It is
 	// drawn where the first project's rows will be, under the zones
 	// ([homeEmptyRow]), so an empty home keeps the shape of a full one.
@@ -5323,8 +5314,8 @@ func homeFilesTouched(row session.SessionRow) int {
 	return total
 }
 
-// homeHint is the whole line under home's box. The list's keys lead, then
-// the available draft controls; `ctrl+o` and `tab` keep working without hints.
+// homeHint is the whole line under home's box. At rest it names only the
+// available draft controls; ordinary list navigation needs no reminder.
 func (a *app) homeHint() string {
 	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
 	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
@@ -5457,8 +5448,8 @@ func (a *app) homeHintWords() string {
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
-	// At rest the list names its two keys; the draft controls are added above.
-	return homeFootWord
+	// At rest only the draft controls are added by homeHint.
+	return ""
 }
 
 // ── the small arithmetic ────────────────────────────────────────────────────

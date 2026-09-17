@@ -337,7 +337,7 @@ func testHomeShape(t *testing.T) {
 	ws := newWorkspace(t, "shapews", false)
 	r := start(t, "afe2e_shape", home, ws, tuiPlain, 40)
 
-	screen := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"), say(t, "homePanelRecent"))
+	screen := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelRecent"))
 	t.Logf("home greeted on launch:\n%s", screen)
 
 	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all seven at their
@@ -378,9 +378,9 @@ func testHomeShape(t *testing.T) {
 		t.Errorf("no row says %q about a seeded project whose folder was never made:\n%s",
 			say(t, "homeGoneShort"), screen)
 	}
-	// The whole foot, in one sentence: the three verbs and the key that leaves.
-	if !strings.Contains(screen, say(t, "homeFootWord")+" · "+say(t, "placeHintTail")) {
-		t.Errorf("home's foot is not the resting sentence:\n%s", firstMatch(screen, say(t, "homeFootWord")))
+	// Home keeps the command door but omits the ordinary navigation hints.
+	if !strings.Contains(screen, say(t, "microcopy")) || strings.Contains(screen, "↑↓ pick") || strings.Contains(screen, "enter open ·") {
+		t.Errorf("home's foot has the wrong controls:\n%s", screen)
 	}
 
 	// THE PANELS NEVER TOUCH THE RULE ABOVE THE BOX (internal/tui3's home_test.go
@@ -412,13 +412,13 @@ func testHomeShape(t *testing.T) {
 	r.keys("Escape")
 	closed := r.waitFor(15*time.Second, say(t, "homeDoorWord"), say(t, "microcopy"))
 	t.Logf("esc closed home into the conversation the launch loaded:\n%s", closed)
-	if strings.Contains(closed, say(t, "homeFootWord")) {
+	if strings.Contains(closed, say(t, "placeRestWord")) {
 		t.Errorf("esc did not close home:\n%s", closed)
 	}
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	back := r.waitFor(15*time.Second, say(t, "homeFootWord"), "Seed Alpha")
+	back := r.waitFor(15*time.Second, say(t, "placeRestWord"), "Seed Alpha")
 	t.Logf("/home reopened it:\n%s", back)
 
 	// And two spaces on an empty box is the other door.
@@ -426,7 +426,7 @@ func testHomeShape(t *testing.T) {
 	time.Sleep(1200 * time.Millisecond)
 	r.keys("Space")
 	r.keys("Space")
-	gesture := r.waitFor(15*time.Second, say(t, "homeFootWord"))
+	gesture := r.waitFor(15*time.Second, say(t, "placeRestWord"))
 	t.Logf("space space opened home:\n%s", gesture)
 }
 
@@ -491,7 +491,7 @@ func testRealConversation(t *testing.T) {
 	// `where you were` with the person's own last words under it, and its
 	// folder is the first row of `projects` with the repository clause beside
 	// it. The reading of `git status` arrives a beat after the first frame.
-	panels := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homePanelRecent"), want)
+	panels := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelRecent"), want)
 	t.Logf("home at rest, with this conversation on the panels:\n%s", panels)
 	// THE `here` ROW AND THE WORDS UNDER IT. At [tuiWide] the panels are three
 	// columns of a third each, and `where you were` is the left one: its first
@@ -580,7 +580,7 @@ func testAskHere(t *testing.T) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	r.waitFor(20*time.Second, say(t, "homeFootWord"))
+	r.waitFor(20*time.Second, say(t, "placeRestWord"))
 
 	r.lit("remind me in 1 minute to drink water")
 	time.Sleep(700 * time.Millisecond)
@@ -639,7 +639,7 @@ func testAskHere(t *testing.T) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	again := r.waitFor(20*time.Second, say(t, "homeFootWord"))
+	again := r.waitFor(20*time.Second, say(t, "placeRestWord"))
 	if !strings.Contains(again, "? remind me in 1 minute") || !strings.Contains(again, say(t, "notifyAskWord")) {
 		t.Errorf("the exchange did not outlive the screen it was asked on:\n%s", again)
 	}
@@ -1033,7 +1033,7 @@ func openHome(t *testing.T, r *rig) {
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
-	r.waitFor(20*time.Second, say(t, "homeFootWord"))
+	r.waitFor(20*time.Second, say(t, "placeRestWord"))
 }
 
 // standReminder types one sentence into home's box, asks it there, waits for
@@ -1185,7 +1185,7 @@ func testHover(t *testing.T) {
 	}
 	ws := newWorkspace(t, "hoverws", false)
 	r := start(t, "afe2e_hover", home, ws, tuiWide, 40)
-	r.waitFor(25*time.Second, say(t, "homeFootWord"), "Seed Beta")
+	r.waitFor(25*time.Second, say(t, "placeRestWord"), "Seed Beta")
 
 	// The seeds share a word, so typing it lists all three; the cursor rests on
 	// the action row, whose card is empty because that chat does not exist yet.
@@ -1251,7 +1251,7 @@ func testFold(t *testing.T) {
 	ws := newWorkspace(t, "foldws", false)
 	r := start(t, "afe2e_fold", home, ws, tuiWide, 20)
 
-	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "foldMoreWord"))
+	screen := r.waitFor(25*time.Second, say(t, "placeRestWord"), say(t, "foldMoreWord"))
 	t.Logf("`where you were` with a fold at its foot:\n%s", screen)
 	// THE FOLD IS A COUNT AND THE WORD, AND NOTHING AFTER: a place word after it
 	// would be a door `enter` does not take.
@@ -1350,7 +1350,7 @@ func testGrouped(t *testing.T) {
 	}
 	ws := newWorkspace(t, "groupws", false)
 	r := start(t, "afe2e_group", home, ws, tuiPlain, 40)
-	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "homePanelProjects"), "Seed Beta")
+	screen := r.waitFor(25*time.Second, say(t, "placeRestWord"), say(t, "homePanelProjects"), "Seed Beta")
 	t.Logf("home with three seeded projects:\n%s", screen)
 
 	projects := panelColumn(screen, say(t, "homePanelProjects"), tuiPlain/2)
@@ -1735,7 +1735,7 @@ func testInheritedWorkSeat(t *testing.T) {
 	// the wordmark, and the starting POINTS a conversation nobody has typed in
 	// yet stands on, whose foot is [welcomeStarterKeysWord] — the screen that
 	// entry's own `why` warns a subtest about waiting past.
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"),
+	r.waitForAny(20*time.Second, say(t, "placeRestWord"), say(t, "starterTaskWord"),
 		say(t, "welcomeStarterKeysWord"))
 	r.keys("Escape")
 	r.lit("/task solo write a file called hello.txt containing the word hello")
@@ -1991,7 +1991,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// half of the gesture, done by hand, and it is what leaves the door loaded.
 	r.keys("Space")
 	armed := r.waitFor(15*time.Second, say(t, "tasksEnterInsideWord"))
-	if strings.Contains(armed, say(t, "homeFootWord")) {
+	if strings.Contains(armed, say(t, "placeRestWord")) {
 		t.Fatalf("one space opened home from the roster:\n%s", armed)
 	}
 
@@ -2004,7 +2004,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	r.keys("Space")
 	after := r.waitFor(15*time.Second, say(t, "taskRoomFootWord"))
 	t.Logf("the record after the space that used to walk out of it:\n%s", after)
-	if strings.Contains(after, say(t, "homeFootWord")) {
+	if strings.Contains(after, say(t, "placeRestWord")) {
 		t.Fatalf("space in the record opened home, which is #457's own defect:\n%s", after)
 	}
 

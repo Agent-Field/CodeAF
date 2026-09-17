@@ -42,7 +42,7 @@ An empty column keeps only its typeable `+ /task` and `+ /standing` doors; where
 the project has a record from earlier sessions, one dim line at the foot of the column
 reads `ctrl+. earlier` and opens the task page. With no foreground command that can be
 kept, `ctrl+g` closes the column and opens it again, remembered between sessions, and the
-column's own last line says so: `❯ ctrl+g hide`. While a command can be kept, that
+column's hide control above `+ /task` says so: `❯ ctrl+g hide`. While a command can be kept, that
 command takes the key and the column stays where it was. With the column closed the
 conversation is laid out at the full width of the terminal, running work still draws
 the strip along the top, and the keys row under the box reads `ctrl+g tasks` once the
@@ -70,7 +70,7 @@ its effort word, then approvals: `glm-5.3-flash:auto · ◇ asks`. The project i
 far right: `project: ~/codeaf`, truncated on the right when necessary. The model stays
 bold and bright cyan on home and in conversations, and the effort has no badge.
 The box says `› type to search or start something new`. Its bottom row carries
-`↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`
+`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`
 when those controls are available. `/model` or a press on the model opens the list;
 `alt+o` no longer does on home. The `ctrl+o` and `tab` keys work without footer hints.
 Every other place ends in its rule and
@@ -3035,12 +3035,11 @@ windows is not on the column at all, and never was; `/history` carries that too.
 
 The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 waiting ·
 12 done` — then the standing count `◦ 2 standing orders` when anything stands over this
-project, and then up to three more dim lines, each of which is a button as well as a key:
+project, and then up to two more dim lines, each of which is a button as well as a key:
 
 ```
 ctrl+. earlier
 alt+w widen · click seam
-❯ ctrl+g hide
 ```
 
 **The first of them is one door with two spellings, never two doors.** It is drawn only
@@ -3051,7 +3050,8 @@ column has folded. There is never more than one such line.
 `alt+w widen · click seam` appears only while a title is actually being cut by its own
 indent, **and only from 120 columns up** — that is the only width with a wider tier to
 offer, so on a 100-to-119 column frame there is no line and the column's two leftmost
-cells are part of the row rather than a handle. The `❯` door is always there, and its `❯` is drawn in ink rather than dim
+cells are part of the row rather than a handle. The `❯` hide control sits immediately above `+ /task`, after the visible task rows.
+Its `❯` is drawn in ink rather than dim
 because it is the control the pointer presses. With no foreground command to keep it
 reads `❯ ctrl+g hide`; while a command owns that chord it reads only `❯ hide`, because
 a hint may name only a key that works on that frame.
@@ -3118,6 +3118,7 @@ a task, or a standing order — *The empty screen* page says why.) Once it stand
 ```
 tasks
 ⠙ Fix the nil-map                                                       #7
+❯ ctrl+g hide
 + /task
 
 standing
@@ -3130,7 +3131,6 @@ standing
 1 running · 1 needs you
 ◦ 2 standing orders
 ctrl+. earlier
-❯ ctrl+g hide
 ```
 
 - **`tasks`** is the roster — this conversation's work, one line per task, a click on a row
@@ -3181,7 +3181,7 @@ rule. On a build with no ambient side the `standing` section is absent entirely.
 
 **The right edge always carries one chevron, and clicking it goes both ways.**
 
-- While the column **stands**, its last footer line reads `❯ ctrl+g hide` when no
+- While the column **stands**, the line immediately above `+ /task` reads `❯ ctrl+g hide` when no
   foreground command can be kept, and `❯ hide` while a command owns that key. The
   `❯` is drawn in ordinary ink, not dim, because it is a control and not a reading;
   the words beside it stay dim. Click the line and the column closes either way.

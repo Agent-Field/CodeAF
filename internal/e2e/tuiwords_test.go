@@ -141,14 +141,6 @@ var tuiWords = map[string]tuiWord{
 	},
 
 	// ── home at rest ─────────────────────────────────────────────────────────
-	"homeFootWord": {
-		screen: "↑↓ pick · enter open",
-		why:    "home's resting foot: the two keys this screen offers and stays at two",
-	},
-	"placeHintTail": {
-		screen: "tab next place",
-		why:    "every place's foot ends with the one key that leaves it",
-	},
 	"placeRestWord": {
 		screen: "type to search or start something new",
 		why:    "the promise in home's box with nothing typed into it — the one box on a place",
