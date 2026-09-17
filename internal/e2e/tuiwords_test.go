@@ -578,6 +578,34 @@ var tuiWords = map[string]tuiWord{
 			"runs at — so the way out is not on it at all",
 	},
 
+	// ── the run engine's plan, on the tasks place ────────────────────────────
+	//
+	// A `/task` under CODEAF_TASK_BELT=bash starts a RUN rather than a node of
+	// this session's own tree: the conversation seeds a plan store, the engine
+	// drives it, and the store's root lands on the tasks place beside the record
+	// (internal/tui3's taskplan.go). These rows are what the tmux suite reads to
+	// prove the run happened, moved, and left a page of its own.
+	"planRunningWord": {
+		screen: "running",
+		why: "the state word a run's plan row wears while a worker holds the task. planStateWord maps " +
+			"the store's `ready` and `claimed` onto it, so the row says what a person does next — work is " +
+			"in flight — and never a machinery word of its own",
+	},
+	"planDoneWord": {
+		screen: "done",
+		why: "the state word the same row wears once the run's root has landed — planStateWord's other " +
+			"mapping, and the one word every surface gives work that finished",
+	},
+	"planFinishCommand": {
+		screen: "plandb done",
+		source: "plandb done",
+		pkg:    "internal/session",
+		why: "the command a bash-belt worker finishes its store task with, recorded in the task's own " +
+			"trajectory and drawn as a step line on the plan page (taskplan.go's taskPlanBody reads " +
+			"PlanTaskPage.Steps). THE PAGE DOES NOT SPELL IT — the worker runs it — so the gate looks where " +
+			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish",
+	},
+
 	// ── the seat a crew older than it never wrote ────────────────────────────
 	//
 	// The two halves of one line, and it is the ENGINE'S sentence: the surface

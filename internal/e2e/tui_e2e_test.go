@@ -58,6 +58,13 @@ import (
 // `stand` tool takes longer, and a machine under load takes longer again.
 const modelPatience = 90 * time.Second
 
+// runPatience is how long a RUN is given, and it is not [modelPatience] because
+// a run is not a turn. A `/task` on the run engine seeds a plan store, dispatches
+// a worker, drives its whole loop of model calls, then commits the tree and hands
+// the conversation its landing — a measured one-file brief lands in about thirty
+// seconds and costs a few cents, and a machine under load takes minutes.
+const runPatience = 6 * time.Minute
+
 // The two frames this suite drives, and why each is the width it is.
 const (
 	// tuiPlain is an ordinary terminal: home is two columns of panels, the
@@ -106,6 +113,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
 	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
+	t.Run("TaskOnTheRunEngine", testTaskOnTheRunEngine)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
@@ -2086,4 +2094,106 @@ func waitForRecord(t *testing.T, home string, within time.Duration) string {
 		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// ── the run engine's own plan ───────────────────────────────────────────────
+
+// testTaskOnTheRunEngine is a `/task` on the RUN ENGINE, read off a real screen:
+// the conversation seeds a plan store rather than a node of its own tree, the
+// engine drives it, and what lands is the store's root — a row on the tasks
+// place that moves with the store's own state, and the page that row opens,
+// whose trajectory is the worker's record of every command it ran.
+//
+// THE BELT IS ASKED FOR IN THE BINARY'S OWN ENVIRONMENT. CODEAF_TASK_BELT=bash
+// is the one switch that makes the door take the run road at all (internal/run's
+// engine is linked and registered for it, cmd/codeaf/runwire.go); with the
+// variable unset the same `/task` starts an ordinary node of this session's
+// tree, which the roster subtests already read. [startWithEnv] is how this suite
+// hands a variable to the launched process.
+//
+// IT COSTS A FEW CENTS AND LANDS IN ABOUT THIRTY SECONDS, the shape and the
+// price [testStatesDone] pays for the same brief on the shipped belt.
+func testTaskOnTheRunEngine(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "runws", false)
+	r := startWithEnv(t,
+		[]string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=bash"},
+		"afe2e_task_run", home, ws, tuiWide, 45, "chat", "--one-model")
+	r.skipSetup(t)
+
+	r.lit("/task write HELLO.md containing the word hello")
+	r.keys("Enter")
+
+	// ── the row on the tasks place ──────────────────────────────────────────
+	//
+	// THE PLAN IS THE STORE'S READ, and the place draws it beside this
+	// conversation's own record: a plan row wears the state word its store status
+	// maps to (internal/tui3's planStateWord), so `ready` and `claimed` — the
+	// store saying a task is deliverable and a worker has it — both read as work
+	// in flight, and a task whose root has landed reads done.
+	openTasksPlace(t, r)
+	running := r.waitFor(40*time.Second, say(t, "planRunningWord"))
+	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
+
+	done := r.waitFor(runPatience, say(t, "planDoneWord"))
+	t.Logf("the run on the tasks place once its root landed:\n%s", done)
+
+	// ── the landing, in the thread ──────────────────────────────────────────
+	//
+	// THE ENGINE COMMITS THE RUN'S TREE ON ITS BRANCH and hands the conversation
+	// the same landing a node sends (the door's own note and the row it settles).
+	// The card that lands names the branch the work was left on, which is the one
+	// handle back to work that is not on the screen; the branch is the working
+	// copy's own, because a run lands the tree where it stands (internal/run's
+	// Land over session.LandRunTree).
+	r.keys("Escape")
+	landed := r.waitFor(modelPatience, say(t, "taskDoneGlyph"), say(t, "taskDoneWord"),
+		say(t, "taskBranchKeptFact"))
+	t.Logf("the run's landing card in the thread:\n%s", landed)
+	if branch := runBranch(t, ws); branch != "" && !strings.Contains(landed, branch) {
+		t.Errorf("the landing does not name the branch the run's work is on (%q):\n%s", branch, landed)
+	}
+
+	// ── the page one row opens ──────────────────────────────────────────────
+	//
+	// ENTER OVER THE ROW OPENS THE STORE'S OWN PAGE — the description the worker
+	// was given, the notes left on the task, and the trajectory: one line per
+	// command the worker ran, and the run's own finish among them. `esc` backs out
+	// one layer to the list, the card's own bargain.
+	openTasksPlace(t, r)
+	r.keys("Enter")
+	page := r.waitFor(40*time.Second, say(t, "planFinishCommand"))
+	t.Logf("the plan page, carrying the worker's own finish command:\n%s", page)
+	r.keys("Escape")
+	back := r.waitFor(30*time.Second, say(t, "planDoneWord"))
+	t.Logf("esc backed out of the page to the list:\n%s", back)
+	r.quit()
+}
+
+// openTasksPlace opens the place onto everything this machine has run, through
+// its one command: `/history` (commands.go — deliberately not `/tasks`, which the
+// three work-starting rows would narrow to), and `→` to open the conversation's
+// own fold, which the place draws SHUT (tasksReading.opens).
+func openTasksPlace(t *testing.T, r *rig) {
+	t.Helper()
+	r.lit("/history")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
+	time.Sleep(700 * time.Millisecond)
+	// THE FOLD IS OPENED UNDER THE CURSOR. The place groups its rows by
+	// conversation and opens every group shut, so the run's row is not drawn until
+	// its conversation is unfolded.
+	r.keys("Right")
+}
+
+// runBranch is the branch the run's working copy stands on, which is the branch
+// its landing commits onto and names. A workspace with no repository of its own
+// answers "", and the branch assertion is skipped rather than failed for it.
+func runBranch(t *testing.T, ws string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", ws, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
