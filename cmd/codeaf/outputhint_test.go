@@ -77,17 +77,18 @@ func TestARootLeafInAPersonsDirectoryPutsItsNotesInScratch(t *testing.T) {
 		t.Fatalf("the root leaf's note was pointed at %q, want an absolute path under the run's scratch %q", hint, scratch)
 	}
 
-	// The invitation, followed: the file lands under scratch, and neither the
-	// tree the person named nor the record the delivery gate reads holds it.
-	// The leaf's own write makes the directory first, which is what the write
-	// tool does for any offered path.
+	// The invitation, followed, in the executor's own order: the tree is
+	// baselined before the worker moves, and the landing read files whatever
+	// changed — so a hint that ever points into the tree again fails here on
+	// the observation, not only on the address. The leaf's own write makes the
+	// directory first, which is what the write tool does for any offered path.
+	space.WatchTree(owner.ID)
 	if err := os.MkdirAll(filepath.Dir(hint), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(hint, []byte("checks ran green"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	space.WatchTree(owner.ID)
 	space.Record(owner.ID, hint)
 	space.RecordChanges(owner.ID)
 	if got := space.Artifacts(owner.ID); len(got) != 0 {
@@ -99,6 +100,31 @@ func TestARootLeafInAPersonsDirectoryPutsItsNotesInScratch(t *testing.T) {
 	}
 	if len(left) != 0 {
 		t.Fatalf("the working tree the person named was left with: %v", left)
+	}
+}
+
+// Only the run's own note moved. A file that turns up in the person's tree
+// while the leaf runs — at a name that happens to wear the run's own naming
+// shape — is still the tree's answer to what changed, and the record the
+// delivery gate reads still holds it: the two are told apart by where the run
+// was invited to write, never by the spelling of a name.
+func TestAPersonsOwnUntrackedFileStillJoinsTheRecord(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	space, err := exec.NewWorkspace(workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	space = space.WithScratch(filepath.Join(t.TempDir(), "scratch")).OwnedByPerson()
+
+	owner := store.Node{ID: "task-2-x1", Parent: store.RootID, CreatedSeq: 7, Title: "toolchain checks"}
+	space.WatchTree(owner.ID)
+	if err := os.WriteFile(filepath.Join(workspaceRoot, "task-9-y1-shelf-readings.md"), []byte("running notes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	space.RecordChanges(owner.ID)
+	got := space.Artifacts(owner.ID)
+	if len(got) != 1 || got[0] != "task-9-y1-shelf-readings.md" {
+		t.Fatalf("a person's untracked file fell out of the record the gate reads: %v", got)
 	}
 }
 
