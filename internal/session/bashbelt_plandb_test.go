@@ -773,6 +773,191 @@ func TestPlandbCliRootCompletionCancelsTheUndelivered(t *testing.T) {
 	}
 }
 
+// ── the pulse points a turn and a freed slot are ─────────────────────────────
+
+// A TURN THAT ENDS IS A PULSE POINT. The store can grow while a worker is
+// mid-turn — a sibling's CLI call whose own pass ran before the task was
+// ready, a command the worker backgrounded, the person's own shell — and the
+// pass that ran after its last bash call is behind it by then. With no pass at
+// the turn's end the worker lands on work it owns and never waited for: the
+// ready task is handed out by the LANDING's pass instead, as a child of a node
+// that has already settled and already cut its subtree, so nobody folds its
+// report and the run's ending is written over a worker still running. What
+// must come back: the turn's end hands the task out, the worker stays open on
+// the part it now has, and it lands only after the part has.
+func TestPlandbCliATurnEndingWithPlanWorkOpenStillDispatches(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	dir := t.TempDir()
+	completer := newPlanLaneCompleter([]step{
+		planProposeCall("The whole run", "coordinate the plan"),
+		finalText("handed off"), finalText("handed off"), finalText("handed off"),
+	})
+	agent, root := planRunSubmit(t, completer, dir, "The whole run", "coordinate the plan", "run the whole plan through the store")
+	completer.awaitRequest(t, planRootID)
+
+	// THE STORE GROWS INSIDE THE WORKER'S TURN and no pass takes it: the task
+	// is ready, has no node, and the worker's next act is the prose that ends
+	// the turn. This is the shape a sibling's CLI call leaves behind when the
+	// sibling's own pass ran before the task was ready.
+	planGrow(t, dir,
+		plandb.TaskSpec{ID: "x", Title: "part x", Description: "the x work order", ParentID: planRootID})
+	if planNodeByPlanID(agent.graph(), "x") != nil {
+		t.Fatal("a ready task was dispatched with no pass to dispatch it")
+	}
+
+	// THE TURN ENDS, AND THE WORKER STAYS OPEN ON THE PART IT NOW HAS. Parked
+	// is not the assertion; RUNNING is — a worker that landed here would leave
+	// the part an orphan of a settled node.
+	completer.release(planRootID, "the root report")
+	waitFor(t, "the turn's end to dispatch the ready task", func() bool {
+		return planNodeByPlanID(agent.graph(), "x") != nil && root.stateNow() == TaskRunning
+	})
+	part := planNodeByPlanID(agent.graph(), "x")
+	completer.awaitRequest(t, "x")
+	if state := root.stateNow(); state != TaskRunning {
+		t.Fatalf("the worker stands %q while the part it owns is still open, want it waiting on the part", state)
+	}
+
+	// AND IT LANDS ONLY AFTER THE PART HAS.
+	completer.release("x", "the x report")
+	waitDoneNode(t, part)
+	waitDoneNode(t, root)
+	agent.graph().planPulse()
+	task := planTaskAt(t, dir, "x")
+	if task.Status != plandb.StatusDone || !strings.Contains(task.Result, "the x report") {
+		t.Fatalf("part x stands %s with %q, want done with its own report", task.Status, task.Result)
+	}
+	planWaitStoreRootTerminal(t, dir)
+}
+
+// A FAN SLOT GOING BACK IS A DISPATCH BECOMING POSSIBLE. A pass refuses a
+// ready task whose parent has handed out as many pieces as one task may and
+// leaves it in the store for the next pass — which, on a belt whose worker
+// makes no further bash call, is a pass that never comes. The slot is given
+// back by a proposal that came to nothing ([TaskGraph.releaseChild]), and that
+// moment is a pulse point: what the cap refused an instant ago is
+// dispatchable now, and the worker that owns it is still running.
+func TestPlandbCliAFreedFanSlotDispatchesWhatTheCapRefused(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	dir := t.TempDir()
+	completer := newPlanLaneCompleter([]step{
+		planProposeCall("The whole run", "hold the fan open"),
+		finalText("handed off"), finalText("handed off"), finalText("handed off"),
+	})
+	agent, root := planRunSubmit(t, completer, dir, "The whole run", "hold the fan open", "run the whole plan through the store")
+	completer.awaitRequest(t, planRootID)
+
+	// THE FAN IS FULL: as many slots held against this worker as one task may,
+	// which is what a batch of proposals leaves behind when every call in it
+	// read the same count and passed ([TaskGraph.claimChild]).
+	for i := 0; i < taskFanLimit; i++ {
+		if refused := agent.graph().claimChild(root.id); refused != "" {
+			t.Fatalf("slot %d was refused before the cap: %s", i, refused)
+		}
+	}
+	planGrow(t, dir,
+		plandb.TaskSpec{ID: "x", Title: "part x", Description: "the x work order", ParentID: planRootID})
+	agent.graph().planPulse()
+	if planNodeByPlanID(agent.graph(), "x") != nil {
+		t.Fatal("a task past the fan cap was dispatched")
+	}
+	if task := planTaskAt(t, dir, "x"); task.Status != plandb.StatusReady {
+		t.Fatalf("the refused task stands %s, want it left ready in the store for the pass that can take it", task.Status)
+	}
+
+	// ONE PROPOSAL COMES TO NOTHING AND ITS SLOT GOES BACK. The pass this takes
+	// is the one that hands the refused task out, with no bash call anywhere
+	// near it.
+	agent.graph().releaseChild(root.id)
+	waitFor(t, "the freed slot to dispatch the task the cap refused", func() bool {
+		return planNodeByPlanID(agent.graph(), "x") != nil
+	})
+	if task := planTaskAt(t, dir, "x"); task.Status != plandb.StatusRunning || task.ClaimedBy != "x" {
+		t.Fatalf("the dispatched task stands %s@%q, want running under its own id", task.Status, task.ClaimedBy)
+	}
+
+	// AND THE RUN ENDS CLEANLY: the part lands, the worker that held the fan
+	// open lands, and the last pass writes the root.
+	part := planNodeByPlanID(agent.graph(), "x")
+	completer.awaitRequest(t, "x")
+	completer.release("x", "the x report")
+	waitDoneNode(t, part)
+	completer.release(planRootID, "the root report")
+	waitDoneNode(t, root)
+	planWaitStoreRootTerminal(t, dir)
+}
+
+// A PASS THAT HANDED WORK OUT IS NOT THE RUN'S END. The dispatch reads the
+// store and admits nodes; the completion below it asks whether anything is
+// still open of the pass's own SNAPSHOT, taken before the dispatch ran — so a
+// node this very pass admitted is invisible to the question, and the pass goes
+// on to cancel what is still ready and to write the run's ending. What it
+// cancels is the work that node was about to become the parent of: a ready
+// leaf whose parent has no node is refused by the dispatch, and a parent has
+// just been made for it. Driven by hand against a settled seed rather than
+// through a run, because the shape is one pass's own ordering — the turn's end
+// and the freed slot both take their pass earlier, on a seed that is still
+// running, and so never reach the completion at all.
+func TestPlandbCliAPassThatHandedWorkOutDoesNotEndTheRun(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	// A graph whose runner is a no-op, so a node this test admits is a node and
+	// never a worker: the pass under test is the store's and the graph's, and
+	// nothing here needs a lane.
+	nest := newNest(t, nil, nil)
+	g := nest.graph
+	dir := filepath.Dir(g.planPath())
+
+	// THE SEED HAS LANDED, and the store still holds one childless ready task
+	// the dispatch CAN hand out beside the pair it cannot — a composite parent
+	// and the ready leaf under it, the undeliverable shape the cancellation
+	// road exists for.
+	nest.parent.finish("the root report", nil, "", "")
+	g.complete(nest.parent, TaskDone)
+	planGrow(t, dir,
+		plandb.TaskSpec{ID: "x", Title: "part x", Description: "the x work order", ParentID: planRootID},
+		plandb.TaskSpec{ID: "held", Title: "the held-back middle", Description: "d", ParentID: planRootID},
+		plandb.TaskSpec{ID: "leaf", Title: "the ready leaf", Description: "d", ParentID: "held"},
+	)
+
+	g.planPulse()
+
+	// THE PASS TOOK THE TASK IT COULD DELIVER ...
+	x := planNodeByPlanID(g, "x")
+	if x == nil {
+		t.Fatal("the ready childless task was not dispatched")
+	}
+	// ... AND THEREFORE STOPPED SHORT OF THE RUN'S ENDING. The leaf has a
+	// deliverer now — the node this pass admitted is the parent it was refused
+	// for want of — and the pass that ends the run is the one after that node
+	// lands.
+	for _, id := range []string{"held", "leaf"} {
+		if task := planTaskAt(t, dir, id); task.Status == plandb.StatusCancelled {
+			t.Fatalf("%s was cancelled by the pass that dispatched its own deliverer: %s", id, task.Error)
+		}
+	}
+	if task := planTaskAt(t, dir, planRootID); task.Status != plandb.StatusRunning {
+		t.Fatalf("the root stands %s on a pass that just handed work out, want it still running while that work does", task.Status)
+	}
+
+	// AND THE RUN STILL ENDS. The dispatched node settles, its own pass finds
+	// nothing left to hand out, and the undeliverable pair is cancelled then —
+	// one pass later, by the road that was always meant to cancel it.
+	x.finish("the x report", nil, "", "")
+	g.complete(x, TaskDone)
+	g.planPulse()
+	for _, id := range []string{"held", "leaf"} {
+		if task := planTaskAt(t, dir, id); task.Status != plandb.StatusCancelled {
+			t.Fatalf("%s stands %s after the run ended, want the undeliverable cancelled", id, task.Status)
+		}
+	}
+	if task := planTaskAt(t, dir, planRootID); !terminalStoreStatus(task.Status) {
+		t.Fatalf("the root stands %s after the last node landed, want the run's ending written", task.Status)
+	}
+}
+
 // planPageSection is one `## `-headed section of a rendered page, whole. It
 // bounds the assertions that read a section's own words, the same bound the
 // composed page splices by.
