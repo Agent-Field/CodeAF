@@ -48,6 +48,19 @@ type ResourceClaim struct {
 	Mode string `json:"mode"`
 }
 
+// The four words a task's seat may carry. Plan and work are the seats a
+// task's shape gives it — a coordinator with children is plan, a leaf is work
+// unless it declared otherwise — while check and probe are declared at add for
+// the review round and the discriminating unknown. They are the store's
+// spelling of the crew's seats, and the supervisor resolves the word to a
+// model through the crew when it launches the task.
+const (
+	RolePlan  = "plan"
+	RoleWork  = "work"
+	RoleCheck = "check"
+	RoleProbe = "probe"
+)
+
 type TaskSpec struct {
 	ID           string          `json:"id"`
 	Title        string          `json:"title"`
@@ -65,11 +78,16 @@ type TaskSpec struct {
 	// at a time and quietly unmade the loop the belt is measuring.
 	Parallel  string `json:"parallel,omitempty"`
 	Isolation string `json:"isolation,omitempty"`
+	// Role is the seat the task occupies, and it is the harness's rather than
+	// the work's: the supervisor reads it when the task's next turn is composed
+	// and resolves it to a model through the crew. It is one of the four words
+	// above, and it matters only for a leaf — a task with children answers plan
+	// by its shape alone — so `add` and `split` default a new task to work.
+	Role string `json:"role,omitempty"`
 	// The contract fields below stay on the type because the store persists
 	// them and its laws read them — an evidence requirement makes `done` answer
 	// with evidence — while no CLI verb requires any of them. An empty field is
 	// the ordinary case.
-	Role                 string   `json:"role,omitempty"`
 	ContextInputs        []string `json:"context_inputs,omitempty"`
 	Deliverables         []string `json:"deliverables,omitempty"`
 	EvidenceRequirements []string `json:"evidence_requirements,omitempty"`
@@ -207,6 +225,16 @@ type Summary struct {
 type SpendTotal struct {
 	USD   float64 `json:"usd"`
 	Calls int     `json:"calls"`
+}
+
+// SpendSummary is the ledger read back by the two groupings the seats care
+// about — what each role spent and what each model spent — with the dollars
+// and the calls under each. It is the reading the crew's per-role and
+// per-model fronts are fed from, so a seat's cost is a row from every run and
+// not from a bench cell alone.
+type SpendSummary struct {
+	ByRole  map[string]SpendTotal `json:"by_role,omitempty"`
+	ByModel map[string]SpendTotal `json:"by_model,omitempty"`
 }
 
 type BlockedTask struct {

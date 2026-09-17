@@ -312,6 +312,36 @@ func (s *Store) Show(id string) (*Task, error) {
 	return cloneTask(task), nil
 }
 
+// RoleOf answers the seat a task's shape gives it at the moment it is asked,
+// never the seat it was born with: a task with children is a coordinator and
+// answers plan, and a leaf answers the role it was declared with, which is
+// work unless add or split was told otherwise. Reading the shape rather than a
+// stored guess is what lets a leaf that splits move up to the plan seat
+// without anyone configuring it, and fall back to its own role once the
+// archive has taken its children away.
+func (s *Store) RoleOf(id string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
+	task := s.data.Tasks[id]
+	if task == nil {
+		return "", fmt.Errorf("task %q not found", id)
+	}
+	return roleOf(task), nil
+}
+
+// roleOf is the one rule RoleOf and the CLI's renders share, as a free
+// function so a caller that already holds a task can ask it without the lock.
+func roleOf(task *Task) string {
+	if task.Composite {
+		return RolePlan
+	}
+	if task.Role != "" {
+		return task.Role
+	}
+	return RoleWork
+}
+
 // Task returns a copy of one task by exact id, for callers that already know
 // the id (the runtime does; a store-born node's id is the plan id).
 func (s *Store) Task(id string) *Task {
@@ -1476,6 +1506,9 @@ func normalizeSpec(spec TaskSpec, rootID string) TaskSpec {
 	if spec.Isolation == "" {
 		spec.Isolation = "shared"
 	}
+	if spec.Role == "" {
+		spec.Role = RoleWork
+	}
 	spec.Capabilities = cleanStrings(spec.Capabilities)
 	spec.Resources = cleanResourceClaims(spec.Resources)
 	spec.ContextInputs = cleanStrings(spec.ContextInputs)
@@ -1517,6 +1550,12 @@ func validateSpec(spec TaskSpec) error {
 	if !oneOf(spec.Isolation, "shared", "snapshot", "exclusive") {
 		return fmt.Errorf("invalid isolation policy %q", spec.Isolation)
 	}
+	// An empty role is not a fifth seat: normalizeSpec defaults it to work
+	// before validation, and a row a store made before the seat was read
+	// carries the empty word, so it is let through and answered as work.
+	if spec.Role != "" && !validRole(spec.Role) {
+		return roleRefusal()
+	}
 	for _, resource := range spec.Resources {
 		if resource.URI == "" || !oneOf(resource.Mode, "read", "write", "exclusive") {
 			return fmt.Errorf("invalid resource claim %#v", resource)
@@ -1528,6 +1567,22 @@ func validateSpec(spec TaskSpec) error {
 		}
 	}
 	return nil
+}
+
+// roleWords names the four seats in the order every refusal lists them.
+var roleWords = []string{RolePlan, RoleWork, RoleCheck, RoleProbe}
+
+// validRole reports whether word is one of the four the store may carry as a
+// seat. The empty word is not one of them: the default is applied before
+// validation, so an empty word is a row made before the seat was read.
+func validRole(word string) bool {
+	return oneOf(word, roleWords...)
+}
+
+// roleRefusal is the one sentence that names the four seats, so the store's
+// own validation and the CLI's own flag refuse with the same words.
+func roleRefusal() error {
+	return fmt.Errorf("role must be one of %s", strings.Join(roleWords, ", "))
 }
 
 func validateGraphs(value state) error {
@@ -2012,6 +2067,33 @@ func (s *Store) spendTotals() (map[string]SpendTotal, map[string]SpendTotal, err
 // addSpend folds one group's totals into a tag's running total.
 func addSpend(into, add SpendTotal) SpendTotal {
 	return SpendTotal{USD: into.USD + add.USD, Calls: into.Calls + add.Calls}
+}
+
+// SpendSummary answers the ledger grouped by role and by model: the dollars
+// spent and the calls that spent them under each seat and each model. The
+// ledger is append-only and read here whole — one query, two groupings — so a
+// seat's cost is a row drawn from every run, and a charge whose role or model
+// the run never named still appears under the empty word rather than being
+// dropped.
+func (s *Store) SpendSummary() SpendSummary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := SpendSummary{ByRole: map[string]SpendTotal{}, ByModel: map[string]SpendTotal{}}
+	rows, err := s.db.Query(`SELECT role, model, SUM(usd), COUNT(*) FROM spend GROUP BY role, model`)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var role, model string
+		var total SpendTotal
+		if err := rows.Scan(&role, &model, &total.USD, &total.Calls); err != nil {
+			return result
+		}
+		result.ByRole[role] = addSpend(result.ByRole[role], total)
+		result.ByModel[model] = addSpend(result.ByModel[model], total)
+	}
+	return result
 }
 
 func cloneTask(task *Task) *Task {
