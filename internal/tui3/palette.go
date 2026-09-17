@@ -15,7 +15,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -113,11 +112,6 @@ type picker struct {
 	// like the rest of them — the row lands on the next session and cannot move
 	// while a modal list owns the keyboard.
 	routing string
-	// ascii is whether this terminal was refused box drawing, so the two marks
-	// on the fold's own rows have a plain spelling. It is a snapshot like the
-	// rest of them, and the list is closed long before a terminal could change
-	// its mind about glyphs.
-	ascii bool
 	// laneSlot is the CONFIG SLOT whose lane row this list may write, and empty
 	// when there is none.
 	//
@@ -272,11 +266,17 @@ func (p *picker) relist() {
 		if p.unfold == "" || p.all[hit].ID != p.unfold {
 			continue
 		}
+		// THE TWO ANSWERS THAT NAME NO MACHINE STAND TOGETHER, above the list
+		// of machines. They used to sit at either end of it with fifteen
+		// providers between them, and they are the two rows a person is
+		// actually choosing BETWEEN — under the shipped routing row they even
+		// send the same thing, and telling them apart means reading them side
+		// by side rather than a screen apart.
 		p.list = append(p.list, pickRow{hit: at, lane: laneAutoAt})
+		p.list = append(p.list, pickRow{hit: at, lane: laneRoutAt})
 		for i := range p.lanes {
 			p.list = append(p.list, pickRow{hit: at, lane: i})
 		}
-		p.list = append(p.list, pickRow{hit: at, lane: laneRoutAt})
 	}
 }
 
@@ -1613,11 +1613,11 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		if said.chooses && !p.guard {
 			fields = append(fields, rowSay("no rescue"))
 		}
-		return rowHalves(rowPlan{primary: "  " + p.mark(true) + " auto", fields: fields}, width, 0)
+		return rowHalves(rowPlan{primary: "  auto", fields: fields}, width, 0)
 	case laneRoutAt:
 		return rowHalves(rowPlan{
-			primary: "  " + p.mark(false) + " openrouter",
-			fields:  []rowField{rowSay("let the router balance on price", "balances on price")},
+			primary: "  openrouter",
+			fields:  []rowField{rowSay(laneRouterNote)},
 		}, width, 0)
 	}
 	// A LANE SITS UNDER THE TWO WORDS THAT ARE NOT LANES. `auto` and
@@ -1629,21 +1629,23 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 	return strings.Repeat(" ", overlayIndent) + label, note
 }
 
-// mark is the two lead glyphs of the fold's own rows — filled for the answer
-// that chooses for you, hollow for the one that declines to. A terminal without
-// box drawing gets the same distinction in the letters it does have, because a
-// difference drawn in shape has to survive having no shape (styles.go).
-func (p *picker) mark(filled bool) string {
-	switch {
-	case p.ascii && filled:
-		return "*"
-	case p.ascii:
-		return "o"
-	case filled:
-		return tokens.GlyphStepDone
-	}
-	return tokens.GlyphStepPending
-}
+// ── WHY THESE TWO ROWS WEAR NO MARK ─────────────────────────────────────────
+//
+// `auto` and `openrouter` used to carry a filled and a hollow bullet, and the
+// mark was doing two jobs. The first — saying these two are not machines — the
+// INDENT already does, and does better now they stand together above the list
+// rather than at either end of it ([picker.relist]).
+//
+// The second was `filled for the answer that chooses for you, hollow for the one
+// that declines to`, and that one was not true where most people read it. Under
+// the shipped `simple` routing row NEITHER of them chooses: auto sends no lane
+// either ([laneAutoSaid]), so the filled bullet claimed a difference the wire
+// does not make. A mark that is wrong on the default install is worse than no
+// mark, and the sentence beside each row says what it does in words.
+
+// laneRouterNote is the `openrouter` row's sentence: what this build did before
+// it held an opinion, which is what the row still asks for.
+const laneRouterNote = "default routing"
 
 // laneAutoSay is what the `auto` row may honestly claim, as the routing row in
 // force decides it: the sentence saying what leaving the choosing alone DOES,
@@ -1687,9 +1689,16 @@ type laneAutoSay struct {
 // `simple`, so a surface that fell through to the takeover sentence would be
 // promising the machinery the shipped row disconnects.
 func laneAutoSaid(routing string) laneAutoSay {
+	// THE SENTENCE SAYS WHAT THIS ROW IS FOR AND THEN WHETHER IT IS DOING IT.
+	// `codeaf tries to pick the best provider` is the whole of what auto means,
+	// and under the shipped `simple` routing row it is a thing codeaf is not
+	// allowed to do — so the row that would otherwise read exactly like
+	// `openrouter` says which setting is holding it back, and names it. A
+	// sentence true only on a setting most people have not got is a sentence
+	// that lies on the default install.
 	if config.RoutingWord(routing) == config.RoutingSimple {
 		return laneAutoSay{
-			note: "openrouter's own routing; codeaf stays out",
+			note: laneAutoNote + " — not while routing is simple",
 			about: "which provider answers your model. routing is simple, so auto " +
 				"sends no choice of ours at all and openrouter's own routing answers; a provider " +
 				"you pin is the whole request. enter opens them all with what has been " +
@@ -1697,12 +1706,16 @@ func laneAutoSaid(routing string) laneAutoSay {
 		}
 	}
 	return laneAutoSay{
-		note: "router routes; codeaf takes over if answers turn bad",
+		note: laneAutoNote,
 		about: "which provider answers your model. auto picks the fastest one " +
 			"each answer; enter opens them all with what has been measured of each.",
 		chooses: true,
 	}
 }
+
+// laneAutoNote is what the `auto` row is FOR, in the words it is for them in.
+// The routing row decides whether it is happening ([laneAutoSaid]).
+const laneAutoNote = "codeaf tries to pick the best provider"
 
 // laneUnmeasured is the one line a fold draws in the providers' place when
 // nothing behind the model has been measured. It is a sentence a person would

@@ -673,7 +673,6 @@ func (a *app) armLanes(p *picker, slot string) {
 	// any row that draws a machine's NAME may draw ([picker.force]).
 	p.force = a.pinnedNow()
 	p.guard = config.LaneGuardAt(a.profileDir)
-	p.ascii = a.pal.ascii
 }
 
 // routingOff is whether this session's routing row is `off` — the one answer

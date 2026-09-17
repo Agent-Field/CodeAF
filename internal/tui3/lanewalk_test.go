@@ -64,17 +64,18 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 
 	drive(t, a, key("right"))
 	screen := plain(frame(a))
-	for _, want := range []string{flash, "● auto", "cloudflare", "coreweave", "deepinfra", "○ openrouter"} {
+	for _, want := range []string{flash, "auto", "cloudflare", "coreweave", "deepinfra", "openrouter"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("after → the frame does not show %q:\n%s", want, screen)
 		}
 	}
-	if line := screenLine(screen, "● auto"); !strings.Contains(line, "›") {
+	if line := screenLine(screen, "auto"); !strings.Contains(line, "›") {
 		t.Fatalf("the cursor did not walk in onto auto: %q\n%s", line, screen)
 	}
 
-	// With a machine pinned, the walk lands on THAT row instead.
-	drive(t, a, key("down"), key("enter"))
+	// With a machine pinned, the walk lands on THAT row instead. Two steps
+	// down, because `openrouter` stands beside `auto` above the machines now.
+	drive(t, a, key("down"), key("down"), key("enter"))
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
 	row, on := a.pick.laneUnder()
@@ -242,7 +243,7 @@ func TestUnderSimpleRoutingTheAutoRowPromisesNoTakeover(t *testing.T) {
 		t.Fatalf("under routing simple → left the fold at %q", a.pick.unfold)
 	}
 	screen := plain(frame(a))
-	if !strings.Contains(screen, "openrouter's own routing; codeaf stays out") {
+	if !strings.Contains(screen, laneAutoSaid(config.RoutingSimple).note) {
 		t.Fatalf("the auto row does not say who is choosing under simple:\n%s", screen)
 	}
 	// THE TWO CLAIMS THAT ONLY A CHOOSER CAN MAKE ARE GONE WITH IT: the machine

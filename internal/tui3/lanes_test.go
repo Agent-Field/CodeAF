@@ -133,11 +133,11 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	}
 	screen := plain(frame(a))
 	for _, want := range []string{
-		"● auto", "router routes; codeaf takes over if answers turn bad", "recommended",
+		"auto", laneAutoNote, "recommended",
 		"cloudflare", "0.8s", "58 t/s", "100%", "no tools",
 		"coreweave", "0.4s", "tail",
 		"deepinfra", "out ≤ 65k",
-		"○ openrouter", "let the router balance on price",
+		"openrouter", laneRouterNote,
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the fold does not say %q:\n%s", want, screen)
@@ -295,7 +295,7 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 		t.Fatal("→ on a model nothing is believed about opened nothing")
 	}
 	screen := plain(frame(a))
-	for _, want := range []string{"● auto", laneUnmeasured, "○ openrouter"} {
+	for _, want := range []string{"auto", laneUnmeasured, "openrouter"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the unmeasured fold does not say %q:\n%s", want, screen)
 		}
@@ -403,8 +403,8 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	typeLine(t, a, "/model")
-	drive(t, a, key("right")) // walks in, onto the auto row
-	drive(t, a, key("down"))  // the first lane
+	drive(t, a, key("right"))             // walks in, onto the auto row
+	drive(t, a, key("down"), key("down")) // past openrouter, onto the first machine
 	drive(t, a, key("enter"))
 
 	if a.pick.open {
@@ -425,9 +425,9 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 		t.Fatalf("the picker opened with pin %q", a.pick.pin)
 	}
 
-	drive(t, a, key("right")) // walks in, onto the pinned lane
-	drive(t, a, key("up"))
-	drive(t, a, key("enter")) // auto
+	drive(t, a, key("right"))         // walks in, onto the pinned lane
+	drive(t, a, key("up"), key("up")) // past openrouter, back onto auto
+	drive(t, a, key("enter"))         // auto
 	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
 		t.Fatal("enter on auto left a pin behind")
 	}
@@ -481,7 +481,7 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 	a.profileDir = ""
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
 	if name, pinned := config.LanePinned("", talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the default profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -496,7 +496,7 @@ func TestAHostedSurfacePinsNothing(t *testing.T) {
 	a.host = "blackmac"
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
 	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
 		t.Fatal("a hosted surface wrote a lane pin into this machine's profile")
 	}
@@ -582,10 +582,10 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	}
 	screen := strings.Join(sheetLabels(a), "\n")
 	for _, want := range []string{
-		"auto", "router routes; codeaf takes over if answers turn bad",
+		"auto", laneAutoNote,
 		"cloudflare", "0.8s", "58 t/s", "no tools",
 		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
-		"openrouter", "let the router balance on price",
+		"openrouter", laneRouterNote,
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the unfolded settings picker never said %q:\n%s", want, screen)
@@ -614,7 +614,7 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"))
+	drive(t, a, key("enter"), key("right"), key("down"), key("down"))
 	row, on := a.sheet.sel.pick.laneUnder()
 	if !on || row.lane != 0 {
 		t.Fatalf("the cursor is not on the first machine: %+v (on=%v)", row, on)
@@ -652,7 +652,7 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"), key("enter"))
+	drive(t, a, key("enter"), key("right"), key("down"), key("down"), key("enter"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -695,7 +695,7 @@ func TestTheLaneRowOpensTheMachines(t *testing.T) {
 	}
 	// Walking to a machine and pressing enter pins it, and nothing about the
 	// model changed on the way.
-	drive(t, a, key("down"), key("enter"))
+	drive(t, a, key("down"), key("down"), key("enter"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}

@@ -121,7 +121,7 @@ func TestEnterOnThePinnedMachineUnpinsIt(t *testing.T) {
 	// AND ENTER ON A MACHINE THAT IS NOT IN FORCE STILL PINS IT, which is the
 	// other half of a toggle.
 	typeLine(t, a, "/model")
-	drive(t, a, key("right"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
 	if got := a.pinnedNow(); got == "" {
 		t.Fatal("enter on an unpinned machine did not pin it")
 	}
@@ -238,7 +238,7 @@ func TestARoutingChangeReachesTheTransportAndThePanelAtOnce(t *testing.T) {
 	a.closeSettings()
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
-	if screen := plain(frame(a)); !strings.Contains(screen, "openrouter's own routing; codeaf stays out") {
+	if screen := plain(frame(a)); !strings.Contains(screen, laneAutoSaid(config.RoutingSimple).note) {
 		t.Fatalf("the fold still promises the old row's takeover:\n%s", screen)
 	}
 }
