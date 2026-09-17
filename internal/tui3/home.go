@@ -3576,10 +3576,8 @@ func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
 			a.home.say(refusal, "")
 			return nil, false
 		}
-		a.spendTargetWhere()
 		a.closeHome()
-		a.applyTargetModel()
-		return cmd, true
+		return tea.Batch(cmd, a.applyTargetPins()), true
 	}
 	a.closeHome()
 	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
@@ -3589,9 +3587,7 @@ func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
 	if !started {
 		return nil, false
 	}
-	a.spendTargetWhere()
-	a.applyTargetModel()
-	return renewed, true
+	return tea.Batch(renewed, a.applyTargetPins()), true
 }
 
 // applyTargetModel puts the pinned model onto the conversation that has just
@@ -4270,7 +4266,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// wide frame would be a press answered by a door this frame never drew
 		// (homedraft.go, placemouse.go's [app.placeTargetPress]).
 		a.targetRow = -1
-		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
+		a.clearTargetSpans()
 		return a.homePhoneFrame(width, height)
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).

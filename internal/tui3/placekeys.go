@@ -88,6 +88,15 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, took := pl.owns(a, msg); took {
 		return cmd
 	}
+	// AND THE DRAFT'S FOUR CHORDS, on every place whose box is a draft for a
+	// conversation (boxseam.go's [app.placeTargetKey]). Home reads them inside
+	// its own [placeHome.owns], after the phone sheet; here they are read for
+	// the other places, before the router's classes can swallow one.
+	if !a.at(pageHome) {
+		if cmd, took := a.placeTargetKey(msg); took {
+			return cmd
+		}
+	}
 	if cmd, took := a.placeKey(msg); took {
 		return cmd
 	}
@@ -184,18 +193,15 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.placeSend(), true
 
 	case "alt+w", "alt+o":
-		// THE LAYER'S TWO CHORDS ARE HELD BACK FROM THE PLACES. They mean one
-		// thing and only inside the layer, and a place that bound either of them
-		// would be a place whose view moved when somebody was aiming at a
-		// destination. The layer is read above this function, so a press that
-		// reaches here has no layer up and there is nothing to do.
-		//
-		// WITH ONE PLACE CLAIMING THEM BEFORE THIS LINE, and it is the place they
-		// already mean something on: home's rule states where the next
-		// conversation opens and what it will run on, and these are the two chords
-		// that move those two facts — the same pair, moving the same kind of
-		// thing, one row from the hand. [placeHome.owns] takes them above this
-		// function, so the other six places are exactly as they were.
+		// THE LAYER'S TWO CHORDS ARE HELD BACK FROM THE PLACE'S OWN ROWS. On
+		// every place with a draft they were taken above this function by
+		// [app.placeTargetKey] — the rule over the box states where the next
+		// conversation opens and what it will run on, and these are the two
+		// chords that move those two facts. What reaches here is a place with no
+		// draft (settings), where the chords mean nothing and a place that
+		// bound either of them would be a place whose view moved when somebody
+		// was aiming at a destination. The layer itself is read above all of
+		// this, so a press that arrives here has no layer up.
 		return nil, true
 
 	case "shift+left", "shift+right", "shift+up", "shift+down":
@@ -498,5 +504,9 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 		// it was typed into, which is where its owner will look for it.
 		return nil, false
 	}
-	return tea.Batch(renewed, a.submit(text)), true
+	// AND THE DRAFT'S PINS GO ONTO IT, exactly as they do from home
+	// ([app.homeOpenAtTarget]): the rule above this box promised a model, a
+	// rung and a gate, and a conversation opened from a place that ignored
+	// them would be the disagreement home's target was built to end.
+	return tea.Batch(renewed, a.applyTargetPins(), a.submit(text)), true
 }

@@ -570,8 +570,8 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed |
-| `alt+y` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide |
+| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the `⠿` cell on the rule above that box |
+| `alt+y` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -1149,6 +1149,12 @@ whole ladder and for what each rung asks the provider for.
 **A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
 says on every fresh conversation. See *What `auto` means beside the model* below.
 
+**The same cell is on the rule above the box on home and every other place**, where it
+says how hard the conversation you are about to start will think, and `ctrl+v` or a press
+walks it there too. A rung set there is carried onto the conversation `enter` opens and
+lasts as long as this window does. *The rule above the box on every place* on the Places
+page has all four cells of that rule.
+
 **`ctrl+v` walks it.** Each press moves one rung up, and off the top it comes back to
 `auto`: auto → low → medium → high → xhigh → max → auto. It works with a sentence half
 typed — it is a chord, it carries no text of its own, and it leaves your draft and your
@@ -1241,6 +1247,14 @@ press; it brightens under the pointer over exactly its own cells first.
 Why not `ctrl+y` or `shift+tab`: `ctrl+y` copies a path on home and in `/files`, and one
 chord means one thing on this surface; `shift+tab` walks backwards through the fields of
 every question card, and on some terminals arrives as a plain `tab`.
+
+**On home and every other place, the same `◇` cell sits on the rule above that box** and
+says what the conversation you are about to start will run without asking — the settings
+rows' answer, or `YOLO` if this process was started with `--yolo`. `alt+y` or a press walks
+it there on the same wheel, the pin is carried onto the conversation `enter` opens, and it
+is **spent** by that conversation: back on home the cell says the rows' word again, so an
+open gate is never quietly the default for the one after. *The rule above the box on every
+place* on the Places page has the whole rule.
 
 **`/approvals` prints the stops** with what each one buys and the one in force marked, and
 **`/approvals <word>`** sets one outright: `ask` (or `prompt`), `guardian`, `yolo` (or
@@ -2203,7 +2217,7 @@ there is no hover on glass. Home's own page has the whole shape.
 
 The box row reads `› say what you want done`. **The rule above it is a legend on home and
 nowhere else**, and it says what the box is a draft *for*:
-`─ → new conversation in ~/codeaf · glm-5.3-flash ── alt+w folder · alt+o model · alt+k chats · / commands ─`
+`─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model · alt+k chats · / commands ─`
 
 — the folder the next conversation opens in, the model it will answer on, and the chords
 that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`

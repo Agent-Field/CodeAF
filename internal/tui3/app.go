@@ -2228,6 +2228,11 @@ type app struct {
 	targetRow        int
 	targetFolderSpan hudSpan
 	targetModelSpan  hudSpan
+	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
+	// columns on that same line — the draft's twins of [app.seamEffortSpan] and
+	// [app.seamApprovalSpan] (boxseam.go), recorded on the same bargain.
+	targetEffortSpan   hudSpan
+	targetApprovalSpan hudSpan
 	// homeRoot is where that screen looks for the projects, and "" means the
 	// state root under this machine's home ([app.placesRoot]). It exists for
 	// tests, which build a projects directory in a temp dir; nothing on the door

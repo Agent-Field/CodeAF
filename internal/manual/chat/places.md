@@ -194,21 +194,65 @@ click puts the caret where you clicked — **except on tasks**, where the letter
 control row at the top of the list instead, beside the `⌕` mark, so that what you typed is
 above the rows it changed rather than two lines below them.
 
-## The scope chip — what is the here ~/codeaf thing next to the box
+## The rule above the box on every place — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
 
-At the right of the box is the **scope chip** — the `here ~/codeaf` next to the box. It is where what you type
-will land — the project the cursor is on, or this window's own project. It is drawn even
-with nothing typed, because a verb that is always in reach has to always say where it goes.
-The path is shortened the same way every path on this surface is: `~` for your home
-directory, and a first letter for each folder above the last when the whole thing will not
-fit. Home used to draw it in full while every other place shortened it; both are short now.
+The line over the box is the same on every place you can start something from — home,
+tasks, standing, memory, spend and search — and it is the same shape as the line over a
+conversation's own message box:
 
-**Home has no chip.** It says the same thing one row up, on its rule, and says more:
-`→ new conversation in ~/src/parser · glm-5.3-flash` is where a sentence will land *and*
-what it will answer on, with `alt+w folder · alt+o model · alt+k chats` naming the chords that change
-either. The chip on home was a reading nothing acted on — `enter` opened a conversation in
-this window's folder whatever the chip said — and the rule is that reading with `enter`
-honouring it. Home's own page has the whole gesture.
+```
+─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model · alt+k chats · / commands ─
+› say what you want done
+```
+
+Left to right it says four things about the conversation `enter` will open: **where** (the
+project the cursor is on, this window's own project, or the folder you pinned), **what
+model** answers, **how hard it thinks** (`⠿` and a rung, or `auto`), and **what it runs
+without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
+approvals chip uses inside a conversation). The right names the chords that change the
+first two; the other two are moved the way the cells inside a conversation are moved:
+
+| cell | chord | or |
+|---|---|---|
+| the folder | `alt+w` walks to the next project | press the path |
+| the model | `alt+o` opens the model list | press the name |
+| the rung | `ctrl+v` walks auto → low → … → max → auto | press the cell |
+| the gate | `alt+y` walks asks → guardian → YOLO → asks | press the cell |
+
+Each one changes **the draft** — the next conversation you start from any place — and
+says so on the line under the box: `thinking · high · for the next conversation you start
+here`, `approvals · YOLO · every tool runs without asking · dangerous commands still ask ·
+for the next conversation you start here`. The conversation behind the place is not
+touched. A pinned model or rung that differs from what this window would have used is drawn
+in the accent; an open gate is painted in the warning hue, exactly as it is inside a
+conversation.
+
+**Which pins last:** the model and the rung last as long as this window does. The folder and
+the gate are **spent** by the conversation that uses them — the rule goes back to following
+the row under the cursor, and back to `asks` (or whatever the settings rows say) — so an
+open gate is never quietly the default for the conversation after the one you opened it
+for. With nothing pinned the rung and the gate are what a fresh conversation on this install
+would run at: the `thinking` and `ask before running` rows in `/settings`, or `--yolo` if
+this process was started with it.
+
+**The `here ~/codeaf` chip is gone.** The box row used to carry it at its right edge on every
+place but home, saying where a task sent with `alt+enter` would run. The rule says that now,
+on every place, and the composer layer opens its task in the same folder the rule names — one
+answer to "where" instead of two that could disagree.
+
+**Over `--host`, and on a session with no dial**, the rung and the gate are simply not on the
+rule — the folder and the model still are. The far machine's rows decide what a conversation
+there runs without asking.
+
+**A place with something to say about the whole page says it on the same rule, in place of
+the chords.** The tally on tasks (`9 finished today · 191 earlier`), a receipt on memory
+after `/forget`, the "this session is on another machine" line over `--host` — each takes
+the right of the rule, whole, and the draft's cells give way from the right (the rung, then
+the gate, then the model) before the note is cut. The chords still work while they are not
+named, and the cells that are drawn are still doors.
+
+**Settings is the one place without this rule.** Its box edits the value of the row under the
+cursor, so its rule names that row instead.
 
 ## The composer layer — `alt+w` and `alt+o`, what does alt+w do, set which project, pick the model and set a spend limit before starting a task
 

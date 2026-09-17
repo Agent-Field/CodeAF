@@ -246,20 +246,23 @@ func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 }
 
 // THE COMPOSER IS ON EVERY PLACE AND IT ALWAYS SAYS WHERE IT WILL LAND. "Start a
-// task from anywhere" is only true if the verb says where anywhere is.
-func TestTheComposerAndItsScopeChipAreOnEveryPlace(t *testing.T) {
+// task from anywhere" is only true if the verb says where anywhere is — and it
+// is said on the rule over the box, the same way on every place (boxseam.go),
+// never as a chip on the box row.
+func TestTheComposerOnEveryPlaceSaysWhereItWillLandOnItsRule(t *testing.T) {
 	a := placeApp(t)
-	// A FRAME WIDE ENOUGH FOR BOTH HALVES OF THE BOX ROW. The chip is dropped
-	// rather than crowding the sentence beside it (pages.go's [app.placeChipped]),
-	// and this suite's own temp directories are seventy cells of path — so a
-	// hundred and twenty columns is a frame where the chip's absence would be
-	// correct and would prove nothing.
+	// A FRAME WIDE ENOUGH FOR THE WHOLE RULE: this suite's own temp directories
+	// are seventy cells of path, and a narrow frame drops the lead before the
+	// folder (homedraft.go's [app.targetLegend]).
 	a.width, a.height = 200, 30
 	for _, id := range []page{pageHome, pageSpend, pageSearch} {
 		a.showPage(id)
 		text := placeFrameText(a)
-		if !strings.Contains(text, placeScopeWord+" ") {
-			t.Fatalf("the %s place draws no scope chip:\n%s", id.word(), text)
+		if !strings.Contains(text, targetLeadWord) {
+			t.Fatalf("the %s place's rule does not say where the next conversation opens:\n%s", id.word(), text)
+		}
+		if strings.Contains(text, "here /") || strings.Contains(text, "here ~") {
+			t.Fatalf("the %s place still draws a scope chip on its box row:\n%s", id.word(), text)
 		}
 	}
 	// AND WHAT IS TYPED ON ONE PLACE IS STILL THERE ON THE NEXT. A composer that

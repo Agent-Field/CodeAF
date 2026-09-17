@@ -8,6 +8,7 @@ invalidates:
   - "The `YOLO` badge on the status row was the one place the gate's posture was drawn, only when the gate was open, and it was a door onto `/permissions`. In an open conversation it is gone from the row: the legend above the message box carries `◇ asks` / `◇ guardian` / `◇ YOLO` / `◇ refuses` at EVERY posture, after the thinking rung, with the open gate in the warning hue. The row's `YOLO` is drawn only on the frames whose legend has no chip — the welcome box and a task's page — and it is a reading there, not a door. The phone status sheet's `approvals` row says the posture at every posture."
   - "The `guardian` settings row was a fourth thing to set beside the mode. On the wheel it is one stop: `guardian` is prompt with the small model standing in, `ask` is prompt with it stood down whatever the row says. `internal/session.Config.Guardian` is still the launch's answer; the conversation's posture overrides it live ([session.Agent.SetApprovalPosture])."
   - "`cmd/codeaf`'s `v3Policy(workspace, profileDir, yolo bool)` is a wrapper now; `v3PolicyMode(workspace, profileDir, mode)` is the one function every posture builds through, and `v3ApprovalGate` is the door handed to the engine as `session.Config.ApprovalGate`. `refreshV3Policy` and `applyV3Approvals` rebuild through the engine's own `RebuildApprovalGate` where the agent has it, so a rule banked inside a conversation walked to YOLO lands on a YOLO gate."
+  - "The rule above the box was three different lines: home's said the folder and the model, the other places said a note or a bare rule with a `here ~/codeaf` chip on the box row, and a conversation's seam said the model, the rung and the gate. Every place you can start something from now draws the conversation's own seam over its box — `◎ new conversation in ~/x · <model> · ⠿ <rung> · ◇ <gate>` — with the same doors: `alt+o`/a press on the model, `ctrl+v`/a press on the rung, `alt+y`/a press on the gate, `alt+w`/a press on the folder. The pins are the DRAFT's (the next conversation) and ride onto the conversation `enter` opens from any place; the model and the rung last as long as the window, the folder and the gate are spent. The `here <path>` chip is gone from every box row, and `alt+enter`'s task opens in the folder the rule names. Settings keeps its own rule; a task's room is unchanged. `internal/tui3`'s `scopeChip`, `placeChipped`, `placeScopeWord`, `targetLegendLeft` and `homeTargetKey` no longer exist — boxseam.go's `placeTargetKey`, `draftSeamLeft` and `applyTargetPins` are the doors, and `session.Agent.StandingApprovalPosture` is what the unpinned gate cell reads."
   - "Over `--host` the posture crosses the wire: `internal/remote` carries `MethodResolvedApproval` and `MethodSetApproval`, `Welcome.Approval` says whether the far engine has the door, and `session.Facts.Approval` rides the photograph so the seam reads it from memory. An engine without the door leaves the cell a reading of `Welcome.ApprovalMode`, and the chord, the press and the command say the far machine's rules decide."
 ---
 
@@ -27,3 +28,12 @@ The chord is `alt+y`. `ctrl+y` is the copy-a-path key on home and in `/files`,
 and one chord means one verb on this surface; `shift+tab` walks backwards
 through every question card's fields and arrives as a plain `tab` on some
 terminals.
+
+The second half of the wave is the same control on every box. A person who learned
+`◇ asks` and `alt+y` inside a conversation walked out to home and found a rule that
+said the folder and the model, a box row wearing a chip that repeated half of it, and
+two chords that did nothing; the tasks place said a count where home said the draft.
+One box, dressed four ways. The draft on every place now carries the conversation's
+whole seam — the same four cells, spelled by the same functions, moved by the same
+chords — and the pins land on the conversation the box opens. The gate pin is spent
+on use because an open gate is a safety claim about one conversation.

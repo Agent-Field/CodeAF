@@ -265,7 +265,7 @@ func TestHomesRuleSaysWhereTheNextConversationGoes(t *testing.T) {
 	}
 	// AND THE CHIP IS OFF THE BOX ROW. It said the same fact one row down, in
 	// competition with the draft, and it was the reading `enter` did not honour.
-	if strings.Contains(text, placeScopeWord+" "+where) {
+	if strings.Contains(text, "here "+where) {
 		t.Fatalf("home still draws the scope chip on its box row:\n%s", text)
 	}
 }

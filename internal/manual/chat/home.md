@@ -1204,7 +1204,7 @@ quoted back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ─ → new conversation in ~/codeaf · glm-5.3-flash ────────── alt+w folder · alt+o model ─
+ ─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model ─
  › pricing
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
@@ -1213,11 +1213,13 @@ quoted back — sitting directly above the box you are typing into.
 fresh conversation and sends what you typed, however many matches are on screen.
 
 **Where it opens is on the rule above the box, and `enter` honours it.** That line reads
-`→ new conversation in ~/src/parser · glm-5.3-flash`: the folder the conversation will open
-in, and the model it will answer on. With nothing pinned the folder **follows the row your
-cursor is on** — walk onto another project's row and the rule re-points — and with nothing
-under the cursor it is this window's own project. `alt+w` pins it, `alt+o` pins the model,
-and *Change the model before starting* has the whole of both.
+`◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks`: the folder the
+conversation will open in, the model it will answer on, how hard it will think, and what it
+will run without asking — the same four cells a conversation's own message box has over it.
+With nothing pinned the folder **follows the row your cursor is on** — walk onto another
+project's row and the rule re-points — and with nothing under the cursor it is this window's
+own project. `alt+w` pins it, `alt+o` pins the model, `ctrl+v` walks the rung and `alt+y`
+walks the gate; *Change the model before starting* has the whole of all four.
 
 One `↑` steps off that row **up** onto `ask here: "…"`, which answers the same sentence in
 the pane on the right instead of opening a conversation for it — see *Asking from home*. A
@@ -1322,8 +1324,9 @@ files are still there, and the conversation you open shows them.
 ## Change the model before starting — /model on home, alt+o, the arrow line above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
-after the folder: `→ new conversation in ~/src/parser · glm-5.3-flash`. With nothing pinned
-that is this window's own model. Two doors change it, and they are the same door:
+after the folder: `◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks`.
+With nothing pinned that is this window's own model. Two doors change it, and they are the
+same door:
 
 - **`alt+o`**, or **pressing the model's name on that rule**, opens the model list in home's
   own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
@@ -1347,6 +1350,24 @@ cursor.
 the target walks to the next project on this machine, round again from the last. Home says
 `next conversation opens in ~/work/beta`. On a machine with one project there is nowhere to
 move to, and `alt+w folder` is simply not on the rule.
+
+**`ctrl+v` and `alt+y` are the same gesture for the two cells after the model.** `⠿ auto`
+is how hard the next conversation will think — with nothing pinned, the `thinking` row in
+`/settings` folded with any level set on the model — and `ctrl+v`, or a press on the cell,
+walks it one rung: home says `thinking · high · for the next conversation you start here`.
+`◇ asks` is what it will run without asking — with nothing pinned, the `ask before running`
+row, or `YOLO` under `--yolo` — and `alt+y`, or a press, walks asks → guardian → YOLO →
+asks, never onto `refuses`: home says `approvals · YOLO · every tool runs without asking ·
+dangerous commands still ask · for the next conversation you start here`, and the cell
+wears the warning hue while the gate is open. Both are carried onto the conversation
+`enter` opens. **The rung lasts as long as this window does, like the model; the gate is
+spent**, like the folder — after the conversation opens, home's rule says the rows' word
+again. Neither cell is drawn on a window whose session has no dial for it, and over
+`--host` the far machine's rows decide.
+
+**The same rule, with the same four cells and chords, is over the box on every other place
+too** — tasks, standing, memory, spend and search — because the box there starts the same
+conversation. The Places page has it under *The rule above the box on every place*.
 
 **`/folder` is the third door onto the same pin, and it is the one that shows you the disk.**
 Typed on home — bare, or with a path after it — it opens the folder browser with the title

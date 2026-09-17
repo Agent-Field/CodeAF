@@ -1077,6 +1077,18 @@ type Welcome struct {
 	// [Welcome.ApprovalMode] and says the far machine's rules decide.
 	Approval bool `json:"approval,omitempty"`
 
+	// DefaultEffort is the far install's own `thinking` row, and
+	// StandingApproval is what a conversation nobody has touched opens at on
+	// that install (the rows as they stand, or the launch's `--yolo`). Both
+	// are carried ONCE, at the door, because they are facts about the install
+	// and not about any conversation: the draft on home and the other places
+	// draws them as the rung and the gate the NEXT conversation on that machine
+	// would run at (internal/tui3's boxseam.go), and a draft is drawn on every
+	// frame. "" is an engine with no such row or no gate, and the surface then
+	// draws no cell.
+	DefaultEffort    string `json:"defaultEffort,omitempty"`
+	StandingApproval string `json:"standingApproval,omitempty"`
+
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
 	// than refusing them (wire_places.go).

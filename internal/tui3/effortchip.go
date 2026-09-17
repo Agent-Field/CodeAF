@@ -243,7 +243,14 @@ func (a *app) effortChipText() string {
 	if !ok {
 		return ""
 	}
-	word := dial.ResolvedEffort()
+	return a.effortChip(dial.ResolvedEffort())
+}
+
+// effortChip is the cell for one rung, unpainted: the mark and the word, with
+// absence said by name. It is the one spelling the conversation's seam and the
+// draft's rule share (boxseam.go), so a rung reads the same wherever it is
+// drawn.
+func (a *app) effortChip(word string) string {
 	if word == "" {
 		word = effortAutoWord
 	}
@@ -268,11 +275,19 @@ func (a *app) effortChipText() string {
 // live thing on the screen.
 func (a *app) paintEffortChip(text string) string {
 	if a.effortFlashing() {
-		mark, word, _ := strings.Cut(text, " ")
-		lit := a.pal.accent(mark) + a.pal.ink(" "+word)
-		return a.pal.background(lit, 0, a.pal.ramp.selected)
+		return a.paintChipFlash(text)
 	}
 	return a.pal.cursor(a.pal.dim(text), 0)
+}
+
+// paintChipFlash is THE EMPHASIS LAW's two moves on one cell — the selected
+// ground, and the accent on the leading glyph — which is what every chip on a
+// seam wears for the two seconds after it moves (this one, the approvals chip,
+// and both of their draft twins in boxseam.go).
+func (a *app) paintChipFlash(text string) string {
+	mark, word, _ := strings.Cut(text, " ")
+	lit := a.pal.accent(mark) + a.pal.ink(" "+word)
+	return a.pal.background(lit, 0, a.pal.ramp.selected)
 }
 
 // effortSeamLit reports whether the seam's rung is wearing anything other than
@@ -297,8 +312,12 @@ func (a *app) hoveringEffort() bool { return a.hot.kind == hoverEffort }
 // ([app.effortLit]), so a rung moved on a task or on home since takes the
 // emphasis off this chip on the same frame it lights that card — one answer on
 // the screen to "what just changed", which is what [effortMoved] is for.
-func (a *app) effortFlashing() bool {
-	if a.effortLit.where != effortScopeConversation || a.effortLit.at.IsZero() {
+func (a *app) effortFlashing() bool { return a.effortFlashingIn(effortScopeConversation) }
+
+// effortFlashingIn is that question for any scope the window records a move
+// on — the conversation's rung here, the draft's on a place (boxseam.go).
+func (a *app) effortFlashingIn(where string) bool {
+	if a.effortLit.where != where || a.effortLit.at.IsZero() {
 		return false
 	}
 	return a.now().Sub(a.effortLit.at) < effortFlashFor

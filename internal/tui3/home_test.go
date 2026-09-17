@@ -981,8 +981,9 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	// THE BOX ROW IS THE SAME SENTENCE AS EVERY OTHER PLACE'S (SCREEN 2b). What
 	// home's box ALSO does — filter the list — is said on the hint above, which is
 	// where the design puts it; the box says only what enter will do with what is
-	// typed into it. The scope chip rides the right edge of the same row, so the
-	// prompt is demanded as a prefix.
+	// typed into it. The prompt is demanded as a prefix rather than as the whole
+	// row, so a row that grows a tail later does not turn this into a test about
+	// the tail.
 	box := strings.TrimSpace(ansi.Strip(lines[len(lines)-2]))
 	if !strings.HasPrefix(box, "› "+placeRestWord) {
 		t.Fatalf("the box row reads %q, want the design's prompt", box)

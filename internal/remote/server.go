@@ -1143,9 +1143,13 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
 		// engine without a dial from a conversation whose dial is off.
-		Effort:     effortKnown(sess.agent),
-		Approval:   approvalKnown(sess.agent),
-		TaskSettle: taskSettleKnown(sess.agent),
+		Effort:   effortKnown(sess.agent),
+		Approval: approvalKnown(sess.agent),
+		// AND THE TWO FACTS ABOUT THE INSTALL THE DRAFT READS, carried once
+		// (effort.go's [installEffort], approval.go's [standingApproval]).
+		DefaultEffort:    installEffort(sess.agent),
+		StandingApproval: standingApproval(sess.agent),
+		TaskSettle:       taskSettleKnown(sess.agent),
 		// Whether this conversation's news reaches the surface at all, asked the
 		// way the newsroom files it ([Session.fileNews]): an engine that cannot
 		// name its conversation fans nothing out, and says so here.

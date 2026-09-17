@@ -41,9 +41,24 @@ func approvalKnown(agent any) bool {
 	return ok && door.ApprovalDial()
 }
 
+// standingApproval is what an untouched conversation on the far install opens
+// at, read once at the door for [Welcome.StandingApproval]; "" where the
+// engine has no gate.
+func standingApproval(agent any) string {
+	door, ok := agent.(interface{ StandingApprovalPosture() string })
+	if !ok {
+		return ""
+	}
+	return door.StandingApprovalPosture()
+}
+
 // ApprovalDial answers for THE MACHINE AT THE OTHER END, off what it said at
 // the door.
 func (a *Agent) ApprovalDial() bool { return a.c.Welcome().Approval }
+
+// StandingApprovalPosture is the far install's standing word as the welcome
+// carried it — a memory read, on [Agent.DefaultEffort]'s terms.
+func (a *Agent) StandingApprovalPosture() string { return a.c.Welcome().StandingApproval }
 
 // ResolvedApprovalPosture is the posture the far gate is standing at. IT IS A
 // MEMORY READ, for [Agent.ResolvedEffort]'s reason: the seam draws it on every

@@ -157,8 +157,13 @@ func (a *app) approvalPostureWord() string {
 // approvalWord is the posture as a person reads it, and "" for a surface with
 // nothing to say. It is what the chip, the phone sheet's `approvals` row and
 // /status all print, so the three cannot disagree.
-func (a *app) approvalWord() string {
-	switch a.approvalPostureWord() {
+func (a *app) approvalWord() string { return approvalWordFor(a.approvalPostureWord()) }
+
+// approvalWordFor is the person's word for one posture, "" for a word that is
+// not one. It is the one spelling the conversation's cell and the draft's
+// share (boxseam.go).
+func approvalWordFor(posture string) string {
+	switch posture {
 	case session.PostureAsk:
 		return approvalAsksWord
 	case session.PostureGuardian:
@@ -194,7 +199,13 @@ func (a *app) approvalChipText() string {
 	if _, ok := a.approvalDial(); !ok && !a.hosted() {
 		return ""
 	}
-	word := a.approvalWord()
+	return a.approvalChip(a.approvalPostureWord())
+}
+
+// approvalChip is the cell for one posture, unpainted, and "" for a word that
+// is not one — the spelling the seam and the draft's rule share.
+func (a *app) approvalChip(posture string) string {
+	word := approvalWordFor(posture)
 	if word == "" {
 		return ""
 	}
@@ -211,9 +222,7 @@ func (a *app) approvalChipText() string {
 // the pointer the cell takes the cursor step, for hover.go's law.
 func (a *app) paintApprovalChip(text string) string {
 	if a.approvalFlashing() {
-		mark, word, _ := strings.Cut(text, " ")
-		lit := a.pal.accent(mark) + a.pal.ink(" "+word)
-		return a.pal.background(lit, 0, a.pal.ramp.selected)
+		return a.paintChipFlash(text)
 	}
 	if a.approvalOpen() {
 		if a.hoveringApproval() {

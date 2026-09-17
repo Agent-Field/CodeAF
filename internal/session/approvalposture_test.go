@@ -221,3 +221,40 @@ func TestRebuildingTheGateKeepsThePostureInForce(t *testing.T) {
 		t.Fatalf("the rebuilt gate says %q, want prompt", got)
 	}
 }
+
+// THE STANDING WORD IS ABOUT THE NEXT CONVERSATION AND NOT THIS ONE. A draft
+// on home says what a conversation nobody has touched would open at, so a pin
+// made in the conversation behind home must not leak into it — the flag does,
+// because the flag is the whole process's.
+func TestTheStandingPostureIgnoresThisConversationsOwnPin(t *testing.T) {
+	dir := t.TempDir()
+	gate := &fakeApprovalGate{standing: PostureGuardian}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(dir, "session.jsonl")
+		config.Place = Place{Dir: dir}
+		config.ApprovalGate = gate
+	})
+	if got := agent.StandingApprovalPosture(); got != PostureGuardian {
+		t.Fatalf("an untouched install stands at %q, want the rows' %q", got, PostureGuardian)
+	}
+	if err := agent.SetApprovalPosture(PostureAllow); err != nil {
+		t.Fatalf("allow was refused: %v", err)
+	}
+	if got := agent.StandingApprovalPosture(); got != PostureGuardian {
+		t.Fatalf("this conversation's own pin leaked into the standing word: %q", got)
+	}
+	flagged, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+		config.ApprovalGate = gate
+		config.ApprovalPosture = PostureAllow // --yolo
+	})
+	if got := flagged.StandingApprovalPosture(); got != PostureAllow {
+		t.Fatalf("under --yolo the next conversation stands at %q, want allow", got)
+	}
+	bare, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+	if got := bare.StandingApprovalPosture(); got != "" {
+		t.Fatalf("a session with no door stands at %q, want nothing", got)
+	}
+}

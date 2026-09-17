@@ -229,15 +229,17 @@ func (a *app) walkPage(back bool) tea.Cmd {
 
 // ── the pointer, on home's rule ─────────────────────────────────────────────
 
-// placeTargetPress is a press on one of the two doors home's rule carries: the
-// model, and the folder the next conversation opens in. It reports whether it
-// took the press.
+// placeTargetPress is a press on one of the four doors the draft's rule
+// carries: the folder the next conversation opens in, the model, the thinking
+// rung and the gate. It reports whether it took the press.
 //
 // EACH FACT IS EDITED ON THE LINE THAT SHOWS IT, which is the law the money
 // segment in the status line already follows and the reason there is no
-// settings page anywhere in this gesture: pressing the model is `alt+o` and
-// pressing the folder is `alt+w`, so the pointer and the keyboard reach the
-// same two doors by the same two names.
+// settings page anywhere in this gesture: pressing the model is `alt+o`,
+// pressing the folder is `alt+w`, and the rung and the gate walk one step on a
+// press exactly as the conversation's own cells do (`ctrl+v`, `alt+y`) — so
+// the pointer and the keyboard reach the same four doors by the same names,
+// on every place with a draft (boxseam.go).
 //
 // THE COLUMNS ARE THE ONES THE FRAME DREW (homedraft.go's [app.targetLegend]
 // writes them as the line is laid out) — never a second computation of where
@@ -246,7 +248,7 @@ func (a *app) placeTargetPress(x, y int) (tea.Cmd, bool) {
 	// A layer or a list that has taken the keyboard has taken the rule with it:
 	// the legend under the composer layer is that layer's, and the model list
 	// over the target is drawn where the body was.
-	if !a.at(pageHome) || a.composer.open || a.target.pick.open {
+	if !a.placeHasDraft() || a.composer.open || a.target.pick.open {
 		return nil, false
 	}
 	if a.targetRow < 1 || y != a.targetRow {
@@ -259,6 +261,10 @@ func (a *app) placeTargetPress(x, y int) (tea.Cmd, bool) {
 	case a.targetFolderSpan.holds(x):
 		a.moveTarget()
 		return nil, true
+	case a.targetEffortSpan.holds(x):
+		return a.cycleTargetEffort(), true
+	case a.targetApprovalSpan.holds(x):
+		return a.cycleTargetApproval(), true
 	}
 	return nil, false
 }

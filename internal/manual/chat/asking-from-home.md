@@ -8,7 +8,7 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
 ```
  ? ask here: "remind me at 6 to leave"
  + start a new conversation: "remind me at 6 to leave"
- ─ → new conversation in ~/codeaf · glm-5.3-flash ────────── alt+w folder · alt+o model ─
+ ─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model ─
  › remind me at 6 to leave
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```

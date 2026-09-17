@@ -124,6 +124,24 @@ func (a *Agent) ResolvedApprovalPosture() string {
 	return ""
 }
 
+// StandingApprovalPosture is the posture a conversation NOBODY has touched
+// would open at on this install: the launch's word (`--yolo`) where one was
+// given, else the settings rows as they stand. It is what a draft for a
+// conversation that does not exist yet says about its gate — the rule above
+// the box on home and the other places (internal/tui3's boxseam.go) — and it
+// deliberately ignores this conversation's own stored word, because a pin
+// made in one conversation is not a fact about the next one. "" is a session
+// with no door.
+func (a *Agent) StandingApprovalPosture() string {
+	if a.config.ApprovalPosture != "" {
+		return a.config.ApprovalPosture
+	}
+	if a.config.ApprovalGate != nil {
+		return a.config.ApprovalGate.Standing()
+	}
+	return ""
+}
+
 // SetApprovalPosture moves this conversation's gate to one posture and writes
 // the word down. It is sticky the way the rung is: the word lands in the
 // session folder's meta.json (placemeta.go) and cmd/codeaf sets it again on

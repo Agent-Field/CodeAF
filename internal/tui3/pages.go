@@ -1231,10 +1231,14 @@ func placeFrameWithBar(a *app, width, height int,
 	// A note builder fits its words to the width it is handed less the two cells
 	// its own row spent on a lead and a margin, so it is handed the rule's room
 	// plus those two — and drops a whole clause, rather than the rule cutting one.
-	var note, legend []string
-	if a.at(pageHome) {
-		note = a.placeNote(width)
-	} else {
+	//
+	// AND WHERE THE RULE IS THE DRAFT'S SEAM (every place with a draft,
+	// boxseam.go) the note rides that seam's right slot instead, through
+	// [app.placeNoteLegend] inside [app.targetLegend] — still no row, still one
+	// foot height on every place. What is built here is the note for the one
+	// rule that is not a seam (settings).
+	var legend []string
+	if !a.placeHasDraft() {
 		legend = a.placeNote(width - placeNoteRuleFrame + 2)
 	}
 	// AND THE TRAY IS A ROW OF THE FOOT, directly over the box, exactly where the
@@ -1250,7 +1254,7 @@ func placeFrameWithBar(a *app, width, height int,
 	// after the body would push the box down by three cells the moment the chord
 	// was pressed.
 	layer := a.composerRows(width, pal)
-	foot := 2 + len(note) + len(tray) + draftHeight + len(strip) + len(layer)
+	foot := 2 + len(tray) + draftHeight + len(strip) + len(layer)
 	room := height - len(lines) - foot - spacingRuleClearance
 	if room < 1 {
 		room = 1
@@ -1334,35 +1338,25 @@ func placeFrameWithBar(a *app, width, height int,
 	// reason: the clamp is what decides which rows this frame really kept.
 	targetTop := -1
 	ruleLine := placeNoteRule(legend, width, pal)
-	if a.at(pageHome) {
+	if a.placeHasDraft() {
 		if line, drew := a.targetLegend(width, pal); drew {
 			ruleLine, targetTop = line, len(lines)
 		}
 	}
 	add(ruleLine, nil)
-	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it on the
-	// rule above ([placeNoteRule]); only home, whose rule is its target legend,
-	// still spends rows on one here.
-	for _, row := range note {
-		add(row, nil)
-	}
 
 	caretX, caretY := 0, 0
-	// THE BOX ROW CARRIES THE SCOPE CHIP AT ITS RIGHT EDGE, and it carries it at
-	// rest too. `alt+enter` sends what is typed off as a task from any place, and
-	// a verb that is always in reach has to always say where it will land —
-	// otherwise "start a task from anywhere" is "start a task somewhere".
-	chip := a.scopeChip()
-	// AND HOME HAS NO CHIP, because home's rule says the same fact one row up and
-	// says it better: `→ new conversation in ~/src/parser · glm-5.3-flash` is
-	// where the sentence lands AND what it will run on, and `here ~/src/parser`
-	// competing with the draft for the same row was the one reading on this
-	// screen that `enter` did not honour (homedraft.go's header). The other six
-	// places keep it — `alt+enter` sends a task from any of them, and a verb
-	// always in reach has to always say where it will land.
-	if a.at(pageHome) {
-		chip = ""
-	}
+	// THE BOX ROW CARRIES NO CHIP. It used to wear `here ~/src/parser` at its
+	// right edge on every place but home, on the argument that `alt+enter` sends
+	// a task from anywhere and a verb always in reach has to say where anywhere
+	// is. The rule one row up says that now on every place with a draft — `◎
+	// new conversation in ~/src/parser · glm-5.3-flash …` — and says it better,
+	// with the model, the rung and the gate beside it (boxseam.go); and it is the
+	// same folder the layer opens a task in ([app.composerOpensAt]). A chip
+	// repeating half of it a row lower was one fact spelled twice on one frame,
+	// which is the defect the model's colon suffix made once (effortchip.go).
+	// Settings, whose box is a value editor, has no draft and never had a chip
+	// that meant anything.
 	// AND THE POINTER IS TOLD WHERE THE BOX ENDED UP, on the tab bar's own
 	// bargain: a press resolves against the rows that were actually drawn
 	// ([app.boxRow], placemouse.go's [app.placeBoxPress]). It is recorded as a
@@ -1377,7 +1371,7 @@ func placeFrameWithBar(a *app, width, height int,
 	}
 	boxTop, boxHeight := len(lines), len(draftRows)
 	if len(draftRows) == 0 {
-		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), nil)
+		add(" "+pal.dim(fit(a.placeRestWord(), width-2)), nil)
 		// AND THE REST OF THE BLOCK IS HELD OPEN UNDER IT, so the box is the same
 		// shape before the first keystroke as after it. The span stays EMPTY
 		// (boxHeight is still zero above): these rows are the box's silhouette
@@ -1403,11 +1397,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// heading.
 		caretX, caretY = 1+ansi.StringWidth(prompt), boxTop
 	} else {
-		for i, row := range draftRows {
-			if i == 0 {
-				add(a.placeChipped(" "+row, chip, width, pal), nil)
-				continue
-			}
+		for _, row := range draftRows {
 			add(" "+row, nil)
 		}
 		caretX, caretY = 1+draftCX, len(lines)-len(draftRows)+draftCY
@@ -1482,7 +1472,7 @@ func placeFrameWithBar(a *app, width, height int,
 	a.boxRow, a.boxRows = boxTop, boxHeight
 	a.targetRow = targetTop
 	if targetTop < 0 {
-		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
+		a.clearTargetSpans()
 	}
 	for len(lines) < height {
 		add("", nil)
@@ -1495,55 +1485,19 @@ func placeFrameWithBar(a *app, width, height int,
 	return lines, hits, caretX, caretY
 }
 
-// placeChipped puts the scope chip against the right edge of the box row, and
-// drops it rather than crowding the sentence when there is no room for both.
-func (a *app) placeChipped(row, chip string, width int, pal palette) string {
-	if chip == "" {
-		return row
-	}
-	painted := pal.dim(chip)
-	gap := width - ansi.StringWidth(row) - ansi.StringWidth(chip) - 1
-	if gap < 1 {
-		return row
-	}
-	return row + strings.Repeat(" ", gap) + painted
-}
-
-// scopeChip is the right of the box row: WHERE what you type will land.
+// scopeWorkspace is where what is typed will land, as a REAL PATH and with
+// nothing pinned: the project the cursor is standing on, then this window's
+// own. It is the unpinned half of [app.targetWhere], which the rule over the
+// box, `enter` and the composer layer all read.
 //
-// It is derived and never stored, from the three answers that already exist, in
-// this order: the project the cursor is standing on (home's own [homeWhere],
-// which is what `ctrl+t` already asks when it decides where a fresh conversation
-// goes), then this window's own workspace ([app.placePath], the same answer the
-// phone's status sheet prints as its `place` row). A person who typed a path
-// outranks both, and that is the composer's business rather than the chip's.
-func (a *app) scopeChip() string {
-	// IT IS SHORTENED THE WAY EVERY OTHER PATH ON THIS SURFACE IS ([shortPath],
-	// and [app.placePath] applies it to this window's own project). A raw
-	// `~/work/codeaf` in this chip while the very next place drew
-	// `codeaf` would be one fact spelled two ways on two frames a `tab` apart,
-	// and the design draws the short form (SCREEN 2b's `here ~/codeaf`).
-	//
-	// AND THE CHIP'S OWN DECORATIONS GO ON TOP OF THAT ONE FACT: a session opened
-	// over `--host` says whose disk the path is on, and an owned place says the
-	// word it is called instead of a path at all (host.go). Both are about how
-	// this row READS and neither is about where the sentence goes.
-	if where := a.hostedPath(a.placeWord(shortPath(a.scopeWorkspace(), a.tilde, 0))); where != "" {
-		return placeScopeWord + " " + where
-	}
-	return ""
-}
-
-// scopeWorkspace is the chip's answer as a REAL PATH: the project the cursor is
-// standing on, then this window's own.
-//
-// IT IS ONE ANSWER BECAUSE IT IS ON ONE FRAME TWICE. The chip says where what
+// IT IS ONE ANSWER BECAUSE IT IS ON ONE FRAME TWICE. The rule says where what
 // you type will land, and the composer layer's first line says where the task
 // will run (composerlayer.go) — one row apart, on the same screen. Two readings
 // of "where" that could disagree is exactly the drift the ONE SOURCE OF TRUTH
-// law exists for, and they did: the chip drew this window's project on a place
-// that is not home while the errand door fell through to the person's home
-// directory, so a person read `here ~/codeaf` and started a task in `~`.
+// law exists for, and they did: the box row's old chip drew this window's
+// project on a place that is not home while the errand door fell through to
+// the person's home directory, so a person read `here ~/codeaf` and started a
+// task in `~`.
 func (a *app) scopeWorkspace() string {
 	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok {
@@ -1588,9 +1542,6 @@ func scopeAddress(line homeLine) string {
 // The sentences the router says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// placeScopeWord leads the scope chip. One word, because the chip's whole job
-	// is the path beside it.
-	placeScopeWord = "here"
 	// placeRestWord is what the box row says on a place with nothing typed into
 	// it — home included, exactly as SCREEN 2b draws it. What home's box ALSO
 	// does is filter, and that is said on the foot rather than in the box, where
@@ -1790,7 +1741,7 @@ func (a *app) placeHintSaid() string {
 	}
 	// AND THE MODEL LIST OVER HOME'S TARGET IS THE THIRD OF THOSE, on identical
 	// terms: it has taken `tab` along with every other key while it is up
-	// (homedraft.go's [app.homeTargetKey]), so the tail would name two keys that
+	// (boxseam.go's [app.placeTargetKey]), so the tail would name two keys that
 	// do nothing.
 	if a.targetPickShowing() {
 		return a.homeHint()

@@ -61,14 +61,16 @@ and `esc` gives the frame back. **Only one is ever up:** opening any one closes 
 
 Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
 naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule, the place's own count or note, the
-**composer** with its scope chip (`here ~/codeaf`) at the right of the box row, and the
-hint line last. See the **Places** page.
+**composer**, and the hint line last. See the **Places** page.
 
-On **home** that second rule is not a plain line: it is a legend reading
-`→ new conversation in ~/codeaf · glm-5.3-flash` with `alt+w folder · alt+o model · alt+k chats ·
-/ commands` at its right, and home draws no scope chip at all — the rule says where the next
-conversation opens and what it will run on, which is the same fact said better. Home's own
-page has that whole gesture.
+That second rule is not a plain line on any place you can start something from: it is the
+same legend a conversation has over its message box, reading
+`◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks` with `alt+w folder ·
+alt+o model · alt+k chats · / commands` at its right — where the next conversation opens,
+what it will run on, how hard it will think and what it will run without asking, with the
+same doors on the cells (`alt+o`, `ctrl+v`, `alt+y`, or a press). No place draws a `here
+~/codeaf` chip on its box row any more; the rule says it. *The rule above the box on every
+place* on the Places page has the whole gesture.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
