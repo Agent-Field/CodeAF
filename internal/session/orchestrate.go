@@ -739,7 +739,7 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 	if response == nil {
 		return "", errors.New("the planner answered with nothing")
 	}
-	p.agent.addAuxiliaryUsage(response, p.call.model, 1)
+	p.agent.addAuxiliaryUsageAs(response, p.call.model, 1, string(roles.RolePlanner))
 	p.orch.Charge(orchestrateCost(response, p.call.model))
 	return response.Text(), nil
 }

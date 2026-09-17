@@ -7389,6 +7389,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// node hears about it while it happens: a card that would otherwise show
 		// a task working says it is waiting instead.
 		pacing: node.pacing,
+		// AND A NAMED MODEL IS THE REPAIR ROUND, which is the one thing this
+		// builder's only caller with a model says (task_audit.go's
+		// [Agent.repairNode]). The marker is what seats the round's rows high
+		// ([Agent.agentKind]); the crew role is deliberately left unset, because
+		// a round is a leaf's turns of work and erranding its lane role would
+		// re-price every call in it.
+		repairRound: on != "",
 		// AND THE NODE'S PULSE TRAVELS THE SAME WAY, for the same reason: the
 		// checker and each repair round are the same NODE working, so a reader
 		// outside the process must see one heartbeat across all of them rather

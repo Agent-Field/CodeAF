@@ -1810,6 +1810,20 @@ type Config struct {
 	// (#941). A worker leaves it empty; the zero value is the node it always was.
 	crewRole roles.Role
 
+	// repairRound marks this agent as ONE REPAIR ROUND'S FRESH WORKER
+	// (task_audit.go's [Agent.repairNode]) rather than the node's own. It
+	// exists for the usage ledger's seat ([Agent.agentKind]): a round is the
+	// node's escalation onto the careful tier, and a row that read it as the
+	// worker's seat would hide the cascade's whole bill inside the ordinary
+	// work's. It is set by the one builder that takes a model outright
+	// ([Agent.newTaskAgentOn]) and nowhere else.
+	//
+	// IT DOES NOT TOUCH [Config.crewRole] ON PURPOSE. A crew role is what this
+	// agent's calls are FOR in the router's vocabulary ([Agent.laneRole]), and
+	// a repair round is a leaf's turns of work in a worktree, not a one-answer
+	// gate — erranding its lane role would re-price every call it makes.
+	repairRound bool
+
 	// Errand marks this agent as the short exchange behind home's `ask here`
 	// (cmd/codeaf's chatv3_exchange.go) rather than a conversation somebody
 	// sits in. It is a conversation in every other way — a real model, a real

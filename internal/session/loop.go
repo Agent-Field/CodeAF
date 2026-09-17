@@ -3855,7 +3855,7 @@ func (a *Agent) bank(call bankedCall) {
 	}
 	a.mu.Unlock()
 	if call.ledger {
-		a.recordUsageLine(call.used, call.model, call.role, call.lane, call.reconciled)
+		a.recordUsageLine(call)
 	}
 }
 
