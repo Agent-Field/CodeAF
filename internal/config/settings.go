@@ -1277,6 +1277,12 @@ var OperatorEnvPins = []string{
 	// task worker on an experiment's belt on a machine where the variable is
 	// nowhere in sight. Unset, every worker is where it was.
 	"CODEAF_TASK_BELT",
+	// CODEAF_PLANDB_BIN names the binary a bash-belt worker's `plandb` shim
+	// execs (internal/session's plandb_plan.go) when the running program is
+	// not the codeaf binary — a bench driving the task door in-process is the
+	// case. A path to a program is plumbing, for the reason CODEAF_FURROW is,
+	// and it shares CODEAF_TASK_BELT's lifetime.
+	"CODEAF_PLANDB_BIN",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
