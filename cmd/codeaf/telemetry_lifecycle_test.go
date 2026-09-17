@@ -150,7 +150,9 @@ func TestTelemetryTaskSessionSpoolsStartedAndEnded(t *testing.T) {
 // call with its cost, and a tool call counted during the run reach the spooled
 // session_ended line as the contract's bands. The counters are process-wide
 // and this test is the only one in the package that touches them, so their
-// count is exactly the three calls made here.
+// count is exactly the three calls made here — for one run of the package: a
+// repeated run (-count=2 and up) counts into the same tally again, and the
+// door that zeroes it belongs to the telemetry package's own tests.
 func TestTelemetrySessionEndedCarriesTheSessionCounters(t *testing.T) {
 	telemetryLifecycleHome(t)
 	restore := telemetryArgs("do", "fix the bug")
