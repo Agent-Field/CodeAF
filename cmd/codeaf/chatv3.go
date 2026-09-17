@@ -846,6 +846,15 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		media = v3ImageGen(mediaSettings)
 	}
 
+	// The Model Pool's judge reads every landing through the engine's one hook.
+	// It is built here, where the seats above are wired, so the answer to
+	// "may this process read the pool at all" is one posture for the whole
+	// door: a mode that forbids reading builds no hook, and a nil hook is the
+	// engine's own nothing. The ask is built once and a client is made from it
+	// per call, each billed to the judge's own seat.
+	taskLanded := poolJudgeHook(settings, settings.ProfileDir, workspace,
+		config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
+
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
@@ -854,6 +863,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Sources:        settings.Sources,
 		CompactEnabled: !opts.NoCompact,
 		SessionFile:    transcript,
+		TaskLanded:     taskLanded,
 		// The folder this conversation keeps everything in (Decision 26). It is
 		// the zero Place for a launch opened on a flat legacy transcript, which
 		// is what keeps that session deriving its sidecars the way it always did.
