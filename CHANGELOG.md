@@ -18,6 +18,733 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.2.1 — 2026-09-17
+
+### Added
+
+- **Every release carries THIRD-PARTY-NOTICES.md beside its binaries** — [#1051](https://github.com/Agent-Field/codeaf/pull/1051) · `build` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - This repository reproduced no third-party licence anywhere, and a release published only `dist/codeaf-*` and `checksums.txt`. `THIRD-PARTY-NOTICES.md` now sits at the root and is copied into `dist/` before the checksums are written, so every release on every channel carries it and `checksums.txt` covers it.
+  - A licence notice was nobody's job and was written nowhere. `cmd/codeaf-notices` generates the whole file from `go list -deps ./cmd/codeaf` plus the two copies this tree carries, so it is regenerated with `go run ./cmd/codeaf-notices generate` and never edited by hand.
+  - Adding a dependency used to cost nothing beyond `go.mod`. A law in `cmd/codeaf-notices` now fails when a module compiled into the binary has no section in the committed notice, so a new dependency means regenerating that file in the same change.
+
+  `internal/pair/cpace` is BSD-3-Clause and is linked into every build; its clause 2
+  asks for the notice in the materials that go out with a binary distribution, and
+  `internal/connect/ampcatalog/providers.json` is an embedded copy of the amp-labs
+  catalog with the same shape of obligation. The notice covers 57 components — the
+  55 modules in the build and those two copies — each with its version, its licence
+  identifier and its licence text word for word.
+
+  </details>
+
+- **a launch says when a newer codeaf is out, and /update installs it and restarts** — [#1060](https://github.com/Agent-Field/codeaf/pull/1060) · `chat` `build`
+
+  <details><summary>7 things that are no longer true</summary>
+
+  - The chat manual's install section ended `Nothing self-updates: run it again when you want a newer build.` That sentence is gone and the opposite is now true: `/update` (alias `/upgrade`) downloads the newest stable release, checks its sha256, replaces the running executable and restarts on it with `--session` pointing at the same transcript, and `codeaf update` does the same from a shell. `running-from-the-terminal.md` has a new section, `Is there a newer version — how do I update codeaf — /update — codeaf update — why does it say this every time I start`, which states all of it.
+  - A launch said nothing about newer releases. A build stamped with a stable tag that is behind the newest stable release now draws one dim transcript line naming both versions, `/update`, and the curl line. A release candidate gets it once its stable line is published. A `dev-*` or `staging-*` channel build, a `make build` sha and an unstamped binary make NO request at all and draw nothing, so a developer's build is never told it is behind. The check is asynchronous with a three-second budget, never delays the first frame, and says nothing when it fails; its answer is cached for a day in `update-check.json` beside `config.json`. `CODEAF_NO_UPDATE_CHECK=1` turns the launch check off without touching `/update` or `codeaf update`.
+  - The release-tag grammar lived in `cmd/codeaf-release/version.go`. It is now `internal/update`, which the release tool reads; there is one parser. `scripts/install.sh` was accepting any `dev-*` or `staging-*` tag and semver parts with leading zeroes where `internal/update` accepts only the shapes the release workflow publishes — it now uses the same grammar, so the two install roads cannot pick different builds. The publish-time ordering #1056 added is unchanged; only which candidates are eligible.
+  - `codeaf update` is a new command, and it sits under housekeeping in `codeaf --help` rather than beside the read-only rows: `--check` prints one line and exits 0 when this release is newest, 3 when a newer one exists and 1 when it could not ask, while a plain run installs stable or whatever `--rc`, `--dev`, `--staging` or `--version <tag>` names. A binary built from source refuses to replace itself in place and names its path; an unwritable executable is left untouched and offered the curl line; sudo is never attempted.
+  - `codeaf update --check --rc`, `--dev`, `--staging` and `--version <tag>` were believed to apply the selected channel's rule after selecting its tag. They did not: every answer ran through the stable-only comparison, so a newer rc or disposable channel build could be called newest with exit 0 and the selected tag omitted. Every answer now names that tag; stable and rc compare their semantic versions, dev and staging compare for equality because channel builds are disposable, and an exact tag is equal or different with no invented ordering.
+  - A stable build ahead of the newest published stable was believed to get nothing. That was true only of the launch reminder and `--check`: both `codeaf update` and `/update` silently installed the older release. An implicit update now refuses, names both versions, and points at the deliberate override; `--version <tag>` and `/update <tag>` still install exactly what the person named.
+  - A deliberate detach in `internal/remote` kept the twenty-second torn-link grace that exists for a terminal killed without warning, so a window that had announced its departure still looked attached for two more call deadlines. It now clears that grace once the last view leaves, which is what lets a freshly installed codeaf take the engine the old process had already let go of. Live turns, tasks, unanswered questions and other views still refuse retirement.
+
+  The owner asked for two things that turn out to be one: tell somebody a newer
+  codeaf exists, and give them the command. A line that only names a version makes
+  a person go looking, so this one carries `/update` and the curl line with it, and
+  `/update` finishes the job rather than printing homework.
+
+  Everything else follows from not wanting to be wrong in front of somebody. The
+  check is silent on failure because a network complaint at launch is noise about a
+  thing nobody asked for. A developer's own build is never told it is behind. The
+  restart waits for the door, after the frame is down and the terminal is back, and
+  carries the transcript so the conversation the person was having is the one that
+  comes back.
+
+  The curl line every one of those roads offers is `curl -fsSL https://agentfield.ai/get/codeaf | bash`,
+  the supported address that serves `scripts/install.sh` from `main`, so the launch
+  line, the refusals and the README hand out one road.
+
+  </details>
+
+- **Anonymous usage counts, on by default with a notice printed once** — [#1095](https://github.com/Agent-Field/codeaf/pull/1095) · `docs`
+
+  <details><summary>why</summary>
+
+  codeaf now sends anonymous usage counts — version, OS, mode (chat or task), and
+  banded session and error counts — so the parts people rely on get the work. It
+  never sends prompts, code, paths, names, or anything that identifies you. The
+  counts are on by default, and the first session prints a notice naming exactly
+  what leaves; `codeaf telemetry show` prints what is waiting to leave right now.
+  Turn it off with `CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1`, `codeaf telemetry
+  off`, `telemetry = off` in a project's `.codeaf/config.json`, or an empty
+  `CODEAF_TELEMETRY_ENDPOINT`. The whole contract is `docs/TELEMETRY.md`.
+
+  </details>
+
+
+### Changed
+
+- **The switcher's foot is one instruction and its name column takes the spare width** — [#1040](https://github.com/Agent-Field/codeaf/pull/1040) · `chat` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The card's foot read `▸ 9 more on this machine · → reach them`, and `← just the open ones` with the fold open. It now reads `→ show closed` and `← hide closed` — the key and what it does, no glyph and no count, because the head's `3 of 12` already carries the figure. `hopFoldKeyWord` and `hopShutKeyWord` are those two strings; anything quoting the old ones is stale, including the card drawing in `internal/manual/chat/keys.md`.
+  - The card drew a wrapped copy of the SELECTED row's title in a block under the list whenever the subject column had abbreviated it. That block is gone — `hopCardLines` builds no preview and `TestSwitcherShowsLongSelectedTitleBelowTheList` is replaced by `TestALongNameTakesTheRoomAndIsNotRepeatedUnderTheList`. The rows it used to displace on a short card stay drawn.
+  - The subject column was fixed at 34 cells (`hopSubjectCol`) and the clause took every cell left over. It is the other way round: the clause is `hopNoteCol` (32, narrowing to `hopTightNote`), and the subject takes what is left up to `hopSubjectMax` (64), keeping `hopGutter` (2) cells of air so a name that fills its column does not touch the clause. `hopSubjectCol` no longer exists. The narrowing ladder is project, then the clause's tail, then the clock, then the clause — the name is cut last.
+
+  All three asked for by the owner, off the running card: a foot spending a row on a
+  figure the head already says, a summary under the list that was never more than the
+  selected row's own title and did not appear for every row, and
+  `Investigate the parsing regres…nothing new` — a name cut at thirty-four cells
+  with forty cells of `nothing new` beside it.
+
+  The gutter is the part that is not about width. A long enough name fills whatever
+  column it is given, so without two cells held back at the end of the column the name
+  and the clause run together into one word however wide the card is.
+
+  `keys.md`'s switcher section was over its size rule by some way after three changes
+  landed in it, and the retrieval gate said so — a probe that used to reach it started
+  reaching four other pages. The layout and the ordering are now two sections of their
+  own with their own headings, which is what that rule is for.
+
+  </details>
+
+- **The switcher card lists conversations in the tab row's order, not by recency** — [#1040](https://github.com/Agent-Field/codeaf/pull/1040) · `chat` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The switcher's open rows were ordered MOST RECENTLY IN FRONT FIRST with the conversation you are in always drawn last. They are now in the tab row's own order — leftmost tab, first row — and `you are here` is wherever that conversation's tab is. `hopReading` still walks `app.prev` to BUILD the rows; `app.hopStripOrder` then lays them out, and the recency walk survives only as the tie-break for a conversation with no tab on the row. Asked for by the owner: two readings of one set of conversations, drawn one line apart, disagreed about where each one was.
+  - Row zero is no longer the conversation `tab` would go to, so `hopFirstStop` stopped being `the first row that is not here`. It is now a method that walks `app.prev` for the most recent conversation that is not the one in front, so `alt+k` `enter` still means the last one. Anything that assumed the cursor opens on row zero is wrong.
+  - The digits `1`…`9` on the card now name TAB POSITIONS rather than positions in a recency ring, and `ctrl+shift+k` enters at the last row — the rightmost tab — rather than at `the open conversation longest unlooked-at`. `internal/manual/chat/keys.md` said the second of those and no longer does.
+
+  The strip's order is first-entered and never moves, on chattabs.go's own
+  reasoning: a person reaches for the position, not for the word. The card taking
+  that order buys the same stability — a conversation keeps the number you last saw
+  it at — and is what makes the digits worth drawing.
+
+  A conversation whose tab was dismissed with `ctrl+w` is still held, still running
+  and still on the card, and has no position on the row to borrow. Those rows sort
+  after every tabbed one, in the order the recency walk handed them over, which is
+  why the sort is stable.
+
+  The card reads the strip that was DRAWN (`app.chatTabs`) rather than calling
+  `app.tabList`, which rebuilds the row in place and would have the card writing to
+  the thing it is reading. On a frame too short to draw the strip there is no
+  visible order to follow and the rows keep the walk's own.
+
+  </details>
+
+- **A closed tab leaves the switcher's list at the same moment it leaves the row** — [#1040](https://github.com/Agent-Field/codeaf/pull/1040) · `chat` `docs`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - The switcher's open list held EVERY conversation the keeper was holding, so a tab dismissed with the `×`, with `ctrl+w`, or with `ctrl+w` on the card itself vanished from the strip and stayed on the card looking open. The list above the fold is now exactly the tab row: `hopReading` splits its rows on `app.hopTabbed` (which asks `app.tabShut`, set the instant a tab goes and cleared in `app.rememberOpen`), and a conversation with no tab is drawn BEHIND THE FOLD — still held, still running, still openable, its tab coming back with it. `TestADismissedConversationIsStillOnTheSwitcher` still holds; it is on the card's fold now rather than in its open list.
+  - `app.hopOpenRows` was a walk of the rows counting `open`. It is now the `tabs` figure `app.hopReading` returned, kept on `hopCard` — the rows gain the rest of the machine when the fold opens, and a walk taken then said the window had twelve conversations open. The head's `3 of 12` is how many TABS are on the row, of how many conversations the machine has.
+  - A second `ctrl+w` on the card used to re-close the row already closed and merely re-say its receipt. Each press now closes the next row, because the closed one has left the list — the same thing the key does on the strip. `TestDismissingARunningTabNeverStopsItsWork` asserts two presses closing two tabs.
+  - `internal/manual/chat/keys.md` said a row below the fold means `this terminal is not holding it`. That is no longer the only case: a conversation whose tab you closed is held, running, and down there. Both that page and `screen.md` now say so.
+  - `hopNotOpenWord` — `that one is not open here — enter opens it` — is DELETED, and `ctrl+w` on a row with no tab now does nothing and says nothing. The key exists to close a tab; a row below the fold has none, so the state it was pressed for is the state it found, and a sentence explaining that is the surface answering a question nobody asked. Ruled by the owner. Anything quoting that string is stale.
+
+  Reported by the owner: the tab disappears and the entry does not. These are two
+  readings of one set of conversations drawn one line apart, so the card claiming a
+  conversation was open while the row it is glued to said otherwise was the card
+  being wrong.
+
+  The test the change had to keep is `TestADismissedConversationIsStillOnTheSwitcher`
+  — a closed tab is how you get a conversation back, so it may not fall off the card
+  entirely. The fold is where both facts fit: off the list that mirrors the row, and
+  one `→` `enter` from being in front of you again.
+
+  `hopTabbed` asks `tabShut` rather than the drawn strip on purpose. The strip is a
+  frame behind the keystroke, so a card rebuilt from it after its own `ctrl+w` kept
+  the row it had just closed until something else redrew the row.
+
+  It also asks `row.open`, and that half is not decoration: nothing ever dismissed a
+  conversation this window has never held, so `tabShut` is silent about one and
+  silence read as "it has a tab". `hopReading` never noticed, because every row it
+  splits is one the keeper is holding — `hopAway` did, and answered `ctrl+w` on a
+  machine row with `tab closed · <title>` while closing nothing. Found in review.
+
+  </details>
+
+- **ctrl+k kills to the end of the line, and the conversation switcher moves to alt+k** — [#1040](https://github.com/Agent-Field/codeaf/pull/1040) · `chat`
+
+  <details><summary>16 things that are no longer true</summary>
+
+  - The conversation switcher is `alt+k` (`opt+k` on a Mac), not `ctrl+k`. `enter` opens, `esc` cancels, `1`…`9` take a row, `→` reaches the fold and `ctrl+w` closes a tab; `tab` and a place's `alt+.` map are still the other ways in. The card itself is reshaped in the same wave — the other entries in this pull request carry that. The legend above the box now reads `alt+k chats`.
+  - `ctrl+k` is an EDIT now: delete from the caret to the end of this line, the pair to the `ctrl+u` that has always killed to the start of it. It is bound in the message box, in home's own box and the errand pane beside it, and in every typed filter and value box on the surface; it stops at the newline rather than joining two lines, and a second press on an emptied line does nothing. `internal/tui3`'s `killpairlaw_test.go` is the law that keeps the pair together — a key switch that answers one half without the other fails the build, with the first-run and onboarding string fields named as the two exceptions, since neither has a caret for an end-of-line to mean anything against. A whole-box flush — caret at the head of a one-line draft — goes on the kill ring first, exactly as `ctrl+u`'s does.
+  - The switcher's reverse is `alt+shift+k` and it now arrives on EVERY terminal. It was `ctrl+shift+k`, which an ordinary terminal sends as the same byte as `ctrl+k` and which was therefore bound only where the terminal had taken the kitty keyboard protocol's disambiguation flag. `ctrl+tab` and `ctrl+shift+tab` are unchanged and still need that terminal; `shift+tab` still walks the card back everywhere.
+  - On a Mac whose Option key composes accents, the switcher's chord types `˚` instead of opening the card — the tax every `alt+` chord on this surface already pays. `˚` is on the dead-key table now, and it is the ONE character on that table that arms the note in a conversation as well as on a place, because it is the one chord bound in both. The conversation draws the short form in its hint slot: `opt types a letter · turn on option as meta`.
+  - Home's rule names the switcher now: its right-hand side reads `alt+w folder · alt+o model · alt+k chats · / commands`, with the new clause under the same gate the conversation's legend uses — drawn where it would act and nowhere else. It says `chats` rather than `switch` because every clause on that line is a key and the NOUN it moves, which is the grammar `alt+w folder` and `alt+o model` set.
+  - THREE LINES DREW `alt+` ON A MAC where the rest of the surface drew the Mac spelling: home's rule, the question chip on the status line, and two rows of the key sheet (`/search … alt+7`, `/spend … alt+3`, `alt+backspace`). chords.go has always said `chordSpelling.say` is the one door every person-facing sentence about a chord goes through; those lines were built straight out of their constants and never went through it. All of them do now, and `internal/tui3`'s `chordspellinglaw_test.go` renders the conversation, the key sheet, all seven places and the key map on a Mac's spelling and fails on any `alt+` that reaches the frame.
+  - `command.note`, `command.menuNote`, `menu.height`, `menu.fit`, `menu.rows` and `commandMargin` take a `chordSpelling` now. The substitution has to happen before the measuring rather than at the paint, because `⌘` is one cell where `cmd+` is four and `menu.fit` counts the lines a row will take before `menu.rows` draws it.
+  - THE `Chats ▾` CONTROL AT THE TAB ROW'S RIGHT END IS DELETED, and with it `tabMore`, `tabsWord`, `tabMoreWord`, `tabsMoreWord`, `tabsShorter` and `app.hopOpenAll`. It was written when the switcher's chord was something a person had to already know about and nothing on screen said the other conversations existed; the legend under the box names the key now, in the person's own keyboard's spelling. What survives is the COUNT — a dim `+3` saying how many tabs the row could not spell, inert, drawn whole or not at all — because that is a fact rather than a door, and a strip that went quiet about it would be back to claiming the window holds exactly what fits.
+  - The switcher's door is spelled `chats` everywhere now, and it was three words: `alt+k switch` on the legend and the map, and `Chats` on the deleted control. The noun wins over the verb — it is what the thing IS rather than what pressing it does, and it is the word home's rule already uses. `hopMapWords` went from `alt+k switch conversation` to `alt+k chats` with it.
+  - `tab closed · keep running` said `find it under Chats`, naming furniture that is no longer on the screen. It says `find it with alt+k` now, through the spelling door so a Mac reads `opt+k`.
+  - A MAC NO LONGER DRAWS THE `⌥` SYMBOL. Every chord on a Mac is spelled `opt+` — `opt+1`…`opt+7`, `opt+.`, `opt+enter`, `opt+k`, `opt+w` — and the key named on its own is `opt`. The BINDINGS are untouched: the constants are still authored `alt+`, and `chordSpelling.say` still does one substitution at the moment of drawing. Every modifier on a Mac keycap carries both a word and a symbol (Control is `control` and `⌃`, Option is `option` and `⌥`), so "what the keycap says" never chose between them — and this surface was taking the word for one modifier (`ctrl+`) and the symbol for another. `opt+` is `ctrl+`'s own move: the keycap word, cut short. `chordMetaBare` is the new constant for prose that names the key alone, so the dead-key note reads `your terminal sends opt as a letter` rather than keeping a dangling `+`.
+  - AND IT COSTS NOTHING TO MEASURE: `opt+` is four cells, exactly as `alt+` is, so every ladder that fits a chord on Linux fits it on a Mac. `⌥` measured as one cell by `ansi.StringWidth` and was NOT reliably one cell on screen — U+2325 is East-Asian Ambiguous, which a terminal set to draw ambiguous characters wide renders in two, and a font without the codepoint substitutes at a width nothing measured. It was also the one person-visible mark on the surface reached as a string literal rather than through `tokens.GlyphSet.Glyph`, which every other mark goes through precisely because a literal cannot know the terminal's repertoire. `⌘` is still a glyph and still the exception.
+  - `ctrl+u` IS A LINE KILL IN EVERY BOX NOW, and in five of them it was not. Home's box, the errand pane, the tasks and rewind filters and the settings filter answered it by emptying the whole field, so `abcdef` with the caret after `abc` threw `def` away — while the `ctrl+k` that landed beside it correctly kept the head. One chord cannot mean "to the start of the line" in the composer and "all of it" on Home. All five call `editor.killToStart` now.
+  - `/settings` and the `quick switch` row's hint said `Ctrl+k always opens the list` / `Ctrl+k always browses before opening a chat`. That chord DELETES TEXT now, so the sentence was telling a person to destroy their own filter; both say `alt+k`. Four shipped manual passages still documented the retired binding and the deleted control — `keys.md`'s account-question section, two passages in `tasks.md`, and `permissions.md`'s `Chats` — and all four are corrected. It is the manual-law hole this entry already names: the gate checks a name is mentioned, never that the claim around it is true.
+  - `config.KeyQuickSwitch`'s doc said the setting governed the switcher's own chord. It never has: `ui.quick_switch` governs `ctrl+tab` and its reverse, and the binding always browses. The doc says so now.
+  - The manual said `ctrl+k` saved a harness design from inside its room, on a row that was deleted along with the rest of that grammar. The room is answered by `1` save · `2` change · `3` drop like the page in the conversation, and nothing in the room is on a chord.
+
+  `ctrl+k` is kill-to-the-end-of-the-line in every shell on the machine, and this
+  surface already had the other half of that pair on `ctrl+u`. Spending the letter
+  on a card meant a hand that has typed that chord for twenty years got a list of
+  conversations instead of an edit, in the one box on the surface people type
+  into all day.
+
+  Every `ctrl+<letter>` here is spent, so the edit could not move somewhere else —
+  the switcher had to. `alt+` is the modifier class the places are already built
+  on, the letter is the one people have learned, and the move pays for itself on
+  the reverse gesture: `alt+shift+k` is a different byte from `alt+k`, where
+  `ctrl+shift+k` was not, so walking the ring backwards stopped being a thing only
+  half the terminals in the world could do.
+
+  What it costs is a Mac whose Option key is composing accents, where the chord
+  types `˚` and the card does not come. That is the same setting every other
+  `alt+` chord here needs, the surface already watches for it, and it now says so
+  in the conversation rather than only on a place.
+
+  This was opened as #1062 and folded into #1040, which lands the card's own
+  changes: the two touch the same three files, and resolving that once was cheaper
+  than landing them in sequence. The `Chats ▾` control on the tab row goes with the
+  move, on this change's own reasoning — `→` opens the fold and a second door is a
+  second thing to keep in step.
+
+  </details>
+
+- **the spend place is three tables in four columns each — no bars, one right edge, money in cents** — [#1043](https://github.com/Agent-Field/codeaf/pull/1043) · `chat`
+
+  <details><summary>34 things that are no longer true</summary>
+
+  - A TASK ROW COULD OPEN ANOTHER CONVERSATION'S TASK. `spendTaskRecord` joined the index's `SessionID` — the conversation that ran the work — against `SubjectSpend.Session`, which is the task node's OWN journal id, so the exact-pair arm never fired on real ledger data and every task row fell through to an id-only match. Task ids restart with every conversation, so `enter` opened whichever conversation's `7` the world walked first. `SubjectSpend` carries `Root` now (from `UsageLine.Root`, the conversation the work belonged to) and the join is (id, Root); the id-only arm survives only for a line that carries no Root at all. The fixture and the test were green because they put the conversation in `Session`, which no real ledger line does — both write the ledger's own shape now.
+  - THE MONEY COULD BE TRUNCATED. Fields were laid left to right and the whole row trimmed to the frame at the end, so a name or project wide enough to push the row past the edge lost its TAIL — the figure every row is read for (`$21.…`), from about 30 cells at 100 columns. `spendRowIn` fits the words against what is left after the figure now, so what gives way is the words. And `spendProjectCap` was a cap on the MEASURE only: the column was bounded and the field inside it was not, so a long folder name moved the table without being bounded by anything. A capped column is capped where it is drawn too.
+  - THE CUT'S CONTROL VANISHED ON AN EMPTY WINDOW. It lived only on the heading over a table's rows, and a reading with nothing priced in it draws no rows — so a window paged back onto a quiet fortnight had no heading, no arrows and no foot, and `by model` had no way back to `by topic` except paging forward again. The empty frame draws the control under the window header, for the reason it keeps that header: it is the only thing there a key can act on.
+  - The head line used the money COLUMN'S floored word, so a fortnight that came to $0.0068 read `$0.01` while `/cost` and Settings→Spending kept the exact figure — which is the law `spendMoneyWord`'s own comment states. The head total and the loudest day's figure both go through `dollars` now. A floor is a column's rule; a total in a sentence has nothing to line up with.
+  - A row whose task or conversation the record no longer holds walked to the tasks place or to home — a page about everything this machine has run, opened in answer to `enter` on one row of a bill. It refuses where it stands now: `that piece of work is not on this machine any more`, or `that conversation is not on this machine any more`. The ledger outlives what it is about, so this is an ordinary row and not a fault.
+  - THE PAGE DRAWS ONE CUT OF THE LEDGER AT A TIME, and the heading is the control that swaps them ([spendSlice]). `by model` and `by topic` stood on one page — the same money added up two ways, every dollar under one heading also a dollar under the other — so a person was asked to read one bill twice with no way of telling which half they were looking at. It opens on `by topic`, which is the question somebody walks in with; `by model` answers a narrower one and is one keystroke away. The promises ride with `by topic`: a promise is one of the things money was FOR, so `by standing order` is a third heading and not a third cut.
+  - THE ROWS OF `by model` ARE STOPS, so the table walks and therefore scrolls: the body's window follows the cursor, and a table whose rows nothing could stop on could not be read past the fold of a terminal. They open NOTHING — a model is not a thing money was spent on — so the foot over one keeps `→ the limits` and drops `enter opens what spent it` rather than naming a key that does nothing.
+  - The cut's heading keeps the heading ink under the band. It came up to the reading tier for one build, so landing on it changed its colour as well as giving it arrows: two signals for one fact, and the colour was the one that stopped it reading as a heading. The band says the cursor is there — on this row exactly as on every other row of every place — and the arrows say what the keys do, which the band cannot.
+  - The cut's heading is a cursor stop, and `←`, `→` and `enter` all step it. The ring wraps, so neither arrow is ever a key that does nothing. It wears its arrows — `← by topic →` — ONLY while the cursor is on it: `→` on every other row of this place opens that row's verbs, so the strip stands down on this one ([placeSpend.verbs]) and the arrows are drawn exactly where they are bound. The foot names the cut the arrows lead to rather than the one on the frame.
+  - The headings no longer say `enter opens it`. The foot has always named the key on every row that is a door (`enter opens what spent it`), and the heading has a job now; a control with an unrelated instruction after it is two objects on one line. `spendOpensWord` is deleted.
+  - THE THREE HEADINGS ARE `by model`, `by topic` and `by standing order`. They were sentences — `what ran it · by the model, and the role it was bound to`, `what it was for`, `what kept running · standing orders, and what a firing cost` — each naming the page's subject again before saying how its table cuts it. A person reading them walked in through a tab marked `spend` and read a pointer line of money; what a heading here owes them is which way the table is sliced. `usage` is deliberately not the word: it is what the CODE calls the ledger and a person has never been shown it.
+  - `what it was for` showed the DEAREST THREE and folded the rest; it shows twenty (`spendSubjectCap`). Three is a headline rather than an answer to the question this page is for, and a fortnight on a working machine is twenty or thirty things — so a person who came here to find where their money went met three rows and a fold, and had to press a key to see the page they had already opened. The body scrolls and the cursor carries the window with it, so the longer table costs a short terminal nothing it was not already paying.
+  - `enter` ON A ROW OF `what it was for` NOW OPENS THE THING. A task opened the tasks PLACE and left the person to find their own row in a list of everything the machine has run; it opens that piece of work's own record card now ([app.openTaskRecord]), with the list behind it parked on that row. A conversation opened HOME — the switcher — which from a row of somebody's own bill is a keypress that went to the wrong screen; it goes through [app.openConversationRow] now, the door every place that is not home already uses, with all of its refusals. A standing promise opens the standing place ON that order ([app.openStandingAt]) rather than at the top of the list.
+  - THE LOUDEST DAY HAS NO ROW OF ITS OWN. It read `aug 20 was the loudest day — $21.40, the-filings-sweep` between the chart and the first table — a sentence saying what the head line above it already says three facts of — and it is the head line's last clause now: `14 days came to $34.10 · 41.2M tokens · loudest day: $21.40 aug 20 (the-filings-sweep)`. It gives up the name first and then the clause; `spendReading.loudestRow`, `loudestRowIn` and `spendDoorWord` are deleted, and with them a door that stood four lines from any table.
+  - THE HEAD LINE NOW RESERVES THE ZOOM CLAUSE before its own optional facts. [placeWindowFits] answers the paint and the keys with one predicate, so a head long enough to crowd `shift+↑ coarser` off the line does not hide that key, it UNBINDS it. The head was short enough for this never to arise until the loudest day joined it.
+  - The two subject headings carry `enter opens it` as a clause of their own sentence — `what it was for · enter opens it` — in the grammar the models caption already uses. The page said it once, on the loudest day's row, four lines above a heading and a table the sentence was not about, and that row no longer exists. It names no destination: `what it was for` holds tasks and conversations, which open in different places.
+  - THE MODEL BARS ARE GONE. Every model row on the spend place carried a bar — that model's share of the dearest one — and the row now reads `· opus 4.1 · conversation · 312 calls · 18.1M tokens · $21.40` and nothing else. The list is sorted dearest first and each row says what it cost, which is the same comparison in figures; the bar cost a reserved column and a second reservation in front of it so a role word on one row could not push it out of line. `spendBar` and `spendModelBarCap` are deleted.
+  - Both tables were one run of text per row, so every field landed wherever the row's name happened to end. Each table is measured once and drawn into columns now ([spendMeasured], [spendRowIn], shared by both), and the counts are RIGHT-ALIGNED — digits are compared from the right, and with the bar gone the figures are the whole of the comparison. The unit word rides behind each numeral (`9,400 calls`, `163M tokens`) because this surface has no header row.
+  - `what ran it` is name · ROLE · calls · tokens · money, the role first after the name: what a model IS on this machine reads with the name it follows, while the calls, the tokens and the money are three readings of one quantity and stand together. It held a reserved column of its own floored at the widest `config.ModelSlots()` label — that existed only to keep one bound row's bar in line — and `spendReading.modelCols` and `roleCol` are deleted.
+  - The role no longer wears the `·` that used to introduce it. A column needs no mark saying a column has begun.
+  - The token column carries NO UNIT WORD: `3.2B`, not `3.2B tokens`. Beside `128,400 calls` it is already plainly a different kind of number, and the word repeated down a column said nothing the k/M/B did not.
+  - `what it was for` is name · KIND · project · money, the kind word first after the name for the role's reason. Where a field stands and what it is worth are two different questions: the kind word leads the block and is still the first thing a narrow frame gives up.
+  - THE NAME IS LEFT-ALIGNED AND EVERY OTHER COLUMN IS PUSHED RIGHT AND RIGHT-ALIGNED. Fields used to start in their columns and run left to right behind the name. What a row is about is read from the left; what it cost and how many calls it took are read by comparison with the row above, and a comparison is made on a figure's right-hand edge — so the facts travel together in one block and the names run out to meet them.
+  - AND THAT BLOCK ENDS WHERE THE CHART ENDS ([spendReading.rule]) rather than at the frame. The money was flushed to the frame's right edge, which on a wide terminal put the one figure every row is read for forty cells from the counts it belongs with, on a page that already draws a horizontal scale. The tables now end on the chart's `today` point, with the last bucket's date standing under it. A window zoomed until its chart is a few cells wide falls back to the frame, with every field back — a table measured against a rule it cannot meet must not give up fields the frame behind it had room for.
+  - STANDING PROMISES ARE A TABLE OF THEIR OWN, under a new heading `what kept running · standing orders, and what a firing cost`, with name · firings · what a firing cost · money. They used to share `what it was for`, where the promise wore a `standing · 88 firings` tag crammed into the project's column and a kind word that had to be suppressed to stop the row saying `standing` twice. The fold under the two tables still counts the whole subject list, and `enter` on a promise still opens the standing place.
+  - The words `under a cent a run` are gone with that suppression: a promise's per-firing figure is written by the money column's own rule, so a firing that cost a twentieth of a cent reads `$0.01 a run`.
+  - `session.UsageSubjectWord` answered `a task` and `a conversation`. Those are column words now — `task` and `chat` — because the spend place stands them in a column beside a project and a figure, where the article says nothing and `conversation` is twelve cells. `standing` is unchanged and no longer reaches that column at all. The long spelling stays in prose (home's `start a new conversation`).
+  - `spendMoneyWord` wrote the words `under a cent` under half a cent and fell through to `dollars` above it, so the money column mixed `$21.40`, `$0.0068` and a phrase. It is a column of cents with a floor now: anything above zero and under a cent reads `$0.01`. It rounds UP, so rows of slivers can add to more than the window total above them — the heading, the pointer line and the Spending tab all still carry the exact arithmetic through `dollars`.
+  - The detached-turn note used `spendMoneyWord` and so said `it spent under a cent`, which internal/manual/chat/keys.md quotes in those words. That phrase is `spendSliverWord` now and the note is unchanged; the old rule lives there and nowhere else.
+  - A subject whose ledger line named no workspace drew `· talk-1 · . · a conversation`: `filepath.Base` answers `.` for the empty string. An unknown project draws nothing now, which is what the emptiness law always demanded of it ([spendProjectField]).
+  - `dollars` did not mark thousands, so the spend place drew `128,400 calls` and `$4210.55` on one row — the count grouped and the money not. Money of a cent or more now wears the same mark a count does (`$4,210.55`), through one `groupDigits` in placeprose.go, and so do whole limits through `railFigure` (`$50,000`). Every surface that quotes a figure through `dollars` moves with it: the status line's bill, /cost, the Spending tab, home. Figures under a thousand are unchanged, and the sub-cent floor `<$0.0001` is untouched.
+  - `tokenWord`'s ladder stopped at the million, so a fortnight of agent work read `7062.1M tokens` and one model's row `3210M`. It has a `B` rung now — `842`, `12.4k`, `1.2M`, `3.2B` — turning over at 999,950,000 for the reason the rung below turns at 999,950. It is the status line's context meter and tok/s reading too, though nothing there comes near a billion.
+  - The models table gave up its bar and counts below a flat 80 cells. A narrow frame now gives up WHOLE FIELDS in a named order of worth, measured against what each table actually holds — the token volume, then the role, then the calls; the kind word, then the project. The money is never given up. A name column is never squeezed to keep a field behind it, because a column narrower than what it holds is a column the longest rows fall out of.
+  - The demo home's ledger was a fortnight of small change, so `make demo-home` could not show the spend page at the top of its range. It now carries a four-day heavy stretch (`demoHeavy` in cmd/codeaf-demo-home/seed_spend.go) across three models within a few per cent of each other, which puts five-figure call counts and hundred-million token volumes into the columns — the arrangement where a table of figures has to be read digit by digit.
+
+  The two headings are two partitions of one ledger, and they had drifted into two
+  layouts — one with a bar in it, one without, each measuring its own fields its
+  own way. They share one measurer and one row painter now, which is what made the
+  third table cheap enough to add: a promise's facts are not a task's, so it gets
+  its own columns rather than a tag crammed into somebody else's.
+
+  Worth knowing about the bar, since it took three cuts to get right before it was
+  deleted: a fixed 30-cell column was exactly one cell short of `· claude-opus-4.1
+  · conversation`, and measuring name-and-role as one field still let the single
+  bound model's bar sit two cells right of every other. The lesson survives the
+  bar — a constant is a guess, and a field shared with something optional is a
+  column that moves.
+
+  </details>
+
+- **A home panel stands where its content puts it, and the quiet ones gather in a rail on the right** — [#1046](https://github.com/Agent-Field/codeaf/pull/1046) · `chat` `docs`
+
+  <details><summary>19 things that are no longer true</summary>
+
+  - Home's law 2 was `act left, watch right`: the left column was the person's — `needs you`, `where you were`, `projects` — and the right column the machine's — `running`, `since you left`, `spend`, `next up`. No longer true, and this is not a tweak to the roster: a panel's column is no longer a fact about the panel at all. A panel WITH ROWS stands in the field, which is the columns left of the last one, filled from the top left corner down; a panel with NOTHING IN IT stands in the rail, the last column, flush with the right edge, as its heading and its whisper. So `running` is on the left while something is running and on the right while nothing is, and the side a panel is on now says whether it holds anything.
+  - Home's law 3 said `a panel keeps its column and its rank in it`. The column half is struck. The rank half stands and is what keeps the cost to one axis: inside the field and inside the rail the order is still the order table's, so two panels that both fill never swap places. Anything that remembers where a named panel is drawn is wrong; what can still be relied on is the order, and that `projects` and `spend` are PINNED to the top of the rail whatever they hold, with one blank row under them separating what lives there from what is only quiet today.
+  - The three-column tier put `projects` and `spend` in a column of their own and spread the other five over the first two. No longer true: the rail is the last column at both the two- and three-column tiers, and THE FIELD FILLS RATHER THAN BALANCES — a frame whose panels fit in one column never spreads two short columns over a wide screen. The middle column at three is the descriptions' and holds no panel of headings.
+  - `←→` crossed to the NEIGHBOURING column and did nothing where that column had no row to stand on. No longer true: the arrow now steps over a column with nothing in it to the next one that has a row. Without it the rail would be out of the arrows' reach entirely on a wide quiet frame — `projects` and `spend` drawn on the screen with no key that walks to them.
+  - `needs you` counted its live questions on its heading (`needs you · 2`) and its landings on the group line under them (`to check · 8`), with the clause `finished, nobody has checked it` at that line's right. No longer true: the heading is the two words alone, the group is called `unread`, and its line is that one word — no count, no clause. The rows under the words are the count. The one count left in the panel is the fold's, `3 unread` or `N more`, which stands for rows that are NOT on the screen. Anything waiting for the string `to check` on home — a test needle, a manual page — is looking for a word that is gone.
+  - The `?` on a `needs you` row stood in the row's own lead cell, left of its title. On a frame wide enough for the description column it stands at the head of the row's description in that column, one space before the sentence, and the row's lead is blank; on a narrower frame it is where it was.
+  - A row's description — the question a conversation stopped on, the first sentence of where a conversation left off, what a standing order is about to do — was a second line UNDER the row, so a panel grew and shrank as the cursor walked. On a frame of three columns or more it is drawn in the middle column, level with its row, running down to the next row that has one; a permanent description (a `needs you` question) is always there and a cursor-only one (`where you were`, `next up`) appears beside the row the cursor is on. The middle column is no longer free for a third panel of headings; it is the descriptions' and nothing else stands in it. Two-column frames keep the second-line shape.
+  - A question raised from home — the consent card, a standing order's question — was said on the foot line and answered there. On a three-column frame it is drawn as a card in the middle column beside the row that raised it, WHOLE OR NOT AT ALL: a frame too short for the card falls back to the foot's one-line version, and the two are never on one frame together.
+  - `enter` on a `needs you` watch with no conversation behind it did nothing and said nothing. It opens the item on the standing place, and the row's legend says `enter on standing` so the key is not a surprise. `enter` on a landing in another project opens it — the guard that refused a bucket other than this window's is gone.
+  - Home's `say what you want done` line drew no cursor at rest. It carries the same cursor a conversation's box does.
+  - The foot under a field row said that row's own thing: `ctrl+x stop it` on a running task this window holds, `enter open where it was asked · ctrl+e pause · esc close` on a standing order, `enter opens the place this happened in · esc close` on a `since you left` line, and the resting sentence with `ctrl+o open folder` on a conversation. No longer true on the grid: EVERY row under a moving heading — `needs you` and `unread`, `where you were`, `running`, `since you left`, `next up` — rests on the one sentence, `type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`, and `ctrl+o` is true on all of them because every such row belongs to a folder — an order's workspace, the conversation a landing ran in. `ctrl+e` and `ctrl+x` still work and are on the `alt+.` map; the foot no longer names them. The phone's list and the filtered list keep the rows' own sentences.
+  - A `scheduled` row's description was drawn only on a frame with a description column (170 cells and up); below that the row was a bare title, with its clock gone from the margin as well. No longer true: the one sentence per kind is there at every width, as the line under the cursor's row where there is no middle column.
+  - `enter` on a standing item that was made from home opened the standing place at its top. It now lands the cursor on that item.
+  - Every `needs you` question that was not the answering row said `enter` at the right of its second line, so a narrow frame drew a column of `enter`s. Only the row under the cursor says its door word now; the rest say nothing at their right.
+  - The right margin of a field row carried whatever fact its panel had: a landing's `3 files · 1d` beside another landing's bare `10h`, a `since you left` task's cost (`$0.42`) beside a made file's conversation name (`Pricing Site`), a conversation's project word as a tag beside its age (`infra  3h`) on rows from other folders and nothing on rows from this one, `here` on this window's own row, and a background job's project inside its title. No longer true: THE RIGHT MARGIN OF EVERY ROW OF THE FIELD IS A TIME — how long a question has waited, how long ago a landing landed, when a conversation was last spoken in, how long a task or job has run, when an order is due. Everything that is not a time is the row's description, in the middle column: a landing's file count opens its sentence (`3 files · built the flow`), a task's cost and a file's conversation are their rows' descriptions under the cursor, a conversation's project is the first clause of its description, a job's project is its description, and `here` opens the own row's description. The one exception is the word that says what `enter` will do — `another window`, `coming here`, `folder gone` — which still stands in the time's place, because it is the truth about the key. On a frame with no description column the own row says no `here` at all; its bold says it.
+  - Every home panel folded its tail into a door: `N more · tasks` opened the tasks place, `N more · standing` opened standing, `needs you` said `N more · M older · tasks` for the landings that aged off it, and `where you were`'s `N more · type to find one` was not a stop at all because typing was its door. No longer true: EVERY FOLD IS ONE LINE, `N more`, AND IT IS A TOGGLE. `enter` (or a click) on it opens the panel — its cap is lifted, the other panels squeeze to their floors in law 5's order, and it takes the column — and the line reads `N fewer`; enter again folds it. One panel is open at a time. `needs you`'s aged landings are counted in its `N more` and come back when it is opened. An open panel taller than the column shows what fits and its fold still counts the rest — `3 fewer · 40 more` — and names no place, because enter on it folds rather than opens; the panel's heading is the door to the place that holds them. The fold wears no mark (law 8). The foot on a fold says `enter shows the rest` / `enter folds them`. DESIGN.md law 9 is amended and says what it used to say.
+  - A `next up` row's description was the order's schedule in the person's words (`every five minutes`) beside a clock that said the same thing (`in now`), under a title that usually said it a third time. No longer true: THE DESCRIPTION IS THE FINDING — a watch's last check line or `found nothing`, a reminder's or routine's last outcome, `your call · why` for one stopped on a person, the pass's words for one mid-pass — and an order that has never woken describes nothing. And a watch that has looked says when it looked at the margin (`checked 3m ago`) rather than when it will look again; `standWhenClause` used to put `in now` there whenever a probe had a next due.
+  - The seventh panel was `next up · reminders & routines`, its rows carried their clock at the right (`in 20h`, `mon 8:30`, `checked 3m ago`, `holds`), and an order stopped on a person was drawn on it as well as on `needs you`. No longer true: the panel is `scheduled` — one word, no explainer, because it holds four kinds of order and the explainer named two — a row is the person's own words with NOTHING at its right, and its time is said once, in its description under the cursor, in the one sentence its kind has: `reminder · goes off tomorrow 9:00am`; `routine · every morning at nine · next tomorrow 9:00am · last: <outcome>`; `watch · every five minutes · last looked 3m ago · found: <line>` or `found nothing`; `rule · always`. Moments read `today 6:00pm`, `tomorrow 9:00am`, a weekday inside the week, a date beyond it, `now` once arrived. An order stopped on a person is off `scheduled` while it waits — it is a row of `needs you` — and paused, stopped and retired orders were never on it. The whisper names all four kinds. `standing` is not on the tab bar; `scheduled` is its summary and enter on a row opens it, which is law 10 as written.
+  - Home's resting foot was `type to search or start something new · ↑↓ pick · enter open · tab next place` on a quiet machine. It now carries the chord too — `… · enter open · ctrl+o open folder · tab next place`. The clause was always there on a machine whose right column had rows, because §6.6 refuses to leave a door invisible when `→` crosses columns rather than opening a row's verbs; what changed is that the rail always has rows now, so the condition is always met. The design's four keys still open the sentence and `esc` is still not on it.
+
+  The owner read a real quiet home and found six of the seven panels whispering
+  over a screen that was five sixths scaffolding: a fixed grid of headings holding
+  station over nothing, with the one panel that had anything in it boxed into a
+  third of the width. The old law bought a geography a person could learn, and on
+  a machine that is mostly idle — which is most machines most of the time — it
+  spent the whole screen on it.
+
+  So the column became a reading of what the panel holds. What that costs is real
+  and was taken knowingly: home's geography moves now, and nobody can learn that
+  `running` is on the right. What it buys is that the left of the screen is only
+  ever the things that are actually going on, which is what a person walks up to
+  home to find. The rank inside each column never moves, so the cost is to one
+  axis and not to both.
+
+  `docs/design/home-mission-control/DESIGN.md` carries the amended laws 2, 3 and 6
+  and says what each of them used to say.
+
+  The same branch took the empty middle that ruling left and gave it to the
+  descriptions: the sentence under a row moved beside it, the `?` moved to the
+  head of that sentence, and the question card went there too, sized against the
+  column and giving way whole to the foot on a short frame. And it pruned the
+  `needs you` panel to its words — no count on the heading, no count or clause on
+  the group line, and `unread` for `to check`, on the owner's ruling that a figure
+  beside rows that are right there is a second thing to read that says nothing
+  the rows do not.
+
+  </details>
+
+- **The README is the launch story and the reference it used to be is docs/GUIDE.md** — [#1049](https://github.com/Agent-Field/codeaf/pull/1049) · `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - README.md was the reference: every flag, key, slash command, exit code and folder rule, with no pictures. That file is now docs/GUIDE.md, unchanged apart from its title. README.md is the public story for the launch: install, one window for every project, a conversation that becomes tasks and what lands on its own, what a factory is, subharnesses, the benchmark, the open-model crew, standing orders, headless, the dev box over ssh and the phone, and the roadmap.
+  - The repository had no LICENSE file. It has one, Apache 2.0, the same text agentfield ships.
+  - assets/readme/ is new and holds the hero, the diagrams, the social preview and nine product screens as WebP (overview, projects, home, conversation, tasks-tree, question, models, standing, phone) plus placeholder frames for the slots still to fill. The screens are real terminal captures of a seeded demo machine on open models, staged on a warm ground in the brand package; no image model touched their pixels. The demo video at the top is a 92 second recording on open models, hosted as a GitHub attachment rather than kept in the repository, cut with tools/render/film.mjs in the brand package. The hero, diagrams and screens are generated from the brand package outside this repository (~/Documents/agentfield/codeaf: tools/make_visual.py, templates/readme/diagrams.html, templates/readme/stage.html and brand/prompts/ui/README.md); regenerate there, do not hand-edit the images here.
+
+  The README is what a stranger reads in the first minute, and the old one asked
+  them to read four hundred lines of reference before it said what the program
+  was for. The new one says it, shows it, and sends them to the guide for the
+  rest. Benchmark figures and the numbers still to measure are marked
+  `TODO` in HTML comments and land in follow-up pull requests.
+
+  </details>
+
+- **The install story, the compiled-in manual and the branch rules say what is true on release day** — [#1050](https://github.com/Agent-Field/codeaf/pull/1050) · `docs` `build`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - The README said the repository has no rc or staging publication, so those channel selections stop with `no <channel> build has been published yet`. A push to `dev`, `staging` or `main` now publishes that channel, all of them marked prereleases; only the bare curl line still stops, because `--stable` is the default and reads `releases/latest`, which excludes prereleases, until a person dispatches `Release` on `main`.
+  - The README and `internal/manual/chat/running-from-the-terminal.md` both said the repository is private today and the raw installer URL answers 404. Both now state that as a condition rather than a date — 404 while the repository is private, working once it is public with `scripts/install.sh` on `main` — so neither sentence goes stale when the repository flips.
+  - `https://agentfield.ai/get/codeaf` was the first line of the README's install block and was labelled the preferred form. It still is not serving, so the raw GitHub road goes first and the proxied address is described as the form that will be supported once it serves.
+  - Nothing in the README or the chat manual said that codeaf downloads a third party's executable. `codeaf do` fetches the pinned rtk v0.45.0 from `github.com/rtk-ai/rtk` in the background when none is resolvable and `CODEAF_RTK` is unset, and both surfaces now say so with its bounds: two minutes, 64 MB per response, sha256 against the published checksums, four platform pairs, `$CODEAF_HOME/bin/rtk`, and `RTK_TELEMETRY_DISABLED=1` on every call. `CODEAF_RTK=off` refuses it.
+  - `.github/rulesets/README.md`, `docs/rules/ci.md` and `CLAUDE.md` said branch rules are unavailable until the org moves to GitHub Team. GitHub Free enforces rulesets on public repositories, so the condition is GitHub Team or a public repository, and the two checked-in rulesets are applied the day this one goes public.
+
+  </details>
+
+- **The thinking wheel comes back to auto, so the chip can reach the state a fresh install is in** — [#1057](https://github.com/Agent-Field/codeaf/pull/1057) · `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The conversation's thinking wheel had five stops and wrapped from `max` back to `low`, so `ctrl+v` and a press on the chip could never reach `auto` — the way back was `/effort auto` or the ladder's top row. The wheel has six stops now: one press past `max` clears the rung, the way the model picker's `ctrl+t` and a task's own rung have always walked. `/effort auto` and the top row still do it in one move from any rung.
+  - A standing item's rung is now the ONLY scope on the surface whose wheel never lands on absence, and `internal/tui3`'s `effortNext` has one caller left. The conversation moved to `effortNextClearing` beside the task rung and the model level.
+  - Clearing a conversation's rung on a machine whose `thinking` row in `/settings` is set used to write the note that blames a level dialled onto the model and points at `ctrl+t`. It names the row that actually catches it now: `thinking · auto for this chat · <rung> · the thinking row in /settings decides now`. The `ctrl+t` note is still what a level on the model gets.
+
+  The chip above the message box was the one control that could not say the state
+  its own install ships at. A person who dialled a conversation up once had to
+  leave the chip they were standing at and find `/effort` to put it back, which is
+  the flow the owner asked to be rid of.
+
+  </details>
+
+- **ctrl+c leaves on the press that lands** — [#1061](https://github.com/Agent-Field/codeaf/pull/1061) · `chat` `docs`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - The chat's door was TWO presses of `ctrl+c` inside 1.5 seconds: the first armed it, the hint slot read `ctrl+c again to quit` with what leaving would stop, and only the second one left. It is ONE press now. At rest `ctrl+c` writes the draft and exits on the keystroke that lands, over every picker, panel, room, page and paste bracket. Mid-turn nothing changed — it is still the interrupt, and that press is spent on the model — so a two-tap mid-turn now stops the answer and then quits.
+  - `quitarm.go` is gone; what remains of it — `leavingDraft`, the draft and every parked message folded into one string on the way out — is `internal/tui3/leaving.go`. `app.quitArm`, `armQuit`, `quitArmed`, `disarmQuit`, `quitSweep`, `quitHint` and `quitArmWindow` no longer exist, and neither does the hint slot's armed-door rung (render.go's `hintWord`). The work-counting half moved to `tabclose.go` as `workCount` / `workCountWord`, which is where it is still read.
+  - The line every session opens with was `esc interrupts · ctrl+c twice quits · ? for help`. It is `esc interrupts · ctrl+c quits · ? for help` — the same constant, `landingKeysWord`, and the e2e word table follows it. The `/help` sheet's row was `ctrl+c         twice quits · mid-turn one press interrupts, like esc` and is now `ctrl+c         quits everything · mid-turn it interrupts instead, like esc`.
+  - The warning that named what leaving would stop — `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop` — is not written anywhere any more. Nothing on the way out of the program names running work. The close-a-tab card (`ctrl+w`) still does, and it is the only card that asks before ending anything.
+
+  The owner asked for the key to mean what it means in every other terminal
+  program. The arm was protecting four real things, and three of them did not
+  need a keystroke to protect them: the draft and everything parked above it are
+  written by `app.quit` itself, which a real SIGINT and a closed window already
+  took; work a session host is running outlives the window whatever this surface
+  does; and the gap at the end of a turn loses nothing now that quitting in it
+  still folds the parked messages into the draft file
+  (`TestAQuitInTheGapAtTheEndOfATurnKeepsWhatWasParked`).
+
+  The fourth is genuinely spent. A person who leaves with tasks running inside
+  this terminal is no longer told so first, and `ctrl+c` struck by accident at
+  rest ends the session. What they typed comes back at the next launch; what those
+  tasks were doing does not. The manual says so in the asker's own words rather
+  than describing a door that no longer exists.
+
+  </details>
+
+- **The workspace-foundation constraints no longer link a private conversation or a private repository** — [#1064](https://github.com/Agent-Field/codeaf/pull/1064) · `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `docs/design/workspace-foundation/CONSTRAINTS.md` linked the chatgpt.com conversation *Math Frameworks for Org Design* and the personal `org-design` ideation repository under its earlier references. Both are named in prose now and neither is linked: the conversation is private to its owner's account and the repository is private, so the links opened for nobody else and a public repository should not carry addresses into private accounts.
+  - The 2026-09-16 pre-flip audit found no live credential anywhere in the repository's history, PR heads, tags, issues or comments. The two remaining history-only items — the retired Google OAuth desktop client from August, and the swe-pro-go source vendored under `internal/swepro` from 2026-08-09 to 2026-09-01 — are owner decisions and are not addressed by a change entry.
+
+  Before the repository goes public, every remote tag under `checkpoint/`,
+  `archive/` and `salvage/` (163) and every remote branch whose pull request was
+  closed or merged (17) were deleted from origin; the tag objects not on `dev`
+  are kept in a bundle in the owner's handoff folder. Branches with an open pull
+  request and branches that were never in one were left alone. None of that is
+  a change to the tree, which is why this entry carries only the document edit.
+
+  </details>
+
+- **a wrong completion check is answered with [no change], and the answer before it stays in view** — [#1067](https://github.com/Agent-Field/codeaf/pull/1067) · `chat` `engine` `docs`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - The end-of-turn reader was shown the first 600 bytes of the turn's last message (`checkpointSaidBytes = checkpointSketchBytes`), cut with a bare `…`. It is shown up to 8 KB now (`checkpointSaidBytes = 8 * 1024`), less when the ask fills the digest's head, and a cut it still has to make ends with `[clipped by codeaf: N of M bytes]` (`checkpointClipSaid`, which takes the room left). The remains ask (`checkpointRemainsAsk`) now says clipped text is never evidence the person saw a cut-off answer.
+  - `checkpointCarryOnLead` told a model that found the note mistaken to `explain the evidence briefly, and finish`. It now says codeaf's completion check wrote the note, the person does not see it, and a wrong note is answered with exactly `[no change]` (`session.NoChangeReply`). The old lead is kept as `explainingCheckpointCarryOnLead` only so old journals still hide it.
+  - A carry-on the model answered was always read again until `checkpointCarryOnCap` (3) or the standstill rule stopped it. A carry-on answered with `[no change]` now ends the turn at once, with no further reader call. It is honoured only as the very next reply to the reader's note (`answeredNoteUnchanged` reads the transcript): after tool calls, after a person's steer, after a load or ask nudge, or with other words beside it, the turn is read as before. A turn ending on the token neither starts the route judge nor hands the token to the memory reflex, which reads the answer before it.
+  - Every assistant reply was a row a person could read back, and the fold's answer was the last one. A tool-less reply that is only `[no change]` is now left out of replay (`entryRows` answers 0) and emptied in the live feed at its response boundary (`feed.confirmResponse`), so the settled answer before it is what `deriveWorkfolds` leaves standing. `bin/codeaf chat --once` prints deltas as they stream and can still print the token.
+  - `internal/session/prompts/system.md` had `# Tone` and `# Delivery`. It has `# The answer`, `# Answer or change`, `# When corrected` and `# Messages from codeaf` instead, all four kept on the lean page, and the rules the old two carried — match the person's task and vocabulary, choose the safe option under uncertainty, evidence and blocking details complete, never a compiling scaffold or a narrowed test, never half-solved work — live inside them. `# The answer` says that once a turn ends only its last message stays in view (a plan and the per-batch sentence are still shown while it runs), and `# Answer or change` says an answer asked for in chat is written in the reply, not a file, unless the person asks for a file (`Messages from codeaf` is an explicit `keeps: true` row). That section names the user-role tags codeaf writes to the conversation — `[carry on]`, `[taking stock]`, `[silent]`, `[stuck]`, `[folded …]`, `[context compacted]` — while `[image #N]` marks the person's attachment; it does not list the private reader's `[still asked]`, the tool result's `[held]`, or standing news's `[something you set up fired]`, whose line carries its own instruction under the event and is not repeated on the page (`TestTheSteeringLineReadsAsNewsAndNotAsARequest`). `TestMessagesFromCodeafNamesEveryUserRoleOpening` pins the list from the production constants. `for reversible work act and offer to unwind it` now ends `when the person asked for a change`, and `NEVER yield while actionable work remains` is `Don't end the turn while work the person asked for remains`.
+  - The prefix byte waivers were `fixedPrefixWaiver = 5_291` and `leanPrefixWaiver = 13_566`. After the new sections and the provenance-list correction they are 7_280 and 15_555: fixed measures 55,280 bytes and lean 47,055, 2,004 bytes over `origin/dev` on both arms, and both waivers sit exactly on the measurement. The page's overall length is round two of #1065.
+
+  Round one of #1065. A person asked for a per-seat model table; the reader,
+  shown 600 bytes of it, said three times that it was cut off; the model
+  reprinted it twice and then argued, and the argument was the only answer left
+  standing under the `worked` fold.
+
+  </details>
+
+- **the drafted-with footer names CodeAF and still links to agentfield.ai** — [#1075](https://github.com/Agent-Field/codeaf/pull/1075) · `resident` `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The pull request and issue footer read `Drafted with [agentfield ai](https://agentfield.ai/github?…) · reviewed and owned by the author`, and the comment mark read `<sub>drafted with [agentfield ai](…)</sub>` (`exec.AttributionPullFooter`, `AttributionIssueFooter`, `AttributionCommentFooter`). They now name `[CodeAF]`; the link, its utm parameters and the rest of each line are unchanged.
+
+  </details>
+
+- **The manual and the guide say the install proxy is live, because it is** — [#1076](https://github.com/Agent-Field/codeaf/pull/1076) · `docs` `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `internal/manual/chat/running-from-the-terminal.md` said the repository is private, that the raw installer answers 404 to anyone not signed in, and that `https://agentfield.ai/get/codeaf` is not serving yet. The repository has been public and that address has served `scripts/install.sh` from `main` since 2026-09-16; the section now opens with `curl -fsSL https://agentfield.ai/get/codeaf | bash`, names the raw GitHub line as the script under it, and gives `/dev`, `/staging` and `/rc` on the path beside the `bash -s --` flags.
+  - `docs/GUIDE.md` said a source checkout is the road that works today, that the proxy route is written and unmerged, that the clone needs repository access while it is private, and that the repository has no rc or staging publication. The installer now comes first under `## Install`, the clone line carries no access caveat, and the channel sentence is a condition: a push to `dev`, `staging` or `main` publishes that channel's build, and a channel with nothing published stops with `no <channel> build has been published yet`.
+  - Neither page said which shell to pipe the installer into. Both now say `bash`, not `sh`: the script uses `set -o pipefail` and `[[ ]]`, and `sh` is dash on Debian and Ubuntu, which rejects both.
+
+  The proxy refuses rather than misleads — a script without its channel line exactly
+  once, or a body that is not a shell script, is a 502 — and the manual now says so,
+  because that is what the route does. Still true and unchanged: nothing self-updates;
+  there is no `internal/update` on `dev`.
+
+  </details>
+
+- **task commits are authored by the agentfield-bot account; the old local address is legacy** — [#1088](https://github.com/Agent-Field/codeaf/pull/1088) · `chat` `engine`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - Task commits were authored `codeaf <codeaf@localhost>` (`codeafGitEmail` in `internal/session/task_branch_protection.go`, and the session-opening commit in `cmd/codeaf/chatv3_place.go`). They are authored `codeaf <agentfield-bot@users.noreply.github.com>`, the same identity the Co-Authored-By trailer names; `codeaf@localhost` is never written, and `taskCommitIdentity` still recognises it (with `aforge <aforge@localhost>`) as the task system's own work.
+
+  </details>
+
+- **The wordmark is drawn `CodeAF`, four rows tall, with the capitals on the `d`'s cap line** — [#1106](https://github.com/Agent-Field/codeaf/pull/1106) · `chat`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - The wordmark was three rows. It is four: the x-height letters (`c`, `o`, `e`) sit in the lower three and leave the top row blank, and the capital `A`, the capital `F` and the `d`'s ascender start in the top row. `wordmarkRows` returns four rows and `wordmarkGlyphs` is `map[rune][4]string`; anything holding three rows, or a `[3]string`, is holding the old letterforms.
+  - The last two letters were lowercase forms, and the `a` was `┌─┐ / ├─┤ / └─┘`, which reads as an `8`. They are a capital `A` (`┌─┐ / │ │ / ├─┤ / ╵ ╵`) and a capital `F` with the longer top arm (`┌── / ├─  / │   / ╵  `). The whole word is `          ╷     ┌─┐ ┌──` over `┌─  ┌─┐ ┌─┤ ┌─┐ │ │ ├─ ` over `│   │ │ │ │ ├─╴ ├─┤ │  ` over `└─  └─┘ └─┘ └─┘ ╵ ╵ ╵  `.
+  - A bar in box-drawing sits at the middle of its cell and only a vertical reaches the edge, so the `d`'s ascender is now the half-stroke `╷` (its top is the capitals' top bar, not the edge above it) and every stem that ends on the baseline ends as `╵` (it stops where `└─┘` does). A `│` in the bottom row is a descender and nothing else. `d` is `  ╷ / ┌─┤ / │ │ / └─┘`, with a bowl the height of the `o`'s.
+  - The DRAWING is mixed case and the TEXT is not: `product` is still `codeaf`, the glyph table is still keyed by its lowercase letters, and a terminal that cannot draw boxes still gets the word `codeaf`. The lowercase spelling law over sentences, titles and `--help` is unchanged; only the letterforms under two of its letters are.
+  - `internal/manual/chat/empty-screen.md` drew the retired `aforge` letterforms, with the pre-terminal `e`, under the label "the codeaf wordmark". It draws the shipped letterforms now. The name law walks text and cannot see a name spelled in box-drawing, so that page had spelled the old name in pictures since the rename.
+
+  Two closed bowls of equal size stacked on each other are an `8`, whatever letter
+  they were drawn for, and that is what the second-to-last glyph of the product's
+  own name had been on the first screen of every fresh install. The owner's answer
+  was to have the two letters at the end stand up out of the word as capitals —
+  and a capital's top is the ascender's top, which three rows of box-drawing could
+  not give it: a bar is drawn at the middle of its cell, a stem reaches the edge,
+  so the `d` stood half a row over the `A` and the `F` however they were formed.
+  The fourth row is that half a row made whole, with the x-height letters a row
+  lower and the half-strokes `╷` and `╵` putting the ascender's top and every
+  capital's feet on the same two lines the bowls use.
+
+  </details>
+
+
+### Fixed
+
+- **The switcher's close key says close tab, because put away is home's word for archiving** — [#1040](https://github.com/Agent-Field/codeaf/pull/1040) · `chat` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The switcher's legend read `ctrl+w put away`. It now reads `ctrl+w close tab`. The key never archived anything: `hopAway` takes the row off this window's tab row and the conversation keeps running and stays on the list, which is what the card's own receipt (`tab closed · <title>`) already said.
+  - `put away` belongs to ONE act and it is home's: `ctrl+e` on a home row archives a conversation and says `put away · type its name to find it again`. Nothing on the switcher puts a conversation away. `internal/manual/chat/keys.md` used the phrase for the switcher's `ctrl+w` in four places and no longer does; its section is now headed *Close a tab from the switcher*, not *Put a conversation away from the switcher*.
+
+  Reported by the owner from the card itself: the legend said one act and the
+  receipt two lines below said another. The receipt was the honest one — its
+  comment in `hop.go` states the law it was written under, that the surface must
+  not claim an act it did not perform — so the legend moved to meet it.
+
+  The switcher's section in `keys.md` now carries the distinction in its own
+  paragraph rather than leaving a reader to infer it, because the two keys are one
+  keystroke apart in a person's hands and only one of them is durable.
+
+  </details>
+
+- **The switcher's fold says where the tabs stop, and every refusing row says why** — [#1040](https://github.com/Agent-Field/codeaf/pull/1040) · `chat` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - With `→ show closed` open, the card drew one undifferentiated list — nothing said which rows were tabs and which were not, so a conversation whose tab you had just closed looked identical to one that is open (same `○`, same live clause, because it IS still held and running). One dim `hopClosedLabel` (`closed`) is now drawn at the seam. It is not a row: it takes no `hopSpot`, the cursor skips it, and it is not drawn while the list is only tabs.
+  - `hopRest` asked the disk for the project folder to decide the row's GLYPH but left `switcherRow.gone` false, so `hopRestNote` never said `that folder is gone` — the row wore the refusing `✕` with an empty clause. The answer is taken once and both readings use it. Every row drawn with `✕` now carries its reason: `open in another window` or `that folder is gone`.
+  - `internal/manual/chat/keys.md` did not say what the card's `✕` means. It does now, in both the layout section and the row-clause table: `✕` is the card refusing to open that row, and it is NOT the tab-close mark a person presses. The two shapes are near-identical and mean different things one line apart.
+
+  The owner's report: "tabs that I close don't end up with an x icon when show
+  closed is enabled. Instead they look just like the open tabs. What's the
+  difference between these tabs and those that do have an x icon?"
+
+  Both halves of that were the surface's fault. There was no difference drawn
+  between a tab and a closed tab once the fold was open, and the `✕` they had
+  reasonably read as "closed" is `tokens.GlyphFailed`, which on this card means the
+  row refuses — and on one of its two cases said nothing at all about why.
+
+  The seam is a word rather than a rule, because the house rule is that nothing is
+  outlined and this surface separates things with ink. It is the fold's half of the
+  `open` the head already says, and it is spaced the way that head is spaced — a
+  blank above and a blank below, the same three lines as `open`, its blank and its
+  first row. Drawn tight against the rows it sat between two lists and read as
+  belonging to neither. The air yields on a short card and the word does not, which
+  is the rule the card's own top and bottom air already follows. Its three lines
+  are charged only where the seam is actually drawn: reserved unconditionally they
+  came off every short card, and `→ show closed` then made the list SHORTER and
+  drew no closed row at all while the foot offered `← hide closed` (found in
+  review, measured at card heights 8 through 13). A card too short for the blanks
+  gives them up, and one too short for the word gives that up too rather than give
+  up the rows the key was pressed for.
+
+  A LIMIT THAT REMAINS, KNOWINGLY: on a terminal of about twenty rows or fewer the
+  card holds three rows, and where all three are tabs `→ show closed` changes only
+  the foot — the closed rows are below the scroll line rather than missing, and `↓`
+  reaches them. Moving the cursor onto the first closed row would hide it, at the
+  cost of `enter` right after `→` opening a conversation the person had not
+  selected; the owner looked at both and kept the cursor where it is. `keys.md`
+  says so on the page.
+
+  Not changed: the `✕` itself. That a person presses `✕` to close a tab and reads
+  `✕` as a refusal one line below is a real collision in the vocabulary, but the
+  mark is `tokens.GlyphFailed` through the one door every surface uses, and moving
+  it is a change to `docs/design/icons/DESIGN.md` and the slot table rather than to
+  this card.
+
+  </details>
+
+- **Taking a conversation from the switcher leaves the place you took it from** — [#1040](https://github.com/Agent-Field/codeaf/pull/1040) · `chat` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `alt+k` (`ctrl+k` when this branch was written) then `enter` on HOME (or any other place) used to leave the place standing. It did switch — the conversation behind the screen changed — so the keystroke read as doing nothing while it had quietly swapped what home was drawn over. `hopTake` now ends in `hopLand`, which comes down off whatever place is showing, so the card's `enter open` lands you in the conversation on every screen it opens over. The same goes for `ctrl+tab` quick switching and for a row taken from below the fold.
+  - A refusal from the card (`that conversation is no longer open`, a locked conversation, a workspace that has gone) used to be said with `app.note`, onto the entry line of a conversation nobody could see while a place was up. It now goes through `app.hopSay`: home's own sentence, a place's `app.pageMsg`, or the conversation's entry line when nothing is standing over it. A refused row still leaves the place up, on purpose — the person has to be able to read it.
+
+  The switcher is drawn over the screen rather than being a screen of its own, which
+  is what lets it open on all seven places. The cost was that taking a row moved the
+  conversation UNDERNEATH the place and left the place in front, and nothing in the
+  card said so.
+
+  Every other door between conversations already ended with the place coming down and
+  spelled it for itself — home's `enter` in `closeHome`, the search place's row door
+  in `standDownFullscreen`, `ctrl+shift+t` in `closeHome` again. `hopLand` is that
+  statement made once, for the one door that can be opened from anywhere, which is why
+  it asks `pageShowing` rather than naming home.
+
+  `ctrl+w` on the card is deliberately NOT changed: closing a tab from home leaves you
+  on home, because that key is about what is on the tab row and not about where you
+  are standing.
+
+  </details>
+
+- **An empty target is nothing to open, and never a window on the working directory** — [#1042](https://github.com/Agent-Field/codeaf/pull/1042) · `chat`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `startOpener("")` was believed to fail harmlessly. It does not. `open ""` on a Mac is not an error — the platform resolves the empty path to the CALLING PROCESS'S OWN WORKING DIRECTORY and puts a Finder window on screen. So the empty case was not a refused handoff with the link left standing; it was a file manager opening on somebody's folder with nothing on the surface to explain it. `startOpener` now refuses an empty or blank target before `exec.Command` is reached, with the sentence a PATH miss already says.
+  - `internal/tui3`'s own test suite opened a Finder window on ITS OWN SOURCE DIRECTORY on every run, in every worktree. `salience_test.go`'s table drives every event kind through the conversation's pump; `EventConnectAuth`'s row carries no `AuthURL`, its door is the browser handoff (connect.go), and the file put no stub over `processOpener`. If you remember `go test ./internal/tui3` as not touching the machine running it, that was only true of every OTHER door. `salienceRun` now takes `watchOpener`.
+
+  The four `internal/tui3` entries in the owner's Finder recents — one per checkout
+  that had ever run the suite, and nothing else from any of those trees — are what
+  made this findable. `open` raises an existing window rather than making a second
+  one, so a fault that fired once per test run read as ONE window shoving itself
+  in front of a person repeatedly, which is a much harder thing to connect to a
+  command you just typed.
+
+  The guard is in `startOpener` rather than at the sign-in call site on purpose.
+  Six doors reach the platform through that function, and the thing being refused
+  is a property of the target and not of any one door's story about it.
+
+  `opener_test.go` asserts the refusal WITH A WORKING OPENER ON PATH. A machine
+  with no opener refuses for a different reason and would pass the test with the
+  guard deleted, which is the shape the older
+  `TestNoOpenerOnPathIsAnAnswerAndNotAFork` already covers from the other side.
+
+  </details>
+
+- **the release workflow's test job survives the deleted known-red ledger** — [#1047](https://github.com/Agent-Field/codeaf/pull/1047) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The `Release` workflow's `test` job read `.github/known-red.txt` with an unguarded awk under `set -euo pipefail`; once #1012 deleted the ledger, that line exited 2 inside an assignment and the step ended before `go test` ran, on every channel but `dev` — which skips the job by design, so no push to `dev` could show it. The first staging build after the deletion published nothing. The ledger is now read only when it is present, the way `scripts/laws.sh` reads it, and a test runs the step's real prologue under the real shell options with the ledger absent, empty, comments-only and naming a test.
+
+  </details>
+
+- **the installer takes the newest channel build, not the first one GitHub lists** — [#1056](https://github.com/Agent-Field/codeaf/pull/1056) · `build`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `scripts/install.sh` picked the first tag matching `--rc`, `--dev` or `--staging` in the order `releases?per_page=100` returned them, which is not publish order — with `--dev` on 2026-09-15 that chose `dev-20260915-e2ae913b7d0c`, published 13:43Z, while `dev-20260915-56a22c20ec53` at 14:56Z and `dev-20260915-4b6ec83cfbfa` at 15:21Z both existed. It reads the whole list now and takes the matching tag with the newest `published_at`, falling back to `created_at` when a release carries no publish time, so a channel flag installs the newest build wherever GitHub happened to put it. `--stable` and `--version <tag>` are unchanged.
+  - When the release API refused, the installer said `a rate limit?` and offered `export GITHUB_TOKEN to raise the limit`, which named the wrong cause for the 404 a private repository returns to an anonymous caller. The sentence is now `GitHub's API could not be reached or refused (a rate limit, or a repository you cannot read?); pin VERSION=<tag>, or export GITHUB_TOKEN`, so both causes are on screen.
+
+  The list the API hands back is not ordered by anything the installer cares about,
+  so a channel flag is a claim about time and has to be answered with the releases'
+  own timestamps. `extract_dated_tags` reads them the way `extract_tags` already
+  read tags — no `jq`, POSIX awk, bash 3.2 — and stops at a release's `assets` so an
+  asset's `created_at` can never decide the pick.
+
+  </details>
+
+- **The folder walk's budget bounds every entry, and the suite never walks your home** — [#1058](https://github.com/Agent-Field/codeaf/pull/1058) · `chat`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - `folderIndexWalk`'s three-second budget was believed to bound the walk. It did not. The clock check stood BELOW the `!entry.IsDir()` return, so a file never consulted it and the walk got a turn to stop only between directories — and the comment over the constants said exactly that ("checked before traversal and at each directory"), which was the defect written down rather than a description of it. One directory holding hundreds of thousands of files (`~/Library/Caches` on any Mac) therefore ran unbounded: measured on the owner's laptop, `scanFolderRoots` took 5m58s under a 3s budget and returned 1144 roots. If you remember the folder index as cheap, it was cheap only on a small home directory.
+  - `internal/tui3`'s test suite walked the REAL home directory of whoever ran it. tui3_test.go's TestMain moves the state root and deliberately leaves HOME alone, because the package draws `~` in front of paths — but `scanFolderRoots` does not draw `~`, it walks it with os.UserHomeDir, which that seam never covered. Any test opening the folder picker paid for a full home index. `folderRootScan` is now the seam and TestMain answers it with nothing, so CODEAF_HOME is once again the whole story about what a tui3 test touches.
+  - `folderIndexWord` is DELETED. If you remember the folder index as telling a person when it was bound or when a permission refused it, it never did: the function existed, it was tested, and no surface called it. The facts it wrapped — `Bound` and `Denied` on the answer — are unchanged and still recorded.
+  - `internal/manual/chat/choosing-a-folder.md` described layer 4 of the picker as an index of repositories and ordinary folders under your home directory and named no limit. It now states the three stops — six levels, two thousand folders, three seconds — because a walk that genuinely stops is a list that is genuinely partial, and typing a path is the way past it.
+
+  The two halves are one change because the second is what made the first
+  visible. A budget that silently failed to bound anything is invisible until
+  something with a budget of its own is waiting on it, and the thing waiting was
+  the test driver: `TestThePicksLandingMidBrowseKeepTheChoicesAndThePreview`
+  panicked after five seconds on a laptop and passed on a CI runner whose home
+  directory is empty.
+
+  `TestTheBudgetIsMeasuredAgainstEveryEntryAndNotOnlyDirectories` drives the clock
+  rather than racing one. What is being proved is WHERE THE WALK STOPS, and a
+  threshold in wall clock is a coin toss on a loaded box — so the clock spends a
+  second of the budget per reading, and the assertion is that a later directory is
+  never reached across a run of files.
+
+  `folderIndexWord` is gone. It wrote two sentences for precisely this case —
+  `there was more to look through than this list holds`, and a count of the
+  folders a permission refused — and NOTHING HAS EVER DRAWN EITHER. A sentence no
+  surface reaches is not a promise half-kept, it is a claim about the product that
+  is false, and it read as though a person were being told their list was partial.
+  [folderIndexAnswer.Bound] and `.Denied` are the facts, they are still recorded,
+  and the tests that stood on the sentence now stand on them. A picker that says
+  out loud what it could not see is a real thing to want and is its own change.
+
+  </details>
+
+- **"ask before running" reaches the gate you are already behind, and /status names it** — [#1063](https://github.com/Agent-Field/codeaf/pull/1063) · `chat`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The `ask before running` row in `/settings` (`tools.approvalMode`) used to land on the NEXT session only — its own hint said so — because `internal/tui3`'s `applySetting` had live-push hooks for the work, icons, lane, lane-guard and routing rows and none for the three safety rows. It pushes now, through the same `ApplyApprovals` seam `/permissions` drops a banked rule through (`cmd/codeaf`'s `applyV3Approvals`), and so do `tools.approval` and `tools.bashPatterns`. The hint reads: "A change reaches this conversation straight away, unless the panel says it lands on the next session." Where the rules cannot be rebuilt — and on a plain launch, where this machine's engine holds the conversation and there is no take-back door to its gate — the row is still saved and the panel's foot line says `saved · from the next session`, which is /permissions' own sentence.
+  - The YOLO badge and the gate did NOT always agree, in both directions. `app.approvalPosture` reads the profile row live (at boot and at every turn end), so setting the row to `allow` in the panel lit the badge over a gate that went on asking, and setting it back to `prompt` put the badge out over a gate that was still wide open — the false-safety claim #322 and #325 were about, arrived at from the other side. The badge and the gate now move on the same keystroke, and on the failure branch the badge stays with the gate in force rather than following the file.
+  - `/status` did NOT list everything the status line knows: the gate had no line on it at all, because the only spelling of that fact was the `YOLO` badge, which is drawn solely over an open gate. `/status`, `/status --json` and the phone's status sheet now carry `approvals` with the posture in words — `prompt`, `allow` or `deny` — read from the same single posture the badge reads. It sits after `search` and before the telemetry words, and the segment is no longer written into the page a second time. A remote session whose engine carried no posture still has no line. The note's label column is measured from the widest label it carries, so `approvals` widens it by two cells — three crew tests that asserted `"\ncrew"` plus exactly five spaces were asserting about the other rows and now read the line by its label.
+
+  The panel's own law is that a row a person watched themselves change must not
+  then do nothing, and the one row where breaking it is a safety claim rather than
+  a slow answer was the row that broke it.
+
+  </details>
+
+- **a job root working in the person's directory is offered its overflow file outside that tree** — [#1096](https://github.com/Agent-Field/codeaf/pull/1096) · `engine` `resident`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `leafOutputHint` offered a job root the workspace-relative `exec.SuggestPathFor` address while pointing every intermediate leaf at the run's scratch. Under `codeaf do`, whose workspace is `OwnedByPerson`, a root that took the offer left an untracked `task-<n>-<slug>.md` at the root of the person's tree; `Workspace.RecordChanges` observed it, `jobArtifacts` joined it into the record the delivery gate is held to, and the gate refused a delivery whose work was complete and committed, ending the run incomplete. A personal root now resolves that address through `Workspace.ScratchPath`, the same place an intermediate leaf writes, and the directory-already-there withdrawal is measured at the scratch spelling.
+  - Nothing is exempted by filename. `Workspace.record` still drops only paths outside the root, so a file that turns up in the person's tree while a leaf runs joins the record whatever it is named, including a name wearing the run's own `task-<n>-<slug>.md` shape.
+
+  A job root's deliverable is its final message; the file was only ever the second
+  copy for overflow a message cannot carry, and a second copy filed in the tree
+  the delivery is judged in is an untracked file the person's own tools then have
+  to explain.
+
+  </details>
+
+- **The README shows how to pin a release version again** — [#1103](https://github.com/Agent-Field/codeaf/pull/1103) · `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The README said only that version pinning is on the releases page. Its Install section now shows the pin inline: `curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash`.
+  - `TestPublishedPinExamplesGiveVersionToBash` failed on a clean `dev` checkout after the README rewrite. It passes; every published install surface gives `VERSION` to bash, not to curl.
+
+  The pin goes after the pipe because `VERSION=<tag> curl ...` sets the variable
+  for curl and the install script never sees it; the release test guards every
+  page that shows an install line against that spelling.
+
+  </details>
+
+- **a release download finishes over a real network, on its own clock** — [#1110](https://github.com/Agent-Field/codeaf/pull/1110) · `chat` `build`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - #1060's `/update` and `codeaf update` were believed to install a release over any working network. They could not finish one at all: both doors built the release client with the three-second budget meant for the launch check, and Go's `http.Client.Timeout` covers the whole exchange including every body byte, so the 57,532,578-byte `codeaf-linux-amd64` — about eight seconds on a healthy link — was cut off three seconds in with `read the release response: context deadline exceeded`. `--check` passed everywhere because its answer is a few KB, and every hand test served the asset from a local mirror in milliseconds.
+  - The release client no longer sets `http.Client.Timeout` at all, and there is no longer one clock over the whole road. Its transport bounds only what has made no progress — a five-second dial, a five-second TLS handshake, a ten-second wait for response headers — and every call takes its deadline from its context: the launch check and `codeaf update --check` keep a three-second whole-exchange deadline from the single `update.CheckTimeout` constant that both doors read, the release metadata an install reads gets ten seconds per request, and the asset download gets a thirty-second no-byte stall window plus a fifteen-minute ceiling. A dead link still fails in seconds; a slow one now succeeds.
+  - A failed update could hand a person Go's own deadline text. It cannot now: a stall says `downloading codeaf-linux-amd64 stalled — no bytes for 30 s`, the ceiling says `downloading codeaf-linux-amd64 took longer than 15 minutes`, late headers say `codeaf-linux-amd64 did not start arriving within 10 s`, and a release request that does not answer names the release API and its window. The terminal road still ends with the curl line and the chat still offers it.
+
+  A contract item about time has to be proved with a slow server. Every hand test
+  behind #1060 downloaded the asset from a local mirror, which serves 57 MB in
+  milliseconds, so the one clock that mattered was the one nothing ever ran. The
+  tests here inject the stall window and the ceiling and then use real slow,
+  silent and trickling servers, and the two roads were walked again against the
+  published v0.2.0 release.
+
+  </details>
+
+
+### Removed
+
+- **the internal experiment records leave the tree, and the design docs stop naming the bench machine** — [#1068](https://github.com/Agent-Field/codeaf/pull/1068) · `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - `docs/design/pin-doe/`, `docs/design/workspace-foundation/` and the day-by-day wave records under `docs/design/conversation-runtime/` (status, plans, audits, local change notes, the prototype) were in the tree. They are gone; `docs/design/conversation-runtime/PARETO.md` stays because `bench/conversation/README.md` cites it as the measurement contract. `docs/design/plan-gate-doe/REPORT.md` and `docs/design/turn-wall-share-doe/` stay too: live comments in `cmd/codeaf`, `internal/config`, `internal/session` and `internal/splitgate` point at them as the measured evidence behind a default.
+  - Bench READMEs and the design docs under `docs/design/` spelled the bench machine by name (`ssh spark`, `~/.config/fleet/secrets.env`, `/private/tmp/af-conversation-ops/…`). Those pages now say `ssh benchhost`, a sourced `secrets.env` and a scratch bench-ops directory. `CLAUDE.md`, the `Makefile`, `docs/rules/ci.md`, `BENCHMARKS.md` and code comments were not part of this pass and still say Spark.
+  - `test/ux/` was removed by #991 because it drove the v1 and v2 surfaces. A revival of it was proposed here and withdrawn: nothing ran it, it had never been run, and when it was run its first journey failed on its first screen check (#1072). `internal/e2e` remains the one suite that drives the binary, as `docs/JOURNEY.md` says.
+
+  </details>
+
+
+### Internal
+
+- **v0.2.0 is rolled up into CHANGELOG.md, and the removed-worker law reads the changelog as the record** — [#1045](https://github.com/Agent-Field/codeaf/pull/1045) · `build` `docs`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `docs/changes/unreleased/` held every entry since v0.1.0 — 613 of them, the codeaf rename included. They are the `## v0.2.0` section of `CHANGELOG.md` now, and the folder holds only what has landed since; a memory of a change lives in the changelog's own fold, not in a loose file.
+  - `internal/exec`'s removed-worker law skipped `docs/changes/` as the record but not `CHANGELOG.md`, so the first roll-up went red on the laws for naming `swepro` in the very entries that record its removal. `CHANGELOG.md` is exempt as the same record; a live file that names a removed worker still fails the build.
+
+  </details>
+
+- **The carry-ladder session tests wait for the mark's drawing instead of racing it** — [#1104](https://github.com/Agent-Field/codeaf/pull/1104) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `TestASuccessfulHandoffJournalsTheRungThatSuppliedTheBrief` could fail inside a full `make check` with the draft as the brief. The checkpoint fixtures now wait for the drawing beside the turn to land, and the race has a regression test.
+  - The race looked like an errand stealing a scripted step. It is not: the drawing is a sidecar, so the round count before it lands drifts with the scheduler and the writer's ask could land past the end of the script.
+
+  </details>
+
+
 ## v0.2.0 — 2026-09-15
 
 ### Added

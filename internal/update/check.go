@@ -80,7 +80,7 @@ func CheckLaunch(ctx context.Context, options CheckOptions) (Available, bool) {
 	if options.Client == nil {
 		return Available{}, false
 	}
-	release, err := options.Client.Select(ctx, Choice{Channel: "stable"})
+	release, err := options.Client.Check(ctx, Choice{Channel: "stable"})
 	if err != nil {
 		return Available{}, false
 	}
