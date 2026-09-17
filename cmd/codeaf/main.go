@@ -31,6 +31,7 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -70,6 +71,21 @@ func execute() (code int) {
 		if recovered := recover(); recovered != nil {
 			code = reportFault(os.Stderr, fmt.Sprint(recovered), debug.Stack())
 		}
+	}()
+	// The anonymous usage counts get their one configured answer before any
+	// command is dispatched, and their one session event at the exit every
+	// command shares. Both are here, in execute, because nothing else in this
+	// file is reached by all of chat, do, exec, run and `plan run` — and a
+	// counter that missed a door would miscount the runs it was built to count.
+	//
+	// The CONFIG read must never become a failure of its own: a machine with
+	// no profile yet, or a broken project file, is a machine `codeaf version`
+	// still owes an answer to. Any error reads as "on" — the default — and
+	// the run carries on.
+	telemetry.Configure(telemetryConfiguredOff())
+	telemetrySession := telemetryBegin()
+	defer func() {
+		telemetryEnd(telemetrySession, code)
 	}()
 	// The model-call log's file descriptor goes back at the one exit every
 	// command shares (internal/calllog). Nothing depends on it — every record is
@@ -225,6 +241,10 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
+	case "telemetry":
+		// The person's door onto the anonymous-usage pipe: what it is doing,
+		// exactly what would leave, and the switch. It emits nothing itself.
+		return runTelemetry(os.Args[2:])
 	case "manual":
 		// Everything codeaf knows about itself, read straight (manual.go). It
 		// is the same corpus the chat's manual tool reads, printed as it is
@@ -301,11 +321,10 @@ const (
 // and where taking it out of the group's lines had silently removed it. One
 // source of truth, two places it is read.
 var handWorkFooter = `  the three differ by how much thinking happens first: do plans and may split
-  the job, exec does not plan, run follows a plan somebody saved. None of them
-  takes --yolo: they run with nobody watching and nothing in them stops to ask.
-  What do and run can still refuse is a plan whose price crosses your limit,
-  and --yes-spend answers that in advance. All three end the same way, and
-  why is in --json's stop field:
+  the job, exec does not plan, run follows a plan somebody saved. None takes
+  --yolo, and What do and run can still refuse is a plan whose price crosses
+  your limit — --yes-spend answers that in advance. All three end the same
+  way, and why is in --json's stop field:
   ` + foldedExitLadder(2, helpWidth) + `
   CODEAF_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
 
@@ -345,11 +364,13 @@ Look at what happened — read-only, no key, nothing spent
       show today's self-spend receipts
   codeaf why <task-id> [--db path]
       what one piece of work did — its turns, tools, arguments, how it ended
+  codeaf telemetry
+      the anonymous usage counts: status, show, off, on
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what
-      came back. The filters are exact and combine; --json prints the rows as
-      they are on disk, --body one call's bodies. CODEAF_CALL_LOG=off is off
+      came back; --json prints the rows as on disk, --body one call's bodies.
+      The filters are exact and combine; CODEAF_CALL_LOG=off is off
   codeaf models [--refresh]
       the models this machine will use, and what each has been measured at
   codeaf doctor [--db path]
@@ -374,8 +395,7 @@ Housekeeping — changes state on disk or on the network
   codeaf devices
       list the devices paired with this machine
   codeaf devices revoke <name> [--all]
-      stop one device opening a conversation here; --all, every device of that
-      name
+      stop one device opening a conversation here, --all every device of it
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
@@ -399,8 +419,8 @@ Plan work by hand — a plan you can read, edit and diff
               [--out plan.json] [--model slug] [--plan-model slug]
   codeaf plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json]
               [--yes-spend] [--model slug] [--plan-model slug]
-      a plan written to a file, then executed exactly as written. It is not
-      what most people want: nothing learnt mid-flight moves a frozen plan
+      a plan written to a file, then executed exactly as written. It is not what
+      most people want: nothing learnt mid-flight moves a frozen plan
 
 Examples:
     codeaf                                open the conversation you were having
@@ -502,6 +522,15 @@ than fighting your shell.
                        also record each call's whole request and response —
                        your prompts included. Off by default, and for one run
                        at a time.
+  CODEAF_TELEMETRY    on (default). off turns the anonymous usage counts off;
+                       ` + "`codeaf telemetry`" + ` says what they are and what would
+                       leave, DO_NOT_TRACK=1 does the same
+  CODEAF_TELEMETRY_ENDPOINT
+                       where the usage counts go
+                       (default https://agentfield.ai/api/oss/codeaf/telemetry);
+                       set to empty to turn them off entirely
+  DO_NOT_TRACK=1     the ecosystem's own opt-out word, honoured as if it were
+                       CODEAF_TELEMETRY=off
 
 The user-facing knobs above — budgets, rhythm, the document reader, the vision
 and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
