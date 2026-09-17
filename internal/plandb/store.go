@@ -617,11 +617,33 @@ func (s *Store) RemoveDep(downstream, upstream string) (*Task, error) {
 	})
 }
 
+// A NOTE'S AUTHOR IS ONE OF TWO HANDS: a worker leaving a handoff for the
+// next worker, or the person steering the run. The store records which, and
+// nothing else about the note changes with it.
+const (
+	NoteFromWorker = "worker"
+	NoteFromPerson = "person"
+)
+
 // AddNote leaves a task-scoped message. The note is public to every worker on
 // the run — the CLI's notes listing prints all of them — and the author is
 // recorded so a reader can tell an owner's handoff from a bystander's
 // observation.
 func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
+	return s.addNote(taskID, agent, body, NoteFromWorker)
+}
+
+// AddPersonNote leaves a note in the person's own voice. It is AddNote with
+// the author taken to be the person and no agent name; the CLI prints it with
+// a `person:` prefix, and it is the same store row, because a note's home is
+// the task either way.
+func (s *Store) AddPersonNote(taskID, body string) (Note, error) {
+	return s.addNote(taskID, "", body, NoteFromPerson)
+}
+
+// addNote is the one road both note writers take: validate, mint an id, and
+// stamp the change on the task the note hangs on.
+func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
 	// One transaction, like every writer: the database's write lock, a fresh
 	// load, the change, the commit. See AddMany for why.
 	s.mu.Lock()
@@ -641,10 +663,14 @@ func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
 		next.NextID++
 		note = Note{
 			ID: fmt.Sprintf("n-%08x", next.NextID), TaskID: taskID,
-			Agent: strings.TrimSpace(agent), Body: text, At: now,
+			Agent: strings.TrimSpace(agent), Body: text, At: now, From: from,
 			Project: next.Tasks[taskID].Project, Chat: next.Tasks[taskID].Chat,
 		}
 		next.Notes = append(next.Notes, note)
+		// A note is a change to the task it hangs on, so it moves the task's
+		// own updated_at too — the field a waiting worker's wake reads beside
+		// the note's timestamp.
+		next.Tasks[taskID].UpdatedAt = now
 		return nil
 	})
 	if err != nil {
@@ -672,6 +698,36 @@ func (s *Store) Notes(taskID string, limit int) []Note {
 		}
 	}
 	return notes
+}
+
+// Changed answers the ids of the tasks that moved since a moment: the task
+// row itself, a note left on it, or a context entry scoped to it. It is what
+// a waiting worker's wake reads — one read over the three places a task's
+// state lives — and it names which tasks to look at again, never what
+// changed about them. The ids are the store's bare spelling, in admission
+// order, and a task created after the moment counts as changed because its
+// own row is newer than the moment.
+func (s *Store) Changed(since time.Time) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	moved := map[string]bool{}
+	for _, note := range s.data.Notes {
+		if note.At.After(since) {
+			moved[note.TaskID] = true
+		}
+	}
+	for _, entry := range s.data.Contexts {
+		if entry.TaskID != "" && entry.CreatedAt.After(since) {
+			moved[entry.TaskID] = true
+		}
+	}
+	var ids []string
+	for _, id := range s.data.Order {
+		if moved[id] || s.data.Tasks[id].UpdatedAt.After(since) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // AddContext records a run-wide fact. Kinds are freeform — the doctrine says
@@ -712,6 +768,11 @@ func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
 			Content: text, CreatedAt: now, Project: project, Chat: chat,
 		}
 		next.Contexts = append(next.Contexts, entry)
+		// A task-scoped entry is a change to that task, so it moves the
+		// task's updated_at; a run-wide entry has no task to move.
+		if taskID != "" {
+			next.Tasks[taskID].UpdatedAt = now
+		}
 		return nil
 	})
 	if err != nil {

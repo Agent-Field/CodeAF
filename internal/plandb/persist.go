@@ -116,7 +116,8 @@ var schemaStatements = []string{
 		body    TEXT NOT NULL,
 		at      TEXT NOT NULL,
 		project TEXT NOT NULL DEFAULT '',
-		chat    TEXT NOT NULL DEFAULT ''
+		chat    TEXT NOT NULL DEFAULT '',
+		"from"  TEXT NOT NULL DEFAULT 'worker'
 	)`,
 	`CREATE TABLE IF NOT EXISTS contexts (
 		seq        INTEGER PRIMARY KEY,
@@ -216,7 +217,7 @@ func migrateColumns(db *sql.DB) error {
 	if err := ensureColumn(db, "tasks", "paused", "INTEGER", "0"); err != nil {
 		return err
 	}
-	return nil
+	return ensureColumn(db, "notes", "from", "TEXT", "'worker'")
 }
 
 // ensureColumn adds one column when its table predates it and does nothing
@@ -405,7 +406,7 @@ func loadDeps(tx *sql.Tx, tasks map[string]*Task) error {
 }
 
 func loadNotes(tx *sql.Tx) ([]Note, error) {
-	rows, err := tx.Query(`SELECT id, task_id, agent, body, at, project, chat FROM notes ORDER BY seq`)
+	rows, err := tx.Query(`SELECT id, task_id, agent, body, at, project, chat, "from" FROM notes ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -413,13 +414,17 @@ func loadNotes(tx *sql.Tx) ([]Note, error) {
 	var notes []Note
 	for rows.Next() {
 		var note Note
-		var at string
-		if err := rows.Scan(&note.ID, &note.TaskID, &note.Agent, &note.Body, &at, &note.Project, &note.Chat); err != nil {
+		var at, from string
+		if err := rows.Scan(&note.ID, &note.TaskID, &note.Agent, &note.Body, &at, &note.Project, &note.Chat, &from); err != nil {
 			return nil, err
 		}
 		if note.At, err = parseTime(at); err != nil {
 			return nil, err
 		}
+		if from == "" {
+			from = NoteFromWorker
+		}
+		note.From = from
 		notes = append(notes, note)
 	}
 	return notes, rows.Err()
@@ -544,13 +549,17 @@ func saveDeps(tx *sql.Tx, value state) error {
 }
 
 func saveNotes(tx *sql.Tx, notes []Note) error {
-	statement, err := tx.Prepare(`INSERT INTO notes (seq, id, task_id, agent, body, at, project, chat) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	statement, err := tx.Prepare(`INSERT INTO notes (seq, id, task_id, agent, body, at, project, chat, "from") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
 	for seq, note := range notes {
-		if _, err := statement.Exec(seq, note.ID, note.TaskID, note.Agent, note.Body, formatTime(note.At), note.Project, note.Chat); err != nil {
+		from := note.From
+		if from == "" {
+			from = NoteFromWorker
+		}
+		if _, err := statement.Exec(seq, note.ID, note.TaskID, note.Agent, note.Body, formatTime(note.At), note.Project, note.Chat, from); err != nil {
 			return err
 		}
 	}

@@ -1479,6 +1479,12 @@ func cliShow(st *Store, p *cliParsed) error {
 	if task.Result != "" {
 		fmt.Fprintf(cliOut, "result: %s\n", task.Result)
 	}
+	if notes := st.Notes(task.ID, 0); len(notes) > 0 {
+		fmt.Fprintln(cliOut, "notes:")
+		for _, note := range notes {
+			fmt.Fprintln(cliOut, cliNoteLine(note))
+		}
+	}
 	return nil
 }
 
@@ -1600,13 +1606,23 @@ func cliNotes(st *Store, p *cliParsed) error {
 		return nil
 	}
 	for _, note := range notes {
-		if note.Agent != "" {
-			fmt.Fprintf(cliOut, "  %s [%s] %s\n", note.ID, note.Agent, note.Body)
-		} else {
-			fmt.Fprintf(cliOut, "  %s %s\n", note.ID, note.Body)
-		}
+		fmt.Fprintln(cliOut, cliNoteLine(note))
 	}
 	return nil
+}
+
+// cliNoteLine renders one note the one way both `task notes` and `show`
+// print it: the person's note carries its `person:` prefix, and a worker's
+// note is attributed to the agent that left it.
+func cliNoteLine(note Note) string {
+	switch {
+	case note.From == NoteFromPerson:
+		return fmt.Sprintf("  %s person: %s", note.ID, note.Body)
+	case note.Agent != "":
+		return fmt.Sprintf("  %s [%s] %s", note.ID, note.Agent, note.Body)
+	default:
+		return fmt.Sprintf("  %s %s", note.ID, note.Body)
+	}
 }
 
 // cliTaskHold runs the runtime's and a person's hold verbs: `task pause`
@@ -1653,6 +1669,7 @@ type cliNoteJSON struct {
 	ID        string    `json:"id"`
 	TaskID    string    `json:"task_id"`
 	AgentID   string    `json:"agent_id,omitempty"`
+	From      string    `json:"from,omitempty"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -1660,7 +1677,7 @@ type cliNoteJSON struct {
 func cliNoteObject(note Note) cliNoteJSON {
 	return cliNoteJSON{
 		ID: note.ID, TaskID: cliID(note.TaskID), AgentID: note.Agent,
-		Content: note.Body, CreatedAt: note.At,
+		From: note.From, Content: note.Body, CreatedAt: note.At,
 	}
 }
 

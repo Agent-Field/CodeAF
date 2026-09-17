@@ -132,9 +132,13 @@ type Task struct {
 // the two stay separate because a note is about one task and a context entry
 // is about the run.
 type Note struct {
-	ID      string    `json:"id"`
-	TaskID  string    `json:"task_id"`
-	Agent   string    `json:"agent,omitempty"`
+	ID     string `json:"id"`
+	TaskID string `json:"task_id"`
+	Agent  string `json:"agent,omitempty"`
+	// From is who left the note: a worker's own handoff, or the person
+	// steering the run. It defaults to worker, so every note written before
+	// the column — and every one a worker leaves — reads as a worker's.
+	From    string    `json:"from,omitempty"`
 	Body    string    `json:"body"`
 	Project string    `json:"project,omitempty"`
 	Chat    string    `json:"chat,omitempty"`
