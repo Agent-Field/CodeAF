@@ -35,7 +35,7 @@ func runDoc(args []string) error {
 
 	positionals := flags.Args()
 	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
-		return errors.New("name one document to read")
+		return wrongCall("name one document to read")
 	}
 	pagesFrom, pagesTo, err := parsePageRange(*pages)
 	if err != nil {
