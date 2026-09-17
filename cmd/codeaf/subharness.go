@@ -161,6 +161,50 @@ func gatheringGrant(turns, tokens int, fanIn store.DependencyFanIn) (int, int) {
 	return turns + fanIn.Count, tokens + 2*landed
 }
 
+// The re-dispatch grant: what a leaf that has been sent round again in place
+// is given, in the one number the dispatch path states for ctxbudget.
+const (
+	// overrunRegrantNum over overrunRegrantDen is how much bigger one
+	// re-dispatch's token grant is than the grant of the attempt that ran
+	// out: three halves. A re-dispatch exists to finish a truncated tail, and
+	// half again is enough to finish one, where doubling would buy the whole
+	// run a second time.
+	overrunRegrantNum = 3
+	overrunRegrantDen = 2
+
+	// overrunGrantCeiling is where the regrant stops adding: four flat leaf
+	// grants, which is room to run an ordinary leaf's whole text through twice
+	// over and therefore more than finishing a tail can ever cost. The bound
+	// is on what the ladder adds and not on what the leaf was granted — a
+	// fan-in that measured more than this keeps every token it measured,
+	// because the one thing a re-dispatch must never do is hand back room.
+	overrunGrantCeiling = 4 * chatLeafTokens
+)
+
+// regrantAfterRunningOut is the token grant one claim of a leaf that has been
+// re-dispatched in place is given, from the grant this claim measured and the
+// attempt it is on. Attempt zero is the grant unchanged; every attempt after
+// it grows by [overrunRegrantNum] over [overrunRegrantDen] for each re-dispatch
+// before it, and the ladder adds nothing beyond [overrunGrantCeiling].
+// Turns are not regrown: a re-dispatch carries its banked turns as inputs
+// rather than re-running them, so the turn ceiling was never what ran out.
+//
+// The growth is the point. A re-dispatch handed the room its predecessor ran
+// out of re-runs the same brief to the same truncated ending — the meter stops
+// it at the same place — so the runner's release (see resident's overrun
+// settle) is worth a claim only if the room moves with it. The wall the leaf
+// is given follows, because it is arithmetic over the same number.
+func regrantAfterRunningOut(tokens, attempt int) int {
+	room := tokens
+	for ; attempt > 0 && room < overrunGrantCeiling; attempt-- {
+		room = room * overrunRegrantNum / overrunRegrantDen
+		if room > overrunGrantCeiling {
+			return overrunGrantCeiling
+		}
+	}
+	return room
+}
+
 // foldGrant sizes the whole run of a leaf that is going to make one model call.
 //
 // The gathering grant above is the right arithmetic for a node that has to go

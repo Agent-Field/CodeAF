@@ -545,9 +545,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			fanIn = store.DependencyFanIn{}
 		}
 		// Ordinary leaves retain the byte-identical headless envelope, raised by
-		// exactly what their own fan-in measures — see gatheringGrant. Reflexes use
-		// the deliberately tiny rung budget and a seconds-scale watchdog.
+		// exactly what their own fan-in measures — see gatheringGrant. A leaf
+		// re-dispatched after running out is granted more than the attempt that
+		// ran out, or it would buy the same truncated ending again — see
+		// regrantAfterRunningOut; the wall below follows the larger grant because
+		// it is arithmetic over the same number. Reflexes use the deliberately
+		// tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
+		tokens = regrantAfterRunningOut(tokens, int(node.Attempt))
 		leafRoom := exec.SubharnessFor(subharness)
 		wallLeft := remainingWall(ctx)
 		deadline := leafRoom.DeadlineWithin(tokens, wallLeft)
