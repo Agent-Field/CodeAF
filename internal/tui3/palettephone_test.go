@@ -245,10 +245,15 @@ func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 	for _, width := range []int{120, 80, 60} {
 		a := phonePicker(t, width)
+		// The table's heads are chrome over the rows and not one of them
+		// ([picker.headLines]); the law this test holds is about the rows.
+		head := a.pick.headLines(width)
 		lines := overlayBlock(a)
-		if len(lines) != len(phoneCatalog) {
-			t.Fatalf("at %d columns the list is %d rows for %d models", width, len(lines), len(phoneCatalog))
+		if len(lines) != len(phoneCatalog)+head {
+			t.Fatalf("at %d columns the list is %d rows for %d models under %d heading lines",
+				width, len(lines), len(phoneCatalog), head)
 		}
+		lines = lines[head:]
 		for i, line := range lines {
 			model := a.pick.all[a.pick.hits[i]]
 			label, note := a.pick.rowText(model, a.reasoningFor(model.ID), width)

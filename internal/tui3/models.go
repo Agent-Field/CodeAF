@@ -749,12 +749,87 @@ func modelNoteVia(model Model, pin, routing string) string {
 // that is last to be drawn is a field that should be said in words or not at
 // all.
 func modelFields(model Model, pin, routing string) []rowField {
+	facts := modelFactsOf(model, pin, routing)
+	lane, first, rate := rowField{}, rowField{}, rowField{}
+	if facts.via != "" {
+		lane = rowSay("via "+facts.via, facts.via)
+	}
+	if facts.first != "" {
+		first = rowSay(laneUpMark+facts.first, facts.first)
+	}
+	if facts.rate != "" {
+		rate = rowSay(facts.rate + laneRateUnit)
+	}
+	return []rowField{
+		lane,
+		first,
+		facts.priceField(),
+		rowSay(facts.window),
+		rate,
+		rowSay(facts.eloWord()),
+		rowSay(facts.can),
+	}
+}
+
+// ── ONE READING OF A MODEL, FOR BOTH SHAPES OF ROW ──────────────────────────
+//
+// modelFacts is what a row says about a model past its name, each fact in the
+// BARE spelling — the figure with no unit on it and no word in front of it.
+//
+// It exists because this surface now draws those facts two ways. The ranked
+// tail says the unit on every row, because a fact standing alone in a sentence
+// of facts has to name itself: `$0.09/$0.18 per M · 1M · elo 1424`. The table
+// says it once, in the column's head, and a row under it carries the figure
+// alone. Both are right for what they are, and both must be the same reading of
+// the same model — a price that meant dollars per million in one and dollars
+// per thousand in the other would be the exact defect CLAUDE.md's
+// one-source-of-truth rule is written against.
+//
+// So the reading happens HERE, once, and each shape dresses it: [modelFields]
+// puts the units back on, [modelFacts.cells] leaves them off and lets
+// [modelColumns] carry them.
+type modelFacts struct {
+	// via is the machine that would serve this model, lowercased and with no
+	// `via ` in front of it.
+	via string
+	// first is the wait before the first word, `0.8s`, with no [laneUpMark].
+	first string
+	// in and out are what a million prompt and completion tokens cost, `$0.09`
+	// and `$0.18`. BOTH ARE SET OR NEITHER IS ([priceWord] states why: zero is
+	// "nobody published a figure" and never "free", so half a price is a row
+	// that cannot answer).
+	in, out string
+	// window is how much it holds, `128k` or `1M`.
+	window string
+	// rate is how fast it writes once it has started, `58`, with no unit.
+	rate string
+	// elo is the arena score as a bare number, `1424`, with no `elo ` on it.
+	elo string
+	// can is what it does besides hold a conversation, `sees · draws`. It is
+	// the one fact here that is already words rather than a figure, so it is
+	// the one that is spelled the same in both shapes ([ModalityWord]).
+	can string
+}
+
+// modelFactsOf reads one model. pin is the machine this conversation is held
+// to when the row is this conversation's, and routing is the row in force —
+// the two things a lane fact cannot be read without.
+func modelFactsOf(model Model, pin, routing string) modelFacts {
+	facts := modelFacts{
+		window: contextWord(model.ContextLength),
+		elo:    eloBare(model.ArenaElo),
+		can:    ModalityWord(model.Input, model.Output),
+	}
+	// BOTH HALVES OR NEITHER, which is [priceWord]'s rule read once here rather
+	// than asked again by everything that draws half a price.
+	if model.PromptPrice > 0 && model.CompletionPrice > 0 {
+		facts.in = "$" + perMillion(model.PromptPrice)
+		facts.out = "$" + perMillion(model.CompletionPrice)
+	}
+	// A CONNECTED SERVICE HAS ONE ROAD, so router lane facts do not belong on
+	// its row and are not even read for it.
 	if model.Direct {
-		return []rowField{
-			{}, {}, priceField(model.PromptPrice, model.CompletionPrice),
-			rowSay(contextWord(model.ContextLength)), {},
-			rowSay(eloWord(model.ArenaElo)), rowSay(ModalityWord(model.Input, model.Output)),
-		}
+		return facts
 	}
 	// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
 	// milliseconds cannot change a figure rounded to a tenth of a second, and
@@ -768,33 +843,31 @@ func modelFields(model Model, pin, routing string) []rowField {
 	if via == "" {
 		via = laneAuto(routing, model.ID, views, now)
 	}
-	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why),
-	// and they are three fields rather than one phrase now: the lane a person
-	// is served by outranks every number, and the throughput sits five rungs
-	// under the wait it used to be glued to.
-	best, known := laneShown(routing, views, via)
-	first, rate := rowField{}, rowField{}
-	if known {
-		if word := laneSecondsWord(best.TTFT); word != "" {
-			first = rowSay(laneUpMark+word, word)
-		}
-		if word := laneRateTight(best.Rate); word != "" {
-			rate = rowSay(word)
-		}
+	facts.via = strings.ToLower(via)
+	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why).
+	if best, known := laneShown(routing, views, via); known {
+		facts.first = laneSecondsWord(best.TTFT)
+		facts.rate = laneRateBare(best.Rate)
 	}
-	lane := rowField{}
-	if via != "" {
-		lane = rowSay("via "+strings.ToLower(via), strings.ToLower(via))
+	return facts
+}
+
+// priceField is the price as the ranked tail's one fact, in three spellings —
+// see [priceField]'s own account of why the short ones drop the prompt half.
+func (f modelFacts) priceField() rowField {
+	if f.in == "" || f.out == "" {
+		return rowField{}
 	}
-	return []rowField{
-		lane,
-		first,
-		priceField(model.PromptPrice, model.CompletionPrice),
-		rowSay(contextWord(model.ContextLength)),
-		rate,
-		rowSay(eloWord(model.ArenaElo)),
-		rowSay(ModalityWord(model.Input, model.Output)),
+	return rowSay(f.in+"/"+f.out+" per M", f.out+"/M", f.out)
+}
+
+// eloWord is the arena score with the word that names it, for a tail where no
+// column head can.
+func (f modelFacts) eloWord() string {
+	if f.elo == "" {
+		return ""
 	}
+	return "elo " + f.elo
 }
 
 // ModalityWord is what a row can do BESIDES hold a conversation, in the
@@ -859,26 +932,6 @@ func priceWord(prompt, completion float64) string {
 	return "$" + perMillion(prompt) + "/$" + perMillion(completion) + " per M"
 }
 
-// priceField is the price as the row's ranked fact, in three spellings:
-//
-//	$0.08/$0.15 per M   both halves and the unit — what a person compares on
-//	$0.15/M             the completion price alone, which is the half a long
-//	                    answer spends, with the unit that makes it readable
-//	$0.15               the bare figure, for a frame with five cells left
-//
-// THE SHORT SPELLINGS DROP THE PROMPT HALF AND NOT THE COMPLETION ONE. A turn
-// pays for its answer far more than for its question, and of the two figures
-// the completion price is the one that decides between two models.
-//
-// Both halves must be known for any of them, exactly as [priceWord] demands:
-// zero is "nobody published a figure" and never "free".
-func priceField(prompt, completion float64) rowField {
-	if prompt <= 0 || completion <= 0 {
-		return rowField{}
-	}
-	return rowSay(priceWord(prompt, completion), "$"+perMillion(completion)+"/M", "$"+perMillion(completion))
-}
-
 // perMillion renders one per-token price as dollars per million tokens, to two
 // significant figures with the trailing zeros trimmed: 0.08, 0.15, 3, 15, 150.
 //
@@ -916,13 +969,14 @@ func perMillion(perToken float64) string {
 	return text
 }
 
-// eloWord is the arena score as "elo 1243", empty when the catalog carries
-// none. It is spelled out rather than left as a bare number because a bare
-// four-digit figure beside a price and a window is a fourth number nobody can
-// name.
-func eloWord(elo float64) string {
+// eloBare is the arena score as a bare number, "1424", and empty when the
+// catalog carries none. The word that names it is put back on by whichever
+// shape of row draws it — [modelFacts.eloWord] for the tail, the column's own
+// head for the table — because a bare four-digit figure beside a price and a
+// window is a fourth number nobody can name until something names it.
+func eloBare(elo float64) string {
 	if elo <= 0 {
 		return ""
 	}
-	return "elo " + strconv.Itoa(int(math.Round(elo)))
+	return strconv.Itoa(int(math.Round(elo)))
 }

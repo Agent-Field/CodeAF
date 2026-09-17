@@ -810,10 +810,24 @@ func laneShown(routing string, views []laneView, now string) (laneView, bool) {
 // as a measurement; on the model's own line it is one ranked fact among seven
 // competing for a sixty-cell frame, and the space would be a cell spent on air.
 func laneRateTight(rate float64) string {
+	if bare := laneRateBare(rate); bare != "" {
+		return bare + laneRateUnit
+	}
+	return ""
+}
+
+// laneRateUnit is what a throughput is measured in, and it is a constant
+// because the table writes it in a column head while the tail writes it on
+// every row ([modelFacts]) — one spelling, in one place.
+const laneRateUnit = "t/s"
+
+// laneRateBare is a throughput with no unit on it, "58", for a row whose column
+// head carries the unit instead.
+func laneRateBare(rate float64) string {
 	if rate <= 0 {
 		return ""
 	}
-	return strconv.Itoa(int(math.Round(rate))) + "t/s"
+	return strconv.Itoa(int(math.Round(rate)))
 }
 
 // laneExactly is one lane's view by its whole name, false when nothing is

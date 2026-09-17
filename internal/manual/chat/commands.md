@@ -936,12 +936,16 @@ tiers: prefix, then substring, then subsequence. So `ds v4` finds
 `deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, with
 fuzzy hits sitting at the bottom rather than mixed through.
 
-Twelve rows show at a time. A row reads `<id>:<level>` on the left and, dimly on the
-right, what the catalog published: window, price per million prompt and completion, arena
-elo, and what the model can do besides write — `sees`, `hears`, `watches`, `draws`,
-`speaks`, `films`. Each part is hidden when nobody published it. A price shows only when
+Twelve rows show at a time, under a dim heading line. The list is a **table**: `<id>:<level>`
+on the left under `model`, and dim columns to the right of it for what the catalog
+published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, and `can` (`sees`,
+`hears`, `watches`, `draws`, `speaks`, `films`). The heading names the unit, so the figure
+under it does not: `$0.18` under `out/M`, `1290` under `elo`. An empty cell means nobody
+published that fact; a column no row published is not drawn at all. A price shows only when
 both halves are known — a zero means "nobody said", never "free". A plain text chat model
-shows no capability words at all.
+shows nothing under `can`. A narrow window gives up columns from the right, and under sixty
+columns the table gives way to the older `·` tail on a line of its own (the *models and
+cost* page, "What each row in the model picker tells you").
 
 Only models you can hold a conversation with are listed: text in and text out. A model
 that publishes `["image","text"]` out — a drawing model that also captions — is left out,

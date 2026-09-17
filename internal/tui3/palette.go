@@ -144,6 +144,18 @@ type picker struct {
 	// turn still updates the ledger. Neither may rewrite a row somebody is
 	// reading — the same snapshot law as current and pin.
 	held map[string][]rowField
+	// cells is the same freeze for the table's shape of row, and columns is the
+	// measurement over all of them — both taken the first time this list is
+	// drawn, which is the first moment [app.armLanes] has finished telling it
+	// what routing is in force.
+	cells   map[string][len(modelColumns)]string
+	columns *modelTable
+	// fitted is that measurement laid out at one width, kept because the draw
+	// path asks for it once for the heading and once per row and the answer
+	// cannot differ between those asks. fitAt is the width it was laid out at,
+	// and zero is no answer yet — a frame is never zero cells wide.
+	fitted modelTableFit
+	fitAt  int
 
 	// task is the NODE this list is being chosen for, and 0 is the conversation —
 	// which is every /model, every press on the status row out in the thread, and
@@ -190,6 +202,13 @@ func (p *picker) start(models []Model, current string) {
 func (p *picker) restock(models []Model) {
 	p.all = models
 	p.shared = sharedSlugs(models)
+	// A NEW LIST IS A NEW MEASUREMENT. The columns were measured over the rows
+	// that were on offer, and a refresh that brought a dearer model or a wider
+	// name has changed that. The frozen CELLS stay, exactly as the frozen fields
+	// beside them do: the freeze is against a row rewriting itself while
+	// somebody reads it, not against the list being replaced — and a row whose
+	// cells were kept is re-measured from those same kept cells.
+	p.columns, p.fitAt = nil, 0
 	p.lower = make([]string, len(models))
 	for i, model := range models {
 		label := model.ID
@@ -1387,8 +1406,17 @@ func (p *picker) height(width int) int {
 	// way: one line, inside the ceiling, and never half of a pair. The fetching
 	// line is counted inside the same ceiling, so the overlay does not grow
 	// while a refresh is out.
-	lines := p.headLines()
-	for at := p.top; at < len(p.list) && lines < pickerRows; at++ {
+	//
+	// THE TABLE'S HEAD IS THE ONE LINE COUNTED OUTSIDE IT, and the difference is
+	// that it does not come and go. A fetch is a thing that is happening to the
+	// list for a second or two, so an overlay that grew for it would jump under
+	// somebody's hands and jump back; the heads stand over the columns for as
+	// long as the list is open, and twelve rows is a promise about how many
+	// MODELS you can see (the manual makes it in those words). Charging the
+	// heading to the models would quietly make it eleven.
+	ceiling := pickerRows + p.tableHead(width)
+	lines := p.headLines(width)
+	for at := p.top; at < len(p.list) && lines < ceiling; at++ {
 		if p.groupBefore(at) != "" {
 			lines++
 		}
@@ -1397,7 +1425,7 @@ func (p *picker) height(width int) int {
 		if p.lineUnder(at) != "" {
 			take++
 		}
-		if lines+take > pickerRows {
+		if lines+take > ceiling {
 			break
 		}
 		lines += take
@@ -1429,10 +1457,19 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		return []string{pal.dim("  " + p.emptyLine())}, []int{-1}
 	}
 	fill := newOverlayFill(width, n, pal, hover)
-	if p.headLines() > 0 {
+	if p.fetching {
 		fill.plain(pal.dim("  " + modelsFetching))
 	}
-	p.follow(overlayItems(n-p.headLines(), width))
+	// THE HEADS STAND OVER THE COLUMNS, and they are what lets a row carry a
+	// bare figure at all: `$0.09` means nothing until `in $/M` is over it
+	// (modeltable.go). It is drawn under the fetching line rather than above it,
+	// because the fetching line is about the LIST and the heads are about the
+	// rows, and the heads must be the last thing before the first row they
+	// describe.
+	if head := p.tableFit(width).header(); head != "" {
+		fill.plain(pal.dim(fit(head, width)))
+	}
+	p.follow(overlayItems(n-p.headLines(width), width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
 		if group := p.groupBefore(at); group != "" {
 			if !fill.plain(pal.dim(fit("  "+group, width))) {
@@ -1731,7 +1768,81 @@ func (p *picker) rowText(model Model, level string, width int) (string, string) 
 	if level != "" {
 		plan.suffix = ":" + level
 	}
+	// THE TABLE IS THE ROW'S SHAPE WHEREVER THERE IS ROOM FOR ONE, and the
+	// ranked tail is what it falls back to below that and at tierPhone
+	// (modeltable.go argues the trade). They are the same facts in the same
+	// order either way, so a frame that crosses between them loses a column and
+	// never a subject.
+	if fit := p.tableFit(width); fit.drawn() {
+		name, _ := rowTrim(plan.primary, fit.name-ansi.StringWidth(plan.suffix), plan.author)
+		// A CUT NAME KEEPS ITS FACTS HERE, WHICH IS LAW 1's ONE EXCEPTION and it
+		// is the table that earns it. In a tail, the facts beside an ellipsis
+		// are a second loss on a row that has already spent what it was drawn to
+		// say. In a table they are not the row's, they are the COLUMN's: a blank
+		// where the window should be reads as "nobody published one" on every
+		// other row of this list (the emptiness law), so blanking it for want of
+		// cells would make this row lie about the catalog. The name gives way
+		// and the columns hold.
+		return name + plan.suffix, fit.row(p.rowCells(model, pin))
+	}
 	return rowHalves(plan, width, 0)
+}
+
+// tableFit is this list's columns laid out at one width — the measurement taken
+// once ([modelTable.add] over every row) and fitted fresh, since the measurement belongs to the
+// list and the fit belongs to the frame, and only one of those two changes when
+// a terminal is dragged wider.
+//
+// A PHONE NEVER TABLES. At [tierPhone] the tail already has a line of its own
+// under the name and there is no second column to put anything in; a table
+// there would be one column of figures with a heading nobody can see the other
+// half of.
+func (p *picker) tableFit(width int) modelTableFit {
+	if phoneList(width) {
+		return modelTableFit{}
+	}
+	if p.columns == nil {
+		table, pin := modelTable{}, p.pinnedLane()
+		for _, model := range p.all {
+			// A NOTICE IS NOT A MODEL. An unavailable service's row carries a
+			// sentence where an id would be and draws no facts at all, so
+			// measuring it would widen columns for a row that uses none of them.
+			if model.Unavailable {
+				continue
+			}
+			// THE PIN IS THIS CONVERSATION'S ROW ALONE ([picker.rowText] says
+			// why), and it rides into the measurement because a column measured
+			// without it would be one machine's name too narrow for the one row
+			// that matters most.
+			held := ""
+			if model.ID == p.current {
+				held = pin
+			}
+			table.add(p.rowCells(model, held), nameAsk(model))
+		}
+		p.columns = &table
+		p.fitAt = 0
+	}
+	if p.fitAt != width {
+		p.fitted, p.fitAt = p.columns.fit(width), width
+	}
+	return p.fitted
+}
+
+// rowCells is one model's facts in column order, frozen the first time this
+// list drew them — [picker.rowFields]' rule, for the table's shape of row and
+// for the same reason: a running turn still updates the ledger, and a row may
+// not rewrite itself under somebody who is reading it.
+func (p *picker) rowCells(model Model, pin string) [len(modelColumns)]string {
+	if p.cells == nil {
+		p.cells = make(map[string][len(modelColumns)]string)
+	}
+	if cells, ok := p.cells[model.ID]; ok {
+		return cells
+	}
+	cells := modelFactsOf(model, pin, p.routing).cells()
+	p.cells[model.ID] = cells
+	return cells
 }
 
 // rowFields is the tail of one model, frozen the first time this list drew

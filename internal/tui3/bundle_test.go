@@ -949,9 +949,12 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 		if a.sheet.sel == nil {
 			t.Fatalf("%s did not open a picker", row)
 		}
-		// It is THE picker: the rows carry what /model's rows carry.
-		if !strings.Contains(plain(frame(a)), "$3/$15 per M · 200k · elo 1300") {
-			t.Fatalf("%s opened a plainer list:\n%s", row, plain(frame(a)))
+		// It is THE picker: the rows carry what /model's rows carry, under the
+		// heads that name them (modeltable.go).
+		screen := plain(frame(a))
+		if !strings.Contains(screen, "in/M  out/M  window   elo") ||
+			!pickerRowSays(screen, "anthropic/claude-sonnet-4.5", "$3", "$15", "200k", "1300") {
+			t.Fatalf("%s opened a plainer list:\n%s", row, screen)
 		}
 		drive(t, a, key("esc"))
 	}

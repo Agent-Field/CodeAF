@@ -220,14 +220,24 @@ func TestAnOpenPickerKeepsTheViaItOpenedWith(t *testing.T) {
 	}
 }
 
+// pickerVia is the machine named on one model's row, in whichever shape that
+// frame drew it: the table's own first column ([modelColumns]), or the ranked
+// tail's `via <machine>` on a frame too narrow for columns (rowfit.go).
 func pickerVia(screen, id string) string {
 	for _, line := range strings.Split(screen, "\n") {
-		if !strings.Contains(line, id) || !strings.Contains(line, "via ") {
+		if !strings.Contains(line, id) {
 			continue
 		}
-		_, rest, _ := strings.Cut(line, "via ")
-		named, _, _ := strings.Cut(rest, " · ")
-		return strings.TrimSpace(named)
+		_, rest, _ := strings.Cut(line, id)
+		if _, named, found := strings.Cut(rest, "via "); found {
+			name, _, _ := strings.Cut(named, " · ")
+			return strings.TrimSpace(name)
+		}
+		for _, cell := range strings.Split(strings.TrimSpace(rest), modelTableSep) {
+			if cell = strings.TrimSpace(cell); cell != "" {
+				return cell
+			}
+		}
 	}
 	return ""
 }

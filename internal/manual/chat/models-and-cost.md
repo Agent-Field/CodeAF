@@ -184,26 +184,47 @@ The placeholder in the empty filter box is the only place the overlay explains i
 
 There is no mouse commit on the picker's rows.
 
-## What each row in the model picker tells you
+## What each row in the model picker tells you — the columns, and what the headings mean
 
-A row reads `<id>:<level>` on the left and, dimly on the right, the facts about it — in
-this order, which is the order they are given up in when the window is narrow: the
-machine that would serve it (`via cloudflare`), the wait before the first word
-(`▲0.8s`), the price per million prompt and completion tokens, the context window, how
-fast it writes (`58t/s`), the arena elo, and what the model can do besides write.
-**Each part is hidden when nobody published it.** A price shows only when both halves are
-known — a zero means "nobody said", never "free".
+The list is a **table**. The model's id is on the left under the heading `model`, and the
+facts about it stand in columns, each with a dim heading that names the unit so the figures
+under it do not have to:
 
-**A narrow window shows fewer numbers, never a shortened name.** The id keeps every cell
-it needs first; then the facts are added from the front of that list, each in the longest
-spelling that still fits — `$0.09/$0.18 per M` becomes `$0.18/M` becomes `$0.18`, and
-`via cloudflare` becomes `cloudflare` — and the ones that do not fit are simply not
-drawn. So a sixty-column terminal shows the whole model name with the provider, the wait and
-the price beside it, and nothing is ever half a number. Under sixty columns the facts
-move to a line of their own under the name. The only time a name is shortened is when the
-window cannot hold it alone, and then it loses its author first (`nvidia/nemotron-3.5-lightning`
-becomes `nemotron-3.5-lightning`) — unless two models on the list share that slug, which
-is the one case where the author is what tells them apart.
+| Heading | The column | Spelled |
+|---|---|---|
+| `via` | the machine that would serve it | `cloudflare` |
+| `first` | the wait before the first word | `0.8s` |
+| `in/M` | what a million prompt tokens cost | `$0.09` |
+| `out/M` | what a million completion tokens cost | `$0.18` |
+| `window` | how much it can hold | `1M`, `128k` |
+| `t/s` | how fast it writes once it has started | `58` |
+| `elo` | its Design Arena score | `1290` |
+| `can` | what it does besides hold a conversation | `sees · draws` |
+
+That is also the ORDER, and it is the order the columns are given up in when the window is
+narrow — `can` goes first, `via` last. **A column nobody on this list published is not
+drawn at all**, heading and all: a catalog with nothing measured behind it shows no `via`,
+no `first` and no `t/s` rather than three headings over three hundred blanks.
+
+**An empty cell means the catalog published nothing.** Every row shows every column the
+table drew, so a gap is never "it did not fit" — that is the one thing the old ragged row
+could not tell you. A price shows only when both halves are known; a zero means "nobody
+said", never "free".
+
+**The names are measured first and the columns take what is left**, so the id is never
+shortened to make room for an arena score — a column goes instead. A name is shortened only
+when the window cannot hold the longest one on the list, and then it loses its author first
+(`nvidia/nemotron-3.5-lightning` becomes `nemotron-3.5-lightning`) — unless two models on
+the list share that slug, which is the one case where the author is what tells them apart.
+
+**Under sixty columns there is no table.** There is no second column to put anything in, so
+the row falls back to the ranked tail it always drew: the facts in the same order, joined
+with `·` on a line of their own under the name, each in the longest spelling that fits —
+`$0.09/$0.18 per M` becomes `$0.18/M` becomes `$0.18`, and `via cloudflare` becomes
+`cloudflare`. Nothing is ever half a number either way.
+
+The heading line costs the overlay a line of its own rather than costing you a model:
+twelve models still show at a time.
 
 Only models you can hold a conversation with are listed: text in, text out. A model that
 publishes `["image","text"]` out (a drawing model that captions) is excluded, and so is a
@@ -231,8 +252,8 @@ want the latest machines.
 
 ## What "sees", "draws", "speaks", "films", "hears" mean on a model row
 
-The dim tail of a picker row ends with what the model can do besides hold a conversation,
-in one word each — last in the row's order, so it is the first thing a narrow window
+The `can` column of a picker row says what the model can do besides hold a conversation,
+in one word each — last in the row's order, so it is the first column a narrow window
 drops:
 
 | Word | What the catalog published |
@@ -247,8 +268,8 @@ drops:
 Input words come first, so a model that reads and paints pictures reads `sees · draws`.
 
 **A plain text chat model shows nothing here at all**, and neither does a model that
-published no modalities — silence means text in, text out, and nothing more. The same tail
-appears on `codeaf models`.
+published no modalities — silence means text in, text out, and nothing more. The same words
+appear on `codeaf models`, where they ride a tail rather than a column.
 
 ## Switching model by name in one command
 
@@ -2799,10 +2820,12 @@ there is no tail, and a session that has measured nothing shows the model id alo
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
 `tab` on a row and the model's providers open underneath it, with the cursor already on the
-provider in force (`auto` when nothing is pinned):
+provider in force (`auto` when nothing is pinned). The providers are a block under the row
+and not part of the table, so they keep the `·` tail the model rows gave up:
 
 ```
- deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
+ model               via         first  in/M   out/M  window  t/s
+ deepseek-v4-flash   cloudflare   0.8s  $0.09  $0.18      1M   58
    ● auto        openrouter's own routing; codeaf stays out
      cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
      coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
