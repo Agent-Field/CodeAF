@@ -8960,10 +8960,10 @@ func git(dir string, args ...string) (string, error) {
 }
 
 // gitWith is [gitContext] with [context.Background] in place of a caller's own
-// context, kept as its own name because nearly every call here is that.
-// exactly one caller: the ground ladder stages a parent's tree into AN INDEX OF
-// ITS OWN so that handing out a child never moves the parent's index
-// ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
+// context, kept as its own name because nearly every call here is that. The
+// environment it takes exists for exactly one caller: the ground ladder stages
+// a parent's tree into AN INDEX OF ITS OWN so that handing out a child never
+// moves the parent's index ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
 // second copy of the pager and editor settings beside it would be the drift the
 // one-source-of-truth law forbids.
 func gitWith(dir string, environment []string, args ...string) (string, error) {
