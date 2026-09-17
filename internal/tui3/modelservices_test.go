@@ -1433,3 +1433,41 @@ func TestSpendingADeferredMoveReadoptsTheOpenConnectPanelSoItsSwitchRowFollowsTh
 		t.Fatalf("the panel's switch row did not follow the spent move: %q", row.Blurb)
 	}
 }
+
+// A SETTLE WITH NOTHING TO SPEND LEAVES THE PANEL WHERE IT WAS:
+// applyDeferredModelServiceMove runs on every settled turn (app.settle), and
+// its refresh is for the panels to follow a move that actually happened. With
+// no deferred move the spend is a no-op, so the open /connect panel must not
+// be re-adopted: a re-adopt re-ranks the list — cursor and scroll back to the
+// top (connectPanel.rank) — and clears the second-enter disconnect
+// confirmation standing on a row (connectPanel.adopt clears armed).
+func TestASettleWithNothingToSpendLeavesTheConnectPanelWhereItWas(t *testing.T) {
+	dir := t.TempDir()
+	customs := connectionWriteSources(t, dir, "homelab")
+	sources := modelsource.NewSet(append([]modelsource.Connected{connectionDefaultService()}, customs...)...)
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, []Model{{ID: config.DefaultModel}})
+	a.openConnect()
+	row, _, ok := connectionFindRow(t, a, "custom")
+	if !ok {
+		t.Fatal("the /connect panel drew no row for the connected custom connection")
+	}
+	if len(a.connPanel.hits) < 2 {
+		t.Fatalf("the /connect panel drew %d rows, want at least 2", len(a.connPanel.hits))
+	}
+	// The cursor sits on the LAST row and the connected row carries an armed
+	// disconnect: both are positions a re-adopt loses.
+	a.connPanel.cursor = len(a.connPanel.hits) - 1
+	a.connPanel.armed = row.ID
+
+	a.applyDeferredModelServiceMove()
+
+	if a.connPanel.cursor != len(a.connPanel.hits)-1 {
+		t.Fatalf("a settle with nothing to spend moved the panel's cursor to %d", a.connPanel.cursor)
+	}
+	if a.connPanel.armed != row.ID {
+		t.Fatalf("a settle with nothing to spend dropped the armed disconnect on %q", row.ID)
+	}
+	if a.model != "openai/gpt-4.1-mini" {
+		t.Fatalf("a settle with nothing to spend moved the conversation to %q", a.model)
+	}
+}

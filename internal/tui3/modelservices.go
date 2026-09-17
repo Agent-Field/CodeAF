@@ -828,12 +828,21 @@ func (a *app) moveConversationToConnectedModel(next string) {
 func (a *app) applyDeferredModelServiceMove() {
 	next := a.deferredModelServiceModel
 	a.deferredModelServiceModel = ""
+	was := a.model
 	a.moveConversationToConnectedModel(next)
-	// THE PANELS ANSWER THE MODEL THE MOVE JUST CHANGED: an open /connect
+	if a.model == was {
+		return
+	}
+	// THE REFRESH FOLLOWS A MOVE THAT ACTUALLY HAPPENED: an open /connect
 	// panel and the Providers tab each read the conversation's model for their
 	// active-connection row ([app.connectionRows], [sheet.build]), and a move
 	// they did not see would leave the row naming the old target until
-	// something else redrew it.
+	// something else redrew it. A settle with nothing to spend — or whose
+	// deferred id is the model already running — changed nothing, and this
+	// function runs on every settled turn: a re-adopt there re-ranks the open
+	// panel (connectPanel.rank sends the cursor and the scroll back to the
+	// top) and clears the second-enter disconnect confirmation standing on a
+	// row (connectPanel.adopt clears armed).
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
 	}
