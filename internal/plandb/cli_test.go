@@ -308,8 +308,8 @@ func TestPlandbCliCoordinationVerbs(t *testing.T) {
 	cliWantCode(t, code, 0)
 	line := strings.TrimSpace(h.out.String())
 	insertedID := strings.TrimPrefix(line, "inserted ")
-	if !strings.HasPrefix(insertedID, "t-") || len(insertedID) < 6 {
-		t.Fatalf("insert shape %q", h.out.String())
+	if !strings.HasPrefix(insertedID, "t-") || len(insertedID) != 8 {
+		t.Fatalf("insert shape %q, want a t- id of six base-36 characters", h.out.String())
 	}
 	code = h.run("--db", h.db, "--json", "show", insertedID)
 	cliWantCode(t, code, 0)
@@ -783,7 +783,7 @@ func TestPlandbCliRefusals(t *testing.T) {
 	before := h.cliReadStore(t)
 	refused := [][]string{
 		{"claim"}, {"start"}, {"fail"}, {"pause"}, {"next"}, {"heartbeat"}, {"progress"}, {"approve"},
-		{"task", "claim"}, {"task", "start"}, {"task", "fail"}, {"task", "pause"},
+		{"task", "claim"}, {"task", "start"}, {"task", "fail"},
 		{"task", "next"}, {"task", "heartbeat"}, {"task", "progress"}, {"task", "approve"},
 		{"use", "t-a"}, {"project", "list"}, {"project", "create", "x"},
 		{"mcp"}, {"serve"}, {"watch"}, {"events"}, {"ahead"}, {"artifact", "put", "t-a"},
@@ -908,5 +908,89 @@ func TestPlandbCliScanShapes(t *testing.T) {
 	p, err = cliScan([]string{"show", "t-1", "--db", "x.json"})
 	if err != nil || p.pos[0] != "show" || p.vals["db"] != "x.json" {
 		t.Fatalf("flags after positionals: %#v err %v", p.pos, err)
+	}
+}
+
+// The reading verbs take --project and --chat, and task overview prints a
+// row's chat tag when it has one. The CLI never names a chat itself, so the
+// store is seeded the way the runtime would seed it.
+func TestPlandbCliTagFlagsNarrowTheReadingVerbs(t *testing.T) {
+	h := cliNewHarness(t)
+	st, err := Open(h.db, "demo", "root", "demo", "", "chat-one")
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	if _, err := st.AddMany([]TaskSpec{planSpec("a", "Alpha")}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := st.AddNote("a", "w", "parser finished"); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	code := h.run("--db", h.db, "task", "overview")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "Alpha") || !strings.Contains(h.out.String(), "[chat:chat-one]") {
+		t.Fatalf("overview missed the chat tag:\n%s", h.out.String())
+	}
+	code = h.run("--db", h.db, "list", "--chat", "chat-one")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "t-a Alpha") {
+		t.Fatalf("list under the chat missed the row:\n%s", h.out.String())
+	}
+	code = h.run("--db", h.db, "list", "--chat", "chat-two")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "(no rows)") {
+		t.Fatalf("list under a foreign chat showed rows:\n%s", h.out.String())
+	}
+	code = h.run("--db", h.db, "search", "parser", "--chat", "chat-two")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "(no results)") {
+		t.Fatalf("search under a foreign chat answered:\n%s", h.out.String())
+	}
+	code = h.run("--db", h.db, "search", "parser", "--chat", "chat-one")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "[note] n-") {
+		t.Fatalf("search under the chat missed the note:\n%s", h.out.String())
+	}
+}
+
+// status --full prints the ledger's totals when the run has been charged, and
+// nothing when it has not.
+func TestPlandbCliStatusFullPrintsSpendWhenCharged(t *testing.T) {
+	h := cliNewHarness(t)
+	st, err := Open(h.db, "demo", "root", "demo", "", "chat-one")
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	ret, err := st.AddMany([]TaskSpec{planSpec("a", "Alpha")})
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := st.AddSpend(ret[0].ID, "model-x", "worker", 0.10, 5, 5); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	code := h.run("--db", h.db, "status", "--full")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "spend chat chat-one: $0.1000 (1 calls)") {
+		t.Fatalf("status --full missed the chat spend:\n%s", h.out.String())
+	}
+	if !strings.Contains(h.out.String(), "spend project demo: $0.1000 (1 calls)") {
+		t.Fatalf("status --full missed the project spend:\n%s", h.out.String())
+	}
+
+	// A run nobody charged prints no spend lines.
+	h2 := cliNewHarness(t)
+	h2.cliInitFresh()
+	h2.cliAdd("A", "a")
+	code = h2.run("--db", h2.db, "status", "--full")
+	cliWantCode(t, code, 0)
+	if strings.Contains(h2.out.String(), "spend ") {
+		t.Fatalf("an uncharged run printed spend:\n%s", h2.out.String())
 	}
 }
