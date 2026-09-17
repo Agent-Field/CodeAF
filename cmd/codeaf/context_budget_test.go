@@ -208,3 +208,60 @@ func TestAFoldsGrantIsSizedForThePassItActuallyMakes(t *testing.T) {
 		t.Fatalf("an unsized window granted %d tokens, want the process-wide %d", unknown, want)
 	}
 }
+
+// A RE-DISPATCH IS GRANTED MORE ROOM THAN THE ATTEMPT THAT RAN OUT, or the
+// identical budget buys the identical truncated ending. The runner's overrun
+// settle releases a leaf that ran out back to pending with its banked turns,
+// and while the grant was attempt-blind the next claim re-entered the same
+// brief under the same meter and stopped at the same place — one truncation,
+// paid for as many times as the round cap allowed.
+func TestARedispatchIsGrantedMoreRoomThanTheAttemptThatRanOut(t *testing.T) {
+	// Attempt zero keeps the grant byte for byte: a leaf on its first claim
+	// has run out of nothing yet.
+	if room := regrantAfterRunningOut(chatLeafTokens, 0); room != chatLeafTokens {
+		t.Fatalf("a first claim was granted %d tokens, want the flat %d it has always had",
+			room, chatLeafTokens)
+	}
+
+	// Half again per re-dispatch, compounding, and strictly more room each
+	// time — the growth is the whole point of sending a node round again.
+	previous := chatLeafTokens
+	for attempt := 1; attempt <= 3; attempt++ {
+		room := regrantAfterRunningOut(chatLeafTokens, attempt)
+		if room <= previous {
+			t.Fatalf("re-dispatch %d was granted %d tokens, no more than the %d before it",
+				attempt, room, previous)
+		}
+		previous = room
+	}
+	// The exact arithmetic, in the integers the grant is stated in: three
+	// halves, applied per attempt, never rounded up by a shortcut.
+	if got, want := regrantAfterRunningOut(chatLeafTokens, 2), chatLeafTokens*3/2*3/2; got != want {
+		t.Fatalf("attempt 2 was granted %d tokens, want the twice-grown %d", got, want)
+	}
+
+	// The ceiling holds at attempts no run can reach, and the ladder stops
+	// there rather than stepping over it.
+	for _, attempt := range []int{10, 100} {
+		if room := regrantAfterRunningOut(chatLeafTokens, attempt); room != overrunGrantCeiling {
+			t.Fatalf("attempt %d was granted %d tokens, want the ceiling %d",
+				attempt, room, overrunGrantCeiling)
+		}
+	}
+
+	// A leaf whose fan-in already measured more than the ceiling keeps every
+	// token it measured. The bound is on what the ladder adds, and a
+	// re-dispatch handed less room than its first attempt would be the
+	// identical-budget defect back by another door.
+	_, measured := gatheringGrant(chatLeafTurns, chatLeafTokens,
+		store.DependencyFanIn{Count: 8, Bytes: 8 << 20})
+	if measured <= overrunGrantCeiling {
+		t.Fatalf("the wide join measured %d tokens, too small to ask the question", measured)
+	}
+	for _, attempt := range []int{1, 3, 100} {
+		if room := regrantAfterRunningOut(measured, attempt); room != measured {
+			t.Fatalf("a join measured at %d tokens was re-dispatched at %d on attempt %d",
+				measured, room, attempt)
+		}
+	}
+}
