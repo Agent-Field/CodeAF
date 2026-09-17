@@ -598,6 +598,12 @@ var settingUI = map[string]settingMeta{
 		about: "remembers the messages you send, so the up arrow walks them back " +
 			"in a later session.",
 	},
+	config.KeyTelemetry: {
+		tab: tabDisplay, label: "telemetry", widget: widgetToggle,
+		about: "sends anonymous usage counts (version, OS, mode, session and error " +
+			"counts) after a notice has been printed once; never prompts, code, paths " +
+			"or names. Off sends nothing.",
+	},
 	config.KeyDraftPersist: {
 		tab: tabDisplay, label: "keep drafts", widget: widgetToggle,
 		about: "keeps the half-typed message in the box across a restart, per directory.",

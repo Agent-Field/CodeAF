@@ -124,6 +124,13 @@ const (
 	KeyHistoryEnabled = "history.enabled"
 	KeyDraftPersist   = "draft.persist"
 
+	// KeyTelemetry is the anonymous-usage switch: one row, default on, off
+	// turns the whole pipe (see internal/telemetry). It sits beside the
+	// history row because they answer the same question at different
+	// depths — "may codeaf record what happened on this machine" — and
+	// the session counters count either way: only the sending asks.
+	KeyTelemetry = "telemetry"
+
 	// The v3 session's own keys. They are DOTTED where the older ones are
 	// snake_case because they name a path into a settings tree the file writer
 	// will eventually hold — tools.approval is a map, models.roles is a map —
@@ -1086,6 +1093,14 @@ var OperatorEnvPins = []string{
 	// somebody should have to make on purpose, in a shell, for one run.
 	"CODEAF_CALL_LOG",
 	"CODEAF_CALL_LOG_BODIES",
+	// CODEAF_TELEMETRY_ENDPOINT points the anonymous usage events at some
+	// other collector (a sink, an "empty" box, a CI stub). It is plumbing
+	// for the reason CODEAF_BASE_URL is — it is an address — and the
+	// reason the bodies pin is: a sheet row that could be written from a
+	// project file would be a repository able to say where a machine's
+	// usage counts are sent, which is not a preference any team should
+	// hold over a person's own telemetry off switch.
+	"CODEAF_TELEMETRY_ENDPOINT",
 	// THE DEBUG RECORD'S SWITCH AND ITS TWO CEILINGS (internal/trace).
 	// CODEAF_DEBUG turns on the full record of a run — the bodies of its model
 	// calls, its tool calls and the choices it made, in one folder per run under
@@ -1279,6 +1294,13 @@ const (
 	// cheapest way to get it back. The file is a recall list and nothing else —
 	// internal/history caps it and never sends it anywhere.
 	DefaultHistoryEnabled = true
+
+	// DefaultTelemetry is on, because the events are coarse counts the
+	// contract allows (docs/TELEMETRY.md) and the notice names them before
+	// the first byte leaves the machine. One row turns the pipe off, and
+	// DO_NOT_TRACK answers the same question for anyone who arrives with
+	// the ecosystem's own word for it.
+	DefaultTelemetry = true
 
 	// DefaultDraftPersist keeps the unsent sentence across a restart, for the
 	// reason a text field in any other application does: the draft is the
@@ -2491,6 +2513,16 @@ func (s *Settings) build() []Setting {
 				"A change lands the next time codeaf starts.",
 			read:  func() string { return formatBool(HistoryEnabledAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyHistoryEnabled, raw) },
+		},
+		Setting{
+			Key: KeyTelemetry, Category: CategoryInterface, Kind: SettingBool,
+			Label: "telemetry", Env: "CODEAF_TELEMETRY",
+			Hint: "sends the anonymous usage counts described in docs/TELEMETRY.md — session " +
+				"starts and ends, tool and model call counts, coarse cost — after a notice " +
+				"has been printed once. Off sends nothing. The session's own counters still " +
+				"count, because counting is free; a change lands the next time codeaf starts.",
+			read:  func() string { return formatBool(TelemetryAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyTelemetry, raw) },
 		},
 		Setting{
 			Key: KeyDraftPersist, Category: CategoryInterface, Kind: SettingBool,
@@ -4355,6 +4387,76 @@ func writeChoice(profileDir, key, raw string, choices []string) error {
 
 func writeText(profileDir, key, raw string) error {
 	return writeProfileValue(profileDir, key, strings.TrimSpace(raw))
+}
+
+// TelemetryAt resolves whether the anonymous-usage pipe is on, default on.
+// The environment pin wins over the project file over the profile config over
+// the built-in default — the same ladder every other on/off row walks, with
+// the working directory's own file between the pin and the profile because a
+// repository may answer for itself what a machine answers for everybody
+// (see ProjectKeys). A pin or file that will not parse reads as the default
+// rather than refusing a launch over a count nobody can see.
+func TelemetryAt(profileDir string) bool {
+	return TelemetryAtIn("", profileDir)
+}
+
+// TelemetryAtIn is [TelemetryAt] with a working directory whose project file
+// may hold the answer. An empty cwd has no project layer, and a project file
+// that cannot be loaded is skipped for the same reason a malformed one is —
+// the row reads as if nobody had written it.
+func TelemetryAtIn(cwd, profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_TELEMETRY")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultTelemetry
+	}
+	// THE PIN IS THE OPERATOR SPEAKING, so it lands before the project file.
+	// A pin that says nothing stays out of the project layer's way, which is
+	// the same order [ProjectConfig.ResolveBool] walks for the history row.
+	if cwd != "" {
+		// ProjectBoolAt resolves through the project file first, then the
+		// profile reader — which is TelemetryAt, on the rung below the pin
+		// it was about to read anyway. One ladder, not two.
+		if value, err := ProjectBoolAt(cwd, profileDir, KeyTelemetry); err == nil && !value {
+			return false
+		}
+	}
+	if value, ok := persistedBool(profileDir, KeyTelemetry); ok {
+		return value
+	}
+	return DefaultTelemetry
+}
+
+// WriteTelemetry persists the person's own answer to the telemetry row —
+// the writer `codeaf telemetry on|off` goes through, so the command and the
+// settings sheet write the same file the same way and cannot drift.
+func WriteTelemetry(profileDir string, on bool) error {
+	return writeProfileValue(profileDir, KeyTelemetry, on)
+}
+
+// TelemetryOffReason answers what turned the pipe off, in the words the
+// telemetry command prints beside the off reading: the environment pin, the
+// project file, the profile config, or nothing at all when the answer is on.
+// It is the accessor the binary calls to learn “did config turn telemetry
+// off”, and the reason is returned with it because a switch that went quiet
+// without saying why is a row nobody can audit.
+func TelemetryOffReason(cwd, profileDir string) (off bool, reason string) {
+	if raw := strings.TrimSpace(env.Get("CODEAF_TELEMETRY")); raw != "" {
+		if value, err := parseBool(raw); err == nil && !value {
+			return true, "CODEAF_TELEMETRY is set to " + raw
+		}
+		return DefaultTelemetry == false, ""
+	}
+	if cwd != "" {
+		if value, err := ProjectBoolAt(cwd, profileDir, KeyTelemetry); err == nil && !value {
+			return true, "the project config turns telemetry off"
+		}
+	}
+	if value, ok := persistedBool(profileDir, KeyTelemetry); ok && !value {
+		return true, "the profile config turns telemetry off"
+	}
+	return false, ""
 }
 
 // ContextFillAt resolves the fill law: environment pin, then the persisted

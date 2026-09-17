@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -510,6 +511,15 @@ func (c *Client) record(facts recordFacts) {
 	record.Ended = facts.ended
 	facts.knobs.trace.track(facts, record.ID)
 	calllog.Append(record)
+	// THE TALLY SITS AT THE SAME DOOR AS THE LOG, for the reason the log does:
+	// every outbound call in the process passes through here, so a call cannot
+	// be missed by a caller who forgot to count one. Only the row that ENDS an
+	// attempt is an answered call: the start row says it is in flight, and
+	// counting that too would count every call twice. The record's own error
+	// sentence is the failure verdict and its cost the spend, 0 when absent.
+	if record.Phase != calllog.PhaseStart {
+		telemetry.CountModelCall(record.Error == "", record.Cost)
+	}
 	c.recordBodies(facts, record, model)
 }
 

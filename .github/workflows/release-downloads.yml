@@ -1,0 +1,33 @@
+name: Release downloads
+
+# Reports release download counts to PostHog once a day. The counts come from
+# public GitHub release data — the API publishes a cumulative download_count
+# per asset — so this needs no code in the binary. One event per binary asset
+# (codeaf-<os>-<arch>[.exe]); sidecars like checksums.txt are not reported.
+on:
+  schedule:
+    # 06:00 UTC every day.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-downloads
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report release download counts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODEAF_POSTHOG_PROJECT_KEY: ${{ secrets.CODEAF_POSTHOG_PROJECT_KEY }}
+          # Repository variable; unset falls back to https://us.i.posthog.com.
+          POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+        run: |
+          python3 scripts/release_downloads.py
