@@ -1,12 +1,12 @@
 ---
 kind: added
 title: The Model Pool reaches its first surface — a `model_pool` setting and a `codeaf pool` verb
-pr: 1093
+pr: 1102
 surface: [chat, engine]
 invalidates:
   - "`internal/pool` was reachable from nothing outside itself. `config.ModelPoolAt` resolves the stored word and the four pool names, and `codeaf pool show|status|verify` answers from it, so the packages have a surface and the resolver in internal/config is the one place the process environment is read for the pool."
   - "`CODEAF_MODEL_POOL` sat in `OperatorEnvPins` with a comment saying the word had no row because nothing in the binary called poolcfg. It fronts the `model_pool` row now — choices `on`/`read`/`off`, default `on` — and renders through the row the way `CODEAF_DOC_ENGINE` does; the two URL names and the TTL stay plumbing."
-  - "`codeaf --help` had lines to spare; it did not — the page was already at its 110-line cap, and the pool entry was paid for by trimming three cells (`--model` off plan new, `--out file` and `--debug` off exec, the devices-revoke sentence folded) whose content the page or the per-command pages carry elsewhere."
+  - "`codeaf --help` was at its 110-line cap. The pool entry takes two lines, paid for by folding the devices-revoke sentence and dropping `--model` from `plan new`'s synopsis, both carried by the per-command pages; exec keeps `--out` and `--debug`."
 ---
 
 The setting is one choice row in the models group, pinned by
