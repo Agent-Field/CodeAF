@@ -245,13 +245,26 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	if s.rootFailed {
 		return
 	}
-	if fin, _ := s.store.CanFinalize(); fin {
+	if s.treeTerminal() {
 		// Every non-root task is terminal, so the run is over whether its
 		// last worker came home well or not: CompleteRoot marks the root done
 		// when the whole tree did, and failed when any part of it did not.
 		// The root's own result is the one its worker reported.
 		_ = s.store.CompleteRoot(s.rootResult)
 	}
+}
+
+// treeTerminal answers whether every task but the root has ended — the one
+// condition under which the run may complete its root. The root itself is
+// read separately; its completion is never a worker's to write.
+func (s *Supervisor) treeTerminal() bool {
+	rootID := s.store.RootID()
+	for _, task := range s.store.Tasks() {
+		if task.ID != rootID && !terminalStatus(task.Status) {
+			return false
+		}
+	}
+	return true
 }
 
 // hasCancelledAncestor walks the containment chain and answers whether any
