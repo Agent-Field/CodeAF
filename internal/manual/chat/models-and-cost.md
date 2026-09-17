@@ -458,6 +458,9 @@ money are read from:
   judged runs, carried as a quality rating the better-measured models read on top of
   their published scores.
 
+`catalog` and `learn` are Pareto crewing: the crew is picked on the cost-quality front,
+per role and per task, from evidence rather than from a fixed table.
+
 A pick moves the three seats the presets dial — **worker**, **careful work** and
 **mastermind** — and never the two that read every turn: **reflex** and **small work**
 keep their near-free ids, the same ones in every preset.
