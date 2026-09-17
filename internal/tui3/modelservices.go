@@ -190,10 +190,10 @@ func (a *app) modelConnectionRows() []connect.Status {
 	// reading; the sentence is the tab's own (switchSentence). The gate is the
 	// ring alone and not the add row's: the row is offered when there is
 	// somewhere to move to, whatever the panel's other doors are.
-	if switchReading, ok := switchReading(a.conversationModel(), a.sources); ok {
+	if reading, ok := switchReading(a.conversationModel(), a.sources); ok {
 		rows = append(rows, connect.Status{Service: connect.Service{
 			ID: modelConnectionID(connectionSwitchRowID), Name: "active connection",
-			Blurb: switchReading.sentence,
+			Blurb: reading.sentence,
 			Auth:  connect.AuthKey, Category: "models",
 		}})
 	}
@@ -1229,12 +1229,13 @@ func switchReading(model string, sources modelsource.Set) (connectionSwitch, boo
 		return connectionSwitch{}, false
 	}
 	active, hasActive := config.ActiveConnectionFor(model, sources)
-	switchReading := connectionSwitch{
+	next := nextConnection(ring, active, hasActive)
+	reading := connectionSwitch{
 		active: active, hasActive: hasActive,
-		next:     nextConnection(ring, active, hasActive),
-		sentence: switchSentence(hasActive, active, nextConnection(ring, active, hasActive)),
+		next:     next,
+		sentence: switchSentence(hasActive, active, next),
 	}
-	return switchReading, true
+	return reading, true
 }
 
 // connectionSwitcherRow is the Providers tab's active-connection row, nil
@@ -1249,11 +1250,11 @@ func switchReading(model string, sources modelsource.Set) (connectionSwitch, boo
 // up ([sheet.conversationModel], raiseSettings): a snapshot taken when the
 // panel opened would go on naming the model the conversation left behind.
 func (s *sheet) connectionSwitcherRow() *modelServiceRow {
-	switchReading, ok := switchReading(s.conversationModel(), s.sources)
+	reading, ok := switchReading(s.conversationModel(), s.sources)
 	if !ok {
 		return nil
 	}
-	return &modelServiceRow{name: "active connection", value: switchReading.sentence, switcher: true}
+	return &modelServiceRow{name: "active connection", value: reading.sentence, switcher: true}
 }
 
 // serviceWrittenWord is the name a person calls a service in the switcher's
@@ -1336,11 +1337,11 @@ func customInstances(sources modelsource.Set) []modelsource.Connected {
 // makes. The active connection is derived from the slot's model, so rewriting
 // the slot IS the switch; there is nothing else to store.
 func (a *app) switchActiveConnection() {
-	switchReading, ok := switchReading(a.conversationModel(), a.sources)
+	reading, ok := switchReading(a.conversationModel(), a.sources)
 	if !ok {
 		return
 	}
-	next := switchReading.next
+	next := reading.next
 	written := serviceWrittenWord(next)
 	var preferred string
 	if modelsource.IsCustomID(next.Source.ID) {
