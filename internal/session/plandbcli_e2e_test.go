@@ -300,7 +300,7 @@ func planE2EWaitStoreRoot(t *testing.T, place Place) {
 	}
 }
 
-// planE2EStoresUnder lists every plandb.json under a directory, which is the
+// planE2EStoresUnder lists every plandb.db under a directory, which is the
 // loud half of the no-foreign-store proof: a worker whose PATH reached some
 // other plandb would have left that program's store somewhere, and a store
 // beside the one the runtime seeded is the failure this finds.
@@ -687,7 +687,7 @@ func TestPlandbCliFlagOffTouchesNothing(t *testing.T) {
 	}
 
 	// NO STORE ANYWHERE: the seed never ran, so the session folder holds no
-	// plandb.json — and the bin directory the shim would have armed is not
+	// plandb.db — and the bin directory the shim would have armed is not
 	// there either, which is the flag-off path leaving the PATH alone too.
 	if stores := planE2EStoresUnder(t, place.Dir); len(stores) != 0 {
 		t.Errorf("the flag-off run left a plan store at %v, want none", stores)

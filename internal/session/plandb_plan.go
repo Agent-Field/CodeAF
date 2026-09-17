@@ -3,8 +3,8 @@ package session
 // The plan side of the bash belt (docs/design/plandb-cli/DESIGN.md, the
 // wiring section): the store the worker's `plandb` calls write, and the two
 // pulse points that make the graph and the store one thing. THE STORE IS THE
-// WORKER'S CLI's STORE and this file's store at once — one JSON file in the
-// session folder, found by both roads the same way (the runtime by path, the
+// WORKER'S CLI's STORE and this file's store at once — one SQLite database in
+// the session folder, found by both roads the same way (the runtime by path, the
 // CLI by walking up from its own working directory) — so a task the model
 // adds through bash is a task the runtime dispatches, and a node that lands
 // is a task the plan says is done.
@@ -43,7 +43,7 @@ type planState struct {
 // planStoreFilename is the file name every road agrees on: the runtime's
 // path helper, the CLI's walk-up, and the store's own creation all spell it
 // the same way.
-const planStoreFilename = "plandb.json"
+const planStoreFilename = "plandb.db"
 
 // planRootID is the store's root task. The reference loop's supervisor seeds
 // a root named t-root; the store trims the prefix, so the stored id is the
