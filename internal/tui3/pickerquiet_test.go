@@ -273,6 +273,67 @@ func TestEnterOnOpenrouterOpensItAndMarksDefault(t *testing.T) {
 	}
 }
 
+// AND `←` FROM THE ROW ENTER LANDED ON CLOSES ONE LEVEL, not two.
+//
+// This is the press a person makes next, and it was skipping a level: `default`'s
+// lane number is negative like the two containers' are, so the test for "a row
+// inside the machines" — which was `row.lane >= 0`, every real machine — did not
+// cover it, and `←` there shut the model's whole fold. The gesture that opens the
+// machines and the gesture that leaves them have to be the same length, or the
+// tree is not a tree.
+func TestLeftFromTheDefaultRowClosesOneLevelOnly(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width, a.height = 130, 40
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"), key("down"), key("enter")) // enter on openrouter lands on default
+
+	row, on := a.pick.laneUnder()
+	if !on || row.lane != laneDefaultAt {
+		t.Fatalf("enter did not land the cursor on default: %+v (on=%v)", row, on)
+	}
+
+	// ONE press: the machines shut and the model's own fold is still open, with
+	// the cursor back on the row that holds them.
+	drive(t, a, key("left"))
+	if a.pick.machines {
+		t.Fatal("← did not shut the machines")
+	}
+	if a.pick.unfold == "" {
+		t.Fatal("← shut the model's fold as well — two levels on one press")
+	}
+	back, on := a.pick.laneUnder()
+	if !on || back.lane != laneRoutAt {
+		t.Fatalf("← left the cursor on %+v (on=%v), want openrouter", back, on)
+	}
+
+	// AND THE SECOND press shuts the model's fold, which is the other level.
+	drive(t, a, key("left"))
+	if a.pick.unfold != "" {
+		t.Fatalf("the second ← left the fold open at %q", a.pick.unfold)
+	}
+}
+
+// AND THE SAME IS TRUE FROM A MACHINE ROW, which is the half that already worked
+// and must keep working: the two kinds of row inside the machines behave alike.
+func TestLeftFromAMachineClosesOneLevelOnly(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width, a.height = 130, 40
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"), key("down"), key("right")) // into the machines
+
+	row, on := a.pick.laneUnder()
+	if !on || row.lane < 0 {
+		t.Fatalf("the walk did not land on a machine: %+v (on=%v)", row, on)
+	}
+	drive(t, a, key("left"))
+	if a.pick.machines || a.pick.unfold == "" {
+		t.Fatalf("← from a machine closed %v levels (machines=%v unfold=%q)",
+			2, a.pick.machines, a.pick.unfold)
+	}
+}
+
 // AND A SECOND `enter` ON THE SAME ROW IS NOT A TOGGLE. The cursor has moved into
 // the fold, so there is no second press on the container to make — but a person
 // who walks back up to it and presses enter again must not have it snap shut,

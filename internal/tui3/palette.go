@@ -749,11 +749,20 @@ func (p *picker) foldHere() bool {
 		return false
 	}
 	// `←` CLOSES THE INNERMOST THING THAT IS OPEN, one level at a time: from a
-	// machine or from the `openrouter` row it shuts the machines and leaves the
-	// cursor on `openrouter`, and only then does it shut the model's own fold.
-	// A key that collapsed both at once would make the way in and the way out
-	// different lengths.
-	if row := p.list[p.cursor]; p.machines && (row.lane >= 0 || row.lane == laneRoutAt) {
+	// machine, from the `default` row beside them, or from the `openrouter` row
+	// itself it shuts the machines and leaves the cursor on `openrouter`, and only
+	// then does it shut the model's own fold. A key that collapsed both at once
+	// would make the way in and the way out different lengths.
+	//
+	// `default` IS IN THIS LIST BECAUSE IT IS ONE OF THE ROWS INSIDE, and it was
+	// left out when it stopped being a note beside `openrouter` and became a row
+	// under it. Its lane number is negative like the two containers' are, so
+	// `row.lane >= 0` — which is every real machine — did not cover it, and `←`
+	// there fell through to closing the model's whole fold: two levels on one
+	// press, from the one row `enter` on `openrouter` now lands the cursor on
+	// ([picker.showChoice]). That is the press a person makes next, so the skip
+	// was reachable by exactly the gesture most likely to reach it.
+	if row := p.list[p.cursor]; p.machines && (row.lane >= 0 || row.lane == laneRoutAt || row.lane == laneDefaultAt) {
 		p.machines = false
 		p.relist()
 		for at, drawn := range p.list {
