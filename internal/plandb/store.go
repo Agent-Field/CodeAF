@@ -145,6 +145,17 @@ func (s *Store) Path() string {
 	return s.path
 }
 
+// TaskDir is the folder one task's record lives in beside the store: the
+// trajectory the run's worker appends its steps to and the transcript and
+// spill files the session seat leaves both land there, so one task's page is
+// one folder a person can open. The store's own path is the one root both
+// roads derive it from — the session seat reads it off the store path it was
+// given, the run off the store it drives — and a second spelling of the
+// layout would be two answers to where a task's record is.
+func TaskDir(storeDir, id string) string {
+	return path.Join(storeDir, "tasks", id)
+}
+
 func (s *Store) Project() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
