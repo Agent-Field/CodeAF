@@ -2189,10 +2189,37 @@ func (a *app) nonChatWarning(id string) string {
 			return ""
 		}
 		line := model.ID + " cannot hold a conversation"
-		if words := ModalityWord(model.Input, model.Output); words != "" {
-			line += " — it " + words
+		if why := cannotChatBecause(model); why != "" {
+			line += " — " + why
 		}
 		return line + ". Still on " + a.model + "."
+	}
+	return ""
+}
+
+// cannotChatBecause is the half-sentence that says why a slug the catalog
+// carries is not something you can talk to: `it answers with speech`,
+// `it reads audio, not text`.
+//
+// IT IS A SENTENCE AND SO IT NEEDS A VERB, which is the one place on this
+// surface where the modality nouns cannot stand alone. A column says the side
+// in its head and the cell carries `speech`; a sentence in the middle of a
+// conversation has no head over it, so the verb is written out. Both are built
+// from the same two readings ([modalityReads] and [modalityMakes]), so there is
+// no second vocabulary to keep in step — only a second grammar.
+//
+// WHICH SIDE IT NAMES IS WHICHEVER SIDE IS THE REASON. A model that answers in
+// speech is refused for what it gives back; a transcriber is refused for what it
+// takes in, and its output is text like anything else's, so naming that would
+// explain nothing. A row that published neither says nothing at all and the
+// refusal is the bare sentence, because a reason nobody published is not a
+// reason this surface may invent.
+func cannotChatBecause(model Model) string {
+	if makes := modalityMakes(model.Output); makes != "" {
+		return "it answers with " + makes
+	}
+	if reads := modalityReads(model.Input); reads != "" && !readsText(model) {
+		return "it reads " + reads + ", not text"
 	}
 	return ""
 }

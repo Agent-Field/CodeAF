@@ -22,7 +22,7 @@ import (
 //
 //	inference-net/schematron-v2-turbo      $0.03/$0.15 per M · 128k
 //	~openai/gpt-astra-latest                    $10/$50 per M · 1M · sees
-//	inclusionai/ling-3.0-flash-vl   $0.06/$0.18 per M · 131k · sees · watches
+//	inclusionai/ling-3.0-flash-vl   $0.06/$0.18 per M · 131k · reads image, video
 //	nex-agi/nex-n2.5-mini:free                            262k · sees
 //
 // Four prices, four windows, and no two of them in the same column — because
@@ -103,7 +103,8 @@ var modelColumns = [...]modelColumn{
 	{head: "window", right: true},
 	{head: "t/s", right: true},
 	{head: "elo", right: true},
-	{head: "can"},
+	{head: modalityReadsLead},
+	{head: modalityMakesLead},
 }
 
 // modelHead is what stands over the name column. It is the only head that names
@@ -129,12 +130,19 @@ const modelTableSep = "  "
 // or the row is pointless, so the columns are budgeted out of what the names
 // leave, and a column goes rather than a name.
 //
-// The ceiling is here because one absurd id is not an argument. A catalog with
-// a forty-eight-character slug in it would otherwise buy that one row a name
-// column at the price of every other row's price and window. Past the ceiling
-// the id is trimmed the way rowfit.go trims one — author first, which sheds the
-// part that identifies nothing.
-const modelNameWide = 44
+// The ceiling is here because one absurd id is not an argument, and it is set
+// where a live catalog says the argument stops. Of the 355 chat models in one
+// on 2026-09-17, 343 have ids of 36 cells or fewer and twelve run past it — the
+// longest being `cognitivecomputations/dolphin-mistral-24b-venice-edition` at
+// fifty-six. A name column sized for that row is six cells taken off the other
+// three hundred and forty-three, and six cells is the whole `reads` column.
+//
+// So the ceiling is a little over the 97th percentile, and past it the id is
+// trimmed the way rowfit.go trims one — author first, which sheds the part that
+// identifies nothing and leaves `dolphin-mistral-24b-venice-edition` standing.
+// The mainstream `author/slug` with a level dialled onto it is well under it:
+// `anthropic/claude-sonnet-4.5:medium` is thirty-four.
+const modelNameWide = 38
 
 // modelLevelRoom is what a reasoning level costs the name it rides on: the
 // longest rung the ladder can put there, `:medium`.
@@ -159,7 +167,7 @@ const modelTableLeast = 2
 // column added there and a cell added here is one change in two halves and the
 // compiler names the half that was forgotten.
 func (f modelFacts) cells() [len(modelColumns)]string {
-	return [len(modelColumns)]string{f.via, f.first, f.in, f.out, f.window, f.rate, f.elo, f.can}
+	return [len(modelColumns)]string{f.via, f.first, f.in, f.out, f.window, f.rate, f.elo, f.reads, f.makes}
 }
 
 // modelTable is how wide each column wants to be, measured over a whole list

@@ -1026,8 +1026,15 @@ const (
 	termQuant
 	// termTools keeps models with a lane that honours a tool call.
 	termTools
-	// termSees and termDraws are the model's own modalities, which the row
-	// already says — they are here so that one grammar answers the whole row.
+	// termSees and termDraws are the model's own modalities.
+	//
+	// THEY KEEP THE VERBS THE ROW GAVE UP, and the reason is collision rather
+	// than taste. The row says the catalog's nouns now under `reads` and
+	// `makes` heads (models.go), and `image` would be the matching word — but
+	// `image` is a word in dozens of model ids (`qwen/qwen-image-3`,
+	// `google/gemini-3.1-flash-image`), so a person typing it to find one of
+	// those would get every model that can see instead. A filter word has to be
+	// a word no id carries, and `sees` and `draws` are.
 	termSees
 	termDraws
 	// termFast and termCheap order what is left.

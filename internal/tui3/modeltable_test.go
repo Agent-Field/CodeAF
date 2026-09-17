@@ -66,7 +66,7 @@ func TestEveryTableRowPutsItsColumnsInTheSamePlace(t *testing.T) {
 			if got := ansi.StringWidth(line); got > width {
 				t.Fatalf("at %d columns line %d drew %d cells: %q", width, at, got, line)
 			}
-			if len(line) > want && strings.TrimSpace(line[want:]) != "" {
+			if strings.TrimSpace(cellSlice(line, want, width)) != "" {
 				t.Fatalf("at %d columns line %d runs past the heading's %d cells:\n%s",
 					width, at, want, strings.Join(lines, "\n"))
 			}
@@ -74,13 +74,12 @@ func TestEveryTableRowPutsItsColumnsInTheSamePlace(t *testing.T) {
 		// And the figures land UNDER their heads rather than near them, which is
 		// the whole claim: the cells of the window column all start in the cell
 		// the word `window` starts in.
-		head := lines[0]
+		at, wide := columnCells(fit, lines[0], "window")
 		for _, cell := range []string{"1M", "128k", "262k"} {
-			at := strings.Index(head, "window")
 			if at < 0 {
-				t.Fatalf("at %d columns there is no window column:\n%s", width, head)
+				t.Fatalf("at %d columns there is no window column:\n%s", width, lines[0])
 			}
-			if !columnHolds(lines, at, len("window"), cell) {
+			if !columnHolds(lines, at, wide, cell) {
 				t.Fatalf("at %d columns %q is not under the window head:\n%s",
 					width, cell, strings.Join(lines, "\n"))
 			}
@@ -88,14 +87,48 @@ func TestEveryTableRowPutsItsColumnsInTheSamePlace(t *testing.T) {
 	}
 }
 
+// columnCells is where one head's column starts and how wide it is drawn — the
+// head's offset in the heading line IN CELLS, and the width the fit gave it,
+// which is NOT the head's own length: a column is as wide as its widest cell,
+// and `speech` is one cell wider than `makes`.
+func columnCells(fit modelTableFit, heading, head string) (int, int) {
+	for n, at := range fit.at {
+		if modelColumns[at].head == head {
+			return ansi.StringWidth(heading[:strings.Index(heading, head)]), fit.wide[n]
+		}
+	}
+	return -1, 0
+}
+
+// cellSlice is the text standing in the cells [at, at+wide) of one drawn line.
+//
+// IT COUNTS CELLS AND NOT BYTES, which is the whole reason it exists: the
+// cursor's own mark is `›`, one cell and three bytes, so a byte offset reads
+// the selected row two cells to the right of every other row — and a test
+// written that way would swear the table was misaligned on exactly the row a
+// person is looking at, or, worse, miss a real misalignment everywhere else.
+func cellSlice(line string, at, wide int) string {
+	out, cell := strings.Builder{}, 0
+	for _, r := range line {
+		if cell >= at+wide {
+			break
+		}
+		if cell >= at {
+			out.WriteRune(r)
+		}
+		cell += ansi.StringWidth(string(r))
+	}
+	return out.String()
+}
+
 // columnHolds reports whether some line carries text inside the cells [at,
 // at+wide) and nothing of it outside them.
 func columnHolds(lines []string, at, wide int, text string) bool {
+	if at < 0 {
+		return false
+	}
 	for _, line := range lines {
-		if len(line) < at+wide {
-			continue
-		}
-		if strings.TrimSpace(line[at:at+wide]) == text {
+		if strings.TrimSpace(cellSlice(line, at, wide)) == text {
 			return true
 		}
 	}
@@ -108,14 +141,45 @@ func columnHolds(lines []string, at, wide int, text string) bool {
 // over three hundred blanks (law 4 of rowfit.go, down the page).
 func TestATableDrawsNoHeadForAColumnNobodyPublished(t *testing.T) {
 	_, fit := tablePicker(120)
-	for _, head := range []string{"via", "first", "t/s"} {
+	for _, head := range []string{"via", "first", "t/s", "makes"} {
 		if strings.Contains(fit.header(), head) {
 			t.Fatalf("nothing was measured, so %q has no column:\n%s", head, fit.header())
 		}
 	}
-	for _, head := range []string{"in/M", "out/M", "window", "elo", "can"} {
+	for _, head := range []string{"in/M", "out/M", "window", "elo", "reads"} {
 		if !strings.Contains(fit.header(), head) {
 			t.Fatalf("the catalog publishes %q, so the table has to draw it:\n%s", head, fit.header())
+		}
+	}
+}
+
+// THE TWO SIDES ARE TWO COLUMNS, and which of them a list draws is decided by
+// the list. `/model` offers only models that answer in text and nothing else,
+// so `makes` has nothing to say there and is not drawn; a media slot's list is
+// exactly the rows that make something, and there it is the column the slot
+// exists for.
+func TestTheMakesColumnAppearsOnAListOfModelsThatMakeSomething(t *testing.T) {
+	const width = 100
+	drawing := []Model{
+		{ID: "vendor/painter", Input: []string{"text", "image"}, Output: []string{"image"}},
+		{ID: "vendor/tts", Input: []string{"text"}, Output: []string{"speech"}},
+		{ID: "vendor/song", Input: []string{"text"}, Output: []string{"music"}},
+		{ID: "vendor/film", Input: []string{"text"}, Output: []string{"video"}},
+	}
+	p := &picker{}
+	p.start(drawing, "vendor/painter")
+	fit := p.tableFit(width)
+	if !strings.Contains(fit.header(), "makes") || !strings.Contains(fit.header(), "reads") {
+		t.Fatalf("a list of makers has to draw both sides:\n%s", fit.header())
+	}
+	lines := tableRows(p, width)
+	// AND THE THREE KINDS OF SOUND STAY THREE KINDS. The old vocabulary folded
+	// speech, audio and music into one word, so a model that writes songs and
+	// one that reads a paragraph aloud drew the same row.
+	at, wide := columnCells(fit, lines[0], "makes")
+	for _, want := range []string{"speech", "music", "video", "image"} {
+		if !columnHolds(lines, at, wide, want) {
+			t.Fatalf("%q is not under the makes head:\n%s", want, strings.Join(lines, "\n"))
 		}
 	}
 }
@@ -138,7 +202,7 @@ func TestARowWithNoPriceDrawsBlankCellsAndNotAZero(t *testing.T) {
 	if strings.Contains(free, "$") {
 		t.Fatalf("a row with no published price must draw no figure: %q", free)
 	}
-	if !strings.Contains(free, "262k") || !strings.Contains(free, "sees · hears") {
+	if !strings.Contains(free, "262k") || !strings.Contains(free, "image, audio") {
 		t.Fatalf("the row lost the facts it does publish: %q", free)
 	}
 }
@@ -247,14 +311,14 @@ func TestTheTailAndTheTableAreTheSameReadingOfAModel(t *testing.T) {
 		facts.in + "/" + facts.out + " per M",
 		facts.window,
 		"elo " + facts.elo,
-		facts.can,
+		modalityReadsLead + " " + facts.reads,
 	} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the tail says %q, which does not carry %q", note, want)
 		}
 	}
 	cells := facts.cells()
-	if cells[2] != facts.in || cells[3] != facts.out || cells[6] != facts.elo {
+	if cells[2] != facts.in || cells[3] != facts.out || cells[6] != facts.elo || cells[7] != facts.reads {
 		t.Fatalf("the table's cells are not the same reading: %v", cells)
 	}
 }

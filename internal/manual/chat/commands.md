@@ -938,12 +938,15 @@ fuzzy hits sitting at the bottom rather than mixed through.
 
 Twelve rows show at a time, under a dim heading line. The list is a **table**: `<id>:<level>`
 on the left under `model`, and dim columns to the right of it for what the catalog
-published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, and `can` (`sees`,
-`hears`, `watches`, `draws`, `speaks`, `films`). The heading names the unit, so the figure
+published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `reads` and `makes`.
+The last two carry what the model takes in and gives back besides text, in the catalog's
+own words: `image`, `audio`, `video`, `file`, `speech`, `music`. The heading names the unit, so the figure
 under it does not: `$0.18` under `out/M`, `1290` under `elo`. An empty cell means nobody
 published that fact; a column no row published is not drawn at all. A price shows only when
 both halves are known — a zero means "nobody said", never "free". A plain text chat model
-shows nothing under `can`. A narrow window gives up columns from the right, and under sixty
+shows nothing under either of those. `makes` is never drawn in `/model` — a model that
+answers with anything but text cannot hold a conversation and is not on that list — so it
+belongs to the media slots in `/settings`. A narrow window gives up columns from the right, and under sixty
 columns the table gives way to the older `·` tail on a line of its own (the *models and
 cost* page, "What each row in the model picker tells you").
 
@@ -954,7 +957,7 @@ and so is a transcription model. A model that publishes nothing is judged by its
 Limits:
 
 - `/model <slug>` refuses a slug the catalog carries that **cannot hold a conversation**,
-  in one line — `openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on
+  in one line — `openai/gpt-4o-mini-tts cannot hold a conversation — it answers with speech. Still on
   <model>.` — and does not switch. A slug the catalog has never carried is taken as typed.
 
 - **ctrl+t does nothing at all, silently**, on a model whose catalog row does not accept a

@@ -199,10 +199,11 @@ under it do not have to:
 | `window` | how much it can hold | `1M`, `128k` |
 | `t/s` | how fast it writes once it has started | `58` |
 | `elo` | its Design Arena score | `1290` |
-| `can` | what it does besides hold a conversation | `sees · draws` |
+| `reads` | what it takes in besides text | `image`, `image, video` |
+| `makes` | what it gives back besides text | `image`, `speech` |
 
 That is also the ORDER, and it is the order the columns are given up in when the window is
-narrow — `can` goes first, `via` last. **A column nobody on this list published is not
+narrow — `makes` goes first, `via` last. **A column nobody on this list published is not
 drawn at all**, heading and all: a catalog with nothing measured behind it shows no `via`,
 no `first` and no `t/s` rather than three headings over three hundred blanks.
 
@@ -256,45 +257,67 @@ the `via` and the speeds do not rewrite themselves while you look. A turn runnin
 underneath can still update the status line. Close the list and open it again if you
 want the latest machines.
 
-## What "sees", "draws", "speaks", "films", "hears" mean on a model row
+## What the reads and makes columns mean — image, audio, video, file on a model row
 
-The `can` column of a picker row says what the model can do besides hold a conversation,
-in one word each — last in the row's order, so it is the first column a narrow window
-drops:
+`reads` is what the model takes in besides text and `makes` is what it gives back besides
+text, each in the catalog's own word:
 
-| Word | What the catalog published | Which side |
+| Word | Under `reads` it means | Under `makes` it means |
 |---|---|---|
-| `sees` | it reads images — `image` among its input modalities | in |
-| `hears` | it reads sound — `audio` in | in |
-| `watches` | it reads video — `video` in | in |
-| `draws` | it answers with images — `image` out | out |
-| `speaks` | it answers with speech, audio or music — any of the three, out | out |
-| `films` | it answers with video — `video` out | out |
+| `image` | it takes pictures — screenshots, photos | it answers with pictures |
+| `audio` | it takes sound | it answers with sound |
+| `video` | it takes video | it answers with video |
+| `file` | it takes attachments, a PDF among them | — |
+| `speech` | — | it answers with a voice reading words |
+| `music` | — | it answers with music |
 
-Input words come first, so a model that reads and paints pictures reads `sees · draws`.
+A model that takes several says them in one cell, commonest first: `image, audio, video,
+file`. **The order is codeaf's, not the catalog's** — the catalog publishes the same set
+three different ways on neighbouring rows, so echoing it would put one fact in three
+places down a column.
 
-**In the `/model` list only the three input words can ever turn up.** `/model` lists models
-you can hold a conversation with, and that means answering in text **and nothing else** — a
-model publishing `["text","image"]` out is a drawing model that also captions, and it is
-left off the list entirely. So `draws`, `speaks` and `films` belong to the media slots on
-the Providers tab (**drawing**, **speaking**, **composing**, **filming**), which open the
-same list over their own models. A conversation model's `can` column reads `sees`, or
-`sees · hears · watches`, or nothing.
+**A word this build has never seen is still shown**, after the ones it knows: the catalog
+carries `embeddings`, `transcription` and `rerank` today and will carry something else
+tomorrow, and a row that said nothing about a family codeaf did not recognise would be
+indistinguishable from a plain text model.
 
-**The column reports only what was published — it never reads the id.** A model whose name
-says `vl` or `vision` but whose catalog row lists no modalities draws a blank `can` cell,
-because the cell is a fact about the catalog and not a guess about the name. The **looking**
-slot on the Providers tab does fall back to those two words in a name when a row published
-nothing, so a silent `…-vl` row can be offered there while showing nothing under `can`
-here. The two are asking different questions: the cell says what is known, the slot has to
-decide whether to offer the row at all.
+**`text` is never shown on either side.** Every model on the list reads and writes it, so
+the word would be furniture on five hundred rows. An empty cell on both sides means text
+in, text out — which is also what a row that published no modalities at all means.
 
-A model that reads PDFs or other attachments publishes `file` among its inputs, and there
-is no word for that one — the column says nothing about it either way.
+**In the `/model` list `makes` is not drawn**, and that is not an accident of width.
+`/model` lists models you can hold a conversation with, which means answering in text
+**and nothing else** — a model publishing `["text","image"]` out is a drawing model that
+also captions, and it is left off the list entirely. So on that list every row's `makes`
+would be empty, and a column no row can fill is not drawn. `makes` appears on the media
+slots on the Providers tab — **drawing**, **speaking**, **composing**, **filming** — which
+open the same list over their own models, and it is the column those slots exist for.
 
-**A plain text chat model shows nothing here at all**, and neither does a model that
-published no modalities — silence means text in, text out, and nothing more. The same words
-appear on `codeaf models`, where they ride a tail rather than a column.
+**The cells report only what was published — they never read the id.** A model whose name
+says `vl` or `vision` but whose catalog row lists no modalities draws two blank cells,
+because a cell is a fact about the catalog and not a guess about a name. The **looking**
+slot does fall back to those two words in a name when a row published nothing, so a silent
+`…-vl` row can be offered there while showing nothing under `reads` here. The two are
+asking different questions: the cell says what is known, the slot has to decide whether to
+offer the row at all.
+
+These are the same words `codeaf models` uses, where they ride a tail rather than a column
+and so spell the side out: `reads image, video · makes image`. The picker does the same
+on a frame too narrow for the table.
+
+## An older name for these — sees, draws, speaks, films, hears, watches
+
+Rows used to carry one invented verb per modality — `sees` for image in, `hears` for audio
+in, `watches` for video in, `draws` for image out, `films` for video out, and `speaks` for
+all three of speech, audio and music. They are gone from every row: a verb had to carry the
+side as well as the thing, which is six words to learn before a row could be read, and
+`speaks` folded three different kinds of product into one word.
+
+`sees` and `draws` survive in **one** place — the model picker's filter box, where typing
+`sees` keeps the models that read images and `draws` keeps the ones that answer with them.
+They stayed verbs there because `image` is a word dozens of model ids carry
+(`qwen/qwen-image-3`, `google/gemini-3.1-flash-image`), and typing it has to keep finding
+those. A filter word has to be a word no id carries.
 
 ## Switching model by name in one command
 
@@ -319,7 +342,7 @@ conversation — a drawing model, a speech model, a transcriber — codeaf refus
 and the conversation does not move:
 
 ```
-openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on moonshotai/kimi-k3.
+openai/gpt-4o-mini-tts cannot hold a conversation — it answers with speech. Still on moonshotai/kimi-k3.
 ```
 
 A slug the catalog has never carried is still **taken at its word**, exactly as before:
@@ -2966,7 +2989,7 @@ they combine:
 | `$<0.3` | the best provider charges under that per million output tokens |
 | `fp8`, `bf16` | it has a provider serving at least that precision |
 | `tools` | it has a provider that honours a tool call |
-| `sees`, `draws` | the model reads images, or answers with them |
+| `sees`, `draws` | the model reads images, or answers with them — the two filter words that are still verbs, because `image` is a word dozens of model ids carry and typing it has to keep finding those |
 | `fast` | sorts what is left by how soon an answer would start |
 | `cheap` | sorts what is left by price |
 

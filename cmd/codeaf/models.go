@@ -178,10 +178,16 @@ func reasoningWord(models *catalog.Catalog, slug string) string {
 	return catalog.ReasoningWord(model, provider.ReasoningMandatory(slug))
 }
 
-// modalityWord is what a slug can do besides write, in the picker's own words:
-// "sees · draws". It is internal/tui3's spelling and not a second one, because a
-// person who reads "draws" on a picker row and "generates images" here has been
-// told about two things by two programs (CLAUDE.md's one-source-of-truth rule).
+// modalityWord is what a slug takes in and gives back besides text, in the
+// picker's own words: "reads image, video · makes image". It is internal/tui3's
+// spelling and not a second one, because a person who reads "makes image" on a
+// picker row and "generates images" here has been told about two things by two
+// programs (CLAUDE.md's one-source-of-truth rule).
+//
+// THE SIDE IS SPELLED OUT HERE BECAUSE THIS IS A TAIL AND NOT A TABLE. The
+// picker draws the two sides as columns under `reads` and `makes` heads and the
+// cell is the bare noun; a line of output has no head over it, so the same fact
+// comes back with its side written in ([tui3.ModalityWord]).
 //
 // A plain text model says NOTHING, which is the emptiness law and also the
 // reason this reads well: the line is already carrying a price and a reasoning
