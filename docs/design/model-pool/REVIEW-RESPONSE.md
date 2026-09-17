@@ -35,5 +35,5 @@ The report in `REVIEW.md` was written against the draft at the head before this 
 
 ## What the referee asked for and is not in this revision
 
-- A catalog bias term `b` is added to the hierarchy with its estimator, and the seed's own `b̂ = −15.7`, `τ̂₀² = 0` are reported with the reason the day-one `k = 30` stands.
+- A catalog bias term `b` is added to the hierarchy with its estimator, and the seed's own `b̂ = −13.7`, `τ̂₀² = 0` are reported with the reason the day-one `k = 30` stands.
 - Experiments on judge effects, drift, the settled probability and the pair term, and a flood analysis, remain future work; the Status paragraph lists them among what is specified but not landed.
