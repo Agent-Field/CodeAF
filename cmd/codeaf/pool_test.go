@@ -13,9 +13,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
+	"github.com/Agent-Field/codeaf/internal/pool/record"
+	"github.com/Agent-Field/codeaf/internal/pool/tally"
 )
 
 // poolClock is a stopped now, so an index's age is a fact rather than a race
@@ -101,7 +105,8 @@ func seedOutbox(t *testing.T) string {
 
 // The reading form answers over the whole config, every value beside the word
 // saying where it came from — and a machine that has never read an index says
-// so in a sentence rather than printing nothing at all.
+// so in a sentence rather than printing nothing at all. An install that has
+// recorded nothing of its own says so too.
 func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 	var out strings.Builder
 	if err := runPoolWith(nil, &out, t.TempDir(), poolClock(t), noEnv); err != nil {
@@ -114,6 +119,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 		"submit https://pool.invalid/submit · default",
 		"ttl 1d · default",
 		"no index cached yet · built-in seed of 2026-09-17",
+		"own sheet: none",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("show is missing %q:\n%s", want, body)
@@ -197,6 +203,9 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "pending 2 · can send yes · can read yes") {
 		t.Fatalf("status did not count the seeded rows:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "own sheet: none") {
+		t.Fatalf("status did not say the install has recorded nothing of its own:\n%s", out.String())
 	}
 
 	out.Reset()
@@ -487,5 +496,150 @@ func TestPoolShowJSONWithNoCacheReportsTheSeed(t *testing.T) {
 	}
 	if answer.Index == nil || answer.Index.Source != "seed" || answer.Index.Generated != "2026-09-17" {
 		t.Fatalf("the seed was not reported: %+v", answer.Index)
+	}
+}
+
+// ── THE OWN SHEET ───────────────────────────────────────────────────────────
+
+// seedOwnSheet records the install's own scores the way a recorder would:
+// through the sheet's own observe, saved to the path the pool reads it back
+// from.
+func seedOwnSheet(t *testing.T, dir string) {
+	t.Helper()
+	sheet := tally.New()
+	sheet.Observe("role_quality", "worker", "a/one", nil, 80)
+	sheet.Observe("role_quality", "worker", "a/one", nil, 90)
+	sheet.Observe("role_quality", "worker", "b/two", nil, 70)
+	if err := record.SaveSheet(filepath.Join(dir, "pool", "own.json"), sheet); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The install's own judged scores are said with their noun — the cells the
+// picker reads beside the index and the observations behind them — on the
+// reading forms and in the --json object alike.
+func TestPoolShowSaysWhatTheOwnSheetHolds(t *testing.T) {
+	dir := t.TempDir()
+	seedOwnSheet(t, dir)
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "own sheet: 2 cells, 3 observations") {
+		t.Fatalf("show did not count the own sheet's cells:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "own sheet: 2 cells, 3 observations") {
+		t.Fatalf("status did not count the own sheet's cells:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Own struct {
+			Cells        int `json:"cells"`
+			Observations int `json:"observations"`
+		} `json:"own"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Own.Cells != 2 || answer.Own.Observations != 3 {
+		t.Fatalf("the own sheet counted as %+v, want 2 cells over 3 observations", answer.Own)
+	}
+}
+
+// An own sheet that does not parse is a loss, not a fault a reading form
+// stops for: it reads as none.
+func TestPoolShowReadsAnUnparsableOwnSheetAsNone(t *testing.T) {
+	dir := t.TempDir()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "own.json"), []byte("not a document"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "own sheet: none") {
+		t.Fatalf("a broken own sheet did not read as none:\n%s", out.String())
+	}
+}
+
+// The wired reader answers the own sheet's cells — the install's own evidence,
+// read once and parsed once — and an off mode seats nothing at all.
+func TestWirePoolIndexSeatsTheOwnSheetsCells(t *testing.T) {
+	prevIndex, prevOwn := config.AutoIndex, config.AutoOwnCells
+	t.Cleanup(func() { config.AutoIndex, config.AutoOwnCells = prevIndex, prevOwn })
+
+	dir := t.TempDir()
+	seedOwnSheet(t, dir)
+	wirePoolIndex(dir)
+	if config.AutoOwnCells == nil {
+		t.Fatal("the own sheet was not seated")
+	}
+	own := config.AutoOwnCells()
+	want := []crewpick.Cell{
+		{Role: "worker", Model: "a/one", Mean: 85, N: 2},
+		{Role: "worker", Model: "b/two", Mean: 70, N: 1},
+	}
+	if len(own) != len(want) {
+		t.Fatalf("the seated cells are %+v, want %+v", own, want)
+	}
+	for i := range want {
+		if own[i] != want[i] {
+			t.Fatalf("cell %d is %+v, want %+v", i, own[i], want[i])
+		}
+	}
+	if config.AutoIndex == nil || config.AutoIndex() == nil {
+		t.Fatal("the index was not seated beside the own sheet")
+	}
+}
+
+// A mode that forbids reading seats nothing: the own sheet is the pool's own
+// reading, and off is off for the whole of it.
+func TestWirePoolIndexSeatsNothingWhenThePoolIsOff(t *testing.T) {
+	prevIndex, prevOwn := config.AutoIndex, config.AutoOwnCells
+	t.Cleanup(func() { config.AutoIndex, config.AutoOwnCells = prevIndex, prevOwn })
+	t.Setenv("CODEAF_MODEL_POOL", "off")
+
+	dir := t.TempDir()
+	seedOwnSheet(t, dir)
+	wirePoolIndex(dir)
+	if config.AutoOwnCells != nil {
+		t.Fatal("a pool that forbids reading seated the own sheet")
+	}
+	if config.AutoIndex != nil && config.AutoIndex() != nil {
+		t.Fatal("a pool that forbids reading seated an index")
+	}
+}
+
+// An own sheet that does not parse is a loss, not a fault a pick stops for:
+// the wired reader answers nothing rather than a broken sheet's half.
+func TestWirePoolIndexSeatsNothingForAnUnparsableOwnSheet(t *testing.T) {
+	prevOwn := config.AutoOwnCells
+	t.Cleanup(func() { config.AutoOwnCells = prevOwn })
+
+	dir := t.TempDir()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "own.json"), []byte("not a document"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wirePoolIndex(dir)
+	if got := config.AutoOwnCells; got != nil && got() != nil {
+		t.Fatal("a broken own sheet was seated")
 	}
 }
