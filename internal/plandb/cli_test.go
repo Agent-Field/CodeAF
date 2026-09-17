@@ -27,7 +27,7 @@ func cliNewHarness(t *testing.T) *cliHarness {
 	t.Helper()
 	return &cliHarness{
 		t:    t,
-		db:   filepath.Join(t.TempDir(), "plan", "plandb.json"),
+		db:   filepath.Join(t.TempDir(), "plan", "plandb.db"),
 		out:  &bytes.Buffer{},
 		errb: &bytes.Buffer{},
 	}
@@ -813,7 +813,7 @@ func TestPlandbCliRefusals(t *testing.T) {
 
 func TestPlandbCliStoreDiscovery(t *testing.T) {
 	root := t.TempDir()
-	db := filepath.Join(root, "plandb.json")
+	db := filepath.Join(root, "plandb.db")
 	if code := Main([]string{"--db", db, "init", "demo"}); code != 0 {
 		t.Fatalf("seed init exited %d", code)
 	}
@@ -831,7 +831,7 @@ func TestPlandbCliStoreDiscovery(t *testing.T) {
 	t.Setenv("PLANDB_DB", filepath.Join(t.TempDir(), "missing.json"))
 	code = h.run("add", "wrong store")
 	cliWantError(t, h, code, "no plan store at")
-	elsewhere := filepath.Join(t.TempDir(), "run", "plandb.json")
+	elsewhere := filepath.Join(t.TempDir(), "run", "plandb.db")
 	if code := Main([]string{"--db", elsewhere, "init", "elsewhere"}); code != 0 {
 		t.Fatalf("second init exited %d", code)
 	}
