@@ -2088,7 +2088,8 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	// [TaskNotice.Settling], which is what lets the terminal notice of an
 	// accept or a re-audit still raise the node's question with the answer's
 	// fate on it. Every caller also defers its own release, and that release
-	// hands back only its own claim's words ([TaskNode.releaseSettle]) — a
+	// hands back only its own claim's generation ([TaskNode.releaseSettle])
+	// — a
 	// settle another window started in the gap after this clear keeps its
 	// claim, and the deferred release is not that claim's to wipe.
 	//
