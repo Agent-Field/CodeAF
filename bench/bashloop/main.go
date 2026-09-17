@@ -46,7 +46,9 @@ func run(args []string, out, errOut io.Writer) error {
 	doorFlag := fs.String("door", string(doorTask), "which door starts the work: task (the engine's task door, in this process) or do (the product binary, codeaf do, as a subprocess)")
 	cells := fs.String("cells", "", "comma-separated cell ids to run (default: all six; pair mode takes one)")
 	replicates := fs.Int("replicates", 3, "replicates per cell per arm (grid mode)")
-	model := fs.String("model", pinnedModel, "the model both arms run on")
+	model := fs.String("model", pinnedModel, "the model the one-model arms run on")
+	seats := fs.String("seats", string(SeatsOne), "which seats each belt arm runs on: one (the one -model on every seat) or crew (the profile's own five tier rows)")
+	armsFlag := fs.String("arms", "", "comma-separated arms to run, each belt-seats: A-one, B-one, A-crew, B-crew (default: both belts on -seats)")
 	outDir := fs.String("out", "", "output root (default bench-results/bashloop/<timestamp>)")
 	wall := fs.Duration("timeout", defaultCellWall, "per-invocation wall — a spend backstop, not a work limit")
 	fixtures := fs.String("fixtures", "", "where the cell fixtures live (default: bench/bashloop/fixtures, or ./fixtures when run from bench/bashloop)")
@@ -88,12 +90,23 @@ func run(args []string, out, errOut io.Writer) error {
 	if chosenDoor != doorTask && chosenDoor != doorDo {
 		return fmt.Errorf("-door is %s or %s, got %q", doorTask, doorDo, *doorFlag)
 	}
+	arms, err := chooseArms(*armsFlag, *seats)
+	if err != nil {
+		return err
+	}
+	// The crew is read once, before any throwaway home is put in front of the
+	// process, and only when a crew arm is in the run: a one-model grid reads
+	// nothing from the machine.
+	var crew []crewRow
+	if armsHaveCrew(arms) {
+		crew = resolveCrew()
+	}
 	var p plan
 	switch *mode {
 	case "grid":
-		p = composeGrid(chosen, *replicates, outRoot, *wall, chosenDoor)
+		p = composeGrid(chosen, *replicates, outRoot, *wall, chosenDoor, arms, crew)
 	case "pair":
-		p = composePair(chosen[0], outRoot, *wall, chosenDoor)
+		p = composePair(chosen[0], outRoot, *wall, chosenDoor, arms, crew)
 	default:
 		return fmt.Errorf("-mode is grid or pair, got %q", *mode)
 	}

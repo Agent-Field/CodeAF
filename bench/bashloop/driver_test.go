@@ -9,6 +9,7 @@ package main
 // this test wrote itself.
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // ── the dry run prints every invocation ─────────────────────────────────────
@@ -337,6 +341,136 @@ func TestTheTableQuotesMediansOverGradedPassesOnly(t *testing.T) {
 	}
 }
 
+// ── the arms are named by belt and seats ────────────────────────────────────
+
+// The default run composes the two one-model belts, in the order it always
+// did, so today's grid is unchanged; -seats widens both belts, and -arms names
+// any subset by belt AND seats.
+func TestTheArmsAreChosenByName(t *testing.T) {
+	cases := []struct {
+		names, seats string
+		want         []string
+	}{
+		{"", "one", []string{"A-one", "B-one"}},
+		{"", "crew", []string{"A-crew", "B-crew"}},
+		{"A-crew,B-crew", "", []string{"A-crew", "B-crew"}},
+		{"A-one,B-one,A-crew,B-crew", "", []string{"A-one", "B-one", "A-crew", "B-crew"}},
+	}
+	for _, tc := range cases {
+		arms, err := chooseArms(tc.names, tc.seats)
+		if err != nil {
+			t.Fatalf("chooseArms(%q, %q): %v", tc.names, tc.seats, err)
+		}
+		var got []string
+		for _, arm := range arms {
+			got = append(got, arm.name())
+		}
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Fatalf("chooseArms(%q, %q) = %v, want %v", tc.names, tc.seats, got, tc.want)
+		}
+	}
+	for _, bad := range []string{"C-one", "A-many", "A"} {
+		if _, err := chooseArms(bad, ""); err == nil {
+			t.Fatalf("chooseArms(%q) accepted an arm that is not belt-seats", bad)
+		}
+	}
+}
+
+// The default grid is the one-model grid, unchanged: no seat rows appear, and
+// every invocation carries the shape it carried before seats existed.
+func TestTheDefaultGridLeavesTheOneModelInvocationsUnchanged(t *testing.T) {
+	out := &output{}
+	if err := run([]string{"-out", t.TempDir(), "-dry-run"}, out, io.Discard); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	blocks := invocationBlocks(out.b.String())
+	if len(blocks) != 36 {
+		t.Fatalf("the default grid printed %d blocks, want 36", len(blocks))
+	}
+	for _, block := range blocks {
+		if blockHasSeats(block) {
+			t.Fatalf("the default grid printed a seat row for a one-model arm:\n%s", block)
+		}
+		for _, label := range []string{"  door: ", "  model: ", "  env: ", "  wall: ", "  home: ", "  fixture: ", "  brief: |"} {
+			if !strings.Contains(block, label) {
+				t.Fatalf("a default-grid block is missing %q:\n%s", label, block)
+			}
+		}
+	}
+}
+
+// A crew arm differs from its one-model twin only in the seat rows: strip them
+// and the two blocks are the same invocation, on the two belts' own
+// environment.
+func TestACrewArmDiffersFromItsTwinOnlyInTheSeatRows(t *testing.T) {
+	// The crew is read off the profile, so the test pins one with known seats.
+	dir := t.TempDir()
+	values := map[string]string{
+		config.KeyTierReflexModel:     "known/reflex",
+		config.KeyTierLowModel:        "known/low",
+		config.KeyTierWorkerModel:     "known/worker",
+		config.KeyTierHighModel:       "known/high",
+		config.KeyTierMastermindModel: "known/mastermind",
+	}
+	body, err := json.Marshal(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(home.EnvVar, dir)
+
+	out := &output{}
+	err = run([]string{"-out", t.TempDir(), "-dry-run", "-replicates", "1",
+		"-arms", "A-one,A-crew,B-one,B-crew"}, out, io.Discard)
+	if err != nil {
+		t.Fatalf("crew dry run: %v", err)
+	}
+	blocks := invocationBlocks(out.b.String())
+	if len(blocks) != 24 {
+		t.Fatalf("the crew grid printed %d blocks, want 24", len(blocks))
+	}
+	for _, c := range allCells() {
+		one := findBlockSeats(blocks, ArmShipped, SeatsOne, c.id, 1)
+		crew := findBlockSeats(blocks, ArmShipped, SeatsCrew, c.id, 1)
+		if one == "" || crew == "" {
+			t.Fatalf("cell %s: missing its one-model or crew block", c.id)
+		}
+		if blockHasSeats(one) {
+			t.Fatalf("cell %s: the one-model block printed seat rows:\n%s", c.id, one)
+		}
+		if !blockHasSeats(crew) {
+			t.Fatalf("cell %s: the crew block printed no seat rows:\n%s", c.id, crew)
+		}
+		if stripBelt(stripPaths(stripSeats(crew))) != stripBelt(stripPaths(one)) {
+			t.Fatalf("cell %s: the crew arm differs from its twin in more than the seat rows:\none:\n%s\ncrew:\n%s",
+				c.id, one, crew)
+		}
+		for _, tier := range config.ModelTiers {
+			if !strings.Contains(crew, "  seat: "+tier+" known/"+tierToModelSuffix(tier)+" (") {
+				t.Fatalf("cell %s: the crew block does not print the %s seat:\n%s", c.id, tier, crew)
+			}
+		}
+	}
+}
+
+// tierToModelSuffix maps a tier word to the model the test's profile holds for
+// it, so the assertions above read the same five rows the block should.
+func tierToModelSuffix(tier string) string {
+	switch tier {
+	case config.ModelTierReflex:
+		return "reflex"
+	case config.ModelTierLow:
+		return "low"
+	case config.ModelTierWorker:
+		return "worker"
+	case config.ModelTierHigh:
+		return "high"
+	}
+	return "mastermind"
+}
+
 // ── no test here drives a model ─────────────────────────────────────────────
 
 // TestNoTestHereDrivesAModel is the file's own gate, the same shape
@@ -507,6 +641,41 @@ func stripPaths(block string) string {
 		kept = append(kept, line)
 	}
 	return strings.Join(kept, "\n")
+}
+
+// stripSeats removes a crew arm's printed seat rows — the one thing that
+// separates it from its one-model twin.
+func stripSeats(block string) string {
+	lines := splitLines(block)
+	var kept []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "  seat: ") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// blockHasSeats reports whether a block printed any seat row, which is exactly
+// what an arm on the crew does and a one-model arm does not.
+func blockHasSeats(block string) bool {
+	return strings.Contains(block, "  seat: ")
+}
+
+// findBlockSeats finds one arm-and-cell's block by belt AND seats, since the
+// header names only the belt and a one-model block sits beside its crew twin.
+func findBlockSeats(blocks []string, belt Arm, seats Seats, cellID string, replicate int) string {
+	for _, b := range blocks {
+		m := blockHeader.FindStringSubmatch(b)
+		if m == nil {
+			continue
+		}
+		if m[1] == string(belt) && m[2] == cellID && m[3] == itoa(replicate) && blockHasSeats(b) == (seats == SeatsCrew) {
+			return b
+		}
+	}
+	return ""
 }
 
 // briefOf answers a block's brief text, verbatim.
