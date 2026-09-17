@@ -1620,7 +1620,7 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 	// rows, and the heads must be the last thing before the first row they
 	// describe.
 	if head := p.tableFit(width).header(); head != "" {
-		fill.plain(pal.dim(fit(head, width)))
+		fill.plain(pal.head(fit(head, width)))
 	}
 	p.follow(overlayItems(n-p.headLines(width), width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
@@ -1634,7 +1634,7 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		// nothing saying which is which, and this table is a table for the same
 		// reason the model list is ([picker.laneFit]).
 		if head := p.laneHeadBefore(at, width); head != "" {
-			if !fill.plain(pal.dim(fit(head, width))) {
+			if !fill.plain(pal.head(fit(head, width))) {
 				break
 			}
 		}
@@ -1959,7 +1959,7 @@ func laneAutoSaid(routing string) laneAutoSay {
 // AND IT IS ONE SENTENCE UNDER EVERY ROUTING ROW, which is the other half of
 // the same fix. `according to /settings` is true whichever value is set —
 // that is what makes it honest without having to be rewritten per value.
-const laneAutoNote = "automatic routing according to /settings (recommended)"
+const laneAutoNote = "auto-route based on /settings"
 
 // laneUnmeasured is the one line a fold draws in the providers' place when
 // nothing behind the model has been measured. It is a sentence a person would

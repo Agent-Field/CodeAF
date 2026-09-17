@@ -2898,7 +2898,7 @@ and not part of the table, so they keep the `·` tail the model rows gave up:
 ```
  model               via         first  in/M   out/M  window  t/s
  deepseek-v4-flash   cloudflare   0.8s  $0.09  $0.18      1M   58
-   auto          automatic routing according to /settings (recommended)
+   auto          auto-route based on /settings
    openrouter    default routing
 ```
 
@@ -2909,7 +2909,7 @@ to; naming one is a narrower answer inside that row rather than a third thing be
 `←` closes one level at a time, so the way out is as many presses as the way in.
 
 ```
-   auto          automatic routing according to /settings (recommended)
+   auto          auto-route based on /settings
    openrouter    default routing
      provider    first  t/s    $/M  note        up   last 8
      cloudflare   0.8s   58   $1.3  no tools   100%  ▁▂▁▃▁▂
@@ -2921,6 +2921,10 @@ to; naming one is a narrower answer inside that row rather than a third thing be
 same way: down the page, comparing. The heading carries the unit so the cell does not —
 `58` under `t/s`, `$1.3` under `$/M` — and a column no provider on the list published is not
 drawn at all.
+
+**Both headings are drawn apart from their cells** — a different colour, and italic where
+the terminal can draw one — so a line of labels is never mistaken for a row whose figures
+have gone missing.
 
 **They are in alphabetical order.** codeaf's own ranking — fastest-feeling first — is still
 what `auto` and the model row's `via` read; it is the wrong order for a list a person reads,

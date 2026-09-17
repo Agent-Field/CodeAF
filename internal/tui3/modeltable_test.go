@@ -244,6 +244,36 @@ func TestAConstantColumnTheListWasNotChosenByIsStillDrawn(t *testing.T) {
 	}
 }
 
+// A HEADING IS NOT ONE MORE ROW OF THE THING. It is painted as a head
+// ([palette.head]) — a different hue from the cells and italic besides — because
+// dim labels over dim figures are the same text twice, and a person reading down
+// `first  t/s  $/M` had nothing telling them that line was not a provider whose
+// numbers had gone missing.
+func TestAHeadingIsPaintedApartFromItsCells(t *testing.T) {
+	const width = 100
+	p, _ := tablePicker(width)
+	pal := newTestPalette()
+	lines := p.rows(width, 8, pal, -1, nil)
+	if len(lines) < 2 {
+		t.Fatalf("the list drew %d lines", len(lines))
+	}
+	head, row := lines[0], lines[1]
+	if !strings.Contains(ansi.Strip(head), modelHead) {
+		t.Fatalf("the first line is not the heading: %q", ansi.Strip(head))
+	}
+	if head == pal.dim(ansi.Strip(head)) {
+		t.Fatalf("the heading is painted exactly as a dim row is: %q", head)
+	}
+	if head != pal.head(ansi.Strip(head)) {
+		t.Fatalf("the heading is not painted as a head: %q", head)
+	}
+	// AND THE ROW UNDER IT IS NOT, which is the half that makes the first half
+	// mean anything.
+	if strings.Contains(row, "\x1b[3m") {
+		t.Fatalf("a row is painted as a heading: %q", row)
+	}
+}
+
 // AN EMPTY CELL IS A FACT. A row that published no price draws blank under the
 // price heads — never a zero, and never a row that is simply shorter than its
 // neighbours, which is what the ragged tail could not tell apart.
