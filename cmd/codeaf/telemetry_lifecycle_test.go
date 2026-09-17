@@ -321,4 +321,3 @@ func TestTelemetryNoticeNeverPrintsUnderJSON(t *testing.T) {
 		t.Fatalf("the notice was marked shown under --json")
 	}
 }
-
