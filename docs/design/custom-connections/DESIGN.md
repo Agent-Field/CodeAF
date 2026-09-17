@@ -16,8 +16,8 @@ connection it is.
 ## (a) Identity and resolution
 
 One predicate, `modelsource.IsCustomID(id)` (`id == "custom"` or prefix `custom-`),
-replaces every `== "custom"` comparison (at least `internal/config/sources.go:83`,
-`sources.go:167`, `internal/tui3/modelservices.go:168/191/225`).
+replaces every `== "custom"` comparison in `internal/config/sources.go` and
+`internal/tui3/modelservices.go`. Do not pin line numbers here; they drift.
 
 The first custom connection keeps the id `"custom"`, so existing profiles and tests
 stay byte-identical. Later instances mint `custom-<slug>` with a numeric tiebreak.
@@ -39,10 +39,10 @@ New: `config.PrepareCustomSource(profileDir, address, written) PersistedSource` 
 the instance id, defaults `Written` from the host slug, and sets `Order`. Both doors
 call `PrepareCustomSource`, then `ConnectService`.
 
-The slug derivation moves from `modelServiceSlug` (`internal/tui3/modelservices.go:331`)
-to `modelsource.SourceSlug`, so config and both surfaces share one derivation. The
-move fixes the IP-literal defect: `127.0.0.1` currently yields `"0"`, and will yield
-`127-0-0-1`.
+The slug derivation moved from the old `modelServiceSlug` to `modelsource.SourceSlug`,
+so config and both surfaces share one derivation. That fixed the IP-literal defect:
+`127.0.0.1` yields `127-0-0-1`. `SourceSlug` stays string-only; modelsource must not
+import `net` (its purity law forbids reading and dialing nothing).
 
 ## (c) The active connection is derived, never stored
 
@@ -61,8 +61,9 @@ No new profile key.
 
 `Model.Group` / `GroupOrder`, plus `a.sourceModels` keyed by `Connected.Source.ID`,
 mean each instance gets its own cache, group and heading once (a)'s stamp lands. The
-group heading is the person's own name for the connection; `GroupOrder` is the
-persisted row's `Order`.
+group heading is the person's own name for the connection. `GroupOrder` is the set
+index in `modelsFor`, not the persisted row's `Order`; the two agree only because
+`resolveSources` sorts by `Order`, so no test may assert they are equal.
 
 ## Hazards
 
