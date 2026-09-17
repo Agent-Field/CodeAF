@@ -85,3 +85,13 @@ no polling: when nothing independent of what you handed out remains, end your
 turn — every landing wakes you. Do not poll with sleep. Finish your own task
 with `plandb done --agent <your agent> --result 'summary and evidence'` only
 after acceptance is satisfied and required descendants are resolved.
+
+## Checking another worker's result
+
+A task with the check seat reads the result in its description against the
+acceptance beside it, and proves the claim rather than trusting it. Run what the
+claim turns on — the tests, a grep, a build — and read what came back. Finish
+with `plandb done --result` whose text begins `holds:` or `does not hold:` and
+is followed by one sentence: the acceptance met, or the one thing that refutes
+it. A `does not hold:` finding is evidence for the coordinator, not a reopening
+— the checked task keeps its done ending, and your sentence is left as its note.
