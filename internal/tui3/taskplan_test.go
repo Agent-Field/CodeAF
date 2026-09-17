@@ -7,6 +7,7 @@ package tui3
 // worker; the place is driven by the same fake agent its neighbours use.
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -17,13 +18,34 @@ import (
 )
 
 // planFake is [taskFake] widened by the plan seam this place asserts: the rows a
-// conversation's store answers, and the page one row opens. It is the same fake
-// the pane's other tests run against — a task session that answers a plan is a
-// widening of one and not a different one.
+// conversation's store answers, the page one row opens, and the six steering
+// verbs a person's keys turn into. It is the same fake the pane's other tests
+// run against — a task session that answers a plan is a widening of one and not
+// a different one.
 type planFake struct {
 	*taskFake
 	plan  []session.PlanTaskRow
 	pages map[string]session.PlanTaskPage
+
+	// THE SIX VERBS, each recording the call it was asked for so a test can read
+	// back the id and the words a key produced. `refuse` is the sentence every one
+	// of them answers instead of acting, which is how the store's own refusal is
+	// put in front of the pane.
+	noted     []planCall
+	amended   []planCall
+	sized     []planCall
+	paused    []string
+	resumed   []string
+	cancelled []string
+	refuse    error
+}
+
+// planCall is one verb call as the pane made it: the id, the words when the verb
+// carries any, and the number a priority names.
+type planCall struct {
+	id   string
+	text string
+	n    int
 }
 
 func (f *planFake) PlanTasks() []session.PlanTaskRow { return f.plan }
@@ -31,6 +53,56 @@ func (f *planFake) PlanTasks() []session.PlanTaskRow { return f.plan }
 func (f *planFake) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
 	page, ok := f.pages[id]
 	return page, ok
+}
+
+func (f *planFake) PlanNote(id, text string) error {
+	f.noted = append(f.noted, planCall{id: id, text: text})
+	return f.refuse
+}
+
+func (f *planFake) PlanPause(id string) error {
+	f.paused = append(f.paused, id)
+	if f.refuse == nil {
+		f.setStatus(id, "paused")
+	}
+	return f.refuse
+}
+
+func (f *planFake) PlanResume(id string) error {
+	f.resumed = append(f.resumed, id)
+	if f.refuse == nil {
+		f.setStatus(id, "running")
+	}
+	return f.refuse
+}
+
+func (f *planFake) PlanCancel(id string) error {
+	f.cancelled = append(f.cancelled, id)
+	if f.refuse == nil {
+		f.setStatus(id, "cancelled")
+	}
+	return f.refuse
+}
+
+func (f *planFake) PlanAmend(id, text string) error {
+	f.amended = append(f.amended, planCall{id: id, text: text})
+	return f.refuse
+}
+
+func (f *planFake) PlanPriority(id string, n int) error {
+	f.sized = append(f.sized, planCall{id: id, n: n})
+	return f.refuse
+}
+
+// setStatus writes a verb's effect back over the store row, which is what makes a
+// second `p` resume what the first paused: the toggle reads the status fresh
+// ([app.taskPlanPaused]) and the pane's next reading wears the new word.
+func (f *planFake) setStatus(id, status string) {
+	for i := range f.plan {
+		if f.plan[i].ID == id {
+			f.plan[i].Status = status
+		}
+	}
 }
 
 // planAppWith is [taskApp] over an agent that answers a plan: a pinned clock, a
@@ -149,6 +221,127 @@ func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if a.taskSheet.planOn || !a.at(pageTasks) {
 		t.Fatal("esc did not back out of the plan page to the list")
+	}
+}
+
+// THE CANCEL KEY A NODE ROW HAS ENDS A PLAN TASK, through the store's own
+// cancel verb rather than the engine's (plandb_steer.go). It is the roster's
+// `x`, taken over an empty box exactly as a node row takes it, so the same key
+// that ends a node ends the plan task and a letter typed into the filter is
+// still a letter.
+func TestTheCancelKeyOnAPlanRowEndsItThroughTheStore(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	a, fake := planAppWith(t, rows, nil)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	if item, ok := a.taskSheetCurrent(); !ok || item.plan == nil {
+		t.Fatalf("the cursor is not on a plan row: %+v", item.entry)
+	}
+	drive(t, a, key("x"))
+	if len(fake.cancelled) != 1 || fake.cancelled[0] != "t-alpha" {
+		t.Fatalf("the cancel key was turned into %v, want one cancel of t-alpha", fake.cancelled)
+	}
+}
+
+// `p` HOLDS THE TASK AND `p` AGAIN LETS IT GO, and the pane's key line says so:
+// the foot names the cancel and the hold beside the door enter takes, because a
+// key nobody can find is a key that does not exist.
+func TestPOnAPlanRowPausesThenResumes(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	a, fake := planAppWith(t, rows, nil)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	line := a.taskSheetKeysLine()
+	if !strings.Contains(line, tasksPlanCancelWord) || !strings.Contains(line, tasksPlanPauseWord) {
+		t.Fatalf("the foot does not name the plan row's keys: %q", line)
+	}
+	drive(t, a, key("p"))
+	if len(fake.paused) != 1 || fake.paused[0] != "t-alpha" {
+		t.Fatalf("the first `p` was turned into %v, want one pause of t-alpha", fake.paused)
+	}
+	// THE SAME KEY AGAIN RELEASES IT, and the foot now says what the next press
+	// does rather than what the last one did.
+	if line := a.taskSheetKeysLine(); !strings.Contains(line, tasksPlanResumeWord) {
+		t.Fatalf("a paused row's foot reads %q, want it to offer the release", line)
+	}
+	drive(t, a, key("p"))
+	if len(fake.resumed) != 1 || fake.resumed[0] != "t-alpha" {
+		t.Fatalf("the second `p` was turned into %v, want one resume of t-alpha", fake.resumed)
+	}
+}
+
+// TYPING ON THE PAGE IS A NOTE AND NOT A CHAT TURN: the words go to the store's
+// note verb and never to the model, the composer says what typing there does,
+// and a note is sent with enter.
+func TestSendingOnThePlanPageWritesANoteAndStartsNoTurn(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	pages := map[string]session.PlanTaskPage{
+		"t-alpha": {Row: rows[0], Description: "the work order"},
+	}
+	a, fake := planAppWith(t, rows, pages)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !a.taskSheet.planOn {
+		t.Fatal("enter over a plan row did not open its page")
+	}
+	if !strings.Contains(taskSheetText(a), taskPlanNoteWord) {
+		t.Fatalf("the page's composer does not say what typing there does:\n%s", taskSheetText(a))
+	}
+	for _, r := range "a note" {
+		drive(t, a, key(string(r)))
+	}
+	if got := a.taskSheet.planNote.String(); got != "a note" {
+		t.Fatalf("the composer holds %q, want %q", got, "a note")
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	want := planCall{id: "t-alpha", text: "a note"}
+	if len(fake.noted) != 1 || fake.noted[0] != want {
+		t.Fatalf("enter wrote %v, want one note %+v", fake.noted, want)
+	}
+	if len(fake.sent) != 0 {
+		t.Fatalf("sending a note started a chat turn: %v", fake.sent)
+	}
+}
+
+// A REFUSAL FROM A VERB IS THE PANE'S ONE LINE, the sentence the store
+// answered — never a card, which a place cannot draw over itself. It is read on
+// the list, where the router's line rides beside the hint.
+func TestAPlanVerbRefusalIsSpokenOnThePanesLine(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	a, fake := planAppWith(t, rows, nil)
+	fake.refuse = errors.New("the root task is the harness's — it cannot be cancelled")
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	drive(t, a, key("x"))
+	if !strings.Contains(a.pageMsg, "cannot be cancelled") {
+		t.Fatalf("the store's sentence went nowhere: %q", a.pageMsg)
+	}
+	if !strings.Contains(taskSheetText(a), "cannot be cancelled") {
+		t.Fatalf("the refusal is not drawn:\n%s", taskSheetText(a))
+	}
+}
+
+// AND THE DEFAULT PAGE DRAWS IT TOO, on its closing rule, because the page draws
+// its own frame and the router's line has no place on it.
+func TestAPlanVerbRefusalIsSpokenOnThePage(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	pages := map[string]session.PlanTaskPage{
+		"t-alpha": {Row: rows[0], Description: "the work order"},
+	}
+	a, fake := planAppWith(t, rows, pages)
+	fake.refuse = errors.New("a task that has finished cannot be paused")
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	drive(t, a, key("p"))
+	if !strings.Contains(taskSheetText(a), "cannot be paused") {
+		t.Fatalf("the page does not draw the store's refusal:\n%s", taskSheetText(a))
 	}
 }
 

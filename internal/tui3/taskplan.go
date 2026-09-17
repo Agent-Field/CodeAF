@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -36,6 +37,17 @@ type planAgent interface {
 	// PlanTaskPage is one task's description, notes and trajectory, for the id a
 	// row carries. False is the answer for a task this chat did not spawn.
 	PlanTaskPage(id string) (session.PlanTaskPage, bool)
+	// THE SIX VERBS are the person's own door onto a run's plan, the hard
+	// steering beside the note (plandb_steer.go). Each resolves an id inside THIS
+	// conversation's plan and answers the store's own sentence on a refusal — the
+	// root is the harness's, a terminal task cannot be cancelled — which is what
+	// the pane reads back on its one line.
+	PlanNote(id, text string) error
+	PlanPause(id string) error
+	PlanResume(id string) error
+	PlanCancel(id string) error
+	PlanAmend(id, text string) error
+	PlanPriority(id string, n int) error
 }
 
 // planReader is the agent under this surface, when it carries a plan at all.
@@ -270,6 +282,7 @@ func (a *app) taskSheetPlan(id string) tea.Cmd {
 	}
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
 	a.taskSheet.detailTop = 0
+	a.taskSheet.planNote.reset()
 	// The card's recovery band belongs to the row the CARD was opened from, and
 	// this page is not that row ([app.taskSheetInside] clears it at the one other
 	// door for the same reason).
@@ -282,27 +295,226 @@ func (a *app) taskSheetPlan(id string) tea.Cmd {
 func (a *app) closeTaskPlan() {
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = session.PlanTaskPage{}, false, false
 	a.taskSheet.detailTop = 0
+	// A half-typed note does not survive the page it was typed on, which is the
+	// box's own law everywhere here ([app.placeHomeGesture] resets the box it
+	// empties for the same reason).
+	a.taskSheet.planNote.reset()
 	a.touch()
 }
 
-// taskPlanKey is the page's keyboard: `esc` and the chord out, and the four
-// reading keys the card also spends — the page is read down, so the wheel and
-// the arrows move an offset rather than a cursor ([app.taskCardScroll]).
-func (a *app) taskPlanKey(key string) tea.Cmd {
+// ── the steering verbs ──────────────────────────────────────────────────────
+
+// The words the plan keys say, each quoted in the manual exactly as it is
+// spelled here.
+const (
+	// taskPlanNoteWord is what the page's composer says with nothing typed in
+	// it: the one thing a person can type on a plan task's page, and the reason
+	// the box is there at all.
+	taskPlanNoteWord = "a note for this task"
+	// tasksPlanCancelWord is the cancel key on a plan row and its page, spelled
+	// from the roster's own cancel key and verb rather than re-invented here.
+	tasksPlanCancelWord = stopRaiseKey + " " + stopActWord
+	// tasksPlanPauseWord and tasksPlanResumeWord are the ONE key that holds a
+	// plan task and lets it go again, named for the state the row is in. It is
+	// `p` because nothing on a node row holds one today, and the pane's key line
+	// says so ([app.tasksPlanKeyWords]).
+	tasksPlanPauseWord  = "p pause"
+	tasksPlanResumeWord = "p resume"
+)
+
+// taskPlanPaused reports whether the store holds this task at the pause gate,
+// read FRESH rather than out of the place's own snapshot: a `p` pressed twice
+// must resume what the first press paused, and the pane's held rows are a
+// reading that changes on its own beat ([tasksPlace.regroup]).
+func (a *app) taskPlanPaused(agent planAgent, id string) bool {
+	for _, row := range agent.PlanTasks() {
+		if row.ID == id {
+			return strings.TrimSpace(row.Status) == "paused"
+		}
+	}
+	return false
+}
+
+// taskPlanVerb is the one road every plan key takes: resolve the plan door, run
+// the store verb the caller names, and put the store's own sentence on the
+// pane's one line when it refuses. The store is the authority on its own laws —
+// the root is the harness's, a terminal task cannot be cancelled — and its
+// sentence is what a person reads back, never a card ([app.pageMsg] is the one
+// refusal a place that is not home has to say).
+func (a *app) taskPlanVerb(run func(planAgent) error) tea.Cmd {
+	agent, ok := a.planReader()
+	if !ok {
+		return nil
+	}
+	if err := run(agent); err != nil {
+		a.pageMsg = err.Error()
+	} else {
+		// A verb that landed clears a refusal a previous one left on the pane's
+		// line, which is what keeps the line about the key just pressed.
+		a.pageMsg = ""
+		// THE STORE MOVED, so the pane takes its plan again on the next frame:
+		// the row a person just steered wears the store's new word. The stamp is
+		// what [tasksPlace.regroup] hangs a re-read on ([app.railStamp]), and this
+		// is the one door that moves it without a node landing.
+		a.railStamp++
+	}
+	// The strip is the node row's own way to end work, and it goes away with the
+	// verb it was opened for rather than standing over a row it has acted on.
+	a.closeStrip()
+	a.touch()
+	return nil
+}
+
+// taskPlanCancel ends a plan task, its descendants and the work hard-depending
+// on it, through the store's own cancel ([session.Agent.PlanCancel]). It is the
+// cancel a node row already has, reached through the plan verb.
+func (a *app) taskPlanCancel(id string) tea.Cmd {
+	return a.taskPlanVerb(func(p planAgent) error { return p.PlanCancel(id) })
+}
+
+// taskPlanToggle is `p`: hold the task the store says is running, release the
+// one it says is held. The answer is the store's, read at the moment of the key.
+func (a *app) taskPlanToggle(id string) tea.Cmd {
+	agent, ok := a.planReader()
+	if !ok {
+		return nil
+	}
+	if a.taskPlanPaused(agent, id) {
+		return a.taskPlanVerb(func(p planAgent) error { return p.PlanResume(id) })
+	}
+	return a.taskPlanVerb(func(p planAgent) error { return p.PlanPause(id) })
+}
+
+// taskPlanNoteSend writes what is typed in the page's composer as a person-note
+// on the plan task — the store's own note verb, in the person's voice, which the
+// worker reads on its next frame ([session.Agent.PlanNote]). IT IS NOT A CHAT
+// TURN: the words go to the store and never to the model, so nothing here starts
+// one.
+func (a *app) taskPlanNoteSend() tea.Cmd {
+	text := strings.TrimSpace(a.taskSheet.planNote.String())
+	if text == "" {
+		return nil
+	}
+	agent, ok := a.planReader()
+	if !ok {
+		return nil
+	}
+	id := a.taskSheet.plan.Row.ID
+	if err := agent.PlanNote(id, text); err != nil {
+		a.pageMsg = err.Error()
+		a.touch()
+		return nil
+	}
+	a.taskSheet.planNote.reset()
+	a.pageMsg = ""
+	a.railStamp++
+	// Read the page again so the note a person just left is on the screen, which
+	// is the receipt the store cannot draw itself.
+	if page, ok := agent.PlanTaskPage(id); ok {
+		a.taskSheet.plan = page
+	}
+	a.touch()
+	return nil
+}
+
+// taskSheetPlanKey is a plan row's own keys in the LIST, over an empty box the
+// way the roster takes its bare letters (stop.go's `x IS TAKEN OVER AN EMPTY
+// BOX`): `x` ends the task through the store's cancel — the key that cancels a
+// node — and `p` holds it or lets it go again. A letter is a letter the moment
+// there is a filter to type, so neither is taken once something is in the box.
+func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
+	if a.taskSheetFilter() != "" {
+		return nil, false
+	}
+	item, ok := a.taskSheetCurrent()
+	if !ok || item.plan == nil {
+		return nil, false
+	}
+	switch key {
+	case stopRaiseKey:
+		return a.taskPlanCancel(item.plan.ID), true
+	case "p":
+		return a.taskPlanToggle(item.plan.ID), true
+	}
+	return nil, false
+}
+
+// tasksPlanKeyWords is the pane's key line for a plan row: the cancel and the
+// one key that holds the task, named beside the enter clause the foot already
+// draws ([tasksPlace.hint] reaches them). A key nobody can find is a key that
+// does not exist, so both are said where a person reads what a row can do.
+func (a *app) tasksPlanKeyWords(status string) []string {
+	words := []string{tasksPlanCancelWord}
+	if strings.TrimSpace(status) == "paused" {
+		return append(words, tasksPlanResumeWord)
+	}
+	return append(words, tasksPlanPauseWord)
+}
+
+// taskPlanKey is the page's keyboard: `esc` and the chord out, the four reading
+// keys the card also spends (the page is read down, so the wheel and the arrows
+// move an offset rather than a cursor), the two verbs a plan row has — `x` and
+// `p`, taken over an EMPTY composer — and the note itself, where every printable
+// key goes into the box and `enter` sends it ([app.taskPlanNoteSend]) rather
+// than a chat turn.
+func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
+	key := msg.String()
+	// The caret's own chords first, the route every box on this surface takes
+	// (place_tasks.go's filter, the conversation's composer).
+	if editorMotion(&a.taskSheet.planNote, key) ||
+		editorUndo(&a.taskSheet.planNote, key) ||
+		editorWordKill(&a.taskSheet.planNote, key) {
+		a.touch()
+		return nil
+	}
+	// A letter is a letter the moment there is a note to type, so the row's own
+	// keys are read over an empty box and never over a sentence (the list's own
+	// law, [app.taskSheetPlanKey]).
+	if a.taskSheet.planNote.empty() {
+		switch key {
+		case stopRaiseKey:
+			return a.taskPlanCancel(a.taskSheet.plan.Row.ID)
+		case "p":
+			return a.taskPlanToggle(a.taskSheet.plan.Row.ID)
+		}
+	}
 	switch key {
 	case "esc", "left":
 		a.closeTaskPlan()
+		return nil
 	case taskSheetKey:
 		a.closeTaskSheet()
+		return nil
 	case "up", "ctrl+p":
 		a.taskPlanScroll(-1)
+		return nil
 	case "down", "ctrl+n":
 		a.taskPlanScroll(1)
+		return nil
 	case "pgup":
 		a.taskPlanScroll(-taskSheetRows)
-	case "pgdown", " ":
+		return nil
+	case "pgdown":
 		a.taskPlanScroll(taskSheetRows)
+		return nil
+	case "enter":
+		return a.taskPlanNoteSend()
+	case "backspace":
+		a.taskSheet.planNote.deleteBackward()
+	case "ctrl+u":
+		a.taskSheet.planNote.killToStart()
+	case "ctrl+k":
+		a.taskSheet.planNote.killToEnd()
+	case "ctrl+w":
+		a.taskSheet.planNote.deleteWord()
+	default:
+		// EVERY OTHER PRINTABLE KEY IS THE NOTE. A space types a space here — the
+		// card pages with it, but a page with a box types spaces.
+		if text := msg.Key().Text; text != "" {
+			a.taskSheet.planNote.insert(text)
+		}
 	}
+	a.touch()
 	return nil
 }
 
@@ -316,9 +528,16 @@ func (a *app) taskPlanScroll(delta int) {
 	a.touch()
 }
 
+// taskPlanFoot is what the page spends under its body: the closing rule, the
+// note composer, and the key line, in that order — the card's own foot grew one
+// row for the box the page types into.
+const taskPlanFoot = 3
+
 // taskPlanFrame is the whole screen while the page is up: a head, the body, and
-// the way back. It is drawn in the card's slot and in the card's own shape — one
-// frame, one rule, one foot — so the two pages of this place read as one.
+// the foot. It is drawn in the card's slot and in the card's own shape — one
+// frame, one rule, one foot — so the two pages of this place read as one. The
+// one thing the card has not got and this page has is the note composer: the box
+// a person types into, in the foot, under the rule.
 func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 	pal := a.pal
 	if height < 1 {
@@ -331,7 +550,13 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 	add("")
 	add(pal.dim(rule(width)))
 	head := len(lines)
-	room := height - head - 1
+	// THE FOOT IS THE LAST THREE ROWS, and a frame too short for the body under
+	// it gives the body up rather than the way out (the card's own trim).
+	foot := taskPlanFoot
+	if height-head-foot < 1 {
+		foot = 0
+	}
+	room := height - head - foot
 	if room < 1 {
 		room = 1
 	}
@@ -344,11 +569,49 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 	for i := 0; i < drawn; i++ {
 		add(" " + fit(body[a.taskSheet.detailTop+i], width-1))
 	}
-	for len(lines) < height-1 {
+	for len(lines) < height-foot {
 		add("")
 	}
-	add(pal.dim(rule(width)))
-	return lines, 0, 0
+	caretX, caretY := 0, 0
+	if foot > 0 {
+		// A refusal the store answered rides on the closing rule, which is the
+		// pane's one line for a place that is not home ([app.pageMsg]); this page
+		// draws its own frame and so draws it here.
+		legend := []string{}
+		if a.pageMsg != "" {
+			legend = append(legend, " "+pal.dim(a.pageMsg))
+		}
+		add(placeNoteRule(legend, width, pal))
+		if a.taskSheet.planNote.empty() {
+			add(" " + pal.dim(fit(prompt+taskPlanNoteWord, width-1)))
+		} else {
+			add(" " + fit(prompt+a.taskSheet.planNote.String(), width-1))
+		}
+		caretX, caretY = ansi.StringWidth(prompt)+1, len(lines)-1
+		add(" " + paintHint(hintFit(a.taskPlanKeys(), width-2), pal, pal.dim))
+	}
+	if len(lines) > height {
+		lines = lines[:height]
+		if caretY >= height {
+			caretX, caretY = 0, 0
+		}
+	}
+	return lines, caretX, caretY
+}
+
+// taskPlanKeys is the page's key line: the reading keys the card also spends,
+// the send, and the two verbs a plan task has, over the way back. It is fitted
+// by [hintFit], so `esc back` is kept last and the clause a narrow frame drops
+// first is the scroll.
+func (a *app) taskPlanKeys() string {
+	parts := []string{"↑↓ scroll", "enter send", tasksPlanCancelWord}
+	if strings.TrimSpace(a.taskSheet.plan.Row.Status) == "paused" {
+		parts = append(parts, tasksPlanResumeWord)
+	} else {
+		parts = append(parts, tasksPlanPauseWord)
+	}
+	parts = append(parts, taskCardBackWord)
+	return strings.Join(parts, railSep)
 }
 
 // taskPlanBody is what a person reads: the work order, the notes, and the steps.
