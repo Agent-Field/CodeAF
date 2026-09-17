@@ -3,8 +3,8 @@
 ## What happens when I type /task
 
 On this road, `/task <brief>` starts a **run** rather than a node of the
-conversation's own tree. It says so in one place and nowhere else — the switch
-below — and the older road is what a build without the switch does.
+conversation's own tree. Everything here hangs on one switch, named under *How to
+turn it on* below, and the older road is what a build without it does.
 
 Typing `/task` asks you nothing and waits for nothing in front of it: the work
 exists as soon as you press enter. What it does instead is:
