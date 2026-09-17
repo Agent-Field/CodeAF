@@ -3532,8 +3532,8 @@ on the `prompt profile` row or pinned it for the launch. Nothing about a model's
 licence, its vendor, its name or which crew seat it sits in makes a session
 lean.
 
-So an open-weight model with a large window is NOT lean. `deepseek-v4-flash` and
-`glm-5.3-flash` are served with 128,000 tokens of room, so they get the full
+So an open-weight model with a large window is NOT lean. `glm-5.3-flash` and
+`glm-5.3` are served with 128,000 tokens of room, so they get the full
 page, the full tool list and saved memories, exactly like any other
 128,000-token model — including when they are the model your crew preset picked
 for the `worker` seat, and including when you then choose that same model in

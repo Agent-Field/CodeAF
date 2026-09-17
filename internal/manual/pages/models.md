@@ -94,7 +94,7 @@ the build's default. `CODEAF_HOME` and `CODEAF_PROFILE_DIR` decide which profile
 Every one of those runs opens with a line on stderr naming both seats and what chose each:
 
 ```
-models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 ```
 
 `codeaf do --json` carries the same four facts as `model`, `plan_model`, `model_source`
