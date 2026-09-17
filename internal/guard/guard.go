@@ -13,6 +13,7 @@ import (
 	"log"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 )
 
 // Fault is what a recovered panic becomes: an ordinary error the caller can
@@ -53,7 +54,7 @@ func note(scope string, recovered any, stack []byte) error {
 	return fault
 }
 
-// OnFault is called from Recover once the fault has been recorded, with the
+// The fault hook is called from Recover once the fault has been recorded, with the
 // scope Recover was given and the stack it captured for the log. It is nil by
 // default, and it is a variable rather than a call because of where this
 // package sits: internal/telemetry spools its own writes through guard.Go, so
@@ -64,7 +65,23 @@ func note(scope string, recovered any, stack []byte) error {
 // It runs on the recovered goroutine, inside the deferred Recover, so it must
 // neither block nor panic: the goroutine ends the moment it returns, and a
 // fault in the reporter would be the one fault guard could not absorb.
-var OnFault func(scope string, stack []byte)
+type faultHook func(scope string, stack []byte)
+
+// onFault holds the hook behind an atomic pointer: the binary sets it once at
+// start-up and every recovered goroutine reads it, and a plain variable read
+// on one goroutine while another writes it is a race the detector rightly
+// reports.
+var onFault atomic.Pointer[faultHook]
+
+// SetOnFault installs the hook, or removes it with nil.
+func SetOnFault(fn func(scope string, stack []byte)) {
+	if fn == nil {
+		onFault.Store(nil)
+		return
+	}
+	hook := faultHook(fn)
+	onFault.Store(&hook)
+}
 
 // Recover absorbs a panic in the deferring goroutine and lets it end quietly:
 // `defer guard.Recover("narrator")`. Use it where there is no result to carry
@@ -73,8 +90,8 @@ func Recover(scope string) {
 	if recovered := recover(); recovered != nil {
 		stack := debug.Stack()
 		_ = note(scope, recovered, stack)
-		if OnFault != nil {
-			OnFault(scope, stack)
+		if hook := onFault.Load(); hook != nil {
+			(*hook)(scope, stack)
 		}
 	}
 }

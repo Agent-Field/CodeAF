@@ -128,14 +128,14 @@ func telemetryFaultHook() {
 	if !telemetry.Enabled() {
 		return
 	}
-	guard.OnFault = func(scope string, stack []byte) {
+	guard.SetOnFault(func(scope string, stack []byte) {
 		session := currentTelemetrySession
 		telemetry.Spool(telemetry.FaultEvent(telemetry.Fault{
 			Mode:  string(session.mode),
 			Scope: telemetry.ScopeGoroutine,
 			Stack: stack,
 		}, session.sessionID, time.Now()))
-	}
+	})
 }
 
 // telemetryEnd closes one run at the exit, from the process's own tally

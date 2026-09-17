@@ -130,14 +130,13 @@ func TestFaultWithoutScopeStillReads(t *testing.T) {
 }
 
 // TestGoCallsTheFaultHookOnceWithTheGoroutineStack holds the hook's whole
-// contract: a guarded goroutine that panics calls OnFault exactly once, with
+// contract: a guarded goroutine that panics calls the fault hook exactly once, with
 // the scope Recover was given and the stack of the goroutine that faulted —
 // the same bytes the log line carries, because a reporter above this package
 // has nothing else to group the fault by.
 func TestGoCallsTheFaultHookOnceWithTheGoroutineStack(t *testing.T) {
 	captureLog(t)
-	previous := OnFault
-	t.Cleanup(func() { OnFault = previous })
+	t.Cleanup(func() { SetOnFault(nil) })
 
 	type hookCall struct {
 		scope string
@@ -146,7 +145,7 @@ func TestGoCallsTheFaultHookOnceWithTheGoroutineStack(t *testing.T) {
 	// Buffered for two so a second call is a readable failure rather than a
 	// goroutine blocked on a send nobody drains.
 	calls := make(chan hookCall, 2)
-	OnFault = func(scope string, stack []byte) { calls <- hookCall{scope: scope, stack: stack} }
+	SetOnFault(func(scope string, stack []byte) { calls <- hookCall{scope: scope, stack: stack} })
 
 	Go("narrator", func() { panic("narration blew up") })
 
