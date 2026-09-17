@@ -1845,6 +1845,17 @@ type Config struct {
 	// It is private for InTask's reason: no surface sets it, the executor does.
 	roomThread bool
 
+	// bashBelt is THE EXPERIMENT'S ONE SWITCH, and it is unexported for
+	// pacing's reason: it is not a caller's choice but a fact about the task
+	// worker this package built. It is set only by the executor, at
+	// newTaskAgentOn, from CODEAF_TASK_BELT, and read only through
+	// [Config.mayBashBelt], so no road can hand the bash belt to a
+	// conversation — the conversation and every subharness leaf keep the
+	// seven pi tools whatever the variable says, which is what lets both
+	// arms of the comparison run from one binary
+	// (docs/design/bash-task-loop/DESIGN.md).
+	bashBelt bool
+
 	// reviseDesign is the one extra hand a design thread has, and the whole of
 	// what puts revise_design on its belt (tools_harness.go). It carries the
 	// change, in the person's own words, to the design loop parked on the

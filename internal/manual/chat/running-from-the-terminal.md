@@ -118,6 +118,12 @@ plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
 ```
 
+One more verb is the plan store the bash-belt task worker coordinates through, exposed
+to a person: **`codeaf plandb`** answers the same commands the worker runs in bash —
+`codeaf plandb list --status ready`, `codeaf plandb task overview`, `codeaf plandb
+critical-path` — against the run's own `plandb.db`, so a plan a worker is driving can be
+read the way the worker reads it.
+
 Two more exist and are deliberately kept out of the help text, because nothing types them
 by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
 **`codeaf tick`** is the one bounded pass the background timer runs every five minutes.

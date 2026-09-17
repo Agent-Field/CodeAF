@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -201,6 +202,12 @@ func run() error {
 		// edges, a frontier) and stays inside the engine, where it is the right
 		// word and where nobody reads it.
 		return runPlanCommand(os.Args[2:])
+	case "plandb":
+		// The plan store's CLI, through the same Main cmd/plandb builds into
+		// bin/plandb (docs/design/plandb-cli/DESIGN.md). This door is the
+		// fallback road when the sibling binary is not where a bash-belt
+		// worker's shell can find it; Main answers the exit code directly.
+		return exitStatus(plandb.Main(os.Args[2:]))
 	case "revise":
 		// The old top-level spelling of `codeaf plan revise`, kept working for
 		// one release (rename.go).
