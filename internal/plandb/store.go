@@ -492,13 +492,11 @@ func (s *Store) AddDep(downstream, upstream string, kind DepKind) (*Task, error)
 			return err
 		}
 		// A ready task that has just gained a hard dependency is not runnable
-		// now, and "ready" must mean runnable now — so it falls back to pending
-		// and promote() re-raises it when the new upstream finishes. Claimed and
-		// running work stays where it is: a task mid-flight cannot be re-scoped
-		// out from under its worker by a later edge.
-		if task.Status == StatusReady && !depsDone(*next, task) {
-			task.Status = StatusPending
-		}
+		// now, and the same is true for every descendant whose ancestor gained
+		// one. promote() owns that demotion — readiness is its law, both halves
+		// of it — so a new edge only has to state itself and then promote.
+		// Claimed and running work stays where it is: a task mid-flight cannot
+		// be re-scoped out from under its worker by a later edge.
 		task.UpdatedAt = now
 		promote(next, now)
 		return nil
@@ -1147,10 +1145,24 @@ func detectCycle(value state, edges func(*Task) []string) error {
 	return nil
 }
 
+// promote brings the ready frontier up to the truth of the graph after any
+// change. It is the ONE definition of who is ready, in both directions: a
+// pending task whose dependencies are all done becomes ready, and — the half
+// the ancestor rule needs — a ready task that no longer satisfies that rule
+// falls back to pending. Readiness and promotion cannot disagree, because
+// both are asked of depsDone here: `ready` always means "this task's own hard
+// dependencies and every ancestor's hard dependencies are done", and never
+// the memory of a moment when that was last true.
 func promote(value *state, now time.Time) {
 	changed := true
 	for changed {
 		changed = false
+		for _, id := range value.Order {
+			task := value.Tasks[id]
+			if task.Status == StatusReady && !depsDone(*value, task) {
+				task.Status, task.UpdatedAt, changed = StatusPending, now, true
+			}
+		}
 		for _, id := range value.Order {
 			task := value.Tasks[id]
 			if task.Status == StatusPending && depsDone(*value, task) {

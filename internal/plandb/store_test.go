@@ -289,6 +289,100 @@ func TestPlandbCliLineageRuleGatesHardEdgesOnly(t *testing.T) {
 	}
 }
 
+// A hard edge may join two tasks in different branches of the containment
+// tree — the doctrine's cross-branch dependency — and it gates the frontier
+// exactly as a sibling edge does: the downstream task is ready the moment the
+// upstream finishes, and not before.
+func TestPlandbCliCrossBranchHardEdgesGateReadiness(t *testing.T) {
+	store := planOpen(t, "")
+	left := planSpec("left", "Left")
+	right := planSpec("right", "Right")
+	planAdd(t, store, left, right)
+	leaf := planSpec("leaf", "Leaf")
+	leaf.ParentID = "left"
+	far := planSpec("far", "Far")
+	far.ParentID = "right"
+	planAdd(t, store, leaf, far)
+
+	// leaf (a child of left) waits on far (a child of right) — two branches,
+	// neither task an ancestor of the other.
+	if _, err := store.AddDep("leaf", "far", ""); err != nil {
+		t.Fatalf("cross-branch hard edge refused: %v", err)
+	}
+	if got := store.Task("leaf"); got.Status != StatusPending {
+		t.Fatalf("leaf status = %s, want pending while its cross-branch upstream is open", got.Status)
+	}
+	if got := store.Task("far"); got.Status != StatusReady {
+		t.Fatalf("far status = %s, want ready", got.Status)
+	}
+
+	planFinish(t, store, "far", "w-far", "far delivered")
+	if got := store.Task("leaf"); got.Status != StatusReady {
+		t.Fatalf("leaf status = %s, want ready the moment its cross-branch upstream finished", got.Status)
+	}
+	// The same relation tried the other way would close a hard loop, and the
+	// law sees it across the branches.
+	if _, err := store.AddDep("far", "leaf", ""); err == nil || !strings.Contains(err.Error(), "dependency graph") {
+		t.Fatalf("cross-branch edge closing a loop accepted: %v", err)
+	}
+}
+
+// The one hard edge across a lineage that stays refused is between a task and
+// its own ancestor or descendant: such an edge would have a task wait on the
+// lineage that schedules it. And readiness is recomputed for the whole branch
+// when an ancestor gains a dependency, so a descendant that was ready falls
+// back to pending with its ancestor.
+func TestPlandbCliAncestorHardEdgesStayRefusedAndDemoteDescendants(t *testing.T) {
+	store := planOpen(t, "")
+	parent := planSpec("p", "P")
+	child := planSpec("c", "C")
+	child.ParentID = "p"
+	child.Dependencies = []Dependency{{TaskID: "p"}}
+	if _, err := store.AddMany([]TaskSpec{parent, child}); err == nil || !strings.Contains(err.Error(), "lineage") {
+		t.Fatalf("child hard dependency on its own ancestor accepted: %v", err)
+	}
+
+	store = planOpen(t, "")
+	parent = planSpec("p", "P")
+	parent.Dependencies = []Dependency{{TaskID: "c"}}
+	child = planSpec("c", "C")
+	child.ParentID = "p"
+	if _, err := store.AddMany([]TaskSpec{parent, child}); err == nil || !strings.Contains(err.Error(), "lineage") {
+		t.Fatalf("a hard dependency on a task's own descendant accepted: %v", err)
+	}
+
+	// A ready branch whose ancestor gains a hard dependency is not runnable
+	// any more: the gate the ancestor now waits on holds the child too.
+	store = planOpen(t, "")
+	planAdd(t, store, planSpec("g", "G"))
+	planAdd(t, store, planSpec("p", "P"))
+	kid := planSpec("c", "C")
+	kid.ParentID = "p"
+	planAdd(t, store, kid)
+	if got := store.Task("c"); got.Status != StatusReady {
+		t.Fatalf("child status = %s, want ready before its ancestor gains a gate", got.Status)
+	}
+	if _, err := store.AddDep("p", "g", ""); err != nil {
+		t.Fatalf("ancestor hard dependency refused: %v", err)
+	}
+	if got := store.Task("p"); got.Status != StatusPending {
+		t.Fatalf("parent status = %s, want pending behind its new gate", got.Status)
+	}
+	if got := store.Task("c"); got.Status != StatusPending {
+		t.Fatalf("child status = %s, want pending: readiness walks the parent chain and the ancestor's gate is open", got.Status)
+	}
+	for _, ready := range store.ReadyLeaves() {
+		if ready.ID == "c" {
+			t.Fatal("a child was handed out while its ancestor's gate was open")
+		}
+	}
+
+	planFinish(t, store, "g", "w-g", "gate cleared")
+	if got := store.Task("c"); got.Status != StatusReady {
+		t.Fatalf("child status = %s, want ready once the ancestor's gate cleared", got.Status)
+	}
+}
+
 func TestPlandbCliCyclesAreRefusedOnBothGraphs(t *testing.T) {
 	store := planOpen(t, "")
 	a := planSpec("a", "A")
