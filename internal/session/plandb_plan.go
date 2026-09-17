@@ -3,8 +3,8 @@ package session
 // The plan side of the bash belt (docs/design/plandb-cli/DESIGN.md, the
 // wiring section): the store the worker's `plandb` calls write, and the two
 // pulse points that make the graph and the store one thing. THE STORE IS THE
-// WORKER'S CLI's STORE and this file's store at once — one JSON file in the
-// session folder, found by both roads the same way (the runtime by path, the
+// WORKER'S CLI's STORE and this file's store at once — one SQLite database in
+// the session folder, found by both roads the same way (the runtime by path, the
 // CLI by walking up from its own working directory) — so a task the model
 // adds through bash is a task the runtime dispatches, and a node that lands
 // is a task the plan says is done.
@@ -43,7 +43,7 @@ type planState struct {
 // planStoreFilename is the file name every road agrees on: the runtime's
 // path helper, the CLI's walk-up, and the store's own creation all spell it
 // the same way.
-const planStoreFilename = "plandb.json"
+const planStoreFilename = "plandb.db"
 
 // planRootID is the store's root task. The reference loop's supervisor seeds
 // a root named t-root; the store trims the prefix, so the stored id is the
@@ -166,6 +166,10 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 				}
 			}
 		}
+		// The seed's own handle is done once the brief is composed from it; a
+		// store opened per pass must be closed, or every pass would leave a
+		// database connection behind.
+		defer store.Close()
 		g.plan = &planState{path: path}
 		if err := g.plan.armShim(); err != nil {
 			// A plan whose shim never landed is still the run's plan — the
@@ -190,6 +194,7 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	// A NODE THE CHECKPOINT ALREADY NAMED: a resumed run's node knows its
 	// plan task, and its brief is re-composed from the store read rather than
 	// added again — adding would mint a second task for work one task already
@@ -223,7 +228,8 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 // open re-opens the store from disk. THE RE-OPEN IS THE POINT: a store
 // handle's memory is only as fresh as its last transaction, and the worker's
 // CLI is a separate process that has been writing since — every pass reads
-// the file, never a cached copy.
+// the store, never a cached copy. A nil answer is a pass with no plan; when
+// the answer is a store the caller closes it, because every pass opens one.
 func (p *planState) open() *plandb.Store {
 	store, err := plandb.Open(p.path, "", planRootID, "", "")
 	if err != nil {
@@ -265,6 +271,7 @@ func (g *TaskGraph) planPulse() {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	// THE SNAPSHOT: one short hold of the graph's lock to read what the
 	// nodes say, released before any store work.
 	snapshot := make(map[string]*planNodeSnapshot, len(g.nodes))
@@ -404,6 +411,15 @@ func (g *TaskGraph) planPulse() {
 			return
 		}
 	}
+	// A NODE ADMITTED THIS PASS IS OPEN TOO, and the snapshot above cannot
+	// name it: the snapshot is taken before the dispatch loop runs. The run is
+	// not over while work it has just handed out is still running, so a pass
+	// that dispatched anything ends here — completing the root now would read
+	// a just-dispatched child as unfinished and fail a healthy run. The next
+	// landing is a pass with nothing to dispatch, and that one completes.
+	if len(dispatched) > 0 {
+		return
+	}
 	for _, task := range store.Tasks() {
 		if task.ID == store.RootID() || terminalStoreStatus(task.Status) || snapshot[task.ID] != nil || dispatched[task.ID] {
 			continue
@@ -446,6 +462,21 @@ func planSettleStoreTask(store *plandb.Store, task *plandb.Task, node *planNodeS
 			word = node.report
 		}
 		_, _ = store.Cancel(task.ID, word)
+	}
+}
+
+// planStopLandedChildren is the landing road's stop for a node that seeded or
+// drove a plan. A PLAN-BORN CHILD IS THE PLAN'S TO END, not the landing node's:
+// the pulse completes the run's root only once no plan-born node is open, so a
+// child cut here would be a child the run still expects — the orphan the
+// landing pulse was placed after stopChildren to avoid. Everything else stops
+// exactly as it did.
+func (g *TaskGraph) planStopLandedChildren(parent uint64) {
+	for _, kid := range g.children(parent) {
+		if kid.spec.planID != "" || kid.stateNow().settled() {
+			continue
+		}
+		_, _ = g.stop(kid.id)
 	}
 }
 
@@ -686,6 +717,7 @@ func (g *TaskGraph) planReviseThrough(planID, brief string) {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	if store.Task(planID) == nil {
 		return
 	}
