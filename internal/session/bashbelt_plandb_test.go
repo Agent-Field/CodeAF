@@ -85,18 +85,18 @@ type planLaneCompleter struct {
 	// send to. Every call after the release answers the same prose, so the
 	// woken turn ends and the node lands.
 	released map[string]bool
-	prose   map[string]string
+	prose    map[string]string
 }
 
 func newPlanLaneCompleter(parent []step) *planLaneCompleter {
 	return &planLaneCompleter{
 		parent:    parent,
-		requests: map[string][][]ai.Message{},
+		requests:  map[string][][]ai.Message{},
 		arrived:   map[string]chan struct{}{},
 		announced: map[string]bool{},
-		lanes:    map[string]chan string{},
-		released: map[string]bool{},
-		prose:    map[string]string{},
+		lanes:     map[string]chan string{},
+		released:  map[string]bool{},
+		prose:     map[string]string{},
 	}
 }
 
@@ -266,6 +266,29 @@ func planTaskAt(t *testing.T, dir, id string) *plandb.Task {
 	return task
 }
 
+// planWaitStoreRootTerminal waits, bounded, for the store's root task to
+// reach a terminal status — the word the landing pulse's completion writes a
+// breath after the last node settles. The wait is on the store's own file,
+// and the failure names the status it saw.
+func planWaitStoreRootTerminal(t *testing.T, dir string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		root := planOpenStore(t, dir).Task(planRootID)
+		if root != nil && (root.Status == plandb.StatusDone || root.Status == plandb.StatusFailed) {
+			return
+		}
+		if time.Now().After(deadline) {
+			status := "absent"
+			if root != nil {
+				status = string(root.Status)
+			}
+			t.Fatalf("the store's root task never completed; it reads %s", status)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // planGrow adds children to the run's store the way the worker's CLI does:
 // through the store's own door, on a fresh handle. A test that grew the file
 // by hand would be testing a second store format.
@@ -391,15 +414,16 @@ func TestPlandbCliSeedComposesTheWorkOrderFromTheStore(t *testing.T) {
 			t.Fatalf("the worker's opening is missing %q:\n%s", want, brief)
 		}
 	}
-	completer.release(planRootID, "the root report")
-	waitDoneNode(t, root)
-
-	// THE RESUMED SHAPE. A second graph, no plan of its own, over the same
-	// session folder: the admitting task carries the run's own title — the
-	// store's project, the one the open takes rather than refuses — and the
-	// task becomes a CHILD of the root with its own id. A graph that re-seeded
-	// would have made a second root instead, and two sessions would then be
-	// dispatching each other's children.
+	// THE RESUMED SHAPE, BOTH ARMS. A second graph, no plan of its own, over
+	// the same session folder: while the first run is still open, a new task
+	// joins its plan as a CHILD of the root with its own id — a graph that
+	// re-seeded would make a second root, and two sessions would then be
+	// dispatching each other's children. After the first run has completed,
+	// the same door seeds a FRESH plan whose root is the new task, and the
+	// finished one is archived beside the session — the reference loop is one
+	// store per run, and the one live name is the one both roads find.
+	//
+	// The mid-run arm first, against the still-open plan:
 	resume, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = newTestRepo(t)
 		config.Place = Place{Dir: dir}
@@ -436,8 +460,36 @@ func TestPlandbCliSeedComposesTheWorkOrderFromTheStore(t *testing.T) {
 	if want := "YOUR TASK IN THE PLAN IS t-" + minted; !strings.Contains(resumed, want) {
 		t.Fatalf("the resumed worker's opening does not name its own task: want %q in:\n%s", want, resumed)
 	}
+	// THE RUN ENDS ONLY WHEN ITS PLAN-BORN WORK HAS: the root and the resumed
+	// task both land, and the last landing's pulse completes the store.
+	completer.release(planRootID, "the root report")
 	completer.release(minted, "the follow-up report")
+	waitDoneNode(t, root)
 	waitDoneNode(t, second)
+
+	// AND THE AFTER-COMPLETION ARM: a new task once the run is over seeds a
+	// fresh plan — its own root in its own store — and the finished plan is
+	// archived beside the session, never deleted.
+	planWaitStoreRootTerminal(t, dir)
+	fresh, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: dir}
+	})
+	id2 := fresh.graph().reserve()
+	fresh.graph().admit(id2, taskSpec{title: "The next run", brief: "a new run's own plan", acceptance: "a"})
+	third := fresh.graph().node(id2)
+	fresh.graph().mu.Lock()
+	reminted := third.spec.planID
+	fresh.graph().mu.Unlock()
+	if reminted != planRootID {
+		t.Fatalf("a task after a completed run took plan id %q, want a fresh root of its own", reminted)
+	}
+	if _, err := os.Stat(dir + "/plandb.json.1"); err != nil {
+		t.Fatalf("the finished plan was not archived beside the session: %v", err)
+	}
+	if live := planTaskAt(t, dir, planRootID); live.Status != plandb.StatusRunning {
+		t.Fatalf("the fresh plan's root stands %s, want the new run's own running root", live.Status)
+	}
 }
 
 // THE WHOLE LOOP, DRIVEN BY HAND. The root's worker is held; the store grows
@@ -481,13 +533,12 @@ func TestPlandbCliPulseDrivesTheWholeLoop(t *testing.T) {
 	if planNodeByPlanID(agent.graph(), "b") != nil {
 		t.Fatal("part b was dispatched before its dependency landed")
 	}
-	// AND THE STORE TASK IS NOT YET CLAIMED — a divergence these tests pin and
-	// this wave reports: DESIGN.md's wiring section has the runtime claiming
-	// the dispatched task under its own id at dispatch, and the wiring takes
-	// that claim at writeback instead, which is where the worker's own finish
-	// command becomes enforceable.
-	if task := planTaskAt(t, dir, "a"); task.Status != plandb.StatusReady || task.ClaimedBy != "" {
-		t.Fatalf("part a stands %s@%q at dispatch, want the store's own ready", task.Status, task.ClaimedBy)
+	// AND THE STORE TASK IS CLAIMED AT DISPATCH, under its own id — the
+	// reference supervisor's trick. That claim is what makes the worker's
+	// `plandb done --agent <id>` pass the ownership check from the moment the
+	// node exists, and what the writeback completes as.
+	if task := planTaskAt(t, dir, "a"); task.Status != plandb.StatusRunning || task.ClaimedBy != "a" {
+		t.Fatalf("part a stands %s@%q at dispatch, want running@a — the dispatch's own claim", task.Status, task.ClaimedBy)
 	}
 
 	// THE CHILD LANDS, AND THE PASS AFTER IT WRITES THE STORE. The landing's
@@ -677,16 +728,19 @@ func TestPlandbCliRootCompletionCancelsTheUndelivered(t *testing.T) {
 		finalText("handed off"), finalText("handed off"), finalText("handed off"),
 	})
 	agent, root := planRunSubmit(t, completer, dir, "The whole run", "leave work undelivered", "end the run with work held back")
-	// The run's own work lands first — completion reads the run as over.
-	completer.release(planRootID, "the root report")
-	waitDoneNode(t, root)
-
-	// The store's root is still running — only completion writes it — so the
-	// held-back tree goes in under it.
+	// THE HELD-BACK WORK GOES IN WHILE THE RUN IS STILL RUNNING: the store's
+	// root is the runtime's until completion, and once the root's own landing
+	// pulse has run, the run is over and the store refuses a child of a
+	// terminal root. Undelivered work exists in a running plan, not after it.
 	planGrow(t, dir,
 		plandb.TaskSpec{ID: "held", Title: "the held-back middle", Description: "d", ParentID: planRootID},
 		plandb.TaskSpec{ID: "leaf", Title: "the ready leaf", Description: "d", ParentID: "held"},
 	)
+	// The run's own work lands, and its landing pulse ends the run: the
+	// undelivered tasks are cancelled with a plain reason and the root is
+	// written once, by completion.
+	completer.release(planRootID, "the root report")
+	waitDoneNode(t, root)
 	agent.graph().planPulse()
 
 	held := planTaskAt(t, dir, "held")

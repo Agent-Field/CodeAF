@@ -307,6 +307,16 @@ type taskSpec struct {
 	// repeating anything the worker happened to do.
 	checks    []string
 	dependsOn []uint64
+	// planID is THE TASK'S ID IN THE PLAN STORE (internal/plandb), set only on
+	// a node the bash belt's plandb loop drives (docs/design/plandb-cli/
+	// DESIGN.md, the wiring section). It is what makes a node and its plan
+	// task one thing: the runtime claims the store task under this id when it
+	// dispatches the node, the node's work order is composed FROM the store
+	// read, and the pulse writes the node's ending back to the store task.
+	// Empty is the ordinary case — every node outside the experiment, and a
+	// quick or design or run node under it — and an empty one touches nothing:
+	// no seed, no pulse, no plan lines in the worker document.
+	planID string
 	// modelWord is the `model` argument as the model wrote it — a word, not an
 	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
 	// (taskmodel.go). model is that answer: the id this node will actually run

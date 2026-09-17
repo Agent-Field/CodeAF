@@ -987,6 +987,13 @@ type TaskNode struct {
 type TaskGraph struct {
 	mu    sync.Mutex
 	nodes map[uint64]*TaskNode
+	// plan is the bash belt's plan store side (plandb_plan.go), nil on every
+	// session outside the experiment and until the first ordinary task seeds
+	// it. planMu is ITS gate, and the lock order is written at the top of
+	// plandb_plan.go: the plan's gate may be held while mu is taken, never the
+	// other way round.
+	plan   *planState
+	planMu sync.Mutex
 	// order is admission order, and it is what makes the frontier
 	// DETERMINISTIC: with a cap in play, which of two ready nodes starts first
 	// must not be Go's map iteration.
@@ -1280,6 +1287,12 @@ func (g *TaskGraph) reserve() uint64 {
 // state it reports is what the node is doing by the time the tool answers:
 // running, or queued behind its dependencies or the cap.
 func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
+	// THE PLAN SEED, before anything else: under the experiment's switch the
+	// first ordinary task seeds the plan store and every ordinary task's work
+	// order is composed from the store read (plandb_plan.go). It takes the
+	// plan gate and no other lock, which is what keeps the lock order stated
+	// there true.
+	g.planSeed(&spec)
 	// WHETHER THIS WORK MAY DISCOVER THAT IT IS WIDE, decided here because this
 	// is the one door every task in this package comes through whoever opened
 	// it — a proposal the chat model groomed, a person's own `/task`, the route
@@ -4898,6 +4911,17 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// there, its one landing note delivered to a parent agent that has now
 	// finished reading anything.
 	a.bubbleUnverifiedChildren(node)
+	// THE PLAN'S LANDING PULSE, HERE AND NOT IN THE WORKER: the node's state is
+	// settled only after [TaskGraph.complete] writes it, so a pulse taken at the
+	// worker's own return reads a task that is still running and — worse — a
+	// dispatch taken mid-landing is admitted after stopChildren has already cut
+	// the subtree and is stopped as an orphan. From here the landing is whole:
+	// the writeback completes the task, the promotion dispatches what it
+	// unblocked, and the last landing's pass is the one that ends the run's root
+	// (plandb_plan.go).
+	if g := a.graph(); g != nil {
+		g.planPulse()
+	}
 }
 
 // bubbleUnverifiedChildren hands a settled parent's still-undecided sub-tasks
@@ -5363,6 +5387,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// IT IS NOT PART OF retire, which also runs mid-loop when a provider fault
 	// sends this node round again on another model — and that node is the SAME node
 	// with the SAME parts still working for it (see `handedOut` below).
+	// THE PLAN'S SECOND PULSE POINT lives in the runner's landing road
+	// (task_run.go, after [TaskGraph.complete] settles the node's state), not
+	// here: a landing's work — writeback, promotion, dispatch, root completion
+	// — must read a settled node, and a pulse taken at this function's return
+	// fires before the runner has written it.
 	defer node.graph.stopChildren(node.id)
 
 	var (

@@ -1044,14 +1044,15 @@ func TestPlandbCliWritesSurviveAnotherHandle(t *testing.T) {
 	t.Run("prune", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "plan.json")
 		writer := planOpen(t, path)
-		if _, err := writer.AddContext("", "discovery", "kept"); err != nil {
+		kept, err := writer.AddContext("", "discovery", "kept")
+		if err != nil {
 			t.Fatalf("add context: %v", err)
 		}
 		pruner := planReopen(t, path)
 		if _, err := writer.AddContext("", "discovery", "added after"); err != nil {
 			t.Fatalf("add context: %v", err)
 		}
-		if err := pruner.Prune("kept"); err != nil {
+		if err := pruner.Prune(kept.ID); err != nil {
 			t.Fatalf("prune: %v", err)
 		}
 		reopened := planReopen(t, path)

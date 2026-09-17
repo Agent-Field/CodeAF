@@ -304,8 +304,12 @@ func renderSystemAt(config Config, now time.Time) string {
 	// A node that may hand work out is told how to decide; a node standing on
 	// the floor of the tree is not, because it has no propose_task to decide
 	// with and a prompt promising one is a prompt that lies (the law is in
-	// CLAUDE.md and the belt is built from the same predicate).
-	if config.mayFanOut() {
+	// CLAUDE.md and the belt is built from the same predicate). ON THE
+	// EXPERIMENT'S BELT the page is lies twice over — the verbs it teaches are
+	// not on the belt, and the bashworker page above already carries the same
+	// loop (plan, automatic dispatch, wait, integrate) in the plan's words —
+	// so the fan-out page stays off this belt.
+	if config.mayFanOut() && !config.mayBashBelt() {
 		out.WriteString("\n\n")
 		out.WriteString(fanoutPage(config))
 	}
