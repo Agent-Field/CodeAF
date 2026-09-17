@@ -1,6 +1,7 @@
 package plandb
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -15,10 +16,11 @@ import (
 
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
-// Store is the plan: one file, a mutex for this process, and an advisory file
-// lock for every other one (lock.go). Its method set is the earlier port's,
-// kept because it already answers the CLI's questions: the graph laws
-// (validateGraphs below) are the port's own and were correct there.
+// Store is the plan: one SQLite database, a mutex for this process, and a
+// transaction per write that every other process serializes on. Its method set
+// is the earlier port's, kept because it already answers the CLI's questions:
+// the graph laws (validateGraphs below) are the port's own and were correct
+// there.
 //
 // WHAT THE ADAPTATION TOOK OUT, deliberately, is written at the functions that
 // changed: the earlier store doubled as a governance gate — validateSpec
@@ -32,56 +34,80 @@ type Store struct {
 	path string
 	now  func() time.Time
 	data state
-	// locked is the advisory lock's handle while a Transaction or changeTask
-	// holds it, so releaseFile can find the file holdFile took without either
-	// of them guessing at the other's state.
-	locked *os.File
+	// db is the SQLite handle every read-modify-write transaction runs on. One
+	// connection per store (openDatabase), so the pragmas are set once and a
+	// transaction never races its own store for the write lock.
+	db *sql.DB
 }
 
-// Open loads the plan at path, or creates one when the file does not exist.
+// Open loads the plan at path, or creates one when the database does not exist.
 //
 // THE ROOT IS THE RUN: `plandb init` makes a project and the runtime runs it
-// by seeding a root task for the work it was given. A file that exists but
+// by seeding a root task for the work it was given. A store that exists but
 // belongs to a different run is a refusal, not a merge: two sessions sharing
 // one store by accident would each dispatch the other's children.
 func Open(path, project, rootID, rootTitle, rootDescription string) (*Store, error) {
 	store := &Store{path: path, now: time.Now}
-	loaded, err := loadState(path)
-	if err == nil {
-		if (rootID != "" && loaded.RootID != rootID) || (project != "" && loaded.Project != project) {
-			return nil, errors.New("plan store belongs to a different run")
+	_, statErr := os.Stat(path)
+	switch {
+	case statErr == nil:
+		// The symlink refusal the file writer carried is kept: a store reached
+		// through a symlink is a store two paths disagree about.
+		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.New("plan store path must not be a symlink")
 		}
-		store.data = loaded
-		return store, nil
+	case os.IsNotExist(statErr):
+		// A store that is not there yet has nothing to adopt, so it needs a
+		// project and a root. The refusal happens before the file is made, so a
+		// refused open leaves no store behind.
+		if strings.TrimSpace(project) == "" || !validID(rootID) {
+			return nil, errors.New("a new plan store needs a project and a valid root id")
+		}
+	default:
+		return nil, statErr
 	}
-	if !os.IsNotExist(err) {
+	db, err := openDatabase(path)
+	if err != nil {
 		return nil, err
+	}
+	store.db = db
+	loaded, err := store.loadOrCreate(project, rootID, rootTitle, rootDescription)
+	if err != nil {
+		_ = db.Close()
+		store.db = nil
+		return nil, err
+	}
+	store.data = loaded
+	return store, nil
+}
+
+// loadOrCreate is the open's one transaction: it loads the plan if there is
+// one and adopts it, or seeds a new one under the root. TWO PROCESSES CAN
+// REACH THE SECOND ROAD AT ONCE — the runtime seeding, a worker's CLI init-ing
+// — and BEGIN IMMEDIATE serializes them: the second re-reads and adopts the
+// first one's store rather than writing its own over it. Adopting keeps the
+// rule the load road states: a store that belongs to another run is a refusal,
+// not a merge.
+func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription string) (state, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return state{}, err
+	}
+	defer tx.Rollback()
+	loaded, err := loadState(tx)
+	switch {
+	case err == nil:
+		if (rootID != "" && loaded.RootID != rootID) || (project != "" && loaded.Project != project) {
+			return state{}, errors.New("plan store belongs to a different run")
+		}
+		return loaded, nil
+	case !errors.Is(err, errNoStore):
+		return state{}, err
 	}
 	if strings.TrimSpace(project) == "" || !validID(rootID) {
-		return nil, errors.New("a new plan store needs a project and a valid root id")
+		return state{}, errors.New("a new plan store needs a project and a valid root id")
 	}
-	// THE CREATE IS A TRANSACTION TOO. Two processes can reach this line at
-	// once — the runtime seeding, a worker's CLI init-ing — and under the
-	// file lock the second one re-reads and adopts the first one's file
-	// rather than renaming its own over it. Adopting keeps the rule the same
-	// as the load road: a store that belongs to another run is a refusal,
-	// not a merge.
-	if err := store.holdFile(); err != nil {
-		return nil, err
-	}
-	defer store.releaseFile()
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	if fresh, err := loadState(path); err == nil {
-		if (rootID != "" && fresh.RootID != rootID) || (project != "" && fresh.Project != project) {
-			return nil, errors.New("plan store belongs to a different run")
-		}
-		store.data = fresh
-		return store, nil
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-	now := store.now().UTC()
+	now := s.now().UTC()
 	root := &Task{
 		TaskSpec: TaskSpec{
 			ID: rootID, Title: strings.TrimSpace(rootTitle), Description: rootDescription,
@@ -89,14 +115,17 @@ func Open(path, project, rootID, rootTitle, rootDescription string) (*Store, err
 		},
 		Status: StatusRunning, ClaimedBy: "runtime", CreatedAt: now, UpdatedAt: now,
 	}
-	store.data = state{
+	fresh := state{
 		Version: stateVersion, Project: project, RootID: rootID,
 		Tasks: map[string]*Task{rootID: root}, Order: []string{rootID}, NextID: 1,
 	}
-	if err := store.commitLocked(store.data); err != nil {
-		return nil, err
+	if err := saveState(tx, fresh); err != nil {
+		return state{}, err
 	}
-	return store, nil
+	if err := tx.Commit(); err != nil {
+		return state{}, err
+	}
+	return fresh, nil
 }
 
 func (s *Store) Path() string {
@@ -126,75 +155,69 @@ func (s *Store) RootID() string {
 // CLI mints short random ones — `t-` + four base-36 characters — and honours
 // `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
-	// EVERY WRITE IS ONE TRANSACTION. This store is written by more than one
-	// process — the CLI's add and split are separate processes — so the batch
-	// is read, validated and written under the file lock (lock.go) and against
-	// a fresh load, or a stale handle's write would rename over another
-	// handle's task and lose it. The store-test wave proved exactly that loss
-	// with a failing test before this gate went in.
-	if err := s.holdFile(); err != nil {
-		return nil, err
-	}
-	defer s.releaseFile()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if fresh, err := loadState(s.path); err == nil {
-		s.data = fresh
-	}
 	if len(specs) == 0 {
 		return nil, errors.New("tasks must not be empty")
 	}
 	if len(specs) > 256 {
 		return nil, errors.New("a plan may contain at most 256 tasks")
 	}
-	next := cloneState(s.data)
-	if len(next.Tasks)+len(specs) > 1024 {
-		return nil, errors.New("a run may contain at most 1024 tasks")
-	}
-	batch := make(map[string]bool, len(specs))
-	for i := range specs {
-		specs[i] = normalizeSpec(specs[i], next.RootID)
-		if err := validateSpec(specs[i]); err != nil {
-			return nil, fmt.Errorf("task %d: %w", i, err)
+	// EVERY WRITE IS ONE TRANSACTION. This store is written by more than one
+	// process — the CLI's add and split are separate processes — so the batch
+	// is read, validated and written inside one BEGIN IMMEDIATE transaction
+	// against a fresh load, or a stale handle's write would overwrite another
+	// handle's task and lose it. The store-test wave proved exactly that loss
+	// with a failing test before the earlier gate went in.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := s.transact(func(next *state, now time.Time) error {
+		if len(next.Tasks)+len(specs) > 1024 {
+			return errors.New("a run may contain at most 1024 tasks")
 		}
-		if next.Tasks[specs[i].ID] != nil || batch[specs[i].ID] {
-			return nil, fmt.Errorf("duplicate task id %q", specs[i].ID)
-		}
-		batch[specs[i].ID] = true
-	}
-	for _, spec := range specs {
-		if next.Tasks[spec.ParentID] == nil && !batch[spec.ParentID] {
-			return nil, fmt.Errorf("task %q has unknown parent %q", spec.ID, spec.ParentID)
-		}
-		if parent := next.Tasks[spec.ParentID]; parent != nil && terminal(parent.Status) {
-			return nil, fmt.Errorf("task %q has terminal parent %q", spec.ID, spec.ParentID)
-		}
-		for _, dep := range spec.Dependencies {
-			if next.Tasks[dep.TaskID] == nil && !batch[dep.TaskID] {
-				return nil, fmt.Errorf("task %q has unknown dependency %q", spec.ID, dep.TaskID)
+		batch := make(map[string]bool, len(specs))
+		for i := range specs {
+			specs[i] = normalizeSpec(specs[i], next.RootID)
+			if err := validateSpec(specs[i]); err != nil {
+				return fmt.Errorf("task %d: %w", i, err)
 			}
-			if dep.TaskID == spec.ID {
-				return nil, fmt.Errorf("task %q depends on itself", spec.ID)
+			if next.Tasks[specs[i].ID] != nil || batch[specs[i].ID] {
+				return fmt.Errorf("duplicate task id %q", specs[i].ID)
+			}
+			batch[specs[i].ID] = true
+		}
+		for _, spec := range specs {
+			if next.Tasks[spec.ParentID] == nil && !batch[spec.ParentID] {
+				return fmt.Errorf("task %q has unknown parent %q", spec.ID, spec.ParentID)
+			}
+			if parent := next.Tasks[spec.ParentID]; parent != nil && terminal(parent.Status) {
+				return fmt.Errorf("task %q has terminal parent %q", spec.ID, spec.ParentID)
+			}
+			for _, dep := range spec.Dependencies {
+				if next.Tasks[dep.TaskID] == nil && !batch[dep.TaskID] {
+					return fmt.Errorf("task %q has unknown dependency %q", spec.ID, dep.TaskID)
+				}
+				if dep.TaskID == spec.ID {
+					return fmt.Errorf("task %q depends on itself", spec.ID)
+				}
 			}
 		}
-	}
-	now := s.now().UTC()
-	for _, spec := range specs {
-		task := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
-		next.Tasks[spec.ID] = task
-		next.Order = append(next.Order, spec.ID)
-	}
-	for _, spec := range specs {
-		if parent := next.Tasks[spec.ParentID]; parent != nil {
-			parent.Composite = true
-			parent.UpdatedAt = now
+		for _, spec := range specs {
+			task := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+			next.Tasks[spec.ID] = task
+			next.Order = append(next.Order, spec.ID)
 		}
-	}
-	if err := validateGraphs(next); err != nil {
-		return nil, err
-	}
-	promote(&next, now)
-	if err := s.commitLocked(next); err != nil {
+		for _, spec := range specs {
+			if parent := next.Tasks[spec.ParentID]; parent != nil {
+				parent.Composite = true
+				parent.UpdatedAt = now
+			}
+		}
+		if err := validateGraphs(*next); err != nil {
+			return err
+		}
+		promote(next, now)
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	created := make([]*Task, 0, len(specs))
@@ -533,35 +556,31 @@ func (s *Store) RemoveDep(downstream, upstream string) (*Task, error) {
 // recorded so a reader can tell an owner's handoff from a bystander's
 // observation.
 func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
-	// One transaction, like every writer: the file lock, a fresh load, the
-	// change, the rename. See AddMany for why.
-	if err := s.holdFile(); err != nil {
-		return Note{}, err
-	}
-	defer s.releaseFile()
+	// One transaction, like every writer: the database's write lock, a fresh
+	// load, the change, the commit. See AddMany for why.
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if fresh, err := loadState(s.path); err == nil {
-		s.data = fresh
-	}
-	if s.data.Tasks[taskID] == nil {
-		return Note{}, fmt.Errorf("task %q not found", taskID)
-	}
-	body = strings.TrimSpace(body)
-	if body == "" {
-		return Note{}, errors.New("note content is required")
-	}
-	if len(body) > 32<<10 {
-		return Note{}, errors.New("note content exceeds 32768 bytes")
-	}
-	next := cloneState(s.data)
-	next.NextID++
-	note := Note{
-		ID: fmt.Sprintf("n-%08x", next.NextID), TaskID: taskID,
-		Agent: strings.TrimSpace(agent), Body: body, At: s.now().UTC(),
-	}
-	next.Notes = append(next.Notes, note)
-	if err := s.commitLocked(next); err != nil {
+	var note Note
+	err := s.transact(func(next *state, now time.Time) error {
+		if next.Tasks[taskID] == nil {
+			return fmt.Errorf("task %q not found", taskID)
+		}
+		text := strings.TrimSpace(body)
+		if text == "" {
+			return errors.New("note content is required")
+		}
+		if len(text) > 32<<10 {
+			return errors.New("note content exceeds 32768 bytes")
+		}
+		next.NextID++
+		note = Note{
+			ID: fmt.Sprintf("n-%08x", next.NextID), TaskID: taskID,
+			Agent: strings.TrimSpace(agent), Body: text, At: now,
+		}
+		next.Notes = append(next.Notes, note)
+		return nil
+	})
+	if err != nil {
 		return Note{}, err
 	}
 	return note, nil
@@ -591,39 +610,35 @@ func (s *Store) Notes(taskID string, limit int) []Note {
 // AddContext records a run-wide fact. Kinds are freeform — the doctrine says
 // `--kind decision` and the store takes the word at face value.
 func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
-	if err := s.holdFile(); err != nil {
-		return ContextEntry{}, err
-	}
-	defer s.releaseFile()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if fresh, err := loadState(s.path); err == nil {
-		s.data = fresh
-	}
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return ContextEntry{}, errors.New("context content is required")
-	}
-	if len(content) > 32<<10 {
-		return ContextEntry{}, errors.New("context content exceeds 32768 bytes")
-	}
-	if len(s.data.Contexts) >= 4096 {
-		return ContextEntry{}, errors.New("context entry limit reached")
-	}
-	if taskID != "" && s.data.Tasks[taskID] == nil {
-		return ContextEntry{}, fmt.Errorf("task %q not found", taskID)
-	}
-	if kind == "" {
-		kind = "discovery"
-	}
-	next := cloneState(s.data)
-	next.NextID++
-	entry := ContextEntry{
-		ID: fmt.Sprintf("c-%08x", next.NextID), TaskID: taskID, Kind: kind,
-		Content: content, CreatedAt: s.now().UTC(),
-	}
-	next.Contexts = append(next.Contexts, entry)
-	if err := s.commitLocked(next); err != nil {
+	var entry ContextEntry
+	err := s.transact(func(next *state, now time.Time) error {
+		text := strings.TrimSpace(content)
+		if text == "" {
+			return errors.New("context content is required")
+		}
+		if len(text) > 32<<10 {
+			return errors.New("context content exceeds 32768 bytes")
+		}
+		if len(next.Contexts) >= 4096 {
+			return errors.New("context entry limit reached")
+		}
+		if taskID != "" && next.Tasks[taskID] == nil {
+			return fmt.Errorf("task %q not found", taskID)
+		}
+		if kind == "" {
+			kind = "discovery"
+		}
+		next.NextID++
+		entry = ContextEntry{
+			ID: fmt.Sprintf("c-%08x", next.NextID), TaskID: taskID, Kind: kind,
+			Content: text, CreatedAt: now,
+		}
+		next.Contexts = append(next.Contexts, entry)
+		return nil
+	})
+	if err != nil {
 		return ContextEntry{}, err
 	}
 	return entry, nil
@@ -654,24 +669,18 @@ func (s *Store) Contexts(taskID, kind string, limit int) []ContextEntry {
 // Prune removes one context entry by id. It is the CLI's own verb over its
 // own store, and the id it names is the id AddContext answered.
 func (s *Store) Prune(id string) error {
-	if err := s.holdFile(); err != nil {
-		return err
-	}
-	defer s.releaseFile()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if fresh, err := loadState(s.path); err == nil {
-		s.data = fresh
-	}
-	for i, entry := range s.data.Contexts {
-		if entry.ID != id {
-			continue
+	return s.transact(func(next *state, now time.Time) error {
+		for i, entry := range next.Contexts {
+			if entry.ID != id {
+				continue
+			}
+			next.Contexts = append(next.Contexts[:i:i], next.Contexts[i+1:]...)
+			return nil
 		}
-		next := cloneState(s.data)
-		next.Contexts = append(next.Contexts[:i:i], next.Contexts[i+1:]...)
-		return s.commitLocked(next)
-	}
-	return fmt.Errorf("context %q not found", id)
+		return fmt.Errorf("context %q not found", id)
+	})
 }
 
 func (s *Store) Summary() Summary {
@@ -722,37 +731,29 @@ func (s *Store) CanFinalize() (bool, string) {
 
 // CompleteRoot ends the run. Only the runtime calls it, and only when
 // nothing is open; the word it writes is the run's own account of itself.
-// One transaction, like every writer: the file lock, a fresh load, the
-// change, the rename. See AddMany for why.
+// One transaction, like every writer: the database's write lock, a fresh
+// load, the change, the commit. See AddMany for why.
 func (s *Store) CompleteRoot(result string) error {
-	if err := s.holdFile(); err != nil {
-		return err
-	}
-	defer s.releaseFile()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if fresh, err := loadState(s.path); err == nil {
-		s.data = fresh
-	}
-	root := s.data.Tasks[s.data.RootID]
-	if root == nil || terminal(root.Status) {
-		return nil
-	}
-	if hasOpenDescendants(s.data, root.ID) {
-		return errors.New("root has open descendants")
-	}
-	next := cloneState(s.data)
-	root = next.Tasks[next.RootID]
-	now := s.now().UTC()
-	root.Status = StatusDone
-	for _, task := range next.Tasks {
-		if task.ID != root.ID && task.Status != StatusDone {
-			root.Status = StatusFailed
-			break
+	return s.transact(func(next *state, now time.Time) error {
+		root := next.Tasks[next.RootID]
+		if root == nil || terminal(root.Status) {
+			return errNoChange
 		}
-	}
-	root.Result, root.UpdatedAt, root.CompletedAt = result, now, now
-	return s.commitLocked(next)
+		if hasOpenDescendants(*next, root.ID) {
+			return errors.New("root has open descendants")
+		}
+		root.Status = StatusDone
+		for _, task := range next.Tasks {
+			if task.ID != root.ID && task.Status != StatusDone {
+				root.Status = StatusFailed
+				break
+			}
+		}
+		root.Result, root.UpdatedAt, root.CompletedAt = result, now, now
+		return nil
+	})
 }
 
 // Search answers the tasks, notes and context entries whose words match the
@@ -939,104 +940,134 @@ func (s *Store) nextIDLocked() string {
 // nil when nothing is ready. It is the `go` verb's whole body, and it is one
 // transaction rather than a read plus a claim because two agents asking at
 // once must not both be handed the same task — the read and the write happen
-// under the same hold of both locks, which is the only shape that guarantees
-// it.
+// inside the same transaction on the database, which is the only shape that
+// guarantees it.
 func (s *Store) ClaimNext(agent string) (*Task, error) {
 	if strings.TrimSpace(agent) == "" {
 		return nil, errors.New("agent is required for claim")
 	}
-	if err := s.holdFile(); err != nil {
-		return nil, err
-	}
-	defer s.releaseFile()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if fresh, err := loadState(s.path); err == nil {
-		s.data = fresh
-	}
-	var best *Task
-	for _, id := range s.data.Order {
-		task := s.data.Tasks[id]
-		if task.Status != StatusReady || task.Composite || len(executionBlockReasons(s.data, task)) > 0 {
-			continue
+	best := ""
+	err := s.transact(func(next *state, now time.Time) error {
+		var pick *Task
+		for _, id := range next.Order {
+			task := next.Tasks[id]
+			if task.Status != StatusReady || task.Composite || len(executionBlockReasons(*next, task)) > 0 {
+				continue
+			}
+			if pick == nil || task.Priority > pick.Priority {
+				pick = task
+			}
 		}
-		if best == nil || task.Priority > best.Priority {
-			best = task
+		if pick == nil {
+			return errNoChange
 		}
-	}
-	if best == nil {
-		return nil, nil
-	}
-	next := cloneState(s.data)
-	task := next.Tasks[best.ID]
-	now := s.now().UTC()
-	task.Status, task.ClaimedBy, task.UpdatedAt = StatusRunning, strings.TrimSpace(agent), now
-	if err := s.commitLocked(next); err != nil {
+		best = pick.ID
+		pick.Status, pick.ClaimedBy, pick.UpdatedAt = StatusRunning, strings.TrimSpace(agent), now
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	return cloneTask(s.data.Tasks[best.ID]), nil
+	if best == "" {
+		return nil, nil
+	}
+	return cloneTask(s.data.Tasks[best]), nil
 }
 
-func (s *Store) holdFile() error {
-	f, err := lockFile(s.path)
+// writeLockWait bounds how long a writer will keep asking for the database's
+// write lock before giving up and reporting the refusal.
+const writeLockWait = 60 * time.Second
+
+// beginWrite opens the store's one write transaction with BEGIN IMMEDIATE, so
+// the database's write lock is taken at the start and everything the
+// transaction reads afterwards is the plan that lock protects. The busy
+// timeout set at open makes a writer wait a few seconds for the one ahead of
+// it, but under many writers that fixed wait starves the unluckiest of them,
+// so a refusal is asked again with a short backoff — each attempt re-enters
+// the queue — until a generous bound.
+func (s *Store) beginWrite() (*sql.Tx, error) {
+	deadline := time.Now().Add(writeLockWait)
+	for {
+		tx, err := s.db.Begin()
+		if err == nil {
+			return tx, nil
+		}
+		if !isBusy(err) || !time.Now().Before(deadline) {
+			return nil, err
+		}
+		time.Sleep(time.Duration(rand.Intn(20)+1) * time.Millisecond)
+	}
+}
+
+// transact runs one read-modify-write transaction on the store's database.
+// BEGIN IMMEDIATE takes the database's write lock the moment the transaction
+// opens, so two processes serialize on the database itself and no sidecar file
+// is needed; the busy timeout set at open makes the second wait for the first
+// rather than failing at once. The whole state is read inside the transaction
+// and written back inside it, so a handle's stale memory can never erase
+// another writer's task — the property the advisory lock used to buy.
+//
+// The store's memory adopts the fresh read even when the change is refused, so
+// a refused write still leaves the handle knowing what the database holds; a
+// change may return errNoChange to say it decided to write nothing at all.
+func (s *Store) transact(change func(*state, time.Time) error) error {
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
-	if err := lockExclusive(f); err != nil {
-		_ = f.Close()
+	defer tx.Rollback()
+	fresh, err := loadState(tx)
+	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	s.locked = f
-	s.mu.Unlock()
-	return nil
-}
-
-func (s *Store) releaseFile() {
-	s.mu.Lock()
-	f := s.locked
-	s.locked = nil
-	s.mu.Unlock()
-	if f == nil {
-		return
+	s.data = fresh
+	next := cloneState(fresh)
+	if err := change(&next, s.now().UTC()); err != nil {
+		if errors.Is(err, errNoChange) {
+			return nil
+		}
+		return err
 	}
-	_ = unlockExclusive(f)
-	_ = f.Close()
-}
-
-func (s *Store) changeTask(id string, change func(*state, *Task, time.Time) error) (*Task, error) {
-	if err := s.holdFile(); err != nil {
-		return nil, err
+	if err := saveState(tx, next); err != nil {
+		return err
 	}
-	defer s.releaseFile()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if fresh, err := loadState(s.path); err == nil {
-		s.data = fresh
-	}
-	if s.data.Tasks[id] == nil {
-		return nil, fmt.Errorf("task %q not found", id)
-	}
-	next := cloneState(s.data)
-	task := next.Tasks[id]
-	if err := change(&next, task, s.now().UTC()); err != nil {
-		return nil, err
-	}
-	if err := s.commitLocked(next); err != nil {
-		return nil, err
-	}
-	return cloneTask(s.data.Tasks[id]), nil
-}
-
-// commitLocked persists the next state and adopts it. Called with the mutex
-// held AND the file lock held — the file lock is what orders the other
-// processes, and this function is the only writer on the rename road.
-func (s *Store) commitLocked(next state) error {
-	if err := saveState(s.path, next); err != nil {
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	s.data = next
 	return nil
+}
+
+// Close releases the store's database handle. A store opened for one pass —
+// the runtime opens one per pulse — must be closed when the pass is done, or
+// every pass would leave a connection and a file descriptor behind.
+func (s *Store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil {
+		return nil
+	}
+	err := s.db.Close()
+	s.db = nil
+	return err
+}
+
+func (s *Store) changeTask(id string, change func(*state, *Task, time.Time) error) (*Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := s.transact(func(next *state, now time.Time) error {
+		task := next.Tasks[id]
+		if task == nil {
+			return fmt.Errorf("task %q not found", id)
+		}
+		return change(next, task, now)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cloneTask(s.data.Tasks[id]), nil
 }
 
 func normalizeSpec(spec TaskSpec, rootID string) TaskSpec {

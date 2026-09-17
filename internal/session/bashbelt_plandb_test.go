@@ -256,10 +256,14 @@ func planOpenStore(t *testing.T, dir string) *plandb.Store {
 	return store
 }
 
-// planTaskAt reads one store task through a fresh handle.
+// planTaskAt reads one store task through a fresh handle. The handle is closed
+// again because opening the store holds its database open, and the helpers here
+// read the same store over and over.
 func planTaskAt(t *testing.T, dir, id string) *plandb.Task {
 	t.Helper()
-	task := planOpenStore(t, dir).Task(id)
+	store := planOpenStore(t, dir)
+	defer store.Close()
+	task := store.Task(id)
 	if task == nil {
 		t.Fatalf("plan task %q is not in the store", id)
 	}
@@ -274,7 +278,9 @@ func planWaitStoreRootTerminal(t *testing.T, dir string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		root := planOpenStore(t, dir).Task(planRootID)
+		store := planOpenStore(t, dir)
+		root := store.Task(planRootID)
+		_ = store.Close()
 		if root != nil && (root.Status == plandb.StatusDone || root.Status == plandb.StatusFailed) {
 			return
 		}
@@ -294,7 +300,9 @@ func planWaitStoreRootTerminal(t *testing.T, dir string) {
 // by hand would be testing a second store format.
 func planGrow(t *testing.T, dir string, specs ...plandb.TaskSpec) {
 	t.Helper()
-	if _, err := planOpenStore(t, dir).AddMany(specs); err != nil {
+	store := planOpenStore(t, dir)
+	defer store.Close()
+	if _, err := store.AddMany(specs); err != nil {
 		t.Fatalf("add to the plan: %v", err)
 	}
 }
@@ -484,7 +492,7 @@ func TestPlandbCliSeedComposesTheWorkOrderFromTheStore(t *testing.T) {
 	if reminted != planRootID {
 		t.Fatalf("a task after a completed run took plan id %q, want a fresh root of its own", reminted)
 	}
-	if _, err := os.Stat(dir + "/plandb.json.1"); err != nil {
+	if _, err := os.Stat(dir + "/plandb.db.1"); err != nil {
 		t.Fatalf("the finished plan was not archived beside the session: %v", err)
 	}
 	if live := planTaskAt(t, dir, planRootID); live.Status != plandb.StatusRunning {
@@ -787,7 +795,7 @@ func planPageSection(page, heading string) string {
 // carried both would teach the model two ways to say one thing — while the
 // person's redirection lane stays; without it, the plain worker carries the
 // verbs it always carried, its page has no plan section, and admitting a
-// task stores no plandb.json beside the session.
+// task stores no plandb.db beside the session.
 func TestPlandbCliTheBeltAndPageFollowTheSwitch(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
@@ -845,7 +853,7 @@ func TestPlandbCliTheBeltAndPageFollowTheSwitch(t *testing.T) {
 	}
 
 	// AND ADMITTING A TASK STORES NOTHING: the switch gates the store wiring
-	// whole, so a session outside the experiment leaves no plandb.json beside
+	// whole, so a session outside the experiment leaves no plandb.db beside
 	// itself. A workspace that is not a repository keeps the node off git
 	// entirely — the point here is the one file, not the landing.
 	dir := t.TempDir()

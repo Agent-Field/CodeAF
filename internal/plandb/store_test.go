@@ -11,7 +11,7 @@ package plandb
 // cancellation, promotion, composite auto-completion, claim ownership — are
 // asserted here against the store as it stands, alongside the behaviour the
 // adaptation added: bare adds, notes, fuzzy Resolve, search, critical path,
-// bottlenecks, ClaimNext, and the cross-process flock.
+// bottlenecks, ClaimNext, and the cross-process transactions.
 //
 // Every test carries the wave's TestPlandbCli prefix; every helper is
 // plan-prefixed so the cli worker's helpers in the same package never
@@ -25,11 +25,10 @@ import (
 	"time"
 )
 
-// planOpen opens the run's store at path, substituting a scratch file when
-// the caller passes an empty one. Every test gets a real path on purpose:
-// an in-memory store makes changeTask create a stray .lock sidecar in the
-// working directory, and these tests are about the store's laws, not that
-// edge case.
+// planOpen opens the run's store at path, substituting a scratch path when
+// the caller passes an empty one. Every test gets a real path on purpose: a
+// store needs a database file to open, and these tests are about the store's
+// laws, not that edge case.
 func planOpen(t *testing.T, path string) *Store {
 	t.Helper()
 	if path == "" {
@@ -1090,12 +1089,13 @@ func TestPlandbCliParallelSafeDefaultAndTheConflictsThatRemain(t *testing.T) {
 	}
 }
 
-// Every read-modify-write transaction takes the advisory flock and reloads
-// the file under it — AddMany, AddNote, AddContext and Prune included, not
-// just changeTask and ClaimNext — so a second handle that wrote between this
-// handle's load and its write cannot be erased. The CLI's own road for add,
-// split, note and context is a separate process, so the writers lean on
-// exactly this; each subtest proves one road keeps the concurrent write.
+// Every read-modify-write transaction takes the database's write lock and
+// reloads the whole plan under it — AddMany, AddNote, AddContext and Prune
+// included, not just changeTask and ClaimNext — so a second handle that wrote
+// between this handle's load and its write cannot be erased. The CLI's own
+// road for add, split, note and context is a separate process, so the writers
+// lean on exactly this; each subtest proves one road keeps the concurrent
+// write.
 func TestPlandbCliWritesSurviveAnotherHandle(t *testing.T) {
 	t.Run("addmany", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "plan.json")
@@ -1154,10 +1154,9 @@ func TestPlandbCliWritesSurviveAnotherHandle(t *testing.T) {
 }
 
 // Two handles on one path: the first holds a real changeTask (its now hook
-// sleeps inside the change, with both locks held), the second tries its own
-// change and must wait the flock out. Both roads in two goroutines, bounded
-// waits throughout — never both locks in one goroutine, which flock on a
-// second descriptor would self-deadlock.
+// sleeps inside the transaction, with the database's write lock held), the
+// second tries its own change and must wait that write lock out. Both roads
+// in two goroutines, bounded waits throughout.
 func TestPlandbCliFlockSerializesTwoHandles(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "plan.json")
 	first := planOpen(t, path)
@@ -1193,7 +1192,7 @@ func TestPlandbCliFlockSerializesTwoHandles(t *testing.T) {
 	case err := <-secondDone:
 		t.Fatalf("the second handle's change ran while the first held the lock: %v", err)
 	case <-time.After(80 * time.Millisecond):
-		// still waiting: the flock is doing its job
+		// still waiting: the database's write lock is doing its job
 	}
 
 	select {
