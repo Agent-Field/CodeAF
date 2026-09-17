@@ -1,7 +1,7 @@
 ---
 kind: added
 title: The crew's seats are picked from a row — table, catalog or learn
-pr: 1103
+pr: 1093
 surface: [chat, engine]
 invalidates:
   - "A seat on the computed rung read `crew frugal, computed`; it now reads `crew frugal, computed from the catalog`."
