@@ -3288,6 +3288,12 @@ func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	// is what ⌘⌫ sends on a terminal that reports the modifier at all.
 	case "ctrl+u", "super+backspace":
 		box.killToStart()
+	case "ctrl+k":
+		// AND KILL TO THE END OF IT, the other half of readline's pair and the same
+		// key the message box and home's box bind (input.go, home.go). A box that
+		// answered `ctrl+u` alone is the half-gesture killpairlaw_test.go holds
+		// shut.
+		box.killToEnd()
 	case "backspace":
 		box.deleteBackward()
 	case "delete":
