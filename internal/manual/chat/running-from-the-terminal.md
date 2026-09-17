@@ -148,7 +148,7 @@ through the same code path the tool on the belt runs, so the two cannot drift:
   one page fetched with the markup stripped and bounded the way `web_fetch` bounds it,
   or one search rendered as the numbered list `web_search` renders, on whatever provider
   the settings name.
-- **`codeaf image PROMPT -o PATH [--model M]`** generates one picture where the
+- **`codeaf image PROMPT --out PATH [--model M]`** generates one picture where the
   `generate_image` tool does and writes it at PATH, printing the path. The spend is
   recorded the way the tool records it — one row in the usage ledger — so a run's books
   see it.

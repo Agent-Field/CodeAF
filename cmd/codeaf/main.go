@@ -401,8 +401,10 @@ Look at what happened — read-only, no key, nothing spent
       the models this machine will use, and what each has been measured at
   codeaf doctor [--db path]
       is this install healthy, and where does it keep things
-  codeaf manual [<page> | "<question>"]
-      every page, listed; one page whole, or the sections answering a question
+  codeaf manual
+      every page of codeaf's own manual, one per line
+  codeaf manual <page> | "<question>"
+      that page printed whole, or the sections that answer a question
   codeaf version
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
@@ -431,10 +433,8 @@ Housekeeping — changes state on disk or on the network
   codeaf services stop <name> [--db path]
   codeaf wake [--db path] [--timeout 2m]
       run one full background pass by hand and exit
-  codeaf patch FILE --old TEXT --new TEXT [--old-file|--new-file PATH]
-  codeaf doc PATH [--pages A-B]
-  codeaf web fetch URL | codeaf web search QUERY [--count N]
-  codeaf image "PROMPT" -o PATH [--model M]
+  codeaf patch FILE --old TEXT --new TEXT | codeaf doc PATH [--pages A-B]
+  codeaf web fetch URL | web search QUERY | codeaf image "PROMPT" --out PATH
   codeaf help env
       the environment table: every variable and its default
 

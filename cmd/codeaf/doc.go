@@ -42,9 +42,14 @@ func runDoc(args []string) error {
 		return err
 	}
 
-	settings, err := config.Load()
-	if err != nil {
-		return err
+	// THE PROFILE IS LOADED, NOT REQUIRED. A plain file, a PDF with a text
+	// layer and a format the road refuses are all answered before any billed
+	// rung is reached, and none of them needs a key — so a profile that will
+	// not load (no key on this machine) is kept as the answer the PARSER gives
+	// when a billed rung is finally asked for, not as a refusal at the door.
+	settings, loadErr := config.Load()
+	if loadErr != nil {
+		settings = config.Config{}
 	}
 	// A billed rung records its own usage row on the way through; this process
 	// must outlive the ledger's write queue for the row to land.
@@ -60,13 +65,13 @@ func runDoc(args []string) error {
 		Parser: func() (session.DocumentParser, error) {
 			// The belt builds its parser from the session's own account on
 			// first use; this is the same construction with the profile's
-			// account ([session.NewDocumentParser]).
-			return session.NewDocumentParser(session.Config{
-				Model:   settings.Model,
-				APIKey:  settings.APIKey,
-				BaseURL: settings.BaseURL,
-				Sources: settings.Sources,
-			})
+			// account ([session.NewDocumentParserFromProfile]) — and the
+			// profile that would not load is answered here, where the key is
+			// first needed.
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			return session.NewDocumentParserFromProfile(settings)
 		},
 		ModelOf: docModelOf(&settings),
 		Account: accountBilledUsage,
