@@ -129,6 +129,34 @@ by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, a
 **`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
 Neither draws anything or reads a key.
 
+## The belt's hands from a shell — codeaf patch, codeaf doc, codeaf web fetch, codeaf web search, codeaf image
+
+Four verbs reach, from a terminal, the same hands the conversation's model uses — each
+through the same code path the tool on the belt runs, so the two cannot drift:
+
+- **`codeaf patch FILE --old TEXT --new TEXT`** is the edit hand's exact-match
+  replacement: the old text must match exactly one region of the file, the file is
+  rewritten with that one region replaced, and a refusal names how many regions matched
+  and leaves with 1 without writing anything. `--old-file` and `--new-file` read the two
+  texts from files when they are awkward to quote.
+- **`codeaf doc PATH [--pages A-B]`** reads a document the way the conversation's
+  `read_document` does: locally and free when the file has a text layer, otherwise
+  through the billed parser rungs on your profile's key. A plain text file is printed as
+  it is, with no call at all. `--pages` names pages of a PDF the local rung reads; billed
+  text arrives with no page boundaries, so a range on a scan is refused.
+- **`codeaf web fetch URL`** and **`codeaf web search QUERY`** are the belt's web verbs:
+  one page fetched with the markup stripped and bounded the way `web_fetch` bounds it,
+  or one search rendered as the numbered list `web_search` renders, on whatever provider
+  the settings name.
+- **`codeaf image PROMPT -o PATH [--model M]`** generates one picture where the
+  `generate_image` tool does and writes it at PATH, printing the path. The spend is
+  recorded the way the tool records it — one row in the usage ledger — so a run's books
+  see it.
+
+`patch` spends nothing, and so does `doc` on a plain file; `doc` on a scan, a search or a
+fetch on a keyed provider, and every `image` call the model and are billed like any
+other call.
+
 ## What codeaf --help prints — the five groups, and where the environment table went
 
 `codeaf help`, `--help` and `-h` all print the same thing: every command under those five
