@@ -45,7 +45,11 @@ key.
    `CODEAF_MODEL_POOL_RELAY_URL` points an install elsewhere.
 7. First publication: `wrangler triggers deploy` and wait for the next `:17`,
    or, under `wrangler dev --test-scheduled`, drive it by hand with
-   `curl -X POST "http://localhost:8787/__scheduled"`.
+   `curl -X POST "http://localhost:8787/__scheduled"`. Publishing does not
+   depend on the cron: the first read past PUBLISH_EVERY republishes in the
+   background while serving what is stored, so the cron is a floor rather
+   than a requirement, and step 7a below is only for a store you want filled
+   before anyone reads.
 7a. If the store is still empty forty minutes after the first `:17` (a fresh
    Worker's cron can miss its first tick), trigger the scheduled handler once
    by hand: `wrangler dev --test-scheduled` bound to the remote namespace, then
