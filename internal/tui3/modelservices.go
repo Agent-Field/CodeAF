@@ -1281,25 +1281,22 @@ func switchSentence(hasActive bool, active, next modelsource.Connected) string {
 }
 
 // switchableConnections is the ring the switcher walks: the default service
-// first, then every custom connection in persisted order. THE SWITCHER IS THE
-// CUSTOM-CONNECTION FEATURE'S DOOR, so its ring is the default service and
-// the connections a person added; vendored non-custom services (deepseek,
-// ollama and the rest) are not in it — they are reached by connecting them
-// and then picking a model, which /model is the door for, and a switcher that
-// wrapped through every vendored service would turn one enter into a walk
-// across doors /model already owns.
+// first, then the custom connections [customInstances] answers — the same
+// walk, spelled once, with the default service put in front of it. THE
+// SWITCHER IS THE CUSTOM-CONNECTION FEATURE'S DOOR, so its ring is the default
+// service and the connections a person added; vendored non-custom services
+// (deepseek, ollama and the rest) are not in it — they are reached by
+// connecting them and then picking a model, which /model is the door for, and
+// a switcher that wrapped through every vendored service would turn one enter
+// into a walk across doors /model already owns.
 func switchableConnections(sources modelsource.Set) []modelsource.Connected {
 	if sources.Empty() {
 		return nil
 	}
-	ring := make([]modelsource.Connected, 0, 2)
+	customs := customInstances(sources)
+	ring := make([]modelsource.Connected, 0, len(customs)+1)
 	ring = append(ring, sources.Default())
-	for _, service := range sources.All() {
-		if modelsource.IsCustomID(service.Source.ID) {
-			ring = append(ring, service)
-		}
-	}
-	return ring
+	return append(ring, customs...)
 }
 
 // nextConnection is the service a switcher enter lands on: the one after the
