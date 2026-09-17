@@ -124,6 +124,10 @@ type Task struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	CompletedAt time.Time `json:"completed_at,omitempty"`
+	// ArchivedAt is set only on the tasks Store.Archived reads back — the
+	// moment the archive took the row out of the live plan. A live task
+	// carries the zero time, because the tasks table has no such column.
+	ArchivedAt time.Time `json:"archived_at,omitempty"`
 }
 
 // Note is a task-scoped message one worker leaves for the others working
