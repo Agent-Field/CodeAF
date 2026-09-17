@@ -143,20 +143,6 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	return Report{Result: result, Steps: steps, USD: usd}, err
 }
 
-// childrenOf reads the ids of the tasks that stand under the task when the
-// worker opens, the before side of the diff each step's line records: the
-// children a step created are the ones the store did not hold a moment
-// before it ran.
-func (w *BashWorker) childrenOf(id string) map[string]bool {
-	set := map[string]bool{}
-	for _, task := range w.store.Tasks() {
-		if task.ParentID == id {
-			set[task.ID] = true
-		}
-	}
-	return set
-}
-
 // stepRecorder appends one worker's step lines, and keeps the two readings
 // every step's record is a diff against: the children the task had when the
 // last step ended, and the highest spill number the belt had filed when it
