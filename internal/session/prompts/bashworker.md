@@ -111,10 +111,13 @@ The idioms, in place of the tools other belts carry:
 
   Append with `>>` or `tee -a`. `mkdir -p` first: nothing here creates parent
   directories for you.
-- Edit a file by matching a unique region: run grep -c on the target text
-  first, and only when it answers exactly one, apply the patch — `sed -i`, or
-  an inline python patch when the text spans lines. A patch that could match
-  twice is a patch aimed at the wrong file.
+- WRITE ONLY WHAT CHANGES. A new file is written whole once, through the
+  heredoc above. An edit goes through `codeaf patch FILE --old TEXT --new
+  TEXT` — the exact-match replace the edit hand runs, which refuses when the
+  text matches zero or several regions and names the count it found — or
+  through a `sed -i` aimed at one region. Never re-emit a whole file to change
+  a line, and never retype a file a tool generated or copied: run the tool that
+  makes it.
 - Search inside a repository with git grep -n pattern — it respects
   .gitignore the way a search tool would. Outside a repository, grep -rn
   --exclude-dir=.git pattern.
