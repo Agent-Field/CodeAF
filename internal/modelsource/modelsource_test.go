@@ -54,6 +54,40 @@ func TestSourceSlugSpellsAnIPHostDashesNotDots(t *testing.T) {
 	}
 }
 
+// ADDRESSHOST IS THE STEP BEFORE THE SLUG, and its fallback is the reason a
+// bare host typed with no scheme still answers a usable name: url.Parse reads
+// mybox.local:9001 as a scheme and an opaque path and has no Hostname at all,
+// so the raw trimmed text is what carries. config's mint and the chat
+// surface's two name defaults all take this one road.
+func TestAddressHostAnswersTheHostOrTheTextItWasGiven(t *testing.T) {
+	for _, row := range []struct {
+		address, want string
+	}{
+		{"http://api.deepseek.com/v1", "api.deepseek.com"},
+		{"  https://mybox.local:9001/v1  ", "mybox.local"},
+		{"http://127.0.0.1:9001/v1", "127.0.0.1"},
+		{"http://[::1]:9001/v1", "::1"},
+		// NO SCHEME, NO HOSTNAME: the trimmed text itself is the answer, and
+		// the slug reads a name off it.
+		{"mybox.local", "mybox.local"},
+		{"mybox.local:9001", "mybox.local:9001"},
+		{"  mybox.local  ", "mybox.local"},
+		{"", ""},
+	} {
+		if got := AddressHost(row.address); got != row.want {
+			t.Errorf("AddressHost(%q) = %q, want %q", row.address, got, row.want)
+		}
+	}
+	// The pair is what every caller uses: the host's own slug is the name a
+	// new connection defaults to.
+	if got := SourceSlug(AddressHost("http://api.deepseek.com/v1")); got != "deepseek" {
+		t.Errorf("the address default named %q", got)
+	}
+	if got := SourceSlug(AddressHost("mybox.local")); got != "mybox" {
+		t.Errorf("the schemeless address default named %q", got)
+	}
+}
+
 func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	defaultService := Connected{Source: DefaultSource("https://router.example/v1"), Key: "router-key", Address: "https://router.example/v1"}
 	direct := Connected{Source: Source{ID: "deepseek", Written: "deepseek-direct"}, Key: "direct-key", Address: "https://direct.example/v1"}

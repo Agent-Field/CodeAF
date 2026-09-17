@@ -4,6 +4,7 @@ package modelsource
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -232,6 +233,27 @@ func DefaultSource(address string) Source {
 		Listing:  ListingModels,
 		Probe:    listingProbe(),
 	}
+}
+
+// AddressHost is the host a base URL is at, and the one step every caller
+// takes before [SourceSlug]: the name a connection defaults to is the slug of
+// its address's host. It lives beside SourceSlug because the two halves of
+// that one rule were spelled three times — in the chat surface's draft, in
+// config's mint, and inline in the surface's address step — and three copies
+// of a defaulting rule drift into three different names for one host.
+//
+// AN ADDRESS THE SURFACE ALREADY VALIDATED IS THE NORMAL CASE; an unparseable
+// one, or one with no host at all, falls back to the raw trimmed text, which
+// is what lets a bare host typed with no scheme still answer a usable name
+// (url.Parse reads mybox.local:9001 as a scheme and an opaque path, and its
+// Hostname is empty).
+func AddressHost(address string) string {
+	address = strings.TrimSpace(address)
+	parsed, err := url.Parse(address)
+	if err != nil || strings.TrimSpace(parsed.Hostname()) == "" {
+		return address
+	}
+	return parsed.Hostname()
 }
 
 // SourceSlug turns a base URL's host into the short word a person reads for

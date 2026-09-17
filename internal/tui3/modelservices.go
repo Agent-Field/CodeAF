@@ -402,7 +402,7 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		// shared with config through modelsource.SourceSlug so every surface
 		// spells a host the same way; an edit starts from the name it already
 		// has, because changing it is a rename with consequences downstream.
-		name := modelsource.SourceSlug(parsed.Hostname())
+		name := modelsource.SourceSlug(modelsource.AddressHost(answer))
 		if draft.editing && draft.renamedFrom != "" {
 			name = draft.renamedFrom
 		}
@@ -420,7 +420,7 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 			answer = strings.TrimSpace(draft.row.Written)
 		}
 		if answer == "" {
-			answer = modelsource.SourceSlug(customDraftHost(draft.row.Address))
+			answer = modelsource.SourceSlug(modelsource.AddressHost(draft.row.Address))
 		}
 		// THE NAME IS THE ROUTING PREFIX. It becomes the first segment of
 		// every model id this connection qualifies, so a / in it would give
@@ -476,16 +476,6 @@ func connectionNameFault(name string) string {
 		return "a connection name cannot contain spaces · they would travel into every model id"
 	}
 	return ""
-}
-
-// customDraftHost is the host of an address already stored on a draft, for
-// the name default when the person clears the box.
-func customDraftHost(address string) string {
-	parsed, err := url.Parse(strings.TrimSpace(address))
-	if err != nil || strings.TrimSpace(parsed.Hostname()) == "" {
-		return strings.TrimSpace(address)
-	}
-	return parsed.Hostname()
 }
 
 func modelKeyEnvironment(answer string) (string, bool) {

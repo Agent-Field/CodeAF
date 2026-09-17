@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -18,19 +17,6 @@ import (
 // prefix of a model id, so the id is persistence vocabulary and the Written
 // name is what a person's model ids carry. Nothing here may conflate them.
 
-// customAddressHost is the host a base URL is at, for the slug a new
-// connection defaults its name from. An address the surface already validated
-// is the normal case; an unparseable one falls back to the raw text so the
-// slug still says something about what was given.
-func customAddressHost(address string) string {
-	address = strings.TrimSpace(address)
-	parsed, err := url.Parse(address)
-	if err != nil || strings.TrimSpace(parsed.Hostname()) == "" {
-		return address
-	}
-	return parsed.Hostname()
-}
-
 // PrepareCustomSource is the one door that mints a custom connection's
 // persisted row, and both doors onto a connection (/connect and the Providers
 // tab) call it before ConnectService, which stays the one validate, probe and
@@ -41,7 +27,10 @@ func customAddressHost(address string) string {
 func PrepareCustomSource(profileDir, address, written string) PersistedSource {
 	address = strings.TrimRight(strings.TrimSpace(address), "/")
 	if written = strings.TrimSpace(written); written == "" {
-		written = modelsource.SourceSlug(customAddressHost(address))
+		// The host-to-name rule is modelsource's, next to the slug it feeds:
+		// one spelling for config, the chat surface's draft and its address
+		// step ([modelsource.AddressHost]).
+		written = modelsource.SourceSlug(modelsource.AddressHost(address))
 	}
 	taken := make(map[string]bool)
 	order := 0
