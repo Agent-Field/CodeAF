@@ -180,8 +180,7 @@ func (r *runner) runOne(iv invocation) row {
 		return r.failedRow(iv, fmt.Sprintf("no cell %s in this plan", iv.Cell))
 	}
 
-	seedSHA, err := materializeFixture(fixtureDir, cellDef)
-	if err != nil {
+	if _, err := materializeFixture(fixtureDir, cellDef); err != nil {
 		return r.failedRow(iv, fmt.Sprintf("seed the fixture: %v", err))
 	}
 
@@ -232,17 +231,22 @@ func (r *runner) runOne(iv invocation) row {
 		fmt.Fprintf(r.out, "· %s hit the wall; the row says so\n", iv.label())
 	}
 
-	reading := collectReadings(homeDir, place.Dir, place.NodeJournals(), fixtureDir, seedSHA)
+	// THE TREE, NOT THE GROUND, carries the work: the task edits its own copy
+	// under the session folder ([session.Place.Trees]), and the ground is only
+	// the seed that copy was cut from — reading the ground back grades the
+	// seed, and the seed is red by design.
+	treeDir := taskTreeDir(place.Dir)
+	pristine, err := pristineFixture(cellDef)
+	if err != nil {
+		return r.failedRow(iv, fmt.Sprintf("read the pristine fixture: %v", err))
+	}
+	reading := collectReadings(homeDir, place.Dir, place.NodeJournals(), treeDir, pristine)
 	if notice != nil {
 		reading.applyNotice(string(notice.State), notice.Report, notice.StartedAt, notice.EndedAt)
 	}
 	reading.WallDriver = wallDriver
 	wall, wallSource := reading.wallSeconds()
-	pristine, err := pristineFixture(cellDef)
-	if err != nil {
-		return r.failedRow(iv, fmt.Sprintf("read the pristine fixture: %v", err))
-	}
-	g := gradeCell(cellDef, fixtureDir, reading, pristine)
+	g := gradeCell(cellDef, treeDir, reading, pristine)
 
 	return row{
 		Date: r.date, Arm: iv.Arm, Cell: iv.Cell, Replicate: iv.Replicate,
@@ -258,6 +262,23 @@ func (r *runner) runOne(iv invocation) row {
 		EditIdiomFlags: reading.EditIdiomFlags,
 		RunDir:         iv.RunDir,
 	}
+}
+
+// taskTreeDir is the invocation's one working copy: the single tree the
+// task machinery cut under the session folder. One task per invocation, so
+// the first tree is the tree; a run that prepared none answers an empty dir,
+// and its rows say so.
+func taskTreeDir(placeDir string) string {
+	entries, err := os.ReadDir(filepath.Join(placeDir, "trees"))
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return filepath.Join(placeDir, "trees", entry.Name())
+		}
+	}
+	return ""
 }
 
 // failedRow is the row a run that never started still leaves: graded no,
