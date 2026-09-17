@@ -239,19 +239,32 @@ func DefaultSource(address string) Source {
 // mybox. It moved here from the chat surface so config and both surfaces
 // derive one name from one host. AN ADDRESS THAT IS AN IP LITERAL IS TAKEN
 // WHOLE: 127.0.0.1 answers 127-0-0-1, not the 0 the old derivation read off
-// its last dot-separated label. A host that yields nothing answers CustomID,
-// which is what the surface it moved from answered and keeps that path
-// byte-identical.
+// its last dot-separated label, and an IPv6 literal keeps its groups in order
+// (::1 answers ipv6-1, fe80::1 answers fe80-1) — brackets are stripped
+// defensively, :: and runs of mapped dashes collapse to one, and a colon-host
+// that reduces to digits alone carries the ipv6- prefix so ::1 does not read
+// as "1"; a hex group like fe80 keeps no prefix, because hex digits a-f are
+// letters. A host that yields nothing answers CustomID, which is what the
+// surface it moved from answered and keeps that path byte-identical.
 func SourceSlug(host string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
-	if ipLiteral(host) {
-		return strings.Trim(strings.Map(func(r rune) rune {
-			if r == '.' || r == ':' {
-				return '-'
+	raw := strings.ToLower(strings.TrimSpace(host))
+	if ipLiteral(raw) {
+		word := strings.Trim(strings.Join(strings.FieldsFunc(raw, func(r rune) bool {
+			return r == '.' || r == ':'
+		}), "-"), "[]-")
+		noLetter := true
+		for _, r := range word {
+			if (r >= 'a' && r <= 'z') || r == '-' {
+				noLetter = false
+				break
 			}
-			return r
-		}, host), "-")
+		}
+		if noLetter && strings.Contains(raw, ":") {
+			return "ipv6-" + word
+		}
+		return word
 	}
+	host = raw
 	parts := strings.Split(host, ".")
 	if len(parts) > 2 {
 		parts = parts[:len(parts)-1]

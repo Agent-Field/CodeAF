@@ -21,6 +21,35 @@ func TestAServiceNameThatCollidesWithAModelAuthorGetsASuggestion(t *testing.T) {
 	}
 }
 
+// THE HOST'S SLUG IS WHAT THE PERSON READS, INCLUDING FOR AN IP LITERAL. The
+// talk surface and config both pass url.Hostname() here — brackets already
+// stripped — so an IPv6 literal's :: arrives as dashes and dash-trimming used
+// to leave "1" for ::1. A host that held a colon and now reads digits and
+// dashes alone carries the ipv6- prefix; a hostname keeps collapsing to its
+// last label's letters.
+func TestSourceSlugSpellsAnIPHostDashesNotDots(t *testing.T) {
+	for _, row := range []struct {
+		host, want string
+	}{
+		{"127.0.0.1", "127-0-0-1"},
+		{"::1", "ipv6-1"},
+		{"fe80::1", "fe80-1"},
+		{"2001:db8::8a2e:370:7334", "2001-db8-8a2e-370-7334"},
+		// An IPv6 literal arriving with its brackets still on is read whole.
+		{"[::1]", "ipv6-1"},
+		// A hostname is not an IP literal and keeps the old collapsing: last
+		// label's letters and digits, everything else one dash.
+		{"api.deepseek.com", "deepseek"},
+		{"mybox.local", "mybox"},
+		{"MYBOX.local", "mybox"},
+		{"", "custom"},
+	} {
+		if got := SourceSlug(row.host); got != row.want {
+			t.Errorf("SourceSlug(%q) = %q, want %q", row.host, got, row.want)
+		}
+	}
+}
+
 func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	defaultService := Connected{Source: DefaultSource("https://router.example/v1"), Key: "router-key", Address: "https://router.example/v1"}
 	direct := Connected{Source: Source{ID: "deepseek", Written: "deepseek-direct"}, Key: "direct-key", Address: "https://direct.example/v1"}
