@@ -317,31 +317,16 @@ class WorkflowTest(unittest.TestCase):
 
 class DocsTest(unittest.TestCase):
     def test_download_counts_paragraph_exists(self):
-        self.assertTrue(
-            (DOCS / "TELEMETRY.md").exists()
-            or (DOCS / "rules" / "promotion.md").exists(),
-            "no docs file carries the paragraph",
-        )
-        path = DOCS / "TELEMETRY.md"
-        if not path.exists():
-            path = DOCS / "rules" / "promotion.md"
-        text = path.read_text()
+        text = (DOCS / "TELEMETRY.md").read_text()
         flat = " ".join(text.split())
         self.assertIn("## Download counts", text)
         self.assertIn("public GitHub release data", flat)
 
-    def test_no_telemetry_doc_on_this_branch(self):
-        # The paragraph therefore belongs in docs/rules/promotion.md, the
-        # release docs; this pins the fallback that was chosen.
-        self.assertFalse((DOCS / "TELEMETRY.md").exists())
-
 
 class DocsAndWorkflowMixTest(unittest.TestCase):
     def test_docs_paragraph_names_workflow_and_script(self):
-        path = DOCS / "TELEMETRY.md"
-        if not path.exists():
-            path = DOCS / "rules" / "promotion.md"
-        text = path.read_text()
+        text = (DOCS / "TELEMETRY.md").read_text()
+        self.assertIn("## Download counts", text)
         self.assertIn("release-downloads.yml", text)
         self.assertIn("scripts/release_downloads.py", text)
         self.assertIn("checksums.txt", text)
