@@ -23,10 +23,12 @@ import (
 // the doctrine page it reads ([bashworkerPage]) teaches the idioms in their
 // place. What stays is exactly what a shell cannot be: read_document (the
 // billed document parse), jobs (the other end of bash's background argument,
-// Decision 6), ask (the consent gate to the person), manual (the packed corpus),
-// the task graph's verbs on their existing gates, the memory and state
-// families, the web pair, the services pair, and the media family riding the
-// shelf exactly as today.
+// Decision 6), manual (the packed corpus), the task graph's verbs on their
+// existing gates, the memory and state families, the web pair, the services
+// pair, and the media family riding the shelf exactly as today. `ask` is NOT
+// among them: the loop reaches the person through the plan CLI, not a consent
+// gate, so the belt carries no verb for a question it already answers by
+// re-planning ([Config.mayAsk] says the same where the page is composed).
 //
 // internal/exec/bare IS UNTOUCHED. The hands stay bare's; the experiment is a
 // wire change — which tools the model can name — and the conversation belt and
