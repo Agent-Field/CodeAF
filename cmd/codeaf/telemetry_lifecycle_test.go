@@ -2,7 +2,8 @@ package main
 
 // The execute() lifecycle, exercised the way the binary runs it: os.Args
 // pointed at a real command, CODEAF_HOME in a temporary directory, and the
-// endpoint at a local server so a flush never reaches the real relay.
+// endpoint at a dead loopback so a flush never reaches the real relay and the
+// spool keeps what the run wrote for the assertions to read.
 //
 // The package is off under `go test` by design — the go-test rung is a
 // production rule — and these tests do not weaken it. They use the one door
@@ -11,8 +12,6 @@ package main
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,19 +21,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
-// telemetryLifecycleHome points the process at a temporary home and a local
-// endpoint, and turns the ladder on for this test only. Both are restored
-// through t.Cleanup.
-func telemetryLifecycleHome(t *testing.T) *httptest.Server {
+// telemetryLifecycleHome points the process at a temporary home and a dead
+// endpoint, and turns the ladder on for this test only. The endpoint refuses
+// every connection, so the flush a lifecycle call ends with fails locally
+// instead of draining the spool — an endpoint that answered would send the
+// events and remove them, and the assertions below would have nothing to read.
+func telemetryLifecycleHome(t *testing.T) {
 	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	t.Cleanup(server.Close)
-	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", server.URL)
+	// Nothing listens here, and loopback dialing is refused immediately.
+	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "http://127.0.0.1:1/telemetry")
 	telemetry.EnableForTest(t, true)
-	return server
 }
 
 // telemetrySpoolRows is what the spool holds, parsed. An absent spool is an
@@ -75,6 +72,32 @@ func telemetryEventNames(t *testing.T, rows []map[string]any) []string {
 	return names
 }
 
+// telemetryRowNamed is the one spooled row with an event name, failed on when
+// there is none. A fresh home spools first_run before the session events, so
+// the tests below find the row they are about by name rather than by index.
+func telemetryRowNamed(t *testing.T, rows []map[string]any, name string) map[string]any {
+	t.Helper()
+	for _, row := range rows {
+		if row["event_name"] == name {
+			return row
+		}
+	}
+	t.Fatalf("no %s row in %v", name, telemetryEventNames(t, rows))
+	return nil
+}
+
+// telemetryProps is a spooled row's props object, failed on when it carries
+// none. The wire row nests every contract property under "props"; the
+// identity fields sit beside it.
+func telemetryProps(t *testing.T, row map[string]any) map[string]any {
+	t.Helper()
+	props, ok := row["props"].(map[string]any)
+	if !ok {
+		t.Fatalf("%v row carries no props", row["event_name"])
+	}
+	return props
+}
+
 // telemetryArgs points os.Args at the given words for the duration of one
 // lifecycle call, because telemetryBegin reads the command line itself.
 func telemetryArgs(args ...string) func() {
@@ -84,9 +107,10 @@ func telemetryArgs(args ...string) func() {
 }
 
 // TestTelemetryTaskSessionSpoolsStartedAndEnded runs one session through the
-// lifecycle's own begin and end and reads what it left in the spool: a task
-// session spools session_started then session_ended, both with mode "task",
-// and the ended event carries the exit code's stop reason.
+// lifecycle's own begin and end and reads what it left in the spool: a fresh
+// install spools first_run first, then the task session's session_started and
+// session_ended, both with mode "task", and the ended event carries the exit
+// code's stop reason.
 func TestTelemetryTaskSessionSpoolsStartedAndEnded(t *testing.T) {
 	telemetryLifecycleHome(t)
 	restore := telemetryArgs("plan", "run", "p.json")
@@ -103,17 +127,55 @@ func TestTelemetryTaskSessionSpoolsStartedAndEnded(t *testing.T) {
 
 	rows := telemetrySpoolRows(t)
 	names := telemetryEventNames(t, rows)
-	if len(names) != 2 || names[0] != "session_started" || names[1] != "session_ended" {
-		t.Fatalf("spool holds %v, want [session_started session_ended]", names)
+	if len(names) != 3 || names[0] != "first_run" || names[1] != "session_started" || names[2] != "session_ended" {
+		t.Fatalf("spool holds %v, want [first_run session_started session_ended]", names)
 	}
-	if rows[0]["mode"] != "task" || rows[1]["mode"] != "task" {
-		t.Fatalf("modes were %v and %v, want task", rows[0]["mode"], rows[1]["mode"])
+	startedRow := telemetryRowNamed(t, rows, "session_started")
+	endedRow := telemetryRowNamed(t, rows, "session_ended")
+	started := telemetryProps(t, startedRow)
+	ended := telemetryProps(t, endedRow)
+	if started["mode"] != "task" || ended["mode"] != "task" {
+		t.Fatalf("modes were %v and %v, want task", started["mode"], ended["mode"])
 	}
-	if rows[1]["stop_reason"] != "done" {
-		t.Fatalf("stop_reason was %v, want done for exit 0", rows[1]["stop_reason"])
+	if ended["stop_reason"] != "done" {
+		t.Fatalf("stop_reason was %v, want done for exit 0", ended["stop_reason"])
 	}
-	if rows[0]["session_id_hash"] != rows[1]["session_id_hash"] {
+	if startedRow["session_id_hash"] != endedRow["session_id_hash"] {
 		t.Fatalf("started and ended hashed different session ids")
+	}
+}
+
+// TestTelemetrySessionEndedCarriesTheSessionCounters: the end event is built
+// from the process's own tally (telemetry.Snapshot), so a turn, a failed model
+// call with its cost, and a tool call counted during the run reach the spooled
+// session_ended line as the contract's bands. The counters are process-wide
+// and this test is the only one in the package that touches them, so their
+// count is exactly the three calls made here.
+func TestTelemetrySessionEndedCarriesTheSessionCounters(t *testing.T) {
+	telemetryLifecycleHome(t)
+	restore := telemetryArgs("do", "fix the bug")
+	defer restore()
+
+	telemetry.CountTurn()
+	telemetry.CountModelCall(false, 0.02)
+	telemetry.CountToolCall(true)
+
+	session := telemetryBegin()
+	telemetryEnd(session, 0)
+
+	ended := telemetryProps(t, telemetryRowNamed(t, telemetrySpoolRows(t), "session_ended"))
+	want := map[string]string{
+		"turns":              "1",
+		"model_calls":        "1",
+		"model_calls_failed": "1",
+		"tool_calls":         "1",
+		"tool_calls_failed":  "0",
+		"cost_usd":           "0.01-0.1",
+	}
+	for key, value := range want {
+		if ended[key] != value {
+			t.Errorf("session_ended %s = %v, want %s", key, ended[key], value)
+		}
 	}
 }
 
@@ -220,10 +282,17 @@ func TestTelemetryNoticePrintsOnceAcrossTwoInvocations(t *testing.T) {
 
 	second := telemetryBegin()
 	telemetryEnd(second, 0)
+	// The first session's first_run is still in the spool — the flush could not
+	// send and kept every line — so the check is that the second invocation
+	// added none: one first_run for the install across both invocations.
+	firstRuns = 0
 	for _, row := range telemetrySpoolRows(t) {
 		if row["event_name"] == "first_run" {
-			t.Fatalf("a second invocation spooled another first_run")
+			firstRuns++
 		}
+	}
+	if firstRuns != 1 {
+		t.Fatalf("two invocations spooled %d first_run events, want 1", firstRuns)
 	}
 }
 

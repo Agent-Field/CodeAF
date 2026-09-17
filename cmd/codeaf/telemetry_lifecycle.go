@@ -11,7 +11,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"os"
 	"time"
 
@@ -75,11 +74,23 @@ func telemetryBegin() telemetrySession {
 		telemetry.PrintNotice()
 		telemetry.MarkNoticeShown()
 	}
+	// Both opening events go through SpoolSync, not the fire-and-forget Spool:
+	// first_run must be on disk before session_started even exists, and a run's
+	// session_started must be spooled before the process can reach the exit and
+	// flush — an append on its own goroutine can land after the flush has
+	// already renamed the spool, or not at all when a short run exits first.
+	//
+	// Each constructor is reached only when the ladder is on: the event's own
+	// identity mints and writes the install id, so building one under a run
+	// that will not send would touch the state root this run promised to leave
+	// alone — the same reason telemetryEnd gates its constructor.
 	if telemetry.Enabled() && telemetry.FirstRunPending() {
-		telemetry.Spool(telemetry.FirstRun(time.Now()))
+		_ = telemetry.SpoolSync(telemetry.FirstRun(time.Now()))
 		telemetry.MarkFirstRunSent()
 	}
-	telemetry.Spool(telemetry.SessionStarted(mode, resumed, id, time.Now()))
+	if telemetry.Enabled() {
+		_ = telemetry.SpoolSync(telemetry.SessionStarted(mode, resumed, id, time.Now()))
+	}
 	return telemetrySession{mode: mode, resumed: resumed, sessionID: id}
 }
 
@@ -93,14 +104,23 @@ func telemetryBegin() telemetrySession {
 // keeps this defer free for every non-session command: `codeaf version` runs
 // it and it costs a mode read and nothing else.
 func telemetryEnd(session telemetrySession, code int) {
-	if session.mode == "" {
+	// Nothing is built when the ladder is off, and that is load-bearing: the
+	// event's identity alone reads the install id, which mints and writes one
+	// on a machine that has never sent anything — the very file this run
+	// promised not to write. SpoolSync and Flush are no-ops under the same
+	// rung, so this gate is what keeps a disabled run from touching the state
+	// root at all.
+	if session.mode == "" || !telemetry.Enabled() {
 		return
 	}
-	event := telemetry.SessionEnded(session.mode, telemetry.SessionStats{
-		Duration:   time.Since(telemetryStarted),
-		StopReason: telemetryStopReason(code),
-		ExitCode:   code,
-	}, session.sessionID, time.Now())
+	// The run's own tally comes from Snapshot and only the three facts the
+	// counters cannot know — how long it took, why it ended, what it left
+	// with — are set on top of it.
+	stats := telemetry.Snapshot()
+	stats.Duration = time.Since(telemetryStarted)
+	stats.StopReason = telemetryStopReason(code)
+	stats.ExitCode = code
+	event := telemetry.SessionEnded(session.mode, stats, session.sessionID, time.Now())
 	_ = telemetry.SpoolSync(event)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -109,9 +129,9 @@ func telemetryEnd(session telemetrySession, code int) {
 
 // telemetryInterrupted is whether the person ended the run themselves —
 // ctrl-c on the surface, the signal a headless run caught. It is set where
-// the signal is caught (do.go, chatv3_at.go), and read once, here, to give
-// the session-ended event the contract's "interrupted" word instead of a
-// failure word it was not.
+// the signal is caught (do.go's errand), and read once, here, to give the
+// session-ended event the contract's "interrupted" word instead of a failure
+// word it was not.
 var telemetryInterrupted bool
 
 // telemetryStarted is when this process began its session, the honest measure
@@ -135,11 +155,24 @@ func telemetrySessionID() string {
 	return hex.EncodeToString(raw[:])
 }
 
+// telemetryStopReasons maps the exit ladder's rungs (envelope.go) onto the
+// contract's stop_reason vocabulary. It is a straight table keyed by the rung
+// itself: the five codes the ladder names, each with the one word the exit
+// cannot carry. exitLimit is the ladder's single rung for four limits — wall,
+// budget, turn cap, price — and the contract gives the rung a single word,
+// "budget", which is the one it names for a limit the person set.
+var telemetryStopReasons = map[exitStatus]string{
+	exitDone:       telemetry.StopDone,
+	exitCannotRun:  telemetry.StopError,
+	exitIncomplete: telemetry.StopIncomplete,
+	exitLimit:      telemetry.StopBudget,
+	exitUnanswered: telemetry.StopQuestion,
+}
+
 // telemetryStopReason maps the exit code onto the contract's stop_reason
-// vocabulary. The codes are the one exit ladder (envelope.go), so the mapping
-// is a straight table: a rung's number names the reasons that produce it, and
-// a code this build has no word for is "unknown" — the honest answer, because
-// the fact that the run ended survives even when the vocabulary does not.
+// vocabulary. A code the ladder does not name is "unknown" — the honest
+// answer, because the fact that the run ended survives even when the
+// vocabulary does not.
 //
 // A user interrupt is not on the ladder: interrupting a chat is not a failure
 // of the conversation, it is the person ending it, and the contract gives it
@@ -150,31 +183,10 @@ func telemetryStopReason(code int) string {
 	if telemetryInterrupted {
 		return telemetry.StopInterrupted
 	}
-	switch {
-	case errors.Is(exitStatus(code), exitDone):
-		return telemetry.StopDone
-	case errors.Is(exitStatus(code), exitCannotRun):
-		return telemetry.StopError
-	case errors.Is(exitStatus(code), exitIncomplete):
-		return telemetry.StopIncomplete
-	case errors.Is(exitStatus(code), exitLimit):
-		// The ladder's one rung for four limits — wall, budget, turn cap, price —
-		// and an exit code cannot say which. The contract's own table gives the
-		// rung a single word and "budget" is the one it names for a limit the
-		// person set; anything finer needs the stop reason the command carried,
-		// which the exit does not keep.
-		return telemetry.StopBudget
-	case errors.Is(exitStatus(code), exitUnanswered):
-		return telemetry.StopQuestion
-	case errors.Is(exitStatus(code), exitStatus(3)):
-		// The one code the ladder does not name: exit 3 is the legacy exec
-		// ladder's "limit" rung under CODEAF_EXIT_CODES=legacy, and this build
-		// has no word for which of the four limits it was. Unknown, not a
-		// guess.
-		return telemetry.StopUnknown
-	default:
-		return telemetry.StopUnknown
+	if reason, ok := telemetryStopReasons[exitStatus(code)]; ok {
+		return reason
 	}
+	return telemetry.StopUnknown
 }
 
 // stderrIsTerminal is whether a person can see the notice: stderr attached to
