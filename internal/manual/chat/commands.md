@@ -1090,7 +1090,7 @@ holding the cursor, so type-and-enter still starts a chat. **A line that starts 
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The box says `› type to search or start something new` and the foot
 reads `↑↓ pick · enter open` followed by the available draft controls:
-`alt+w project · alt+y approvals · alt+k chats · / commands`. The `ctrl+o` and `tab`
+`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`. The `ctrl+o` and `tab`
 keys still work, without hints on this row.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —

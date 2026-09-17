@@ -256,13 +256,13 @@ func TestOnlyHomeDrawsTheBoxAndTheDraftsRule(t *testing.T) {
 	a.width, a.height = 200, 30
 	a.showPage(pageHome)
 	text := placeFrameText(a)
-	if !strings.Contains(text, targetLeadWord) || !strings.Contains(text, "› "+placeRestWord) {
+	if !strings.Contains(text, targetProjectLead) || !strings.Contains(text, "› "+placeRestWord) {
 		t.Fatalf("home's foot lost its rule or its box:\n%s", text)
 	}
 	for _, id := range []page{pageTasks, pageStanding, pageSpend, pageSearch} {
 		a.showPage(id)
 		text := placeFrameText(a)
-		if strings.Contains(text, targetLeadWord) || strings.Contains(text, placeRestWord) {
+		if strings.Contains(text, targetProjectLead) || strings.Contains(text, placeRestWord) {
 			t.Fatalf("the %s place still draws a box or the draft's rule:\n%s", id.word(), text)
 		}
 		if strings.Contains(text, "here /") || strings.Contains(text, "here ~") {

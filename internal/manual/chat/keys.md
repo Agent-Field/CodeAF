@@ -1134,9 +1134,10 @@ meanings.
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
+The effort follows a colon; the old six-dot badge is no longer shown.
 
 ```
-─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ──── $0.27   66.8k/1.3M · 5%   idle ─
+─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ──── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1146,13 +1147,13 @@ chose: it is the rung the next turn will ask for, whichever setting decided it. 
 *Making the model think harder, deeper, or less* on the "Models and cost" page for the
 whole ladder and for what each rung asks the provider for.
 
-**A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
+**A conversation nobody has dialled reads `auto`**, which is what a shipped install
 says on every fresh conversation. See *What `auto` means beside the model* below.
 
-**The same cell is on the rule above the box on home and every other place**, where it
+**The same cell is on the rule above the box on home**, where it
 says how hard the conversation you are about to start will think, and `ctrl+v` or a press
 walks it there too. A rung set there is carried onto the conversation `enter` opens and
-lasts as long as this window does. *The rule above the box on every place* on the Places
+lasts as long as this window does. *The rule above home's box* on the Places
 page has all four cells of that rule.
 
 **`ctrl+v` walks it.** Each press moves one rung up, and off the top it comes back to
@@ -1199,7 +1200,7 @@ What it changes and what it does not:
   row in `/settings`, which ships at `auto` (the provider default).
 - **`auto` is on the legend, it is the ladder's top row, and it is a stop on the wheel.**
   With thinking at `auto` and no more specific level chosen — which is what a shipped
-  install is — the cell reads `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+  install is — the cell reads `auto`, it is pressable, and `ctrl+v` walks it onto `low`.
   One more press past `max` brings it back to `auto`.
 - **It works on a `--host` conversation.** The rung is set on the engine machine, where
   the conversation lives, and the word on your legend is the one that machine resolved.
@@ -1213,7 +1214,7 @@ model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation'
 /model changes it*. Clear that level and the rung moves again.
 
 The rung is dim, like the rest of that line. It brightens for about two seconds after it
-changes — the cell takes a lit ground and its `⠿` goes cyan — so you can see the new word
+changes — the cell takes a lit ground and its effort word goes cyan — so you can see the new word
 without looking away from what you are typing, and then it goes quiet again. Walking it
 back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
@@ -1223,7 +1224,7 @@ decides*.
 After the thinking rung, the legend names what this conversation runs **without asking**:
 
 ```
-─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ─── $0.27   66.8k/1.3M · 5%   idle ─
+─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ─── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1292,7 +1293,7 @@ door, and only while the gate is open.
 
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
 
-`⠿ auto` on the line above the message box means **nobody has asked this conversation to
+`auto` on the line above the message box means **nobody has asked this conversation to
 think any particular amount**. codeaf sends no reasoning field on the request at all, and
 the model thinks however it thinks — its own published default. It is not "think as little
 as possible": that is a different request, and `low` is the rung for it.
@@ -1300,7 +1301,7 @@ as possible": that is a different request, and `low` is the rung for it.
 **It is what a fresh install says.** The **thinking** row in `/settings` ships at `auto`,
 so until you dial something — this conversation with `ctrl+v`, `/effort` or a press on the
 cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
-itself in `/settings` — every conversation reads `⠿ auto`.
+itself in `/settings` — every conversation reads `auto`.
 
 **To put it back to `auto`:** keep pressing `ctrl+v` or the cell — the wheel's stop after
 `max` is `auto` — or type `/effort auto` (or `/effort off`, the older name for the same
@@ -1312,7 +1313,7 @@ at as the one thing the control in front of you could not say.
 Clearing it does not always change the word on the line, and codeaf says why in a note
 either way:
 
-- Nothing else is set: the cell reads `⠿ auto` and the note is *thinking · auto · the
+- Nothing else is set: the cell reads `auto` and the note is *thinking · auto · the
   model decides*.
 - The **thinking** row in `/settings` is set on this machine: a cleared conversation
   falls back to that row, so the cell keeps its word and the note is *thinking · auto for
@@ -1713,7 +1714,7 @@ chosen · `esc` leaves with nothing changed.
 `up`/`ctrl+p`, `down`/`ctrl+n` walk the six rows — `auto` and the five rungs · `ctrl+v`
 moves down one · `enter` applies the row under the cursor. Clicking a row applies it;
 clicking either of the two sentences around them does nothing. Its foot reads
-`↑↓ · enter apply · esc · ctrl+v next rung`. Pressing the `⠿` cell above the message box
+`↑↓ · enter apply · esc · ctrl+v next rung`. Pressing the effort word after the colon above the message box
 does **not** open this list — it walks the rung one step.
 
 **Permissions panel:** `esc` — which drops an armed confirmation first, then closes ·
@@ -2227,27 +2228,29 @@ readings of what you type: a search of everything home shows, or the first messa
 new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
 promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
 it says what the box is a draft *for*:
-`─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────`
+`─ glm-5.3-flash: auto · ◇ asks ─── project: ~/codeaf`
 
-— the folder the next conversation opens in, the model it will answer on, how hard it will
-think and what it will run without asking. The chords that change them are on **the line
+— the model, a colon and effort, then approvals at the left; the project the next
+conversation opens in at the far right. The arrow and effort badge are gone. A long
+project path keeps its root and truncates on the right. The chords that change them are on **the line
 under the box**, with home's own keys, because the lowest line is for keys on home as in a
-conversation: `alt+w project` walks the projects on this machine, and `alt+y approvals`
+conversation: `alt+w project` walks the projects on this machine, `ctrl+v effort`
+cycles auto → low → medium → high → xhigh → max → auto, and `alt+y approvals`
 walks asks → guardian → YOLO → asks. Pressing the project or approvals cell does the
 same. `/model`, or pressing the model name, opens home's model list; `alt+o` no longer
 does. The model is always bold and bright cyan on both home's and a conversation's seam.
 `alt+k chats` opens the conversation switcher and is absent when there is nowhere to go.
-**On a Mac these clauses read `opt+w project · opt+y approvals · opt+k chats`.**
+**On a Mac these clauses read `opt+w project · ctrl+v effort · opt+y approvals · opt+k chats`.**
 
 With all controls available the resting foot is
-`↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands`.
+`↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
 The project and approvals hints are absent where those controls cannot act. `ctrl+o`
 still opens the selected row's folder and `tab` still moves to the next place, but neither
 has a hint in home's bottom row. `esc` still closes home; `alt+.` draws the whole map.
 
 Every ordinary grid row keeps the same list keys as the cursor walks. A fold or action
 row names its own keys, with the available draft controls before `esc`. For example:
-`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · alt+y approvals · esc clear`.
+`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · ctrl+v effort · alt+y approvals · esc clear`.
 Typing a slash command changes the first clause to `enter runs this command`.
 
 **With nothing typed home is the panels**, hanging from the top. **While anything is typed

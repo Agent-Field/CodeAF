@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -490,11 +489,7 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	}
 	if over := homeCellWidth(title, pad, note, tag, right) - width; over > 0 {
 		keep := max(1, ansi.StringWidth(title)-over)
-		if cell.path {
-			title = homeFitPathLeft(title, keep)
-		} else {
-			title = fit(title, keep)
-		}
+		title = fit(title, keep)
 	}
 	titleInk, factInk := pal.ink, pal.dim
 	if cell.bold || lit {
@@ -517,41 +512,18 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(tail))) + factInk(tail)
 }
 
-// homeCellPathTitle is a path title fitted into what its row's facts leave,
-// and the pad cut to match.
-//
-// A PATH GIVES WAY BEFORE ITS FACTS, from the left. `~/Documents/agentfield/
-// code/codeaf` pushed `61 chats` off its row in the owner's first binary,
-// and the part of a path that tells two folders apart is its end — so the path
-// is cut to `…/code/codeaf` while the count and the repository keep their
-// cells. It is cut to the panel's pad as well, so every path on the panel ends
-// at or before one column and the counts beside them stand in one line. Only
-// where even the folder's own name would not fit do the facts give way, in the
-// row's ordinary order.
+// homeCellPathTitle preserves the start of a project path: an absolute root
+// or the home-directory tilde. Facts keep their columns while the right end
+// of the path is cut; if even a useful prefix cannot fit, facts give way first.
 func homeCellPathTitle(cell *homeCell, width int) (string, int) {
 	room := width - homeCellWidth("", 0, cell.note, cell.tag, cell.right)
 	if cell.pad > 0 {
 		room = min(room, cell.pad)
 	}
-	if room < ansi.StringWidth(glyphMore+"/"+filepath.Base(cell.title)) {
+	if room < homeCellTitleFloor {
 		return cell.title, cell.pad
 	}
-	return homeFitPathLeft(cell.title, room), min(cell.pad, room)
-}
-
-// homeFitPathLeft is [fitLeft] for a path: cut from the left, and then on to
-// the next separator, so what is left starts at a folder — `…/code/codeaf`
-// and never `…ield/code/codeaf`.
-func homeFitPathLeft(path string, width int) string {
-	cut := fitLeft(path, width)
-	rest := strings.TrimPrefix(cut, glyphMore)
-	if rest == cut {
-		return cut
-	}
-	if at := strings.Index(rest, "/"); at > 0 && at < len(rest)-1 {
-		return glyphMore + rest[at:]
-	}
-	return cut
+	return fit(cell.title, room), min(cell.pad, room)
 }
 
 // homeCellDoor is the row UNDER THE CURSOR growing its held word into the door

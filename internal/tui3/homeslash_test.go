@@ -1,14 +1,11 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // HOME'S COMPOSER ANSWERS A "/" THE WAY CHAT'S DOES: a ranked menu while typing
@@ -236,12 +233,9 @@ func TestHomeSlashSmokeWalks(t *testing.T) {
 	}
 }
 
-// targetPathWord is the folder home's rule actually draws — the same short form
-// every other path on this surface wears (render.go's [shortPath]) — so an
-// assertion is about which folder the rule named rather than about how it was
-// abbreviated.
+// targetPathWord is the full project path before the seam truncates it.
 func targetPathWord(a *app) string {
-	return a.hostedPath(a.placeWord(shortPath(a.targetWhere(), a.tilde, 0)))
+	return a.targetProject()
 }
 
 // TestHomesRuleSaysWhereTheNextConversationGoes: the rule above the box is a
@@ -252,12 +246,13 @@ func TestHomesRuleSaysWhereTheNextConversationGoes(t *testing.T) {
 	where := lab.workspace("parser")
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", where, time.Now())
 	a := lab.app(mine)
+	a.width = 240
 	a.workspace = where
 	openHomeOn(a, mine)
 	runCmd(a.openHome())
 
 	text := homeText(a)
-	if !strings.Contains(text, targetLeadWord+targetPathWord(a)) {
+	if !strings.Contains(text, targetProjectLead+targetPathWord(a)) {
 		t.Fatalf("the rule does not say where the next conversation opens:\n%s", text)
 	}
 	if strings.Contains(text, "alt+o model") || strings.Contains(text, "opt+o model") {
@@ -270,10 +265,8 @@ func TestHomesRuleSaysWhereTheNextConversationGoes(t *testing.T) {
 	}
 }
 
-// TestHomesRuleGivesUpTheModelBeforeTheFolder is the ladder. The folder is the
-// fact `enter` acts on, so it is the last thing standing. The keys are not on
-// the rule at all since 2026-09-17 — they are on the foot (footswap.go).
-func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
+// A long project path yields its right end before displacing the model.
+func TestHomesRuleShortensTheProjectAfterItsRoot(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	where := lab.workspace("parser")
@@ -285,7 +278,6 @@ func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
 	a.model = "zhipu/glm-5.3-flash"
 	openHomeOn(a, mine)
 	runCmd(a.openHome())
-	short := targetPathWord(a)
 
 	wide, _ := a.targetLegend(200, a.pal)
 	if !strings.Contains(ansi.Strip(wide), modelBase(a.model)) {
@@ -297,28 +289,12 @@ func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
 	if !strings.Contains(a.homeHint(), targetFolderKeyWord) {
 		t.Fatalf("the foot does not carry the folder chord:\n%s", a.homeHint())
 	}
-	// Narrow enough that the model cannot fit beside the folder, wide enough
-	// that the folder can.
-	//
-	// THE ROOM IS MEASURED OFF THE PIECES THE RULE ACTUALLY DRAWS — the mark,
-	// the lead and the folder at its longest spelling — plus four cells, which
-	// is less than the model needs. A room counted from
-	// a guess at those widths was true on macOS, where a temp path has nine
-	// components and its shortest spelling is `…/parser`, and false on Linux,
-	// where the same path has four and stays `/t/T/0/parser`: there the label
-	// could get no shorter and the rule, rightly, gave up a key instead.
-	left := a.icon(tokens.GTarget) + " " + targetLeadWord + short
-	room := ansi.StringWidth(left) + 3 + legendGap + ansi.StringWidth("") + 3 + 4
-	narrow, drew := a.targetLegend(room, a.pal)
-	if !drew {
-		t.Fatalf("a %d-column rule drew nothing at all", room)
-	}
+	// A long path keeps its root and yields its tail before the model.
+	a.target.where = "/tmp/" + strings.Repeat("nested/", 20)
+	narrow, drew := a.targetLegend(80, a.pal)
 	stripped := ansi.Strip(narrow)
-	if strings.Contains(stripped, modelBase(a.model)) {
-		t.Fatalf("the model outlived the room for it:\n%s", stripped)
-	}
-	if !strings.Contains(stripped, filepath.Base(where)) {
-		t.Fatalf("the folder went before the model did:\n%s", stripped)
+	if !drew || !strings.HasPrefix(stripped, "─ "+modelBase(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.HasSuffix(stripped, "… ─") {
+		t.Fatalf("the model or project root was lost: %q", stripped)
 	}
 }
 
@@ -497,6 +473,7 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", one, now)
 	lab.session("-tmp-beta", "bbbb000000000001", "the cafe pricing page", two, now.Add(-time.Hour))
 	a := lab.app(mine)
+	a.width = 240
 	a.workspace = one
 	openHomeOn(a, mine)
 	runCmd(a.openHome())
@@ -513,7 +490,7 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 	if !strings.HasPrefix(a.home.msg, targetMovedWord) {
 		t.Fatalf("alt+w said %q, want it naming where the next conversation opens", a.home.msg)
 	}
-	if text := homeText(a); !strings.Contains(text, targetLeadWord+targetPathWord(a)) {
+	if text := homeText(a); !strings.Contains(text, targetProjectLead+targetPathWord(a)) {
 		t.Fatalf("the rule did not follow the chord:\n%s", text)
 	}
 	// Round the cycle and back: a walk with a fixed order, never a lottery. One
@@ -523,6 +500,11 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 	}
 	if got := a.targetWhere(); got != was {
 		t.Fatalf("the cycle came back to %q, want %q", got, was)
+	}
+	// The project moved across the seam, but pressing its path still cycles it.
+	homeText(a)
+	if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.targetRow); !took || a.targetWhere() == was {
+		t.Fatal("pressing the right-aligned project did not move the draft")
 	}
 }
 

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
 	"time"
@@ -279,21 +280,37 @@ func TestTheHomeDirectoryIsAPathOnTheProjectsPanel(t *testing.T) {
 	}
 }
 
-// A PROJECT ROW NEVER WRAPS: a long path is cut from the left, at a folder,
-// so its count and its repository stay on the row — `…/code/codeaf`.
-func TestALongProjectPathIsCutFromTheLeftAndKeepsItsFacts(t *testing.T) {
+// Project rows retain the absolute root or home prefix and cut on the right.
+func TestProjectPathsKeepTheirRootsAndTruncateOnTheRight(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	cell := &homeCell{panel: panelProjects, path: true, pad: homeProjectPad,
-		title: "~/Documents/agentfield/code/codeaf", note: "61 chats", right: "master, 3 files dirty"}
-	for _, width := range []int{56, 48} {
-		row := plain(homeCellBody(cell, width, a.pal, false))
-		if len([]rune(row)) > width || !strings.Contains(row, glyphMore+"/") || !strings.Contains(row, "/codeaf") ||
-			!strings.Contains(row, "61 chats") || !strings.Contains(row, "master, 3 files dirty") {
-			t.Fatalf("at %d cells the project row reads %q", width, row)
+	for _, path := range []string{"/tmp/landing-test", "/tmp/very-long-project-name/another-directory", "~/Documents/agentfield/code/codeaf"} {
+		cell := &homeCell{panel: panelProjects, path: true, pad: homeProjectPad,
+			title: path, note: "61 chats", right: "master, 3 files dirty"}
+		for _, width := range []int{56, 48, 32, 20} {
+			row := plain(homeCellBody(cell, width, a.pal, false))
+			prefix := "/tmp/"
+			if strings.HasPrefix(path, "~/") {
+				prefix = "~/"
+			}
+			if ansi.StringWidth(row) > width || !strings.HasPrefix(row, prefix) || strings.HasPrefix(row, "…") {
+				t.Fatalf("at %d cells the project path %q reads %q", width, path, row)
+			}
+			if width >= 48 && (!strings.Contains(row, "61 chats") || !strings.Contains(row, "master, 3 files dirty")) {
+				t.Fatalf("at %d cells the path displaced its facts: %q", width, row)
+			}
 		}
 	}
-	if got := homeFitPathLeft("~/Documents/agentfield/code/codeaf", 20); got != glyphMore+"/code/codeaf" {
-		t.Fatalf("the path is cut to %q, want it to start at a folder", got)
+	for _, tc := range []struct{ path, want string }{
+		{"/tmp/landing-test", "/tmp/landing-test"},
+		{"/home/pat", "~"},
+		{"/home/pat/src", "~/src"},
+		{"/home/patrick/src", "/home/patrick/src"},
+	} {
+		word := projectWord(session.Project{Path: tc.path}, "/home/pat")
+		row := plain(homeCellBody(&homeCell{panel: panelProjects, path: true, title: word}, 80, a.pal, false))
+		if row != tc.want {
+			t.Fatalf("project %q reads %q, want %q", tc.path, row, tc.want)
+		}
 	}
 }
 

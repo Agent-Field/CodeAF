@@ -9,7 +9,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE BOX SEAM — ONE RULE ABOVE EVERY BOX A PERSON TYPES TO AN AGENT IN ────
@@ -18,18 +17,18 @@ import (
 // over it, in the same shape, with the same three cells and the same three
 // doors on them:
 //
-//	─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
+//	─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
 //	 › what changed in the relay this week
 //
-//	─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────
+//	─ glm-5.3-flash: auto · ◇ asks ───────────────── project: ~/src/parser ─
 //	 › type to search or start something new
 //
 // The first is a conversation's seam (foot.go's THE SEAM IS WHAT ANSWERS).
 // The second is the rule over the box on home — the draft for a conversation
 // that does not exist yet, and the one box on a place, because only home
-// starts things (pages.go's [place.box]). Left to right, both say
-// the same four things about the next turn: WHERE it goes, WHAT answers,
-// HOW HARD it thinks, and WHAT IT MAY RUN WITHOUT ASKING. The model is a door
+// starts things (pages.go's [place.box]). Both begin with WHAT answers,
+// HOW HARD it thinks, and WHAT IT MAY RUN WITHOUT ASKING. Home puts WHERE
+// it goes at the right. The model is a door
 // onto the model list, the rung walks the thinking ladder (`ctrl+v`, or a
 // press), and the gate walks the approvals wheel (`alt+y`, or a press). One
 // shape, learned once.
@@ -384,63 +383,38 @@ func (a *app) placeNoteLegend(width int) string {
 }
 
 // draftTry is one rung of the draft's ladder: which cells stand beside the
-// folder, and how hard the folder is shortened.
+// project on the right.
 type draftTry struct {
-	hard              int
 	model, rung, gate bool
 }
 
-// draftLadder is THE LADDER, top to bottom, and it is the conversation seam's
-// order for the three cells — the rung goes first, then the gate, then the
-// model (foot.go's [seamLadder] says why the gate outranks the rung) — under
-// home's own ruling that THE FOLDER IS NEVER SHORTENED WHILE A CELL COULD GO
-// INSTEAD: the folder is the fact `enter` acts on, and a shorter spelling of it
-// is worth less than a whole one with the model beside it is worth
-// (homedraft.go's [app.targetLegendLeft] had the argument).
+// draftLadder gives up effort before approvals and the model last. The
+// project is laid out independently at the right by [app.targetLegend].
 var draftLadder = []draftTry{
-	{0, true, true, true},
-	{0, true, false, true},
-	{0, true, false, false},
-	{0, false, false, false},
-	{1, false, false, false},
-	{2, false, false, false},
+	{true, true, true},
+	{true, false, true},
+	{true, false, false},
 }
 
-// draftPieces is the draft as the seam's own layout takes it: the folder line
-// as the name, the target's model, and the two chips — with no host, no rider
-// and no branch, because a conversation that does not exist yet has none.
-func (a *app) draftPieces(hard int) (seamPieces, hudSpan) {
-	where := a.hostedPath(a.placeWord(shortPath(a.targetWhere(), a.tilde, hard)))
-	if where == "" {
-		return seamPieces{}, hudSpan{}
-	}
-	head := a.icon(tokens.GTarget) + " " + targetLeadWord
-	name := head + where
-	folder := hudSpan{from: ansi.StringWidth(head), to: ansi.StringWidth(name)}
+// draftPieces shares the conversation's model, effort and approval spelling.
+func (a *app) draftPieces() seamPieces {
 	return seamPieces{
-		name:  name,
 		model: modelBase(a.targetModel()),
 		rung:  a.targetEffortChip(),
 		gate:  a.targetApprovalChip(),
-	}, folder
+	}
 }
 
-// draftSeamLeft is the draft's left label built to a budget, and the columns
-// its four doors occupy: the folder inside the name, then the model, the rung
-// and the gate as the seam records them ([seamSpans]).
-func (a *app) draftSeamLeft(room int) (string, hudSpan, hudSpan, hudSpan, hudSpan) {
-	none := hudSpan{}
+// draftSeamLeft fits the three controls into the space left by the project.
+func (a *app) draftSeamLeft(room int) (string, hudSpan, hudSpan, hudSpan) {
+	pieces := a.draftPieces()
 	for _, try := range draftLadder {
-		pieces, folder := a.draftPieces(try.hard)
-		if pieces.name == "" {
-			return "", none, none, none, none
-		}
-		cluster, model, rung, gate, ok := pieces.lay(seamTry{name: true, model: try.model, rung: try.rung, gate: try.gate}, room)
+		cluster, model, rung, gate, ok := pieces.lay(seamTry{model: try.model, rung: try.rung, gate: try.gate}, room)
 		if ok {
-			return cluster, folder, model, rung, gate
+			return cluster, model, rung, gate
 		}
 	}
-	return "", none, none, none, none
+	return "", hudSpan{}, hudSpan{}, hudSpan{}
 }
 
 // draftSeamPaint shares the conversation's bold data hue for the model, so

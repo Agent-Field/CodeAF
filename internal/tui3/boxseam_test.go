@@ -86,14 +86,14 @@ func TestTheRuleOverHomesBoxSaysTheSameFourThingsAsTheSeam(t *testing.T) {
 	rung, gate := a.effortChip(effort.High.String()), a.approvalChip(session.PostureAsk)
 	a.showPage(pageHome)
 	text := placeFrameText(a)
-	for _, want := range []string{targetLeadWord, "m", rung, gate} {
+	for _, want := range []string{targetProjectLead, "m", rung, gate} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home's rule does not say %q:\n%s", want, text)
 		}
 	}
 	for _, id := range []page{pageTasks, pageSpend, pageSearch, pageSettings} {
 		a.showPage(id)
-		if text := placeFrameText(a); strings.Contains(text, targetLeadWord) || strings.Contains(text, gate) {
+		if text := placeFrameText(a); strings.Contains(text, targetProjectLead) || strings.Contains(text, gate) {
 			t.Fatalf("the %s place drew the draft's rule:\n%s", id.word(), text)
 		}
 	}
@@ -123,7 +123,7 @@ func TestTheDraftsChordsWalkTheRungAndTheGateOnHome(t *testing.T) {
 	for _, id := range draftPlaces {
 		_, a := drafting(t)
 		a.showPage(id)
-		if hint := a.homeHint(); !strings.Contains(hint, "alt+y approvals") {
+		if hint := a.homeHint(); !strings.Contains(hint, "ctrl+v effort · alt+y approvals") {
 			t.Fatalf("home does not name its approval control: %q", hint)
 		}
 		drive(t, a, key("alt+y"))
@@ -178,10 +178,10 @@ func TestADraftWithNoDialDrawsNoRungAndNoGate(t *testing.T) {
 	a.width = 200
 	a.showPage(pageHome)
 	text := placeFrameText(a)
-	if strings.Contains(text, glyphPermTool+" ") || strings.Contains(text, glyphEffort+" ") {
+	if strings.Contains(text, glyphPermTool+" ") || strings.Contains(text, ": auto") {
 		t.Fatalf("a session with no dial drew a cell it cannot move:\n%s", text)
 	}
-	if !strings.Contains(text, targetLeadWord) {
+	if !strings.Contains(text, targetProjectLead) {
 		t.Fatalf("the folder and the model still belong on the rule:\n%s", text)
 	}
 	if hint := a.homeHint(); strings.Contains(hint, "alt+y") {
@@ -232,32 +232,35 @@ func TestThePinsRideOntoTheConversationAndTheGateIsSpent(t *testing.T) {
 
 // ── 4. the ladder ───────────────────────────────────────────────────────────
 
-// THE RUNG GOES BEFORE THE GATE, THE GATE BEFORE THE MODEL, AND THE FOLDER
-// OUTLIVES THEM ALL — the seam's order for the cells under home's own ruling
-// that the folder is the fact `enter` acts on.
-func TestTheDraftsRuleGivesUpTheRungThenTheGateThenTheModel(t *testing.T) {
+// A long project yields its tail before the controls, and the project door
+// follows its new position on the right of the actual rendered line.
+func TestTheDraftRuleStartsWithTheModelAndEndsWithTheProject(t *testing.T) {
 	_, a := drafting(t)
 	a.showPage(pageHome)
-	rung, gate := a.effortChip(effort.High.String()), a.approvalChip(session.PostureAsk)
-	left, _, _, _, _ := a.draftSeamLeft(1000)
-	if !strings.Contains(left, rung) || !strings.Contains(left, gate) {
-		t.Fatalf("a wide rule dropped a cell:\n%s", left)
+	a.model = "moonshotai/kimi-k3"
+	a.target.where = "/tmp/landing-test"
+	line, drew := a.targetLegend(120, a.pal)
+	text := ansi.Strip(line)
+	if !drew || !strings.HasPrefix(text, "─ kimi-k3: high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
+		t.Fatalf("the draft seam has the wrong order: %q", text)
 	}
-	// ONE CELL SHORT OF EVERYTHING, measured off the label the wide rule builds
-	// and the arithmetic [legendRoom] reads backwards — with no right label,
-	// since the chords are on the foot (footswap.go): the first thing the
-	// ladder gives up has to be the rung, and it buys more than one cell.
-	room := ansi.StringWidth(left) - 1 + 3 + legendGap
-	line, drew := a.targetLegend(room, a.pal)
-	if !drew {
-		t.Fatalf("a %d-column rule drew nothing", room)
+	if a.targetModelSpan.from != 2 || a.targetFolderSpan.from <= a.targetApprovalSpan.to {
+		t.Fatalf("the seam's doors did not move with it: model %+v, project %+v", a.targetModelSpan, a.targetFolderSpan)
 	}
-	got := ansi.Strip(line)
-	if strings.Contains(got, rung) {
-		t.Fatalf("the rung outlived the room for it:\n%s", got)
+	if got := ansi.Cut(text, a.targetFolderSpan.from, a.targetFolderSpan.to); got != "/tmp/landing-test" {
+		t.Fatalf("the project door covers %q", got)
 	}
-	if !strings.Contains(got, gate) || !strings.Contains(got, "m") || !strings.Contains(got, targetLeadWord) {
-		t.Fatalf("the gate, the model or the folder went before the rung:\n%s", got)
+	a.target.where = "/tmp/" + strings.Repeat("long-project/", 12)
+	line, drew = a.targetLegend(80, a.pal)
+	text = ansi.Strip(line)
+	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ kimi-k3: high · ") || !strings.Contains(text, "project: /tmp/") || !strings.HasSuffix(text, "… ─") {
+		t.Fatalf("the long project displaced controls or lost its root: %q", text)
+	}
+	for width := 1; width <= 120; width++ {
+		line, _ := a.targetLegend(width, a.pal)
+		if ansi.StringWidth(line) > width {
+			t.Fatalf("at %d cells the seam overflowed: %q", width, ansi.Strip(line))
+		}
 	}
 }
 

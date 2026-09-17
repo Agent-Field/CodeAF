@@ -353,7 +353,7 @@ func TestANarrowSeamDropsTheRungBeforeTheChipAndNeverCutsIt(t *testing.T) {
 	for width := 140; width >= 40; width-- {
 		a.width = width
 		line := seamLine(t, a)
-		hasRung := strings.Contains(line, glyphEffort+" ")
+		hasRung := strings.Contains(line, seamEffortJoin)
 		hasChip := strings.Contains(line, glyphPermTool+" "+approvalYoloWord)
 		if strings.Contains(line, glyphPermTool) && !hasChip {
 			t.Fatalf("at %d the chip was cut: %q", width, line)

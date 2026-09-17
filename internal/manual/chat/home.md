@@ -50,7 +50,7 @@ is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The resting foot reads
-`↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands`.
+`↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
 The project, approvals and chats hints appear only where those controls can act.
 The list's two keys stay the same as the cursor walks between rows.
 `ctrl+o` still opens the selected row's folder and `tab` still walks places, but neither
@@ -395,15 +395,18 @@ ceiling and saved shapes of work.
 ```
  projects
    ~/codeaf          12 chats · 1 running   master, 2 files dirty
-   …/code/pricing-site  5 chats
+   ~/code/pricing-si…  5 chats
    /tmp/af-stop-ws
 ```
 
 A row is the folder's path, how many conversations are in it and how many are running, and
 where its repository stands — the branch and the dirty count as one clause. **This window's
 folder is always the first row**, even before anyone has spoken in it, which is why the
-panel is never empty. Your home directory is `~`. **A long path is cut from the left**, at a
-folder, so its own name and the counts stay on the row.
+panel is never empty. **Paths are absolute and truncate on the right**: `/tmp/landing-test`
+stays `/tmp/landing-test` while it fits, and a longer path becomes `/tmp/landing-te…`
+when space runs out. Only paths inside your home directory use `~/`; home itself is `~`.
+A similarly named sibling directory does not get that abbreviation. Counts and repository
+facts keep their columns as the path shortens.
 
 **`→` on a project row offers `its chats`** — which types the project's name into the box,
 so the search lists every conversation in it — **and `open folder`**. Five rows show, eight
@@ -761,7 +764,7 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The resting foot reads, when all its controls are available:
 
 ```
-↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands
+↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
 ```
 
 (the box above it says `› type to search or start something new`, which is where that
@@ -1205,18 +1208,18 @@ quoted back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────
+ ─ glm-5.3-flash: auto · ◇ asks ─── project: ~/codeaf
  › pricing
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · alt+y approvals · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · ctrl+v effort · alt+y approvals · esc clear
 ```
 
 **The cursor rests on the action row by default.** So typing and pressing `enter` starts a
 fresh conversation and sends what you typed, however many matches are on screen.
 
 **Where it opens is on the rule above the box, and `enter` honours it.** That line reads
-`◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks`: the folder the
-conversation will open in, the model it will answer on, how hard it will think, and what it
-will run without asking — the same four cells a conversation's own message box has over it.
+`glm-5.3-flash: auto · ◇ asks ─── project: ~/src/parser`: the model, effort and approvals
+start at the left, and the project the conversation will open in sits at the far right.
+The effort word follows a colon with no badge. A long project path is cut on the right.
 With nothing pinned the folder **follows the row your cursor is on** — walk onto another
 project's row and the rule re-points — and with nothing under the cursor it is this window's
 own project. `alt+w` pins it, `/model` pins the model, `ctrl+v` walks the rung and `alt+y`
@@ -1322,10 +1325,11 @@ starts with. Home's tray is a reading and not a target: a chip comes off on the 
 conversation's own box, where the `x` is. At phone width home draws no tray row at all; the
 files are still there, and the conversation you open shows them.
 
-## Change the model before starting — /model on home, the arrow line above the box
+## Change the model before starting — /model on home, the seam above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
-after the folder: `◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks`.
+at the left: `glm-5.3-flash: auto · ◇ asks ─── project: ~/src/parser`.
+The project is right-aligned, and a long project path is truncated at its right end.
 With nothing pinned that is this window's own model. Two doors change it, and they are the
 same door:
 
@@ -1352,7 +1356,7 @@ the target walks to the next project on this machine, round again from the last.
 `next conversation opens in ~/work/beta`. On a machine with one project there is nowhere to
 move to, and `alt+w project` is simply not on the line under the box.
 
-**`ctrl+v` and `alt+y` are the same gesture for the two cells after the model.** `⠿ auto`
+**`ctrl+v` and `alt+y` are the same gesture for the two cells after the model.** `auto`
 is how hard the next conversation will think — with nothing pinned, the `thinking` row in
 `/settings` folded with any level set on the model — and `ctrl+v`, or a press on the cell,
 walks it one rung: home says `thinking · high · for the next conversation you start here`.

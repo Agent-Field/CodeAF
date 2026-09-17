@@ -7,26 +7,19 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE TARGET — the box at home is a draft for the conversation it opens ────
 //
-// SCREEN: home's rule stops being a bare line and becomes a legend, exactly as
-// the conversation's seam is. Its left says WHERE THE NEXT CONVERSATION WILL
-// OPEN and WHAT IT WILL RUN ON; its right says the two chords that change them.
+// Home and conversations start their seams with the same model, effort and
+// approvals. Home names the destination separately at the far right:
 //
-//	─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────
+//	─ glm-5.3-flash: auto · ◇ asks ───── project: ~/src/parser ─
 //	 › type to search or start something new
 //
-// The conversation's own seam says `glm-5.3-flash (deepinfra) · ⠿ high · ◇
-// asks`; home's says `◎ new conversation in ~/src/parser ·
-// glm-5.3-flash · ⠿ auto · ◇ asks`. Same line, same position, the same three
-// cells and the same doors on them (boxseam.go is the whole of that
-// argument) — and THE MARK IS THE WHOLE DIFFERENCE between where I am and
-// where this is going ([tokens.GTarget] is that mark's slot, and it is asked
-// for through the palette door because a literal cannot know which repertoire
-// the terminal is on).
+// The project stays a path, so two checkouts with the same name remain
+// distinguishable. The name starts at the root and gives up its right end
+// when the frame is narrow; the model starts at the left on every wide frame.
 //
 // AND IT IS HOME'S ALONE. Only home starts things (pages.go's [place.box]), so
 // only home has a box, a draft and this rule over it; every other place ends
@@ -134,13 +127,12 @@ func (a *app) spendTargetWhere() { a.target.where = "" }
 // The sentences home's rule says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// targetLeadWord leads the left label. It is `new conversation in ` and not
-	// `here` because this line is about something that does not exist yet: the
-	// conversation `enter` is about to open.
-	targetLeadWord = "new conversation in "
-	// The draft's hints name the project and approval controls. The model's
+	// targetProjectLead names the draft destination on the seam's right.
+	targetProjectLead = "project: "
+	// The draft's hints name project, effort and approval controls. The model's
 	// command is `/model`, so it spends no extra shortcut on the foot.
 	targetFolderKeyWord   = "alt+w project"
+	targetEffortKeyWord   = effortKey + " effort"
 	targetApprovalKeyWord = "alt+y approvals"
 	// The switcher reaches conversations this machine already has (hop.go).
 	targetSwitcherKeyWord = "alt+k chats"
@@ -177,6 +169,9 @@ func (a *app) targetChordWords() string {
 	if a.targetMovable() {
 		right = targetFolderKeyWord
 	}
+	if _, ok := a.targetEffort(); ok {
+		right = dotted(right, targetEffortKeyWord)
+	}
 	if _, ok := a.targetApproval(); ok {
 		right = dotted(right, targetApprovalKeyWord)
 	}
@@ -197,49 +192,47 @@ func (a *app) targetChordWords() string {
 	return right
 }
 
-// targetLegend is the draft's rule as a whole line — the box seam with the
-// draft's four facts on its left and nothing on its right (boxseam.go; the
-// chords are on the foot, footswap.go) — and it reports whether it drew one:
-// a frame with no room for the label falls back to the bare rule.
-//
-// THE LADDER GIVES UP THE CHEAPEST TRUE THING FIRST: the left walks
-// [draftLadder] to its last rung, and the cut is the last resort of all.
-//
-// WHERE THE DOORS LANDED IS WRITTEN HERE, as the line is laid out, for the
-// reason [app.legendLine] gives about the model segment: a column read from
-// anywhere else is a column from the frame before this one. The spans are
-// offset by the border's own two cells, which is what [app.legendLine] puts in
-// front of the label.
+// targetProject is the destination of the next conversation, written as a
+// path so projects with the same basename remain distinguishable.
+func (a *app) targetProject() string {
+	return a.hostedPath(a.placeWord(tildePath(a.targetWhere(), a.tilde)))
+}
+
+// targetLegend starts with the model and keeps the project at the far right.
+// A long project path is cut on the right before any control is given up.
+// Spans are recorded from the rendered line so the moved project stays a door.
 func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	a.clearTargetSpans()
 	if width < 1 {
 		return "", false
 	}
-	// A PLACE'S OWN NOTE TAKES THE RULE FROM THE CHORDS. The tally on tasks, a
-	// receipt on memory, the "this session is on another machine" line, the
-	// chord diagnosis on any of them — each is a fact about the whole page, and
-	// this rule is the one row the foot has for it (boxseam.go's
-	// [app.placeNoteLegend] says why it is not a row). It is a statement and not
-	// a key sheet, so it is never split at a dot: it stands whole beside the
-	// fullest draft that fits, then whole with the draft given up, then cut.
 	if note := a.placeNoteLegend(width); note != "" {
 		return a.draftNoteRule(width, pal, note)
 	}
-	if left, folder, model, rung, gate := a.draftSeamLeft(legendRoom(width, "")); left != "" {
-		if line, ok := a.legendLine(left, "", width, a.draftSeamPaint(pal, model, rung, gate)); ok {
-			a.targetFolderSpan, a.targetModelSpan = shiftIntoBorder(folder), shiftIntoBorder(model)
-			a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
-			return line, true
-		}
+	project := a.targetProject()
+	right, minimum := "", ""
+	if project != "" {
+		right = targetProjectLead + project
+		minimum = targetProjectLead + glyphMore
 	}
-	// AND THE CUT IS THE LAST RESORT OF ALL.
-	if left, folder := a.targetLegendCut(legendRoom(width, "")); left != "" {
-		if line, ok := a.legendLine(left, "", width, pal.dim); ok {
-			a.targetFolderSpan = shiftIntoBorder(folder)
-			return line, true
+	left, model, rung, gate := a.draftSeamLeft(legendRoom(width, minimum))
+	if right != "" {
+		room := width - 5
+		if left != "" {
+			room = legendRoom(width, "") - ansi.StringWidth(left) - 3
 		}
+		right = fit(right, max(0, room))
 	}
-	return "", false
+	line, at, ok := a.legendLinePainted(left, right, pal.dim(right), width, a.draftSeamPaint(pal, model, rung, gate))
+	if !ok {
+		return "", false
+	}
+	a.targetModelSpan = shiftIntoBorder(model)
+	a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
+	if strings.HasPrefix(right, targetProjectLead) && ansi.StringWidth(right) > ansi.StringWidth(targetProjectLead) {
+		a.targetFolderSpan = hudSpan{from: at + ansi.StringWidth(targetProjectLead), to: at + ansi.StringWidth(right)}
+	}
+	return line, true
 }
 
 // draftNoteRule is the rule on a place with a note: the note whole, beside
@@ -248,9 +241,9 @@ func (a *app) targetLegend(width int, pal palette) (string, bool) {
 // that — because a statement about the whole page outranks a draft whose
 // chords still work unprinted.
 func (a *app) draftNoteRule(width int, pal palette, note string) (string, bool) {
-	if left, folder, model, rung, gate := a.draftSeamLeft(legendRoom(width, note)); left != "" {
+	if left, model, rung, gate := a.draftSeamLeft(legendRoom(width, note)); left != "" {
 		if line, ok := a.legendLine(left, note, width, a.draftSeamPaint(pal, model, rung, gate)); ok {
-			a.targetFolderSpan, a.targetModelSpan = shiftIntoBorder(folder), shiftIntoBorder(model)
+			a.targetModelSpan = shiftIntoBorder(model)
 			a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
 			return line, true
 		}
@@ -271,26 +264,6 @@ func (a *app) draftNoteRule(width int, pal palette, note string) (string, bool) 
 func (a *app) clearTargetSpans() {
 	a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
 	a.targetEffortSpan, a.targetApprovalSpan = hudSpan{}, hudSpan{}
-}
-
-// targetLegendCut is the rung below all of them: the lead goes, and what is
-// left is cut to the frame.
-//
-// A CUT FOLDER IS STILL AN ANSWER. Half a path with an ellipsis on it says which
-// machine's disk and roughly where, and a rule with nothing on it says nothing
-// at all — which is the emptiness law read the right way round, because there IS
-// something true to draw here.
-func (a *app) targetLegendCut(room int) (string, hudSpan) {
-	where := a.hostedPath(a.placeWord(shortPath(a.targetWhere(), a.tilde, 2)))
-	if where == "" {
-		return "", hudSpan{}
-	}
-	head := a.icon(tokens.GTarget) + " "
-	line := fit(head+where, room)
-	if ansi.StringWidth(line) <= ansi.StringWidth(head) {
-		return "", hudSpan{}
-	}
-	return line, hudSpan{from: ansi.StringWidth(head), to: ansi.StringWidth(line)}
 }
 
 // ── the chords ──────────────────────────────────────────────────────────────
@@ -434,46 +407,11 @@ func pickerRowsIn(p *picker, width, room int, pal palette, level func(string) st
 
 // ── the phone ───────────────────────────────────────────────────────────────
 
-// targetPhoneRule is home's rule at [tierPhone]: the same fact in the cells a
-// phone has for it.
-//
-//	─ → ~/src/parser · glm-5.3-flash ─────────────────────
-//
-// THE LEAD GOES AND THE ARROW STAYS. `new conversation in` is eighteen cells of
-// a forty-cell frame, and the arrow is the whole of what it said — where this
-// is going. The model is dropped first and the folder is shortened after it,
-// which is the wide rule's own ladder ([app.targetLegendLeft]) and for its
-// reason: the folder is the fact `enter` acts on.
-//
-// The chords are not named here at all, because a phone has no `alt` — the
-// thumb bar under the box is the whole key vocabulary of this tier
-// (homephone.go's [app.homeBar]).
+// targetPhoneRule uses the same model-first rule as wider home frames. The
+// phone's own action bar still owns the keys below the box.
 func (a *app) targetPhoneRule(width int, pal palette) string {
-	bare := pal.dim(rule(width))
-	if width < 1 {
-		return bare
+	if line, ok := a.targetLegend(width, pal); ok {
+		return line
 	}
-	mark := a.icon(tokens.GTarget)
-	model := modelBase(a.targetModel())
-	room := legendRoom(width, "")
-	for _, attempt := range []struct {
-		hard  int
-		model bool
-	}{{0, true}, {0, false}, {1, false}, {2, false}} {
-		where := a.hostedPath(a.placeWord(shortPath(a.targetWhere(), a.tilde, attempt.hard)))
-		if where == "" {
-			return bare
-		}
-		left := mark + " " + where
-		if attempt.model && model != "" {
-			left = dotted(left, model)
-		}
-		if ansi.StringWidth(left) > room {
-			continue
-		}
-		if line, ok := a.legendLine(left, "", width, pal.dim); ok {
-			return line
-		}
-	}
-	return bare
+	return pal.dim(rule(width))
 }

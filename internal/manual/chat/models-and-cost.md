@@ -46,7 +46,7 @@ the conversation identity stays the same.
 ## How do I pick a different model — which model am I talking to, which model is it using right now, and how do I switch or change it
 
 The model in use is the first thing written on the legend line directly above the message
-box, with the endpoint answering for it in brackets (`glm-5.3-flash (deepinfra) · ⠿ high ·
+box, with the endpoint answering for it in brackets (`glm-5.3-flash (deepinfra): high ·
 ◇ asks`; on a `--host` session the machine leads it). There are two doors to the picker:
 
 - type `/model` with nothing after it, or
@@ -963,7 +963,7 @@ use, and all five rungs are reachable here.
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
 `high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — codeaf asks
 for nothing and the model thinks however it thinks. Auto is the **shipped** setting, and
-`⠿ auto` is what the line above the message box reads until something is dialled; no rung
+`auto` is what the line above the message box reads until something is dialled; no rung
 is the shipped one.
 
 **The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
@@ -990,7 +990,7 @@ Several things can name a rung, and the most specific one wins:
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which is named on the line above the box, beside the model:
-`glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
+`glm-5.3-flash: high`. On a task — the roster row under the cursor, or the page you are
 inside — it moves that task's rung. On a standing item's card it moves that item's. A
 conversation's rung, a task's rung, and the level `ctrl+t` dials onto one model in
 `/model` all climb one step each press and come back to `auto` off the top — that is how
@@ -1018,7 +1018,7 @@ A word that is none of the six changes nothing and prints them all. This is
 conversation hands out: a task worker starts at it.
 
 **It works over `--host` too.** The rung is set on the machine the conversation is running
-on and the word on your line is the one that machine resolved — `⠿ auto` included, on a
+on and the word on your line is the one that machine resolved — `auto` included, on a
 hosted conversation nobody has dialled. Against an engine too old to know the ladder there
 is no rung on the line and neither the chord nor `/effort` offers one — a capability that
 cannot work is absent rather than broken.

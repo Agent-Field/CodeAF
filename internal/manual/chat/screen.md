@@ -65,16 +65,14 @@ Every place is drawn in one frame, top to bottom: the machine's own top line, th
 naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule carrying the place's own count or note, and
 the hint line last. See the **Places** page.
 
-**Only home has a box under that rule.** On home the rule is the same legend a conversation
-has over its message box, reading `◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto ·
-◇ asks` — where the next conversation opens, what it will run on, how hard it will think and
-what it will run without asking, with the same doors on the cells (`/model`, `ctrl+v`,
-`alt+y`, or a press) — and the box `› type to search or start something new` sits under
-it. The chords that move those cells are on the hint line under the box, with home's own
-keys: `↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands`.
-The model name is always bold and bright cyan here and in conversations. `alt+o` no
-longer opens the model list on home; use `/model` or press the name. Home omits the
-`ctrl+o` and `tab` hints while keeping both keys active.
+**Only home has a box under that rule.** Its seam starts with the model, a colon and
+its effort word, then approvals: `glm-5.3-flash: auto · ◇ asks`. The project is at the
+far right: `project: ~/codeaf`, truncated on the right when necessary. The model stays
+bold and bright cyan on home and in conversations, and the effort has no badge.
+The box says `› type to search or start something new`. Its bottom row carries
+`↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`
+when those controls are available. `/model` or a press on the model opens the list;
+`alt+o` no longer does on home. The `ctrl+o` and `tab` keys work without footer hints.
 Every other place ends in its rule and
 its hint, with no box: only home starts things. *Typing on a place* and *The rule above
 home's box* on the Places page have the whole of it.
@@ -672,7 +670,7 @@ answering and where** on the left, and **the numbers** — the bill, the meter, 
 word — on the right, like the legend on a fieldset:
 
 ```
-─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 ```
 
 **The conversation's name is not on this line.** It was, from 2026-09-09 to 2026-09-17,
@@ -691,7 +689,7 @@ its basename (`glm-5.3-flash`) **with the endpoint that answered in brackets rig
 it** — `glm-5.3-flash (deepinfra)`, `deepseek-v4.1-flash (baidu)` — the two read as one
 word, "who is answering" (the name alone, never a timing: the last answer's wait and
 speed are the `served` row of `/status`); then the **thinking rung** this conversation is
-running at (`⠿ high`, `~ high` on a plain terminal — `⠿ auto` until something is dialled,
+running at after a colon (`: high`, with no badge on any terminal — `: auto` until something is dialled,
 which is what a fresh install says), the **approvals chip** (`◇ asks`), and the git
 **branch** with a `*` when the tree has uncommitted work. In a directory that is not a
 repository there is no branch. Until 2026-09-17 the machine was a `· via deepinfra`
@@ -999,7 +997,7 @@ controls. The control for the gate is the `◇` cell on the legend (the keys pag
 
 While a task **room** is open the task's own name is on the breadcrumb bar at the top of
 the frame (the room chip that used to lead this row is gone with the row), and the legend
-above the box becomes the task's: `room · esc/←← main · task glm-5.2 (friendli) · ⠿ high
+above the box becomes the task's: `room · esc/←← main · task glm-5.2 (friendli): high
 · ◇ on its own`, with the conversation's numbers after it. **Pressing the model's name
 there moves the task**, not the conversation: the same picker opens aimed at that node, and
 the task switches from its next request onward; pressing the rung, or `ctrl+v`, walks the
@@ -1330,10 +1328,10 @@ Under 60 columns, eight things change shape:
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
    hint line is drawn instead of the bar. The rule over the box still says where the next
-   conversation goes, shortened to fit: `─ → ~/src/parser · glm-5.3-flash ───` with the
-   model dropped first and the folder abbreviated after it. The `new conversation in` lead
-   goes — the arrow is the whole of what it said — and no chord is named, because a phone
-   has no `alt` to press.
+   conversation goes, with the model and effort first and `project: <path>` on the right.
+   The path truncates on the right, and controls give way whole on narrow frames. No arrow
+   or `new conversation in` lead is drawn. The phone's action bar owns the keys.
+
 8. **The task strip becomes one door, and the roster becomes cards.** The strip stops
    being a row of chips and becomes a single full-width door — `▸ 3 tasks · 1 running`
    — that a tap opens into the roster page; that page's rows become two-line cards a

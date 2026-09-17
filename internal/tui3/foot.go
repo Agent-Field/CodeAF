@@ -9,7 +9,7 @@ import (
 
 // ── THE FOOT OF THE FRAME: TWO ROWS, EACH WITH ONE JOB ──────────────────────
 //
-//	─ glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash (deepinfra): high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
 //	 space space home · tab last · alt+k chats · / commands
 //
@@ -429,7 +429,7 @@ func (a *app) runStatusNote() tea.Cmd {
 // seamIdentity is the legend's left cluster out of a room, built to a budget,
 // and the columns its three doors occupy within it.
 //
-//	devbox · glm-5.3-flash (deepinfra) · ⠿ high · ◇ asks · main*
+//	devbox · glm-5.3-flash (deepinfra): high · ◇ asks · main*
 //
 // THE LADDER IS [seamLadder], read top to bottom, and it never clips.
 //
@@ -644,7 +644,7 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	if try.name {
 		name = p.name
 		if try.cut {
-			rest := dotted(p.host, dotted(model+rider, rung, gate), branch)
+			rest := dotted(p.host, dotted(seamModelEffort(model+rider, rung), gate), branch)
 			left := room - ansi.StringWidth(rest)
 			if rest != "" {
 				left -= ansi.StringWidth(legendJoin)
@@ -657,18 +657,28 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	}
 	head := dotted(p.host, name)
 	if try.rider == riderFit && model != "" {
-		bare := dotted(head, dotted(model, rung, gate), branch)
+		bare := dotted(head, dotted(seamModelEffort(model, rung), gate), branch)
 		if ansi.StringWidth(bare) > room {
 			return "", none, none, none, false
 		}
 		rider = p.fit(room - ansi.StringWidth(bare))
 	}
-	cluster := dotted(head, dotted(model+rider, rung, gate), branch)
+	cluster := dotted(head, dotted(seamModelEffort(model+rider, rung), gate), branch)
 	if ansi.StringWidth(cluster) > room {
 		return "", none, none, none, false
 	}
 	named, dial, chip := seamSpans(head, model, rider, rung, gate)
 	return cluster, named, dial, chip, true
+}
+
+// seamEffortJoin binds effort to the model without spending a separate badge.
+const seamEffortJoin = ": "
+
+func seamModelEffort(model, rung string) string {
+	if model == "" || rung == "" {
+		return model
+	}
+	return model + seamEffortJoin + rung
 }
 
 // seamSpans is where the model, the rung and the approvals chip stand in a
@@ -687,7 +697,7 @@ func seamSpans(head, model, rider, rung, gate string) (hudSpan, hudSpan, hudSpan
 	named := hudSpan{from: from, to: from + ansi.StringWidth(model)}
 	at, dial := named.to+ansi.StringWidth(rider), hudSpan{}
 	if rung != "" {
-		dial = hudSpan{from: at + ansi.StringWidth(legendJoin), to: at + ansi.StringWidth(legendJoin) + ansi.StringWidth(rung)}
+		dial = hudSpan{from: at + ansi.StringWidth(seamEffortJoin), to: at + ansi.StringWidth(seamEffortJoin) + ansi.StringWidth(rung)}
 		at = dial.to
 	}
 	chip := hudSpan{}

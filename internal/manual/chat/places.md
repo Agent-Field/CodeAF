@@ -192,18 +192,17 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ──────────────────────────
+─ glm-5.3-flash: auto · ◇ asks ─── project: ~/src/parser
 › type to search or start something new
-↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands
+↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
 ```
 
-Left to right it says four things about the conversation `enter` will open: **where** (the
-project the cursor is on, this window's own project, or the folder you pinned), **what
-model** answers, **how hard it thinks** (`⠿` and a rung, or `auto`), and **what it runs
-without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
+At the left it says **what model** answers, then a colon and **how hard it thinks**
+(the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
-on home and in conversations. The bottom row names the available project and approval
-controls; the cells can also be pressed:
+on home and in conversations. At the far right, `project: <path>` names where the
+next conversation opens; long paths truncate on the right. The bottom row names the
+available project, effort and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
 |---|---|---|
@@ -215,8 +214,8 @@ controls; the cells can also be pressed:
 Each one changes **the draft** — the next conversation you start from home — and says so
 on the line under the box: `thinking · high · for the next conversation you start here`,
 `approvals · YOLO · every tool runs without asking · dangerous commands still ask · for the
-next conversation you start here`. The conversation behind home is not touched. A pinned
-model or rung that differs from what this window would have used is drawn in the accent; an
+next conversation you start here`. The conversation behind home is not touched. The model is always bold and bright. A pinned
+rung that differs from what this window would have used is drawn in the accent; an
 open gate is painted in the warning hue, exactly as it is inside a conversation.
 
 **Which pins last:** the model and the rung last as long as this window does. The folder and
@@ -228,8 +227,8 @@ would run at: the `thinking` and `ask before running` rows in `/settings`, or `-
 this process was started with it.
 
 **The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
-draw over their boxes: no other place has a box, so nothing else on this surface says
-`new conversation in`. A place with something to say about its page — `nothing matches`
+draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
+the model starts the seam, and the project sits at its far right. A place with something to say about its page — `nothing matches`
 on tasks when a filter emptied it, a receipt on memory, the "this session is on another
 machine" line over `--host` — says it on its rule, where the box's rule would have been.
 

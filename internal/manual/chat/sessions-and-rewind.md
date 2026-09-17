@@ -490,7 +490,7 @@ in the older spelling.
 
 The name is written by a model, once, and appears on the tab strip at the top of the frame
 and on the breadcrumb bar. It is not on the line above the message box: that line is the
-model's (`gpt-4.1-mini · ⠿ high`), and the name came off it on 2026-09-17 because a title
+model's (`gpt-4.1-mini: high`), and the name came off it on 2026-09-17 because a title
 takes the room the numbers need.
 
 **It starts with your first message.** The small model on the `title` role is shown the
