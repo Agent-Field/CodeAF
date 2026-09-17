@@ -46,6 +46,11 @@ key.
 7. First publication: `wrangler triggers deploy` and wait for the next `:17`,
    or, under `wrangler dev --test-scheduled`, drive it by hand with
    `curl -X POST "http://localhost:8787/__scheduled"`.
+7a. If the store is still empty forty minutes after the first `:17` (a fresh
+   Worker's cron can miss its first tick), trigger the scheduled handler once
+   by hand: `wrangler dev --test-scheduled` bound to the remote namespace, then
+   `curl "http://localhost:8787/__scheduled?cron=17+*+*+*+*"`; the next `:17`
+   takes over from there.
 8. Verify from a laptop: `curl -sI https://codeaf.agentfield.ai/pool/index.json`
    (expect 200 and an ETag), then `codeaf pool verify`, then `codeaf pool
    status`.
@@ -87,6 +92,10 @@ a copy of the directory is a complete relay.
 - **Workflow permissions:** under Settings → Actions → General → Workflow
   permissions, set "Read and write", which the mirror needs to push the data
   branch.
-- **Run it once by hand:** dispatch the mirror workflow with
+- **Run it once by hand:** the workflow can be dispatched only once its file
+  is on the default branch, so the first run waits for the branch that carries
+  it to merge; until then the mirror address answers 404, which the client
+  treats as one more unreachable mirror and reads its cache or the seed.
+  Then dispatch the mirror workflow with
   `workflow_dispatch`.
 - **Confirm it worked:** a commit appears on the `model-pool` branch.
