@@ -69,9 +69,9 @@ func TestWhyNamesTheFilesAndTheCounts(t *testing.T) {
 	}
 }
 
-// A command that failed is reported as failed. The verdict is read from pi's
-// own status footer, which is the only record the transcript keeps of how a
-// call went.
+// A command that failed is reported as failed. The verdict is read from the
+// status footer bash appends, which is the only record the transcript keeps
+// of how a call went.
 func TestWhyReportsAFailedCommand(t *testing.T) {
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {

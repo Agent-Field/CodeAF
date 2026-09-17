@@ -18,7 +18,7 @@ package session
 //
 // TWO FACTS OF THE WIRING THESE TESTS PIN RATHER THAN PRESUME, both noted at
 // the assertions that meet them and reported with this wave: the runtime's
-// claim — the task's own id as agent, the reference supervisor's trick — is
+// claim — the task's own id as agent, the supervisor's own trick — is
 // taken at WRITEBACK (plandb_plan.go's planSettleStoreTask), not at dispatch
 // as DESIGN.md's wiring section says; and a landing's own pulse reads the
 // landing node as still running, because the node's final state is written by
@@ -420,8 +420,8 @@ func TestPlandbCliSeedComposesTheWorkOrderFromTheStore(t *testing.T) {
 	// re-seeded would make a second root, and two sessions would then be
 	// dispatching each other's children. After the first run has completed,
 	// the same door seeds a FRESH plan whose root is the new task, and the
-	// finished one is archived beside the session — the reference loop is one
-	// store per run, and the one live name is the one both roads find.
+	// finished one is archived beside the session — one store per run, and the
+	// one live name is the one both roads find.
 	//
 	// The mid-run arm first, against the still-open plan:
 	resume, _ := newTestAgent(t, completer, func(config *Config) {

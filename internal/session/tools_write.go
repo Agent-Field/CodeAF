@@ -1,7 +1,7 @@
 package session
 
-// write, wrapped: pi's tool with one optional argument, the same shape bash
-// got its background flag by (tools_jobs.go). Without append the call is
+// write, wrapped: the shipped tool with one optional argument, the same shape
+// bash got its background flag by (tools_jobs.go). Without append the call is
 // handed to bare verbatim — same queueing, same wording, same wire text. With
 // append the new content lands after what the file already holds.
 //
@@ -10,8 +10,8 @@ package session
 // continuation the model is asked for must be able to say "add this to the
 // end" without re-sending — and re-billing — everything that already landed.
 // It is a belt wrapper rather than a change to bare because bare's schemas
-// are pinned verbatim to pi's source, and a subharness leaf should keep
-// getting exactly pi's write.
+// are the one source this belt is built from, and a subharness leaf should
+// keep getting exactly the unwrapped write.
 
 import (
 	"context"
@@ -23,16 +23,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
-// appendSentence is what the wrapper adds to pi's write description. The
+// appendSentence is what the wrapper adds to the write description. The
 // ordering instruction is load-bearing: salvage can only recover a cut call
 // whose append flag had already streamed, so the flag must come before the
 // content it qualifies.
 const appendSentence = " append:true adds the content to the END of the file instead of replacing it (state append before content). Write a very large file in parts: one write, then appends. A write cut off mid-content keeps the complete lines that arrived, and the result says how to continue; never resend what was saved."
 
-// appendProperty is the one property the wrapper adds to pi's write schema.
+// appendProperty is the one property the wrapper adds to the write schema.
 const appendProperty = `"append":{"type":"boolean","description":"Add the content to the end of the file instead of replacing it (default: false)"},`
 
-// schemaWithAppend inserts the append property into pi's write schema by
+// schemaWithAppend inserts the append property into bare's write schema by
 // textual surgery rather than a map round-trip, because the ORDER of the
 // properties is part of the design: models overwhelmingly emit arguments in
 // schema order, and append must stream before content for a cut call to
@@ -73,7 +73,7 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 				return "Invalid arguments: path is required", true, nil
 			}
 			// The current bytes are read here and the combined result is
-			// handed to the inner tool, so the write itself keeps pi's whole
+			// handed to the inner tool, so the write itself keeps bare's whole
 			// contract — the mutation queue, the parent directories, the
 			// wording of every disk error. A file that does not exist yet
 			// appends onto nothing, which makes append safe to reach for
