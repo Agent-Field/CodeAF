@@ -231,7 +231,12 @@ func gradeC4(workDir string) grade {
 	if err != nil {
 		return grade{Detail: "no REPORT.md at the top level"}
 	}
-	text := string(body)
+	return gradeC4Text(string(body))
+}
+
+// gradeC4Text is the c4 grade over the report's text, split from the read so
+// a test can hand it a report without a tree.
+func gradeC4Text(text string) grade {
 	for _, name := range []string{"Summary", "Findings", "Risks", "Recommendations"} {
 		under, ok := sectionBody(text, name)
 		if !ok {
@@ -264,16 +269,25 @@ func gradeC4(workDir string) grade {
 // document does not carry it: the heading naming it, and the text between
 // that heading and the next heading of any level.
 func sectionBody(text, name string) (string, bool) {
-	headings := regexp.MustCompile(`(?mi)^#{1,6}\s.*$`)
-	locs := headings.FindAllStringIndex(text, -1)
+	// A SECTION ENDS AT THE NEXT HEADING OF ITS OWN LEVEL OR HIGHER, not at
+	// the next heading of any level: a Findings section written as one
+	// sub-heading per document has its whole body under those sub-headings,
+	// and a reader that stopped at the first one graded every such report
+	// as empty (both arms failed c4 that way on 2026-09-17).
+	headings := regexp.MustCompile(`(?m)^(#{1,6})\s.*$`)
+	locs := headings.FindAllStringSubmatchIndex(text, -1)
 	for i, loc := range locs {
 		if !strings.Contains(text[loc[0]:loc[1]], name) {
 			continue
 		}
+		level := loc[3] - loc[2]
 		start := loc[1]
 		end := len(text)
-		if i+1 < len(locs) {
-			end = locs[i+1][0]
+		for _, next := range locs[i+1:] {
+			if next[3]-next[2] <= level {
+				end = next[0]
+				break
+			}
 		}
 		return text[start:end], true
 	}
