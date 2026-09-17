@@ -2578,6 +2578,13 @@ func withOpenFindings(graph *store.Store, node store.Node, brief string) string 
 // scratch instead, which for an errand working in someone's project is not
 // their directory at all.
 //
+// A root working in the person's own directory gets that same scratch. Its
+// result still reaches the person in its final message, which the delivery law
+// makes the deliverable; the file is a second copy, and a second copy filed in
+// the tree they are working in is not theirs — it is an untracked note their
+// own tools and their own eyes then have to explain. See outputClause, which
+// offers this address for the overflow a message cannot carry.
+//
 // The address is keyed on the node's own id, which is the only identity here
 // that is unique per node. It used to be keyed on the creation sequence and the
 // title, and neither is: one splice stamps its whole subtree with one sequence
@@ -3273,6 +3280,16 @@ func outcomeRecords(outcome *exec.Outcome) []string {
 func leafOutputHint(node store.Node, title string, space *exec.Workspace) (hint string, intermediate bool) {
 	suggested := exec.SuggestPathFor(node.ID, title)
 	if node.Parent == store.RootID {
+		if space != nil && space.PersonalRoot() {
+			_, shown, err := space.ScratchPath(suggested)
+			if err != nil {
+				return "", false
+			}
+			if space.DirectoryAt(shown) {
+				return "", false
+			}
+			return shown, false
+		}
 		if space != nil && space.DirectoryAt(suggested) {
 			return "", false
 		}
