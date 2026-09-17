@@ -1716,9 +1716,13 @@ func (l *Linear) complete(ctx context.Context, messages []ai.Message, definition
 // implicates nobody. A router's own refusal carries no provider name, a
 // transport fault names no machine, and an empty name is a fact the retry law
 // keeps (provider's retryavoid.go): the retry goes where it always went.
+//
+// Whether the lane is to blame is the wire's fact ([provider.APIError.FromUpstream]),
+// never a status read here: the router names the endpoint exactly when it is
+// relaying that endpoint's refusal, and the taxonomy owns what a status means.
 func failedLane(err error) string {
 	var relayed *provider.APIError
-	if errors.As(err, &relayed) && relayed.Status >= 500 {
+	if errors.As(err, &relayed) && relayed.FromUpstream() {
 		return strings.TrimSpace(relayed.Provider)
 	}
 	var cut *provider.StreamCut
