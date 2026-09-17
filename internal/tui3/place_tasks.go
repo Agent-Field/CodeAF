@@ -97,6 +97,13 @@ type tasksPlace struct {
 	// second thing to learn ([app.taskSheetPlan]).
 	plan   session.PlanTaskPage
 	planOn bool
+	// planNote is the note a person types on a plan task's page, and it is the
+	// [editor] every other box on this surface is rather than a string of its own
+	// (the filter is one, and so is the conversation's composer). Typing on the
+	// page lands here and `enter` sends it through the store's note verb
+	// ([app.taskPlanNoteSend]); the row's own keys are read over an EMPTY box, so
+	// a note that starts with `p` or `x` is a letter the moment it has one.
+	planNote editor
 	// tail is the last thing the node said, read off its journal once when the
 	// card opened, and tailRead says the read has happened — an empty tail with
 	// tailRead false is a read still in flight, and one with tailRead true is a
@@ -839,7 +846,7 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// (taskrecord.go).
 	if a.taskSheet.detailOn {
 		if a.taskSheet.planOn {
-			return a.taskPlanKey(key), true
+			return a.taskPlanKey(msg), true
 		}
 		return a.taskCardKey(key), true
 	}
@@ -860,6 +867,13 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if editorWordKill(&a.taskSheet.query, key) {
 		a.taskSheetTyped()
 		return nil, true
+	}
+	// A PLAN ROW'S OWN KEYS, the cancel and the hold, read over an EMPTY box the
+	// way the roster reads its bare letters (stop.go's own law). It is ahead of
+	// the switch because a plan row's `x` and `p` are verbs rather than filter
+	// letters until the box has something in it ([app.taskSheetPlanKey]).
+	if cmd, took := a.taskSheetPlanKey(key); took {
+		return cmd, true
 	}
 	switch key {
 	case "esc":
@@ -1075,6 +1089,7 @@ func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
 	// plan page's place ([app.taskSheetPlan] sets it for the one row that opens a
 	// plan task's page).
 	a.taskSheet.plan, a.taskSheet.planOn = session.PlanTaskPage{}, false
+	a.taskSheet.planNote.reset()
 	return a.readTaskTail(*entry)
 }
 
@@ -1530,6 +1545,12 @@ func (p *tasksPlace) hint(a *app) string {
 	if word := a.taskSheetFoldWord(); word != "" {
 		parts = append(parts, word)
 	}
+	// AND A PLAN ROW'S OWN KEYS, beside the door its enter takes: the cancel and
+	// the one key that holds the task, named where a person reads what a row can
+	// do ([app.tasksPlanKeyWords] says why they are `x` and `p`).
+	if ok && item.plan != nil {
+		parts = append(parts, a.tasksPlanKeyWords(item.plan.Status)...)
+	}
 	if verbs := p.verbs(a); len(verbs) > 0 {
 		words := make([]string, 0, len(verbs))
 		for _, v := range verbs {
@@ -1905,7 +1926,7 @@ func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 	if a.taskSheet.planOn {
-		return a.taskPlanKey(msg.String()), true
+		return a.taskPlanKey(msg), true
 	}
 	return a.taskCardKey(msg.String()), true
 }
