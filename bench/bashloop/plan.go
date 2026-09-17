@@ -310,7 +310,7 @@ func printPlan(p plan, w io.Writer) {
 	fmt.Fprintln(w)
 	for i, iv := range p.Invocations {
 		fmt.Fprintf(w, "[%02d/%02d] arm=%s cell=%s replicate=%d\n",
-			i+1, len(p.Invocations), iv.Arm, iv.Cell, iv.Replicate)
+			i+1, len(p.Invocations), armLabel(iv.Arm, iv.Seats), iv.Cell, iv.Replicate)
 		fmt.Fprintf(w, "  door: %s\n", iv.Door)
 		fmt.Fprintf(w, "  model: %s\n", iv.Model)
 		if iv.Seats == SeatsCrew {

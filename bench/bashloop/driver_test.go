@@ -644,7 +644,7 @@ func isBlockHeader(line string) bool {
 	return strings.HasPrefix(line, "[") && strings.Contains(line, "] arm=")
 }
 
-var blockHeader = regexp.MustCompile(`\] arm=(A|B) cell=(\S+) replicate=(\d+)`)
+var blockHeader = regexp.MustCompile(`\] arm=([AB](?:-crew)?) cell=(\S+) replicate=(\d+)`)
 
 func findBlock(blocks []string, arm Arm, cellID string, replicate int) string {
 	for _, b := range blocks {
@@ -663,7 +663,7 @@ func findBlock(blocks []string, arm Arm, cellID string, replicate int) string {
 // about, and the invocation's own position in the interleaved order — the
 // counter says when the cell runs, never what the cell is.
 func stripBelt(block string) string {
-	block = regexp.MustCompile(`^\[\d+/\d+\] arm=[AB] `).ReplaceAllString(block, "[")
+	block = regexp.MustCompile(`^\[\d+/\d+\] arm=[AB](?:-crew)? `).ReplaceAllString(block, "[")
 	return regexp.MustCompile(`env: CODEAF_TASK_BELT=\S+`).ReplaceAllString(block, "env: BELT")
 }
 
@@ -702,15 +702,16 @@ func blockHasSeats(block string) bool {
 	return strings.Contains(block, "  seat: ")
 }
 
-// findBlockSeats finds one arm-and-cell's block by belt AND seats, since the
-// header names only the belt and a one-model block sits beside its crew twin.
+// findBlockSeats finds one arm-and-cell's block by the arm's own label — the
+// bare belt letter for a one-model arm, belt-crew for its twin — which is the
+// name the header carries and the run directory is derived from.
 func findBlockSeats(blocks []string, belt Arm, seats Seats, cellID string, replicate int) string {
 	for _, b := range blocks {
 		m := blockHeader.FindStringSubmatch(b)
 		if m == nil {
 			continue
 		}
-		if m[1] == string(belt) && m[2] == cellID && m[3] == itoa(replicate) && blockHasSeats(b) == (seats == SeatsCrew) {
+		if m[1] == armLabel(belt, seats) && m[2] == cellID && m[3] == itoa(replicate) {
 			return b
 		}
 	}
