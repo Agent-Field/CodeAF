@@ -37,8 +37,12 @@ import (
 // lives on the nodes themselves (taskSpec.planID, checkpointed), because a
 // map on the side that disagreed with its nodes would be a second truth.
 type planState struct {
-	mu      sync.Mutex
-	path    string
+	mu   sync.Mutex
+	path string
+	// chat is the conversation's tag: the session folder's own name, stamped on
+	// every row the seed makes so the plan can be read back as this chat's
+	// (PlanTasks). It is settled with the path at the seed and never moves.
+	chat    string
 	shimmed bool
 }
 
@@ -97,6 +101,18 @@ func (g *TaskGraph) planPath() string {
 	return ""
 }
 
+// planChat is the conversation's tag — the id every row the seed makes carries,
+// and the one the reading verbs narrow the plan by (planTaskRow). It is the
+// session folder's own name, read off the same Place planPath reads and with no
+// lock, the way every other config read in the seed is; a session with no
+// folder tags nothing, and its plan is read whole.
+func (g *TaskGraph) planChat() string {
+	if g.home == nil {
+		return ""
+	}
+	return g.home.config.Place.ID()
+}
+
 // planSeed is the wiring point the design names: the one door every task
 // passes, before the node is built, so the work order the worker eventually
 // reads was composed FROM the store rather than pasted beside it. Under the
@@ -124,7 +140,7 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 				if !os.IsNotExist(err) {
 					return
 				}
-				store, err = plandb.Open(path, spec.title, planRootID, spec.title, spec.brief)
+				store, err = plandb.Open(path, spec.title, planRootID, spec.title, spec.brief, g.planChat())
 				if err != nil {
 					// A store that will not open is a run without a plan, and a
 					// run without a plan is the belt it was before this
@@ -172,7 +188,7 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 		// store opened per pass must be closed, or every pass would leave a
 		// database connection behind.
 		defer store.Close()
-		g.plan = &planState{path: path}
+		g.plan = &planState{path: path, chat: g.planChat()}
 		if err := g.plan.armShim(); err != nil {
 			// A plan whose shim never landed is still the run's plan — the
 			// store is seeded and the runtime dispatches from it — but every
