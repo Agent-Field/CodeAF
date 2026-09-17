@@ -4,7 +4,8 @@
 
 An api key for another provider is added here. Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
 MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
-connected. Pick a row and answer its fields. A successful listed service says
+connected and, once a custom connection is connected, an `add custom connection` row.
+Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A service with more than one billing door names the one it
 bound: `z-ai-direct is connected · coding plan · 4 models` or
@@ -191,7 +192,8 @@ The default service's model ids remain unchanged and unqualified. A model from a
 service is written `<service>/<model id>`, such as
 `deepseek-direct/deepseek-v4-pro`. That first segment is how the conversation remembers
 where the model can be reached. With two or more connected services, `/model` shows a dim
-heading for each service, default first, in the order shown in the Providers tab.
+heading for each service, default first, in the order shown in the Providers tab. A
+custom connection's heading is the name you gave it.
 
 The status line uses the same spelling: an unqualified default-service id, and
 `<service>/<model id>` for every other service. It does not shorten
@@ -232,12 +234,44 @@ service has one provider, so there is nothing to choose between and that is not 
 
 The **Something else** row in `/connect` accepts an OpenAI-compatible base URL and key.
 Use it for a proxy, gateway, self-hosted endpoint, or vendor not already named. codeaf
-checks the address before saving it and uses a short written name derived from its host;
-if that name is already taken, the message offers a `-direct` spelling.
+checks the address before saving anything, then asks `name` before `your key`. The name
+box opens on the host's own spelling: `localhost` for a local runner, `127-0-0-1` for
+the loopback address, the host for anything else. Clearing the box takes that default
+again. A name cannot carry `/` or a space, and a refused name reopens the box with the
+reason: the slash is what separates connection from model in a model id, and a space
+would travel into every id the connection qualifies. A name another service or a
+default-service model author already uses is not asked twice about: codeaf takes an
+available spelling (`localhost-direct`, then numbered ones) and the connect line names
+what it used.
 
-That written host name is the row's name everywhere. A refusal from a localhost row says
-`localhost refused that key — …`, and a success says `localhost is connected · 2 models`;
-neither switches back to `custom`.
+That name is the connection everywhere. It is the row's name in `/connect` and on the
+Providers tab, the heading its models sit under in `/model`, and the first segment of
+every model id it serves, so a model on a connection named `homelab` reads
+`homelab/glm-5.3` and `/model homelab/glm-5.3` moves onto it. A refusal or a success
+names the connection by the name it was given; neither switches back to `custom`.
+
+Several custom connections coexist, each under the name you gave it, each with its own
+key, its own rows and its own picker group. Once one is connected, the **Something
+else** row becomes that first connection's edit door and an `add custom connection` row
+connects a new one; with none connected yet, **Something else** is the door onto the
+first.
+
+On the Providers tab in `/settings` each custom connection is a row of its own. `enter`
+opens it for editing with the address and name pre-filled, and an empty key box keeps
+the saved key. A changed name is a rename: every model id already picked under the old
+name is re-spelled with the new one, the conversation's own pick first (a turn still
+answering is waited out), and with it the stored ones: reasoning levels, role
+pins, the fallback chain and the capability slots. A rename changes a label and nothing
+else; it does not move the conversation onto a different model. `ctrl+r` on the row
+reconnects with the saved details. The `add custom connection` row runs the same three
+questions for a new connection, so the tab never sends you to `/connect` to add one.
+The `active connection` row reads
+`answering on localhost · enter moves it to homelab` and enter does that, wrapping past
+the last connection back to the first; which one is active is read from the model the
+conversation is on, so there is nothing else to store. The row is absent while no
+custom connection is connected, and when the next one has no model list yet the move
+says so instead: `no model list for homelab yet · reconnect it (ctrl+r on its row) or
+type a model id in /model`.
 
 In Phase 1 a **Something else** service must provide the compatible chat path. codeaf
 tries `GET <base>/models` first; the models from an answered list fill its picker group.
