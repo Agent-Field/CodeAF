@@ -10,10 +10,10 @@ import (
 )
 
 func TestMeter(t *testing.T) {
-	if got, want := MeterCall(1_000_000, 0, "openai/gpt-5"), 1.25; math.Abs(got-want) > 1e-9 {
+	if got, want := MeterCall(1_000_000, 0, "google/gemini-2.5-flash"), 0.30; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("input tokens: got %v want %v", got, want)
 	}
-	if got, want := MeterCall(0, 1_000_000, "anthropic/claude-opus"), 75.0; math.Abs(got-want) > 1e-9 {
+	if got, want := MeterCall(0, 1_000_000, "anthropic/claude-fable-5.1"), 50.0; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("output tokens: got %v want %v", got, want)
 	}
 	// Meter has one number and charges it at the dear rate on purpose.
@@ -318,8 +318,8 @@ func TestASourceThatDoesNotKnowFallsThroughToTheTable(t *testing.T) {
 	UsePrices(func(string) (Price, bool) { return Price{}, false })
 	defer UsePrices(nil)
 
-	price, known := PriceOf("openai/gpt-5")
-	if !known || price != (Price{In: 1.25, Out: 10.00}) {
+	price, known := PriceOf("z-ai/glm-5.3")
+	if !known || price != (Price{In: 1.40, Out: 4.40}) {
 		t.Fatalf("a refusing source leaves the table in charge: %+v, %v", price, known)
 	}
 	if _, known := PriceOf("somebody/new-model"); known {
@@ -332,7 +332,7 @@ func TestASourceThatDoesNotKnowFallsThroughToTheTable(t *testing.T) {
 func TestUsePricesNilLeavesTheTableAlone(t *testing.T) {
 	UsePrices(func(string) (Price, bool) { return Price{In: 99, Out: 99}, true })
 	UsePrices(nil)
-	if price, known := PriceOf("moonshotai/kimi-k3"); !known || price != (Price{In: 0.60, Out: 2.50}) {
+	if price, known := PriceOf("moonshotai/kimi-k3"); !known || price != (Price{In: 3.00, Out: 15.00}) {
 		t.Fatalf("a removed source unmasks the table: %+v, %v", price, known)
 	}
 }
@@ -381,7 +381,10 @@ func TestTheMeterRidesTheInstalledSource(t *testing.T) {
 // TestRetiredIdsAreStrangers: an id the table no longer holds meters at the
 // unpriced rate, exactly as one it never had.
 func TestRetiredIdsAreStrangers(t *testing.T) {
-	for _, id := range []string{"z-ai/glm-5.2", "deepseek/deepseek-v4-flash"} {
+	for _, id := range []string{
+		"z-ai/glm-5.2", "deepseek/deepseek-v4-flash",
+		"anthropic/claude-opus", "openai/gpt-5",
+	} {
 		price, known := PriceOf(id)
 		if known || price != unpriced {
 			t.Fatalf("PriceOf(%q) = %+v, %v; want %+v, false", id, price, known, unpriced)
