@@ -90,11 +90,21 @@ class ReleaseDownloadsTest(unittest.TestCase):
         cls.batch = cls.payload["batch"]
 
     def test_one_event_per_binary_asset(self):
-        # 6 assets x 2 releases; checksums.txt and any other sidecar on the
-        # fixture is not a binary asset and gets no event.
-        self.assertEqual(len(self.batch), 12)
+        # 6 assets x 2 full releases plus one asset on each of the dev, staging
+        # and beta tags; checksums.txt and any other sidecar on the fixture is
+        # not a binary asset and gets no event.
+        self.assertEqual(len(self.batch), 15)
         tags = {event["properties"]["release_tag"] for event in self.batch}
-        self.assertEqual(tags, {"v1.2.0", "v1.3.0-rc.1"})
+        self.assertEqual(
+            tags,
+            {
+                "v1.2.0",
+                "v1.3.0-rc.1",
+                "dev-20260917-09299019bcdc",
+                "staging-20260916-ed5fe58eb546",
+                "v1.4.0-beta.1",
+            },
+        )
 
     def test_payload_shape(self):
         self.assertEqual(
@@ -108,9 +118,15 @@ class ReleaseDownloadsTest(unittest.TestCase):
         for event in self.batch:
             properties = event["properties"]
             self.assertEqual(
-                sorted(properties), sorted(EVENT_PROPERTIES + ("$process_person_profile",))
+                sorted(properties),
+                sorted(
+                    EVENT_PROPERTIES
+                    + ("$process_person_profile", "$geoip_disable")
+                ),
             )
             self.assertIs(properties["$process_person_profile"], False)
+            # The sender is a CI runner; its location is meaningless.
+            self.assertIs(properties["$geoip_disable"], True)
             self.assertEqual(
                 properties["snapshot_date"],
                 datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
@@ -128,6 +144,12 @@ class ReleaseDownloadsTest(unittest.TestCase):
         }
         self.assertEqual(channels["v1.2.0"], ("stable", False))
         self.assertEqual(channels["v1.3.0-rc.1"], ("rc", True))
+        self.assertEqual(channels["dev-20260917-09299019bcdc"], ("dev", True))
+        self.assertEqual(
+            channels["staging-20260916-ed5fe58eb546"], ("staging", True)
+        )
+        # Not one of the four tag shapes this repository publishes.
+        self.assertEqual(channels["v1.4.0-beta.1"], ("unknown", True))
 
     def test_platforms_and_counts(self):
         counts = {
@@ -185,8 +207,20 @@ class ReleaseDownloadsTest(unittest.TestCase):
         for event in self.batch:
             self.assertNotIn("name", event["properties"])
 
-    def test_missing_project_key_is_a_notice_and_success(self):
+    def test_dry_run_without_project_key_prints_the_batch(self):
+        # --dry-run is the local and test path: no key in the environment is no
+        # obstacle, the key is printed as a placeholder and the batch still
+        # comes out, with no notice.
         result = run_script("--dry-run", "--fixture", str(FIXTURE))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["api_key"], "<unset>")
+        self.assertEqual(len(payload["batch"]), 15)
+
+    def test_sending_without_project_key_is_a_notice_and_success(self):
+        # Only the sending path stops on a missing key; it never reaches the
+        # network or the PostHog host.
+        result = run_script()
         self.assertEqual(result.returncode, 0)
         self.assertIn("notice", result.stderr)
         self.assertIn("CODEAF_POSTHOG_PROJECT_KEY", result.stderr)
@@ -334,11 +368,46 @@ class ScriptSourceTest(unittest.TestCase):
 
 
 class ChannelTest(unittest.TestCase):
-    def test_channel_words(self):
+    """The four tag shapes of cmd/codeaf-release/version.go, and nothing
+    else: any other tag is reported as "unknown" rather than mislabelled."""
+
+    def test_stable_tags(self):
         self.assertEqual(module.release_channel("v1.2.0"), "stable")
+        self.assertEqual(module.release_channel("v0.0.1"), "stable")
+        self.assertEqual(module.release_channel("v10.20.30"), "stable")
+
+    def test_rc_tags(self):
         self.assertEqual(module.release_channel("v1.3.0-rc.1"), "rc")
-        self.assertEqual(module.release_channel("v1.4.0-dev.2"), "dev")
-        self.assertEqual(module.release_channel("v1.5.0-staging.1"), "staging")
+        self.assertEqual(module.release_channel("v2.0.0-rc.12"), "rc")
+
+    def test_dev_tags(self):
+        self.assertEqual(
+            module.release_channel("dev-20260917-09299019bcdc"), "dev"
+        )
+        self.assertEqual(module.release_channel("dev-20250101-abcdef012345"), "dev")
+
+    def test_staging_tags(self):
+        self.assertEqual(
+            module.release_channel("staging-20260916-ed5fe58eb546"), "staging"
+        )
+        self.assertEqual(
+            module.release_channel("staging-20250102-000000000abc"), "staging"
+        )
+
+    def test_unrecognised_tags_are_unknown(self):
+        for tag in (
+            "v1.4.0-beta.1",
+            "v1.3.0-rc.0",
+            "v1.3.0-rc",
+            "v01.2.0",
+            "1.2.0",
+            "v1.2",
+            "dev-20260917-09299019bcdcX",
+            "staging-20260916-ED5FE58EB546",
+            "nightly-20260917-09299019bcdc",
+            "",
+        ):
+            self.assertEqual(module.release_channel(tag), "unknown", tag)
 
 
 class SendEndpointTest(unittest.TestCase):

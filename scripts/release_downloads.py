@@ -5,7 +5,7 @@ The numbers come from public GitHub release data: the GitHub API exposes a
 running download count for every asset on a release, and this script reads
 that count and sends one PostHog event per binary asset so the download
 trend is visible next to the other codeaf telemetry. It runs daily from
-.github/workflows/release_downloads.yml, and runs locally too:
+.github/workflows/release-downloads.yml, and runs locally too:
 
     python3 scripts/release_downloads.py --dry-run
 
@@ -40,8 +40,16 @@ ASSET_RE = re.compile(
     r"^codeaf-(?P<os>darwin|linux|windows)-"
     r"(?P<arch>amd64|arm64)(?P<exe>\.exe)?$"
 )
-# v1.3.0-rc.1 -> channel rc. Stable tags carry no suffix.
-SUFFIX_RE = re.compile(r"^[^-]+-([A-Za-z]+)")
+# Tag grammar, matching cmd/codeaf-release/version.go exactly: stable and
+# rc tags are vMAJOR.MINOR.PATCH (rc with an -rc.N counter), and the dev and
+# staging channels are date-and-commit tags. Anything else is no channel this
+# script can name, so it is reported as "unknown".
+STABLE_TAG_RE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+RC_TAG_RE = re.compile(
+    r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$"
+)
+DEV_TAG_RE = re.compile(r"^dev-[0-9]{8}-[0-9a-f]{12}$")
+STAGING_TAG_RE = re.compile(r"^staging-[0-9]{8}-[0-9a-f]{12}$")
 PROPS = (
     "release_tag",
     "channel",
@@ -54,11 +62,16 @@ PROPS = (
 
 
 def release_channel(tag: str) -> str:
-    """The channel word of a tag: 'stable', or its prerelease suffix (rc)."""
-    match = SUFFIX_RE.match(tag)
-    if not match:
+    """The channel of a tag: stable, rc, dev or staging, else "unknown"."""
+    if STABLE_TAG_RE.match(tag):
         return "stable"
-    return match.group(1)
+    if RC_TAG_RE.match(tag):
+        return "rc"
+    if DEV_TAG_RE.match(tag):
+        return "dev"
+    if STAGING_TAG_RE.match(tag):
+        return "staging"
+    return "unknown"
 
 
 def asset_os_arch(name: str):
@@ -130,7 +143,9 @@ def build_events(releases, snapshot_date: str):
                         # The cumulative total the GitHub API reports.
                         "download_count": asset["download_count"],
                         "snapshot_date": snapshot_date,
+                        # The sender is a CI runner; its location is meaningless.
                         "$process_person_profile": False,
+                        "$geoip_disable": True,
                     },
                 }
             )
@@ -173,12 +188,16 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     project_key = os.environ.get("CODEAF_POSTHOG_PROJECT_KEY", "")
-    if not project_key:
+    if not project_key and not args.dry_run:
         print(
             "notice: CODEAF_POSTHOG_PROJECT_KEY is not set; nothing sent",
             file=sys.stderr,
         )
         return 0
+    # --dry-run is the local and test path: it must work without a key, so a
+    # missing key is printed as a placeholder rather than stopping the run.
+    if not project_key:
+        project_key = "<unset>"
 
     if args.fixture:
         with open(args.fixture) as fixture:

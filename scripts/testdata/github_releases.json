@@ -2,7 +2,8 @@
   {
     "tag_name": "v1.3.0-rc.1",
     "prerelease": true,
-    "draft": false,    "assets": [
+    "draft": false,
+    "assets": [
       {
         "name": "codeaf-linux-amd64",
         "download_count": 4021
@@ -65,6 +66,39 @@
       {
         "name": "checksums.txt",
         "download_count": 3302
+      }
+    ]
+  },
+  {
+    "tag_name": "dev-20260917-09299019bcdc",
+    "prerelease": true,
+    "draft": false,
+    "assets": [
+      {
+        "name": "codeaf-linux-amd64",
+        "download_count": 37
+      }
+    ]
+  },
+  {
+    "tag_name": "staging-20260916-ed5fe58eb546",
+    "prerelease": true,
+    "draft": false,
+    "assets": [
+      {
+        "name": "codeaf-darwin-arm64",
+        "download_count": 24
+      }
+    ]
+  },
+  {
+    "tag_name": "v1.4.0-beta.1",
+    "prerelease": true,
+    "draft": false,
+    "assets": [
+      {
+        "name": "codeaf-windows-amd64.exe",
+        "download_count": 9
       }
     ]
   }
