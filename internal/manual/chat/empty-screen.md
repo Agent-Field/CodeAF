@@ -5,9 +5,10 @@
 A new conversation opens on **one centred group** and nothing else. From the top:
 
 ```
-┌─┐ ┌─  ┌─┐ ┌─┐ ┌─┐ ┌─┐
-├─┤ ├─  │ │ │   └─┤ ├─          the codeaf wordmark
-└─┘ │   └─┘ │   └─┘ └─┘
+          ╷     ┌─┐ ┌──
+┌─  ┌─┐ ┌─┤ ┌─┐ │ │ ├─          the codeaf wordmark, drawn CodeAF
+│   │ │ │ │ ├─╴ ├─┤ │
+└─  └─┘ └─┘ └─┘ ╵ ╵ ╵
 anthropic/claude-sonnet-4.5 · balanced crew
                                  a blank row
 › _                              the message box, cursor in it

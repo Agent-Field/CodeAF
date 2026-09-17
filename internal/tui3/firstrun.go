@@ -924,7 +924,7 @@ func setupTitle(s *setupFlow) string {
 // is answered before anything is asked.
 //
 // AND EVERY ONE OF THEM NAMES THE PRODUCT FROM [product] AND NEVER FROM A
-// LITERAL. The wordmark three rows above this prose is drawn from that same
+// LITERAL. The wordmark above this prose is drawn from that same
 // constant, and when the two were spelled separately the first screen anybody
 // ever sees said one name in the letterforms and a different one in the
 // sentence three rows under them.
