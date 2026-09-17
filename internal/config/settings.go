@@ -1243,6 +1243,24 @@ var OperatorEnvPins = []string{
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
+	// The four names the measurement pool resolves from (internal/pool/poolcfg,
+	// which names them and reads none of them: the environment reaches that
+	// package as a function the caller hands in). CODEAF_MODEL_POOL is the
+	// on/read/off word, the two URLs are where the index is read and where
+	// measurements are handed to, and the TTL is how long a read copy stays
+	// young.
+	//
+	// They are plumbing on the terms the other addresses here are on:
+	// CODEAF_MODEL_POOL_URL and CODEAF_MODEL_POOL_SUBMIT_URL are endpoints,
+	// exactly as CODEAF_BASE_URL and CODEAF_RELAY are, and the TTL is a
+	// cadence nobody sets to express a preference. The word itself is the one
+	// of the four a sheet row could own, and it has no row because it has no
+	// stored setting yet: poolcfg takes the setting as an argument and nothing
+	// in the binary calls it. The row is owed on the day something does.
+	"CODEAF_MODEL_POOL",
+	"CODEAF_MODEL_POOL_URL",
+	"CODEAF_MODEL_POOL_SUBMIT_URL",
+	"CODEAF_MODEL_POOL_TTL",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
