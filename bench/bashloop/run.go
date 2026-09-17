@@ -72,7 +72,7 @@ type row struct {
 // csvHeader is the row order, fixed once. Rows are appended, never inserted —
 // the bench protocol's own CSV law.
 var csvHeader = []string{
-	"date", "arm", "cell", "replicate", "model", "models_used",
+	"date", "arm", "seats", "cell", "replicate", "model", "models_used",
 	"graded", "ending", "report", "steps", "cost_usd", "unbilled",
 	"wall_seconds", "wall_source", "changed_files",
 	"children_done", "children_total", "nodes_failed",
@@ -81,7 +81,7 @@ var csvHeader = []string{
 
 func (r row) csvValues() []string {
 	return []string{
-		r.Date, string(r.Arm), r.Cell, strconv.Itoa(r.Replicate),
+		r.Date, string(r.Arm), string(r.Seats), r.Cell, strconv.Itoa(r.Replicate),
 		r.Model, r.ModelsUsed,
 		gradeWord(r.Graded), r.Ending, r.Report,
 		strconv.Itoa(r.Steps), money(r.CostUSD), strconv.Itoa(r.Unbilled),
@@ -733,12 +733,15 @@ func (r *runner) appendRow(row row) error {
 
 // ── the table ───────────────────────────────────────────────────────────────
 
-// cellSummary is one arm-and-cell line of the printed table.
+// cellSummary is one arm-and-cell line of the printed table. Arm is the belt
+// letter and Seats the seat word, together the arm's own name.
 type cellSummary struct {
 	Arm       Arm
+	Seats     Seats
 	Cell      string
 	N         int
 	Passes    int
+	Models    string
 	MedSteps  float64
 	MedCost   float64
 	MedWall   float64
@@ -750,17 +753,18 @@ type cellSummary struct {
 // summarize folds one arm-and-cell's rows into the doc's quoted readings:
 // success rate, and over the successful cells the medians of steps, cost and
 // wall — plus the branch-only diagnostics, counted over every row.
-func summarize(rows []row, arm Arm, cellID string) (cellSummary, bool) {
+func summarize(rows []row, arm Arm, seats Seats, cellID string) (cellSummary, bool) {
 	var mine []row
 	for _, r := range rows {
-		if r.Arm == arm && r.Cell == cellID {
+		if r.Arm == arm && r.Seats == seats && r.Cell == cellID {
 			mine = append(mine, r)
 		}
 	}
 	if len(mine) == 0 {
 		return cellSummary{}, false
 	}
-	s := cellSummary{Arm: arm, Cell: cellID, N: len(mine)}
+	s := cellSummary{Arm: arm, Seats: seats, Cell: cellID, N: len(mine)}
+	s.Models = modelsAcross(mine)
 	var steps, costs, walls []float64
 	for _, r := range mine {
 		if r.Graded {
@@ -779,9 +783,29 @@ func summarize(rows []row, arm Arm, cellID string) (cellSummary, bool) {
 	return s, true
 }
 
+// modelsAcross names every model a group's rows billed, deduplicated in the
+// order the readings met them. It is the arm's own account of what it ran on,
+// which a crew arm is exactly what needs to be read.
+func modelsAcross(rows []row) string {
+	seen := map[string]bool{}
+	var models []string
+	for _, r := range rows {
+		for _, model := range strings.Split(r.ModelsUsed, "+") {
+			model = strings.TrimSpace(model)
+			if model == "" || seen[model] {
+				continue
+			}
+			seen[model] = true
+			models = append(models, model)
+		}
+	}
+	return strings.Join(models, "+")
+}
+
 // printTable prints the comparison as numbers, per arm and cell. The verdict
 // words stay in the design document and the report; the driver prints
-// numbers only.
+// numbers only. The arm column carries each arm's own name (belt AND seats),
+// and the models column every model its rows billed.
 func printTable(p plan, rows []row, out io.Writer) {
 	dates := map[string]bool{}
 	for _, r := range rows {
@@ -791,23 +815,23 @@ func printTable(p plan, rows []row, out io.Writer) {
 	if len(dates) > 1 {
 		fmt.Fprintf(out, "  note: rows span more than one day (%v); quote medians per day only\n", sortedKeys(dates))
 	}
-	fmt.Fprintf(out, "%-4s %-4s %3s %5s %6s %10s %10s %10s %8s %7s %7s\n",
-		"cell", "arm", "n", "pass", "rate", "med steps", "med $", "med wall", "invalid", "trunc", "idiom")
+	fmt.Fprintf(out, "%-4s %-7s %3s %5s %6s %10s %10s %10s %8s %7s %7s %s\n",
+		"cell", "arm", "n", "pass", "rate", "med steps", "med $", "med wall", "invalid", "trunc", "idiom", "models")
 	for _, c := range p.Cells {
-		for _, arm := range []Arm{ArmShipped, ArmBash} {
-			s, ok := summarize(rows, arm, c.id)
+		for _, arm := range p.Arms {
+			s, ok := summarize(rows, arm.Belt, arm.Seats, c.id)
 			if !ok {
 				continue
 			}
-			fmt.Fprintf(out, "%-4s %-4s %3d %5d %6.2f %10.1f %10.4f %10.1f %8d %7d %7d\n",
-				s.Cell, s.Arm, s.N, s.Passes, rate(s), s.MedSteps, s.MedCost, s.MedWall,
-				s.Invalid, s.Truncs, s.IdiomFlag)
+			fmt.Fprintf(out, "%-4s %-7s %3d %5d %6.2f %10.1f %10.4f %10.1f %8d %7d %7d %s\n",
+				s.Cell, arm.name(), s.N, s.Passes, rate(s), s.MedSteps, s.MedCost, s.MedWall,
+				s.Invalid, s.Truncs, s.IdiomFlag, s.Models)
 		}
 	}
-	for _, arm := range []Arm{ArmShipped, ArmBash} {
+	for _, arm := range p.Arms {
 		passed, total := 0, 0
 		for _, r := range rows {
-			if r.Arm != arm {
+			if r.Arm != arm.Belt || r.Seats != arm.Seats {
 				continue
 			}
 			total++
@@ -818,7 +842,7 @@ func printTable(p plan, rows []row, out io.Writer) {
 		if total == 0 {
 			continue
 		}
-		fmt.Fprintf(out, "arm %s: %d of %d cells graded pass (%.0f%%)\n", arm, passed, total,
+		fmt.Fprintf(out, "arm %s: %d of %d cells graded pass (%.0f%%)\n", arm.name(), passed, total,
 			100.0*float64(passed)/float64(total))
 	}
 }
