@@ -275,15 +275,45 @@ Every word it draws:
 box in the conversation while your turn is being handed to a task — before the task, and its
 page, exist at all.
 
-## The status line at the bottom of a task's page — no provider, no tok/s in a task room, which model is serving this task, why is the rate blank inside a task
+## The line above the box on a task's page — which model is serving this task, the task's thinking rung, `◇ on its own`, why alt+y does nothing in a task, the seam inside a task room
 
-The bottom row of a task's page is about **that task**, and it says so in two places.
-
-On the left, in front of the ledger: the room chip, the task's own model, and the machine
-answering for it.
+The rule over a task page's message box is the same seam a conversation has over its own
+box, with the task's facts on it and the way out where the conversation's name would be:
 
 ```
-⠋ Ship the parser fix · task glm-5.2 · via friendli
+─ room · esc/←← main · task glm-5.2 · ⠿ high · ◇ on its own · via friendli ──── ↑↓ history ─
+› steer the node
+```
+
+Left to right: the way out, **the task's own model** (led by the word `task`, and
+`next model …` once you have retargeted it), **how hard this task thinks** — the rung set on
+it, or the rung it inherited from your conversation — and **`◇ on its own`**, then the
+machine answering for it, `via friendli`, whoever served it.
+
+**The model and the rung are doors, while the task can still be moved.** Press the model
+name, and the picker opens aimed at *that task*: it switches from its next request on and
+your conversation's model is untouched. Press the rung, or `ctrl+v`, and the task's rung
+walks one step — the note reads `task 9 · thinking · high · its next call takes it`. A task
+that has finished, failed, been stopped, needs your look, or is a node inside an adaptive
+run keeps both words as facts that do not react.
+
+**`◇ on its own` is a reading, not a wheel.** A task runs every tool without asking — a
+dangerous command is refused rather than asked about — and there is no posture you can walk
+a task to. So `alt+y` inside a task's page changes nothing and says so: `approvals · a task
+runs on its own — its tools do not ask · what this conversation runs without asking is on
+the conversation's own seam · esc`. Your conversation's `◇ asks` / `◇ YOLO` cell is one `esc`
+away, on its own line, and the status line inside a task's page never draws the `YOLO`
+badge.
+
+## The status line at the bottom of a task's page — no provider, no tok/s in a task room, why is the rate blank inside a task
+
+The bottom row of a task's page is about **that task**, and it says so at both ends.
+
+On the left, in front of the ledger: the room chip — the task's own name. Its model, its
+rung and the machine answering for it are on the line above the box (the section above).
+
+```
+⠋ Ship the parser fix
 ```
 
 At the right edge: the task's live rate while its model is writing — `38 tok/s` — or the
@@ -291,9 +321,9 @@ task's own phase words while it is in a stage that is producing nothing, exactly
 conversation's line reads them: `running go test · 41s`, `connecting · 1.2s`, `paced ·
 retry in 6s`.
 
-**The machine is named whoever served it** — `task glm-5.2 · via z-ai` when the vendor
-serves its own model — and while the task's first answer is still being written, as soon
-as the machine writing it has named itself.
+**The machine is named whoever served it** — `task glm-5.2 · via z-ai` on the seam when the
+vendor serves its own model — and while the task's first answer is still being written, as
+soon as the machine writing it has named itself.
 
 **It does not go quiet because your conversation is idle.** That is the ordinary state
 while a task runs: you hand the work out, your turn ends, and the task works for minutes
@@ -301,7 +331,7 @@ with nothing happening in the conversation. The row keeps drawing the task's own
 throughout.
 
 **What is on that row and is still the conversation's**: the bill, the cache, the context
-meter, the job and watch counts, and the posture word. Those measure a session, and a task
+meter and the job count. Those measure a session, and a task
 runs inside yours — the cost figure already includes what your tasks have spent (see
 "What the `$` on the status line counts" on the screen page).
 

@@ -1248,7 +1248,10 @@ Why not `ctrl+y` or `shift+tab`: `ctrl+y` copies a path on home and in `/files`,
 chord means one thing on this surface; `shift+tab` walks backwards through the fields of
 every question card, and on some terminals arrives as a plain `tab`.
 
-**On home and every other place, the same `◇` cell sits on the rule above that box** and
+**Inside a task's page the cell reads `◇ on its own`** — a task runs every tool without
+asking and has no wheel — and `alt+y` there says so instead of moving anything (the task
+page's "The line above the box on a task's page"). **On home and every other place, the same
+`◇` cell sits on the rule above that box** and
 says what the conversation you are about to start will run without asking — the settings
 rows' answer, or `YOLO` if this process was started with `--yolo`. `alt+y` or a press walks
 it there on the same wheel, the pin is carried onto the conversation `enter` opens, and it

@@ -957,14 +957,15 @@ Jobs and watches are not a door — the column's `jobs` section is where they ar
 and the rate, the connection, the state word and the `YOLO` badge are readings, not
 controls. The control for the gate is the `◇` cell on the legend (the keys page).
 
-While a task **room** is open the row's left grows the room chip, the room's model and the
-machine answering for it — `⠋ Ship the parser fix · task glm-5.2 · via friendli` — in
-front of the ledger, and **pressing that name moves the task**, not the conversation: the
-same picker opens aimed at that node, and the task switches from its next request onward. One
-`esc` restores the row. Where the pick could not land the name is drawn and simply does
-not react: a task that has finished, failed, been stopped or needs your look, one that has
-not started, an adaptive run's page, or a node inside a run. The tasks page says the whole
-of it under "Changing the model for one task while it is running".
+While a task **room** is open the row's left grows the room chip — `⠋ Ship the parser fix`
+— in front of the ledger, and the legend above the box becomes the task's: `room · esc/←←
+main · task glm-5.2 · ⠿ high · ◇ on its own · via friendli`. **Pressing the model's name
+there moves the task**, not the conversation: the same picker opens aimed at that node, and
+the task switches from its next request onward; pressing the rung, or `ctrl+v`, walks the
+task's thinking. One `esc` restores both lines. Where the pick could not land the name is
+drawn and simply does not react: a task that has finished, failed, been stopped or needs
+your look, one that has not started, an adaptive run's page, or a node inside a run. The
+task page's own "The line above the box on a task's page" says the whole of it.
 
 **And the right edge is that task's too.** The rate and the phase words belong to whatever
 this window is a window onto, so inside a room they are the node's — `38 tok/s` while it

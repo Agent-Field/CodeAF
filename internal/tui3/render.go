@@ -2223,81 +2223,26 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 	// pressed ([app.roomModelMovable] holds the whole of that list). An
 	// affordance that lit up and then apologised would be worse than none.
 	if a.roomOpen() {
-		// THE NAME IS WHOLE UNTIL THE LINE CANNOT HOLD IT, and what gives way
-		// first is the fact beside it — which is [rowfit.go]'s first law, said in
-		// this cluster's own two pieces. A node's name arrives here uncut
-		// (taskident.go's [taskTitleOf] stopped cutting on 2026-09-03) and the
-		// cluster used to spend a FIXED cap on it ([roomChipCap], eighteen cells),
-		// which is that law inverted: a cap pays the identity's price at EVERY
-		// width, so `Ship the parser fix` came out `Ship the parser f…` on a
-		// hundred-and-eighty-column row with sixty cells going spare.
+		// THE ROW NAMES THE TASK AND NOTHING ELSE. The node's model, its
+		// machine, its rung and its gate are on the SEAM over the box now —
+		// the same four cells the conversation's seam carries, with the same
+		// doors (roomseam.go) — so the row that used to carry `· task glm-5.2 ·
+		// via deepinfra` beside the name, and the ladder that gave those up
+		// under width, carries the name alone. One fact, one place.
 		//
-		// The ladder is three rungs and the last one is the one a cap tried to be:
-		//
-		//   ⠋ Ship the parser fix · task glm-5.2   both, while the row holds both
-		//   ⠋ Ship the parser fix                  the model gives way first
-		//   ⠋ Ship the parser f…                   and only then is the name cut
-		//
-		// THE MODEL IS DROPPED WHOLE RATHER THAN SHORTENED, because its lead word
-		// is part of the fact and not decoration: a bare `glm-5.2` in the one spot
-		// on this surface that has only ever held the CONVERSATION's model is the
-		// exact misreading [roomModelLead] exists to prevent. And a dropped model
-		// takes its press target with it — the press acts on what the row NAMES,
-		// so a segment that is not drawn is not a door.
-		//
-		// AND THE NODE'S OWN MACHINE RIDES ITS OWN MODEL (lanes.go's
-		// [app.roomLaneRider]), which makes the ladder four rungs:
-		//
-		//   ⠋ Ship the parser fix · task glm-5.2 · via deepinfra
-		//   ⠋ Ship the parser fix · task glm-5.2
-		//   ⠋ Ship the parser fix
-		//   ⠋ Ship the parser f…
-		//
-		// The rider gives way before the model for the reason the model gives way
-		// before the name: each rung is the least identifying fact left. It is the
-		// conversation's own rule said over a second subject — attribution rides
-		// the model it is about, and the rate stands at the right edge
-		// ([app.liveRiderAt]) — and it became possible only when a piece of news
-		// started naming which piece of work it was about, because until then the
-		// only sighting a room could reach was the conversation's.
-		word := a.roomModelWord()
-		fact, plain := "", ""
-		if word != "" {
-			plain = " · " + word
-			fact = plain + a.roomLaneRider()
-		}
+		// THE NAME IS WHOLE UNTIL THE LINE CANNOT HOLD IT, and then it is cut
+		// to what the row has, never below [roomChipFloor] — under that the
+		// cluster has stopped saying where you are and the ladder above has to
+		// find its cells somewhere else.
 		cluster := a.roomChip(0)
-		if width > 0 && ansi.StringWidth(cluster)+ansi.StringWidth(fact) > width {
-			fact = plain
-		}
-		if width > 0 && ansi.StringWidth(cluster)+ansi.StringWidth(fact) > width {
-			fact = ""
-			if ansi.StringWidth(cluster) > width {
-				// LAST RESORT. The name is cut to what the row has, and never below
-				// [roomChipFloor] — under that the cluster has stopped saying where
-				// you are and the ladder above has to find its cells somewhere else.
-				room := width
-				if room < roomChipFloor {
-					room = roomChipFloor
-				}
-				cluster = a.roomChip(room)
+		if width > 0 && ansi.StringWidth(cluster) > width {
+			room := width
+			if room < roomChipFloor {
+				room = roomChipFloor
 			}
+			cluster = a.roomChip(room)
 		}
-		if fact == "" {
-			return cluster, hudSpan{}
-		}
-		// The LEAD WORD AND THE MACHINE ARE PART OF THE TARGET, exactly as the
-		// served rider is part of the conversation's: "task glm-5.2 · via
-		// deepinfra" is one fact said in five words, and a person pressing any of
-		// them means the same thing (room.go's [roomModelLead]). So the span is
-		// the whole fact rather than the model's own cells, which is also what
-		// keeps it right when the ladder above has dropped the rider.
-		from := ansi.StringWidth(cluster + " · ")
-		cluster += fact
-		if !a.roomModelMovable() {
-			return cluster, hudSpan{}
-		}
-		return cluster, hudSpan{from: from, to: from + ansi.StringWidth(strings.TrimPrefix(fact, " · "))}
+		return cluster, hudSpan{}
 	}
 	name := a.sessionName()
 	if name == "" {
@@ -3498,9 +3443,7 @@ func (a *app) legend(width int) string {
 	// decides whether the door is drawn at all ([app.legendLine] says why it is
 	// not cleared down there).
 	a.homeDoor = hudSpan{}
-	if !a.roomOpen() {
-		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
-	}
+	a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 	right := a.legendRight(width)
 	// EACH RUNG IS BUILT ONCE, SPAN AND ALL. The left label and the columns its
 	// model segment occupies come out of the same call, because building the
@@ -3546,18 +3489,15 @@ func (a *app) legend(width int) string {
 			spanLift{span: dial, lift: a.paintEffortChip, on: a.effortSeamLit()},
 			spanLift{span: gate, lift: a.paintApprovalChip, on: a.approvalSeamLit()})
 	}
+	// IN A ROOM THE THREE SPANS ARE THE NODE'S DOORS (roomseam.go), recorded
+	// on the same bargain and pressed through the same three functions.
 	for _, attempt := range attempts {
-		seam, dial, gate = hudSpan{}, hudSpan{}, hudSpan{}
-		if !a.roomOpen() {
-			seam, dial, gate = attempt.span, attempt.dial, attempt.gate
-			a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = shiftIntoBorder(attempt.span), shiftIntoBorder(attempt.dial), shiftIntoBorder(attempt.gate)
-		}
+		seam, dial, gate = attempt.span, attempt.dial, attempt.gate
+		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = shiftIntoBorder(attempt.span), shiftIntoBorder(attempt.dial), shiftIntoBorder(attempt.gate)
 		if line, ok := a.legendLine(attempt.left, attempt.right, width, lift); ok {
 			return line
 		}
-		if !a.roomOpen() {
-			a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
-		}
+		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 	}
 	return a.rule(width)
 }
@@ -3722,17 +3662,21 @@ func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, hudSpan
 	// (room.go). The task's own title is on the status row two lines down, where
 	// a room renames the identity cluster ([app.identityParts]).
 	if a.roomOpen() {
-		// AND WHILE A HISTORY WALK IS ON IT SAYS WHAT ESC ACTUALLY DOES, which for
-		// those few keystrokes is not "main": the walk is dismissed first and the
-		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
-		// slot is here to promise the NEXT keystroke, so it has to move with it.
-		if a.recalling() {
-			return roomLegendRecallWord, hudSpan{}, hudSpan{}, hudSpan{}, true
-		}
 		if a.roomOrganized() {
 			return "", hudSpan{}, hudSpan{}, hudSpan{}, true
 		}
-		return roomLegendWord, hudSpan{}, hudSpan{}, hudSpan{}, true
+		if room < 1 {
+			return "", hudSpan{}, hudSpan{}, hudSpan{}, true
+		}
+		// THE WAY OUT LEADS, AND THE NODE'S OWN CELLS FOLLOW IT — its model,
+		// its rung and its gate, on the seam's own ladder (roomseam.go). While
+		// a history walk is on the lead says what esc actually does, which for
+		// those few keystrokes is not "main" (recall.go); the slot promises the
+		// NEXT keystroke, so it moves with it. Only the doors the node still
+		// has are recorded ([app.roomSeamDoors]).
+		cluster, model, rung, gate := a.roomSeamIdentity(room)
+		model, rung, gate = a.roomSeamDoors(model, rung)
+		return cluster, model, rung, gate, true
 	}
 	if room < 1 {
 		return "", hudSpan{}, hudSpan{}, hudSpan{}, true

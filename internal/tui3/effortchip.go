@@ -312,7 +312,16 @@ func (a *app) hoveringEffort() bool { return a.hot.kind == hoverEffort }
 // ([app.effortLit]), so a rung moved on a task or on home since takes the
 // emphasis off this chip on the same frame it lights that card — one answer on
 // the screen to "what just changed", which is what [effortMoved] is for.
-func (a *app) effortFlashing() bool { return a.effortFlashingIn(effortScopeConversation) }
+func (a *app) effortFlashing() bool { return a.effortFlashingIn(a.seamEffortScope()) }
+
+// seamEffortScope is whose rung the seam is drawing this frame: the node's
+// inside a room, the conversation's everywhere else (roomseam.go).
+func (a *app) seamEffortScope() string {
+	if a.roomOpen() {
+		return effortScopeRoom
+	}
+	return effortScopeConversation
+}
 
 // effortFlashingIn is that question for any scope the window records a move
 // on — the conversation's rung here, the draft's on a place (boxseam.go).

@@ -703,8 +703,9 @@ the phone's status sheet has the same row.
 
 The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ refuses`. The
 status line draws `YOLO` only while the gate is open **and** the legend has no cell — the
-welcome box, a task's page — because there a permanent badge is a badge nobody reads. A
-page has room for the whole answer, so it names the posture whichever it is.
+welcome box — because there a permanent badge is a badge nobody reads. Inside a task's page
+the legend carries the task's own cell, `◇ on its own`, and the badge stays off. A page has
+room for the whole answer, so it names the posture whichever it is.
 
 The cell, the badge and the line always agree, because all three read one posture. Walk
 it with `alt+y` and all three move on the keystroke; change "ask before running" in

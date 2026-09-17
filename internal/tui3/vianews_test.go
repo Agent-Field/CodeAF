@@ -125,8 +125,8 @@ func TestARoomSaysViaWhenTheVendorServesItsOwnModel(t *testing.T) {
 		Model: "z-ai/glm-5.2", Lane: "Z-AI", Role: lane.RoleLeafAttached,
 		Subject: nodeSubject(a, 9), At: a.now(),
 	})
-	if line := statusText(a); !strings.Contains(line, roomModelLead+"glm-5.2 · via z-ai") {
-		t.Fatalf("the room dropped its machine because the vendor served its own model:\n%q", line)
+	if seam := plain(a.legend(a.width)); !strings.Contains(seam, roomModelLead+"glm-5.2") || !strings.Contains(seam, "· via z-ai") {
+		t.Fatalf("the room dropped its machine because the vendor served its own model:\n%q", seam)
 	}
 }
 

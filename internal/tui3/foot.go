@@ -639,12 +639,20 @@ func seamSpans(head, model, rung, gate string) (hudSpan, hudSpan, hudSpan) {
 // conversation's model; a room's own door is on its status row
 // ([app.statusPress]).
 func (a *app) legendModelPress(x, y int) bool {
-	if a.copy.on || a.at(pageSettings) || a.pick.open || a.roomOpen() {
+	if a.copy.on || a.at(pageSettings) || a.pick.open {
 		return false
 	}
 	mark, ok := a.chromeAt(y)
 	if !ok || mark.kind != chromeLegend || !a.seamModelSpan.holds(x) {
 		return false
+	}
+	// IN A ROOM THE NAME IS THE NODE'S, so the picker it opens moves the node
+	// and touches neither the conversation nor any other task (room.go's
+	// [app.retargetTask]); the span is recorded only while the node can still
+	// be moved ([app.roomSeamDoors]).
+	if a.roomOpen() {
+		a.openTaskPicker(a.room.id)
+		return true
 	}
 	a.openPickerFromChip()
 	return true
@@ -661,12 +669,18 @@ func (a *app) legendModelPress(x, y int) bool {
 // resolved word read back, so the work goes to the loop rather than being run
 // under the pointer.
 func (a *app) legendEffortPress(x, y int) (tea.Cmd, bool) {
-	if a.copy.on || a.at(pageSettings) || a.pick.open || a.roomOpen() {
+	if a.copy.on || a.at(pageSettings) || a.pick.open {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)
 	if !ok || mark.kind != chromeLegend || !a.seamEffortSpan.holds(x) {
 		return nil, false
+	}
+	// IN A ROOM THE RUNG IS THE NODE'S, and the press is the room's own
+	// `ctrl+v` (taskeffort.go's [app.cycleTaskEffort]).
+	if a.roomOpen() {
+		a.cycleTaskEffort()
+		return nil, true
 	}
 	return a.cycleEffort(), true
 }

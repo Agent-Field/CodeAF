@@ -44,15 +44,15 @@ import (
 // manual and the owner all use; a chip that said `allow` would be a third
 // spelling of one fact.
 //
-// THE BADGE IS OFF THE STATUS ROW WHILE THE SEAM CARRIES THE CHIP. One fact
+// THE BADGE IS OFF THE STATUS ROW WHILE THE SEAM CARRIES A GATE CELL. One fact
 // spelled in two places on one frame is the defect the colon suffix made once
-// (effortchip.go), so while this cell is drawn the row says nothing. The seam
-// is not always there: the welcome box stands where the conversation will be,
-// and a task's room replaces the seam's left with the way out. On those frames
-// the old badge — `YOLO`, only when the gate is open — is back on the status
-// row ([app.approvalSegment]), because the welcome is exactly where a person
-// who typed `--yolo` reads whether it took, and a room is where the work the
-// gate governs is running. Two places, never at once.
+// (effortchip.go), so while a cell is drawn the row says nothing. Inside a
+// task's room the seam carries the NODE's cell — `◇ on its own`, a reading of
+// how a task runs (roomseam.go) — and the row is quiet there too. The seam is
+// not always there: the welcome box stands where the conversation will be,
+// and on that one frame the old badge — `YOLO`, only when the gate is open —
+// is back on the status row ([app.approvalSegment]), because the welcome is
+// exactly where a person who typed `--yolo` reads whether it took.
 //
 // ── THE WHEEL HAS THREE STOPS AND `deny` IS NOT ONE OF THEM ────────────────
 //
@@ -236,7 +236,13 @@ func (a *app) paintApprovalChip(text string) string {
 // seamCarriesChip reports whether the chip is on the seam this frame, which is
 // the whole of what decides whether the status row says the posture instead.
 func (a *app) seamCarriesChip() bool {
-	return !a.welcome.open && !a.roomOpen() && a.approvalChipText() != ""
+	if a.welcome.open {
+		return false
+	}
+	if a.roomOpen() {
+		return a.roomGateChip() != ""
+	}
+	return a.approvalChipText() != ""
 }
 
 // approvalSegment is the status row's own word for the gate, and it is the
@@ -257,6 +263,10 @@ func (a *app) approvalSegment() string {
 // approvalSeamLit reports whether the cell wears anything but the seam's own
 // tier this frame: the bad hue over an open gate, the flash, or the pointer.
 func (a *app) approvalSeamLit() bool {
+	// A room's cell is a reading and is furniture at every width.
+	if a.roomOpen() {
+		return false
+	}
 	return a.approvalOpen() || a.hoveringApproval() || a.approvalFlashing()
 }
 
@@ -273,6 +283,13 @@ func (a *app) approvalFlashing() bool {
 // by name — steps onto its first stop, so a press always lands somewhere a
 // press can reach again.
 func (a *app) cycleApproval() tea.Cmd {
+	// INSIDE A ROOM THE GATE ON SCREEN IS THE NODE'S, and a node has no wheel
+	// (roomseam.go): the chord says so rather than moving the conversation's
+	// gate behind a page that does not draw it.
+	if a.roomOpen() {
+		a.note(approvalRoomWord)
+		return nil
+	}
 	dial, ok := a.approvalDial()
 	if !ok {
 		a.noteApprovalUnavailable()

@@ -6569,26 +6569,11 @@ func (a *app) statusPress(x, y int) bool {
 	if width, _ := a.size(); layoutTier(width) == tierPhone {
 		return a.deckPress(x, mark.index)
 	}
-	// Index zero is the chip's row in both status layouts — the shared row, and
-	// the first of the two when the right edge wraps onto its own (render.go).
-	// OUT OF A ROOM THERE IS NO NAME ON THIS ROW AT ALL: the conversation's
-	// model is on the seam, and its door is [app.legendModelPress].
-	if !a.roomOpen() || mark.index != 0 || !a.modelSpan.holds(x) {
-		return false
-	}
-	// A ROOM POINTS THE SAME DOOR AT THE NODE THE ROW NAMES, and it does so
-	// through the span rather than through a second gesture: the segment in there
-	// is the task's model, so the picker it opens moves the task's model and
-	// nothing else. Which nodes may be moved at all is settled by the render, in
-	// the columns it recorded — a node past being moved has no span, so this never
-	// sees the press (render.go's [app.identityParts], room.go's
-	// [app.roomModelMovable]). One esc puts the door back on the conversation.
-	if a.roomOpen() {
-		a.openTaskPicker(a.room.id)
-		return true
-	}
-	a.openPicker()
-	return true
+	// THERE IS NO MODEL ON THIS ROW ANY MORE, in or out of a room: the
+	// conversation's is on the seam and so is the node's while a room is open
+	// (roomseam.go), and both doors are [app.legendModelPress]. What is left of
+	// the row's press is the ledger's table, already answered above.
+	return false
 }
 
 // selectTool moves the selection through the tool calls that are actually on

@@ -622,10 +622,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverJump}
 			}
 		case chromeLegend:
-			// THE MODEL'S NAME ON THE SEAM, out of a room (foot.go). The home door
-			// at the other end of the same line lights through its own reading
-			// (home.go's [app.hoverHomeDoor]).
-			if a.roomOpen() || a.copy.on || a.pick.open {
+			// THE MODEL'S NAME ON THE SEAM — the conversation's, or the node's
+			// inside a room (roomseam.go). The home door at the other end of the
+			// same line lights through its own reading (home.go's
+			// [app.hoverHomeDoor]).
+			if a.copy.on || a.pick.open {
 				return hoverAt{}
 			}
 			if a.seamModelSpan.holds(x) {
@@ -660,16 +661,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// The doors on this row, in the order [app.press] reads them (app.go):
-			// the ledger's table first (foot.go), then the room chip's model.
+			// The doors on this row are the ledger's table (foot.go); the node's
+			// model is on the seam now, with the conversation's (roomseam.go).
 			if door, ok := a.doorAt(x, mark.index); ok {
 				if door.kind == segKeeping && a.at(pageStanding) {
 					return hoverAt{}
 				}
 				return hoverAt{kind: doorHover(door.kind)}
-			}
-			if a.roomOpen() && mark.index == 0 && a.modelSpan.holds(x) {
-				return hoverAt{kind: hoverStatusModel}
 			}
 		}
 	}
