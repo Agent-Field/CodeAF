@@ -3,8 +3,8 @@ package session
 // The plan side of the bash belt (docs/design/plandb-cli/DESIGN.md, the
 // wiring section): the store the worker's `plandb` calls write, and the two
 // pulse points that make the graph and the store one thing. THE STORE IS THE
-// WORKER'S CLI's STORE and this file's store at once — one JSON file in the
-// session folder, found by both roads the same way (the runtime by path, the
+// WORKER'S CLI's STORE and this file's store at once — one SQLite database in
+// the session folder, found by both roads the same way (the runtime by path, the
 // CLI by walking up from its own working directory) — so a task the model
 // adds through bash is a task the runtime dispatches, and a node that lands
 // is a task the plan says is done.
@@ -12,9 +12,10 @@ package session
 // LOCK ORDER, stated once because everything here depends on it: a pulse may
 // hold the plan gate while taking the graph's mu (claimChild and admit take
 // it internally), and nothing may hold the graph's mu while asking for the
-// plan gate. The two pulse points — after a worker's bash call, after a node
-// lands — are called from code that holds neither, and the seed takes the
-// plan gate BEFORE admit takes the graph's mu, never inside it.
+// plan gate. Every pulse point — after a worker's bash call, at the end of its
+// turn, when a fan slot goes back, and after a node lands — is called from
+// code that holds neither, and the seed takes the plan gate BEFORE admit takes
+// the graph's mu, never inside it.
 
 import (
 	"context"
@@ -43,7 +44,7 @@ type planState struct {
 // planStoreFilename is the file name every road agrees on: the runtime's
 // path helper, the CLI's walk-up, and the store's own creation all spell it
 // the same way.
-const planStoreFilename = "plandb.json"
+const planStoreFilename = "plandb.db"
 
 // planRootID is the store's root task. The reference loop's supervisor seeds
 // a root named t-root; the store trims the prefix, so the stored id is the
@@ -166,6 +167,10 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 				}
 			}
 		}
+		// The seed's own handle is done once the brief is composed from it; a
+		// store opened per pass must be closed, or every pass would leave a
+		// database connection behind.
+		defer store.Close()
 		g.plan = &planState{path: path}
 		if err := g.plan.armShim(); err != nil {
 			// A plan whose shim never landed is still the run's plan — the
@@ -190,6 +195,7 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	// A NODE THE CHECKPOINT ALREADY NAMED: a resumed run's node knows its
 	// plan task, and its brief is re-composed from the store read rather than
 	// added again — adding would mint a second task for work one task already
@@ -223,7 +229,8 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 // open re-opens the store from disk. THE RE-OPEN IS THE POINT: a store
 // handle's memory is only as fresh as its last transaction, and the worker's
 // CLI is a separate process that has been writing since — every pass reads
-// the file, never a cached copy.
+// the store, never a cached copy. A nil answer is a pass with no plan; when
+// the answer is a store the caller closes it, because every pass opens one.
 func (p *planState) open() *plandb.Store {
 	store, err := plandb.Open(p.path, "", planRootID, "", "")
 	if err != nil {
@@ -250,10 +257,19 @@ func (g *TaskGraph) planNote(line string) {
 
 // planPulse is one pass: write settled nodes back to the store, dispatch
 // what became ready, and end the run's root when the whole tree has. It is
-// called from exactly two places — after a bash-belt worker's bash call, and
-// on every road a node lands by — and from nowhere else; there is no timer
-// and no polling, because a pass that reads a plan nobody has touched is
+// called from the four moments the plan can have moved and from nowhere else
+// — after a bash-belt worker's bash call, at the end of such a worker's turn,
+// when a fan slot goes back, and on every road a node lands by; there is no
+// timer and no polling, because a pass that reads a plan nobody has touched is
 // work the harness does for nothing.
+//
+// THE THREE MOMENTS BESIDE THE LANDING ARE THE THREE WAYS A TASK CAN BECOME
+// DELIVERABLE WITH NO BASH CALL IN FRONT OF IT: the store grew while the
+// worker that owns the parent was between calls, a worker's turn ended and the
+// pass after its last call had already run, and a proposal that came to
+// nothing handed a fan slot back. A ready task that waits for a pass that
+// never comes is not a delay: the run can end first, and its ending cancels
+// what nothing delivered.
 func (g *TaskGraph) planPulse() {
 	plan := g.planIfArmed()
 	if plan == nil {
@@ -265,6 +281,7 @@ func (g *TaskGraph) planPulse() {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	// THE SNAPSHOT: one short hold of the graph's lock to read what the
 	// nodes say, released before any store work.
 	snapshot := make(map[string]*planNodeSnapshot, len(g.nodes))
@@ -331,10 +348,10 @@ func (g *TaskGraph) planPulse() {
 	// graph's own door, with the store task claimed under its own id — the
 	// reference supervisor's trick, and what makes the worker's
 	// `plandb done --agent <id>` the ownership check. A fan-cap refusal or a
-	// missing parent leaves the task in the store for the next pass. The ids
-	// dispatched THIS pass are remembered, because the root-completion step
-	// below reads the same pass and must not cancel work it just handed out.
-	dispatched := map[string]bool{}
+	// missing parent leaves the task in the store for the next pass. Whether
+	// this pass handed ANY out is kept, because the root-completion step below
+	// reads the same pass and must not end a run a node was just admitted to.
+	handedOut := false
 	for _, task := range store.Tasks() {
 		if task.Composite || snapshot[task.ID] != nil {
 			continue
@@ -389,7 +406,7 @@ func (g *TaskGraph) planPulse() {
 		if _, err := store.Claim(task.ID, task.ID); err != nil {
 			g.planNote("dispatch claim failed for " + planStoreID(task.ID) + ": " + err.Error())
 		}
-		dispatched[task.ID] = true
+		handedOut = true
 	}
 
 	// ROOT COMPLETION: the run is over when the seeding node has landed and
@@ -404,8 +421,21 @@ func (g *TaskGraph) planPulse() {
 			return
 		}
 	}
+	// AND A PASS THAT HANDED WORK OUT IS NOT THE RUN'S END. Every reader below
+	// reads the snapshot taken at the top of this pass, so the nodes the
+	// dispatch above just admitted are invisible to it: left to the snapshot,
+	// this pass would cancel the ready tasks whose one remaining deliverer is
+	// the worker it just made — a leaf whose parent has no node YET is exactly
+	// what a fresh node is about to become — and complete a root whose tree is
+	// still growing. The pass's own two facts answer the question instead:
+	// nothing open in the snapshot, and nothing handed out here. The next pass
+	// is guaranteed, because a node this pass admitted lands, and every landing
+	// is a pass.
+	if handedOut {
+		return
+	}
 	for _, task := range store.Tasks() {
-		if task.ID == store.RootID() || terminalStoreStatus(task.Status) || snapshot[task.ID] != nil || dispatched[task.ID] {
+		if task.ID == store.RootID() || terminalStoreStatus(task.Status) || snapshot[task.ID] != nil {
 			continue
 		}
 		_, _ = store.Cancel(task.ID, "the run has ended and nothing will deliver this task")
@@ -446,6 +476,21 @@ func planSettleStoreTask(store *plandb.Store, task *plandb.Task, node *planNodeS
 			word = node.report
 		}
 		_, _ = store.Cancel(task.ID, word)
+	}
+}
+
+// planStopLandedChildren is the landing road's stop for a node that seeded or
+// drove a plan. A PLAN-BORN CHILD IS THE PLAN'S TO END, not the landing node's:
+// the pulse completes the run's root only once no plan-born node is open, so a
+// child cut here would be a child the run still expects — the orphan the
+// landing pulse was placed after stopChildren to avoid. Everything else stops
+// exactly as it did.
+func (g *TaskGraph) planStopLandedChildren(parent uint64) {
+	for _, kid := range g.children(parent) {
+		if kid.spec.planID != "" || kid.stateNow().settled() {
+			continue
+		}
+		_, _ = g.stop(kid.id)
 	}
 }
 
@@ -686,6 +731,7 @@ func (g *TaskGraph) planReviseThrough(planID, brief string) {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	if store.Task(planID) == nil {
 		return
 	}

@@ -227,8 +227,8 @@ func cliRefusal(p *cliParsed) (string, bool) {
 }
 
 // cliStore opens the run's store without being told where it is: --db, then
-// PLANDB_DB, then the first ancestor holding plandb.json or
-// .codeaf/plandb.json. One store per file; --project is accepted and checked
+// PLANDB_DB, then the first ancestor holding plandb.db or
+// .codeaf/plandb.db. One store per file; --project is accepted and checked
 // only when given.
 func cliStore(p *cliParsed) (*Store, error) {
 	path := p.vals["db"]
@@ -255,7 +255,7 @@ func cliStore(p *cliParsed) (*Store, error) {
 }
 
 // cliFindStore walks up from the current directory looking for the first
-// ancestor holding plandb.json or .codeaf/plandb.json — the same store the
+// ancestor holding plandb.db or .codeaf/plandb.db — the same store the
 // runtime derives for the run, found the same way from every worker's shell.
 func cliFindStore() string {
 	dir, err := os.Getwd()
@@ -263,7 +263,7 @@ func cliFindStore() string {
 		return ""
 	}
 	for {
-		for _, name := range []string{"plandb.json", filepath.Join(".codeaf", "plandb.json")} {
+		for _, name := range []string{"plandb.db", filepath.Join(".codeaf", "plandb.db")} {
 			candidate := filepath.Join(dir, name)
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 				return candidate
@@ -298,7 +298,7 @@ func cliInit(p *cliParsed) error {
 		if found := cliFindStore(); found != "" {
 			return fmt.Errorf("a plan store already exists at %s — this directory is already inside a run; point --db somewhere new to start another", found)
 		}
-		path = "plandb.json"
+		path = "plandb.db"
 	}
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("a plan store already exists at %s — point --db somewhere new to start another run", path)
