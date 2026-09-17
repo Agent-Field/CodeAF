@@ -639,7 +639,11 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	memory.prime()
 
 	options := tui3.Options{
-		Agent:     agent,
+		// The counting gate is here and not on the roads: a session this window
+		// only watches through its link is counted from the events it receives
+		// (telemetry_events.go), and hostOptions is the one place the surface's
+		// boot agent is assembled on all of them.
+		Agent:     countedAgent(agent),
 		Build:     welcome.Build,
 		Host:      dest,
 		Workspace: welcome.Workspace,
@@ -1274,7 +1278,7 @@ func runHostOnce(agent *remote.Agent, text string) error {
 	}, nil)
 	defer stopLeaving()
 
-	events, err := agent.Submit(ctx, text)
+	events, err := countedAgent(agent).Submit(ctx, text)
 	if err != nil {
 		return reported(err)
 	}
