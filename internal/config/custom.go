@@ -118,12 +118,14 @@ func ActiveConnection(profileDir string, sources modelsource.Set) (modelsource.C
 // service and handing itself to the default one: a silent misroute that only
 // fails at send.
 //
-// THE NAME IS THE ONLY THING THAT MOVES. The id is re-spelled under the new
-// prefix — the SAME model, spelled the new way — and nothing else about a row
-// is touched. A tier row that was never held stays never held: writing one
-// would convert an inherited tier into a pinned one. Only a row whose value
-// actually changes is written, so a profile that holds nothing under the old
-// name is left byte-identical.
+// THE NAME IS THE ONLY THING THAT MOVES, IN ONE WRITE. The id is re-spelled
+// under the new prefix — the SAME model, spelled the new way — and nothing else
+// about a row is touched; every re-prefixed value passes the tier gate
+// ([ValidateTierValue]) and the whole decision lands through one
+// [writeProfileValues], so a failure leaves the profile byte-identical. A tier
+// row that was never held stays never held: writing one would convert an
+// inherited tier into a pinned one. Only a row whose value actually changes is
+// written.
 //
 // Node pins (the plan and work model recorded on already-created tasks) and
 // journaled role bindings are historical records of what ran, and are not
@@ -133,21 +135,22 @@ func RenameConnectionModels(profileDir, oldWritten, newWritten string) (changed 
 	if oldWritten == "" || newWritten == "" || strings.EqualFold(oldWritten, newWritten) {
 		return nil, nil
 	}
-	// THE CREW'S TIER ROWS come first, because a run reads them on the way out
-	// the door ([crewRow], [TierSeatAt]). The `:<level>` suffix is a tier row's
-	// own notation and moves with the id it belongs to; the prefix is only the
-	// part before the first slash.
 	updates := make(map[string]any)
 	for _, tier := range ModelTiers {
 		key := tierKeyFor(tier)
 		value, held := persistedString(profileDir, key)
-		if !held || ReprefixModelID(value, oldWritten, newWritten) == value {
+		if !held {
 			continue
 		}
-		if err := writeTierModel(profileDir, tier, ReprefixModelID(value, oldWritten, newWritten)); err != nil {
-			return changed, fmt.Errorf("move tier row %s to %s: %w", key, newWritten, err)
+		trimmed := strings.TrimSpace(value)
+		next := ReprefixModelID(trimmed, oldWritten, newWritten)
+		if next == trimmed {
+			continue
 		}
-		changed = append(changed, key)
+		if err := ValidateTierValue(next); err != nil {
+			return nil, fmt.Errorf("move tier row %s to %s: %w", key, newWritten, err)
+		}
+		updates[key] = next
 	}
 	// THE FALLBACK CHAIN is a comma list of slugs, and a slug may carry a colon
 	// of its own, so the split is commas and nothing else (config's own parse
@@ -176,17 +179,16 @@ func RenameConnectionModels(profileDir, oldWritten, newWritten string) (changed 
 		}
 		updates[key] = ReprefixModelID(strings.TrimSpace(value), oldWritten, newWritten)
 	}
-	// THE REST LAND IN ONE WRITE, because they are one decision spelled in more
-	// than one row ([writeProfileValues]): separate writes would leave a window
-	// in which the fallback chain says one connection and the role pins
-	// another.
-	if err := writeProfileValues(profileDir, updates); err != nil {
-		return changed, fmt.Errorf("move stored models to %s: %w", newWritten, err)
-	}
-	// THE REPORT IS IN THE ORDER THE WRITES WENT OUT: the tier rows first,
-	// then the fallback chain, the role pins and the capability slots in the
-	// order [ModelSlots] renders them. A map has no order, and a caller
+	// THE REPORT IS THE ROWS THAT MOVED, in [ModelTiers] order for the tier
+	// rows and then the fallback chain, the role pins and the capability slots
+	// in the order [ModelSlots] renders them. A map has no order, and a caller
 	// refreshing what it shows should not learn one from the map.
+	for _, tier := range ModelTiers {
+		key := tierKeyFor(tier)
+		if _, ok := updates[key]; ok {
+			changed = append(changed, key)
+		}
+	}
 	for _, key := range []string{KeyModelFallbacks, KeyModelRoles} {
 		if _, ok := updates[key]; ok {
 			changed = append(changed, key)
@@ -200,6 +202,9 @@ func RenameConnectionModels(profileDir, oldWritten, newWritten string) (changed 
 		if _, ok := updates[key]; ok {
 			changed = append(changed, key)
 		}
+	}
+	if err := writeProfileValues(profileDir, updates); err != nil {
+		return nil, fmt.Errorf("move stored models to %s: %w", newWritten, err)
 	}
 	return changed, nil
 }

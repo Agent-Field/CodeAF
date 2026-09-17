@@ -100,6 +100,66 @@ func TestRenameConnectionMovesEveryStoredModelIdIncludingTheTierRows(t *testing.
 	}
 }
 
+// A RENAME THAT CANNOT LAND MOVES NOTHING: every re-prefixed value goes
+// through the tier gate before anything is written ([ValidateTierValue], the
+// gate [writeTierModel] applies), so a row whose value the rename would make
+// invalid fails the rename whole. The invalid suffix is seeded through
+// writeText — the raw row, the way a profile written before the gate existed
+// could carry it; a tier row before it in [ModelTiers] order holds a value the
+// rename would move, which is exactly the row the one-write law protects.
+func TestRenameConnectionWithAnInvalidTierValueLeavesEveryRowUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeText(dir, KeyTierLowModel, "homelab/b:low"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeText(dir, KeyTierHighModel, "homelab/a:mid"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeText(dir, KeyModelFallbacks, "homelab/a, openai/x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeModelRoles(dir, "planner:homelab/a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeText(dir, ModelSettingKey("image"), "homelab/img"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := readProfileConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := RenameConnectionModels(dir, "homelab", "lab")
+	if err == nil {
+		t.Fatal("a rename that produced an invalid tier value did not fail")
+	}
+	if changed != nil {
+		t.Fatalf("a failed rename reported rows moved: %v", changed)
+	}
+	after, err := readProfileConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("a failed rename rewrote the profile: %v -> %v", before, after)
+	}
+	if got := TierModelAt(dir, ModelTierLow); got != "homelab/b:low" {
+		t.Fatalf("the low tier moved before the failure: %q", got)
+	}
+	if got := TierModelAt(dir, ModelTierHigh); got != "homelab/a:mid" {
+		t.Fatalf("the high tier did not keep the value the rename refused: %q", got)
+	}
+	if got := ModelFallbacksAt(dir); got != "homelab/a, openai/x" {
+		t.Fatalf("the fallback chain moved before the failure: %q", got)
+	}
+	if got := ModelRolesAt(dir); got != "planner:homelab/a" {
+		t.Fatalf("the role pins moved before the failure: %q", got)
+	}
+	if got, _ := persistedString(dir, ModelSettingKey("image")); got != "homelab/img" {
+		t.Fatalf("the capability slot moved before the failure: %q", got)
+	}
+}
+
 func TestRenameConnectionTwiceIsANoOp(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeTierModel(dir, ModelTierLow, "homelab/a:high"); err != nil {
