@@ -28,6 +28,7 @@ type modelConnectStep uint8
 const (
 	modelConnectRegion modelConnectStep = iota
 	modelConnectAddress
+	modelConnectName
 	modelConnectKey
 )
 
@@ -39,6 +40,19 @@ type modelConnectDraft struct {
 	row    config.PersistedSource
 	step   modelConnectStep
 	sheet  bool
+	// entryID is the row the flow's answer boxes hang under, fixed at draft
+	// time. A custom connection that is still being minted has no persisted id
+	// of its own until the name answer lands, so the boxes cannot look the row
+	// up again mid-flow.
+	entryID string
+	// editing marks a draft that started from a row already in the profile, so
+	// the answers REWRITE that row: the id is kept, an empty key keeps the
+	// stored one, and a changed name is a rename the result carries.
+	editing bool
+	// renamedFrom is the Written name the row carried when the draft opened.
+	// A rename re-prefixes every already-picked model id, or the picker rows
+	// strand onto the default service under the old name.
+	renamedFrom string
 }
 
 func modelConnectionID(id string) string { return modelConnectionPrefix + strings.TrimSpace(id) }
@@ -165,7 +179,7 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	switch {
 	case source.ID == "ollama":
 		need = ""
-	case source.ID == "custom":
+	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
 		need = "region · key"
@@ -207,24 +221,38 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 		return nil
 	}
 	persisted := config.PersistedSource{ID: source.ID, Written: source.Written, Order: a.nextModelServiceOrder()}
+	editing := false
 	for _, existing := range config.PersistedSources(a.profileDir) {
 		if strings.EqualFold(existing.ID, source.ID) {
 			// A reconnect starts with the row that actually landed, so an automatic
 			// name such as z-ai-direct stays put instead of being suggested again.
+			// For a custom row the same match is what makes the flow an EDIT: the
+			// id is kept, the answers prefill, and a changed name is a rename.
 			persisted = existing
+			editing = true
 			break
 		}
 	}
-	draft := &modelConnectDraft{source: source, row: persisted, sheet: fromSheet}
+	draft := &modelConnectDraft{
+		source: source, row: persisted, sheet: fromSheet, entryID: row.ID,
+		editing: editing, renamedFrom: strings.TrimSpace(persisted.Written),
+	}
+	if !editing {
+		draft.renamedFrom = ""
+	}
 	a.modelDraft = draft
 	switch {
 	case len(source.Regions) > 0:
 		draft.step = modelConnectRegion
 		a.showModelEntry(newModelChoiceEntry(row.ID, source.Name, "region", regionChoices(source)), fromSheet)
 		return nil
-	case source.ID == "custom":
+	case modelsource.IsCustomID(source.ID):
 		draft.step = modelConnectAddress
-		a.showModelEntry(newModelEntry(row.ID, source.Name, "base URL", nil, false), fromSheet)
+		entry := newModelEntry(row.ID, source.Name, "base URL", nil, false)
+		if editing {
+			entry.box.setText(persisted.Address)
+		}
+		a.showModelEntry(entry, fromSheet)
 		return nil
 	case source.ID == "ollama":
 		return a.beginModelConnect(*draft)
@@ -270,6 +298,26 @@ func (a *app) nextModelServiceOrder() int {
 	return next
 }
 
+// startCustomAdd is the Providers tab's own door onto a NEW custom
+// connection. The panel's custom row doubles as the first instance's edit
+// door once one is connected, so the tab carries the add row that always
+// mints: the same PrepareCustomSource and ConnectService path, never a second
+// implementation of either.
+func (a *app) startCustomAdd(inSheet bool) tea.Cmd {
+	source, ok := a.modelSource(modelsource.CustomID)
+	if !ok {
+		return nil
+	}
+	id := "custom-add"
+	draft := &modelConnectDraft{
+		source: source, row: config.PersistedSource{Order: a.nextModelServiceOrder()},
+		sheet: inSheet, entryID: modelConnectionID(id), step: modelConnectAddress,
+	}
+	a.modelDraft = draft
+	a.showModelEntry(newModelEntry(modelConnectionID(id), source.Name, "base URL", nil, false), inSheet)
+	return nil
+}
+
 // modelEntryAnswer advances a region/address answer to the key box, or starts
 // the checked connection once the last answer has been supplied.
 func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
@@ -278,7 +326,7 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		return nil
 	}
 	answer := entry.value()
-	if answer == "" {
+	if answer == "" && draft.step != modelConnectName {
 		a.showModelEntry(entry, draft.sheet)
 		return nil
 	}
@@ -288,7 +336,7 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		// nothing left to validate or refuse here.
 		draft.row.Region = answer
 		draft.step = modelConnectKey
-		a.showModelEntry(newModelEntry(modelConnectionID(draft.source.ID), draft.source.Name, "key", nil, true), draft.sheet)
+		a.showModelEntry(newModelEntry(draft.entryID, draft.source.Name, "key", nil, true), draft.sheet)
 		return nil
 	case modelConnectAddress:
 		parsed, err := url.Parse(answer)
@@ -298,11 +346,45 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 			return nil
 		}
 		draft.row.Address = strings.TrimRight(answer, "/")
-		draft.row.Written = modelServiceSlug(parsed.Hostname())
+		draft.step = modelConnectName
+		// THE NAME IS ASKED, NOT ASSUMED. The default is the host's own slug,
+		// shared with config through modelsource.SourceSlug so every surface
+		// spells a host the same way; an edit starts from the name it already
+		// has, because changing it is a rename with consequences downstream.
+		name := modelsource.SourceSlug(parsed.Hostname())
+		if draft.editing && draft.renamedFrom != "" {
+			name = draft.renamedFrom
+		}
+		nameEntry := newModelEntry(draft.entryID, draft.source.Name, "name", nil, false)
+		nameEntry.box.setText(name)
+		a.showModelEntry(nameEntry, draft.sheet)
+		return nil
+	case modelConnectName:
+		// AN EMPTY ANSWER TAKES THE DEFAULT rather than stopping the flow: the
+		// box was opened pre-filled, so an empty field is a cleared name, and
+		// the host slug is the name the surface itself suggested.
+		if answer == "" {
+			answer = modelsource.SourceSlug(customDraftHost(draft.row.Address))
+		}
+		if draft.editing {
+			draft.row.Written = answer
+		} else {
+			// The instance id is minted HERE, on the shared path, so a second
+			// custom connection keeps the first: the first keeps the vendored id,
+			// later ones take custom-<slug> with a numeric tiebreak.
+			draft.row = config.PrepareCustomSource(a.profileDir, draft.row.Address, answer)
+		}
 		draft.step = modelConnectKey
-		a.showModelEntry(newModelEntry(modelConnectionID(draft.source.ID), draft.source.Name, "key", nil, true), draft.sheet)
+		a.showModelEntry(newModelEntry(draft.entryID, draft.source.Name, "key", nil, true), draft.sheet)
 		return nil
 	case modelConnectKey:
+		if answer == "" && draft.editing && (draft.row.Key != "" || draft.row.KeyEnv != "") {
+			// An edit that leaves the key box empty keeps the stored key: a
+			// rename or an address fix is not a reason to re-type a secret.
+			copy := *draft
+			a.modelDraft = nil
+			return a.beginModelConnect(copy)
+		}
 		if env, ok := modelKeyEnvironment(answer); ok {
 			draft.row.KeyEnv, draft.row.Key = env, ""
 		} else {
@@ -313,6 +395,16 @@ func (a *app) modelEntryAnswer(entry *keyEntry) tea.Cmd {
 		return a.beginModelConnect(copy)
 	}
 	return nil
+}
+
+// customDraftHost is the host of an address already stored on a draft, for
+// the name default when the person clears the box.
+func customDraftHost(address string) string {
+	parsed, err := url.Parse(strings.TrimSpace(address))
+	if err != nil || strings.TrimSpace(parsed.Hostname()) == "" {
+		return strings.TrimSpace(address)
+	}
+	return parsed.Hostname()
 }
 
 func modelKeyEnvironment(answer string) (string, bool) {
@@ -328,37 +420,13 @@ func modelKeyEnvironment(answer string) (string, bool) {
 	return word, true
 }
 
-func modelServiceSlug(host string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
-	parts := strings.Split(host, ".")
-	if len(parts) > 2 {
-		parts = parts[:len(parts)-1]
-		host = parts[len(parts)-1]
-	} else if len(parts) > 0 {
-		host = parts[0]
-	}
-	var out []rune
-	for _, r := range host {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			out = append(out, r)
-		case len(out) > 0 && out[len(out)-1] != '-':
-			out = append(out, '-')
-		}
-	}
-	word := strings.Trim(string(out), "-")
-	if word == "" {
-		return "custom"
-	}
-	return word
-}
-
 func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	dir := a.profileDir
+	instance := draft.row.ID
 	authors := modelAuthorSegments(a.defaultServiceModels())
 	refresh := a.serviceModelRefresh
 	return func() tea.Msg {
@@ -368,7 +436,10 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 			// Resolve the row back through config after ConnectService writes it.
 			// That is the one door which owns key and address precedence; rebuilding
 			// a Connected here would create a second, subtly different account door.
-			connected, found := config.ResolveSources(dir, "", "").ByID(draft.source.ID)
+			// THE ROW'S OWN ID is what resolves, never the template's: a minted
+			// custom instance persists under custom-<slug>, and looking the template
+			// id up would find the first instance or nothing at all.
+			connected, found := config.ResolveSources(dir, "", "").ByID(instance)
 			if found {
 				fixedDoorCatalog := len(outcome.Door.Models) > 0
 				if fixedDoorCatalog {
@@ -377,9 +448,9 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 						seed = append(seed, modelcatalog.Model{ID: model.ID})
 					}
 					_ = modelcatalog.Remember(modelcatalog.Options{
-						Source: draft.source.ID, BaseURL: connected.Address, Dir: dir,
+						Source: instance, BaseURL: connected.Address, Dir: dir,
 					}, seed)
-					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
+					_ = WriteModelCacheFor(instance, connected.Address, models)
 				} else if refresh != nil {
 					if refreshed, refreshErr := refresh(ctx, connected, models); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
@@ -390,21 +461,22 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 						seed = append(seed, modelcatalog.Model{ID: model.ID})
 					}
 					_ = modelcatalog.Remember(modelcatalog.Options{
-						Source: draft.source.ID, BaseURL: connected.Address, Dir: dir,
+						Source: instance, BaseURL: connected.Address, Dir: dir,
 					}, seed)
 					catalog, refreshErr := modelcatalog.Refresh(ctx, modelcatalog.Options{
-						Source: draft.source.ID, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
+						Source: instance, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
 					})
 					if refreshed := surfaceModels(catalog.ModelsNow()); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}
-					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
+					_ = WriteModelCacheFor(instance, connected.Address, models)
 				}
 			}
 		}
 		return modelConnectResultMsg{
-			service: draft.source.ID, name: draft.source.Name, written: draft.row.Written,
+			service: instance, name: draft.source.Name, written: draft.row.Written,
 			keyEnv: draft.row.KeyEnv, outcome: outcome, models: models, err: err,
+			renamedFrom: draft.renamedFrom,
 		}
 	}
 }
