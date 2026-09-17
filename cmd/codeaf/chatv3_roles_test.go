@@ -62,6 +62,9 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 	// EVERY CLASS IS WIRED, each to its own shipped model. The failure this holds
 	// shut is a class the door forgot: a role on it would resolve to the
 	// conversation's model, which is the mistake the reflex arm was added for.
+	// The mastermind's value may carry a level, and Resolve hands back the id
+	// alone — a colon in a model field is a request for a model nobody serves.
+	mastermind, _ := roles.SplitEffort(config.DefaultMastermindModel)
 	for _, c := range []struct {
 		role roles.Role
 		want string
@@ -69,10 +72,8 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 		{roles.RoleTitle, config.DefaultLowModel},
 		{roles.RoleWorker, config.DefaultWorkerModel},
 		{roles.RoleAuditor, config.DefaultHighModel},
-		// The mastermind's value carries a level, and Resolve hands back the id
-		// alone — a colon in a model field is a request for a model nobody serves.
-		{roles.RolePlanner, "z-ai/glm-5.3"},
-		{roles.RoleDesigner, "z-ai/glm-5.3"},
+		{roles.RolePlanner, mastermind},
+		{roles.RoleDesigner, mastermind},
 	} {
 		model, err := roles.Resolve(roles.Source(source), c.role, "vendor/conversation")
 		if err != nil || model != c.want {
