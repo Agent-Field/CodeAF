@@ -1747,3 +1747,28 @@ func TestAReRaisedLandingDrawsItsAnswerFate(t *testing.T) {
 		t.Fatalf("the unchanged reason is drawn beside the card that already says it:\n%s", out)
 	}
 }
+
+// A CARD WITH NO ASK REASON STILL SAYS WHO IS DECIDING (#1077's Opus review):
+// the done card draws the decider in its own chips, so the question repeating
+// the deciding clause alone beside it is a duplication, not news.
+func TestTheDecidingClauseAloneIsNotNews(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.entries = append(lab.a.entries,
+		entry{kind: entryTask, card: &taskCard{id: 9}},
+		entry{kind: entryDone, done: &taskDone{id: 9, status: session.TaskStatus{
+			Ask: session.TaskAsk{Owner: session.TaskAskOwnerModel},
+		}}},
+	)
+	lab.raise(session.Question{
+		ID: 9, Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 9, Name: "write the sheet"},
+		Head:    "write the sheet",
+		Reason:  session.LandingDecidingWord,
+		Options: []session.AnswerOption{
+			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
+		},
+	})
+	if out := lab.plain(); strings.Contains(out, "codeaf is deciding") {
+		t.Fatalf("the deciding clause alone is drawn beside the card that already says it:\n%s", out)
+	}
+}

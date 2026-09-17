@@ -454,9 +454,9 @@ func (n *TaskNode) spendMergeRoundCount() {
 // AND THE CLAIM IS WRITTEN DOWN, which is what lets a resume say the round was
 // cut rather than say nothing at all ([taskRecord.Resolving]). The checkpoint is
 // taken with the lock let go of, because [TaskGraph.checkpoint] takes it itself.
-func (n *TaskNode) claimResolving() bool {
+func (n *TaskNode) claimResolving() (uint64, bool) {
 	if n == nil || n.graph == nil {
-		return false
+		return 0, false
 	}
 	n.graph.mu.Lock()
 	if n.resolving || n.settling != "" {
@@ -466,20 +466,29 @@ func (n *TaskNode) claimResolving() bool {
 		// accept, refute or re-audit in flight — the same refusal the
 		// settle's own door gives the round.
 		n.graph.mu.Unlock()
-		return false
+		return 0, false
 	}
 	n.resolving = true
+	n.resolvingGen++
+	gen := n.resolvingGen
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
-	return true
+	return gen, true
 }
 
-func (n *TaskNode) releaseResolving() {
+func (n *TaskNode) releaseResolving(gen uint64) {
 	if n == nil || n.graph == nil {
 		return
 	}
+	// ONLY ITS OWN ROUND, by the same identity the settle's release keeps
+	// ([TaskNode.releaseSettle]): a round that released early and emitted
+	// (the failed-check road, the refused landing) re-raises the card, and a
+	// second round pressed on that card owns the flag now — the first round's
+	// deferred release must not hand the second one's guard back.
 	n.graph.mu.Lock()
-	n.resolving = false
+	if n.resolvingGen == gen {
+		n.resolving = false
+	}
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
 }
@@ -514,16 +523,17 @@ func (a *Agent) ResolveConflict(id uint64) error {
 	// question "is somebody already editing that working copy" has to be answered
 	// before anybody goes looking at the working copy, or two rounds race through
 	// the look and both start.
-	if !node.claimResolving() {
+	round, claimed := node.claimResolving()
+	if !claimed {
 		return fmt.Errorf("task %d is already being resolved — wait for that round to land", id)
 	}
 	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
-		node.releaseResolving()
+		node.releaseResolving(round)
 		return err
 	}
 	if _, ok := resolvableTree(tree); !ok {
-		node.releaseResolving()
+		node.releaseResolving(round)
 		return fmt.Errorf("task %d has no working copy to resolve in — its work is on %s, and merging it is yours to do",
 			id, strings.TrimSpace(tree.branch))
 	}
@@ -536,15 +546,15 @@ func (a *Agent) ResolveConflict(id uint64) error {
 	listed, err := a.jobs.startTask(node.id, "resolve · "+node.title(), cancel)
 	if err != nil {
 		cancel()
-		node.releaseResolving()
+		node.releaseResolving(round)
 		return fmt.Errorf("the merge round could not be started: %w — accept it or drop it instead", err)
 	}
 	report, changed, _, _ := node.leavings()
 	go func() {
 		defer cancel()
-		defer node.releaseResolving()
+		defer node.releaseResolving(round)
 		defer listed.settle(0)
-		a.landResolved(ctx, node, tree, changed, report, taskLog(listed))
+		a.landResolved(ctx, node, tree, changed, report, taskLog(listed), round)
 	}()
 	return nil
 }
@@ -571,23 +581,37 @@ func carryOnTheirWord(tree taskTree) taskTree {
 // nothing new to say — the card already names the files — and a second card
 // saying the same thing in the same words is the noise the design's one-question
 // law exists against.
-func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report string, log io.Writer) {
+func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report string, log io.Writer, round uint64) {
 	// THE PERSON'S OWN UNTRACKED COPIES ARE NOT A MERGE ROUND'S PROBLEM, and a
 	// round spent on them is a worker and a model call spent on nothing: the round
 	// merges the person's BRANCH into the task's, and a file git is not watching
 	// is on no branch at all. So this road goes straight to the carry, on the word
 	// the person just gave by pressing it (groundcarry.go).
 	if node.groundHeldNow() {
-		a.landCarried(node, tree, changed, report, log)
+		a.landCarried(node, tree, changed, report, log, round)
 		return
 	}
 	outcome, ran := a.spendMergeRound(ctx, node, tree, changed, log)
 	if !ran || !outcome.resolved || ctx.Err() != nil {
+		// THE ROUND THAT NEVER PRODUCED A VERDICT STILL OWES THE NODE ITS WORD
+		// BACK (#1077): a resolver that would not run, a merge that would not
+		// open, a round somebody killed — every notice during the flight was
+		// held down by [TaskNotice.Settling], and the answer already closed the
+		// card, so silence here is the question swallowed until some unrelated
+		// node move. Release before the notice is built, the same bargain every
+		// failed road below keeps.
+		node.releaseResolving(round)
+		a.emitTaskUpdate(node.notice())
 		return
 	}
 	tree = outcome.tree
 	verdict := a.auditNode(ctx, node, tree, outcome.changed, "", log)
 	if ctx.Err() != nil {
+		// THE KILLED AUDIT OF A ROUND IS THE SAME DEBT, paid the same way: the
+		// node is still unverified, and the person's `resolve it` has just
+		// spent a round with no word back unless this emits.
+		node.releaseResolving(round)
+		a.emitTaskUpdate(node.notice())
 		return
 	}
 	if !verdict.verified {
@@ -597,7 +621,7 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 		// comes before the notice is built: a notice carrying the round's claim
 		// would suppress the very raise this emit exists to make
 		// (task_landing_question.go's [Agent.publishLandingQuestion]).
-		node.releaseResolving()
+		node.releaseResolving(round)
 		a.emitTaskUpdate(node.notice())
 		return
 	}
@@ -609,12 +633,12 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 		// `resolve it`, which is the one word this needs.
 		fmt.Fprintf(log, "merge round: it is your own copies in the way, not the branch\n")
 		node.heldByYourFiles()
-		a.landCarried(node, outcome.tree, outcome.changed, report, log)
+		a.landCarried(node, outcome.tree, outcome.changed, report, log, round)
 		return
 	}
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "merge round: it still would not land — %s\n", detail)
-		node.releaseResolving()
+		node.releaseResolving(round)
 		a.emitTaskUpdate(node.notice())
 		return
 	}
@@ -638,7 +662,7 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 // put back to the byte before this returns, the branch is still kept, and the
 // card is still asking — which is the same bargain every other road out of
 // [taskTree.comeHome] keeps.
-func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, report string, log io.Writer) {
+func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, report string, log io.Writer, round uint64) {
 	landed, merge, detail, _ := landHome(node, carryOnTheirWord(tree), changed, a.signsGitWork())
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "resolve: your own copies could not be carried aside — %s\n", detail)
@@ -646,7 +670,7 @@ func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, rep
 		// RELEASED BEFORE THE NOTICE IS BUILT: the notice carries
 		// [TaskNotice.Settling] now, and one built while the round's claim is
 		// still held would suppress the very raise this emit exists to make.
-		node.releaseResolving()
+		node.releaseResolving(round)
 		a.emitTaskUpdate(node.notice())
 		return
 	}

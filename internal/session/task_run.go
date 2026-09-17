@@ -738,6 +738,15 @@ type TaskNode struct {
 	// ask while one is in flight is refused rather than run beside it.
 	mergeRounds int
 	resolving   bool
+	// resolvingGen and settleGen are the CLAIM'S IDENTITY, not its words: two
+	// accepts say the same thing ("your accept"), and a release that matches
+	// words cannot tell its own claim from a newer one's — the deferred
+	// release of the first would wipe the second’s guard mid-flight. Each
+	// claim takes the next number, and a release hands the claim back only
+	// when its own number is still the live one ([TaskNode.releaseSettle],
+	// [TaskNode.releaseResolving]).
+	resolvingGen uint64
+	settleGen     uint64
 	// offer is a finished harness page waiting on the person, held for exactly
 	// as long as its card is up so the checkpoint can carry it across a restart
 	// ([TaskNode.carryOffer], task_store.go's harnessOfferRecord). Nil on every
@@ -3201,7 +3210,7 @@ func (a *Agent) emitTaskPhase(notice TaskPhaseNotice) {
 //
 // what is the claim in PLAIN WORDS — "a re-audit", "your accept" — because it
 // is read back to whoever lost the race. [TaskNode.releaseSettle] hands it back.
-func (n *TaskNode) claimSettle(what string) error {
+func (n *TaskNode) claimSettle(what string) (uint64, error) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	if n.state != TaskUnverified {
@@ -3209,10 +3218,10 @@ func (n *TaskNode) claimSettle(what string) error {
 		// Losing the race here means the same thing it means at the door: the
 		// question is gone, and a surface holding a card about it needs to know
 		// that rather than to keep asking.
-		return settledAlready(n.id, n.state)
+		return 0, settledAlready(n.id, n.state)
 	}
 	if n.settling != "" {
-		return fmt.Errorf("task %d is already being resolved — %s is in flight — so wait for that to land rather than putting a second answer on top of it", n.id, n.settling)
+		return 0, fmt.Errorf("task %d is already being resolved — %s is in flight — so wait for that to land rather than putting a second answer on top of it", n.id, n.settling)
 	}
 	// THE OTHER CLAIM'S DOOR IS THE SAME DOOR. A merge round and a settle
 	// are both work in the node's own working copy ([TaskNode.claimResolving]),
@@ -3220,19 +3229,22 @@ func (n *TaskNode) claimSettle(what string) error {
 	// own field alone let a settle start under a round and then un-guard the
 	// round's door when it landed first.
 	if n.resolving {
-		return fmt.Errorf("task %d is already being resolved — a merge round is in flight — so wait for that to land rather than putting a second answer on top of it", n.id)
+		return 0, fmt.Errorf("task %d is already being resolved — a merge round is in flight — so wait for that to land rather than putting a second answer on top of it", n.id)
 	}
 	n.settling = what
-	return nil
+	n.settleGen++
+	return n.settleGen, nil
 }
 
-func (n *TaskNode) releaseSettle(what string) {
+func (n *TaskNode) releaseSettle(gen uint64) {
 	// ONLY ITS OWN CLAIM. The claim may already have been handed back by the
 	// resettle ([TaskGraph.resettle]), and a settle another window started in
 	// the gap owns the field now — wiping it would un-guard that window's
-	// working copy mid-flight, exactly what the claim exists to prevent.
+	// working copy mid-flight, exactly what the claim exists to prevent. The
+	// generation is the identity: words are shared between answers, numbers
+	// are not.
 	n.graph.mu.Lock()
-	if n.settling == what {
+	if n.settleGen == gen {
 		n.settling = ""
 	}
 	n.graph.mu.Unlock()

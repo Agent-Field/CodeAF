@@ -394,3 +394,23 @@ func TestTheTerminalNoticeRetiresTheFlightStamp(t *testing.T) {
 		t.Fatalf("the terminal card does not lead with the answer's fate: %q", terminal.Question.Reason)
 	}
 }
+
+// A STAMP FROM ANOTHER DAY SAYS ITS DAY (#1077's Opus review): `accepted
+// 18:20` on a card drawn the next morning reads as an hour ago, and the stamp
+// is the one place the card says when.
+func TestTheStampSaysItsDayWhenItIsNotToday(t *testing.T) {
+	today := time.Now()
+	stamp := landingAnsweredStamp(DecisionRecord{
+		Kind: QuestionLanding, Picked: []string{LandingYesKey},
+		By: DecidedByPerson, At: today.Add(-26 * time.Hour),
+	})
+	if !strings.Contains(stamp, today.Add(-26*time.Hour).Format("Jan 2")) {
+		t.Fatalf("a stamp from another day does not say its day: %q", stamp)
+	}
+	if landingAnsweredStamp(DecisionRecord{
+		Kind: QuestionLanding, Picked: []string{LandingYesKey},
+		By: DecidedByPerson, At: today,
+	}) != "accepted "+today.Format("15:04") {
+		t.Fatalf("a stamp from today says more than its hour")
+	}
+}

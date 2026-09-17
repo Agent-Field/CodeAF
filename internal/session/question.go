@@ -3039,15 +3039,19 @@ func landingReason(ask TaskAsk) string {
 		return reason
 	}
 	if reason == "" {
-		return landingDecidingWord
+		return LandingDecidingWord
 	}
-	return reason + " · " + landingDecidingWord
+	return reason + " · " + LandingDecidingWord
 }
 
 // landingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
 // word: a row reading `nobody could check it · auto` would have told a person
-// the name of a setting instead of who is deciding.
-const landingDecidingWord = "codeaf is deciding"
+// the name of a setting instead of who is deciding. It is exported for the one
+// surface that must recognize it (internal/tui3's
+// [app.questionReasonIsNews]): the done card already says who is deciding, so
+// the question repeating the clause alone beside it is a duplication, not
+// news.
+const LandingDecidingWord = "codeaf is deciding"
 
 // landingPolicy is [TaskAsk.Owner] as a [Policy], and it is the whole of this
 // wave's composition with the auto-settle floor.

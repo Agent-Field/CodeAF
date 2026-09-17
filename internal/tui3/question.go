@@ -1357,6 +1357,14 @@ func (a *app) questionReasonIsNews(q session.Question, reason string) bool {
 		e := &a.entries[i]
 		if e.kind == entryDone && e.done != nil && e.done.id == q.Subject.ID {
 			drawn := strings.TrimSpace(e.done.status.Ask.Reason)
+			// A CARD WITH NO ASK REASON STILL SAYS WHO IS DECIDING — the decider
+			// is drawn in the card's own chips, and [session.LandingDecidingWord]
+			// is that clause — so the question repeating the clause alone beside
+			// it is a duplication, not news. The clause with a reason after it IS
+			// news the card cannot have.
+			if drawn == "" {
+				return reason != session.LandingDecidingWord
+			}
 			return reason != drawn && !strings.HasPrefix(reason, drawn+" · ")
 		}
 	}

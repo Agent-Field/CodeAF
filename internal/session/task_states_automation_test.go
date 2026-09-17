@@ -355,7 +355,8 @@ func TestResolveConflictRefusesWithoutAWorktreeOrWhileARoundIsRunning(t *testing
 	}
 
 	// AND A ROUND ALREADY IN FLIGHT REFUSES THE SECOND ASK.
-	if !onABranch.claimResolving() {
+	round, ok := onABranch.claimResolving()
+	if !ok {
 		t.Fatal("a node with nothing in flight refused the claim")
 	}
 	err = agent.ResolveConflict(2)
@@ -365,7 +366,7 @@ func TestResolveConflictRefusesWithoutAWorktreeOrWhileARoundIsRunning(t *testing
 	if !strings.Contains(err.Error(), "already being resolved") {
 		t.Fatalf("the refusal does not say a round is running: %v", err)
 	}
-	onABranch.releaseResolving()
+	onABranch.releaseResolving(round)
 }
 
 // ── the one rerun ───────────────────────────────────────────────────────────
