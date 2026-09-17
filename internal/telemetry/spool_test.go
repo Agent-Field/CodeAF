@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -214,8 +215,10 @@ func TestFlushRespectsTheCallerDeadline(t *testing.T) {
 	}
 }
 
-func TestSpoolCapsAtOneThousandLinesDroppingTheOldest(t *testing.T) {
+func TestFlushCapsAtOneThousandLinesDroppingTheOldest(t *testing.T) {
 	testHome(t)
+	recorder := newRelay(t)
+	MarkNoticeShown()
 	if err := ensureDir(); err != nil {
 		t.Fatal(err)
 	}
@@ -231,12 +234,54 @@ func TestSpoolCapsAtOneThousandLinesDroppingTheOldest(t *testing.T) {
 	if err := os.WriteFile(spoolPath(), buf.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := SpoolSync(SessionStarted(ModeChat, false, "the-newest", freshClock(t))); err != nil {
+	// The cap lives in Flush now, so the 1005 spooled lines stay until one
+	// runs: cap then send, in that order.
+	if got := len(SpoolContents()); got != 1005 {
+		t.Fatalf("the spool holds %d lines before any flush, want 1005", got)
+	}
+	if err := Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.count(); got != 20 {
+		t.Fatalf("the relay saw %d posts, want 20 (the capped thousand, 50 at a time)", got)
+	}
+	if got := len(SpoolContents()); got != 0 {
+		t.Fatalf("after a flush against no relay the spool holds %d lines, want 0", got)
+	}
+}
+
+// TestFlushKeepsTheNewestThousandLines pins the cap's direction and order: when
+// the relay takes nothing, the thousand lines a flush leaves behind are the
+// newest thousand, not the oldest.
+func TestFlushKeepsTheNewestThousandLines(t *testing.T) {
+	testHome(t)
+	relay := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(relay.Close)
+	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", relay.URL)
+	MarkNoticeShown()
+	if err := ensureDir(); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	for i := 0; i < 1005; i++ {
+		line, err := jsonMarshal(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf.Write(line)
+		buf.WriteByte('\n')
+	}
+	if err := os.WriteFile(spoolPath(), buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Flush(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	contents := SpoolContents()
 	if len(contents) != MaxSpoolLines {
-		t.Fatalf("the spool holds %d lines, want %d", len(contents), MaxSpoolLines)
+		t.Fatalf("the spool holds %d lines after a failed flush, want %d", len(contents), MaxSpoolLines)
 	}
 	var oldest, newest map[string]any
 	if err := json.Unmarshal(contents[0], &oldest); err != nil {
@@ -245,11 +290,11 @@ func TestSpoolCapsAtOneThousandLinesDroppingTheOldest(t *testing.T) {
 	if err := json.Unmarshal(contents[len(contents)-1], &newest); err != nil {
 		t.Fatal(err)
 	}
-	if got := oldest["session_id_hash"]; got != hashHex("session-6") {
-		t.Errorf("the oldest kept line is session-6's, got the hash of %q", got)
+	if got := oldest["session_id_hash"]; got != hashHex("session-5") {
+		t.Errorf("the oldest kept line is session-5's, got the hash of %q", got)
 	}
-	if got := newest["session_id_hash"]; got != hashHex("the-newest") {
-		t.Errorf("the newest line is %v, want the-newest", got)
+	if got := newest["session_id_hash"]; got != hashHex("session-1004") {
+		t.Errorf("the newest line is %v, want session-1004's", got)
 	}
 }
 
@@ -300,6 +345,277 @@ func TestFlushDropsPropKeysAndEventNamesTheContractDoesNotAllow(t *testing.T) {
 	}
 	if left := len(SpoolContents()); left != 0 {
 		t.Errorf("%d lines remain after the flush, want 0", left)
+	}
+}
+
+// TestFlushPartialFailure pins the counted-confirmed-batches law: when the
+// relay accepts the first batch and refuses the second, only the first
+// batch's events are deleted, and everything unsent remains in the spool in
+// order. The old code marked every batch sent once any batch had gone out.
+func TestFlushPartialFailure(t *testing.T) {
+	testHome(t)
+	request := 0
+	var mu sync.Mutex
+	flaky := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		request++
+		n := request
+		mu.Unlock()
+		if n == 1 {
+			writer.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(flaky.Close)
+	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", flaky.URL)
+	MarkNoticeShown()
+	const total = 120 // three batches: 50 + 50 + 20
+	ids := make([]string, total)
+	for i := 0; i < total; i++ {
+		event := SessionStarted(ModeChat, false, fmt.Sprintf("session-%03d", i), freshClock(t))
+		ids[i] = event.ID
+		if err := SpoolSync(event); err != nil {
+			t.Fatalf("spooling event %d: %v", i, err)
+		}
+	}
+	if err := Flush(context.Background()); err != nil {
+		t.Fatalf("Flush must never fail a run: %v", err)
+	}
+	if request != 2 {
+		t.Fatalf("the relay saw %d requests, want 2 (the second refused, so the flush stopped)", request)
+	}
+	left := SpoolContents()
+	if len(left) != 70 {
+		t.Fatalf("%d lines remain, want 70 (50 + 20 unsent)", len(left))
+	}
+	// The survivors must be exactly the second and third batches' events,
+	// in the order they were spooled.
+	for i, raw := range left {
+		var row map[string]any
+		if err := json.Unmarshal(raw, &row); err != nil {
+			t.Fatal(err)
+		}
+		if row["event_id"] != ids[50+i] {
+			t.Errorf("remaining line %d is event %v, want %q (batch 2 onward, in order)", i, row["event_id"], ids[50+i])
+			break
+		}
+	}
+	// A retry against a healthy relay: the unsent 70 arrive, and only then
+	// is the spool empty.
+	healthy := newRelay(t)
+	if err := Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := healthy.count(); got != 2 {
+		t.Fatalf("the retry made %d posts, want 2 (50 + 20)", got)
+	}
+	if left := len(SpoolContents()); left != 0 {
+		t.Errorf("%d lines remain after the retry, want 0", left)
+	}
+}
+
+// TestSpoolConcurrent pins the in-process mutex: eight goroutines spooling
+// 400 events between them must leave 400 lines on disk — whole lines, not
+// interleaved fragments — and every event exactly once. It only means
+// something under -race, where the interleavings are shaken out.
+func TestSpoolConcurrent(t *testing.T) {
+	testHome(t)
+	const goroutines = 8
+	const perGoroutine = 50
+	var group sync.WaitGroup
+	group.Add(goroutines)
+	for worker := 0; worker < goroutines; worker++ {
+		go func(worker int) {
+			defer group.Done()
+			for i := 0; i < perGoroutine; i++ {
+				Spool(SessionStarted(ModeChat, false, fmt.Sprintf("session-%02d-%02d", worker, i), freshClock(t)))
+			}
+		}(worker)
+	}
+	group.Wait()
+	// Spool returns before its append runs; wait for the lines to land.
+	for deadline := time.Now().Add(10 * time.Second); len(SpoolContents()) != goroutines*perGoroutine; {
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d of %d events were spooled, the rest were lost", len(SpoolContents()), goroutines*perGoroutine)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	seen := map[string]bool{}
+	for _, raw := range SpoolContents() {
+		var row map[string]any
+		if err := json.Unmarshal(raw, &row); err != nil {
+			t.Fatalf("a concurrent append left a broken line: %v\n%s", err, raw)
+		}
+		id, _ := row["event_id"].(string)
+		if seen[id] {
+			t.Fatalf("event %s was spooled twice", id)
+		}
+		seen[id] = true
+	}
+	if len(seen) != goroutines*perGoroutine {
+		t.Fatalf("%d distinct events were spooled, want %d", len(seen), goroutines*perGoroutine)
+	}
+}
+
+// TestFlushRacesSpool pins the join: a flush holding the spool renamed away
+// while a concurrent Spool appends to it must lose nothing and duplicate
+// nothing — the spooler's lines land in spool.jsonl, not in the sending file
+// the flush is about to delete.
+func TestFlushRacesSpool(t *testing.T) {
+	testHome(t)
+	recorder := newRelay(t)
+	MarkNoticeShown()
+	// Warm the spool so the flush has lines to send while the spooler runs.
+	for i := 0; i < 30; i++ {
+		if err := SpoolSync(SessionStarted(ModeChat, false, fmt.Sprintf("warm-%d", i), freshClock(t))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := len(SpoolContents())
+	var group sync.WaitGroup
+	const spoolers = 4
+	const perSpooler = 25
+	group.Add(1)
+	go func() {
+		defer group.Done()
+		for i := 0; i < perSpooler; i++ {
+			Spool(SessionStarted(ModeChat, false, fmt.Sprintf("race-%02d", i), freshClock(t)))
+		}
+	}()
+	group.Add(1)
+	go func() {
+		defer group.Done()
+		_ = Flush(context.Background())
+	}()
+	group.Add(1)
+	go func() {
+		defer group.Done()
+		// A spooler that waits for the append to land, so the race is with a
+		// flush that may already hold the mutex.
+		for i := 0; i < perSpooler; i++ {
+			if err := SpoolSync(SessionStarted(ModeChat, false, fmt.Sprintf("sync-%02d", i), freshClock(t))); err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	// An extra spooler that starts while the flush may be mid-rename.
+	group.Add(spoolers)
+	for worker := 0; worker < spoolers; worker++ {
+		go func(worker int) {
+			defer group.Done()
+			for i := 0; i < 10; i++ {
+				Spool(SessionStarted(ModeChat, false, fmt.Sprintf("late-%d-%d", worker, i), freshClock(t)))
+			}
+		}(worker)
+	}
+	group.Wait()
+	// Wait out the fire-and-forget appends.
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		left := len(SpoolContents())
+		if left == 0 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	totalSent := 0
+	for i := range recorder.posts {
+		totalSent += len(recorder.posts[i].events)
+	}
+	// Nothing duplicated across the wire: one id, one arrival.
+	seen := map[string]bool{}
+	for i := range recorder.posts {
+		for _, event := range recorder.posts[i].events {
+			id, _ := event["event_id"].(string)
+			if id == "" {
+				continue
+			}
+			if seen[id] {
+				t.Errorf("event %s was sent twice: the flush duplicated it", id)
+			}
+			seen[id] = true
+		}
+	}
+	left := SpoolContents()
+	if got := totalSent + len(left); got != before+spoolers*10+perSpooler*2 {
+		t.Fatalf("%d events were sent (%d) plus left (%d), want %d — events were lost or duplicated at the join",
+			got, totalSent, len(left), before+spoolers*10+perSpooler*2)
+	}
+}
+
+// TestFlushAdoptsOrphanedSendingFiles pins the ten-minute rule: a stale
+// spool.sending.* file a dead process left behind is folded back into the
+// spool at the start of the next flush, and nothing is adopted twice.
+func TestFlushAdoptsOrphanedSendingFiles(t *testing.T) {
+	testHome(t)
+	MarkNoticeShown()
+	orphan := filepath.Join(telemetryDir(), "spool.sending.999999.deadbeef")
+	if err := os.MkdirAll(telemetryDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	orphanLines := make([]string, 3)
+	for i := range orphanLines {
+		event := SessionStarted(ModeChat, false, fmt.Sprintf("orphan-%d", i), freshClock(t))
+		line, err := jsonMarshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		orphanLines[i] = event.ID
+		if err := appendLines(orphan, []spoolEntry{{line: string(line)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A fresh sending file — written now — must NOT be adopted.
+	fresh := filepath.Join(telemetryDir(), "spool.sending.888888.cafe")
+	freshEvent := SessionStarted(ModeChat, false, "fresh-orphan", freshClock(t))
+	freshLine, err := jsonMarshal(freshEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := appendLines(fresh, []spoolEntry{{line: string(freshLine)}}); err != nil {
+		t.Fatal(err)
+	}
+	// Age the orphan past ten minutes by rewriting its mtime.
+	stale := time.Now().Add(-11 * time.Minute)
+	if err := os.Chtimes(orphan, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	// Spool something so the flush has a sending cycle at all.
+	if err := SpoolSync(SessionStarted(ModeChat, false, "live", freshClock(t))); err != nil {
+		t.Fatal(err)
+	}
+	if err := Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The live event was already in spool.jsonl before the flush, and
+	// adoption appends the orphan's lines to that same file, so the live
+	// line comes first and the three adopted lines follow it. The live
+	// flush sent nothing (no relay), so four lines remain.
+	left := SpoolContents()
+	if len(left) != 4 {
+		t.Fatalf("%d lines remain after adopting the orphan, want 4 (1 live, 3 adopted)", len(left))
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Errorf("the stale sending file was not removed: %v", err)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("a fresh sending file must never be adopted or removed: %v", err)
+	}
+	var liveRow map[string]any
+	if err := json.Unmarshal(left[0], &liveRow); err != nil {
+		t.Fatal(err)
+	}
+	if got := liveRow["session_id_hash"]; got != hashHex("live") {
+		t.Errorf("the first remaining line is the live event's, got the hash of %q", got)
+	}
+	for i := 0; i < 3; i++ {
+		var row map[string]any
+		if err := json.Unmarshal(left[i+1], &row); err != nil {
+			t.Fatal(err)
+		}
+		if row["event_id"] != orphanLines[i] {
+			t.Errorf("adopted line %d is %v, want %q", i, row["event_id"], orphanLines[i])
+		}
 	}
 }
 

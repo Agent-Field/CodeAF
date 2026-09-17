@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,32 @@ const (
 	MaxEventsPerPOST  = 50
 	MaxSpoolReadBytes = 1 << 20
 )
+
+// The sending-file protocol. A flush does not send from spool.jsonl: it
+// renames the spool to a process-unique spool.sending.<pid>.<random> first,
+// so two codeaf processes flushing at once each own a file and neither can
+// delete the other's unsent events. Whatever a flush cannot send it appends
+// back to spool.jsonl, one Write per line on an O_APPEND descriptor, and then
+// removes its sending file. A process that dies mid-flush leaves its sending
+// file behind, and the next flush to start more than ten minutes later — far
+// past any flush's one-second budget — adopts it by appending its lines back.
+const (
+	sendingNamePrefix = "spool.sending."
+	sendingGlob       = "spool.sending.*"
+	sendingStaleAfter = 10 * time.Minute
+)
+
+// persistSizeLimit is the one cheap guard persist keeps: past one megabyte of
+// spool on disk the oldest half is dropped, so a process that never flushes
+// still cannot grow the file without bound. Every other cap belongs to Flush.
+const persistSizeLimit = 1 << 20
+
+// spoolMu guards every in-process touch of the spool files: the append in
+// persist, the rename-and-send cycle in Flush, the read behind SpoolContents.
+// Several codeaf processes run at once, and the sending-file protocol above
+// is what keeps them apart; this mutex is what keeps one process's own
+// goroutines apart.
+var spoolMu sync.Mutex
 
 // noticeSeenPath is the marker that says the person has seen the notice. Until
 // it exists, nothing is sent: spooling is silent, flushing is a no-op.
@@ -64,6 +91,9 @@ func oneWarning(message string) {
 // work, and its one append runs on its own goroutine through guard.Go, the
 // repo's one door for fire-and-forget work. A failure here is silent.
 func Spool(event Event) {
+	if !enabledFor() {
+		return
+	}
 	line, err := jsonMarshal(event)
 	if err != nil {
 		return
@@ -75,6 +105,9 @@ func Spool(event Event) {
 // caller that must see the line on disk. It shares every law with Spool and is
 // not for the product's hot path.
 func SpoolSync(event Event) error {
+	if !enabledFor() {
+		return nil
+	}
 	line, err := jsonMarshal(event)
 	if err != nil {
 		return nil
@@ -83,35 +116,38 @@ func SpoolSync(event Event) error {
 }
 
 // persist appends one marshalled event line to the spool. The file is opened
-// per write: a spool of a handful of lines is a once-per-session append, and
-// an append that never holds a descriptor open can never leak one.
+// per write — an append that never holds a descriptor open can never leak one
+// — and it is never re-read or rewritten here: the thousand-line cap and the
+// seven-day drop belong to Flush, which owns the file while it sends. The one
+// rewrite persist may do is the size guard, and only past one megabyte.
 func persist(line []byte) error {
+	spoolMu.Lock()
+	defer spoolMu.Unlock()
 	if err := ensureDir(); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(spoolPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if _, err := file.Write(append(line, '\n')); err != nil {
-		return err
-	}
-	return truncateSpoolToCap()
-}
-
-// truncateSpoolToCap keeps the spool at the contract's line cap by dropping
-// the OLDEST lines — the front of the file — once it has grown past 1000.
-func truncateSpoolToCap() error {
 	path := spoolPath()
-	lines, err := readSpoolLines(path)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	if len(lines) <= MaxSpoolLines {
+	_, writeErr := file.Write(append(line, '\n'))
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Size() <= persistSizeLimit {
 		return nil
 	}
-	return rewriteSpool(path, lines[len(lines)-MaxSpoolLines:])
+	lines, err := readSpoolLines(path)
+	if err != nil || len(lines) < 2 {
+		return nil
+	}
+	return rewriteSpool(path, lines[len(lines)/2:])
 }
 
 // spoolEntry is one parsed line of the spool file, with the wire row it
@@ -128,7 +164,15 @@ type spoolEntry struct {
 // older than seven days are dropped, and a failure of any kind is silent.
 // The returned error is always nil; it exists so a future caller can log
 // without this package ever being able to fail a run.
+//
+// The spool is first renamed to a process-unique sending file, so a flush
+// owns the lines it is sending: another process appending to spool.jsonl
+// mid-flush cannot be deleted unsent, and this process's unsent lines are
+// appended back rather than rewritten around the other's.
 func Flush(ctx context.Context) error {
+	if !enabledFor() {
+		return nil
+	}
 	if !NoticeShown() {
 		return nil
 	}
@@ -136,73 +180,141 @@ func Flush(ctx context.Context) error {
 	if !hasDeadline {
 		deadline = time.Now().Add(time.Second)
 	}
+	spoolMu.Lock()
+	defer spoolMu.Unlock()
+	adoptStaleSendingFiles()
 	path := spoolPath()
-	lines, err := readSpoolLines(path)
-	if err != nil {
+	if !fileExists(path) {
+		// An empty spool is a no-op: no rename, so no sending file is left
+		// behind for a later flush to adopt.
 		return nil
 	}
-	kept := make([]spoolEntry, 0, len(lines))
-	var batches [][]spoolEntry
-	var batch []spoolEntry
-	dropped := false
-	for _, entry := range lines {
+	sending := sendingPath()
+	if err := os.Rename(path, sending); err != nil {
+		return nil
+	}
+	entries, err := readSpoolLines(sending)
+	if err != nil {
+		// The lines are safe where they are; a flush ten minutes on adopts
+		// them rather than losing them.
+		return nil
+	}
+	// The contract's caps, applied to the file this flush owns: age first,
+	// the event allowlist next, the thousand-line cap last so that when the
+	// cap bites it is the oldest lines that go.
+	var survivors []spoolEntry
+	for _, entry := range entries {
 		if entry.ageKnown && ageOf(entry.event.EventTime) > MaxEventAge {
-			dropped = true
 			continue
 		}
 		if !allowlistedEvents[entry.event.EventName] {
 			// An event name the contract does not define can never be sent
 			// validly, so it is discarded rather than posted or kept forever.
-			dropped = true
 			continue
 		}
-		kept = append(kept, entry)
-		batch = append(batch, entry)
-		if len(batch) == MaxEventsPerPOST {
-			batches = append(batches, batch)
-			batch = nil
+		survivors = append(survivors, entry)
+	}
+	if len(survivors) > MaxSpoolLines {
+		survivors = survivors[len(survivors)-MaxSpoolLines:]
+	}
+	var batches [][]spoolEntry
+	for start := 0; start < len(survivors); start += MaxEventsPerPOST {
+		end := start + MaxEventsPerPOST
+		if end > len(survivors) {
+			end = len(survivors)
 		}
+		batches = append(batches, survivors[start:end])
 	}
-	if len(batch) > 0 {
-		batches = append(batches, batch)
-	}
+	// sent marks, by index into survivors, the events whose batch the relay
+	// confirmed. Counting the confirmed batches here — never assuming the
+	// whole flush succeeded — is the whole law: a batch the relay refused
+	// leaves its events spooled for the next flush.
+	sent := make(map[int]bool)
+	offset := 0
 	for _, batch := range batches {
 		if !sendBatch(ctx, deadline, batch) {
 			// The deadline is hard: stop mid-batch, keep everything not yet
 			// confirmed sent, and say nothing.
 			break
 		}
-		dropped = true
+		for i := range batch {
+			sent[offset+i] = true
+		}
+		offset += len(batch)
 	}
-	if dropped {
-		_ = rewriteSpool(path, keptAfterSending(path, lines, kept, batches))
+	var kept []spoolEntry
+	for index, entry := range survivors {
+		if !sent[index] {
+			kept = append(kept, entry)
+		}
 	}
+	if len(kept) > 0 {
+		if err := appendLines(spoolPath(), kept); err != nil {
+			// The unsent lines are still in the sending file; leave it for a
+			// later flush to adopt rather than dropping them.
+			return nil
+		}
+	}
+	_ = os.Remove(sending)
 	return nil
 }
 
-// keptAfterSending removes the lines whose batches were confirmed sent. It is
-// a pure function of the original lines, the parsed survivors and the batches
-// that went out, so a flush that sent nothing still rewrites the file with the
-// age drops applied.
-func keptAfterSending(path string, lines []spoolEntry, kept []spoolEntry, batches [][]spoolEntry) []spoolEntry {
-	sent := map[int]bool{}
-	// Count forward: batch i is the i-th group of MaxEventsPerPOST survivors,
-	// which is exactly how the batches above were cut.
-	for i := range batches {
-		for j := range batches[i] {
-			sent[i*MaxEventsPerPOST+j] = true
+// sendingPath names the file this process flushes from: unique per process,
+// and unique per flush, so two flushes from one process cannot collide either.
+func sendingPath() string {
+	return filepath.Join(telemetryDir(), fmt.Sprintf("%s%d.%s", sendingNamePrefix, os.Getpid(), randomHex(8)))
+}
+
+// appendLines appends entries to the spool file, one Write per line, on a
+// descriptor opened with O_APPEND: two processes appending at once interleave
+// whole lines, never overwriting each other's.
+func appendLines(path string, entries []spoolEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if err := ensureDir(); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if _, err := file.Write([]byte(entry.line + "\n")); err != nil {
+			file.Close()
+			return err
 		}
 	}
-	if len(sent) == 0 {
-		return kept
+	return file.Close()
+}
+
+// adoptStaleSendingFiles appends back the lines of any spool.sending.* file
+// older than ten minutes — the sending file of a process that died mid-flush
+// — and removes it. Ten minutes is far past any flush's one-second budget, so
+// a live flush's file is never adopted out from under it.
+func adoptStaleSendingFiles() {
+	matches, err := filepath.Glob(filepath.Join(telemetryDir(), sendingGlob))
+	if err != nil {
+		return
 	}
-	var survivors []spoolEntry
-	for index, entry := range kept {
-		if !sent[index] {
-			survivors = append(survivors, entry)
+	cutoff := time.Now().Add(-sendingStaleAfter)
+	for _, orphan := range matches {
+		info, err := os.Stat(orphan)
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
 		}
+		entries, err := readSpoolLines(orphan)
+		if err != nil {
+			continue
+		}
+		if err := appendLines(spoolPath(), entries); err != nil {
+			continue
+		}
+		// Removed only after the lines are safely in the spool: a removal
+		// that raced ahead of the append would lose events, while a file left
+		// behind can only be adopted again.
+		_ = os.Remove(orphan)
 	}
-	return survivors
 }
 
 // sendBatch POSTs one batch. It answers true only when the relay answered
@@ -294,7 +406,9 @@ func readSpoolLines(path string) ([]spoolEntry, error) {
 	return entries, scanner.Err()
 }
 
-// rewriteSpool replaces the spool file with the given lines atomically.
+// rewriteSpool replaces the spool file with the given lines atomically. Only
+// the persist size guard reaches it; a flush never rewrites the spool, it
+// appends back.
 func rewriteSpool(path string, entries []spoolEntry) error {
 	if err := ensureDir(); err != nil {
 		return err
@@ -314,6 +428,8 @@ func rewriteSpool(path string, entries []spoolEntry) error {
 // SpoolContents returns the spooled events as raw JSON rows, oldest first, in
 // the order they would be sent. Show formats them for a person.
 func SpoolContents() []json.RawMessage {
+	spoolMu.Lock()
+	defer spoolMu.Unlock()
 	lines, err := readSpoolLines(spoolPath())
 	if err != nil {
 		return nil

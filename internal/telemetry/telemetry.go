@@ -15,6 +15,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,69 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
+
+// configuredOffOnce stores the config's one answer: true means the config
+// turns telemetry off. Configure is the single door for it, and the ladder
+// reads the stored value rather than a parameter. It is a plain variable
+// under the mutex — not a sync.Once — so a test process can walk every
+// rung of the ladder instead of being confined to the first.
+var (
+	configuredMu   sync.Mutex
+	configuredOff  bool
+	configuredOnce bool
+)
+
+// resetConfiguredForTest forgets the stored config answer, so one test
+// process can exercise more than the first ladder rung that touched it.
+func resetConfiguredForTest() {
+	configuredMu.Lock()
+	configuredOff = false
+	configuredOnce = false
+	configuredMu.Unlock()
+}
+
+// forcedOn is the test override: when true, enabledFor, Enabled and
+// OffReason answer as if the whole ladder had answered on, which is the only
+// way a test binary — always off via the go-test and unstamped-build rungs —
+// can exercise the write paths. Production never touches it.
+var forcedOn bool
+
+// forceLadderForTest sets the override and removes it at the test's end.
+func forceLadderForTest(t *testing.T, on bool) {
+	t.Helper()
+	previous := forcedOn
+	forcedOn = on
+	t.Cleanup(func() { forcedOn = previous })
+}
+
+// ladderReason folds the override into the ladder: a forced-on test bypasses
+// every off rung, exactly as a test exercising the write paths intends.
+func ladderReason() string {
+	if forcedOn {
+		return OnReason
+	}
+	off, _ := configured()
+	return offReason(off, underGoTest(), dirtyOrUnstampedBuild())
+}
+
+// configured reads the stored config answer; never configured reads as
+// false, which is the ladder's default rung.
+func configured() (off, set bool) {
+	configuredMu.Lock()
+	defer configuredMu.Unlock()
+	return configuredOff, configuredOnce
+}
+
+// Configure stores the config's telemetry answer once: true means the
+// config turns telemetry off. It is the caller's side of the opt-out
+// ladder, and it is what makes the package impossible to misuse — Spool,
+// SpoolSync and Flush are no-ops unless the full ladder answers on.
+func Configure(configTelemetryOff bool) {
+	configuredMu.Lock()
+	configuredOff = configTelemetryOff
+	configuredOnce = true
+	configuredMu.Unlock()
+}
 
 // DefaultEndpoint is the relay the contract names. CODEAF_TELEMETRY_ENDPOINT
 // moves it; set to empty it turns telemetry off entirely.
@@ -82,33 +146,38 @@ func offReason(configTelemetryOff, underTest, dirtyOrUnstamped bool) string {
 
 // dirtyOrUnstampedBuild reports whether this binary cannot name its own
 // source. A build without a stamped revision or carrying uncommitted edits has
-// no stable version to report, so it does not report at all.
+// no stable version to report, so it does not report at all. buildinfo owns
+// the build settings and answers Dirty straight; no display string is parsed.
 func dirtyOrUnstampedBuild() bool {
-	revision := buildinfo.Revision()
-	if revision == "" {
-		return true
-	}
-	// Identity spells a source with no slashes in it and falls back to
-	// "source/dirty/moment" when it has none; a dirty build is visible there
-	// without internal/buildinfo growing a second accessor.
-	return strings.Contains(buildinfo.Identity(), "/true/")
+	return buildinfo.Revision() == "" || buildinfo.Dirty()
 }
 
 // underGoTest reports whether this process is a test binary, where telemetry
 // is always off.
 func underGoTest() bool { return testing.Testing() }
 
-// Enabled reports whether telemetry would run, given the config value the
-// caller read (true means the config turns it off). Nothing is spooled or
-// sent when this answers false.
-func Enabled(configTelemetryOff bool) bool {
-	return OffReason(configTelemetryOff) == OnReason
-}
+// Enabled reports whether telemetry would run, reading the config answer
+// stored by Configure. Nothing is spooled or sent when this answers false.
+func Enabled() bool { return ladderReason() == OnReason }
 
 // OffReason is Enabled with the why, for a status command. It returns "" when
 // telemetry would run, otherwise one stable phrase naming the rung that
 // switched it off.
-func OffReason(configTelemetryOff bool) string {
+func OffReason() string { return ladderReason() }
+
+// enabledFor is the gate every public write path checks: the full ladder,
+// built from the stored config answer. When it answers false, Spool,
+// SpoolSync and Flush do nothing at all.
+func enabledFor() bool { return ladderReason() == OnReason }
+
+// enabledForConfig and offReasonForConfig are the bool-taking forms, kept
+// unexported for the tests that walk every rung of the ladder without
+// rebuilding the package.
+func enabledForConfig(configTelemetryOff bool) bool {
+	return offReasonForConfig(configTelemetryOff) == OnReason
+}
+
+func offReasonForConfig(configTelemetryOff bool) string {
 	return offReason(configTelemetryOff, underGoTest(), dirtyOrUnstampedBuild())
 }
 

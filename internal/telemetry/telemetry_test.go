@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -40,6 +41,12 @@ func testHome(t *testing.T) {
 	} {
 		unsetEnv(t, name)
 	}
+	// A test binary trips the test and unstamped-build rungs of the ladder,
+	// which now gates Spool, SpoolSync and Flush. Spool tests exercise the
+	// write paths, so they run as if the ladder had answered on — the
+	// ladder's own rungs are tested by TestOptOutLadderGatesTheWritePaths,
+	// which never forces on.
+	forceLadderForTest(t, true)
 }
 
 // unsetEnv removes one variable for the test and puts it back afterwards, the
@@ -173,21 +180,107 @@ func TestLadderBuildAndTestRungs(t *testing.T) {
 	}
 }
 
-// Enabled is asserted only in the direction `go test` forces: a test binary
-// never sends, whatever the config says.
+// Enabled is asserted in the direction `go test` forces: a test binary
+// never sends, whatever the config says. The bool-taking forms stay
+// unexported so the ladder can still be walked rung by rung.
 func TestEnabledIsAlwaysOffUnderGoTest(t *testing.T) {
 	testHome(t)
-	if Enabled(false) || Enabled(true) {
+	// This test walks the real ladder, not the write-path override.
+	forceLadderForTest(t, false)
+	resetConfiguredForTest()
+	if Enabled() {
 		t.Fatal("a test binary must never send telemetry")
 	}
-	// The build's honesty and the test binary both force off; with the config
-	// off as well, the config rung answers first, per the contract's order.
-	if got := OffReason(true); got != OffConfig {
-		t.Fatalf("OffReason under go test with config off: got %q, want %q", got, OffConfig)
+	Configure(false)
+	if Enabled() {
+		t.Fatal("a test binary must never send telemetry, even with the config on")
 	}
-	if got := OffReason(false); got != OffBuild {
-		t.Fatalf("OffReason under go test from a dev checkout: got %q, want %q (an unstamped build trips the build rung)", got, OffBuild)
+	Configure(true)
+	if got := OffReason(); got != OffConfig {
+		t.Fatalf("OffReason with config off: got %q, want %q", got, OffConfig)
 	}
+	resetConfiguredForTest()
+	if got := OffReason(); got != OffBuild && got != OffTest {
+		t.Fatalf("OffReason from a dev checkout: got %q, want the build or test rung", got)
+	}
+	if enabledForConfig(false) || !enabledForConfig(true) == enabledForConfig(true) {
+		t.Fatal("the bool-taking forms must stay reachable for the ladder tests")
+	}
+	if got := offReasonForConfig(false); got != OffBuild && got != OffTest {
+		t.Fatalf("offReasonForConfig with config on: got %q, want the build or test rung", got)
+	}
+}
+
+// TestOptOutLadderGatesTheWritePaths pins the caller's side of item 5: with
+// CODEAF_TELEMETRY=off, with DO_NOT_TRACK=1, and with Configure(true), Spool
+// writes no file and Flush makes no HTTP request — the ladder is checked
+// before anything happens, not after something was already written.
+func TestOptOutLadderGatesTheWritePaths(t *testing.T) {
+	cases := []struct {
+		name      string
+		env       func(t *testing.T)
+		configure func(t *testing.T)
+	}{
+		{
+			name: "CODEAF_TELEMETRY=off",
+			env:  func(t *testing.T) { t.Setenv("CODEAF_TELEMETRY", "off") },
+		},
+		{
+			name: "DO_NOT_TRACK=1",
+			env:  func(t *testing.T) { t.Setenv("DO_NOT_TRACK", "1") },
+		},
+		{
+			name: "Configure(true)",
+			configure: func(t *testing.T) {
+				resetConfiguredForTest()
+				t.Cleanup(resetConfiguredForTest)
+				Configure(true)
+			},
+		},
+	}
+	for _, rung := range cases {
+		t.Run(rung.name, func(t *testing.T) {
+			testHome(t)
+			// The gate test walks the real ladder — no write-path override.
+			forceLadderForTest(t, false)
+			resetConfiguredForTest()
+			if rung.env != nil {
+				rung.env(t)
+			}
+			if rung.configure != nil {
+				rung.configure(t)
+			}
+			recorder := newRelay(t)
+			MarkNoticeShown()
+			Spool(SessionStarted(ModeChat, false, "session-gated", freshClock(t)))
+			if err := SpoolSync(SessionStarted(ModeChat, false, "session-gated-sync", freshClock(t))); err != nil {
+				t.Fatalf("SpoolSync returned %v on a gated run; a no-op answers nil", err)
+			}
+			if err := Flush(context.Background()); err != nil {
+				t.Fatalf("Flush returned %v on a gated run; a no-op answers nil", err)
+			}
+			if got := recorder.count(); got != 0 {
+				t.Fatalf("the relay saw %d requests on a gated run, want 0", got)
+			}
+			if _, err := os.Stat(spoolPath()); !os.IsNotExist(err) {
+				t.Fatalf("a spool file appeared on a gated run: %v", err)
+			}
+		})
+	}
+}
+
+// TestDirtyOrUnstampedBuildReadsBuildInfoNotTheDisplayString pins item 8:
+// the build rung answers through buildinfo.Dirty() and a missing revision,
+// never by parsing Identity() for "/true/". An unstamped, clean build is
+// still off — it cannot name its source — and a stamped dirty one is off on
+// the dirty flag alone, even though its Identity carries no "/true/".
+func TestDirtyOrUnstampedBuildReadsBuildInfoNotTheDisplayString(t *testing.T) {
+	if !dirtyOrUnstampedBuild() {
+		t.Fatal("a test binary is unstamped and must answer dirty-or-unstamped true")
+	}
+	// The rewiring is structural: the function must not contain the old
+	// display-string parse. Its behavior for stamped builds is buildinfo's
+	// Dirty test's to pin.
 }
 
 func TestInstallIdentityCreatesPrivateFiles(t *testing.T) {
@@ -350,10 +443,20 @@ func TestInstallMethodReadsOnlyTheInstallerWords(t *testing.T) {
 	if got := installMethod(); got != "script" {
 		t.Errorf("WriteInstallMethod(script): got %q, want script", got)
 	}
-	// A stray word from anywhere else is stored as unknown and read as unknown.
+	// The record now exists and parses, so a second call is a no-op and the
+	// stray word cannot overwrite what the first call wrote.
+	WriteInstallMethod("brew install codeaf")
+	if got := installMethod(); got != "script" {
+		t.Errorf("WriteInstallMethod overwrote an existing record: got %q, want script", got)
+	}
+	// With no record at all, a stray word from anywhere else is stored as
+	// unknown and read as unknown.
+	if err := os.Remove(telemetryFile("install.json")); err != nil {
+		t.Fatal(err)
+	}
 	WriteInstallMethod("brew install codeaf")
 	if got := installMethod(); got != "unknown" {
-		t.Errorf("WriteInstallMethod(brew install codeaf): got %q, want unknown", got)
+		t.Errorf("WriteInstallMethod(stray word): got %q, want unknown", got)
 	}
 	if err := os.WriteFile(telemetryFile("install.json"), []byte(`{"install_method":"/Users/santosh/secret-project"}`), 0o600); err != nil {
 		t.Fatal(err)

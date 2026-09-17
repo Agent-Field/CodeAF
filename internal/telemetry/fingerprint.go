@@ -71,20 +71,37 @@ func FingerprintHere() string {
 	return Fingerprint(stackBytes(stack[:n]))
 }
 
+// mainPrefix is how the program's own entrypoint prints: cmd/codeaf's frames
+// carry no module path, so without this a crash at the top of the binary has
+// no codeaf frames at all and every such fault groups as one nameless blob.
+const mainPrefix = "main."
+
 // codeafFrames parses a printed stack and keeps the package-qualified function
-// names under ourModule, dropping everything else — including the file and
-// line halves of each stack line before they can reach the hash.
+// names under ourModule — plus the bare main frames — dropping everything
+// else, including the file and line halves of each stack line before they can
+// reach the hash.
 func codeafFrames(stack []byte) []string {
 	var names []string
 	for _, line := range strings.Split(string(stack), "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, ourModule) {
+		// The file:line half of a frame. In a -trimpath release build that
+		// half ALSO starts with the module path, so it must be dropped before
+		// the prefix is read, or the line numbers of the build enter the hash.
+		if strings.Contains(line, ".go:") {
 			continue
 		}
-		// "pkg.Func" or "pkg.Func.Shape.Method" or "pkg.Func-fm" — never the
-		// tab-indented file:line half, which never starts with the module.
-		// The argument list is dropped by balanced matching so a wide argument
-		// list cannot leave half an argument behind.
+		// "created by X in goroutine N" — provenance, not a frame the crash
+		// passed through; its file:line half was already dropped above.
+		if strings.HasPrefix(line, "created by") {
+			continue
+		}
+		if !strings.HasPrefix(line, ourModule) && !strings.HasPrefix(line, mainPrefix) {
+			continue
+		}
+		// "pkg.Func" or "pkg.Func.Shape.Method" or "pkg.Func-fm" — the
+		// argument list is dropped by balanced matching from the final ')'
+		// so a wide argument list cannot leave half an argument behind, and
+		// pointer values in it can never move the fingerprint.
 		names = append(names, cutArguments(line))
 		if len(names) == fingerprintFrames {
 			break
