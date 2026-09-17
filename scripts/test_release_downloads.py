@@ -364,7 +364,11 @@ class ScriptSourceTest(unittest.TestCase):
         )
         # Nothing outside the standard library is imported, so the script
         # runs anywhere python3 does, including the workflow runner.
-        self.assertLessEqual(imported, set(sys.stdlib_module_names))
+        # sys.stdlib_module_names exists from Python 3.10; on older interpreters
+        # the pinned import set above is the check that stands.
+        stdlib = getattr(sys, "stdlib_module_names", None)
+        if stdlib is not None:
+            self.assertLessEqual(imported, set(stdlib))
 
 
 class ChannelTest(unittest.TestCase):
