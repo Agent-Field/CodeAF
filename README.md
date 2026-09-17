@@ -197,9 +197,12 @@ any OpenAI-compatible endpoint.
 
 ## Model Pool
 
-The Model Pool index is mirrored on the `model-pool` branch at `pool/index.json`.
-[How to run your own relay](docs/design/model-pool/learn.pdf) explains the worker
-behind it.
+Installs that opt in send text-free scores of their crews to a relay, which
+publishes a signed index of seat quality; the crew picker reads it under
+`picked from = learn`. The index is mirrored on the `model-pool` branch at
+`pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
+the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
+that includes running your own.
 
 [![pool updated](https://img.shields.io/github/last-commit/Agent-Field/CodeAF/model-pool?label=pool%20updated)](https://github.com/Agent-Field/CodeAF/tree/model-pool)
 
