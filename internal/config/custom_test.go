@@ -228,6 +228,40 @@ func TestRenameConnectionLeavesAnUnrelatedProfileUntouched(t *testing.T) {
 	}
 }
 
+// A PADDED ROW THE RENAME DOES NOT MOVE IS A ROW IT DOES NOT REWRITE.
+// RenameConnectionModels trims a tier row's value to COMPARE it, so a stored
+// row with surrounding whitespace that does not carry the old name must come
+// back byte-identical and unreported — not rewritten to its trimmed spelling.
+// The seed goes through writeProfileValues, the one writer that does not
+// trim: writeTierModel and writeText both trim on the way in, so no test
+// seeding through them can produce the row this pins.
+func TestRenameConnectionLeavesAPaddedRowThatDoesNotCarryTheOldNameAlone(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeProfileValues(dir, map[string]any{
+		KeyTierHighModel:   "  openai/a  ",
+		KeyTierWorkerModel: "  homelab/b  ",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := RenameConnectionModels(dir, "homelab", "lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the row under the old name moved; the padded row under another
+	// connection's name is absent from the report.
+	if want := []string{KeyTierWorkerModel}; !reflect.DeepEqual(changed, want) {
+		t.Fatalf("the rename named the wrong keys: %v", changed)
+	}
+	if got, held := persistedString(dir, KeyTierHighModel); !held || got != "  openai/a  " {
+		t.Fatalf("the padded row on another connection was rewritten: %q", got)
+	}
+	// The row under the old name moved, and landed trimmed under the new one.
+	if got, _ := persistedString(dir, KeyTierWorkerModel); got != "lab/b" {
+		t.Fatalf("the padded row under the old name did not land trimmed under the new one: %q", got)
+	}
+}
+
 // ActiveConnectionFor is the pure half of the active-connection derivation:
 // the surfaces hand it the model THIS conversation runs ([app.model] in the
 // talk surface, the deferred target while a move waits out a working turn),
