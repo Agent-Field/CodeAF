@@ -308,8 +308,8 @@ func TestPlandbCliCoordinationVerbs(t *testing.T) {
 	cliWantCode(t, code, 0)
 	line := strings.TrimSpace(h.out.String())
 	insertedID := strings.TrimPrefix(line, "inserted ")
-	if !strings.HasPrefix(insertedID, "t-") || len(insertedID) < 6 {
-		t.Fatalf("insert shape %q", h.out.String())
+	if !strings.HasPrefix(insertedID, "t-") || len(insertedID) != 8 {
+		t.Fatalf("insert shape %q, want a t- id of six base-36 characters", h.out.String())
 	}
 	code = h.run("--db", h.db, "--json", "show", insertedID)
 	cliWantCode(t, code, 0)

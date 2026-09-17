@@ -1,6 +1,7 @@
 package plandb
 
 import (
+	cryptorand "crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -162,7 +163,7 @@ func (s *Store) RootID() string {
 // answer and the runtime's dispatch both rest on.
 //
 // THE ID IS THE CALLER'S. The runtime mints ids it can match to nodes; the
-// CLI mints short random ones — `t-` + four base-36 characters — and honours
+// CLI mints short random ones — `t-` + six base-36 characters — and honours
 // `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 	if len(specs) == 0 {
@@ -976,9 +977,10 @@ type BlockedCount struct {
 	Downstream int   `json:"downstream"`
 }
 
-// NextID mints one short id the store has never used: `t-` + four base-36
-// characters. Collision is retried, not mapped around — four characters is
-// 1.6 million spellings and a plan is bounded far below that.
+// NextID mints one short id the store has never used: `t-` + six base-36
+// characters, drawn from crypto/rand. Collision is retried, not mapped
+// around — six characters is over two billion spellings and a plan is bounded
+// far below that.
 func (s *Store) NextID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -986,14 +988,32 @@ func (s *Store) NextID() string {
 }
 
 func (s *Store) nextIDLocked() string {
-	alphabet := "0123456789abcdefghijklmnopqrstuvwxyz"
+	const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
 	for {
-		id := make([]byte, 4)
+		id := make([]byte, 6)
 		for i := range id {
-			id[i] = alphabet[rand.Intn(len(alphabet))]
+			id[i] = alphabet[randomIndex(len(alphabet))]
 		}
 		if s.data.Tasks[string(id)] == nil {
 			return string(id)
+		}
+	}
+}
+
+// randomIndex draws one index into an n-symbol alphabet from crypto/rand,
+// throwing away the byte values that would lean the draw toward the first
+// symbols. An id is public, so the draw must not be predictable from one run
+// to the next, which is why it is not math/rand.
+func randomIndex(n int) int {
+	limit := 256 - 256%n
+	var b [1]byte
+	for {
+		// crypto/rand.Read never fails on a supported platform; the store's
+		// ids are drawn from it and not from math/rand so two runs cannot be
+		// predicted from each other.
+		_, _ = cryptorand.Read(b[:])
+		if int(b[0]) < limit {
+			return int(b[0]) % n
 		}
 	}
 }
