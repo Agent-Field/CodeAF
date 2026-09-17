@@ -44,6 +44,10 @@ import (
 	"time"
 )
 
+// errNotModified is the sentinel a 304 answer returns. It is not a failure:
+// the cached copy is the answer, and Pull handles it before the fallback path.
+var errNotModified = errors.New("pull: not modified")
+
 const (
 	// MaxDoc is the largest document Pull will read. A document larger than
 	// this is refused rather than read to the end, because a source that answers
@@ -79,8 +83,8 @@ type Puller struct {
 	Keys     []ed25519.PublicKey
 	CacheDir string
 	TTL      time.Duration
-	Budget   time.Duration // 0 means DefaultBudget
-	Client   *http.Client  // nil means a client the package makes
+	Budget   time.Duration    // 0 means DefaultBudget
+	Client   *http.Client     // nil means a client the package makes
 	Now      func() time.Time // nil means time.Now
 }
 
@@ -143,6 +147,17 @@ func (p *Puller) Pull(ctx context.Context) (Result, error) {
 
 	doc, sig, etag, err := p.fetch(ctx, cached)
 	if err != nil {
+		// A 304 is not a failure: the cached copy is the answer. But a 304 with
+		// no cache is a source claiming not-modified for something we never
+		// had, which is a failure.
+		if errors.Is(err, errNotModified) && ok {
+			return Result{
+				Doc:       cached.doc,
+				Version:   cached.version,
+				FromCache: true,
+				Changed:   false,
+			}, nil
+		}
 		// EVERY FAILURE FALLS BACK. The cached good copy, if there is one, is
 		// returned with the error that says why the fresh one was refused. The
 		// cache is left exactly as it was.
@@ -266,11 +281,10 @@ func (p *Puller) fetchHTTP(ctx context.Context, cached cache) ([]byte, []byte, s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotModified {
-		// A 304 means the cached copy is still the source's current one. We
-		// answer with the cached bytes, signed by the cached signature, but
-		// the caller already has those; what it needs is a nil error so the
-		// good path runs. The signature is re-verified through cached.sig.
-		return cached.doc, cached.sig, cached.etag, nil
+		// A 304 means the cached copy is still the source's current one. The
+		// caller already has those bytes; the sentinel tells Pull to answer
+		// from the cache with a nil error.
+		return nil, nil, "", errNotModified
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, "", fmt.Errorf("pull: fetch: status %d", resp.StatusCode)
@@ -314,7 +328,7 @@ func (p *Puller) fetchFile(ctx context.Context) ([]byte, []byte, string, error) 
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("pull: read document: %w", err)
 	}
-	sig, err := readLimitedFile(p.sigLocation())
+	sig, err := readLimitedFile(stripFile(p.sigLocation()))
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("pull: read signature: %w", err)
 	}
