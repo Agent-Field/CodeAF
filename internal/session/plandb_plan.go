@@ -811,33 +811,29 @@ func (a *Agent) recordPlanSpend(used Usage, model string) {
 
 // planRunSpend answers the dollars the run's ledger holds in the store — the
 // per-project rollup under the root task's tag, which is every task's tag, so
-// the number is the run's whole bill and not one worker's share of it. The
-// second answer says whether the store held a charged row at all: a run that
-// has never been charged reads as no rollup, and the caller falls back to the
-// figure it already had rather than drawing a zero.
+// the number is the run's whole bill and not one worker's share of it. Zero
+// says the run has never been charged: no plan, a store that will not open, or
+// no row joined to the project — the caller renders nothing rather than a zero
+// somebody reads as a figure.
 //
 // The read takes the plan's gate and nothing else, the same order every pulse
 // takes, and opens the store fresh the way every pass does — the worker's CLI
 // has been writing since any cached copy was made.
-func (g *TaskGraph) planRunSpend() (float64, bool) {
+func (g *TaskGraph) planRunSpend() float64 {
 	plan := g.planIfArmed()
 	if plan == nil {
-		return 0, false
+		return 0
 	}
 	plan.mu.Lock()
 	defer plan.mu.Unlock()
 	store := plan.open()
 	if store == nil {
-		return 0, false
+		return 0
 	}
 	defer store.Close()
 	root := store.Task(planRootID)
 	if root == nil {
-		return 0, false
+		return 0
 	}
-	summary := store.Summary()
-	if total, ok := summary.ProjectSpend[root.Project]; ok {
-		return total.USD, true
-	}
-	return 0, false
+	return store.Summary().ProjectSpend[root.Project].USD
 }
