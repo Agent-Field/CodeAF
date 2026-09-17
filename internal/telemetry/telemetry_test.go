@@ -556,3 +556,117 @@ func TestNoTestBinaryCanReachTheProductionRelay(t *testing.T) {
 		t.Errorf("the remaining event is %v, want the one that was spooled", row["event_id"])
 	}
 }
+
+// TestNewRelayAfterTestHomeOverridesTheDeadLoopback pins the relay seam's
+// ordering: testHome leaves the endpoint at the dead loopback address, and a
+// relay started after it must replace that override — otherwise every
+// relay-using test would flush at a port nothing listens on and pass by
+// accident. The recorder receiving the event is the proof: a real round trip
+// happened, to this server and no other.
+func TestNewRelayAfterTestHomeOverridesTheDeadLoopback(t *testing.T) {
+	testHome(t)
+	if got := Endpoint(); got != "http://127.0.0.1:1/telemetry" {
+		t.Fatalf("after testHome the endpoint is %q, want the dead loopback it sets", got)
+	}
+	recorder := newRelay(t)
+	if override := os.Getenv("CODEAF_TELEMETRY_ENDPOINT"); override != Endpoint() {
+		t.Fatalf("after newRelay Endpoint() answers %q but the override is %q", Endpoint(), override)
+	}
+	MarkNoticeShown()
+	event := SessionStarted(ModeChat, false, "session-relay", freshClock(t))
+	if err := SpoolSync(event); err != nil {
+		t.Fatalf("SpoolSync returned %v; a spool that is sent answers nil", err)
+	}
+	if err := Flush(context.Background()); err != nil {
+		t.Fatalf("Flush returned %v; it must never fail a run", err)
+	}
+	if got := recorder.count(); got != 1 {
+		t.Fatalf("the relay saw %d posts after the override, want 1 — the flush must reach the relay newRelay started", got)
+	}
+	if len(recorder.posts[0].events) != 1 || recorder.posts[0].events[0]["event_id"] != event.ID {
+		t.Errorf("the relay received %v, want the one spooled event %q", recorder.posts[0].events, event.ID)
+	}
+	if left := len(SpoolContents()); left != 0 {
+		t.Errorf("%d lines remain after a confirmed send, want 0", left)
+	}
+}
+
+// TestFlushAgainstTheDefaultEndpointRefusesLikeADeadRelay pins the refusal as
+// Flush meets it, without the relay: with the endpoint left at the production
+// default, a flush holding one sendable event must behave exactly as it does
+// against a dead relay — nothing said, the event still spooled. Flush's nil
+// proves nothing on its own; the counter's zero is the assertion that carries.
+func TestFlushAgainstTheDefaultEndpointRefusesLikeADeadRelay(t *testing.T) {
+	testHome(t)
+	// testHome's dead loopback must not soften this: the refusal is about the
+	// default, so the override is removed and the default watched instead.
+	unsetEnv(t, "CODEAF_TELEMETRY_ENDPOINT")
+	if got := Endpoint(); got != DefaultEndpoint {
+		t.Fatalf("Endpoint() = %q, want the production default the refusal watches", got)
+	}
+	counter := &roundTripCounter{}
+	previous := httpClient
+	httpClient = &http.Client{Transport: counter}
+	t.Cleanup(func() { httpClient = previous })
+	MarkNoticeShown()
+	event := SessionStarted(ModeChat, false, "session-refused", freshClock(t))
+	if err := SpoolSync(event); err != nil {
+		t.Fatalf("SpoolSync returned %v; a spool that is never sent answers nil", err)
+	}
+	if err := Flush(context.Background()); err != nil {
+		t.Fatalf("Flush returned %v; a refused send must stay silent, as with a dead relay", err)
+	}
+	if trips := counter.count(); trips != 0 {
+		t.Fatalf("the send path made %d round trips against the default endpoint, want 0", trips)
+	}
+	left := SpoolContents()
+	if len(left) != 1 {
+		t.Fatalf("%d lines remain after the refusal, want the event still spooled", len(left))
+	}
+	var row map[string]any
+	if err := json.Unmarshal(left[0], &row); err != nil {
+		t.Fatal(err)
+	}
+	if row["event_id"] != event.ID {
+		t.Errorf("the remaining line is %v, want the spooled event %q", row["event_id"], event.ID)
+	}
+}
+
+// TestForcingTheLadderOnCannotReopenTheDefaultEndpointPath pins where the
+// refusal sits: below forceLadderForTest. testHome forces the ladder on for
+// every spool test, so a refusal the ladder could override would gate nothing
+// this package ever runs. The ladder is forced on again, explicitly, and the
+// flush must still make zero round trips and keep the event.
+func TestForcingTheLadderOnCannotReopenTheDefaultEndpointPath(t *testing.T) {
+	testHome(t)
+	forceLadderForTest(t, true)
+	unsetEnv(t, "CODEAF_TELEMETRY_ENDPOINT")
+	if got := Endpoint(); got != DefaultEndpoint {
+		t.Fatalf("Endpoint() = %q, want the production default", got)
+	}
+	counter := &roundTripCounter{}
+	previous := httpClient
+	httpClient = &http.Client{Transport: counter}
+	t.Cleanup(func() { httpClient = previous })
+	MarkNoticeShown()
+	event := SessionStarted(ModeChat, false, "session-forced-ladder", freshClock(t))
+	if err := SpoolSync(event); err != nil {
+		t.Fatalf("SpoolSync returned %v; a spool that is never sent answers nil", err)
+	}
+	if err := Flush(context.Background()); err != nil {
+		t.Fatalf("Flush returned %v; a refused send must stay silent", err)
+	}
+	if trips := counter.count(); trips != 0 {
+		t.Fatalf("with the ladder forced on the send path made %d round trips against the default endpoint, want 0", trips)
+	}
+	if left := len(SpoolContents()); left != 1 {
+		t.Fatalf("%d lines remain after the forced-ladder flush, want the event still spooled", left)
+	}
+	var row map[string]any
+	if err := json.Unmarshal(SpoolContents()[0], &row); err != nil {
+		t.Fatal(err)
+	}
+	if row["event_id"] != event.ID {
+		t.Errorf("the remaining line is %v, want the spooled event %q", row["event_id"], event.ID)
+	}
+}
