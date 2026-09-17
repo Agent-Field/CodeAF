@@ -454,6 +454,36 @@ type readerFunc struct {
 
 func (r readerFunc) Read(b []byte) (int, error) { return r.read(b) }
 
+// A document too large over http falls back to the cache.
+func TestTooLargeOverHTTPFallsBackToCache(t *testing.T) {
+	fs, srv := newFetchServer(t)
+	cacheDir := t.TempDir()
+	p := &Puller{
+		URL:      srv.URL + "/doc.json",
+		Keys:     []ed25519.PublicKey{fs.pub},
+		CacheDir: cacheDir,
+		TTL:      0,
+	}
+	if _, err := p.Pull(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// Serve a document that is one byte too large.
+	big := make([]byte, MaxDoc+1)
+	for i := range big {
+		big[i] = 'a'
+	}
+	fs.docBody = big
+	fs.sigBody = signDoc(t, fs.priv, big)
+	fs.modified = true
+	res, err := p.Pull(t.Context())
+	if err == nil {
+		t.Fatal("a too-large document returned no error")
+	}
+	if !res.FromCache {
+		t.Fatal("a too-large document did not fall back to cache")
+	}
+}
+
 // -----------------------------------------------------------------------------
 
 // A bad signature falls back to the cache.

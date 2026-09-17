@@ -244,7 +244,7 @@ func (p *Puller) client() *http.Client {
 	return &http.Client{}
 }
 
-// sigURL names the signature location: the URL or path with ".sig" appended to
+// sigLocation names the signature location: the URL or path with ".sig" appended to
 // its text. A URL gets ".sig" on the end of the URL; a path gets ".sig" on the
 // end of the path.
 func (p *Puller) sigLocation() string {
