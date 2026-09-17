@@ -2701,22 +2701,27 @@ func (a *Agent) mayBashBelt() bool {
 }
 
 // bashBeltFrame renders the per-step frame a bash-belt worker reads at each
-// step boundary — the step count against the node's step cap, the node's spend
-// so far, and one line of family news — or "" when there is nothing to say.
+// step boundary — the step count against the node's step cap and the steps it
+// has left, the node's spend so far, the fan-out slots still free, one line of
+// family news and one line of child news — or "" when there is nothing to say.
 // docs/design/bash-task-loop/DESIGN.md, "The per-step frame", is the shape's
 // authority and this is its whole mechanism: a rendering at the drain, and
 // nothing else.
 //
 // EVERY NUMBER IN IT IS ALREADY COUNTED. The steps are the node room's own
 // recorder count (task_live.go's [taskLive.steps]), which is the same unit the
-// runner's thresholds are counted in (task_child_run.go); the spend is
+// runner's thresholds are counted in (task_child_run.go), and the steps it has
+// left are that count subtracted from the cap the node named ([TaskNode.limits]
+// reads the same record the runner's checkpoint seam does); the spend is
 // [TaskNode.spend], the figure the runner already publishes at every step's
-// end ([childRun.tellSpend]); the family news is the owed-and-outstanding pair
-// the runner reads at [childRun.step]. The frame composes from those three and
-// invents no counter, no diff and no state of its own: a worker that is not on
-// the bash belt composes nothing, and a worker that is still gets nothing when
-// the facts behind it are zero, because [Agent.landNoteLocked] lands an empty
-// block as nothing at all.
+// end ([childRun.tellSpend]); the free slots are the fan cap [TaskGraph.claimChild]
+// enforces, counted the way that cap counts it; the family news is the
+// owed-and-outstanding pair the runner reads at [childRun.step]; and the child
+// news is this node's own children and where each stands, the graph's own
+// nodes. The frame composes from those and invents no counter, no diff and no
+// state of its own: a worker that is not on the bash belt composes nothing, and
+// a worker that is still gets nothing when the facts behind it are zero,
+// because [Agent.landNoteLocked] lands an empty block as nothing at all.
 //
 // THE LOCKS ARE TAKEN IN THE ORDER THE PACKAGE ALREADY USES, and this method
 // is built to be called OUTSIDE the agent's own lock. The spend is read before
@@ -2725,8 +2730,10 @@ func (a *Agent) mayBashBelt() bool {
 // graph's lock would be a second lock order in a package that has one — and
 // the family pair is read through [Agent.taskNewsStanding] because owed and
 // outstanding are one fact, and reading them as two is exactly what its law
-// refuses. The caller composes this before taking a.mu for the same reason in
-// the other direction: nothing under the graph's lock may run inside it.
+// refuses. The fan cap and the children are read under the graph's lock, the
+// same lock the cap is taken under and the same lock the children's own state
+// is kept under, and for the same reason the caller composes this before taking
+// a.mu: nothing under the graph's lock may run inside it.
 func (a *Agent) bashBeltFrame() string {
 	a.mu.Lock()
 	belt, graph, id := a.config.mayBashBelt(), a.config.tasker, a.config.taskID
@@ -2742,6 +2749,25 @@ func (a *Agent) bashBeltFrame() string {
 	node.graph.mu.Lock()
 	recorder := node.room.recorder()
 	maxSteps := thresholdOr(node.spec.maxSteps, taskMaxSteps)
+	// THE FAN CAP IS THE ONE [TaskGraph.claimChild] HOLDS TO, counted exactly the
+	// way that cap counts it: the slots this node is holding for proposals in
+	// flight, plus the admitted children that have taken their own. The count is
+	// taken here rather than through the cap because the cap answers the model a
+	// refusal and this only renders the room.
+	held := node.graph.claims[id]
+	kidsNew, kidsSettled := 0, 0
+	for _, kid := range node.graph.order {
+		child := node.graph.nodes[kid]
+		if child == nil || child.parent != id {
+			continue
+		}
+		held++
+		if child.state == TaskRunning || child.state == TaskQueued {
+			kidsNew++
+		} else {
+			kidsSettled++
+		}
+	}
 	node.graph.mu.Unlock()
 	// The tail is asked for as zero because the frame wants the count and not
 	// the narrative: the steps are the same number the room already shows
@@ -2753,16 +2779,29 @@ func (a *Agent) bashBeltFrame() string {
 	var lines []string
 	// ZERO RENDERS AS NOTHING, and the line is the room's own shape: the step
 	// count against the cap the node named ([TaskNode.limits] reads the same
-	// record the runner's checkpoint seam does), and the money in the same two
-	// decimals [taskRowText] draws, and never a $0.00 made up for a model that
-	// has published no price ([TaskNode.spend] says why that is a lie rather
-	// than a figure).
+	// record the runner's checkpoint seam does), the steps left in that cap, and
+	// the money in the same two decimals [taskRowText] draws, and never a $0.00
+	// made up for a model that has published no price ([TaskNode.spend] says why
+	// that is a lie rather than a figure). A node that has finished no call has
+	// no step to be on and draws nothing.
 	if steps > 0 {
 		stepLine := fmt.Sprintf("step %d/%d", steps, maxSteps)
 		if spend > 0 {
 			stepLine += " · $" + strconv.FormatFloat(spend, 'f', 2, 64) + " so far"
 		}
+		// AND THE STEPS LEFT ARE THE CAP MINUS THE COUNT, drawn only when there
+		// are any: a node at its last step has no step left to be told about.
+		if left := maxSteps - steps; left > 0 {
+			stepLine += fmt.Sprintf(" · %d steps left", left)
+		}
 		lines = append(lines, stepLine)
+	}
+	// AND THE FREE SLOTS ARE THE CAP MINUS WHAT IT HOLDS, drawn only for a node
+	// that has fanned out at all — the slots a node that never divided still
+	// holds are not news it has to be told — and drawn as nothing when none are
+	// left, the point at which [TaskGraph.claimChild] is the door that answers.
+	if free := taskFanLimit - held; held > 0 && free > 0 {
+		lines = append(lines, fmt.Sprintf("free slots: %d", free))
 	}
 	// AND THE FAMILY'S NEWS IS THE PAIR THE RUNNER'S OWN DRAIN READS
 	// (task_child_run.go). A report is in hand until the request about to go
@@ -2784,6 +2823,20 @@ func (a *Agent) bashBeltFrame() string {
 			family += "parts still working"
 		}
 		lines = append(lines, family)
+	}
+	// AND THE CHILD NEWS IS THIS NODE'S OWN CHILDREN AND WHERE EACH STANDS, read
+	// off the graph's nodes and nothing else: a child still running or queued is
+	// new, an ending of any kind has settled it. Each half is drawn only when it
+	// is not zero, and a node with no children draws no line at all.
+	if kidsNew > 0 || kidsSettled > 0 {
+		var parts []string
+		if kidsNew > 0 {
+			parts = append(parts, fmt.Sprintf("%d new", kidsNew))
+		}
+		if kidsSettled > 0 {
+			parts = append(parts, fmt.Sprintf("%d settled", kidsSettled))
+		}
+		lines = append(lines, "parts: "+strings.Join(parts, ", "))
 	}
 	return strings.Join(lines, "\n")
 }
