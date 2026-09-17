@@ -136,6 +136,37 @@ func TestWhatTheNodeDidNotWriteStaysInItsWorktree(t *testing.T) {
 	}
 }
 
+// THE PORCELAIN LINE IS READ FROM ITS COLUMNS, not trimmed off its front. A
+// status line for a modified-but-unstaged path begins with a space — ' M
+// a/b.go' — and a reader that trims the line first turns it into 'M a/b.go',
+// so the slice past the third column then cuts the path's own first
+// character: a/b.go read as b.go. The untracked form needs no trimming, so
+// only the staged-looking path ever lost its head, which is why the fault
+// survived: every line looked almost right.
+func TestLeftBehindReadsThePorcelainColumnsWhole(t *testing.T) {
+	repo := newTestRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "a"), 0o755); err != nil {
+		t.Fatalf("the directory for the modified path: %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "a", "b.go"), "first\n")
+	mustGit(t, repo, "add", "a/b.go")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed a/b.go")
+	writeFile(t, filepath.Join(repo, "a", "b.go"), "second\n")
+	writeFile(t, filepath.Join(repo, "c.go"), "untracked\n")
+
+	// The tree git status reads here is the ordinary shape the landing reads:
+	// one modified-not-staged line with the leading-space padding and one
+	// untracked line beside it.
+	status := gitOut(t, repo, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	if !strings.Contains(status, " M a/b.go") || !strings.Contains(status, "?? c.go") {
+		t.Fatalf("the fixture reads:\n%s, want a modified and an untracked path", status)
+	}
+	left := porcelainPaths(status)
+	if !containsString(left, "a/b.go") || !containsString(left, "c.go") {
+		t.Fatalf("porcelainPaths = %v, want a/b.go whole and c.go", left)
+	}
+}
+
 // A NODE THAT RESUMES STILL OWNS WHAT ITS FIRST ATTEMPT WROTE. Staging by name
 // means the list has to outlive the process that made it, so it rides in the
 // checkpoint and the second attempt starts holding it.

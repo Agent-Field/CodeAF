@@ -8682,22 +8682,7 @@ func leftBehind(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	var paths []string
-	for _, line := range nonEmptyLines(out) {
-		if len(line) < 4 {
-			continue
-		}
-		// The porcelain line is two status letters, a space, then the path; a
-		// rename carries both names and the one that exists now is the second.
-		path := strings.TrimSpace(line[3:])
-		if _, renamed, found := strings.Cut(path, " -> "); found {
-			path = renamed
-		}
-		if path = strings.Trim(path, `"`); path != "" {
-			paths = append(paths, path)
-		}
-	}
-	return paths
+	return porcelainPaths(out)
 }
 
 const leftBehindRecord = "left-behind.json"
