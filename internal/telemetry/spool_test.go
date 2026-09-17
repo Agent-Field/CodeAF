@@ -589,8 +589,10 @@ func TestFlushAdoptsOrphanedSendingFiles(t *testing.T) {
 	}
 	// The live event was already in spool.jsonl before the flush, and
 	// adoption appends the orphan's lines to that same file, so the live
-	// line comes first and the three adopted lines follow it. The live
-	// flush sent nothing (no relay), so four lines remain.
+	// line comes first and the three adopted lines follow it. The relay is
+	// unreachable — testHome points CODEAF_TELEMETRY_ENDPOINT at a dead
+	// loopback address — so every send fails, Flush stays silent, and all
+	// four lines are appended back: they remain spooled, in order.
 	left := SpoolContents()
 	if len(left) != 4 {
 		t.Fatalf("%d lines remain after adopting the orphan, want 4 (1 live, 3 adopted)", len(left))
