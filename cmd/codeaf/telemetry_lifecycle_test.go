@@ -215,13 +215,19 @@ func TestTelemetryModeIsReadFromTheCommandLine(t *testing.T) {
 
 // TestTelemetryVersionSpoolsNothingAndCreatesNoDirectory: a non-session
 // command emits nothing and sends nothing, not even the directory the spool
-// would live in.
+// would live in. The lifecycle is driven directly rather than through
+// execute(): the real command starts writers under the state root that
+// outlive the test, and the tally under test is the telemetry's alone.
 func TestTelemetryVersionSpoolsNothingAndCreatesNoDirectory(t *testing.T) {
 	telemetryLifecycleHome(t)
+	restore := telemetryArgs("version")
+	defer restore()
 
-	if code := telemetryFakeExecute("version"); code != 0 {
-		t.Fatalf("version exited %d", code)
+	session := telemetryBegin()
+	if session.mode != "" {
+		t.Fatalf("version was taken for a %q session", session.mode)
 	}
+	telemetryEnd(session, 0)
 	if rows := telemetrySpoolRows(t); len(rows) != 0 {
 		t.Fatalf("version spooled %v", telemetryEventNames(t, rows))
 	}
@@ -316,11 +322,3 @@ func TestTelemetryNoticeNeverPrintsUnderJSON(t *testing.T) {
 	}
 }
 
-// telemetryFakeExecute runs execute() in-process with os.Args pointed at the
-// given words. execute() returns a code and does not exit the process, which
-// is what makes this test cheap enough to run alongside the others.
-func telemetryFakeExecute(args ...string) int {
-	restore := telemetryArgs(args...)
-	defer restore()
-	return execute()
-}
