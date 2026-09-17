@@ -503,6 +503,31 @@ func (s *Store) AddDep(downstream, upstream string, kind DepKind) (*Task, error)
 	})
 }
 
+// RemoveDep removes one hard edge between two tasks — the insert verb's
+// rewire, which replaces a direct edge with a path through a new task. It is
+// a graph law like AddDep: the whole plan is asked after the edge is gone,
+// and readiness is recomputed, because lifting an edge can make the downstream
+// task runnable. Removing an edge that is not there is not an error: a rewire
+// asked twice is the same plan.
+func (s *Store) RemoveDep(downstream, upstream string) (*Task, error) {
+	return s.changeTask(downstream, func(next *state, task *Task, now time.Time) error {
+		kept := make([]Dependency, 0, len(task.Dependencies))
+		for _, dep := range task.Dependencies {
+			if dep.TaskID == upstream {
+				continue
+			}
+			kept = append(kept, dep)
+		}
+		task.Dependencies = kept
+		if err := validateGraphs(*next); err != nil {
+			return err
+		}
+		task.UpdatedAt = now
+		promote(next, now)
+		return nil
+	})
+}
+
 // AddNote leaves a task-scoped message. The note is public to every worker on
 // the run — the CLI's notes listing prints all of them — and the author is
 // recorded so a reader can tell an owner's handoff from a bystander's
@@ -842,28 +867,40 @@ func (s *Store) CriticalPath() []*Task {
 	return path
 }
 
-// Bottlenecks answers the unfinished tasks whose completion unlocks the most
-// downstream work, most first, bounded by the caller's limit.
+// Bottlenecks answers the unfinished tasks that hold up the most work right
+// now, most first, bounded by the caller's limit. The count is the tasks that
+// hard-depend on it DIRECTLY — the work one completion unblocks at once — not
+// the transitive reach: a task three removes downstream is not waiting on this
+// one, it is waiting on the task in between. A task nothing hard-depends on
+// holds up nothing and is left out, and equal counts order by descending id.
 func (s *Store) Bottlenecks(limit int) []BlockedCount {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if limit <= 0 || limit > 50 {
 		limit = 5
 	}
+	direct := map[string]int{}
+	for _, task := range s.data.Tasks {
+		for _, dep := range task.Dependencies {
+			if dep.Kind == DepSuggests {
+				continue
+			}
+			direct[dep.TaskID]++
+		}
+	}
 	var counts []BlockedCount
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
-		if task.ID == s.data.RootID || terminal(task.Status) {
+		if task.ID == s.data.RootID || terminal(task.Status) || direct[task.ID] == 0 {
 			continue
 		}
-		downstream := reachable(s.data, task.ID, false)
-		counts = append(counts, BlockedCount{Task: cloneTask(task), Downstream: len(downstream)})
+		counts = append(counts, BlockedCount{Task: cloneTask(task), Downstream: direct[task.ID]})
 	}
 	sort.SliceStable(counts, func(i, j int) bool {
 		if counts[i].Downstream != counts[j].Downstream {
 			return counts[i].Downstream > counts[j].Downstream
 		}
-		return counts[i].Task.ID < counts[j].Task.ID
+		return counts[i].Task.ID > counts[j].Task.ID
 	})
 	if len(counts) > limit {
 		counts = counts[:limit]
@@ -1496,34 +1533,6 @@ func oneOf(value string, allowed ...string) bool {
 		}
 	}
 	return false
-}
-
-// reachable answers the tasks that (hard-)depend on id, directly or through
-// others. blocked=true follows the dependents of a cancelled task; false
-// follows what becomes ready when it completes.
-func reachable(value state, id string, _ bool) []string {
-	var out []string
-	seen := map[string]bool{id: true}
-	queue := []string{id}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		for _, task := range value.Tasks {
-			if seen[task.ID] {
-				continue
-			}
-			for _, dep := range task.Dependencies {
-				if dep.Kind == DepSuggests || dep.TaskID != current {
-					continue
-				}
-				seen[task.ID] = true
-				out = append(out, task.ID)
-				queue = append(queue, task.ID)
-				break
-			}
-		}
-	}
-	return out
 }
 
 // searchTerms splits a query into lowercase words worth matching. Punctuation
