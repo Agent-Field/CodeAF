@@ -14,7 +14,7 @@ func TestTheClaimDoorsRefuseEachOther(t *testing.T) {
 	if node.claimResolving() {
 		t.Fatal("a round started over a settle in flight")
 	}
-	node.releaseSettle()
+	node.releaseSettle("your accept")
 	if !node.claimResolving() {
 		t.Fatal("a round could not claim a free node")
 	}
@@ -38,7 +38,7 @@ func TestTheNoticeNamesTheResolutionInFlight(t *testing.T) {
 	if got := node.notice().Settling; got != "your accept" {
 		t.Fatalf("the notice names %q, want the settle's own words", got)
 	}
-	node.releaseSettle()
+	node.releaseSettle("your accept")
 	if got := node.notice().Settling; got != "" {
 		t.Fatalf("a released settle still names %q", got)
 	}

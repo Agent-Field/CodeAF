@@ -142,11 +142,9 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 	// lanes are two tokens — `landing:7` and `conflict:7` — so a node that lands
 	// unchecked and is then refused a merge would otherwise leave the first
 	// question standing beside the second, which is two accounts of one node.
+	// The old shape's words are already off the book (the take-down above),
+	// so what is left to withdraw is the drawn card.
 	if standing != "" && standing != q.Kind {
-		token := strconv.FormatUint(notice.ID, 10)
-		a.mu.Lock()
-		delete(a.questionWords, questionToken(standing, token))
-		a.mu.Unlock()
 		stale := q
 		stale.Kind = standing
 		stale.Withdrawn = &Withdrawal{
@@ -234,47 +232,48 @@ func landingQuestionToken(kind QuestionKind, id uint64) string {
 // answer: the lane's own word for the key that was pressed, and the minute it
 // landed. `accepted 18:20` under `nobody could check it` is one card carrying
 // both halves — the half the twelve identical cards in #1077 never said.
+func landingAnsweredStamp(record DecisionRecord) string {
+	word := landingAnsweredWord(record)
+	stamp := word + " " + record.At.Format("15:04")
+	return landingAnsweredBy(record, stamp)
+}
+
+// landingAnsweredWord is the lane's own word for the key that was pressed.
 //
 // THE MAP IS THE LANE'S VOCABULARY AND NOTHING ELSE: the keys answers.go fixes
 // for a landing, each in the words the receipt lines beside it already use
 // (task_audit.go's acceptedLine and family), and a custom ask's own label as
-// the fallback. The decider leads only when it was not the person — `another
-// window accepted 18:20` — because your own answer needs no attribution and
-// somebody else's does.
-func landingAnsweredStamp(record DecisionRecord) string {
-	word := ""
+// the fallback.
+func landingAnsweredWord(record DecisionRecord) string {
 	for _, key := range record.Picked {
 		switch key {
 		case LandingYesKey:
-			word = "accepted"
 			if record.Kind == QuestionConflict {
-				word = "said resolve it"
+				return "said resolve it"
 			}
+			return "accepted"
 		case LandingNoKey:
-			word = "said not right"
+			return "said not right"
 		case LandingAgainKey:
-			word = "asked for a re-check"
+			return "asked for a re-check"
 		case LandingDecideKey:
-			word = "handed it to codeaf"
+			return "handed it to codeaf"
 		case LandingTakeBackKey:
-			word = "took it back"
-		}
-		if word != "" {
-			break
+			return "took it back"
 		}
 	}
-	if word == "" {
-		word = "answered"
-		if len(record.Labels) > 0 && strings.TrimSpace(record.Labels[0]) != "" {
-			word = "answered " + strings.TrimSpace(record.Labels[0])
-		}
+	if len(record.Labels) > 0 && strings.TrimSpace(record.Labels[0]) != "" {
+		return "answered " + strings.TrimSpace(record.Labels[0])
 	}
-	stamp := word + " " + record.At.Format("15:04")
-	// AND WHO ANSWERED, IN THE WORDS A PERSON READS — only when it was not
-	// this person. The record's own value is machinery vocabulary
-	// (answers.go's [DecidedBy]), and `window accepted 18:20` is a card a
-	// person reads; the lane's receipts already say these in plain words
-	// (`another window`, `the dial`), so the stamp says them the same way.
+	return "answered"
+}
+
+// landingAnsweredBy says who answered, in the words a person reads — only
+// when it was not this person. The record's own value is machinery vocabulary
+// (answers.go's [DecidedBy]), and `window accepted 18:20` is a card a person
+// reads; the lane's receipts already say these in plain words (`another
+// window`, `the dial`), so the stamp says them the same way.
+func landingAnsweredBy(record DecisionRecord, stamp string) string {
 	switch record.By {
 	case "", DecidedByPerson:
 		return stamp
