@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -282,5 +283,46 @@ func TestActiveConnectionForResolvesTheConversationModelThroughTheSet(t *testing
 	}
 	if _, ok := ActiveConnectionFor("", modelsource.NewSet()); ok {
 		t.Fatal("an empty set with a blank model answered active")
+	}
+}
+
+// A CONNECTION'S NAME IS ROUTING VOCABULARY, AND THE ROUTING IS THE SLASH:
+// nothing else about a name is special. Punctuation, non-ASCII letters and a
+// long name all persist as typed, and the model ids the connection qualifies
+// (Written + "/" + bare) cut back to the same connection and the same bare
+// model through Set.For — never onto the default service. A name that broke
+// here would strand every pick on it.
+func TestConnectionNamesWithPunctuationUnicodeAndLengthRouteBackToTheirConnection(t *testing.T) {
+	defaultService := modelsource.Connected{
+		Source: modelsource.DefaultSource("https://router.example/v1"),
+		Key:    "router-key", Address: "https://router.example/v1",
+	}
+	names := []string{
+		"my.box", "box:2", "me@home", "gpu%1", "münchen",
+		strings.Repeat("x", 64),
+	}
+	for _, name := range names {
+		row := PrepareCustomSource(t.TempDir(), "http://127.0.0.1:9000/v1", name)
+		if row.Written != name {
+			t.Fatalf("the name %q was kept as %q", name, row.Written)
+		}
+		if !modelsource.IsCustomID(row.ID) {
+			t.Fatalf("the name %q minted the id %q, which is not a custom connection id", name, row.ID)
+		}
+		connected := modelsource.Connected{
+			Source:  modelsource.Source{ID: row.ID, Written: row.Written, Address: row.Address},
+			Address: row.Address,
+		}
+		qualified := connected.Qualify("glm-5.3")
+		if qualified != name+"/glm-5.3" {
+			t.Fatalf("Qualify spelled %q instead of %q", qualified, name+"/glm-5.3")
+		}
+		service, bare := modelsource.NewSet(defaultService, connected).For(qualified)
+		if service.Source.ID != row.ID {
+			t.Fatalf("the id %q routed to %q, not to its own connection %q", qualified, service.Source.ID, row.ID)
+		}
+		if bare != "glm-5.3" {
+			t.Fatalf("the id %q stripped to %q instead of glm-5.3", qualified, bare)
+		}
 	}
 }
