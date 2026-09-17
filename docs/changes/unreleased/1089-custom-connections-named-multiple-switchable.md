@@ -1,6 +1,6 @@
 ---
 kind: added
-title: custom connections carry the person's own name, several sit beside each other, and the Providers tab edits and switches them
+title: custom connections are named, sit beside each other, and switch from the Providers tab
 pr: 1089
 surface: [chat, engine]
 invalidates:
