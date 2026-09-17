@@ -13,6 +13,22 @@ binding = "POOL"
 # The runbook fills this id: `cd relay && wrangler kv namespace create POOL`.
 id = "4b5cf70bed444ceb84a23ebf2be692e9"
 
+# Observability as set in the dashboard, kept here so a redeploy does not
+# silently change it. The Worker itself logs nothing; what these persist are
+# the platform's own invocation records (route, status, timing, request
+# metadata). Turn persistence off, or lower the sampling, for a relay that
+# should keep no record of who called it.
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
+
 [triggers]
 crons = ["17 * * * *"]
 

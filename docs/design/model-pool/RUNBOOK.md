@@ -56,6 +56,17 @@ key.
 10. Rotating the signing key: generate a new seed, add the new public key to the
     binary's trusted key list, then redeploy with the new secret.
 
+## Observability
+
+`wrangler.toml` carries the dashboard's observability settings (invocation
+logs and traces, persisted, sampled at 100%) so a redeploy keeps them. The
+Worker writes no log line of its own; what the platform persists is its
+invocation record: route, method, status, timing and request metadata, which
+includes the caller's network address and the `X-Codeaf-Install` header for
+the platform's retention period. That record is the one place a row can be
+tied to an address. A relay that should keep none sets `persist = false` or
+`head_sampling_rate = 0` in both blocks.
+
 ## Run your own relay
 
 Generate your own keypair with the same openssl lines as step 4, then
