@@ -105,7 +105,7 @@ func (c Config) mayAsk() bool { return true }
 // and in a node only when it was handed the conversation's graph and is not
 // standing on the floor of the tree ([Agent.mayProposeTask] is this asked of a
 // live agent, and task.go states the fan-out law it comes from).
-func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
+func (c Config) mayProposeTask() bool { return !c.InTask || (c.mayFanOut() && !c.bashBelt) }
 
 // mayQuickTask says whether `quick_task` belongs on this belt, and it is
 // [Config.mayProposeTask] and not a second reading of it (task_quick.go).
@@ -189,6 +189,15 @@ func (c Config) mayProposeSubharness() bool {
 	return c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
 }
 
+// mayBashBelt says whether this agent's belt is the experiment's bash belt
+// (bashbelt.go, docs/design/bash-task-loop/DESIGN.md): the one `bash` tool
+// plus the hands that cannot be a shell command. InTask is half of the
+// predicate so no road can hand the experiment to a conversation, and the
+// flag is asked ONLY here — the one-reading law every belt verb follows —
+// so the prompt and the belt cannot disagree about which belt a worker is
+// on.
+func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt }
+
 // ── the facts ───────────────────────────────────────────────────────────────
 
 // beltFact is one run of session-facts bullets that names a tool, together with
@@ -213,6 +222,12 @@ type beltFact struct {
 	// do from here, and what to do in its place. An empty string renders
 	// nothing, which is right where the absence needs no instruction.
 	absent string
+	// bashAbsent is the absent wording ON THE EXPERIMENT'S BELT (bashbelt.go),
+	// where a fact about handing work out reads differently: the worker's
+	// coordination goes through the plan CLI, not through these verbs. Empty
+	// falls back to [beltFact.absent], which is right for every fact whose
+	// absence means the same thing on both belts.
+	bashAbsent string
 }
 
 // beltFacts is the whole of it, in the order the section reads.
@@ -429,6 +444,10 @@ var handoffFacts = []beltFact{{
 		"can. Each landing comes to you as a note, and starts a turn if yours has ended,\n" +
 		"so fold them as they arrive. When nothing independent of what you handed out\n" +
 		"remains, end your turn. That is how you wait.",
+	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
+		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
+		"is given a worker of its own. What is yours alone you carry here, in the order\n" +
+		"that finishes it.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
@@ -585,6 +604,9 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 	lines := make([]string, 0, len(facts))
 	for _, fact := range facts {
 		text := fact.absent
+		if config.mayBashBelt() && fact.bashAbsent != "" {
+			text = fact.bashAbsent
+		}
 		if fact.holds(config) {
 			text = fact.present
 			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES

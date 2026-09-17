@@ -1264,6 +1264,19 @@ var OperatorEnvPins = []string{
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
+	// CODEAF_TASK_BELT builds a task worker on the bash belt instead of the
+	// pi-tool belt (internal/session's bashbelt.go,
+	// docs/design/bash-task-loop/DESIGN.md): the one `bash` tool plus the
+	// hands that cannot be a shell command, so both arms of the comparison
+	// run from one binary. It is plumbing for the reason CODEAF_SWARM and
+	// CODEAF_SPLITGATE are — it picks which belt an experiment runs, not
+	// something the product has an opinion about — and it shares their
+	// lifetime: it disappears when the experiment has won or lost, which is
+	// exactly the lifetime a persisted setting must not have. A row would
+	// also be wrong the way the exit-code hatch is: it would put every future
+	// task worker on an experiment's belt on a machine where the variable is
+	// nowhere in sight. Unset, every worker is where it was.
+	"CODEAF_TASK_BELT",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
