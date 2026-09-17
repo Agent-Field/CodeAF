@@ -378,7 +378,7 @@ var settingUI = map[string]settingMeta{
 	config.KeyCrewSource: {
 		tab: tabProviders, label: "model family", widget: widgetCycle,
 		about: "which models the crew word draws from: open weights, or the whole " +
-			"catalog with closed and frontier models in it. Open is the default.",
+			"catalog with closed and frontier models in it. All is the default.",
 	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
@@ -737,7 +737,7 @@ func init() {
 	// same row, the same write, the same live seam onto [app.switchModel] — only
 	// the word above the Models section changed.
 	crew := settingUI[config.KeyCrew]
-	crew.about = crewAbout(config.CrewSourceOpen)
+	crew.about = crewAbout(config.DefaultCrewSource)
 	settingUI[config.KeyCrew] = crew
 
 	talk := settingUI[config.ModelSettingKey(talkSlot)]
@@ -751,8 +751,8 @@ func init() {
 // with its own sentence, then what makes the row read custom. The sentences are
 // [config.CrewLineFor]'s IN THE FAMILY ON SCREEN, so the panel and /crew say the
 // same words about the same thing and neither names an open model above frontier
-// ids. The init-time value is the open family; [sheet.metaFor] re-says it from the
-// profile, which is where a family that is not the default comes from.
+// ids. The init-time value is the default family; [sheet.metaFor] re-says it from
+// the profile, which is where a family that is not the default comes from.
 func crewAbout(source string) string {
 	said := make([]string, 0, len(config.CrewPresets))
 	for _, preset := range config.CrewPresets {

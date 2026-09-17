@@ -411,7 +411,7 @@ func (s Seat) Report() string { return withNotice(s.Line(), s.Notice()) }
 
 // Describe is one seat in a receipt's voice:
 //
-//	work deepseek/deepseek-v4-flash-0731 (crew frugal)
+//	work z-ai/glm-5.3-flash (crew frugal)
 //	plan follows the work model (default)
 //
 // THE EMPTINESS LAW, as the crew row already keeps it: an unfilled plan seat is
@@ -441,7 +441,7 @@ type Seats struct {
 // Sentence is both seats, unlabelled, for a door whose opening lines have a
 // label column of their own:
 //
-//	work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3 (crew frugal)
+//	work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 //
 // ONE SHAPE AND NOT TWO. It would read a little better to collapse a run whose
 // seats came from the same crew into one clause, and it would mean a script
@@ -453,7 +453,7 @@ func (s Seats) Sentence() string {
 
 // Line is the one line a headless run opens with:
 //
-//	models: work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3 (crew frugal)
+//	models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 func (s Seats) Line() string { return modelsLabel + s.Sentence() }
 
 // Notice is the inheritance line for whichever seat was filled by an older row,

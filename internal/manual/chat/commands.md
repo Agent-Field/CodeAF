@@ -671,7 +671,7 @@ The `crew` line sits directly under `model` and reads the preset word — or `cu
 the three classes:
 
 ```
-crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3
+crew     max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra
 ```
 
 The crew is **not on the status line**. It was one short segment there — `crew max`, or
@@ -1423,12 +1423,12 @@ opens the six-seat reading, bottom-anchored like the model picker. From the top:
 the five models codeaf uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
   family ‹ open models · all models ›
-  frugal — deepseek works, glm-5.3 thinks · pennies a day
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3
-› balanced — glm-flash works, kimi-k3 checks and thinks
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3
-  max — glm-5.3 works, kimi-k3 thinks and checks
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3
+  frugal — glm-flash works and thinks, gemini-flash checks
+    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work google/gemini-3.8-flash · mastermind   z-ai/glm-5.3-flash
+› balanced — glm-flash works, fable checks and thinks
+    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work anthropic/claude-fable-5.1 · mastermind   anthropic/claude-fable-5.1
+  max — fable works and thinks, astra checks
+    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       anthropic/claude-fable-5.1 · careful work openai/gpt-6-astra · mastermind   anthropic/claude-fable-5.1
 each of the five can be pinned on its own in /settings → Providers
 ```
 
@@ -1455,7 +1455,7 @@ page.
 `/crew frugal`, `/crew balanced` or `/crew max` sets the five and confirms in one line:
 
 ```
-crew → max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 **The model ids are drawn brighter than the words around them.** `crew →`, the preset

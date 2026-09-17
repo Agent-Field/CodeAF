@@ -38,6 +38,10 @@ func TestTheShippedTierDefaultsAreExactlyTheBalancedCrew(t *testing.T) {
 	}
 }
 
+// THE OPEN FAMILY IS LOCKED TOO, and this is its page. It is read through
+// [CrewModelsForSource] and not [CrewModels], because the bare spelling answers
+// the DEFAULT family and the default family is the catalog-wide one — the all
+// table's own page is [TestTheAllFamilyNamesTheLockedModels].
 func TestCrewPresetsNameTheApprovedModels(t *testing.T) {
 	want := map[string]map[string]string{
 		CrewFrugal: {
@@ -45,25 +49,25 @@ func TestCrewPresetsNameTheApprovedModels(t *testing.T) {
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 			ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
 			ModelTierHigh:       "z-ai/glm-5.3-flash",
-			ModelTierMastermind: "z-ai/glm-5.3",
+			ModelTierMastermind: "z-ai/glm-5.3-flash",
 		},
 		CrewBalanced: {
 			ModelTierReflex:     "mistralai/mistral-nemo",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 			ModelTierWorker:     "z-ai/glm-5.3-flash",
 			ModelTierHigh:       "moonshotai/kimi-k3",
-			ModelTierMastermind: "moonshotai/kimi-k3",
+			ModelTierMastermind: "z-ai/glm-5.3",
 		},
 		CrewMax: {
 			ModelTierReflex:     "mistralai/mistral-nemo",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 			ModelTierWorker:     "z-ai/glm-5.3",
 			ModelTierHigh:       "moonshotai/kimi-k3",
-			ModelTierMastermind: "moonshotai/kimi-k3",
+			ModelTierMastermind: "z-ai/glm-5.3",
 		},
 	}
 	for preset, expected := range want {
-		got, ok := CrewModels(preset)
+		got, ok := CrewModelsForSource(CrewSourceOpen, preset)
 		if !ok {
 			t.Fatalf("there is no %s preset", preset)
 		}
@@ -248,15 +252,15 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 		CrewFrugal: {
 			ModelTierReflex:     "google/gemini-2.5-flash",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "openai/gpt-5.6-sol",
+			ModelTierWorker:     "z-ai/glm-5.3-flash",
 			ModelTierHigh:       "google/gemini-3.8-flash",
-			ModelTierMastermind: "anthropic/claude-opus-5",
+			ModelTierMastermind: "z-ai/glm-5.3-flash",
 		},
 		CrewBalanced: {
 			ModelTierReflex:     "google/gemini-2.5-flash",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "openai/gpt-5.6-sol",
-			ModelTierHigh:       "anthropic/claude-opus-5",
+			ModelTierWorker:     "z-ai/glm-5.3-flash",
+			ModelTierHigh:       "anthropic/claude-fable-5.1",
 			ModelTierMastermind: "anthropic/claude-fable-5.1",
 		},
 		CrewMax: {
@@ -289,13 +293,13 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 	// pick is the contradiction the chooser exists to prevent.
 	wantLines := map[string]map[string]string{
 		CrewSourceOpen: {
-			CrewFrugal:   "deepseek works, glm-5.3 thinks · pennies a day",
-			CrewBalanced: "glm-flash works, kimi-k3 checks and thinks",
-			CrewMax:      "glm-5.3 works, kimi-k3 thinks and checks",
+			CrewFrugal:   "deepseek works, glm-flash checks and thinks · pennies a day",
+			CrewBalanced: "glm-flash works, kimi-k3 checks, glm-5.3 thinks",
+			CrewMax:      "glm-5.3 works and thinks, kimi-k3 checks",
 		},
 		CrewSourceAll: {
-			CrewFrugal:   "gpt-5.6-sol works, gemini-flash checks, opus thinks",
-			CrewBalanced: "gpt-5.6-sol works, opus checks, fable thinks",
+			CrewFrugal:   "glm-flash works and thinks, gemini-flash checks",
+			CrewBalanced: "glm-flash works, fable checks and thinks",
 			CrewMax:      "fable works and thinks, astra checks",
 		},
 	}
@@ -308,12 +312,13 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 	}
 }
 
-// A SOURCE NOBODY SET IS THE OPEN FAMILY. The all table may exist, but a profile
-// that never answered the row resolves the open family: the shipped defaults,
-// the open presets under the same words, and a write that lands the open ids.
-// This is the default-preservation law for the FAMILY. An unknown word is held
-// to the same law, silently, the way a retired choice reads everywhere else.
-func TestASourceNobodyAnsweredReadsTheOpenFamily(t *testing.T) {
+// A SOURCE NOBODY SET IS THE DEFAULT FAMILY, which is the catalog-wide one. The
+// open table exists beside it, but a profile that never answered the row
+// resolves `all`: the shipped defaults, the all presets under the same words,
+// and a write that lands the all ids. This is the default-preservation law for
+// the FAMILY. An unknown word is held to the same law, silently, the way a
+// retired choice reads everywhere else.
+func TestASourceNobodyAnsweredReadsTheDefaultFamily(t *testing.T) {
 	dir := t.TempDir()
 	if got := CrewSourceAt(dir); got != DefaultCrewSource {
 		t.Fatalf("an untouched profile reads the source as %q, want %q", got, DefaultCrewSource)
@@ -324,20 +329,21 @@ func TestASourceNobodyAnsweredReadsTheOpenFamily(t *testing.T) {
 	if err := ApplyCrew(dir, CrewMax); err != nil {
 		t.Fatal(err)
 	}
-	want, _ := CrewModels(CrewMax)
+	want, _ := CrewModelsForSource(DefaultCrewSource, CrewMax)
 	for _, tier := range ModelTiers {
 		if got := TierModelAt(dir, tier); got != want[tier] {
-			t.Errorf("with no source set, max wrote %s to %q, want the open %q", tier, got, want[tier])
+			t.Errorf("with no source set, max wrote %s to %q, want the default family's %q", tier, got, want[tier])
 		}
 	}
-	// A WORD THIS BUILD DOES NOT KNOW READS AS OPEN, silently. Being told a
-	// preference from an older build is now an error is the one thing a
-	// retirement must never do, and a family is not a thing to guess either.
+	// A WORD THIS BUILD DOES NOT KNOW READS AS THE DEFAULT FAMILY, silently.
+	// Being told a preference from an older build is now an error is the one
+	// thing a retirement must never do, and a family is not a thing to guess
+	// either.
 	if err := writeProfileValue(dir, KeyCrewSource, "wide"); err != nil {
 		t.Fatal(err)
 	}
-	if got := CrewSourceAt(dir); got != CrewSourceOpen {
-		t.Fatalf("an unknown source word reads as %q, want %q", got, CrewSourceOpen)
+	if got := CrewSourceAt(dir); got != DefaultCrewSource {
+		t.Fatalf("an unknown source word reads as %q, want %q", got, DefaultCrewSource)
 	}
 	if got := CrewAt(dir); got != CrewMax {
 		t.Fatalf("an unknown source word moved the crew to %q", got)
@@ -388,7 +394,7 @@ func TestFlippingToAllMakesTheWordsMeanTheAllFamily(t *testing.T) {
 	if got := CrewAt(dir); got != CrewBalanced {
 		t.Fatalf("the crew reads %q after balanced was applied under open again", got)
 	}
-	open, _ := CrewModels(CrewBalanced)
+	open, _ := CrewModelsForSource(CrewSourceOpen, CrewBalanced)
 	for _, tier := range ModelTiers {
 		if got := TierModelAt(dir, tier); got != open[tier] {
 			t.Errorf("after re-applying under open, %s reads %q, want the open %q", tier, got, open[tier])

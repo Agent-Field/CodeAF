@@ -43,8 +43,8 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 		{
 			name: "the crew answers when it is the only thing said",
 			crew: CrewFrugal,
-			work: "deepseek/deepseek-v4-flash-0731", workRung: "crew frugal",
-			plan: "z-ai/glm-5.3", planRung: "crew frugal",
+			work: "z-ai/glm-5.3-flash", workRung: "crew frugal",
+			plan: "z-ai/glm-5.3-flash", planRung: "crew frugal",
 		},
 		{
 			name:    "the environment outranks the crew",
@@ -78,8 +78,8 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			// An operator can still put a level on a flag or tier row.
 			name: "the crew leaves generation behavior to the model",
 			crew: CrewMax,
-			work: "z-ai/glm-5.3", workRung: "crew max",
-			plan: "moonshotai/kimi-k3", planRung: "crew max",
+			work: "anthropic/claude-fable-5.1", workRung: "crew max",
+			plan: "anthropic/claude-fable-5.1", planRung: "crew max",
 		},
 		{
 			// And a flag carrying one is not shortened either, so the two rungs
@@ -98,7 +98,7 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			// it: the same row a task handed off in conversation rides.
 			hand: map[string]string{ModelTierWorker: "vendor/my-own-worker"},
 			work: "vendor/my-own-worker", workRung: "crew custom",
-			plan: "z-ai/glm-5.3", planRung: "crew custom",
+			plan: "z-ai/glm-5.3-flash", planRung: "crew custom",
 		},
 		{
 			// A row cleared on purpose means "follow the conversation", and a

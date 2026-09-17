@@ -331,60 +331,67 @@ preset:
 
 | class | as shipped |
 | --- | --- |
-| reflex | `mistralai/mistral-nemo` |
+| reflex | `google/gemini-2.5-flash` |
 | small work | `deepseek/deepseek-v4-flash-0731` |
 | worker | `z-ai/glm-5.3-flash` |
-| careful work | `moonshotai/kimi-k3` |
-| mastermind | `moonshotai/kimi-k3` |
+| careful work | `anthropic/claude-fable-5.1` |
+| mastermind | `anthropic/claude-fable-5.1` |
 
-They are all open-weight models, and none of them is the model you are talking to. A crew
-that followed your conversation would put the most expensive model in the build on the
-cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
-agreed to. Closed models that are cheaper on their own vendor's platform than through the
-router are not in any open-family preset; the `all` family is where they are, and you
-can still pin one on any row.
-You can also connect that vendor yourself as a direct service; the
+None of them is the model you are talking to. A crew that followed your conversation would
+put the most expensive model in the build on the cheapest questions in it — a call made
+twice every turn on a frontier model is a bill nobody agreed to. That is also why the two
+seats that read every turn stay on near-free models while the frontier ids sit on the seats
+that answer a handful of times. You can pin any vendor's model on any row yourself, and you
+can connect that vendor as a direct service; the
 [services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
 **The `model family` row** (`models.crew.source`, just under the crew row) decides which family
-the three preset words draw from. `open` is the default and is the table above: open weights only,
-so a crew nobody chose is never a bet on one vendor's pricing. `all` reads the same three words,
-`frugal`, `balanced` and `max`, off the whole catalog instead, closed and frontier models included,
-and costs what those models cost. Flip the row and the seats nobody pinned move with it at once,
+the three preset words draw from. `all` is the default and is the table above: the whole
+catalog, closed and frontier models included, costing what those models cost. `open` reads the
+same three words, `frugal`, `balanced` and `max`, off the open-weight rows only, so no seat is a
+bet on one vendor's pricing. Flip the row and the seats nobody pinned move with it at once,
 because an unwritten seat is the default crew resolved in the family you are on; the rows already
 on disk keep their ids until you pick the crew again, and the crew word reads `custom` while they
 match no preset in the family you flipped to.
 
-Under `all`, the same three words resolve to these:
+Under `open`, the same three words resolve to these:
 
 | class | frugal | balanced | max |
 | --- | --- | --- | --- |
-| reflex | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` |
+| reflex | `mistralai/mistral-nemo` | `mistralai/mistral-nemo` | `mistralai/mistral-nemo` |
 | small work | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` |
-| worker | `openai/gpt-5.6-sol` | `openai/gpt-5.6-sol` | `anthropic/claude-fable-5.1` |
-| careful work | `google/gemini-3.8-flash` | `anthropic/claude-opus-5` | `openai/gpt-6-astra` |
-| mastermind | `anthropic/claude-opus-5` | `anthropic/claude-fable-5.1` | `anthropic/claude-fable-5.1` |
+| worker | `deepseek/deepseek-v4-flash-0731` | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` |
+| careful work | `z-ai/glm-5.3-flash` | `moonshotai/kimi-k3` | `moonshotai/kimi-k3` |
+| mastermind | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` | `z-ai/glm-5.3` |
 
-Two of the columns spend differently here. The worker is the same model in `frugal` and
-`balanced`, and only `max` buys the frontier coder, because on the catalog the coding ceiling is
-the one expensive step. What `frugal` to `balanced` buys instead is the careful seat and a
-smarter mastermind. The `max` mastermind sits on the worker's own model on purpose: it is the
-catalog's ceiling, so there is no bigger planner to buy above it.
+The worker column is the dial in that family — it climbs one step per preset, because it is
+the seat that pays most of a task's bill and a preset that moved every other seat would
+change everything about a task except its cost.
 
-**Why the open ids.** They were picked off the catalog's own published scores (OpenRouter
-republishes Artificial Analysis's coding and agentic indexes on every model row) against
-blended price, open weights only, and the `frugal` mastermind and the `balanced` careful and mastermind seats were
-picked on 2026-09-16, the rest on 2026-09-01. The worker seat is the dial: `glm-5.3-flash`
-scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
-one point under `glm-5.3` at a twentieth of its price, and it can see images. The
-mastermind is the one seat whose price may be the model rather than the rung: it answers a
-few times a task, so `frugal` pays for `glm-5.3` while the work below it stays on
-`glm-5.3-flash` and DeepSeek.
-The careful class is always a different vendor from the worker and always sees images:
-`moonshotai/kimi-k3` scores 76 on coding and is the open field's strongest checker, so
-`balanced` and `max` put it on both the careful and the mastermind seat. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose:
-the bare `deepseek/deepseek-v4-flash` id resolves to the April build, and the July build at
-the same price scores thirteen coding points higher.
+**Why these ids.** Every row of the catalog was placed on two axes on 2026-09-16: the bill a
+seat's own call shape runs up, built from the catalog's published prompt, completion and
+cache-read prices, against that seat's quality, taken from its published intelligence, coding
+and agentic indexes. The call shape is part of the price, so the seats were priced apart — the
+worker and the careful seats as long cached loops, where a large prompt is read back turn
+after turn and the cache-read price carries most of the weight, and the mastermind as one-shot
+calls, where the prompt is paid in full each time and there are few of them. Each preset then
+takes, for each seat, a point on the pareto front of that plot at the bill it is willing to
+run: nothing on the front costs less at the same quality, and nothing at the same bill scores
+higher. The two families are the same plot over two sets of rows, which is why the columns do
+not climb together in either of them.
+
+In the `all` family the worker stays on `glm-5.3-flash` through `balanced`, because the worker
+seat carries most of a task's tokens: a step there multiplies through the whole bill, where a
+step on the careful or the mastermind seat is paid a handful of times. So `frugal` to
+`balanced` spends on those two low-volume seats, and only `max` moves the worker itself. The
+`max` mastermind then sits on the worker's own model, because at that bill the one-shot front
+has no separate planner above it.
+
+The careful class is always a different vendor from the worker and always sees images, in
+every preset of both families: a check from a second vendor catches what the first vendor's
+blind spots let through, and the vision role rides that row. The small-work row is pinned to
+the July build of DeepSeek V4 Flash on purpose: the bare `deepseek/deepseek-v4-flash` id
+resolves to the April build, and the July build costs the same.
 
 **Clearing a row is still an answer.** A class you empty on purpose reads
 `follows the conversation`, and every role on it runs on the model you are talking to. That
@@ -393,20 +400,22 @@ say rather than the default.
 
 ### The three presets
 
+These are the three in the family you are on unless you changed the `model family` row — the
+default one, `all`:
+
 | | frugal | balanced | max |
 | --- | --- | --- | --- |
-| reflex | `mistral-nemo` | `mistral-nemo` | `mistral-nemo` |
+| reflex | `gemini-2.5-flash` | `gemini-2.5-flash` | `gemini-2.5-flash` |
 | small work | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` |
-| worker | `deepseek-v4-flash-0731` | `glm-5.3-flash` | `glm-5.3` |
-| careful work | `glm-5.3-flash` | `kimi-k3` | `kimi-k3` |
-| mastermind | `glm-5.3` | `kimi-k3` | `kimi-k3` |
+| worker | `glm-5.3-flash` | `glm-5.3-flash` | `claude-fable-5.1` |
+| careful work | `gemini-3.8-flash` | `claude-fable-5.1` | `gpt-6-astra` |
+| mastermind | `glm-5.3-flash` | `claude-fable-5.1` | `claude-fable-5.1` |
 
-- **frugal**: deepseek works, glm-5.3 thinks · pennies a day
-- **balanced**: glm-flash works, kimi-k3 checks and thinks
-- **max**: glm-5.3 works, kimi-k3 thinks and checks
+- **frugal**: glm-flash works and thinks, gemini-flash checks
+- **balanced**: glm-flash works, fable checks and thinks
+- **max**: fable works and thinks, astra checks
 
-The worker column climbs the open-weight front one step per preset, because it is the seat
-that pays most of a task's bill. The reflex and small-work columns never vary — they are the
+The reflex and small-work columns never vary — they are the
 same near-free models in all three — so `/crew` never names them: the confirmation and
 `/status` say **brain**, **hands** and **checks**, which are the mastermind, the worker and
 the careful class.
@@ -510,7 +519,7 @@ running keeps the model it was admitted on.
 **Where to read the crew back:**
 
 - `/status` prints a `crew` line directly under `model`:
-  `crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3`. The word is
+  `crew     max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra`. The word is
   the preset, or `custom` when the five classes are your own arrangement. **brain** is the
   mastermind, **hands** is the worker, **checks** is the careful class.
 - `/settings` → Providers has the **crew** row above the five class rows.
@@ -539,7 +548,7 @@ the crew — or `/model` — half way through does not move work already going.
 4. the model you are talking to, only when the worker row is blank.
 
 So on the shipped `balanced` crew a task runs on `z-ai/glm-5.3-flash` whatever you are
-chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. The task's row on the
+chatting on, and `/crew max` moves the next task onto `anthropic/claude-fable-5.1`. The task's row on the
 roster, its room's status line and its finished card all name the model it actually ran
 on. The worker of an adaptive run's nodes is the same seat, and so is the work model of
 `codeaf do` — one row, every door.
@@ -574,7 +583,7 @@ was silently lost the moment the same brain ran from a script.
 Each of those runs opens by saying which voice answered, so nothing has to be guessed at:
 
 ```
-models: work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
+models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 ```
 
 Two details worth knowing. A crew answers only once you have actually set one — a profile
@@ -678,7 +687,7 @@ No. `/crew max` moves the five crew seats and leaves the model you talk to exact
 was. The confirmation names it:
 
 ```
-crew → max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 `/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
@@ -2246,7 +2255,7 @@ The `crew` line sits directly under `model` and reads the preset word — or `cu
 the three classes after it:
 
 ```
-crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3
+crew     max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra
 ```
 
 On the live status line the crew is one short segment — `crew max`, or `crew custom` — at

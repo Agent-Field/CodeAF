@@ -994,8 +994,9 @@ const (
 var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}
 
 // THE SHIPPED CREW. All five tiers arrive pointed at a model, and the five
-// together are exactly the `balanced` preset (crew.go) — which is what makes the
-// crew row read "balanced" on a profile nobody has touched instead of reading
+// together are exactly the `balanced` row of the DEFAULT FAMILY (crew.go's
+// [crewAllModels], named by [DefaultCrewSource]) — which is what makes the crew
+// row read "balanced" on a profile nobody has touched instead of reading
 // "custom" about its own defaults.
 //
 // Each is a bare OpenRouter id, spelled ONCE here and read by every caller
@@ -1007,29 +1008,30 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelT
 // to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
 // here, and that distinction is the whole mechanism ([TierModelAt] says how).
 //
-// The ids are OPEN-WEIGHT MODELS, chosen off the catalog's own published
-// scores (OpenRouter republishes Artificial Analysis's coding and agentic
-// indexes on every row) against the blended price (crew.go's crewModels comment
-// owns the date). The low row is pinned to a DATED build on purpose: the bare `deepseek/deepseek-v4-flash` id
-// resolves to the April build, and the July build at the same price scores
-// thirteen coding points higher.
+// The ids are read off the catalog's own published rows — its intelligence,
+// coding and agentic indexes against its prompt, completion and cache-read
+// prices, priced under each seat's own call shape (crew.go's [crewAllModels]
+// comment owns the method and the date). The low row is pinned to a DATED build
+// on purpose: the bare `deepseek/deepseek-v4-flash` id resolves to the April
+// build, and the July build costs the same.
 const (
-	DefaultReflexModel = "mistralai/mistral-nemo"
+	DefaultReflexModel = "google/gemini-2.5-flash"
 	DefaultLowModel    = "deepseek/deepseek-v4-flash-0731"
-	// The worker is the seat that pays most of a task's bill, so the balanced
-	// crew puts the best agentic score per dollar on it rather than the best
-	// score: glm-5.3-flash sits one point under glm-5.3 on the agentic index at
-	// a twentieth of the price, and it can see images, which the parent can hand
-	// it without a vision detour.
+	// The worker is the seat that pays most of a task's bill, so it is the last
+	// seat a preset spends on: a step here multiplies through every token a task
+	// runs up, where a step on the two low-volume seats is paid a handful of
+	// times. glm-5.3-flash is the point on the long-cached-loop front that
+	// balanced runs at, and it can see images, which the parent can hand it
+	// without a vision detour.
 	DefaultWorkerModel = "z-ai/glm-5.3-flash"
 	// The careful tier is ALWAYS A DIFFERENT VENDOR FROM THE WORKER, in every
 	// preset, and always a model that sees images: a check from a second vendor
 	// catches what the first vendor's blind spots let through, and the vision
 	// role rides this row.
-	DefaultHighModel = "moonshotai/kimi-k3"
+	DefaultHighModel = "anthropic/claude-fable-5.1"
 	// The mastermind names a capable planning model. Its generation behavior is
 	// left to the provider unless an operator adds a level to the model id.
-	DefaultMastermindModel = "moonshotai/kimi-k3"
+	DefaultMastermindModel = "anthropic/claude-fable-5.1"
 )
 
 // DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.
@@ -2278,16 +2280,16 @@ func (s *Settings) build() []Setting {
 		// THE FAMILY THE THREE WORDS DRAW FROM, one row under the crew. It sits
 		// beside the crew row because it is the same decision read one level up:
 		// the crew row says which five models, and this says which shelf those
-		// five come off. Open is the default and the law the shipped crew rests
-		// on; `all` is the opt-in that spends what the frontier costs.
+		// five come off. `all` is the default and what the shipped five are the
+		// balanced row of; `open` narrows the same three words to open weights.
 		Setting{
 			Key: KeyCrewSource, Category: CategoryModels, Kind: SettingChoice,
 			Label: "model family", Choices: CrewSources,
-			Hint: "which family the crew words draw from. `open` is the default: every " +
-				"seat an open-weight model, so a crew nobody chose is never a bet on one " +
-				"vendor's pricing. `all` reads the same three words, frugal, balanced and " +
-				"max, off the whole catalog, closed and frontier models included, and " +
-				"costs what those models cost. Seats nobody pinned move with the family at " +
+			Hint: "which family the crew words draw from. `all` is the default: frugal, " +
+				"balanced and max read off the whole catalog, closed and frontier models " +
+				"included, and cost what those models cost. `open` reads the same three " +
+				"words off the open-weight rows only, so no seat is a bet on one vendor's " +
+				"pricing. Seats nobody pinned move with the family at " +
 				"once, because an unwritten seat is the default crew; rows already written " +
 				"keep their ids until you pick the crew again.",
 			read:  func() string { return CrewSourceAt(dir) },
@@ -3786,10 +3788,10 @@ func tierKeyFor(tier string) string {
 // defaultTierModel is what a tier answers on a profile that has never held its
 // key: the DEFAULT CREW, resolved in the family the profile chose. It is not the
 // build's constant alone, because a profile that answered the family row and no
-// tier row would otherwise run the open-weight crew under a frontier label: the
-// family saying one thing and the ladder another. Under the shipped family the
+// tier row would otherwise run one family's crew under the other's label: the
+// family saying one thing and the ladder another. Under the default family the
 // answer is the constant, which is what [DefaultWorkerModel] and its kin name,
-// because the open table's default row and the builtin five name the same set by
+// because that family's default row and the builtin five name the same set by
 // construction (crew_test.go pins it).
 func defaultTierModel(family, tier string) string {
 	if table, ok := CrewModelsForSource(family, DefaultCrew); ok {

@@ -445,7 +445,7 @@ type crewPicker struct {
 func (p *crewPicker) start(current, source, inherited string) {
 	// source is already a word this build knows: every caller hands it
 	// [config.CrewSourceAt]'s answer, which folds blank, unknown and retired words
-	// back to open. The fold lives there and nowhere else.
+	// back to the default family. The fold lives there and nowhere else.
 	*p = crewPicker{open: true, current: current, persistedSource: source, inherited: inherited, source: source}
 	for i, preset := range config.CrewPresets {
 		if preset == current {
@@ -697,9 +697,9 @@ func (a *app) crewListing() string {
 	source := config.CrewSourceAt(a.profileDir)
 	var out strings.Builder
 	// THE WORDS ARE THE SAME IN EITHER FAMILY, so the listing names the pool
-	// whenever it is not the shipped one: an all listing that looked exactly like
-	// an open one is the ambiguity this whole feature is about.
-	if source != config.CrewSourceOpen {
+	// whenever it is not the default one: two listings that looked exactly alike
+	// over two different sets of ids is the ambiguity this whole feature is about.
+	if source != config.DefaultCrewSource {
 		out.WriteString(crewSourceLead + " · " + source + " models\n")
 	}
 	for at, preset := range config.CrewPresets {
