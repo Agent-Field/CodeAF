@@ -233,6 +233,19 @@ page must never name a command that is not there. Wave 3 lands the
 subcommands; the worker page names only the ones that exist on the build it
 ships in.
 
+## The bar — what "ready" means
+
+The goal is a drastic improvement in what `/task` and `do` cost and how long
+they take, at an equal or better pass rate; putting both doors on one engine
+is how, not why. So readiness is a table, never a sentence: **the pull request
+leaves draft only when `bench/bashloop` — the same six cells, both doors, the
+same pinned model, n ≥ 3, run on the Spark — shows the harness at or beyond
+current default `dev` on every axis at once**: pass rate, median cost and
+median wall, with no cell where legacy wins on any of the three. Cheaper but
+slower, or faster with a lost cell, is not ready. Every wave's proof row goes
+into the pull request beside the wave, against legacy on the same day, and the
+report reads the numbers before it reads the code.
+
 ## The waves
 
 Each lands on `harness/worker-loop`, green on the Spark, and the draft pull
