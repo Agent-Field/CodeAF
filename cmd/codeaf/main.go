@@ -334,6 +334,7 @@ Hand it work — nobody is watching, the answer is on stdout
   codeaf exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
               [--token-budget N] [--timeout 15m] [--model slug]
               [--context-fill N] [--completion-reserve N] [--json]
+              [--out file] [--debug]
       run one worker for one pass, with no planning at all
   codeaf run  <program> --input <file.json|-> [--dir dir] [--model slug]
               [--journal path] [--json]
@@ -354,8 +355,7 @@ Look at what happened — read-only, no key, nothing spent
   codeaf models [--refresh]
       the models this machine will use, and what each has been measured at
   codeaf pool [show|status|verify] [--json] [--key key]
-      the Model Pool — what is resolved and cached, and whether a fresh
-      index verifies. show and status read only; verify wants a key
+      the Model Pool: what is resolved and cached; verify fetches with a key
   codeaf doctor [--db path]
       is this install healthy, and where does it keep things
   codeaf manual
