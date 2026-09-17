@@ -784,3 +784,50 @@ func TestAnAliasResolvedThroughCanonicalMeetsItsCandidate(t *testing.T) {
 		t.Fatalf("the unresolved alias scored %f, want the catalog 100 untouched", got)
 	}
 }
+
+// Two priors fold into one: a rating both hold for a model is weighted by the
+// counts behind it, a rating either holds alone is carried whole, and a nil on
+// either side is the other side.
+func TestMergePriorsFoldsTwoPriorsByObservationCount(t *testing.T) {
+	if got := MergePriors(nil, nil); got != nil {
+		t.Fatalf("two nils folded to %v, want nil", got)
+	}
+	a := Prior{Worker: {"a/one": {Mean: 80, N: 20}}}
+	if got := MergePriors(a, nil); got == nil || got[Worker]["a/one"].N != 20 {
+		t.Fatalf("a nil on one side is not the other: %v", got)
+	}
+	b := Prior{High: {"b/two": {Mean: 60, N: 5}}}
+	if got := MergePriors(nil, b); got == nil || got[High]["b/two"].N != 5 {
+		t.Fatalf("a nil on one side is not the other: %v", got)
+	}
+
+	// A model only one prior names is carried whole, in either order.
+	onlyA := Prior{Worker: {"a/only": {Mean: 70, N: 4}}}
+	onlyB := Prior{Worker: {"b/only": {Mean: 90, N: 6}}}
+	got := MergePriors(onlyA, onlyB)
+	if len(got[Worker]) != 2 {
+		t.Fatalf("no shared key folded to %v, want the union", got)
+	}
+	if r := got[Worker]["a/only"]; r.Mean != 70 || r.N != 4 {
+		t.Fatalf("a carried rating moved: %v", r)
+	}
+	if r := got[Worker]["b/only"]; r.Mean != 90 || r.N != 6 {
+		t.Fatalf("a carried rating moved: %v", r)
+	}
+
+	// A model both name: the counts add and the mean is the mean of the means
+	// weighted by them — (10*50 + 30*90) / 40 = 80.
+	sharedA := Prior{Worker: {"c/both": {Mean: 50, N: 10}}}
+	sharedB := Prior{Worker: {"c/both": {Mean: 90, N: 30}}}
+	if r := MergePriors(sharedA, sharedB)[Worker]["c/both"]; r.Mean != 80 || r.N != 40 {
+		t.Fatalf("a shared rating folded to %v, want mean 80 over 40", r)
+	}
+
+	// The priors given are read and never changed.
+	if r := sharedA[Worker]["c/both"]; r.Mean != 50 || r.N != 10 {
+		t.Fatalf("the merge moved its first prior: %v", r)
+	}
+	if r := sharedB[Worker]["c/both"]; r.Mean != 90 || r.N != 30 {
+		t.Fatalf("the merge moved its second prior: %v", r)
+	}
+}

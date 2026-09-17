@@ -250,6 +250,52 @@ func PriorFromCells(cells []Cell, minInstalls int, canonical func(string) string
 	return prior
 }
 
+// MergePriors folds two priors into one. Seat by seat, a rating both hold for
+// a model is combined by observation count — the two means weighted by the
+// counts behind them, the counts added — and a rating either holds alone is
+// carried whole. A nil prior on either side is the other, and two nils are
+// nil. The priors given are read and never changed, so the answer is never
+// one of them.
+func MergePriors(a, b Prior) Prior {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	merged := make(Prior)
+	for seat, ratings := range a {
+		for model, r := range ratings {
+			if merged[seat] == nil {
+				merged[seat] = map[string]Rating{}
+			}
+			merged[seat][model] = r
+		}
+	}
+	for seat, ratings := range b {
+		for model, r := range ratings {
+			got, ok := merged[seat][model]
+			if !ok {
+				if merged[seat] == nil {
+					merged[seat] = map[string]Rating{}
+				}
+				merged[seat][model] = r
+				continue
+			}
+			n := got.N + r.N
+			if n <= 0 {
+				merged[seat][model] = Rating{}
+				continue
+			}
+			merged[seat][model] = Rating{
+				Mean: (float64(got.N)*got.Mean + float64(r.N)*r.Mean) / float64(n),
+				N:    n,
+			}
+		}
+	}
+	return merged
+}
+
 // SeatCost is the seat's expected cost of a candidate, in dollars per 1M
 // input-equivalent tokens: the prompt price blended with the cache-read
 // price by the seat's cache share, plus the completion price spread over the
