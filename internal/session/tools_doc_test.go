@@ -556,3 +556,87 @@ func TestADocumentIsNeverRoutedToTheLookingModel(t *testing.T) {
 		t.Fatalf("the scan went to %q, want the session's own model", got)
 	}
 }
+
+// ── the page range, which is the command line's --pages rung ────────────────
+
+// threePageTextPDF is one document with a text layer on all three pages, the
+// shape a person points `codeaf doc --pages` at.
+func threePageTextPDF() []byte {
+	return buildPDF([]string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R 6 0 R 8 0 R] /Count 3 >>",
+		pageObject(4),
+		contentStream(showText("first page words, plenty of them")),
+		helvetica,
+		pageObject(7),
+		contentStream(showText("second page words, plenty of them")),
+		pageObject(9),
+		contentStream(showText("third page words, plenty of them")),
+	})
+}
+
+// The local rung renders only the pages named, so two pages of a manual cost
+// one parse and print three pages' worth of nothing else — and no parser is
+// built for a document the binary can read itself.
+func TestReadDocumentPagesRendersOnlyThePagesNamed(t *testing.T) {
+	_, workspace := newDocumentAgent(t, &scriptedParser{}, nil, nil)
+	name := dropFile(t, workspace, "manual.pdf", threePageTextPDF())
+
+	answer, err := ReadDocument(context.Background(), DocumentRead{
+		Path:      name,
+		Workspace: workspace,
+		PagesFrom: 2,
+		PagesTo:   3,
+		Parser: func() (DocumentParser, error) {
+			t.Fatal("a page range on a document with a text layer must not reach a billed rung")
+			return nil, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("the pages rung refused a document with a text layer: %v", err)
+	}
+	if answer.Rung != "local" {
+		t.Fatalf("the pages came back on the %q rung, want local", answer.Rung)
+	}
+	if !strings.Contains(answer.Text, "second page words") || !strings.Contains(answer.Text, "third page words") {
+		t.Errorf("the extraction is %q, want the pages named", answer.Text)
+	}
+	if strings.Contains(answer.Text, "first page words") {
+		t.Errorf("the extraction is %q, which carries a page nobody asked for", answer.Text)
+	}
+}
+
+// Billed text arrives with no page boundaries, so a range on a scan is refused
+// rather than silently ignored — the whole document would otherwise come back
+// as though it were pages two and three.
+func TestReadDocumentPagesOnAScanIsRefusedAndNamesTheWorkaround(t *testing.T) {
+	parser := &scriptedParser{answers: map[provider.DocumentParseEngine]string{
+		provider.DocumentParseNative: "PAGE ONE — the quarterly figures, in full sentences",
+	}}
+	agent, workspace := newDocumentAgent(t, parser, nil, nil)
+	name := dropFile(t, workspace, "scan.pdf", scannedPDF())
+
+	_, isError := documentTool(t, agent, map[string]any{"path": name})
+	if isError {
+		t.Fatal("the belt never passes --pages; the tool must read the whole scan")
+	}
+
+	before := len(parser.requests())
+	_, err := ReadDocument(context.Background(), DocumentRead{
+		Path:      name,
+		Workspace: workspace,
+		PagesFrom: 1,
+		PagesTo:   1,
+		Parser:    func() (DocumentParser, error) { return parser, nil },
+		ModelOf:   func(string) string { return "test/model" },
+	})
+	if err == nil {
+		t.Fatal("a page range on a scan was accepted, where billed text carries no page boundaries")
+	}
+	if !strings.Contains(err.Error(), "--pages") {
+		t.Errorf("the refusal says %q, which never names the flag", err.Error())
+	}
+	if after := len(parser.requests()); after != before {
+		t.Fatalf("the refused range reached a billed rung (%d calls before, %d after)", before, after)
+	}
+}

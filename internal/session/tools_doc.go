@@ -105,6 +105,14 @@ var newDocClient = func(config Config) (DocumentParser, error) {
 	return client, nil
 }
 
+// NewDocumentParser builds the parser the doc road bills through, for a caller
+// with no session: the command line's doc door hands over a Config carrying
+// the account it read off the profile, and gets back the same client the
+// belt's read_document builds on first use — same key resolution, same
+// seat-pin drop, same timeout. A missing key is an error that says so, exactly
+// as it does on the belt.
+func NewDocumentParser(config Config) (DocumentParser, error) { return newDocClient(config) }
+
 // documentRung is the tool's whole state: the client, built once, and what the
 // rungs have already returned this session.
 //
