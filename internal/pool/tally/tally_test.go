@@ -1,6 +1,8 @@
 package tally
 
 import (
+	"bytes"
+	"encoding/json"
 	"math"
 	"strings"
 	"testing"
@@ -182,5 +184,149 @@ func TestWinRefusesBadCalls(t *testing.T) {
 	s.Win("r", "a", strings.Repeat("b", maxNameLen+1))
 	if x, y := s.Wins("r", "a", "b"); x != 0 || y != 0 {
 		t.Fatalf("refused Win recorded: %d, %d", x, y)
+	}
+}
+
+func sameJSON(t *testing.T, a, b *Sheet) bool {
+	t.Helper()
+	ja, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	jb, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return bytes.Equal(ja, jb)
+}
+
+func TestMergeCommutative(t *testing.T) {
+	a := New()
+	a.Observe("m", "r", "model", map[string]string{"quant": "fp8"}, 3)
+	a.Win("r", "x", "y")
+	b := New()
+	b.Observe("m", "r", "model", nil, 4)
+	b.Observe("m", "r", "model", nil, 5)
+	b.Win("r", "y", "x")
+
+	ab := New()
+	ab.Merge(a)
+	ab.Merge(b)
+	ba := New()
+	ba.Merge(b)
+	ba.Merge(a)
+	if !sameJSON(t, ab, ba) {
+		t.Fatal("merge is not commutative")
+	}
+}
+
+func TestMergeAssociative(t *testing.T) {
+	a := New()
+	a.Observe("m", "r", "model", nil, 1)
+	a.Win("r", "x", "y")
+	b := New()
+	b.Observe("m", "r", "model", map[string]string{"q": "1"}, 2)
+	c := New()
+	c.Observe("m", "r", "model", nil, 3)
+	c.Observe("m", "r", "model", nil, 4)
+	c.Win("r", "y", "x")
+
+	ab := New()
+	ab.Merge(a)
+	ab.Merge(b)
+	abC := New()
+	abC.Merge(ab)
+	abC.Merge(c)
+
+	bc := New()
+	bc.Merge(b)
+	bc.Merge(c)
+	aBC := New()
+	aBC.Merge(a)
+	aBC.Merge(bc)
+
+	if !sameJSON(t, abC, aBC) {
+		t.Fatal("merge is not associative")
+	}
+}
+
+func TestMergeSelfDoubles(t *testing.T) {
+	s := New()
+	s.Observe("m", "r", "model", nil, 2)
+	s.Observe("m", "r", "model", map[string]string{"q": "1"}, 5)
+	s.Win("r", "a", "b")
+	s.Win("r", "b", "a")
+	s.Merge(s)
+	checkCell(t, s, "m", "r", "model", nil, Cell{N: 2, Sum: 4, SumSq: 8})
+	checkCell(t, s, "m", "r", "model", map[string]string{"q": "1"}, Cell{N: 2, Sum: 10, SumSq: 50})
+	if x, y := s.Wins("r", "a", "b"); x != 2 || y != 2 {
+		t.Fatalf("Wins = %d, %d, want 2, 2", x, y)
+	}
+}
+
+func TestMergeNilIsNoOp(t *testing.T) {
+	s := New()
+	s.Observe("m", "r", "model", nil, 1)
+	before, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Merge(nil)
+	if j, _ := json.Marshal(s); !bytes.Equal(j, before) {
+		t.Fatal("Merge(nil) changed the sheet")
+	}
+	var nilSheet *Sheet
+	nilSheet.Merge(s)   // must not panic
+	nilSheet.Merge(nil) // must not panic either
+}
+
+func TestMergeLeavesOtherAlone(t *testing.T) {
+	other := New()
+	other.Observe("m", "r", "model", nil, 7)
+	other.Observe("m", "r", "model", map[string]string{"q": "1"}, 1)
+	other.Win("r", "p", "q")
+	before, err := json.Marshal(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	s.Merge(other)
+	if j, _ := json.Marshal(other); !bytes.Equal(j, before) {
+		t.Fatal("Merge modified the merged-in sheet")
+	}
+	checkCell(t, s, "m", "r", "model", nil, Cell{N: 1, Sum: 7, SumSq: 49})
+	checkCell(t, s, "m", "r", "model", map[string]string{"q": "1"}, Cell{N: 1, Sum: 1, SumSq: 1})
+	if x, y := s.Wins("r", "p", "q"); x != 1 || y != 0 {
+		t.Fatalf("Wins = %d, %d, want 1, 0", x, y)
+	}
+}
+
+func TestMergedSheetsEqualSingleSheet(t *testing.T) {
+	one := New()
+	one.Observe("tok", "coder", "vendor/m", nil, 1)
+	one.Observe("tok", "coder", "vendor/m", nil, 2)
+	one.Observe("tok", "coder", "vendor/m", map[string]string{"quant": "fp8"}, 7)
+	one.Observe("latency", "reviewer", "vendor/m", nil, 0.5)
+	one.Win("coder", "a", "b")
+	one.Win("coder", "b", "a")
+	one.Win("reviewer", "a", "b")
+
+	// The same observations and wins, split over three sheets and recorded
+	// in a different order.
+	parts := []*Sheet{New(), New(), New()}
+	parts[2].Observe("latency", "reviewer", "vendor/m", nil, 0.5)
+	parts[0].Observe("tok", "coder", "vendor/m", nil, 2)
+	parts[1].Observe("tok", "coder", "vendor/m", map[string]string{"quant": "fp8"}, 7)
+	parts[0].Win("coder", "b", "a")
+	parts[1].Win("reviewer", "a", "b")
+	parts[0].Observe("tok", "coder", "vendor/m", nil, 1)
+	parts[1].Win("coder", "a", "b")
+
+	merged := New()
+	merged.Merge(parts[2])
+	merged.Merge(parts[0])
+	merged.Merge(parts[1])
+	if !sameJSON(t, merged, one) {
+		t.Fatal("merged sheets disagree with one sheet that saw everything")
 	}
 }

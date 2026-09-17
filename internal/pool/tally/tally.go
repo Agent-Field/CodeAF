@@ -187,6 +187,77 @@ func (s *Sheet) Wins(role, a, b string) (aOverB, bOverA int64) {
 		s.wins[winKey{role: role, winner: b, loser: a}]
 }
 
+// winCount is one snapshot entry of the paired-comparison tallies.
+type winCount struct {
+	key winKey
+	n   int64
+}
+
+// Merge adds other into s: afterwards s holds what it held plus what
+// other holds, and other is left unmodified. Merging a sheet into itself
+// doubles it. A nil sheet on either side is a no-op.
+func (s *Sheet) Merge(other *Sheet) {
+	if s == nil || other == nil {
+		return
+	}
+	if other == s {
+		s.mu.Lock()
+		cells, wins := s.snapshotLocked()
+		s.applyLocked(cells, wins)
+		s.mu.Unlock()
+		return
+	}
+	other.mu.Lock()
+	cells, wins := other.snapshotLocked()
+	other.mu.Unlock()
+
+	s.mu.Lock()
+	s.applyLocked(cells, wins)
+	s.mu.Unlock()
+}
+
+// snapshotLocked copies the sheet's cells and wins.
+func (s *Sheet) snapshotLocked() ([]cellEntry, []winCount) {
+	cells := make([]cellEntry, 0, len(s.cells))
+	for _, e := range s.cells {
+		cells = append(cells, e)
+	}
+	wins := make([]winCount, 0, len(s.wins))
+	for k, n := range s.wins {
+		wins = append(wins, winCount{key: k, n: n})
+	}
+	return cells, wins
+}
+
+// applyLocked adds snapshot cells and wins to the sheet.
+func (s *Sheet) applyLocked(cells []cellEntry, wins []winCount) {
+	if s.cells == nil {
+		s.cells = make(map[string]cellEntry, len(cells))
+	}
+	for _, e := range cells {
+		k := e.addr.key()
+		cur, ok := s.cells[k]
+		if !ok {
+			cur = cellEntry{addr: cellAddr{
+				metric: e.addr.metric,
+				role:   e.addr.role,
+				model:  e.addr.model,
+				dims:   copyDims(e.addr.dims),
+			}}
+		}
+		cur.cell.N += e.cell.N
+		cur.cell.Sum += e.cell.Sum
+		cur.cell.SumSq += e.cell.SumSq
+		s.cells[k] = cur
+	}
+	if s.wins == nil {
+		s.wins = make(map[winKey]int64, len(wins))
+	}
+	for _, w := range wins {
+		s.wins[w.key] += w.n
+	}
+}
+
 // Cell is the sufficient statistic recorded for one address: how many
 // observations were seen, their sum, and the sum of their squares. Two
 // cells for the same address add field by field.
