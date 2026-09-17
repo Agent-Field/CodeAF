@@ -63,7 +63,6 @@ export default {
   // replaces the published copy. A publication with no cells still publishes:
   // an empty index is a valid index.
   async scheduled(event, env) {
-    void event;
     await publish(env);
   },
 };
@@ -212,14 +211,28 @@ function isStale(version, every) {
 }
 
 // guardedPublish publishes once per stale spell: a reader that finds the
-// lock takes it and publishes, and the rest serve what is stored.
-async function guardedPublish(env) {
-  const held = await env.POOL.get(LOCK_KEY);
-  if (held !== null) {
-    return;
+// lock takes it and publishes, and the rest serve what is stored. The
+// in-flight promise serialises readers on this isolate, where the check and
+// the write would otherwise interleave; the KV lock covers the rest.
+let inflight = null;
+
+function guardedPublish(env) {
+  if (inflight !== null) {
+    return inflight;
   }
-  await env.POOL.put(LOCK_KEY, '1', { expirationTtl: 60 });
-  await publish(env);
+  inflight = (async () => {
+    try {
+      const held = await env.POOL.get(LOCK_KEY);
+      if (held !== null) {
+        return;
+      }
+      await env.POOL.put(LOCK_KEY, '1', { expirationTtl: 60 });
+      await publish(env);
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
 }
 
 // serveStored answers one of the published KV values with its caching headers.
