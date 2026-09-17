@@ -19,9 +19,21 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 func main() {
+	// THE DRIVER ANSWERS AS THE PLAN CLI ITSELF. The engine it drives
+	// in-process resolves the running binary as the CLI by probing
+	// `<self> plandb status` (internal/session's plandb_plan.go), and this
+	// door is what makes that probe — and every `plandb` call a worker makes
+	// through the session's shim — reach the ported store instead of parsing
+	// flags and starting the grid, which is what the first shape did with
+	// them.
+	if len(os.Args) > 1 && os.Args[1] == "plandb" {
+		os.Exit(plandb.Main(os.Args[2:]))
+	}
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "bashloop: %v\n", err)
 		os.Exit(1)
