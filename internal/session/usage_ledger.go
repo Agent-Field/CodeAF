@@ -73,14 +73,17 @@ package session
 //     turn forever. [UsageCache] keeps what it has parsed and reads only what
 //     was appended since ([UsageCache.Read]).
 //
-// WHAT IT DOES NOT HOLD, said plainly, because a page must not imply otherwise:
-// the four-way token split (input and output are kept, the cache share is not —
-// the journal this line's session id names has it), which of the five router
-// slots a call ran under (nothing records that anywhere; `Role` here is
-// internal/roles' auxiliary name, and only three auxiliary calls in the whole
-// program name themselves at all), and any title for a task or a standing item —
-// only their ids, which a page joins against the task index and the standing
-// store it is already reading.
+// WHAT IT HOLDS AND WHAT IT DOES NOT, said plainly, because a page must not
+// imply otherwise. It now holds WHICH SEAT a call ran under — the tier's word
+// ([Seat], usage_seat.go), with the registry's own name beside it where the
+// call named one ([UsageLine.Role]) — so "did the money go on the seat that
+// does the work or the seat that thinks" is answerable from this file alone. It
+// still does not hold: the four-way token split (input and output are kept, the
+// cache share is not — the journal this line's session id names has it), which
+// of the five router slots a call ran under (nothing records that anywhere; the
+// seat is the tier's chair and NOT the router's slot), and any title for a task
+// or a standing item — only their ids, which a page joins against the task
+// index and the standing store it is already reading.
 
 import (
 	"bufio"
@@ -99,6 +102,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // UsageLedgerName is the file, under the v3 home directory
@@ -139,14 +143,30 @@ type UsageLine struct {
 	// provider knows, not a pretty name: a page that wants "opus 4.1" makes that
 	// word itself, from one place, the way every other surface does.
 	Model string `json:"model,omitempty"`
-	// Role is WHAT the call was for — "title", "taskname", "intake" — on the
-	// three auxiliary calls in the program that name themselves, and empty on
-	// every other line including every call a turn makes for itself. It is internal/roles'
-	// vocabulary and NOT the five router slots (execution, conversation,
-	// verification, naming, planning): nothing in the program records which slot
-	// a call ran under, and a page that labelled this column with those words
-	// would be inventing the join.
+	// Role is WHAT the call was for — "title", "guardian", "planner" — on
+	// every call that went through the role registry and named itself at the
+	// billing door, and empty on the rest, including every call a turn makes
+	// for itself. It is internal/roles' vocabulary and NOT the five router
+	// slots (execution, conversation, verification, naming, planning): nothing
+	// in the program records which slot a call ran under, and a page that
+	// labelled this column with those words would be inventing the join.
 	Role string `json:"role,omitempty"`
+	// Seat is WHICH TIER'S MODEL ANSWERED, one word of the closed vocabulary
+	// [Seat] spells — reflex, low, worker, high, mastermind, judge, talk — derived at
+	// the bank door ([TagUsage], [SeatOfRole], [SeatOfAgent]) and never typed
+	// at a call site. It is the fact a spend page wants when it asks whether
+	// the money went on the seat that does the work or the seat that thinks,
+	// and it rides beside Role: a call the registry seated carries both, and
+	// the tier's word stays true of a row whose model id is a fallback, a pin
+	// or a rescue, because the seat names the chair the call ran in, not the
+	// id that answered.
+	//
+	// IT IS omitempty LIKE EVERY ADDITIVE FIELD BEFORE IT, and a row without
+	// one is a row nobody could seat: every row written before this field
+	// existed, an errand that resolved its model outside the registry (a media
+	// pin, a document reader, a tool ask), a receipt that arrived late. Empty
+	// reads as "nobody said", which is the truth about it.
+	Seat Seat `json:"seat,omitempty"`
 	// Calls is how many provider requests this line covers, and it is ONE. The
 	// field is kept rather than dropped because rows written before issue #269
 	// carry a whole turn's worth on one line — an observed `calls: 41` — and a
@@ -800,7 +820,8 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // now happens on a writer goroutine ([RecordUsage]), the lock is still released
 // before the hand-off so no reader of the session's totals ever queues behind
 // the ledger at all.
-func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts, reconciled bool) {
+func (a *Agent) recordUsageLine(call bankedCall) {
+	used := call.used
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}
@@ -815,14 +836,13 @@ func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts, 
 	line := UsageLine{
 		At:         now,
 		Day:        now.Local().Format(usageDayLayout),
-		Model:      strings.TrimSpace(model),
-		Role:       strings.TrimSpace(role),
+		Model:      strings.TrimSpace(call.model),
 		Calls:      used.Calls,
 		Input:      used.Input,
 		Output:     used.Output,
 		USD:        used.CostUSD,
 		Empty:      used.EmptyReflex > 0,
-		Reconciled: reconciled,
+		Reconciled: call.reconciled,
 
 		Session: session,
 		// The node this agent IS, and nothing for a conversation — the same
@@ -837,6 +857,21 @@ func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts, 
 		Workspace: strings.TrimSpace(a.config.Workspace),
 	}
 
+	// THE ROW'S TWO NAMES GO ON THROUGH ONE DOOR ([TagUsage]), and the seat
+	// is argued in only where it is known outright: an agent's own turns bill
+	// to the seat [SeatOfAgent] answers for the kind this agent is — talk on a
+	// conversation, worker on a node, high on the checker and a repair round —
+	// and every other row falls back to the role's own tier. That fallback is
+	// the errand's word when the call went through the registry and nobody's
+	// word at all when it resolved its model elsewhere (a media pin, a tool
+	// ask), which is exactly the row the emptiness law wants: as wide as it
+	// was, and saying "nobody said" where nobody did.
+	seat := Seat("")
+	if call.turn {
+		seat, _ = SeatOfAgent(a.agentKind())
+	}
+	line = TagUsage(line, roles.Role(call.role), seat)
+
 	// THE LANE HALF OF THE LINE GOES ON THROUGH ONE DOOR, and it comes in as an
 	// argument rather than being read from anywhere here — because the only
 	// honest source for it is the request this row is about, and by the time a
@@ -849,7 +884,7 @@ func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts, 
 	// Under the emptiness law an unwatched call therefore writes all five
 	// absent, which is the true sentence "nobody said" rather than a zero
 	// somebody reads as a figure.
-	RecordUsage(path, usageFromResponse(line, lane.Lane, lane.TTFT, lane.Gen, lane.Output, lane.Hedged, lane.Waste))
+	RecordUsage(path, usageFromResponse(line, call.lane.Lane, call.lane.TTFT, call.lane.Gen, call.lane.Output, call.lane.Hedged, call.lane.Waste))
 }
 
 // usageTaskID spells a node's id the way the task index spells it, and answers

@@ -614,6 +614,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	}
 	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// the same non-blocking read, never a fetch, and set once at start-up.
+	config.AutoModels = models.ModelsNow
+	// The pool's index is seated beside it, read once here and refreshed in the
+	// background, against the same profile the catalog was read from.
+	wirePoolIndex(profileDir)
 	// The refresh key in /model asks the same router THIS machine's list came
 	// from, and refills the same shelf — the list is this laptop's list of
 	// names on both doors (chatv3_modelshelf.go).

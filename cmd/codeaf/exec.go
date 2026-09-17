@@ -113,6 +113,7 @@ func runExec(args []string) error {
 	// that took the flag and then resolved it differently from every other door
 	// would be the parity it claims in name only. Only the work seat is printed,
 	// because only the work seat runs anything.
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
 	fmt.Fprintln(os.Stderr, seats.Work.Report())

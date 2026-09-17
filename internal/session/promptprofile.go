@@ -29,8 +29,9 @@ package session
 // An earlier draft of this file had a second trigger — the crew's `worker` row,
 // on the reasoning that an open-weight model reasons like a worker whatever its
 // card claims. THAT WAS WRONG, and it is stated here so nobody restores it.
-// `deepseek-v4-flash` and `glm-5.3-flash` are the open-weight models the frugal
-// and balanced presets put in that seat, and served through a provider they have
+// `glm-5.3-flash` and `glm-5.3` are the open-weight models the presets put in
+// that seat — the first through balanced, the second at max — and served
+// through a provider they have
 // a hundred and twenty-eight thousand tokens of room. That is a NORMAL SYSTEM and
 // it must get the full page: the seat rule would have taken sections off the page,
 // shelved `propose_task` and `tasks`, and turned saved memories OFF for anybody

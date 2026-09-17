@@ -177,6 +177,10 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// the same non-blocking read, never a fetch, and set once at start-up.
+	config.AutoModels = models.ModelsNow
+	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
 	return &v3Process{

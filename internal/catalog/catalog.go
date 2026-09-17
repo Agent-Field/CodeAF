@@ -107,22 +107,29 @@ type Model struct {
 	// tops the webapps board and sits mid-table on 3d has a real strength an
 	// average would report as mediocrity. Zero means nobody published one.
 	ArenaElo float64 `json:"arena_elo,omitempty"`
-	// IntelligenceIndex is the one published score in the catalog, carried
-	// verbatim and never computed here.
+	// The three Artificial Analysis scores the catalog keeps, carried verbatim
+	// and never computed here.
 	//
 	// OpenRouter's rows may carry a `benchmarks` block, and inside it an
 	// `artificial_analysis` object with `intelligence_index`, `coding_index`
 	// and `agentic_index` — Artificial Analysis's numbers, republished. 155 of
 	// 528 rows had one on 2026-08-11. Zero means NOBODY published a score, and
-	// never a model that scored zero: a surface showing this must render the
+	// never a model that scored zero: a surface showing these must render the
 	// zero as absence the way it renders an absent price.
 	//
-	// Only the intelligence index is kept. The other two are the same source
-	// saying the same thing at a different angle, and a catalog row is not the
-	// place to hold a benchmark suite.
-	IntelligenceIndex float64  `json:"intelligence_index,omitempty"`
-	InputModalities   []string `json:"input_modalities,omitempty"`
-	OutputModalities  []string `json:"output_modalities,omitempty"`
+	// All three are kept because they are read seat by seat: the agentic and
+	// coding indexes describe a long tool loop, the intelligence index a single
+	// reasoning call, and the seat asking decides which one it needs.
+	IntelligenceIndex float64 `json:"intelligence_index,omitempty"`
+	CodingIndex       float64 `json:"coding_index,omitempty"`
+	AgenticIndex      float64 `json:"agentic_index,omitempty"`
+	// OpenWeights says the row's weights are published — OpenRouter's
+	// `hugging_face_id`, kept as the one-word answer to whether the weights are
+	// public. A row cached before this field existed reads false, which every
+	// reader must take as unknown rather than closed.
+	OpenWeights      bool     `json:"open_weights,omitempty"`
+	InputModalities  []string `json:"input_modalities,omitempty"`
+	OutputModalities []string `json:"output_modalities,omitempty"`
 	// Parameters is which request fields the provider says this model accepts —
 	// OpenRouter's `supported_parameters`, lowercased and deduped.
 	//
@@ -255,6 +262,11 @@ type Catalog struct {
 	// exists. [Catalog.rows] blocks on the future; [Catalog.rowsNow] reads this
 	// and takes "not yet" for an answer.
 	warm atomic.Pointer[rows]
+	// warmed is closed the moment that publish happens, and is the door
+	// [Catalog.Warmed] waits at. Nil on a catalog that resolved eagerly —
+	// there was never a warm to wait for — and on a zero catalog, where nothing
+	// is in flight and nothing will land.
+	warmed chan struct{}
 	// blocking counts the questions asked through [Catalog.rows] — the door that
 	// can wait. See [Catalog.BlockingReads].
 	blocking atomic.Int64
@@ -354,10 +366,14 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 // the surface is up, so the goroutine warms the value while the caller carries
 // on, and only a question that genuinely arrives first ever blocks.
 func LoadLazy(ctx context.Context, options Options) *Catalog {
-	resolved := &Catalog{}
+	resolved := &Catalog{warmed: make(chan struct{})}
 	resolve := sync.OnceValue(func() *rows {
 		loaded, _ := loadOrFallback(ctx, options)
 		resolved.warm.Store(loaded)
+		// The wait door ([Catalog.Warmed]) reads the close, not the value, and
+		// the two land together so a caller that arrived between them would
+		// see the rows and still wait.
+		close(resolved.warmed)
 		return loaded
 	})
 	resolved.resolve = resolve
@@ -469,6 +485,41 @@ func (c *Catalog) rowsNow() *rows {
 		return c.ready
 	}
 	return c.warm.Load()
+}
+
+// Warmed answers whether this catalog's rows have landed, waiting within the
+// bound ctx carries for a lazily loaded one — from the disk cache or from the
+// fetch, whichever wins — and answering false when the bound ends first. A
+// catalog that resolved eagerly ([Load], [Refresh]) answers true at once, and
+// a nil catalog answers false.
+//
+// It exists for a caller whose next step reads the rows through a seam that
+// must not wait ([Catalog.ModelsNow], and the binaries that set config's
+// AutoModels from it): a bounded wait turns "not yet" into "the rows" when the
+// rows are a disk read away, without ever turning the caller into a fetch. The
+// caller owns the bound; this only honors it.
+func (c *Catalog) Warmed(ctx context.Context) bool {
+	if c == nil {
+		return false
+	}
+	if c.ready != nil {
+		return true
+	}
+	if c.warm.Load() != nil {
+		return true
+	}
+	if c.warmed == nil {
+		// Not a lazily loaded catalog: nothing is in flight and nothing will
+		// land, so a wait would only spend the caller's bound. What is in hand
+		// is the whole answer, and it is nothing.
+		return false
+	}
+	select {
+	case <-c.warmed:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // ModelsNow is the whole model list for a caller that MUST NOT WAIT, and nil
@@ -1023,7 +1074,10 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			CacheReadPrice:    cacheRead,
 			PriceUnknown:      !promptOK || !completionOK,
 			ArenaElo:          arenaElo(item.Benchmarks),
-			IntelligenceIndex: intelligenceIndex(item.Benchmarks),
+			IntelligenceIndex: analysisScore(item.Benchmarks, "intelligence_index"),
+			CodingIndex:       analysisScore(item.Benchmarks, "coding_index"),
+			AgenticIndex:      analysisScore(item.Benchmarks, "agentic_index"),
+			OpenWeights:       item.HuggingFaceID != "",
 			InputModalities:   cleanLowerList(item.Architecture.Input),
 			OutputModalities:  cleanLowerList(item.Architecture.Output),
 			Parameters:        cleanLowerList(item.SupportedParameters),
@@ -1083,6 +1137,10 @@ type modelWire struct {
 		SupportedEfforts []string `json:"supported_efforts"`
 		DefaultEffort    string   `json:"default_effort"`
 	} `json:"reasoning"`
+	// HuggingFaceID is the row's `hugging_face_id`, read for the one fact it
+	// carries — the weights behind the row are published — and not kept on the
+	// Model beside that fact.
+	HuggingFaceID string `json:"hugging_face_id"`
 	// Benchmarks stays raw so its shape cannot break the row around it. It
 	// carried an object beside a LIST on 2026-08-11 (`design_arena: []` next
 	// to `artificial_analysis: {…}`), which is exactly the kind of thing that
@@ -1090,24 +1148,28 @@ type modelWire struct {
 	Benchmarks json.RawMessage `json:"benchmarks"`
 }
 
-// intelligenceIndex digs the one published score out of a raw benchmarks
-// block, and answers zero for every shape it does not recognize. Nothing here
-// is allowed to fail loudly: a score is a nicety on a row, and a catalog that
-// refused to load because a benchmark changed shape would have traded four
-// hundred models for one number.
-func intelligenceIndex(raw json.RawMessage) float64 {
+// analysisScore digs one published Artificial Analysis score out of a raw
+// benchmarks block by its field name, and answers zero for every shape it does
+// not recognize. Nothing here is allowed to fail loudly: a score is a nicety on
+// a row, and a catalog that refused to load because a benchmark changed shape
+// would have traded four hundred models for one number. The block is decoded to
+// raw messages and only the asked-for field parsed, so one drifted score costs
+// itself and never its siblings.
+func analysisScore(raw json.RawMessage, field string) float64 {
 	if len(raw) == 0 {
 		return 0
 	}
 	var block struct {
-		ArtificialAnalysis struct {
-			IntelligenceIndex float64 `json:"intelligence_index"`
-		} `json:"artificial_analysis"`
+		ArtificialAnalysis map[string]json.RawMessage `json:"artificial_analysis"`
 	}
 	if json.Unmarshal(raw, &block) != nil {
 		return 0
 	}
-	if score := block.ArtificialAnalysis.IntelligenceIndex; score > 0 {
+	var score float64
+	if json.Unmarshal(block.ArtificialAnalysis[field], &score) != nil {
+		return 0
+	}
+	if score > 0 {
 		return score
 	}
 	return 0
