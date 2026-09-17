@@ -122,18 +122,18 @@ func poolReading(name string, args []string, output io.Writer, poolDir string, c
 // ci — then the cached index with its age, then, for status, the outbox and
 // the two doors the mode opens.
 func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withStatus bool) error {
-	var held *index.Index
+	var cached *index.Index
 	// The cache is read the way show reads everything else, as an answer and
 	// not as an argument: a document that does not parse is not there yet,
 	// and the line below says so. The signature and the puller's version mark
 	// are verify's business; show reports what a person has.
 	if doc, err := os.ReadFile(filepath.Join(poolDir, "doc.json")); err == nil {
 		if parsed, err := index.Parse(doc); err == nil {
-			held = parsed
+			cached = parsed
 		}
 	}
 	if asJSON {
-		return printPoolJSON(output, poolDir, cfg, held, now, withStatus)
+		return printPoolJSON(output, poolDir, cfg, cached, now, withStatus)
 	}
 	for _, line := range []string{
 		fmt.Sprintf("mode %s · %s", cfg.Mode, cfg.Source.Mode),
@@ -145,19 +145,26 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 			return err
 		}
 	}
-	if held == nil {
+	if cached == nil {
 		// A nothing is said in a sentence, the way an empty cache is:
-		// silence and a bare header both read as a command that broke.
-		if _, err := fmt.Fprintln(output, "no index cached yet"); err != nil {
+		// silence and a bare header both read as a command that broke. And the
+		// index the build carries is named beside it, so a person knows there
+		// are numbers before any fetch: the seed is what a pick reads until a
+		// fresher signed one is cached.
+		line := "no index cached yet"
+		if seed, err := index.SeedIndex(); err == nil {
+			line = fmt.Sprintf("no index cached yet · built-in seed of %s", seed.Generated().Format("2006-01-02"))
+		}
+		if _, err := fmt.Fprintln(output, line); err != nil {
 			return err
 		}
 	} else {
-		generated := held.Generated()
+		generated := cached.Generated()
 		if _, err := fmt.Fprintf(output,
 			"index · generated %s · %s old · schema %d · %s · %s · min installs %d\n",
 			generated.Format("2006-01-02"), reltime.Elapsed(now.Sub(generated)),
-			held.Schema(), countWord(len(held.Metrics()), "metric", "metrics"),
-			countWord(len(held.Judges()), "judge", "judges"), held.MinInstalls()); err != nil {
+			cached.Schema(), countWord(len(cached.Metrics()), "metric", "metrics"),
+			countWord(len(cached.Judges()), "judge", "judges"), cached.MinInstalls()); err != nil {
 			return err
 		}
 	}
@@ -187,7 +194,9 @@ type poolAnswer struct {
 
 // indexSummary is the cached index as the reading forms carry it: the
 // document's own day, its age against the asking clock, and the counts a
-// person checks before trusting it.
+// person checks before trusting it. Source says where the document came from —
+// "cache" for the one under the profile, "seed" for the one the build carries
+// when there is no cache.
 type indexSummary struct {
 	Generated   string `json:"generated"`
 	AgeSeconds  int    `json:"age_seconds"`
@@ -195,15 +204,25 @@ type indexSummary struct {
 	Metrics     int    `json:"metrics"`
 	Judges      int    `json:"judges"`
 	MinInstalls int    `json:"min_installs"`
+	Source      string `json:"source"`
 }
 
-func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, held *index.Index, now time.Time, withStatus bool) error {
+func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached *index.Index, now time.Time, withStatus bool) error {
 	answer := poolAnswer{
 		Mode:       cfg.Mode.String(),
 		ModeSource: cfg.Source.Mode,
 		IndexURL:   cfg.IndexURL,
 		SubmitURL:  cfg.SubmitURL,
 		TTLSeconds: int(cfg.TTL / time.Second),
+	}
+	// A cached document is reported as itself; with no cache the build's seed
+	// stands in, so a script reading `index` sees the index a pick would read
+	// and the source field says which one it was.
+	held, source := cached, "cache"
+	if held == nil {
+		if seed, err := index.SeedIndex(); err == nil {
+			held, source = seed, "seed"
+		}
 	}
 	if held != nil {
 		generated := held.Generated()
@@ -214,6 +233,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, held *i
 			Metrics:     len(held.Metrics()),
 			Judges:      len(held.Judges()),
 			MinInstalls: held.MinInstalls(),
+			Source:      source,
 		}
 	}
 	if withStatus {

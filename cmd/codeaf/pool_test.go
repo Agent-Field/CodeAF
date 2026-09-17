@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
+	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 )
 
 // poolClock is a stopped now, so an index's age is a fact rather than a race
@@ -111,7 +113,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 		"index https://pool.invalid/index.json · default",
 		"submit https://pool.invalid/submit · default",
 		"ttl 1d · default",
-		"no index cached yet",
+		"no index cached yet · built-in seed of 2026-09-17",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("show is missing %q:\n%s", want, body)
@@ -154,6 +156,7 @@ func TestPoolShowJSONWithASeededIndexReportsTheDocument(t *testing.T) {
 			Metrics     int    `json:"metrics"`
 			Judges      int    `json:"judges"`
 			MinInstalls int    `json:"min_installs"`
+			Source      string `json:"source"`
 		} `json:"index"`
 	}
 	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
@@ -178,6 +181,9 @@ func TestPoolShowJSONWithASeededIndexReportsTheDocument(t *testing.T) {
 	}
 	if held.Schema != 1 || held.Metrics != 1 || held.Judges != 1 || held.MinInstalls != 1 {
 		t.Fatalf("the document's counts moved: %+v", held)
+	}
+	if held.Source != "cache" {
+		t.Fatalf("a cached index did not name its source: %q", held.Source)
 	}
 }
 
@@ -366,5 +372,120 @@ func TestPoolVerifyRefusesADocumentItsKeyDoesNotTrust(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "pool", "doc.json")); !os.IsNotExist(statErr) {
 		t.Fatal("a refused document was cached")
+	}
+}
+
+// ── THE SEATED INDEX ────────────────────────────────────────────────────────
+
+// writePoolDoc puts a document where poolIndexFor reads the cache: doc.json
+// under the profile's pool directory.
+func writePoolDoc(t *testing.T, dir, doc string) {
+	t.Helper()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "doc.json"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// With no cache the reader answers the seed this build carries, and a worker
+// cell is in it — so `learn` has numbers on day one.
+func TestPoolIndexForAnswersTheSeedWithNoCache(t *testing.T) {
+	held := poolIndexFor(t.TempDir(), poolcfg.Resolve("", noEnv), poolClock(t))()
+	if held == nil {
+		t.Fatal("no cache and no seed: the reader answered nothing")
+	}
+	worker := false
+	for _, cell := range held.Cells("role_quality") {
+		if cell.Role == "worker" {
+			worker = true
+		}
+	}
+	if !worker {
+		t.Fatal("the seed answered no worker cell")
+	}
+}
+
+// A cached document whose generated day is newer than the seed's wins: the
+// reader hands back the cached numbers rather than the embedded ones.
+func TestPoolIndexForKeepsANewerCache(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, `{
+		"schema": 1,
+		"generated": "2026-09-20",
+		"min_installs": 1,
+		"metrics": {"role_quality": {"kind": "gaussian", "dims": ["role", "model"]}},
+		"cells": [{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 75, "sd": 7, "n": 30}]
+	}`)
+	held := poolIndexFor(dir, poolcfg.Resolve("", noEnv), poolClock(t))()
+	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-20" {
+		t.Fatalf("a newer cache did not win: %v", held)
+	}
+}
+
+// A cache that does not parse is not a cache: the seed stands in its place.
+func TestPoolIndexForIgnoresAnUnparsableCache(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, "{ this is not a document")
+	held := poolIndexFor(dir, poolcfg.Resolve("", noEnv), poolClock(t))()
+	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-17" {
+		t.Fatalf("an unparsable cache did not fall back to the seed: %v", held)
+	}
+}
+
+// A mode that forbids reading answers no index at all.
+func TestPoolIndexForAnswersNothingWhenTheModeIsOff(t *testing.T) {
+	if held := poolIndexFor(t.TempDir(), poolcfg.Resolve("off", noEnv), poolClock(t))(); held != nil {
+		t.Fatal("a mode that forbids reading answered an index")
+	}
+}
+
+// No key in the build means no fetch: the refresh starts no goroutine, which
+// is every run on a build with no key compiled in. A key starts the one fetch,
+// and the mode still has to allow reading.
+func TestPoolRefreshStartsNoGoroutineWithoutAKey(t *testing.T) {
+	started := 0
+	prev := poolRefreshGo
+	poolRefreshGo = func(scope string, fn func()) { started++ }
+	t.Cleanup(func() { poolRefreshGo = prev })
+
+	key := []ed25519.PublicKey{make(ed25519.PublicKey, ed25519.PublicKeySize)}
+	on := poolcfg.Resolve("", noEnv)
+	off := poolcfg.Resolve("off", noEnv)
+
+	startPoolIndexRefresh(context.Background(), t.TempDir(), on, nil)
+	if started != 0 {
+		t.Fatalf("no key, yet %d goroutine(s) started", started)
+	}
+	startPoolIndexRefresh(context.Background(), t.TempDir(), off, key)
+	if started != 0 {
+		t.Fatal("a mode that forbids reading started a goroutine")
+	}
+	startPoolIndexRefresh(context.Background(), t.TempDir(), on, key)
+	if started != 1 {
+		t.Fatalf("with a key, %d goroutine(s) started, want 1", started)
+	}
+}
+
+// With no cache, the --json shape reports the seed the build carries and says
+// so under source, so a script sees the index a pick would read.
+func TestPoolShowJSONWithNoCacheReportsTheSeed(t *testing.T) {
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--json"}, &out, t.TempDir(), poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Index *struct {
+			Generated string `json:"generated"`
+			Source    string `json:"source"`
+		} `json:"index"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Index == nil || answer.Index.Source != "seed" || answer.Index.Generated != "2026-09-17" {
+		t.Fatalf("the seed was not reported: %+v", answer.Index)
 	}
 }
