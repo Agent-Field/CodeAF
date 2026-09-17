@@ -1,44 +1,200 @@
 package plandb
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 const stateVersion = 2
 
-// state is the whole plan on disk: one file, written whole, renamed into
-// place. The earlier port carried exactly this file; the adaptation adds
-// notes to it and nothing else, so a state file the old build wrote still
-// loads (notes were its absence, not a different shape).
+// state is the whole plan as the store keeps it in memory: the project and its
+// root, every task in admission order, the notes and context entries, and the
+// next id the store has not handed out. It is read from and written to the
+// SQLite database WHOLE, inside one transaction, and never half of it: the
+// store holds hundreds of tasks, not millions, so reloading all of them is the
+// cheapest thing that is also the correct one, and it is what makes a handle's
+// stale memory unable to erase another writer's task.
 type state struct {
-	Version  int              `json:"version"`
-	Project  string           `json:"project"`
-	RootID   string           `json:"root_id"`
-	Tasks    map[string]*Task `json:"tasks"`
-	Order    []string         `json:"order"`
-	Notes    []Note           `json:"notes,omitempty"`
-	Contexts []ContextEntry   `json:"contexts,omitempty"`
-	NextID   uint64           `json:"next_id"`
+	Version  int
+	Project  string
+	RootID   string
+	Tasks    map[string]*Task
+	Order    []string
+	Notes    []Note
+	Contexts []ContextEntry
+	NextID   uint64
 }
 
-func loadState(path string) (state, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return state{}, err
+// errNoStore says the database has no meta row yet — a file that exists (or
+// was just created) but has never held a plan.
+var errNoStore = errors.New("plan store is not initialized")
+
+// errNoChange lets a transaction's change function say it decided to write
+// nothing after all — a claim that found nothing ready, a root already
+// finished — so the transaction rolls back and the store only adopts the
+// fresh read.
+var errNoChange = errors.New("no change")
+
+// The schema: one row of meta, one row per task, one row per dependency, and
+// one row per note and context entry, in insertion order. Columns carry the
+// fields the store reasons with and reads back whole; the rarely-read list
+// fields — capabilities, resources, context inputs, deliverables, evidence
+// requirements, artifacts, evidence — ride as JSON in a single column each.
+// The spend table is the ledger's, created empty and written by nothing here.
+var schemaStatements = []string{
+	`CREATE TABLE IF NOT EXISTS meta (
+		id      INTEGER PRIMARY KEY CHECK (id = 1),
+		project TEXT    NOT NULL,
+		root_id TEXT    NOT NULL,
+		next_id INTEGER NOT NULL,
+		version INTEGER NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS tasks (
+		id                    TEXT    PRIMARY KEY,
+		ord                   INTEGER NOT NULL,
+		title                 TEXT    NOT NULL,
+		description           TEXT    NOT NULL,
+		kind                  TEXT    NOT NULL,
+		parent_id             TEXT    NOT NULL,
+		priority              INTEGER NOT NULL,
+		effect                TEXT    NOT NULL,
+		parallel              TEXT    NOT NULL,
+		isolation             TEXT    NOT NULL,
+		role                  TEXT    NOT NULL,
+		agent                 TEXT    NOT NULL,
+		acceptance            TEXT    NOT NULL,
+		capabilities          TEXT    NOT NULL,
+		resources             TEXT    NOT NULL,
+		context_inputs        TEXT    NOT NULL,
+		deliverables          TEXT    NOT NULL,
+		evidence_requirements TEXT    NOT NULL,
+		status                TEXT    NOT NULL,
+		composite             INTEGER NOT NULL,
+		claimed_by            TEXT    NOT NULL,
+		result                TEXT    NOT NULL,
+		err                   TEXT    NOT NULL,
+		artifacts             TEXT    NOT NULL,
+		evidence              TEXT    NOT NULL,
+		created_at            TEXT    NOT NULL,
+		updated_at            TEXT    NOT NULL,
+		completed_at          TEXT    NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS deps (
+		downstream TEXT    NOT NULL,
+		upstream   TEXT    NOT NULL,
+		kind       TEXT    NOT NULL,
+		ord        INTEGER NOT NULL,
+		PRIMARY KEY (downstream, upstream)
+	)`,
+	`CREATE TABLE IF NOT EXISTS notes (
+		seq     INTEGER PRIMARY KEY,
+		id      TEXT NOT NULL,
+		task_id TEXT NOT NULL,
+		agent   TEXT NOT NULL,
+		body    TEXT NOT NULL,
+		at      TEXT NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS contexts (
+		seq        INTEGER PRIMARY KEY,
+		id         TEXT NOT NULL,
+		task_id    TEXT NOT NULL,
+		kind       TEXT NOT NULL,
+		content    TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS spend (
+		task_id    TEXT    NOT NULL,
+		model      TEXT    NOT NULL,
+		role       TEXT    NOT NULL,
+		usd        REAL    NOT NULL,
+		in_tokens  INTEGER NOT NULL,
+		out_tokens INTEGER NOT NULL,
+		at         TEXT    NOT NULL
+	)`,
+}
+
+// openDatabase opens (creating when absent) the SQLite database at path, making
+// its directory first. THE TWO SETTINGS THAT CARRY THE CONCURRENCY are here:
+// WAL journal mode lets a reader run while a writer holds the write lock, and
+// the busy timeout makes a second writer wait a few seconds for the first
+// rather than failing at once. With BEGIN IMMEDIATE — the transaction mode
+// _txlock asks for — those two stand in for the advisory lock the sidecar file
+// used to carry, and the sidecar goes away.
+func openDatabase(path string) (*sql.DB, error) {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("create plan store directory: %w", err)
+		}
 	}
+	dsn := "file:" + filepath.ToSlash(path) +
+		"?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	// ONE CONNECTION, so the pragmas above land on the connection every
+	// transaction uses and a transaction never races its own store for the
+	// write lock.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	// THE SCHEMA IS IDEMPOTENT AND ALWAYS MADE HERE, so a store that exists but
+	// is empty — a file an interrupted build left behind, a database created by
+	// an earlier connection that crashed — is still a store a later open can
+	// use. CREATE TABLE IF NOT EXISTS on a table that is already there writes
+	// nothing.
+	for _, statement := range schemaStatements {
+		if _, err := db.Exec(statement); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("create plan store schema: %w", err)
+		}
+	}
+	return db, nil
+}
+
+// loadState reads the whole plan out of the database inside tx. Every caller
+// reads inside its own transaction, so what it sees is a committed, consistent
+// plan and never a half-written one. The store's own invariants are asked of
+// the result — the same validateLoadedState the file store asked of its bytes
+// — so a database that has been tampered with is refused rather than trusted.
+func loadState(tx *sql.Tx) (state, error) {
 	var value state
-	if err := json.Unmarshal(data, &value); err != nil {
-		return state{}, fmt.Errorf("decode plan store: %w", err)
+	row := tx.QueryRow(`SELECT project, root_id, next_id, version FROM meta WHERE id = 1`)
+	if err := row.Scan(&value.Project, &value.RootID, &value.NextID, &value.Version); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return state{}, errNoStore
+		}
+		return state{}, err
 	}
 	if value.Version != stateVersion {
 		return state{}, fmt.Errorf("unsupported plan store version %d", value.Version)
 	}
-	if value.RootID == "" || value.Project == "" || value.Tasks == nil {
+	if value.RootID == "" || value.Project == "" {
 		return state{}, errors.New("invalid plan store")
+	}
+	tasks, order, err := loadTasks(tx)
+	if err != nil {
+		return state{}, err
+	}
+	value.Tasks, value.Order = tasks, order
+	if err := loadDeps(tx, value.Tasks); err != nil {
+		return state{}, err
+	}
+	if value.Notes, err = loadNotes(tx); err != nil {
+		return state{}, err
+	}
+	if value.Contexts, err = loadContexts(tx); err != nil {
+		return state{}, err
 	}
 	if err := validateLoadedState(value); err != nil {
 		return state{}, fmt.Errorf("validate plan store: %w", err)
@@ -46,57 +202,304 @@ func loadState(path string) (state, error) {
 	return value, nil
 }
 
-// saveState writes the whole state through a temp file and a rename, so a
-// reader never sees half a file. The cross-process story is the lock's
-// (lock.go): this function is only ever called with it held.
-func saveState(path string, value state) error {
-	if path == "" {
+func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
+	rows, err := tx.Query(`SELECT id, title, description, kind, parent_id, priority, effect,
+		parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
+		deliverables, evidence_requirements, status, composite, claimed_by, result, err,
+		artifacts, evidence, created_at, updated_at, completed_at
+		FROM tasks ORDER BY ord`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	tasks := map[string]*Task{}
+	var order []string
+	for rows.Next() {
+		task := &Task{}
+		var (
+			capabilities, resources, contextInputs, deliverables string
+			evidenceRequirements, artifacts, evidence            string
+			composite                                            int
+			createdAt, updatedAt, completedAt                    string
+			effect, parallel, isolation                          string
+		)
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.Kind, &task.ParentID,
+			&task.Priority, &effect, &parallel, &isolation, &task.Role, &task.Agent, &task.Acceptance,
+			&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
+			&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
+			&artifacts, &evidence, &createdAt, &updatedAt, &completedAt); err != nil {
+			return nil, nil, err
+		}
+		task.Effect = Effect(effect)
+		task.Parallel, task.Isolation = parallel, isolation
+		task.Composite = composite != 0
+		if err := decodeJSON(capabilities, &task.Capabilities); err != nil {
+			return nil, nil, err
+		}
+		if err := decodeJSON(resources, &task.Resources); err != nil {
+			return nil, nil, err
+		}
+		if err := decodeJSON(contextInputs, &task.ContextInputs); err != nil {
+			return nil, nil, err
+		}
+		if err := decodeJSON(deliverables, &task.Deliverables); err != nil {
+			return nil, nil, err
+		}
+		if err := decodeJSON(evidenceRequirements, &task.EvidenceRequirements); err != nil {
+			return nil, nil, err
+		}
+		if err := decodeJSON(artifacts, &task.Artifacts); err != nil {
+			return nil, nil, err
+		}
+		if err := decodeJSON(evidence, &task.Evidence); err != nil {
+			return nil, nil, err
+		}
+		if task.CreatedAt, err = parseTime(createdAt); err != nil {
+			return nil, nil, err
+		}
+		if task.UpdatedAt, err = parseTime(updatedAt); err != nil {
+			return nil, nil, err
+		}
+		if task.CompletedAt, err = parseTime(completedAt); err != nil {
+			return nil, nil, err
+		}
+		tasks[task.ID] = task
+		order = append(order, task.ID)
+	}
+	return tasks, order, rows.Err()
+}
+
+func loadDeps(tx *sql.Tx, tasks map[string]*Task) error {
+	rows, err := tx.Query(`SELECT downstream, upstream, kind FROM deps ORDER BY downstream, ord`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var downstream string
+		var dep Dependency
+		var kind string
+		if err := rows.Scan(&downstream, &dep.TaskID, &kind); err != nil {
+			return err
+		}
+		dep.Kind = DepKind(kind)
+		if task := tasks[downstream]; task != nil {
+			task.Dependencies = append(task.Dependencies, dep)
+		}
+	}
+	return rows.Err()
+}
+
+func loadNotes(tx *sql.Tx) ([]Note, error) {
+	rows, err := tx.Query(`SELECT id, task_id, agent, body, at FROM notes ORDER BY seq`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var notes []Note
+	for rows.Next() {
+		var note Note
+		var at string
+		if err := rows.Scan(&note.ID, &note.TaskID, &note.Agent, &note.Body, &at); err != nil {
+			return nil, err
+		}
+		if note.At, err = parseTime(at); err != nil {
+			return nil, err
+		}
+		notes = append(notes, note)
+	}
+	return notes, rows.Err()
+}
+
+func loadContexts(tx *sql.Tx) ([]ContextEntry, error) {
+	rows, err := tx.Query(`SELECT id, task_id, kind, content, created_at FROM contexts ORDER BY seq`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []ContextEntry
+	for rows.Next() {
+		var entry ContextEntry
+		var createdAt string
+		if err := rows.Scan(&entry.ID, &entry.TaskID, &entry.Kind, &entry.Content, &createdAt); err != nil {
+			return nil, err
+		}
+		if entry.CreatedAt, err = parseTime(createdAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+// saveState writes the whole plan into the database inside tx. The changed
+// tables are rewritten rather than diffed row by row: at this size that is one
+// prepared insert per row and nothing to get wrong, and the transaction is what
+// makes the rewrite atomic — a reader sees the old plan or the new one, never a
+// half-written one, which is the property the file's temp-and-rename used to
+// give.
+func saveState(tx *sql.Tx, value state) error {
+	for _, table := range []string{"meta", "tasks", "deps", "notes", "contexts"} {
+		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO meta (id, project, root_id, next_id, version) VALUES (1, ?, ?, ?, ?)`,
+		value.Project, value.RootID, value.NextID, value.Version); err != nil {
+		return err
+	}
+	if err := saveTasks(tx, value); err != nil {
+		return err
+	}
+	if err := saveDeps(tx, value); err != nil {
+		return err
+	}
+	if err := saveNotes(tx, value.Notes); err != nil {
+		return err
+	}
+	return saveContexts(tx, value.Contexts)
+}
+
+func saveTasks(tx *sql.Tx, value state) error {
+	statement, err := tx.Prepare(`INSERT INTO tasks (
+		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
+		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
+		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
+		created_at, updated_at, completed_at) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+	for ord, id := range value.Order {
+		task := value.Tasks[id]
+		columns, err := encodeJSON(task.Capabilities)
+		if err != nil {
+			return err
+		}
+		resources, err := encodeJSON(task.Resources)
+		if err != nil {
+			return err
+		}
+		contextInputs, err := encodeJSON(task.ContextInputs)
+		if err != nil {
+			return err
+		}
+		deliverables, err := encodeJSON(task.Deliverables)
+		if err != nil {
+			return err
+		}
+		evidenceRequirements, err := encodeJSON(task.EvidenceRequirements)
+		if err != nil {
+			return err
+		}
+		artifacts, err := encodeJSON(task.Artifacts)
+		if err != nil {
+			return err
+		}
+		evidence, err := encodeJSON(task.Evidence)
+		if err != nil {
+			return err
+		}
+		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Kind,
+			task.ParentID, task.Priority, string(task.Effect), task.Parallel, task.Isolation,
+			task.Role, task.Agent, task.Acceptance, columns, resources, contextInputs, deliverables,
+			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
+			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
+			formatTime(task.UpdatedAt), formatTime(task.CompletedAt)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func saveDeps(tx *sql.Tx, value state) error {
+	statement, err := tx.Prepare(`INSERT INTO deps (downstream, upstream, kind, ord) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+	for _, id := range value.Order {
+		for ord, dep := range value.Tasks[id].Dependencies {
+			if _, err := statement.Exec(id, dep.TaskID, string(dep.Kind), ord); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func saveNotes(tx *sql.Tx, notes []Note) error {
+	statement, err := tx.Prepare(`INSERT INTO notes (seq, id, task_id, agent, body, at) VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+	for seq, note := range notes {
+		if _, err := statement.Exec(seq, note.ID, note.TaskID, note.Agent, note.Body, formatTime(note.At)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func saveContexts(tx *sql.Tx, entries []ContextEntry) error {
+	statement, err := tx.Prepare(`INSERT INTO contexts (seq, id, task_id, kind, content, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+	for seq, entry := range entries {
+		if _, err := statement.Exec(seq, entry.ID, entry.TaskID, entry.Kind, entry.Content, formatTime(entry.CreatedAt)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// encodeJSON packs a rarely-read list field into its column. A nil field packs
+// to "null", which decodes back to nil.
+func encodeJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// decodeJSON unpacks a column encodeJSON wrote. An empty column is a nil field.
+func decodeJSON(text string, out any) error {
+	if text == "" {
 		return nil
 	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create plan store directory: %w", err)
+	return json.Unmarshal([]byte(text), out)
+}
+
+// formatTime writes a timestamp as RFC3339Nano in UTC; the zero time writes as
+// an empty column so it reads back as the zero time and not as year one.
+func formatTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
 	}
-	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("plan store path must not be a symlink")
-	} else if err != nil && !os.IsNotExist(err) {
-		return err
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func parseTime(text string) (time.Time, error) {
+	if text == "" {
+		return time.Time{}, nil
 	}
-	data, err := json.MarshalIndent(value, "", "  ")
+	value, err := time.Parse(time.RFC3339Nano, text)
 	if err != nil {
-		return err
+		return time.Time{}, fmt.Errorf("invalid stored timestamp %q: %w", text, err)
 	}
-	tmp, err := os.CreateTemp(dir, ".plandb-*.tmp")
-	if err != nil {
-		return err
+	return value, nil
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
 	}
-	tmpName := tmp.Name()
-	ok := false
-	defer func() {
-		if !ok {
-			_ = os.Remove(tmpName)
-		}
-	}()
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return err
-	}
-	ok = true
-	return nil
+	return 0
 }
 
 func cloneState(source state) state {
