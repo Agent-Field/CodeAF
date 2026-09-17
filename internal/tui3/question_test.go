@@ -263,6 +263,20 @@ func TestAQuestionAnswerBoxEditsLikeEveryOtherBoxOnTheSurface(t *testing.T) {
 		}
 	}
 
+	// `ctrl+k` is the other half of `ctrl+u`: from the caret to the end of the
+	// line, and nothing before it.
+	{
+		lab, open := openBox(t, draft)
+		open.other.words.cursor = 4
+		lab.pressMsg(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+		if got := open.other.words.String(); got != draft[:4] {
+			t.Fatalf("ctrl+k left %q in the answer box, want %q", got, draft[:4])
+		}
+		if lab.a.input.String() != "" {
+			t.Fatalf("ctrl+k deleted from the message box instead of the answer box")
+		}
+	}
+
 	// AND THE EDITED WORDS STILL TRAVEL AS THE ANSWER. Editing the row's own box
 	// has to leave the answer it carries intact — the whole reason the row is a
 	// box.
