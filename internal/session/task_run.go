@@ -4969,7 +4969,7 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// [runTaskChild]), and [Agent.workTaskNode] has already cut them on every
 	// road where it did not — and this is what answers the two bodies that are
 	// not a worker in a worktree.
-	node.graph.stopChildren(node.id)
+	node.graph.planStopLandedChildren(node.id)
 	node.graph.complete(node, state)
 	// AND WHATEVER IS LEFT WAITING ON A DECIDER WHO HAS GONE HOME.
 	// [TaskGraph.stopChildren] deliberately leaves settled children alone, and a
@@ -5457,8 +5457,9 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// (task_run.go, after [TaskGraph.complete] settles the node's state), not
 	// here: a landing's work — writeback, promotion, dispatch, root completion
 	// — must read a settled node, and a pulse taken at this function's return
-	// fires before the runner has written it.
-	defer node.graph.stopChildren(node.id)
+	// fires before the runner has written it. The stop itself leaves the
+	// plan-born children to the plan, because that pulse is what ends them.
+	defer node.graph.planStopLandedChildren(node.id)
 
 	var (
 		// A RESUMED NODE STARTS WITH WHAT IT ALREADY WROTE. The landing stages by

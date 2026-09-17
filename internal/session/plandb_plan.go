@@ -411,6 +411,15 @@ func (g *TaskGraph) planPulse() {
 			return
 		}
 	}
+	// A NODE ADMITTED THIS PASS IS OPEN TOO, and the snapshot above cannot
+	// name it: the snapshot is taken before the dispatch loop runs. The run is
+	// not over while work it has just handed out is still running, so a pass
+	// that dispatched anything ends here — completing the root now would read
+	// a just-dispatched child as unfinished and fail a healthy run. The next
+	// landing is a pass with nothing to dispatch, and that one completes.
+	if len(dispatched) > 0 {
+		return
+	}
 	for _, task := range store.Tasks() {
 		if task.ID == store.RootID() || terminalStoreStatus(task.Status) || snapshot[task.ID] != nil || dispatched[task.ID] {
 			continue
@@ -453,6 +462,21 @@ func planSettleStoreTask(store *plandb.Store, task *plandb.Task, node *planNodeS
 			word = node.report
 		}
 		_, _ = store.Cancel(task.ID, word)
+	}
+}
+
+// planStopLandedChildren is the landing road's stop for a node that seeded or
+// drove a plan. A PLAN-BORN CHILD IS THE PLAN'S TO END, not the landing node's:
+// the pulse completes the run's root only once no plan-born node is open, so a
+// child cut here would be a child the run still expects — the orphan the
+// landing pulse was placed after stopChildren to avoid. Everything else stops
+// exactly as it did.
+func (g *TaskGraph) planStopLandedChildren(parent uint64) {
+	for _, kid := range g.children(parent) {
+		if kid.spec.planID != "" || kid.stateNow().settled() {
+			continue
+		}
+		_, _ = g.stop(kid.id)
 	}
 }
 
