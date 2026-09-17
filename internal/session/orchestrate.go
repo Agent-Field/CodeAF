@@ -209,7 +209,14 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// because this is the one place an orchestrated run is built and a reader
 	// is already in hand. A nil reader installs nothing, and the table stands
 	// alone exactly as before.
-	orchestrate.UsePrices(orchestrate.CatalogPrices(priceNow))
+	//
+	// THE NIL CASE IS A SKIP, NOT AN INSTALL OF NOTHING. The seam is one
+	// package-level value shared by every run in the process, so passing a nil
+	// source through would not leave the table alone — it would pull whatever
+	// another session installed out from under a run still metering by it.
+	if priceNow != nil {
+		orchestrate.UsePrices(orchestrate.CatalogPrices(priceNow))
+	}
 	run := orchestrate.New(goal, planner, worker, orchestrate.Options{
 		Cap:   capDollars,
 		Lanes: orchestrateLanes,
