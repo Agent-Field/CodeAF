@@ -715,6 +715,20 @@ func TestBashBeltWorkerPromptOpensOnTheLoopPolicy(t *testing.T) {
 	if !strings.Contains(bashPage, "Your FIRST action is the FRAME/PLAN") {
 		t.Error("the bash worker's page lost the first-action law")
 	}
+	// AND THE DIRECT LAW LEADS THE LOOP: a task with one owned output and no
+	// unknown is done directly, and the plan is decided once in the first turn.
+	if !strings.Contains(bashPage, "DONE DIRECTLY") {
+		t.Error("the bash worker's page lost the done-directly law")
+	}
+	// AND THE REASONING ECONOMY IS TAUGHT: the observation is the record, and
+	// what comes back is one decision rather than a replay.
+	if !strings.Contains(bashPage, "Think once") {
+		t.Error("the bash worker's page lost the think-once section")
+	}
+	// AND THE EDIT IDIOM NAMES THE DOOR THE BELT ACTUALLY CARRIES.
+	if !strings.Contains(bashPage, "codeaf patch") {
+		t.Error("the bash worker's page lost the codeaf patch idiom")
+	}
 	// AND THE PAGE'S OLD WEIGHT IS GONE: no there-is-no-planner, no batch law
 	// the envelope refuses, no clean-restore check (this belt has no auditor),
 	// and none of the hedges the page used to gate its own rules with.
@@ -773,6 +787,13 @@ func TestBashBeltWorkerPromptOpensOnTheLoopPolicy(t *testing.T) {
 	}
 	if strings.Contains(plainPage, "You own one task within a shared objective.") {
 		t.Error("a worker without the branch belt was handed the loop policy")
+	}
+	// AND THE BYTES THIS WAVE ADDED NEVER REACH THE FLAG-OFF PAGE: the law,
+	// the reasoning economy and the patch idiom are the bash belt's own.
+	for _, bashOnly := range []string{"DONE DIRECTLY", "Think once", "codeaf patch"} {
+		if strings.Contains(plainPage, bashOnly) {
+			t.Errorf("a worker without the branch belt was handed %q", bashOnly)
+		}
 	}
 }
 
