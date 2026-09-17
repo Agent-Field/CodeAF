@@ -136,7 +136,7 @@ func TestPlandbCliInitAndAddCapturedShapes(t *testing.T) {
 	if got := h.out.String(); got != "created task t-b (B)\n" {
 		t.Fatalf("add shape %q, want \"created task t-b (B)\\n\"", got)
 	}
-	// The rust CLI allows flags after positionals, --flag=value, and repeatable --dep.
+	// The grammar allows flags after positionals, --flag=value, and repeatable --dep.
 	code = h.run("--db", h.db, "add", "C", "--as=c", "--kind=research", "--dep", "t-a", "--dep", "t-b:blocks")
 	cliWantCode(t, code, 0)
 	code = h.run("--db", h.db, "show", "t-c")
@@ -147,7 +147,8 @@ func TestPlandbCliInitAndAddCapturedShapes(t *testing.T) {
 	if !strings.Contains(h.out.String(), "kind: research") {
 		t.Fatalf("show misses the kind:\n%s", h.out.String())
 	}
-	// An unknown dependency is named in the sentence the reference spells.
+	// An unknown dependency is named in the refusal, which says what to do
+	// about it.
 	code = h.run("--db", h.db, "add", "D", "--dep", "t-nope")
 	cliWantError(t, h, code, "dependency task 't-nope' not found. Create it first, then add the dependency.")
 	// A bad priority is the cause and the shape it wants.
@@ -188,7 +189,7 @@ func TestPlandbCliShowCardAndJSON(t *testing.T) {
 	if _, ok := value["created_at"]; !ok {
 		t.Fatalf("json task object carries no created_at: %#v", value)
 	}
-	// Not found, in the reference's shape.
+	// Not found, as one plain sentence.
 	code = h.run("--db", h.db, "show", "t-missing")
 	cliWantError(t, h, code, "not found: task t-missing")
 }
@@ -565,7 +566,7 @@ func TestPlandbCliGoAndDone(t *testing.T) {
 	if !strings.Contains(h.out.String(), "✓ t-a done [1/3 · 1 ready · 1 blocked]") {
 		t.Fatalf("done line:\n%s", h.out.String())
 	}
-	// Bare done with no running task says so in the reference's words.
+	// Bare done with no running task says so, and names the agent it looked for.
 	code = h.run("--db", h.db, "done", "--result", "x")
 	cliWantError(t, h, code, "no running task found for agent 'default'. Specify task ID explicitly.")
 	// done needs a result: that record is what the next worker reads.
