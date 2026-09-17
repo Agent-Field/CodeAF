@@ -40,22 +40,25 @@ import (
 // row is one invocation's line: the plan's identity and the readings and
 // grade that came of it.
 type row struct {
-	Date        string
-	Arm         Arm
-	Seats       Seats
-	Cell        string
-	Replicate   int
-	Model       string
-	ModelsUsed  string
-	Graded      bool
-	GradeDetail string
-	Ending      string
-	Report      string
-	Steps       int
-	CostUSD     float64
-	Unbilled    int
-	WallSeconds float64
-	WallSource  string
+	Date         string
+	Arm          Arm
+	Seats        Seats
+	Cell         string
+	Replicate    int
+	Model        string
+	ModelsUsed   string
+	Graded       bool
+	GradeDetail  string
+	Ending       string
+	Report       string
+	Steps        int
+	Calls        int
+	InputTokens  int
+	OutputTokens int
+	CostUSD      float64
+	Unbilled     int
+	WallSeconds  float64
+	WallSource   string
 
 	ChangedFiles  int
 	ChildrenDone  int
@@ -77,6 +80,7 @@ var csvHeader = []string{
 	"wall_seconds", "wall_source", "changed_files",
 	"children_done", "children_total", "nodes_failed",
 	"invalid_actions", "truncations", "edit_idiom_flags", "run_dir",
+	"calls", "in_tokens", "out_tokens", "out_per_call", "in_per_call",
 }
 
 func (r row) csvValues() []string {
@@ -89,8 +93,15 @@ func (r row) csvValues() []string {
 		strconv.Itoa(r.ChildrenDone), strconv.Itoa(r.ChildrenTotal), strconv.Itoa(r.NodesFailed),
 		strconv.Itoa(r.InvalidActions), strconv.Itoa(r.Truncations), strconv.Itoa(r.EditIdiomFlags),
 		r.RunDir,
+		strconv.Itoa(r.Calls), strconv.Itoa(r.InputTokens), strconv.Itoa(r.OutputTokens),
+		ratio(r.outPerCall()), ratio(r.inPerCall()),
 	}
 }
+
+// outPerCall and inPerCall are the row's derived token-to-call readings, the
+// same ratios the ledger's own fields answer.
+func (r row) outPerCall() float64 { return perCall(r.OutputTokens, r.Calls) }
+func (r row) inPerCall() float64  { return perCall(r.InputTokens, r.Calls) }
 
 // gradeWord is the graded column's own word: yes or no, the grader's answer
 // and nothing more. The verdict words stay in the design document.
@@ -104,6 +115,10 @@ func gradeWord(pass bool) string {
 func money(usd float64) string { return strconv.FormatFloat(usd, 'f', 6, 64) }
 
 func seconds(s float64) string { return strconv.FormatFloat(s, 'f', 1, 64) }
+
+// ratio is a per-call token reading's own column: one decimal is enough to
+// compare two arms' verbosity without inventing precision.
+func ratio(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 
 // oneLine is the progress line the driver prints as an invocation lands.
 func (r row) oneLine() string {
@@ -282,7 +297,9 @@ func (r *runner) runOne(iv invocation) row {
 		Model: iv.Model, ModelsUsed: reading.modelsUsedLine(),
 		Graded: g.Pass, GradeDetail: g.Detail,
 		Ending: reading.Ending, Report: reading.Report,
-		Steps: reading.Steps, CostUSD: reading.CostUSD, Unbilled: reading.Unbilled,
+		Steps: reading.Steps, Calls: reading.Calls,
+		InputTokens: reading.InputTokens, OutputTokens: reading.OutputTokens,
+		CostUSD: reading.CostUSD, Unbilled: reading.Unbilled,
 		WallSeconds: wall, WallSource: wallSource,
 		ChangedFiles: reading.ChangedFiles,
 		ChildrenDone: reading.ChildrenDone, ChildrenTotal: reading.ChildrenTotal,
