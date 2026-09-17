@@ -21,8 +21,8 @@
 // the error that says why the fresh one was refused.
 //
 // THE CACHE IS NOT A TRUSTED STORE. Bytes in [Puller.CacheDir] that do not
-// parse, or whose signature no longer verifies under Keys, are treated as if
-// nothing were cached: no error of their own, no panic, and the next good
+// parse, or whose signature no longer verifies under [Puller.Keys], are treated
+// as if nothing were cached: no error of their own, no panic, and the next good
 // fetch replaces them. The cache is a copy of a good fetch, never a source of
 // truth in its own right.
 package pull
@@ -203,7 +203,7 @@ func (p *Puller) Pull(ctx context.Context) (Result, error) {
 
 // good answers whether the fetched bytes are a document this package will serve.
 // The document must be JSON, an object, and carry an integer "version"; its
-// signature must verify under one of Keys; and its version may not be lower
+// signature must verify under one of [Puller.Keys]; and its version may not be lower
 // than the one the cache already holds. It returns the version when it does.
 func (p *Puller) good(doc, sig []byte, cached cache) (int64, error) {
 	if !Verify(doc, sig, p.Keys) {

@@ -14,7 +14,7 @@ import (
 // have mode 0600.
 //
 // A cache that does not read is no cache. Bytes that do not parse, or whose
-// signature no longer verifies under Keys, are treated as if nothing were
+// signature no longer verifies under [Puller.Keys], are treated as if nothing were
 // cached: no error of their own, no panic, and the next good fetch replaces
 // them.
 type cache struct {
@@ -52,7 +52,8 @@ func (p *Puller) loadCache() (cache, bool) {
 		return c, false
 	}
 	// THE CACHE IS NOT A TRUSTED STORE. A signature that no longer verifies
-	// under Keys means the cache is stale, not that the caller is owed an error.
+	// under [Puller.Keys] means the cache is stale, not that the caller is owed an
+	// error.
 	if !Verify(doc, sig, p.Keys) {
 		return c, false
 	}
