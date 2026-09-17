@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -50,6 +51,79 @@ func TestOnlyTheDeliverableOwnerIsInvitedIntoTheWorkspace(t *testing.T) {
 		if strings.HasPrefix(hint, workspaceRoot) {
 			t.Fatalf("%s can still land a working file in the person's directory: %q", node.ID, hint)
 		}
+	}
+}
+
+// A run working in the person's own directory must not file its own notes
+// there. The root leaf keeps its voice — its final message is still what the
+// person reads — but the file it is offered goes to the run's scratch, beside
+// its recorders and its job logs, so a note the ask never named never turns up
+// as an untracked file in the tree the delivery is judged in.
+func TestARootLeafInAPersonsDirectoryPutsItsNotesInScratch(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	space, err := exec.NewWorkspace(workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	space = space.WithScratch(scratch).OwnedByPerson()
+
+	owner := store.Node{ID: "task-2-x1", Parent: store.RootID, CreatedSeq: 7, Title: "toolchain checks"}
+	hint, intermediate := leafOutputHint(owner, owner.Title, space)
+	if intermediate {
+		t.Fatal("the job root was treated as a handoff")
+	}
+	if !filepath.IsAbs(hint) || !strings.HasPrefix(hint, scratch+string(filepath.Separator)) {
+		t.Fatalf("the root leaf's note was pointed at %q, want an absolute path under the run's scratch %q", hint, scratch)
+	}
+
+	// The invitation, followed: the file lands under scratch, and neither the
+	// tree the person named nor the record the delivery gate reads holds it.
+	// The leaf's own write makes the directory first, which is what the write
+	// tool does for any offered path.
+	if err := os.MkdirAll(filepath.Dir(hint), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hint, []byte("checks ran green"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	space.WatchTree(owner.ID)
+	space.Record(owner.ID, hint)
+	space.RecordChanges(owner.ID)
+	if got := space.Artifacts(owner.ID); len(got) != 0 {
+		t.Fatalf("a note written at the run's own hint was recorded as the job's work: %v", got)
+	}
+	left, err := os.ReadDir(workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Fatalf("the working tree the person named was left with: %v", left)
+	}
+}
+
+// A directory already sitting at the offered name still withdraws the
+// invitation, now measured at the scratch spelling a personal root is handed.
+func TestADirectoryAtTheRootsScratchPathWithdrawsTheInvitation(t *testing.T) {
+	space, err := exec.NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	space = space.WithScratch(filepath.Join(t.TempDir(), "scratch")).OwnedByPerson()
+	owner := store.Node{ID: "job", Parent: store.RootID, CreatedSeq: 7, Title: "pr 482 code review"}
+	first, _ := leafOutputHint(owner, owner.Title, space)
+	if first == "" {
+		t.Fatal("the owner was offered nothing before the directory existed")
+	}
+	if err := os.MkdirAll(first, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hint, intermediate := leafOutputHint(owner, owner.Title, space)
+	if hint != "" {
+		t.Fatalf("a directory at the offered path still earned an invitation: %q", hint)
+	}
+	if intermediate {
+		t.Fatal("the withdrawn owner lost its deliverable shape")
 	}
 }
 
