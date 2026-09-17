@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Tests for scripts/release_downloads.py, dry-run mode against a fixture."""
+"""Tests for scripts/release_downloads.py: dry-run mode against a recorded
+fixture of the GitHub releases API, plus the identifiers the wire spec spells
+out, the workflow that schedules the script, and the docs paragraph.
+"""
 
+import ast
 import datetime
+import importlib.util
 import json
 import os
 import pathlib
@@ -10,10 +15,43 @@ import subprocess
 import sys
 import unittest
 import uuid
+from unittest import mock
 
 HERE = pathlib.Path(__file__).resolve().parent
 SCRIPT = HERE / "release_downloads.py"
 FIXTURE = HERE / "testdata" / "github_releases.json"
+WORKFLOW = HERE.parent / ".github" / "workflows" / "release-downloads.yml"
+DOCS = HERE.parent / "docs"
+
+_spec = importlib.util.spec_from_file_location("release_downloads", SCRIPT)
+module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(module)
+
+
+class FakeResponse:
+    """Stand-in for urlopen's return: a context manager whose read() is JSON."""
+
+    def __init__(self, payload):
+        self._payload = (
+            payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+        )
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exception):
+        return False
+
+    def read(self):
+        return self._payload
+
+
+try:
+    import yaml  # type: ignore
+except ImportError:  # pragma: no cover - depends on the machine
+    yaml = None
+
+
 EVENT_PROPERTIES = (
     "release_tag",
     "channel",
@@ -132,7 +170,7 @@ class ReleaseDownloadsTest(unittest.TestCase):
         )
 
     def test_uuid_depends_on_snapshot_date(self):
-        # A different day is a different event, not a repeat of yesterday's.
+        # A different day is a new event, not a repeat of yesterday's.
         tag, asset, distinct = "v1.2.0", "codeaf-linux-amd64", "codeaf-release-downloads"
         self.assertNotEqual(
             uuid.uuid5(uuid.NAMESPACE_URL, f"{distinct}|{tag}|{asset}|2026-02-11"),
@@ -153,6 +191,186 @@ class ReleaseDownloadsTest(unittest.TestCase):
         self.assertIn("notice", result.stderr)
         self.assertIn("CODEAF_POSTHOG_PROJECT_KEY", result.stderr)
         self.assertEqual(result.stdout, "")
+
+
+class PaginationTest(unittest.TestCase):
+    def test_all_pages_are_followed(self):
+        page_one = [
+            {
+                "tag_name": f"v1.{number}.0",
+                "draft": False,
+                "prerelease": False,
+                "assets": [{"name": "codeaf-linux-amd64", "download_count": 1}],
+            }
+            for number in range(100)
+        ]
+        page_two = [
+            {
+                "tag_name": "v0.1.0",
+                "draft": False,
+                "prerelease": False,
+                "assets": [{"name": "codeaf-linux-arm64", "download_count": 2}],
+            }
+        ]
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=[FakeResponse(page_one), FakeResponse(page_two)],
+        ) as urlopen:
+            releases = module.fetch_releases("Agent-Field/codeaf", "token")
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertIn("page=1", urlopen.call_args_list[0].args[0].full_url)
+        self.assertIn("page=2", urlopen.call_args_list[1].args[0].full_url)
+        self.assertEqual(len(releases), 101)
+        self.assertEqual(releases[0]["tag_name"], "v1.0.0")
+        self.assertEqual(releases[-1]["tag_name"], "v0.1.0")
+
+    def test_posthog_host_is_overridable(self):
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value = FakeResponse(b"")
+            module.send({}, "https://telemetry.example.com")
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://telemetry.example.com/batch/")
+
+
+class WorkflowTest(unittest.TestCase):
+    """The workflow that schedules the script, asserted as text so the check
+    reads the same file GitHub Actions does."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = WORKFLOW.read_text()
+
+    def test_workflow_file_exists(self):
+        self.assertTrue(WORKFLOW.exists())
+
+    def test_workflow_is_scheduled_daily_and_dispatchable(self):
+        self.assertIn("workflow_dispatch", self.text)
+        self.assertIn("'0 6 * * *'", self.text)
+
+    def test_workflow_permissions_are_contents_read_only(self):
+        self.assertIn("permissions:", self.text)
+        self.assertIn("contents: read", self.text)
+
+    def test_workflow_runs_the_script(self):
+        self.assertIn("python3 scripts/release_downloads.py", self.text)
+        self.assertIn("runs-on: ubuntu-latest", self.text)
+        self.assertIn("actions/checkout", self.text)
+
+    def test_workflow_uses_builtin_token_secret_and_host_variable(self):
+        self.assertIn("GH_TOKEN: ${{ github.token }}", self.text)
+        self.assertIn(
+            "CODEAF_POSTHOG_PROJECT_KEY: ${{ secrets.CODEAF_POSTHOG_PROJECT_KEY }}",
+            self.text,
+        )
+        self.assertIn("POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}", self.text)
+
+    def test_workflow_parses_as_yaml(self):
+        if yaml is None:
+            self.skipTest("PyYAML is not installed; the text checks above stand")
+        document = yaml.safe_load(self.text)
+        triggers = document[True]
+        self.assertEqual(triggers["schedule"][0]["cron"], "0 6 * * *")
+        self.assertIn("workflow_dispatch", triggers)
+        self.assertEqual(document["permissions"], {"contents": "read"})
+
+    def test_workflow_and_script_are_the_only_nonstandard_files(self):
+        # The feature is workflow + script + fixture + test + docs; no Go
+        # source anywhere carries it.
+        text = self.text
+        self.assertNotIn("go run", text)
+        self.assertNotIn("go build", text)
+
+
+class DocsTest(unittest.TestCase):
+    def test_download_counts_paragraph_exists(self):
+        self.assertTrue(
+            (DOCS / "TELEMETRY.md").exists()
+            or (DOCS / "rules" / "promotion.md").exists(),
+            "no docs file carries the paragraph",
+        )
+        path = DOCS / "TELEMETRY.md"
+        if not path.exists():
+            path = DOCS / "rules" / "promotion.md"
+        text = path.read_text()
+        flat = " ".join(text.split())
+        self.assertIn("## Download counts", text)
+        self.assertIn("public GitHub release data", flat)
+
+    def test_no_telemetry_doc_on_this_branch(self):
+        # The paragraph therefore belongs in docs/rules/promotion.md, the
+        # release docs; this pins the fallback that was chosen.
+        self.assertFalse((DOCS / "TELEMETRY.md").exists())
+
+
+class DocsAndWorkflowMixTest(unittest.TestCase):
+    def test_docs_paragraph_names_workflow_and_script(self):
+        path = DOCS / "TELEMETRY.md"
+        if not path.exists():
+            path = DOCS / "rules" / "promotion.md"
+        text = path.read_text()
+        self.assertIn("release-downloads.yml", text)
+        self.assertIn("scripts/release_downloads.py", text)
+        self.assertIn("checksums.txt", text)
+
+
+class ScriptSourceTest(unittest.TestCase):
+    """The script is python3 standard library only, and imports prove it."""
+
+    def test_script_imports_stdlib_only(self):
+        tree = ast.parse(SCRIPT.read_text())
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.split(".")[0])
+        self.assertEqual(
+            imported,
+            {"argparse", "datetime", "json", "os", "re", "sys", "urllib", "uuid"},
+        )
+        # Nothing outside the standard library is imported, so the script
+        # runs anywhere python3 does, including the workflow runner.
+        self.assertLessEqual(imported, set(sys.stdlib_module_names))
+
+
+class ChannelTest(unittest.TestCase):
+    def test_channel_words(self):
+        self.assertEqual(module.release_channel("v1.2.0"), "stable")
+        self.assertEqual(module.release_channel("v1.3.0-rc.1"), "rc")
+        self.assertEqual(module.release_channel("v1.4.0-dev.2"), "dev")
+        self.assertEqual(module.release_channel("v1.5.0-staging.1"), "staging")
+
+
+class SendEndpointTest(unittest.TestCase):
+    def test_default_host_is_posthog_us(self):
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value = FakeResponse(b"")
+            module.send({}, "https://us.i.posthog.com")
+        self.assertEqual(
+            urlopen.call_args.args[0].full_url, "https://us.i.posthog.com/batch/"
+        )
+
+
+class AssetMatchingTest(unittest.TestCase):
+    def test_sidecars_and_nonmatching_names_are_skipped(self):
+        self.assertIsNone(module.asset_os_arch("checksums.txt"))
+        self.assertIsNone(module.asset_os_arch("codeaf-linux-amd64.tar.gz"))
+        self.assertIsNone(module.asset_os_arch("codeaf-solaris-sparc"))
+        self.assertEqual(module.asset_os_arch("codeaf-linux-amd64"), ("linux", "amd64"))
+        self.assertEqual(
+            module.asset_os_arch("codeaf-windows-amd64.exe"), ("windows", "amd64")
+        )
+
+
+class DraftTest(unittest.TestCase):
+    def test_draft_releases_produce_no_events(self):
+        draft = {
+            "tag_name": "v9.9.9",
+            "draft": True,
+            "prerelease": False,
+            "assets": [{"name": "codeaf-linux-amd64", "download_count": 5}],
+        }
+        self.assertEqual(module.build_events([draft], "2026-02-11"), [])
 
 
 if __name__ == "__main__":
