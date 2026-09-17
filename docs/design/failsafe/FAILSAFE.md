@@ -407,7 +407,7 @@ planner's single call, and nothing else.
 
 ### 1. A tool outlived the leaf's room and took the leaf with it
 
-The pi-ported belt's `bash` takes an optional timeout from the model and its
+The shipped belt's `bash` takes an optional timeout from the model and its
 schema says "no default timeout", so a command the model did not think to bound
 inherited the leaf's whole fifteen-minute envelope. When the envelope expired,
 three things happened at once and all three were wrong: the command was killed
