@@ -1,7 +1,7 @@
 ---
 kind: added
 title: The Model Pool's index is seated at start-up from a seed in the binary
-pr: 1103
+pr: 1093
 surface: [chat, engine]
 invalidates:
   - "`config.AutoIndex` was a seam nothing in the binary set, so a tier row that says `auto` picked on the catalog's published figures alone. `cmd/codeaf` seats it at start-up from the seed the binary carries or a fresher cached document, so the pool's measured quality reaches the picker."
