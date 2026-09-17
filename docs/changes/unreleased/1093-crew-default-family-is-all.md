@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: The crew's default family is `all`, and both families' worker, careful and mastermind seats moved
-pr: 1090
+pr: 1093
 surface: [chat, engine]
 invalidates:
   - "`models.crew.source` defaulted to `open`, so a profile that never answered the row resolved the open-weight table. The default is now `all`: `DefaultCrewSource = CrewSourceAll`, and a profile that never chose a family resolves the all family's balanced row — `google/gemini-2.5-flash`, `deepseek/deepseek-v4-flash-0731`, `z-ai/glm-5.3-flash`, `anthropic/claude-fable-5.1`, `anthropic/claude-fable-5.1`."
