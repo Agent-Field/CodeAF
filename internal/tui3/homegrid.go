@@ -178,7 +178,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: recentPanel{homePanelBase{panelRecent}}, word: "threads", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", explainer: "a day of work, newest first", keep: 3, least: 4, rest: 10, most: 10, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
@@ -203,7 +203,7 @@ const homeNeedsTaskFresh = 48 * time.Hour
 // be read as the screen having run out of room.
 var homeWhisper = map[homePanelID]string{
 	panelNeeds:   "questions from any chat or task land here · a digit answers them",
-	panelRunning: "work you send off with /task runs here on its own",
+	panelRunning: "the last day's tasks land here · /task starts one",
 	panelLeft:    "what watches and tasks did while the terminal was shut",
 	panelRecent:  "your conversations · what you type below starts one",
 	panelSpend:   "every chat and task is priced here",
@@ -1405,7 +1405,7 @@ func (a *app) homeHeadAt(x, y int) (int, bool) {
 // registry answers rather than the page id, which keeps this file from asking
 // a page id what it is (placelaws_test.go, law 1).
 func (a *app) homeHeadDoor(at int) bool {
-	return placeFor(homeSlotOf(a.home.lines[at].cell.panel).head) != nil
+	return homeHeadOpens(a.home.lines[at].cell.panel)
 }
 
 // gridColumnAt is the column an x falls in: the last one starting at or before

@@ -1069,7 +1069,7 @@ other place.
 always in one order: `needs you` (every question waiting on you, a digit answers the top one
 from anywhere), `threads` (this window's conversation, then the most recent, then a
 `N more` fold that opens the rest), `projects` (every folder, `enter` starts a chat there),
-`tasks` (every task, job and firing watch), `since you left` (what landed while you were
+`tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
 away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
 at the left, and the **rail** at the right holds `projects` and `spend` at its top with the

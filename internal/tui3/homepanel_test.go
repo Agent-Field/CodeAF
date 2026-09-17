@@ -62,8 +62,14 @@ func TestRunningDrawsTheWorkAndWhatItIsDoing(t *testing.T) {
 	if !strings.Contains(frame, "tasks · 1") || !strings.Contains(frame, "read 40 filings") {
 		t.Fatalf("running does not draw the work that is out:\n%s", frame)
 	}
-	if under := homeLineAfter(frame, "read 40 filings"); !strings.Contains(under, tabSignalWord(tabWorking)) {
-		t.Fatalf("the running row does not say what it is doing:\n%s", frame)
+	// THE DOING IS UNDER THE CURSOR, like every description on the field: a
+	// row is a title and a time at rest (owner, 2026-09-17).
+	if under := homeLineAfter(frame, "read 40 filings"); strings.Contains(under, tabSignalWord(tabWorking)) {
+		t.Fatalf("a task row says what it is doing with the cursor elsewhere:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "read 40 filings" })
+	if under := homeLineAfter(homeText(a), "read 40 filings"); !strings.Contains(under, tabSignalWord(tabWorking)) {
+		t.Fatalf("the task row under the cursor does not say what it is doing:\n%s", homeText(a))
 	}
 	if spin := a.home.spinAt(); spin < 0 || a.home.lines[spin].cell.panel != panelRunning {
 		t.Fatalf("the one moving cell is not on the running panel's first row")

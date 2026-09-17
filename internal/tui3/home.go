@@ -1573,7 +1573,7 @@ func (h *homeView) pointItem(id string) {
 		return
 	}
 	h.pointAt(func(line homeLine) bool {
-		return line.kind == homeItem && line.item.ID == id
+		return line.standsForItem() && line.item.ID == id
 	})
 }
 
@@ -2770,7 +2770,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// AND CTRL+X STOPS A STANDING ITEM FOR GOOD, the stronger form of the
 		// key above it on this list and on the item card's own legend.
 		line, ok := h.previewLine()
-		if ok && line.kind == homeItem {
+		if ok && line.standsForItem() {
 			return a.homeItemWrite(line, standing.StatusRetired)
 		}
 		// AND IT STOPS A PIECE OF WORK THIS WINDOW HOLDS, through the stop card,
@@ -5180,7 +5180,7 @@ func (a *app) homeCardRows(width, room int, pal palette) []string {
 		// the screen until home was closed (homeexchange.go's [app.exchangePane]).
 		return a.exchangePane(line.ex, width, room, pal)
 	}
-	if ok && line.kind == homeItem {
+	if ok && line.standsForItem() {
 		// THE OTHER KIND OF CARD, in the same column and the same bands
 		// (homestanding.go's [StandingItemCard]). It is a card about an item
 		// rather than about a conversation, and it is assembled by the same
@@ -5537,6 +5537,12 @@ func (a *app) homeSubject() (bandSubject, bool) {
 		return bandSubject{kind: bandKindSession, row: line.row, project: line.project, dir: strings.TrimSpace(line.row.ProjectDir), world: a.home.world}, true
 	case homeItem:
 		return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
+	case homeLedger:
+		// A STANDING ITEM'S ROW ON `scheduled` IS THE ITEM'S SUBJECT, as its row
+		// on the tasks panel was ([homeLine.standsForItem]).
+		if line.standsForItem() {
+			return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
+		}
 	case homeProject:
 		// A WHOLE PROJECT IS A SUBJECT TOO ([bandKindProject]). The dir is the
 		// workspace the sessions recorded rather than the bucket, which is what

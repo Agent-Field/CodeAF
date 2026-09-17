@@ -630,9 +630,12 @@ func homeFoldDoor(t *testing.T, a *app, panel homePanelID) int {
 // HOME AND THE PLACES PAINT A SECTION WORD IN ONE INK. Screen 2a paints section
 // headings dim and the accent budget paints them muted, and home and the places
 // had each spelled their choice; the ink is one line now (placeprose.go's
-// [placeHeadingInk]), so every heading on home opens with exactly the ink
-// [placeHeading] opens a place's section word with. The panel holding the
-// cursor wears the cursor's ground over its heading and is left out.
+// [placeHeadingInk]), so every heading on home THAT IS A DOOR opens with
+// exactly the ink [placeHeading] opens a place's section word with. A heading
+// that opens nothing — `projects`, `threads` — is dim instead, word and
+// explainer in one ink, so it cannot be mistaken for a door (owner,
+// 2026-09-17). The panel holding the cursor wears the cursor's ground over its
+// heading and is left out.
 func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	a.pal = newTestPalette()
@@ -646,6 +649,15 @@ func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 	marked, _ := a.home.cursorPanel()
 	for _, slot := range homePanelOrder {
 		if slot.panel.id() == marked {
+			continue
+		}
+		if placeFor(slot.head) == nil {
+			if !strings.Contains(frame, a.pal.dim(slot.word+rowSep+slot.explainer)) {
+				t.Fatalf("the %q heading opens nothing and is not painted dim with its explainer", slot.word)
+			}
+			if strings.Contains(frame, open+slot.word) {
+				t.Fatalf("the %q heading opens nothing and wears the door headings' ink", slot.word)
+			}
 			continue
 		}
 		if !strings.Contains(frame, open+slot.word) {

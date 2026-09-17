@@ -302,10 +302,19 @@ var homeDescLeadBlank = strings.Repeat(" ", homeDescLeadCells)
 // clause at the right are not the door — and hovered is true only for a
 // heading that names a place ([app.homeHeadDoor]), so `projects` and
 // `threads` never wear it.
+//
+// A HEADING THAT OPENS NOTHING IS DIM, word and explainer alike — `projects`
+// and `threads` name their own panel and no place, and a heading painted like
+// the five that are doors read as a door that did not work (owner,
+// 2026-09-17: "make the non-clickable projects heading grey"). The ground the
+// cursor's panel wears still lands on it, because that fact is about where the
+// cursor is and not about what the heading opens.
 func homeCellHead(cell *homeCell, width int, pal palette, marked, hovered bool) string {
 	left := homeCellHeadLeft(cell, width)
 	ink := homeCellHeadInk(left, cell.note, pal)
-	if hovered {
+	if !homeHeadOpens(cell.panel) {
+		ink = pal.dim
+	} else if hovered {
 		ink = homeCellHeadDoorInk(ink, cell.title, pal)
 	}
 	text := switcherSides(width, left, cell.right, ink, homeCellMoneyInk(cell.money, pal))
@@ -313,6 +322,13 @@ func homeCellHead(cell *homeCell, width int, pal palette, marked, hovered bool) 
 		return pal.cursor(text, width)
 	}
 	return text
+}
+
+// homeHeadOpens reports whether a panel's heading names a place — the order
+// table's head column, answered by the registry ([app.homeHeadDoor] asks the
+// same of a line).
+func homeHeadOpens(id homePanelID) bool {
+	return placeFor(homeSlotOf(id).head) != nil
 }
 
 // homeCellHeadDoorInk is a heading's left-side ink with the word underlined:

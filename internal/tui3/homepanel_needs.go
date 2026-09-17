@@ -42,26 +42,17 @@ import (
 // a `1` on the screen and the key a person presses cannot be two different rows.
 type needsPanel struct{ homePanelBase }
 
-const (
-	// needsOpenWord is what a QUESTION row says where its answers are not drawn:
-	// one with a paragraph, or one that is not the frame's answering row. enter
-	// opens it.
-	//
-	// A LANDING NEVER SAYS IT. Its second line only exists under the cursor, and
-	// there the answers are the thing the line is for; a `unread` row that this
-	// window cannot answer draws the report's sentence and nothing at its right,
-	// which is the emptiness law rather than an instruction repeated on every
-	// row. enter still opens the record ([app.homeLandOnTask]).
-	needsOpenWord = "enter"
-	// needsStandingWord is the same key on a watch with no conversation behind
-	// it: `enter` opens the item on the standing place, which is where an item
-	// made at home lives.
-	needsStandingWord = "enter on standing"
-	// needsAnswersCap is how many of a question's answers fit on its row. A
-	// question with more draws the first ones and then [needsOpenWord], because
-	// every answer is still one enter away.
-	needsAnswersCap = 3
-)
+// needsAnswersCap is how many of a question's answers fit on its row. A
+// question with more draws the first ones and stops; every answer is still one
+// enter away, and the row does not say so.
+//
+// NO ROW OF THIS PANEL NAMES THE ENTER KEY. A question row used to say `enter`
+// at the right of its sentence when its answers were not drawn, and a watch
+// with no conversation behind it `enter on standing`; the owner ruled
+// (2026-09-17) that the word beside every description was noise — the foot
+// under the grid already says `enter open` once for every row, and a row that
+// can be stood on is a row enter does something with.
+const needsAnswersCap = 3
 
 // needsItem is one row before the panel orders it: when it was asked, and the
 // line.
@@ -155,23 +146,19 @@ func needsAsked(in *homeGridInput) []needsItem {
 			head, whole := needsSentence(row.session)
 			cell.sub = head
 			// A CONVERSATION ALWAYS HAS A DOOR: it is the conversation the
-			// question was asked in, and enter goes to it.
-			cell.subRight = needsOpenWord
+			// question was asked in, and enter goes to it — the row does not say
+			// so ([needsAnswersCap] states the rule).
 			if _, ok := answerable(row.session, in.now); ok && whole {
 				cell.answers = answersWord(row.session.Presence.Question)
 			}
 		case switcherStanding:
 			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
-			// AND THE KEY SAYS WHICH DOOR IT IS. A watch asked for in a
-			// conversation opens that conversation; one made from home's own box
-			// has none — its exchange is kept under the item's folder rather than
-			// as a session ([standing.Origin.Exchange]) — and `enter` opens the
-			// item where it does live, on standing ([app.homeItemEnter]). Two
-			// doors, two words, and neither row advertises the other's.
-			cell.subRight = needsOpenWord
-			if strings.TrimSpace(row.item.Item.Origin.Transcript) == "" {
-				cell.subRight = needsStandingWord
-			}
+			// A watch asked for in a conversation opens that conversation; one
+			// made from home's own box has none — its exchange is kept under the
+			// item's folder rather than as a session ([standing.Origin.Exchange])
+			// — and `enter` opens the item where it does live, on standing
+			// ([app.homeItemEnter]). The row names neither door
+			// ([needsAnswersCap] states the rule).
 		}
 		item.line = switcherRowLine(row, cell)
 		items = append(items, item)
@@ -492,12 +479,11 @@ func needsSentence(row session.SessionRow) (head string, whole bool) {
 
 // answersWord is a question's answers as one clause, each option's key beside
 // its own word — the same chips the answer strip draws ([answerChips]) — cut at
-// [needsAnswersCap] with [needsOpenWord] after them.
+// [needsAnswersCap], with nothing after them.
 func answersWord(question session.PresenceQuestion) string {
 	var parts []string
 	for i, chip := range answerChips(question) {
 		if i == needsAnswersCap {
-			parts = append(parts, needsOpenWord)
 			break
 		}
 		parts = append(parts, chip.text)

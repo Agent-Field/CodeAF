@@ -2124,7 +2124,7 @@ how you find it again, with `ctrl+e` on the found row bringing it back. **`ctrl+
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
 starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
-`tasks` while it fires — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
+`scheduled` otherwise, firing or not — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
 **`ctrl+v` raises how hard that item thinks** one rung. Each chord acts on the row under
 your pointer when there is one, the cursor's row otherwise. The machine's own default is
 not on this chord — it is the `thinking` row of `/settings`, and *ctrl+v — how hard the
@@ -2895,7 +2895,7 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 | The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
-| Home, with the cursor on a standing item's row — in `needs you` or `tasks` | That item's rung |
+| Home, with the cursor on a standing item's row — in `needs you` or `scheduled` | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where

@@ -15,7 +15,7 @@ answering one question you would ask walking up to a colleague's desk:
  ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
    needs your ok to run bash  1 allow once  2 always  ~/pricing-site   5 chats
  ? Clever Bet Prediction Model              6h
-   the 2024 season only, or all three?  enter     spend                    today $0.14 of $20
+   the 2024 season only, or all three?           spend                    today $0.14 of $20
                                                     ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
  unread                                             opus 63%  ·  3 chats and 1 task today
    tier-B subs                                1d
@@ -29,10 +29,9 @@ answering one question you would ask walking up to a colleague's desk:
    Understanding Bloom Filters               11h
    70 more
 
- tasks · 2
+ tasks · 2 · a day of work, newest first
  ⠋ Generate and Display First 200 Primes     4m
-   bash · 12s · 2 of 5
-   npm run dev · pricing-site · a background job
+   Benchmark the Sieve                       1h
 
  since you left · 12h
    Spark Fleet Ssh Audit · 2 hosts up, 1 not
@@ -96,7 +95,7 @@ from home stands there as a card. Nothing else stands in it.
 | `needs you` | a question waiting on a person, anywhere, and under them the `unread` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
 | `threads` | a conversation | opens it | `your conversations · what you type below starts one` |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
-| `tasks` | a task, a background job, a watch firing | brings its conversation here | `work you send off with /task runs here on its own` |
+| `tasks` | a task or adaptive run from the last day, running or landed | opens the task itself | `the last day's tasks land here · /task starts one` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
 | `scheduled` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
@@ -267,34 +266,39 @@ Accepting merges the task's branch and unblocks everything queued behind it. The
 has the whole of it under *Why is the task waiting for me*. **Home is where you find it,
 not where it is settled.**
 
-## What is running — the tasks panel: what is running on this machine right now, and what went in the moving column
+## What is running — the tasks panel: what is running on this machine right now, and the last day's tasks, running or landed
 
-**The `tasks` panel is every piece of work out on the machine**, in the field with the
-other panels that hold something — under `needs you` and `threads`, which outrank it
-— and in the rail on the right when nothing is out — every task and adaptive run, every background job a conversation started, and
-every watch or reminder in the middle of firing — the most recently started first. A row is
-a piece of work and not a conversation: a chat with three tasks out is three rows.
+**The `tasks` panel is the last twenty-four hours of work, flattened**, in the field with
+the other panels that hold something — under `needs you` and `threads`, which outrank it
+— and in the rail on the right when there is none. It is the tasks place in miniature:
+every task and adaptive run that started or landed inside the last day, from every
+conversation and every project, plus anything still running however old, newest first.
+A row is a piece of work and not a conversation: a chat with three tasks out is three rows.
+Background jobs and firing watches are not tasks and are not here — a firing watch keeps
+its row on `scheduled`.
 
 ```
- tasks · 3
+ tasks · 3 · a day of work, newest first
  ⠋ Generate and Display First 200 Primes                                     4m
-     bash · 12s · 2 of 5
-   benchmark the sieve                                                       9m
-     checking what it left
-   npm run dev · pricing-site · a background job                          up 3h
+   Benchmark the Sieve                                                       1h
+   Spark Fleet Ssh Audit                                                     9h
 ```
 
-The line under a task is what its worker is doing, else the life it is in (`checking what
-it left`), else `working` or `queued`, and `2 of 5` is how far a run has got. On a quick
-task that same `N of N` counts its ticked items instead — a quick task with four things on
-its list and two ticked shows `2 of 4` — and it is drawn for another window's quick task as
-readily as for this one's. A job is one line — its command, its project, and how long it
-has been `up`. A watch mid-pass is its own
-words, what the pass is doing and how long ago it began. A row another terminal holds says
-`another window`, and `enter` brings its conversation here.
+**A row is a title and a time, like a row of `threads`**: how long a running task has
+been going, or how long ago a landed one landed. Its description is under the cursor —
+for a running task what its worker is doing, else the life it is in (`checking what it
+left`), else `working` or `queued`, with `2 of 5` for how far a run has got; for a landed
+task its project's word and the state it is in, in the tasks place's own words. A row
+another terminal holds says `another window` at its right.
 
-Four rows show, eight in a tall window, then `N more`. There is no separate "moving"
-column or `◐` mark any more; this panel is that list.
+**`enter` or a click on a row opens the task itself**, exactly as pressing that row on the
+tasks place would: a task this window is running opens its live page, and any other opens
+its record inside the tasks place, parked on its row, so `esc` comes back to the list.
+
+**Ten rows show, then `N more`**, which opens the panel and shows the rest; on a short
+terminal fewer fit and the fold counts what did not. The heading counts the whole day:
+`tasks · 12`. A task older than a day is the tasks place's to show — the `tasks` heading
+opens it.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
 conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
@@ -749,7 +753,8 @@ place opens that place. A click on a panel's **heading** opens the place the hea
 `needs you`, `tasks` and `since you left` open tasks, `spend` opens spend, `scheduled` opens
 standing, and `threads` and `projects` open nothing. **A heading that opens somewhere
 underlines its word while the mouse pointer is over it**; `threads` and `projects` never
-underline, and the pointer on a heading moves neither the cursor nor the marked heading.
+underline, are drawn dim (grey) rather than in the heading ink so they do not read as
+doors, and the pointer on a heading moves neither the cursor nor the marked heading.
 A click never starts a paid turn, so on the row of what you typed, on `ask here` and on a
 `/` command it only puts the cursor there, and `enter` does the rest.
 
@@ -1598,14 +1603,14 @@ three ways:**
 
 - **while it is asking you something**, it is a row of `needs you`, with the amber `?` and
   what it is asking under it;
-- **while it is firing**, it is a row of `tasks`: your own words, what the pass is doing,
-  and how long ago the pass began. It is still the item — `→` offers `pause`, and `ctrl+v`
-  raises how hard it thinks;
+- **while it is firing**, it is a row of `scheduled` like any other order — it is not a
+  task and has no row on `tasks`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
+  it, and `ctrl+v` raises how hard it thinks;
 - **while it is simply waiting for its time**, it is a row of `scheduled`, soonest first, with
   when it goes off at the right — `in 20h`, `mon 8:30`.
 
-`enter` on a `needs you` or `tasks` row opens the conversation that asked for it; on a
-`scheduled` row it opens the standing place.
+`enter` on a `needs you` row opens the conversation that asked for it; on a `tasks` row it
+opens the task itself; on a `scheduled` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
@@ -1651,8 +1656,8 @@ dialled to `max` still does not turn every check on the machine into a deep pass
 and an item nobody has dialled asks for nothing.
 
 **`ctrl+v` on an item's row is how you raise the one that deserves it.** Put the cursor on
-the standing item — on home at rest it has a row while it is firing (under `tasks`) or
-asking you something (under `needs you`) — and press it: the rung climbs one step each
+the standing item — on home at rest it has a row under `scheduled`, or under `needs you`
+while it is asking you something — and press it: the rung climbs one step each
 press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and home says
 `thinking high · <your words>` at the foot. The item's sheet on a phone then carries a dim
 `thinking high`, read straight back from the item's own document.
@@ -1929,8 +1934,8 @@ Fix the nil-map                          3h
 `■ stopped · <what it came to>`, and `✕ incomplete · a fault: <what broke>` — only that
 last one coloured bad. **The word `failed` is nowhere on home.**
 
-On the resting panels the same work is a row of `tasks` while it runs and a line of
-`since you left` once it lands.
+On the resting panels the same work is a row of `tasks` for a day, running or landed, and
+a line of `since you left` once it lands.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
@@ -1952,7 +1957,7 @@ and the tail of its own output. It is the same card `enter` opens on a row of th
 place, so `esc` comes back one layer at a time.
 
 On the resting panels, a task is a door wherever it is a row: `enter` on a `tasks` row
-brings its conversation here, `enter` on a `your call` row in `needs you` opens the
+opens the task itself, `enter` on a `your call` row in `needs you` opens the
 conversation on the task's record, and `enter` on a landed line of `since you left` opens the
 record itself.
 
@@ -2229,8 +2234,9 @@ Tap one, or press the key it names. Below width **24** the plain hint line is dr
 ## Main chat versus subtasks — why is the work nested on Home?
 
 A row of `threads` is the **main conversation**; opening it returns to its chat. The
-work it sent out is on `tasks` while it runs — one row per task, never nested — and on
-`since you left` once it lands, one line per piece of work you asked for, not one per part.
+work it sent out is on `tasks` for a day — one row per task, never nested, running or
+landed — and on `since you left` once it lands, one line per piece of work you asked for,
+not one per part.
 
 On the card beside a search and on the phone sheet, a conversation's tasks form a tree under
 their actual parents. Clicking a task opens that task's record. A child needing a person

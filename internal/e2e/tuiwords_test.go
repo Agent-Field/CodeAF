@@ -188,7 +188,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelRunning": {
 		screen: "tasks",
-		why: "the top of the right column: every task, job and firing watch out on the machine. It was " +
+		why: "the top of the right column: the last day's tasks, running or landed, newest first. It was " +
 			"`running` until 2026-09-17, and now shares its word with the bar's second tab, which it folds into",
 	},
 	"switcherSinceLeft": {
@@ -204,7 +204,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
-		screen: "work you send off with /task runs here on its own",
+		screen: "the last day's tasks land here · /task starts one",
 		why: "what `tasks` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",

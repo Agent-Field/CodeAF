@@ -199,7 +199,7 @@ func (a *app) homeRowVerbs() []verb {
 	// thing on it with verbs — the two actions home has been ADVERTISING on such
 	// a row without binding (`homeItemActions`, homestanding.go), bound to ctrl+e
 	// and ctrl+x, which the line never named, and whose bare `p` and `s` typed.
-	if line.kind != homeItem {
+	if !line.standsForItem() {
 		return nil
 	}
 	return []verb{

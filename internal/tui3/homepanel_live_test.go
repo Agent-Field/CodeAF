@@ -393,33 +393,49 @@ func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 
 // ── running ─────────────────────────────────────────────────────────────────
 
-// A ROW PER PIECE OF WORK, the last started first: a task with what its worker
-// is doing and how far its run has got, and a job with where it is and how long
-// it has been up. The one moving cell is on the first row.
-func TestRunningDrawsEachTaskAndJobWithWhatItIsDoing(t *testing.T) {
+// THE DAY'S TASKS, FLATTENED, NEWEST FIRST: what is running off presence, with
+// what its worker is doing and how far its run has got, and what landed inside
+// the last day off the record, as a title and a time; a task that landed before
+// the day is left to the tasks place. The one moving cell is on the first
+// running row, and enter on a landed row opens that task inside the tasks
+// place — the door the place's own list takes for the same row.
+func TestTasksListsTheDaysWorkNewestFirstAndOpensTheTask(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: []session.PresenceTask{
 		{ID: "3", Title: "generate the first 200 primes", State: "running", StartedAt: l.now.Add(-4 * time.Minute),
 			Activity: "bash · 12s", Done: 2, Total: 5},
 	}})
-	l.live("-beta", "bbbb000000000001", session.SessionPresence{Jobs: []session.PresenceJob{
-		{ID: "1", Title: "npm run dev", StartedAt: l.now.Add(-3 * time.Hour)},
-	}})
+	l.task("-beta", session.TaskIndexEntry{ID: "1", SessionID: "bbbb000000000001", Label: "benchmark the sieve",
+		Title: "benchmark the sieve", Status: string(session.TaskDone),
+		StartedAt: l.now.Add(-2 * time.Hour), EndedAt: l.now.Add(-90 * time.Minute)})
+	l.task("-beta", session.TaskIndexEntry{ID: "2", SessionID: "bbbb000000000001", Label: "old audit",
+		Title: "old audit", Status: string(session.TaskDone),
+		StartedAt: l.now.Add(-30 * time.Hour), EndedAt: l.now.Add(-26 * time.Hour)})
 	a := l.open()
 	rows := panelRows(a, panelRunning)
 	if len(rows) != 2 {
-		t.Fatalf("running is not the task and the job: %+v", rows)
+		t.Fatalf("tasks is not the running task and the landed one: %+v", rows)
 	}
-	task, job := rows[0], rows[1]
-	if task.title != "generate the first 200 primes" || task.right != "4m" || task.sub != "bash · 12s · 2 of 5" || task.mark != cellMarkSpin {
-		t.Fatalf("the task row is not title, clock, activity and progress: %+v", task)
+	running, landed := rows[0], rows[1]
+	if running.title != "generate the first 200 primes" || running.right != "4m" || running.sub != "bash · 12s · 2 of 5" || running.mark != cellMarkSpin {
+		t.Fatalf("the running row is not title, clock, activity and progress: %+v", running)
 	}
-	if !strings.HasSuffix(job.title, rowSep+runningJobWord) || !strings.HasPrefix(job.title, "npm run dev · ") ||
-		job.right != "up 3h" || job.mark != cellMarkNone {
-		t.Fatalf("the job row is not `<title> · a background job` up its age: %+v", job)
+	if landed.title != "benchmark the sieve" || landed.right != sinceAt(l.now.Add(-90*time.Minute), l.now) ||
+		!strings.HasPrefix(landed.sub, "beta") || landed.mark != cellMarkNone {
+		t.Fatalf("the landed row is not its title, when it landed and its project: %+v", landed)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "tasks · 2") {
-		t.Fatalf("the heading does not count the work:\n%s", frame)
+	frame := homeText(a)
+	if strings.Contains(frame, "old audit") || !strings.Contains(frame, "tasks · 2") {
+		t.Fatalf("a task older than the day is drawn, or the heading does not count the day:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "benchmark the sieve" })
+	if line := a.home.lines[a.home.cursor]; line.kind != homeLedger || !line.stop() {
+		t.Fatalf("a task row is not a ledger line the cursor can rest on: %+v", line)
+	}
+	a.homeKey(key("enter"))
+	if !a.at(pageTasks) || !a.taskSheet.detailOn || a.taskSheet.detail.Label != "benchmark the sieve" {
+		t.Fatalf("enter on a task row did not open that task inside the tasks place (at %q, detail %v %q)",
+			a.page.word(), a.taskSheet.detailOn, a.taskSheet.detail.Label)
 	}
 }
 
@@ -522,43 +538,43 @@ type cancelFake struct{ *fakeAgent }
 
 func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 
-// RUNNING GROWS INTO A TALL FRAME UP TO ITS BUDGET, and folds the rest behind a
-// door into tasks.
-func TestRunningGrowsToItsBudgetAndFoldsTheRestIntoTasks(t *testing.T) {
+// TASKS SHOWS UP TO TEN, and folds the rest behind `N more`, which opens the
+// panel; the heading counts the whole day.
+func TestTasksShowsTenAndFoldsTheRest(t *testing.T) {
 	l := newLiveLab(t)
 	var out []session.PresenceTask
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 12; i++ {
 		out = append(out, session.PresenceTask{ID: itoa(i + 1), Title: "part " + itoa(i+1), State: "running",
 			StartedAt: l.now.Add(-time.Duration(i+1) * time.Minute)})
 	}
 	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: out})
 	a := l.open()
-	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most {
-		t.Fatalf("running drew %d rows, want its budget of %d", len(rows), most)
+	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most || most != 10 {
+		t.Fatalf("tasks drew %d rows, want its budget of ten (%d)", len(rows), most)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "tasks · 10") {
+	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "tasks · 12") {
 		t.Fatalf("the fold does not name what it holds:\n%s", frame)
 	}
 }
 
-// A WATCH IN THE MIDDLE OF FIRING IS RUNNING WORK: its words, what its pass is
-// doing and how long ago the pass began — and it is still an item, so `→`
-// offers the item's own verb and never a task's stop.
-func TestRunningDrawsAFiringStandingItemWithItsOwnVerb(t *testing.T) {
+// A WATCH IN THE MIDDLE OF FIRING IS NOT A TASK. It used to be a row of this
+// panel beside the tasks; the panel is the day's tasks now (owner, 2026-09-17),
+// and the firing item keeps its row on `scheduled`, with its own verbs.
+func TestAFiringStandingItemIsNotARowOfTasks(t *testing.T) {
 	a, _ := itemHome(t)
-	var item homeLine
 	for _, line := range panelLines(a, panelRunning) {
-		if line.kind == homeItem {
-			item = line
+		if line.kind == homeItem || (line.cell != nil && line.cell.title == "remind me on Fridays") {
+			t.Fatalf("the firing item is a row of tasks: %+v", line.cell)
 		}
 	}
-	if item.cell == nil || item.cell.title != "remind me on Fridays" ||
-		item.cell.sub != "reading the calendar" || item.cell.right != "1m" {
-		t.Fatalf("the firing item is not words, doing and clock on running: %+v", item.cell)
+	found := false
+	for _, line := range panelLines(a, panelNext) {
+		if line.cell != nil && line.cell.title == "remind me on Fridays" {
+			found = true
+		}
 	}
-	verbs := a.homeRowVerbs()
-	if len(verbs) != 1 || verbs[0].key != 'p' || verbs[0].word != homeItemPauseWord {
-		t.Fatalf("the firing item's strip is not its own pause: %+v", verbs)
+	if !found {
+		t.Fatalf("the firing item is on no panel at all:\n%s", homeText(a))
 	}
 }
 
@@ -641,7 +657,7 @@ func TestSinceYouLeftWhispersOnAFirstLook(t *testing.T) {
 	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "audit", Title: "audit",
 		Status: string(session.TaskDone), EndedAt: l.now.Add(-time.Hour)})
 	a := l.open()
-	if frame := homeText(a); !strings.Contains(frame, homeWhisper[panelLeft]) || strings.Contains(frame, "audit") {
+	if frame := homeText(a); !strings.Contains(frame, homeWhisper[panelLeft]) || len(panelRows(a, panelLeft)) != 0 {
 		t.Fatalf("a first look drew news:\n%s", frame)
 	}
 }

@@ -114,12 +114,13 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 	}
 }
 
-// THE DOOR WORD IS UNDER THE CURSOR AND NOWHERE ELSE. On a two-column frame
-// every question draws its second line, and every one of them used to end in
-// `enter` — a column of legends for a key only one row is about to take (owner,
-// 2026-09-16). The answering row keeps its chips; the cursor's row says its door;
-// the rest say nothing at their right.
-func TestOnlyTheCursorsQuestionSaysEnter(t *testing.T) {
+// NO QUESTION SAYS `enter`. On a two-column frame every question draws its
+// second line, and every one of them used to end in `enter` — a column of
+// legends for a key only one row is about to take (owner, 2026-09-16); then
+// only the cursor's row said it, and the owner ruled (2026-09-17) that the
+// word beside a description was noise wherever it stood. The answering row
+// keeps its chips; every other question says nothing at its right.
+func TestNoQuestionSaysEnter(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-2*time.Hour))})
@@ -133,7 +134,10 @@ func TestOnlyTheCursorsQuestionSaysEnter(t *testing.T) {
 	var questions []int
 	landing := -1
 	for at, line := range a.home.lines {
-		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelNeeds && line.cell.subRight != "" {
+		if line.kind == homeSession && line.cell != nil && line.cell.alwaysSaid() {
+			if line.cell.subRight != "" {
+				t.Fatalf("the question %q says %q at the right of its sentence", line.cell.title, line.cell.subRight)
+			}
 			questions = append(questions, at)
 		}
 		if line.task != nil && line.task.ID == "4" {
@@ -144,18 +148,17 @@ func TestOnlyTheCursorsQuestionSaysEnter(t *testing.T) {
 		t.Fatalf("want two question rows and a landing, found %d and %d:\n%s", len(questions), landing, homeText(a))
 	}
 	// Cursor on the second question: the cursor outranks the top row (law 7),
-	// so the second draws its chips and the first — no longer the answering row,
-	// not under the cursor — says nothing at its right where it used to say
-	// `enter`.
+	// so the second draws its chips and the first — no longer the answering row
+	// — says nothing at its right.
 	a.home.cursor = questions[1]
-	if got := a.homeRowAnswers(a.home.lines[questions[1]], questions[1]); got == "" || got == needsOpenWord {
+	if got := a.homeRowAnswers(a.home.lines[questions[1]], questions[1]); got == "" || got == "enter" {
 		t.Fatalf("the cursor's question reads %q, want its chips", got)
 	}
 	if got := a.homeRowAnswers(a.home.lines[questions[0]], questions[0]); got != "" {
 		t.Fatalf("the question above the cursor reads %q, want nothing at its right", got)
 	}
 	frame := homeText(a)
-	if under := homeLineAfter(frame, "Pricing Site"); strings.Contains(under, needsOpenWord) {
+	if under := homeLineAfter(frame, "Pricing Site"); strings.Contains(under, "enter") {
 		t.Fatalf("the question above the cursor says a door word:\n%s", frame)
 	}
 	// Cursor on the landing: the chips follow it, and NEITHER question says
@@ -168,7 +171,7 @@ func TestOnlyTheCursorsQuestionSaysEnter(t *testing.T) {
 	}
 	frame = homeText(a)
 	for _, title := range []string{"Pricing Site", "Prime Sieve"} {
-		if under := homeLineAfter(frame, title); strings.Contains(under, needsOpenWord) {
+		if under := homeLineAfter(frame, title); strings.Contains(under, "enter") {
 			t.Fatalf("%q says a door word with the cursor elsewhere:\n%s", title, frame)
 		}
 	}
@@ -205,9 +208,10 @@ func TestSinceYouLeftOmitsALandingToCheckIsShowing(t *testing.T) {
 	a := l.open()
 	a.home.seen = l.now.Add(-4 * time.Hour)
 	a.home.build()
-	frame := homeText(a)
-	if got := strings.Count(frame, "fix the flaky sieve"); got != 1 {
-		t.Fatalf("the landing is drawn on %d rows of the column:\n%s", got, frame)
+	// (The tasks panel lists the day's tasks whatever `needs you` is showing —
+	// it is the tasks place in miniature — so it is left out of the count.)
+	if got := rowsOffTasks(a, "fix the flaky sieve"); got != 1 {
+		t.Fatalf("the landing is drawn on %d rows of the column:\n%s", got, homeText(a))
 	}
 	if rows := panelRows(a, panelLeft); len(rows) != 0 {
 		t.Fatalf("since you left repeated the landing: %+v", rows)
@@ -374,4 +378,16 @@ func TestAConversationWaitingOnItsOwnLandingIsOnlyTheLandingsRow(t *testing.T) {
 	if rows := panelRows(b, panelNeeds); len(rows) != 2 {
 		t.Fatalf("a conversation with a question of its own lost its row: %+v", rows)
 	}
+}
+
+// rowsOffTasks counts the rows of home named after a title on every panel but
+// `tasks`, which lists the day's work regardless of what the other panels show.
+func rowsOffTasks(a *app, title string) int {
+	n := 0
+	for _, line := range a.home.lines {
+		if line.cell != nil && line.cell.kind == cellRow && line.cell.panel != panelRunning && strings.Contains(line.cell.title, title) {
+			n++
+		}
+	}
+	return n
 }

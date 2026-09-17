@@ -536,7 +536,7 @@ func TestTheSqueezeAtOneTwentyByTwentyFourKeepsNeedsAndRecent(t *testing.T) {
 // the clause leaves rather than the whole column.
 func TestAHeadingExplainerIsDimAndGivesWayBeforeTheHeadingIsCut(t *testing.T) {
 	pal := newTestPalette()
-	cell := &homeCell{kind: cellHead, panel: panelProjects, title: "projects", note: "folders you've opened"}
+	cell := &homeCell{kind: cellHead, panel: panelRunning, title: "tasks", note: "work you sent off"}
 	tail := rowSep + cell.note
 	whole := ansi.StringWidth(cell.title) + ansi.StringWidth(tail)
 
@@ -743,7 +743,9 @@ func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
 }
 
 // A CLICK IN THE RIGHT COLUMN LANDS ON THE ROW DRAWN THERE, not the left
-// column's row that shares its screen line — and opens it, as `enter` would.
+// column's row that shares its screen line — and opens it, as `enter` would:
+// a task row opens that task inside the tasks place (homepanel_running.go's
+// [app.openTaskDoor]).
 func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	lines := strings.Split(homeText(a), "\n")
@@ -753,8 +755,9 @@ func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
 			break
 		}
 	}
-	if got := focusedTitle(a); got != "read 40 filings" {
-		t.Fatalf("the click selected %q", got)
+	if !a.at(pageTasks) || !a.taskSheet.detailOn || a.taskSheet.detail.Label != "read 40 filings" {
+		t.Fatalf("the click did not open the task it landed on (at %q, detail %v %q)",
+			a.page.word(), a.taskSheet.detailOn, a.taskSheet.detail.Label)
 	}
 }
 
@@ -883,8 +886,8 @@ func TestEnterOnAFoldOpensThePanelAndAgainShutsIt(t *testing.T) {
 }
 
 // ONE PANEL IS OPEN AT A TIME. Opening a second shuts the first, and the first's
-// fold says `more` again. Ten questions fold `needs you` and ten running tasks
-// fold `running`, on one frame.
+// fold says `more` again. Ten questions fold `needs you` and twelve running
+// tasks fold `tasks`, on one frame.
 func TestOpeningASecondFoldShutsTheFirst(t *testing.T) {
 	l := newLiveLab(t)
 	beta := l.workspace("beta")
@@ -895,7 +898,7 @@ func TestOpeningASecondFoldShutsTheFirst(t *testing.T) {
 			Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-time.Duration(i+1)*time.Hour))})
 	}
 	var tasks []session.PresenceTask
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 12; i++ {
 		tasks = append(tasks, session.PresenceTask{ID: itoa(i + 1), Title: "part " + itoa(i+1), State: "running",
 			StartedAt: l.now.Add(-time.Duration(i+1) * time.Minute)})
 	}

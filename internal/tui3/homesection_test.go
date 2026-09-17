@@ -190,7 +190,13 @@ func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 	if !strings.HasPrefix(marked, cursorGround(a.pal)) {
 		t.Fatalf("the marked heading wears no ground: %q", marked)
 	}
-	if !strings.Contains(marked, a.pal.muted(cell.title)) || strings.Contains(marked, a.pal.accent(cell.title)) {
+	// (A heading that opens nothing is dim rather than muted, marked or not —
+	// `threads` is one — and the ground still lands on it.)
+	want := a.pal.muted(cell.title)
+	if !homeHeadOpens(cell.panel) {
+		want = a.pal.dim(cell.title + rowSep + cell.note)
+	}
+	if !strings.Contains(marked, want) || strings.Contains(marked, a.pal.accent(cell.title)) {
 		t.Fatalf("the marked heading's words changed ink: %q", marked)
 	}
 	if rest := homeCellHead(cell, 40, a.pal, false, false); strings.HasPrefix(rest, cursorGround(a.pal)) {
