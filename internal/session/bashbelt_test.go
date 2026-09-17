@@ -71,11 +71,15 @@ func TestBashBeltCompositionKeepsTheKeptHandsAndDropsTheSix(t *testing.T) {
 	for _, tool := range belt {
 		carried[tool.Name] = true
 	}
-	// THE KEPT SET, on the belt and on its existing gates.
-	for _, kept := range []string{"bash", "read_document", "jobs", "manual", "ask"} {
+	// THE KEPT SET, on the belt and on its existing gates. `ask` is not among
+	// them: this belt reaches the person through the plan CLI, not a gate.
+	for _, kept := range []string{"bash", "read_document", "jobs", "manual"} {
 		if !carried[kept] {
 			t.Errorf("the branch belt is missing the kept hand %s", kept)
 		}
+	}
+	if carried["ask"] {
+		t.Error("the branch belt still carries ask, which this belt does not use")
 	}
 	// AND THE SIX PI TOOLS ARE OFF. Each of them is a shell command wearing a
 	// schema, and the branch worker spells what it did in bash.
@@ -572,9 +576,10 @@ func TestBashBeltTaskReadsWritesAndEditsThroughBashAlone(t *testing.T) {
 	if string(data) != "first line\nappended line\n" {
 		t.Errorf("the file holds %q, want both lines", string(data))
 	}
-	// AND THE WORKER READ THE BRANCH'S OWN PAGE, not the pi-tool guidance.
+	// AND THE WORKER READ THE BRANCH'S OWN PAGE, not the pi-tool guidance: it
+	// opens on the loop policy.
 	page := messageContentText(completer.childAsked()[0])
-	if !strings.Contains(page, "ONE ACTION PER RESPONSE") {
+	if !strings.Contains(page, "Your FIRST action is the FRAME/PLAN") {
 		t.Error("the bash worker did not read the branch doctrine page")
 	}
 	if strings.Contains(page, "## Specialized Tools") {
@@ -628,36 +633,51 @@ func TestBashBeltFourInvalidsLandTheNodeFailedOnTheCirclingRoad(t *testing.T) {
 	}
 }
 
-// TestBashWorkerPromptReplacesThePiToolGuidance pins the page swap both ways:
-// a bash worker reads the branch doctrine where the pi tools were taught, a
-// worker without the branch belt reads today's page unchanged, and the few
-// stray sentences outside the section are rewritten to the shell idiom.
-func TestBashWorkerPromptReplacesThePiToolGuidance(t *testing.T) {
+// TestBashBeltWorkerPromptOpensOnTheLoopPolicy pins the page a bash-belt worker
+// reads both ways: the planning policy opens it — unhedged, with the first-action
+// law and the loop's own words — and a worker without the branch belt reads the
+// composed page it always read. The old page's hedges and its two contradictions
+// (a batch of calls, a planner on the belt) are gone.
+func TestBashBeltWorkerPromptOpensOnTheLoopPolicy(t *testing.T) {
 	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
 	bashConfig := Config{Workspace: t.TempDir(), Model: "test/model"}
 	bashBeltWorkerConfig(t)(&bashConfig)
 	bashPage := renderSystemAt(bashConfig, now)
-	if !strings.Contains(bashPage, "ONE ACTION PER RESPONSE") {
-		t.Error("the bash worker's page does not carry the branch doctrine")
+	// THE POLICY LEADS, down to its first sentence.
+	if !strings.HasPrefix(bashPage, "You own one task within a shared objective.") {
+		t.Errorf("the bash worker's page does not open on the policy: %.160q", bashPage)
 	}
-	// AND IT NO LONGER TELLS THE MODEL TO BATCH, which the envelope refuses on
-	// every response (docs/design/bash-task-loop/INVESTIGATION.md).
-	if strings.Contains(bashPage, "ONE batch of calls") {
-		t.Error("the bash worker's page still teaches batching, which its envelope refuses")
+	// AND THE FIRST-ACTION LAW IS RESTORED, with no hedge in front of it.
+	if !strings.Contains(bashPage, "Your FIRST action is the FRAME/PLAN") {
+		t.Error("the bash worker's page lost the first-action law")
+	}
+	// AND THE PAGE'S OLD WEIGHT IS GONE: no there-is-no-planner, no batch law
+	// the envelope refuses, no clean-restore check (this belt has no auditor),
+	// and none of the hedges the page used to gate its own rules with.
+	for _, gone := range []string{
+		"THERE IS NO PLANNER",
+		"ONE batch of calls",
+		"clean restore",
+		"on a wide brief",
+		"when the work has nameable independence",
+	} {
+		if strings.Contains(bashPage, gone) {
+			t.Errorf("the bash worker's page still carries %q", gone)
+		}
+	}
+	// AND `ask` IS NOT TAUGHT: the verb is off this belt.
+	if strings.Contains(bashPage, "Use `ask`") {
+		t.Error("the bash worker's page still teaches ask")
 	}
 	if strings.Contains(bashPage, "## Specialized Tools") {
 		t.Error("the bash worker's page still carries the pi-tool section")
-	}
-	if !strings.Contains(bashPage, "read a range of it with sed -n or search it with git grep") {
-		t.Error("the citation fact was not rewritten to the shell idiom")
 	}
 	if strings.Contains(bashPage, "`read` takes a row's URIs exactly as printed") {
 		t.Error("the page still names `read` in the citation fact")
 	}
 
-	// AND THE FLOOR OF THE TREE, where the citation and settings facts render
-	// their absent wording: the same rewrites reach the shapes that do not fan
-	// out, so no bash worker is handed a pi-tool name at any depth.
+	// AND THE FLOOR OF THE TREE reads the same page: the policy leads and no
+	// pi-tool name survives at any depth.
 	floorConfig := Config{Workspace: t.TempDir(), Model: "test/model"}
 	func() {
 		config := &floorConfig
@@ -668,6 +688,9 @@ func TestBashWorkerPromptReplacesThePiToolGuidance(t *testing.T) {
 		config.bashBelt = true
 	}()
 	floorPage := renderSystemAt(floorConfig, now)
+	if !strings.HasPrefix(floorPage, "You own one task within a shared objective.") {
+		t.Error("a floor bash node's page does not open on the policy")
+	}
 	if strings.Contains(floorPage, "`read` takes one exactly as printed") {
 		t.Error("a floor bash node's page still names `read` in the citation fact")
 	}
@@ -675,13 +698,17 @@ func TestBashWorkerPromptReplacesThePiToolGuidance(t *testing.T) {
 		t.Error("a floor bash node's page still names `edit` and `write`")
 	}
 
+	// AND A WORKER WITHOUT THE BELT reads the composed page it always read.
 	plainConfig := Config{Workspace: t.TempDir(), Model: "test/model"}
 	plainPage := renderSystemAt(plainConfig, now)
 	if !strings.Contains(plainPage, "## Specialized Tools") {
 		t.Error("a worker without the branch belt lost the pi-tool section")
 	}
-	if strings.Contains(plainPage, "ONE ACTION PER RESPONSE") {
-		t.Error("a worker without the branch belt was handed the branch doctrine")
+	if !strings.Contains(plainPage, "THERE IS NO PLANNER ON YOUR BELT") {
+		t.Error("a worker without the branch belt lost the planner sentence")
+	}
+	if strings.Contains(plainPage, "You own one task within a shared objective.") {
+		t.Error("a worker without the branch belt was handed the loop policy")
 	}
 }
 
@@ -825,7 +852,7 @@ func TestBashBeltNodeKeepsNoAuditor(t *testing.T) {
 	// THE DISCRIMINATOR: newTestAgent's own TaskAudit is on, so a belt that
 	// still had an auditor would have asked it here. The landing above is the
 	// unaudited one — the node's own account came home as `done`.
-	if page := messageContentText(completer.childAsked()[0]); !strings.Contains(page, "ONE ACTION PER RESPONSE") {
+	if page := messageContentText(completer.childAsked()[0]); !strings.Contains(page, "Your FIRST action is the FRAME/PLAN") {
 		t.Error("the belt did not engage: the worker read the pi-tool page")
 	}
 	asked := completer.auditAsked()

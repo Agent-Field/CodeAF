@@ -96,9 +96,13 @@ func (c Config) shelvesCapabilities() bool { return !c.InTask }
 // conversation, and a node has none.
 func (c Config) mayWatch() bool { return !c.InTask }
 
-// mayAsk is unconditional; only the conversation shelf changes whether the
-// schema is carried now or loaded on the next request.
-func (c Config) mayAsk() bool { return true }
+// mayAsk says whether `ask` belongs on this belt. It is unconditional on the
+// conversation's belt — only the shelf changes whether the schema is carried now
+// or loaded on the next request — and OFF on a bash-belt node, whose loop reaches
+// the person through the plan CLI and never through a consent gate (bashbelt.go
+// builds that belt; this is the same fact asked of a config before there is an
+// agent, so the belt and the page cannot disagree about the verb).
+func (c Config) mayAsk() bool { return !c.mayBashBelt() }
 
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,

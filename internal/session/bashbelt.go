@@ -59,7 +59,11 @@ func bashBeltSourceCaps() bare.Caps {
 func (a *Agent) bashBelt() []bare.Tool {
 	tools := []bare.Tool{a.branchBash()}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
-	tools = append(tools, a.askTool())
+	// ASK IS OFF THIS BELT. A bash-belt worker coordinates through the plan CLI
+	// and reports through `plandb done`; there is no consent gate to reach the
+	// person with, and the belt is not the place for a question the loop already
+	// answers by re-planning. [Config.mayAsk] says the same thing to the page, so
+	// the belt and the prompt cannot disagree about whether this verb is here.
 	// The kept families ride the SAME GATES as today's belt, named at their own
 	// sources: a gate that moves there moves here, because these are the same
 	// calls. The pi block above them is the one thing this composition leaves
