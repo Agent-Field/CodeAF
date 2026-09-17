@@ -622,6 +622,84 @@ func TestARenameWhileATurnIsWorkingCarriesThePendingMoveUnderTheNewName(t *testi
 	}
 }
 
+// A RENAME DURING A WORKING TURN DOES NOT EAT A PENDING SWITCH TO ANOTHER
+// CONNECTION. The person pressed enter on the switcher row, was told the move
+// to the second connection waits for the turn to finish, and only then renamed
+// the connection this conversation is on. The re-spelling of the live pick is
+// bookkeeping — the pending move is what was last asked for and promised out
+// loud — so the deferred slot keeps it and the settle spends it. Rewriting the
+// slot here would drop the promised move silently: nothing else records it.
+func TestARenameDuringAWorkingTurnLeavesAPendingSwitchAlone(t *testing.T) {
+	mybox := sourcestub.New("a", "a-flash")
+	defer mybox.Close()
+	homelab := sourcestub.New("b", "b-flash")
+	defer homelab.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+
+	// TWO CONNECTIONS, minted the way the surface mints them: the first keeps
+	// the vendored id, the second takes custom-homelab.
+	first := config.PrepareCustomSource(dir, mybox.URL(), "mybox")
+	first.Key = "a-custom-key"
+	msg := a.beginModelConnect(modelConnectDraft{source: source, row: first})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+	second := config.PrepareCustomSource(dir, homelab.URL(), "homelab")
+	second.Key = "another-custom-key"
+	msg = a.beginModelConnect(modelConnectDraft{source: source, row: second})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+	if second.ID == first.ID {
+		t.Fatalf("both connections minted the id %q", second.ID)
+	}
+
+	// A WORKING TURN on mybox, with the promised move to homelab pending.
+	a.model = "mybox/a"
+	a.state = stateWorking
+	a.deferredModelServiceModel = "homelab/b"
+
+	// THE RENAME of the connection the conversation is on: an edit draft whose
+	// Written moved, exactly what the name step builds.
+	renamed, found := config.PersistedSource{}, false
+	for _, row := range config.PersistedSources(dir) {
+		if row.ID == first.ID {
+			renamed, found = row, true
+		}
+	}
+	if !found {
+		t.Fatalf("the first connection did not persist: %+v", config.PersistedSources(dir))
+	}
+	renamed.Written = "newname"
+	msg = a.beginModelConnect(modelConnectDraft{
+		source:      modelsource.Source{ID: first.ID, Written: "newname", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "mybox",
+		entryID:     modelConnectionID(first.ID),
+		editing:     true,
+	})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	if a.deferredModelServiceModel != "homelab/b" {
+		t.Fatalf("the rename overwrote the pending move with %q", a.deferredModelServiceModel)
+	}
+	if a.model != "mybox/a" {
+		t.Fatalf("the rename moved the working conversation's model to %q", a.model)
+	}
+
+	// THE TURN SETTLES: the conversation lands on what the person asked for,
+	// the second connection, and not on the re-spelled current model.
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if a.model != "homelab/b" {
+		t.Fatalf("the settled conversation landed on %q, not the pending move", a.model)
+	}
+	if a.deferredModelServiceModel != "" {
+		t.Fatalf("the pending move was not spent: %q", a.deferredModelServiceModel)
+	}
+}
+
 func drainModelServiceTurn(t *testing.T, agent *session.Agent, text string) {
 	t.Helper()
 	events, err := agent.Submit(t.Context(), text)
