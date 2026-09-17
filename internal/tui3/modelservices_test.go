@@ -555,6 +555,73 @@ func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
 	}
 }
 
+// A RENAME DURING A WORKING TURN FREEZES THE LIVE PICK AND CARRIES THE PENDING
+// MOVE UNDER THE NEW NAME. reprefixRenamedModel leaves a.model alone while a
+// turn is working — the answering turn is frozen to its model until it settles
+// — and rewrites the deferred move instead, spending it through
+// applyDeferredModelServiceMove once the turn settles. The deferred slot ends
+// holding the reprefixed LIVE pick, not the earlier deferred id: the working
+// branch overwrites whatever was pending with the conversation's own model
+// spelled the new way, so the settle can never replay a dead old-name id.
+func TestARenameWhileATurnIsWorkingCarriesThePendingMoveUnderTheNewName(t *testing.T) {
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	a.model = "homelab/a"
+	a.state = stateWorking
+	a.deferredModelServiceModel = "homelab/b"
+
+	// THE RENAME: an edit draft whose Written moved, exactly what the name
+	// step builds on an answer that differs from the stored one.
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	renamedDraft := modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "lab", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "homelab",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	}
+	msg = a.beginModelConnect(renamedDraft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	// THE LIVE PICK IS FROZEN while the turn works, and the pending move holds
+	// the same model under the new prefix: the earlier deferred id (homelab/b)
+	// was rewritten to the reprefixed live pick (lab/a).
+	if a.model != "homelab/a" {
+		t.Fatalf("the rename moved the working conversation's model to %q", a.model)
+	}
+	if a.deferredModelServiceModel != "lab/a" {
+		t.Fatalf("the pending move did not follow the rename: %q", a.deferredModelServiceModel)
+	}
+
+	// THE TURN SETTLES: the deferred move is spent, and the conversation lands
+	// on its own model under the new name.
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if !strings.HasPrefix(a.model, "lab/") {
+		t.Fatalf("the settled conversation stayed on %q", a.model)
+	}
+	if a.deferredModelServiceModel != "" {
+		t.Fatalf("the pending move was not spent: %q", a.deferredModelServiceModel)
+	}
+}
+
 func drainModelServiceTurn(t *testing.T, agent *session.Agent, text string) {
 	t.Helper()
 	events, err := agent.Submit(t.Context(), text)
