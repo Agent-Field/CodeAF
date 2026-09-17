@@ -94,6 +94,7 @@ var ProjectKeys = []string{
 	KeySpendRail,
 	KeyHistoryEnabled,
 	KeyDraftPersist,
+	KeyTelemetry,
 }
 
 // ProjectKeyAllowed reports whether a row may live in a project file.
@@ -313,6 +314,8 @@ func (p ProjectConfig) ResolveBool(profileDir, key string) (bool, error) {
 		name = "CODEAF_HISTORY"
 	case KeyDraftPersist:
 		name = "CODEAF_DRAFT_PERSIST"
+	case KeyTelemetry:
+		name = "CODEAF_TELEMETRY"
 	default:
 		if !ProjectKeyAllowed(key) {
 			return false, fmt.Errorf("%q is not a project-local settings row", key)
@@ -331,6 +334,9 @@ func (p ProjectConfig) ResolveBool(profileDir, key string) (bool, error) {
 	}
 	if key == KeyHistoryEnabled {
 		return HistoryEnabledAt(profileDir), nil
+	}
+	if key == KeyTelemetry {
+		return TelemetryAt(profileDir), nil
 	}
 	return DraftPersistAt(profileDir), nil
 }
