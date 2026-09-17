@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
@@ -28,6 +29,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/lease"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/revision"
+	runengine "github.com/Agent-Field/codeaf/internal/run"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
@@ -218,6 +221,15 @@ type headlessOutcome struct {
 	// other. What the process leaves with is not decided here at all: the one
 	// ladder in envelope.go turns this word into a number.
 	stop stopReason
+	// wall says this run's own clock fired. It is the one ending that leaves
+	// with 124 rather than a rung of the shared ladder, because the run engine
+	// hands back the same incomplete word for a wall and for a leaf that failed
+	// ([run.Supervisor.Run]) and a caller raising a timeout has to be able to
+	// tell the two apart. The envelope's `stop` is still deadline — the wall's
+	// word in the one vocabulary all three headless verbs speak — so the number
+	// and the word agree that nothing stands, which is the whole of the
+	// contract's promise about the two.
+	wall bool
 }
 
 // resolvedStop is this outcome's ending with the one absent case filled in.
@@ -242,7 +254,17 @@ func (o headlessOutcome) resolvedStop() stopReason {
 
 // status is what the process leaves with, read off the one exit ladder. There
 // is no second reading of it anywhere in this binary.
-func (o headlessOutcome) status() exitStatus { return exitFor(o.resolvedStop()) }
+func (o headlessOutcome) status() exitStatus {
+	// THE WALL IS ITS OWN NUMBER, and it is the only ending that leaves the
+	// ladder. 124 is the number the timeout(1) convention and the run bench both
+	// spell a wall with ([bench/bashloop/door.go]), and a run engine reports a
+	// wall and a failed leaf with the same word, so the difference has to be
+	// taken here or not at all. Every other ending is the ladder's.
+	if o.wall {
+		return exitStatus(124)
+	}
+	return exitFor(o.resolvedStop())
+}
 
 func runDo(args []string) error {
 	flags := commandFlags("do")
@@ -335,6 +357,20 @@ type doRequest struct {
 	// callWall is the structuring slots' wall on one completion. Zero is
 	// pool.DefaultCallWall; a test names one it can reach (brainOptions.callWall).
 	callWall time.Duration
+	// costCap is the run road's own ceiling on what the run may spend, in
+	// dollars, and nil is no ceiling at all — the ordinary invocation, which has
+	// no flag for one and adds none. It exists so a caller that does want to hold
+	// a run to a price can say so, and a ceiling of nothing is a run that may
+	// spend nothing: the limit stopped it before a worker did.
+	costCap *float64
+	// slots bounds how many run-engine workers run at once. Zero is the door's
+	// own default ([defaultRunSlots]); a test names one it can watch.
+	slots int
+	// newBeltCompleter scripts the run road's worker, the way newClient scripts
+	// the legacy road's. Nil builds a real provider client per seat model, which
+	// is what a live run does; a test hands back a [session.Completer] that
+	// answers without a network.
+	newBeltCompleter func(model string) session.Completer
 }
 
 func (r doRequest) residentWaitOrDefault() time.Duration {
@@ -447,6 +483,14 @@ func (o *headlessOutcome) seated(seats config.Seats) {
 func errandRun(request doRequest, seats config.Seats, started time.Time) (outcome headlessOutcome, err error) {
 	if err := applyContextLaw(request.contextFill, request.completionReserve); err != nil {
 		return headlessOutcome{}, err
+	}
+	// THE SECOND ROAD, BEHIND THE SAME SWITCH AS THE BASH BELT. When the belt is
+	// asked for, the errand is dispatched by the run engine over the project's
+	// own plan store — the same worker, the same store and the same exit ladder —
+	// rather than by the resident's reconciler below. Unset, not one byte of the
+	// road below moves, and the legacy errand stays the default.
+	if session.BashBeltAsked() {
+		return runErrand(request, seats, started)
 	}
 	path, home, ephemeral, err := headlessStore(request.database)
 	if err != nil {
@@ -3056,4 +3100,222 @@ func errandStatus(outcome headlessOutcome) error {
 		return nil
 	}
 	return outcome.status()
+}
+
+// ── the run road ────────────────────────────────────────────────────────────
+
+// defaultRunSlots is how many run-engine workers `codeaf do` starts at once
+// when no caller names a number. Four is the same width the resident's own
+// dispatcher runs a job at, and it is a bound rather than a target: a brief
+// that needs one worker uses one.
+const defaultRunSlots = 4
+
+func (r doRequest) slotsOrDefault() int {
+	if r.slots > 0 {
+		return r.slots
+	}
+	return defaultRunSlots
+}
+
+// runErrand is `codeaf do` on the run engine: the same errand as the road above
+// — the same store, the same worker, the same exit ladder and the same JSON
+// envelope — dispatched by [internal/run]'s supervisor over the project's own
+// plan store instead of by the resident's reconciler. It is taken only when the
+// bash belt is asked for ([session.BashBeltAsked]), because the worker it
+// dispatches is the belt's and the landing it makes is the belt's.
+//
+// THE STORE'S OWN ROOT IS THE RUN. Its description is the ask, verbatim, and
+// its result is the answer: [runengine.Start] puts the brief on it and the root
+// worker's report comes back as [run.Summary.Result], which is what the
+// envelope calls the deliverable. Nothing here compiles or plans — the ask the
+// door was handed is the whole assignment, which is the same verbatim contract
+// the resident road keeps.
+func runErrand(request doRequest, seats config.Seats, started time.Time) (headlessOutcome, error) {
+	// A CEILING OF NOTHING IS A RUN THAT MAY SPEND NOTHING. Refused here, before
+	// anything is opened or built, because a limit of zero is not a limit that a
+	// worker crosses — it is a run that was stopped before one began, and the
+	// promise of exit 3 is that raising the limit and running it again is the
+	// remedy.
+	if request.costCap != nil && *request.costCap <= 0 {
+		return headlessOutcome{
+			Artifacts: []string{},
+			Settled:   true,
+			stop:      stopBudget,
+			BlockedOn: fmt.Sprintf("this run's cost cap is $%.2f, so nothing was started", *request.costCap),
+		}, nil
+	}
+	workspace, err := errandWorkspace(request.workspace)
+	if err != nil {
+		return headlessOutcome{}, err
+	}
+	title := topicTitle(request.task)
+	store, err := session.OpenRunPlan(workspace, title, request.task)
+	if err != nil {
+		return headlessOutcome{}, err
+	}
+	defer store.Close()
+
+	settings, err := config.Load()
+	if err != nil {
+		return headlessOutcome{}, err
+	}
+	applySeats(&settings, seats)
+	completerFor := request.newBeltCompleter
+	if completerFor == nil {
+		newClient := request.newClient
+		if newClient == nil {
+			newClient = newLiveClient
+		}
+		completerFor = crewCompleters(settings, newClient)
+	}
+	limits := runengine.Limits{}
+	if request.costCap != nil {
+		limits.CostUSD = *request.costCap
+	}
+	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT, the same way it must on the
+	// resident road: routed through the context, the supervisor stops launching,
+	// drains what is in flight, and what it reached is composed and printed.
+	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	ctx, cancel := context.WithTimeout(signalled, request.timeout)
+	defer cancel()
+
+	_, summary := runengine.Start(ctx, runengine.Spec{
+		Store:     store,
+		Workspace: workspace,
+		Title:     title,
+		Brief:     request.task,
+		Slots:     request.slotsOrDefault(),
+		Limits:    limits,
+		Factory:   runengine.CrewFactory(store, workspace, settings.ProfileDir, completerFor),
+	})
+	errand := headlessOutcome{
+		Artifacts: []string{},
+		Nodes:     summary.Nodes,
+		Seconds:   summary.Seconds,
+		Spend:     summary.USD,
+	}
+	switch summary.Outcome {
+	case runengine.OutcomeDone:
+		errand.stop, errand.Settled, errand.Deliverable = stopDone, true, strings.TrimSpace(summary.Result)
+	case runengine.OutcomeLimit:
+		errand.stop, errand.Settled = stopBudget, true
+		errand.BlockedOn = runLimitWords(request.costCap)
+	case runengine.OutcomeCannotRun:
+		errand.stop = stopError
+		errand.Error = "the run could not be started"
+	default:
+		// ran and did not finish: a leaf failed, or the clock arrived.
+		errand.stop, errand.Settled = stopIncomplete, true
+	}
+	// THE RUN'S OWN CLOCK, read off the context because the summary's word is
+	// the same one a failed leaf leaves and a caller raising a timeout has to be
+	// able to tell them apart. It is 124 rather than the ladder's rung for a
+	// deadline, and [headlessOutcome.status] says why.
+	if ctx.Err() == context.DeadlineExceeded {
+		errand.stop, errand.wall, errand.Settled = stopDeadline, true, false
+	}
+	// THE LANDING IS THE RUN'S OWN HALF. A run that finished commits its working
+	// copy onto its branch, and the branch, the paths it carried and its own
+	// sentence reach the caller: the paths are what the envelope calls artifacts,
+	// and the sentence names the branch where a person reads the answer. A run
+	// stopped short lands nothing, and a working copy that is not a repository
+	// says so on stderr without costing the work that did land on disk.
+	if summary.Outcome == runengine.OutcomeDone {
+		landing, err := runengine.Land(ctx, store, workspace, store.RootID())
+		switch {
+		case err != nil:
+			fmt.Fprintf(request.stderr, "the run's work is not on a branch: %v\n", err)
+		default:
+			errand.Artifacts = landedPaths(workspace, landing.Changed)
+			if landing.Branch != "" {
+				if errand.Deliverable != "" {
+					errand.Deliverable += "\n\n" + runengine.LandingNote(landing)
+				} else {
+					errand.Deliverable = runengine.LandingNote(landing)
+				}
+			}
+		}
+	}
+	return errand, nil
+}
+
+// runLimitWords is the sentence a run stopped by its ceiling owes `blocked_on`:
+// the price it reached, so a caller knows what to raise.
+func runLimitWords(cap *float64) string {
+	if cap != nil {
+		return fmt.Sprintf("the run reached the cost cap of $%.2f", *cap)
+	}
+	return "a limit stopped the run"
+}
+
+// crewCompleters turns the run road's provider seam into the per-model
+// completer [runengine.CrewFactory] asks for. The factory reads the crew at every
+// launch, so a task's seat model is not known until the task is handed over;
+// this builds one client per model on first ask and hands the same one back
+// after, so two tasks in one seat share a handle rather than opening a second.
+//
+// A MODEL THE DOOR CANNOT REACH IS A SEAT THAT CANNOT RUN. A builder error is
+// kept as a completer that refuses every call in the builder's own words, so a
+// task seated on an unbuildable model fails with that reason rather than
+// reaching a provider the door never built.
+func crewCompleters(settings config.Config, build func(config.Config, string) (*liveClient, error)) func(string) session.Completer {
+	var mu sync.Mutex
+	made := make(map[string]session.Completer, 4)
+	return func(model string) session.Completer {
+		mu.Lock()
+		defer mu.Unlock()
+		if c, ok := made[model]; ok {
+			return c
+		}
+		client, err := build(settings, model)
+		var completer session.Completer = client
+		if err != nil {
+			completer = seatlessCompleter{err: err}
+		}
+		made[model] = completer
+		return completer
+	}
+}
+
+// seatlessCompleter is the seat a task gets when the door cannot build a
+// provider client for its model. Every call refuses in the builder's own words,
+// so the task fails on the reason rather than on a nil it would have had to
+// guard against.
+func (c seatlessCompleter) CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error) {
+	return nil, c.err
+}
+
+type seatlessCompleter struct{ err error }
+
+// topicTitle is the run's own name for the thing it was asked for: the first
+// line of the ask, bounded, because the root task's title is the commit message
+// the landing writes. It is deliberately not a model call — the ask the door
+// was handed is the whole assignment, and a naming round-trip in front of it
+// would buy a label nothing downstream waits on.
+func topicTitle(task string) string {
+	title := firstLine(strings.TrimSpace(task))
+	if title == "" {
+		return "codeaf do"
+	}
+	return clip(title, 72)
+}
+
+// landedPaths is what a landing carried, as absolute paths under the working
+// copy: the commit reads its paths relative to the copy, and every other file
+// list the product prints is absolute, so a caller can open one.
+func landedPaths(workspace string, changed []string) []string {
+	paths := make([]string, 0, len(changed))
+	for _, path := range changed {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		if filepath.IsAbs(path) {
+			paths = append(paths, path)
+			continue
+		}
+		paths = append(paths, filepath.Join(workspace, path))
+	}
+	sort.Strings(paths)
+	return paths
 }

@@ -64,3 +64,8 @@ func landingNote(landing Landing) string {
 	}
 	return fmt.Sprintf("landed on %s: %d %s", landing.Branch, len(landing.Changed), files)
 }
+
+// LandingNote is [landingNote] as a door outside this package reads it: the one
+// sentence a landing answers with, so a headless door can carry the branch the
+// landing named out to its caller in the same words the run's own page holds.
+func LandingNote(landing Landing) string { return landingNote(landing) }
