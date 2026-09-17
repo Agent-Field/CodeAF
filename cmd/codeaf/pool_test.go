@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/pool/index"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/pool/record"
@@ -787,6 +788,88 @@ func TestPoolShowJSONWithNoCacheReportsTheSeed(t *testing.T) {
 	}
 	if answer.Index == nil || answer.Index.Source != "seed" || answer.Index.Generated != "2026-09-17" {
 		t.Fatalf("the seed was not reported: %+v", answer.Index)
+	}
+}
+
+// The reading form counts the held document's cells, so a person can tell
+// an empty document from a full one without opening it. The two cells name
+// no model; the point is the count, on the index line and in --json alike.
+func TestPoolShowSaysHowManyCellsTheCachedIndexHolds(t *testing.T) {
+	dir := t.TempDir()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := []byte(`{
+			"version": 7,
+			"schema": 1,
+			"generated": "2026-09-10",
+			"min_installs": 1,
+			"judges": ["z-ai/glm-5.3"],
+			"metrics": {"role_rating": {"kind": "gaussian", "dims": ["role", "model"]}},
+			"cells": [
+				{"metric": "role_rating", "role": "planner", "model": "z-ai/glm-5.3", "mean": 1312, "sd": 18, "n": 9},
+				{"metric": "role_rating", "role": "checker", "model": "z-ai/glm-5.3", "mean": 1290, "sd": 21, "n": 9}
+			]
+		}`)
+	if err := os.WriteFile(filepath.Join(poolDir, "doc.json"), doc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	indexLine := ""
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "index ·") {
+			indexLine = line
+		}
+	}
+	if indexLine == "" {
+		t.Fatalf("show printed no index line:\n%s", body)
+	}
+	if !strings.Contains(indexLine, "2 cells") {
+		t.Errorf("the index line did not count its cells:\n%s", indexLine)
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Index *struct {
+			Cells int `json:"cells"`
+		} `json:"index"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Index == nil || answer.Index.Cells != 2 {
+		t.Fatalf("--json carried %+v, want 2 cells", answer.Index)
+	}
+}
+
+// With no cache the reading form names the seed's own cell count, computed
+// here from the seed itself rather than hard-coded, so the sentence follows
+// the document the build carries.
+func TestPoolShowSaysHowManyCellsTheBuiltInSeedHolds(t *testing.T) {
+	seed, err := index.SeedIndex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, metric := range seed.Metrics() {
+		total += len(seed.Cells(metric))
+	}
+
+	var out strings.Builder
+	if err := runPoolWith(nil, &out, t.TempDir(), poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if want := countWord(total, "cell", "cells"); !strings.Contains(out.String(), want) {
+		t.Errorf("show did not say the seed holds %q:\n%s", want, out.String())
 	}
 }
 

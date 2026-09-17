@@ -571,10 +571,11 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env` or `ci`), then what index is cached and how old
-it is, or `no index cached yet · built-in seed of <date>`. The binary
-carries a seed index of our own scored runs, read until a fresher signed
-one is cached. Your install also keeps the scores its judge gave in `own.json`
+(`default`, `setting`, `env` or `ci`), then what index is cached, how old
+it is and how many cells it holds, or `no index cached yet · built-in
+seed of <date>`. The binary carries a seed index of our own scored runs,
+read until a fresher signed one is cached. Your install also keeps
+the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
 the crew reads them beside the index. `status` adds what is waiting to be sent
 and whether the mode allows sending and reading. `codeaf pool status` also

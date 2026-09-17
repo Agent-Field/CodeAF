@@ -217,7 +217,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		// fresher signed one is cached.
 		line := "no index cached yet"
 		if seed, err := index.SeedIndex(); err == nil {
-			line = fmt.Sprintf("no index cached yet · built-in seed of %s", seed.Generated().Format("2006-01-02"))
+			line = fmt.Sprintf("no index cached yet · built-in seed of %s, %s", seed.Generated().Format("2006-01-02"), countWord(indexCellCount(seed), "cell", "cells"))
 		}
 		if _, err := fmt.Fprintln(output, line); err != nil {
 			return err
@@ -225,10 +225,10 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 	} else {
 		generated := cached.Generated()
 		if _, err := fmt.Fprintf(output,
-			"index · generated %s · %s old · schema %d · %s · %s · min installs %d\n",
+			"index · generated %s · %s old · schema %d · %s · %s · %s · min installs %d\n",
 			generated.Format("2006-01-02"), reltime.Elapsed(now.Sub(generated)),
 			cached.Schema(), countWord(len(cached.Metrics()), "metric", "metrics"),
-			countWord(len(cached.Judges()), "judge", "judges"), cached.MinInstalls()); err != nil {
+			countWord(len(cached.Judges()), "judge", "judges"), countWord(indexCellCount(cached), "cell", "cells"), cached.MinInstalls()); err != nil {
 			return err
 		}
 	}
@@ -420,6 +420,7 @@ type indexSummary struct {
 	Schema      int    `json:"schema"`
 	Metrics     int    `json:"metrics"`
 	Judges      int    `json:"judges"`
+	Cells       int    `json:"cells"`
 	MinInstalls int    `json:"min_installs"`
 	Source      string `json:"source"`
 }
@@ -451,6 +452,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 			Schema:      held.Schema(),
 			Metrics:     len(held.Metrics()),
 			Judges:      len(held.Judges()),
+			Cells:       indexCellCount(held),
 			MinInstalls: held.MinInstalls(),
 			Source:      source,
 		}
@@ -638,6 +640,16 @@ func orNowhere(address string) string {
 		return "nowhere"
 	}
 	return address
+}
+
+// indexCellCount is the held document's cells summed over its metrics: what
+// the picker can read, since a cell below min installs never parses in.
+func indexCellCount(held *index.Index) int {
+	total := 0
+	for _, metric := range held.Metrics() {
+		total += len(held.Cells(metric))
+	}
+	return total
 }
 
 // countWord is a count with its noun: one metric, three metrics, no judges.
