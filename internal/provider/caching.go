@@ -33,7 +33,7 @@ import (
 //     — take a `cache_control: {"type":"ephemeral"}` marker that says "write a
 //     cache entry covering everything up to here". Up to four may be placed.
 //
-// The three positions used here are pi's, and each is a different economy:
+// The three cache positions are these, and each is a different economy:
 //
 //	(i)   the system block             — every leaf of a run shares it byte for
 //	                                     byte (see internal/exec/prefix_test.go),
