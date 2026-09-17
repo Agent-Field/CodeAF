@@ -42,6 +42,80 @@ func TestPrepareCustomSourceNeverMintsASentinelRowId(t *testing.T) {
 		}
 	}
 }
+// EVERY ADD MINTS AN ID THE PROFILE DOES NOT ALREADY HOLD, which is the whole
+// reason two custom connections can coexist: persistConnectedSource matches a
+// row BY ID, so a mint that answered the taken id a second time would replace
+// the first connection instead of adding one, and the feature's own acceptance
+// ("connect a second custom service; both coexist") would break with nothing
+// failing. The first instance keeps the vendored id so profiles written before
+// instances existed read back unchanged; later ones take custom-<name>, and
+// the numeric tiebreak carries on from there when that is taken too.
+func TestPrepareCustomSourceMintsAFreeIdForEveryAdd(t *testing.T) {
+	for _, probe := range []struct {
+		name    string
+		held    []PersistedSource
+		written string
+		want    string
+	}{{
+		name:    "an empty profile keeps the vendored id",
+		written: "homelab",
+		want:    modelsource.CustomID,
+	}, {
+		name: "a profile already holding custom mints under the name",
+		held: []PersistedSource{
+			{ID: modelsource.CustomID, Written: "mybox", Address: "http://127.0.0.1:9001/v1", Order: 1},
+		},
+		written: "homelab",
+		want:    modelsource.CustomID + "-homelab",
+	}, {
+		name: "the same name again takes the numeric tiebreak",
+		held: []PersistedSource{
+			{ID: modelsource.CustomID, Written: "mybox", Address: "http://127.0.0.1:9001/v1", Order: 1},
+			{ID: modelsource.CustomID + "-homelab", Written: "homelab", Address: "http://127.0.0.1:9002/v1", Order: 2},
+		},
+		written: "homelab",
+		want:    modelsource.CustomID + "-homelab-2",
+	}, {
+		name: "and carries on past the first tiebreak",
+		held: []PersistedSource{
+			{ID: modelsource.CustomID, Written: "mybox", Address: "http://127.0.0.1:9001/v1", Order: 1},
+			{ID: modelsource.CustomID + "-homelab", Written: "homelab", Address: "http://127.0.0.1:9002/v1", Order: 2},
+			{ID: modelsource.CustomID + "-homelab-2", Written: "homelab", Address: "http://127.0.0.1:9003/v1", Order: 3},
+		},
+		written: "homelab",
+		want:    modelsource.CustomID + "-homelab-3",
+	}} {
+		t.Run(probe.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if len(probe.held) > 0 {
+				if err := WriteSources(dir, probe.held); err != nil {
+					t.Fatal(err)
+				}
+			}
+			row := PrepareCustomSource(dir, "http://127.0.0.1:9100/v1", probe.written)
+			if row.ID != probe.want {
+				t.Fatalf("the mint answered %q, want %q", row.ID, probe.want)
+			}
+			// THE MINTED ID IS FREE: an id already on a row would replace that
+			// connection at persist time rather than add one.
+			for _, taken := range probe.held {
+				if strings.EqualFold(taken.ID, row.ID) {
+					t.Fatalf("the mint answered %q, which the profile already holds", row.ID)
+				}
+			}
+			// The name is the routing prefix and is untouched by the tiebreak,
+			// which is persistence vocabulary only; the row sorts after the
+			// ones already held.
+			if row.Written != probe.written {
+				t.Fatalf("the mint moved the name to %q", row.Written)
+			}
+			if row.Order != len(probe.held)+1 {
+				t.Fatalf("the mint gave order %d on a profile holding %d rows", row.Order, len(probe.held))
+			}
+		})
+	}
+}
+
 func TestRenameConnectionMovesEveryStoredModelIdIncludingTheTierRows(t *testing.T) {
 	dir := t.TempDir()
 	// The tier rows are written through the crew's own writer, so what a
