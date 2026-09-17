@@ -57,10 +57,22 @@ func (p *Puller) loadCache() (cache, bool) {
 	if !Verify(doc, sig, p.Keys) {
 		return c, false
 	}
+	// AND THE VERSION COMES OFF THE DOCUMENT, not off the file beside it. The
+	// three files are committed by three renames, so a run cut between them
+	// leaves a doc and a signature that verify as a matching pair while
+	// meta.json still describes the copy before. Trusting that number would
+	// hand a caller one document's bytes under another's version, and — worse
+	// — would check the next fetch's version against the older one, which is
+	// the rollback the version floor exists to catch. A cache whose metadata
+	// does not describe the bytes it sits beside is a cache that does not read.
+	version, err := docVersion(doc)
+	if err != nil || version != m.Version {
+		return c, false
+	}
 	c.doc = doc
 	c.sig = sig
 	c.etag = m.ETag
-	c.version = m.Version
+	c.version = version
 	c.fetchedAt = m.FetchedAt
 	c.ok = true
 	return c, true

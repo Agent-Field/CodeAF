@@ -864,7 +864,11 @@ func TestBudgetTimesOut(t *testing.T) {
 		URL:    srv.URL + "/doc.json",
 		Keys:   []ed25519.PublicKey{fs.pub},
 		Budget: 100 * time.Millisecond,
-		// no CacheDir so there is nothing to fall back to
+		// An empty directory rather than no directory at all: there is nothing
+		// to fall back to either way, and a blank CacheDir reads doc.json
+		// RELATIVE TO THE WORKING DIRECTORY, so the test would answer from
+		// whatever happened to sit beside the source file.
+		CacheDir: t.TempDir(),
 	}
 	_, err := p.Pull(t.Context())
 	if err == nil {
@@ -879,9 +883,10 @@ func TestContextCancelEndsCall(t *testing.T) {
 	ctx, cancel := contextWithTimeout(50 * time.Millisecond)
 	defer cancel()
 	p := &Puller{
-		URL:    srv.URL + "/doc.json",
-		Keys:   []ed25519.PublicKey{fs.pub},
-		Budget: 10 * time.Second,
+		URL:      srv.URL + "/doc.json",
+		Keys:     []ed25519.PublicKey{fs.pub},
+		Budget:   10 * time.Second,
+		CacheDir: t.TempDir(),
 	}
 	_, err := p.Pull(ctx)
 	if err == nil {
@@ -1149,4 +1154,61 @@ func bytesEqual(a, b []byte) bool {
 // not take one.
 func contextWithTimeout(d time.Duration) (context.Context, func()) {
 	return context.WithTimeout(context.Background(), d)
+}
+
+// A cancelled context ends the call whatever the URL names. A file source is
+// served in microseconds, so nothing here is about speed: it is about Pull
+// meaning one thing on both roads.
+func TestCancelEndsAFileSourceToo(t *testing.T) {
+	pub, priv := makeKey(t)
+	dir := t.TempDir()
+	doc := jsonObject(4, nil)
+	writeFile(t, filepath.Join(dir, "doc.json"), doc)
+	writeFile(t, filepath.Join(dir, "doc.json.sig"), signDoc(t, priv, doc))
+
+	ctx, cancel := contextWithTimeout(time.Hour)
+	cancel()
+	p := &Puller{
+		URL:      filepath.Join(dir, "doc.json"),
+		Keys:     []ed25519.PublicKey{pub},
+		CacheDir: t.TempDir(),
+	}
+	got, err := p.Pull(ctx)
+	if err == nil {
+		t.Fatal("a cancelled context read the file anyway")
+	}
+	if got.Doc != nil || got.Version != 0 || got.FromCache {
+		t.Fatalf("a cancelled call with no cache answered %+v", got)
+	}
+}
+
+// A cache whose metadata does not describe the bytes beside it is no cache.
+// The three files are committed by three renames, so this is what a run cut
+// between them leaves: a document and a signature that verify as a pair, under
+// the version of the copy before.
+func TestACacheWhoseMetaDescribesOtherBytesIsNoCache(t *testing.T) {
+	pub, priv := makeKey(t)
+	cacheDir := t.TempDir()
+	doc := jsonObject(9, nil)
+	writeFile(t, filepath.Join(cacheDir, "doc.json"), doc)
+	writeFile(t, filepath.Join(cacheDir, "doc.sig"), signDoc(t, priv, doc))
+	writeFile(t, filepath.Join(cacheDir, "meta.json"),
+		[]byte(`{"etag":"","version":3,"fetched_at":"`+time.Now().UTC().Format(time.RFC3339Nano)+`"}`))
+
+	p := &Puller{
+		URL:      filepath.Join(t.TempDir(), "absent.json"),
+		Keys:     []ed25519.PublicKey{pub},
+		CacheDir: cacheDir,
+		TTL:      time.Hour,
+	}
+	// A young cache would be answered from without a read; this one is not a
+	// cache at all, so the absent source is consulted and fails with nothing
+	// to fall back to.
+	got, err := p.Pull(t.Context())
+	if err == nil {
+		t.Fatal("the torn cache was served")
+	}
+	if got.Doc != nil || got.Version != 0 || got.FromCache {
+		t.Fatalf("the torn cache answered %+v, want nothing at all", got)
+	}
 }

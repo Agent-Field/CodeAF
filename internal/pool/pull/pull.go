@@ -209,6 +209,21 @@ func (p *Puller) good(doc, sig []byte, cached cache) (int64, error) {
 	if !Verify(doc, sig, p.Keys) {
 		return 0, errors.New("pull: signature does not verify")
 	}
+	version, err := docVersion(doc)
+	if err != nil {
+		return 0, err
+	}
+	if cached.ok && version < cached.version {
+		return 0, fmt.Errorf("pull: version %d is lower than cached %d", version, cached.version)
+	}
+	return version, nil
+}
+
+// docVersion reads the "version" a document carries. It is the half of [good]
+// that is about the bytes alone, split out because the cache reads it too: the
+// version a cached copy is trusted for has to come from the bytes whose
+// signature was just checked, not from a file beside them.
+func docVersion(doc []byte) (int64, error) {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(doc, &obj); err != nil {
 		return 0, fmt.Errorf("pull: document is not json: %w", err)
@@ -223,9 +238,6 @@ func (p *Puller) good(doc, sig []byte, cached cache) (int64, error) {
 	version, err := strconv.ParseInt(string(raw), 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("pull: version is not an integer: %w", err)
-	}
-	if cached.ok && version < cached.version {
-		return 0, fmt.Errorf("pull: version %d is lower than cached %d", version, cached.version)
 	}
 	return version, nil
 }
@@ -322,11 +334,22 @@ func (p *Puller) fetchSigHTTP(ctx context.Context) ([]byte, error) {
 
 // fetchFile reads the document and its signature from the filesystem. A path
 // may be written plain or as "file://" and then the path.
+// The budget and ctx bound this read as they bound the network one. A local
+// file is served in microseconds, so the deadline is not there to cut a slow
+// read off; it is there so that Pull means the same thing whatever the URL
+// names — a caller that handed in a cancelled context is answered with that
+// cancellation and not with a fresh document.
 func (p *Puller) fetchFile(ctx context.Context) ([]byte, []byte, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, "", fmt.Errorf("pull: read document: %w", err)
+	}
 	path := stripFile(p.URL)
 	doc, err := readLimitedFile(path)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("pull: read document: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, "", fmt.Errorf("pull: read signature: %w", err)
 	}
 	sig, err := readLimitedFile(stripFile(p.sigLocation()))
 	if err != nil {
