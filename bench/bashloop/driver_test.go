@@ -327,11 +327,11 @@ func TestTheReadingsComeFromTheJournalsAndTheLedger(t *testing.T) {
 
 func TestTheTableQuotesMediansOverGradedPassesOnly(t *testing.T) {
 	rows := []row{
-		{Arm: ArmShipped, Cell: "c1", Replicate: 1, Graded: true, Steps: 10, CostUSD: 0.04, WallSeconds: 100},
-		{Arm: ArmShipped, Cell: "c1", Replicate: 2, Graded: false, WallSeconds: 500},
-		{Arm: ArmShipped, Cell: "c1", Replicate: 3, Graded: true, Steps: 20, CostUSD: 0.02, WallSeconds: 200},
+		{Arm: ArmShipped, Seats: SeatsOne, Cell: "c1", Replicate: 1, Graded: true, Steps: 10, CostUSD: 0.04, WallSeconds: 100},
+		{Arm: ArmShipped, Seats: SeatsOne, Cell: "c1", Replicate: 2, Graded: false, WallSeconds: 500},
+		{Arm: ArmShipped, Seats: SeatsOne, Cell: "c1", Replicate: 3, Graded: true, Steps: 20, CostUSD: 0.02, WallSeconds: 200},
 	}
-	s, ok := summarize(rows, ArmShipped, "c1")
+	s, ok := summarize(rows, ArmShipped, SeatsOne, "c1")
 	if !ok || s.N != 3 || s.Passes != 2 {
 		t.Fatalf("summary = %+v, want n=3 passes=2", s)
 	}
@@ -469,6 +469,45 @@ func tierToModelSuffix(tier string) string {
 		return "high"
 	}
 	return "mastermind"
+}
+
+// ── the CSV and the table name the seats ────────────────────────────────────
+
+func TestTheCSVAndTableNameTheSeats(t *testing.T) {
+	if !contains(csvHeader, "seats") {
+		t.Fatalf("the CSV header has no seats column: %v", csvHeader)
+	}
+	index := 0
+	for i, name := range csvHeader {
+		if name == "seats" {
+			index = i
+		}
+	}
+	r := row{Arm: ArmBash, Seats: SeatsCrew, Cell: "c1", Replicate: 2}
+	if got := r.csvValues()[index]; got != "crew" {
+		t.Fatalf("the seats column reads %q, want crew", got)
+	}
+
+	rows := []row{
+		{Arm: ArmShipped, Seats: SeatsOne, Cell: "c1", Graded: true, Steps: 10, ModelsUsed: "a/b"},
+		{Arm: ArmShipped, Seats: SeatsCrew, Cell: "c1", Graded: true, Steps: 8, ModelsUsed: "crew/one+crew/two"},
+	}
+	s, ok := summarize(rows, ArmShipped, SeatsCrew, "c1")
+	if !ok {
+		t.Fatal("the crew summary is missing")
+	}
+	if s.N != 1 || s.MedSteps != 8 || s.Models != "crew/one+crew/two" {
+		t.Fatalf("the crew summary = %+v, want the crew row's own readings and models", s)
+	}
+}
+
+func contains(list []string, want string) bool {
+	for _, item := range list {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 // ── no test here drives a model ─────────────────────────────────────────────
