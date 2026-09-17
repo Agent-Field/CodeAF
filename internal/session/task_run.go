@@ -746,7 +746,7 @@ type TaskNode struct {
 	// when its own number is still the live one ([TaskNode.releaseSettle],
 	// [TaskNode.releaseResolving]).
 	resolvingGen uint64
-	settleGen     uint64
+	settleGen    uint64
 	// offer is a finished harness page waiting on the person, held for exactly
 	// as long as its card is up so the checkpoint can carry it across a restart
 	// ([TaskNode.carryOffer], task_store.go's harnessOfferRecord). Nil on every

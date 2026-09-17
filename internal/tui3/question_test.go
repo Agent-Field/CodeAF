@@ -1854,7 +1854,7 @@ func TestAReRaisedLandingDrawsItsAnswerFate(t *testing.T) {
 		ID: 7, Kind: session.QuestionLanding, Ask: session.AskLanding,
 		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 7, Name: "write the sheet"},
 		Head:    "write the sheet",
-		Reason: "accepted 18:20 · nobody could check it",
+		Reason:  "accepted 18:20 · nobody could check it",
 		Options: []session.AnswerOption{
 			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
 		},
@@ -1869,7 +1869,7 @@ func TestAReRaisedLandingDrawsItsAnswerFate(t *testing.T) {
 		ID: 7, Kind: session.QuestionLanding, Ask: session.AskLanding,
 		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 7, Name: "write the sheet"},
 		Head:    "write the sheet",
-		Reason: "nobody could check it",
+		Reason:  "nobody could check it",
 		Options: []session.AnswerOption{
 			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
 		},

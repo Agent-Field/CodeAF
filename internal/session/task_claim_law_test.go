@@ -75,7 +75,7 @@ func TestAReleaseOwnsOnlyItsOwnGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the first accept could not claim: %v", err)
 	}
-	node.graph.resettle(node, TaskUnverified) // the first settle lands and hands back
+	node.graph.resettle(node, TaskUnverified)      // the first settle lands and hands back
 	second, err := node.claimSettle("your accept") // a second window's accept
 	if err != nil {
 		t.Fatalf("the second accept could not claim after the resettle: %v", err)
