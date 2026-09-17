@@ -702,12 +702,12 @@ func (a *app) reprefixRenamedModel(oldWritten, newWritten string) string {
 		return ""
 	}
 	if modelUsesService(a.deferredModelServiceModel, oldWritten) {
-		a.deferredModelServiceModel = reprefixModelID(a.deferredModelServiceModel, oldWritten, newWritten)
+		a.deferredModelServiceModel = config.ReprefixModelID(a.deferredModelServiceModel, oldWritten, newWritten)
 	}
 	if !modelUsesService(a.model, oldWritten) {
 		return ""
 	}
-	next := reprefixModelID(a.model, oldWritten, newWritten)
+	next := config.ReprefixModelID(a.model, oldWritten, newWritten)
 	if a.state == stateWorking {
 		// A working turn's model is frozen until it settles; the move waits
 		// with it ([app.applyDeferredModelServiceMove]). The pick is rewritten,
@@ -733,111 +733,33 @@ func (a *app) reprefixStoredModels(oldWritten, newWritten string) {
 	// The reasoning table is memory keyed by model id. A stale key costs only
 	// a relearn, but the pair moves together and moving it costs nothing.
 	for key, level := range a.levels {
-		if next := reprefixModelID(key, oldWritten, newWritten); next != key {
+		if next := config.ReprefixModelID(key, oldWritten, newWritten); next != key {
 			delete(a.levels, key)
 			a.levels[next] = level
 		}
 	}
 	for key := range a.levelWanted {
-		if next := reprefixModelID(key, oldWritten, newWritten); next != key {
+		if next := config.ReprefixModelID(key, oldWritten, newWritten); next != key {
 			delete(a.levelWanted, key)
 			a.levelWanted[next] = true
 		}
 	}
-	registry := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir})
-	// THE FALLBACK CHAIN is a comma list of slugs, and a slug may carry a
-	// colon of its own, so the split is commas and nothing else (config's own
-	// parse rule for this row).
-	if row, ok := registry.Row(config.KeyModelFallbacks); ok {
-		value := strings.TrimSpace(row.Value())
-		if next := reprefixSlugList(value, oldWritten, newWritten); next != value {
-			_ = row.Apply(next)
+	// THE RENAME MOVES EVERY STORED ID THE PROFILE HOLDS: the crew's five tier
+	// rows, the fallback chain, the role pins and the capability slots
+	// ([config.RenameConnectionModels]). Node pins on already-created tasks and
+	// journaled role bindings are history — what ran, not what to run — and
+	// are not rewritten.
+	changed, err := config.RenameConnectionModels(a.profileDir, oldWritten, newWritten)
+	if err != nil {
+		a.modelServiceMessage("could not move every model to " + newWritten + " · " + err.Error())
+		return
+	}
+	for _, key := range changed {
+		if key == config.KeyTierHighModel || key == config.KeyTierWorkerModel || key == config.KeyTierReflexModel || key == config.KeyTierMastermindModel || key == config.KeyTierLowModel {
+			a.refreshSettings()
+			return
 		}
 	}
-	// THE ROLE PINS are role:model pairs, the role cut at its first colon.
-	if row, ok := registry.Row(config.KeyModelRoles); ok {
-		value := strings.TrimSpace(row.Value())
-		if next := reprefixRolePins(value, oldWritten, newWritten); next != value {
-			_ = row.Apply(next)
-		}
-	}
-	// THE CAPABILITY SLOTS write through this registry into the profile. The
-	// role slots write through the engine's own seam instead, and a rewrite
-	// through that seam would take the picker road mid-adopt, so they are
-	// skipped here on purpose.
-	for _, slot := range config.ModelSlots() {
-		if slot.Role != "" {
-			continue
-		}
-		row, ok := registry.Row(config.ModelSettingKey(slot.Slot))
-		if !ok {
-			continue
-		}
-		value := strings.TrimSpace(row.Value())
-		if next := reprefixModelID(value, oldWritten, newWritten); next != value {
-			_ = row.Apply(next)
-		}
-	}
-}
-
-// reprefixModelID rewrites one model id whose connection segment is the old
-// Written name. Ids on other services, and bare ids, come back unchanged.
-func reprefixModelID(id, oldWritten, newWritten string) string {
-	id = strings.TrimSpace(id)
-	at := strings.Index(id, "/")
-	if at <= 0 || !strings.EqualFold(id[:at], oldWritten) {
-		return id
-	}
-	return newWritten + id[at:]
-}
-
-// reprefixSlugList rewrites every slug of a comma-separated model row, keeping
-// the row's own shape when nothing in it carried the old name.
-func reprefixSlugList(raw, oldWritten, newWritten string) string {
-	out := make([]string, 0, strings.Count(raw, ",")+1)
-	changed := false
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		next := reprefixModelID(item, oldWritten, newWritten)
-		changed = changed || next != item
-		out = append(out, next)
-	}
-	if !changed {
-		return strings.TrimSpace(raw)
-	}
-	return strings.Join(out, ", ")
-}
-
-// reprefixRolePins rewrites the model half of every role:model pair. The role
-// separator is the FIRST colon, which is how config's own parse cuts the pair,
-// and a model's own colons stay with the model.
-func reprefixRolePins(raw, oldWritten, newWritten string) string {
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n'
-	})
-	out := make([]string, 0, len(fields))
-	changed := false
-	for _, field := range fields {
-		item := strings.TrimSpace(field)
-		if item == "" {
-			continue
-		}
-		role, model, hadModel := strings.Cut(item, ":")
-		if !hadModel {
-			out = append(out, item)
-			continue
-		}
-		next := reprefixModelID(model, oldWritten, newWritten)
-		changed = changed || next != model
-		out = append(out, role+":"+next)
-	}
-	if !changed {
-		return strings.TrimSpace(raw)
-	}
-	return strings.Join(out, ", ")
 }
 
 // listedModelIDs keeps the ids in the service's own order for modelsource's

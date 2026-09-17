@@ -501,6 +501,17 @@ func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
 	if err := image.Apply("mybox/glm-5.3"); err != nil {
 		t.Fatal(err)
 	}
+	// THE CREW'S TIER ROWS are stored ids under the old name too, and the one
+	// the rename has to carry or the planner and the worker keep answering on
+	// a service that no longer exists. The level suffix is the row's own
+	// notation and moves with the id.
+	worker, ok := registry.Row(config.KeyTierWorkerModel)
+	if !ok {
+		t.Fatal("the worker tier row is missing")
+	}
+	if err := worker.Apply("mybox/glm-5.3:low"); err != nil {
+		t.Fatal(err)
+	}
 
 	// THE RENAME: an edit draft whose Written moved, exactly what the name
 	// step builds on an answer that differs from the stored one.
@@ -534,6 +545,9 @@ func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
 	}
 	if image, _ := registry.Row(config.ModelSettingKey("image")); image.Value() != "renamed-box/glm-5.3" {
 		t.Fatalf("the capability slot did not follow the rename: %q", image.Value())
+	}
+	if got := config.TierModelAt(dir, config.ModelTierWorker); got != "renamed-box/glm-5.3:low" {
+		t.Fatalf("the crew's worker tier did not follow the rename: %q", got)
 	}
 	// A NAME THAT WAS NEVER THE OLD ONE COMES BACK UNTOUCHED.
 	if fallbacks, _ := registry.Row(config.KeyModelFallbacks); strings.Contains(fallbacks.Value(), "mybox/") {

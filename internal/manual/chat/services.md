@@ -260,8 +260,8 @@ On the Providers tab in `/settings` each custom connection is a row of its own. 
 opens it for editing with the address and name pre-filled, and an empty key box keeps
 the saved key. A changed name is a rename: every model id already picked under the old
 name is re-spelled with the new one, the conversation's own pick first (a turn still
-answering is waited out), and with it the stored ones: reasoning levels, role
-pins, the fallback chain and the capability slots. A rename changes a label and nothing
+answering is waited out), and with it the stored ones: reasoning levels, the
+crew's role models, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
 else; it does not move the conversation onto a different model. `ctrl+r` on the row
 reconnects with the saved details. The `add custom connection` row runs the same three
 questions for a new connection, so the tab never sends you to `/connect` to add one.
