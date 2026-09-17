@@ -267,10 +267,13 @@ func TestAReRaisedLandingCarriesItsAnswerFate(t *testing.T) {
 	}
 
 	// The answer lands on the record the way the lane writes it, and the
-	// answer's own claim takes the bank down.
+	// answer's own claim takes the bank down. The minute is now's own, so the
+	// stamp reads as today's however many days after this the test runs — the
+	// stamp says its day when the answer is from another one.
+	at := time.Now().Truncate(time.Minute)
 	q := agent.landingQuestion(PendingDecision{Notice: notice})
 	agent.recordDecision(decisionRecordOf(q, Answer{
-		At:        time.Date(2026, time.September, 16, 18, 20, 0, 0, time.Local),
+		At:        at,
 		Kind:      QuestionLanding,
 		ID:        1,
 		Key:       LandingYesKey,
@@ -283,7 +286,7 @@ func TestAReRaisedLandingCarriesItsAnswerFate(t *testing.T) {
 	if again.Kind != EventQuestion || again.Question == nil {
 		t.Fatalf("the re-raise did not go out: %+v", again)
 	}
-	if !strings.HasPrefix(again.Question.Reason, "accepted 18:20") {
+	if !strings.HasPrefix(again.Question.Reason, "accepted "+at.Format("15:04")) {
 		t.Fatalf("the re-raised card does not lead with the answer's fate: %q", again.Question.Reason)
 	}
 }
@@ -357,9 +360,10 @@ func TestTheTerminalNoticeRetiresTheFlightStamp(t *testing.T) {
 	agent.publishLandingQuestion(notice)
 	<-lane
 
+	at := time.Now().Truncate(time.Minute)
 	q := agent.landingQuestion(PendingDecision{Notice: notice})
 	agent.recordDecision(decisionRecordOf(q, Answer{
-		At:        time.Date(2026, time.September, 16, 18, 20, 0, 0, time.Local),
+		At:        at,
 		Kind:      QuestionLanding,
 		ID:        1,
 		Key:       LandingDecideKey,
@@ -390,7 +394,7 @@ func TestTheTerminalNoticeRetiresTheFlightStamp(t *testing.T) {
 	if strings.Contains(terminal.Question.Reason, "still working on it") {
 		t.Fatalf("the flight stamp outlived the flight: %q", terminal.Question.Reason)
 	}
-	if !strings.HasPrefix(terminal.Question.Reason, "handed it to codeaf 18:20") {
+	if !strings.HasPrefix(terminal.Question.Reason, "handed it to codeaf "+at.Format("15:04")) {
 		t.Fatalf("the terminal card does not lead with the answer's fate: %q", terminal.Question.Reason)
 	}
 }
