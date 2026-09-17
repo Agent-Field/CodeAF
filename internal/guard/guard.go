@@ -53,12 +53,29 @@ func note(scope string, recovered any, stack []byte) error {
 	return fault
 }
 
+// OnFault is called from Recover once the fault has been recorded, with the
+// scope Recover was given and the stack it captured for the log. It is nil by
+// default, and it is a variable rather than a call because of where this
+// package sits: internal/telemetry spools its own writes through guard.Go, so
+// an import from here back to anything that would report a fault is a cycle.
+// The reporting arrives as a func value instead, set once by the top of the
+// binary and left nil by every package that has nothing to report to.
+//
+// It runs on the recovered goroutine, inside the deferred Recover, so it must
+// neither block nor panic: the goroutine ends the moment it returns, and a
+// fault in the reporter would be the one fault guard could not absorb.
+var OnFault func(scope string, stack []byte)
+
 // Recover absorbs a panic in the deferring goroutine and lets it end quietly:
 // `defer guard.Recover("narrator")`. Use it where there is no result to carry
 // the fault — a fire-and-forget spawn whose only obligation is not to crash.
 func Recover(scope string) {
 	if recovered := recover(); recovered != nil {
-		_ = note(scope, recovered, debug.Stack())
+		stack := debug.Stack()
+		_ = note(scope, recovered, stack)
+		if OnFault != nil {
+			OnFault(scope, stack)
+		}
 	}
 }
 
