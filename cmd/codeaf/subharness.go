@@ -376,6 +376,10 @@ var sharedCatalog = func() func(config.Config) *catalog.Catalog {
 			resolved = catalog.LoadLazy(context.Background(), catalog.Options{
 				BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 			})
+			// A tier row that says auto is answered from this catalog (config.AutoModels):
+			// the same non-blocking read, never a fetch, and set once at start-up so every
+			// headless door resolves the word against the list it already holds.
+			config.AutoModels = resolved.ModelsNow
 		})
 		return resolved
 	}
