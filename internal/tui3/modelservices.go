@@ -710,10 +710,8 @@ func (a *app) reprefixRenamedModel(oldWritten, newWritten string) string {
 	if oldWritten == "" || newWritten == "" || strings.EqualFold(oldWritten, newWritten) {
 		return ""
 	}
-	respelled := false
 	if modelUsesService(a.deferredModelServiceModel, oldWritten) {
 		a.deferredModelServiceModel = config.ReprefixModelID(a.deferredModelServiceModel, oldWritten, newWritten)
-		respelled = true
 	}
 	if !modelUsesService(a.model, oldWritten) {
 		return ""
@@ -725,13 +723,13 @@ func (a *app) reprefixRenamedModel(oldWritten, newWritten string) string {
 		// not cleared: it names the same model under the new prefix, and
 		// dropping it would leave the settle to invent its own answer.
 		//
-		// BUT IT MAY ONLY TAKE A FREE SLOT. A pending move to ANOTHER
-		// connection is what the person last asked for and was promised out
-		// loud ([deferredMoveWord]); this re-spelling is bookkeeping, so it
-		// claims the slot only when nothing is pending, or when what is
-		// pending is the id the branch above just re-spelled — that one is the
-		// same rename and is honoured under the new name either way.
-		if respelled || strings.TrimSpace(a.deferredModelServiceModel) == "" {
+		// BUT IT MAY ONLY TAKE A FREE SLOT. Whatever is pending — a move to
+		// another connection, or the same move already carried under the new
+		// name by the branch above — is what the person last asked for and
+		// was promised out loud ([deferredMoveWord]); this re-spelling is
+		// bookkeeping, and bookkeeping never outranks what the person last
+		// asked for.
+		if strings.TrimSpace(a.deferredModelServiceModel) == "" {
 			a.deferredModelServiceModel = next
 		}
 		return ""

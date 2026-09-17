@@ -559,10 +559,11 @@ func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
 // MOVE UNDER THE NEW NAME. reprefixRenamedModel leaves a.model alone while a
 // turn is working — the answering turn is frozen to its model until it settles
 // — and rewrites the deferred move instead, spending it through
-// applyDeferredModelServiceMove once the turn settles. The deferred slot ends
-// holding the reprefixed LIVE pick, not the earlier deferred id: the working
-// branch overwrites whatever was pending with the conversation's own model
-// spelled the new way, so the settle can never replay a dead old-name id.
+// applyDeferredModelServiceMove once the turn settles. The pending move
+// follows the rename under its new name (homelab/b becomes lab/b) and the
+// frozen live pick does not displace it: the move is what the person last
+// asked for, and the re-spelled live pick may claim the slot only when it is
+// empty.
 func TestARenameWhileATurnIsWorkingCarriesThePendingMoveUnderTheNewName(t *testing.T) {
 	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
 	defer server.Close()
@@ -600,13 +601,14 @@ func TestARenameWhileATurnIsWorkingCarriesThePendingMoveUnderTheNewName(t *testi
 	msg = a.beginModelConnect(renamedDraft)().(modelConnectResultMsg)
 	a.adoptModelConnectResult(msg)
 
-	// THE LIVE PICK IS FROZEN while the turn works, and the pending move holds
-	// the same model under the new prefix: the earlier deferred id (homelab/b)
-	// was rewritten to the reprefixed live pick (lab/a).
+	// THE LIVE PICK IS FROZEN while the turn works, and the pending move
+	// follows the rename under the new name: the earlier deferred id
+	// (homelab/b) was re-spelled to lab/b, and the frozen live pick does not
+	// displace it.
 	if a.model != "homelab/a" {
 		t.Fatalf("the rename moved the working conversation's model to %q", a.model)
 	}
-	if a.deferredModelServiceModel != "lab/a" {
+	if a.deferredModelServiceModel != "lab/b" {
 		t.Fatalf("the pending move did not follow the rename: %q", a.deferredModelServiceModel)
 	}
 
@@ -619,6 +621,65 @@ func TestARenameWhileATurnIsWorkingCarriesThePendingMoveUnderTheNewName(t *testi
 	}
 	if a.deferredModelServiceModel != "" {
 		t.Fatalf("the pending move was not spent: %q", a.deferredModelServiceModel)
+	}
+}
+
+// A RENAME DURING A WORKING TURN WITH NO MOVE PENDING DEFERS THE RE-SPELLED
+// LIVE PICK: the answering turn is frozen to its model until it settles, so
+// the slot — empty here — takes the conversation's own model under the new
+// name and spends it when the turn settles, never leaving the settled
+// conversation on a dead old-name id.
+func TestARenameWhileATurnIsWorkingAndNoMoveIsPendingDefersTheRespelledLivePick(t *testing.T) {
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	a.model = "homelab/a"
+	a.state = stateWorking
+
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	msg = a.beginModelConnect(modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "lab", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "homelab",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	// THE SLOT WAS EMPTY, so the re-spelled live pick takes it: the frozen
+	// turn still answers on homelab/a, and the settle moves the conversation
+	// to the same model under the new name instead of leaving it resolving to
+	// a dead one.
+	if a.model != "homelab/a" {
+		t.Fatalf("the rename moved the working conversation's model to %q", a.model)
+	}
+	if a.deferredModelServiceModel != "lab/a" {
+		t.Fatalf("the empty slot did not take the re-spelled live pick: %q", a.deferredModelServiceModel)
+	}
+
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if a.model != "lab/a" {
+		t.Fatalf("the settled conversation stayed on %q", a.model)
+	}
+	if a.deferredModelServiceModel != "" {
+		t.Fatalf("the deferred pick was not spent: %q", a.deferredModelServiceModel)
 	}
 }
 
