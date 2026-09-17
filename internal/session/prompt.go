@@ -449,6 +449,17 @@ var bashPageSubstitutions = []struct{ pi, bash string }{
 		pi:   "`read` answering `[already read] …` means the bytes are in the conversation above: answer from them rather than fetching the file a second time.",
 		bash: "An answer beginning `[already read] …` means the bytes are in the conversation above: answer from them rather than fetching the file a second time.",
 	},
+	{
+		// prompts/system.md, the batching law. The conversation batches because
+		// its belts take many calls at once; the bash belt runs EXACTLY ONE
+		// action per response and REFUSES a batch. A model told to batch obeys
+		// the louder law, its call is refused, and four refusals in a row end
+		// its run — that is every bash row of the grid
+		// (docs/design/bash-task-loop/INVESTIGATION.md). So this belt teaches
+		// the one law its envelope enforces.
+		pi:   "- ASK FOR EVERYTHING YOU NEED IN ONE BREATH. Reads, searches and checks that do not depend on each other go out as ONE batch of calls, never one per turn: every round trip is a wait the person sits through, and a batch runs concurrently.",
+		bash: "- ONE ACTION PER RESPONSE. A response carries exactly one bash call; a batch is refused and nothing runs, so read one thing, act on it, and read the observation before the next. When nothing independent of what you handed out is left, end your turn rather than batching.",
+	},
 }
 
 // bashWorkerPageFor is one bash-belt worker's page out of the composed one:
