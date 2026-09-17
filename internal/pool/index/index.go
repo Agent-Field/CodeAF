@@ -178,8 +178,17 @@ func parse(data []byte) (*Index, error) {
 	}
 
 	// The declared metrics are keyed by their folded name for lookup, and
-	// their kinds are folded once here rather than on every Kind call.
-	for name, decl := range d.Metrics {
+	// their kinds are folded once here rather than on every Kind call. The
+	// names are walked in sorted order for the same reason the aliases below
+	// are: two spellings that fold to one name are a first-claim-wins race,
+	// and map order would settle it differently on every run.
+	metricNames := make([]string, 0, len(d.Metrics))
+	for name := range d.Metrics {
+		metricNames = append(metricNames, name)
+	}
+	sort.Strings(metricNames)
+	for _, name := range metricNames {
+		decl := d.Metrics[name]
 		folded := fold(name)
 		if _, seen := x.metrics[folded]; !seen {
 			x.metrics[folded] = name
