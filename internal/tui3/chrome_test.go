@@ -610,10 +610,10 @@ func TestTheEmptyScreenIsOneCentredUnit(t *testing.T) {
 	screen := strings.Join(lines, "\n")
 
 	wordmark := wordmarkRows(false)
-	if len(wordmark) != 3 {
+	if len(wordmark) != 4 {
 		t.Fatalf("the wordmark is %d rows", len(wordmark))
 	}
-	order := []string{wordmark[0], wordmark[2], "openai/gpt-4.1-mini", glyphYou,
+	order := []string{wordmark[0], wordmark[3], "openai/gpt-4.1-mini", glyphYou,
 		starterTryWord, "recent sessions", "porting the parser", "reading the registry"}
 	last := -1
 	for _, want := range order {
@@ -641,14 +641,17 @@ func TestTheEmptyScreenIsOneCentredUnit(t *testing.T) {
 	}
 
 	// EVERY ROW OF THE UNIT SHARES ONE LEFT EDGE, and the edge is centred at
-	// every width the unit is drawn at.
+	// every width the unit is drawn at. The edge is read off the wordmark's
+	// SECOND row: the first is the cap line, and the x-height letters that
+	// begin the word leave it blank, so its lead is the unit's edge plus the
+	// width of three letters that are not there yet.
 	for _, width := range []int{60, 90, 120, 200} {
 		a.width = width
 		a.touch()
 		lines := screenLines(a)
 		unit := min(width-4, welcomeUnitWidth)
 		want := (width - unit) / 2
-		for _, row := range []string{wordmark[0], "openai/gpt-4.1-mini", glyphYou, starterSlashWord, "recent sessions"} {
+		for _, row := range []string{wordmark[1], "openai/gpt-4.1-mini", glyphYou, starterSlashWord, "recent sessions"} {
 			at := unitRow(lines, row)
 			if at < 0 {
 				t.Fatalf("at width %d the greeting lost %q:\n%s", width, row, strings.Join(lines, "\n"))
