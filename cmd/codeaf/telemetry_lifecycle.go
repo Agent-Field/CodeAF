@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
@@ -43,6 +44,16 @@ type telemetrySession struct {
 	sessionID string
 }
 
+// currentTelemetrySession is the session this invocation decided, kept where
+// the two crash sites can reach it. execute() holds the same value in a local,
+// but neither reporter runs where that local is in scope: reportFault is the
+// deferred recover at the top of main.go, and guard's hook runs on a goroutine
+// that never saw execute's frame at all. Both read it here.
+//
+// The zero value is a command that is not a session — version, help, doctor —
+// and its fault still counts, carrying the mode the contract spells "other".
+var currentTelemetrySession telemetrySession
+
 // telemetryBegin decides, from the command line alone, whether this
 // invocation is a session worth counting, and spools its opening events.
 //
@@ -59,12 +70,17 @@ type telemetrySession struct {
 // A task command is always shown it, because a task runs unattended and its
 // person may never open a chat at all.
 func telemetryBegin() telemetrySession {
+	// Wired first: a fault can arrive from any goroutine the run spawns from
+	// here on, and the hook reads the session assigned below when it fires.
+	telemetryFaultHook()
 	args := os.Args[1:]
 	mode, resumed, session := telemetryMode(args)
 	if !session {
-		return telemetrySession{}
+		currentTelemetrySession = telemetrySession{}
+		return currentTelemetrySession
 	}
 	id := telemetrySessionID()
+	currentTelemetrySession = telemetrySession{mode: mode, resumed: resumed, sessionID: id}
 	// A run the ladder has turned off prints no notice either: the notice is
 	// the sentence that asks permission to send, and a pipe that will never
 	// send has nobody to ask — and marking it shown would create the very
@@ -91,7 +107,35 @@ func telemetryBegin() telemetrySession {
 	if telemetry.Enabled() {
 		_ = telemetry.SpoolSync(telemetry.SessionStarted(mode, resumed, id, time.Now()))
 	}
-	return telemetrySession{mode: mode, resumed: resumed, sessionID: id}
+	return currentTelemetrySession
+}
+
+// telemetryFaultHook hands guard the reporter it cannot import. guard sits
+// below internal/telemetry — the spool's own append runs on guard.Go — so the
+// package that absorbs a goroutine's panic must not depend on the package that
+// would count it. It calls a func value instead, and this is the one place the
+// binary wires the two together.
+//
+// Spool, not SpoolSync: a guarded goroutine's fault does not end the process,
+// so the event waits for the flush this run already makes at its exit and the
+// faulting goroutine is not held for a write. The hook is set only when the
+// ladder is on, which is the same answer the crash site in fault.go asks.
+//
+// The scope guard passes is its own label for the log — narrator,
+// telemetry.spool — while the contract's scope is one of three words, and the
+// word for every fault recovered here is "goroutine".
+func telemetryFaultHook() {
+	if !telemetry.Enabled() {
+		return
+	}
+	guard.OnFault = func(scope string, stack []byte) {
+		session := currentTelemetrySession
+		telemetry.Spool(telemetry.FaultEvent(telemetry.Fault{
+			Mode:  string(session.mode),
+			Scope: telemetry.ScopeGoroutine,
+			Stack: stack,
+		}, session.sessionID, time.Now()))
+	}
 }
 
 // telemetryEnd closes one run at the exit, from the process's own tally
