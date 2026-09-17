@@ -142,17 +142,20 @@ func (p *postRecord) handle(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.bodies = append(p.bodies, string(b))
 	p.types = append(p.types, r.Header.Get("Content-Type"))
-	p.mu.Unlock()
-	if p.seconds > 0 {
-		time.Sleep(time.Duration(p.seconds) * time.Millisecond)
-	}
+	// The two knobs are read under the same lock the bodies are written
+	// under: the server answers on its own goroutine, and a handler reading a
+	// field the test writes is a race whether or not the requests overlap.
+	wait := time.Duration(p.seconds) * time.Millisecond
+	status := 200
 	if len(p.status) > 0 {
-		s := p.status[0]
+		status = p.status[0]
 		p.status = p.status[1:]
-		w.WriteHeader(s)
-		return
 	}
-	w.WriteHeader(200)
+	p.mu.Unlock()
+	if wait > 0 {
+		time.Sleep(wait)
+	}
+	w.WriteHeader(status)
 }
 
 func TestOpenRefusesAnEmptyPath(t *testing.T) {
@@ -1011,5 +1014,81 @@ func TestAppendWithTheDefaultClockAndRand(t *testing.T) {
 		if r.Schema != 1 {
 			t.Fatalf("row %d schema is %d, want 1", i, r.Schema)
 		}
+	}
+}
+
+// A nonce is what the caller's own Rand made of sixteen bytes, so a source
+// that answers with the same bytes twice writes the same nonce twice. Each
+// marker still retires exactly one row.
+func TestRowsSharingANonceAreRetiredOneMarkerAtATime(t *testing.T) {
+	o, _ := openOutbox(t)
+	o.Rand = bytes.NewReader(bytes.Repeat([]byte{3}, 4096))
+	o.MaxPending = 3
+	for i := 0; i < 5; i++ {
+		appendRow(t, o, fmt.Sprintf(`{"i":%d}`, i))
+	}
+	pending := o.Pending()
+	if len(pending) != 3 {
+		t.Fatalf("pending = %d rows, want the three the cap leaves", len(pending))
+	}
+	for i, r := range pending {
+		if want := fmt.Sprintf(`{"i":%d}`, i+2); string(r.Payload) != want {
+			t.Fatalf("pending[%d] = %s, want %s: the cap drops from the old end", i, r.Payload, want)
+		}
+	}
+}
+
+// A partial send over a shared nonce leaves the rows it never reached, rather
+// than retiring them with the batch that did arrive.
+func TestAPartialSendOverASharedNonceKeepsTheRowsItDidNotReach(t *testing.T) {
+	post := &postRecord{}
+	srv := httptest.NewServer(http.HandlerFunc(post.handle))
+	defer srv.Close()
+
+	o, _ := openOutbox(t)
+	o.Rand = bytes.NewReader(bytes.Repeat([]byte{5}, 4096))
+	o.Client = srv.Client()
+	for i := 0; i < 250; i++ {
+		appendRow(t, o, fmt.Sprintf(`{"i":%d}`, i))
+	}
+	post.status = []int{200, 500}
+
+	n, err := o.Send(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("a refused second batch returned no error")
+	}
+	if n != 200 {
+		t.Fatalf("Send = %d, want the 200 rows the first batch carried", n)
+	}
+	if got := len(o.Pending()); got != 50 {
+		t.Fatalf("pending = %d, want the 50 rows the refused batch never delivered", got)
+	}
+}
+
+// A marker that could not be written leaves its rows pending: a row gone from
+// the pending set and present in the file is a row that comes back at the next
+// Open having been reported delivered.
+func TestASendWhoseMarkerCannotBeWrittenKeepsTheRowsPending(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "outbox.jsonl")
+	o, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer o.Close()
+	appendRow(t, o, `{"i":0}`)
+
+	sink := filepath.Join(dir, "sink.jsonl")
+	// The handle goes away between the delivery and the marker, which is what
+	// a Close racing an in-flight Send does.
+	o.Keep = func(json.RawMessage) bool {
+		o.Close()
+		return true
+	}
+	if _, err := o.Send(context.Background(), sink); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if got := len(o.Pending()); got != 1 {
+		t.Fatalf("pending = %d, want the row whose marker never reached the file", got)
 	}
 }

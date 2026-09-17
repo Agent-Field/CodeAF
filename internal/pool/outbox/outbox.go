@@ -285,33 +285,39 @@ func (o *Outbox) trimLocked() {
 	}
 	dropped := make([]string, drop)
 	copy(dropped, o.pend[:drop])
-	o.writeMarksLocked(droppedMarks(dropped))
+	if o.writeMarksLocked(droppedMarks(dropped)) != nil {
+		// The cap is kept by the markers on disk, so a cap this Append could
+		// not record is a cap that is not kept. The rows stay pending and the
+		// next Append tries the trim again, which is the same answer the
+		// failed row write itself gives.
+		return
+	}
 	o.pend = append(o.pend[:0], o.pend[drop:]...)
 }
 
 // retire appends one marker per nonce and takes those rows out of the pending
-// set. A marker write is best effort: a failed write leaves the rows pending,
-// where the next Send tries them again rather than losing them.
+// set. A marker that could not be written leaves its rows pending, where the
+// next Send tries them again rather than losing them — which is why the drop
+// happens only once the write has gone through. The alternative, a row gone
+// from the pending set and present in the file, is a row that comes back at
+// the next Open having been reported delivered.
 func (o *Outbox) retire(marks []mark) {
-	gone := make(map[string]bool, len(marks))
-	for _, m := range marks {
-		if m.Sent != "" {
-			gone[m.Sent] = true
-		}
-		if m.Dropped != "" {
-			gone[m.Dropped] = true
-		}
-	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.writeMarksLocked(marks)
-	o.dropPendingLocked(gone)
+	if o.writeMarksLocked(marks) != nil {
+		return
+	}
+	o.dropPendingLocked(marks)
 }
 
-// writeMarksLocked appends one marker line per mark. The caller holds mu.
-func (o *Outbox) writeMarksLocked(marks []mark) {
-	if o.f == nil || len(marks) == 0 {
-		return
+// writeMarksLocked appends one marker line per mark, and answers whether the
+// line reached the file. The caller holds mu.
+func (o *Outbox) writeMarksLocked(marks []mark) error {
+	if len(marks) == 0 {
+		return nil
+	}
+	if o.f == nil {
+		return errors.New("outbox: outbox is closed")
 	}
 	buf := make([]byte, 0, 24*len(marks))
 	for _, m := range marks {
@@ -322,33 +328,55 @@ func (o *Outbox) writeMarksLocked(marks []mark) {
 		buf = append(buf, line...)
 		buf = append(buf, '\n')
 	}
-	o.f.Write(buf) // best effort; see retire
+	_, err := o.f.Write(buf)
+	return err
 }
 
-// dropPendingLocked removes the named nonces from the pending list. The
-// caller holds mu.
-func (o *Outbox) dropPendingLocked(gone map[string]bool) {
+// dropPendingLocked removes the marked rows from the pending list, ONE ROW PER
+// MARKER and oldest first. A nonce is not an identity: [Outbox.Rand] is the
+// caller's to set, and a source that answers with the same bytes twice writes
+// the same nonce twice. Treating the marks as a set of names would then take
+// every row sharing a name — the rows a failed batch left pending, the row a
+// trim was told to keep — out of the outbox with it. Markers are only ever
+// written for the oldest rows, so counting them off the front is what they
+// mean. The caller holds mu.
+func (o *Outbox) dropPendingLocked(marks []mark) {
+	gone := make(map[string]int, len(marks))
+	for _, m := range marks {
+		if m.Sent != "" {
+			gone[m.Sent]++
+		}
+		if m.Dropped != "" {
+			gone[m.Dropped]++
+		}
+	}
 	kept := o.pend[:0]
 	for _, n := range o.pend {
-		if !gone[n] {
-			kept = append(kept, n)
+		if gone[n] > 0 {
+			gone[n]--
+			continue
 		}
+		kept = append(kept, n)
 	}
 	o.pend = kept
 }
 
 // load reads the outbox file and answers the rows still pending, in file
 // order. A line that does not parse, or that is not a row, is skipped, and a
-// file that cannot be read answers as no rows at all. A row whose nonce a
-// sent or dropped marker retires is left out, wherever the marker sits. The
-// caller holds mu.
+// file that cannot be read answers as no rows at all. The caller holds mu.
+//
+// EACH MARKER RETIRES ONE ROW, oldest first, wherever the marker sits — see
+// [Outbox.dropPendingLocked] for why the count rather than the name: a nonce
+// is what the caller's own [Outbox.Rand] made of sixteen bytes, and a reader
+// that took a marker as a name would answer that a file holding two rows under
+// one nonce and one marker holds nothing at all.
 func (o *Outbox) load() []Row {
 	b, err := os.ReadFile(o.path)
 	if err != nil {
 		return nil
 	}
 	var rows []Row
-	retired := make(map[string]bool)
+	retired := make(map[string]int)
 	for len(b) > 0 {
 		line := b
 		if i := bytes.IndexByte(b, '\n'); i >= 0 {
@@ -362,11 +390,11 @@ func (o *Outbox) load() []Row {
 		var m mark
 		if json.Unmarshal(line, &m) == nil {
 			if m.Sent != "" {
-				retired[m.Sent] = true
+				retired[m.Sent]++
 				continue
 			}
 			if m.Dropped != "" {
-				retired[m.Dropped] = true
+				retired[m.Dropped]++
 				continue
 			}
 		}
@@ -378,9 +406,11 @@ func (o *Outbox) load() []Row {
 	}
 	kept := rows[:0]
 	for _, r := range rows {
-		if !retired[r.Nonce] {
-			kept = append(kept, r)
+		if retired[r.Nonce] > 0 {
+			retired[r.Nonce]--
+			continue
 		}
+		kept = append(kept, r)
 	}
 	return kept
 }
