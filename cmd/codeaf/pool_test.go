@@ -8,6 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,6 +121,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 		"mode on · default",
 		"relay https://codeaf.agentfield.ai/pool · default",
 		"index https://codeaf.agentfield.ai/pool/index.json · default",
+		"mirror https://raw.githubusercontent.com/Agent-Field/CodeAF/model-pool/pool/index.json · default",
 		"submit https://codeaf.agentfield.ai/pool/v1/rows · default",
 		"ttl 1d · default",
 		"no index cached yet · built-in seed of 2026-09-17",
@@ -200,7 +204,7 @@ func TestPoolShowJSONWithASeededIndexReportsTheDocument(t *testing.T) {
 func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	dir := seedOutbox(t)
 	var out strings.Builder
-	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), noEnv); err != nil {
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "pending 2 · can send yes · can read yes") {
@@ -211,7 +215,7 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
 		t.Fatal(err)
 	}
 	var answer struct {
@@ -231,7 +235,7 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	// reads the outbox by count, because opening one would create it.
 	quiet := t.TempDir()
 	out.Reset()
-	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), noEnv); err != nil {
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "pending 0") {
@@ -615,7 +619,7 @@ func TestPoolShowSaysWhatTheOwnSheetHolds(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), noEnv); err != nil {
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "own sheet: 2 cells, 3 observations") {
@@ -728,5 +732,256 @@ func TestWirePoolIndexSeatsNothingForAnUnparsableOwnSheet(t *testing.T) {
 	wirePoolIndex(dir)
 	if got := config.AutoOwnCells; got != nil && got() != nil {
 		t.Fatal("a broken own sheet was seated")
+	}
+}
+
+// ── THE MIRROR ──────────────────────────────────────────────────────────────
+
+// poolEnv is an environment holding exactly the names given, so a test pins
+// the pool's addresses without touching the process.
+func poolEnv(pairs map[string]string) func(string) (string, bool) {
+	return func(name string) (string, bool) {
+		value, set := pairs[name]
+		return value, set
+	}
+}
+
+// deadEnv pins both index addresses at a closed local port, so a probe fails
+// at once and reaches no network.
+func deadEnv() func(string) (string, bool) {
+	return poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        "http://127.0.0.1:1/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "http://127.0.0.1:1/index.json",
+	})
+}
+
+// signedPoolDoc is a document the puller accepts: one integer version and
+// nothing else it reads. The version is where a test finds which address was
+// the one that answered.
+func signedPoolDoc(version int) []byte {
+	return []byte(fmt.Sprintf(`{"version": %d, "schema": 1, "generated": "2026-09-10", "min_installs": 1, "judges": [], "metrics": {}, "cells": []}`, version))
+}
+
+// poolServer serves a signed index over http the way a relay does: the
+// document at /index.json and its base64 signature beside it at
+// /index.json.sig, both signed under priv.
+func poolServer(t *testing.T, priv ed25519.PrivateKey, doc []byte) *httptest.Server {
+	t.Helper()
+	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, doc))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/index.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(doc)
+	})
+	mux.HandleFunc("/index.json.sig", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(sig))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
+
+// cachedVersion reads the "version" of the document under the profile's pool
+// directory, and whether one is there at all.
+func cachedVersion(t *testing.T, dir string) (int64, bool) {
+	t.Helper()
+	doc, err := os.ReadFile(filepath.Join(dir, "pool", "doc.json"))
+	if err != nil {
+		return 0, false
+	}
+	var obj struct {
+		Version int64 `json:"version"`
+	}
+	if err := json.Unmarshal(doc, &obj); err != nil {
+		t.Fatalf("the cached document does not parse: %v", err)
+	}
+	return obj.Version, true
+}
+
+// A relay that does not answer is not the end of the fetch: the mirror is
+// asked with the same keys and the same cache directory, and the document it
+// serves lands where the next start reads it.
+func TestPoolRefreshFallsToTheMirrorWhenTheRelayIsDown(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := poolServer(t, priv, signedPoolDoc(9))
+	dir := t.TempDir()
+	cfg := poolcfg.Config{Mode: poolcfg.On, IndexURL: "http://127.0.0.1:1/index.json", MirrorURL: mirror.URL + "/index.json"}
+	refreshPoolIndex(context.Background(), dir, cfg, []ed25519.PublicKey{pub})
+	version, ok := cachedVersion(t, dir)
+	if !ok || version != 9 {
+		t.Fatalf("the mirror's document was not kept: version %d, cached %v", version, ok)
+	}
+}
+
+// Both addresses down leaves the cache exactly where it was: the fetch falls
+// back to the copy already on disk and writes nothing.
+func TestPoolRefreshKeepsTheCacheWhenBothAddressesAreDown(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay := poolServer(t, priv, signedPoolDoc(7))
+	dir := t.TempDir()
+	live := poolcfg.Config{Mode: poolcfg.On, IndexURL: relay.URL + "/index.json", MirrorURL: relay.URL + "/index.json"}
+	refreshPoolIndex(context.Background(), dir, live, []ed25519.PublicKey{pub})
+	if version, ok := cachedVersion(t, dir); !ok || version != 7 {
+		t.Fatalf("the relay's document was not cached: version %d, cached %v", version, ok)
+	}
+	relay.Close()
+	dead := poolcfg.Config{Mode: poolcfg.On, IndexURL: "http://127.0.0.1:1/index.json", MirrorURL: "http://127.0.0.1:1/index.json"}
+	refreshPoolIndex(context.Background(), dir, dead, []ed25519.PublicKey{pub})
+	if version, ok := cachedVersion(t, dir); !ok || version != 7 {
+		t.Fatalf("a failed refresh moved the cache: version %d, cached %v", version, ok)
+	}
+}
+
+// A signature failure is a statement about the primary's bytes, not a dead
+// source: the mirror is not asked, so its good document is never cached in
+// place of the one whose signature just failed.
+func TestPoolRefreshDoesNotFallToTheMirrorOnABadSignature(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The primary serves a document signed under a key nobody trusts; the
+	// mirror serves a good one that must not be reached.
+	relay := poolServer(t, otherPriv, signedPoolDoc(7))
+	mirror := poolServer(t, priv, signedPoolDoc(9))
+	dir := t.TempDir()
+	cfg := poolcfg.Config{Mode: poolcfg.On, IndexURL: relay.URL + "/index.json", MirrorURL: mirror.URL + "/index.json"}
+	refreshPoolIndex(context.Background(), dir, cfg, []ed25519.PublicKey{pub})
+	if _, ok := cachedVersion(t, dir); ok {
+		t.Fatal("a document with a bad signature fell through to the mirror, or was cached")
+	}
+}
+
+// ── THE RELAY LINE ──────────────────────────────────────────────────────────
+
+// status asks the relay whether it answers, over a signed document served by
+// an httptest relay and checked under the key --key hands in.
+func TestPoolStatusSaysTheRelayAnswered(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := poolServer(t, priv, signedPoolDoc(7))
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "",
+	})
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--key", base64.StdEncoding.EncodeToString(pub)}, &out, t.TempDir(), poolClock(t), lookup); err != nil {
+		t.Fatalf("a reachable relay failed status: %v", err)
+	}
+	if !strings.Contains(out.String(), "relay: reachable · index version 7") {
+		t.Fatalf("status did not say the relay answered:\n%s", out.String())
+	}
+}
+
+// A closed relay and a closed mirror are a reading, not a failure: status says
+// both are unreachable, says what it read instead, and still exits 0.
+func TestPoolStatusSaysUnreachableAndStillExitsZero(t *testing.T) {
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, t.TempDir(), poolClock(t), deadEnv()); err != nil {
+		t.Fatalf("an unreachable relay failed status: %v", err)
+	}
+	body := out.String()
+	if !strings.Contains(body, "relay: unreachable (") {
+		t.Fatalf("status did not say the relay was unreachable:\n%s", body)
+	}
+	if !strings.Contains(body, "mirror: unreachable (") {
+		t.Fatalf("status did not say the mirror was unreachable:\n%s", body)
+	}
+	if !strings.Contains(body, "reading built-in seed") {
+		t.Fatalf("status did not say what it read instead:\n%s", body)
+	}
+}
+
+// The mirror is asked when the relay does not answer, and the line says so.
+func TestPoolStatusFallsToTheMirrorWhenTheRelayIsDown(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := poolServer(t, priv, signedPoolDoc(7))
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        "http://127.0.0.1:1/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": mirror.URL + "/index.json",
+	})
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--key", base64.StdEncoding.EncodeToString(pub)}, &out, t.TempDir(), poolClock(t), lookup); err != nil {
+		t.Fatalf("a mirror that answered still failed status: %v", err)
+	}
+	body := out.String()
+	if !strings.Contains(body, "relay: unreachable (") || !strings.Contains(body, "mirror: reachable · index version 7") {
+		t.Fatalf("status did not fall to the mirror:\n%s", body)
+	}
+}
+
+// A mode that forbids reading asks the network nothing and says so, whatever
+// the addresses in force are.
+func TestPoolStatusDoesNotReadWhenOff(t *testing.T) {
+	var out strings.Builder
+	lookup := poolEnv(map[string]string{"CODEAF_MODEL_POOL": "off"})
+	if err := runPoolWith([]string{"status"}, &out, t.TempDir(), poolClock(t), lookup); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "relay: not read (model_pool off)") {
+		t.Fatalf("an off pool did not say it asked nothing:\n%s", out.String())
+	}
+}
+
+// status --json carries the relay and the mirror as objects — whether each
+// answered, the version it served, and the reason when it did not.
+func TestPoolStatusJSONCarriesTheRelayAndMirror(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := poolServer(t, priv, signedPoolDoc(7))
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "",
+	})
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--json", "--key", base64.StdEncoding.EncodeToString(pub)}, &out, t.TempDir(), poolClock(t), lookup); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Relay  *probeSummary `json:"relay"`
+		Mirror *probeSummary `json:"mirror"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Relay == nil || !answer.Relay.Reachable || answer.Relay.Version != 7 {
+		t.Fatalf("the relay was not reported: %+v", answer.Relay)
+	}
+	if answer.Mirror == nil || answer.Mirror.Reachable {
+		t.Fatalf("the mirror was reported as answering though the relay did: %+v", answer.Mirror)
+	}
+}
+
+// A show asks nothing, so its object carries neither a relay nor a mirror.
+func TestPoolShowJSONCarriesNoRelayAnswer(t *testing.T) {
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--json"}, &out, t.TempDir(), poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("show --json did not parse: %v\n%s", err, out.String())
+	}
+	if _, has := answer["relay"]; has {
+		t.Fatal("a show carried a relay field")
+	}
+	if _, has := answer["mirror"]; has {
+		t.Fatal("a show carried a mirror field")
 	}
 }
