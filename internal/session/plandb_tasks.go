@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -169,6 +170,144 @@ func (a *Agent) openPlanHandle() (*plandb.Store, *planState, func()) {
 		_ = store.Close()
 		plan.mu.Unlock()
 	}
+}
+
+// PlanSpendLine is one seat's share of a run's spending: the role the store
+// gave the work, the model that seat spent most of its money through, and what
+// the seat came to over the window it was asked about.
+//
+// IT CARRIES THE MODEL BESIDE THE SEAT because the spend page draws the two on
+// one line: a seat is a role, and the model is the thing a person can go and
+// change when they read that a seat has grown dear.
+type PlanSpendLine struct {
+	Seat  string
+	Model string
+	USD   float64
+	Calls int
+}
+
+// PlanSpend answers THIS conversation's plan spending rolled up by seat: one
+// line per role the store gave work, carrying the model that seat spent most
+// through over the dollars and calls it wrote down since a moment.
+//
+// NIL IS THE HONEST ANSWER for a conversation with no plan store and for a
+// store with nothing priced in the window, exactly as [Agent.PlanTasks] answers
+// nil for a conversation with no plan: the spend page draws its block's heading
+// and whisper from that emptiness rather than a zero line, which is the
+// emptiness law applied to money.
+//
+// THE ROLLUP IS SUMMED HERE AND NOT BY THE STORE. [plandb.Store.SpendBy]
+// groups by seat but names no model beside it, and the page draws the model on
+// the seat's own line, so the ledger is read the way [planSpendByTask] reads it
+// — a read-only connection beside the writer, so a store that will not open as
+// a reader answers nothing rather than failing the read.
+func (a *Agent) PlanSpend(since time.Time) []PlanSpendLine {
+	store, plan, closeStore := a.openPlanHandle()
+	if store == nil {
+		return nil
+	}
+	defer closeStore()
+	return planSpendBySeat(store.Path(), plan.chat, since)
+}
+
+// planSpendBySeat sums the run's spend ledger per seat, and per model under
+// each seat so the seat can name the one most of its money went through. Rows
+// are narrowed to this chat's tasks by the same join [plandb.Store.spendTotals]
+// makes, and the window is cut in Go, not in the query, for [plandb.Store]
+// .SpendBy's reason: the ledger stores `at` as RFC3339Nano, whose fractional
+// digits vary, so a text comparison against a bound would misorder a whole
+// second against its own fraction.
+func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT s.role, s.model, s.usd, s.at
+		FROM spend s JOIN tasks t ON t.id = s.task_id WHERE t.chat = ?`, chat)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	// A SEAT KEEPS ITS OWN RUNNING TOTAL and a tally per model, so the line's
+	// model is chosen from what the seat actually spent rather than from the
+	// last row read.
+	type modelTally struct {
+		usd   float64
+		calls int
+	}
+	seats := map[string]*PlanSpendLine{}
+	models := map[string]map[string]*modelTally{}
+	var order []string
+	for rows.Next() {
+		var seat, model, at string
+		var usd float64
+		if rows.Scan(&seat, &model, &usd, &at) != nil {
+			return nil
+		}
+		// A ZERO-PRICED ROW IS AN UNPRICED ONE AND NOT A FREE CALL. The
+		// emptiness law does not let an unknown price become a measured zero, so
+		// the row is left out of the rollup whole — which is also what keeps
+		// `$0.00` off the page.
+		if usd <= 0 {
+			continue
+		}
+		if !since.IsZero() && at != "" {
+			moment, err := time.Parse(time.RFC3339Nano, at)
+			if err != nil || moment.Before(since) {
+				continue
+			}
+		}
+		line := seats[seat]
+		if line == nil {
+			line = &PlanSpendLine{Seat: seat}
+			seats[seat] = line
+			models[seat] = map[string]*modelTally{}
+			order = append(order, seat)
+		}
+		line.USD += usd
+		line.Calls++
+		tally := models[seat][model]
+		if tally == nil {
+			tally = &modelTally{}
+			models[seat][model] = tally
+		}
+		tally.usd += usd
+		tally.calls++
+	}
+	if err := rows.Err(); err != nil {
+		return nil
+	}
+	if len(order) == 0 {
+		return nil
+	}
+	out := make([]PlanSpendLine, 0, len(order))
+	for _, seat := range order {
+		line := seats[seat]
+		// THE MODEL IS THE ONE THE SEAT SPENT MOST THROUGH, with the call
+		// count and then the name breaking a tie, so the same ledger always
+		// names the same model and the row is stable across reads.
+		best, bestUSD, bestCalls := "", 0.0, 0
+		for model, tally := range models[seat] {
+			switch {
+			case tally.usd > bestUSD,
+				tally.usd == bestUSD && tally.calls > bestCalls,
+				tally.usd == bestUSD && tally.calls == bestCalls && model < best:
+				best, bestUSD, bestCalls = model, tally.usd, tally.calls
+			}
+		}
+		line.Model = best
+		out = append(out, *line)
+	}
+	// DEAREST SEAT FIRST, the ordering the store's own rollup and this page's
+	// tables both keep, so two seats never swap places between reads.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].USD != out[j].USD {
+			return out[i].USD > out[j].USD
+		}
+		return out[i].Seat < out[j].Seat
+	})
+	return out
 }
 
 // planTaskRow builds one row from the store read and the two figures that are

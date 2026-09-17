@@ -274,6 +274,78 @@ func TestSpendRowsFollowThePlanNode(t *testing.T) {
 	waitNoSpendRows(t, ostore)
 }
 
+// PLAN SPEND ROLLS THE RUN'S LEDGER UP BY SEAT: one line per role, dearest
+// first, each naming the model that seat spent most of its money through. A
+// row priced at nothing is an unpriced one and not a free call, a store's rows
+// are this chat's own, and a conversation with no store answers nil.
+func TestPlanSpendRollsUpBySeat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	store, err := plandb.Open(path, "the run", planRootID, "The run", "drive the plan", "chat-a")
+	if err != nil {
+		t.Fatalf("open the plan store: %v", err)
+	}
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "alpha", Title: "Alpha"},
+		{ID: "beta", Title: "Beta"},
+	}); err != nil {
+		t.Fatalf("seed the store: %v", err)
+	}
+	charge := func(id, model, role string, usd float64) {
+		t.Helper()
+		if err := store.AddSpend(id, model, role, usd, 10, 5); err != nil {
+			t.Fatalf("charge %s: %v", id, err)
+		}
+	}
+	// THE PLAN SEAT THROUGH TWO MODELS, so the model the line names is the one
+	// most of that seat's money went through; the work seat through one.
+	charge("alpha", "vendor/deep", "plan", 1.00)
+	charge("beta", "vendor/deep", "plan", 0.25)
+	charge("alpha", "vendor/wide", "plan", 0.10)
+	charge("beta", "vendor/deep", "work", 0.40)
+	// AND A ROW PRICED AT NOTHING IS LEFT OUT OF THE ROLLUP WHOLE.
+	charge("beta", "vendor/deep", "work", 0)
+	if err := store.Close(); err != nil {
+		t.Fatalf("close the seeding handle: %v", err)
+	}
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	lines := agent.PlanSpend(time.Time{})
+	if len(lines) != 2 {
+		t.Fatalf("PlanSpend = %d lines, want 2 (%#v)", len(lines), lines)
+	}
+	plan, work := lines[0], lines[1]
+	if plan.Seat != "plan" || plan.USD != 1.35 || plan.Calls != 3 {
+		t.Errorf("the dearest seat = %#v, want plan with 3 calls and $1.35", plan)
+	}
+	if plan.Model != "vendor/deep" {
+		t.Errorf("the plan seat names %q, want the model most of its money went through (vendor/deep)", plan.Model)
+	}
+	if work.Seat != "work" || work.USD != 0.40 || work.Calls != 1 {
+		t.Errorf("the second seat = %#v, want work with 1 call and $0.40", work)
+	}
+
+	// A CONVERSATION WITH NO PLAN ANSWERS NIL, and so does a store whose rows
+	// are another chat's: the emptiness is "nothing of mine", never a zero line.
+	blank, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	if lines := blank.PlanSpend(time.Time{}); lines != nil {
+		t.Fatalf("PlanSpend with no store = %#v, want nil", lines)
+	}
+	other, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, other, path, "chat-b")
+	if lines := other.PlanSpend(time.Time{}); lines != nil {
+		t.Fatalf("PlanSpend for another chat = %#v, want nil", lines)
+	}
+
+	// AND A WINDOW CUTS EVERY ROW THAT BEGAN BEFORE IT: the beat a day out is
+	// after every charge here, so the rollup is empty rather than stale.
+	if lines := agent.PlanSpend(time.Now().Add(time.Hour)); lines != nil {
+		t.Fatalf("PlanSpend over a future window = %#v, want nil", lines)
+	}
+}
+
 // THE FRAME READS THE RUN'S ROLLUP AGAINST THE CONVERSATION'S RAIL when a
 // limit is set — in place of the session-only figure — and keeps the figure
 // it has always drawn when no limit was ever given. The rollup is the store's
