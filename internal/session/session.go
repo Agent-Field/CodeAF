@@ -3035,6 +3035,15 @@ type Agent struct {
 	// lock is taken by goroutines that finish minutes later, and a session lock
 	// held across one of those is the lock Interrupt could not take.
 	tasks *TaskGraph
+	// beltMu guards beltRun, the bash-belt run this conversation started
+	// (task_run_belt.go). It is held on the Agent and nowhere else, because
+	// ownership of a running run is this process's — a second `/task` while one
+	// is live adds to the same store rather than opening another, so a
+	// conversation has at most one run going at a time. The beltRun's own
+	// plandb handle has its own lock; nothing here is read with another lock
+	// held.
+	beltMu  sync.Mutex
+	beltRun *beltRun
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active
