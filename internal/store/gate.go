@@ -454,7 +454,22 @@ func (g DeliveryGate) Whole() bool {
 // definition, because a rail and a receipt that disagreed about when the work
 // was done would be two answers to one question.
 func (g DeliveryGate) Done() bool {
-	return g.Pass || len(g.Unexercised) > 0 || len(g.Unasserted) > 0
+	if g.Pass {
+		return true
+	}
+	// A COVERAGE FINDING BESIDE ANOTHER SHORTFALL IS NOT DONE. The work is
+	// there only when the checks for it are the whole of what is missing; a
+	// gate that also names a consumer left unbound, a check of the work's own
+	// that fails, a constraint unmet or a mechanical failure has found the work
+	// itself short, and anchoring "done" there would measure growth from before
+	// the work was finished.
+	if g.Mechanical || g.Unreadable || g.Unjudged {
+		return false
+	}
+	if len(g.Consumers) > 0 || len(g.Unbound) > 0 || len(g.OwnFailing) > 0 || len(g.Constraint) > 0 {
+		return false
+	}
+	return len(g.Unexercised) > 0 || len(g.Unasserted) > 0
 }
 
 // Cited is the gate's citations however they were written down. A row recorded
