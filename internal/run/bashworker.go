@@ -39,6 +39,11 @@ import (
 // replays a recorded command: the file is a record of what ran, not a
 // checkpoint of what to run again.
 //
+// THE TASK'S SPEND ROW IS WRITTEN HERE, on the model the seat was built on
+// ([recordSpend]): the run worker's session has no graph node to charge through
+// the ordinary plan-spend path, so this is the one writer of a run task's row,
+// and the model it names is the model every call the worker made went out on.
+//
 // THE FLAG IS THE DOOR'S. CODEAF_TASK_BELT=bash is what makes a run wire this
 // worker at all; the seat's constructor reads the switch once and refuses
 // without it, so with the flag unset not one byte of any prompt, belt or
@@ -95,9 +100,16 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	var (
 		steps   int
 		usd     float64
+		inTok   int
+		outTok  int
 		turnErr error
 		capped  bool
 	)
+	// THE SPEND ROW IS WRITTEN ONCE, WHATEVER THE ENDING. A turn that spent money
+	// spent it whether it finished, hit the cap or errored, so the write is
+	// deferred rather than kept to the good path: a person reading the ledger sees
+	// what the task cost even when the task did not finish.
+	defer func() { w.recordSpend(task.ID, usd, inTok, outTok) }()
 	for event := range events {
 		switch event.Kind {
 		case session.EventToolEnd, session.EventToolFailed:
@@ -118,6 +130,8 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			}
 		case session.EventTurnDone:
 			usd += event.Usage.CostUSD
+			inTok += event.Usage.Input
+			outTok += event.Usage.Output
 		case session.EventError:
 			if turnErr == nil {
 				turnErr = event.Err
@@ -141,6 +155,25 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 		return Report{Steps: steps}, err
 	}
 	return Report{Result: result, Steps: steps, USD: usd}, err
+}
+
+// recordSpend writes the task's one spend row: the model this seat was built
+// on, the role its shape gave it at the moment the turn ended, and the dollars
+// and tokens its calls cost. It is best-effort whole and last, because the money
+// is already in the Report the supervisor absorbs and in the session's usage
+// ledger; a store that refuses this write leaves the run's own counters true,
+// and a row here is a reading of the run rather than the run's book. A turn that
+// spent nothing writes nothing rather than a zero row somebody reads as a
+// figure.
+func (w *BashWorker) recordSpend(taskID string, usd float64, inTokens, outTokens int) {
+	if usd == 0 && inTokens == 0 && outTokens == 0 {
+		return
+	}
+	role, err := w.store.RoleOf(taskID)
+	if err != nil {
+		role = plandb.RoleWork
+	}
+	_ = w.store.AddSpend(taskID, w.model, role, usd, inTokens, outTokens)
 }
 
 // stepRecorder appends one worker's step lines, and keeps the two readings
