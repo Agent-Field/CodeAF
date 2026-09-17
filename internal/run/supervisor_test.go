@@ -419,6 +419,64 @@ func TestRunAnswersIncompleteWhenTheRootWasCancelledAfterItRan(t *testing.T) {
 	}
 }
 
+func TestSupervisorHoldsAPausedLeafBackUntilItIsResumed(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	// The leaves are the test's own adds, so the pause is in the store before
+	// the run's first pass reads it.
+	if _, err := store.AddMany([]plandb.TaskSpec{leafDone("l1"), leafDone("l2")}); err != nil {
+		t.Fatalf("add the leaves: %v", err)
+	}
+	if _, err := store.Pause("l1"); err != nil {
+		t.Fatalf("pause the leaf: %v", err)
+	}
+	// THE HOLD IS THE STORE'S OWN LAW, not the loop's: readiness already
+	// leaves a paused subtree — and a task under a paused one — off the ready
+	// set, so the supervisor needs no code of its own and the proof is that
+	// the leaf never launches.
+	runnable := store.ReadySet().Runnable
+	if len(runnable) != 1 || runnable[0].ID != "l2" {
+		t.Fatalf("ready set holds %v, want l2 alone with l1 paused", runnable)
+	}
+	seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		return run.Report{Result: "split", Steps: 1}, nil
+	}
+	// The first run ends on a short wall — long enough for several passes to
+	// skip the paused leaf — and leaves the run open, the way a held subtree
+	// leaves it.
+	walled, stop := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer stop()
+	first := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	if outcome := first.Run(walled); outcome != run.OutcomeIncomplete {
+		t.Fatalf("first outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	if seat.launched("l1") {
+		t.Fatalf("launches = %v, want the paused leaf never launched", seat.launches())
+	}
+	if leaf := store.Task("l1"); leaf.Status != plandb.StatusReady || !leaf.Paused {
+		t.Fatalf("leaf l1 = %s paused=%v, want still ready and held", leaf.Status, leaf.Paused)
+	}
+	if root := store.Task(store.RootID()); root.Status != plandb.StatusRunning {
+		t.Fatalf("root status = %s, want the run left open for another pass", root.Status)
+	}
+	// Resume returns the leaf to the frontier, and the next run's first pass
+	// takes it.
+	if _, err := store.Resume("l1"); err != nil {
+		t.Fatalf("resume the leaf: %v", err)
+	}
+	second := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	if outcome := second.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("second outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if leaf := store.Task("l1"); leaf.Status != plandb.StatusDone {
+		t.Fatalf("leaf l1 status = %s, want done once resumed", leaf.Status)
+	}
+	if !seat.launched("l1") {
+		t.Fatalf("launches = %v, want the resumed leaf launched", seat.launches())
+	}
+}
+
 // holdSeat is a leaf action that keeps its worker seat for a while, so a
 // supervisor that launches too eagerly meets a seat that is still taken.
 func holdSeat(d time.Duration) func(context.Context, plandb.Task) (run.Report, error) {
