@@ -368,12 +368,17 @@ func TestPoolVerifyRefusesAKeyItCannotRead(t *testing.T) {
 	}
 }
 
-// --key replaces the keys the build resolves, it does not add to them: a
-// document signed under the build's own key does not verify under a key the
-// flag hands in — a test key must be able to prove a document does not
-// verify under it, which is the whole reason the flag exists.
+// --key replaces the keys the build resolves, it does not add to them: the
+// document below is signed under the stored key, which is the key the verb
+// would trust with no flag at all — the stand-in for the build's own, whose
+// private half no test holds. A fresh unrelated key must be able to prove a
+// document does not verify under it, which is the whole reason the flag
+// exists; were the flag's keys only added to the resolved ones, the stored
+// key would still be in the list and the document would verify. The control
+// run without the flag verifies, so the refusal is the flag's doing and not
+// the signature's.
 func TestPoolVerifyChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,6 +392,10 @@ func TestPoolVerifyChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
 	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"models.pool.public_key": "`+base64.StdEncoding.EncodeToString(pub)+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var out strings.Builder
 	err = runPoolWith([]string{"verify", "--key", base64.StdEncoding.EncodeToString(other)},
 		&out, dir, poolClock(t), lookup)
@@ -395,6 +404,15 @@ func TestPoolVerifyChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "pool", "doc.json")); !os.IsNotExist(statErr) {
 		t.Fatal("a refused document was cached")
+	}
+
+	// The control: no flag, the stored key answers for the same document.
+	out.Reset()
+	if err := runPoolWith([]string{"verify"}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("the stored key did not verify its own document: %v", err)
+	}
+	if !strings.Contains(out.String(), "signature good") {
+		t.Fatalf("the control run did not verify:\n%s", out.String())
 	}
 }
 
@@ -988,10 +1006,14 @@ func TestPoolStatusFallsToTheMirrorWhenTheRelayIsDown(t *testing.T) {
 	}
 }
 
-// status checks under --key alone too: a relay whose document is signed
-// under the build's own key does not answer when the flag names another key.
+// status checks under --key alone too: the relay's document is signed under
+// the stored key — the one the probe would trust with no flag at all — and a
+// fresh unrelated key must be able to prove it does not answer. Were the
+// flag's keys only added to the resolved ones, the stored key would still be
+// in the list and the relay would answer; the control run without the flag
+// does answer, so the refusal is the flag's doing.
 func TestPoolStatusChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1004,8 +1026,13 @@ func TestPoolStatusChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"models.pool.public_key": "`+base64.StdEncoding.EncodeToString(pub)+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var out strings.Builder
-	if err := runPoolWith([]string{"status", "--json", "--key", base64.StdEncoding.EncodeToString(other)}, &out, t.TempDir(), poolClock(t), lookup); err != nil {
+	if err := runPoolWith([]string{"status", "--json", "--key", base64.StdEncoding.EncodeToString(other)}, &out, dir, poolClock(t), lookup); err != nil {
 		t.Fatalf("a reading form failed over a signature that did not check: %v", err)
 	}
 	var answer struct {
@@ -1016,6 +1043,18 @@ func TestPoolStatusChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
 	}
 	if answer.Relay == nil || answer.Relay.Reachable || !strings.Contains(answer.Relay.Reason, "signature does not verify") {
 		t.Fatalf("the relay was not checked under the flag's key alone: %+v", answer.Relay)
+	}
+
+	// The control: no flag, the same relay answers under the stored key.
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("the stored key did not answer for its own document: %v", err)
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Relay == nil || !answer.Relay.Reachable {
+		t.Fatalf("the control run did not reach the relay under the stored key: %+v", answer.Relay)
 	}
 }
 
