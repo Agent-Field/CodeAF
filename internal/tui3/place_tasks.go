@@ -1414,32 +1414,30 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 	return top
 }
 
-// note is the one line the place says about what it is HOLDING, drawn under the
-// rule and above the composer (pages.go's [placeFrame] states the law).
+// note is the one line the place says on its rule, and it says ONE THING: that
+// the query has emptied the page.
 //
-// THE EMPTINESS LAW DECIDES WHETHER IT IS THERE AT ALL. A place with nothing in
-// it says NOTHING — the body is spending the frame teaching what this place is,
-// and a count beside that prose would be the surface saying both "there is
-// nothing here" and "here is how much of it there is" on one screen.
+// THE COUNT IS OFF THE RULE. It used to read `9 finished today · 191 earlier`
+// there, and the body already says every one of those numbers on its section
+// headings — the same partition, a few rows up, on a page a person is looking
+// at (the owner's ruling, 2026-09-17). A figure said twice on one frame is the
+// defect the model's colon suffix made once (effortchip.go).
+//
+// THE FILTER IS NOT SAID BACK HERE EITHER. This line used to carry `filter ·
+// zzz` because the box a person was typing into was invisible, so the only
+// place their own words could appear was UNDER the rows those words had just
+// removed. The words are on the control row at the top of the list now
+// ([tasksControlRow]). What survives is the half the row cannot say: that
+// the query matched nothing, over a body that is blank rather than teaching.
 func (p *tasksPlace) note(a *app, width int) []string {
 	if p.detailOn || p.reading.held == 0 {
 		return nil
 	}
 	r := a.tasksFiltered()
-	var note []string
-	if tally := r.tally(); tally != "" {
-		note = append(note, " "+a.pal.dim(fit(tally, width-2)))
-	}
-	// THE FILTER IS NO LONGER SAID BACK HERE. This line used to carry `filter ·
-	// zzz` because the box a person was typing into was invisible, so the only
-	// place their own words could appear was UNDER the rows those words had just
-	// removed — a correction printed below the thing it was correcting. The box is
-	// the first row of the list now ([tasksControlRow]). What survives is the half
-	// the box cannot say: that the query has emptied the place.
 	if a.taskSheetFiltering() && len(r.items)+len(r.chats) == 0 {
-		note = append(note, " "+a.pal.dim(fit(taskSheetFilterNone, width-2)))
+		return []string{" " + a.pal.dim(fit(taskSheetFilterNone, width-2))}
 	}
-	return note
+	return nil
 }
 
 // hint is SCREEN 1e's foot, assembled from the clauses that are TRUE of the row

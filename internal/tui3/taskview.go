@@ -274,7 +274,7 @@ const (
 	// rows their keystrokes had just changed. The words are on the control row at
 	// the top of the list now ([tasksControlRow]), where the typing lands, and an
 	// echo under the list would be the frame saying one thing twice.
-	taskSheetFilterNone = " · nothing matches"
+	taskSheetFilterNone = "nothing matches"
 	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
 	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
 	// lines under it — the key, then what it reaches — and it is drawn only when

@@ -227,9 +227,9 @@ this process was started with it.
 
 **The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
 draw over their boxes: no other place has a box, so nothing else on this surface says
-`new conversation in`. A place with something to say about its page — the tally on tasks,
-a receipt on memory, the "this session is on another machine" line over `--host` — says it
-on its rule, where the box's rule would have been.
+`new conversation in`. A place with something to say about its page — `nothing matches`
+on tasks when a filter emptied it, a receipt on memory, the "this session is on another
+machine" line over `--host` — says it on its rule, where the box's rule would have been.
 
 **Over `--host`, and on a session with no dial**, the rung and the gate are simply not on
 home's rule — the folder and the model still are. The far machine's rows decide what a
@@ -467,9 +467,10 @@ row on the screen was inviting a message the page cannot send. `enter` opens a t
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
 the row's verbs, and this place has one — `s stop it`, over a task this conversation is
 holding that is still queued or running. Nothing is behind a fold; the list scrolls and its
-tail fades. The count of what is on the page is written into the rule just above the
-composer — `─ 9 finished today · 191 earlier ───` — and the foot names
-only what is true of the row you are on: `enter open its room · → verbs: stop it`.
+tail fades. The rule under the list is a bare line — the counts are on the section headings
+the list already draws, and it says `nothing matches` only when your filter has emptied the
+page — and the foot names only what is true of the row you are on: `enter open its room ·
+→ verbs: stop it`.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
