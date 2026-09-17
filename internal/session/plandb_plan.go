@@ -166,6 +166,10 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 				}
 			}
 		}
+		// The seed's own handle is done once the brief is composed from it; a
+		// store opened per pass must be closed, or every pass would leave a
+		// database connection behind.
+		defer store.Close()
 		g.plan = &planState{path: path}
 		if err := g.plan.armShim(); err != nil {
 			// A plan whose shim never landed is still the run's plan — the
@@ -190,6 +194,7 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	// A NODE THE CHECKPOINT ALREADY NAMED: a resumed run's node knows its
 	// plan task, and its brief is re-composed from the store read rather than
 	// added again — adding would mint a second task for work one task already
@@ -223,7 +228,8 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 // open re-opens the store from disk. THE RE-OPEN IS THE POINT: a store
 // handle's memory is only as fresh as its last transaction, and the worker's
 // CLI is a separate process that has been writing since — every pass reads
-// the file, never a cached copy.
+// the store, never a cached copy. A nil answer is a pass with no plan; when
+// the answer is a store the caller closes it, because every pass opens one.
 func (p *planState) open() *plandb.Store {
 	store, err := plandb.Open(p.path, "", planRootID, "", "")
 	if err != nil {
@@ -265,6 +271,7 @@ func (g *TaskGraph) planPulse() {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	// THE SNAPSHOT: one short hold of the graph's lock to read what the
 	// nodes say, released before any store work.
 	snapshot := make(map[string]*planNodeSnapshot, len(g.nodes))
@@ -658,6 +665,7 @@ func (g *TaskGraph) planReviseThrough(planID, brief string) {
 	if store == nil {
 		return
 	}
+	defer store.Close()
 	if store.Task(planID) == nil {
 		return
 	}
