@@ -89,7 +89,7 @@ func Open(path, project, rootID, rootTitle, rootDescription string) (*Store, err
 // rule the load road states: a store that belongs to another run is a refusal,
 // not a merge.
 func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription string) (state, error) {
-	tx, err := s.db.Begin()
+	tx, err := s.beginWrite()
 	if err != nil {
 		return state{}, err
 	}
@@ -976,6 +976,31 @@ func (s *Store) ClaimNext(agent string) (*Task, error) {
 	return cloneTask(s.data.Tasks[best]), nil
 }
 
+// writeLockWait bounds how long a writer will keep asking for the database's
+// write lock before giving up and reporting the refusal.
+const writeLockWait = 60 * time.Second
+
+// beginWrite opens the store's one write transaction with BEGIN IMMEDIATE, so
+// the database's write lock is taken at the start and everything the
+// transaction reads afterwards is the plan that lock protects. The busy
+// timeout set at open makes a writer wait a few seconds for the one ahead of
+// it, but under many writers that fixed wait starves the unluckiest of them,
+// so a refusal is asked again with a short backoff — each attempt re-enters
+// the queue — until a generous bound.
+func (s *Store) beginWrite() (*sql.Tx, error) {
+	deadline := time.Now().Add(writeLockWait)
+	for {
+		tx, err := s.db.Begin()
+		if err == nil {
+			return tx, nil
+		}
+		if !isBusy(err) || !time.Now().Before(deadline) {
+			return nil, err
+		}
+		time.Sleep(time.Duration(rand.Intn(20)+1) * time.Millisecond)
+	}
+}
+
 // transact runs one read-modify-write transaction on the store's database.
 // BEGIN IMMEDIATE takes the database's write lock the moment the transaction
 // opens, so two processes serialize on the database itself and no sidecar file
@@ -988,7 +1013,7 @@ func (s *Store) ClaimNext(agent string) (*Task, error) {
 // a refused write still leaves the handle knowing what the database holds; a
 // change may return errNoChange to say it decided to write nothing at all.
 func (s *Store) transact(change func(*state, time.Time) error) error {
-	tx, err := s.db.Begin()
+	tx, err := s.beginWrite()
 	if err != nil {
 		return err
 	}
