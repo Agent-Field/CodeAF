@@ -702,6 +702,24 @@ func checkpointAgent(t *testing.T, completer Completer, mutate ...func(*Config))
 			extra(config)
 		}
 	})
+	// THE DRAWING LANDS BEFORE THE NEXT WORD, and this fixture is the one that
+	// must say so. The mark's reading is a sidecar: it is started at the boundary
+	// that crosses the net and the turn goes straight on, so how many rounds pass
+	// between the net firing and the drawing landing is the SCHEDULER's to decide
+	// — a scripted turn's rounds cost nothing, so on a busy machine the turn runs
+	// them off faster than the reading's goroutine is scheduled, and the gap can
+	// outrun the slack a script carries ([checkpointSlack]). A script is then a
+	// test asserting the scheduler, and #392 one mechanism along: the drawing
+	// lands past the end, the writer's ask is answered with the scripted
+	// completer's past-the-end line, and the carry ladder falls onto the draft.
+	//
+	// [watchReadings] puts a watch on the turn's own context and [answerWhenQuiet]
+	// holds each request that carries the belt until every reading beside it has
+	// landed, which is the order a real turn has: a real model spends seconds on
+	// a step and the small readings land inside it. A script long enough to cross
+	// the mark is then long enough whatever else the machine is doing, and the
+	// tests here submit through [watchedContext] so the watch reaches the turn.
+	watchReadings(t, agent)
 	return agent
 }
 
@@ -940,7 +958,7 @@ func TestTheNoteRungsTellTheTurnAndAskNobodyAnything(t *testing.T) {
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1019,7 +1037,7 @@ func TestATenRoundReadingTurnIsToldAndNotMoved(t *testing.T) {
 	agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "how do the home panels get their data")
+	events, err := agent.Submit(watchedContext(agent), "how do the home panels get their data")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1063,7 +1081,7 @@ func TestADrawingWithPartsNoLongerMovesATurnAtAMark(t *testing.T) {
 	agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1097,7 +1115,7 @@ func TestASketchSayingOneJobLetsTheTurnRunOn(t *testing.T) {
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "work through the one thing I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the one thing I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1150,7 +1168,7 @@ func TestASidecarThatCannotBeReachedCarriesOnAndTheCeilingStillFires(t *testing.
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1321,7 +1339,7 @@ func TestAtTheCeilingTheTurnEndsAndTheWorkMovesToOneWatchedTask(t *testing.T) {
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1400,7 +1418,7 @@ func TestTheCeilingCarriesTheLastSketchIntoTheBrief(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1431,7 +1449,7 @@ func TestTheCeilingHandsOverEvenWhenNobodyCanWriteTheBrief(t *testing.T) {
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1471,7 +1489,7 @@ func TestTheHandoffBriefIsNotStreamedIntoTheRoom(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1517,7 +1535,7 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1587,7 +1605,7 @@ func TestAContinuationSayingNothingIsLeftDropsTheCeilingHandover(t *testing.T) {
 		node.graph.complete(node, TaskDone)
 	})
 
-	events, err := agent.Submit(context.Background(), "write the eight files I listed and smoke-check them")
+	events, err := agent.Submit(watchedContext(agent), "write the eight files I listed and smoke-check them")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -1724,7 +1742,7 @@ func TestTheTurnsThatMustNeverBeCheckpointedAreNot(t *testing.T) {
 				node.graph.complete(node, TaskDone)
 			})
 
-			events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+			events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 			if err != nil {
 				t.Fatalf("Submit: %v", err)
 			}
@@ -1785,7 +1803,7 @@ func TestAnInterruptedTurnIsNotCheckpointed(t *testing.T) {
 		node.graph.complete(node, TaskDone)
 	})
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2064,7 +2082,7 @@ func TestEveryMarkReadIsJournaledWithItsDecisionAndItsCost(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2159,7 +2177,7 @@ func TestAMarkNobodyCouldReadIsJournaledAsAFailure(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2296,7 +2314,7 @@ func TestTheRunningModelsSayS0IsBelievedOnceAndThenMet(t *testing.T) {
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2354,7 +2372,7 @@ func TestTheCeilingIsDroppedWhenTheReaderAgreesNothingRemains(t *testing.T) {
 		node.graph.complete(node, TaskDone)
 	})
 
-	events, err := agent.Submit(context.Background(), "write the eight files I listed and smoke-check them")
+	events, err := agent.Submit(watchedContext(agent), "write the eight files I listed and smoke-check them")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2392,7 +2410,7 @@ func TestASplitIsNeverDroppedByTheRunningModelsDeclaration(t *testing.T) {
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2586,7 +2604,7 @@ func TestTheHandoffIsDraftedByTheRunnerAndWrittenByTheMastermind(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2652,7 +2670,7 @@ func TestTheHandoffWriterStillWritesWhenTheDraftFailed(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2717,7 +2735,7 @@ func TestADegenerateHandoffIsRegeneratedOnceAndThenGivenUpOn(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2762,7 +2780,7 @@ func TestTheSpecTheCeilingBuildsIsFinishedAgainstThePersonsAsk(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -2967,7 +2985,7 @@ func TestATurnThatStopsShortOfTheAskIsReopened(t *testing.T) {
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
+	events, err := agent.Submit(watchedContext(agent), "port the language server and get the golden tests passing")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -3005,7 +3023,7 @@ func TestATurnThatEndsOnAQuestionToThePersonIsNotReopened(t *testing.T) {
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
+	events, err := agent.Submit(watchedContext(agent), "port the language server and get the golden tests passing")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -3050,7 +3068,7 @@ func TestAReopenedTurnStillMarksOnTheSameMeter(t *testing.T) {
 	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
 	stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
+	events, err := agent.Submit(watchedContext(agent), "port the language server and get the golden tests passing")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -3095,7 +3113,7 @@ func TestATurnShorterThanTheFirstMarkIsNeverReadUnlessItChangedTheTree(t *testin
 	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
 	stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "list the folder and tell me what is in it")
+	events, err := agent.Submit(watchedContext(agent), "list the folder and tell me what is in it")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -3144,7 +3162,7 @@ func TestATurnThatWroteAndThenStoppedIsReadWhateverItCost(t *testing.T) {
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "port analysis.rs and get the tests passing")
+	events, err := agent.Submit(watchedContext(agent), "port analysis.rs and get the tests passing")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -3184,7 +3202,7 @@ func TestATurnThatCheckedWhatItWroteIsNotExposed(t *testing.T) {
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "port analysis.rs and get the tests passing")
+	events, err := agent.Submit(watchedContext(agent), "port analysis.rs and get the tests passing")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -3221,7 +3239,7 @@ func TestATurnWithNoRoundsIsNotExposedByAnEarlierTurnsWrite(t *testing.T) {
 	// after it — which is exactly what the arm reads as exposure.
 	writtenTurn(agent, "port analysis.rs", 3)
 
-	events, err := agent.Submit(context.Background(), "thanks")
+	events, err := agent.Submit(watchedContext(agent), "thanks")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -3610,7 +3628,7 @@ func TestACoordinationSketchStartsNothingAndRealPartsStillConvert(t *testing.T) 
 		agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
 		graph := stubbedGraph(agent, func(node *TaskNode) {})
 
-		events, err := agent.Submit(context.Background(), asked)
+		events, err := agent.Submit(watchedContext(agent), asked)
 		if err != nil {
 			t.Fatalf("Submit: %v", err)
 		}
@@ -3643,7 +3661,7 @@ func TestACoordinationSketchStartsNothingAndRealPartsStillConvert(t *testing.T) 
 		ran := make(ranNodes, 2)
 		graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-		events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+		events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 		if err != nil {
 			t.Fatalf("Submit: %v", err)
 		}
@@ -3769,7 +3787,7 @@ func TestATurnSpentWatchingItsOwnWorkIsNeverCheckpointed(t *testing.T) {
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
-	events, err := agent.Submit(context.Background(), "keep an eye on the four pieces I have out")
+	events, err := agent.Submit(watchedContext(agent), "keep an eye on the four pieces I have out")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}

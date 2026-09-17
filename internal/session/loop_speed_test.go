@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // paceLawBudget is the whole of loop.go's law in one figure: how long a person
@@ -494,5 +495,63 @@ func TestASlowListenerNeverHoldsTheTurnThatIsTellingIt(t *testing.T) {
 	// law by saying nothing, which is the other way to break the status line.
 	if atomic.LoadInt64(&told) == 0 {
 		t.Fatal("the listener was never told a phase — the law was not tested")
+	}
+}
+
+// ── THE COUNTERS COST NOTHING ───────────────────────────────────────────────
+
+// THE TALLY SITS ON THE PATHS THE LAW ABOVE GUARDS — every sealed turn, every
+// answered model call, every answered tool call — so it may not take the wait
+// the law exempts nobody from: no allocation, no lock, one atomic add each. A
+// counter that allocated would put a heap write on each of those three
+// chokepoints, and a test that only timed them would pass on a fast machine
+// while the garbage piled up on a slow one. So both halves are pinned: zero
+// allocations per call, and a million calls of each kind finishing far inside
+// a single pace-law budget. The 200ms bound is deliberately generous — three
+// million atomic adds take on the order of ten — because a busy machine is slow
+// for reasons that are not this code's, and a test that fails on a loaded
+// laptop tests the laptop rather than the counters.
+func TestSessionCountersCostNothingBesideTheWork(t *testing.T) {
+	if allocs := testing.AllocsPerRun(100, func() {
+		telemetry.CountTurn()
+	}); allocs != 0 {
+		t.Fatalf("CountTurn allocated %v times per call, want 0", allocs)
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		telemetry.CountModelCall(true, 0.001)
+	}); allocs != 0 {
+		t.Fatalf("CountModelCall allocated %v times per call, want 0", allocs)
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		telemetry.CountToolCall(true)
+	}); allocs != 0 {
+		t.Fatalf("CountToolCall allocated %v times per call, want 0", allocs)
+	}
+
+	const counterCalls = 1_000_000
+	const counterBudget = 200 * time.Millisecond
+
+	started := time.Now()
+	for i := 0; i < counterCalls; i++ {
+		telemetry.CountTurn()
+	}
+	if took := time.Since(started); took > counterBudget {
+		t.Fatalf("a million CountTurn took %v, want at most %v", took, counterBudget)
+	}
+
+	started = time.Now()
+	for i := 0; i < counterCalls; i++ {
+		telemetry.CountModelCall(true, 0.001)
+	}
+	if took := time.Since(started); took > counterBudget {
+		t.Fatalf("a million CountModelCall took %v, want at most %v", took, counterBudget)
+	}
+
+	started = time.Now()
+	for i := 0; i < counterCalls; i++ {
+		telemetry.CountToolCall(true)
+	}
+	if took := time.Since(started); took > counterBudget {
+		t.Fatalf("a million CountToolCall took %v, want at most %v", took, counterBudget)
 	}
 }
