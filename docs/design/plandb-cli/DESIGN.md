@@ -185,13 +185,23 @@ name, the finish command) — so the work order genuinely arrives through the
 store. The node's spec carries the store id in a new `planID` field
 (checkpointed, so a resumed node still knows its task).
 
-**The pulse — `TaskGraph.planPulse`, called from two places:**
+**The pulse — `TaskGraph.planPulse`, called from four places:**
 
 1. after each bash tool call on a bash-belt worker (`bashbelt.go`'s
-   `truncatingBash` wrapper — the same wrapper that applies the cut), and
-2. on every road out of `workTaskNode`, after the node has landed.
+   `truncatingBash` wrapper — the same wrapper that applies the cut),
+2. at the end of such a worker's turn, in the runner's fold
+   (`task_child_run.go`'s `foldParts`, before it reads whether anything is
+   outstanding — a task this pass hands out is a child that read has to see,
+   so the worker waits on it instead of landing),
+3. when a fan slot goes back (`TaskGraph.releaseChild`, outside the graph's
+   lock: a pulse takes the plan gate before that lock, and nothing may hold
+   the lock while asking for the gate), and
+4. on every road out of `workTaskNode`, after the node has landed.
 
-One pass, no polling, no timers. It:
+One pass, no polling, no timers. The three beside the landing are the three
+ways a task can become deliverable with no bash call in front of it, and a
+ready task that waits for a pass that never comes is not a delay: the run can
+end first, and its ending cancels what nothing delivered. It:
 
 - **writes back** every plan-born node that has settled since the last pass:
   done with the node's report as the result, failed with its ending, cancelled
@@ -208,13 +218,21 @@ One pass, no polling, no timers. It:
 
 Depth is the same three levels (`taskDepthLimit`): a ready child of a node at
 the floor is left in the store, and cancelled with a plain reason when its
-parent lands. Fan-cap refusals leave the task in the store for the next pass;
-a landing frees slots, and every landing is a pass.
+parent lands. A fan-cap refusal also leaves the task in the store for the next
+pass — and a landing does NOT free a slot, because an admitted child counts
+against its parent's fan for as long as the graph holds it. The slot goes back
+when a proposal comes to nothing, which is why that moment is a pass of its
+own.
 
 **Root completion.** When the graph's root node has settled and no plan-born
 node is open, the pulse completes the store's root (`CompleteRoot`) and cancels
-whatever was left undelivered, each with a plain reason. The store's own
-composite auto-completion (a parent done when all its children are terminal)
+whatever was left undelivered, each with a plain reason. A pass that handed
+work out stops short of that ending: the nodes its own dispatch admitted are
+not in the snapshot the question is asked of, and the tasks it would cancel are
+the ones the node it just made is about to become the parent of. The next pass
+is guaranteed — a node this pass admitted lands, and every landing is a pass.
+The store's own composite auto-completion (a parent done when all its children
+are terminal)
 does the rest of the bookkeeping the planner's "Composite tasks
 auto-complete when children finish" promises — and when an auto-completed
 parent's own node lands later, its report fills the empty placeholder the
