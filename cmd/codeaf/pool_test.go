@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -263,10 +264,57 @@ func TestPoolWithNoProfileDirReadsTheStateRoots(t *testing.T) {
 	}
 }
 
-// The key gate stands in front of the fetch: with no key in hand verify
-// refuses at the door — exit 2, the remedy on the line — and nothing is
-// fetched from the address the config names, and nothing is cached.
-func TestPoolVerifyWithoutAKeyRefusesAtTheDoorAndFetchesNothing(t *testing.T) {
+// The build's one key is the index signer's: it decoded at init, it is an
+// ed25519 public key's length, and it starts the start-up refresh under a
+// mode that reads.
+func TestPoolPublicKeysCarryTheIndexSignersKey(t *testing.T) {
+	if len(poolPublicKeys) != 1 {
+		t.Fatalf("the build carries %d public key(s), want the index signer's one", len(poolPublicKeys))
+	}
+	if len(poolPublicKeys[0]) != ed25519.PublicKeySize {
+		t.Fatalf("the built-in key is %d bytes, want an ed25519 public key's %d", len(poolPublicKeys[0]), ed25519.PublicKeySize)
+	}
+
+	started := 0
+	prev := poolRefreshGo
+	poolRefreshGo = func(scope string, fn func()) { started++ }
+	t.Cleanup(func() { poolRefreshGo = prev })
+	startPoolIndexRefresh(context.Background(), t.TempDir(), poolcfg.Resolve("", "", noEnv), poolPublicKeys)
+	if started != 1 {
+		t.Fatalf("the build's key started %d refresh(es) under mode on, want 1", started)
+	}
+}
+
+// The stored key, when one is set, is the only key the puller is handed: a
+// word that does not decode is a key nobody can vouch for, so the answer is
+// no keys rather than the build's own — and nothing stored hands back the
+// build's.
+func TestPoolTrustedKeysFollowTheStoredKey(t *testing.T) {
+	good := base64.StdEncoding.EncodeToString(make(ed25519.PublicKey, ed25519.PublicKeySize))
+	got := poolTrustedKeys(poolcfg.Resolve("", good, noEnv))
+	if len(got) != 1 || len(got[0]) != ed25519.PublicKeySize {
+		t.Fatalf("a stored key gave %d key(s), want its one", len(got))
+	}
+
+	for name, bad := range map[string]string{
+		"not base64": "not a key at all",
+		"too short":  base64.StdEncoding.EncodeToString([]byte("short")),
+	} {
+		if keys := poolTrustedKeys(poolcfg.Resolve("", bad, noEnv)); len(keys) != 0 {
+			t.Fatalf("%s: a key that does not decode left %d key(s) in hand", name, len(keys))
+		}
+	}
+
+	built := poolTrustedKeys(poolcfg.Resolve("", "", noEnv))
+	if len(built) != 1 || !bytes.Equal(built[0], poolPublicKeys[0]) {
+		t.Fatal("with nothing stored, the build's own key is the key")
+	}
+}
+
+// The key ships in the binary, so verify fetches under it: a dead address is
+// a fetch that failed — exit 1, in the puller's words — and not a refusal at
+// the door, and nothing was cached in its place.
+func TestPoolVerifyFetchesUnderTheBuiltInKeyAndNamesWhatFailed(t *testing.T) {
 	dir := t.TempDir()
 	// A dead port is the fetch that would have happened: if the door let one
 	// through, the failure below would be a fetch error, not the sentence.
@@ -274,16 +322,16 @@ func TestPoolVerifyWithoutAKeyRefusesAtTheDoorAndFetchesNothing(t *testing.T) {
 	var out strings.Builder
 	err := runPoolWith([]string{"verify"}, &out, dir, poolClock(t), lookup)
 	if err == nil {
-		t.Fatal("a keyless verify fetched")
+		t.Fatal("a dead relay verified")
 	}
-	if !errors.Is(err, exitIncomplete) {
-		t.Fatalf("the door refusal is not exit 2: %v", err)
+	if errors.Is(err, exitIncomplete) {
+		t.Fatalf("verify refused at the door though the build carries a key: %v", err)
 	}
-	if !strings.Contains(out.String(), "no public key built into this build; pass --key") {
-		t.Fatalf("the refusal did not name the remedy:\n%s", out.String())
+	if !strings.Contains(err.Error(), "pull") {
+		t.Fatalf("the failure did not name the fetch: %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "pool", "doc.json")); !os.IsNotExist(statErr) {
-		t.Fatal("the refused verify wrote a cache")
+		t.Fatal("the failed verify wrote a cache")
 	}
 }
 
@@ -492,26 +540,25 @@ func stubPoolRefresh(t *testing.T) *int {
 	return &started
 }
 
-// The start-up push is an errand behind the same guard as the refresh: a
-// mode that sends starts it once, a mode that only reads starts nothing.
-// (The refresh's own errand waits for the build's key — its test is
-// TestPoolRefreshStartsNoGoroutineWithoutAKey.)
-func TestWirePoolIndexStartsThePushWhenTheModeSends(t *testing.T) {
+// The start-up errands are one push and one refresh behind the same guard:
+// a mode that sends and reads starts both, a mode that only reads starts
+// only the refresh (its push would send nowhere), and off starts neither.
+func TestWirePoolIndexStartsTheRefreshAndThePush(t *testing.T) {
 	started := stubPoolRefresh(t)
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
 
-	// The default mode is on: the push starts.
+	// The default mode is on: the refresh and the push both start.
 	wirePoolIndex(t.TempDir())
-	if *started != 1 {
-		t.Fatalf("a sending pool started %d errand(s) at start-up, want the one push", *started)
+	if *started != 2 {
+		t.Fatalf("a sending pool started %d errand(s) at start-up, want the refresh and the push", *started)
 	}
 
-	// A mode that does not send starts none.
+	// A mode that does not send starts the refresh alone.
 	*started = 0
 	t.Setenv("CODEAF_MODEL_POOL", "read")
 	wirePoolIndex(t.TempDir())
-	if *started != 0 {
-		t.Fatalf("a read-only pool started %d push(es)", *started)
+	if *started != 1 {
+		t.Fatalf("a read-only pool started %d errand(s), want the refresh alone", *started)
 	}
 }
 
