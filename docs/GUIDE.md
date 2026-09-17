@@ -66,36 +66,38 @@ goes to home from a conversation and `esc` comes back untouched.
 
 ## Install
 
-### Build from the repository
-
-The road that works today is a source checkout. The module needs Go 1.26.5, and
-`make build` is the one supported build command; it writes `bin/codeaf`.
+### The installer
 
 ```bash
-git clone https://github.com/Agent-Field/codeaf.git  # needs repository access while it is private
+curl -fsSL https://agentfield.ai/get/codeaf | bash                                                    # the supported line
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash     # the script under it
+```
+
+The first proxies the second: `agentfield.ai/get/codeaf` serves `scripts/install.sh` from
+this repository's `main` branch, byte for byte, and a channel on the path — `/dev`,
+`/staging`, `/rc` — rewrites the one line that sets the default channel. Pipe it to
+`bash`, not `sh`; the script uses `pipefail` and `[[ ]]`, which dash rejects.
+
+### Build from the repository
+
+The module needs Go 1.26.5, and `make build` is the one supported build command; it
+writes `bin/codeaf`.
+
+```bash
+git clone https://github.com/Agent-Field/codeaf.git
 cd codeaf
 make build   # fetches the pinned Furrow artifact, so it needs the network;
              # FURROW_ARTIFACT=/path/to/furrow supplies it offline
 bin/codeaf
 ```
 
-### The installer, and what it is waiting on
-
-```bash
-curl -fsSL https://agentfield.ai/get/codeaf | bash                                                    # the preferred form
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash     # the script under it
-```
-
-The first is the road that will be supported, and it is not serving yet — the route is
-written and unmerged. The second answers 404 to anyone not signed in, and starts working
-when the repository is public and `scripts/install.sh` has reached `main`.
-
 <details>
 <summary>Installer channels, flags, and checks</summary>
 
-The repository currently has no rc or staging publication. Those channel selections
-therefore stop with `no <channel> build has been published yet`. Recognizing a channel
-does not mean a matching release exists.
+A push to `dev`, `staging` or `main` publishes that channel's build, marked as a
+prerelease; stable is published only when a person dispatches `Release` on `main`. A
+channel with nothing published stops with `no <channel> build has been published yet`.
+Recognizing a channel does not mean a matching release exists.
 
 ```bash
 curl -fsSL https://agentfield.ai/get/codeaf/dev | bash

@@ -92,6 +92,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // ── retry constants (pi spec §4, verbatim from internal/exec/bare) ──────────
@@ -1621,6 +1622,9 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 // (see [sessionFile.writeLine]) — and a turn that spent nothing writes no line
 // at all (see [sessionFile.appendUsage]).
 func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
+	// The tally sits at the seal because the seal is the shape of a turn: every
+	// turn that seals counts one, whether or not telemetry is sent later.
+	telemetry.CountTurn()
 	turn.Duration = time.Since(started)
 	a.mu.Lock()
 	a.usage.Duration += turn.Duration
@@ -3219,6 +3223,13 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	started := time.Now()
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	// Only a call that RAN counts: a door that refused it before it ran, or a
+	// hand withdrawn off the belt, is the harness's own answer and rides on
+	// [toolResult.harness] for this reason — every counter that judges the
+	// model by its steps skips it. The error flag is the verdict.
+	if !result.harness {
+		telemetry.CountToolCall(!result.isError)
+	}
 	recordToolCall(ctx, call, result, started, time.Since(started))
 	return result
 }

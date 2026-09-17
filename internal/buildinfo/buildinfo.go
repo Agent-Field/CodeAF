@@ -180,3 +180,9 @@ func newRunningDetector() *Detector {
 func StaleNotice() string {
 	return running.Notice()
 }
+
+// Dirty reports whether the running binary was built from a modified tree,
+// read from the same build settings Identity derives from. Callers that need
+// the build's honesty — telemetry's opt-out ladder — ask here rather than
+// parsing a display string.
+func Dirty() bool { return current.Dirty }
