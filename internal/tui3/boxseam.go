@@ -25,8 +25,9 @@ import (
 //	 › say what you want done
 //
 // The first is a conversation's seam (foot.go's THE SEAM IS WHO AND WHERE).
-// The second is the rule over the box on home and on every other place — the
-// draft for a conversation that does not exist yet. Left to right, both say
+// The second is the rule over the box on home — the draft for a conversation
+// that does not exist yet, and the one box on a place, because only home
+// starts things (pages.go's [place.box]). Left to right, both say
 // the same four things about the next turn: WHERE it goes, WHAT answers,
 // HOW HARD it thinks, and WHAT IT MAY RUN WITHOUT ASKING. The model is a door
 // onto the model list, the rung walks the thinking ladder (`ctrl+v`, or a
@@ -36,12 +37,12 @@ import (
 // ── WHY THE DRAFT CARRIES THE RUNG AND THE GATE ────────────────────────────
 //
 // Until this file the rule on home said the folder and the model and nothing
-// else, and the other six places said a note or a bare line; the box row wore
-// a `here ~/codeaf` chip on the places and not on home; `alt+y` and `ctrl+v`
-// did nothing outside a conversation; and the `YOLO` word was a chip on one
-// screen and a badge on another. Four boxes that were one box, dressed four
-// ways. A person who learned the seam in a conversation arrived on home and
-// found nothing they knew.
+// else; `alt+y` and `ctrl+v` did nothing outside a conversation; and the
+// `YOLO` word was a chip on one screen and a badge on another. A person who
+// learned the seam in a conversation arrived on home and found nothing they
+// knew. (The six other places had a box of their own then, under a note or a
+// bare rule with a `here ~/codeaf` chip; those boxes are gone — only home
+// starts things.)
 //
 // The draft is the right place for the two dials because the question a
 // person has at home — "start this one on the big model, thinking hard, and
@@ -306,22 +307,19 @@ func (a *app) applyTargetPins() tea.Cmd {
 // ── the keys ────────────────────────────────────────────────────────────────
 
 // placeHasDraft reports whether the standing place's box is a draft for a
-// conversation — every place but settings, whose box edits a row's value and
-// whose rule says which row (place_settings.go).
-func (a *app) placeHasDraft() bool {
-	pl := a.showing()
-	return pl != nil && !a.at(pageSettings)
-}
+// conversation, which is home and home alone: only home starts things
+// (pages.go's [place.box]), so only home draws the draft's rule and takes its
+// chords.
+func (a *app) placeHasDraft() bool { return a.at(pageHome) }
 
-// placeTargetKey is the four chords that edit the draft, on every place that
-// has one: `alt+w` moves the folder, `alt+o` opens the model list, `ctrl+v`
-// walks the rung and `alt+y` walks the gate. They are the conversation's own
-// chords wherever the conversation has them — `alt+w`/`alt+o` are the layer's
-// two (composerlayer.go), lifted to the draft they edit.
+// placeTargetKey is the four chords that edit the draft on home: `alt+w`
+// moves the folder, `alt+o` opens the model list, `ctrl+v` walks the rung and
+// `alt+y` walks the gate. They are the conversation's own chords wherever the
+// conversation has them — `alt+w`/`alt+o` are the layer's two
+// (composerlayer.go), lifted to the draft they edit.
 //
 // It is read from home's [placeHome.owns], after the phone sheet and before
-// the grid, and from [app.placeKeyPress] for the other places, before the
-// router's own classes claim a chord.
+// the grid; no other place has a draft ([app.placeHasDraft]).
 //
 // `ctrl+v` ON A STANDING ITEM'S CARD IS THAT ITEM'S. The card names the key
 // for the item's own rung (homeband_keys.go), and a card that named a key the

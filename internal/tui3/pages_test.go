@@ -245,33 +245,40 @@ func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 	}
 }
 
-// THE COMPOSER IS ON EVERY PLACE AND IT ALWAYS SAYS WHERE IT WILL LAND. "Start a
-// task from anywhere" is only true if the verb says where anywhere is — and it
-// is said on the rule over the box, the same way on every place (boxseam.go),
-// never as a chip on the box row.
-func TestTheComposerOnEveryPlaceSaysWhereItWillLandOnItsRule(t *testing.T) {
+// ONE BOX, ON HOME. Home's foot is the draft's rule and the box; every other
+// place's foot is its note on the rule and its hint, with no box row and no
+// `new conversation in` — only home starts things (pages.go's [place.box]).
+func TestOnlyHomeDrawsTheBoxAndTheDraftsRule(t *testing.T) {
 	a := placeApp(t)
 	// A FRAME WIDE ENOUGH FOR THE WHOLE RULE: this suite's own temp directories
 	// are seventy cells of path, and a narrow frame drops the lead before the
 	// folder (homedraft.go's [app.targetLegend]).
 	a.width, a.height = 200, 30
-	for _, id := range []page{pageHome, pageSpend, pageSearch} {
+	a.showPage(pageHome)
+	text := placeFrameText(a)
+	if !strings.Contains(text, targetLeadWord) || !strings.Contains(text, "› "+placeRestWord) {
+		t.Fatalf("home's foot lost its rule or its box:\n%s", text)
+	}
+	for _, id := range []page{pageTasks, pageStanding, pageSpend, pageSearch} {
 		a.showPage(id)
 		text := placeFrameText(a)
-		if !strings.Contains(text, targetLeadWord) {
-			t.Fatalf("the %s place's rule does not say where the next conversation opens:\n%s", id.word(), text)
+		if strings.Contains(text, targetLeadWord) || strings.Contains(text, placeRestWord) {
+			t.Fatalf("the %s place still draws a box or the draft's rule:\n%s", id.word(), text)
 		}
 		if strings.Contains(text, "here /") || strings.Contains(text, "here ~") {
-			t.Fatalf("the %s place still draws a scope chip on its box row:\n%s", id.word(), text)
+			t.Fatalf("the %s place still draws a scope chip:\n%s", id.word(), text)
 		}
 	}
-	// AND WHAT IS TYPED ON ONE PLACE IS STILL THERE ON THE NEXT. A composer that
-	// forgot on every tab press would be seven boxes rather than one line.
+	// AND A LETTER TYPED ON SPEND GOES NOWHERE — there is nothing there to type
+	// into, and nothing there to send.
 	a.showPage(pageSpend)
 	drive(t, a, key("c"), key("u"), key("t"))
-	drive(t, a, key("tab"))
-	if got := strings.TrimSpace(a.compose.String()); got != "cut" {
-		t.Fatalf("the composer lost what was typed across a tab: %q", got)
+	if a.placeBox() != nil {
+		t.Fatal("the spend place still has a box")
+	}
+	drive(t, a, key("alt+enter"))
+	if a.composerShowing() {
+		t.Fatal("alt+enter on spend opened the composer layer: only home starts things")
 	}
 }
 

@@ -682,8 +682,8 @@ letter you aimed at, at the row's end when you click past the end of a line, and
 at the start of the text when you click on the prompt's side of it. It works on
 a wrapped, multi-line draft — the row you click is the row the caret lands on.
 
-It is the ordinary text-field gesture, and **the box on every place answers it
-too** — home, tasks, standing, memory, spend, search, settings. Holding the button
+It is the ordinary text-field gesture, and **home's box at the foot of the screen answers
+it too** — the one place with a box (the Places page, *Typing on a place*). Holding the button
 down and sweeping selects instead, and releasing copies what is lit (see "how do I
 select text in the message box" above). While a picker's
 filter box is standing in the box's place — the model picker, `/resume`,
@@ -762,16 +762,16 @@ So one press is never destructive, and the way back out of the archive still
 works: type the name of a row you put away, the list finds it, and `ctrl+e` from
 there brings it back.
 
-## Click the box to put the caret there — on home and on every place
+## Click the box to put the caret there — in the conversation and on home
 
 A click on the box puts the caret under the pointer: on the letter you aimed at,
 at the row's end when you click past the end of a line, and at the start of the
 text when you click on the prompt's side of it. It works on a wrapped, multi-line
 draft.
 
-It answers **on every place as well as in the conversation** — home, tasks,
-standing, memory, spend, search, settings. Until this wave only the conversation's
-message box answered it, so a click in home's box moved nothing.
+It answers **on home as well as in the conversation** — home is the one place with
+a box at its foot (the Places page, *Typing on a place*); the filters on tasks,
+memory and search are rows of their own bodies.
 
 Two things it does not do. With **nothing typed** there is no caret to place, so
 the click falls through to the place underneath — the row is carrying a dim
@@ -2053,9 +2053,10 @@ fixed clauses the design sets word for word.
 On macOS every `alt+` below is drawn `opt+` — `alt+enter` is `opt+enter`, `alt+w` is
 `opt+w`, `alt+o` is `opt+o`. Same key, same chord, named the way the keycap names it.
 
-`alt+enter` with something typed into the composer on any place opens the **composer
-layer**: the page behind dims, the box stays where it is, and the three facts a task needs
-appear under it. The places page has the layer in full; these are its keys.
+`alt+enter` with something typed into home's box opens the **composer layer**: the page
+behind dims, the box stays where it is, and the three facts a task needs appear under it.
+It opens from home alone — only home starts things. The places page has the layer in full;
+these are its keys.
 
 | Key | What it does |
 | --- | --- |
@@ -2127,10 +2128,10 @@ spaces. A machine with one conversation, or none, opens an empty home; so does a
 over `--host`, where what opens is the **far machine's** home.
 
 **It answers from every place as well as from a conversation.** Wherever a place is
-standing, the two spaces are read against that place's own box — the tasks filter, the
-memory filter, the search and spend composers — and open home just as they do from a
-draft. On home itself the door is a no-op: the page is already open, and two spaces type
-into home's own filter. It also does not answer from under a layer that owns the
+standing, the two spaces are read against that place's own filter — tasks, memory, search —
+and open home just as they do from a draft; on spend and standing, which have nothing to
+type into, two bare spaces open it and any key between them disarms it. On home itself the
+door is a no-op: the page is already open, and two spaces type into home's own filter. It also does not answer from under a layer that owns the
 keyboard: on the settings panel space is the drawn verb on a row (`activate`),
 memory's card editor keeps every key while it is open, and inside a task's
 record — the room the roster opens on `enter` — `space` pages the card the way

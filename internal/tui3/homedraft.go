@@ -28,10 +28,9 @@ import (
 // for through the palette door because a literal cannot know which repertoire
 // the terminal is on).
 //
-// AND IT IS THE RULE ON EVERY PLACE WITH A DRAFT, not home's alone: the box on
-// tasks, standing, memory, spend and search is the same draft — `enter` talks
-// about it in a fresh conversation ([app.placeTalkAbout]) — so the line over
-// it says the same four things and takes the same four chords.
+// AND IT IS HOME'S ALONE. Only home starts things (pages.go's [place.box]), so
+// only home has a box, a draft and this rule over it; every other place ends
+// in its note and its hint.
 //
 // ── WHY A TARGET AND NOT A READING ──────────────────────────────────────────
 //

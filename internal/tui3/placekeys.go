@@ -75,6 +75,11 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	if pl == nil {
 		return nil
 	}
+	// THE BARE DOOR DISARMS ON ANY KEY BUT THE SECOND SPACE, read before anything
+	// can take the key ([app.placeHomeGesture] re-arms it on a first space).
+	if msg.Key().Text != " " {
+		a.placeSpaceArmed = false
+	}
 	// THE ROUTER'S OWN LAYER IS READ BEFORE THE PLACE'S, and it is the only thing
 	// on this surface that is. The composer layer belongs to no place — the three
 	// facts it settles are the same three wherever the sentence was typed — so a
@@ -87,15 +92,6 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	// the router claims a single chord ([place.owns] holds the argument).
 	if cmd, took := pl.owns(a, msg); took {
 		return cmd
-	}
-	// AND THE DRAFT'S FOUR CHORDS, on every place whose box is a draft for a
-	// conversation (boxseam.go's [app.placeTargetKey]). Home reads them inside
-	// its own [placeHome.owns], after the phone sheet; here they are read for
-	// the other places, before the router's classes can swallow one.
-	if !a.at(pageHome) {
-		if cmd, took := a.placeTargetKey(msg); took {
-			return cmd
-		}
 	}
 	if cmd, took := a.placeKey(msg); took {
 		return cmd
@@ -190,18 +186,23 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.walkPage(true), true
 
 	case "alt+enter":
-		return a.placeSend(), true
+		// ONLY HOME STARTS THINGS ([place.box]). Everywhere else the chord is
+		// swallowed rather than passed down, so it cannot put a newline into a
+		// filter — the same arm every other undeclared chord takes.
+		if a.at(pageHome) {
+			return a.placeSend(), true
+		}
+		return nil, true
 
 	case "alt+w", "alt+o":
-		// THE LAYER'S TWO CHORDS ARE HELD BACK FROM THE PLACE'S OWN ROWS. On
-		// every place with a draft they were taken above this function by
-		// [app.placeTargetKey] — the rule over the box states where the next
-		// conversation opens and what it will run on, and these are the two
-		// chords that move those two facts. What reaches here is a place with no
-		// draft (settings), where the chords mean nothing and a place that
-		// bound either of them would be a place whose view moved when somebody
-		// was aiming at a destination. The layer itself is read above all of
-		// this, so a press that arrives here has no layer up.
+		// THE DRAFT'S TWO CHORDS ARE HELD BACK FROM THE PLACE'S OWN ROWS. On home
+		// they were taken above this function by [app.placeTargetKey] — the rule
+		// over the box states where the next conversation opens and what it will
+		// run on, and these are the two chords that move those two facts. What
+		// reaches here is a place with no draft, where the chords mean nothing
+		// and a place that bound either of them would be a place whose view moved
+		// when somebody was aiming at a destination. The layer itself is read
+		// above all of this, so a press that arrives here has no layer up.
 		return nil, true
 
 	case "shift+left", "shift+right", "shift+up", "shift+down":
@@ -425,6 +426,21 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	box := a.placeBox()
+	// A PLACE WITH NO BOX STILL HAS THE DOOR. Spend and standing type into
+	// nothing (pages.go's [place.box]), so the two spaces are counted here
+	// rather than read back out of an editor: the first arms, the second
+	// opens, and any other key in between disarms ([app.placeKeyPress]).
+	if box == nil {
+		if msg.Key().Text != " " {
+			return nil, false
+		}
+		if a.placeSpaceArmed {
+			a.placeSpaceArmed = false
+			return a.openHome(), true
+		}
+		a.placeSpaceArmed = true
+		return nil, true
+	}
 	if !a.homeDoorArmed(box, msg) {
 		return nil, false
 	}
@@ -491,6 +507,10 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 	if text == "" {
 		return nil, false
 	}
+	// THE DRAFT IS HOME'S, so its pins ride only on a conversation home started
+	// — the layer's `enter talk about it first` — and never on one a memory
+	// row asked for ([placeMemory.enter]). Read before the place is left.
+	fromHome := a.at(pageHome)
 	if !a.canStart() {
 		a.pageMsg = newUnavailableWord
 		return nil, false
@@ -504,9 +524,12 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 		// it was typed into, which is where its owner will look for it.
 		return nil, false
 	}
-	// AND THE DRAFT'S PINS GO ONTO IT, exactly as they do from home
-	// ([app.homeOpenAtTarget]): the rule above this box promised a model, a
-	// rung and a gate, and a conversation opened from a place that ignored
-	// them would be the disagreement home's target was built to end.
-	return tea.Batch(renewed, a.applyTargetPins(), a.submit(text)), true
+	// AND HOME'S PINS GO ONTO IT, exactly as they do from [app.homeOpenAtTarget]:
+	// the rule above home's box promised a model, a rung and a gate, and a
+	// conversation opened from home that ignored them would be the disagreement
+	// home's target was built to end.
+	if fromHome {
+		return tea.Batch(renewed, a.applyTargetPins(), a.submit(text)), true
+	}
+	return tea.Batch(renewed, a.submit(text)), true
 }

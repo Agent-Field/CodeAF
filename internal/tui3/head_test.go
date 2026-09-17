@@ -164,8 +164,11 @@ func footOf(rows []string) footEdges {
 // the status line where a place draws its hint. The chat used to keep a second
 // blank between the box and the status line, so `esc` from home into a chat
 // moved the rule and the box up a row and walking back moved them down again
-// (PLACES-AUDIT.md, lane K). Walked chat → home → tasks → chat at three sizes,
-// and the rule, the box and the last row never move.
+// (PLACES-AUDIT.md, lane K). Walked chat → home → chat at three sizes, and the
+// rule, the box and the last row never move. Tasks is no longer on the walk:
+// a place that is not home draws no box (pages.go's [place.box]), so its foot
+// is its own three rows and [TestEveryPlaceSpendsTheSameHeadAndFoot] holds it
+// to those.
 func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headFrameSizes {
@@ -177,7 +180,7 @@ func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
 		floor := boxFloor(size.h)
 		want := footEdges{rule: size.h - placeFootRowsAt(size.h) + 1,
 			box: size.h - 1 - floor, status: size.h - 1}
-		for _, to := range []page{pageNone, pageHome, pageTasks, pageNone} {
+		for _, to := range []page{pageNone, pageHome, pageNone} {
 			if to == pageNone {
 				a.showPage(pageNone)
 			} else {

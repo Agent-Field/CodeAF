@@ -60,17 +60,17 @@ While any of them is up nothing else is drawn — no conversation, no box, no st
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
 Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
-naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule, the place's own count or note, the
-**composer**, and the hint line last. See the **Places** page.
+naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule carrying the place's own count or note, and
+the hint line last. See the **Places** page.
 
-That second rule is not a plain line on any place you can start something from: it is the
-same legend a conversation has over its message box, reading
-`◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks` with `alt+w folder ·
-alt+o model · alt+k chats · / commands` at its right — where the next conversation opens,
-what it will run on, how hard it will think and what it will run without asking, with the
-same doors on the cells (`alt+o`, `ctrl+v`, `alt+y`, or a press). No place draws a `here
-~/codeaf` chip on its box row any more; the rule says it. *The rule above the box on every
-place* on the Places page has the whole gesture.
+**Only home has a box under that rule.** On home the rule is the same legend a conversation
+has over its message box, reading `◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto ·
+◇ asks` with `alt+w folder · alt+o model · alt+k chats · / commands` at its right — where
+the next conversation opens, what it will run on, how hard it will think and what it will run
+without asking, with the same doors on the cells (`alt+o`, `ctrl+v`, `alt+y`, or a press) —
+and the box `› say what you want done` sits under it. Every other place ends in its rule and
+its hint, with no box: only home starts things. *Typing on a place* and *The rule above
+home's box* on the Places page have the whole of it.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.

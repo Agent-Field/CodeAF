@@ -2151,12 +2151,10 @@ type app struct {
 	// not now that a conversation draws it too (pulsebeat.go). Every figure in it
 	// is read from the MACHINE, never from what a screen was holding (#525).
 	machine machineFacts
-	// compose is the composer on the places that have no box of their own — the
-	// standing place, spend and search. It is app-level rather than per-place on
-	// purpose: a sentence half typed on one place is still there after `tab`,
-	// which is what makes a permanent bottom line a composer rather than seven
-	// boxes that each forget.
-	compose editor
+	// placeSpaceArmed is the first of the two spaces that open home from a
+	// place with no box — spend, standing — held until the second lands or any
+	// other key disarms it (placekeys.go's [app.placeHomeGesture]).
+	placeSpaceArmed bool
 	// pageMsg is the one refusal a place that is not home has to say, drawn where
 	// the hint would be. It is one field for [homeView.msg]'s reason: pressing a
 	// door twice says the same thing once.

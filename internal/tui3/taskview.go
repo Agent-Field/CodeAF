@@ -259,23 +259,6 @@ const (
 	// comma — and the clause is absent entirely when the row has none.
 	tasksVerbsWord = "→ verbs: "
 	tasksVerbGap   = ", "
-	// tasksTypeWord says the filter exists at all: a record of two thousand tasks
-	// is reached by remembering a word of a title, and nothing else on screen
-	// suggests a letter would do anything.
-	//
-	// IT IS THE BOX'S OWN RESTING SENTENCE NOW AND NOT THE FOOT'S THIRD CLAUSE
-	// (place_tasks.go's [placeTasks.resting]). It began as a foot clause because
-	// the box below it was saying `say what you want done` — the router's sentence
-	// on every place — and a person reading an invitation to give an instruction,
-	// two rows under the list their keystrokes were about to filter, was being
-	// told the wrong thing by the louder of the two rows. Correcting the foot
-	// never reached that: the box went on saying it. So the sentence moved into
-	// the slot it is about, and the foot stopped repeating it.
-	//
-	// IT NAMES WHAT THE TYPING NARROWS. `type to filter` in a box a person may
-	// have just been typing a message into is keystrokes going somewhere they
-	// cannot see; `this list` is the whole of the difference.
-	tasksTypeWord = "type to filter this list"
 	// tasksClearFilterWord takes that clause's place while a filter is on. It is
 	// the one fact the keyboard has that just MOVED — esc clears the filter first
 	// and closes the place second ([app.taskSheetKeyPress]) — and the clause it

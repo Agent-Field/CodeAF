@@ -58,17 +58,6 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
-	if got := a.taskSheetKeysLine(); strings.Contains(got, tasksTypeWord) {
-		t.Fatalf("the foot repeats the box's own sentence: %q", got)
-	}
-	// AND THE BOX IS THE ONE THAT SAYS IT, in the slot a person is looking at when
-	// they wonder what a letter will do here.
-	if got := a.placeRestWord(); !strings.Contains(got, tasksTypeWord) {
-		t.Fatalf("the tasks box rests on %q, want it to say what typing there does", got)
-	}
-	if got := a.placeRestWord(); strings.Contains(got, placeRestWord) {
-		t.Fatalf("the tasks box still invites a message it cannot send: %q", got)
-	}
 	// AND IT IS THE LAST LINE OF THE FRAME, with the router's own two keys on the
 	// end of it and no second foot under it.
 	lines := strings.Split(plain(taskSheetText(a)), "\n")
@@ -116,9 +105,6 @@ func TestTheTasksFootSaysOnlyWhatIsTrueOfTheRowUnderIt(t *testing.T) {
 	a.taskSheetTyped()
 	if got := a.taskSheetKeysLine(); !strings.Contains(got, tasksClearFilterWord) {
 		t.Fatalf("a filtered foot reads %q and never says what esc does now", got)
-	}
-	if got := a.taskSheetKeysLine(); strings.Contains(got, tasksTypeWord) {
-		t.Fatalf("a filtered foot still offers %q: %q", tasksTypeWord, got)
 	}
 }
 

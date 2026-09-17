@@ -2270,6 +2270,21 @@ func (p *picker) navigate(msg tea.KeyPressMsg) {
 // own two, because the scoring is about what is being listed. page is how far
 // pgup and pgdn jump, which is that list's own window.
 func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func(), page int) {
+	// A LIST WITH NO BOX UNDER IT STILL WALKS, and takes no text: the spend
+	// place has nothing to type into (pages.go's [place.box]).
+	if filter == nil {
+		switch msg.String() {
+		case "up", "ctrl+p":
+			move(-1)
+		case "down", "ctrl+n":
+			move(1)
+		case "pgup":
+			move(-page)
+		case "pgdown":
+			move(page)
+		}
+		return
+	}
 	// THE WORD AND LINE JUMPS ARE THE SURFACE'S, NOT THIS LIST'S (editkeys.go).
 	// They are read before the switch because they belong to every box on the
 	// program and this one is only the busiest door onto them — twelve overlays

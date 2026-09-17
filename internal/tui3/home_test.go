@@ -3407,11 +3407,12 @@ func driveToPlace(t *testing.T, lab *homeLab, where page) (*app, *editor) {
 }
 
 // TWO SPACES IN A PLACE'S OWN EMPTY BOX GO HOME — every place that types into
-// that box. The first space types itself into the place's own filter, exactly
-// as it does into a conversation's draft, and the second opens home and leaves
-// nothing behind in the box.
+// a box: tasks, memory and search, whose boxes are their filters. The first
+// space types itself into the place's own filter, exactly as it does into a
+// conversation's draft, and the second opens home and leaves nothing behind
+// in the box.
 func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
-	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
+	for _, where := range []page{pageTasks, pageMemory, pageSearch} {
 		lab := newHomeLab(t)
 		a, box := driveToPlace(t, lab, where)
 		if box == nil {
@@ -3434,23 +3435,29 @@ func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
 	}
 }
 
-// AND ON THE PLACES THE DOOR ALREADY READS, WALKING THERE KEEPS IT WORKING.
-// Standing's box is the one place box the place's own keys never type into, so
-// the test drives the box to the armed state the way an earlier room leaves it
-// — one space behind the caret — and holds the door open from there.
-func TestDoubleSpaceFromStandingGoesHome(t *testing.T) {
-	lab := newHomeLab(t)
-	a, box := driveToPlace(t, lab, pageStanding)
-	if box == nil {
-		t.Fatal("standing has no box to type into")
-	}
-	box.insert(" ")
-	a.key(key(" "))
-	if !a.at(pageHome) {
-		t.Fatal("two spaces did not open home from the standing place")
-	}
-	if got := box.String(); got != "" {
-		t.Fatalf("the gesture left %q behind in the box", got)
+// AND FROM A PLACE WITH NO BOX AT ALL — spend, standing — TWO BARE SPACES GO
+// HOME, and a letter between them disarms the door (placekeys.go's
+// [app.placeHomeGesture]).
+func TestDoubleSpaceFromABoxlessPlaceGoesHome(t *testing.T) {
+	for _, where := range []page{pageSpend, pageStanding} {
+		lab := newHomeLab(t)
+		a, box := driveToPlace(t, lab, where)
+		if box != nil {
+			t.Fatalf("%v has a box, and only home starts things", where)
+		}
+		a.key(key(" "))
+		if a.at(pageHome) {
+			t.Fatalf("%v: one space opened home", where)
+		}
+		a.key(key("x"))
+		a.key(key(" "))
+		if a.at(pageHome) {
+			t.Fatalf("%v: a letter between two spaces did not disarm the door", where)
+		}
+		a.key(key(" "))
+		if !a.at(pageHome) {
+			t.Fatalf("%v: two spaces did not open home", where)
+		}
 	}
 }
 
@@ -3476,7 +3483,7 @@ func TestSpaceStaysTheVerbOnSettings(t *testing.T) {
 // place types into and no other: a sentence aimed at a filter is nobody's way
 // of asking for home.
 func TestASingleSpaceThenALetterTypesNormallyOnAPlace(t *testing.T) {
-	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
+	for _, where := range []page{pageTasks, pageMemory, pageSearch} {
 		lab := newHomeLab(t)
 		a, box := driveToPlace(t, lab, where)
 		a.key(key(" "))

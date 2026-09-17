@@ -480,17 +480,13 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.stepSpendSlice(step)
 		return nil
 	case "enter":
-		if cmd, opened := a.openSpendRow(); opened {
-			return cmd
-		}
-		// NO ROW UNDER THE CURSOR MEANS THE COMPOSER'S OWN ROAD: enter is what the
-		// hint line says it is — talk about it, in a conversation.
-		return a.placeTalk()
+		// A ROW OPENS, AND NOTHING ELSE HAPPENS: this place has no box, and only
+		// home starts things ([place.box]).
+		cmd, _ := a.openSpendRow()
+		return cmd
 	}
-	if box := a.placeBox(); box != nil {
-		listNavigate(msg, box, a.moveSpend, func() {}, memoryPlaceRows)
-		a.touch()
-	}
+	listNavigate(msg, nil, a.moveSpend, func() {}, memoryPlaceRows)
+	a.touch()
 	return nil
 }
 

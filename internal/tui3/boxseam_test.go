@@ -71,30 +71,30 @@ func drafting(t *testing.T) (*draftAgent, *app) {
 	return agent, a
 }
 
-// draftPlaces is every place whose box is a draft for a conversation.
-var draftPlaces = []page{pageHome, pageTasks, pageStanding, pageMemory, pageSpend, pageSearch}
+// draftPlaces is every place whose box is a draft for a conversation: home,
+// and home alone (pages.go's [place.box]).
+var draftPlaces = []page{pageHome}
 
 // ── 1. one rule, every place ────────────────────────────────────────────────
 
-// THE RULE OVER EVERY DRAFT BOX SAYS THE SAME FOUR THINGS, in the cells the
-// conversation's own seam uses: where, what, how hard, and what runs without
-// asking. Settings, whose box is a value editor, has no draft and no rule of
-// this shape.
-func TestTheRuleOverEveryDraftBoxSaysTheSameFourThings(t *testing.T) {
+// THE RULE OVER HOME'S BOX SAYS THE SAME FOUR THINGS AS A CONVERSATION'S SEAM:
+// where, what, how hard, and what runs without asking. No other place draws
+// it — only home starts things (pages.go's [place.box]).
+func TestTheRuleOverHomesBoxSaysTheSameFourThingsAsTheSeam(t *testing.T) {
 	_, a := drafting(t)
 	rung, gate := a.effortChip(effort.High.String()), a.approvalChip(session.PostureAsk)
-	for _, id := range draftPlaces {
-		a.showPage(id)
-		text := placeFrameText(a)
-		for _, want := range []string{targetLeadWord, "m", rung, gate} {
-			if !strings.Contains(text, want) {
-				t.Fatalf("the %s place's rule does not say %q:\n%s", id.word(), want, text)
-			}
+	a.showPage(pageHome)
+	text := placeFrameText(a)
+	for _, want := range []string{targetLeadWord, "m", rung, gate} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("home's rule does not say %q:\n%s", want, text)
 		}
 	}
-	a.showPage(pageSettings)
-	if text := placeFrameText(a); strings.Contains(text, targetLeadWord) || strings.Contains(text, gate) {
-		t.Fatalf("settings, whose box edits a row, drew the draft's rule:\n%s", text)
+	for _, id := range []page{pageTasks, pageSpend, pageSearch, pageSettings} {
+		a.showPage(id)
+		if text := placeFrameText(a); strings.Contains(text, targetLeadWord) || strings.Contains(text, gate) {
+			t.Fatalf("the %s place drew the draft's rule:\n%s", id.word(), text)
+		}
 	}
 }
 
@@ -115,10 +115,10 @@ func TestTheDraftsCellsAreTheSeamsOwnSpelling(t *testing.T) {
 
 // ── 2. the chords, on every place ───────────────────────────────────────────
 
-// `alt+y` AND `ctrl+v` WALK THE DRAFT'S GATE AND RUNG ON EVERY PLACE, one stop
-// per press, on the conversation's own wheels: the gate never lands on
-// `refuses`, and the rung comes back to `auto` off the top.
-func TestTheDraftsChordsWalkTheRungAndTheGateOnEveryPlace(t *testing.T) {
+// `alt+y` AND `ctrl+v` WALK THE DRAFT'S GATE AND RUNG ON HOME, one stop per
+// press, on the conversation's own wheels: the gate never lands on `refuses`,
+// and the rung comes back to `auto` off the top.
+func TestTheDraftsChordsWalkTheRungAndTheGateOnHome(t *testing.T) {
 	for _, id := range draftPlaces {
 		_, a := drafting(t)
 		a.showPage(id)
@@ -148,7 +148,7 @@ func TestTheDraftsChordsWalkTheRungAndTheGateOnEveryPlace(t *testing.T) {
 // them — a press on the rung is `ctrl+v` and a press on the gate is `alt+y`.
 func TestTheDraftsCellsAreDoorsUnderThePointer(t *testing.T) {
 	_, a := drafting(t)
-	a.showPage(pageSpend)
+	a.showPage(pageHome)
 	placeFrameText(a)
 	if !a.targetEffortSpan.pressable() || !a.targetApprovalSpan.pressable() || a.targetRow < 1 {
 		t.Fatalf("the rule recorded no doors: rung %+v, gate %+v, row %d", a.targetEffortSpan, a.targetApprovalSpan, a.targetRow)
@@ -172,7 +172,7 @@ func TestTheDraftsCellsAreDoorsUnderThePointer(t *testing.T) {
 func TestADraftWithNoDialDrawsNoRungAndNoGate(t *testing.T) {
 	a := placeApp(t)
 	a.width = 200
-	a.showPage(pageSpend)
+	a.showPage(pageHome)
 	text := placeFrameText(a)
 	if strings.Contains(text, glyphPermTool+" ") || strings.Contains(text, glyphEffort+" ") {
 		t.Fatalf("a session with no dial drew a cell it cannot move:\n%s", text)
@@ -223,22 +223,6 @@ func TestThePinsRideOntoTheConversationAndTheGateIsSpent(t *testing.T) {
 	}
 }
 
-// AND FROM EVERY OTHER PLACE TOO: `enter` on a sentence typed at spend opens a
-// conversation carrying the same pins, because it is the same draft.
-func TestThePinsRideFromAnyPlaceNotOnlyHome(t *testing.T) {
-	_, a := drafting(t)
-	next := &draftAgent{fakeAgent: &fakeAgent{model: "m"}, installed: effort.High, standing: session.PostureAsk, door: true}
-	a.start = func(workspace string) (Conversation, error) {
-		return Conversation{Agent: next, SessionFile: workspace + "/next/transcript.jsonl", Workspace: workspace}, nil
-	}
-	a.showPage(pageSpend)
-	drive(t, a, key("alt+y"))
-	drive(t, a, key("c"), key("u"), key("t"), key("enter"))
-	if got := next.sets; len(got) != 1 || got[0] != session.PostureGuardian {
-		t.Fatalf("a conversation opened from spend was handed %q, want the pinned guardian", got)
-	}
-}
-
 // ── 4. the ladder ───────────────────────────────────────────────────────────
 
 // THE RUNG GOES BEFORE THE GATE, THE GATE BEFORE THE MODEL, AND THE FOLDER
@@ -246,7 +230,7 @@ func TestThePinsRideFromAnyPlaceNotOnlyHome(t *testing.T) {
 // that the folder is the fact `enter` acts on.
 func TestTheDraftsRuleGivesUpTheRungThenTheGateThenTheModel(t *testing.T) {
 	_, a := drafting(t)
-	a.showPage(pageSpend)
+	a.showPage(pageHome)
 	rung, gate := a.effortChip(effort.High.String()), a.approvalChip(session.PostureAsk)
 	left, _, _, _, _ := a.draftSeamLeft(1000)
 	if !strings.Contains(left, rung) || !strings.Contains(left, gate) {

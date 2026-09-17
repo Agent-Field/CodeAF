@@ -1745,31 +1745,13 @@ func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }
 
 // box is the filter, exactly as it has always been: every printable key on this
-// place goes into it and the list narrows as it fills.
-//
-// WHAT MOVED IS WHERE IT IS DRAWN ([placeTasks.boxOnBody]). The router used to
-// put this editor's letters two rows UNDER the list they were narrowing; they
-// are on the first row of the list now, over the rows they changed
-// ([tasksControlRow]). The editor itself stays the place's box because a box is
-// more than a row of letters — the two-space door home is armed from it
-// ([app.placeHomeGesture]), a press in the foot puts the caret in it, and a
-// place that answered `nil` here would silently lose all of that.
+// place goes into it and the list narrows as it fills. Its letters are drawn on
+// the first row of the list, over the rows they changed ([tasksControlRow]);
+// the foot draws no box here ([place.box]). The editor stays the place's box
+// because a box is more than a row of letters — the two-space door home is
+// armed from it ([app.placeHomeGesture]).
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 
-// boxOnBody says THIS PLACE DRAWS WHAT IS TYPED INTO ITS BOX ITSELF, in a row of
-// its own body, so the foot must not draw it a second time. The foot keeps the
-// invitation ([placeTasks.resting]) and loses the echo; one person's letters on
-// screen twice is the defect this page's own title row was removed for.
-func (placeTasks) boxOnBody() bool { return true }
-
-// resting is what that box says when nothing is typed in it, and it is THIS
-// PLACE'S sentence rather than the router's (pages.go's [place.resting]).
-//
-// `say what you want done` stood here for as long as the place has existed, two
-// rows under a list the same keystrokes filter — an invitation to give an
-// instruction, over a box that cannot take one. The words are the FOOT's, moved
-// into the slot they are about: one sentence, in the place a person is looking
-// when they wonder what typing here will do.
 // alt is `alt+s`: WHICH COLUMN THIS LIST IS ORDERED BY, one key at a time.
 //
 // IT IS HERE AND NOT IN [app.taskSheetKeyPress] BECAUSE THE ROUTER OWNS THE
@@ -1787,8 +1769,6 @@ func (placeTasks) alt(a *app, letter rune) bool {
 	a.taskSheetSortBy(a.taskSheet.order.key.next())
 	return true
 }
-
-func (placeTasks) resting(a *app) string { return tasksTypeWord }
 
 // tasksFilterHint is the short spelling of that invitation. It is the control
 // row's own placeholder ([tasksControlRow]) and it is repeated on the FOOT'S KEY
