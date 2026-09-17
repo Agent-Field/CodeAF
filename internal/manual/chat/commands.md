@@ -938,15 +938,15 @@ fuzzy hits sitting at the bottom rather than mixed through.
 
 Twelve rows show at a time, under a dim heading line. The list is a **table**: `<id>:<level>`
 on the left under `model`, and dim columns to the right of it for what the catalog
-published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `reads` and `makes`.
-The last two carry what the model takes in and gives back besides text, in the catalog's
-own words: `image`, `audio`, `video`, `file`, `speech`, `music`. The heading names the unit, so the figure
+published — `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `inputs` and
+`outputs`. The last two carry everything the model takes in and gives back, in the
+catalog's own words: `text`, `image`, `audio`, `video`, `file`, `speech`, `music`. The heading names the unit, so the figure
 under it does not: `$0.18` under `out/M`, `1290` under `elo`. An empty cell means nobody
 published that fact; a column no row published is not drawn at all. A price shows only when
 both halves are known — a zero means "nobody said", never "free". A plain text chat model
-shows nothing under either of those. `makes` is never drawn in `/model` — a model that
-answers with anything but text cannot hold a conversation and is not on that list — so it
-belongs to the media slots in `/settings`. A narrow window gives up columns from the right, and under sixty
+says `text` under both. `outputs` is not drawn in `/model` — a model that answers with
+anything but text cannot hold a conversation and is not on that list, so every row would
+say `text` and a column every row agrees on is dropped. A narrow window gives up columns from the right, and under sixty
 columns the table gives way to the older `·` tail on a line of its own (the *models and
 cost* page, "What each row in the model picker tells you").
 

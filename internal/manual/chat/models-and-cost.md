@@ -199,11 +199,11 @@ under it do not have to:
 | `window` | how much it can hold | `1M`, `128k` |
 | `t/s` | how fast it writes once it has started | `58` |
 | `elo` | its Design Arena score | `1290` |
-| `reads` | what it takes in besides text | `image`, `image, video` |
-| `makes` | what it gives back besides text | `image`, `speech` |
+| `inputs` | everything you can put in | `text`, `text image file` |
+| `outputs` | everything that comes back | `text`, `image` |
 
 That is also the ORDER, and it is the order the columns are given up in when the window is
-narrow — `makes` goes first, `via` last. **A column nobody on this list published is not
+narrow — `outputs` goes first, `via` last. **A column nobody on this list published is not
 drawn at all**, heading and all: a catalog with nothing measured behind it shows no `via`,
 no `first` and no `t/s` rather than three headings over three hundred blanks.
 
@@ -257,13 +257,14 @@ the `via` and the speeds do not rewrite themselves while you look. A turn runnin
 underneath can still update the status line. Close the list and open it again if you
 want the latest machines.
 
-## What the reads and makes columns mean — image, audio, video, file on a model row
+## What the inputs and outputs columns mean — text, image, audio, video, file on a model row
 
-`reads` is what the model takes in besides text and `makes` is what it gives back besides
-text, each in the catalog's own word:
+`inputs` is everything you can put into the model and `outputs` is everything that comes
+back, each in the catalog's own word:
 
-| Word | Under `reads` it means | Under `makes` it means |
+| Word | Under `inputs` it means | Under `outputs` it means |
 |---|---|---|
+| `text` | you can type at it — true of every model on the `/model` list | it answers in words |
 | `image` | it takes pictures — screenshots, photos | it answers with pictures |
 | `audio` | it takes sound | it answers with sound |
 | `video` | it takes video | it answers with video |
@@ -271,60 +272,69 @@ text, each in the catalog's own word:
 | `speech` | — | it answers with a voice reading words |
 | `music` | — | it answers with music |
 
-A model that takes several says them in one cell, commonest first: `image, audio, video,
-file`. **The order is codeaf's, not the catalog's** — the catalog publishes the same set
-three different ways on neighbouring rows, so echoing it would put one fact in three
-places down a column.
+A model that takes several says them in one cell, separated by a space and commonest
+first: `text image audio video file`. **The order is codeaf's, not the catalog's** — the
+catalog publishes the same set three different ways on neighbouring rows, so echoing it
+would put one fact in three places down a column.
+
+**`text` is named and not assumed.** Nearly every model on the `/model` list reads and
+writes it, and leaving it out was tried: it produced a blank cell under a head reading
+`inputs`, which does not read as "text, like everything else here" — it reads as
+"nothing". A row that published no modalities at all still says `text`, because that is
+what silence means here and the rest of codeaf already acts on it.
 
 **A word this build has never seen is still shown**, after the ones it knows: the catalog
 carries `embeddings`, `transcription` and `rerank` today and will carry something else
 tomorrow, and a row that said nothing about a family codeaf did not recognise would be
 indistinguishable from a plain text model.
 
-**`text` is never shown on either side.** Every model on the list reads and writes it, so
-the word would be furniture on five hundred rows. An empty cell on both sides means text
-in, text out — which is also what a row that published no modalities at all means.
-
-**`makes` is usually not drawn at all, and that is not an accident of width.** A list
+**`outputs` is usually not drawn at all, and that is not an accident of width.** A list
 here is always a filtered view of one catalog, and what each list filters on is a
 modality — so a modality column can end up saying the same thing on every row, which is
 the list's own definition written out once per row rather than a fact about any of them.
 Where that happens the column is dropped, head and all:
 
-| List | What `makes` would say | Drawn? |
+| List | What `outputs` would say | Drawn? |
 |---|---|---|
-| `/model` | nothing, on every row — a model you can converse with answers in text and nothing else, so a drawing model that also captions is off the list entirely | no |
+| `/model` | `text`, on every row — a model you can converse with answers in text and nothing else, so a drawing model that also captions is off the list entirely | no |
 | **drawing** | `image`, on every row | no |
 | **speaking** | `speech`, on every row | no |
 | **filming** | `video`, on every row | no |
 
-`reads` survives the same test on most lists because it genuinely varies: on `/model` it
+`inputs` survives the same test on most lists because it genuinely varies: on `/model` it
 has eleven different values across three hundred-odd models, and in the **filming** slot
 some models take a picture to animate and some take a clip.
 
-**This is only asked of `reads` and `makes`,** because they are the only columns a list is
-ever chosen by. A price or a window that happens to be the same on every row of a short
+**This is only asked of `inputs` and `outputs`,** because they are the only columns a list
+is ever chosen by. A price or a window that happens to be the same on every row of a short
 list is a coincidence, not a definition, and those columns are always drawn.
 
 **The cells report only what was published — they never read the id.** A model whose name
-says `vl` or `vision` but whose catalog row lists no modalities draws two blank cells,
+says `vl` or `vision` but whose catalog row lists no modalities says `text` and no more,
 because a cell is a fact about the catalog and not a guess about a name. The **looking**
 slot does fall back to those two words in a name when a row published nothing, so a silent
-`…-vl` row can be offered there while showing nothing under `reads` here. The two are
+`…-vl` row can be offered there while showing only `text` under `inputs` here. The two are
 asking different questions: the cell says what is known, the slot has to decide whether to
 offer the row at all.
 
-These are the same words `codeaf models` uses, where they ride a tail rather than a column
-and so spell the side out: `reads image, video · makes image`. The picker does the same
-on a frame too narrow for the table.
+**On a line with no heading over it the side is spelled out, and `text` goes away.**
+`codeaf models`, a frame too narrow for the table, and a phone all draw the facts as a
+`·` tail instead — `inputs image file · outputs image` — and there a clause true of every
+model is a clause spending room the window and the price are queueing for. So a plain chat
+model says nothing at all there, and the columns are where `text` is written.
 
-## An older name for these — sees, draws, speaks, films, hears, watches
+## Older names for these — sees, draws, speaks, films, hears, watches, and the reads and makes columns
 
 Rows used to carry one invented verb per modality — `sees` for image in, `hears` for audio
 in, `watches` for video in, `draws` for image out, `films` for video out, and `speaks` for
-all three of speech, audio and music. They are gone from every row: a verb had to carry the
-side as well as the thing, which is six words to learn before a row could be read, and
+all three of speech, audio and music. They are gone from every row: a verb had to carry
+the side as well as the thing, which is six words to learn before a row could be read, and
 `speaks` folded three different kinds of product into one word.
+
+For a short while the two columns were headed `reads` and `makes` and left `text` out.
+They are `inputs` and `outputs` now and they name `text` like everything else, because a
+blank cell under a head reads as "nothing" rather than as "text, like the rest of this
+list".
 
 `sees` and `draws` survive in **one** place — the model picker's filter box, where typing
 `sees` keeps the models that read images and `draws` keeps the ones that answer with them.

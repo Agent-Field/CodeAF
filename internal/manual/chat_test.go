@@ -236,15 +236,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the words on the row, because that is how they are met: a person
 		// reads `image, audio` off a row and wants to know which side of the
 		// model it is talking about.
-		{"what does reads mean on the model list", "models-and-cost"},
+		{"what does inputs mean on the model list", "models-and-cost"},
 		{"what do image audio and video mean on a model row", "models-and-cost"},
-		{"what does file mean under reads", "models-and-cost"},
-		{"why is the reads column empty for this model", "models-and-cost"},
-		{"why is there no makes column in the model picker", "models-and-cost"},
+		{"what does file mean under inputs", "models-and-cost"},
+		{"why does every model say text under inputs", "models-and-cost"},
+		{"why is there no outputs column in the model picker", "models-and-cost"},
 		// AND THE VOCABULARY THAT WENT AWAY, asked by somebody whose memory of
 		// the row is older than the change — which is most people, for a while.
 		{"what happened to sees and draws on the model rows", "models-and-cost"},
 		{"the model row used to say sees hears watches", "models-and-cost"},
+		{"the model row used to say reads and makes", "models-and-cost"},
 		{"what are the columns in the model picker", "models-and-cost"},
 		{"what does in/M and out/M mean on the model list", "models-and-cost"},
 		{"can I change the model while it is replying", "models-and-cost"},

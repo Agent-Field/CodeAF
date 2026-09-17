@@ -141,12 +141,12 @@ func columnHolds(lines []string, at, wide int, text string) bool {
 // over three hundred blanks (law 4 of rowfit.go, down the page).
 func TestATableDrawsNoHeadForAColumnNobodyPublished(t *testing.T) {
 	_, fit := tablePicker(120)
-	for _, head := range []string{"via", "first", "t/s", "makes"} {
+	for _, head := range []string{"via", "first", "t/s", modalityOutputsLead} {
 		if strings.Contains(fit.header(), head) {
 			t.Fatalf("nothing was measured, so %q has no column:\n%s", head, fit.header())
 		}
 	}
-	for _, head := range []string{"in/M", "out/M", "window", "elo", "reads"} {
+	for _, head := range []string{"in/M", "out/M", "window", "elo", modalityInputsLead} {
 		if !strings.Contains(fit.header(), head) {
 			t.Fatalf("the catalog publishes %q, so the table has to draw it:\n%s", head, fit.header())
 		}
@@ -169,14 +169,14 @@ func TestTheMakesColumnAppearsOnAListOfModelsThatMakeSomething(t *testing.T) {
 	p := &picker{}
 	p.start(drawing, "vendor/painter")
 	fit := p.tableFit(width)
-	if !strings.Contains(fit.header(), "makes") || !strings.Contains(fit.header(), "reads") {
+	if !strings.Contains(fit.header(), modalityOutputsLead) || !strings.Contains(fit.header(), modalityInputsLead) {
 		t.Fatalf("a list of makers has to draw both sides:\n%s", fit.header())
 	}
 	lines := tableRows(p, width)
 	// AND THE THREE KINDS OF SOUND STAY THREE KINDS. The old vocabulary folded
 	// speech, audio and music into one word, so a model that writes songs and
 	// one that reads a paragraph aloud drew the same row.
-	at, wide := columnCells(fit, lines[0], "makes")
+	at, wide := columnCells(fit, lines[0], modalityOutputsLead)
 	for _, want := range []string{"speech", "music", "video", "image"} {
 		if !columnHolds(lines, at, wide, want) {
 			t.Fatalf("%q is not under the makes head:\n%s", want, strings.Join(lines, "\n"))
@@ -198,12 +198,12 @@ func TestAColumnEveryRowAgreesOnIsNotDrawnWhenTheListWasChosenByIt(t *testing.T)
 	p := &picker{}
 	p.start(drawing, "vendor/painter")
 	head := p.tableFit(width).header()
-	if strings.Contains(head, modalityMakesLead) {
+	if strings.Contains(head, modalityOutputsLead) {
 		t.Fatalf("every row makes an image, so the column says nothing:\n%s", head)
 	}
 	// AND THE SIDE THAT DOES VARY IS STILL DRAWN — one of the three reads an
 	// image and two do not, which is exactly the thing somebody is choosing on.
-	if !strings.Contains(head, modalityReadsLead) {
+	if !strings.Contains(head, modalityInputsLead) {
 		t.Fatalf("the side that varies has to be drawn:\n%s", head)
 	}
 }
@@ -252,7 +252,13 @@ func TestARowWithNoPriceDrawsBlankCellsAndNotAZero(t *testing.T) {
 	if strings.Contains(free, "$") {
 		t.Fatalf("a row with no published price must draw no figure: %q", free)
 	}
-	if !strings.Contains(free, "262k") || !strings.Contains(free, "image, audio") {
+	if !strings.Contains(free, "262k") || !strings.Contains(free, "text image audio") {
+		t.Fatalf("the row lost the facts it does publish: %q", free)
+	}
+	// AND THE CELL SAYS `text` WHERE THE TAIL LEAVES IT OUT: under a head
+	// reading `inputs`, a blank means "nothing", and every model on this list
+	// takes text.
+	if plain := modelNote(tableCatalog[3]); strings.Contains(plain, "text") {
 		t.Fatalf("the row lost the facts it does publish: %q", free)
 	}
 }
@@ -361,15 +367,21 @@ func TestTheTailAndTheTableAreTheSameReadingOfAModel(t *testing.T) {
 		facts.in + "/" + facts.out + " per M",
 		facts.window,
 		"elo " + facts.elo,
-		modalityReadsLead + " " + facts.reads,
+		modalityInputsLead + " " + modalitySay(tableCatalog[0].Input, modalityOrderIn, false),
 	} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the tail says %q, which does not carry %q", note, want)
 		}
 	}
 	cells := facts.cells()
-	if cells[2] != facts.in || cells[3] != facts.out || cells[6] != facts.elo || cells[7] != facts.reads {
+	if cells[2] != facts.in || cells[3] != facts.out || cells[6] != facts.elo || cells[7] != facts.inputs {
 		t.Fatalf("the table's cells are not the same reading: %v", cells)
+	}
+	// AND THE ONE PLACE THE TWO SHAPES DELIBERATELY DIFFER IS `text`, which the
+	// cell carries and the tail does not — same reading, asked with withText
+	// either way ([modalitySay]).
+	if cells[7] != "text "+modalitySay(tableCatalog[0].Input, modalityOrderIn, false) {
+		t.Fatalf("the cell has to be the tail's words with text in front: %q", cells[7])
 	}
 }
 

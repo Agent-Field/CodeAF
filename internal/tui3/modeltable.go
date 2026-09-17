@@ -107,8 +107,8 @@ var modelColumns = [...]modelColumn{
 	{head: "window", right: true},
 	{head: "t/s", right: true},
 	{head: "elo", right: true},
-	{head: modalityReadsLead, selects: true},
-	{head: modalityMakesLead, selects: true},
+	{head: modalityInputsLead, selects: true},
+	{head: modalityOutputsLead, selects: true},
 }
 
 // modelHead is what stands over the name column. It is the only head that names
@@ -171,7 +171,7 @@ const modelTableLeast = 2
 // column added there and a cell added here is one change in two halves and the
 // compiler names the half that was forgotten.
 func (f modelFacts) cells() [len(modelColumns)]string {
-	return [len(modelColumns)]string{f.via, f.first, f.in, f.out, f.window, f.rate, f.elo, f.reads, f.makes}
+	return [len(modelColumns)]string{f.via, f.first, f.in, f.out, f.window, f.rate, f.elo, f.inputs, f.outputs}
 }
 
 // modelTable is how wide each column wants to be, measured over a whole list

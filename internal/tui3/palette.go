@@ -2205,8 +2205,11 @@ func (a *app) nonChatWarning(id string) string {
 // surface where the modality nouns cannot stand alone. A column says the side
 // in its head and the cell carries `speech`; a sentence in the middle of a
 // conversation has no head over it, so the verb is written out. Both are built
-// from the same two readings ([modalityReads] and [modalityMakes]), so there is
-// no second vocabulary to keep in step — only a second grammar.
+// from the same two readings ([modalityInputs] and [modalityOutputs]) with
+// `text` left off, so there is no second vocabulary to keep in step — only a
+// second grammar. Text is left off because the NON-TEXT half is the whole
+// reason: "it answers with text image" says the opposite of what a refusal
+// means ([modalitySay]'s withText).
 //
 // WHICH SIDE IT NAMES IS WHICHEVER SIDE IS THE REASON. A model that answers in
 // speech is refused for what it gives back; a transcriber is refused for what it
@@ -2215,10 +2218,10 @@ func (a *app) nonChatWarning(id string) string {
 // refusal is the bare sentence, because a reason nobody published is not a
 // reason this surface may invent.
 func cannotChatBecause(model Model) string {
-	if makes := modalityMakes(model.Output); makes != "" {
+	if makes := modalitySay(model.Output, modalityOrderOut, false); makes != "" {
 		return "it answers with " + makes
 	}
-	if reads := modalityReads(model.Input); reads != "" && !readsText(model) {
+	if reads := modalitySay(model.Input, modalityOrderIn, false); reads != "" && !readsText(model) {
 		return "it reads " + reads + ", not text"
 	}
 	return ""
