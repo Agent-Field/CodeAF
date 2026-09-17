@@ -34,12 +34,26 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 unset CODEAF_TELEMETRY DO_NOT_TRACK || true
 
+# ok() evals these assertion strings, so they stay single-quoted and resolve
+# every variable at run time; nothing below expands its quotes early.
+# shellcheck disable=SC2016,SC2034 # ok() evals these strings; quoting is deliberate
+{
+
 # --- install.json -----------------------------------------------------------
 
 CHANNEL=stable write_install_marker "$tmp/state"
 f="$tmp/state/telemetry/install.json"
 ok "marker exists" '[ -f "$f" ]'
 mode_of() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
+json_valid() {
+	if command -v python3 >/dev/null 2>&1; then
+		python3 -m json.tool "$f" >/dev/null 2>&1
+	elif command -v jq >/dev/null 2>&1; then
+		jq -e . "$f" >/dev/null 2>&1
+	else
+		grep -Eq '"channel":"(stable|rc|staging|dev|unknown)"' "$f"
+	fi
+}
 ok "telemetry dir is 0700" '[ "$(mode_of "$tmp/state/telemetry")" = 700 ]'
 ok "install.json is 0600" '[ "$(mode_of "$f")" = 600 ]'
 ok "install_method is script" 'grep -q "\"install_method\":\"script\"" "$f"'
@@ -52,6 +66,14 @@ ok "installer creates no install_id" '[ ! -e "$tmp/state/telemetry/install_id" ]
 : > "$tmp/state/telemetry/install_id"
 CHANNEL=rc write_install_marker "$tmp/state"
 ok "existing install_id left untouched" '[ ! -s "$tmp/state/telemetry/install_id" ]'
+# The channel lands in JSON verbatim and CHANNEL can come from the environment:
+# a known channel is recorded as-is, anything else becomes "unknown", and the
+# marker parses either way.
+ok "valid channel recorded" 'grep -q "\"channel\":\"rc\"" "$f"'
+ok "valid channel marker is valid JSON" 'json_valid'
+CHANNEL='we"ird' write_install_marker "$tmp/state"
+ok "unexpected channel written as unknown" 'grep -q "\"channel\":\"unknown\"" "$f"'
+ok "unexpected-channel marker is valid JSON" 'json_valid'
 ok "unwritable state root does not fail the install" 'write_install_marker /proc/nonexistent-root'
 
 # --- the notice -------------------------------------------------------------
@@ -65,22 +87,29 @@ ok "notice matches the contract verbatim" '[ "$body" = "$expected" ]'
 ok "notice goes to stderr, nothing to stdout" '[ -z "$(print_telemetry_notice 2>/dev/null)" ]'
 
 for v in off 0 false OFF False; do
-	out=$( ( CODEAF_TELEMETRY="$v"; print_telemetry_notice ) 2>&1 )
+	export CODEAF_TELEMETRY="$v"
+	out=$( print_telemetry_notice 2>&1 )
 	ok "CODEAF_TELEMETRY=$v opts out" 'case "$out" in *"off"*) true;; *) false;; esac'
 	ok "opt-out prints no notice body" 'case "$out" in *"anonymous usage counts to AgentField"*) false;; *) true;; esac'
+	unset CODEAF_TELEMETRY
 done
 for v in 1 true TRUE; do
-	out=$( ( DO_NOT_TRACK="$v"; print_telemetry_notice ) 2>&1 )
+	export DO_NOT_TRACK="$v"
+	out=$( print_telemetry_notice 2>&1 )
 	ok "DO_NOT_TRACK=$v opts out" 'case "$out" in *"off"*) true;; *) false;; esac'
+	unset DO_NOT_TRACK
 done
 out=$( print_telemetry_notice 2>&1 )
 ok "unset prints the notice" 'case "$out" in *"anonymous usage counts to AgentField"*) true;; *) false;; esac'
-out=$( ( CODEAF_TELEMETRY=1; print_telemetry_notice ) 2>&1 )
+export CODEAF_TELEMETRY=1
+out=$( print_telemetry_notice 2>&1 )
 ok "CODEAF_TELEMETRY=1 prints the notice" 'case "$out" in *"anonymous usage counts to AgentField"*) true;; *) false;; esac'
+unset CODEAF_TELEMETRY
 
 # --- nothing new on the wire --------------------------------------------------
 
 ok "no telemetry request anywhere in the installer" '! grep -qE "agentfield\.ai/api|POST" "$script"'
+}
 
 printf 'installer telemetry: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

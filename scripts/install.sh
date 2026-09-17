@@ -83,6 +83,14 @@ telemetry_off() {
 write_install_marker() {
   local directory="$1"
   local file
+  # The channel lands in JSON verbatim and CHANNEL can come from the
+  # environment, so only a known channel is recorded; anything else is
+  # "unknown" instead of malformed JSON.
+  local channel
+  case "${CHANNEL:-}" in
+    stable|rc|staging|dev) channel="$CHANNEL" ;;
+    *) channel="unknown" ;;
+  esac
   if ! mkdir -p "$directory/telemetry" 2>/dev/null; then
     printf 'codeaf: could not create %s/telemetry; skipping the install marker\n' "$directory" >&2
     return 0
@@ -90,7 +98,7 @@ write_install_marker() {
   chmod 0700 "$directory/telemetry"
   file="$directory/telemetry/install.json"
   if ! { printf '{"install_method":"script","channel":"%s","installed_at":"%s"}' \
-    "$CHANNEL" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; } > "$file" 2>/dev/null; then
+    "$channel" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; } > "$file" 2>/dev/null; then
     printf 'codeaf: could not write %s; skipping the install marker\n' "$file" >&2
     return 0
   fi
@@ -316,7 +324,7 @@ else
   esac
 fi
 
-if [[ -z "$TAG" ]]; then
+if [[ -z "${TAG:-}" ]]; then
   api_problem
 fi
 
