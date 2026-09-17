@@ -261,6 +261,22 @@ func run() error {
 		// because the questions people ask most are the ones they ask before
 		// there is a key to make a model call with.
 		return runManual(os.Args[2:])
+	case "patch":
+		// The edit hand's exact-match replacement (patch.go). One old text in,
+		// one file with it replaced out, a count in the refusal when the text is
+		// not there exactly once.
+		return runPatch(os.Args[2:])
+	case "doc":
+		// The billed document parse the read_document tool runs, printed
+		// straight (doc.go) — free on a plain file, billed on a scan.
+		return runDoc(os.Args[2:])
+	case "web":
+		// The search and fetch pair the belt's web verbs run (web.go).
+		return runWeb(os.Args[2:])
+	case "image":
+		// The generator the generate_image tool runs, with the same spend
+		// accounting (image.go).
+		return runImage(os.Args[2:])
 	// Three spellings for one question, because three different callers ask it
 	// and none of them should have to know which one this build prefers: the
 	// agentfield Python doctor runs `codeaf version`, the Go doctor runs
@@ -357,8 +373,7 @@ Hand it work — nobody is watching, the answer is on stdout
   codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
               [--json] [--yes-spend] [--model slug] [--plan-model slug]
               [--context-fill 60] [--completion-reserve 65536] [--debug]
-      do one task and exit — the same living agent the chat runs, with nobody
-      watching. What you type is the goal, and it is run verbatim
+      do one task and exit — the same living agent the chat runs, unwatched
   codeaf exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
               [--token-budget N] [--timeout 15m] [--model slug]
               [--context-fill N] [--completion-reserve N] [--json]
@@ -386,10 +401,8 @@ Look at what happened — read-only, no key, nothing spent
       the models this machine will use, and what each has been measured at
   codeaf doctor [--db path]
       is this install healthy, and where does it keep things
-  codeaf manual
-      every page of codeaf's own manual, one per line
-  codeaf manual <page> | "<question>"
-      that page printed whole, or the sections that answer a question
+  codeaf manual [<page> | "<question>"]
+      every page, listed; one page whole, or the sections answering a question
   codeaf version
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
@@ -398,8 +411,7 @@ Housekeeping — changes state on disk or on the network
   codeaf cache
       what the shared build cache holds, and how big it is
   codeaf cache clean [--yes]
-      delete ~/.codeaf/cache to free disk. It prints the size and path, then
-      asks you to type "` + cacheCleanWord + `" — --yes skips that. Conversations are untouched
+      delete the build cache; you type "` + cacheCleanWord + `" to confirm, --yes skips it
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
   codeaf serve [--workspace path] [--relay url]
@@ -419,6 +431,10 @@ Housekeeping — changes state on disk or on the network
   codeaf services stop <name> [--db path]
   codeaf wake [--db path] [--timeout 2m]
       run one full background pass by hand and exit
+  codeaf patch FILE --old TEXT --new TEXT [--old-file|--new-file PATH]
+  codeaf doc PATH [--pages A-B]
+  codeaf web fetch URL | codeaf web search QUERY [--count N]
+  codeaf image "PROMPT" -o PATH [--model M]
   codeaf help env
       the environment table: every variable and its default
 
