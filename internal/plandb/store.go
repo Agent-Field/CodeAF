@@ -2167,6 +2167,126 @@ func (s *Store) SpendSummary() SpendSummary {
 	return result
 }
 
+// SpendLine is one row of a spend rollup: the key the ledger was grouped
+// under — a chat, a project, a seat, a model, or the task a charge was made
+// against — and the dollars, tokens and calls the rows under that key carry.
+//
+// MODEL AND ROLE MIRROR THE KEY ON THE MODEL AND SEAT AXES, so a reader asking
+// for a model's or a seat's spend can read the word by name; on the entity
+// axes — chat, project, task — a group spans several models and seats, so both
+// stay empty rather than naming one of many.
+type SpendLine struct {
+	Key   string  `json:"key"`
+	Model string  `json:"model,omitempty"`
+	Role  string  `json:"role,omitempty"`
+	USD   float64 `json:"usd"`
+	In    int     `json:"in"`
+	Out   int     `json:"out"`
+	Calls int     `json:"calls"`
+}
+
+// spendAxes names the rollups SpendBy accepts: the two tags a store carries
+// on every row, the two attribution columns the ledger writes, and the task a
+// charge was made against.
+var spendAxes = []string{"chat", "project", "seat", "model", "task"}
+
+// spendAxisKey answers the column one axis groups on, and whether it needs the
+// tasks join: chat and project read the tags of the task a charge names, while
+// seat, model and task read the ledger's own columns.
+func spendAxisKey(axis string) (string, bool) {
+	switch axis {
+	case "chat":
+		return "t.chat", true
+	case "project":
+		return "t.project", true
+	case "seat":
+		return "s.role", false
+	case "model":
+		return "s.model", false
+	case "task":
+		return "s.task_id", false
+	}
+	return "", false
+}
+
+// SpendBy answers the ledger rolled up under one axis, heaviest key first,
+// over the charges written since a moment — the zero time means the whole
+// ledger. Each line is the exact sum of the rows under its key, and a key with
+// no rows under it is absent, never a zero line.
+//
+// chat and project read the tags of the task each charge names, so a charge
+// whose task the store does not hold has no tag to be counted under and is left
+// out, exactly as spendTotals does. seat, model and task read the ledger's own
+// columns, so a charge the store cannot place still answers under the word it
+// carries. An axis that is not one of spendAxes answers nothing.
+func (s *Store) SpendBy(axis string, since time.Time) []SpendLine {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keyExpr, join := spendAxisKey(axis)
+	if keyExpr == "" {
+		return nil
+	}
+	// THE WINDOW IS APPLIED IN GO, not in the query: the ledger stores `at` as
+	// RFC3339Nano, whose fractional digits are variable, so a text comparison
+	// against a bound would misorder a whole second against its own fraction.
+	// The ledger is small by design, so reading its rows and cutting them at
+	// the parsed moment is both exact and cheap.
+	query := `SELECT ` + keyExpr + `, s.usd, s.in_tokens, s.out_tokens, s.at FROM spend s`
+	if join {
+		query += ` JOIN tasks t ON t.id = s.task_id`
+	}
+	rows, err := s.rdb.Query(query)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	grouped := map[string]*SpendLine{}
+	for rows.Next() {
+		var key, at string
+		var usd float64
+		var in, out int
+		if err := rows.Scan(&key, &usd, &in, &out, &at); err != nil {
+			return nil
+		}
+		moment, err := parseTime(at)
+		if err != nil {
+			return nil
+		}
+		if !since.IsZero() && moment.Before(since) {
+			continue
+		}
+		line := grouped[key]
+		if line == nil {
+			line = &SpendLine{Key: key}
+			grouped[key] = line
+		}
+		line.USD += usd
+		line.In += in
+		line.Out += out
+		line.Calls++
+	}
+	if err := rows.Err(); err != nil {
+		return nil
+	}
+	lines := make([]SpendLine, 0, len(grouped))
+	for _, line := range grouped {
+		switch axis {
+		case "model":
+			line.Model = line.Key
+		case "seat":
+			line.Role = line.Key
+		}
+		lines = append(lines, *line)
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		if lines[i].USD != lines[j].USD {
+			return lines[i].USD > lines[j].USD
+		}
+		return lines[i].Key < lines[j].Key
+	})
+	return lines
+}
+
 func cloneTask(task *Task) *Task {
 	if task == nil {
 		return nil
