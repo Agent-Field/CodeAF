@@ -95,17 +95,24 @@ func (a *Agent) mediaSchema(base, noun string) json.RawMessage {
 // terms, empty on success — the same contract every argument check on this
 // belt answers with.
 func (a *Agent) mediaPick(modality, word, fallback string) (string, string) {
+	return mediaPickWith(a.config.MediaPick, modality, word, fallback)
+}
+
+// mediaPickWith is the pick itself, with the picker handed in rather than read
+// off the agent, so the command line's image door resolves a --model word
+// through exactly the same refusal words the belt's tool answers with.
+func mediaPickWith(pick func(modality, word string) (string, error), modality, word, fallback string) (string, string) {
 	word = strings.TrimSpace(word)
 	if word == "" {
 		return fallback, ""
 	}
-	if a.config.MediaPick == nil {
+	if pick == nil {
 		// Unreachable through the advertised schema — the argument is only
 		// spliced in when a picker exists — but a model that invents the
 		// argument anyway is told the truth rather than silently ignored.
 		return "", "this session cannot choose a " + modality + " model per call; leave model out to use " + fallback
 	}
-	picked, err := a.config.MediaPick(modality, word)
+	picked, err := pick(modality, word)
 	if err != nil {
 		return "", err.Error()
 	}
@@ -126,11 +133,17 @@ func (a *Agent) mediaPick(modality, word, fallback string) (string, string) {
 // BEFORE the read, for image.go's reason: a limit enforced after the read has
 // already pulled the file into memory to discover it was too big.
 func (a *Agent) mediaReference(path string) (string, string) {
+	return mediaReferenceFrom(a.config.Workspace, path)
+}
+
+// mediaReferenceFrom is [Agent.mediaReference] with the workspace handed in,
+// so the command line's image door reads its references off the same road.
+func mediaReferenceFrom(workspace, path string) (string, string) {
 	named := filepath.ToSlash(strings.TrimSpace(path))
 	if named == "" {
 		return "", "a reference path is empty"
 	}
-	full := resolveInWorkspace(path, a.config.Workspace)
+	full := resolveInWorkspace(path, workspace)
 	mediaType := imageMediaTypes[strings.ToLower(filepath.Ext(full))]
 	if mediaType == "" {
 		return "", named + " is not a picture that can be used as a reference — png, jpeg, webp and gif are"
@@ -164,12 +177,18 @@ func (a *Agent) mediaReference(path string) (string, string) {
 // object, received string" — text-to-image kept working, so the break was
 // invisible until someone asked for an edit of their own last render.
 func (a *Agent) mediaReferences(paths []string) ([]provider.ImageReference, string) {
+	return mediaReferencesFrom(a.config.Workspace, paths)
+}
+
+// mediaReferencesFrom is [Agent.mediaReferences] with the workspace handed in,
+// for the command line's image door and the same reason.
+func mediaReferencesFrom(workspace string, paths []string) ([]provider.ImageReference, string) {
 	if len(paths) == 0 {
 		return nil, ""
 	}
 	encoded := make([]provider.ImageReference, 0, len(paths))
 	for _, path := range paths {
-		dataURL, refusal := a.mediaReference(path)
+		dataURL, refusal := mediaReferenceFrom(workspace, path)
 		if refusal != "" {
 			return nil, refusal
 		}
@@ -192,10 +211,16 @@ func (a *Agent) mediaReferences(paths []string) ([]provider.ImageReference, stri
 // the same second is what "make me three of these" produces, and the third one
 // silently overwriting the second would lose work nobody asked to lose.
 func (a *Agent) mediaDestination(asked, prompt, extension, directory string) (string, error) {
+	return mediaDestinationFrom(a.config.Workspace, asked, prompt, extension, directory)
+}
+
+// mediaDestinationFrom is [Agent.mediaDestination] with the workspace an asked
+// path is resolved against handed in, for the command line's image door.
+func mediaDestinationFrom(workspace, asked, prompt, extension, directory string) (string, error) {
 	if asked = strings.TrimSpace(asked); asked != "" {
 		path := asked
 		if !filepath.IsAbs(path) {
-			path = filepath.Join(a.config.Workspace, path)
+			path = filepath.Join(workspace, path)
 		}
 		path = filepath.Clean(path)
 		if filepath.Ext(path) == "" {

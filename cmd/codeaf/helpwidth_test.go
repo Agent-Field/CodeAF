@@ -129,6 +129,10 @@ func helpPages(t *testing.T) []helpPage {
 		{"devices", runDevices},
 		{"plan new", func(args []string) error { return runPlanNew("plan new", args) }},
 		{"plan run", func(args []string) error { return runGraph("plan run", args) }},
+		{"patch", runPatch},
+		{"doc", runDoc},
+		{"web", runWeb},
+		{"image", runImage},
 	} {
 		door := door
 		capture(door.name+" --help", func() error { return door.run([]string{"--help"}) })
