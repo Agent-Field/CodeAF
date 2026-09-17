@@ -2666,7 +2666,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 		"enter again to disconnect",
 		"the disconnected sentence first and then says",
 		"A direct-service row and status line draw no `via` at all and open no provider\nsheet",
-		"That written host name is the row's name everywhere",
+		"That name is the connection everywhere",
 		"a **Something else** service must provide the compatible chat path",
 		"tries `GET <base>/models` first",
 		"When that address is absent, codeaf connects the service without inventing rows",
