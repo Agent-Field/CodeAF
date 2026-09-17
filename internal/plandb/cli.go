@@ -11,13 +11,13 @@ package plandb
 // dispatches under the task's own id; the lifecycle verbs are refused with
 // the supervisor's own sentence, naming the verb, so a model that reaches
 // for one learns the rule in one step. `go` and `done --next` are the two
-// caller-owned claims (rust parity, REFERENCE.md): the pulse re-claims a
-// task claimed that way under its own id once it becomes a node.
+// caller-owned claims (docs/design/plandb-cli/REFERENCE.md): the pulse
+// re-claims a task claimed that way under its own id once it becomes a node.
 //
-// Output matches the rust reference's captured shapes: human text by
-// default, --json for structured answers, ids printed with their t- prefix
-// and accepted with or without it, errors as one plain sentence on stderr
-// with exit 1 — the cause, and what to do about it.
+// Output has one shape everywhere: human text by default, --json for
+// structured answers, ids printed with their t- prefix and accepted with or
+// without it, errors as one plain sentence on stderr with exit 1 — the cause,
+// and what to do about it.
 
 import (
 	"encoding/json"
@@ -31,8 +31,8 @@ import (
 	"time"
 )
 
-// cliVersion is what --version prints. The rust reference answers 0.2.1;
-// the Go port's line moves on its own.
+// cliVersion is what --version prints. It is this CLI's own line, and it
+// moves on its own.
 const cliVersion = "0.3.0"
 
 // The runner's two streams sit behind variables so a test can drive Main
@@ -107,8 +107,8 @@ func cliFail(err error) int {
 
 // cliScan is the whole argument grammar: positionals collected in order,
 // --flag value, --flag=value, bare boolean flags, --dep repeatable, and --
-// ending the flags. Flags are allowed after positionals the way the rust
-// CLI allows them.
+// ending the flags. Flags are allowed after positionals, because the
+// doctrine's own sentences put them there.
 func cliScan(argv []string) (*cliParsed, error) {
 	p := &cliParsed{vals: map[string]string{}, lists: map[string][]string{}, bools: map[string]bool{}}
 	boolFlags := map[string]bool{
@@ -576,7 +576,8 @@ func cliBatchSpecs(st *Store, parentID string, parts []cliSplitPart) ([]string, 
 	return ids, specs, nil
 }
 
-// cliGo claims the highest-priority ready task for the CALLER — rust parity.
+// cliGo claims the highest-priority ready task for the CALLER, not for the
+// runtime.
 // The runtime re-claims a task claimed this way under its own id once the
 // pulse makes it a node, which is what keeps the worker's finish command
 // enforceable.
@@ -596,9 +597,9 @@ func cliGo(st *Store, p *cliParsed) error {
 	return cliPrintClaimed(st, task, p.bools["json"])
 }
 
-// cliPrintClaimed renders the claimed task the rust shape spells: the arrow
-// line with the run's counts, the downstream work that will receive the
-// result, and the action reminder.
+// cliPrintClaimed renders the claimed task: the arrow line with the run's
+// counts, the downstream work that will receive the result, and the action
+// reminder.
 func cliPrintClaimed(st *Store, task *Task, asJSON bool) error {
 	if asJSON {
 		return cliPrintJSON(cliTaskObject(st, task))
@@ -693,7 +694,7 @@ func cliRunningFor(st *Store, agent string) *Task {
 }
 
 // cliAgent answers the caller's identity: --agent, then PLANDB_AGENT, then
-// "default" — the rust CLI's own ladder.
+// "default".
 func cliAgent(p *cliParsed) string {
 	if agent := p.vals["agent"]; agent != "" {
 		return agent
@@ -937,8 +938,8 @@ func cliCancel(st *Store, p *cliParsed) error {
 
 // cliWhatIf previews a cancel without applying it: the task, its
 // non-terminal descendants, and the hard dependents that would be ended
-// with them. The rust CLI echoes the line; ours previews the cascade,
-// because "preview effects" is what its help promises.
+// with them. A what-if previews the cascade rather than echoing the verb
+// back, because "preview effects" is what its help promises.
 func cliWhatIf(st *Store, p *cliParsed) error {
 	if len(p.pos) < 2 {
 		return errors.New(`what-if needs a task — plandb what-if cancel <task-id>`)
@@ -1269,8 +1270,9 @@ func cliSearchVerb(st *Store, p *cliParsed) error {
 	return nil
 }
 
-// cliContext records a run-wide fact; kinds are freeform because the rust
-// CLI's are.
+// cliContext records a run-wide fact; kinds are freeform, because the
+// doctrine names them (`--kind decision`) and the store takes the word at
+// face value.
 func cliContext(st *Store, p *cliParsed) error {
 	content := strings.Join(p.pos[1:], " ")
 	if content == "" {
@@ -1586,7 +1588,7 @@ func cliNoteObject(note Note) cliNoteJSON {
 }
 
 // cliResolve answers one task for a word the model may have written loosely,
-// with the rust CLI's not-found shape.
+// and spells a miss as one plain sentence: `not found: task t-x`.
 func cliResolve(st *Store, word string) (*Task, error) {
 	task, err := st.Resolve(word)
 	if err != nil {
@@ -1602,8 +1604,7 @@ func cliResolve(st *Store, word string) (*Task, error) {
 // of every id it shows.
 func cliID(id string) string { return "t-" + id }
 
-// cliIcon is the status vocabulary the rust shapes spell: one mark per
-// state, the same in every row.
+// cliIcon is the status vocabulary: one mark per state, the same in every row.
 func cliIcon(status Status) string {
 	switch status {
 	case StatusDone:
@@ -1653,8 +1654,8 @@ func cliCount(st *Store) cliCounts {
 	return c
 }
 
-// cliBracket is the count line the rust shapes share: `✓ t-x done [1/2 · 3
-// ready · 0 blocked]`.
+// cliBracket is the count line a claimed or finished task prints beside its
+// own row: `✓ t-x done [1/2 · 3 ready · 0 blocked]`.
 func cliBracket(st *Store) string {
 	c := cliCount(st)
 	return fmt.Sprintf("[%d/%d · %d ready · %d blocked]", c.done, c.total, c.ready, c.pending)
@@ -1700,7 +1701,7 @@ func cliPercent(done, total int) int {
 
 // cliProjectID derives the project's printed identity from its name — one
 // store per file, so the name is the identity, spelled with the p- prefix
-// the rust shapes show.
+// every printed row carries.
 func cliProjectID(name string) string {
 	slug := strings.Map(func(r rune) rune {
 		switch {
@@ -1722,8 +1723,8 @@ func cliProjectID(name string) string {
 	return "p-" + slug
 }
 
-// cliTaskJSON is the task as --json prints it: the fields our store carries,
-// ids spelled with their t- prefix, and no rust field this store has no
+// cliTaskJSON is the task as --json prints it: the fields this store
+// carries, ids spelled with their t- prefix, and no field the store has no
 // answer for.
 type cliTaskJSON struct {
 	ID           string       `json:"id"`
@@ -1783,7 +1784,7 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 	return out
 }
 
-// cliSplitJSON is the split answer as the reference captures it: the created
+// cliSplitJSON is the split answer as --json prints it: the created
 // ids in part order, the title map the doctrine tells the model to read, and
 // the effect the plan now runs under.
 type cliSplitJSON struct {
