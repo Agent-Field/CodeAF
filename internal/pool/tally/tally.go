@@ -7,6 +7,8 @@
 package tally
 
 import (
+	"encoding/json"
+	"fmt"
 	"maps"
 	"math"
 	"slices"
@@ -287,4 +289,121 @@ func (c Cell) Var() float64 {
 		return 0
 	}
 	return v
+}
+
+// cellDoc and winDoc are the JSON shapes of one cell and one win; doc is
+// the whole document. Fields unknown to this package, here and inside an
+// entry, are ignored when reading.
+type cellDoc struct {
+	Metric string            `json:"metric"`
+	Role   string            `json:"role"`
+	Model  string            `json:"model"`
+	Dims   map[string]string `json:"dims"`
+	N      int64             `json:"n"`
+	Sum    float64           `json:"sum"`
+	SumSq  float64           `json:"sumsq"`
+}
+
+type winDoc struct {
+	Role   string `json:"role"`
+	Winner string `json:"winner"`
+	Loser  string `json:"loser"`
+	Wins   int64  `json:"wins"`
+}
+
+type doc struct {
+	Schema int       `json:"schema"`
+	Cells  []cellDoc `json:"cells"`
+	Wins   []winDoc  `json:"wins"`
+}
+
+// schemaVersion is the only document schema this package writes and reads.
+const schemaVersion = 1
+
+// MarshalJSON encodes the sheet deterministically: sheets holding the same
+// statistics give byte-identical documents, whatever order anything was
+// inserted in. Cells are sorted by metric, role, model and dim labels,
+// wins by role, winner and loser, dim labels by key. The document carries
+// a top-level "schema": 1.
+func (s *Sheet) MarshalJSON() ([]byte, error) {
+	s.mu.Lock()
+	cells, wins := s.snapshotLocked()
+	s.mu.Unlock()
+
+	docs := make([]cellDoc, 0, len(cells))
+	for _, e := range cells {
+		dims := e.addr.dims
+		if dims == nil {
+			dims = map[string]string{}
+		}
+		docs = append(docs, cellDoc{
+			Metric: e.addr.metric,
+			Role:   e.addr.role,
+			Model:  e.addr.model,
+			Dims:   dims,
+			N:      e.cell.N,
+			Sum:    e.cell.Sum,
+			SumSq:  e.cell.SumSq,
+		})
+	}
+	slices.SortFunc(docs, func(a, b cellDoc) int {
+		if c := strings.Compare(a.Metric, b.Metric); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.Role, b.Role); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.Model, b.Model); c != 0 {
+			return c
+		}
+		return strings.Compare(dimsKey(a.Dims), dimsKey(b.Dims))
+	})
+	wdocs := make([]winDoc, 0, len(wins))
+	for _, w := range wins {
+		wdocs = append(wdocs, winDoc{Role: w.key.role, Winner: w.key.winner, Loser: w.key.loser, Wins: w.n})
+	}
+	slices.SortFunc(wdocs, func(a, b winDoc) int {
+		if c := strings.Compare(a.Role, b.Role); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.Winner, b.Winner); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Loser, b.Loser)
+	})
+	return json.Marshal(doc{Schema: schemaVersion, Cells: docs, Wins: wdocs})
+}
+
+// UnmarshalJSON replaces the sheet's contents with the document. Fields
+// unknown to this package, at the top level and inside an entry, are
+// ignored. A document whose schema is greater than 1 is refused with an
+// error.
+func (s *Sheet) UnmarshalJSON(data []byte) error {
+	var d doc
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+	if d.Schema > schemaVersion {
+		return fmt.Errorf("tally: document schema %d is newer than this build reads", d.Schema)
+	}
+	cells := make(map[string]cellEntry, len(d.Cells))
+	for _, c := range d.Cells {
+		a := cellAddr{metric: c.Metric, role: c.Role, model: c.Model, dims: copyDims(c.Dims)}
+		k := a.key()
+		e := cells[k]
+		e.addr = a
+		e.cell.N += c.N
+		e.cell.Sum += c.Sum
+		e.cell.SumSq += c.SumSq
+		cells[k] = e
+	}
+	wins := make(map[winKey]int64, len(d.Wins))
+	for _, w := range d.Wins {
+		wins[winKey{role: w.Role, winner: w.Winner, loser: w.Loser}] += w.Wins
+	}
+	s.mu.Lock()
+	s.cells = cells
+	s.wins = wins
+	s.mu.Unlock()
+	return nil
 }

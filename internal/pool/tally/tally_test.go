@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"math"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -328,5 +330,190 @@ func TestMergedSheetsEqualSingleSheet(t *testing.T) {
 	merged.Merge(parts[1])
 	if !sameJSON(t, merged, one) {
 		t.Fatal("merged sheets disagree with one sheet that saw everything")
+	}
+}
+
+func TestMarshalEmpty(t *testing.T) {
+	j, err := json.Marshal(New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"schema":1,"cells":[],"wins":[]}`; string(j) != want {
+		t.Fatalf("empty sheet = %s, want %s", j, want)
+	}
+}
+
+func TestMarshalDeterministic(t *testing.T) {
+	s1 := New()
+	s1.Observe("b", "r", "m", nil, 1)
+	s1.Observe("a", "r", "m", nil, 1)
+	s1.Observe("m", "r", "m1", map[string]string{"b": "2"}, 1)
+	s1.Observe("m", "r", "m1", map[string]string{"a": "1"}, 2)
+	s1.Win("r", "y", "x")
+	s1.Win("r", "x", "y")
+
+	s2 := New()
+	s2.Observe("a", "r", "m", nil, 1)
+	s2.Observe("b", "r", "m", nil, 1)
+	s2.Observe("m", "r", "m1", map[string]string{"a": "1"}, 2)
+	s2.Observe("m", "r", "m1", map[string]string{"b": "2"}, 1)
+	s2.Win("r", "x", "y")
+	s2.Win("r", "y", "x")
+
+	j1, err := json.Marshal(s1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j2, err := json.Marshal(s2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(j1, j2) {
+		t.Fatalf("marshal depends on insertion order:\n%s\n%s", j1, j2)
+	}
+	if i, k := strings.Index(string(j1), `"metric":"a"`), strings.Index(string(j1), `"metric":"b"`); i > k {
+		t.Fatalf("cells not sorted: %s", j1)
+	}
+	if i, k := strings.Index(string(j1), `"winner":"x"`), strings.Index(string(j1), `"winner":"y"`); i > k {
+		t.Fatalf("wins not sorted: %s", j1)
+	}
+}
+
+func TestRoundTrip(t *testing.T) {
+	s := New()
+	s.Observe("tok", "coder", "vendor/m", map[string]string{"quant": "fp8"}, 1.5)
+	s.Observe("tok", "coder", "vendor/m", nil, 2)
+	s.Win("coder", "a", "b")
+	j, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := New()
+	if err := json.Unmarshal(j, back); err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSON(t, back, s) {
+		t.Fatalf("round trip changed the sheet: %s", j)
+	}
+	checkCell(t, back, "tok", "coder", "vendor/m", map[string]string{"quant": "fp8"}, Cell{N: 1, Sum: 1.5, SumSq: 2.25})
+	checkCell(t, back, "tok", "coder", "vendor/m", nil, Cell{N: 1, Sum: 2, SumSq: 4})
+	if x, y := back.Wins("coder", "a", "b"); x != 1 || y != 0 {
+		t.Fatalf("Wins = %d, %d, want 1, 0", x, y)
+	}
+}
+
+func TestUnmarshalReplacesContents(t *testing.T) {
+	src := New()
+	src.Observe("m", "r", "model", nil, 1)
+	j, err := json.Marshal(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirty := New()
+	dirty.Observe("old", "r", "model", nil, 9)
+	dirty.Win("r", "x", "y")
+	if err := json.Unmarshal(j, dirty); err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSON(t, dirty, src) {
+		t.Fatal("UnmarshalJSON did not replace existing contents")
+	}
+	if _, ok := dirty.Cell("old", "r", "model", nil); ok {
+		t.Fatal("old contents survived UnmarshalJSON")
+	}
+}
+
+func TestUnmarshalIgnoresUnknownFields(t *testing.T) {
+	doc := `{"schema":1,"note":"hello","cells":[` +
+		`{"metric":"m","role":"r","model":"vendor/m","dims":{"quant":"fp8"},"n":2,"sum":3,"sumsq":5,"taken_by":"x"},` +
+		`{"metric":"m2","role":"r","model":"vendor/m","n":1,"sum":2,"sumsq":4}` +
+		`],"wins":[{"role":"r","winner":"a","loser":"b","wins":3,"when":12}],"extra":[1]}`
+	s := New()
+	if err := json.Unmarshal([]byte(doc), s); err != nil {
+		t.Fatal(err)
+	}
+	checkCell(t, s, "m", "r", "vendor/m", map[string]string{"quant": "fp8"}, Cell{N: 2, Sum: 3, SumSq: 5})
+	checkCell(t, s, "m2", "r", "vendor/m", nil, Cell{N: 1, Sum: 2, SumSq: 4})
+	if x, y := s.Wins("r", "a", "b"); x != 3 || y != 0 {
+		t.Fatalf("Wins = %d, %d, want 3, 0", x, y)
+	}
+}
+
+func TestUnmarshalRefusesNewerSchema(t *testing.T) {
+	if err := json.Unmarshal([]byte(`{"schema":2}`), New()); err == nil {
+		t.Fatal("schema 2 accepted")
+	}
+	if err := json.Unmarshal([]byte(`{"schema":99,"cells":[]}`), New()); err == nil {
+		t.Fatal("schema 99 accepted")
+	}
+	if err := json.Unmarshal([]byte(`{"schema":1,"cells":[],"wins":[]}`), New()); err != nil {
+		t.Fatalf("schema 1 refused: %v", err)
+	}
+	if err := json.Unmarshal([]byte(`{}`), New()); err != nil {
+		t.Fatalf("document without a schema refused: %v", err)
+	}
+}
+
+func TestUnmarshalInvalidJSON(t *testing.T) {
+	for _, bad := range []string{``, `{`, `{"schema":1,"cells":"no"}`, `{"schema":"1"}`} {
+		if err := json.Unmarshal([]byte(bad), New()); err == nil {
+			t.Fatalf("invalid document %q accepted", bad)
+		}
+	}
+}
+
+func TestConcurrentUse(t *testing.T) {
+	const goroutines = 8
+	const each = 100
+	s := New()
+
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < each; i++ {
+				s.Observe("m", "r", "model", nil, 1)
+				s.Observe("m", "r", "model", map[string]string{"g": strconv.Itoa(g)}, 2)
+				s.Win("r", "a", "b")
+			}
+		}(g)
+	}
+	// A writer merging while the others observe, and a reader walking the
+	// sheet the whole time.
+	part := New()
+	part.Observe("m", "r", "model", map[string]string{"part": "1"}, 3)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			s.Merge(part)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			s.Wins("r", "a", "b")
+			s.Cell("m", "r", "model", nil)
+			if j, err := json.Marshal(s); err != nil {
+				t.Error(err)
+				return
+			} else if len(j) == 0 {
+				t.Error("empty marshal")
+				return
+			}
+		}
+	}()
+	wg.Wait()
+
+	checkCell(t, s, "m", "r", "model", nil, Cell{N: goroutines * each, Sum: goroutines * each, SumSq: goroutines * each})
+	for g := 0; g < goroutines; g++ {
+		checkCell(t, s, "m", "r", "model", map[string]string{"g": strconv.Itoa(g)},
+			Cell{N: each, Sum: 2 * each, SumSq: 4 * each})
+	}
+	checkCell(t, s, "m", "r", "model", map[string]string{"part": "1"}, Cell{N: 50, Sum: 150, SumSq: 450})
+	if x, y := s.Wins("r", "a", "b"); x != goroutines*each || y != 0 {
+		t.Fatalf("Wins = %d, %d, want %d, 0", x, y, goroutines*each)
 	}
 }
