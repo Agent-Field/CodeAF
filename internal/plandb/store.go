@@ -265,7 +265,7 @@ func (s *Store) ReadyLeaves() []*Task {
 	var tasks []*Task
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
-		if task.Status != StatusReady || task.Composite || len(executionBlockReasons(s.data, task)) > 0 {
+		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) || len(executionBlockReasons(s.data, task)) > 0 {
 			continue
 		}
 		tasks = append(tasks, cloneTask(task))
@@ -287,7 +287,7 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 		if !filter.admits(task.Project, task.Chat) {
 			continue
 		}
-		if task.Status != StatusReady || task.Composite {
+		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) {
 			continue
 		}
 		if reasons := executionBlockReasons(s.data, task); len(reasons) > 0 {
@@ -453,6 +453,38 @@ func (s *Store) Release(id, agent string) (*Task, error) {
 		}
 		task.Status, task.ClaimedBy, task.UpdatedAt = StatusPending, "", now
 		promote(next, now)
+		return nil
+	})
+}
+
+// Pause holds a task, and by inheritance everything under it, out of the
+// ready frontier without changing a single status: the flag is what readiness
+// reads, not a rung of the ladder. It is the runtime's and a person's hold,
+// never a worker's — the bare lifecycle verb stays refused to workers — and
+// the root, which is the run itself, is nobody's to pause.
+func (s *Store) Pause(id string) (*Task, error) {
+	return s.hold(id, true)
+}
+
+// Resume releases a hold Pause set. Resuming a task that was not paused
+// changes nothing and reports no error, so a caller may call it without
+// asking first.
+func (s *Store) Resume(id string) (*Task, error) {
+	return s.hold(id, false)
+}
+
+// hold is the one road both Pause and Resume take: refuse the root, set the
+// flag to the wanted value, and leave an already-settled task alone.
+func (s *Store) hold(id string, paused bool) (*Task, error) {
+	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
+	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if task.ID == next.RootID {
+			return errors.New("the harness owns the root task")
+		}
+		if task.Paused == paused {
+			return errNoChange
+		}
+		task.Paused, task.UpdatedAt = paused, now
 		return nil
 	})
 }
@@ -1044,7 +1076,7 @@ func (s *Store) ClaimNext(agent string) (*Task, error) {
 		var pick *Task
 		for _, id := range next.Order {
 			task := next.Tasks[id]
-			if task.Status != StatusReady || task.Composite || len(executionBlockReasons(*next, task)) > 0 {
+			if task.Status != StatusReady || task.Composite || pausedInLineage(*next, task) || len(executionBlockReasons(*next, task)) > 0 {
 				continue
 			}
 			if pick == nil || task.Priority > pick.Priority {
@@ -1346,6 +1378,21 @@ func promote(value *state, now time.Time) {
 			task.UpdatedAt, task.CompletedAt, changed = now, now, true
 		}
 	}
+}
+
+// pausedInLineage reports whether the task or any ancestor of it is paused.
+// Pause is inherited down the containment tree without touching a single
+// status, so every readiness read consults it beside the status ladder: a
+// paused subtree leaves the frontier whole while the tasks in it keep the
+// status they had. The walk is the same parent chain the ready ladder uses,
+// and it ends at the root, whose parent is the empty string.
+func pausedInLineage(value state, task *Task) bool {
+	for current := task; current != nil; current = value.Tasks[current.ParentID] {
+		if current.Paused {
+			return true
+		}
+	}
+	return false
 }
 
 // depsDone is the readiness rule: every hard dependency of the task AND of

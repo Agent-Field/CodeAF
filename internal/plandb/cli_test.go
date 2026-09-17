@@ -783,7 +783,7 @@ func TestPlandbCliRefusals(t *testing.T) {
 	before := h.cliReadStore(t)
 	refused := [][]string{
 		{"claim"}, {"start"}, {"fail"}, {"pause"}, {"next"}, {"heartbeat"}, {"progress"}, {"approve"},
-		{"task", "claim"}, {"task", "start"}, {"task", "fail"}, {"task", "pause"},
+		{"task", "claim"}, {"task", "start"}, {"task", "fail"},
 		{"task", "next"}, {"task", "heartbeat"}, {"task", "progress"}, {"task", "approve"},
 		{"use", "t-a"}, {"project", "list"}, {"project", "create", "x"},
 		{"mcp"}, {"serve"}, {"watch"}, {"events"}, {"ahead"}, {"artifact", "put", "t-a"},
