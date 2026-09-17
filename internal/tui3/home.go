@@ -3471,6 +3471,9 @@ func (a *app) homeRowGone(row session.SessionRow) bool {
 // the new conversation owes itself, so the submit below is talking to the new
 // agent and not to the one that just closed.
 func (a *app) homeStart(text string) tea.Cmd {
+	if (strings.TrimSpace(text) != "" || len(a.chips) > 0) && a.updateStopsTurn() {
+		return nil
+	}
 	if !a.canStart() {
 		a.home.say(newUnavailableWord, "")
 		return nil

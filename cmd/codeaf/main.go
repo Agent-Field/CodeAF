@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
 func main() {
@@ -150,6 +151,7 @@ func execute() (code int) {
 }
 
 func run() error {
+	codeupdate.CleanupOldRunning(os.Executable)
 	if len(os.Args) < 2 {
 		// No arguments opens the chat surface, and that surface is v3. The v2
 		// surface and its --v2 door (flag and environment pin both) were removed
@@ -258,6 +260,8 @@ func run() error {
 	// `codeaf --version`, and a person types `-v`.
 	case "version", "--version", "-v":
 		return runVersion()
+	case "update":
+		return runUpdate(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage(os.Args[2:])
 	default:
@@ -381,8 +385,9 @@ Look at what happened — read-only, no key, nothing spent
       that page printed whole, or the sections that answer a question
   codeaf version
       print the build this binary was cut from (--version and -v say the same)
-
 Housekeeping — changes state on disk or on the network
+  codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
+      check for or install a release; stable is the default
   codeaf cache
       what the shared build cache holds, and how big it is
   codeaf cache clean [--yes]
@@ -419,8 +424,7 @@ Plan work by hand — a plan you can read, edit and diff
               [--out plan.json] [--model slug] [--plan-model slug]
   codeaf plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json]
               [--yes-spend] [--model slug] [--plan-model slug]
-      a plan written to a file, then executed exactly as written. It is not what
-      most people want: nothing learnt mid-flight moves a frozen plan
+      a plan written to a file, then run exactly as written — it learns nothing
 
 Examples:
     codeaf                                open the conversation you were having
@@ -514,6 +518,9 @@ than fighting your shell.
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.codeaf). Move it
                        to run a disposable store that touches nothing of yours.
+  CODEAF_NO_UPDATE_CHECK
+                       1 skips the launch check; /update and codeaf update
+                       still work.
   CODEAF_PROFILE_DIR   where measured behaviour is kept (default CODEAF_HOME)
   CODEAF_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
                        "off" writes nothing; any other value is the file to
