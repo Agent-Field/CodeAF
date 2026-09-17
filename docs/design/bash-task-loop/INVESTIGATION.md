@@ -1,8 +1,8 @@
 # Why the bash belt lost — INVESTIGATION
 
-The first grid said the bash belt was worse than the pi belt on every row: more
+The first grid said the bash belt was worse than the shipped belt on every row: more
 steps, more money, and a landing that ended `failed` while its tree was green.
-The python planner this belt is a port of beats mini-swe everywhere, so the
+The planner this belt is a port of beats the baseline everywhere, so the
 shape of the loop was never the reason. Two faults in the port were.
 
 Both are fixed on `spark/bash-task-loop`; this file is the diagnosis they came
@@ -32,13 +32,13 @@ calls".
 ## Cause B — the auditor judged a restore, not the work
 
 CodeAF's audit is a second node that verifies a **clean restore** of the node's
-tree. That restore overlays only the pi-tool write ledger — the record `write`
+tree. That restore overlays only the file-tool write ledger — the record `write`
 and `edit` keep. A bash worker's writes go through the shell and populate
 nothing, so the auditor read a pristine tree no matter what the worker did.
 
 Evidence, the two audits of the same cell:
 
-- pi belt: **VERIFIED — read the staged diff showing `return lo` → `return hi`
+- shipped belt: **VERIFIED — read the staged diff showing `return lo` → `return hi`
   … test file is unmodified.**
 - bash belt: **REFUTED — no diff, no staged change, no untracked file; the
   working tree is identical to the starting commit.**

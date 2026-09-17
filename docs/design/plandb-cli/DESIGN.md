@@ -10,16 +10,13 @@ is where it was.*
 ## The one sentence
 
 The bash belt's coordination stops being codeaf's own graph verbs and becomes
-what the reference loop actually drives — a `plandb` CLI over a ported store,
+what the loop actually drives — a `plandb` CLI over a ported store,
 run by the model through its one bash tool, with the runtime owning the task
-lifecycle exactly as plancode's supervisor does.
+lifecycle exactly as the supervisor does.
 
-## What the reference does, as read from source
+## What the planner does
 
-Every claim below was read out of `miniplan/prompts.py` (the policy page),
-`miniplan/registry.py` (how the CLI is invoked) and `miniplan/runtime.py` (the
-supervisor's guard) in `/Users/santoshkumar/Documents/agentfield/code/plancode`
-on 2026-09-16 — not remembered:
+The planner drives the CLI this way:
 
 - **The model's verbs are coordination only.** The policy page teaches: `add`,
   `split` (JSON parts with `deps_on` naming sibling titles), `task add-dep`,
@@ -33,9 +30,9 @@ on 2026-09-16 — not remembered:
   `go`, `done`, `fail`, `pause`, `init`, `use` and friends are refused with
   "Task lifecycle and scope are managed by the supervisor". The supervisor
   claims each task at launch with the task's own id as the agent name
-  (`claim task --agent task`), and the worker's finish is `miniplan finish
-  --result …` — a runtime verb that checks lifecycle consistency and then
-  writes the completion into PlanDB.
+  (`claim task --agent task`), and the worker's finish is a `finish --result …`
+  runtime verb that checks lifecycle consistency and then writes the
+  completion into the plan store.
 - **The plan is one database for the whole run.** `registry.py` resolves the
   db path from the run's `run.json`, passes it explicitly on every call, sets
   `PLANDB_AGENT` for the caller, and reads `--json` when it wants structured
@@ -48,15 +45,15 @@ on 2026-09-16 — not remembered:
 
 ## The two things that already exist, and are adapted
 
-**The reference CLI is installed here**: `~/.local/bin/plandb` (rust, 0.2.1).
+**The earlier plandb CLI is installed here**: `~/.local/bin/plandb` (0.2.1).
 `plandb --help` prints the full surface and is the behaviour to match; where
-its help and the Go port disagree, the rust CLI wins. It is NOT the binary this
+its help and the Go port disagree, the earlier plandb CLI wins. It is NOT the binary this
 work installs over — it uses SQLite and a different store, and the runtime must
 read the same store the worker writes.
 
-**The Go port of the store exists**: an earlier port's `internal/plandb` (outside this tree) (`store.go`
-948 lines, `model.go`, `persist.go`, `store_test.go`) plus a tool surface at
-that port's `internal/tools/plandb.go`. Its shape is kept: `Status` (pending →
+**The Go port of the store exists**: an earlier port of `internal/plandb`
+(`store.go` 948 lines, `model.go`, `persist.go`, `store_test.go`) with a tool
+surface beside it. Its shape is kept: `Status` (pending →
 ready → claimed → running → done/failed/cancelled), `DepKind`
 (feeds_into/blocks/suggests), `TaskSpec`/`TaskPatch`/`Task`, `ContextEntry`,
 `Summary`, `ReadySet`; and `Store` with `Open/AddMany/ReadyLeaves/ReadySet/
@@ -68,8 +65,8 @@ What the adaptation changes, and why:
 
 - **The earlier governance gates come off.** `validateSpec` demands role,
   deliverables, acceptance, effect and resource claims, and `Claim` refuses a
-  task whose effect is unresolved or that carries no resource claim. The rust
-  CLI has none of that — `add TITLE --description SPEC` creates a task. Every
+  task whose effect is unresolved or that carries no resource claim. The
+  earlier plandb CLI has none of that — `add TITLE --description SPEC` creates a task. Every
   CLI `add` would fail under the old gates, so the gates go: the store keeps
   the graph laws and drops the eligibility ladder (`eligibilityReasons` and the
   resource-conflict refusal in `Claim` go with it — the CLI has no
@@ -77,12 +74,12 @@ What the adaptation changes, and why:
   parallel dispatch).
 - **`parallel` defaults to `safe`, not `serial`.** Under the port's conflict
   rule two serial tasks never run at once, which is the opposite of the
-  reference loop's whole point. The rust model is parallel-unless-declared;
+  loop's whole point. The earlier plandb CLI is parallel-unless-declared;
   the port follows it.
-- **Descriptions become optional at the store, taught as mandatory.** The rust
-  `add` accepts a descriptionless task; the doctrine still says "ALWAYS use
+- **Descriptions become optional at the store, taught as mandatory.** The
+  earlier plandb CLI's `add` accepts a descriptionless task; the doctrine still says "ALWAYS use
   --description. It's the work order". The store accepts; the page teaches.
-- **Notes are added.** The rust CLI has task-scoped notes (`task note`,
+- **Notes are added.** The earlier plandb CLI has task-scoped notes (`task note`,
   `task notes`) separate from project-wide context; the port has only
   `ContextEntry`. State gains `notes` — task id, agent, content, timestamp —
   and the store grows `AddNote`/`Notes`.
@@ -121,7 +118,7 @@ The CLI resolves the same store without being told: it walks up from its
 current directory looking for the first ancestor holding `plandb.json` or
 `.codeaf/plandb.json`. Every bash-belt worker's shell runs inside the session's
 tree directory, so the walk lands on the run's own store. `--db` overrides;
-`PLANDB_DB` is honoured for parity with the rust CLI. Nothing mutates the
+`PLANDB_DB` is honoured for parity with the earlier plandb CLI. Nothing mutates the
 process environment to point workers at the store — an environment variable is
 one process wide, and two sessions in one process would fight over it.
 
@@ -133,7 +130,7 @@ road when the sibling binary is not where the running binary is. One runner,
 `internal/plandb/cli`, both entries call. The worker's page names the resolved
 command (see the doctrine section); nothing else hardcodes either spelling.
 
-Output matches the rust CLI's shape: human text by default, `--json` for
+Output matches the earlier plandb CLI's shape: human text by default, `--json` for
 structured answers, `-c/--compact` accepted (compact is the default text
 shape). Every mutation prints the created or changed task's id; `add` and
 `split` print created ids and a `title_to_id` map for a split, which is what
@@ -159,7 +156,7 @@ the doctrine tells the model to read.
 | `go` | reports the ready set and says dispatch is automatic — it does not claim, because claiming is the runtime's (see below) |
 | `init NAME` | creates the project and its root task |
 
-**Refused to the model, with plancode's own sentence**: `claim`, `start`,
+**Refused to the model, in the planner's own words**: `claim`, `start`,
 `fail`, `pause`, `next`, `heartbeat`, `progress`, `approve` — the lifecycle is
 the runtime's. They are named in the refusal so a model that reaches for one
 learns the rule in one step.
@@ -207,7 +204,7 @@ One pass, no polling, no timers. It:
   depth one below the parent), the node is admitted through `admit` — the
   graph's frontier starts it exactly as it starts a `propose_task` child — and
   the store task is claimed with the task's own id as the agent name, which is
-  plancode's own trick and what makes the worker's finish command enforceable.
+  the planner's own trick and what makes the worker's finish command enforceable.
 
 Depth is the same three levels (`taskDepthLimit`): a ready child of a node at
 the floor is left in the store, and cancelled with a plain reason when its
@@ -218,7 +215,7 @@ a landing frees slots, and every landing is a pass.
 node is open, the pulse completes the store's root (`CompleteRoot`) and cancels
 whatever was left undelivered, each with a plain reason. The store's own
 composite auto-completion (a parent done when all its children are terminal)
-does the rest of the bookkeeping the reference's "Composite tasks
+does the rest of the bookkeeping the planner's "Composite tasks
 auto-complete when children finish" promises — and when an auto-completed
 parent's own node lands later, its report fills the empty placeholder the
 auto-completion left: the one case the store's ownership guard yields to, and
@@ -230,7 +227,7 @@ where a pulse would read a task still running and dispatch into a subtree
 `stopChildren` has already cut. A run whose root has completed is over; a new
 task in the same conversation seeds a fresh plan as the new root, and the
 finished plan is archived beside the session (`plandb.json.1`, `.2`, …) — one
-store per run, as the reference keeps it, and the one live name is the one
+store per run, as the planner keeps it, and the one live name is the one
 both the walk-up and the runtime find.
 
 **What comes off the belt.** For a bash-belt worker, `propose_task`,
@@ -242,7 +239,7 @@ coordination, and when the node has a `planID` it writes the revised brief
 through to the store task's description so the store stays the record.
 `internal/exec/bare` is untouched, exactly as the parent design says.
 
-**The worker's finish.** The page teaches what plancode's page teaches: finish
+**The worker's finish.** The page teaches the planner's rule: finish
 with the CLI — `<plandb> done --agent <your agent> --result '…'` — after
 acceptance holds, and end the turn when nothing independent remains. The
 node's landing is the safety net, not the finish: a task still running when its
@@ -255,7 +252,7 @@ belt does not carry is a prompt that lies.
 ## The doctrine
 
 `internal/session/prompts/bashworker.md` gains the planning section, in
-plancode's policy voice: the frame → plan → dispatch → wait → integrate loop;
+the planner's policy voice: the frame → plan → dispatch → wait → integrate loop;
 the command set exactly as the table above spells it (with the resolved
 command name rendered in, so the page never names a binary that is not there —
 the same law `beltfacts.go` states for every tool-naming sentence); "dispatch
@@ -263,7 +260,7 @@ is automatic — every ready task you create is executed by a fresh worker";
 "never claim/start/done tasks yourself — the runtime owns the lifecycle"; and
 the finish shape. The page's own sentence that still points at `propose_task`
 ("HANDING OUT IS AUTOMATIC: what you propose runs in its own worker") is
-rewritten to the store's words. The pi-tool doctrine sections stay exactly as
+rewritten to the store's words. The file-tool doctrine sections stay exactly as
 they are — this wave adds planning verbs, it does not touch the shell idioms.
 
 ## Waves, each landing green

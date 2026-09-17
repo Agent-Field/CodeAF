@@ -2,12 +2,12 @@
 
 Shared material for the plandb-cli wave. READ THIS FIRST, then
 [DESIGN.md](DESIGN.md). This file is reference for the wave's workers: it
-carries the observed behaviour of the rust CLI (captured 2026-09-16 from
+carries the observed behaviour of the earlier plandb CLI (captured 2026-09-16 from
 `~/.local/bin/plandb` 0.2.1, run against a scratch db), the adapted store's
 API as it stands on this branch, and the wiring semantics. Nothing here is
 owned by anybody: it is read and never written.
 
-## The rust CLI's observed shapes (what to match)
+## The earlier plandb CLI's observed shapes (what to match)
 
 Human text unless `--json`. Errors go to stderr as `error: <sentence>` with
 exit 1; successes print their line and exit 0.
@@ -103,7 +103,7 @@ $ plandb --json add "Design schema" --description "design the tables"
   "description": "design the tables",
   "status": "pending",
   "kind": "generic",
-  ... (only fields our store carries; unknown rust fields omitted)
+  ... (only fields our store carries; unknown fields omitted)
 
 $ plandb --json split t-a --into '[{"title":"P","description":"p"},{"title":"Q","description":"q","deps_on":["P"]}]'
 {
@@ -136,13 +136,13 @@ Ids: ours are `t-` + the bare id the store keeps (`t-a`, `t-7ekw`). The store
 trims the `t-` prefix on input; the CLI prints it back on. `--as api` yields
 `t-api`. Unnamed adds mint four base-36 characters.
 
-The rust CLI's `what-if cancel` prints only the echo line; ours previews the
+The earlier plandb CLI's `what-if cancel` prints only the echo line; ours previews the
 real cascade (the task, its descendants, its hard dependents) because "preview
 effects" is what its help promises — the echo alone previews nothing.
 
 ## The adapted store, as it stands (internal/plandb, on this branch)
 
-Adapted from an earlier port's `internal/plandb` (outside this tree) (readable, outside the tree). The
+Adapted from an earlier port of `internal/plandb`. The
 graph laws are unchanged from that port: cycle detection over both graphs,
 descendant cancellation, promotion, claim ownership, composite
 auto-completion. What changed: the governance gates are GONE (no role /
@@ -176,17 +176,17 @@ The store's ROOT is the run: one root task, claimed running by "runtime",
 and no worker verb may complete it. `depsDone` walks the parent chain, so a
 child cannot run out from under an unfinished parent's coordination. A hard
 (non-`suggests`) dependency across a containment lineage is REFUSED — a
-written divergence from the rust blurb, recorded in DESIGN.md.
+written divergence from the earlier CLI, recorded in DESIGN.md.
 
 ## The runtime's side of the contract (what the CLI's callers rely on)
 
 - The runtime claims every store task it dispatches as a node with the
-  TASK'S OWN ID as the agent name — plancode's trick, and what makes the
+  TASK'S OWN ID as the agent name — the planner's trick, and what makes the
   worker's `done --agent <task-id>` the ownership check.
 - A worker that finished its own task first (the taught finish,
   `plandb done --agent <id> --result …`) is never written over: the
   write-back skips already-terminal tasks.
-- `go` and `done --next` claim for the CALLER (rust parity). A task claimed
+- `go` and `done --next` claim for the CALLER (parity with the earlier CLI). A task claimed
   that way and not yet a node is dispatched by the pulse as a node and
   re-claimed under its own id, so the node's worker can finish it.
 - Dispatch respects the fan cap (`TaskGraph.claimChild`, refusal leaves the
@@ -203,7 +203,7 @@ written divergence from the rust blurb, recorded in DESIGN.md.
   ./...`, `go vet` on the packages you touched, and focused tests
   (`make test-focus` where it fits).
 - Do NOT push, commit, or open a pull request. Files only.
-- `internal/exec/bare` is untouchable. The pi belt and the conversation are
+- `internal/exec/bare` is untouchable. The shipped belt and the conversation are
   unchanged: everything new is behind `CODEAF_TASK_BELT=bash`.
 - The name is `codeaf`, lowercase, everywhere a person or a model reads it
   (AGENTS.md's namelaw gates the session prompts too). No `CodeAF`.

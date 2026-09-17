@@ -59,7 +59,7 @@ diff** a shell worker never produces, so it refuted correct work on every row.
 Before those fixes arm B passed 0 of the graded cells. They are the reason the
 numbers above exist.
 
-Coordination was then moved onto a ported **PlanDB CLI** (plancode's store, its
+Coordination was then moved onto a ported **PlanDB CLI** (the plan store, its
 verbs, the worker page teaching them), so arm B is the loop the person asked
 for: one bash, the store, no auditor.
 

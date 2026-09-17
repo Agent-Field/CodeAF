@@ -2,10 +2,9 @@
 
 *2026-09-16, written against `origin/dev @ 96eccc72d`. Status: design for an
 experiment. Everything here lives on one branch, `spark/bash-task-loop`, and
-`dev` does not move unless the experiment wins. The reference loop is
-plancode's `miniplan` (`agentfield/code/plancode`); every claim about it below
-was read out of `miniplan/agent.py`, `miniplan/prompts.py` and
-`miniplan/registry.py` on 2026-09-16, not remembered.*
+`dev` does not move unless the experiment wins. The experiment measures
+codeaf's task belt against a one-action bash loop; the loop's shape is
+described below, step by step.*
 
 ## The one sentence
 
@@ -17,8 +16,8 @@ belts with steps, cost, wall time and failures counted.
 
 ## Why, and why now
 
-plancode's `miniplan` runs every agent — root and every recursive worker — on
-the identical loop with ONE native bash tool. All coordination is PlanDB
+The loop the experiment measures against runs every agent — root and every
+recursive worker — on one loop with ONE native bash tool. All coordination is PlanDB
 commands run *through* that bash. The bet the owner wants measured: most of
 what codeaf's task belt carries is a shell command wearing a schema, and a
 worker with one honest shell, a strict envelope and good truncation may do the
@@ -31,9 +30,9 @@ belt is already a *variant* of it ("A TASK NODE'S BELT IS THIS BELT MINUS
 THREE"), and the safety rails around a task node's shell already exist. The
 experiment changes what the worker is *handed*, never what it is *allowed*.
 
-## The reference loop, as read from source
+## The loop the experiment measures against
 
-From `miniplan/agent.py` and `miniplan/prompts.py`:
+Its shape:
 
 - **One action per response.** Exactly one tool call, name must be `bash`,
   args exactly `{command: nonempty string}` (`action_from_message`). Malformed
@@ -64,7 +63,7 @@ From `miniplan/agent.py` and `miniplan/prompts.py`:
 | piece | where |
 | --- | --- |
 | The belt, composed in one function | `(*Agent).belt`, `internal/session/tools.go:134` |
-| The seven pi tools and their hands | `internal/exec/bare` (`AllToolsCapped`, `tools.go:56`); schemas pinned to pi |
+| The seven file tools and their hands | `internal/exec/bare` (`AllToolsCapped`, `tools.go:56`); schemas pinned to the shipped belt |
 | Window-following result caps | `bare.CapsFor` (`internal/exec/bare/truncate.go:71`) over `ctxbudget.ToolResultBytes`; `(*Agent).resultCaps` (`tools.go:74`) |
 | The session's wrapped bash (background jobs) | `(*Agent).backgroundBash` (`tools_jobs.go:185`) |
 | read's PDF text-layer sense | `(*Agent).pdfRead`/`senseRead` (`tools_pdf.go:68`) |
@@ -105,7 +104,7 @@ predicate and one more composition:
 - **`internal/exec/bare` is untouched.** The hands stay its; the experiment is
   a *wire* change — which tools the model can name — not a change to how a
   file is read or a command is run. The conversation belt, subharness leaves
-  and the resident keep pi's tools exactly as they are. This is the wrong
+  and the resident keep the file tools exactly as they are. This is the wrong
   answer the brief warns about, stated as law: **we are not gutting bare; we
   are handing one family of workers a smaller belt.**
 
@@ -114,7 +113,7 @@ parts, merge resolvers. The conversation itself never does.
 
 ## Decision 2 — one action per response, and parallelism moves into the shell
 
-miniplan's envelope is adopted whole for bash-belt workers: **exactly one tool
+the one-action envelope is adopted whole for bash-belt workers: **exactly one tool
 call per response.** A response carrying zero calls and no final answer, or
 two calls, or a call whose arguments do not parse, is rejected without
 entering the replay history — the diagnostic goes back as the tool result, the
@@ -129,27 +128,27 @@ before running anything.
 
 codeaf today *encourages* parallel tool batches, so this is a real trade and
 the doc says so plainly: the worker loses multi-tool batches and gains
-miniplan's discipline. The replacement idiom is the shell's own —
+one-action discipline. The replacement idiom is the shell's own —
 `cmd1 & cmd2 & wait`, `xargs -P`, one `git grep` instead of three `grep`
 calls — and the doctrine page (below) teaches it. Whether that is a win is
 exactly what the bench measures; if workers compensate with giant compound
 commands that fail atomically, the step count will say so.
 
-## Decision 3 — truncation takes miniplan's shape, sized by the window law
+## Decision 3 — truncation takes head+tail+path, sized by the window law
 
 The branch's bash tool truncates **head + tail + path**: over the cap, the
 full output is written beside the node's own log as `action-NNNNNN.txt`, and
 the result carries the head, a `[output truncated; full output: <path>]`
-marker, and the tail. This replaces pi's tail-only cut for bash, and it is
-miniplan's shape verbatim.
+marker, and the tail. This replaces the tail-only cut for bash, and it is
+the head+tail+path shape verbatim.
 
-Two things are deliberately NOT miniplan's:
+Two things are deliberately not the loop's:
 
 - **The cap is not a flat 20,000 chars.** It is `bare.CapsFor(a.window())`,
   the same window-following pair the rest of the belt uses (ONE READ MAY NOT
   BE MOST OF WHAT THE MODEL CAN HOLD). The head/tail split is half the byte
   cap each. A 128k-window worker therefore gets head ≈25KB + tail ≈25KB —
-  close to miniplan's 10k+10k — and a small-window worker gets proportionally
+  close to the loop's 10k+10k — and a small-window worker gets proportionally
   less, which a flat 20k would have blown past.
 - **The output file lands in the node's own log directory**, not the working
   copy, so a worker's `git status` is never dirtied by its own telemetry.
@@ -161,16 +160,16 @@ and strictly more honest.
 
 ## Decision 4 — the checkpoint ports as a sentence, not as trajectory replay
 
-miniplan checkpoints a *trajectory* and resumes it; codeaf's recovery unit is
+The loop checkpoints a *trajectory* and resumes it; codeaf's recovery unit is
 the *node*, and its law is already written: **THE TREE IS THE RECORD**
 (`docs/design/task-continue/DESIGN.md` §D). A dead process means
 `taskStore.interrupt` requeues the node and a FRESH worker opens on the tree
 the predecessor left. Replaying a half-executed tool call across a process
 boundary is not a mechanism this engine has or needs, and building one for the
-branch is rejected: it is the one miniplan mechanic whose problem codeaf
+branch is rejected: it is the one loop mechanic whose problem codeaf
 already solves differently.
 
-What DOES port is the sentence that makes miniplan's resume safe. A node
+What DOES port is the sentence that makes the loop's resume safe. A node
 resumed after an interrupt has its opening composed with one added clause —
 *"your predecessor was interrupted mid-work; effects may exist in the tree —
 inspect before repeating anything"* — in the same opening brief the
@@ -180,8 +179,8 @@ says so the clause is added, not duplicated.
 
 ## Decision 5 — coordination stays native; the graph is not PlanDB
 
-miniplan runs coordination THROUGH bash because PlanDB is a file hierarchy a
-CLI can own. codeaf's task graph lives inside the session process — the
+The loop runs coordination THROUGH bash because its plan store is a file
+hierarchy a CLI can own. codeaf's task graph lives inside the session process — the
 frontier, the admission governor, the room, the rail, the settle door — and
 `propose_task`/`tasks` are its doors. The branch keeps them native.
 
@@ -192,11 +191,11 @@ measurement. If the bash belt wins, it is the obvious next branch.
 
 ## Decision 6 — `background` and `jobs` stay
 
-miniplan has no background execution. codeaf's task nodes run unwatched under
+The loop has no background execution. codeaf's task nodes run unwatched under
 a bash ceiling (`BashCeilingSeconds`, `internal/exec/bare/tools.go:121`), and
 `background: true` plus `jobs` is how a twenty-minute build outlives it
 without burning the node's steps. They stay on the branch belt. The deviation
-from miniplan is one boolean on the one tool, and it is bought with the reason
+from the loop is one boolean on the one tool, and it is bought with the reason
 the ceiling exists: a worker nobody is watching must not hold its node on a
 clock.
 
@@ -207,7 +206,7 @@ gate that puts each family on. "Bash" means the tool comes off and the idiom
 column is what the doctrine page teaches instead; "kept" means it stays on the
 branch belt, with the reason it cannot be a shell command.
 
-### The seven pi tools — all seven collapse into the one bash
+### The seven file tools — all seven collapse into the one bash
 
 | tool | idiom on the branch | what the wrapper loses | the answer to the loss |
 | --- | --- | --- | --- |
@@ -264,13 +263,13 @@ writing:
 ## The doctrine page
 
 One new prompt page, `internal/session/prompts/bashworker.md`, replaces the
-pi-tool guidance for bash-belt workers only (`prompt.go`'s composition reads
+file-tool guidance for bash-belt workers only (`prompt.go`'s composition reads
 the same `Config.bashBelt`). It carries, short and flat: the one-action
 envelope and what a rejection reads like; the read/write/edit/grep/find/ls
 idioms from the table; the `grep -c`-before-`sed` discipline; `mkdir -p`
 before heredocs; `&`/`wait` and `xargs -P` for parallelism; head+tail+path and
 where the full output lives; "PDFs and office documents go to `read_document`,
-never `cat`"; and miniplan's own resume sentence's sibling: never simulate
+never `cat`"; and the loop's own resume sentence's sibling: never simulate
 execution — run it and read the observation. `prompts/worker.md` and the other
 task pages are untouched; a second convention beside an existing one is
 prohibited, so the bash page REPLACES the tool-idiom paragraphs for its
@@ -278,7 +277,7 @@ workers rather than adding beside them.
 
 ## The per-step frame
 
-The one loop mechanic beyond the belt that ports fully. miniplan appends, per
+The one loop mechanic beyond the belt that ports fully. The loop appends, per
 step, a frame with current facts. codeaf's runner already OWNS those facts and
 shows them to everyone except the model: steps against `maxSteps`
 (`task_child_run.go:592`), the node's own spend (the usage ledger every
@@ -300,7 +299,7 @@ is the graph, and the graph's news already has a lane.
 
 Named so the branch's diff has a boundary it can be reviewed against:
 
-- **`internal/exec/bare` and the pi wire schemas** — the conversation belt and
+- **`internal/exec/bare` and the shipped wire schemas** — the conversation belt and
   every subharness leaf keep the seven tools, byte-identical.
 - **The conversation belt** — `belt()`'s existing composition, the standing
   wrap, the shelf. The experiment is the task node's belt.
@@ -396,7 +395,7 @@ Deleted: nothing. Renamed: nothing. `internal/exec/bare`: untouched.
 | wave | lands | acceptance (all on the Spark) |
 | --- | --- | --- |
 | **W0 — branch and switch** | the branch, `Config.bashBelt`, the env read, no behavior change | `make check` green; `git diff origin/dev` touches no behavior; the baseline arm (below) can already run |
-| **W1 — the bash belt** | `bashbelt.go`, truncation, the envelope, the doctrine page | `make test-focus PKGS=./internal/session RUN='^TestBashBelt'` green: belt composition (kept set present, pi six absent), envelope rejects a two-call batch without poisoning history, truncation shape and cap-follows-window, a scripted task reads+writes+edits a file through bash alone. Then `make check` |
+| **W1 — the bash belt** | `bashbelt.go`, truncation, the envelope, the doctrine page | `make test-focus PKGS=./internal/session RUN='^TestBashBelt'` green: belt composition (kept set present, the six file tools absent), envelope rejects a two-call batch without poisoning history, truncation shape and cap-follows-window, a scripted task reads+writes+edits a file through bash alone. Then `make check` |
 | **W2 — loop mechanics** | the per-step frame, the resume clause, the invalid-action ending | `RUN='^TestBashBelt'` plus a scripted interrupt/resume: the fresh worker's opening carries the clause; the frame's numbers equal the runner's own counters; four invalids land `failed · went in circles`. Then `make check` |
 | **W3 — the comparison** | `bench/bashloop/`, the grid, the CSV | every cell's row exists; both arms same model, same day, interleaved order; the driver's own dry run prints every invocation it will make (bench protocol's honest-wiring rule) |
 | **W4 — the verdict** | `REPORT.md` beside this file | the numbers below, the verdict word, and the branch kept (win) or deleted (loss) |
@@ -459,7 +458,7 @@ it is stated here so the deletion is the designed ending, not the sad one.
 ## Open questions
 
 1. **Scope.** The experiment covers task nodes only — the conversation belt
-   keeps the pi tools whatever the verdict. If the bash belt wins big, is a
+   keeps the file tools whatever the verdict. If the bash belt wins big, is a
    conversation-side bash mode a follow-up anyone wants, or is "the worker's
    belt" the whole claim?
 2. **`web_fetch`.** Kept native on the branch belt (markup stripped, result
