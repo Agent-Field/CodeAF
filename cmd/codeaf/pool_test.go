@@ -8,6 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -729,5 +732,131 @@ func TestWirePoolIndexSeatsNothingForAnUnparsableOwnSheet(t *testing.T) {
 	wirePoolIndex(dir)
 	if got := config.AutoOwnCells; got != nil && got() != nil {
 		t.Fatal("a broken own sheet was seated")
+	}
+}
+
+// ── THE MIRROR ──────────────────────────────────────────────────────────────
+
+// poolEnv is an environment holding exactly the names given, so a test pins
+// the pool's addresses without touching the process.
+func poolEnv(pairs map[string]string) func(string) (string, bool) {
+	return func(name string) (string, bool) {
+		value, set := pairs[name]
+		return value, set
+	}
+}
+
+// deadEnv pins both index addresses at a closed local port, so a probe fails
+// at once and reaches no network.
+func deadEnv() func(string) (string, bool) {
+	return poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        "http://127.0.0.1:1/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "http://127.0.0.1:1/index.json",
+	})
+}
+
+// signedPoolDoc is a document the puller accepts: one integer version and
+// nothing else it reads. The version is where a test finds which address was
+// the one that answered.
+func signedPoolDoc(version int) []byte {
+	return []byte(fmt.Sprintf(`{"version": %d, "schema": 1, "generated": "2026-09-10", "min_installs": 1, "judges": [], "metrics": {}, "cells": []}`, version))
+}
+
+// poolServer serves a signed index over http the way a relay does: the
+// document at /index.json and its base64 signature beside it at
+// /index.json.sig, both signed under priv.
+func poolServer(t *testing.T, priv ed25519.PrivateKey, doc []byte) *httptest.Server {
+	t.Helper()
+	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, doc))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/index.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(doc)
+	})
+	mux.HandleFunc("/index.json.sig", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(sig))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
+
+// cachedVersion reads the "version" of the document under the profile's pool
+// directory, and whether one is there at all.
+func cachedVersion(t *testing.T, dir string) (int64, bool) {
+	t.Helper()
+	doc, err := os.ReadFile(filepath.Join(dir, "pool", "doc.json"))
+	if err != nil {
+		return 0, false
+	}
+	var obj struct {
+		Version int64 `json:"version"`
+	}
+	if err := json.Unmarshal(doc, &obj); err != nil {
+		t.Fatalf("the cached document does not parse: %v", err)
+	}
+	return obj.Version, true
+}
+
+// A relay that does not answer is not the end of the fetch: the mirror is
+// asked with the same keys and the same cache directory, and the document it
+// serves lands where the next start reads it.
+func TestPoolRefreshFallsToTheMirrorWhenTheRelayIsDown(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := poolServer(t, priv, signedPoolDoc(9))
+	dir := t.TempDir()
+	cfg := poolcfg.Config{Mode: poolcfg.On, IndexURL: "http://127.0.0.1:1/index.json", MirrorURL: mirror.URL + "/index.json"}
+	refreshPoolIndex(context.Background(), dir, cfg, []ed25519.PublicKey{pub})
+	version, ok := cachedVersion(t, dir)
+	if !ok || version != 9 {
+		t.Fatalf("the mirror's document was not kept: version %d, cached %v", version, ok)
+	}
+}
+
+// Both addresses down leaves the cache exactly where it was: the fetch falls
+// back to the copy already on disk and writes nothing.
+func TestPoolRefreshKeepsTheCacheWhenBothAddressesAreDown(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay := poolServer(t, priv, signedPoolDoc(7))
+	dir := t.TempDir()
+	live := poolcfg.Config{Mode: poolcfg.On, IndexURL: relay.URL + "/index.json", MirrorURL: relay.URL + "/index.json"}
+	refreshPoolIndex(context.Background(), dir, live, []ed25519.PublicKey{pub})
+	if version, ok := cachedVersion(t, dir); !ok || version != 7 {
+		t.Fatalf("the relay's document was not cached: version %d, cached %v", version, ok)
+	}
+	relay.Close()
+	dead := poolcfg.Config{Mode: poolcfg.On, IndexURL: "http://127.0.0.1:1/index.json", MirrorURL: "http://127.0.0.1:1/index.json"}
+	refreshPoolIndex(context.Background(), dir, dead, []ed25519.PublicKey{pub})
+	if version, ok := cachedVersion(t, dir); !ok || version != 7 {
+		t.Fatalf("a failed refresh moved the cache: version %d, cached %v", version, ok)
+	}
+}
+
+// A signature failure is a statement about the primary's bytes, not a dead
+// source: the mirror is not asked, so its good document is never cached in
+// place of the one whose signature just failed.
+func TestPoolRefreshDoesNotFallToTheMirrorOnABadSignature(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The primary serves a document signed under a key nobody trusts; the
+	// mirror serves a good one that must not be reached.
+	relay := poolServer(t, otherPriv, signedPoolDoc(7))
+	mirror := poolServer(t, priv, signedPoolDoc(9))
+	dir := t.TempDir()
+	cfg := poolcfg.Config{Mode: poolcfg.On, IndexURL: relay.URL + "/index.json", MirrorURL: mirror.URL + "/index.json"}
+	refreshPoolIndex(context.Background(), dir, cfg, []ed25519.PublicKey{pub})
+	if _, ok := cachedVersion(t, dir); ok {
+		t.Fatal("a document with a bad signature fell through to the mirror, or was cached")
 	}
 }

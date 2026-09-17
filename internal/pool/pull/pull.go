@@ -48,6 +48,13 @@ import (
 // the cached copy is the answer, and Pull handles it before the fallback path.
 var errNotModified = errors.New("pull: not modified")
 
+// ErrBadSignature is a fetched document whose signature does not verify under
+// any of the keys in hand. It is its own error because a caller deciding
+// whether to look elsewhere for the same document has to tell a document that
+// failed its check from a source that did not answer: a copy somewhere else
+// cannot vouch for bytes whose signature just failed.
+var ErrBadSignature = errors.New("pull: signature does not verify")
+
 const (
 	// MaxDoc is the largest document Pull will read. A document larger than
 	// this is refused rather than read to the end, because a source that answers
@@ -207,7 +214,7 @@ func (p *Puller) Pull(ctx context.Context) (Result, error) {
 // than the one the cache already holds. It returns the version when it does.
 func (p *Puller) good(doc, sig []byte, cached cache) (int64, error) {
 	if !Verify(doc, sig, p.Keys) {
-		return 0, errors.New("pull: signature does not verify")
+		return 0, ErrBadSignature
 	}
 	version, err := docVersion(doc)
 	if err != nil {

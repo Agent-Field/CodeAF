@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -91,17 +92,43 @@ func startPoolIndexRefresh(ctx context.Context, profileDir string, cfg poolcfg.C
 // It is quiet by design. A dead host, a timeout or a signature that does not
 // check is an ordinary state for a fetch nothing waited for, so the error is
 // said only under the debug record's switch and never on the surface.
+//
+// THE MIRROR IS ASKED WHEN THE RELAY DOES NOT ANSWER. Any failure of the
+// primary address other than a signature failure falls through to the mirror,
+// which is the relay's own document copied elsewhere and shares the cache
+// directory, so a document the mirror serves is kept only when its version is
+// not lower than the one already cached. A signature failure is its own
+// statement about the primary's bytes, and a copy of the same document cannot
+// vouch for them, so it is not asked; an empty mirror address turns the
+// fallback off.
 func refreshPoolIndex(ctx context.Context, profileDir string, cfg poolcfg.Config, keys []ed25519.PublicKey) {
+	poolDir := config.ProfilePath(profileDir, "pool")
+	if err := poolIndexPull(ctx, cfg.IndexURL, poolDir, cfg.TTL, keys); err != nil {
+		if errors.Is(err, pull.ErrBadSignature) || cfg.MirrorURL == "" {
+			if trace.Enabled() {
+				log.Printf("model pool: index refresh: %v", err)
+			}
+			return
+		}
+		if err := poolIndexPull(ctx, cfg.MirrorURL, poolDir, cfg.TTL, keys); err != nil && trace.Enabled() {
+			log.Printf("model pool: index refresh: %v", err)
+		}
+	}
+}
+
+// poolIndexPull fetches url through the puller's own cache under the config's
+// TTL, and returns the fetch's error — nil when a document was read or a young
+// cache answered.
+func poolIndexPull(ctx context.Context, url, poolDir string, ttl time.Duration, keys []ed25519.PublicKey) error {
 	puller := &pull.Puller{
-		URL:      cfg.IndexURL,
+		URL:      url,
 		Keys:     keys,
-		CacheDir: config.ProfilePath(profileDir, "pool"),
-		TTL:      cfg.TTL,
+		CacheDir: poolDir,
+		TTL:      ttl,
 		Budget:   pull.DefaultBudget,
 	}
-	if _, err := puller.Pull(ctx); err != nil && trace.Enabled() {
-		log.Printf("model pool: index refresh: %v", err)
-	}
+	_, err := puller.Pull(ctx)
+	return err
 }
 
 // wirePoolIndex seats this process's pool readings beside its catalog: it
