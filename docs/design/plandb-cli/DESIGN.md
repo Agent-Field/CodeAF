@@ -54,9 +54,9 @@ its help and the Go port disagree, the rust CLI wins. It is NOT the binary this
 work installs over — it uses SQLite and a different store, and the runtime must
 read the same store the worker writes.
 
-**The Go port of the store exists**: `~/aforge-v1/internal/plandb` (`store.go`
+**The Go port of the store exists**: an earlier port's `internal/plandb` (outside this tree) (`store.go`
 948 lines, `model.go`, `persist.go`, `store_test.go`) plus a tool surface at
-`~/aforge-v1/internal/tools/plandb.go`. Its shape is kept: `Status` (pending →
+that port's `internal/tools/plandb.go`. Its shape is kept: `Status` (pending →
 ready → claimed → running → done/failed/cancelled), `DepKind`
 (feeds_into/blocks/suggests), `TaskSpec`/`TaskPatch`/`Task`, `ContextEntry`,
 `Summary`, `ReadySet`; and `Store` with `Open/AddMany/ReadyLeaves/ReadySet/
@@ -66,7 +66,7 @@ graphs, descendant cancellation, dependency promotion, claim ownership.
 
 What the adaptation changes, and why:
 
-- **The aforge-v1 governance gates come off.** `validateSpec` demands role,
+- **The earlier governance gates come off.** `validateSpec` demands role,
   deliverables, acceptance, effect and resource claims, and `Claim` refuses a
   task whose effect is unresolved or that carries no resource claim. The rust
   CLI has none of that — `add TITLE --description SPEC` creates a task. Every

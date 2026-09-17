@@ -11,7 +11,7 @@ import (
 const stateVersion = 2
 
 // state is the whole plan on disk: one file, written whole, renamed into
-// place. The aforge-v1 port carried exactly this file; the adaptation adds
+// place. The earlier port carried exactly this file; the adaptation adds
 // notes to it and nothing else, so a state file the old build wrote still
 // loads (notes were its absence, not a different shape).
 type state struct {

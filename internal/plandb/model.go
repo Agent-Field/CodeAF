@@ -2,7 +2,7 @@ package plandb
 
 import "time"
 
-// The model is the aforge-v1 store's own shape, carried over rather than
+// The model is the earlier store's own shape, carried over rather than
 // reinvented (docs/design/plandb-cli/DESIGN.md): one Status ladder, one
 // dependency vocabulary, and the two graphs — containment and dependency —
 // every law in store.go is written against. What changed in the adaptation is
@@ -61,7 +61,7 @@ type TaskSpec struct {
 	Effect       Effect          `json:"effect,omitempty"`
 	// parallel and isolation keep the reference's meaning — how two running
 	// tasks may share the machine — and their DEFAULT is the one the rust CLI
-	// models: parallel unless declared otherwise. The aforge-v1 port defaulted
+	// models: parallel unless declared otherwise. The earlier port defaulted
 	// serial, which would have made every store-driven dispatch one at a time
 	// and quietly unmade the loop the belt is measuring.
 	Parallel  string `json:"parallel,omitempty"`
@@ -115,7 +115,7 @@ type Task struct {
 
 // Note is a task-scoped message one worker leaves for the others working
 // around the same task — the rust CLI's `task note`/`task notes`, which the
-// aforge-v1 port did not carry. Context (below) is the project-wide cousin;
+// the earlier port did not carry. Context (below) is the project-wide cousin;
 // the two stay separate because a note is about one task and a context entry
 // is about the run.
 type Note struct {

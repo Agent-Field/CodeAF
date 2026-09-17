@@ -142,7 +142,7 @@ effects" is what its help promises — the echo alone previews nothing.
 
 ## The adapted store, as it stands (internal/plandb, on this branch)
 
-Adapted from `~/aforge-v1/internal/plandb` (readable, outside the tree). The
+Adapted from an earlier port's `internal/plandb` (outside this tree) (readable, outside the tree). The
 graph laws are unchanged from that port: cycle detection over both graphs,
 descendant cancellation, promotion, claim ownership, composite
 auto-completion. What changed: the governance gates are GONE (no role /
