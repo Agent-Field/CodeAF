@@ -217,7 +217,7 @@ func waitExited(t *testing.T, agent *Agent, id int) {
 
 // ── the wire ────────────────────────────────────────────────────────────────
 
-// The wrapper must be bare's bash plus one argument — not a rewrite of it.
+// The wrapper must be pi's bash plus one argument — not a rewrite of it.
 func TestBackgroundBashSchemaExtendsBare(t *testing.T) {
 	agent, _ := jobsAgent(t)
 

@@ -39,7 +39,7 @@ package session
 // stop, and tells the person reading the transcript which line of settings to
 // change.
 //
-// AND THE ANSWER OBEYS THE TRUNCATION LAW, through the same piReadLaw the PDF
+// AND THE ANSWER OBEYS PI'S TRUNCATION LAW, through the same piReadLaw the PDF
 // wrapper uses — same 2000 lines, same 50KB, same footer sentences, same
 // offset to continue. The offset has to work, and paying for a forty-page OCR
 // again to show page two would be the one place this ladder is allowed to rob
@@ -212,7 +212,7 @@ var documentMediaTypes = map[string]struct {
 // the whole tool-schema block rides in front of each one — so it is written for
 // density: one imperative clause per rule, and each rule said once. What it must
 // still teach is three things: which files this hand is for, that it COSTS MONEY
-// where read does not, and the truncation law.
+// where read does not, and pi's truncation law.
 //
 // THE TRUNCATION FIGURES ARE INTERPOLATED, not typed. They are the belt's own
 // [bare.Caps] — the same pair piReadLaw actually applies below, and the same

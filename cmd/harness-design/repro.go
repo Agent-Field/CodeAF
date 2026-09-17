@@ -45,8 +45,8 @@ import (
 // a repro renders is the guide a chat renders.
 //
 // Nothing here runs. A repro is design-only by construction — stage 3 would be
-// executing the belt's own real read, write and bash against the machine it is
-// measuring on — so the run funcs refuse rather than pretend, and a future caller that
+// executing pi's real read, write and bash against the machine it is measuring
+// on — so the run funcs refuse rather than pretend, and a future caller that
 // wires them into an Env is told so at the first call instead of the first
 // silent wrong answer.
 func chatBelt(cwd string) []toolSpec {

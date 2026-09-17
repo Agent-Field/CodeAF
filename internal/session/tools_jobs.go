@@ -23,9 +23,9 @@ import (
 
 // ── bash, wrapped ───────────────────────────────────────────────────────────
 
-// backgroundSentence is the one sentence the wrapper adds to the bash
-// description. One sentence, not a paragraph: the tool is the shipped one, and
-// a model that has read its description already knows what bash is.
+// backgroundSentence is the one sentence the wrapper adds to pi's bash
+// description. One sentence, not a paragraph: the tool is pi's, and a model
+// that has read pi's description already knows what bash is.
 //
 // IT STATES THE CONTRACT AND NOT THE ROUTING. What a job leaves behind — a log
 // and an exit code, and nothing else — is this tool's own contract, and it is
@@ -46,9 +46,9 @@ import (
 // what is its own.
 const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and ask the jobs tool about them; a job leaves its log and an exit code and nothing else."
 
-// timeoutSentence states the v3 foreground law the shipped tool leaves
-// unstated: a call the model did not bound is bounded by the harness, because
-// one hung command otherwise wedges the whole turn until the person interrupts.
+// timeoutSentence states the v3 foreground law pi leaves unstated: a call the
+// model did not bound is bounded by the harness, because one hung command
+// otherwise wedges the whole turn until the person interrupts.
 //
 // AND WHAT REACHING THE BOUND ACTUALLY DOES, because that changed and a model
 // reasoning from "it will be killed" reasons wrongly: it hedges, splits the
@@ -166,7 +166,7 @@ func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 	return out
 }
 
-// backgroundProperty is the one property the wrapper adds to the bash schema.
+// backgroundProperty is the one property the wrapper adds to pi's bash schema.
 //
 // IT SPELLS OUT THE SPAWN SEMANTICS, because that is the whole difference
 // between the two doors and the model has to be able to choose between them: a
@@ -218,11 +218,11 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 	}
 }
 
-// schemaWithBackground returns the shipped bash schema with one boolean
-// property added.
+// schemaWithBackground returns pi's bash schema with one boolean property
+// added.
 //
 // It DERIVES rather than restating the schema as a literal: bare's bytes are
-// the source of truth and may move, and a copied literal here would
+// pinned to pi's source and may move with it, and a copied literal here would
 // drift silently into a session bash whose wire schema is a version behind the
 // tool it wraps. A schema that will not decode falls back to the original —
 // background is then unsupported on the wire, which is a smaller failure than

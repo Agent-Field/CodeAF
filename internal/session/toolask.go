@@ -179,7 +179,7 @@ func toolCallTag(tool string) string {
 // obvious next thing to reach for and it is wrong here.
 //
 // THE ONLY PRINCIPLED CEILING IS THE ONE THE BELT ALREADY IMPOSES, and it does
-// not bind. Every one of these answers is paged through the truncation law to
+// not bind. Every one of these answers is paged through pi's law to
 // [Agent.resultCaps] — 50KB on a frontier window, which is about twelve and a
 // half thousand tokens — while the measured answers run 588 to 1,256. A ceiling
 // an order of magnitude above the distribution buys nothing.

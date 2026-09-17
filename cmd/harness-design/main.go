@@ -207,9 +207,8 @@ func main() {
 	if err != nil {
 		die(err.Error())
 	}
-	// THE CHAT BELT IS RENDERED, NEVER RUN. Its tools are the belt's own real
-	// read, write and bash over this machine, and stage 3 executing them would be
-	// the rig
+	// THE CHAT BELT IS RENDERED, NEVER RUN. Its tools are pi's real read, write
+	// and bash over this machine, and stage 3 executing them would be the rig
 	// editing the repository it is measuring. So the belt that reproduces a chat
 	// is allowed only where nothing runs.
 	if *repro == 0 && !*designOnly && !sameBelt(tools, availableTools) {
