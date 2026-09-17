@@ -686,7 +686,12 @@ func (a *app) connectAct(at int) tea.Cmd {
 		return nil
 	}
 	if !row.Connected {
-		if _, model := modelConnectionSource(row.ID); model {
+		if id, model := modelConnectionSource(row.ID); model {
+			// THE ADD ROW MINTS, never edits: startModelConnect on the
+			// catalog's custom row is instance one's edit door.
+			if id == "custom-add" {
+				return a.startCustomAdd(false)
+			}
 			return a.startModelConnect(row, false)
 		}
 		name := a.serviceName(row.ID, row.Name)
