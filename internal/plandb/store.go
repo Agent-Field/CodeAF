@@ -46,8 +46,17 @@ type Store struct {
 // by seeding a root task for the work it was given. A store that exists but
 // belongs to a different run is a refusal, not a merge: two sessions sharing
 // one store by accident would each dispatch the other's children.
-func Open(path, project, rootID, rootTitle, rootDescription string) (*Store, error) {
+//
+// The optional chat names the conversation the run was seeded in; it tags the
+// root task, and every task, note and context entry made under the root
+// inherits it. The parameter is optional so every call site that names no chat
+// — a worker's own reading open, a reopen — keeps its argument list.
+func Open(path, project, rootID, rootTitle, rootDescription string, chat ...string) (*Store, error) {
 	store := &Store{path: path, now: time.Now}
+	tag := ""
+	if len(chat) > 0 {
+		tag = strings.TrimSpace(chat[0])
+	}
 	_, statErr := os.Stat(path)
 	switch {
 	case statErr == nil:
@@ -71,7 +80,7 @@ func Open(path, project, rootID, rootTitle, rootDescription string) (*Store, err
 		return nil, err
 	}
 	store.db = db
-	loaded, err := store.loadOrCreate(project, rootID, rootTitle, rootDescription)
+	loaded, err := store.loadOrCreate(project, rootID, rootTitle, rootDescription, tag)
 	if err != nil {
 		_ = db.Close()
 		store.db = nil
@@ -88,7 +97,7 @@ func Open(path, project, rootID, rootTitle, rootDescription string) (*Store, err
 // first one's store rather than writing its own over it. Adopting keeps the
 // rule the load road states: a store that belongs to another run is a refusal,
 // not a merge.
-func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription string) (state, error) {
+func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription, chat string) (state, error) {
 	tx, err := s.beginWrite()
 	if err != nil {
 		return state{}, err
@@ -114,6 +123,7 @@ func (s *Store) loadOrCreate(project, rootID, rootTitle, rootDescription string)
 			Kind: "generic", Parallel: "safe", Isolation: "shared",
 		},
 		Status: StatusRunning, ClaimedBy: "runtime", CreatedAt: now, UpdatedAt: now,
+		Project: project, Chat: chat,
 	}
 	fresh := state{
 		Version: stateVersion, Project: project, RootID: rootID,
@@ -214,6 +224,25 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 		if err := validateGraphs(*next); err != nil {
 			return err
 		}
+		// TAGS ARE INHERITED FROM THE PARENT: a child's project and chat are
+		// its parent task's, so a subtree carries the run it grew from. A
+		// parent inside this same batch resolves through its own parent the
+		// same way; the walk ends at a stored task, because the containment
+		// graph has just been proved acyclic.
+		born := make(map[string]bool, len(specs))
+		for _, spec := range specs {
+			born[spec.ID] = true
+		}
+		for _, spec := range specs {
+			parent := spec.ParentID
+			for born[parent] {
+				parent = next.Tasks[parent].ParentID
+			}
+			if stored := next.Tasks[parent]; stored != nil {
+				task := next.Tasks[spec.ID]
+				task.Project, task.Chat = stored.Project, stored.Chat
+			}
+		}
 		promote(next, now)
 		return nil
 	})
@@ -247,12 +276,16 @@ func (s *Store) ReadyLeaves() []*Task {
 // ReadySet is ReadyLeaves with the reasons: what can run and, for each task
 // that cannot, why not. The doctrine's `list --status ready` and the
 // runtime's dispatch both read it.
-func (s *Store) ReadySet() ReadySet {
+func (s *Store) ReadySet(filters ...Filter) ReadySet {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	filter := firstFilter(filters)
 	result := ReadySet{}
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
+		if !filter.admits(task.Project, task.Chat) {
+			continue
+		}
 		if task.Status != StatusReady || task.Composite {
 			continue
 		}
@@ -576,6 +609,7 @@ func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
 		note = Note{
 			ID: fmt.Sprintf("n-%08x", next.NextID), TaskID: taskID,
 			Agent: strings.TrimSpace(agent), Body: text, At: now,
+			Project: next.Tasks[taskID].Project, Chat: next.Tasks[taskID].Chat,
 		}
 		next.Notes = append(next.Notes, note)
 		return nil
@@ -630,10 +664,19 @@ func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
 		if kind == "" {
 			kind = "discovery"
 		}
+		// A context entry carries the tags of the task it is scoped to, and
+		// the run's own tags when it is scoped to no task: it is the run's
+		// context, so it answers to the run's root.
+		project, chat := "", ""
+		if taskID != "" {
+			project, chat = next.Tasks[taskID].Project, next.Tasks[taskID].Chat
+		} else if root := next.Tasks[next.RootID]; root != nil {
+			project, chat = root.Project, root.Chat
+		}
 		next.NextID++
 		entry = ContextEntry{
 			ID: fmt.Sprintf("c-%08x", next.NextID), TaskID: taskID, Kind: kind,
-			Content: text, CreatedAt: now,
+			Content: text, CreatedAt: now, Project: project, Chat: chat,
 		}
 		next.Contexts = append(next.Contexts, entry)
 		return nil
@@ -646,15 +689,19 @@ func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
 
 // Contexts answers the run's context entries, newest first, bounded and
 // filterable the way the CLI's `contexts --kind` filters.
-func (s *Store) Contexts(taskID, kind string, limit int) []ContextEntry {
+func (s *Store) Contexts(taskID, kind string, limit int, filters ...Filter) []ContextEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	filter := firstFilter(filters)
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	entries := make([]ContextEntry, 0, limit)
 	for i := len(s.data.Contexts) - 1; i >= 0 && len(entries) < limit; i-- {
 		entry := s.data.Contexts[i]
+		if !filter.admits(entry.Project, entry.Chat) {
+			continue
+		}
 		if taskID != "" && entry.TaskID != taskID {
 			continue
 		}
@@ -689,14 +736,19 @@ func (s *Store) Summary() Summary {
 	return summarize(s.data)
 }
 
-// Tasks answers every task in admission order, copies. The reading verbs —
-// overview, status, list — render from this.
-func (s *Store) Tasks() []*Task {
+// Tasks answers every task in admission order, copies, narrowed to the tags a
+// filter names. The reading verbs — overview, status, list — render from this.
+func (s *Store) Tasks(filters ...Filter) []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	filter := firstFilter(filters)
 	tasks := make([]*Task, 0, len(s.data.Order))
 	for _, id := range s.data.Order {
-		tasks = append(tasks, cloneTask(s.data.Tasks[id]))
+		task := s.data.Tasks[id]
+		if !filter.admits(task.Project, task.Chat) {
+			continue
+		}
+		tasks = append(tasks, cloneTask(task))
 	}
 	return tasks
 }
@@ -760,7 +812,7 @@ func (s *Store) CompleteRoot(result string) error {
 // query, best first. The ranking is simple term overlap — the CLI contract is
 // "ranked results", and what ranks them is the store's own choice so long as
 // the same query answers the same order.
-func (s *Store) Search(query string, limit int) []SearchResult {
+func (s *Store) Search(query string, limit int, filters ...Filter) []SearchResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	terms := searchTerms(query)
@@ -770,9 +822,13 @@ func (s *Store) Search(query string, limit int) []SearchResult {
 	if limit <= 0 || limit > 50 {
 		limit = 10
 	}
+	filter := firstFilter(filters)
 	var results []SearchResult
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
+		if !filter.admits(task.Project, task.Chat) {
+			continue
+		}
 		score := scoreText(terms, task.Title) * 4
 		score += scoreText(terms, task.Description)
 		if score > 0 {
@@ -781,12 +837,18 @@ func (s *Store) Search(query string, limit int) []SearchResult {
 		}
 	}
 	for _, note := range s.data.Notes {
+		if !filter.admits(note.Project, note.Chat) {
+			continue
+		}
 		if score := scoreText(terms, note.Body); score > 0 {
 			results = append(results, SearchResult{Kind: "note", ID: note.ID, Score: score,
 				TaskID: note.TaskID, Detail: firstLine(note.Body)})
 		}
 	}
 	for _, entry := range s.data.Contexts {
+		if !filter.admits(entry.Project, entry.Chat) {
+			continue
+		}
 		if score := scoreText(terms, entry.Content); score > 0 {
 			results = append(results, SearchResult{Kind: "context", ID: entry.ID, Score: score,
 				Detail: firstLine(entry.Content)})
