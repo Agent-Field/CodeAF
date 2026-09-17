@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -224,7 +225,7 @@ type headlessOutcome struct {
 	// wall says this run's own clock fired. It is the one ending that leaves
 	// with 124 rather than a rung of the shared ladder, because the run engine
 	// hands back the same incomplete word for a wall and for a leaf that failed
-	// ([run.Supervisor.Run]) and a caller raising a timeout has to be able to
+	// ([runengine.Supervisor.Run]) and a caller raising a timeout has to be able to
 	// tell the two apart. The envelope's `stop` is still deadline — the wall's
 	// word in the one vocabulary all three headless verbs speak — so the number
 	// and the word agree that nothing stands, which is the whole of the
@@ -490,7 +491,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// rather than by the resident's reconciler below. Unset, not one byte of the
 	// road below moves, and the legacy errand stays the default.
 	if session.BashBeltAsked() {
-		return runErrand(request, seats, started)
+		return runErrand(request, seats)
 	}
 	path, home, ephemeral, err := headlessStore(request.database)
 	if err != nil {
@@ -3126,11 +3127,11 @@ func (r doRequest) slotsOrDefault() int {
 //
 // THE STORE'S OWN ROOT IS THE RUN. Its description is the ask, verbatim, and
 // its result is the answer: [runengine.Start] puts the brief on it and the root
-// worker's report comes back as [run.Summary.Result], which is what the
+// worker's report comes back as [runengine.Summary.Result], which is what the
 // envelope calls the deliverable. Nothing here compiles or plans — the ask the
 // door was handed is the whole assignment, which is the same verbatim contract
 // the resident road keeps.
-func runErrand(request doRequest, seats config.Seats, started time.Time) (headlessOutcome, error) {
+func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	// A CEILING OF NOTHING IS A RUN THAT MAY SPEND NOTHING. Refused here, before
 	// anything is opened or built, because a limit of zero is not a limit that a
 	// worker crosses — it is a run that was stopped before one began, and the
@@ -3269,8 +3270,8 @@ func crewCompleters(settings config.Config, build func(config.Config, string) (*
 			return c
 		}
 		client, err := build(settings, model)
-		var completer session.Completer = client
-		if err != nil {
+		completer := session.Completer(client)
+		if err != nil || client == nil {
 			completer = seatlessCompleter{err: err}
 		}
 		made[model] = completer
@@ -3281,12 +3282,17 @@ func crewCompleters(settings config.Config, build func(config.Config, string) (*
 // seatlessCompleter is the seat a task gets when the door cannot build a
 // provider client for its model. Every call refuses in the builder's own words,
 // so the task fails on the reason rather than on a nil it would have had to
-// guard against.
+// guard against. A builder that answers no client and no error is the same
+// refusal, named as the empty seat it is rather than a nil the worker would
+// dereference.
+type seatlessCompleter struct{ err error }
+
 func (c seatlessCompleter) CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error) {
+	if c.err == nil {
+		return nil, errors.New("no provider client could be built for this seat")
+	}
 	return nil, c.err
 }
-
-type seatlessCompleter struct{ err error }
 
 // topicTitle is the run's own name for the thing it was asked for: the first
 // line of the ask, bounded, because the root task's title is the commit message
