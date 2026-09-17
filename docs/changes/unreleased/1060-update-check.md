@@ -24,3 +24,7 @@ thing nobody asked for. A developer's own build is never told it is behind. The
 restart waits for the door, after the frame is down and the terminal is back, and
 carries the transcript so the conversation the person was having is the one that
 comes back.
+
+The curl line every one of those roads offers is `curl -fsSL https://agentfield.ai/get/codeaf | bash`,
+the supported address that serves `scripts/install.sh` from `main`, so the launch
+line, the refusals and the README hand out one road.

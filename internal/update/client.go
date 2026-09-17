@@ -15,9 +15,13 @@ import (
 )
 
 const (
-	// CurlCommand is the independent installation road shown after a failed or
-	// unavailable in-place update.
-	CurlCommand = "curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash"
+	// CurlCommand is the independent installation road shown at launch beside
+	// /update and after a failed or unavailable in-place update. IT IS THE
+	// SUPPORTED LINE, NOT THE SCRIPT UNDER IT: agentfield.ai/get/codeaf serves
+	// scripts/install.sh from main, and the address is the one a person can
+	// remember and the one every other place codeaf documents spells, so a
+	// launch line and the README can never hand out two different roads.
+	CurlCommand = "curl -fsSL https://agentfield.ai/get/codeaf | bash"
 
 	NoUpdateCheckEnv  = "CODEAF_NO_UPDATE_CHECK"
 	GitHubAPIEnv      = "CODEAF_GITHUB_API"

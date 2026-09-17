@@ -27,9 +27,9 @@ tag. `codeaf update` installs stable by default;
 at `v0.2.0`, it exits 2 with `this codeaf is v0.3.0, ahead of the newest stable
 v0.2.0 — pass --version v0.2.0 to install it anyway`. `--version v0.2.0` installs
 what was named. A source build refuses and names its path: rebuild with `make
-build`, or use the curl line below. An unwritable target, failed download or bad
-checksum leaves the original in place and offers that line; codeaf never tries
-sudo.
+build`, or install a release with `curl -fsSL https://agentfield.ai/get/codeaf | bash`.
+An unwritable target, failed download or bad checksum leaves the original in
+place and offers that same line; codeaf never tries sudo.
 
 ## The curl installer — dev, staging, rc and stable channels
 
