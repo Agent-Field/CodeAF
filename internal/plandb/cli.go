@@ -121,7 +121,7 @@ func cliScan(argv []string) (*cliParsed, error) {
 		"dep": true, "priority": true, "description": true, "parent": true, "into": true,
 		"after": true, "before": true, "title": true, "prepend": true,
 		"result": true, "subtasks": true, "task": true, "limit": true,
-		"status": true, "chat": true, "older-than": true,
+		"status": true, "chat": true, "older-than": true, "role": true,
 	}
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
@@ -339,6 +339,8 @@ func cliDispatch(st *Store, p *cliParsed) error {
 		return cliArchive(st, p)
 	case "status":
 		return cliStatus(st, p)
+	case "spend":
+		return cliSpendVerb(st, p)
 	case "search":
 		return cliSearchVerb(st, p)
 	case "context":
@@ -411,6 +413,12 @@ func cliAdd(st *Store, p *cliParsed) error {
 	}
 	if as := p.vals["as"]; as != "" {
 		spec.ID = as
+	}
+	if role := p.vals["role"]; role != "" {
+		if !validRole(role) {
+			return roleRefusal()
+		}
+		spec.Role = role
 	}
 	if parent := p.vals["parent"]; parent != "" {
 		up, err := cliResolve(st, parent)
@@ -1231,6 +1239,29 @@ func cliSpend(st *Store) {
 	}
 }
 
+// cliSpendVerb is `plandb spend`: the ledger read back by the two groupings
+// the seats care about — what each role spent and what each model spent. The
+// tags are sorted so the same ledger prints the same lines twice.
+func cliSpendVerb(st *Store, p *cliParsed) error {
+	summary := st.SpendSummary()
+	if p.bools["json"] {
+		return cliPrintJSON(summary)
+	}
+	if len(summary.ByRole) == 0 && len(summary.ByModel) == 0 {
+		fmt.Fprintln(cliOut, "(no spend)")
+		return nil
+	}
+	for _, role := range sortedSpendTags(summary.ByRole) {
+		total := summary.ByRole[role]
+		fmt.Fprintf(cliOut, "spend role %s: $%.4f (%d calls)\n", role, total.USD, total.Calls)
+	}
+	for _, model := range sortedSpendTags(summary.ByModel) {
+		total := summary.ByModel[model]
+		fmt.Fprintf(cliOut, "spend model %s: $%.4f (%d calls)\n", model, total.USD, total.Calls)
+	}
+	return nil
+}
+
 // sortedSpendTags answers a spend map's keys in order, so a render is stable.
 func sortedSpendTags(totals map[string]SpendTotal) []string {
 	tags := make([]string, 0, len(totals))
@@ -1519,7 +1550,7 @@ func cliShow(st *Store, p *cliParsed) error {
 	fmt.Fprintf(cliOut, "id: %s\n", cliID(task.ID))
 	fmt.Fprintf(cliOut, "project: %s\n", cliProjectID(st.Project()))
 	fmt.Fprintf(cliOut, "title: %s\n", task.Title)
-	fmt.Fprintf(cliOut, "status: %s %s\n", cliIcon(task.Status), task.Status)
+	fmt.Fprintf(cliOut, "status: %s %s [role %s]\n", cliIcon(task.Status), task.Status, roleOf(task))
 	fmt.Fprintf(cliOut, "kind: %s\n", task.Kind)
 	fmt.Fprintf(cliOut, "priority: %d\n", task.Priority)
 	if task.ClaimedBy != "" {
@@ -1578,7 +1609,7 @@ func cliOverview(st *Store, p *cliParsed) error {
 		if task.ID == st.RootID() {
 			continue
 		}
-		fmt.Fprintf(cliOut, "  %s %s %s [%s]", cliIcon(task.Status), cliID(task.ID), task.Title, task.Status)
+		fmt.Fprintf(cliOut, "  %s %s %s [%s] [role %s]", cliIcon(task.Status), cliID(task.ID), task.Title, task.Status, roleOf(task))
 		if task.ClaimedBy != "" {
 			fmt.Fprintf(cliOut, " %s", task.ClaimedBy)
 		}
@@ -1889,6 +1920,7 @@ type cliTaskJSON struct {
 	Title        string       `json:"title"`
 	Description  string       `json:"description"`
 	Status       Status       `json:"status"`
+	Role         string       `json:"role,omitempty"`
 	Kind         string       `json:"kind"`
 	Priority     int          `json:"priority"`
 	Parallel     string       `json:"parallel,omitempty"`
@@ -1917,6 +1949,7 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 		Title:       task.Title,
 		Description: task.Description,
 		Status:      task.Status,
+		Role:        roleOf(task),
 		Kind:        task.Kind,
 		Priority:    task.Priority,
 		Parallel:    task.Parallel,
@@ -2059,7 +2092,7 @@ type cliSplitPart struct {
 func cliVerbHelp(verb string) string {
 	lines := map[string]string{
 		"init":           `usage: plandb init NAME [--description TEXT] — create the run's store and its root task`,
-		"add":            `usage: plandb add TITLE [--description TEXT] [--parent TASK_ID] [--dep TASK_ID[:KIND]]... [--as ID] [--kind K] [--priority N]`,
+		"add":            `usage: plandb add TITLE [--description TEXT] [--parent TASK_ID] [--dep TASK_ID[:KIND]]... [--as ID] [--kind K] [--priority N] [--role plan|work|check|probe]`,
 		"split":          `usage: plandb split TASK_ID --into SPEC   (SPEC: JSON parts, "A, B", or "A > B > C")`,
 		"go":             `usage: plandb go [--agent ID] — claim the highest-priority ready task for you`,
 		"done":           `usage: plandb done [TASK_ID] --result TEXT [--agent ID] [--next]`,
@@ -2073,6 +2106,7 @@ func cliVerbHelp(verb string) string {
 		"critical-path":  `usage: plandb critical-path`,
 		"bottlenecks":    `usage: plandb bottlenecks [--limit N]`,
 		"show":           `usage: plandb show TASK_ID`,
+		"spend":          `usage: plandb spend — the ledger by role and by model`,
 		"help":           `usage: plandb help`,
 		"task":           `usage: plandb task <add-dep|amend|cancel|get|insert|note|notes|overview|pause|pivot|resume>`,
 		"task add-dep":   `usage: plandb task add-dep DOWNSTREAM --after UPSTREAM [--kind feeds_into|blocks|suggests]`,
@@ -2123,6 +2157,7 @@ reading:
   archive [--older-than 72h]  move old finished subtrees into the archive
   status [--full] | search QUERY [--limit N] [--project P] [--chat C] | critical-path | bottlenecks [--limit N]
   context TEXT [--kind K] [--task TASK_ID] | contexts [--kind K] [--limit N] [--project P] [--chat C] | prune CONTEXT_ID
+  spend                     the ledger grouped by role and by model
 
 global flags:
   --db PATH      the store file (found by walking up when not given)

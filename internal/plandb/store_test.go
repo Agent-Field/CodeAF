@@ -1378,3 +1378,139 @@ func TestPlandbCliAnOlderStoreGainsTheTagColumnsOnOpen(t *testing.T) {
 		t.Fatalf("old task tags = %#v, want the empty tag", got)
 	}
 }
+
+// A task's role follows its shape, never the word it was born with: a leaf
+// answers the seat it declared, and splitting it makes it a coordinator that
+// answers plan without a word on the task being rewritten.
+func TestPlandbCliRoleFollowsTheShape(t *testing.T) {
+	store := planOpen(t, "")
+	planAdd(t, store, planSpec("leaf", "Leaf"))
+	if role, err := store.RoleOf("leaf"); err != nil || role != RoleWork {
+		t.Fatalf("leaf role = %q, %v, want work", role, err)
+	}
+	// Splitting the leaf gives it a child; its seat moves up on the shape
+	// alone, so nothing had to be declared for it to answer plan.
+	planAdd(t, store, TaskSpec{ID: "kid", Title: "Kid", ParentID: "leaf"})
+	if role, err := store.RoleOf("leaf"); err != nil || role != RolePlan {
+		t.Fatalf("coordinator role = %q, %v, want plan while its child is open", role, err)
+	}
+	// check and probe are declared at add and read back as themselves.
+	planAdd(t, store, TaskSpec{ID: "review", Title: "Review", Role: RoleCheck})
+	if role, err := store.RoleOf("review"); err != nil || role != RoleCheck {
+		t.Fatalf("declared role = %q, %v, want check", role, err)
+	}
+	if _, err := store.RoleOf("ghost"); err == nil {
+		t.Fatal("RoleOf answered a task that does not exist")
+	}
+}
+
+// The seat a coordinator loses when its children leave: the run's root is the
+// one task that survives its last child being archived away — every other
+// parent auto-completes with its last child — so it is the task that shows the
+// fallback, plan with children and work again once the archive has taken them.
+func TestPlandbCliRoleFallsBackWhenChildrenArchive(t *testing.T) {
+	store := planOpen(t, "")
+	clock := time.Now().UTC()
+	store.now = func() time.Time { return clock }
+	planAdd(t, store, planSpec("solo", "Solo"))
+	if role, err := store.RoleOf(store.RootID()); err != nil || role != RolePlan {
+		t.Fatalf("root with a child = %q, %v, want plan", role, err)
+	}
+	planFinish(t, store, "solo", "w", "solo delivered")
+	clock = clock.Add(73 * time.Hour)
+	if _, err := store.Archive(72 * time.Hour); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if task := store.Task(store.RootID()); task == nil || task.Composite {
+		t.Fatalf("root after the archive = %#v, want a live non-composite root", task)
+	}
+	if role, err := store.RoleOf(store.RootID()); err != nil || role != RoleWork {
+		t.Fatalf("root after its child was archived away = %q, %v, want work", role, err)
+	}
+}
+
+// The store refuses a seat that is not one of the four words, and its refusal
+// names them.
+func TestPlandbCliRoleRefusesAWordThatIsNotASeat(t *testing.T) {
+	store := planOpen(t, "")
+	_, err := store.AddMany([]TaskSpec{{ID: "a", Title: "A", Role: "auditor"}})
+	if err == nil || !strings.Contains(err.Error(), "plan, work, check, probe") {
+		t.Fatalf("unknown role = %v, want a refusal naming the four seats", err)
+	}
+	if store.Task("a") != nil {
+		t.Fatal("a refused seat wrote the task anyway")
+	}
+}
+
+// A store made before the seat column existed still opens: the column is added
+// on open, and its old task reads back as the default seat — the same road the
+// tags took.
+func TestPlandbCliAnOlderStoreGainsTheSeatColumnOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store := planOpen(t, path)
+	planAdd(t, store, planSpec("a", "A"))
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	// Strip the column a store made before the seat existed never had.
+	db, err := openDatabase(path)
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	if _, err := db.Exec("ALTER TABLE tasks DROP COLUMN role"); err != nil {
+		t.Fatalf("drop tasks.role: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+	// Opening again migrates, and the old task reads back as the default seat.
+	store, err = Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer store.Close()
+	if got := store.Task("a"); got == nil || got.Role != RoleWork {
+		t.Fatalf("old task role = %#v, want the default seat", got)
+	}
+	if role, err := store.RoleOf("a"); err != nil || role != RoleWork {
+		t.Fatalf("old task RoleOf = %q, %v, want work", role, err)
+	}
+}
+
+// The spend summary reads the ledger back by role and by model: two seats and
+// two models each carry their own dollars and calls, and a charge the run
+// never tagged still lands under the empty word.
+func TestPlandbCliSpendSummaryGroupsByRoleAndModel(t *testing.T) {
+	store := planOpen(t, "")
+	planAdd(t, store, planSpec("a", "A"), planSpec("b", "B"))
+	if err := store.AddSpend("a", "model-x", RoleWork, 1.50, 100, 20); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := store.AddSpend("b", "model-y", RoleCheck, 0.25, 10, 5); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	summary := store.SpendSummary()
+	if got := summary.ByRole[RoleWork]; got.Calls != 1 || got.USD != 1.50 {
+		t.Fatalf("work seat = %#v, want 1 call and $1.50", got)
+	}
+	if got := summary.ByRole[RoleCheck]; got.Calls != 1 || got.USD != 0.25 {
+		t.Fatalf("check seat = %#v, want 1 call and $0.25", got)
+	}
+	if got := summary.ByModel["model-x"]; got.Calls != 1 || got.USD != 1.50 {
+		t.Fatalf("model-x = %#v, want 1 call and $1.50", got)
+	}
+	if got := summary.ByModel["model-y"]; got.Calls != 1 || got.USD != 0.25 {
+		t.Fatalf("model-y = %#v, want 1 call and $0.25", got)
+	}
+	// A charge with no seat and no model is not dropped; it is the empty word.
+	if err := store.AddSpend("a", "", "", 0.10, 1, 1); err != nil {
+		t.Fatalf("add untagged spend: %v", err)
+	}
+	summary = store.SpendSummary()
+	if got := summary.ByRole[RoleWork]; got.Calls != 1 || got.USD != 1.50 {
+		t.Fatalf("an untagged charge changed the work seat: %#v", got)
+	}
+	if got := summary.ByRole[""]; got.Calls != 1 || got.USD != 0.10 {
+		t.Fatalf("untagged seat = %#v, want 1 call and $0.10", got)
+	}
+}

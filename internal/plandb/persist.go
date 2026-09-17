@@ -233,11 +233,11 @@ func ensureSchema(db *sql.DB) error {
 			}
 		}
 	}
-	// THE TAGS ARRIVED AFTER THE FIRST STORES, and the paused and from
+	// THE TAGS ARRIVED AFTER THE FIRST STORES, and the paused, from and seat
 	// columns arrived after them. A store built before a column existed still
 	// opens: the column is added, and its old rows read back with an honest
 	// "made before this change" value — the empty tag, an unpaused task, a
-	// worker's note.
+	// worker's note, the default seat.
 	return migrateColumns(db)
 }
 
@@ -251,6 +251,12 @@ func migrateColumns(db *sql.DB) error {
 				return err
 			}
 		}
+	}
+	// The seat column is asked for like the rest: every store built from the
+	// first schema carries it, and a file written before it existed still
+	// opens, each old task reading back as the default seat.
+	if err := ensureColumn(db, "tasks", "role", "TEXT", "'work'"); err != nil {
+		return err
 	}
 	if err := ensureColumn(db, "tasks", "paused", "INTEGER", "0"); err != nil {
 		return err
