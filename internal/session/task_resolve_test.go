@@ -188,7 +188,8 @@ func TestTwoResolutionsAtOnceLandExactlyOnce(t *testing.T) {
 func TestAResolutionRefusesWhileAnotherIsInFlight(t *testing.T) {
 	agent, node := unverifiedNode(t, nil)
 
-	if err := node.claimSettle(claimReaudit); err != nil {
+	gen, err := node.claimSettle(claimReaudit)
+	if err != nil {
 		t.Fatalf("claiming the node: %v", err)
 	}
 	for _, answer := range []TaskResolution{TaskAccept, TaskRefute, TaskReaudit} {
@@ -201,7 +202,7 @@ func TestAResolutionRefusesWhileAnotherIsInFlight(t *testing.T) {
 		}
 	}
 	// And once it is handed back, the same answer goes through.
-	node.releaseSettle()
+	node.releaseSettle(gen)
 	if err := agent.ResolveUnverified(node.id, TaskRefute, "not finished"); err != nil {
 		t.Fatalf("refuting a node nobody holds failed: %v", err)
 	}
@@ -259,7 +260,7 @@ func TestOnlyANodeThatNeedsALookCanBeClaimed(t *testing.T) {
 	if err := agent.ResolveUnverified(node.id, TaskAccept, ""); err != nil {
 		t.Fatalf("accepting: %v", err)
 	}
-	err := node.claimSettle(claimAccept)
+	_, err := node.claimSettle(claimAccept)
 	if err == nil {
 		t.Fatal("a done node was claimed for a resolution")
 	}

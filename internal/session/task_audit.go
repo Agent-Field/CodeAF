@@ -2771,10 +2771,11 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// `git rev-parse` and a merge — long enough for a second accept in the same
 	// tool batch, or for a re-audit landing REFUTED, to walk straight through a
 	// state that was read and not held (task_run.go's [TaskNode.claimSettle]).
-	if err := node.claimSettle(claimAccept); err != nil {
+	gen, err := node.claimSettle(claimAccept)
+	if err != nil {
 		return err
 	}
-	defer node.releaseSettle()
+	defer node.releaseSettle(gen)
 	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
 		return err
@@ -2835,10 +2836,11 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 // has already answered it. Here the auditor answered nothing, so what the node
 // said is still the only account of the work there is.
 func (a *Agent) refuteTask(node *TaskNode, why string, by TaskAskOwner) error {
-	if err := node.claimSettle(claimRefute); err != nil {
+	gen, err := node.claimSettle(claimRefute)
+	if err != nil {
 		return err
 	}
-	defer node.releaseSettle()
+	defer node.releaseSettle(gen)
 	// The same fact in the negative, and it is evidence of exactly the same
 	// weight: a person doing the check's job and finding the work does not hold.
 	node.checkSaid(provider.ReadingSemanticFailure, 0)
@@ -2873,7 +2875,8 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if err != nil {
 		return err
 	}
-	if err := node.claimSettle(claimReaudit); err != nil {
+	gen, err := node.claimSettle(claimReaudit)
+	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2886,13 +2889,13 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	listed, err := a.jobs.startTask(node.id, "re-audit · "+node.title(), cancel)
 	if err != nil {
 		cancel()
-		node.releaseSettle()
+		node.releaseSettle(gen)
 		return fmt.Errorf("the re-audit could not be started: %w — accept it or refute it instead", err)
 	}
 	_, changed, _, _ := node.leavings()
 	go func() {
 		defer cancel()
-		defer node.releaseSettle()
+		defer node.releaseSettle(gen)
 		defer listed.settle(0)
 		// The node supplies its worker's kept conclusion at the common check
 		// boundary. No earlier checker's decision is passed as a claim.
@@ -2901,6 +2904,16 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 			// KILLED IS NOT A VERDICT. The node is left exactly as it was —
 			// unverified, waiting on somebody — because a re-audit that was
 			// stopped is a re-audit that never happened.
+			//
+			// AND THE QUESTION IS HANDED BACK, not held down: a notice built
+			// while the claim stands carries it and would suppress the raise
+			// (task_landing_question.go's [Agent.publishLandingQuestion]), so
+			// the release comes first and the deferred one below hands back
+			// only this claim's own generation. The re-raised card carries the
+			// answer's fate — `asked for a re-check 18:20 · nobody could check
+			// it` (#1077).
+			node.releaseSettle(gen)
+			a.emitTaskUpdate(node.notice())
 			return
 		}
 		a.landAudit(node, tree, verdict, changed)
