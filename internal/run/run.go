@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -30,6 +31,12 @@ const (
 // anything in this process having to come back first.
 const passInterval = 300 * time.Millisecond
 
+// defaultStaleAfter is how long a claim may go untouched before a pass takes
+// it over, when the caller named no window on Limits. Five minutes is long
+// enough that a slow step never looks like a dead process and short enough
+// that a run whose owner died is picked up within a working session.
+const defaultStaleAfter = 5 * time.Minute
+
 // workerReturn is one finished worker, on its way from its goroutine back to
 // the loop.
 type workerReturn struct {
@@ -39,16 +46,31 @@ type workerReturn struct {
 }
 
 // Supervisor is the launch loop over one plan store. It claims ready leaves
-// as the task's own agent, starts a worker for each under a slot bound, and
+// as the task's own agent — the name its finish command answers to — and
+// records the process that holds the claim beside it, so a run is owned per
+// process: a claim a dead process left behind is released and taken over by
+// the next one. It starts a worker for each claim under a slot bound and
 // writes every worker's ending back into the store. The root task is the
 // supervisor's own: no worker completes it, and it is completed once every
 // other task in the store is terminal.
 type Supervisor struct {
+	// Owner is the process that holds this run's claims: "<hostname>:<pid>",
+	// so each claim names the process answerable for it and a claim nobody
+	// touches reads stale. It is set from the running process when the
+	// supervisor is built; a test sets it to stand in for a second process
+	// sharing one store.
+	Owner string
+
 	store     *plandb.Store
 	workspace string
 	slots     int
 	limits    Limits
 	factory   WorkerFactory
+
+	// staleAfter is how long a claim may go untouched before this pass takes
+	// it over, resolved from Limits (or its default) at the top of Run, so
+	// every pass reads the same window.
+	staleAfter time.Duration
 
 	// finished carries worker endings back to the loop, buffered at the slot
 	// bound plus the root's seat: a worker whose run has already ended deposits
@@ -81,6 +103,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		slots = 1
 	}
 	return &Supervisor{
+		Owner:     ownerName(),
 		store:     store,
 		workspace: workspace,
 		slots:     slots,
@@ -120,6 +143,14 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.dispatchedRoot = false
 	s.inFlight = 0
 	s.cancels = make(map[string]context.CancelFunc)
+	s.staleAfter = s.limits.StaleAfter
+	if s.staleAfter <= 0 {
+		s.staleAfter = defaultStaleAfter
+	}
+	// TAKE-OVER BEFORE THE FIRST PASS: a claim a dead process left behind is
+	// released here, so the ready set the first pass reads can offer it again
+	// with no pass of waiting.
+	s.releaseStale()
 
 	timer := time.NewTimer(passInterval)
 	defer timer.Stop()
@@ -155,6 +186,13 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		return OutcomeCannotRun
 	}
 	s.endCancelledWorkers()
+	// TAKE-OVER, EVERY PASS: refresh this process's own claims so they never
+	// read stale, then hand back any claim whose process has stopped touching
+	// it, so the ready read below offers it again. Our own claims are fresh
+	// from the touch; a live claim held by another process is fresh from that
+	// process's own touch and is left alone.
+	s.touchClaims()
+	s.releaseStale()
 	if terminalStatus(root.Status) {
 		return s.outcomeForRoot(root.Status)
 	}
@@ -185,8 +223,9 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 			// THE AGENT NAME IS THE TASK'S OWN ID, the store's naming trick:
 			// the ending written for this task can only come from the worker
 			// it was handed to, because ownership is checked against this
-			// exact name.
-			if _, err := s.store.Claim(task.ID, task.ID); err != nil {
+			// exact name. The process that holds the claim is named beside it,
+			// so a claim this run abandons reads stale for another process.
+			if _, err := s.store.Claim(task.ID, task.ID, s.Owner); err != nil {
 				// Not ours anymore — another writer claimed, cancelled or
 				// finished it between the read and the claim. The next pass
 				// sees the store as it now stands.
@@ -304,6 +343,42 @@ func (s *Supervisor) treeTerminal() bool {
 		}
 	}
 	return true
+}
+
+// ownerName is the identity a run's claims are held under: "<hostname>:<pid>",
+// so a claim names the process answerable for it and a claim nobody touches
+// reads stale. A machine that cannot say its own name still claims — the pid
+// alone tells two processes apart.
+func ownerName() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "unknown"
+	}
+	return fmt.Sprintf("%s:%d", host, os.Getpid())
+}
+
+// touchClaims refreshes the seen-at stamp of every task this process holds,
+// so a live claim never reads as stale however long its worker runs. The
+// store writes only when something is held and moves the seen-at stamp alone,
+// so a heartbeat is never mistaken for work the plan did.
+func (s *Supervisor) touchClaims() {
+	_, _ = s.store.TouchClaims(s.Owner)
+}
+
+// releaseStale hands back every claim whose owner has stopped touching it, so
+// the ready set offers those tasks again. The stale scan leaves the root out
+// — the run itself is nobody's take-over — and a claim this process is
+// actively working is left alone: the touch above just refreshed it, and a
+// worker in flight must not lose its task under it. A live claim held by
+// another process is left alone for the same reason — that process keeps
+// touching it.
+func (s *Supervisor) releaseStale() {
+	for _, task := range s.store.StaleClaims(s.staleAfter) {
+		if _, running := s.cancels[task.ID]; running {
+			continue
+		}
+		_, _ = s.store.Release(task.ID, task.ClaimedBy)
+	}
 }
 
 // endCancelledWorkers ends the context of every running worker whose task
