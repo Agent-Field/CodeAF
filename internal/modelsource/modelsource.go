@@ -4,7 +4,6 @@ package modelsource
 
 import (
 	"fmt"
-	"net"
 	"strings"
 	"time"
 )
@@ -245,7 +244,7 @@ func DefaultSource(address string) Source {
 // byte-identical.
 func SourceSlug(host string) string {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if parsed := net.ParseIP(host); parsed != nil {
+	if ipLiteral(host) {
 		return strings.Trim(strings.Map(func(r rune) rune {
 			if r == '.' || r == ':' {
 				return '-'
@@ -274,6 +273,40 @@ func SourceSlug(host string) string {
 		return CustomID
 	}
 	return word
+}
+
+// ipLiteral reports whether host is an IP address written out in full,
+// judged the way net.ParseIP would, using string work only because this
+// package may not import net. An IPv6 literal carries a colon, which no
+// hostname may; an IPv4 literal is four decimal labels, each 0-255, none
+// with a leading zero.
+func ipLiteral(host string) bool {
+	if strings.Contains(host, ":") {
+		return true
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) != 4 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" || len(part) > 3 {
+			return false
+		}
+		if len(part) > 1 && part[0] == '0' {
+			return false
+		}
+		value := 0
+		for i := 0; i < len(part); i++ {
+			if part[i] < '0' || part[i] > '9' {
+				return false
+			}
+			value = value*10 + int(part[i]-'0')
+		}
+		if value > 255 {
+			return false
+		}
+	}
+	return true
 }
 
 // Split applies the service-prefix grammar to an already level-less model id.

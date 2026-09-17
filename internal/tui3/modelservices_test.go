@@ -341,7 +341,15 @@ func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
 	}
 	a.connPanel.entry.box.setText(server.URL())
 	if cmd := a.connectEntryKey(key("enter")); cmd != nil || a.connPanel.entry == nil {
-		t.Fatal("the completed address did not open the key box")
+		t.Fatal("the completed address did not open the name box")
+	}
+	// THE NAME STEP IS PART OF THE FLOW: the connection's Written word is the
+	// routing prefix of every model id it qualifies, and the box opens
+	// pre-filled with the host slug. A typed name is what the connection is
+	// called everywhere below (the assertions derive `written` from it).
+	a.connPanel.entry.box.setText("localhost")
+	if cmd := a.connectEntryKey(key("enter")); cmd != nil || a.connPanel.entry == nil || !a.connPanel.entry.secret {
+		t.Fatal("the completed name did not open the key box")
 	}
 	a.connPanel.entry.box.setText("sk-direct-1234567890")
 	cmd := a.connectEntryKey(key("enter"))
@@ -450,6 +458,86 @@ func TestAPaymentRefusalConnectsTheAuthenticatedAccount(t *testing.T) {
 	}
 	if got := noteSaying(t, a, "accepted the key"); got != "localhost accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge." {
 		t.Fatalf("payment connection note = %q", got)
+	}
+}
+
+func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[6]
+	source.Listing = modelsource.ListingNone
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "mybox", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	a.switchModel("mybox/glm-5.3", 0)
+	// Role pins, the fallback chain and a capability slot are picked under the
+	// old name too; the rename has to carry them or they misroute at send.
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: dir})
+	roles, ok := registry.Row(config.KeyModelRoles)
+	if !ok {
+		t.Fatal("the roles row is missing")
+	}
+	if err := roles.Apply("planner:mybox/glm-5.3"); err != nil {
+		t.Fatal(err)
+	}
+	fallbacks, ok := registry.Row(config.KeyModelFallbacks)
+	if !ok {
+		t.Fatal("the fallbacks row is missing")
+	}
+	if err := fallbacks.Apply("mybox/glm-5.3-flash, openai/gpt-4.1-mini"); err != nil {
+		t.Fatal(err)
+	}
+	image, ok := registry.Row(config.ModelSettingKey("image"))
+	if !ok {
+		t.Fatal("the image slot row is missing")
+	}
+	if err := image.Apply("mybox/glm-5.3"); err != nil {
+		t.Fatal(err)
+	}
+
+	// THE RENAME: an edit draft whose Written moved, exactly what the name
+	// step builds on an answer that differs from the stored one.
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "renamed-box"
+	renamedDraft := modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "renamed-box", Listing: modelsource.ListingNone},
+		row:         renamed,
+		renamedFrom: "mybox",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	}
+	msg = a.beginModelConnect(renamedDraft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	if a.model != "renamed-box/glm-5.3" {
+		t.Fatalf("the rename left the conversation on %q", a.model)
+	}
+	if got := config.ChatModelAt(dir); got != "renamed-box/glm-5.3" {
+		t.Fatalf("the persisted slot did not follow the rename: %q", got)
+	}
+	if roles, _ := registry.Row(config.KeyModelRoles); roles.Value() != "planner:renamed-box/glm-5.3" {
+		t.Fatalf("the role pin did not follow the rename: %q", roles.Value())
+	}
+	if fallbacks, _ := registry.Row(config.KeyModelFallbacks); fallbacks.Value() != "renamed-box/glm-5.3-flash, openai/gpt-4.1-mini" {
+		t.Fatalf("the fallback chain did not follow the rename: %q", fallbacks.Value())
+	}
+	if image, _ := registry.Row(config.ModelSettingKey("image")); image.Value() != "renamed-box/glm-5.3" {
+		t.Fatalf("the capability slot did not follow the rename: %q", image.Value())
+	}
+	// A NAME THAT WAS NEVER THE OLD ONE COMES BACK UNTOUCHED.
+	if fallbacks, _ := registry.Row(config.KeyModelFallbacks); strings.Contains(fallbacks.Value(), "mybox/") {
+		t.Fatalf("the old prefix survived the rename: %q", fallbacks.Value())
 	}
 }
 
