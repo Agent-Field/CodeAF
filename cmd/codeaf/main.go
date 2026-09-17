@@ -198,6 +198,8 @@ func run() error {
 			os.Args[2:], func(args []string) error { return runShow("plan show", args) })
 	case "models":
 		return runModels(os.Args[2:])
+	case "pool":
+		return runPool(os.Args[2:])
 	case "notebook":
 		return runNotebook(os.Args[2:])
 	case "collections":
@@ -352,6 +354,8 @@ Look at what happened — read-only, no key, nothing spent
       they are on disk, --body one call's bodies. CODEAF_CALL_LOG=off is off
   codeaf models [--refresh]
       the models this machine will use, and what each has been measured at
+  codeaf pool [show|status|verify] [--json] [--key key]
+      the Model Pool: what is resolved and cached; verify fetches with a key
   codeaf doctor [--db path]
       is this install healthy, and where does it keep things
   codeaf manual
@@ -374,8 +378,7 @@ Housekeeping — changes state on disk or on the network
   codeaf devices
       list the devices paired with this machine
   codeaf devices revoke <name> [--all]
-      stop one device opening a conversation here; --all, every device of that
-      name
+      stop one device opening a conversation here; --all, all of that name
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
@@ -392,8 +395,7 @@ Housekeeping — changes state on disk or on the network
 
 Plan work by hand — a plan you can read, edit and diff
   codeaf plan new "<goal>" [--out plan.json] [--dir dir] [--json]
-              [--instructions] [--passes auto|off|N] [--model slug]
-              [--plan-model slug]
+              [--instructions] [--passes auto|off|N] [--plan-model slug]
   codeaf plan show <plan.json>
   codeaf plan revise <plan.json> "<what happened>" [--done 1,2,3]
               [--out plan.json] [--model slug] [--plan-model slug]

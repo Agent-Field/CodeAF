@@ -510,6 +510,42 @@ machine would run work on. **On a machine with no evidence the whole answer is o
 No competence evidence yet.
 ```
 
+## The Model Pool — what this machine reads from it, with codeaf pool
+
+codeaf picks its models against the public Model Pool: a signed index of
+measured models that your runs improve. Nothing about your code ever leaves
+the machine — what is shared is a measurement of the run, not the work. One
+setting answers for all of it, `model_pool` in `/settings`, with three
+values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
+does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
+from the shell, and on a CI machine with neither set codeaf reads but does
+not send.
+
+```
+codeaf pool [show|status|verify] [--json] [--key key]
+```
+
+`show` — also what bare `codeaf pool` prints — is the reading form: the mode
+and the addresses in force with the word saying where each came from
+(`default`, `setting`, `env` or `ci`), then what index is cached and how old
+it is, or `no index cached yet`. `status` adds what is waiting to be sent
+and whether the mode allows sending and reading. `--json` prints the same
+answer as one object. Neither form touches the network.
+
+`verify` fetches a fresh index and checks its detached ed25519 signature,
+then prints the version whose signature checked out:
+
+```
+signature good: version 7, generated 2026-09-10, 3 metrics
+```
+
+It wants a public key: `--key <base64 ed25519 public key>`, repeatable, or
+one built into the build. This build carries none yet — the key is published
+beside the first index — so it answers
+`no public key built into this build; pass --key` and fetches nothing. A
+fetch or a signature that fails is exit 1; a `verify` on a machine whose
+setting is `off` is refused with exit 2 and fetches nothing.
+
 ## What is still running in the background — codeaf services, and stopping one
 
 `codeaf services` lists the long-running processes started here and not yet stopped — a dev

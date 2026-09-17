@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
@@ -1379,5 +1380,72 @@ func TestThePromptProfileRowRoundTripsAndItsPinWinsForOneLaunch(t *testing.T) {
 	t.Setenv(EnvPromptProfile, "leaner")
 	if got := PromptProfileAt(dir); got != PromptProfileLean {
 		t.Fatalf("a mistyped pin overrode the persisted row: %q", got)
+	}
+}
+
+// The Model Pool row: the stored word the pool resolver takes, the pin beside
+// it, and the resolver's own reading of both. The three choices are the same
+// three words poolcfg.Resolve accepts from the environment, so a row and a
+// shell spell one thing — and the resolver in this package is the one place
+// the process environment is read for the pool.
+func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_MODEL_POOL", "")
+	t.Setenv("CI", "")
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyModelPool)
+	if !ok {
+		t.Fatal("the model pool is not registered")
+	}
+	if row.Category != CategoryModels || row.Kind != SettingChoice || row.Label != "model pool" {
+		t.Fatalf("model pool row = %+v", row)
+	}
+	if row.Value() != "on" {
+		t.Fatalf("the pool does not default to on: %q", row.Value())
+	}
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.On || got.Source.Mode != "default" {
+		t.Fatalf("an untouched profile resolved %+v", got)
+	}
+
+	if err := row.Apply("read"); err != nil {
+		t.Fatal(err)
+	}
+	reread, _ := registry(t, dir).Row(KeyModelPool)
+	if reread.Value() != "read" {
+		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
+	}
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Read || got.Source.Mode != "setting" {
+		t.Fatalf("the stored word did not take: %+v", got)
+	}
+	if err := reread.Apply("maybe"); err == nil || !strings.Contains(err.Error(), "on, read, off") {
+		t.Fatalf("the row accepted a word it does not take: %v", err)
+	}
+	if ModelPoolAt(dir).Mode != poolcfg.Read {
+		t.Fatal("a refused edit still moved the row")
+	}
+
+	// The pin outranks the stored word, the row reports it, and a pinned row
+	// refuses to be edited the way every other pinned row refuses.
+	t.Setenv("CODEAF_MODEL_POOL", "off")
+	pinned, _ := registry(t, dir).Row(KeyModelPool)
+	if name, isPinned := pinned.PinnedBy(); !isPinned || name != "CODEAF_MODEL_POOL" {
+		t.Fatalf("the pool row did not report its pin: %q %v", name, isPinned)
+	}
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Off || got.Source.Mode != "env" {
+		t.Fatalf("the pin lost: %+v", got)
+	}
+	if err := pinned.Apply("on"); err == nil || !strings.Contains(err.Error(), "CODEAF_MODEL_POOL") {
+		t.Fatalf("a pinned pool row accepted an edit: %v", err)
+	}
+
+	// A word nobody set the row to on purpose — an older build's word, a
+	// hand-typed typo — reads as the default rather than as an error, the way
+	// [SearchProviderAt] reads "yahoo!" as auto.
+	t.Setenv("CODEAF_MODEL_POOL", "")
+	if err := writeProfileValue(dir, KeyModelPool, "maybe"); err != nil {
+		t.Fatal(err)
+	}
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.On {
+		t.Fatalf("a stale word did not fall back to on: %+v", got)
 	}
 }
