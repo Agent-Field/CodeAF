@@ -304,7 +304,12 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 // the store, never a cached copy. A nil answer is a pass with no plan; when
 // the answer is a store the caller closes it, because every pass opens one.
 func (p *planState) open() *plandb.Store {
-	store, err := plandb.Open(p.path, "", planRootID, "", "")
+	// THE STORE IS ADOPTED BY ITS PATH AND NOT BY ITS ROOT, because a run seeded
+	// through the chat's task door names its root with the id the door answered
+	// the person (task_run_belt.go), while the legacy seed's root is [planRootID]
+	// — and this reading must serve both. Demanding the legacy root here would
+	// make [Agent.PlanTasks] blind to a run's own store.
+	store, err := plandb.Open(p.path, "", "", "", "")
 	if err != nil {
 		return nil
 	}
