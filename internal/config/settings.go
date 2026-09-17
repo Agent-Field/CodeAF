@@ -1265,7 +1265,7 @@ var OperatorEnvPins = []string{
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
 	// CODEAF_TASK_BELT builds a task worker on the bash belt instead of the
-	// pi-tool belt (internal/session's bashbelt.go,
+	// shipped belt (internal/session's bashbelt.go,
 	// docs/design/bash-task-loop/DESIGN.md): the one `bash` tool plus the
 	// hands that cannot be a shell command, so both arms of the comparison
 	// run from one binary. It is plumbing for the reason CODEAF_SWARM and
