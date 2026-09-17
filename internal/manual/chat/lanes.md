@@ -245,6 +245,21 @@ The hint slot says which: `→ providers · enter switch · esc` on a model,
 `enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
 "no opinion from me — let the router balance it".
 
+## What enter on the openrouter row does — it chooses default and opens the list under it
+
+`enter` on the bare `openrouter` row writes the same answer the `default` row **inside** that
+row's own list writes: ask for no provider, let the router balance. It is that answer reached
+one press earlier, not a fourth option.
+
+**So it opens the list as well as choosing**, and the cursor lands on `default` with the
+selected band on it. Shut, the gesture reads as "you have chosen openrouter", which sounds
+like a destination and hides that there was a list of machines under it at all. Open, it
+reads as the true sentence: here are the machines this routes between, and you have chosen not
+to pick among them.
+
+Pressing `enter` there again does **not** shut it. `enter` never means "close" anywhere in
+this list — `←` or `tab` is the way back out.
+
 ## Going back to auto — unpinning with the same key that pinned, and filtering inside an open fold
 
 **`enter` on the provider you are already pinned to takes the pin off.** It is a toggle on

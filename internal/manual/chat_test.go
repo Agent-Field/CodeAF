@@ -263,6 +263,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"typing cheap in the model list stopped sorting it", "models-and-cost"},
 		{"what happened to the model picker filter grammar", "models-and-cost"},
 		{"can I type fast in the model filter to sort by speed", "models-and-cost"},
+		// AND THE ARROW KEYS' TWO JOBS, asked by somebody whose press went to the
+		// wrong one. They do not know there is a timer; they know the left arrow
+		// moved their cursor when they wanted to leave the providers, or closed
+		// the providers when they wanted to fix a typo. Both askings have to land
+		// on the page that says what breaks the tie.
+		{"why does the left arrow move my cursor instead of closing the providers", "models-and-cost"},
+		{"left and right arrows do the wrong thing in the model picker", "models-and-cost"},
+		{"how do I get back to editing the filter after the arrows started navigating", "models-and-cost"},
 		{"can I change the model while it is replying", "models-and-cost"},
 		{"does switching the model take effect now or later", "models-and-cost"},
 		{"I changed the model in the middle of an answer", "models-and-cost"},
@@ -2534,6 +2542,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does via say 0731 when I picked latest", "lanes"},
 		{"the model name has a tilde in it", "lanes"},
 		{"why are some model names prefixed with a squiggle", "lanes"},
+		// AND ENTER ON THE CONTAINER ROW, asked by somebody who pressed it and
+		// watched a list appear where they expected the menu to close.
+		{"why did pressing enter on openrouter open a list", "lanes"},
+		{"what does enter on the openrouter row do", "lanes"},
 		{"why does this model start with ~", "lanes"},
 		// AUTO, asked from a terminal rather than from a conversation. The
 		// first two are somebody deciding whether the headless doors get any of

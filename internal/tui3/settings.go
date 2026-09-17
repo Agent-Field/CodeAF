@@ -2392,6 +2392,7 @@ func (a *app) applyLaneFromSheet(sel *sheetSelect, lane pickRow) {
 	}
 	a.applyLaneChoice(chosen.ID, lane, lanes)
 	a.restatePicker(&sel.pick, chosen.ID)
+	sel.pick.showChoice(lane)
 	// THE PANEL RE-READS WHAT IT JUST WROTE. The lane row and the model row's
 	// own tail are two readings of this one fact ([sheet.laneWord]), and a
 	// panel that kept drawing the old word over a pin the person watched

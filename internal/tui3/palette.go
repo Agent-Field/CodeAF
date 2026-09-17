@@ -89,6 +89,11 @@ type picker struct {
 	// lanes is what was believed about that model's lanes at the moment it was
 	// opened, in the order they are drawn in.
 	lanes []laneView
+	// typed is when the filter box last changed under somebody's hands, and it is
+	// what tells EDITING from NAVIGATING ([picker.editing]). Zero is "nothing has
+	// been typed into this list", which is navigating: there is no text to put a
+	// caret in.
+	typed time.Time
 	// auto is the lane the CHOOSER would send the next turn to, taken with the
 	// views at the moment the fold opened. It is not [bestLane]'s answer and
 	// must not be: this file's own sort orders the rows a person reads, and the
@@ -851,6 +856,52 @@ func (p *picker) cursorToPin() {
 	p.follow(pickerRows)
 }
 
+// pickerQuiet is how long the filter box must go untouched before `→` and `←`
+// stop being the caret and go back to being the tree.
+//
+// IT IS A QUIET WINDOW AND NOT A DEADLINE, which is the difference between a
+// mode that follows a pair of hands and one that expires mid-word: every edit
+// pushes it out again, so a person typing at any speed keeps the caret keys for
+// as long as they are typing, and the moment they stop is the moment the arrows
+// mean the list.
+//
+// SIX HUNDRED MILLISECONDS IS CHOSEN AGAINST TYPING CADENCE rather than against
+// what feels like a pause in the abstract. Ordinary typing puts 100–200ms between
+// keys and a correction burst is faster than that, so 600ms cannot land inside a
+// word; and a hand moving from the letters to an arrow key takes about that long,
+// so by the time the arrow is pressed on purpose the window has usually closed.
+// Longer and the list feels stuck behind text nobody is editing any more; much
+// shorter and a thinking pause mid-name would take the caret away.
+const pickerQuiet = 600 * time.Millisecond
+
+// editing reports whether the caret keys still belong to the FILTER BOX rather
+// than to the tree.
+//
+// THE TWO GESTURES COLLIDE ON ONE PAIR OF KEYS and something has to break the
+// tie. `→` and `←` are what a hand reaches for at a tree, and they are also how
+// a caret walks text. The tie used to be broken by POSITION alone — the arrows
+// were the tree's only at the very start and the very end of what was typed —
+// and that made the commonest gesture in this list cost four presses: type
+// `deep`, press `→` to open the providers, then press `←` to come back out and
+// watch the caret step backwards through `p`, `e`, `e`, `d` while the fold
+// stayed open.
+//
+// So the tie is broken by TIME as well, and time is the honest signal: somebody
+// still editing is still pressing keys. The position rule is kept on top of this
+// one, because `→` at the end of a word has nowhere to step and was always the
+// tree's — which is what makes an empty box, where this list spends most of its
+// life, behave exactly as it always did.
+//
+// COMING BACK IS ANY EDIT AT ALL — a character, a backspace, a kill, an undo, or
+// `ctrl+b`/`ctrl+f`, which are the caret's own keys and never the tree's
+// ([picker.navigate] stamps them all). That last pair is the way out of this mode
+// that does not change a single letter of the query, and it is why the mode
+// cannot trap anybody: the arrows went to the list, so the arrows' understudies
+// are still there to take the caret back.
+func (p *picker) editing() bool {
+	return !p.typed.IsZero() && timeNow().Sub(p.typed) < pickerQuiet
+}
+
 // foldKey is `tab`, `→` and `←` over this list — the fold's whole key map, in
 // one place because the list has two doors ([app.pickerKey] and settings.go's
 // [app.sheetSelectKey]) and a gesture that opened the machines from one of them
@@ -871,11 +922,34 @@ func (p *picker) foldKey(name string) bool {
 		}
 		return true
 	case "right":
-		return p.filter.cursor >= len(p.filter.value) && p.unfoldHere()
+		return (!p.editing() || p.filter.cursor >= len(p.filter.value)) && p.unfoldHere()
 	case "left":
-		return p.filter.cursor <= 0 && p.foldHere()
+		return (!p.editing() || p.filter.cursor <= 0) && p.foldHere()
 	}
 	return false
+}
+
+// showChoice opens what a row just chosen is the LID of, and does nothing for a
+// row that is not one. It runs after the write, so the mark it reveals is the
+// answer that was just written and not the one before it.
+//
+// `enter` ON `openrouter` CHOOSES `default` — the container and the row inside it
+// write the same thing (lanes.go's [app.applyLaneChoice]) — AND THAT IS EXACTLY
+// WHY IT HAS TO OPEN. Shut, the gesture reads as "you have chosen openrouter",
+// which sounds like a destination and hides that there was a list under it at
+// all. Open, it reads as the true sentence: here are the machines this routes
+// between, and the answer you just gave is `default`, the one that declines to
+// pick among them.
+//
+// THE MARK DOES THE TALKING AND IT ALREADY WORKED THIS WAY. [picker.marked] gives
+// the container the mark only while it is SHUT and gives it to `default` once it
+// is open, and [picker.cursorToMachine] walks onto the marked row — so opening is
+// the whole of the change, and what a person sees is the cursor landing on
+// `default` with the band on it.
+func (p *picker) showChoice(row pickRow) {
+	if row.lane == laneRoutAt {
+		p.unfoldHere()
+	}
 }
 
 // laneUnder is the lane row the cursor is on: the view, and which of the three
@@ -2242,12 +2316,17 @@ func (p *picker) keysParts() (string, string, string) {
 	// AND A MACHINE THAT IS ALREADY THE ANSWER SAYS WHAT ENTER DOES THERE, which
 	// is the one gesture in this fold that is not the same as its neighbours'.
 	unpin := ok && row.lane >= 0 && p.marked(p.cursor)
+	// AND THE FOOT NAMES WHICHEVER KEY ACTUALLY WORKS RIGHT NOW. While the box is
+	// being edited the arrows are the caret's and only `tab` reaches the tree, so
+	// the foot says `tab`; once the box has gone quiet ([picker.editing]) the
+	// arrows are the tree's again and it says so. A foot that named `←` while `←`
+	// was stepping through a word is the thing that made the fold feel broken.
 	back := "← back"
-	if p.filter.cursor > 0 {
+	if p.editing() && p.filter.cursor > 0 {
 		back = "tab back"
 	}
 	open := "→ providers"
-	if p.filter.cursor < len(p.filter.value) {
+	if p.editing() && p.filter.cursor < len(p.filter.value) {
 		open = "tab providers"
 	}
 	switch {
@@ -2586,6 +2665,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			a.applyLaneChoice(chosen.ID, row, a.pick.lanes)
 			a.restatePicker(&a.pick, a.model)
+			a.pick.showChoice(row)
 			a.touch()
 			return nil
 		}
@@ -2634,7 +2714,21 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 // is one filterable model list on this surface; a slot row in the settings
 // panel and /model are two doors onto it, not two lists that look alike.
 func (p *picker) navigate(msg tea.KeyPressMsg) {
+	// WHAT COUNTS AS EDITING IS THE BOX HAVING MOVED, asked of the box itself
+	// rather than of the key's name. A list of editing keys kept here would be a
+	// second copy of [listNavigate]'s own switch — and the day somebody adds a
+	// kill to that switch, the copy stops agreeing and the mode starts lying
+	// about a keystroke that plainly edited. The text and the caret are the whole
+	// state a person can see, so a press that changed neither did not edit.
+	//
+	// AND THE WALK DELIBERATELY DOES NOT COUNT. `↑`/`↓` move the cursor through
+	// the list and leave the box alone, so walking a filtered list never hands
+	// the arrows back to the caret.
+	before, at := string(p.filter.value), p.filter.cursor
 	listNavigate(msg, &p.filter, p.move, p.rank, pickerRows)
+	if string(p.filter.value) != before || p.filter.cursor != at {
+		p.typed = timeNow()
+	}
 }
 
 // listNavigate is that key map itself, held apart from the model list so the

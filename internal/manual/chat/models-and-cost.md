@@ -152,9 +152,19 @@ Type to filter. The keys:
 | enter | switch to the row under the cursor — or, on an open provider, pin it — and **leave the list up** |
 | esc | close it; what enter already did stays done |
 
-`→` and `←` open and close the providers only from the **end** and the **start** of what
-you have typed; with characters to step over they move the caret through the filter
-instead. `tab` always opens and closes.
+`→` and `←` belong to the providers **unless you are mid-typing**, where they move the caret
+through the filter instead. Mid-typing means within 0.6 seconds of the last change to the box,
+and every keystroke pushes that out — so the arrows are the caret's while you type and the
+tree's once you stop. They are the tree's at the very end and start of the text regardless,
+where there is no character to step over, which is why an empty box never waits.
+
+**This is what made coming back out of a fold cost four presses.** With `deep` typed and the
+providers open, `←` used to step through `p`, `e`, `e`, `d` before it would close anything.
+Now you pause and press it once.
+
+**Any edit takes the caret back** — a letter, `backspace`, `ctrl+w` — and so do
+`ctrl+b`/`ctrl+f`, which are never the providers' keys and so move the caret without changing
+your query. `↑`/`↓` do not count as editing. `tab` always opens and closes.
 
 **This is one list with two doors.** `/model` opens it, and so does the **your model**
 row at the top of the Providers tab in `/settings` — the same rows, the same name
@@ -2958,7 +2968,8 @@ a pin without you. It says so once, in the conversation
 (`coreweave cannot serve this model; routing on auto for this model until you pin again`),
 routes that one model on auto for the rest of the run, and leaves your row and every other
 model alone. *Providers → Pinning one provider yourself* has the whole of it. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no provider
-at all and lets the router balance on price. If the providers were open under a model you are
+at all, lets the router balance on price, and opens the fold under it (*Providers → Pinning one
+provider yourself* says why). If the providers were open under a model you are
 not talking to, `enter` switches to that model as well — choosing a provider under a name
 means you want that name served from there.
 

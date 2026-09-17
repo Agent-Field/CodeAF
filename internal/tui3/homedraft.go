@@ -554,6 +554,7 @@ func (a *app) targetPickKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.pinTargetModel(chosen.ID)
 			a.applyLaneChoice(chosen.ID, row, a.target.pick.lanes)
 			a.restatePicker(&a.target.pick, a.targetModel())
+			a.target.pick.showChoice(row)
 			a.touch()
 			return nil
 		}

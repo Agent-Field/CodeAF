@@ -926,8 +926,9 @@ falls back to `filter`.
 moment you type — which is exactly when you have found your model and want its providers.
 The foot follows the cursor: `→ providers · ctrl+t effort · enter switch · esc` on a model,
 `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc` on the
-provider you are already pinned to, where the same key takes the pin off again. With typed
-text the arrow would step over, those read `tab providers` and `tab back`. What is left in
+provider you are already pinned to, where the same key takes the pin off again. While you are
+mid-typing and the arrow would step over a character, those read `tab providers` and `tab
+back` — the foot names whichever key actually works at that moment. What is left in
 the box is the name of the box and the one key that is about the LIST rather than about the
 row under the cursor.
 
