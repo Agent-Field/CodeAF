@@ -1,7 +1,8 @@
-// Package poolcfg resolves how the measurement pool behaves from one stored
-// setting and an environment handed in as a function. Nothing here touches the
-// disk, the network, the clock or the process environment, so Resolve is a
-// table of inputs and outputs and every case is reachable from a test.
+// Package poolcfg resolves how the measurement pool behaves from two stored
+// settings — the mode word and the trusted key — and an environment handed in
+// as a function. Nothing here touches the disk, the network, the clock or the
+// process environment, so Resolve is a table of inputs and outputs and every
+// case is reachable from a test.
 package poolcfg
 
 import (
@@ -11,10 +12,19 @@ import (
 	"time"
 )
 
-// Addresses held when the environment offers nothing readable.
+// Addresses held when the environment offers nothing readable. The relay is
+// the one base the resolver holds: the index and the submit addresses are
+// read from beside it, and each keeps its own override.
 const (
-	DefaultIndexURL  = "https://pool.invalid/index.json"
-	DefaultSubmitURL = "https://pool.invalid/submit"
+	DefaultRelayURL  = "https://codeaf.agentfield.ai/pool"
+	DefaultIndexURL  = DefaultRelayURL + indexPath
+	DefaultSubmitURL = DefaultRelayURL + submitPath
+)
+
+// The two addresses a relay serves, under its base.
+const (
+	indexPath  = "/index.json"
+	submitPath = "/v1/rows"
 )
 
 // Mode says what the pool may do: send and read, only read, or neither.
@@ -44,30 +54,41 @@ func (m Mode) String() string {
 // of four words: "default", "setting", "env" or "ci".
 type Sources struct {
 	Mode      string
+	RelayURL  string
 	IndexURL  string
 	SubmitURL string
+	PublicKey string
 	TTL       string
 }
 
 // Config is the resolved pool configuration. Source names the origin of each
 // field, and every field is resolved on its own: the mode does not change how
-// the URLs or the TTL are read, and an unreadable URL does not disturb the
-// TTL.
+// the addresses or the TTL are read, and an unreadable URL does not disturb
+// the TTL.
+//
+// The relay is the base the index and submit addresses derive from: each is
+// RelayURL with its own path appended, unless its own environment name
+// overrides it. An empty PublicKey is the ordinary answer — it means the key
+// the binary carries.
 type Config struct {
 	Mode      Mode
+	RelayURL  string
 	IndexURL  string
 	SubmitURL string
+	PublicKey string
 	TTL       time.Duration
 	Source    Sources
 }
 
-// The five names Resolve reads, and no others.
+// The seven names Resolve reads, and no others.
 const (
 	envMode   = "CODEAF_MODEL_POOL"
 	envCI     = "CI"
+	envRelay  = "CODEAF_MODEL_POOL_RELAY_URL"
 	envIndex  = "CODEAF_MODEL_POOL_URL"
 	envSubmit = "CODEAF_MODEL_POOL_SUBMIT_URL"
 	envTTL    = "CODEAF_MODEL_POOL_TTL"
+	envKey    = "CODEAF_MODEL_POOL_PUBLIC_KEY"
 )
 
 // Where a resolved value came from.
@@ -85,17 +106,18 @@ const (
 	defaultTTL = 24 * time.Hour
 )
 
-// Resolve resolves the pool configuration from the stored setting and the
-// environment behind lookup, which answers with a value and whether the name
-// was set at all — a name that is set and empty is not the same as a name
-// nobody set. A nil lookup is an environment in which nothing is set.
+// Resolve resolves the pool configuration from the stored mode word, the
+// stored public key and the environment behind lookup, which answers with a
+// value and whether the name was set at all — a name that is set and empty is
+// not the same as a name nobody set. A nil lookup is an environment in which
+// nothing is set.
 //
 // Every value is read with the space around it trimmed, and words are matched
 // without regard to case. Resolve is pure: the same inputs give the same
 // Config, it keeps nothing between calls, and many goroutines may call it at
 // once.
-func Resolve(setting string, lookup func(name string) (value string, set bool)) Config {
-	// One injection for the whole environment: the five names are read once,
+func Resolve(setting, publicKey string, lookup func(name string) (value string, set bool)) Config {
+	// One injection for the whole environment: the seven names are read once,
 	// here, in this order, and each value is trimmed as it is read.
 	get := func(name string) (string, bool) {
 		if lookup == nil {
@@ -109,9 +131,11 @@ func Resolve(setting string, lookup func(name string) (value string, set bool)) 
 	}
 	modeWord, _ := get(envMode)
 	ciWord, _ := get(envCI)
+	relayWord, _ := get(envRelay)
 	indexWord, _ := get(envIndex)
 	submitWord, submitSet := get(envSubmit)
 	ttlWord, _ := get(envTTL)
+	keyWord, _ := get(envKey)
 
 	// The mode is the first of these that answers, and that answer is its
 	// source: the environment, the stored setting, CI, then the default. A
@@ -126,15 +150,24 @@ func Resolve(setting string, lookup func(name string) (value string, set bool)) 
 		mode, modeSrc = Read, srcCI
 	}
 
-	indexURL, indexSrc := DefaultIndexURL, srcDefault
+	// The relay is the base the other two addresses derive from, and its
+	// source is theirs: a relay read from the environment hands down both of
+	// its derived addresses, each of which an override of its own still wins.
+	// A base is held with no trailing slash, whatever the name carried.
+	relayURL, relaySrc := DefaultRelayURL, srcDefault
+	if u, ok := acceptURL(relayWord); ok {
+		relayURL, relaySrc = strings.TrimRight(u, "/"), srcEnv
+	}
+
+	indexURL, indexSrc := relayURL+indexPath, relaySrc
 	if u, ok := acceptURL(indexWord); ok {
 		indexURL, indexSrc = u, srcEnv
 	}
 
 	// An empty submit address means send nowhere, and that is an answer; a
 	// name nobody set, or one holding neither an address nor emptiness, is
-	// the default.
-	submitURL, submitSrc := DefaultSubmitURL, srcDefault
+	// the address derived from the relay.
+	submitURL, submitSrc := relayURL+submitPath, relaySrc
 	if submitSet {
 		if submitWord == "" {
 			submitURL, submitSrc = "", srcEnv
@@ -150,15 +183,30 @@ func Resolve(setting string, lookup func(name string) (value string, set bool)) 
 		ttl, ttlSrc = clampTTL(d), srcEnv
 	}
 
+	// The trusted key is the first of these that answers: the environment,
+	// then the stored row, then none. An empty key is the ordinary answer —
+	// it means the key the binary carries.
+	storedKey := strings.TrimSpace(publicKey)
+	publicKey, keySrc := "", srcDefault
+	if keyWord != "" {
+		publicKey, keySrc = keyWord, srcEnv
+	} else if storedKey != "" {
+		publicKey, keySrc = storedKey, srcSetting
+	}
+
 	return Config{
 		Mode:      mode,
+		RelayURL:  relayURL,
 		IndexURL:  indexURL,
 		SubmitURL: submitURL,
+		PublicKey: publicKey,
 		TTL:       ttl,
 		Source: Sources{
 			Mode:      modeSrc,
+			RelayURL:  relaySrc,
 			IndexURL:  indexSrc,
 			SubmitURL: submitSrc,
+			PublicKey: keySrc,
 			TTL:       ttlSrc,
 		},
 	}

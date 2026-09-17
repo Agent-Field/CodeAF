@@ -37,13 +37,17 @@ func TestModeString(t *testing.T) {
 func TestResolveDefaults(t *testing.T) {
 	want := Config{
 		Mode:      On,
+		RelayURL:  DefaultRelayURL,
 		IndexURL:  DefaultIndexURL,
 		SubmitURL: DefaultSubmitURL,
+		PublicKey: "",
 		TTL:       24 * time.Hour,
 		Source: Sources{
 			Mode:      "default",
+			RelayURL:  "default",
 			IndexURL:  "default",
 			SubmitURL: "default",
+			PublicKey: "default",
 			TTL:       "default",
 		},
 	}
@@ -56,7 +60,7 @@ func TestResolveDefaults(t *testing.T) {
 		{"other names only", envOf(map[string]string{"OTHER": "on"})},
 	}
 	for _, l := range lookups {
-		if got := Resolve("", l.lookup); got != want {
+		if got := Resolve("", "", l.lookup); got != want {
 			t.Errorf("%s: Resolve() = %+v, want %+v", l.name, got, want)
 		}
 	}
@@ -84,7 +88,7 @@ func TestResolveMode(t *testing.T) {
 		{"env beats setting", "off", envOf(map[string]string{"CODEAF_MODEL_POOL": "on"}), On, "env"},
 	}
 	for _, c := range cases {
-		got := Resolve(c.setting, c.lookup)
+		got := Resolve(c.setting, "", c.lookup)
 		if got.Mode != c.want || got.Source.Mode != c.wantSrc {
 			t.Errorf("%s: Mode = %v from %q, want %v from %q", c.name, got.Mode, got.Source.Mode, c.want, c.wantSrc)
 		}
@@ -115,7 +119,7 @@ func TestResolveModeFromCI(t *testing.T) {
 		{"env unknown and setting unknown leave ci", "maybe", envOf(map[string]string{"CI": "true", "CODEAF_MODEL_POOL": "maybe"}), Read, "ci"},
 	}
 	for _, c := range cases {
-		got := Resolve(c.setting, c.lookup)
+		got := Resolve(c.setting, "", c.lookup)
 		if got.Mode != c.want || got.Source.Mode != c.wantSrc {
 			t.Errorf("%s: Mode = %v from %q, want %v from %q", c.name, got.Mode, got.Source.Mode, c.want, c.wantSrc)
 		}
@@ -166,7 +170,7 @@ func TestResolveIndexURL(t *testing.T) {
 		if c.set {
 			lookup = envOf(map[string]string{"CODEAF_MODEL_POOL_URL": c.value})
 		}
-		got := Resolve("", lookup)
+		got := Resolve("", "", lookup)
 		if got.IndexURL != c.want || got.Source.IndexURL != c.wantSrc {
 			t.Errorf("%s: IndexURL = %q from %q, want %q from %q", c.name, got.IndexURL, got.Source.IndexURL, c.want, c.wantSrc)
 		}
@@ -197,10 +201,115 @@ func TestResolveSubmitURL(t *testing.T) {
 		if c.set {
 			lookup = envOf(map[string]string{"CODEAF_MODEL_POOL_SUBMIT_URL": c.value})
 		}
-		got := Resolve("", lookup)
+		got := Resolve("", "", lookup)
 		if got.SubmitURL != c.want || got.Source.SubmitURL != c.wantSrc {
 			t.Errorf("%s: SubmitURL = %q from %q, want %q from %q", c.name, got.SubmitURL, got.Source.SubmitURL, c.want, c.wantSrc)
 		}
+	}
+}
+
+func TestResolveRelayURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		value   string
+		set     bool
+		want    string
+		wantSrc string
+	}{
+		{"nobody set", "", false, DefaultRelayURL, "default"},
+		{"https", "https://relay.example.com", true, "https://relay.example.com", "env"},
+		{"https with a port", "https://relay.example.com:8443", true, "https://relay.example.com:8443", "env"},
+		{"padded", "  https://relay.example.com  ", true, "https://relay.example.com", "env"},
+		// A base is held with no trailing slash, whatever the name carried: the
+		// paths are appended to it, and a kept slash would make two.
+		{"trailing slash", "https://relay.example.com/", true, "https://relay.example.com", "env"},
+		{"plain http elsewhere", "http://relay.example.com", true, DefaultRelayURL, "default"},
+		{"other scheme", "ftp://relay.example.com", true, DefaultRelayURL, "default"},
+		{"bare host", "relay.example.com", true, DefaultRelayURL, "default"},
+		{"set and empty", "", true, DefaultRelayURL, "default"},
+	}
+	for _, c := range cases {
+		lookup := envOf(nil)
+		if c.set {
+			lookup = envOf(map[string]string{"CODEAF_MODEL_POOL_RELAY_URL": c.value})
+		}
+		got := Resolve("", "", lookup)
+		if got.RelayURL != c.want || got.Source.RelayURL != c.wantSrc {
+			t.Errorf("%s: RelayURL = %q from %q, want %q from %q", c.name, got.RelayURL, got.Source.RelayURL, c.want, c.wantSrc)
+		}
+	}
+}
+
+// The two addresses derive from the relay, and each override wins over its
+// derivation. A relay read from the environment hands its source down to both
+// derived addresses; an override of its own names itself instead.
+func TestResolveDerivesTheAddressesFromTheRelay(t *testing.T) {
+	got := Resolve("", "", envOf(nil))
+	if got.IndexURL != "https://codeaf.agentfield.ai/pool/index.json" || got.Source.IndexURL != "default" {
+		t.Errorf("IndexURL = %q from %q, want the relay's derived address from %q", got.IndexURL, got.Source.IndexURL, "default")
+	}
+	if got.SubmitURL != "https://codeaf.agentfield.ai/pool/v1/rows" || got.Source.SubmitURL != "default" {
+		t.Errorf("SubmitURL = %q from %q, want the relay's derived address from %q", got.SubmitURL, got.Source.SubmitURL, "default")
+	}
+
+	lookup := envOf(map[string]string{"CODEAF_MODEL_POOL_RELAY_URL": "https://relay.example.com"})
+	got = Resolve("", "", lookup)
+	if got.IndexURL != "https://relay.example.com/index.json" || got.Source.IndexURL != "env" {
+		t.Errorf("a pinned relay's index = %q from %q", got.IndexURL, got.Source.IndexURL)
+	}
+	if got.SubmitURL != "https://relay.example.com/v1/rows" || got.Source.SubmitURL != "env" {
+		t.Errorf("a pinned relay's submit = %q from %q", got.SubmitURL, got.Source.SubmitURL)
+	}
+
+	// Each override still wins over its derivation, and the address it does
+	// not name keeps the relay's source.
+	lookup = envOf(map[string]string{
+		"CODEAF_MODEL_POOL_RELAY_URL":  "https://relay.example.com",
+		"CODEAF_MODEL_POOL_SUBMIT_URL": "https://submit.example.com",
+	})
+	got = Resolve("", "", lookup)
+	if got.IndexURL != "https://relay.example.com/index.json" || got.Source.IndexURL != "env" {
+		t.Errorf("IndexURL = %q from %q", got.IndexURL, got.Source.IndexURL)
+	}
+	if got.SubmitURL != "https://submit.example.com" || got.Source.SubmitURL != "env" {
+		t.Errorf("SubmitURL = %q from %q", got.SubmitURL, got.Source.SubmitURL)
+	}
+	if got.RelayURL != "https://relay.example.com" {
+		t.Errorf("RelayURL = %q", got.RelayURL)
+	}
+}
+
+func TestResolvePublicKey(t *testing.T) {
+	cases := []struct {
+		name    string
+		setting string
+		value   string
+		set     bool
+		want    string
+		wantSrc string
+	}{
+		{"nobody set", "", "", false, "", "default"},
+		{"env", "", "WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0=", true, "WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0=", "env"},
+		{"env padded", "", "  abc=  ", true, "abc=", "env"},
+		{"env set and empty falls through", "stored", "", true, "stored", "setting"},
+		{"setting", "stored", "", false, "stored", "setting"},
+		{"setting padded", "  stored  ", "", false, "stored", "setting"},
+		{"env beats setting", "stored", "pinned", true, "pinned", "env"},
+	}
+	for _, c := range cases {
+		lookup := envOf(nil)
+		if c.set {
+			lookup = envOf(map[string]string{"CODEAF_MODEL_POOL_PUBLIC_KEY": c.value})
+		}
+		got := Resolve("", c.setting, lookup)
+		if got.PublicKey != c.want || got.Source.PublicKey != c.wantSrc {
+			t.Errorf("%s: PublicKey = %q from %q, want %q from %q", c.name, got.PublicKey, got.Source.PublicKey, c.want, c.wantSrc)
+		}
+	}
+	// The setting is Resolve's own argument, not a row the package reads: a
+	// nil lookup still carries one.
+	if got := Resolve("on", "stored", nil); got.PublicKey != "stored" || got.Source.PublicKey != "setting" {
+		t.Errorf("Resolve with a nil lookup lost the stored key: %+v", got)
 	}
 }
 
@@ -230,7 +339,7 @@ func TestResolveTTL(t *testing.T) {
 		if c.set {
 			lookup = envOf(map[string]string{"CODEAF_MODEL_POOL_TTL": c.value})
 		}
-		got := Resolve("", lookup)
+		got := Resolve("", "", lookup)
 		if got.TTL != c.want || got.Source.TTL != c.wantSrc {
 			t.Errorf("%s: TTL = %v from %q, want %v from %q", c.name, got.TTL, got.Source.TTL, c.want, c.wantSrc)
 		}
@@ -241,7 +350,7 @@ func TestResolveFieldsAreIndependent(t *testing.T) {
 	// Off, an unreadable URL and a readable TTL: the mode does not change how
 	// the URLs or the TTL are read, and the unreadable URL does not disturb
 	// the TTL.
-	got := Resolve("bogus", envOf(map[string]string{
+	got := Resolve("bogus", "", envOf(map[string]string{
 		"CODEAF_MODEL_POOL":            "off",
 		"CODEAF_MODEL_POOL_URL":        "http://pool.example.com",
 		"CODEAF_MODEL_POOL_SUBMIT_URL": "https://submit.example.com",
@@ -249,13 +358,17 @@ func TestResolveFieldsAreIndependent(t *testing.T) {
 	}))
 	want := Config{
 		Mode:      Off,
+		RelayURL:  DefaultRelayURL,
 		IndexURL:  DefaultIndexURL,
 		SubmitURL: "https://submit.example.com",
+		PublicKey: "",
 		TTL:       2 * time.Hour,
 		Source: Sources{
 			Mode:      "env",
+			RelayURL:  "default",
 			IndexURL:  "default",
 			SubmitURL: "env",
+			PublicKey: "default",
 			TTL:       "env",
 		},
 	}
@@ -264,7 +377,7 @@ func TestResolveFieldsAreIndependent(t *testing.T) {
 	}
 
 	// An unreadable TTL does not disturb the URLs either.
-	got = Resolve("", envOf(map[string]string{
+	got = Resolve("", "", envOf(map[string]string{
 		"CODEAF_MODEL_POOL_URL": "https://pool.example.com",
 		"CODEAF_MODEL_POOL_TTL": "banana",
 	}))
@@ -301,7 +414,7 @@ func TestCanSendAndCanRead(t *testing.T) {
 
 func TestResolvedConfigCanSendAndCanRead(t *testing.T) {
 	// An empty submit address turns sending off while everything else stays on.
-	got := Resolve("", envOf(map[string]string{"CODEAF_MODEL_POOL_SUBMIT_URL": ""}))
+	got := Resolve("", "", envOf(map[string]string{"CODEAF_MODEL_POOL_SUBMIT_URL": ""}))
 	if got.SubmitURL != "" || got.Source.SubmitURL != "env" {
 		t.Fatalf("SubmitURL = %q from %q, want %q from %q", got.SubmitURL, got.Source.SubmitURL, "", "env")
 	}
@@ -312,35 +425,35 @@ func TestResolvedConfigCanSendAndCanRead(t *testing.T) {
 		t.Error("an empty submit address must still read")
 	}
 
-	if got := Resolve("", envOf(nil)); !got.CanSend() || !got.CanRead() {
+	if got := Resolve("", "", envOf(nil)); !got.CanSend() || !got.CanRead() {
 		t.Errorf("the defaults must send and read: CanSend() = %v, CanRead() = %v", got.CanSend(), got.CanRead())
 	}
-	if got := Resolve("read", envOf(nil)); got.CanSend() || !got.CanRead() {
+	if got := Resolve("read", "", envOf(nil)); got.CanSend() || !got.CanRead() {
 		t.Errorf("read must read and not send: CanSend() = %v, CanRead() = %v", got.CanSend(), got.CanRead())
 	}
-	if got := Resolve("off", envOf(nil)); got.CanSend() || got.CanRead() {
+	if got := Resolve("off", "", envOf(nil)); got.CanSend() || got.CanRead() {
 		t.Errorf("off must neither send nor read: CanSend() = %v, CanRead() = %v", got.CanSend(), got.CanRead())
 	}
 }
 
 func TestResolveNilLookupUsesSetting(t *testing.T) {
-	got := Resolve("read", nil)
+	got := Resolve("read", "", nil)
 	if got.Mode != Read || got.Source.Mode != "setting" {
-		t.Errorf("Resolve(\"read\", nil): Mode = %v from %q, want read from %q", got.Mode, got.Source.Mode, "setting")
+		t.Errorf("Resolve(\"read\", \"\", nil): Mode = %v from %q, want read from %q", got.Mode, got.Source.Mode, "setting")
 	}
-	if got.IndexURL != DefaultIndexURL || got.SubmitURL != DefaultSubmitURL || got.TTL != 24*time.Hour {
-		t.Errorf("Resolve(\"read\", nil) = %+v, want the defaults beside the setting", got)
+	if got.IndexURL != DefaultIndexURL || got.SubmitURL != DefaultSubmitURL || got.RelayURL != DefaultRelayURL || got.TTL != 24*time.Hour {
+		t.Errorf("Resolve(\"read\", \"\", nil) = %+v, want the defaults beside the setting", got)
 	}
 }
 
-func TestResolveAsksFiveNames(t *testing.T) {
+func TestResolveAsksSevenNames(t *testing.T) {
 	var asked []string
-	Resolve("", func(name string) (string, bool) {
+	Resolve("", "", func(name string) (string, bool) {
 		asked = append(asked, name)
 		return "", false
 	})
 	sort.Strings(asked)
-	want := []string{envMode, envCI, envIndex, envSubmit, envTTL}
+	want := []string{envMode, envCI, envRelay, envIndex, envSubmit, envTTL, envKey}
 	sort.Strings(want)
 	if !reflect.DeepEqual(asked, want) {
 		t.Errorf("Resolve asked lookup for %v, want %v", asked, want)
@@ -350,12 +463,12 @@ func TestResolveAsksFiveNames(t *testing.T) {
 func TestResolveIsPure(t *testing.T) {
 	first := envOf(map[string]string{"CODEAF_MODEL_POOL": "read", "CODEAF_MODEL_POOL_TTL": "3h"})
 	second := envOf(map[string]string{"CODEAF_MODEL_POOL": "off"})
-	want := Resolve("", first)
-	Resolve("", second)
-	if got := Resolve("", first); got != want {
+	want := Resolve("", "", first)
+	Resolve("", "", second)
+	if got := Resolve("", "", first); got != want {
 		t.Errorf("a second call kept state: %+v, want %+v", got, want)
 	}
-	if got := Resolve("", second); got.Mode != Off || got.TTL != 24*time.Hour {
+	if got := Resolve("", "", second); got.Mode != Off || got.TTL != 24*time.Hour {
 		t.Errorf("a fresh environment was polluted: %+v", got)
 	}
 }
@@ -365,14 +478,14 @@ func TestResolveConcurrent(t *testing.T) {
 		"CODEAF_MODEL_POOL":     "read",
 		"CODEAF_MODEL_POOL_TTL": "90m",
 	})
-	want := Resolve("", lookup)
+	want := Resolve("", "", lookup)
 	var wg sync.WaitGroup
 	for i := 0; i < 32; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 64; j++ {
-				if got := Resolve("", lookup); got != want {
+				if got := Resolve("", "", lookup); got != want {
 					t.Errorf("Resolve() = %+v, want %+v", got, want)
 					return
 				}

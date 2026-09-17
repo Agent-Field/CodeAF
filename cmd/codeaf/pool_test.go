@@ -115,8 +115,9 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 	body := out.String()
 	for _, want := range []string{
 		"mode on · default",
-		"index https://pool.invalid/index.json · default",
-		"submit https://pool.invalid/submit · default",
+		"relay https://codeaf.agentfield.ai/pool · default",
+		"index https://codeaf.agentfield.ai/pool/index.json · default",
+		"submit https://codeaf.agentfield.ai/pool/v1/rows · default",
 		"ttl 1d · default",
 		"no index cached yet · built-in seed of 2026-09-17",
 		"own sheet: none",
@@ -402,7 +403,7 @@ func writePoolDoc(t *testing.T, dir, doc string) {
 // With no cache the reader answers the seed this build carries, and a worker
 // cell is in it — so `learn` has numbers on day one.
 func TestPoolIndexForAnswersTheSeedWithNoCache(t *testing.T) {
-	held := poolIndexFor(t.TempDir(), poolcfg.Resolve("", noEnv), poolClock(t))()
+	held := poolIndexFor(t.TempDir(), poolcfg.Resolve("", "", noEnv), poolClock(t))()
 	if held == nil {
 		t.Fatal("no cache and no seed: the reader answered nothing")
 	}
@@ -428,7 +429,7 @@ func TestPoolIndexForKeepsANewerCache(t *testing.T) {
 		"metrics": {"role_quality": {"kind": "gaussian", "dims": ["role", "model"]}},
 		"cells": [{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 75, "sd": 7, "n": 30}]
 	}`)
-	held := poolIndexFor(dir, poolcfg.Resolve("", noEnv), poolClock(t))()
+	held := poolIndexFor(dir, poolcfg.Resolve("", "", noEnv), poolClock(t))()
 	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-20" {
 		t.Fatalf("a newer cache did not win: %v", held)
 	}
@@ -438,7 +439,7 @@ func TestPoolIndexForKeepsANewerCache(t *testing.T) {
 func TestPoolIndexForIgnoresAnUnparsableCache(t *testing.T) {
 	dir := t.TempDir()
 	writePoolDoc(t, dir, "{ this is not a document")
-	held := poolIndexFor(dir, poolcfg.Resolve("", noEnv), poolClock(t))()
+	held := poolIndexFor(dir, poolcfg.Resolve("", "", noEnv), poolClock(t))()
 	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-17" {
 		t.Fatalf("an unparsable cache did not fall back to the seed: %v", held)
 	}
@@ -446,7 +447,7 @@ func TestPoolIndexForIgnoresAnUnparsableCache(t *testing.T) {
 
 // A mode that forbids reading answers no index at all.
 func TestPoolIndexForAnswersNothingWhenTheModeIsOff(t *testing.T) {
-	if held := poolIndexFor(t.TempDir(), poolcfg.Resolve("off", noEnv), poolClock(t))(); held != nil {
+	if held := poolIndexFor(t.TempDir(), poolcfg.Resolve("off", "", noEnv), poolClock(t))(); held != nil {
 		t.Fatal("a mode that forbids reading answered an index")
 	}
 }
@@ -461,8 +462,8 @@ func TestPoolRefreshStartsNoGoroutineWithoutAKey(t *testing.T) {
 	t.Cleanup(func() { poolRefreshGo = prev })
 
 	key := []ed25519.PublicKey{make(ed25519.PublicKey, ed25519.PublicKeySize)}
-	on := poolcfg.Resolve("", noEnv)
-	off := poolcfg.Resolve("off", noEnv)
+	on := poolcfg.Resolve("", "", noEnv)
+	off := poolcfg.Resolve("off", "", noEnv)
 
 	startPoolIndexRefresh(context.Background(), t.TempDir(), on, nil)
 	if started != 0 {

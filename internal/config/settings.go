@@ -3347,7 +3347,7 @@ func ModelPoolSettingAt(profileDir string) string {
 // verb, whose tests inject one) resolves [ModelPoolSettingAt] against its own
 // lookup rather than calling this.
 func ModelPoolAt(profileDir string) poolcfg.Config {
-	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), os.LookupEnv)
+	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), "", os.LookupEnv)
 }
 
 // ExaKeyAt resolves the Exa credential: the environment first, then the sheet,

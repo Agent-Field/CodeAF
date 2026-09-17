@@ -74,7 +74,7 @@ func runPool(args []string) error {
 // emptiness is the state root's own profile, never a directory called "pool"
 // beside wherever the command happened to run.
 func runPoolWith(args []string, output io.Writer, profileDir string, now func() time.Time, lookup func(string) (string, bool)) error {
-	cfg := poolcfg.Resolve(config.ModelPoolSettingAt(profileDir), lookup)
+	cfg := poolcfg.Resolve(config.ModelPoolSettingAt(profileDir), "", lookup)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	if len(args) == 0 {
 		args = []string{"show"}
@@ -138,6 +138,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 	}
 	for _, line := range []string{
 		fmt.Sprintf("mode %s · %s", cfg.Mode, cfg.Source.Mode),
+		fmt.Sprintf("relay %s · %s", cfg.RelayURL, cfg.Source.RelayURL),
 		fmt.Sprintf("index %s · %s", cfg.IndexURL, cfg.Source.IndexURL),
 		fmt.Sprintf("submit %s · %s", orNowhere(cfg.SubmitURL), cfg.Source.SubmitURL),
 		fmt.Sprintf("ttl %s · %s", reltime.Elapsed(cfg.TTL), cfg.Source.TTL),
@@ -220,6 +221,7 @@ func ownSheetSummary(poolDir string) ownSummary {
 type poolAnswer struct {
 	Mode       string        `json:"mode"`
 	ModeSource string        `json:"mode_source"`
+	RelayURL   string        `json:"relay_url"`
 	IndexURL   string        `json:"index_url"`
 	SubmitURL  string        `json:"submit_url"`
 	TTLSeconds int           `json:"ttl_seconds"`
@@ -249,6 +251,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 	answer := poolAnswer{
 		Mode:       cfg.Mode.String(),
 		ModeSource: cfg.Source.Mode,
+		RelayURL:   cfg.RelayURL,
 		IndexURL:   cfg.IndexURL,
 		SubmitURL:  cfg.SubmitURL,
 		TTLSeconds: int(cfg.TTL / time.Second),
