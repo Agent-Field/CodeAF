@@ -88,6 +88,20 @@ Every release carries `THIRD-PARTY-NOTICES.md` beside its binaries, inside the
 same `checksums.txt`; `go run ./cmd/codeaf-notices generate` refreshes it when
 the dependencies move.
 
+## Download counts
+
+The download numbers this repository reports come from public GitHub release
+data: the GitHub API publishes a cumulative download count for every asset on
+a release, and a daily scheduled workflow reads those counts and sends one
+event per binary asset to PostHog (`codeaf:release_downloads`). No code in
+the binary is involved, nothing is collected from the person downloading, and
+the only facts in the event are the release tag, the asset's platform, and
+the count GitHub already shows on the release page. Sidecar files such as
+`checksums.txt` are not counted. The workflow lives in
+`.github/workflows/release-downloads.yml`; the script behind it is
+`scripts/release_downloads.py`, and running it with `--dry-run` prints the
+batch it would send.
+
 ## Rolling back
 
 Users can pin a known tag while a repair moves forward:

@@ -1,0 +1,71 @@
+[
+  {
+    "tag_name": "v1.3.0-rc.1",
+    "prerelease": true,
+    "draft": false,    "assets": [
+      {
+        "name": "codeaf-linux-amd64",
+        "download_count": 4021
+      },
+      {
+        "name": "codeaf-linux-arm64",
+        "download_count": 3110
+      },
+      {
+        "name": "codeaf-darwin-amd64",
+        "download_count": 5243
+      },
+      {
+        "name": "codeaf-darwin-arm64",
+        "download_count": 6032
+      },
+      {
+        "name": "codeaf-windows-amd64.exe",
+        "download_count": 1247
+      },
+      {
+        "name": "codeaf-windows-arm64.exe",
+        "download_count": 604
+      },
+      {
+        "name": "checksums.txt",
+        "download_count": 812
+      }
+    ]
+  },
+  {
+    "tag_name": "v1.2.0",
+    "prerelease": false,
+    "draft": false,
+    "assets": [
+      {
+        "name": "codeaf-linux-amd64",
+        "download_count": 15010
+      },
+      {
+        "name": "codeaf-linux-arm64",
+        "download_count": 11240
+      },
+      {
+        "name": "codeaf-darwin-amd64",
+        "download_count": 18930
+      },
+      {
+        "name": "codeaf-darwin-arm64",
+        "download_count": 22471
+      },
+      {
+        "name": "codeaf-windows-amd64.exe",
+        "download_count": 4109
+      },
+      {
+        "name": "codeaf-windows-arm64.exe",
+        "download_count": 2051
+      },
+      {
+        "name": "checksums.txt",
+        "download_count": 3302
+      }
+    ]
+  }
+]
