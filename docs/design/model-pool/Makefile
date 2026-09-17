@@ -10,14 +10,18 @@ all: pareto-crewing.pdf
 figures:
 	python3 figures.py
 
-$(FIGURES) &: figures.py data/measured-crews.csv data/seed-cells.csv
+# One run of the script writes every figure and table; the stamp is what make
+# dates them by, so old makes without grouped targets work too.
+$(FIGURES): figures.stamp
+figures.stamp: figures.py data/measured-crews.csv data/seed-cells.csv
 	python3 figures.py
+	touch $@
 
 pareto-crewing.pdf: pareto-crewing.tex $(FIGURES)
 	latexmk -pdf -interaction=nonstopmode -halt-on-error pareto-crewing.tex
 
 clean:
 	latexmk -c pareto-crewing.tex
-	rm -f learn.bbl
+	rm -f pareto-crewing.bbl figures.stamp
 
 .PHONY: all figures clean
