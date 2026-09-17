@@ -26,6 +26,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1151,6 +1152,31 @@ func cliList(st *Store, p *cliParsed) error {
 	return nil
 }
 
+// cliSpend prints the ledger's per-project and per-chat totals under the
+// --full tree, and nothing at all when the run has never been charged. The
+// tags are sorted so the same ledger prints the same lines twice.
+func cliSpend(st *Store) {
+	summary := st.Summary()
+	for _, project := range sortedSpendTags(summary.ProjectSpend) {
+		total := summary.ProjectSpend[project]
+		fmt.Fprintf(cliOut, "spend project %s: $%.4f (%d calls)\n", project, total.USD, total.Calls)
+	}
+	for _, chat := range sortedSpendTags(summary.ChatSpend) {
+		total := summary.ChatSpend[chat]
+		fmt.Fprintf(cliOut, "spend chat %s: $%.4f (%d calls)\n", chat, total.USD, total.Calls)
+	}
+}
+
+// sortedSpendTags answers a spend map's keys in order, so a render is stable.
+func sortedSpendTags(totals map[string]SpendTotal) []string {
+	tags := make([]string, 0, len(totals))
+	for tag := range totals {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags
+}
+
 // cliStatus renders the one-line summary, and with --full the containment
 // tree and every dependency edge under it.
 func cliStatus(st *Store, p *cliParsed) error {
@@ -1176,6 +1202,7 @@ func cliStatus(st *Store, p *cliParsed) error {
 	}
 	fmt.Fprintln(cliOut)
 	cliTree(st)
+	cliSpend(st)
 	return nil
 }
 

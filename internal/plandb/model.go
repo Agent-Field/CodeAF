@@ -180,6 +180,19 @@ type Summary struct {
 	Done      int    `json:"done"`
 	Failed    int    `json:"failed"`
 	Cancelled int    `json:"cancelled"`
+	// ProjectSpend and ChatSpend are the ledger's per-project and per-chat
+	// totals, read from the spend table — the dollars spent and the calls
+	// that spent them. A store that has never been charged carries neither,
+	// and --json omits both.
+	ProjectSpend map[string]SpendTotal `json:"project_spend,omitempty"`
+	ChatSpend    map[string]SpendTotal `json:"chat_spend,omitempty"`
+}
+
+// SpendTotal is one project's or one chat's share of the ledger: the dollars
+// spent under that tag and the number of calls that spent them.
+type SpendTotal struct {
+	USD   float64 `json:"usd"`
+	Calls int     `json:"calls"`
 }
 
 type BlockedTask struct {
