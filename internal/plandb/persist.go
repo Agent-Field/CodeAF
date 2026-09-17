@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -133,8 +134,7 @@ func openDatabase(path string) (*sql.DB, error) {
 			return nil, fmt.Errorf("create plan store directory: %w", err)
 		}
 	}
-	dsn := "file:" + filepath.ToSlash(path) +
-		"?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	dsn := "file:" + filepath.ToSlash(path) + "?_txlock=immediate&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -145,6 +145,10 @@ func openDatabase(path string) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := ensureWAL(db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -160,6 +164,30 @@ func openDatabase(path string) (*sql.DB, error) {
 		}
 	}
 	return db, nil
+}
+
+// ensureWAL puts the store in WAL journal mode. It is a property of the FILE
+// and not of a connection, so a database already in WAL is left alone — which
+// is also what keeps a busy store openable: SQLite does NOT run the busy
+// handler for a journal-mode change, so asking for WAL on every connection
+// would fail the moment another process was writing. The switch is retried
+// briefly, because two processes can create the store at once and only one of
+// them changes the mode.
+func ensureWAL(db *sql.DB) error {
+	var mode string
+	if err := db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		return err
+	}
+	for attempt := 0; !strings.EqualFold(mode, "wal"); attempt++ {
+		if attempt >= 40 {
+			return fmt.Errorf("plan store will not enter WAL journal mode (mode %q)", mode)
+		}
+		if err := db.QueryRow("PRAGMA journal_mode=WAL").Scan(&mode); err != nil {
+			mode = ""
+			time.Sleep(25 * time.Millisecond)
+		}
+	}
+	return nil
 }
 
 // loadState reads the whole plan out of the database inside tx. Every caller
