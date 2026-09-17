@@ -31,6 +31,7 @@ func main() {
 func run(args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet("bashloop", flag.ContinueOnError)
 	mode := fs.String("mode", "grid", "grid (every cell, both arms, n replicates) or pair (one brief, both arms, n=1)")
+	doorFlag := fs.String("door", string(doorTask), "which door starts the work: task (the engine's task door, in this process) or do (the product binary, codeaf do, as a subprocess)")
 	cells := fs.String("cells", "", "comma-separated cell ids to run (default: all six; pair mode takes one)")
 	replicates := fs.Int("replicates", 3, "replicates per cell per arm (grid mode)")
 	model := fs.String("model", pinnedModel, "the model both arms run on")
@@ -71,12 +72,16 @@ func run(args []string, out, errOut io.Writer) error {
 	// The plan is composed before anything is read from the machine — no key,
 	// no home, no clock beyond the output directory's name. A dry run prints
 	// it and stops; nothing below this line runs.
+	chosenDoor := door(strings.TrimSpace(*doorFlag))
+	if chosenDoor != doorTask && chosenDoor != doorDo {
+		return fmt.Errorf("-door is %s or %s, got %q", doorTask, doorDo, *doorFlag)
+	}
 	var p plan
 	switch *mode {
 	case "grid":
-		p = composeGrid(chosen, *replicates, outRoot, *wall)
+		p = composeGrid(chosen, *replicates, outRoot, *wall, chosenDoor)
 	case "pair":
-		p = composePair(chosen[0], outRoot, *wall)
+		p = composePair(chosen[0], outRoot, *wall, chosenDoor)
 	default:
 		return fmt.Errorf("-mode is grid or pair, got %q", *mode)
 	}

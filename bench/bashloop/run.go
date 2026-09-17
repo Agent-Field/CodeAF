@@ -127,6 +127,11 @@ func live(p plan, out, errOut io.Writer) error {
 	if !goAvailable() {
 		return fmt.Errorf("the code cells grade themselves with the go toolchain, and `go` is not on this machine")
 	}
+	if p.Door == doorDo {
+		if err := ensureBinary(errOut); err != nil {
+			return fmt.Errorf("build the product binary for the do door: %w", err)
+		}
+	}
 	key := machineKey()
 	if key == "" {
 		return fmt.Errorf("no provider key on this machine by any road the product reads " +
@@ -213,6 +218,15 @@ func (r *runner) runOne(iv invocation) row {
 		return r.failedRow(iv, err.Error())
 	}
 	defer restoreBelt()
+
+	// THE DOOR. Task door: the agent in this process, run.go's own path. Do
+	// door: the binary as a subprocess (door.go), the rig's invocation. The
+	// fixture seeding, the throwaway home, the belt env, the readings and the
+	// graders are the two doors' shared frame; the door is the one thing that
+	// differs between a task row and a do row.
+	if iv.Door == doorDo {
+		return r.runDoDoor(iv, cellDef, fixtureDir, homeDir, time.Now())
+	}
 
 	policy, err := approval.Load(map[string]any{"default": "allow", "tools": map[string]any{}})
 	if err != nil {

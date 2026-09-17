@@ -81,6 +81,62 @@ func TestTheArmsDifferOnlyInTheBeltEnv(t *testing.T) {
 	}
 }
 
+// ── the do door's dry run prints its invocations ────────────────────────────
+
+// The do door's dry run prints the exact command the door would run — the
+// rig's invocation, per invocation, arms differing only in the belt env.
+func TestTheDoDoorDryRunPrintsItsInvocations(t *testing.T) {
+	out := &output{}
+	if err := run([]string{"-door", "do", "-out", t.TempDir(), "-dry-run"}, out, io.Discard); err != nil {
+		t.Fatalf("do-door dry run: %v", err)
+	}
+	text := out.b.String()
+	blocks := invocationBlocks(text)
+	if len(blocks) != 36 {
+		t.Fatalf("the do-door dry run printed %d invocation blocks, want 36", len(blocks))
+	}
+	for _, c := range allCells() {
+		for r := 1; r <= 3; r++ {
+			a, b := findBlock(blocks, ArmShipped, c.id, r), findBlock(blocks, ArmBash, c.id, r)
+			if a == "" || b == "" {
+				t.Fatalf("cell %s replicate %d: missing a do-door block", c.id, r)
+			}
+			for _, block := range []string{a, b} {
+				if !strings.Contains(block, "door: do") {
+					t.Fatalf("cell %s r%d: block does not name the do door:\n%s", c.id, r, block)
+				}
+				if !strings.Contains(block, "invocation: bin/codeaf do -w ") ||
+					!strings.Contains(block, "-yes-spend -json < ") {
+					t.Fatalf("cell %s r%d: block does not print the do door's invocation:\n%s", c.id, r, block)
+				}
+			}
+			// The arms differ only in the belt env: same door line, same
+			// invocation shape, same brief — the paths and the belt are the
+			// only things allowed to move.
+			if stripBelt(stripPaths(stripInvocation(stripPaths(a)))) != stripBelt(stripPaths(stripInvocation(stripPaths(b)))) {
+				t.Fatalf("cell %s r%d: the do-door arms differ in more than the belt env:\nA: %s\nB: %s", c.id, r, a, b)
+			}
+			if !strings.Contains(a, "CODEAF_TASK_BELT=(unset)") || !strings.Contains(b, "CODEAF_TASK_BELT=bash") {
+				t.Fatalf("cell %s r%d: the do-door arms' belt env is wrong", c.id, r)
+			}
+		}
+	}
+}
+
+// stripInvocation removes the do door's printed command line — it names the
+// invocation's own directories, which differ by design.
+func stripInvocation(block string) string {
+	lines := splitLines(block)
+	var kept []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "  invocation: ") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
 // ── the six cells and the pair mode are present ─────────────────────────────
 
 func TestTheSixCellsAreAllPresent(t *testing.T) {

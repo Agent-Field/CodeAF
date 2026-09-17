@@ -185,23 +185,29 @@ func readLedger(path string) (usd float64, unbilled int, models []string) {
 }
 
 // readJournals walks the family's journals: steps from the `took` lines, the
-// diagnostics from the text the workers left behind.
+// diagnostics from the text the workers left behind. The walk is recursive:
+// the task door keeps its journals flat under the session folder's tasks/
+// directory, and the do door nests them by session and run under the home's
+// v3/runs — one reader for both doors, so the counts cannot drift apart.
 func readJournals(journalDir string) (steps, invalid, truncations, idiomFlags int) {
-	entries, err := os.ReadDir(journalDir)
+	var names []string
+	err := filepath.WalkDir(journalDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil // a run that kept no journals is a zero, not a failure
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jsonl") {
+			names = append(names, path)
+		}
+		return nil
+	})
 	if err != nil {
 		return 0, 0, 0, 0
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
-			names = append(names, e.Name())
-		}
 	}
 	// Oldest first: the edit-idiom discipline is a question of what came
 	// before, and the journal names carry a timestamp.
 	sort.Strings(names)
 	for _, name := range names {
-		s, i, t, f := readOneJournal(filepath.Join(journalDir, name))
+		s, i, t, f := readOneJournal(name)
 		steps += s
 		invalid += i
 		truncations += t
