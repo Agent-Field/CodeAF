@@ -2476,7 +2476,12 @@ func (n *TaskNode) instructionLocked(tree taskTree, contract taskContract) strin
 	// request and every repair round — so a piece reads the same scope rule
 	// however its turn came to start: admitted, restored from a checkpoint,
 	// continued (task_continue.go) or re-entered after a revision.
-	return composeBrief(n.briefRoleLocked(), n.spec.request, now.brief, now.deliverable,
+	//
+	// AND WHETHER IT IS BORN FROM THE PLAN, which reorders the document: a
+	// bash-belt plan-born node opens on the task it owns and reads the run's
+	// objective as background rather than as its assignment
+	// ([TaskNode.briefScopeLocked]).
+	return composeBriefScoped(n.briefScopeLocked(), n.briefRoleLocked(), n.spec.request, now.brief, now.deliverable,
 		withFamilyChecks(now.acceptance, n.Family),
 		expectsSection(n.spec.expects), n.spec.admission.restored(),
 		n.spec.origin, taskCopyFor(tree))
