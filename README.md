@@ -66,29 +66,6 @@ To build it yourself: `git clone`, `make build`, `bin/codeaf`
 On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi, MiniMax or
 Qwen. Ollama needs none.
 
-## Telemetry
-
-```text
-codeaf sends anonymous usage counts to AgentField.
-  Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
-  Never: anything about you or your work. No prompts, code, file names,
-         paths, repo names, keys, email, IP, or machine name.
-  See exactly what leaves:  codeaf telemetry show
-  Turn off:                 CODEAF_TELEMETRY=off
-```
-
-The events are counts and buckets only — no prompts, code, or file names ever
-leave the machine. `docs/TELEMETRY.md` lists every field that is sent and every
-way to turn the counts off. The installer records how and when this copy was
-installed (`telemetry/install.json` under the state root) so the counts can
-bucket by channel; it sends nothing.
-
-`codeaf telemetry show` prints exactly what is waiting to leave the machine;
-`status`, `on` and `off` are the rest. Turn it off with `CODEAF_TELEMETRY=off`
-(also `0` or `false`), `DO_NOT_TRACK=1`, `codeaf telemetry off`, `telemetry =
-off` in a project's `.codeaf/config.json`, or an empty
-`CODEAF_TELEMETRY_ENDPOINT`.
-
 ## One window for every project
 
 An agent that lives in one folder means a terminal per repository, and a tmux
@@ -259,6 +236,31 @@ when the hosted relay does. [How it works](docs/REMOTE.md).
 | what runs | one model, one thread | six seats chosen per call, and subharnesses built for one job |
 | how long it lasts | one session | conversations, tasks and standing orders that outlive the window |
 | without you | it stops | headless, standing orders, a phone in your pocket |
+
+## Telemetry
+
+```text
+codeaf sends anonymous usage counts to AgentField.
+  Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
+  Never: anything about you or your work. No prompts, code, file names,
+         paths, repo names, keys, email, IP, or machine name.
+  See exactly what leaves:  codeaf telemetry show
+  Turn off:                 CODEAF_TELEMETRY=off
+```
+
+CodeAF is open source and collects nothing sensitive. These counts show what
+breaks and what gets used, and that is how it gets better. The events are
+counts and buckets only — no prompts, code, or file names ever leave the
+machine. `docs/TELEMETRY.md` lists every field that is sent and every
+way to turn the counts off. The installer records how and when this copy was
+installed (`telemetry/install.json` under the state root) so the counts can
+bucket by channel; it sends nothing.
+
+`codeaf telemetry show` prints exactly what is waiting to leave the machine;
+`status`, `on` and `off` are the rest. Turn it off with `CODEAF_TELEMETRY=off`
+(also `0` or `false`), `DO_NOT_TRACK=1`, `codeaf telemetry off`, `telemetry =
+off` in a project's `.codeaf/config.json`, or an empty
+`CODEAF_TELEMETRY_ENDPOINT`.
 
 ## Docs
 
