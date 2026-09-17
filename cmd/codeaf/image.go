@@ -22,7 +22,8 @@ import (
 
 func runImage(args []string) error {
 	flags := commandFlags("image")
-	out := flags.String("o", "", "where to write the picture; an existing file is overwritten")
+	out := flags.String("out", "", "where to write the picture; an existing file is overwritten")
+	shorthandFlag(flags, "o", "out")
 	model := flags.String("model", "", "which image model for this one call — a name or fragment from the catalog, or 'best'")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
@@ -30,10 +31,10 @@ func runImage(args []string) error {
 
 	positionals := flags.Args()
 	if len(positionals) < 1 || strings.TrimSpace(strings.Join(positionals, " ")) == "" {
-		return errors.New("what to draw — codeaf image \"PROMPT\" -o PATH")
+		return errors.New("what to draw — codeaf image \"PROMPT\" --out PATH")
 	}
 	if strings.TrimSpace(*out) == "" {
-		return errors.New("where to write it — codeaf image \"PROMPT\" -o PATH")
+		return errors.New("where to write it — codeaf image \"PROMPT\" --out PATH")
 	}
 
 	settings, err := config.Load()

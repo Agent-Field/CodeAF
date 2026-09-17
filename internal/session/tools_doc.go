@@ -62,6 +62,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/pdfx"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -112,6 +113,20 @@ var newDocClient = func(config Config) (DocumentParser, error) {
 // seat-pin drop, same timeout. A missing key is an error that says so, exactly
 // as it does on the belt.
 func NewDocumentParser(config Config) (DocumentParser, error) { return newDocClient(config) }
+
+// NewDocumentParserFromProfile is [NewDocumentParser] for a door that holds
+// the profile rather than a session: it lifts the account off the loaded
+// settings here, so no command-line file has to spell a session Config of its
+// own — the audit law over cmd/codeaf reads every such literal as a run being
+// built without governance, and a parser is not a run.
+func NewDocumentParserFromProfile(settings config.Config) (DocumentParser, error) {
+	return newDocClient(Config{
+		Model:   settings.Model,
+		APIKey:  settings.APIKey,
+		BaseURL: settings.BaseURL,
+		Sources: settings.Sources,
+	})
+}
 
 // documentRung is the tool's whole state: the client, built once, and what the
 // rungs have already returned this session.
