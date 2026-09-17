@@ -134,8 +134,9 @@ carrying both would teach two ways to say one thing.
   figure a node worker carries. The cap is a bound on spend and not a finding about
   the work: the turn is stopped there rather than judged, and a worker stopped this
   way did not finish.
-- **Spend rows by seat.** Every call a run makes lands one row in the plan store's
-  ledger, tagged with the task, the model, and the role — the **seat** — it ran on.
+- **Spend rows by seat.** When a worker's turn ends, its calls land as one row in
+  the plan store's ledger, tagged with the task, the model, and the role — the
+  **seat** — it ran on.
   Read it back with `plandb spend`, by role and by model, or rolled up under one
   axis: `plandb spend --by seat` (also `chat`, `project`, `model`, `task`), with
   `--since 7d` to bound the window.
