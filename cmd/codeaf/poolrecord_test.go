@@ -256,6 +256,143 @@ func TestPoolJudgeAskBillsTheJudgeSeatFromTheModelsPrice(t *testing.T) {
 	}
 }
 
+// TestPoolJudgeHookGivesEachSeatsQuestionItsOwnShareOfTheLandingTime pins
+// the share itself: the landing's context spans every seat and one to spare,
+// but each seat's question is wrapped in its own judgeTimeout, so the second
+// question's deadline sits a full share after the moment it was asked and a
+// slow first answer cannot eat it. The first answer is slow — it holds its
+// question before answering — and the share is read off the deadlines, not
+// waited out: judgeTimeout is a constant nobody wants a test to sit through.
+func TestPoolJudgeHookGivesEachSeatsQuestionItsOwnShareOfTheLandingTime(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	const slow = 50 * time.Millisecond
+	var askedAt []time.Time
+	var deadlines []time.Time
+	ask := func(model string) judge.Ask {
+		return func(ctx context.Context, system, user string) (string, error) {
+			askedAt = append(askedAt, time.Now())
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatal("a seat's question carries no deadline")
+			}
+			deadlines = append(deadlines, deadline)
+			if len(askedAt) == 1 {
+				// The first answer takes its time; the share it spends is the
+				// share the second question must not have lost.
+				select {
+				case <-time.After(slow):
+				case <-ctx.Done():
+					return "", ctx.Err()
+				}
+			}
+			return `{"score": 88, "reason": "the delivered work does what the brief asked"}`, nil
+		}
+	}
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, ask, time.Now)
+	if hook == nil {
+		t.Fatal("a pool whose mode allows reading built no hook")
+	}
+	hook(poolTestLanding())
+
+	if len(deadlines) != 2 || len(askedAt) != 2 {
+		t.Fatalf("the judge asked %d questions, want 2", len(deadlines))
+	}
+	// The second question is asked after the first has answered, so its own
+	// share is judged from where it stands, not from the landing's start: a
+	// full judgeTimeout ahead of the asking, and no more than that — the
+	// landing's wider bound is not what the question was handed.
+	share := deadlines[1].Sub(askedAt[1])
+	if share < judgeTimeout-time.Second {
+		t.Fatalf("the second question holds %v of context, want at least its own %v share", share, judgeTimeout-time.Second)
+	}
+	if share > judgeTimeout {
+		t.Fatalf("the second question holds %v of context, want its own %v share and not the landing's", share, judgeTimeout)
+	}
+	// The time the first answer spent moved the second deadline out by as
+	// much; it did not come off the second question's share.
+	if moved := deadlines[1].Sub(deadlines[0]); moved < slow {
+		t.Fatalf("the second deadline sits %v after the first, want at least the %v the first answer took", moved, slow)
+	}
+
+	sheet, err := record.LoadSheet(record.OwnSheetPath(config.ProfilePath(profileDir, "pool")))
+	if err != nil {
+		t.Fatalf("the own sheet: %v", err)
+	}
+	cells := record.Cells(sheet)
+	if len(cells) != 2 {
+		t.Fatalf("the sheet holds %d cells, want one per held seat: %+v", len(cells), cells)
+	}
+	seen := map[string]bool{}
+	for _, cell := range cells {
+		seen[cell.Role+"/"+cell.Model] = true
+	}
+	for _, seat := range []string{"worker/crew/worker", "high/crew/high"} {
+		if !seen[seat] {
+			t.Fatalf("the sheet holds no cell for %s: %+v", seat, cells)
+		}
+	}
+}
+
+// TestPoolJudgeHookStillScoresTheSecondSeatWhenTheFirstSeatsShareRunsOut is
+// the failure the share exists for: the first question's share runs out and
+// the answer is the context's own error, and the second seat is scored anyway
+// with a full share of its own — its share began when its question was asked,
+// not when the landing did. The share running out is what a provider call
+// answers once its context gives out; the ninety seconds themselves are not
+// waited out here.
+func TestPoolJudgeHookStillScoresTheSecondSeatWhenTheFirstSeatsShareRunsOut(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	question := 0
+	var secondAskedAt, secondDeadline time.Time
+	ask := func(model string) judge.Ask {
+		return func(ctx context.Context, system, user string) (string, error) {
+			question++
+			if question == 1 {
+				return "", context.DeadlineExceeded
+			}
+			secondAskedAt = time.Now()
+			secondDeadline, _ = ctx.Deadline()
+			return `{"score": 88, "reason": "the delivered work does what the brief asked"}`, nil
+		}
+	}
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, ask, time.Now)
+	if hook == nil {
+		t.Fatal("a pool whose mode allows reading built no hook")
+	}
+	hook(poolTestLanding())
+
+	if question != 2 {
+		t.Fatalf("the judge asked %d questions, want the second seat asked after the first's share ran out", question)
+	}
+	if share := secondDeadline.Sub(secondAskedAt); share < judgeTimeout-time.Second {
+		t.Fatalf("the second question holds %v of context, want at least its own %v share", share, judgeTimeout-time.Second)
+	}
+
+	sheet, err := record.LoadSheet(record.OwnSheetPath(config.ProfilePath(profileDir, "pool")))
+	if err != nil {
+		t.Fatalf("the own sheet: %v", err)
+	}
+	cells := record.Cells(sheet)
+	if len(cells) != 1 || cells[0].Role != "high" || cells[0].Model != "crew/high" {
+		t.Fatalf("the sheet holds %+v, want the high seat scored after the worker's share ran out", cells)
+	}
+	if cells[0].N != 1 {
+		t.Fatalf("the high seat's cell holds %d readings, want 1", cells[0].N)
+	}
+}
+
 // countLines counts the newlines a row-per-line file holds.
 func countLines(data []byte) int {
 	lines := 0
