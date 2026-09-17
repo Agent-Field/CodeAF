@@ -286,6 +286,9 @@ func planE2EWaitStoreRoot(t *testing.T, place Place) {
 	for {
 		store := planE2EOpenStore(t, place)
 		root := store.Task(planRootID)
+		// A store handle holds the database open, so every poll closes the one
+		// it read through rather than leaving a connection behind per tick.
+		_ = store.Close()
 		if root != nil && root.Status == plandb.StatusDone {
 			return
 		}
