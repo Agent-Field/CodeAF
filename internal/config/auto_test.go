@@ -1,0 +1,309 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/crewpick"
+)
+
+// THE WORD, AND WHAT IS NOT THE WORD. `auto` is a bare word a tier row holds,
+// and everything that only resembles one is a model id: a suffixed word is the
+// rows' own `:<level>` notation, a slashed one is a vendor's namespace, and
+// `automatic` is somebody's model that happens to begin with it.
+func TestIsAutoReadsTheBareWordAlone(t *testing.T) {
+	for word, want := range map[string]bool{
+		"auto": true, " AUTO ": true, "Auto": true, "\tauto\n": true,
+		"": false, "auto:high": false, "vendor/auto": false, "automatic": false,
+	} {
+		if got := IsAuto(word); got != want {
+			t.Errorf("IsAuto(%q) = %t, want %t", word, got, want)
+		}
+	}
+}
+
+// autoTestRows is a small catalog with every fact a pick reads, and one row
+// the provider priced "-1" on — which is not a candidate, for the reason a
+// pick that is about cost cannot count a model whose cost nobody published.
+func autoTestRows() []catalog.Model {
+	return []catalog.Model{
+		{ID: "a/cheap", OpenWeights: true, IntelligenceIndex: 30, CodingIndex: 35, AgenticIndex: 40,
+			PromptPrice: 0.0000002, CompletionPrice: 0.0000009, CacheReadPrice: 0.00000002,
+			ContextLength: 200_000, InputModalities: []string{"text", "image"}, Parameters: []string{"tools"}},
+		{ID: "a/mid", OpenWeights: true, IntelligenceIndex: 45, CodingIndex: 50, AgenticIndex: 48,
+			PromptPrice: 0.000001, CompletionPrice: 0.000003, CacheReadPrice: 0.0000001,
+			ContextLength: 200_000, InputModalities: []string{"text"}, Parameters: []string{"tools"}},
+		{ID: "b/care", IntelligenceIndex: 60, CodingIndex: 55, AgenticIndex: 50,
+			PromptPrice: 0.000004, CompletionPrice: 0.00002, CacheReadPrice: 0.0000004,
+			ContextLength: 400_000, InputModalities: []string{"text", "image"}, Parameters: []string{"tools"}},
+		{ID: "c/mind", IntelligenceIndex: 75, CodingIndex: 70, AgenticIndex: 65,
+			PromptPrice: 0.00001, CompletionPrice: 0.00005, ContextLength: 200_000,
+			InputModalities: []string{"text"}, Parameters: []string{"tools"}},
+		{ID: "r/router", PriceUnknown: true, IntelligenceIndex: 80, CodingIndex: 80, AgenticIndex: 80,
+			PromptPrice: -1, CompletionPrice: -1, ContextLength: 200_000},
+	}
+}
+
+// THE PICK IS PURE AND ITS ANSWER IS THE FRONT'S. The same rows give the same
+// id however often it is asked, the rows are never touched, and a row whose
+// price nobody published is in no seat. The front is read the way the shipped
+// tables were (crew.go owns the method), so the pick answers exactly what
+// crewpick answers for these rows — asserted here against crewpick itself
+// rather than against a figure copied out of one.
+func TestAutoPickAnswersTheFront(t *testing.T) {
+	rows := autoTestRows()
+	workers := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		id, ok := AutoPick(ModelTierWorker, CrewSourceAll, CrewFrugal, rows)
+		if !ok || id == "" {
+			t.Fatalf("AutoPick answered ok=%t id=%q", ok, id)
+		}
+		workers = append(workers, id)
+	}
+	for i := 1; i < len(workers); i++ {
+		if workers[i] != workers[0] {
+			t.Fatalf("the same rows answered %q then %q — the pick is not pure", workers[0], workers[i])
+		}
+	}
+	_ = workers
+	if rows[4].ID != "r/router" || !rows[4].PriceUnknown {
+		t.Fatal("AutoPick modified the rows it was handed")
+	}
+
+	frugal, _, maxCrew := crewpick.Presets(crewpick.Front(autoCandidates(rows), crewpick.DefaultShapes(), crewpick.All))
+	if len(frugal.Worker) == 0 {
+		t.Fatal("the test rows field no crew — the rows are broken")
+	}
+	if got, _ := AutoPick(ModelTierWorker, CrewSourceAll, CrewFrugal, rows); got != frugal.Worker {
+		t.Fatalf("worker frugal = %q, want the front's own %q", got, frugal.Worker)
+	}
+	if got, _ := AutoPick(ModelTierMastermind, CrewSourceAll, CrewMax, rows); got != maxCrew.Mastermind {
+		t.Fatalf("mastermind max = %q, want the front's own %q", got, maxCrew.Mastermind)
+	}
+}
+
+// THE TWO TIERS THAT NEVER VARY HAVE NO ANSWER HERE, the same law their
+// columns in the shipped tables keep — reflex and small work are the same
+// near-free models in all three presets, and a word that computes for them
+// would be a second opinion about a row that has none.
+func TestAutoPickRefusesTheTiersWithoutOpinions(t *testing.T) {
+	for _, tier := range []string{ModelTierReflex, ModelTierLow, "", "banana"} {
+		if id, ok := AutoPick(tier, CrewSourceAll, CrewFrugal, autoTestRows()); ok || id != "" {
+			t.Errorf("AutoPick(%q) answered %q, want no answer", tier, id)
+		}
+	}
+}
+
+// THE THREE WORDS ARE THE ONLY PRESETS, `open` IS THE ONLY OTHER FAMILY, AND
+// NOTHING IS AN ERROR: no answer is ok false and an empty id, on no rows,
+// on an empty front, on a word that is not a preset, and on a tier the
+// catalog cannot field.
+func TestAutoPickAnswersNothingWhenNothingCanBePicked(t *testing.T) {
+	if id, ok := AutoPick(ModelTierWorker, CrewSourceAll, "banana", autoTestRows()); ok || id != "" {
+		t.Errorf("an unknown preset answered %q", id)
+	}
+	if id, ok := AutoPick(ModelTierWorker, CrewSourceAll, CrewFrugal, nil); ok || id != "" {
+		t.Errorf("no rows answered %q", id)
+	}
+	if id, ok := AutoPick(ModelTierHigh, CrewSourceAll, CrewFrugal, []catalog.Model{{ID: "a/cheap", PromptPrice: 1}}); ok || id != "" {
+		t.Errorf("rows that field no crew answered %q", id)
+	}
+	// A family word this build does not know reads as the default family,
+	// the way [CrewSourceAt] reads one — and that family answers here.
+	if _, ok := AutoPick(ModelTierWorker, "misplaced", CrewFrugal, autoTestRows()); !ok {
+		t.Error("an unknown family word read as no family at all")
+	}
+}
+
+// ── the ladder ──────────────────────────────────────────────────────────────
+
+// A ROW THAT SAYS AUTO RESOLVES THROUGH THE ONE SEAM, ON BOTH LADDERS, to the
+// computed id with the rung that says so — and with the catalog absent, to
+// the family's table row for the preset the other four rows name, on the
+// table rung. It never resolves to `auto` and never to empty.
+func TestAnAutoRowResolvesOnBothLadders(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	defer func() { AutoModels = restore }()
+
+	rows := writeProfileRows(t, map[string]string{
+		KeyTierWorkerModel:     " auto ",
+		KeyTierMastermindModel: "AUTO",
+	})
+	for _, seat := range []Seat{
+		TierSeatAt(rows, ModelTierWorker),
+		ResolveSeats(rows, "", "").Work,
+	} {
+		if seat.Source != SeatComputed {
+			t.Errorf("conversation ladder: the seat reads %s, want computed", seat.Rung())
+		}
+		if strings.TrimSpace(seat.Model) == "" || IsAuto(seat.Model) {
+			t.Errorf("conversation ladder: the seat reads %q, want a computed id", seat.Model)
+		}
+	}
+	plan := ResolveSeats(rows, "", "").Plan
+	if plan.Source != SeatComputed {
+		t.Errorf("headless ladder: the plan seat reads %s, want computed", plan.Rung())
+	}
+
+	// The catalog reaches nothing: the family's table row answers, on the
+	// table rung, at the preset the stored rows make. These rows pin nothing
+	// else, so they are the default crew — and the worker column of that
+	// preset in the DEFAULT family is the answer the table owes.
+	AutoModels = nil
+	table, _ := CrewModelsForSource(DefaultCrewSource, DefaultCrew)
+	want := table[ModelTierWorker]
+	for name, seat := range map[string]Seat{
+		"conversation": TierSeatAt(rows, ModelTierWorker),
+		"headless":     ResolveSeats(rows, "", "").Work,
+	} {
+		if seat.Model != want || seat.Source != SeatTable {
+			t.Errorf("%s ladder with no catalog: %q (%s), want %q (table)", name, seat.Model, seat.Rung(), want)
+		}
+	}
+}
+
+// A REACHED-THROUGH-THE-LINEAGE ROW SAYS AUTO THE SAME WAY. The worker row
+// landed after profiles held only the small-work row, and a profile of that
+// vintage whose small-work row says auto hands its work seat the same answer
+// the conversation hands it — computed when the catalog can, and never the
+// bare word.
+func TestAnInheritedAutoRowResolvesTheSameWay(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	defer func() { AutoModels = restore }()
+
+	dir := writeProfileRows(t, map[string]string{KeyTierLowModel: AutoValue})
+	for name, seat := range map[string]Seat{
+		"conversation": TierSeatAt(dir, ModelTierWorker),
+		"headless":     ResolveSeats(dir, "", "").Work,
+	} {
+		if seat.Model == AutoValue || seat.Model == "" {
+			t.Errorf("%s ladder: the seat reads %q, want what the row was reached through", name, seat.Model)
+		}
+	}
+}
+
+// THE FLAG AND THE VARIABLE STILL OUTRANK A ROW THAT SAYS AUTO, and a flag
+// whose text is the word is handed on whole — a person who named a model
+// called auto got a model called auto, exactly as they did before this rung
+// existed.
+func TestTheInvocationRungsStillOutrankAnAutoRow(t *testing.T) {
+	t.Setenv(ModelEnv, "vendor/from-the-environment")
+	t.Setenv(PlanModelEnv, "vendor/plans-from-the-environment")
+	dir := writeProfileRows(t, map[string]string{KeyTierWorkerModel: AutoValue})
+	seats := ResolveSeats(dir, "", "")
+	if seats.Work.Model != "vendor/from-the-environment" || seats.Work.Source != SeatEnv {
+		t.Errorf("the environment rung read %q (%s)", seats.Work.Model, seats.Work.Rung())
+	}
+	if seats.Plan.Model != "vendor/plans-from-the-environment" || seats.Plan.Source != SeatEnv {
+		t.Errorf("the plan seat read %q (%s)", seats.Plan.Model, seats.Plan.Rung())
+	}
+	seats = ResolveSeats(dir, AutoValue, "")
+	if seats.Work.Model != AutoValue || seats.Work.Source != SeatFlag {
+		t.Errorf("a flag that says auto read %q (%s), want the word handed on whole", seats.Work.Model, seats.Work.Rung())
+	}
+}
+
+// THE PRESET AN AUTO SEAT RUNS AT IS READ FROM THE STORED ROWS, never through
+// seat resolution — the seam cannot ask the ladder that is asking it — and a
+// row that says auto matches whichever preset is being compared. Four pinned
+// rows of one preset plus an auto row are that preset.
+func TestThePresetAnAutoSeatRunsAtIsReadFromTheStoredRows(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	for _, preset := range CrewPresets {
+		models, _ := CrewModelsForSource(DefaultCrewSource, preset)
+		rows := map[string]string{KeyTierWorkerModel: AutoValue}
+		for _, tier := range ModelTiers {
+			if tier != ModelTierWorker {
+				rows[tierKeyFor(tier)] = models[tier]
+			}
+		}
+		dir := writeProfileRows(t, rows)
+		restore := AutoModels
+		AutoModels = func() []catalog.Model { return autoTestRows() }
+		seat := TierSeatAt(dir, ModelTierWorker)
+		AutoModels = restore
+		if seat.Crew != preset {
+			t.Errorf("four %s rows and an auto row read as %q", preset, seat.Crew)
+		}
+		if seat.Rung() != "crew "+preset+", computed" {
+			t.Errorf("the rung reads %q, want crew %s, computed", seat.Rung(), preset)
+		}
+	}
+	// A profile with no auto row anywhere reads as it always read — the
+	// default rung, no crew word — which is the unchanged-behaviour law: the
+	// seam fires only on a row that says the word.
+	seat := TierSeatAt(t.TempDir(), ModelTierWorker)
+	if seat.Rung() != "default" || seat.Crew != "" {
+		t.Errorf("an untouched profile reads %q (%s), want the default rung as before", seat.Rung(), seat.Crew)
+	}
+}
+
+// A SETTINGS ROW SHOWS THE MODEL RUNNING, because it reads through the
+// resolver — and a profile that says auto nowhere is untouched by any of
+// this: the same rows, the same ids, the same rungs.
+func TestAutoNowhereChangesNothing(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	defer func() { AutoModels = restore }()
+
+	dir := t.TempDir()
+	if err := ApplyCrew(dir, CrewBalanced); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]string{}
+	for _, tier := range ModelTiers {
+		before[tier] = TierModelAt(dir, tier)
+	}
+	raw, err := os.ReadFile(BudgetConfigPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]any
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) == 0 {
+		t.Fatal("the write stored nothing")
+	}
+	for tier, want := range before {
+		if got := TierModelAt(dir, tier); got != want {
+			t.Errorf("%s read %q then %q — a read rewrote a row", tier, want, got)
+		}
+	}
+	if got := CrewAt(dir); got != CrewBalanced {
+		t.Errorf("the crew word reads %q, want balanced", got)
+	}
+}
+
+// THE SEAM'S TABLE RUNG IS THE PRESET'S OWN ID, not merely a non-empty
+// answer: with the catalog gone, an auto row under a pinned preset resolves
+// to that preset's id for the tier, not to the default preset's.
+func TestTheTableRungAnswersThePresetTheRowsName(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	models, _ := CrewModelsForSource(DefaultCrewSource, CrewMax)
+	rows := map[string]string{KeyTierWorkerModel: AutoValue}
+	for _, tier := range ModelTiers {
+		if tier != ModelTierWorker {
+			rows[tierKeyFor(tier)] = models[tier]
+		}
+	}
+	dir := writeProfileRows(t, rows)
+	seat := TierSeatAt(dir, ModelTierWorker)
+	if seat.Model != models[ModelTierWorker] || seat.Source != SeatTable {
+		t.Errorf("with no catalog the seat reads %q (%s), want max's own worker id on the table rung",
+			seat.Model, seat.Rung())
+	}
+}
