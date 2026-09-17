@@ -394,8 +394,8 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 			if err := requireOwner(task, agent); err != nil {
 				return err
 			}
-			if task.Composite && !allChildrenDone(*next, id) {
-				return fmt.Errorf("task %q has unfinished or failed children", id)
+			if ok, reason := canFinish(*next, task); !ok {
+				return errors.New(reason)
 			}
 			switch task.Status {
 			case StatusClaimed, StatusRunning:
@@ -1477,18 +1477,45 @@ func depsDone(value state, task *Task) bool {
 	return true
 }
 
-func allChildrenDone(value state, id string) bool {
-	hasChildren := false
-	for _, child := range value.Tasks {
-		if child.ParentID != id {
+// CanFinish reports whether a task may be completed now, and when it may
+// not, the reason naming the first task in the way: a child that is not
+// terminal, or a hard dependency that is not done. `suggests` does not block
+// — it is advice, not a gate — and the child scan walks the plan in the order
+// it is carried, so the reason a refusal names is the same one on every call.
+// Done refuses with this same reason.
+func (s *Store) CanFinish(id string) (bool, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
+	task := s.data.Tasks[id]
+	if task == nil {
+		return false, fmt.Sprintf("task %q not found", id)
+	}
+	return canFinish(s.data, task)
+}
+
+// canFinish is the law CanFinish reads, as a free function so Done can ask it
+// against the transaction's own fresh state rather than the locked copy.
+func canFinish(value state, task *Task) (bool, string) {
+	for _, id := range value.Order {
+		child := value.Tasks[id]
+		if child.ParentID != task.ID {
 			continue
 		}
-		hasChildren = true
-		if child.Status != StatusDone {
-			return false
+		if !terminal(child.Status) {
+			return false, fmt.Sprintf("task %q has a child %q that has not finished", task.ID, id)
 		}
 	}
-	return hasChildren
+	for _, dep := range task.Dependencies {
+		if dep.Kind == DepSuggests {
+			continue
+		}
+		upstream := value.Tasks[dep.TaskID]
+		if upstream == nil || upstream.Status != StatusDone {
+			return false, fmt.Sprintf("task %q has an unfinished dependency %q", task.ID, dep.TaskID)
+		}
+	}
+	return true, ""
 }
 
 func allChildrenTerminal(value state, id string) bool {
