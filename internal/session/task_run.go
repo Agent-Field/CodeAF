@@ -6596,15 +6596,15 @@ func worktreeDirt(dir string) string { return worktreeDirtIn(context.Background(
 // worktreeDirtIn is [worktreeDirt] under a context, for a reading somebody may
 // have to stop ([treeWatch.close]).
 func worktreeDirtIn(ctx context.Context, dir string) string {
-	args := []string{"-C", dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
+	args := []string{"--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
 	for _, dropping := range taskDroppingNames() {
 		args = append(args, ":(exclude)"+dropping)
 	}
-	out, err := exec.CommandContext(ctx, "git", args...).Output()
+	out, err := gitContext(ctx, dir, nil, args...)
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(out)
+	sum := sha256.Sum256([]byte(out))
 	return string(sum[:8])
 }
 
@@ -8959,13 +8959,22 @@ func git(dir string, args ...string) (string, error) {
 	return gitWith(dir, nil, args...)
 }
 
-// gitWith is [git] with something extra in its environment, and it exists for
+// gitWith is [gitContext] with [context.Background] in place of a caller's own
+// context, kept as its own name because nearly every call here is that.
 // exactly one caller: the ground ladder stages a parent's tree into AN INDEX OF
 // ITS OWN so that handing out a child never moves the parent's index
 // ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
 // second copy of the pager and editor settings beside it would be the drift the
 // one-source-of-truth law forbids.
 func gitWith(dir string, environment []string, args ...string) (string, error) {
+	return gitContext(context.Background(), dir, environment, args...)
+}
+
+// gitContext is [gitWith] under a context, for a command somebody may have to
+// stop before git answers ([worktreeDirtIn]'s watch). The refusal of an empty
+// directory and the pinned environment live here, so there is one copy of
+// each; every other spelling of a git call in this package is a wrapper of it.
+func gitContext(ctx context.Context, dir string, environment []string, args ...string) (string, error) {
 	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE.
 	//
 	// exec.Cmd reads an empty Dir as "the calling process's working directory",
@@ -8984,7 +8993,7 @@ func gitWith(dir string, environment []string, args ...string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("git: no directory to run in")
 	}
-	command := exec.Command("git", args...)
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.

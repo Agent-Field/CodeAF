@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,37 @@ import (
 // wrote "task: Rewrite", "task: Measure" and "task: Paint" onto the branch of
 // the worktree it was launched from. Every call site names a directory, so one
 // that answers "" is a defect, and it fails here rather than somewhere else.
+// TestStatusReadsWithNoDirectoryNeverRuns is the same proof for the two call
+// sites that built `git -C <dir>` themselves instead of asking [gitWith]:
+// [worktreeDirtIn]'s dirty fingerprint and [UnsavedEditsNote]'s status reading.
+// `git -C ""` is a no-op — git runs where the process is standing — so a direct
+// exec.Command with an empty directory slipped past the refusal in gitWith.
+func TestStatusReadsWithNoDirectoryNeverRuns(t *testing.T) {
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"config", "user.name", "codeaf"}} {
+		if _, err := git(repo, args...); err != nil {
+			t.Skipf("no usable git here: %v", err)
+		}
+	}
+	writeFile(t, filepath.Join(repo, "note.md"), "work\n")
+	t.Chdir(repo)
+
+	if got := worktreeDirtIn(context.Background(), ""); got != "" {
+		t.Errorf("worktreeDirtIn with no directory returned %q, so a git command ran", got)
+	}
+	if got := worktreeDirt(""); got != "" {
+		t.Errorf("worktreeDirt with no directory returned %q, so a git command ran", got)
+	}
+	if got := UnsavedEditsNote(""); got != "" {
+		t.Errorf("UnsavedEditsNote with no directory returned %q, so a git command ran", got)
+	}
+	if staged, problem := stagedPaths(repo); problem != "" {
+		t.Fatalf("read the index: %s", problem)
+	} else if len(staged) > 0 {
+		t.Errorf("a refused command staged %v in the repository the process was standing in", staged)
+	}
+}
+
 func TestAGitCommandWithNoDirectoryNeverRuns(t *testing.T) {
 	// The proof that it never RAN, rather than merely never committed: this is
 	// a real repository holding a real change, and a `git add` that reached it
