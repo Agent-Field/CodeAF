@@ -6,15 +6,33 @@ import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
 
 // KV is the smallest store the Worker needs: get, put and one list page.
+// put honours an expirationTtl or expiration option the way the lock needs.
 class KV {
   constructor() {
     this.map = new Map();
+    this.expiry = new Map();
   }
   async get(key) {
-    return this.map.has(key) ? this.map.get(key) : null;
+    if (!this.map.has(key)) {
+      return null;
+    }
+    const until = this.expiry.get(key);
+    if (until !== undefined && Date.now() >= until) {
+      this.map.delete(key);
+      this.expiry.delete(key);
+      return null;
+    }
+    return this.map.get(key);
   }
-  async put(key, value) {
+  async put(key, value, options = {}) {
     this.map.set(key, value);
+    if (Number.isFinite(options.expirationTtl)) {
+      this.expiry.set(key, Date.now() + options.expirationTtl * 1000);
+    } else if (Number.isFinite(options.expiration)) {
+      this.expiry.set(key, options.expiration * 1000);
+    } else {
+      this.expiry.delete(key);
+    }
   }
   async list({ prefix = '', cursor } = {}) {
     void cursor;
@@ -70,6 +88,16 @@ function post(body, headers = {}) {
   return new Request('https://codeaf.agentfield.ai/pool/v1/rows', {
     method: 'POST', headers, body,
   });
+}
+
+// background collects the waitUntil promises a read schedules; drain awaits
+// everything the reads scheduled, the way the platform settles them after
+// the response.
+function background() {
+  return { pending: [], waitUntil(promise) { this.pending.push(promise); } };
+}
+async function drain(ctx) {
+  await Promise.all(ctx.pending.splice(0));
 }
 
 test('healthz answers ok and other paths answer an empty 404', async () => {
@@ -168,6 +196,69 @@ test('scheduled publishes a signed index, served with a version ETag and 304', a
     headers: { 'If-None-Match': etag },
   }), e);
   assert.equal(notModified.status, 304);
+});
+
+test('a read with nothing stored answers 404 once and the next read answers 200 after the background publish', async () => {
+  const e = env();
+  const ctx = background();
+  const first = await worker.fetch(new Request('https://codeaf.agentfield.ai/pool/index.json'), e, ctx);
+  assert.equal(first.status, 404);
+  await drain(ctx);
+  const second = await worker.fetch(new Request('https://codeaf.agentfield.ai/pool/index.json'), e);
+  assert.equal(second.status, 200);
+  assert.equal(JSON.parse(await second.text()).cells.length, 0);
+});
+
+test('a read of a document older than PUBLISH_EVERY serves the old document and republishes exactly once when two reads race', async () => {
+  const e = env();
+  const old = Math.floor(Date.now() / 1000) - 7200;
+  const stale = JSON.stringify({ version: old, cells: [] });
+  await e.POOL.put('index/doc', stale);
+  await e.POOL.put('index/sig', 'old-signature');
+  await e.POOL.put('index/version', String(old));
+  let publishes = 0;
+  const put = e.POOL.put.bind(e.POOL);
+  e.POOL.put = async (key, value, options) => {
+    if (key === 'index/doc') {
+      publishes++;
+    }
+    return put(key, value, options);
+  };
+  const ctx = background();
+  const url = 'https://codeaf.agentfield.ai/pool/index.json';
+  const [a, b] = await Promise.all([
+    worker.fetch(new Request(url), e, ctx),
+    worker.fetch(new Request(url), e, ctx),
+  ]);
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  assert.equal(await a.text(), stale);
+  assert.equal(await b.text(), stale);
+  await drain(ctx);
+  assert.equal(publishes, 1);
+  assert.notEqual(await e.POOL.get('index/publishing'), null);
+  const version = parseInt(await e.POOL.get('index/version'), 10);
+  assert.equal(version > old, true);
+});
+
+test('a read of a fresh document republishes nothing', async () => {
+  const e = env();
+  await worker.scheduled({}, e);
+  const version = await e.POOL.get('index/version');
+  const ctx = background();
+  const res = await worker.fetch(new Request('https://codeaf.agentfield.ai/pool/index.json'), e, ctx);
+  assert.equal(res.status, 200);
+  await drain(ctx);
+  assert.equal(ctx.pending.length, 0);
+  assert.equal(await e.POOL.get('index/version'), version);
+});
+
+test('scheduled still publishes', async () => {
+  const e = env();
+  await worker.scheduled({}, e);
+  const res = await worker.fetch(new Request('https://codeaf.agentfield.ai/pool/index.json'), e);
+  assert.equal(res.status, 200);
+  assert.equal(Number.isInteger(JSON.parse(await res.text()).version), true);
 });
 
 test('scheduled with no cells still publishes an empty index', async () => {
