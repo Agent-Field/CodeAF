@@ -69,21 +69,34 @@ func TestParsePageRange(t *testing.T) {
 }
 
 func TestRunWebRefusesEverythingThatIsNotSearchOrFetch(t *testing.T) {
-	err := runWeb([]string{})
-	if err == nil || !strings.Contains(err.Error(), "search") {
-		t.Errorf("a bare `codeaf web` says %v, which never names the two shapes", err)
+	// A bare `codeaf web` is a missing verb: one sentence on stderr and exit 2,
+	// the shape every door's wrong call takes
+	// (TestDoorsRefuseAWrongCallWithOneSentenceAndExitTwo). Nothing reaches
+	// stdout, which is where an answer goes.
+	out, errs := captureUsage(t)
+	if code := exitCodeOf(runWeb(nil)); code != 2 {
+		t.Errorf("a bare `codeaf web` left with %d, want 2", code)
 	}
-	err = runWeb([]string{"sniff", "x"})
-	if err == nil || !strings.Contains(err.Error(), "neither") {
-		t.Errorf("an unknown subcommand says %v, which never says so", err)
+	if said := errs.String(); !strings.Contains(said, "search") {
+		t.Errorf("a bare `codeaf web` says %q, which never names the two shapes", said)
 	}
-	err = runWeb([]string{"search"})
-	if err == nil || !strings.Contains(err.Error(), "QUERY") {
-		t.Errorf("a search with no query says %v, which never names what is missing", err)
+	if out.Len() != 0 {
+		t.Errorf("a bare `codeaf web` wrote to stdout, which is where the answer goes:\n%s", out.String())
 	}
-	err = runWeb([]string{"fetch"})
-	if err == nil || !strings.Contains(err.Error(), "URL") {
-		t.Errorf("a fetch with no URL says %v, which never names the shape", err)
+	// The rest are plain refusals — the verb is there, its argument is not —
+	// and each names what is missing.
+	for _, refusal := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"sniff", "x"}, "neither"},
+		{[]string{"search"}, "QUERY"},
+		{[]string{"fetch"}, "URL"},
+	} {
+		err := runWeb(refusal.args)
+		if err == nil || !strings.Contains(err.Error(), refusal.want) {
+			t.Errorf("runWeb(%q) says %v, which never says %q", refusal.args, err, refusal.want)
+		}
 	}
 }
 
