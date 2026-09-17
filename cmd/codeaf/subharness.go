@@ -380,6 +380,11 @@ var sharedCatalog = func() func(config.Config) *catalog.Catalog {
 			// the same non-blocking read, never a fetch, and set once at start-up so every
 			// headless door resolves the word against the list it already holds.
 			config.AutoModels = resolved.ModelsNow
+			// AND THE POOL'S INDEX BESIDE IT, in the same one-time manner: a tier
+			// row that says auto is answered from the index this process was seated
+			// with, the seed when no cache is fresher, and the one fetch it makes
+			// runs in the background and never blocks this read.
+			wirePoolIndex(settings.ProfileDir)
 		})
 		return resolved
 	}

@@ -174,6 +174,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
 	config.AutoModels = modelCatalog.ModelsNow
+	wirePoolIndex(settings.ProfileDir)
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)
 	} else {
