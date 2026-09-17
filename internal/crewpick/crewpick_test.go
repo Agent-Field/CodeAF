@@ -631,3 +631,156 @@ func TestSeatQualityReadsAgainstThePoolsBest(t *testing.T) {
 		t.Fatalf("a pool with no candidates scored %f, want 0", got)
 	}
 }
+
+// A pool's own rating for a seat moves that seat's quality towards the
+// rating's mean, and the more observations back it the farther it moves: a
+// rating with a large count across a seat whose catalog quality is 100 and
+// whose pool mean is 50 lands somewhere between the two.
+func TestALargeRatingMovesASeatTowardsThePoolMean(t *testing.T) {
+	shape := SeatShape{Weights: [3]float64{1, 0, 0}}
+	pool := []Candidate{model("m")}
+	if base := SeatQuality(pool[0], shape, pool); base != 100 {
+		t.Fatalf("the catalog quality is %f, want 100", base)
+	}
+	prior := Prior{Worker: {"m": {Mean: 50, N: 1000}}}
+	if got := SeatQualityWith(pool[0], shape, pool, Worker, prior); got <= 50 || got >= 100 {
+		t.Fatalf("a large rating scored %f, want between the pool mean 50 and the catalog 100", got)
+	}
+}
+
+// The blend carries the rating and the catalog at equal weight at exactly
+// PriorWeightAt observations, so the seat reads the midpoint of the two; a
+// seat the prior never rates, and a rating with no observations, keep the
+// catalog quality.
+func TestTheBlendAtTheRatingWeightIsTheMidpoint(t *testing.T) {
+	shape := SeatShape{Weights: [3]float64{1, 0, 0}}
+	pool := []Candidate{model("m")}
+
+	half := Prior{Worker: {"m": {Mean: 40, N: PriorWeightAt}}}
+	if got := SeatQualityWith(pool[0], shape, pool, Worker, half); got != 70 {
+		t.Fatalf("the blend at N = PriorWeightAt scored %f, want the midpoint 70", got)
+	}
+	unrated := Prior{Worker: {"other": {Mean: 40, N: 1000}}}
+	if got := SeatQualityWith(pool[0], shape, pool, Worker, unrated); got != 100 {
+		t.Fatalf("a seat the prior never rated scored %f, want the catalog 100", got)
+	}
+	empty := Prior{Worker: {"m": {Mean: 40, N: 0}}}
+	if got := SeatQualityWith(pool[0], shape, pool, Worker, empty); got != 100 {
+		t.Fatalf("a rating with no observations scored %f, want the catalog 100", got)
+	}
+}
+
+// A prior is read from role-worded cells: a role that names no seat and a
+// count below min_installs are both ignored, and only a role that names a
+// seat with enough observations behind it becomes a rating.
+func TestPriorFromCellsIgnoresACountBelowMinInstalls(t *testing.T) {
+	prior := PriorFromCells([]Cell{
+		{Role: "worker", Model: "a/kept", Mean: 80, N: 40},
+		{Role: "worker", Model: "b/dropped", Mean: 90, N: 10},
+		{Role: "engineer", Model: "c/ignored", Mean: 95, N: 100},
+	}, 30, nil)
+	if len(prior) != 1 || len(prior[Worker]) != 1 {
+		t.Fatalf("prior = %v, want one worker rating", prior)
+	}
+	if _, ok := prior[Worker]["a/kept"]; !ok {
+		t.Fatalf("a rating at the floor was dropped: %v", prior)
+	}
+	if _, ok := prior[Worker]["b/dropped"]; ok {
+		t.Fatalf("a rating below min_installs survived: %v", prior)
+	}
+}
+
+// The result says which seats a pool's rating entered: a seat whose model the
+// prior rated reads measured, and a seat it did not — here the mastermind,
+// which no rating names — does not.
+func TestMeasuredIsSetOnlyOnTheSeatsThePriorTouched(t *testing.T) {
+	pool := []Candidate{model("a/w"), model("c/h"), model("b/m")}
+	prior := Prior{
+		Worker: {"a/w": {Mean: 100, N: 100}},
+		High:   {"b/m": {Mean: 100, N: 100}},
+	}
+	front := FrontWith(pool, DefaultShapes(), All, prior)
+	if len(front) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	wantCrew(t, "frugal", front[0], "a/w|b/m|a/w")
+	if front[0].Measured != ([3]bool{true, true, false}) {
+		t.Fatalf("Measured = %v, want the worker and high seats alone", front[0].Measured)
+	}
+}
+
+// A prior changes quality alone: every bill a crew is given is its seats'
+// token mixes priced, exactly as it is without a prior.
+func TestAPriorNeverChangesTheBill(t *testing.T) {
+	pool := []Candidate{model("a/w"), model("c/h"), model("b/m")}
+	shapes := DefaultShapes()
+	prior := Prior{
+		Worker: {"a/w": {Mean: 20, N: 10_000}},
+		High:   {"c/h": {Mean: 140, N: 10_000}},
+	}
+	front := FrontWith(pool, shapes, All, prior)
+	if len(front) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	for _, crew := range front {
+		want := 0.0
+		for _, seat := range []struct {
+			model string
+			seat  Seat
+		}{{crew.Worker, Worker}, {crew.High, High}, {crew.Mastermind, Mastermind}} {
+			for _, c := range pool {
+				if c.ID == seat.model {
+					want += shapes[seat.seat].Volume * SeatCost(c, shapes[seat.seat])
+				}
+			}
+		}
+		if math.Abs(crew.Bill-want) > 1e-9 {
+			t.Fatalf("crew %s|%s|%s bill = %f, want its seats' priced mix %f",
+				crew.Worker, crew.High, crew.Mastermind, crew.Bill, want)
+		}
+	}
+}
+
+// A prior is a property of the candidates, not of their order: with a rating
+// present the same pool gives the same front shuffled, rotated and reversed.
+func TestAPriorKeepsTheFrontTheSameInAnyOrder(t *testing.T) {
+	cands := loadCandidates(t)
+	prior := Prior{Worker: {"z-ai/glm-5.3": {Mean: 90, N: 100}}}
+	one := FrontWith(cands, DefaultShapes(), All, prior)
+	if len(one) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	reversed := slices.Clone(cands)
+	slices.Reverse(reversed)
+	if two := FrontWith(reversed, DefaultShapes(), All, prior); !slices.Equal(one, two) {
+		t.Fatal("the front changed when the candidates arrived reversed")
+	}
+	rotated := append(slices.Clone(cands[3:]), cands[:3]...)
+	if three := FrontWith(rotated, DefaultShapes(), All, prior); !slices.Equal(one, three) {
+		t.Fatal("the front changed when the pool arrived rotated")
+	}
+}
+
+// An alias resolved through canonical meets its candidate: a cell spelling a
+// model's alias lands on the candidate's canonical id, so the rating reaches
+// it, while the same cell with no canonical step lands on the alias and
+// touches nothing.
+func TestAnAliasResolvedThroughCanonicalMeetsItsCandidate(t *testing.T) {
+	shape := SeatShape{Weights: [3]float64{1, 0, 0}}
+	pool := []Candidate{model("z-ai/glm-5.3")}
+	canonical := func(id string) string {
+		if id == "glm-5.3" {
+			return "z-ai/glm-5.3"
+		}
+		return id
+	}
+	cell := Cell{Role: "worker", Model: "glm-5.3", Mean: 40, N: PriorWeightAt}
+	resolved := PriorFromCells([]Cell{cell}, 5, canonical)
+	if got := SeatQualityWith(pool[0], shape, pool, Worker, resolved); got != 70 {
+		t.Fatalf("the aliased rating scored %f, want the midpoint 70", got)
+	}
+	unresolved := PriorFromCells([]Cell{cell}, 5, nil)
+	if got := SeatQualityWith(pool[0], shape, pool, Worker, unresolved); got != 100 {
+		t.Fatalf("the unresolved alias scored %f, want the catalog 100 untouched", got)
+	}
+}
