@@ -45,7 +45,8 @@ unset CODEAF_TELEMETRY DO_NOT_TRACK || true
 CHANNEL=stable write_install_marker "$tmp/state"
 f="$tmp/state/telemetry/install.json"
 ok "marker exists" '[ -f "$f" ]'
-mode_of() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
+# GNU stat first: on Linux `stat -f` succeeds too, but reports the filesystem.
+mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 json_valid() {
 	if command -v python3 >/dev/null 2>&1; then
 		python3 -m json.tool "$f" >/dev/null 2>&1
