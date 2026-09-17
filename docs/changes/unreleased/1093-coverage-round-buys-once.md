@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the coverage round buys once, and the envelope says when the requested work was done
-pr: 1100
+pr: 1093
 surface: [resident, docs]
 invalidates:
   - "An unexercised-only finding bought a repair round at every later delivery gate, because the finding stands until a measurement closes it and nothing bounded how many rounds `no check exercises this behaviour` could raise. A job buys at most one such round now (`maxUnexercisedRounds`), and a second finding is recorded unclosed rather than funded."

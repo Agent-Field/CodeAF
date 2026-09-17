@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: No git command runs without a directory, and the checkout guard reads a linked worktree's own share
-pr: 1099
+pr: 1093
 surface: [engine]
 invalidates:
   - "`worktreeDirtIn` and `UnsavedEditsNote` built `git -C <dir>` themselves, and `git -C \"\"` is a no-op, so an empty directory ran the command where the process stood. Both go through `gitWith` now (`gitContext` is the same call under a caller's context), where the refusal of an empty directory and the pinned environment live once."
