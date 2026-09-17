@@ -59,16 +59,16 @@ type TaskSpec struct {
 	Capabilities []string        `json:"capabilities,omitempty"`
 	Resources    []ResourceClaim `json:"resources,omitempty"`
 	Effect       Effect          `json:"effect,omitempty"`
-	// parallel and isolation keep the reference's meaning — how two running
-	// tasks may share the machine — and their DEFAULT is the one the rust CLI
-	// models: parallel unless declared otherwise. The earlier port defaulted
-	// serial, which would have made every store-driven dispatch one at a time
-	// and quietly unmade the loop the belt is measuring.
+	// parallel and isolation say how two running tasks may share the machine,
+	// and their DEFAULT IS PARALLEL UNLESS DECLARED OTHERWISE. The earlier port
+	// defaulted serial, which would have made every store-driven dispatch one
+	// at a time and quietly unmade the loop the belt is measuring.
 	Parallel  string `json:"parallel,omitempty"`
 	Isolation string `json:"isolation,omitempty"`
-	// The contract fields below stay on the type because the CLI's `done`
-	// writes evidence and the reference's task cards carry them; no CLI verb
-	// requires any of them. An empty field is the ordinary case.
+	// The contract fields below stay on the type because the store persists
+	// them and its laws read them — an evidence requirement makes `done` answer
+	// with evidence — while no CLI verb requires any of them. An empty field is
+	// the ordinary case.
 	Role                 string   `json:"role,omitempty"`
 	ContextInputs        []string `json:"context_inputs,omitempty"`
 	Deliverables         []string `json:"deliverables,omitempty"`
@@ -114,8 +114,8 @@ type Task struct {
 }
 
 // Note is a task-scoped message one worker leaves for the others working
-// around the same task — the rust CLI's `task note`/`task notes`, which the
-// the earlier port did not carry. Context (below) is the project-wide cousin;
+// around the same task — the CLI's `task note`/`task notes`, which the
+// earlier port did not carry. Context (below) is the project-wide cousin;
 // the two stay separate because a note is about one task and a context entry
 // is about the run.
 type Note struct {
