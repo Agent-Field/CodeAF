@@ -54,7 +54,10 @@ key.
    Worker's cron can miss its first tick), trigger the scheduled handler once
    by hand: `wrangler dev --test-scheduled` bound to the remote namespace, then
    `curl "http://localhost:8787/__scheduled?cron=17+*+*+*+*"`; the next `:17`
-   takes over from there.
+   takes over from there. The same hand trigger is how to publish at once
+   after loading rows (`relay/tools/prime.py`, or any large batch): a read
+   republishes only when the stored document is older than PUBLISH_EVERY, so
+   fresh rows behind a young document wait up to an hour otherwise.
 8. Verify from a laptop: `curl -sI https://codeaf.agentfield.ai/pool/index.json`
    (expect 200 and an ETag), then `codeaf pool verify`, then `codeaf pool
    status`.
