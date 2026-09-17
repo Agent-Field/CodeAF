@@ -264,16 +264,147 @@ func (a *Agent) documentTool() bare.Tool {
 // switched off are all things the MODEL can act on — read the file another way,
 // ask the person to change a setting, give up out loud — and none of them is a
 // reason to end the turn (tools_search.go's rule).
+//
+// THE ROAD ITSELF IS [ReadDocument], one plain function below, shared with the
+// command line's doc door: the tool adds the belt's truncation law and its
+// memo, and nothing else. One road, two doors, no drift.
 func (a *Agent) readDocument(ctx context.Context, path, question string, offset, limit *int) (string, bool, error) {
-	absolute := resolveInWorkspace(path, a.config.Workspace)
-	shown := filepath.ToSlash(path)
+	answer, err := ReadDocument(ctx, DocumentRead{
+		Path:      path,
+		Question:  question,
+		Engine:    a.config.DocumentEngine,
+		Workspace: a.config.Workspace,
+		Parser:    a.documentParser,
+		ModelOf:   a.documentModelFor,
+		Account:   a.accountDocumentRung,
+		Recall:    a.recallDocumentMemo,
+		Keep:      a.keepDocumentMemo,
+	})
+	if err != nil {
+		// The two refusals a caller answers differently from a failure arrive
+		// typed, so this wrapper can voice them for a model: a command line
+		// prints a plain file as-is and refuses the rest in its own words.
+		switch {
+		case errors.Is(err, ErrPlainDocument):
+			return fmt.Sprintf("the plain read handles this: %s is plain text — call read, which opens it locally and free", shownPath(path)), true, nil
+		case errors.Is(err, ErrUnsupportedDocument):
+			return fmt.Sprintf("read_document reads PDFs, images (png, jpeg, webp, gif) and office documents (docx, xlsx, pptx); %s is none of those", shownPath(path)), true, nil
+		}
+		return err.Error(), true, nil
+	}
+	return documentNote(answer.Rung, question, answer.Rung != docEngineNative && answer.Rung != "local") +
+		piReadLaw(a.resultCaps(), answer.Text, offset, limit), false, nil
+}
+
+// shownPath is the path as the caller wrote it, not as the workspace resolved
+// it — the same figure every refusal in this file names.
+func shownPath(path string) string {
+	return filepath.ToSlash(strings.TrimSpace(path))
+}
+
+// documentModelFor is [Agent.documentModel] behind the one signature the shared
+// road takes: the model is chosen per KIND of file, because a picture rides the
+// looking slot when the chat model cannot see.
+func (a *Agent) documentModelFor(kind string) string {
+	return a.documentModel(documentKindOf(kind))
+}
+
+// documentKindOf folds the road's kind vocabulary ("pdf", "office", "image")
+// back onto this file's own. The road spells kinds in words so a caller outside
+// the package can answer them; this is the one place the two vocabularies meet.
+func documentKindOf(kind string) documentKind {
+	switch kind {
+	case "office":
+		return documentOffice
+	case "image":
+		return documentImage
+	}
+	return documentPDF
+}
+
+// accountDocumentRung is the road's bill door: every rung's usage goes to the
+// session the moment it answers, judged answer or not — the same treatment the
+// title call and a generated picture get ([Agent.addAuxiliaryUsage]).
+func (a *Agent) accountDocumentRung(model string, usage *ai.Usage) {
+	a.addAuxiliaryUsage(&ai.Response{Usage: usage}, model, 1)
+}
+
+// recallDocumentMemo and keepDocumentMemo are the paging memo behind the road's
+// two hooks, so the tool's memo is the road's memo and not a second cache.
+func (a *Agent) recallDocumentMemo(key string) (string, string, bool) {
+	entry, ok := a.documentMemo(key)
+	return entry.rung, entry.text, ok
+}
+
+func (a *Agent) keepDocumentMemo(key, rung, text string) {
+	a.storeDocumentMemo(key, documentExtraction{rung: rung, text: text})
+}
+
+// ErrPlainDocument and ErrUnsupportedDocument are the two refusals a caller
+// answers differently from a failure: a command line prints a plain file as-is
+// (no billed call) and refuses the rest in its own words, while the belt points
+// the model at read. Both carry the tool's own sentence as their text, which the
+// belt prints verbatim and the command line never surfaces.
+var (
+	ErrPlainDocument       = errors.New("plain text")
+	ErrUnsupportedDocument = errors.New("unsupported document")
+)
+
+// DocumentAnswer is one document read once: the rung that produced the text and
+// the text itself.
+type DocumentAnswer struct {
+	Rung string
+	Text string
+}
+
+// DocumentRead is everything one billed document read needs, named so a caller
+// with no session — the command line's doc door — can walk the exact road the
+// belt's read_document tool walks: the same guards, the same local rung, the
+// same rung plan, the same refusals, the same accounting.
+//
+// Parser, ModelOf and Account are the session-shaped half: who parses, which
+// model a parse is billed to, and where the bill goes. Recall and Keep are the
+// paging memo, both optional — a one-shot caller passes neither, because
+// nothing will ever ask it for page two.
+type DocumentRead struct {
+	// Path is the file, workspace-relative or absolute, and Workspace resolves
+	// it exactly as the belt's read resolves paths (resolveInWorkspace).
+	Path      string
+	Question  string
+	Engine    string
+	Workspace string
+
+	// PagesFrom and PagesTo name the page range the LOCAL rung renders,
+	// one-based and inclusive, and are both zero for the whole document. They
+	// stay empty on the belt, where paging is the read law's offset/limit over
+	// the whole extraction; the command line uses them to read two pages of a
+	// document with a text layer without printing four hundred. A billed parse
+	// returns no page boundaries, so a range on a file the local rung cannot
+	// read is refused rather than silently ignored.
+	PagesFrom, PagesTo int
+
+	Parser  func() (DocumentParser, error)
+	ModelOf func(kind string) string
+	Account func(model string, usage *ai.Usage)
+	Recall  func(key string) (rung, text string, ok bool)
+	Keep    func(key, rung, text string)
+}
+
+// ReadDocument is the whole billed road behind read_document, as a plain
+// function: classify the file, walk the rung plan, bill each rung as it
+// answers, and hand back the extraction. It exists so the belt's tool and the
+// command line's doc door cannot drift — both call this, and neither re-walks
+// the road beside it.
+func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error) {
+	absolute := resolveInWorkspace(read.Path, read.Workspace)
+	shown := shownPath(read.Path)
 
 	info, err := os.Stat(absolute)
 	if err != nil || info.IsDir() {
-		return fmt.Sprintf("could not read %s", shown), true, nil
+		return DocumentAnswer{}, fmt.Errorf("could not read %s", shown)
 	}
 	if info.Size() > documentMaxBytes {
-		return fmt.Sprintf("%s is over the %dMB document limit", shown, documentMaxBytes>>20), true, nil
+		return DocumentAnswer{}, fmt.Errorf("%s is over the %dMB document limit", shown, documentMaxBytes>>20)
 	}
 
 	entry, supported := documentMediaTypes[strings.ToLower(filepath.Ext(absolute))]
@@ -283,15 +414,15 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		// millisecond, and a model that sent one here has misread which hand
 		// this is rather than found a limit.
 		if looksLikePlainText(absolute) {
-			return fmt.Sprintf("the plain read handles this: %s is plain text — call read, which opens it locally and free", shown), true, nil
+			return DocumentAnswer{}, fmt.Errorf("%w: the plain read handles %s", ErrPlainDocument, shown)
 		}
-		return fmt.Sprintf("read_document reads PDFs, images (png, jpeg, webp, gif) and office documents (docx, xlsx, pptx); %s is none of those", shown), true, nil
+		return DocumentAnswer{}, fmt.Errorf("%w: read_document reads PDFs, images (png, jpeg, webp, gif) and office documents (docx, xlsx, pptx); %s is none of those", ErrUnsupportedDocument, shown)
 	}
 
-	setting := normalizeDocumentEngine(a.config.DocumentEngine)
+	setting := normalizeDocumentEngine(read.Engine)
 	rungs, refusal := documentRungs(setting, entry.kind)
 	if refusal != "" {
-		return refusal, true, nil
+		return DocumentAnswer{}, errors.New(refusal)
 	}
 
 	// The local rung, tried first and only when nobody pinned an engine. This
@@ -300,32 +431,51 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 	// a parser that bills per page for text the binary can extract itself. Same
 	// law as the plain-text guard above, one file type along.
 	if entry.kind == documentPDF && setting == docEngineAuto {
-		if text, err := pdfx.Extract(absolute); err == nil && !documentThin(text) {
-			return documentNote("local", question, false) + piReadLaw(a.resultCaps(), strings.TrimSpace(text), offset, limit), false, nil
+		var text string
+		var localErr error
+		if read.PagesFrom > 0 {
+			text, localErr = pdfx.ExtractPages(absolute, read.PagesFrom, read.PagesTo)
+		} else {
+			text, localErr = pdfx.Extract(absolute)
+		}
+		if localErr == nil && !documentThin(text) {
+			return DocumentAnswer{Rung: "local", Text: strings.TrimSpace(text)}, nil
+		}
+		// A page range the local rung cannot answer is a refusal, not a fall
+		// through: a billed parse returns no page boundaries, so the honest
+		// answer to "pages 3-5 of a scan" is that there are no pages to name,
+		// not the whole document.
+		if read.PagesFrom > 0 {
+			return DocumentAnswer{}, fmt.Errorf("--pages works only on the local rung, and %s needs a billed parse to read — billed text arrives with no page boundaries; run it without --pages for the whole document", shown)
 		}
 	}
 
 	data, err := os.ReadFile(absolute)
 	if err != nil {
-		return fmt.Sprintf("could not read %s", shown), true, nil
+		return DocumentAnswer{}, fmt.Errorf("could not read %s", shown)
 	}
 	// Checked again: the file could have grown between the stat and the read.
 	if len(data) > documentMaxBytes {
-		return fmt.Sprintf("%s is over the %dMB document limit", shown, documentMaxBytes>>20), true, nil
+		return DocumentAnswer{}, fmt.Errorf("%s is over the %dMB document limit", shown, documentMaxBytes>>20)
 	}
 
 	digest := sha256.Sum256(data)
-	key := hex.EncodeToString(digest[:]) + "|" + setting + "|" + question
-	if cached, ok := a.documentMemo(key); ok {
-		return documentNote(cached.rung, question, cached.rung != docEngineNative) + piReadLaw(a.resultCaps(), cached.text, offset, limit), false, nil
+	key := hex.EncodeToString(digest[:]) + "|" + setting + "|" + read.Question
+	if read.Recall != nil {
+		if rung, text, ok := read.Recall(key); ok {
+			return DocumentAnswer{Rung: rung, Text: text}, nil
+		}
 	}
 
-	client, err := a.documentParser()
+	if read.Parser == nil {
+		return DocumentAnswer{}, errors.New("no document client")
+	}
+	client, err := read.Parser()
 	if err != nil {
-		return fmt.Sprintf("the document rungs are out of reach: %v — read_document rides this session's own API key and base URL", err), true, nil
+		return DocumentAnswer{}, fmt.Errorf("the document rungs are out of reach: %v — read_document rides this session's own API key and base URL", err)
 	}
 
-	model := a.documentModel(entry.kind)
+	model := read.ModelOf(docKindName(entry.kind))
 	filename := filepath.Base(absolute)
 	var failures []string
 	for index, rung := range rungs {
@@ -336,7 +486,7 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		// believes it shaped the result is worse off than one told it did not.
 		asked := ""
 		if rung == provider.DocumentParseNative {
-			asked = question
+			asked = read.Question
 		}
 		// THE PURPOSE, because this road builds its own client and never passes
 		// the door (clientdoor.go's [withPurpose]). A rung of the document reader
@@ -351,13 +501,11 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 			Engine:    rung,
 			Question:  asked,
 		})
-		// Accounted BEFORE the answer is judged, and folded into the SESSION
-		// total rather than the turn's ([Agent.addAuxiliaryUsage]): a rung that
-		// billed for an unusable answer still billed, and no turn of the
-		// person's ran on that endpoint (the same treatment the title and a
-		// generated picture get).
-		if response != nil {
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
+		// Accounted BEFORE the answer is judged: a rung that billed for an
+		// unusable answer still billed, and no turn of the person's ran on that
+		// endpoint (the same treatment the title and a generated picture get).
+		if response != nil && read.Account != nil {
+			read.Account(model, response.Usage)
 		}
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %s", rung, oneLineReason(err.Error())))
@@ -374,14 +522,27 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 			failures = append(failures, fmt.Sprintf("%s: only %s", rung, oneLineReason(text)))
 			continue
 		}
-		a.storeDocumentMemo(key, documentExtraction{rung: string(rung), text: text})
-		return documentNote(string(rung), question, rung != provider.DocumentParseNative) + piReadLaw(a.resultCaps(), text, offset, limit), false, nil
+		if read.Keep != nil {
+			read.Keep(key, string(rung), text)
+		}
+		return DocumentAnswer{Rung: string(rung), Text: text}, nil
 	}
 
 	// Every rung named, in the order they were tried, because "which one broke"
 	// is the whole difference between a model that retries forever and a person
 	// who knows whether to add credit, change document_engine, or scan again.
-	return fmt.Sprintf("could not read %s — %s", shown, strings.Join(failures, "; ")), true, nil
+	return DocumentAnswer{}, fmt.Errorf("could not read %s — %s", shown, strings.Join(failures, "; "))
+}
+
+// docKindName spells a document kind the way the road's ModelOf hook takes it.
+func docKindName(kind documentKind) string {
+	switch kind {
+	case documentOffice:
+		return "office"
+	case documentImage:
+		return "image"
+	}
+	return "pdf"
 }
 
 // documentModel is which model the rungs send the file to, and for a PICTURE it
