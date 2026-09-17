@@ -831,6 +831,29 @@ func (a *app) applyDeferredModelServiceMove() {
 	a.moveConversationToConnectedModel(next)
 }
 
+// moveConversationOrDefer is the ONE move-or-defer step the switcher makes:
+// while a turn is working the model is frozen until it settles, so the move
+// waits in [app.deferredModelServiceModel] (recorded only when it is a
+// change) and the answering turn spends it ([app.applyDeferredModelServiceMove])
+// — and the person who pressed enter hears that the press landed
+// ([deferredMoveWord]); once idle, the move goes through the one road a model
+// change takes ([app.moveConversationToConnectedModel]). A rename keeps its
+// own quieter deferral ([app.reprefixRenamedModel]).
+func (a *app) moveConversationOrDefer(id, written string) {
+	id = strings.TrimSpace(id)
+	if a.state == stateWorking {
+		if !strings.EqualFold(id, strings.TrimSpace(a.deferredModelServiceModel)) {
+			a.deferredModelServiceModel = id
+		}
+		a.modelServiceFollowup(deferredMoveWord(written))
+		return
+	}
+	if id == "" || id == strings.TrimSpace(a.model) {
+		return
+	}
+	a.moveConversationToConnectedModel(id)
+}
+
 func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
 	switch outcome.Kind {
 	case modelsource.OutcomeConnected:
@@ -1316,14 +1339,7 @@ func (a *app) switchActiveConnection() {
 	// they might differ. The id is rewritten only when it IS a change; a
 	// conversation that answers on the ring's next service already keeps the
 	// pick it has.
-	if a.state == stateWorking {
-		if !strings.EqualFold(strings.TrimSpace(id), strings.TrimSpace(a.deferredModelServiceModel)) {
-			a.deferredModelServiceModel = id
-		}
-		a.modelServiceFollowup(deferredMoveWord(written))
-	} else if !strings.EqualFold(strings.TrimSpace(id), strings.TrimSpace(a.model)) {
-		a.moveConversationToConnectedModel(id)
-	}
+	a.moveConversationOrDefer(id, written)
 	if a.at(pageSettings) {
 		a.sheet.build()
 	}
