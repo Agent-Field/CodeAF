@@ -1,6 +1,6 @@
 ---
 kind: added
-title: the worker harness's first wave lands behind CODEAF_TASK_BELT=bash — the bash belt, the plan store on SQLite, and the shell doors
+title: the worker harness wave one — the bash belt, the plan store on SQLite, the shell doors
 pr: 1109
 surface: [engine, chat, build]
 invalidates:
