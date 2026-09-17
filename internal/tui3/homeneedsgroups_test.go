@@ -91,7 +91,20 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 		Question: consentQuestionAt(9, "needs your ok to run write", l.now.Add(-5*time.Minute))})
 	l.landed("4", "fix the flaky sieve", 30*time.Minute)
 	a := l.open()
+	// AT REST NO ROW DRAWS ITS SENTENCE, so no chips are on the frame at all
+	// (owner, 2026-09-17: the description shows under the pointer or the
+	// cursor); the digit still answers the top question ([app.homeAnswerAt]).
 	frame := homeText(a)
+	if got := strings.Count(frame, "1 allow once") + strings.Count(frame, needsYesKey+" accept"); got != 0 {
+		t.Fatalf("a row nobody is reading drew its answers:\n%s", frame)
+	}
+	// ON THE TOP QUESTION'S ROW ITS CHIPS ARE DRAWN, once.
+	for i, line := range a.home.lines {
+		if line.cell != nil && line.cell.title == "Pricing Site" {
+			a.home.cursor = i
+		}
+	}
+	frame = homeText(a)
 	if got := strings.Count(frame, "1 allow once"); got != 1 {
 		t.Fatalf("the consent's chips are drawn on %d rows:\n%s", got, frame)
 	}
@@ -99,7 +112,7 @@ func TestTheAnswerChipsAreOnOneRowOfTheFrame(t *testing.T) {
 		t.Fatalf("a landing nobody is standing on drew its answers:\n%s", frame)
 	}
 	// AND THE CURSOR OUTRANKS THE TOP ROW. Walked onto the landing, the chips
-	// move with it and the question above says `enter` again.
+	// move with it.
 	for i, line := range a.home.lines {
 		if line.task != nil && line.task.ID == "4" {
 			a.home.cursor = i
@@ -134,7 +147,7 @@ func TestNoQuestionSaysEnter(t *testing.T) {
 	var questions []int
 	landing := -1
 	for at, line := range a.home.lines {
-		if line.kind == homeSession && line.cell != nil && line.cell.alwaysSaid() {
+		if line.kind == homeSession && line.cell != nil && line.cell.panel == panelNeeds && line.cell.mark == cellMarkNeeds {
 			if line.cell.subRight != "" {
 				t.Fatalf("the question %q says %q at the right of its sentence", line.cell.title, line.cell.subRight)
 			}
@@ -296,9 +309,15 @@ func TestAPausedRunKeepsItsRowBesideItsOwnLanding(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("the paused run lost its row beside its landing: %+v", rows)
 	}
-	frame := homeText(a)
-	if !strings.Contains(frame, "out of fuel") || !strings.Contains(frame, "fix the flaky sieve") {
-		t.Fatalf("the frame does not hold both:\n%s", frame)
+	// (The run's reason is its row's description, drawn only under the pointer
+	// or the cursor, so the rows are asked rather than the frame.)
+	fuel, sieve := false, false
+	for _, row := range rows {
+		fuel = fuel || strings.Contains(row.sub, "out of fuel")
+		sieve = sieve || row.title == "fix the flaky sieve"
+	}
+	if !fuel || !sieve {
+		t.Fatalf("the panel does not hold both: %+v\n%s", rows, homeText(a))
 	}
 	if a.machine.wants != len(rows) {
 		t.Fatalf("the pulse says %d want you over %d rows", a.machine.wants, len(rows))

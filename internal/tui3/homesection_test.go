@@ -194,7 +194,7 @@ func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 	// `threads` is one — and the ground still lands on it.)
 	want := a.pal.muted(cell.title)
 	if !homeHeadOpens(cell.panel) {
-		want = a.pal.dim(cell.title + rowSep + cell.note)
+		want = a.pal.dim(cell.title)
 	}
 	if !strings.Contains(marked, want) || strings.Contains(marked, a.pal.accent(cell.title)) {
 		t.Fatalf("the marked heading's words changed ink: %q", marked)

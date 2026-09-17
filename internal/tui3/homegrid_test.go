@@ -46,7 +46,7 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 	a := newSwitchLab(t).open(80, 24)
 	frame := homeText(a)
 	last := -1
-	for _, word := range []string{"needs you", "threads", "projects", "tasks · "} {
+	for _, word := range []string{"needs you", "threads", "projects", "tasks"} {
 		row, col := homeRowOf(frame, word)
 		if row < 0 {
 			t.Fatalf("%q is not on an eighty-cell home:\n%s", word, frame)
@@ -173,7 +173,7 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && strings.TrimSpace(l.cell.sub) != "" && !l.cell.alwaysSaid()
+		return l.cell != nil && strings.TrimSpace(l.cell.sub) != ""
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
@@ -219,12 +219,13 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	}
 }
 
-// `needs you` DRAWS ITS QUESTION IN THE DESCRIPTION COLUMN WHETHER OR NOT ITS
-// ROW IS SELECTED, on its own row's line, and once. Everywhere else the second
-// line is a gloss worth a column only for the row being read; here it is the row
-// — a question you have to select to read is a question you can miss (owner,
-// 2026-09-15).
-func TestTheNeedsYouQuestionIsAlwaysInTheColumnOnItsOwnRowsLine(t *testing.T) {
+// `needs you` DRAWS ITS QUESTION IN THE DESCRIPTION COLUMN ONLY WHILE ITS ROW IS
+// BEING READ — under the pointer, or under the cursor — on its own row's line,
+// and once; the `?` stays beside the title on every frame. It used to stand in
+// the column whether or not the row was selected (owner, 2026-09-15), and the
+// owner reversed that on 2026-09-17: the mark always shows, the description
+// only under the mouse.
+func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
 	a.width, a.height = 180, 45
@@ -234,18 +235,24 @@ func TestTheNeedsYouQuestionIsAlwaysInTheColumnOnItsOwnRowsLine(t *testing.T) {
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
-	if !line.cell.alwaysSaid() {
-		t.Fatalf("a needs you question is not drawn whether or not its row is selected")
-	}
-	// IT IS IN THE COLUMN WHILE THE CURSOR IS SOMEWHERE ELSE ENTIRELY, which is
-	// the whole point: what is waiting on you is readable without walking onto
-	// it.
+	question := a.home.cursor
+	// WITH THE CURSOR SOMEWHERE ELSE THE QUESTION IS NOT ON THE FRAME, and the
+	// mark still is.
 	a.home.cursor = a.home.placesTop()
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRecent })
 	frame := homeText(a)
+	if row, _ := homeRowOf(frame, firstWordsOf(said)); row >= 0 {
+		t.Fatalf("the question is on the frame with the cursor off its row:\n%s", frame)
+	}
+	if !strings.Contains(frame, a.pal.glyph(tokens.GNeedsHuman)+" "+line.cell.title) {
+		t.Fatalf("the mark left the row with the cursor off it:\n%s", frame)
+	}
+	// AND UNDER THE POINTER IT IS BACK, in the column, on its row's line.
+	a.home.hover = question
+	frame = homeText(a)
 	row, at := homeRowOf(frame, firstWordsOf(said))
 	if row < 0 {
-		t.Fatalf("the question left the frame when the cursor moved off its row:\n%s", frame)
+		t.Fatalf("the question is not on the frame with the pointer on its row:\n%s", frame)
 	}
 	_, rail := homeRowOf(frame, "projects · ")
 	if at <= homeGridMargin || at >= rail {
@@ -302,13 +309,12 @@ func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.
 	}
 }
 
-// THE `?` LEADS THE QUESTION AND NOT THE ROW where the description column draws
-// the question. The mark means "this has stopped and is waiting on you", and the
-// thing that is true of is the question — so it stands beside the words rather
-// than beside the title of the conversation they came from (owner, 2026-09-15).
-// The row keeps its two blank cells, so every title still starts in the same
-// column.
-func TestTheNeedsMarkLeadsTheQuestionInTheColumnAndNotTheRow(t *testing.T) {
+// THE `?` LEADS THE ROW, ALWAYS, and the question in the description column
+// wears none. The mark used to move beside the question on a frame whose column
+// drew the question permanently (owner, 2026-09-15); the question is drawn only
+// while the row is being read now, and the owner asked (2026-09-17) that the
+// mark always show — so it stands beside the title on every frame.
+func TestTheNeedsMarkLeadsTheRowAndNotTheQuestion(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
 	a := lab.a
 	a.width, a.height = 180, 45
@@ -329,17 +335,18 @@ func TestTheNeedsMarkLeadsTheQuestionInTheColumnAndNotTheRow(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the mark is nowhere on the row's line:\n%s", frame)
 	}
-	// IT IS ON THE QUESTION'S SIDE OF THE FRAME, not in the row's own lead.
+	// IT IS IN THE ROW'S OWN LEAD, right before the title, and not beside the
+	// question in the column.
 	said := strings.Index(lines[row], firstWordsOf(strings.TrimSpace(line.cell.sub)))
 	if said < 0 {
-		t.Fatalf("the question is not on the row's line:\n%s", frame)
-	}
-	if at > said || said-at > homeGridLead+1 {
-		t.Fatalf("the mark at %d does not lead the question at %d:\n%s", at, said, frame)
+		t.Fatalf("the question is not on the row's line under the cursor:\n%s", frame)
 	}
 	title := strings.Index(lines[row], line.cell.title)
-	if title >= 0 && at < title {
-		t.Fatalf("the mark at %d is still leading the row's title at %d:\n%s", at, title, frame)
+	if title < 0 || at > title || title-at > homeGridLead+1 {
+		t.Fatalf("the mark at %d does not lead the row's title at %d:\n%s", at, title, frame)
+	}
+	if said < at {
+		t.Fatalf("the question at %d stands before the mark at %d:\n%s", said, at, frame)
 	}
 	// AND THERE IS STILL ONLY ONE OF IT (law 8).
 	if n := strings.Count(lines[row], mark); n != 1 {

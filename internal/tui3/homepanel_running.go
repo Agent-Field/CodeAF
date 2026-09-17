@@ -122,9 +122,9 @@ func (runningPanel) rows(in *homeGridInput) homePanelRows {
 		}
 		lines = append(lines, item.line)
 	}
-	out := homePanelCut(in, panelRunning, lines)
-	out.said = countWord(len(lines))
-	return out
+	// THE HEADING IS THE BARE WORD (owner, 2026-09-17): no count and no
+	// explainer after it, like `threads`; the rows under it are the count.
+	return homePanelCut(in, panelRunning, lines)
 }
 
 // runningNewer is the panel's order: what happened last first, and a moment

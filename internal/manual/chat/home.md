@@ -15,11 +15,9 @@ answering one question you would ask walking up to a colleague's desk:
  ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
    needs your ok to run bash  1 allow once  2 always  ~/pricing-site   5 chats
  ? Clever Bet Prediction Model              6h
-   the 2024 season only, or all three?           spend                    today $0.14 of $20
-                                                    ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
- unread                                             opus 63%  ·  3 chats and 1 task today
-   tier-B subs                                1d
-   built the tier-B flow   1 accept   2 not right
+                                                  spend                    today $0.14 of $20
+ unread                                             ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
+   tier-B subs                                1d   opus 63%  ·  3 chats and 1 task today
    package release radar                      1d
    16 more
 
@@ -29,7 +27,7 @@ answering one question you would ask walking up to a colleague's desk:
    Understanding Bloom Filters               11h
    70 more
 
- tasks · 2 · a day of work, newest first
+ tasks
  ⠋ Generate and Display First 200 Primes     4m
    Benchmark the Sieve                       1h
 
@@ -120,10 +118,18 @@ something has stopped and cannot go on without you, from any project:
   about something standing;
 - a reminder, watch or rule that stopped and wants an answer.
 
-Each is **two lines**: the title with **how long it has waited** at the right, and under it
-what it is asking, in the question's own words. **The longest wait is at the top.** The
+Each is **one line at rest**: the amber `?`, the title, and **how long it has waited** at the
+right. **What it is asking shows only while the row is being read** — under the mouse
+pointer, or under the cursor when nothing is pointed at — as a second line in the question's
+own words, with its answers at the right (owner, 2026-09-17; the question used to stand
+there on every frame). The `?` never goes away. **The longest wait is at the top.** The
 heading is the two words alone — it carries no count, whether two things are stopped or
 none; the rows under it are the count.
+
+**The description names the thread the row belongs to**, spelled exactly as `threads`
+spells that conversation: a landing's line leads with its conversation's name, and so does a
+watch's that was asked for in one. A question's title already IS its thread — the row is
+the conversation that stopped — so its line is the question alone.
 
 **A permission question is repeated exactly and nothing is added to it.** The session that
 is stopped writes one sentence — `needs your ok to run ` and the tool's name — and the row
@@ -156,13 +162,14 @@ of every row of the field is a time** — how long a question has waited, how lo
 landing landed, when you last spoke in a conversation, how long a task has run, when an
 order is due — and nothing else stands there.
 
-**The row under the cursor grows a second line** — how many files it wrote, the first
-sentence of what the work came to, and its two answers at the right. A landing with no files
-to its name starts straight at the sentence, never `0 files`:
+**The row under the pointer or the cursor grows a second line** — the thread it belongs to,
+how many files it wrote, the first sentence of what the work came to, and its two answers at
+the right. A landing with no files to its name goes straight from the thread to the
+sentence, never `0 files`:
 
 ```
    tier-B subs                                                                 1d
-   3 files · built the tier-B subscription flow          1 accept   2 not right
+   Billing Rewrite · 3 files · built the tier-B subscription flow   1 accept   2 not right
 ```
 
 The two words are the task's own — `accept` and `not right` for work nobody could check,
@@ -278,7 +285,7 @@ Background jobs and firing watches are not tasks and are not here — a firing w
 its row on `scheduled`.
 
 ```
- tasks · 3 · a day of work, newest first
+ tasks
  ⠋ Generate and Display First 200 Primes                                     4m
    Benchmark the Sieve                                                       1h
    Spark Fleet Ssh Audit                                                     9h
@@ -296,9 +303,9 @@ tasks place would: a task this window is running opens its live page, and any ot
 its record inside the tasks place, parked on its row, so `esc` comes back to the list.
 
 **Ten rows show, then `N more`**, which opens the panel and shows the rest; on a short
-terminal fewer fit and the fold counts what did not. The heading counts the whole day:
-`tasks · 12`. A task older than a day is the tasks place's to show — the `tasks` heading
-opens it.
+terminal fewer fit and the fold counts what did not. The heading is the bare word `tasks`,
+with no count and no clause after it, like `threads`. A task older than a day is the tasks
+place's to show — the `tasks` heading opens it.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
 conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
@@ -1510,9 +1517,10 @@ see the next section.
 ## Answer a question from home — approve a command in another window
 
 **You can answer it here, without opening the window it is in.** The top `needs you` row
-that has answers draws them on its own second line, out at the right — and **pressing the
-digit answers it, from anywhere on home**. The row the cursor is on says `enter`, which opens
-the conversation to answer it there; the other rows say nothing at their right.
+that has answers draws them on its second line, out at the right, while the row is being
+read — under the pointer or the cursor — and **pressing the digit answers it, from anywhere
+on home**, whether or not the chips are on the screen at that moment. No row says `enter`;
+`enter` on any of them opens the conversation to answer it there.
 
 The chips are the ones the question has:
 

@@ -127,7 +127,7 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 		}
 		said := strings.TrimSpace(line.cell.sub)
 		selected := at == preview
-		if said == "" || (!line.cell.alwaysSaid() && !selected) {
+		if said == "" || !selected {
 			continue
 		}
 		notes = append(notes, note{y: y, words: a.homeDescNote(line, at, said, width, selected, pal)})
@@ -158,27 +158,16 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 	return out
 }
 
-// homeDescNote is one row's note as the lines it takes.
-//
-// THE KEYS ARE THE SELECTED ROW'S AND NOBODY ELSE'S. A permanent note — a
-// `needs you` question standing over rows the cursor is not on — is the sentence
-// alone: `enter` beside a row a person is not standing on is a key that would do
-// something else if they pressed it, and the surface may never advertise one of
-// those (law 7 draws a row's answers so the key is never a guess). The moment the
-// row IS the one being read, its keys join it at the right of its own line, in
-// the one place they have ever been.
-//
-// AND A PERMANENT NOTE IS ONE LINE, SELECTED OR NOT. It shares the column with
-// rows above and below it and may not grow into them; only a note that is there
-// BECAUSE it is selected has the column to itself and wraps.
+// homeDescNote is one row's note as the lines it takes: the sentence, wrapped,
+// and the row's answers under it. It is only ever asked for the row being read
+// ([homeView.previewAt]) — no note stands permanently in the column since the
+// `needs you` exception went (2026-09-17, [homeCell.grows]) — so the note has
+// the column to itself and may wrap.
 func (a *app) homeDescNote(line homeLine, at int, said string, width int, selected bool, pal palette) []string {
 	room := max(1, width-homeDescLeadCells)
 	answers := ""
 	if selected {
 		answers = strings.TrimSpace(a.homeRowAnswers(line, at))
-	}
-	if line.cell.alwaysSaid() {
-		return []string{a.homeDescLead(line.cell, pal) + switcherSides(room, said, answers, pal.dim, pal.muted)}
 	}
 	var out []string
 	for _, words := range wrap(said, room) {
@@ -454,16 +443,19 @@ func homeCellBand(text string, width int, pal palette, lit bool) string {
 }
 
 // homeCellRow paints a row and the line under it.
-// A ROW THAT GROWS DRAWS ITS SECOND LINE ONLY UNDER THE CURSOR, and the band
-// covers both of them: the two lines are one row, and a ground that stopped
-// half way would read as two ([homeCell.grows]).
+// A ROW THAT GROWS DRAWS ITS SECOND LINE ONLY WHILE IT IS THE ROW BEING READ —
+// under the pointer, or under the cursor when nothing is pointed at
+// ([homeView.previewAt]) — and the band covers both of them: the two lines are
+// one row, and a ground that stopped half way would read as two
+// ([homeCell.grows]). ONE ROW OF A FRAME GROWS, which is the one line each
+// panel reserves for it ([homeGridPanel.height]).
 func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) []string {
 	cell := line.cell
 	body := homeCellBody(a.homeCellDoor(cell, at, width-homeGridLead), width-homeGridLead, pal, lit)
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
 	// THE DESCRIPTION COLUMN HAS THIS LINE WHERE THERE IS ONE, so the row is one
 	// line and the panel above it is that much shorter ([homeDescCol]).
-	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.cursor) {
+	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.previewAt()) {
 		return rows
 	}
 	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
@@ -481,16 +473,11 @@ func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 	if spin := a.homeSpinCell(at); spin != "" && cell.mark != cellMarkNeeds {
 		return pal.accent(spin) + " "
 	}
-	// THE MARK LEADS THE QUESTION AND NOT THE ROW where the description column
-	// draws that question ([homeDescNote]). The `?` means "this has stopped and
-	// is waiting on you", and the thing it is true of is the QUESTION — so on a
-	// frame that draws the question, the mark belongs beside the words rather
-	// than beside the title of the conversation they came from (owner,
-	// 2026-09-15). The row keeps the two blank cells, so every title on the
-	// screen still starts in the same column.
-	if cell.mark == cellMarkNeeds && homeDescOn(a.home.grid.cols) && cell.alwaysSaid() {
-		return homeCellLeadBlank
-	}
+	// THE MARK LEADS THE ROW, ALWAYS. It used to move beside the question on a
+	// frame whose description column drew the question permanently (owner,
+	// 2026-09-15); the question is drawn only under the pointer or the cursor
+	// now, and the owner asked (2026-09-17) that the `?` always show — so it
+	// stands beside the title, where it is on every frame.
 	switch cell.mark {
 	case cellMarkNeeds:
 		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + " "
@@ -708,16 +695,6 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 		out[top+i] = homeCellLine{at: homeNoLine, head: -1, text: homeCellLeadBlank + words}
 	}
 	return out
-}
-
-// homeDescLead is what a note stands in: the row's own mark where the row gave
-// it up ([app.homeCellLead]), and the same two blank cells otherwise — so a note
-// with a mark and a note without one start their words in the same column.
-func (a *app) homeDescLead(cell *homeCell, pal palette) string {
-	if cell.mark == cellMarkNeeds {
-		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + strings.Repeat(" ", homeDescLeadCells-1)
-	}
-	return homeDescLeadBlank
 }
 
 // homeAskFitsColumn reports that a question home is holding can be drawn WHOLE

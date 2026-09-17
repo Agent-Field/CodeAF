@@ -109,9 +109,16 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	if rows[0].sub != "needs your ok to run bash" || rows[0].right != "2h" {
 		t.Fatalf("the top row is not the gate's own sentence with its age: %+v", rows[0])
 	}
+	// THE SENTENCE AND THE CHIPS ARE DRAWN UNDER THE ROW BEING READ, and at
+	// rest a row is its mark, its title and its wait (owner, 2026-09-17).
 	frame := homeText(a)
+	if under := homeLineAfter(frame, "Pricing Site"); strings.Contains(under, "needs your ok") || strings.Contains(under, "allow once") {
+		t.Fatalf("the top row draws its sentence with nobody reading it:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Pricing Site" })
+	frame = homeText(a)
 	if under := homeLineAfter(frame, "Pricing Site"); !strings.Contains(under, "1 allow once  2 always  3 deny") {
-		t.Fatalf("the top row does not draw its answers:\n%s", frame)
+		t.Fatalf("the top row under the cursor does not draw its answers:\n%s", frame)
 	}
 	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || strings.Contains(under, "enter") {
 		t.Fatalf("the second row drew answers or a door word the cursor is not on:\n%s", frame)
@@ -133,10 +140,11 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		FilesChanged: 3})
 	a := l.open()
 	rows := panelRows(a, panelNeeds)
-	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; the files it wrote open its
-	// description (owner, 2026-09-15: the right margin of every field row is a
-	// time). It used to read `3 files · 30m`.
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || !strings.HasPrefix(rows[0].sub, "3 files · ") {
+	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; its description leads with
+	// the thread it belongs to, spelled as `threads` spells it (owner,
+	// 2026-09-17), then the files it wrote (owner, 2026-09-15: the right margin
+	// of every field row is a time). It used to read `3 files · 30m`.
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || !strings.HasPrefix(rows[0].sub, "Prime Sieve · 3 files · ") {
 		t.Fatalf("the task's call is not a one-line row of needs you with its files in its description: %+v", rows)
 	}
 	if rows[0].mark != cellMarkNone {
@@ -240,8 +248,13 @@ func TestALandingGrowsItsReportAndAnswersUnderTheCursor(t *testing.T) {
 	a.home.cursor = at
 	frame := homeText(a)
 	under := homeLineAfter(frame, "fix the flaky sieve")
-	if !strings.Contains(under, "Reseeded the generator") {
-		t.Fatalf("the cursor row did not grow the report's first sentence:\n%s", frame)
+	// THE THREAD LEADS THE LINE and the sentence follows it — as much of it as
+	// the column has room for beside the answers.
+	if sub := a.home.lines[at].cell.sub; !strings.HasPrefix(sub, "Prime Sieve · Reseeded the generator") {
+		t.Fatalf("the landing's line is not its thread and then the report's first sentence: %q", sub)
+	}
+	if !strings.Contains(under, "Prime Sieve · Reseeded") {
+		t.Fatalf("the cursor row did not grow its thread and the report's first sentence:\n%s", frame)
 	}
 	if !strings.Contains(under, needsYesKey+" accept") || !strings.Contains(under, needsNoKey+" not right") {
 		t.Fatalf("the grown line does not carry the ask's own answers:\n%s", frame)
@@ -425,8 +438,8 @@ func TestTasksListsTheDaysWorkNewestFirstAndOpensTheTask(t *testing.T) {
 		t.Fatalf("the landed row is not its title, when it landed and its project: %+v", landed)
 	}
 	frame := homeText(a)
-	if strings.Contains(frame, "old audit") || !strings.Contains(frame, "tasks · 2") {
-		t.Fatalf("a task older than the day is drawn, or the heading does not count the day:\n%s", frame)
+	if strings.Contains(frame, "old audit") || headingOf(a, panelRunning) != "tasks" {
+		t.Fatalf("a task older than the day is drawn, or the heading is not the bare word:\n%s", frame)
 	}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "benchmark the sieve" })
 	if line := a.home.lines[a.home.cursor]; line.kind != homeLedger || !line.stop() {
@@ -539,7 +552,7 @@ type cancelFake struct{ *fakeAgent }
 func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 
 // TASKS SHOWS UP TO TEN, and folds the rest behind `N more`, which opens the
-// panel; the heading counts the whole day.
+// panel; the heading is the bare word.
 func TestTasksShowsTenAndFoldsTheRest(t *testing.T) {
 	l := newLiveLab(t)
 	var out []session.PresenceTask
@@ -552,8 +565,8 @@ func TestTasksShowsTenAndFoldsTheRest(t *testing.T) {
 	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most || most != 10 {
 		t.Fatalf("tasks drew %d rows, want its budget of ten (%d)", len(rows), most)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "tasks · 12") {
-		t.Fatalf("the fold does not name what it holds:\n%s", frame)
+	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || headingOf(a, panelRunning) != "tasks" {
+		t.Fatalf("the fold does not name what it holds, or the heading is not the bare word:\n%s", frame)
 	}
 }
 

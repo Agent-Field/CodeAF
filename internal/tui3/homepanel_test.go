@@ -28,10 +28,16 @@ func homeLineAfter(frame, word string) string {
 // line under it is what it asked, and the keys that answer it are drawn there.
 func TestNeedsYouCarriesTheQuestionAndItsAnswersOnTheRow(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "needs your ok to run bash"), time.Now())
+	// The lab's cursor is on the row, which is when its question and answers
+	// are drawn under it; walked off, the row is its mark and title alone.
 	frame := homeText(lab.a)
 	under := homeLineAfter(frame, "Pricing Research")
 	if !strings.Contains(under, "needs your ok to run bash") || !strings.Contains(under, "1 allow once") {
 		t.Fatalf("the row does not carry its question and answers:\n%s", frame)
+	}
+	lab.a.home.point(lab.a.file)
+	if under := homeLineAfter(homeText(lab.a), "Pricing Research"); strings.Contains(under, "needs your ok to run bash") {
+		t.Fatalf("the row draws its question with the cursor elsewhere:\n%s", homeText(lab.a))
 	}
 	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
 		t.Fatalf("the heading counts what is waiting, and it should be the word alone:\n%s", frame)
@@ -59,8 +65,8 @@ func TestADigitAnswersTheTopQuestionWithTheCursorElsewhere(t *testing.T) {
 func TestRunningDrawsTheWorkAndWhatItIsDoing(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	frame := homeText(a)
-	if !strings.Contains(frame, "tasks · 1") || !strings.Contains(frame, "read 40 filings") {
-		t.Fatalf("running does not draw the work that is out:\n%s", frame)
+	if !strings.Contains(frame, "read 40 filings") || headingOf(a, panelRunning) != "tasks" {
+		t.Fatalf("tasks does not draw the work that is out under its bare heading:\n%s", frame)
 	}
 	// THE DOING IS UNDER THE CURSOR, like every description on the field: a
 	// row is a title and a time at rest (owner, 2026-09-17).
@@ -628,4 +634,15 @@ func TestScheduledSaysEachKindsTimeOneWayInItsDescription(t *testing.T) {
 			}
 		}
 	}
+}
+
+// headingOf is a panel's heading exactly as it is built — the bare word, or the
+// word with whatever clause the panel put after it.
+func headingOf(a *app, panel homePanelID) string {
+	for _, line := range a.home.lines {
+		if line.cell != nil && line.cell.panel == panel && line.cell.kind == cellHead {
+			return line.cell.title
+		}
+	}
+	return ""
 }

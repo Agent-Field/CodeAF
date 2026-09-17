@@ -176,9 +176,9 @@ type homePanelSlot struct {
 // word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "threads", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10},
+	{panel: recentPanel{homePanelBase{panelRecent}}, word: "threads", keep: 5, least: 4, rest: 5, most: 10},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", explainer: "a day of work, newest first", keep: 3, least: 4, rest: 10, most: 10, place: pageTasks, head: pageTasks},
+	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", keep: 3, least: 4, rest: 10, most: 10, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
@@ -471,11 +471,12 @@ type homeCell struct {
 	// answer to offer. Whether they are actually drawn is the frame's to say:
 	// exactly one row draws them ([app.homeAnswerAt]).
 	answers string
-	// grows says the row draws that line ONLY WHILE THE CURSOR IS ON IT, which
-	// is how a landing is one line at rest and two under the cursor
-	// (homepanel_needs.go). The line it grows into is reserved by its panel
-	// ([homeGridPanel.height]) so the column does not change shape as the
-	// cursor walks over the rows.
+	// grows says the row draws that line ONLY WHILE IT IS THE ROW BEING READ —
+	// under the pointer, or under the cursor when nothing is pointed at
+	// ([homeView.previewAt]) — which is how every row of the field is one line
+	// at rest and two when it is looked at. The line it grows into is reserved
+	// by its panel ([homeGridPanel.height]) so the column does not change shape
+	// as the cursor walks over the rows.
 	grows bool
 	// share is how full the spend bar is, and spark the fortnight's days.
 	share float64
@@ -507,23 +508,12 @@ func (l homeLine) height() int {
 	return 1
 }
 
-// alwaysSaid reports a row whose sentence the description column draws WHETHER
-// OR NOT the row is selected.
-//
-// `needs you` IS THE ONE PANEL THAT GETS THIS, and the owner made it so on
-// 2026-09-15. Everywhere else the second line is a gloss on the row — what a
-// piece of work is doing, the first sentence of a report — and a gloss is worth
-// a column only for the row a person is actually on. On `needs you` the second
-// line IS the row: the question is the thing that stopped, and the panel's whole
-// purpose is that a person reads what is waiting on them WITHOUT walking the
-// cursor onto it. A question you must select to read is a question you can miss.
-//
-// It is the permanent one only. A `unread` landing in the same panel grows its
-// sentence under the cursor and has never been readable at a glance, so it is
-// drawn only while it is the selected row, like every other row's.
-func (c *homeCell) alwaysSaid() bool {
-	return c != nil && c.panel == panelNeeds && !c.grows && strings.TrimSpace(c.sub) != ""
-}
+// NO ROW'S SENTENCE IS DRAWN AT REST ANY MORE. `needs you`'s questions were the
+// one exception — the owner made them so on 2026-09-15, so that what was waiting
+// on a person could be read without walking onto it — and reversed it on
+// 2026-09-17: the amber `?` always shows, and the question under it shows only
+// while the row is being read, under the pointer or the cursor, like the
+// description of every other row of the field ([homeCell.grows]).
 
 // ── the layout ─────────────────────────────────────────────────────────────
 

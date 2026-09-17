@@ -565,15 +565,13 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	if !strings.Contains(text, tokens.GlyphNeedsHuman+" Pricing Research") {
 		t.Fatalf("the row does not wear the needs-you mark:\n%s", text)
 	}
-	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF, not one keystroke away in
-	// a pane: the `needs you` panel draws the question on the line under the
-	// title (homepanel_needs.go), with the cursor nowhere near it.
-	lines := strings.Split(text, "\n")
-	for y, line := range lines {
-		if strings.Contains(line, tokens.GlyphNeedsHuman+" Pricing Research") &&
-			(y+1 >= len(lines) || !strings.Contains(lines[y+1], "can I run: rm -rf build/")) {
-			t.Fatalf("the row does not show what it is stopped on:\n%s", text)
-		}
+	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF while the row is being
+	// read — under the pointer or the cursor (owner, 2026-09-17) — not one
+	// keystroke away in a pane: the `needs you` panel draws the question on the
+	// line under the title (homepanel_needs.go).
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Pricing Research" })
+	if under := homeLineAfter(homeText(a), tokens.GlyphNeedsHuman+" Pricing Research"); !strings.Contains(under, "can I run: rm -rf build/") {
+		t.Fatalf("the row does not show what it is stopped on:\n%s", homeText(a))
 	}
 	// And it really is the first row of home — asserted on the lines the grid
 	// is built from rather than on where the words land in the frame. ONE ROW

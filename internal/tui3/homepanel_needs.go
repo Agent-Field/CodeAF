@@ -138,11 +138,16 @@ func needsAsked(in *homeGridInput) []needsItem {
 			needsLandingsSpeakFor(row.session, needsCallTitlesOn(in, row.session.ID))) {
 			continue
 		}
-		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title}
+		// THE MARK ALWAYS SHOWS AND THE SENTENCE SHOWS UNDER THE POINTER OR THE
+		// CURSOR (owner, 2026-09-17): a row is its title and its wait at rest,
+		// like every row of the field, and grows the question when it is read.
+		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title, grows: true}
 		homeLiveMargin(cell, row, sinceAt(row.at, in.now))
 		item := needsItem{asked: row.at}
 		switch row.kind {
 		case switcherConversation:
+			// The title IS the thread's own label — the one `threads` draws for
+			// the same conversation — so the sentence names no thread again.
 			head, whole := needsSentence(row.session)
 			cell.sub = head
 			// A CONVERSATION ALWAYS HAS A DOOR: it is the conversation the
@@ -152,7 +157,11 @@ func needsAsked(in *homeGridInput) []needsItem {
 				cell.answers = answersWord(row.session.Presence.Question)
 			}
 		case switcherStanding:
-			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
+			// THE THREAD IT BELONGS TO LEADS THE SENTENCE, spelled as `threads`
+			// spells that conversation, for a watch asked for in one; a watch
+			// made from home's own box belongs to no thread and says none.
+			cell.sub = rowClauses(needsThreadOf(in, row.item.Item.Origin.Transcript),
+				switcherFirstLine(row.item.Item.NeedsPerson))
 			// A watch asked for in a conversation opens that conversation; one
 			// made from home's own box has none — its exchange is kept under the
 			// item's folder rather than as a session ([standing.Origin.Exchange])
@@ -322,9 +331,12 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// and will not move until somebody answers it; a landing has already
 	// finished, and a column of question marks over work that is DONE was the
 	// screen saying the opposite of what was true.
+	// THE THREAD IT BELONGS TO LEADS THE SENTENCE (owner, 2026-09-17), spelled
+	// as `threads` spells the same conversation ([homeName]), then the files and
+	// what the work came to.
 	cell := &homeCell{panel: panelNeeds, title: title, right: sinceAt(asked, now),
 		key:   needsCallKey + entry.ID,
-		grows: true, sub: rowClauses(needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
+		grows: true, sub: rowClauses(homeName(row), needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,
 		dir: homeBucketOf(row.Transcript), task: &entry, cell: cell}
 	return needsItem{asked: asked, line: line}
@@ -605,4 +617,20 @@ func (a *app) homeAnswerLanding(line homeLine, key string) (tea.Cmd, bool) {
 	a.rememberAnswered(dir, question, label)
 	a.home.say(answerSentWord+label, "")
 	return nil, true
+}
+
+// needsThreadOf is the label `threads` draws for the conversation a transcript
+// belongs to — the switcher's own title for that row — and nothing for a
+// transcript the reading does not hold, or none at all.
+func needsThreadOf(in *homeGridInput, transcript string) string {
+	transcript = strings.TrimSpace(transcript)
+	if transcript == "" {
+		return ""
+	}
+	for _, row := range in.rows {
+		if row.kind == switcherConversation && strings.TrimSpace(row.session.Transcript) == transcript {
+			return row.title
+		}
+	}
+	return ""
 }
