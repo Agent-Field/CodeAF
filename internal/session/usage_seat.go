@@ -7,14 +7,15 @@ package session
 // can already say what a day cost and which model took the money; without a
 // seat it cannot say whether the money went on the seat that does the work or
 // the seat that thinks. The vocabulary is internal/roles' five tiers — the
-// classes the person actually configures — plus `talk`, the one kind of call
-// no tier governs: a conversation's own turns.
+// classes the person actually configures — plus `judge`, the seat a run's
+// judge is billed to, and `talk`, the one kind of call no tier governs: a
+// conversation's own turns.
 //
 // THE WORDS ARE DERIVED, NEVER TYPED AT A CALL SITE. The registry already
 // knows which tier a role sits on ([roles.TierOf]), so a call that went
 // through it is seated by one hop, and the only hand-written table here is
 // the five tiers to the five words ([SeatOfTier]). A seat is a fact about
-// which tier's model answered, not a judgement about the call, and the six
+// which tier's model answered, not a judgement about the call, and the seven
 // words are the whole vocabulary: no free text ever reaches the field
 // ([TagUsage] drops anything else).
 
@@ -39,6 +40,9 @@ const (
 	// SeatMastermind is the tier whose one answer shapes all the others: the
 	// planner, the designer, a division review.
 	SeatMastermind Seat = "mastermind"
+	// SeatJudge is the seat a run's judge is billed to, mapped from no tier
+	// and no role.
+	SeatJudge Seat = "judge"
 	// SeatTalk is a conversation's own turns — the one kind of call no tier
 	// governs, because the person is sitting in it and its model is theirs to
 	// change mid-sentence.
@@ -49,9 +53,9 @@ const (
 // list rather than opening it because it is not in the tier economy at all: it
 // is the word for the turns a conversation makes for itself, and a settings
 // surface that drew it as a tier would be drawing a dial that answers nothing.
-var Seats = []Seat{SeatReflex, SeatLow, SeatWorker, SeatHigh, SeatMastermind, SeatTalk}
+var Seats = []Seat{SeatReflex, SeatLow, SeatWorker, SeatHigh, SeatMastermind, SeatJudge, SeatTalk}
 
-// SeatValid reports whether a word is one of the six. It compares EXACTLY: no
+// SeatValid reports whether a word is one of the seven. It compares EXACTLY: no
 // trimming, no case folding. A word from outside the set is not a seat and is
 // never written to a row — [TagUsage] drops it rather than writing a guess.
 func SeatValid(word string) bool {
@@ -64,8 +68,10 @@ func SeatValid(word string) bool {
 }
 
 // SeatOfTier maps each of [roles.Tiers] to its own word, and reports false for
-// anything else. No tier maps to talk: talk is what a conversation's own turns
-// answer under, and no tier governs those.
+// anything else. No tier maps to talk, because talk is what a conversation's
+// own turns answer under and no tier governs those — and none maps to judge
+// either, because judge is the seat a run's judge is billed to and no tier
+// holds that.
 func SeatOfTier(tier roles.Tier) (Seat, bool) {
 	switch tier {
 	case roles.TierReflex:
@@ -148,7 +154,7 @@ func (a *Agent) agentKind() AgentKind {
 // through. Nothing else on the line is touched.
 //
 // A non-empty role is written to UsageLine.Role; an empty role leaves whatever
-// was there. The seat argument wins when it is one of the six words; a word
+// was there. The seat argument wins when it is one of the seven words; a word
 // outside the set is dropped rather than written, and the seat then falls back
 // to the role's own tier ([SeatOfRole]); if that fails too, whatever seat the
 // line already carried stays — which is what keeps a caller that knows nothing
