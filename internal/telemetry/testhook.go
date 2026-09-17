@@ -29,3 +29,13 @@ func EnableForTest(t testing.TB, on bool) {
 	forcedOn = on
 	t.Cleanup(func() { forcedOn = previous })
 }
+
+// ResetCountersForTest zeroes the process-wide session counters for one test
+// and again when it ends, so a test that asserts exact bands is not reading
+// what an earlier test in the same binary counted. Test-only for the same
+// reason EnableForTest is: nothing in the production call graph reaches it.
+func ResetCountersForTest(t testing.TB) {
+	t.Helper()
+	resetCountersForTest()
+	t.Cleanup(resetCountersForTest)
+}
