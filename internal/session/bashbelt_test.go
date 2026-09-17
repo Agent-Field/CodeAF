@@ -621,8 +621,10 @@ func TestBashBeltFourInvalidsLandTheNodeFailedOnTheCirclingRoad(t *testing.T) {
 	if node.endingNow() != TaskEndingCircling {
 		t.Errorf("the ending is %q, want the circling road", node.endingNow())
 	}
-	if calls := completer.auditCalls(); calls != 1 {
-		t.Errorf("the auditor was asked %d times, want one", calls)
+	// NO AUDITOR ON THIS BELT: the runner's own road keeps the circling ending
+	// and lands the node failed, which is what the audit used to answer.
+	if calls := completer.auditCalls(); calls != 0 {
+		t.Errorf("the auditor was asked %d times, want none", calls)
 	}
 }
 
@@ -637,6 +639,11 @@ func TestBashWorkerPromptReplacesThePiToolGuidance(t *testing.T) {
 	bashPage := renderSystemAt(bashConfig, now)
 	if !strings.Contains(bashPage, "ONE ACTION PER RESPONSE") {
 		t.Error("the bash worker's page does not carry the branch doctrine")
+	}
+	// AND IT NO LONGER TELLS THE MODEL TO BATCH, which the envelope refuses on
+	// every response (docs/design/bash-task-loop/INVESTIGATION.md).
+	if strings.Contains(bashPage, "ONE batch of calls") {
+		t.Error("the bash worker's page still teaches batching, which its envelope refuses")
 	}
 	if strings.Contains(bashPage, "## Specialized Tools") {
 		t.Error("the bash worker's page still carries the pi-tool section")
@@ -770,4 +777,62 @@ func universeToolNames(t *testing.T) map[string]bool {
 		universe[name] = true
 	}
 	return universe
+}
+
+// TestBashBeltNodeKeepsNoAuditor is the experiment's second decision proved at
+// the task boundary: a task on the bash belt IS the planner's loop and nothing
+// else — one worker, one bash, one landing — so no auditor is ever asked, and
+// the node's own account is what comes home, marked for what it is.
+//
+// The auditor could not have helped here anyway: it verifies a STAGED diff, and
+// a shell worker's writes are never staged, so on every grid row it read "no
+// diff, no staged change" against a tree that already carried the fix and
+// refuted correct work (docs/design/bash-task-loop/INVESTIGATION.md).
+func TestBashBeltNodeKeepsNoAuditor(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+
+	brief, _ := json.Marshal(taskArguments{
+		Title: "Scratch file", Summary: "s",
+		Brief:       "make notes/scratch.md, read it, append a line, read it again\n" + taskBriefMark,
+		Deliverable: "notes/scratch.md with both lines", Acceptance: "The file carries the first line and the appended line.",
+		MaxSteps: 200, NoProgress: 6,
+	})
+	completer := &routedCompleter{
+		parent: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return toolResponse("call-task", "propose_task", string(brief)), nil
+			},
+			finalText("handed off"), finalText("handed off"), finalText("handed off"),
+		},
+		child: bashScriptSteps(),
+		audit: []step{finalText("VERIFIED — the file carries both lines")},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	collect(t, mustSubmit(t, agent, "make the scratch file"))
+	node := agent.graph().node(1)
+	waitDoneNode(t, node)
+
+	notice := node.notice()
+	if notice.State != TaskDone {
+		t.Fatalf("the bash-only task landed %q (report: %s)", notice.State, notice.Report)
+	}
+	// THE DISCRIMINATOR: newTestAgent's own TaskAudit is on, so a belt that
+	// still had an auditor would have asked it here. The landing above is the
+	// unaudited one — the node's own account came home as `done`.
+	if page := messageContentText(completer.childAsked()[0]); !strings.Contains(page, "ONE ACTION PER RESPONSE") {
+		t.Error("the belt did not engage: the worker read the pi-tool page")
+	}
+	asked := completer.auditAsked()
+	for i, m := range asked {
+		t.Logf("AUDITASK %d: %.200s", i, messageContentText(m))
+	}
+	if len(asked) != 0 {
+		t.Errorf("the bash belt asked an auditor %d times, want none", len(asked))
+	}
 }

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
@@ -148,4 +150,14 @@ func (a *Agent) truncatingBash(inner bare.Tool) bare.Tool {
 func branchBashDescription(caps bare.Caps) string {
 	kb := (caps.MaxBytes + 1023) / 1024
 	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr. Output over %dKB is cut to its first half and its last half, and the whole output is filed as a file the result names. Optionally provide a timeout in seconds.", kb)
+}
+
+// bashBeltAsked reads THE EXPERIMENT'S SWITCH, and it is the ONE reader of
+// CODEAF_TASK_BELT in this package: the belt a task worker is built on
+// (newTaskAgentOn) and the landing that judges it (workTaskNode's gate) are
+// two halves of one fact, and two readers could disagree about which belt a
+// node is on. Unset — every machine not running the experiment — it is false,
+// and every byte of every worker is where it was.
+func bashBeltAsked() bool {
+	return strings.TrimSpace(env.Get("CODEAF_TASK_BELT")) == "bash"
 }

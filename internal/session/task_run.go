@@ -91,7 +91,6 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
-	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -3667,6 +3666,16 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	}
 }
 
+// endingSet is the ending [TaskNode.end] has already recorded, before the node
+// settles. [endingNow] deliberately answers only a node that has landed failed;
+// the gate asks this one EARLIER, to tell a run that finished from one that gave
+// up, because a stopped run must not land as done.
+func (n *TaskNode) endingSet() TaskEnding {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.ending
+}
+
 // endingNow is [TaskNode.endingLocked] for a caller that does not hold the
 // graph, which is every reader outside the task engine.
 func (n *TaskNode) endingNow() TaskEnding {
@@ -5246,6 +5255,45 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 	return "", false
 }
 
+// auditOn says whether a node's work meets an auditor: the person left the
+// audit row on, and the node's belt is not the experiment's bash belt, which
+// keeps no auditor at all (docs/design/bash-task-loop/INVESTIGATION.md). It is
+// one predicate rather than a conjunction spelled at each gate, so the gates
+// gain no decisions of their own while the belt is being tried.
+func (a *Agent) auditOn() bool { return a.config.TaskAudit && !bashBeltAsked() }
+
+// auditOff is [Agent.auditOn]'s other half, read where the landing asks.
+func (a *Agent) auditOff() bool { return !a.auditOn() }
+
+// landBashBeltUnaudited lands a node on the bash belt — or a node whose audit
+// row is simply off, which is the same road reached for a different reason.
+//
+// THE BELT KEEPS NO AUDITOR. CodeAF's auditor verifies a STAGED diff and a
+// shell worker's writes are never staged, so on this belt it read "no diff, no
+// staged change" against a tree that already carried the fix and refuted
+// correct work on every row of the first grid
+// (docs/design/bash-task-loop/INVESTIGATION.md).
+//
+// THE RUNNER KEEPS THE ONE ANSWER THE AUDITOR WAS ALSO GIVING: whether the run
+// finished at all. A node whose worker gave up — the circling road, a rule it
+// would not follow — has no finished work to land, so its ending stands and
+// the branch is kept, exactly as a refused audit left it ([TaskNode.end]'s
+// first-cause law). A node that did finish has its own account merge, marked
+// unaudited, because 'done' should never wear 'verified's clothes.
+//
+// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS ALLOWED
+// TO SEE, and only because it is an ADDRESS: they turned this row off, this is
+// the row's name, and a sentence that translated it would leave them holding a
+// word their settings sheet does not answer to (task_audit.go's vocabulary
+// law). Everything either side of it is plain.
+func (a *Agent) landBashBeltUnaudited(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, stopped string, log io.Writer) TaskState {
+	if node.endingSet() != "" {
+		return a.landStopped(ctx, node, tree, changed, report, stopped, log)
+	}
+	return a.landFinished(ctx, node, tree, changed,
+		"nothing checked this work: the task.audit setting is off", report, " (unaudited)", log)
+}
+
 // workTaskNode does the work and reports the state the node ended in. Every
 // failure is a state and a report rather than an error: a node that could not
 // get a working copy has to be able to say so to the person who asked for it.
@@ -5552,18 +5600,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// because "not proven" is not "throw it away". With the audit row off the
 	// gate stands open and the node's own account merges — marked unaudited,
 	// because 'done' should never wear 'verified's clothes.
-	if !a.config.TaskAudit {
-		// THE SENTENCE SAYING NOTHING CHECKED THIS LEADS, and the node's own
-		// account stands under it — which is the one place this road differs from
-		// the ordinary finishing line it otherwise shares ([Agent.landFinished]).
-		//
-		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
-		// ALLOWED TO SEE, and only because it is an ADDRESS: they turned this row
-		// off, this is the row's name, and a sentence that translated it would
-		// leave them holding a word their settings sheet does not answer to
-		// (task_audit.go's vocabulary law). Everything either side of it is plain.
-		return a.landFinished(ctx, node, tree, changed,
-			"nothing checked this work: the task.audit setting is off", report, " (unaudited)", log)
+	// AND THE BASH BELT KEEPS NO AUDITOR: the experiment is the planner's loop
+	// and nothing else (docs/design/bash-task-loop/INVESTIGATION.md), so the
+	// landing is the one combination of roads [Agent.landBashBeltUnaudited]
+	// names — kept in a function of its own so this gate stays as short as it
+	// was.
+	if a.auditOff() {
+		return a.landBashBeltUnaudited(ctx, node, tree, changed, report, stopped, log)
 	}
 	// THE GATE MAY SEND THE WORK BACK BEFORE IT ANSWERS. What returns from here
 	// is the end of the whole loop — the last verdict, the gaps of every round,
@@ -5703,7 +5746,7 @@ func (a *Agent) landUnchecked(ctx context.Context, node *TaskNode, tree taskTree
 // did not hold AND the run was cut short — and a person who is being offered a
 // branch rather than a merge needs to know why in the first line.
 func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, stopped string, log io.Writer) TaskState {
-	if a.config.TaskAudit && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
+	if a.auditOn() && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
 		verdict := a.auditNode(ctx, node, tree, changed, report, log)
 		if verdict.verified && ctx.Err() == nil {
 			// THE SAME ROAD HOME A NODE THAT FINISHED ON ITS OWN TAKES, and it is
@@ -7250,6 +7293,12 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		node.setJournal(journal)
 	}
 
+	// THE EXPERIMENT'S SWITCH, through the one reader this package has
+	// ([bashBeltAsked]): whether this worker runs the bash belt (bashbelt.go).
+	// The belt and the landing that judges it must be the same fact, so the
+	// gate reads it the same way rather than a second time from the env.
+	bashExperiment := bashBeltAsked()
+
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
@@ -7346,15 +7395,16 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// reading it — so a line steered at it has to START one or it is a
 		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
 		roomThread: node.kind == TaskKindHarness,
-		// THE EXPERIMENT'S ONE DOOR (docs/design/bash-task-loop/DESIGN.md,
-		// wave 0): CODEAF_TASK_BELT=bash builds this worker on the bash belt —
-		// the one `bash` tool plus the hands that cannot be a shell command.
-		// Unset, every byte of this worker is where it was, which is what lets
-		// both arms of the comparison run from one binary. Read here and
-		// nowhere else, through internal/env's door like every owned name so
-		// the one-release legacy spelling answers too, and asked only through
-		// [Config.mayBashBelt], so a conversation can never be handed it.
-		bashBelt: strings.TrimSpace(env.Get("CODEAF_TASK_BELT")) == "bash",
+		// THE EXPERIMENT'S ONE DOOR (docs/design/bash-task-loop/DESIGN.md):
+		// CODEAF_TASK_BELT=bash builds this worker on the bash belt — the one
+		// `bash` tool plus the hands that cannot be a shell command. Unset,
+		// every byte of this worker is where it was, which is what lets both
+		// arms of the comparison run from one binary. Read through
+		// [bashBeltAsked], the one reader in this package, like every owned
+		// name; asked only through [Config.mayBashBelt], so a conversation can
+		// never be handed the belt, and at the landing's gate, which keeps the
+		// experiment's work unaudited (workTaskNode).
+		bashBelt: bashExperiment,
 		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
 		//
 		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this
