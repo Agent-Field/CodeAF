@@ -740,3 +740,104 @@ func (g *TaskGraph) planReviseThrough(planID, brief string) {
 }
 
 var errPlanNoStore = errors.New("plan store is not open")
+
+// planRecordSpend writes one spend row into the run's store: the model call a
+// plan-driven worker just made, charged to the plan task it carries. It is
+// called on its own goroutine (recordPlanSpend) and is best-effort whole — a
+// store that will not open, a row the store refuses, is silence, because the
+// money is already in the session's ledger row and a plan that misses one row
+// under-reports by less than a turn held up for the write would.
+func (g *TaskGraph) planRecordSpend(planID, model, role string, usd float64, inTokens, outTokens int) {
+	plan := g.planIfArmed()
+	if plan == nil {
+		return
+	}
+	plan.mu.Lock()
+	defer plan.mu.Unlock()
+	store := plan.open()
+	if store == nil {
+		return
+	}
+	defer store.Close()
+	_ = store.AddSpend(planID, model, role, usd, inTokens, outTokens)
+}
+
+// recordPlanSpend charges one banked model call to the worker's plan task —
+// the write beside the usage ledger row (recordUsageLine, its only caller).
+// The figures are the call's own; the task is the node's plan task; the role
+// is what the node was doing at that instant: 'plan' while it has plan
+// children of its own, 'work' while it is a leaf.
+//
+// THE GATE IS TWOFOLD and cheap: the worker is on the bash belt
+// (Config.mayBashBelt, checked by the caller) and its node carries a plan id —
+// a worker without a plan task has nothing to charge, and every agent outside
+// the experiment stops here. The graph's lock is taken once, briefly, to read
+// both facts; nothing else is taken while it is held, so the caller — bank,
+// already outside a.mu — waits on nothing.
+func (a *Agent) recordPlanSpend(used Usage, model string) {
+	taskID := a.config.taskID
+	if taskID == 0 {
+		return
+	}
+	g := a.graph()
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	node := g.nodes[taskID]
+	if node == nil {
+		g.mu.Unlock()
+		return
+	}
+	planID := node.spec.planID
+	children := false
+	for _, kid := range g.order {
+		child := g.nodes[kid]
+		if child != nil && child.parent == taskID && child.spec.planID != "" {
+			children = true
+			break
+		}
+	}
+	g.mu.Unlock()
+	if planID == "" {
+		return
+	}
+	role := "work"
+	if children {
+		role = "plan"
+	}
+	go g.planRecordSpend(planID, model, role, used.CostUSD, used.Input, used.Output)
+}
+
+// planRunSpend answers the dollars the run's ledger holds in the store — the
+// per-project rollup under the root task's tag, which is every task's tag, so
+// the number is the run's whole bill and not one worker's share of it. The
+// second answer says whether the store held a charged row at all: a run that
+// has never been charged reads as no rollup, and the caller falls back to the
+// figure it already had rather than drawing a zero.
+//
+// The read takes the plan's gate and nothing else, the same order every pulse
+// takes, and opens the store fresh the way every pass does — the worker's CLI
+// has been writing since any cached copy was made.
+func (g *TaskGraph) planRunSpend() (float64, bool) {
+	plan := g.planIfArmed()
+	if plan == nil {
+		return 0, false
+	}
+	plan.mu.Lock()
+	defer plan.mu.Unlock()
+	store := plan.open()
+	if store == nil {
+		return 0, false
+	}
+	defer store.Close()
+	root := store.Task(planRootID)
+	if root == nil {
+		return 0, false
+	}
+	summary := store.Summary()
+	if total, ok := summary.ProjectSpend[root.Project]; ok {
+		return total.USD, true
+	}
+	return 0, false
+}
