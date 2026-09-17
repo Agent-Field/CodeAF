@@ -215,7 +215,10 @@ func (a *Agent) planCommand(command string) string {
 // object that will not round-trip comes back unchanged.
 func withBashCommand(args json.RawMessage, command string) (json.RawMessage, bool) {
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(args, &fields); err != nil {
+	// The read goes through the one decoder every tool's arguments go through
+	// (toolargs.go), so a call this rewrite cannot read is the same call the
+	// envelope refuses, in the same words.
+	if err := decodeToolArguments(args, &fields); err != nil {
 		return args, false
 	}
 	encoded, err := json.Marshal(command)
