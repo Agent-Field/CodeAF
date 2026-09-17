@@ -1326,12 +1326,18 @@ func (s *sheet) build() {
 		for _, row := range s.tabRows() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
-			if row.Key == config.KeyAPIKey {
+			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
+				// The services section stands only with services: an empty profile draws
+				// nothing (the emptiness test pins it). The add row lives inside it; the /connect panel carries the first door.
 				services := modelServiceRows(s.profileDir, s.sources)
 				if len(services) > 0 {
 					s.items = append(s.items, sheetItem{head: "services"})
 					for _, service := range services {
 						s.items = append(s.items, sheetItem{service: service})
+					}
+					s.items = append(s.items, sheetItem{service: customAddRow()})
+					if switcher := s.connectionSwitcherRow(); switcher != nil {
+						s.items = append(s.items, sheetItem{service: switcher})
 					}
 				}
 			}
@@ -1945,7 +1951,10 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter", " ", "space":
 		return a.activate(), true
 	case "ctrl+r":
-		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause {
+		// The add and switcher rows are doors, not connections; a reconnect
+		// is asked of a connected service's own row and of nothing else here.
+		if item, ok := s.current(); ok && item.service != nil && !item.service.planPause &&
+			!item.service.addCustom && !item.service.switcher {
 			return a.reconnectModelService(item.service.id), true
 		}
 
@@ -2013,6 +2022,19 @@ func (a *app) activate() tea.Cmd {
 			a.cyclePlanPause(item.service.id)
 			return nil
 		}
+		if item.service.addCustom {
+			// THE ADD ROW MINTS: the same PrepareCustomSource and
+			// ConnectService path /connect runs, never a second one
+			// (startCustomAdd).
+			return a.startCustomAdd(true)
+		}
+		if item.service.switcher {
+			a.switchActiveCustomConnection()
+			return nil
+		}
+		// ENTER ON A CONNECTED SERVICE IS ITS EDIT: the id is kept, the
+		// answers prefill, and a changed name is a rename whose re-prefix the
+		// connect result carries (modelservices.go's reprefixRenamedModel).
 		source, ok := a.modelSource(item.service.id)
 		if !ok {
 			return nil

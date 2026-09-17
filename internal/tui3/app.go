@@ -779,6 +779,11 @@ type (
 		outcome modelsource.Outcome
 		models  []Model
 		err     error
+		// renamedFrom is the Written name the row carried when the draft
+		// opened, and empty unless this connect was an edit that changed it.
+		// The adopt side re-prefixes every model id already picked under the
+		// old name, or they strand onto the default service (modelservices.go).
+		renamedFrom string
 	}
 	// The two messages the default model provider's browser connection takes
 	// (firstrun.go). The first carries the listener after it is standing, so the
