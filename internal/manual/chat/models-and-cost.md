@@ -335,7 +335,7 @@ preset:
 | small work | `deepseek/deepseek-v4-flash-0731` |
 | worker | `z-ai/glm-5.3-flash` |
 | careful work | `anthropic/claude-fable-5.1` |
-| mastermind | `anthropic/claude-fable-5.1` |
+| mastermind | `anthropic/claude-opus-5` |
 
 None of them is the model you are talking to. A crew that followed your conversation would
 put the most expensive model in the build on the cheapest questions in it — a call made
@@ -383,13 +383,13 @@ not climb together in either of them.
 In the `all` family the worker stays on `glm-5.3-flash` through `balanced`, because the worker
 seat carries most of a task's tokens: a step there multiplies through the whole bill, where a
 step on the careful or the mastermind seat is paid a handful of times. So `frugal` to
-`balanced` spends on those two low-volume seats, and only `max` moves the worker itself. The
-`max` mastermind then sits on the worker's own model, because at that bill the one-shot front
-has no separate planner above it.
+`balanced` spends on those two low-volume seats, and `max` moves the worker itself. The
+careful and mastermind seats are settled by `balanced` and stay there through `max`.
 
-The careful class is always a different vendor from the worker and always sees images, in
-every preset of both families: a check from a second vendor catches what the first vendor's
-blind spots let through, and the vision role rides that row. The small-work row is pinned to
+The careful class always sees images — the vision role rides that row — and is a different
+vendor from the worker in every preset of the `all` family; the open family's `frugal` row
+is the one standing exception, with worker and careful both on `glm-5.3-flash`, because at
+that bill the open-weight front has no second vendor for the careful seat. The small-work row is pinned to
 the July build of DeepSeek V4 Flash on purpose: the bare `deepseek/deepseek-v4-flash` id
 resolves to the April build, and the July build costs the same.
 
@@ -407,13 +407,13 @@ default one, `all`:
 | --- | --- | --- | --- |
 | reflex | `gemini-2.5-flash` | `gemini-2.5-flash` | `gemini-2.5-flash` |
 | small work | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` |
-| worker | `glm-5.3-flash` | `glm-5.3-flash` | `claude-fable-5.1` |
-| careful work | `gemini-3.8-flash` | `claude-fable-5.1` | `gpt-6-astra` |
-| mastermind | `glm-5.3-flash` | `claude-fable-5.1` | `claude-fable-5.1` |
+| worker | `glm-5.3-flash` | `glm-5.3-flash` | `glm-5.3` |
+| careful work | `qwen3.8-max-0902` | `claude-fable-5.1` | `claude-fable-5.1` |
+| mastermind | `glm-5.3-flash` | `claude-opus-5` | `claude-opus-5` |
 
-- **frugal**: glm-flash works and thinks, gemini-flash checks
-- **balanced**: glm-flash works, fable checks and thinks
-- **max**: fable works and thinks, astra checks
+- **frugal**: glm-flash works and thinks, qwen-max checks
+- **balanced**: glm-flash works, fable checks, opus thinks
+- **max**: glm-5.3 works, fable checks, opus thinks
 
 The reflex and small-work columns never vary — they are the
 same near-free models in all three — so `/crew` never names them: the confirmation and
@@ -519,7 +519,7 @@ running keeps the model it was admitted on.
 **Where to read the crew back:**
 
 - `/status` prints a `crew` line directly under `model`:
-  `crew     max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra`. The word is
+  `crew     max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1`. The word is
   the preset, or `custom` when the five classes are your own arrangement. **brain** is the
   mastermind, **hands** is the worker, **checks** is the careful class.
 - `/settings` → Providers has the **crew** row above the five class rows.
@@ -548,7 +548,7 @@ the crew — or `/model` — half way through does not move work already going.
 4. the model you are talking to, only when the worker row is blank.
 
 So on the shipped `balanced` crew a task runs on `z-ai/glm-5.3-flash` whatever you are
-chatting on, and `/crew max` moves the next task onto `anthropic/claude-fable-5.1`. The task's row on the
+chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. The task's row on the
 roster, its room's status line and its finished card all name the model it actually ran
 on. The worker of an adaptive run's nodes is the same seat, and so is the work model of
 `codeaf do` — one row, every door.
@@ -687,7 +687,7 @@ No. `/crew max` moves the five crew seats and leaves the model you talk to exact
 was. The confirmation names it:
 
 ```
-crew → max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1 · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 `/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
@@ -2255,7 +2255,7 @@ The `crew` line sits directly under `model` and reads the preset word — or `cu
 the three classes after it:
 
 ```
-crew     max · brain claude-fable-5.1 · hands claude-fable-5.1 · checks gpt-6-astra
+crew     max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1
 ```
 
 On the live status line the crew is one short segment — `crew max`, or `crew custom` — at
