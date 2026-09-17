@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -1654,10 +1655,28 @@ const (
 // complete absorbs failures that escape the provider's transport retries. It
 // stops immediately when the node context is done because no later attempt can
 // outlive that decision.
+//
+// THE RETRY IS A DIFFERENT REQUEST, NOT THE SAME ONE SENT AGAIN. An attempt
+// that failed on a named upstream lane — the router relaying an upstream 5xx,
+// a reply that ended finish_reason=error, a cut stream — names that lane on
+// the next attempt's context, and the body the next attempt sends carries it
+// in `provider.ignore` (provider's retryavoid.go). Without it, a router whose
+// own default routing picked the same machine every time answers every
+// attempt identically and the node burns its whole retry budget on one lane.
+// The list is this call's own: it is built here, handed over per attempt, and
+// gone when the call is over — nothing reaches a later call or a setting.
 func (l *Linear) complete(ctx context.Context, messages []ai.Message, definitions []ai.ToolDefinition) (*ai.Response, error) {
 	var lastErr error
+	// avoid is every upstream lane an attempt of THIS call failed on, in the
+	// order they failed. A lane the error did not name is not here, and a call
+	// whose failures named nobody retries exactly as it always did.
+	var avoid []string
 	for attempt := 0; attempt < nodeCallAttempts; attempt++ {
-		response, err := l.client.CompleteWithMessages(ctx, messages, ai.WithTools(definitions))
+		attemptCtx := ctx
+		if len(avoid) > 0 {
+			attemptCtx = provider.WithRetryAvoid(ctx, avoid)
+		}
+		response, err := l.client.CompleteWithMessages(attemptCtx, messages, ai.WithTools(definitions))
 		if err == nil {
 			return response, nil
 		}
@@ -1673,6 +1692,9 @@ func (l *Linear) complete(ctx context.Context, messages []ai.Message, definition
 		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
 			return nil, err
 		}
+		if lane := failedLane(err); lane != "" {
+			avoid = noteFailedLane(avoid, lane)
+		}
 		if attempt == nodeCallAttempts-1 {
 			break
 		}
@@ -1680,7 +1702,41 @@ func (l *Linear) complete(ctx context.Context, messages []ai.Message, definition
 			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("after %d node call attempts: %w", nodeCallAttempts, lastErr)
+	if len(avoid) == 0 {
+		return nil, fmt.Errorf("after %d node call attempts: %w", nodeCallAttempts, lastErr)
+	}
+	// The lanes are named where the count is, so a reader of the sentence sees
+	// what was asked and where it failed in one line; the failure itself rides
+	// underneath, whole, as it always did.
+	return nil, fmt.Errorf("after %d node call attempts (providers tried: %s): %w",
+		nodeCallAttempts, strings.Join(avoid, " and "), lastErr)
+}
+
+// failedLane reads the upstream lane a failed call names, "" when the failure
+// implicates nobody. A router's own refusal carries no provider name, a
+// transport fault names no machine, and an empty name is a fact the retry law
+// keeps (provider's retryavoid.go): the retry goes where it always went.
+func failedLane(err error) string {
+	var relayed *provider.APIError
+	if errors.As(err, &relayed) && relayed.Status >= 500 {
+		return strings.TrimSpace(relayed.Provider)
+	}
+	var cut *provider.StreamCut
+	if errors.As(err, &cut) {
+		return strings.TrimSpace(cut.Provider)
+	}
+	return ""
+}
+
+// noteFailedLane records one more lane this call failed on, once. The wire's
+// own spelling is kept; two spellings of one lane are one lane.
+func noteFailedLane(lanes []string, lane string) []string {
+	for _, held := range lanes {
+		if strings.EqualFold(held, lane) {
+			return lanes
+		}
+	}
+	return append(lanes, lane)
 }
 
 // backoffWait is the retry pause, with its timer stopped on the way out. A

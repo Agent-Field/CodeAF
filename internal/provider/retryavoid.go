@@ -21,7 +21,7 @@ import (
 // on the context of one call, so it is gone the moment that call is over and
 // never reaches a later one or a setting.
 //
-// A LANES NAME ARRIVES FROM THE WIRE, not from a guess: `APIError.Provider`
+// A LANE'S NAME ARRIVES FROM THE WIRE, not from a guess: `APIError.Provider`
 // spells it for an upstream fault, [StreamCut.Provider] for a cut stream. An
 // error that named nobody leaves the list alone, and a base that names no
 // lanes hands the caller nothing to put here — so on every endpoint that does
