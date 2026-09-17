@@ -1,0 +1,142 @@
+package run
+
+// The trajectory is the task's page: one file
+// beside the store, one line per step the worker took, and the one place a
+// person — or a fresh worker resuming — reads what happened. Nothing in the
+// worker's transcript is the record; the file is. A step line carries what
+// the worker asked the belt to run, the head of what came back, the path of
+// the whole output when the belt filed it, the store writes the step made and
+// the child ids it created; the worker's own ending is one more line, because
+// a record that says what was done but not what the worker said about it
+// would make a person open the transcript to find out how it ended.
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
+)
+
+// trajectoryName is the file every task's steps are appended to, under the
+// task's own record folder ([plandb.TaskDir]).
+const trajectoryName = "trajectory.jsonl"
+
+// The two line kinds a trajectory carries. A step line is one command the
+// worker ran and what it observed; the ending line is how the worker's turn
+// ended and what it said when it did.
+const (
+	trajectoryStepKind = "step"
+	trajectoryEndKind  = "end"
+)
+
+// observationHeadBytes is how much of one step's observation the record
+// keeps. The whole output is already filed somewhere durable when the belt
+// cut it, and the step line names that file; the head is what a skimming
+// reader sees, and two kilobytes is the first screen of it.
+const observationHeadBytes = 2048
+
+// Step is one line of a task's trajectory. The step lines carry the command,
+// the observation head, the path of the whole output when the belt filed one,
+// the plandb verbs the command ran, and the ids of the children it created;
+// the ending line carries what the worker said last, how many steps it took
+// and why its loop ended. The two shapes share the type and never share a
+// line: Kind says which one a line is.
+type Step struct {
+	Kind string `json:"kind"`
+	// Step is the step's number, counted from one over the worker's whole run.
+	Step int `json:"step"`
+	// Command is what the worker asked the belt to run, as the model spelled
+	// it — the command a resumed worker must not repeat blind, and the one
+	// address the record has for what this step was.
+	Command string `json:"command"`
+	// Observation is the head of what came back, cut the way the belt cuts.
+	Observation string `json:"observation,omitempty"`
+	// FullOutput names the file the whole output was filed in, set only when
+	// the step's output was cut — the belt files it beside the worker's
+	// transcript, and this is where the next reader finds it.
+	FullOutput string `json:"full_output,omitempty"`
+	// Writes are the plandb verbs the command ran: the store writes the step
+	// made, read off the command's own words, because the verbs are the words
+	// the store was addressed by.
+	Writes []string `json:"writes,omitempty"`
+	// Children are the ids of the tasks this step created under the task, read
+	// off the store after the command rather than parsed out of its output.
+	Children []string `json:"children,omitempty"`
+
+	// The ending line's fields. Steps is the run's whole step count, Result is
+	// the worker's own account of the work, and Reason is why the loop ended —
+	// a turn that ended, a step cap, a wall.
+	Steps  int    `json:"steps,omitempty"`
+	Result string `json:"result,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// Trajectory reads one task's recorded steps back, in the order they were
+// appended. A task that has never run has no file and answers with no steps
+// and no error — the resume road reads it as "no predecessor left anything
+// behind". A line that will not parse is skipped, not reported: a run
+// interrupted mid-append left a half-written last line, and the record is
+// about effects, not about the byte the process died on.
+func Trajectory(storeDir, id string) ([]Step, error) {
+	data, err := os.ReadFile(filepath.Join(plandb.TaskDir(storeDir, id), trajectoryName))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var steps []Step
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var step Step
+		if json.Unmarshal([]byte(line), &step) != nil || step.Kind != trajectoryStepKind {
+			continue
+		}
+		steps = append(steps, step)
+	}
+	return steps, nil
+}
+
+// appendTrajectory appends one line to the task's trajectory file, creating
+// the task's record folder when the first line arrives. Appends are one
+// write: the record grows in the order the worker took its steps, and a
+// reader walking the file sees the run the way it happened.
+func appendTrajectory(storeDir, id string, step Step) error {
+	dir := plandb.TaskDir(storeDir, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	line, err := json.Marshal(step)
+	if err != nil {
+		return err
+	}
+	file := filepath.Join(dir, trajectoryName)
+	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(line, '\n'))
+	return err
+}
+
+// observationHead is one observation's head, cut on a rune boundary the way
+// the belt's own cut is — a record that opens with half a character is a
+// record a person has to squint at.
+func observationHead(text string) string {
+	if len(text) <= observationHeadBytes {
+		return text
+	}
+	cut := observationHeadBytes
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut]
+}
