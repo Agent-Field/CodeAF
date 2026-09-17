@@ -8706,7 +8706,8 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool) ([]string,
 // block IS, in every version of git there has ever been.
 //
 // AND THE AUTHOR DOES NOT MOVE. These commits stay authored as
-// codeaf <codeaf@localhost> ([codeafGitIdentity]) rather than as the person,
+// codeaf <agentfield-bot@users.noreply.github.com> ([codeafGitIdentity]) rather
+// than as the person,
 // because that identity is load-bearing: a sibling landing reads it to tell this
 // harness's own forward progress from a person's intervening work
 // (task_branch_protection.go says so). Attribution is provenance ON TOP of that,
