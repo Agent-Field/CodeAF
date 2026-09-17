@@ -17,6 +17,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -53,17 +54,41 @@ func mustPoolKey(encoded string) []ed25519.PublicKey {
 // install trusts, so a word that does not decode is a key nobody can vouch
 // for, and the answer is no keys rather than a fall back to the built-in one
 // a fetch under would verify nothing with. Nothing stored: the key the build
-// carries.
+// carries. Whether the stored word was there at all or there and broken is
+// [poolTrustedKeysErr]'s to say.
 func poolTrustedKeys(cfg poolcfg.Config) []ed25519.PublicKey {
+	keys, _ := poolTrustedKeysErr(cfg)
+	return keys
+}
+
+// poolTrustedKeysErr is the same answer with the stored word's health beside
+// it: a key set but not decodable is not the ordinary nothing — the install
+// holds a word it cannot vouch for anything under, and the verb that would
+// fetch is refused with the row's name rather than left silent.
+func poolTrustedKeysErr(cfg poolcfg.Config) ([]ed25519.PublicKey, error) {
 	word := strings.TrimSpace(cfg.PublicKey)
 	if word == "" {
-		return poolPublicKeys
+		return poolPublicKeys, nil
 	}
 	raw, err := base64.StdEncoding.DecodeString(word)
 	if err != nil || len(raw) != ed25519.PublicKeySize {
-		return nil
+		return nil, errPoolKeyDoesNotDecode
 	}
-	return []ed25519.PublicKey{ed25519.PublicKey(raw)}
+	return []ed25519.PublicKey{ed25519.PublicKey(raw)}, nil
+}
+
+// errPoolKeyDoesNotDecode marks a stored word that is not a key; the sentence
+// a person reads is [poolKeyReason]'s, which names the word where it was set.
+var errPoolKeyDoesNotDecode = errors.New("the stored public key does not decode")
+
+// poolKeyReason is the one line a key that does not decode is refused by: the
+// row when the word was stored, the environment pin when poolcfg resolved it
+// from there — the remedy belongs to whichever word is in force.
+func poolKeyReason(cfg poolcfg.Config) string {
+	if cfg.Source.PublicKey == "env" {
+		return "CODEAF_MODEL_POOL_PUBLIC_KEY does not decode (set it to the base64 Ed25519 public key of your relay, or clear it)"
+	}
+	return "models.pool.public_key does not decode (set it to the base64 Ed25519 public key of your relay, or clear it)"
 }
 
 // poolKeys is --key's value: a base64 ed25519 public key, repeatable, each
@@ -257,8 +282,21 @@ func probePool(poolDir string, cfg poolcfg.Config, now time.Time, keys []ed25519
 		off := probeSummary{Reason: "not read (model_pool off)"}
 		return off, off
 	}
-	trusted := append([]ed25519.PublicKey{}, keys...)
-	trusted = append(trusted, poolTrustedKeys(cfg)...)
+	// --key REPLACES the resolved keys: what the person typed is the whole
+	// list a probe is checked under, so a key nobody signed with can prove a
+	// document does not verify under it. Nothing typed: the stored word when
+	// it decodes, else the key the build carries — and a word that does not
+	// decode is the reason itself, with no address asked: a signature nobody
+	// can check is a fetch nobody should make.
+	trusted := keys
+	if len(trusted) == 0 {
+		resolved, keyErr := poolTrustedKeysErr(cfg)
+		if keyErr != nil {
+			broken := probeSummary{Reason: poolKeyReason(cfg)}
+			return broken, broken
+		}
+		trusted = resolved
+	}
 	clock := func() time.Time { return now }
 	relay := probeAddress(cfg.IndexURL, poolDir, trusted, clock)
 	if relay.Reachable {
@@ -454,17 +492,38 @@ func verifyPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 	// line above the exit. verify's third refusal — a fetch or a signature
 	// that fails — is exit 1, in the error main() says in front of it.
 	//
-	// The door refusal below is nearly unreachable since the key shipped in
-	// the binary: a stored key that does not decode is the one word that
-	// still leaves the verb with no key in hand.
+	// OFF IS A REFUSAL AT THE DOOR, and so is a key nobody can vouch for:
+	// neither fetches, and the sentence is the answer, on stdout where the
+	// answer goes (streams.go).
+	//
+	// THE RUNG IS EXIT 2 and not exit 1: nothing was attempted, but the
+	// question asked of this build does not stand, and the remedy is on the
+	// line above the exit. verify's third refusal — a fetch or a signature
+	// that fails — is exit 1, in the error main() says in front of it.
 	if cfg.Mode == poolcfg.Off {
 		if _, err := fmt.Fprintln(output, "the Model Pool is off in settings"); err != nil {
 			return err
 		}
 		return exitIncomplete
 	}
-	trusted := append([]ed25519.PublicKey{}, keys...)
-	trusted = append(trusted, poolTrustedKeys(cfg)...)
+	// --key REPLACES the resolved key: keys the person typed are the whole
+	// list, so a key nobody signed with can prove a document does not verify
+	// under it. Nothing typed: the stored word when it decodes, else the key
+	// the build carries — and a word that does not decode is refused by the
+	// name of where it was set, before anything is fetched. Only a build
+	// that shipped no key at all, with nothing stored, reaches the line
+	// after it.
+	trusted := []ed25519.PublicKey(keys)
+	if len(trusted) == 0 {
+		resolved, keyErr := poolTrustedKeysErr(cfg)
+		if keyErr != nil {
+			if _, err := fmt.Fprintln(output, poolKeyReason(cfg)); err != nil {
+				return err
+			}
+			return exitIncomplete
+		}
+		trusted = resolved
+	}
 	if len(trusted) == 0 {
 		if _, err := fmt.Fprintln(output, "no public key built into this build; pass --key"); err != nil {
 			return err
