@@ -42,6 +42,7 @@ var countsTries = map[string]string{
 	"judgeDecomposable":          "one ask and one repair round — the second request carries the first answer",
 	"shapeBrief":                 "one ask and one repair round — the second request carries the first answer",
 	"claimJobLog":                "candidate job ids in an O_EXCL create race — a count of names, not of tries",
+	"spillBashOutput":            "candidate action-file names in an O_EXCL create race — a count of names, not of tries",
 	"completeWithRetryReasoning": "the number is the ROW a person reads (`attempt 2`), never a bound — the bound is the deadline above it",
 	"handOverRunningTurn":        "brief drafts, one and one regeneration — see checkpointBriefTries",
 	"writeHarness":               "design rounds in the rig's own conversation, each re-reading the guide and writing a different page",

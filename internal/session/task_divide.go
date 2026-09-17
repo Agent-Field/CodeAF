@@ -313,7 +313,7 @@ func (a *Agent) mayDivide() bool { return a.config.mayDivide() }
 // this worker how to divide at construction, and the belt and the prompt must
 // not disagree about whether it can.
 func (c Config) mayDivide() bool {
-	if !c.Divide || !c.mayFanOut() {
+	if !c.Divide || !c.mayFanOut() || c.bashBelt {
 		return false
 	}
 	node := c.tasker.node(c.taskID)

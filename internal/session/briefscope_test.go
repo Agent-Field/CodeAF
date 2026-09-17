@@ -11,6 +11,10 @@ package session
 //
 // Their words still travel, unedited, and they still win about the piece. What
 // changed is the one line over them ([briefPieceRule]).
+//
+// AND A PLAN-BORN WORKER ON THE BASH BELT IS A THIRD CASE, pinned at the end of
+// this file: its document reorders and the person's words are labelled as the
+// run's background rather than as its assignment (task_brief.go).
 
 import (
 	"context"
@@ -157,5 +161,121 @@ func TestTheRuleForAPieceScopesTheWorkWithoutSilencingThePerson(t *testing.T) {
 	}
 	if strings.Contains(briefPieceRule, fmt.Sprint(taskFanLimit)) {
 		t.Error("the rule carries a number, which belongs to the fan-out page and the tool that enforces it")
+	}
+}
+
+// ── a plan-born worker on the bash belt ─────────────────────────────────────
+
+// WHAT A PLAN-BORN WORKER IS TOLD, pinned. A bash-belt node is born from one
+// task in the run's plan, and its assignment was fixed from the plan when it was
+// born; the whole objective above it is background rather than more work. The
+// document says so plainly, in the one place the section order is decided
+// (task_brief.go), and every other worker's document is untouched by it.
+
+// TestBashBeltPlanBornBrief is the both-arms proof of the reordered document.
+// A bash-belt plan-born brief opens on the plan task and the sentence that its
+// ancestors are background, then lays out the assignment, then quotes the
+// person's message labelled as background; a plan-born node off the belt and an
+// ordinary child are byte-identical to the document that was there before.
+func TestBashBeltPlanBornBrief(t *testing.T) {
+	const (
+		request     = "port the whole client to v2 and count the callers"
+		work        = "port internal/importer to the streaming API"
+		deliverable = "internal/importer/stream.go"
+		acceptance  = "go test ./internal/importer/ passes"
+	)
+	born := composeBriefScoped(briefScopeFor("7", true), briefPiece,
+		request, work, deliverable, acceptance, "", AdmissionContext{}, taskOrigin{}, taskCopy{})
+
+	// (a) IT OPENS ON THE PLAN TASK AND THE BACKGROUND SENTENCE.
+	id := planStoreID("7") // the CLI's own `t-7` spelling
+	if !strings.HasPrefix(born, id) {
+		t.Fatalf("the plan-born brief does not open with the plan task %q:\n%s", id, born)
+	}
+	if !strings.Contains(born, briefPlanRule) {
+		t.Fatalf("the plan-born brief is missing %q:\n%s", briefPlanRule, born)
+	}
+	at := func(s string) int {
+		i := strings.Index(born, s)
+		if i < 0 {
+			t.Fatalf("no %q in the plan-born brief:\n%s", s, born)
+		}
+		return i
+	}
+
+	// (b) THE ASSIGNMENT — work, what to produce, done — COMES BEFORE THE
+	// PERSON'S WORDS, and their words follow it rather than open it.
+	if !(at(briefWorkHeading) < at(briefMakeHeading) &&
+		at(briefMakeHeading) < at(briefDoneHeading) &&
+		at(briefDoneHeading) < at(briefAskHeading)) {
+		t.Fatalf("the assignment does not come before the person's words:\n%s", born)
+	}
+	for _, want := range []string{request, work, deliverable, acceptance} {
+		if !strings.Contains(born, want) {
+			t.Fatalf("the plan-born brief is missing %q:\n%s", want, born)
+		}
+	}
+
+	// (c) THE PERSON'S WORDS ARE LABELLED AS BACKGROUND, not as the assignment
+	// that wins, and the whole-job rules are gone with it.
+	if !strings.Contains(born, briefBackgroundRule) {
+		t.Fatalf("the person's words are not labelled background:\n%s", born)
+	}
+	if strings.Contains(born, briefPieceRule) || strings.Contains(born, briefAskRule) {
+		t.Fatalf("the plan-born brief still carries the whole-job rule:\n%s", born)
+	}
+
+	// THE OTHER ROADS DO NOT MOVE ONE BYTE. A plan-born node whose session is
+	// not on the bash belt gets the document it always got, an empty scope is
+	// the direct caller's document, and an ordinary child is untouched.
+	ordinary := composeBrief(briefPiece, request, work, deliverable, acceptance, "", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	if got := composeBriefScoped(briefScope{}, briefPiece, request, work, deliverable, acceptance, "", AdmissionContext{}, taskOrigin{}, taskCopy{}); got != ordinary {
+		t.Fatalf("an empty scope changed the document:\n%s", got)
+	}
+	if got := composeBriefScoped(briefScopeFor("7", false), briefPiece, request, work, deliverable, acceptance, "", AdmissionContext{}, taskOrigin{}, taskCopy{}); got != ordinary {
+		t.Fatalf("a plan-born node off the belt changed the document:\n%s", got)
+	}
+	if strings.Contains(ordinary, briefPlanRule) {
+		t.Fatalf("an ordinary child carries the plan sentence:\n%s", ordinary)
+	}
+}
+
+// TestBashBeltPlanBornBriefOnlyOnTheBelt proves the NODE threads both facts
+// itself: a spec carrying a plan id composes the reordered document only while
+// the session is on the bash belt, and the same node off the belt composes what
+// every plan-born node composed before.
+func TestBashBeltPlanBornBriefOnlyOnTheBelt(t *testing.T) {
+	conversation, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := conversation.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: "t", request: "port the whole client to v2",
+		brief: "port internal/importer", deliverable: "stream.go", acceptance: "it streams",
+		planID: "7",
+	})
+	node := graph.node(id)
+	if node == nil {
+		t.Fatal("the plan-born node was not admitted")
+	}
+
+	// OFF THE BELT: no plan sentence, and the person's words still open it.
+	off := node.instruction()
+	if strings.Contains(off, briefPlanRule) {
+		t.Fatalf("a belt-off plan-born node got the plan sentence:\n%s", off)
+	}
+	if !strings.Contains(off, briefAskHeading) {
+		t.Fatalf("a belt-off plan-born node lost the person's words:\n%s", off)
+	}
+
+	// ON THE BELT: it opens on the plan task and labels the person's words
+	// background.
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	on := node.instruction()
+	if !strings.Contains(on, planStoreID("7")) || !strings.Contains(on, briefPlanRule) {
+		t.Fatalf("a belt-on plan-born node did not open on its plan task:\n%s", on)
+	}
+	if !strings.Contains(on, briefBackgroundRule) {
+		t.Fatalf("a belt-on plan-born node did not label the person's words background:\n%s", on)
 	}
 }
