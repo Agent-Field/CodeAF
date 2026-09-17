@@ -238,7 +238,9 @@ def attempts_from_cells(path, ledger_runs):
             "planner": lease.get("thinker"),
             "major": done.get("major"),
             "rating": done.get("rating"),
-            "notes": done.get("notes"),
+            # A done row says "no work" with a flag; fold it into the notes so
+            # the one rule in is_no_work reads both ledgers the same way.
+            "notes": ("no work; " if done.get("nowork") else "") + str(done.get("notes") or ""),
             "day": day_of(lease.get("at")),
             "size": size if size in ("S", "M", "L") else "M",
             "door": "do" if crew == "do" else "task",

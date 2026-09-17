@@ -28,9 +28,9 @@
    "metric": "role_quality",
    "role": "high",
    "model": "anthropic/claude-fable-5.1",
-   "mean": 85.2,
-   "sd": 6.7,
-   "n": 25
+   "mean": 87.1,
+   "sd": 5.9,
+   "n": 29
   },
   {
    "metric": "role_quality",
@@ -100,9 +100,9 @@
    "metric": "role_quality",
    "role": "worker",
    "model": "deepseek/deepseek-v4.1-flash",
-   "mean": 81.8,
-   "sd": 6.6,
-   "n": 31
+   "mean": 83.3,
+   "sd": 6.1,
+   "n": 34
   },
   {
    "metric": "role_quality",
@@ -132,9 +132,9 @@
    "metric": "role_quality",
    "role": "worker",
    "model": "z-ai/glm-5.3",
-   "mean": 71.8,
-   "sd": 7.1,
-   "n": 37
+   "mean": 72.5,
+   "sd": 7.0,
+   "n": 38
   },
   {
    "metric": "role_quality",
