@@ -17,7 +17,7 @@ import (
 // This is the dynamic half of the executor. The brief says what the job is;
 // the contract says how work of this kind is done well — the discipline a
 // specialised harness would have baked into its system prompt, generated per
-// task instead of hand-written per domain. pi is a coding harness because its
+// task instead of hand-written per domain. A harness earns the name because its
 // prompt carries a coding method; a generic loop handed a generated method for
 // the leaf in front of it gets the same advantage on any kind of work, and
 // the harness itself never changes.
