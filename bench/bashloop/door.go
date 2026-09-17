@@ -272,8 +272,8 @@ func (r *runner) runDoDoor(iv invocation, cellDef cell, fixtureDir, homeDir stri
 		WallSeconds: wallRead, WallSource: wallFrom,
 		ChangedFiles: reading.ChangedFiles,
 		ChildrenDone: reading.ChildrenDone, ChildrenTotal: reading.ChildrenTotal,
-		NodesFailed:  reading.NodesFailed,
-		RunDir:       iv.RunDir,
+		NodesFailed: reading.NodesFailed,
+		RunDir:      iv.RunDir,
 	}
 }
 
@@ -333,8 +333,8 @@ func applyStoreReadings(reading *readings, dbPath string) error {
 	// The ledger: every priced row of the run's own home.
 	var cost float64
 	var unbilled, calls int
-	err = db.QueryRow(`select coalesce(sum(cost), 0),` +
-		` sum(case when cost = 0 and prompt_tokens + completion_tokens > 0 then 1 else 0 end),` +
+	err = db.QueryRow(`select coalesce(sum(cost), 0),`+
+		` sum(case when cost = 0 and prompt_tokens + completion_tokens > 0 then 1 else 0 end),`+
 		` count(*) from usage`).Scan(&cost, &unbilled, &calls)
 	if err == nil {
 		reading.CostUSD = cost
@@ -387,9 +387,9 @@ func applyStoreReadings(reading *readings, dbPath string) error {
 	// The family shape: the root's own fan-out, and every node the engine
 	// marked failed.
 	var done, total, failed int
-	if err := db.QueryRow(`select count(*),` +
-		` sum(case when status = 'done' then 1 else 0 end),` +
-		` (select count(*) from nodes where status = 'failed')` +
+	if err := db.QueryRow(`select count(*),`+
+		` sum(case when status = 'done' then 1 else 0 end),`+
+		` (select count(*) from nodes where status = 'failed')`+
 		` from nodes where parent_id = 'root'`).Scan(&total, &done, &failed); err == nil {
 		reading.ChildrenDone, reading.ChildrenTotal, reading.NodesFailed = done, total, failed
 	}
