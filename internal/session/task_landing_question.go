@@ -234,7 +234,14 @@ func landingQuestionToken(kind QuestionKind, id uint64) string {
 // both halves — the half the twelve identical cards in #1077 never said.
 func landingAnsweredStamp(record DecisionRecord) string {
 	word := landingAnsweredWord(record)
-	stamp := word + " " + record.At.Format("15:04")
+	// A STAMP FROM ANOTHER DAY SAYS ITS DAY. `accepted 18:20` on a card drawn
+	// the next morning reads as an hour ago, and the stamp is the one place
+	// the card says when — so the day leads when the day is not this one.
+	when := record.At.Format("15:04")
+	if record.At.Format("2006-01-02") != time.Now().Format("2006-01-02") {
+		when = record.At.Format("Jan 2 15:04")
+	}
+	stamp := word + " " + when
 	return landingAnsweredBy(record, stamp)
 }
 
