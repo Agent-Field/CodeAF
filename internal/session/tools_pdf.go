@@ -18,7 +18,7 @@ package session
 // prompt line that goes with it (system.md) is one clause, not a paragraph
 // teaching a new tool.
 //
-// This is backgroundBash's shape exactly (tools_jobs.go): find pi's tool in the
+// This is backgroundBash's shape exactly (tools_jobs.go): find the tool in the
 // belt, wrap it, hand every call it does not claim to the inner tool verbatim.
 //
 // THE WRAPPER ITSELF NOW LIVES IN tools_sense.go, because the argument above
@@ -28,9 +28,9 @@ package session
 // resolve the same path, and let their ORDER silently decide which sense claims
 // a file two of them could read. So one wrapper sniffs once and routes, and
 // this file keeps what is genuinely its own: the local, free, in-binary rung,
-// and pi's truncation law that every other rung borrows.
+// and the truncation law that every other rung borrows.
 //
-// THE ANSWER OBEYS PI'S TRUNCATION LAW, not a second one. Extracted text is
+// THE ANSWER OBEYS THE TRUNCATION LAW, not a second one. Extracted text is
 // text, a 400-page manual is a large file, and a model that learned from read's
 // description how far one read goes and how to page past it gets exactly that
 // here, footer wording included — the offset it is told to use works, because
@@ -52,7 +52,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pdfx"
 )
 
-// pdfSentence is the one sentence the wrapper adds to pi's read description.
+// pdfSentence is the one sentence the wrapper adds to the read description.
 // One sentence, because the tool is still read: what changes is which files it
 // can answer for, and the second clause is there so a model that gets the
 // scanned-PDF result recognizes it as a known limit rather than a bug to retry
@@ -68,9 +68,9 @@ const pdfSentence = " PDF files are read as extracted text (local, fast); scanne
 func (a *Agent) pdfRead(inner bare.Tool) bare.Tool { return a.senseRead(inner) }
 
 // pdfSense is the local rung: extract the text layer in-binary and page it by
-// pi's law. shown is the path AS THE MODEL WROTE IT, because every sentence
-// below quotes it back and a model that asked about `spec.pdf` should not be
-// answered about `/home/…/spec.pdf`.
+// the read law. shown is the path AS THE MODEL WROTE IT, because every
+// sentence below quotes it back and a model that asked about `spec.pdf`
+// should not be answered about `/home/…/spec.pdf`.
 //
 // It is only ever called for a file the sniff already claimed and the stat
 // already found, so there is no "not a PDF" and no "no such file" branch left
@@ -146,7 +146,7 @@ func resolveInWorkspace(path, workspace string) string {
 	return filepath.Clean(filepath.Join(workspace, trimmed))
 }
 
-// ── pi's read law, mirrored ─────────────────────────────────────────────────
+// ── the read law, mirrored ──────────────────────────────────────────────────
 
 // piReadLaw applies bare read's offset/limit/truncation pipeline to extracted
 // text, with bare's footer sentences verbatim.
@@ -286,7 +286,7 @@ func truncateToBytes(s string, maxBytes int) string {
 
 // sizeLabel mirrors bare's formatSize, whose rendered strings the footers
 // interpolate: bytes under 1KB plain, then one decimal place, JS toFixed(1)
-// style, so "50.0KB" reads the same here as it does from pi's read.
+// style, so "50.0KB" reads the same here as it does from bare's read.
 func sizeLabel(bytes int) string {
 	if bytes < 1024 {
 		return strconv.Itoa(bytes) + "B"

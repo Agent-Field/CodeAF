@@ -143,13 +143,13 @@ var shapePrompt string
 var dividePrompt string
 
 // bashworkerPrompt is the branch belt's doctrine page (bashbelt.go): how to
-// work when the six pi tools have come off and the one hand is the shell.
+// work when the six file tools have come off and the one hand is the shell.
 //
-// IT REPLACES THE PI-TOOL GUIDANCE FOR ITS WORKERS rather than sitting beside
+// IT REPLACES THE FILE-TOOL GUIDANCE FOR ITS WORKERS rather than sitting beside
 // it, and that is a law and not a preference: a page naming a tool the belt
 // lacks is the prompt lying, and a second convention beside an existing one is
 // prohibited — so the composition below swaps this page in WHERE the embedded
-// page teaches the pi tools, and rewrites the few sentences outside that
+// page teaches the file tools, and rewrites the few sentences outside that
 // section that name one of them. A bash worker reading its page reads one
 // account of how to read, write, edit and search, not two.
 //

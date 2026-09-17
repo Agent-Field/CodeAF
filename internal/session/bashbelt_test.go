@@ -16,12 +16,12 @@ import (
 
 // THE WAVE'S PROOF. Each test names the acceptance line it stands for
 // (docs/design/bash-task-loop/DESIGN.md, the W1 row): the belt composition
-// (kept set present, six pi absent, the flag-off belt byte-identical to
-// today's), the envelope (a two-call batch rejected without poisoning
-// history, four consecutive invalids landing the node failed on the circling
-// road), the truncation (head+tail+path, the cap following the window, the
-// file beside the node log, the working copy clean), and a scripted task that
-// reads, writes and edits a file through bash alone.
+// (kept set present, the six file tools absent, the flag-off belt identical
+// byte for byte to today's), the envelope (a two-call batch rejected without
+// poisoning history, four consecutive invalids landing the node failed on the
+// circling road), the truncation (head+tail+path, the cap following the
+// window, the file beside the node log, the working copy clean), and a
+// scripted task that reads, writes and edits a file through bash alone.
 
 // bashToolOf finds the belt's one bash hand.
 func bashToolOf(t *testing.T, belt []bare.Tool) bare.Tool {
@@ -81,8 +81,8 @@ func TestBashBeltCompositionKeepsTheKeptHandsAndDropsTheSix(t *testing.T) {
 	if carried["ask"] {
 		t.Error("the branch belt still carries ask, which this belt does not use")
 	}
-	// AND THE SIX PI TOOLS ARE OFF. Each of them is a shell command wearing a
-	// schema, and the branch worker spells what it did in bash.
+	// AND THE SIX FILE TOOLS ARE OFF. Each of them is a shell command wearing
+	// a schema, and the branch worker spells what it did in bash.
 	for _, gone := range []string{"read", "edit", "write", "grep", "find", "ls"} {
 		if carried[gone] {
 			t.Errorf("the branch belt still carries %s", gone)
@@ -113,11 +113,11 @@ func TestBashBeltCompositionKeepsTheKeptHandsAndDropsTheSix(t *testing.T) {
 	}
 
 	// AND THE FLAG-OFF BELT IS TODAY'S, BYTE FOR BYTE. A worker built without
-	// the branch belt carries the six pi tools, and its pi block is exactly the
-	// one today's composition builds: bare's tools at this agent's result caps,
-	// wrapped with the session's three wrappers and nothing else. The first
-	// seven entries are that block; everything after is the appended families
-	// this comparison is not about.
+	// the branch belt carries the six file tools, and its file-tool block is
+	// exactly the one today's composition builds: bare's tools at this agent's
+	// result caps, wrapped with the session's three wrappers and nothing else.
+	// The first seven entries are that block; everything after is the appended
+	// families this comparison is not about.
 	offBelt := plainBeltAgent(t).beltTools()
 	offBash := bashToolOf(t, offBelt)
 	var offSchema struct {
@@ -181,7 +181,7 @@ func TestBashBeltFlagOffChangesNothing(t *testing.T) {
 		}
 	}
 	if beltBytes(recomputed) != beltBytes(offBeltTools[:len(recomputed)]) {
-		t.Error("the flag-off pi block is not the composition that was there before this branch")
+		t.Error("the flag-off file-tool block is not the composition that was there before this branch")
 	}
 }
 
@@ -576,14 +576,14 @@ func TestBashBeltTaskReadsWritesAndEditsThroughBashAlone(t *testing.T) {
 	if string(data) != "first line\nappended line\n" {
 		t.Errorf("the file holds %q, want both lines", string(data))
 	}
-	// AND THE WORKER READ THE BRANCH'S OWN PAGE, not the pi-tool guidance: it
+	// AND THE WORKER READ THE BRANCH'S OWN PAGE, not the file-tool guidance: it
 	// opens on the loop policy.
 	page := messageContentText(completer.childAsked()[0])
 	if !strings.Contains(page, "Your FIRST action is the FRAME/PLAN") {
 		t.Error("the bash worker did not read the branch doctrine page")
 	}
 	if strings.Contains(page, "## Specialized Tools") {
-		t.Error("the bash worker was still handed the pi-tool guidance")
+		t.Error("the bash worker was still handed the file-tool guidance")
 	}
 }
 
@@ -670,14 +670,14 @@ func TestBashBeltWorkerPromptOpensOnTheLoopPolicy(t *testing.T) {
 		t.Error("the bash worker's page still teaches ask")
 	}
 	if strings.Contains(bashPage, "## Specialized Tools") {
-		t.Error("the bash worker's page still carries the pi-tool section")
+		t.Error("the bash worker's page still carries the file-tool section")
 	}
 	if strings.Contains(bashPage, "`read` takes a row's URIs exactly as printed") {
 		t.Error("the page still names `read` in the citation fact")
 	}
 
 	// AND THE FLOOR OF THE TREE reads the same page: the policy leads and no
-	// pi-tool name survives at any depth.
+	// file-tool name survives at any depth.
 	floorConfig := Config{Workspace: t.TempDir(), Model: "test/model"}
 	func() {
 		config := &floorConfig
@@ -702,7 +702,7 @@ func TestBashBeltWorkerPromptOpensOnTheLoopPolicy(t *testing.T) {
 	plainConfig := Config{Workspace: t.TempDir(), Model: "test/model"}
 	plainPage := renderSystemAt(plainConfig, now)
 	if !strings.Contains(plainPage, "## Specialized Tools") {
-		t.Error("a worker without the branch belt lost the pi-tool section")
+		t.Error("a worker without the branch belt lost the file-tool section")
 	}
 	if !strings.Contains(plainPage, "THERE IS NO PLANNER ON YOUR BELT") {
 		t.Error("a worker without the branch belt lost the planner sentence")
@@ -853,7 +853,7 @@ func TestBashBeltNodeKeepsNoAuditor(t *testing.T) {
 	// still had an auditor would have asked it here. The landing above is the
 	// unaudited one — the node's own account came home as `done`.
 	if page := messageContentText(completer.childAsked()[0]); !strings.Contains(page, "Your FIRST action is the FRAME/PLAN") {
-		t.Error("the belt did not engage: the worker read the pi-tool page")
+		t.Error("the belt did not engage: the worker read the file-tool page")
 	}
 	asked := completer.auditAsked()
 	for i, m := range asked {

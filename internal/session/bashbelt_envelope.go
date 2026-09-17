@@ -12,14 +12,14 @@ import (
 // The one-action envelope, and the road a malformed response takes.
 //
 // THE ENVELOPE IS THE EXPERIMENT'S SECOND BET (docs/design/bash-task-loop/
-// DESIGN.md, Decision 2): a bash-belt worker gets miniplan's discipline —
+// DESIGN.md, Decision 2): a bash-belt worker gets the one-action discipline —
 // exactly one tool call per response, and it names bash — in exchange for
 // parallelism moving into the shell, where `&` and `xargs -P` have always
 // lived. The branch belt carries one tool, so a response carrying anything
 // else is not a batch, it is a response the model could not drive the belt
 // with, and running a piece of it would answer a question nobody asked.
 //
-// THE REJECT IS MINIPLAN'S, BOTH BRANCHES. A response whose calls are
+// THE REJECT IS THE SAME ON BOTH BRANCHES. A response whose calls are
 // addressable — every call carries a non-empty, unique id — is answered with
 // the diagnostic as each call's tool result, exactly as a held process rule is
 // (processrule.go's [Agent.withholdSubmission]): the transcript's shape is not
@@ -47,9 +47,9 @@ const (
 	bashEnvelopeMark = "[not run] "
 
 	// bashEnvelopeLimit is how many consecutive invalid actions end the turn.
-	// miniplan's number, read out of miniplan/agent.py on 2026-09-16, and THE
-	// ONLY PLACE IT LIVES: the doctrine page teaches the envelope, not a
-	// number, so the page and this constant cannot drift apart.
+	// It is THE ONLY PLACE THE NUMBER LIVES: the doctrine page teaches the
+	// envelope, not a number, so the page and this constant cannot drift
+	// apart.
 	bashEnvelopeLimit = 4
 )
 
@@ -62,9 +62,7 @@ const bashEnvelopeStop = "stopped: four responses in a row carried no valid sing
 
 // bashEnvelopeFault is what is wrong with one submission under the envelope,
 // and empty for one that may run. A response with no calls is a final answer,
-// not an invalid action — ending the turn in words is how this loop finishes,
-// and miniplan's own envelope says nothing about it because its loop has a
-// finish verb instead.
+// not an invalid action — ending the turn in words is how this loop finishes.
 func bashEnvelopeFault(calls []ai.ToolCall) string {
 	if len(calls) == 0 {
 		return ""
@@ -97,9 +95,9 @@ func bashEnvelopeFault(calls []ai.ToolCall) string {
 // UNADDRESSABLE case — no id, a repeated id, so no tool result can be paired
 // with its call — takes the assistant message back out, because a request
 // rebuilt with it would carry tool calls whose results can never be paired
-// with them, and appends the diagnostic as a user message instead. That is
-// miniplan's reject_action, both branches: the diagnostic reaches the model,
-// the malformed envelope does not.
+// with them, and appends the diagnostic as a user message instead. Both
+// branches obey one law: the diagnostic reaches the model, the malformed
+// envelope does not.
 func (a *Agent) rejectBashEnvelope(hub *eventHub, calls []ai.ToolCall, diagnostic string) {
 	if bashCallsAddressable(calls) {
 		for _, call := range calls {
@@ -153,8 +151,7 @@ func (a *Agent) dropLastAssistant() {
 
 // bashCallsAddressable answers whether every call in the batch can be given a
 // tool result the next request can pair with it: an id on each, and no two
-// alike. miniplan's [valid_tool_envelope], read from source, which is also
-// where the two-branch split above is read from.
+// alike. The two-branch split above turns on exactly this answer.
 func bashCallsAddressable(calls []ai.ToolCall) bool {
 	seen := make(map[string]bool, len(calls))
 	for _, call := range calls {

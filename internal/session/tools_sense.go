@@ -60,7 +60,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
-// senseSentence is what the senses add to pi's read description, after
+// senseSentence is what the senses add to the read description, after
 // [pdfSentence]. It is deliberately short and deliberately ends with the
 // instruction that pays for itself: the failure this whole file exists to
 // prevent is `bash: python3 -c "import whisper"`, and a model told plainly that
@@ -445,7 +445,7 @@ func senseNote(label, model string) string { return "[" + label + ": " + model +
 // ── the image sense ─────────────────────────────────────────────────────────
 
 // imageSense is the undirected look: one shot on the looking model, one fixed
-// prompt, the answer paged by pi's law.
+// prompt, the answer paged by the read law.
 func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute string, entry senseType, offset, limit *int) (string, bool, error) {
 	seer := a.senseModel(roleSenseVision)
 	if seer == "" {
