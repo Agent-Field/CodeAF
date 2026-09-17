@@ -87,6 +87,103 @@ var CrewSources = []string{CrewSourceOpen, CrewSourceAll}
 // family's balanced row.
 const DefaultCrewSource = CrewSourceAll
 
+// ── where the seats are picked from ────────────────────────────────────────
+
+// THE THIRD ROW THE CREW WORDS ARE ANSWERED THROUGH. The crew row says how
+// much to spend and the family row says which shelf those budgets name; the
+// pick row says where the models for that money come from when a tier row
+// does not hold a model id of its own:
+//
+//   - `table` — the rows this build measured and shipped ([crewModels] and
+//     [crewAllModels]), which is what an unwritten seat has always read;
+//   - `catalog` — the same three budgets recomputed off the catalog's own
+//     published prices and scores, on every read, with no measurement of
+//     anybody's own runs in it ([AutoPickWith] with no prior);
+//   - `learn` — the catalog computation plus the Model Pool's measurements
+//     and the person's own judged runs, carried as a quality prior
+//     ([autoPrior]).
+//
+// THE DEFAULT IS THE TABLE because the table is what a profile has always
+// read: an unwritten seat names the preset's own row, and nothing about a
+// profile that has answered nothing moves until somebody answers a row. The
+// other two words are an opt-in to a read that keeps moving — a seat that
+// follows the catalog follows it whether or not the shipped rows do — and a
+// person has to say so.
+//
+// A PICK NEVER OVERRIDES A MODEL ID. The row answers for the seats a person
+// did not name, and the seats they did — written by hand, or by a preset —
+// keep their ids until the crew is picked again, except that a row holding
+// the preset's own table value is the preset answering, not a person pinning
+// one model by id. The rule is [pickedSeat]'s to apply and the manual's to
+// state.
+const (
+	// CrewPickTable is the measured rows this build ships, and the default.
+	CrewPickTable = "table"
+	// CrewPickCatalog is the catalog's own published figures, with nothing
+	// measured on top.
+	CrewPickCatalog = "catalog"
+	// CrewPickLearn is the catalog computation plus the Model Pool's
+	// measurements and the person's own judged runs.
+	CrewPickLearn = "learn"
+)
+
+// CrewPicks lists the words a person may WRITE, narrowest first: the shipped
+// table, then the catalog on its own, then the catalog with what runs
+// measured. A pick word is not a preset and names no budget — the crew row
+// above it still does that.
+var CrewPicks = []string{CrewPickTable, CrewPickCatalog, CrewPickLearn}
+
+// DefaultCrewPick is the table: the rows this build measured are where an
+// unwritten seat's model comes from until somebody answers the row.
+const DefaultCrewPick = CrewPickTable
+
+// knownCrewPick folds a word and says whether it is one of the picks this
+// build knows. It is the ONE place the fold is spelled: [SetCrewPick] and the
+// ladder's [pickedSeat] both go through it, so a pick added to [CrewPicks] is
+// accepted everywhere at once. A reader folds a word it does not know to the
+// default pick; a writer refuses it.
+func knownCrewPick(pick string) (string, bool) {
+	pick = strings.ToLower(strings.TrimSpace(pick))
+	for _, known := range CrewPicks {
+		if pick == known {
+			return known, true
+		}
+	}
+	return "", false
+}
+
+// normalCrewPick folds a pick word to one of the three this build knows,
+// reading a word it does not know as the default pick.
+func normalCrewPick(pick string) string {
+	if known, ok := knownCrewPick(pick); ok {
+		return known
+	}
+	return DefaultCrewPick
+}
+
+// CrewPickAt is where the seats are picked from on this profile,
+// [DefaultCrewPick] when the row is absent. A word this build does not know
+// reads as the default pick, silently, the way a retired choice reads
+// everywhere else on this sheet.
+func CrewPickAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyCrewPick); ok {
+		return normalCrewPick(value)
+	}
+	return DefaultCrewPick
+}
+
+// SetCrewPick writes the pick row ALONE, in one file write. The word is
+// refused the way every choice row refuses one, so a typo cannot land a pick
+// nothing reads. It writes no tier row: the pick says where seats are read
+// from, and the seats keep the ids on disk until the crew is picked again.
+func SetCrewPick(profileDir, pick string) error {
+	known, ok := knownCrewPick(pick)
+	if !ok {
+		return fmt.Errorf("pick one of: %s", strings.Join(CrewPicks, ", "))
+	}
+	return writeProfileValue(profileDir, KeyCrewPick, known)
+}
+
 // crewModels is the open-weight table: one row per preset, one model per class.
 //
 // THE WORKER COLUMN IS THE DIAL. It holds glm-5.3-flash through balanced, and
@@ -308,6 +405,15 @@ func CrewModels(preset string) (map[string]string, bool) {
 // family's five ids are not any preset of the other.
 func CrewAt(profileDir string) string {
 	family := CrewSourceAt(profileDir)
+	if CrewPickAt(profileDir) != CrewPickTable {
+		// WITH THE PICK OFF THE TABLE the three dial seats are computed ids the
+		// preset tables do not hold, and comparing the live seats would read
+		// custom over a crew the person chose. The word answers what the STORED
+		// rows make instead — the budget the seats are computed at ([pickedSeat]
+		// reads the same rows) — so the word on the sheet stays the decision it
+		// summarizes while the ids underneath move with the catalog.
+		return crewStoredAt(profileDir, family)
+	}
 	live := make(map[string]string, len(ModelTiers))
 	for _, tier := range ModelTiers {
 		live[tier] = tierSeatUnder(profileDir, family, tier).Model
@@ -319,6 +425,63 @@ func CrewAt(profileDir string) string {
 		}
 	}
 	return CrewCustom
+}
+
+// crewStoredAt is the crew the STORED five rows make, in the family given:
+// the preset they are, or [CrewCustom]. It is [CrewAt]'s reading when the
+// pick row takes the seats off the table, where the live comparison would
+// compare computed ids.
+//
+// Each row is read through the ladder's own row reader ([crewRow]). A row the
+// reader cannot answer because the key was NEVER HELD reads the family's
+// default-preset id, which is what that tier runs until somebody writes it;
+// a row CLEARED ON PURPOSE reads empty and matches nothing, because
+// "follows the conversation" is not any of the three; a row that says auto is
+// skipped, because auto is the one row with no opinion of its own — it runs
+// at whatever budget the rows around it name ([crewPresetUnder]).
+func crewStoredAt(profileDir, family string) string {
+	defaults := crewTableFor(family)[DefaultCrew]
+	stored := make(map[string]string, len(ModelTiers))
+	for _, tier := range ModelTiers {
+		value, _, source, cleared := crewRow(profileDir, tier)
+		switch {
+		case cleared:
+			stored[tier] = ""
+		case source == "":
+			stored[tier] = strings.ToLower(strings.TrimSpace(defaults[tier]))
+		case IsAuto(value):
+			stored[tier] = AutoValue
+		default:
+			stored[tier] = strings.ToLower(strings.TrimSpace(value))
+		}
+	}
+	table := crewTableFor(family)
+	// THE DEFAULT PRESET WINS EVERY TIE, the law [crewPresetUnder] states: a
+	// profile whose every row says auto is a crew with no opinion of its own,
+	// and it reads balanced rather than whichever preset the loop met first.
+	if crewStoredMatches(stored, table[DefaultCrew]) {
+		return DefaultCrew
+	}
+	for _, preset := range CrewPresets {
+		if preset != DefaultCrew && crewStoredMatches(stored, table[preset]) {
+			return preset
+		}
+	}
+	return CrewCustom
+}
+
+// crewStoredMatches compares a stored reading with one preset row, skipping
+// the tiers whose row says auto.
+func crewStoredMatches(stored, preset map[string]string) bool {
+	for _, tier := range ModelTiers {
+		if stored[tier] == AutoValue {
+			continue
+		}
+		if stored[tier] != strings.ToLower(strings.TrimSpace(preset[tier])) {
+			return false
+		}
+	}
+	return true
 }
 
 // sameCrew compares two crews class by class, case-folded, because a model id is
@@ -418,7 +581,33 @@ func SetCrewSource(profileDir, source string) error {
 // them would be facts that never vary. The ids are shortened to their base names
 // because the vendor prefix is the half nobody reads twice.
 func CrewSummary(profileDir string) string {
-	return "crew → " + CrewAt(profileDir) + " · " + CrewClasses(profileDir)
+	return crewSummaryWith(profileDir, "")
+}
+
+// CrewSummaryPick is the confirmation with the pick named when it is not the
+// default one:
+//
+//	crew → balanced · learn · brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
+//
+// The pick rides the preset word because the two are one decision read at two
+// heights — how much to spend, and where the models for that money come from
+// — and a confirmation that said only `balanced` would drop the half the
+// person just changed. At the default pick this is [CrewSummary] itself, so a
+// profile nobody has taught the pick to confirms exactly as it always has.
+func CrewSummaryPick(profileDir string) string {
+	return crewSummaryWith(profileDir, CrewPickAt(profileDir))
+}
+
+// crewSummaryWith is the line both summaries are built from: the pick named
+// between the preset and the three classes when one was given that is not the
+// default, and never otherwise — a profile at the default pick confirms in
+// the words it has always confirmed in.
+func crewSummaryWith(profileDir, pick string) string {
+	head := "crew → " + CrewAt(profileDir)
+	if pick != "" && pick != CrewPickTable {
+		head += " · " + pick
+	}
+	return head + " · " + CrewClasses(profileDir)
 }
 
 // CrewClasses is the three class names alone:

@@ -233,6 +233,18 @@ const (
 	// worker row's own reason: a repository that could answer it could send a
 	// visitor's work, and their credit, to a vendor they never chose.
 	KeyCrewSource = "models.crew.source"
+	// KeyCrewPick is where the crew's seats are picked from when a tier row
+	// does not hold a model id of its own. The three words are read and
+	// answered by the crew's own machinery (crew.go's [CrewPickAt] and
+	// [SetCrewPick]) beside the words [KeyCrew] and [KeyCrewSource] take: the
+	// crew row says how much to spend, the family row says which shelf those
+	// budgets name, and this row says where the models for that money come
+	// from — the rows this build measured, or a computation off the catalog
+	// made again on every read, with or without what the Model Pool measured.
+	// It is PROFILE-ONLY with the crew and family rows, for the worker row's
+	// own reason: a repository that could answer it could send a visitor's
+	// work, and their credit, to a model nobody on that machine chose.
+	KeyCrewPick = "models.crew.pick"
 	// KeyMouse is whether the surface reports the mouse at all. ON is the
 	// default ([DefaultMouse]), because hover, click and the wheel are v3's own
 	// language and the thing they cost is bought back by a key: an alt-screen
@@ -2316,6 +2328,24 @@ func (s *Settings) build() []Setting {
 				"below. Change one of the five rows below and this reads `custom`.",
 			read:  func() string { return CrewAt(dir) },
 			write: func(raw string) error { return writeCrew(dir, raw) },
+		},
+		// WHERE THE SEATS ARE PICKED FROM, one row under the crew. The crew row
+		// says how much to spend and this says where the models for that money
+		// come from when a tier row does not hold a person's own id: the rows
+		// this build measured and shipped, or the same three budgets recomputed
+		// off the catalog on every read, with or without what the Model Pool
+		// and the person's own judged runs measured. The words are the crew's
+		// own (crew.go), so the row and the ladder cannot disagree about what a
+		// pick means.
+		Setting{
+			Key: KeyCrewPick, Category: CategoryModels, Kind: SettingChoice,
+			Label: "picked from", Choices: CrewPicks,
+			Hint: "where the crew's models come from. table: the rows we measured. " +
+				"catalog: recomputed from today's published prices and scores at your " +
+				"crew's budget. learn: catalog plus the Model Pool's measurements and " +
+				"your own judged runs.",
+			read:  func() string { return CrewPickAt(dir) },
+			write: func(raw string) error { return SetCrewPick(dir, raw) },
 		},
 		// THE FAMILY THE THREE WORDS DRAW FROM, one row under the crew. It sits
 		// beside the crew row because it is the same decision read one level up:

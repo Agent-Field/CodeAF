@@ -240,8 +240,8 @@ func TestThePresetAnAutoSeatRunsAtIsReadFromTheStoredRows(t *testing.T) {
 	if seat.Crew != CrewMax {
 		t.Errorf("max's rows and an auto row read as %q", seat.Crew)
 	}
-	if seat.Rung() != "crew "+CrewMax+", computed" {
-		t.Errorf("the rung reads %q, want crew max, computed", seat.Rung())
+	if seat.Rung() != "crew "+CrewMax+", computed from the catalog" {
+		t.Errorf("the rung reads %q, want crew max, computed from the catalog", seat.Rung())
 	}
 	// A profile with no auto row anywhere reads as it always read — the
 	// default rung, no crew word — which is the unchanged-behaviour law: the
@@ -297,8 +297,8 @@ func TestTheDefaultPresetWinsWhenTheStoredRowsMatchTwoPresets(t *testing.T) {
 	if seat.Crew != CrewBalanced {
 		t.Errorf("rows matching both presets read as %q, want %s, the default preset", seat.Crew, CrewBalanced)
 	}
-	if seat.Rung() != "crew "+CrewBalanced+", computed" {
-		t.Errorf("the rung reads %q, want crew %s, computed", seat.Rung(), CrewBalanced)
+	if seat.Rung() != "crew "+CrewBalanced+", computed from the catalog" {
+		t.Errorf("the rung reads %q, want crew %s, computed from the catalog", seat.Rung(), CrewBalanced)
 	}
 	// And the same tie on the table rung, with nothing to compute from: the
 	// default preset decides the fallback id too, not just the budget word.
@@ -424,5 +424,29 @@ func TestAutoPickReadsAMeasuredQualityPrior(t *testing.T) {
 	}
 	if after != "a/cheap" {
 		t.Fatalf("the rated row did not take the worker seat: got %q", after)
+	}
+}
+
+// THE PRIOR IS THE ARGUMENT, AND NOTHING HIDES IT. AutoPickWith carries
+// whatever prior it is given: nil leaves the worker on the front's own
+// answer, and the same measured cell the AutoPick test reads moves it — which
+// is exactly the difference between the `catalog` and `learn` pick words
+// (crew.go's [CrewPickAt]).
+func TestAutoPickWithCarriesThePriorItIsGiven(t *testing.T) {
+	rows := autoTestRows()
+	front, _, _ := crewpick.Presets(crewpick.Front(autoCandidates(rows), crewpick.DefaultShapes(), crewpick.All))
+	bare, ok := AutoPickWith(ModelTierWorker, CrewSourceAll, CrewFrugal, rows, nil)
+	if !ok || bare != front.Worker {
+		t.Fatalf("with no prior the worker pick reads %q, want the front's own %q", bare, front.Worker)
+	}
+	measured, ok := AutoPickWith(ModelTierWorker, CrewSourceAll, CrewFrugal, rows, autoPrior(mustIndex(t, priorDocument)))
+	if !ok {
+		t.Fatal("the pick answers nothing with the prior in hand")
+	}
+	if measured == bare {
+		t.Fatalf("the measured cell left the worker pick at %q; the prior never reached the front", measured)
+	}
+	if measured != "a/cheap" {
+		t.Fatalf("the rated row did not take the worker seat: got %q", measured)
 	}
 }
