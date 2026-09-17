@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -316,12 +317,16 @@ func TestSupervisorEndsAWorkerWhoseTaskTheStoreCancelled(t *testing.T) {
 	// The leaf holds its seat until its context ends and reports the ending
 	// it saw, so the test can tell a cancellation of its own from the run's
 	// wall — the one ends the worker's context with cancelled, the other with
-	// a deadline.
+	// a deadline. It then comes home WELL, with a completion and no error: the
+	// late return is the one the cancellation must refuse, and the row below is
+	// what a refusal looks like. The run's counters are the half this test
+	// cannot see — TestStartCountsNothingFromAWorkerWhoseTaskWasCancelled is
+	// where a late return counted anyway would show.
 	ended := make(chan error, 1)
 	seat.actions["l1"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
 		<-ctx.Done()
 		ended <- ctx.Err()
-		return run.Report{Result: "did " + task.ID, Steps: 1, USD: 0.20}, ctx.Err()
+		return run.Report{Result: "did " + task.ID, Steps: 1, USD: 0.20}, nil
 	}
 	reason := "stopped by hand"
 	cancelWhenLaunched(store, seat, "l1", reason)
@@ -358,6 +363,87 @@ func TestSupervisorEndsAWorkerWhoseTaskTheStoreCancelled(t *testing.T) {
 	}
 	if root := store.Task(store.RootID()); root.Status != plandb.StatusFailed {
 		t.Fatalf("root status = %s, want failed with a cancelled leaf in the tree", root.Status)
+	}
+}
+
+func TestRunEndsAWorkerUnderACancelledAncestorAndTakesItsLateReturn(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store, leafDone("l1"))
+	// The leaf holds its seat until its own context ends, so the run has a
+	// worker in flight when the cancellation lands, and comes home well
+	// afterwards: its return is a late one with a completion on it.
+	ended := make(chan error, 1)
+	seat.actions["l1"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		<-ctx.Done()
+		ended <- ctx.Err()
+		return run.Report{Result: "late " + task.ID, Steps: 4, USD: 0.30}, nil
+	}
+	// The run's own ending is a write no exported verb makes — the root is the
+	// run itself, and the store keeps it out of every writer's hands — so it
+	// goes into the database the way a writer outside this process would, and
+	// onto the root's row ALONE. The leaf stays open, which is what puts the
+	// containment walk to work: the loop has to see the cancellation through
+	// the leaf's parent rather than on the leaf's own row. The handle is opened
+	// and warmed before the run so the goroutines it costs are in the count
+	// the test compares against.
+	poke := storePoke(t, store.Path())
+	if _, err := poke.Exec(`SELECT 1`); err != nil {
+		t.Fatalf("warm the store's database: %v", err)
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	// The count is taken before the poller goes out, so the goroutine it costs
+	// is not in the baseline a blocked worker could hide behind.
+	before := runtime.NumGoroutine()
+	go func() {
+		for i := 0; i < 5000; i++ {
+			if seat.launched("l1") {
+				_, _ = poke.Exec(
+					`UPDATE tasks SET status = 'cancelled', claimed_by = '' WHERE id = ?`, store.RootID())
+				adoptForeignWrite(t, store)
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	started := time.Now()
+	outcome := supervisor.Run(ctx)
+
+	// A working sweep ends the worker within a pass of the cancellation; a
+	// broken one holds the run to its wall.
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("run took %s, want the worker ended within a pass of the cancel", elapsed)
+	}
+	if outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	// The run's own context is still live, so the only thing that could have
+	// ended this worker's context is the pass that read its cancelled ancestor.
+	if got := <-ended; !errors.Is(got, context.Canceled) {
+		t.Fatalf("worker ended with %v, want context.Canceled", got)
+	}
+	// The leaf's row was never cancelled and nothing wrote the late completion
+	// onto it: the run was over before the return had a reader.
+	if leaf := store.Task("l1"); leaf.Status == plandb.StatusCancelled || leaf.Result != "" {
+		t.Fatalf("leaf l1 = %s with result %q, want open still and unwritten", leaf.Status, leaf.Result)
+	}
+	// The deposit is the half no reader sees: a worker that outlives its run
+	// leaves the return on a channel wide enough to take it and ends, rather
+	// than blocking on a reader that is gone. The count coming back to the
+	// baseline is the proof it did, and one settling sample is enough — a run
+	// of the runtime's own goroutines is not a worker left behind.
+	settled := false
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		if runtime.NumGoroutine() <= before {
+			settled = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !settled {
+		t.Fatalf("goroutines = %d after the run, want back to the %d it started with", runtime.NumGoroutine(), before)
 	}
 }
 
@@ -505,6 +591,50 @@ func TestStartRefusesADoorBuiltWithoutItsStoreOrItsFactory(t *testing.T) {
 	}
 	if root := store.Task(store.RootID()); root.Description != "" {
 		t.Fatalf("root description = %q, want a refused door to leave the store as it stood", root.Description)
+	}
+}
+
+func TestStartCountsNothingFromAWorkerWhoseTaskWasCancelled(t *testing.T) {
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store, leafDone("l1"))
+	// The leaf is cancelled mid-flight and comes home well afterwards, so its
+	// report is a late one carrying a completion, steps and spend. The store
+	// would refuse the write on its own law; what only the drop in absorb does
+	// is keep the run's counters out of it, and the counters are what Start
+	// answers with.
+	seat.actions["l1"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		<-ctx.Done()
+		return run.Report{Result: "late " + task.ID, Steps: 4, USD: 0.30}, nil
+	}
+	cancelWhenLaunched(store, seat, "l1", "stopped by hand")
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "a brief whose leaf is cancelled mid-run",
+		Slots:     2,
+		Factory:   seat.workerFor,
+	})
+
+	if outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	// The root worker's own figures are the whole account: two workers went
+	// out, and the cancelled one's 0.30 and four steps counted for nothing.
+	if summary.Nodes != 2 {
+		t.Fatalf("summary nodes = %d, want the root and the cancelled leaf", summary.Nodes)
+	}
+	if summary.USD != 0.10 {
+		t.Fatalf("summary usd = %v, want the root's 0.1 alone", summary.USD)
+	}
+	if summary.Steps != 1 {
+		t.Fatalf("summary steps = %d, want the root's 1 alone", summary.Steps)
+	}
+	if leaf := store.Task("l1"); leaf.Status != plandb.StatusCancelled || leaf.Result != "" {
+		t.Fatalf("leaf l1 = %s with result %q, want cancelled with the late completion unwritten", leaf.Status, leaf.Result)
 	}
 }
 
