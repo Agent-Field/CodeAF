@@ -862,15 +862,18 @@ func TestPlandbCliBottlenecksCountTheDownstreamWork(t *testing.T) {
 	side := planSpec("side", "Side")
 	planAdd(t, store, a, b, c, side)
 
+	// The count is the work that hard-depends on the task DIRECTLY: a is held
+	// up by b, b by c, and c and side hold up nothing — so a and b answer one
+	// each and c and side are left out, equal counts ordering by descending id.
 	counts := store.Bottlenecks(0)
-	if len(counts) != 4 || counts[0].Task.ID != "a" || counts[0].Downstream != 2 || counts[1].Task.ID != "b" || counts[1].Downstream != 1 {
-		t.Fatalf("bottlenecks = %#v", counts)
+	if len(counts) != 2 || counts[0].Task.ID != "b" || counts[0].Downstream != 1 || counts[1].Task.ID != "a" || counts[1].Downstream != 1 {
+		t.Fatalf("bottlenecks = %#v, want the direct-dependency holders b and a", counts)
 	}
 
 	planFinish(t, store, "a", "worker", "a delivered")
 	counts = store.Bottlenecks(0)
-	if len(counts) != 3 || counts[0].Task.ID != "b" || counts[0].Downstream != 1 {
-		t.Fatalf("bottlenecks after a completed = %#v, want b first with one downstream", counts)
+	if len(counts) != 1 || counts[0].Task.ID != "b" || counts[0].Downstream != 1 {
+		t.Fatalf("bottlenecks after a completed = %#v, want only b", counts)
 	}
 	if one := store.Bottlenecks(1); len(one) != 1 || one[0].Task.ID != "b" {
 		t.Fatalf("bounded bottlenecks = %#v, want only b", one)

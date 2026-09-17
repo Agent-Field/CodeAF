@@ -320,14 +320,13 @@ func TestPlandbCliCoordinationVerbs(t *testing.T) {
 	cliWantCode(t, code, 0)
 	value = h.cliJSON(t)
 	deps, _ := value["dependencies"].([]any)
-	waitsOnNew := false
-	for _, dep := range deps {
-		if dep.(map[string]any)["task_id"] == insertedID {
-			waitsOnNew = true
-		}
+	// The insert took --after's place: t-b waits on the inserted task alone,
+	// and the old direct t-a → t-b edge is gone rather than doubling up.
+	if len(deps) != 1 || deps[0].(map[string]any)["task_id"] != insertedID {
+		t.Fatalf("t-b should wait on the inserted task alone, got %v", deps)
 	}
-	if !waitsOnNew {
-		t.Fatalf("t-b does not wait on the inserted task: %v", deps)
+	if deps[0].(map[string]any)["task_id"] == "t-a" {
+		t.Fatalf("the moved t-a → t-b edge is still on t-b: %v", deps)
 	}
 
 	// Notes and context, and the reading set over both.
@@ -412,9 +411,121 @@ func TestPlandbCliCoordinationVerbs(t *testing.T) {
 	}
 	code = h.run("--db", h.db, "bottlenecks", "--limit", "1")
 	cliWantCode(t, code, 0)
+	// The count is direct dependents: the inserted validator holds up t-b, and
+	// that is the one row the limit keeps.
 	if !strings.Contains(h.out.String(), "Bottlenecks (tasks blocking the most downstream work):") ||
-		!strings.Contains(h.out.String(), "— blocks 3 tasks [") {
+		!strings.Contains(h.out.String(), "— blocks 1 tasks [") {
 		t.Fatalf("bottlenecks:\n%s", h.out.String())
+	}
+}
+
+func TestPlandbCliInsertShapeAndRewrite(t *testing.T) {
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	h.cliAdd("A", "a", "--description", "part a")
+	h.cliAdd("B", "b", "--description", "part b", "--dep", "t-a")
+	code := h.run("--db", h.db, "--json", "task", "insert", "--after", "t-a", "--before", "t-b", "--title", "validate A", "--description", "check a")
+	cliWantCode(t, code, 0)
+	value := h.cliJSON(t)
+	id, _ := value["id"].(string)
+	if !strings.HasPrefix(id, "t-") || value["title"] != "validate A" || value["status"] != "pending" {
+		t.Fatalf("insert json task shape: %#v", value)
+	}
+	effect, _ := value["effect"].(map[string]any)
+	if effect == nil {
+		t.Fatalf("insert json carries no effect: %#v", value)
+	}
+	path, _ := effect["critical_path"].([]any)
+	if len(path) != 3 || path[0] != "t-a" || path[1] != id || path[2] != "t-b" || effect["depth"] != float64(3) {
+		t.Fatalf("insert effect critical path: %#v", effect)
+	}
+	if _, ok := value["project_state"].(map[string]any); !ok {
+		t.Fatalf("insert json carries no project_state: %#v", value)
+	}
+	// The new task took --after's place: t-b waits on it alone, the old
+	// direct t-a → t-b edge lifted rather than left doubled up.
+	code = h.run("--db", h.db, "--json", "show", "t-b")
+	cliWantCode(t, code, 0)
+	value = h.cliJSON(t)
+	deps, _ := value["dependencies"].([]any)
+	if len(deps) != 1 || deps[0].(map[string]any)["task_id"] != id {
+		t.Fatalf("t-b waits on %v, want only the inserted task", value["dependencies"])
+	}
+}
+
+func TestPlandbCliReadingVerbJSONShapes(t *testing.T) {
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	h.cliAdd("A", "a", "--description", "part a")
+	h.cliAdd("B", "b", "--description", "part b", "--dep", "t-a")
+
+	// critical-path --json: the chain as a length and a " > " path.
+	code := h.run("--db", h.db, "--json", "critical-path")
+	cliWantCode(t, code, 0)
+	value := h.cliJSON(t)
+	if value["length"] != float64(2) || value["path"] != "t-a > t-b" {
+		t.Fatalf("critical-path json: %#v", value)
+	}
+
+	// bottlenecks --json: flat rows of {task_id,title,status,downstream_count}.
+	code = h.run("--db", h.db, "--json", "bottlenecks")
+	cliWantCode(t, code, 0)
+	var rows []map[string]any
+	if err := json.Unmarshal(h.out.Bytes(), &rows); err != nil {
+		t.Fatalf("bottlenecks json is not an array: %v\n%s", err, h.out.String())
+	}
+	if len(rows) != 1 {
+		t.Fatalf("bottlenecks rows %v, want the one task holding up work", rows)
+	}
+	row := rows[0]
+	if row["task_id"] != "t-a" || row["title"] != "A" || row["status"] != "ready" || row["downstream_count"] != float64(1) {
+		t.Fatalf("bottleneck row shape: %#v", row)
+	}
+	if _, nested := row["task"]; nested {
+		t.Fatalf("bottleneck row should not nest the task: %#v", row)
+	}
+
+	// task overview --json: tasks, the dependency edges and a total.
+	code = h.run("--db", h.db, "--json", "task", "overview")
+	cliWantCode(t, code, 0)
+	value = h.cliJSON(t)
+	if value["total"] != float64(2) {
+		t.Fatalf("overview total %v, want 2", value["total"])
+	}
+	tasks, _ := value["tasks"].([]any)
+	if len(tasks) != 2 {
+		t.Fatalf("overview tasks %v, want two", value["tasks"])
+	}
+	deps, _ := value["dependencies"].([]any)
+	if len(deps) != 1 {
+		t.Fatalf("overview dependencies %v, want one edge", value["dependencies"])
+	}
+	edge := deps[0].(map[string]any)
+	if edge["from_task"] != "t-a" || edge["to_task"] != "t-b" || edge["kind"] != "feeds_into" || edge["condition"] != "All" || edge["id"] != float64(1) {
+		t.Fatalf("overview edge shape: %#v", edge)
+	}
+	if _, present := edge["metadata"]; !present {
+		t.Fatalf("overview edge carries no metadata key: %#v", edge)
+	}
+
+	// task note/notes --json name the task with its t- prefix.
+	code = h.run("--db", h.db, "--json", "task", "note", "t-a", "the parser is done", "--agent", "w1")
+	cliWantCode(t, code, 0)
+	var note map[string]any
+	if err := json.Unmarshal(h.out.Bytes(), &note); err != nil {
+		t.Fatalf("note json is not an object: %v\n%s", err, h.out.String())
+	}
+	if note["task_id"] != "t-a" || note["content"] != "the parser is done" || note["agent_id"] != "w1" || !strings.HasPrefix(note["id"].(string), "n-") {
+		t.Fatalf("note json shape: %#v", note)
+	}
+	code = h.run("--db", h.db, "--json", "task", "notes", "t-a")
+	cliWantCode(t, code, 0)
+	var notes []map[string]any
+	if err := json.Unmarshal(h.out.Bytes(), &notes); err != nil {
+		t.Fatalf("notes json is not an array: %v\n%s", err, h.out.String())
+	}
+	if len(notes) != 1 || notes[0]["task_id"] != "t-a" || notes[0]["content"] != "the parser is done" {
+		t.Fatalf("notes json shape: %#v", notes)
 	}
 }
 
@@ -608,6 +719,12 @@ func TestPlandbCliPivot(t *testing.T) {
 	if value["parent_task_id"] != "t-p" {
 		t.Fatalf("pivot parent %v", value["parent_task_id"])
 	}
+	if _, ok := value["effect"].(map[string]any); !ok {
+		t.Fatalf("pivot json carries no effect: %#v", value)
+	}
+	if kept, _ := value["kept"].([]any); len(kept) != 0 {
+		t.Fatalf("pivot without --keep-done kept %v, want none", value["kept"])
+	}
 	// The completed child survives; the new children hang under the parent.
 	code = h.run("--db", h.db, "show", "t-keep1")
 	cliWantCode(t, code, 0)
@@ -632,6 +749,16 @@ func TestPlandbCliPivot(t *testing.T) {
 		if id == "t-run1" {
 			t.Fatalf("--keep-done cancelled the claimed task: %v", cancelled)
 		}
+	}
+	kept, _ := value["kept"].([]any)
+	hasKeeper := false
+	for _, id := range kept {
+		if id == "t-keep1" {
+			hasKeeper = true
+		}
+	}
+	if !hasKeeper {
+		t.Fatalf("--keep-done did not report the kept task: %v", value["kept"])
 	}
 	// And without it, the claimed work is swept with the subtree.
 	code = h.run("--db", h.db, "--json", "task", "pivot", "t-p", "--subtasks", `[{"title":"M3"}]`)
