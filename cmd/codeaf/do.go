@@ -110,7 +110,14 @@ type headlessOutcome struct {
 
 	Nodes   int     `json:"nodes"`
 	Seconds float64 `json:"seconds"`
-	Settled bool    `json:"settled"`
+	// started is when this invocation opened, and coreDoneSeconds is how long
+	// it took to finish the requested work: the first moment a delivery gate
+	// found that work done. Both are unexported — they reach a caller only
+	// through the envelope's `core_done_seconds`, which is the one spelling
+	// every reader shares.
+	started         time.Time
+	coreDoneSeconds float64
+	Settled         bool `json:"settled"`
 	// unfinishedTree is the finished-tree reading's own sentence on the one run
 	// that cannot be called settled: its checks failed to collect. It stays
 	// unexported because the sentence leaves through Deliverable, while Settled
@@ -627,6 +634,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		return headlessOutcome{}, err
 	}
 	outcome.Seconds = time.Since(started).Seconds()
+	outcome.started = started
 	// The wall is the case that made this necessary. A leaf cancelled by the
 	// timeout journals its usage row on the way down, which is after the
 	// watcher has returned and — until this line moved the shutdown ahead of
@@ -672,6 +680,47 @@ func priceErrand(graph *store.Store, session string, openedAt int64, outcome *he
 	// the same reason: the release is the record of a re-dispatch, and a
 	// counter in this process could not see one a resident made.
 	outcome.redispatches = errandRedispatches(graph, session)
+	// AND WHEN THE REQUESTED WORK WAS FIRST FOUND DONE, off the same journal.
+	outcome.coreDoneSeconds = errandCoreDoneSeconds(graph, session, outcome.started)
+}
+
+// errandCoreDoneSeconds is how long it took this errand to finish the requested
+// work, measured from the run's start to the first delivery gate on one of its
+// jobs that found the work done — a pass, or a coverage finding. It is the
+// EARLIEST such moment across the errand's jobs, so a run that finished one part
+// early and another late reports the first; a run whose gate never said so
+// reports zero, which the envelope carries as an absent key rather than a
+// fabricated instant.
+func errandCoreDoneSeconds(graph *store.Store, session string, started time.Time) float64 {
+	if graph == nil || started.IsZero() {
+		return 0
+	}
+	nodes, err := graph.SessionMemberNodes(session)
+	if err != nil {
+		return 0
+	}
+	var earliest int64
+	var at time.Time
+	for _, node := range nodes {
+		if node.Parent != store.RootID {
+			continue
+		}
+		seq, when, ok, err := graph.DeliveryGateAnchor(node.ID)
+		if err != nil || !ok {
+			continue
+		}
+		if earliest == 0 || seq < earliest {
+			earliest, at = seq, when
+		}
+	}
+	if earliest == 0 {
+		return 0
+	}
+	seconds := at.Sub(started).Seconds()
+	if seconds < 0 {
+		return 0
+	}
+	return seconds
 }
 
 // errandRounds is how many times this errand bought MORE WORK: every growth
@@ -3011,21 +3060,22 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 // `exec` and `run` from publishing three different objects again.
 func errandEnvelope(outcome headlessOutcome) resultEnvelope {
 	return buildResultEnvelope(runResult{
-		Stop:         outcome.resolvedStop(),
-		Answer:       outcome.Deliverable,
-		Files:        outcome.Artifacts,
-		Error:        outcome.Error,
-		SpendUSD:     outcome.Spend,
-		TokensIn:     outcome.tokensIn,
-		TokensOut:    outcome.tokensOut,
-		Seconds:      outcome.Seconds,
-		Model:        outcome.Model,
-		Steps:        outcome.Nodes,
-		Run:          outcome.run,
-		Calls:        outcome.calls,
-		Rounds:       outcome.rounds,
-		Redispatches: outcome.redispatches,
-		Extra:        legacyErrandFields(outcome),
+		Stop:            outcome.resolvedStop(),
+		Answer:          outcome.Deliverable,
+		Files:           outcome.Artifacts,
+		Error:           outcome.Error,
+		SpendUSD:        outcome.Spend,
+		TokensIn:        outcome.tokensIn,
+		TokensOut:       outcome.tokensOut,
+		Seconds:         outcome.Seconds,
+		CoreDoneSeconds: outcome.coreDoneSeconds,
+		Model:           outcome.Model,
+		Steps:           outcome.Nodes,
+		Run:             outcome.run,
+		Calls:           outcome.calls,
+		Rounds:          outcome.rounds,
+		Redispatches:    outcome.redispatches,
+		Extra:           legacyErrandFields(outcome),
 	})
 }
 

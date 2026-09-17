@@ -187,6 +187,7 @@ stdout, always parseable, printed even when the run failed**:
 | `spend_usd` | what it cost, whole, in dollars |
 | `tokens` | `{"in": …, "out": …}` |
 | `seconds` | wall clock |
+| `core_done_seconds` | when the requested work was first found done, in seconds from the start; absent when the gate never said so |
 | `model` | the model the work ran on |
 | `steps` | how many pieces of work ran — `do`'s nodes, `exec`'s turns. A saved program does not measure it: the key is still there, holding `0`, and that `0` is a measurement nobody took rather than a count of none |
 | `run` | this invocation's id. It names the folder `--debug` writes into, and every row this run wrote into `~/.codeaf/logs/calls.jsonl` carries it too — so `codeaf logs --run <that id>` is how you get from this object to the calls behind it. Empty on a verb that opened no run of its own |
