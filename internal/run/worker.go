@@ -38,9 +38,9 @@ type Worker interface {
 // say no seat exists for this task; the task then fails rather than hangs.
 type WorkerFactory func(task plandb.Task) Worker
 
-// Limits bound a run from the outside. Both fields are optional: a CostUSD
-// of zero (or less) sets no cost limit, and a StepsPerTask of zero hands the
-// worker no cap.
+// Limits bound a run from the outside. Every field is optional: a CostUSD of
+// zero (or less) sets no cost limit, a StepsPerTask of zero hands the worker
+// no cap, and ReviewRound's false is the run every caller had before it.
 type Limits struct {
 	// CostUSD is what the whole run may spend, as the sum of every Report's
 	// USD. When the counter has reached it no new worker starts and the run
@@ -56,6 +56,12 @@ type Limits struct {
 	// waits on a process that may have died, and zero takes the default
 	// (defaultStaleAfter) rather than meaning "no stale claim ever".
 	StaleAfter time.Duration
+	// ReviewRound turns the review round on. When it is set, a work-seat leaf
+	// that lands done spawns one check task under its parent, and a check whose
+	// result begins "does not hold" leaves its sentence as a note on the leaf it
+	// read. It is a bool defaulting false so every caller that does not ask for
+	// it keeps the run it had — no check tasks, nothing new on the plan.
+	ReviewRound bool
 }
 
 // stepsPerTaskKey is the type behind the context value, so a worker reads its
