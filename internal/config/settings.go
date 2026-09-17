@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
@@ -111,8 +112,13 @@ const (
 	KeyTenureAfter    = "tenure_after"
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
-	KeyAttribution    = "attribution"
-	KeySplitPct       = "split_pct"
+	// KeyModelPool is the stored word the pool's resolver takes: the same three
+	// answers the CODEAF_MODEL_POOL pin and a CI environment may give it
+	// (internal/pool/poolcfg). The resolver beside the search rows is the one
+	// place the process environment is read for the pool.
+	KeyModelPool   = "model_pool"
+	KeyAttribution = "attribution"
+	KeySplitPct    = "split_pct"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
 	// what was typed, and what was half-typed. They are one pair of questions —
@@ -1055,6 +1061,10 @@ const SearchProviderAuto = "auto"
 // jina-search is named here too so every registered search plug is pinnable.
 var SearchProviders = []string{SearchProviderAuto, "firecrawl", "duckduckgo", "exa", "jina-search"}
 
+// ModelPoolChoices are the answers the pool row accepts, and the same words
+// the pool's resolver reads from its environment pin.
+var ModelPoolChoices = []string{"on", "read", "off"}
+
 // OperatorEnvPins is the explicit allowlist of environment variables that are
 // plumbing rather than settings: endpoints, credentials, profile roots, and
 // planner internals. They are listed read-only in the sheet's environment
@@ -1243,21 +1253,19 @@ var OperatorEnvPins = []string{
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
-	// The four names the measurement pool resolves from (internal/pool/poolcfg,
-	// which names them and reads none of them: the environment reaches that
-	// package as a function the caller hands in). CODEAF_MODEL_POOL is the
-	// on/read/off word, the two URLs are where the index is read and where
-	// measurements are handed to, and the TTL is how long a read copy stays
-	// young.
+	// The three pool names that stay plumbing (internal/pool/poolcfg, which
+	// names them and reads none of them: the environment reaches that package
+	// as a function the caller hands in). The two URLs are where the index is
+	// read and where measurements are handed to, and the TTL is how long a
+	// read copy stays young — endpoints and a cadence, on the terms the other
+	// addresses here are on.
 	//
-	// They are plumbing on the terms the other addresses here are on:
-	// CODEAF_MODEL_POOL_URL and CODEAF_MODEL_POOL_SUBMIT_URL are endpoints,
-	// exactly as CODEAF_BASE_URL and CODEAF_RELAY are, and the TTL is a
-	// cadence nobody sets to express a preference. The word itself is the one
-	// of the four a sheet row could own, and it has no row because it has no
-	// stored setting yet: poolcfg takes the setting as an argument and nothing
-	// in the binary calls it. The row is owed on the day something does.
-	"CODEAF_MODEL_POOL",
+	// THE WORD ITSELF IS NOT HERE ANY MORE. CODEAF_MODEL_POOL fronts the
+	// model_pool row now, which is what the comment below used to promise:
+	// it was listed here because poolcfg took the setting as an argument and
+	// nothing in the binary called it, and a pin with no row was the honest
+	// answer then. With the row here, the word renders through the row — dim,
+	// "pinned by CODEAF_MODEL_POOL" — the way CODEAF_DOC_ENGINE does.
 	"CODEAF_MODEL_POOL_URL",
 	"CODEAF_MODEL_POOL_SUBMIT_URL",
 	"CODEAF_MODEL_POOL_TTL",
@@ -1836,6 +1844,20 @@ func (s *Settings) build() []Setting {
 				"A change lands on the next search.",
 			read:  func() string { return SearchProviderAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
+		},
+		// The Model Pool row. It is the stored word [ModelPoolAt] resolves, and
+		// the pin beside it is one of the four names the resolver takes. The
+		// row sits with the search rows because it is the same shape of
+		// question — what does codeaf reach OUTSIDE the machine for — and its
+		// answer is read the same way a choice is read everywhere here.
+		Setting{
+			Key: KeyModelPool, Category: CategoryModels, Kind: SettingChoice,
+			Label: "model pool", Env: "CODEAF_MODEL_POOL", Choices: ModelPoolChoices,
+			Hint: "codeaf picks your models from the public Model Pool, and your runs improve it. " +
+				"Nothing about your code leaves your machine. " +
+				"read: use the pool, send nothing. off: neither.",
+			read:  func() string { return ModelPoolAt(dir).Mode.String() },
+			write: func(raw string) error { return writeChoice(dir, KeyModelPool, raw, ModelPoolChoices) },
 		},
 		// THE KEY EVERY MODEL CALL RIDES. The default local door normally creates
 		// one through the browser (tui3's firstrun.go); this row remains the place
@@ -3238,6 +3260,24 @@ func SearchProviderAt(profileDir string) string {
 		}
 	}
 	return DefaultSearchProvider
+}
+
+// ModelPoolSettingAt is the stored word the pool row holds: one of the three
+// choices, or empty for a person who has never answered. It is the argument
+// the pool's resolver takes, and the raw half of [ModelPoolAt].
+func ModelPoolSettingAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyModelPool)
+	return value
+}
+
+// ModelPoolAt resolves how the Model Pool behaves: the stored word and the
+// pool's environment names, through poolcfg.Resolve. IT IS THE ONE PLACE THE
+// PROCESS ENVIRONMENT IS READ FOR THE POOL — poolcfg itself takes the
+// environment as a function, and a caller with its own (the `codeaf pool`
+// verb, whose tests inject one) resolves [ModelPoolSettingAt] against its own
+// lookup rather than calling this.
+func ModelPoolAt(profileDir string) poolcfg.Config {
+	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), os.LookupEnv)
 }
 
 // ExaKeyAt resolves the Exa credential: the environment first, then the sheet,
