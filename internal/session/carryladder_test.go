@@ -46,7 +46,7 @@ func TestAFaultedHandoffWriterIsJournaledWithItsWordsAndTheRungIsNamed(t *testin
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestASuccessfulHandoffJournalsTheRungThatSuppliedTheBrief(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestTheLineSaysWhenNothingButTheAskWentWithTheWork(t *testing.T) {
 	agent := checkpointAgent(t, blind)
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestTheLineSaysWhenNothingButTheAskWentWithTheWork(t *testing.T) {
 		checkpointChainSketch, "Finish the four pieces.", written)}
 	second := checkpointAgent(t, carrying)
 	stubbedGraph(second, func(*TaskNode) {})
-	events, err = second.Submit(context.Background(), asked)
+	events, err = second.Submit(watchedContext(second), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -514,4 +514,108 @@ func TestTheOneModelPromiseTravelsToATaskNodeAndItsCrewOnlyErrands(t *testing.T)
 	if model != child.model {
 		t.Errorf("the node's errand ran on %q, want its own model %q", model, child.model)
 	}
+}
+
+// A READING BESIDE THE TURN IS WAITED ON, NOT RACED.
+//
+// The mark's drawing is a sidecar (sidecar.go): it is STARTED at the boundary
+// that crosses the net and the turn goes straight on to its next request, so HOW
+// MANY ROUNDS PASS between the net firing and the drawing landing is the
+// scheduler's to decide, not the road's — [checkpointSlack] says the same in its
+// own words, and sizes the script against it with a price's worth of rounds.
+//
+// A SCRIPTED TURN'S ROUNDS COST NOTHING, so on a busy machine the turn runs them
+// off faster than the drawing's goroutine is scheduled onto a core. The gap then
+// outruns the slack the script carries, the writer's ask lands PAST the end of
+// the script, the scripted completer answers it with its past-the-end line
+// (`(unscripted)`, which is not prose), the writer's rung reads degenerate, and
+// the carry ladder falls onto the draft the running model wrote. That is the
+// race TestASuccessfulHandoffJournalsTheRungThatSuppliedTheBrief lost in a full
+// make check: `the worker's brief is not the written handoff: Finish the four
+// pieces...` — the draft, not the mastermind's document.
+//
+// WHAT FIXES IT IS THE FIXTURE WAITING FOR THE READING, which is the order a
+// real turn has: a real model spends seconds on a step and the small readings
+// beside it land inside it ([watchReadings], [answerWhenQuiet]). This test holds
+// the drawing back by a fixed wall time — standing in for a scheduler that does
+// not reach the drawing's goroutine in time — and insists on the two facts that
+// follow: the turn does not spend its script racing the drawing, and the
+// writer's rung still supplies the brief.
+func TestAHandoverWaitsForTheDrawingBesideItInsteadOfRacingIt(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const draft = "Finish the four pieces, and the auth test is the one still failing."
+	const written = "Finish the currency module. The auth test is the one still failing and the yaml " +
+		"route has been ruled out. It is done when the whole suite is green."
+
+	inner := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
+		checkpointChainSketch, draft, written)}
+	answerTheReadingsOffTheQueue(inner)
+	// THE DRAWING IS HELD AND THE NAMER IS NOT, which is the race exactly: the
+	// namer's call is an errand the aside answers at once, and it is the DRAWING
+	// whose goroutine the scheduler is slow to reach.
+	completer := &lateDrawing{Completer: inner, held: 200 * time.Millisecond}
+
+	agent := checkpointAgent(t, completer)
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(watchedContext(agent), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	// THE TURN DID NOT SPEND ITS SCRIPT RACING THE DRAWING. A turn that is not
+	// held makes one more round for every instant the drawing's goroutine waits;
+	// a turn that waits on the reading makes exactly the one boundary the net's
+	// landing buys it. [checkpointMarkAt] of the last mark is where the net
+	// fires, and a mark's worth of rounds is more than the held turn's gap has
+	// ever been — while a turn that raced the drawing runs well past it.
+	if rounds := conversationRounds(inner); rounds > checkpointMarkAt(checkpointMarks)+checkpointMarks {
+		t.Fatalf("the turn made %d rounds while the drawing was in flight; it should "+
+			"have waited for the reading, not spent its script racing it", rounds)
+	}
+	node := ran.await(t)
+	if !strings.Contains(node.spec.brief, written) {
+		t.Fatalf("the worker's brief is not the written handoff:\n%s", node.spec.brief)
+	}
+}
+
+// conversationRounds is how many of a scripted completer's QUEUED requests were
+// the CONVERSATION'S own rounds: the turn's request opens on the session's
+// system prompt, while the draft, the writer and the remains read all open on a
+// user-role page (checkpoint.go). The errands beside the turn never reach the
+// queue at all ([answerTheReadingsOffTheQueue]).
+func conversationRounds(completer *scriptedCompleter) int {
+	rounds := 0
+	for index := 0; index < completer.requests(); index++ {
+		messages := completer.request(index)
+		if len(messages) > 0 && messages[0].Role == "system" {
+			rounds++
+		}
+	}
+	return rounds
+}
+
+// lateDrawing holds every mark's drawing back by a fixed wall time before it
+// answers, standing in for a scheduler that does not get the drawing's goroutine
+// onto a core before the turn has run several more rounds. It is the shape the
+// real race has; the fixture's job is to make the turn WAIT for the reading
+// rather than race it.
+type lateDrawing struct {
+	Completer
+	held time.Duration
+}
+
+func (l *lateDrawing) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	if askedForSketch(messages) {
+		timer := time.NewTimer(l.held)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return l.Completer.CompleteWithMessages(ctx, messages, options...)
 }
