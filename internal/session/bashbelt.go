@@ -67,16 +67,16 @@ func (a *Agent) bashBelt() []bare.Tool {
 	if a.config.mayWatch() {
 		tools = append(tools, a.watchTool())
 	}
-	if a.mayProposeTask() {
-		tools = append(tools, a.tasksTool())
-	}
-	tools = append(tools, a.taskTools()...)
-	tools = append(tools, a.quickTools()...)
-	if a.config.mayTickItems() {
-		tools = append(tools, a.itemsTool())
-	}
+	// THE GRAPH VERBS ARE OFF THIS BELT, and their absence IS the experiment:
+	// the worker's coordination goes through the plan CLI (`plandb add`,
+	// `plandb split`, the page teaches the rest), and a belt that carried both
+	// would teach the model two ways to say one thing. The families are
+	// propose_task and the tasks window, quick_task with its items door,
+	// and divide_work. revise_assignment stays: it is the person's
+	// redirection lane, not coordination, and on a plan-born node it writes
+	// through to the store task so the store stays the record
+	// (plandb_plan.go's [TaskGraph.planReviseThrough]).
 	tools = append(tools, a.assignmentTools()...)
-	tools = append(tools, a.divideTools()...)
 	tools = append(tools, a.standingTools()...)
 	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.subharnessTools()...)
@@ -136,6 +136,15 @@ func (a *Agent) truncatingBash(inner bare.Tool) bare.Tool {
 			text, isError, err := inner.Execute(ctx, args)
 			if err != nil {
 				return text, isError, err
+			}
+			// THE PLAN'S FIRST PULSE POINT: a bash-belt worker's bash call may
+			// have just run `plandb add` or `plandb split`, and every ready
+			// task that created is a worker waiting to start. The pulse is
+			// nil-safe for every agent outside the experiment (plandb_plan.go).
+			if a.config.taskID != 0 {
+				if g := a.graph(); g != nil {
+					g.planPulse()
+				}
 			}
 			return a.cutBashResult(text), isError, nil
 		},
