@@ -235,6 +235,43 @@ func TestABadRoleIsSkippedAndNamedAndTheOthersLand(t *testing.T) {
 	}
 }
 
+// An outbox that cannot take a row costs the install nothing of its own
+// evidence: every score is observed into the sheet all the same, and the
+// first append error is what comes back.
+func TestRecordObservesTheSheetWhateverTheOutboxDoes(t *testing.T) {
+	sheet := tally.New()
+	box, err := outbox.Open(filepath.Join(t.TempDir(), "outbox.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := box.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &Recorder{Sheet: sheet, Outbox: box}
+	err = recorder.Record([]judge.Score{
+		{Role: judge.RoleWorker, Model: "a/one", Score: 80},
+		{Role: judge.RoleHigh, Model: "b/two", Score: 66},
+		{Role: judge.RoleMastermind, Model: "c/three", Score: 91},
+	}, "z/fourth", "chat", "three", "2026-09-17")
+	if err == nil {
+		t.Fatal("a closed outbox recorded without a word")
+	}
+	for _, want := range []struct {
+		role  judge.Role
+		model string
+		mean  float64
+	}{
+		{judge.RoleWorker, "a/one", 80},
+		{judge.RoleHigh, "b/two", 66},
+		{judge.RoleMastermind, "c/three", 91},
+	} {
+		cell, ok := sheet.Cell(Metric, string(want.role), want.model, nil)
+		if !ok || cell.N != 1 || cell.Mean() != want.mean {
+			t.Fatalf("the %s seat was not observed despite the failed append: %+v ok %v", want.role, cell, ok)
+		}
+	}
+}
+
 // A recorder with no outbox keeps the scores locally only, and says nothing.
 func TestANilOutboxRecordsLocallyOnly(t *testing.T) {
 	sheet := tally.New()
