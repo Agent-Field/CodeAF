@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: The model picker is a table with headed columns, not a ragged tail of facts
-pr: 1106
+pr: 1107
 surface: [chat]
 invalidates:
   - "A `/model` row drew its facts as one right-aligned `·` tail — `$0.06/$0.18 per M · 131k · sees · watches` — so no two rows put their price, window or score in the same column and the list could not be read down. From sixty columns up the facts are a TABLE now: `via`, `first`, `in/M`, `out/M`, `window`, `t/s`, `elo`, `reads`, `makes`, each under a dim heading line, each cell in its own column. Under sixty columns the ranked tail is unchanged and is what still draws."
