@@ -78,8 +78,8 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			// An operator can still put a level on a flag or tier row.
 			name: "the crew leaves generation behavior to the model",
 			crew: CrewMax,
-			work: "anthropic/claude-fable-5.1", workRung: "crew max",
-			plan: "anthropic/claude-fable-5.1", planRung: "crew max",
+			work: "z-ai/glm-5.3", workRung: "crew max",
+			plan: "anthropic/claude-opus-5", planRung: "crew max",
 		},
 		{
 			// And a flag carrying one is not shortened either, so the two rungs

@@ -1031,7 +1031,7 @@ const (
 	DefaultHighModel = "anthropic/claude-fable-5.1"
 	// The mastermind names a capable planning model. Its generation behavior is
 	// left to the provider unless an operator adds a level to the model id.
-	DefaultMastermindModel = "anthropic/claude-fable-5.1"
+	DefaultMastermindModel = "anthropic/claude-opus-5"
 )
 
 // DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.

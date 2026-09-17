@@ -90,13 +90,12 @@ const DefaultCrewSource = CrewSourceAll
 // crewModels is the open-weight table: one row per preset, one model per class.
 //
 // THE WORKER COLUMN IS THE DIAL. It climbs one step per preset —
-// deepseek-v4-flash, glm-5.3-flash, glm-5.3 — because it is the seat that pays
+// glm-5.3-flash, glm-5.3-flash, glm-5.3 — because it is the seat that pays
 // most of a task's bill, and a preset that moved every other seat while leaving
 // it alone would change everything about a task except its cost. The careful
-// column is always a DIFFERENT VENDOR from the worker and always sees images
-// (the vision role rides it). The reflex and low columns never vary: they are
-// the same near-free models in all three presets, and a column that never
-// varies is not a dial.
+// column always sees images (the vision role rides it). The reflex and low
+// columns never vary: they are the same near-free models in all three presets,
+// and a column that never varies is not a dial.
 //
 // HOW THE IDS WERE READ OFF, on 2026-09-16 and seat by seat. Every open-weight
 // row of the catalog was placed on two axes: the expected bill that seat's own
@@ -123,7 +122,7 @@ var crewModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
+		ModelTierWorker:     "z-ai/glm-5.3-flash",
 		ModelTierHigh:       "z-ai/glm-5.3-flash",
 		ModelTierMastermind: "z-ai/glm-5.3-flash",
 	},
@@ -161,17 +160,15 @@ var crewModels = map[string]map[string]string{
 // shape of this table. The worker seat carries most of a task's tokens, so a
 // step there multiplies through the entire bill while a step on the careful or
 // the mastermind seat is paid a handful of times. The money therefore goes to
-// the two low-volume seats first: frugal to balanced moves careful from
-// gemini-3.8-flash to claude-fable-5.1 and the mastermind from glm-5.3-flash to
-// claude-fable-5.1, and only max moves the worker itself. Max's mastermind then
-// sits on the worker's own model because at that bill the one-shot front has no
-// separate planner above it.
+// the two low-volume seats first: frugal to balanced moves the careful seat to
+// claude-fable-5.1 and the mastermind to claude-opus-5, and max moves the
+// worker itself, with the careful seat staying on fable beside it.
 var crewAllModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "google/gemini-2.5-flash",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 		ModelTierWorker:     "z-ai/glm-5.3-flash",
-		ModelTierHigh:       "google/gemini-3.8-flash",
+		ModelTierHigh:       "qwen/qwen3.8-max-0902",
 		ModelTierMastermind: "z-ai/glm-5.3-flash",
 	},
 	CrewBalanced: {
@@ -179,14 +176,14 @@ var crewAllModels = map[string]map[string]string{
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 		ModelTierWorker:     "z-ai/glm-5.3-flash",
 		ModelTierHigh:       "anthropic/claude-fable-5.1",
-		ModelTierMastermind: "anthropic/claude-fable-5.1",
+		ModelTierMastermind: "anthropic/claude-opus-5",
 	},
 	CrewMax: {
 		ModelTierReflex:     "google/gemini-2.5-flash",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "anthropic/claude-fable-5.1",
-		ModelTierHigh:       "openai/gpt-6-astra",
-		ModelTierMastermind: "anthropic/claude-fable-5.1",
+		ModelTierWorker:     "z-ai/glm-5.3",
+		ModelTierHigh:       "anthropic/claude-fable-5.1",
+		ModelTierMastermind: "anthropic/claude-opus-5",
 	},
 }
 
@@ -263,9 +260,9 @@ var crewLines = map[string]map[string]string{
 		CrewMax:      "glm-5.3 works and thinks, kimi-k3 checks",
 	},
 	CrewSourceAll: {
-		CrewFrugal:   "glm-flash works and thinks, gemini-flash checks",
-		CrewBalanced: "glm-flash works, fable checks and thinks",
-		CrewMax:      "fable works and thinks, astra checks",
+		CrewFrugal:   "glm-flash works and thinks, qwen-max checks",
+		CrewBalanced: "glm-flash works, fable checks, opus thinks",
+		CrewMax:      "glm-5.3 works, fable checks, opus thinks",
 	},
 }
 

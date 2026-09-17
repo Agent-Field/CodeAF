@@ -214,35 +214,38 @@ func TestTheInvocationRungsStillOutrankAnAutoRow(t *testing.T) {
 
 // THE PRESET AN AUTO SEAT RUNS AT IS READ FROM THE STORED ROWS, never through
 // seat resolution — the seam cannot ask the ladder that is asking it — and a
-// row that says auto matches whichever preset is being compared. Four pinned
-// rows of one preset plus an auto row are that preset.
+// row that says auto matches whichever preset the other rows name.
+//
+// MAX DIFFERS FROM BALANCED ONLY IN THE WORKER SEAT NOW, so an auto row on the
+// worker can no longer tell the two apart — balanced, the default preset, wins
+// that tie — and the identifying shape is the other way round: the worker
+// pinned to max's own id, which only max names, with the auto row on a seat
+// above it.
 func TestThePresetAnAutoSeatRunsAtIsReadFromTheStoredRows(t *testing.T) {
 	t.Setenv(ModelEnv, "")
 	t.Setenv(PlanModelEnv, "")
-	for _, preset := range CrewPresets {
-		models, _ := CrewModelsForSource(DefaultCrewSource, preset)
-		rows := map[string]string{KeyTierWorkerModel: AutoValue}
-		for _, tier := range ModelTiers {
-			if tier != ModelTierWorker {
-				rows[tierKeyFor(tier)] = models[tier]
-			}
+	models, _ := CrewModelsForSource(DefaultCrewSource, CrewMax)
+	rows := map[string]string{KeyTierMastermindModel: AutoValue}
+	for _, tier := range ModelTiers {
+		if tier != ModelTierMastermind {
+			rows[tierKeyFor(tier)] = models[tier]
 		}
-		dir := writeProfileRows(t, rows)
-		restore := AutoModels
-		AutoModels = func() []catalog.Model { return autoTestRows() }
-		seat := TierSeatAt(dir, ModelTierWorker)
-		AutoModels = restore
-		if seat.Crew != preset {
-			t.Errorf("four %s rows and an auto row read as %q", preset, seat.Crew)
-		}
-		if seat.Rung() != "crew "+preset+", computed" {
-			t.Errorf("the rung reads %q, want crew %s, computed", seat.Rung(), preset)
-		}
+	}
+	dir := writeProfileRows(t, rows)
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	seat := TierSeatAt(dir, ModelTierMastermind)
+	AutoModels = restore
+	if seat.Crew != CrewMax {
+		t.Errorf("max's rows and an auto row read as %q", seat.Crew)
+	}
+	if seat.Rung() != "crew "+CrewMax+", computed" {
+		t.Errorf("the rung reads %q, want crew max, computed", seat.Rung())
 	}
 	// A profile with no auto row anywhere reads as it always read — the
 	// default rung, no crew word — which is the unchanged-behaviour law: the
 	// seam fires only on a row that says the word.
-	seat := TierSeatAt(t.TempDir(), ModelTierWorker)
+	seat = TierSeatAt(t.TempDir(), ModelTierWorker)
 	if seat.Rung() != "default" || seat.Crew != "" {
 		t.Errorf("an untouched profile reads %q (%s), want the default rung as before", seat.Rung(), seat.Crew)
 	}
@@ -288,22 +291,24 @@ func TestAutoNowhereChangesNothing(t *testing.T) {
 }
 
 // THE SEAM'S TABLE RUNG IS THE PRESET'S OWN ID, not merely a non-empty
-// answer: with the catalog gone, an auto row under a pinned preset resolves
-// to that preset's id for the tier, not to the default preset's.
+// answer: with the catalog gone, an auto row under rows that pin max reads
+// to that preset's id for the tier, not to the default preset's. The worker
+// is the pinned seat — it is the one cell where max differs from balanced —
+// and the auto row rides the mastermind.
 func TestTheTableRungAnswersThePresetTheRowsName(t *testing.T) {
 	t.Setenv(ModelEnv, "")
 	t.Setenv(PlanModelEnv, "")
 	models, _ := CrewModelsForSource(DefaultCrewSource, CrewMax)
-	rows := map[string]string{KeyTierWorkerModel: AutoValue}
+	rows := map[string]string{KeyTierMastermindModel: AutoValue}
 	for _, tier := range ModelTiers {
-		if tier != ModelTierWorker {
+		if tier != ModelTierMastermind {
 			rows[tierKeyFor(tier)] = models[tier]
 		}
 	}
 	dir := writeProfileRows(t, rows)
-	seat := TierSeatAt(dir, ModelTierWorker)
-	if seat.Model != models[ModelTierWorker] || seat.Source != SeatTable {
-		t.Errorf("with no catalog the seat reads %q (%s), want max's own worker id on the table rung",
+	seat := TierSeatAt(dir, ModelTierMastermind)
+	if seat.Model != models[ModelTierMastermind] || seat.Source != SeatTable {
+		t.Errorf("with no catalog the seat reads %q (%s), want max's own mastermind id on the table rung",
 			seat.Model, seat.Rung())
 	}
 }

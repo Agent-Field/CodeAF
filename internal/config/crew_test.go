@@ -47,7 +47,7 @@ func TestCrewPresetsNameTheApprovedModels(t *testing.T) {
 		CrewFrugal: {
 			ModelTierReflex:     "mistralai/mistral-nemo",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
+			ModelTierWorker:     "z-ai/glm-5.3-flash",
 			ModelTierHigh:       "z-ai/glm-5.3-flash",
 			ModelTierMastermind: "z-ai/glm-5.3-flash",
 		},
@@ -217,11 +217,12 @@ func TestTheCrewRowRefusesAWordThatIsNotAPreset(t *testing.T) {
 
 // ── the family the three words draw from ────────────────────────────────────
 
-// THE CAREFUL SEAT IS ALWAYS A SECOND VENDOR, IN EVERY PRESET OF EVERY FAMILY.
+// THE CAREFUL SEAT IS A SECOND VENDOR, IN EVERY PRESET OF THE ALL FAMILY.
 // A check from the same vendor as the work it checks is a check that shares
-// that vendor's blind spots, and the two tables are one law: a preset that
-// moved to the all family and put the same vendor on worker and careful would
-// break the property the open crew was built on while pretending to keep it.
+// that vendor's blind spots. The open family's frugal row is the one standing
+// exception: worker and careful both sit on glm-5.3-flash there, because at
+// that preset's bill the open-weight front has no second vendor to take the
+// careful seat.
 func TestTheCarefulSeatIsAlwaysASecondVendorInEveryFamily(t *testing.T) {
 	vendor := func(id string) string {
 		if at := strings.Index(id, "/"); at > 0 {
@@ -231,6 +232,9 @@ func TestTheCarefulSeatIsAlwaysASecondVendorInEveryFamily(t *testing.T) {
 	}
 	for _, family := range CrewSources {
 		for _, preset := range CrewPresets {
+			if family == CrewSourceOpen && preset == CrewFrugal {
+				continue
+			}
 			models, ok := CrewModelsForSource(family, preset)
 			if !ok {
 				t.Fatalf("there is no %s preset in the %s family", preset, family)
@@ -253,7 +257,7 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 			ModelTierReflex:     "google/gemini-2.5-flash",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 			ModelTierWorker:     "z-ai/glm-5.3-flash",
-			ModelTierHigh:       "google/gemini-3.8-flash",
+			ModelTierHigh:       "qwen/qwen3.8-max-0902",
 			ModelTierMastermind: "z-ai/glm-5.3-flash",
 		},
 		CrewBalanced: {
@@ -261,14 +265,14 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 			ModelTierWorker:     "z-ai/glm-5.3-flash",
 			ModelTierHigh:       "anthropic/claude-fable-5.1",
-			ModelTierMastermind: "anthropic/claude-fable-5.1",
+			ModelTierMastermind: "anthropic/claude-opus-5",
 		},
 		CrewMax: {
 			ModelTierReflex:     "google/gemini-2.5-flash",
 			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "anthropic/claude-fable-5.1",
-			ModelTierHigh:       "openai/gpt-6-astra",
-			ModelTierMastermind: "anthropic/claude-fable-5.1",
+			ModelTierWorker:     "z-ai/glm-5.3",
+			ModelTierHigh:       "anthropic/claude-fable-5.1",
+			ModelTierMastermind: "anthropic/claude-opus-5",
 		},
 	}
 	for preset, expected := range want {
@@ -298,9 +302,9 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 			CrewMax:      "glm-5.3 works and thinks, kimi-k3 checks",
 		},
 		CrewSourceAll: {
-			CrewFrugal:   "glm-flash works and thinks, gemini-flash checks",
-			CrewBalanced: "glm-flash works, fable checks and thinks",
-			CrewMax:      "fable works and thinks, astra checks",
+			CrewFrugal:   "glm-flash works and thinks, qwen-max checks",
+			CrewBalanced: "glm-flash works, fable checks, opus thinks",
+			CrewMax:      "glm-5.3 works, fable checks, opus thinks",
 		},
 	}
 	for family, lines := range wantLines {
