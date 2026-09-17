@@ -1341,3 +1341,40 @@ func TestPlandbCliSpendRollsUpPerProjectAndChat(t *testing.T) {
 		t.Fatalf("an uncharged store carried spend totals")
 	}
 }
+
+// A store made before the tags existed still opens: the columns are added on
+// open, and its old rows read back with the empty tag.
+func TestPlandbCliAnOlderStoreGainsTheTagColumnsOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store, err := Open(path, "plan-test", "root", "The run", "drive the plan")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	planAdd(t, store, planSpec("a", "A"))
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	// Strip the columns a store made before this change never had.
+	db, err := openDatabase(path)
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	for _, table := range []string{"tasks", "notes", "contexts"} {
+		for _, column := range []string{"project", "chat"} {
+			if _, err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column); err != nil {
+				t.Fatalf("drop %s.%s: %v", table, column, err)
+			}
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+	// Opening again migrates, and the old rows carry the empty tag.
+	store, err = Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if got := store.Task("a"); got == nil || got.Project != "" || got.Chat != "" {
+		t.Fatalf("old task tags = %#v, want the empty tag", got)
+	}
+}
