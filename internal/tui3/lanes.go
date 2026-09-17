@@ -961,39 +961,6 @@ func laneNote(view laneView) string {
 	return ""
 }
 
-// laneWhy is the dim line under the cursor: what this lane is, in a sentence,
-// with where the claim came from.
-//
-//	cloudflare: first token 0.8s, steady 58 t/s, no tail — from the sheet + your last 12 answers
-//
-// IT SAYS WHERE THE NUMBER CAME FROM because that is the difference between a
-// figure a person can argue with and one they have to trust. "The sheet" is the
-// public prior everybody gets; "your last n answers" is ours, and when there
-// are none it says the sheet alone rather than claiming a history.
-func laneWhy(view laneView) string {
-	if !view.Known {
-		return ""
-	}
-	parts := make([]string, 0, 3)
-	if word := laneSecondsWord(view.TTFT); word != "" {
-		parts = append(parts, "first token "+word)
-	}
-	if word := laneRateWord(view.Rate); word != "" {
-		parts = append(parts, "steady "+word)
-	}
-	if view.Tail == 0 && !view.Vague {
-		parts = append(parts, "no tail")
-	}
-	line := strings.ToLower(view.Name) + ": " + strings.Join(parts, ", ")
-	switch n := len(view.Sightings); {
-	case n == 1:
-		return line + " — from the sheet + your last answer"
-	case n > 1:
-		return line + " — from the sheet + your last " + strconv.Itoa(n) + " answers"
-	}
-	return line + " — from the sheet"
-}
-
 // ── THE FILTER GRAMMAR ──────────────────────────────────────────────────────
 //
 // The picker's box has always been a fuzzy search over model ids, and it stays

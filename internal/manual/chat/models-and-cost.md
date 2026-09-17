@@ -2989,11 +2989,12 @@ because that is a claim about the worst case too. The speed and throughput figur
 they are still the best guess there is. Ask that provider one question and the row has a tail
 again, or has honestly none.
 
-The dim line under the cursor says both halves out loud:
-
-```
-cloudflare: first token 0.8s, steady 58 t/s, no tail — from the sheet + your last 12 answers
-```
+**Where the numbers come from is the same everywhere:** a public sheet of what each
+provider is like, corrected by the answers your own conversations have actually had. The
+row itself carries the figures; a sentence under the cursor used to repeat them in prose
+and say where they came from, and it is gone — it said the row's own three numbers a second
+time, under a name the row had just written, and cost the open fold a line on every move
+of the cursor.
 
 ## Filtering the picker by speed, price and capability — @cloudflare, <1s, >50t/s, $<0.3
 

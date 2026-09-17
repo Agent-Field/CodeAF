@@ -295,9 +295,6 @@ func TestADecayedBeliefDrawsNoTail(t *testing.T) {
 	if note := laneNote(view); strings.Contains(note, "tail") {
 		t.Fatalf("a decayed belief is noted %q", note)
 	}
-	if why := laneWhy(view); strings.Contains(why, "no tail") {
-		t.Fatalf("a decayed belief claims a worst case: %q", why)
-	}
 	left, right := laneRowText(view, 120)
 	if strings.Contains(left+right, "922337") || strings.Contains(left+right, "tail") {
 		t.Fatalf("the row draws a tail nobody measured: %q %q", left, right)

@@ -1710,10 +1710,21 @@ func laneAutoSaid(routing string) laneAutoSay {
 // of what somebody who pressed `→` on the model needs to know about the gap.
 const laneUnmeasured = "no provider has been measured for this model yet — providers show up after its first answer"
 
-// lineUnder is the dim line drawn under one row, and empty under nearly all of
-// them: the why of the lane the cursor is on ([picker.whyAt]), or — under the
-// `auto` row of a fold with no providers in it — [laneUnmeasured], standing
-// exactly where the providers would.
+// lineUnder is the dim line drawn under one row, and empty under all but one of
+// them: [laneUnmeasured], under the `auto` row of a fold with no providers in
+// it, standing exactly where the providers would.
+//
+// THE CURSOR'S LANE ROW USED TO CARRY A SENTENCE HERE TOO, and it is gone. It
+// read `baseten: first token 0.4s, steady 64 t/s, no tail — from the sheet`
+// under the row that already read `baseten   0.4s · 64 t/s · $1.2/M · out ≤ 32k
+// · 69%` — the same three numbers in prose, under a name the row had just said,
+// one line further from the eye. It was written when the lane row was thinner
+// than it is now and it outlived the row filling in; what it added at the end
+// was the provenance clause, which is one fact about the LIST rather than about
+// the row the cursor happens to be on.
+//
+// AND IT COST A ROW OF THE FOLD, every time, on the one list where a row is a
+// machine somebody is comparing against fifteen others.
 func (p *picker) lineUnder(at int) string {
 	if at < 0 || at >= len(p.list) {
 		return ""
@@ -1721,19 +1732,7 @@ func (p *picker) lineUnder(at int) string {
 	if p.list[at].lane == laneAutoAt && len(p.lanes) == 0 {
 		return laneUnmeasured
 	}
-	return p.whyAt(at)
-}
-
-// whyAt is the dim sentence under the cursor's lane row, empty everywhere else.
-func (p *picker) whyAt(at int) string {
-	if at != p.cursor || at < 0 || at >= len(p.list) {
-		return ""
-	}
-	row := p.list[at]
-	if row.lane < 0 {
-		return ""
-	}
-	return laneWhy(p.lanes[row.lane])
+	return ""
 }
 
 // rowText is one model as the row's two halves: the id with whatever level it

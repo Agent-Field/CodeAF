@@ -144,12 +144,19 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 		}
 	}
 
-	// The why line explains the row under the cursor, and only that row. `→`
-	// walked in onto `auto`, so the first machine is one row down.
+	// AND NOTHING IS WRITTEN UNDER THE ROW THE CURSOR STOPS ON. A sentence
+	// there used to repeat the row's own three numbers in prose, under a name
+	// the row had just said, and cost the fold a line every time
+	// ([picker.lineUnder] says why it went). `→` walked in onto `auto`, so the
+	// first machine is one row down.
 	drive(t, a, key("down"))
-	if got := plain(frame(a)); !strings.Contains(got, "cloudflare: first token 0.8s") ||
-		!strings.Contains(got, "from the sheet") {
-		t.Fatalf("no why line under the cursor:\n%s", got)
+	got := plain(frame(a))
+	if strings.Contains(got, "cloudflare: first token") || strings.Contains(got, "from the sheet") {
+		t.Fatalf("the row under the cursor grew a sentence back:\n%s", got)
+	}
+	// The fold is still the rows themselves, cursor and all.
+	if !strings.Contains(got, "cloudflare") || !strings.Contains(got, "0.8s") {
+		t.Fatalf("the fold lost the row the cursor is on:\n%s", got)
 	}
 
 	// ← closes it again and puts the cursor back on the model.
@@ -923,7 +930,6 @@ func TestAFirstTokenWaitIsAlwaysSaidInSeconds(t *testing.T) {
 	for what, text := range map[string]string{
 		"the model row": laneSpeedWord(config.RoutingLatency, views, ""),
 		"the lane row":  head + " " + tail,
-		"the why line":  laneWhy(views[0]),
 	} {
 		if !strings.Contains(text, "2.4s") {
 			t.Errorf("%s says %q, which does not name the 2.4 second wait it was drawn from", what, text)
