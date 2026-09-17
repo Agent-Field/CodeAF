@@ -4,6 +4,7 @@ package modelsource
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 )
@@ -17,6 +18,23 @@ const ChatCompletionsPath = "/chat/" + "completions"
 // It is named once because persisted rows, qualification, and every surface
 // must agree on which member of a Set is the compatibility default.
 const DefaultID = "openrouter"
+
+// CustomID is the identity of the vendored custom service row. The FIRST
+// custom connection a profile persists keeps this id, so profiles and tests
+// written before custom connections could multiply stay byte-identical; later
+// instances mint CustomID-<slug> ids and are told apart by IsCustomID.
+const CustomID = "custom"
+
+// IsCustomID reports whether a persisted row id names a custom connection:
+// the vendored row itself, or one of the instances minted after it. One
+// predicate because every surface that used to compare against the literal
+// must treat the instances as the same KIND of service, never as a second
+// vendor. It is case-insensitive the way Set.ByID is, because both read ids
+// a person's profile holds.
+func IsCustomID(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return id == CustomID || strings.HasPrefix(id, CustomID+"-")
+}
 
 // ProbeTimeout is the watching-person ceiling shared by every vendored probe.
 const ProbeTimeout = 10 * time.Second
@@ -217,6 +235,47 @@ func DefaultSource(address string) Source {
 	}
 }
 
+// SourceSlug turns a base URL's host into the short word a person reads for
+// the connection: api.deepseek.com answers deepseek, mybox.local answers
+// mybox. It moved here from the chat surface so config and both surfaces
+// derive one name from one host. AN ADDRESS THAT IS AN IP LITERAL IS TAKEN
+// WHOLE: 127.0.0.1 answers 127-0-0-1, not the 0 the old derivation read off
+// its last dot-separated label. A host that yields nothing answers CustomID,
+// which is what the surface it moved from answered and keeps that path
+// byte-identical.
+func SourceSlug(host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if parsed := net.ParseIP(host); parsed != nil {
+		return strings.Trim(strings.Map(func(r rune) rune {
+			if r == '.' || r == ':' {
+				return '-'
+			}
+			return r
+		}, host), "-")
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) > 2 {
+		parts = parts[:len(parts)-1]
+		host = parts[len(parts)-1]
+	} else if len(parts) > 0 {
+		host = parts[0]
+	}
+	var out []rune
+	for _, r := range host {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			out = append(out, r)
+		case len(out) > 0 && out[len(out)-1] != '-':
+			out = append(out, '-')
+		}
+	}
+	word := strings.Trim(string(out), "-")
+	if word == "" {
+		return CustomID
+	}
+	return word
+}
+
 // Split applies the service-prefix grammar to an already level-less model id.
 // A first segment that is not a connected Written remains part of the default
 // service's model id.
@@ -328,7 +387,7 @@ func Vendored() []Source {
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 		{
-			ID: "custom", Written: "custom", Name: "Something else",
+			ID: CustomID, Written: CustomID, Name: "Something else",
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 	}
