@@ -591,6 +591,12 @@ writes nothing. The call itself is billed to the `judge` seat, so it shows up
 in the spend pages beside the crew seats rather than inside a task's own
 cost.
 
+With `model_pool` on, the rows leave for the relay after each judged run and
+once more at start-up, under this install's own nonce and nothing else. The
+index is fetched once a day, checked against the key built into the binary —
+or the key in `models.pool.public_key` when one is set — and a changed
+document is read at the next start.
+
 `verify` fetches a fresh index and checks its detached ed25519 signature,
 then prints the version whose signature checked out:
 
@@ -599,11 +605,11 @@ signature good: version 7, generated 2026-09-10, 3 metrics
 ```
 
 It wants a public key: `--key <base64 ed25519 public key>`, repeatable, or
-one built into the build. This build carries none yet — the key is published
-beside the first index — so it answers
-`no public key built into this build; pass --key` and fetches nothing. A
-fetch or a signature that fails is exit 1; a `verify` on a machine whose
-setting is `off` is refused with exit 2 and fetches nothing.
+one built into the build. The build carries the index signer's key, so
+`verify` works as it stands; `--key` checks a document signed under some
+other key instead — a mirror's, for instance. A fetch or a signature that
+fails is exit 1; a `verify` on a machine whose setting is `off` is refused
+with exit 2 and fetches nothing.
 
 ## What is still running in the background — codeaf services, and stopping one
 
