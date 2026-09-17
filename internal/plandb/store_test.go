@@ -880,13 +880,10 @@ func TestPlandbCliBottlenecksCountTheDownstreamWork(t *testing.T) {
 	}
 }
 
-// KNOWN FAILURE AGAINST THE STORE AS IT STANDS — a deliberate failing-shape
-// test, not a wrong expectation. The store's own contract says CriticalPath
-// answers the longest chain of hard dependencies, upstream first. Its walk
-// seeds only at the root, and no task may hold a hard dependency on the root
-// (the lineage rule refuses one), so children[root] is always empty and every
-// plan answers empty. This test is the shape that proves it; it goes green
-// when the walk seeds from tasks that actually have no hard upstream.
+// CriticalPath answers the longest chain of hard dependencies, upstream
+// first: the walk seeds from every task with no hard upstream and follows the
+// hard edges, so this plan's chain is a → b → c and `side`, which nothing
+// waits on, is not on it.
 func TestPlandbCliCriticalPathAnswersTheLongestChain(t *testing.T) {
 	store := planOpen(t, "")
 	a := planSpec("a", "A")
@@ -1093,16 +1090,12 @@ func TestPlandbCliParallelSafeDefaultAndTheConflictsThatRemain(t *testing.T) {
 	}
 }
 
-// KNOWN FAILURES AGAINST THE STORE AS IT STANDS — deliberate failing-shape
-// tests, not wrong expectations. DESIGN.md promises that every
-// read-modify-write transaction takes the advisory flock and reloads the
-// file under it; changeTask and ClaimNext do exactly that, but AddMany,
-// AddNote, AddContext and Prune clone the handle's own memory and rename it
-// over the file with no lock and no reload. A second handle (or a second
-// process — this is the CLI's own road for add, split, note and context)
-// that wrote between this handle's load and its write is silently erased.
-// Each subtest proves one loss deterministically in process; they go green
-// when the writers take the same two locks changeTask takes.
+// Every read-modify-write transaction takes the advisory flock and reloads
+// the file under it — AddMany, AddNote, AddContext and Prune included, not
+// just changeTask and ClaimNext — so a second handle that wrote between this
+// handle's load and its write cannot be erased. The CLI's own road for add,
+// split, note and context is a separate process, so the writers lean on
+// exactly this; each subtest proves one road keeps the concurrent write.
 func TestPlandbCliWritesSurviveAnotherHandle(t *testing.T) {
 	t.Run("addmany", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "plan.json")
