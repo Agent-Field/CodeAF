@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ var tableCatalog = []Model{
 }
 
 // tablePicker is that list, open, on a frame of the given width.
-func tablePicker(width int) (*picker, modelTableFit) {
+func tablePicker(width int) (*picker, colTableFit) {
 	p := &picker{}
 	p.start(tableCatalog, "moonshotai/kimi-k3")
 	return p, p.tableFit(width)
@@ -91,11 +92,20 @@ func TestEveryTableRowPutsItsColumnsInTheSamePlace(t *testing.T) {
 // head's offset in the heading line IN CELLS, and the width the fit gave it,
 // which is NOT the head's own length: a column is as wide as its widest cell,
 // and `speech` is one cell wider than `makes`.
-func columnCells(fit modelTableFit, heading, head string) (int, int) {
+func columnCells(fit colTableFit, heading, head string) (int, int) {
 	for n, at := range fit.at {
-		if modelColumns[at].head == head {
-			return ansi.StringWidth(heading[:strings.Index(heading, head)]), fit.wide[n]
+		if fit.cols[at].head != head {
+			continue
 		}
+		start := ansi.StringWidth(heading[:strings.Index(heading, head)])
+		// THE HEAD IS SET THE WAY ITS CELLS ARE, so in a right-aligned column it
+		// starts LATER than the column does — `$/M` sits two cells in from where
+		// `$0.28` begins. Reading the column from where its head happens to
+		// start would slice two cells off every figure under it.
+		if fit.cols[at].right {
+			start -= fit.wide[n] - ansi.StringWidth(head)
+		}
+		return start, fit.wide[n]
 	}
 	return -1, 0
 }
@@ -390,5 +400,101 @@ func TestFilteringDoesNotMoveTheColumns(t *testing.T) {
 	after := p.tableFit(width)
 	if after.header() != before.header() {
 		t.Fatalf("a keystroke moved the columns:\n%q\n%q", before.header(), after.header())
+	}
+}
+
+// ── THE PROVIDERS ARE A TABLE TOO, UNDER `openrouter` ───────────────────────
+
+// `→` OPENS TWO ANSWERS AND `→` AGAIN OPENS THE MACHINES. The key means the
+// same thing at both depths — show me what is inside this — and the machines
+// live under `openrouter` because every one of them is a machine that row
+// routes to.
+func TestTheMachinesAreASecondFoldUnderOpenrouter(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width = 120
+	typeLine(t, a, "/model")
+
+	drive(t, a, key("right"))
+	if names := laneNames(a.pick.lanes); len(names) == 0 {
+		t.Fatal("the fold knows no machines")
+	}
+	if a.pick.machines {
+		t.Fatal("the first → opened the machines as well as the answers")
+	}
+	if screen := plain(frame(a)); strings.Contains(screen, "cloudflare") {
+		t.Fatalf("the machines are drawn before anybody asked:\n%s", screen)
+	}
+	// The foot says the row can be opened, on the row that can be.
+	drive(t, a, key("down"))
+	if got := a.pick.keysHint(); !strings.Contains(got, "→ providers") {
+		t.Fatalf("the openrouter row does not offer its fold: %q", got)
+	}
+	drive(t, a, key("right"))
+	if !a.pick.machines {
+		t.Fatal("→ on openrouter opened nothing")
+	}
+	// AND IT WALKED IN, exactly as the first → walked into the answers.
+	if row, on := a.pick.laneUnder(); !on || row.lane != 0 {
+		t.Fatalf("→ on openrouter left the cursor at %+v (on=%v)", row, on)
+	}
+}
+
+// AND THE MACHINES ARE DRAWN AS A TABLE, under their own heading, in the same
+// engine the model list is drawn with.
+func TestTheMachinesAreDrawnAsAColumnedTable(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width = 120
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"), key("down"), key("right"))
+
+	fit := a.pick.laneFit(a.width)
+	if !fit.drawn() {
+		t.Fatal("the machines drew no table")
+	}
+	lines := []string{}
+	for _, line := range a.pick.rows(a.width, 20, newTestPalette(), -1, a.reasoningFor) {
+		lines = append(lines, ansi.Strip(line))
+	}
+	head := ""
+	for _, line := range lines {
+		if strings.Contains(line, laneHead) {
+			head = line
+		}
+	}
+	if head == "" {
+		t.Fatalf("the machines have no heading:\n%s", strings.Join(lines, "\n"))
+	}
+	// Every figure lands under the head that names it.
+	for _, c := range []struct{ head, cell string }{
+		{"first", "0.8s"}, {"first", "0.4s"}, {"$/M", "$1.3"}, {"note", "no tools"}, {"up", "100%"},
+	} {
+		at, wide := columnCells(fit, head, c.head)
+		if !columnHolds(lines, at, wide, c.cell) {
+			t.Fatalf("%q is not under the %q head:\n%s", c.cell, c.head, strings.Join(lines, "\n"))
+		}
+	}
+}
+
+// THE MACHINES ARE IN ALPHABETICAL ORDER, which is the order that does not move
+// when the ledger learns something. The chooser's own order — fastest first —
+// is what `auto` and the model row's `via` still read.
+func TestTheMachinesAreDrawnAlphabeticallyAndTheChooserIsNot(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width = 120
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"))
+
+	names := laneNames(a.pick.lanes)
+	if !slices.IsSorted(names) {
+		t.Fatalf("the machines are drawn %v, want them alphabetical", names)
+	}
+	// AND THE PREDICTION IS STILL THE CHOOSER'S. `coreweave` is the fastest of
+	// the three and the last of them alphabetically, so a prediction taken off
+	// the drawn order would name the wrong machine.
+	if a.pick.auto == "" || strings.EqualFold(a.pick.auto, names[0]) {
+		t.Fatalf("auto names %q, which is the first row rather than the fastest machine", a.pick.auto)
 	}
 }

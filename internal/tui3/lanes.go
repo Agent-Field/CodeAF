@@ -905,6 +905,32 @@ func laneRowPlan(view laneView) rowPlan {
 	return plan
 }
 
+// laneCells is one provider's facts in [laneColumns] order, each in the
+// spelling its column's head has already accounted for — the unit off the rate
+// and the price, because a head says those once for the whole list.
+//
+// IT IS laneRowPlan's OWN READING with the labels taken off, which is the
+// arrangement models.go keeps for the same two shapes: the table's cells and
+// the ranked tail are one reading of one provider, dressed twice.
+func laneCells(view laneView) []string {
+	price := ""
+	if view.PriceOut > 0 {
+		price = "$" + perMillion(view.PriceOut)
+	}
+	uptime := ""
+	if view.Uptime > 0 {
+		uptime = strconv.Itoa(int(math.Round(view.Uptime))) + "%"
+	}
+	return []string{
+		laneSecondsWord(view.TTFT),
+		laneRateBare(view.Rate),
+		price,
+		laneNote(view),
+		uptime,
+		barSpark(view.Sightings, 0, laneSightings),
+	}
+}
+
 // laneRowText is that plan in room cells, as the row's two halves.
 func laneRowText(view laneView, room int) (string, string) {
 	return laneRowPlan(view).fit(room)

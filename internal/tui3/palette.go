@@ -77,6 +77,16 @@ type picker struct {
 	// TIME on purpose: the fold is a way of looking closer at one row, and a
 	// list with four models open is a list with no shape left.
 	unfold string
+	// machines is whether the `openrouter` row's OWN fold is open, showing the
+	// machines behind that model.
+	//
+	// THE MACHINES SIT UNDER `openrouter` BECAUSE THEY ARE ITS. Every provider
+	// in that list is one OpenRouter routes to; the row means "openrouter's
+	// world", and naming one of its machines is a narrower answer inside that
+	// world rather than a third thing beside it. `auto` is the other answer —
+	// codeaf choosing — and it has no list under it because what it would
+	// choose from is the same list.
+	machines bool
 	// lanes is what was believed about that model's lanes at the moment it was
 	// opened, best first, and first names the lane an `@` filter asked to see
 	// at the top of them.
@@ -142,14 +152,22 @@ type picker struct {
 	// measurement over all of them — both taken the first time this list is
 	// drawn, which is the first moment [app.armLanes] has finished telling it
 	// what routing is in force.
-	cells   map[string][len(modelColumns)]string
-	columns *modelTable
+	cells   map[string][]string
+	columns *colTable
 	// fitted is that measurement laid out at one width, kept because the draw
 	// path asks for it once for the heading and once per row and the answer
 	// cannot differ between those asks. fitAt is the width it was laid out at,
 	// and zero is no answer yet — a frame is never zero cells wide.
-	fitted modelTableFit
+	fitted colTableFit
 	fitAt  int
+	// lanesFitted is the SAME measurement for the providers inside an open
+	// fold, over [laneColumns] and over this model's machines alone. It is a
+	// second table because it is a second question — the machines behind one
+	// model are compared with each other and not with the models — and it is
+	// rebuilt when the fold moves, which is the only time its rows change.
+	lanesFitted colTableFit
+	lanesFitAt  int
+	lanesFor    string
 
 	// task is the NODE this list is being chosen for, and 0 is the conversation —
 	// which is every /model, every press on the status row out in the thread, and
@@ -274,6 +292,9 @@ func (p *picker) relist() {
 		// by side rather than a screen apart.
 		p.list = append(p.list, pickRow{hit: at, lane: laneAutoAt})
 		p.list = append(p.list, pickRow{hit: at, lane: laneRoutAt})
+		if !p.machines {
+			continue
+		}
 		for i := range p.lanes {
 			p.list = append(p.list, pickRow{hit: at, lane: i})
 		}
@@ -421,8 +442,11 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 	// drawn under the name they serve and nothing else is on the screen to
 	// wonder about. The `auto` row's prediction is taken over ALL the views: it
 	// is a claim about where the next turn goes and not about what was typed.
+	// AND THE MACHINES ARE OPEN, because they are what was typed for. The
+	// filter's whole answer is a shorter list of them, and a fold that answered
+	// by narrowing a list it then left closed would have hidden the answer.
 	p.hits = append(p.hits, at)
-	p.unfold, p.lanes, p.first = model, kept, ""
+	p.unfold, p.lanes, p.first, p.machines = model, kept, "", true
 	p.auto = laneAuto(p.routing, model, views, now)
 	p.relist()
 	p.top = 0
@@ -659,6 +683,10 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 		lane.WantSheet(model.ID)
 	}
 	if first != "" {
+		// AND AN `@name` FILTER OPENS THE MACHINES, because the whole of what it
+		// asked for is one of them: a fold that lifted a machine to the top of a
+		// list it then left closed would have answered by hiding the answer.
+		p.machines = true
 		if named, ok := laneNamed(views, first); ok {
 			lifted := []laneView{named}
 			for _, view := range views {
@@ -669,7 +697,21 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 			views = lifted
 		}
 	}
-	p.unfold, p.lanes, p.first, p.auto = model.ID, views, first, laneAuto(p.routing, model.ID, views, now)
+	// THE ROWS ARE DRAWN IN ALPHABETICAL ORDER and the chooser's order is left
+	// where it is. [laneViews] hands them back fastest-feeling first, which is
+	// the right order for a MACHINE TO BE PICKED BY — `auto` reads it, the
+	// model row's `via` reads it — and the wrong order for a list a person
+	// reads: it puts the same provider in a different place every time the
+	// ledger learns something, so the eye has to start over on every visit. The
+	// prediction is taken from `views` before the copy is sorted, so nothing
+	// downstream is looking at this order.
+	p.auto = laneAuto(p.routing, model.ID, views, now)
+	if first == "" {
+		views = slices.SortedFunc(slices.Values(views), func(a, b laneView) int {
+			return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+		})
+	}
+	p.unfold, p.lanes, p.first = model.ID, views, first
 	return true
 }
 
@@ -679,7 +721,7 @@ func (p *picker) fold() bool {
 	if p.unfold == "" {
 		return false
 	}
-	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
+	p.unfold, p.lanes, p.first, p.auto, p.machines = "", nil, "", "", false
 	return true
 }
 
@@ -700,6 +742,19 @@ func (p *picker) unfoldHere() bool {
 		return false
 	}
 	row := p.list[p.cursor]
+	// THE SECOND LEVEL: `→` on `openrouter` opens the machines it routes to.
+	// The key means the same thing at both depths — show me what is inside this
+	// — which is the only way a tree is learnable from one press.
+	if row.lane == laneRoutAt {
+		if p.machines || len(p.lanes) == 0 {
+			return false
+		}
+		p.machines = true
+		p.relist()
+		p.cursorToMachine()
+		p.revealFold(pickerRows)
+		return true
+	}
 	if row.lane != laneNone {
 		return false
 	}
@@ -733,6 +788,12 @@ func (p *picker) revealFold(height int) {
 		if p.lineUnder(at) != "" {
 			extra++
 		}
+		// THE PROVIDERS' HEADING IS A LINE OF THE BLOCK TOO, and a block scrolled
+		// into view against a count that left it out is a block one line taller
+		// than the room made for it ([picker.laneHeadBefore]).
+		if p.machines && row.lane == laneRoutAt {
+			extra++
+		}
 	}
 	if from >= 0 {
 		if to >= p.top+height-extra {
@@ -751,6 +812,23 @@ func (p *picker) foldHere() bool {
 	if p.cursor < 0 || p.cursor >= len(p.list) {
 		return false
 	}
+	// `←` CLOSES THE INNERMOST THING THAT IS OPEN, one level at a time: from a
+	// machine or from the `openrouter` row it shuts the machines and leaves the
+	// cursor on `openrouter`, and only then does it shut the model's own fold.
+	// A key that collapsed both at once would make the way in and the way out
+	// different lengths.
+	if row := p.list[p.cursor]; p.machines && (row.lane >= 0 || row.lane == laneRoutAt) {
+		p.machines = false
+		p.relist()
+		for at, drawn := range p.list {
+			if drawn.lane == laneRoutAt && drawn.hit == row.hit {
+				p.cursor = at
+				break
+			}
+		}
+		p.follow(pickerRows)
+		return true
+	}
 	hit := p.list[p.cursor].hit
 	if !p.fold() {
 		return false
@@ -764,6 +842,33 @@ func (p *picker) foldHere() bool {
 	}
 	p.follow(pickerRows)
 	return true
+}
+
+// cursorToMachine walks the cursor into the machines just opened: onto the one
+// the requests are already going to, and onto the first of them otherwise.
+//
+// `→` WALKS IN AT BOTH DEPTHS. The key means "show me what is inside this" and
+// then puts the cursor there; a second press that opened a list and left the
+// cursor outside it would be the one gesture on this surface that does half of
+// what it did a moment ago.
+func (p *picker) cursorToMachine() {
+	land := -1
+	for at, row := range p.list {
+		if row.lane < 0 || p.all[p.hits[row.hit]].ID != p.unfold {
+			continue
+		}
+		if land < 0 {
+			land = at
+		}
+		if p.marked(at) {
+			land = at
+			break
+		}
+	}
+	if land >= 0 {
+		p.cursor = land
+	}
+	p.follow(pickerRows)
 }
 
 // cursorToPin puts the cursor, inside an open fold, on the row the pin names —
@@ -780,6 +885,19 @@ func (p *picker) foldHere() bool {
 // is not talking to (see [picker.rowText]) — so the true answer for that model
 // right now is the one that chooses for you.
 func (p *picker) cursorToPin() {
+	// A PINNED MACHINE OPENS THE LIST IT IS IN. The pin is the true answer for
+	// this model, so landing on it means the fold it lives in has to be open —
+	// otherwise `→` on a model pinned to `cloudflare` walks onto `auto`, which
+	// is the one row that is not what the next request would do.
+	if !p.machines && p.force != "" {
+		for _, view := range p.lanes {
+			if strings.EqualFold(view.Name, p.force) {
+				p.machines = true
+				p.relist()
+				break
+			}
+		}
+	}
 	land := -1
 	for at, row := range p.list {
 		if row.lane == laneNone || p.all[p.hits[row.hit]].ID != p.unfold {
@@ -1186,6 +1304,12 @@ func overlayLead(selected, hovered bool, pal palette) string {
 // A blank second line under every path would spend half the screen saying
 // nothing.
 
+// laneIndent is how far a provider row hangs in from the frame's own edge: the
+// two cells every row pays for its cursor mark, the two that put `auto` and
+// `openrouter` under the model, and two more that put the machines under
+// `openrouter` — which is where they now live ([picker.relist]).
+const laneIndent = 6
+
 // overlayIndent is where a wrapped tail starts: the row's own two-cell lead,
 // plus two more so the tail reads as hanging under the label rather than as a
 // row of its own.
@@ -1420,6 +1544,13 @@ func (p *picker) height(width int) int {
 		if p.groupBefore(at) != "" {
 			lines++
 		}
+		// The providers' own heading is counted where it is drawn, for
+		// [overlayItemLines]' reason: the count here and the lines the fill
+		// actually writes must agree or the list is laid into a block of the
+		// wrong size.
+		if p.laneHeadBefore(at, width) != "" {
+			lines++
+		}
 		_, note := p.entryText(at, width, nil)
 		take := overlayItemLines(width, note)
 		if p.lineUnder(at) != "" {
@@ -1476,6 +1607,15 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 				break
 			}
 		}
+		// THE PROVIDERS' OWN HEADING, drawn where their block starts and nowhere
+		// else. A bare `0.8s 58 $1.3` under `openrouter` is six figures with
+		// nothing saying which is which, and this table is a table for the same
+		// reason the model list is ([picker.laneFit]).
+		if head := p.laneHeadBefore(at, width); head != "" {
+			if !fill.plain(pal.dim(fit(head, width))) {
+				break
+			}
+		}
 		if p.rowUnavailable(at) {
 			model := p.all[p.hits[p.list[at].hit]]
 			if !fill.plain(pal.dim(fit("  "+model.Notice, width))) {
@@ -1499,6 +1639,21 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		}
 	}
 	return fill.done()
+}
+
+// laneHeadBefore is the providers' heading line when row `at` is the FIRST
+// machine of an open block, and empty everywhere else — the same shape
+// [picker.groupBefore] has for a service's name, and for the same reason: a
+// heading belongs to the block under it and a scrolled window that starts
+// mid-block draws it again at the top.
+func (p *picker) laneHeadBefore(at, width int) string {
+	if at < 0 || at >= len(p.list) || p.list[at].lane < 0 {
+		return ""
+	}
+	if at > 0 && p.list[at-1].lane >= 0 && at != p.top {
+		return ""
+	}
+	return p.laneFit(width).header()
 }
 
 // pinnedLane is the MACHINE this conversation is held to, and empty for every
@@ -1604,7 +1759,7 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 			sentence += " — " + strings.ToLower(p.auto) + " now"
 			short = strings.ToLower(p.auto) + " now"
 		}
-		fields := []rowField{rowSay(sentence, short), rowSay("recommended")}
+		fields := []rowField{rowSay(sentence, short)}
 		// AND WHAT AUTO WILL NOT DO, said where the choice is made. With the
 		// speed guard off, a lane that turns slow mid-answer is one you wait
 		// out; that is a fact about this row and it belongs on it. Where the
@@ -1620,12 +1775,21 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 			fields:  []rowField{rowSay(laneRouterNote)},
 		}, width, 0)
 	}
-	// A LANE SITS UNDER THE TWO WORDS THAT ARE NOT LANES. `auto` and
-	// `openrouter` are the two ways of declining to name a machine, so they
-	// stand at the block's own margin and the machines themselves are indented
-	// past them — which is what makes the block read as a question with two
-	// answers and a list, rather than as five things of the same kind.
-	label, note := rowHalves(laneRowPlan(p.lanes[row.lane]), width, overlayIndent)
+	// A MACHINE SITS UNDER `openrouter`, indented past it, because it is one of
+	// the machines that row routes to ([picker.machines] says why the list
+	// lives there). The two answers that name no machine stand at the block's
+	// own margin above it.
+	//
+	// AND IT IS A TABLE, the same engine the model list is drawn with
+	// ([picker.laneFit]) — the providers behind one model are read down the
+	// page and compared, which is what a column is for. Where the frame cannot
+	// hold one, the ranked tail it has always drawn is what it falls back to.
+	view := p.lanes[row.lane]
+	if fit := p.laneFit(width); fit.drawn() {
+		name, _ := rowTrim(strings.ToLower(view.Name), fit.name, false)
+		return strings.Repeat(" ", laneIndent-2) + name, fit.row(laneCells(view))
+	}
+	label, note := rowHalves(laneRowPlan(view), width, overlayIndent)
 	return strings.Repeat(" ", overlayIndent) + label, note
 }
 
@@ -1698,7 +1862,7 @@ func laneAutoSaid(routing string) laneAutoSay {
 	// that lies on the default install.
 	if config.RoutingWord(routing) == config.RoutingSimple {
 		return laneAutoSay{
-			note: laneAutoNote + " — not while routing is simple",
+			note: laneAutoNote,
 			about: "which provider answers your model. routing is simple, so auto " +
 				"sends no choice of ours at all and openrouter's own routing answers; a provider " +
 				"you pin is the whole request. enter opens them all with what has been " +
@@ -1713,9 +1877,20 @@ func laneAutoSaid(routing string) laneAutoSay {
 	}
 }
 
-// laneAutoNote is what the `auto` row is FOR, in the words it is for them in.
-// The routing row decides whether it is happening ([laneAutoSaid]).
-const laneAutoNote = "codeaf tries to pick the best provider"
+// laneAutoNote is what the `auto` row is FOR.
+//
+// IT POINTS AT THE SETTING RATHER THAN NAMING ITS VALUE. It said `codeaf tries
+// to pick the best provider — not while routing is simple` for one wave, and
+// `simple` is a word nobody meets before this row: it is one of four values on
+// a `routing` setting nothing on this screen mentions. A sentence you have to
+// already know the answer to is not a hint. `/settings` is a place a person can
+// go, so the row names that and the setting explains itself when they get
+// there.
+//
+// AND IT IS ONE SENTENCE UNDER EVERY ROUTING ROW, which is the other half of
+// the same fix. `according to /settings` is true whichever value is set —
+// that is what makes it honest without having to be rewritten per value.
+const laneAutoNote = "automatic routing according to /settings (recommended)"
 
 // laneUnmeasured is the one line a fold draws in the providers' place when
 // nothing behind the model has been measured. It is a sentence a person would
@@ -1809,12 +1984,12 @@ func (p *picker) rowText(model Model, level string, width int) (string, string) 
 // under the name and there is no second column to put anything in; a table
 // there would be one column of figures with a heading nobody can see the other
 // half of.
-func (p *picker) tableFit(width int) modelTableFit {
+func (p *picker) tableFit(width int) colTableFit {
 	if phoneList(width) {
-		return modelTableFit{}
+		return colTableFit{}
 	}
 	if p.columns == nil {
-		table, pin := modelTable{}, p.pinnedLane()
+		table, pin := newColTable(modelColumns, 0), p.pinnedLane()
 		for _, model := range p.all {
 			// A NOTICE IS NOT A MODEL. An unavailable service's row carries a
 			// sentence where an id would be and draws no facts at all, so
@@ -1837,17 +2012,41 @@ func (p *picker) tableFit(width int) modelTableFit {
 	}
 	if p.fitAt != width {
 		p.fitted, p.fitAt = p.columns.fit(width), width
+		p.fitted.name0 = modelHead
 	}
 	return p.fitted
+}
+
+// laneFit is the providers' own table, measured over the machines of the model
+// whose fold is open and laid out in what the frame leaves after their indent.
+//
+// IT IS REBUILT WHEN THE FOLD MOVES and not on every draw: the rows are this
+// model's machines, frozen when the fold opened the way everything else on this
+// list is ([picker.lanes]), so the measurement can only change when the fold
+// does.
+func (p *picker) laneFit(width int) colTableFit {
+	if phoneList(width) || len(p.lanes) == 0 {
+		return colTableFit{}
+	}
+	if p.lanesFitAt != width || p.lanesFor != p.unfold {
+		table := newColTable(laneColumns, laneIndent-2)
+		for _, view := range p.lanes {
+			table.add(laneCells(view), ansi.StringWidth(strings.ToLower(view.Name)))
+		}
+		p.lanesFitted = table.fit(width)
+		p.lanesFitted.name0 = laneHead
+		p.lanesFitAt, p.lanesFor = width, p.unfold
+	}
+	return p.lanesFitted
 }
 
 // rowCells is one model's facts in column order, frozen the first time this
 // list drew them — [picker.rowFields]' rule, for the table's shape of row and
 // for the same reason: a running turn still updates the ledger, and a row may
 // not rewrite itself under somebody who is reading it.
-func (p *picker) rowCells(model Model, pin string) [len(modelColumns)]string {
+func (p *picker) rowCells(model Model, pin string) []string {
 	if p.cells == nil {
-		p.cells = make(map[string][len(modelColumns)]string)
+		p.cells = make(map[string][]string)
 	}
 	if cells, ok := p.cells[model.ID]; ok {
 		return cells
@@ -2070,6 +2269,12 @@ func (p *picker) keysParts() (string, string, string) {
 		return effortKeyWord, "switch", ""
 	case unpin:
 		return "", "unpin", back
+	case row.lane == laneRoutAt && !p.machines && len(p.lanes) > 0:
+		// THE SECOND FOLD SAYS SO ON ITS OWN ROW. `openrouter` opens the
+		// machines it routes to, and the key that opens them is the key that
+		// opened this fold — said again, because a row that can be opened and
+		// does not say so is a row nobody opens.
+		return open, "choose", back
 	case row.lane != laneNone:
 		return "", "choose", back
 	}

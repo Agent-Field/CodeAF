@@ -131,17 +131,30 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	if a.pick.unfold != flash {
 		t.Fatalf("→ on the model in use left the fold at %q", a.pick.unfold)
 	}
+	// THE MACHINES ARE A SECOND FOLD, under `openrouter` — the row they belong
+	// to ([picker.machines]) — so the first `→` opens the two answers and the
+	// second opens the list.
+	drive(t, a, key("down"), key("right"))
 	screen := plain(frame(a))
 	for _, want := range []string{
-		"auto", laneAutoNote, "recommended",
-		"cloudflare", "0.8s", "58 t/s", "100%", "no tools",
+		"auto", laneAutoNote,
+		"openrouter", laneRouterNote,
+		// The machines are a TABLE now, under their own heading, so the unit is
+		// on the head and the cell carries the figure alone (modeltable.go).
+		laneHead, "first", "t/s", "$/M", "note", "up",
+		"cloudflare", "0.8s", "100%", "no tools",
 		"coreweave", "0.4s", "tail",
 		"deepinfra", "out ≤ 65k",
-		"openrouter", laneRouterNote,
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the fold does not say %q:\n%s", want, screen)
 		}
+	}
+	// AND THEY ARE IN ALPHABETICAL ORDER, which is the order that does not move
+	// when the ledger learns something ([picker.unfoldAt]).
+	if names := laneNames(a.pick.lanes); len(names) != 3 ||
+		names[0] != "cloudflare" || names[1] != "coreweave" || names[2] != "deepinfra" {
+		t.Fatalf("the machines are drawn %v, want them alphabetical", names)
 	}
 
 	// AND NOTHING IS WRITTEN UNDER THE ROW THE CURSOR STOPS ON. A sentence
@@ -159,10 +172,19 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 		t.Fatalf("the fold lost the row the cursor is on:\n%s", got)
 	}
 
-	// ← closes it again and puts the cursor back on the model.
+	// ← closes ONE LEVEL AT A TIME: the machines first, then the model's own
+	// fold ([picker.foldHere]). The way out is as many presses as the way in.
+	drive(t, a, key("left"))
+	if !a.pick.machines {
+		// the first ← shut the machines
+	}
+	if a.pick.machines || a.pick.unfold != flash {
+		t.Fatalf("the first ← should shut the machines and keep the fold: machines=%v fold=%q",
+			a.pick.machines, a.pick.unfold)
+	}
 	drive(t, a, key("left"))
 	if a.pick.unfold != "" {
-		t.Fatal("← left the lanes open")
+		t.Fatal("the second ← left the lanes open")
 	}
 	if chosen, _ := a.pick.choice(); chosen.ID != flash {
 		t.Fatalf("folding left the cursor on %q", chosen.ID)
@@ -403,8 +425,8 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	typeLine(t, a, "/model")
-	drive(t, a, key("right"))             // walks in, onto the auto row
-	drive(t, a, key("down"), key("down")) // past openrouter, onto the first machine
+	drive(t, a, key("right"))              // walks in, onto the auto row
+	drive(t, a, key("down"), key("right")) // openrouter, then into its machines
 	drive(t, a, key("enter"))
 
 	if a.pick.open {
@@ -481,7 +503,7 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 	a.profileDir = ""
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned("", talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the default profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -496,7 +518,7 @@ func TestAHostedSurfacePinsNothing(t *testing.T) {
 	a.host = "blackmac"
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
 		t.Fatal("a hosted surface wrote a lane pin into this machine's profile")
 	}
@@ -580,10 +602,13 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	if got := a.sheet.sel.pick.unfold; got != flash {
 		t.Fatalf("→ in the settings picker left the fold at %q", got)
 	}
+	// AND THE SECOND FOLD IS THE SAME TWO KEYS HERE, which is the whole point of
+	// there being one picker: the machines live under `openrouter` at both doors.
+	drive(t, a, key("down"), key("right"))
 	screen := strings.Join(sheetLabels(a), "\n")
 	for _, want := range []string{
 		"auto", laneAutoNote,
-		"cloudflare", "0.8s", "58 t/s", "no tools",
+		"cloudflare", "0.8s", "no tools",
 		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
 		"openrouter", laneRouterNote,
 	} {
@@ -596,8 +621,9 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	if !strings.Contains(a.sheet.keysLine(), "← or tab back") {
 		t.Fatalf("the foot inside the fold reads %q", a.sheet.keysLine())
 	}
-	// `←` closes it again, from the start of an empty filter box.
-	drive(t, a, key("left"))
+	// `←` closes it again, from the start of an empty filter box — one level at
+	// a time, the machines before the model's own fold ([picker.foldHere]).
+	drive(t, a, key("left"), key("left"))
 	if a.sheet.sel.pick.unfold != "" {
 		t.Fatal("← left the lanes open")
 	}
@@ -614,7 +640,7 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"), key("down"))
+	drive(t, a, key("enter"), key("right"), key("down"), key("right"))
 	row, on := a.sheet.sel.pick.laneUnder()
 	if !on || row.lane != 0 {
 		t.Fatalf("the cursor is not on the first machine: %+v (on=%v)", row, on)
@@ -652,7 +678,7 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"), key("down"), key("enter"))
+	drive(t, a, key("enter"), key("right"), key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -695,7 +721,7 @@ func TestTheLaneRowOpensTheMachines(t *testing.T) {
 	}
 	// Walking to a machine and pressing enter pins it, and nothing about the
 	// model changed on the way.
-	drive(t, a, key("down"), key("down"), key("enter"))
+	drive(t, a, key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}

@@ -2893,23 +2893,39 @@ and not part of the table, so they keep the `·` tail the model rows gave up:
 ```
  model               via         first  in/M   out/M  window  t/s
  deepseek-v4-flash   cloudflare   0.8s  $0.09  $0.18      1M   58
-   auto          codeaf tries to pick the best provider — not while routing is simple · recommended
+   auto          automatic routing according to /settings (recommended)
    openrouter    default routing
-     cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
-     coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
-     deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
 ```
 
-**The two answers that name no provider stand together at the top**, above the machines and
-one indent out from them. They are the two rows you are actually choosing between, and under
-the shipped `simple` row they even send the same thing — so they are put side by side rather
-than a screen apart. Set **routing** to `latency` or `price` and `auto` reads `codeaf tries
-to pick the best provider — cloudflare now · recommended`, because there it does.
+**`→` opens two answers, and `→` again opens the providers.** The key means the same thing
+at both depths — show me what is inside this — and it walks the cursor in each time. The
+providers live under **openrouter** because every one of them is a machine OpenRouter routes
+to; naming one is a narrower answer inside that row rather than a third thing beside it.
+`←` closes one level at a time, so the way out is as many presses as the way in.
 
-**Neither row wears a mark.** They carried a filled and a hollow bullet for a while, meant
-to say which of them chooses for you — but under `simple` neither of them does, so the mark
-was making a distinction the wire does not. The indent says they are not machines and the
-sentence beside each says what it is.
+```
+   auto          automatic routing according to /settings (recommended)
+   openrouter    default routing
+     provider    first  t/s    $/M  note        up   last 8
+     cloudflare   0.8s   58   $1.3  no tools   100%  ▁▂▁▃▁▂
+     coreweave    0.4s   24  $0.28  tail 12s    99%  ▁▁▇▁▂▁
+     deepinfra    0.8s   27  $0.18  out ≤ 65k   99%
+```
+
+**The providers are a table**, drawn by the same engine as the model list above and read the
+same way: down the page, comparing. The heading carries the unit so the cell does not —
+`58` under `t/s`, `$1.3` under `$/M` — and a column no provider on the list published is not
+drawn at all.
+
+**They are in alphabetical order.** codeaf's own ranking — fastest-feeling first — is still
+what `auto` and the model row's `via` read; it is the wrong order for a list a person reads,
+because it moves a provider every time the ledger learns something and the eye has to start
+over on each visit.
+
+**Neither answer wears a mark.** They carried a filled and a hollow bullet for a while, meant
+to say which of them chooses for you — but under the shipped routing row neither of them
+does, so the mark was making a distinction the wire does not. The indent says they are not
+machines and the sentence beside each says what it is.
 
 Each provider row reads, in order: its name, the wait before the first word, how fast it
 writes, what a million output tokens cost there, one short note about what is wrong with
@@ -2937,9 +2953,8 @@ measured it opens all the same, onto the only two honest answers: `auto` and `op
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
-**Under `routing: simple` — the row codeaf ships with — the `auto` row says something
-else, because it does something else.** It reads `codeaf tries to pick the best provider —
-not while routing is simple`, and it names no provider beside it: under that row nothing on codeaf's side chooses,
+**Under `routing: simple` — the row codeaf ships with — the `auto` row does something
+else.** It reads the same sentence, and it names no provider beside it: under that row nothing on codeaf's side chooses,
 so there is no provider it could honestly say the next turn will land on, and no `no
 rescue` note either, because there is no rescue running under any setting of the speed
 guard. The fold still opens and `enter` still pins: a pin is the one instruction that row
@@ -3203,9 +3218,8 @@ simple runs no choosing of its own for a slow answer to borrow. The `switch to a
 question a slow pinned provider raises still has somewhere to send you — it asks whether to
 let go of the pin for that one answer, and asking is all it ever does. The `auto` row of
 the table above is the other rung that reads differently there: under `simple` nothing
-takes over, so the row says `codeaf tries to pick the best provider — not while routing is
-simple` in the fold and the **your model** row drops its `auto (cloudflare now)` tail rather
-than name a provider nobody chose.
+takes over, so the `auto` row names no provider beside its sentence and the **your model**
+row drops its `auto (cloudflare now)` tail rather than name a provider nobody chose.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 

@@ -63,26 +63,35 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 	}
 
 	drive(t, a, key("right"))
+	if line := screenLine(plain(frame(a)), "auto"); !strings.Contains(line, "›") {
+		t.Fatalf("the cursor did not walk in onto auto: %q\n%s", line, plain(frame(a)))
+	}
+	// The machines are a SECOND fold, under `openrouter` ([picker.machines]),
+	// and `→` walks into them exactly as it walked into this one.
+	drive(t, a, key("down"), key("right"))
 	screen := plain(frame(a))
 	for _, want := range []string{flash, "auto", "cloudflare", "coreweave", "deepinfra", "openrouter"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("after → the frame does not show %q:\n%s", want, screen)
 		}
 	}
-	if line := screenLine(screen, "auto"); !strings.Contains(line, "›") {
-		t.Fatalf("the cursor did not walk in onto auto: %q\n%s", line, screen)
+	if line := screenLine(screen, "cloudflare"); !strings.Contains(line, "›") {
+		t.Fatalf("the second → did not walk in onto the first machine: %q\n%s", line, screen)
 	}
 
-	// With a machine pinned, the walk lands on THAT row instead. Two steps
-	// down, because `openrouter` stands beside `auto` above the machines now.
-	drive(t, a, key("down"), key("down"), key("enter"))
+	// With a machine pinned, the walk lands on THAT row instead. The cursor is
+	// already on cloudflare — the second `→` walked it there — so enter pins it.
+	drive(t, a, key("enter"))
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
 	row, on := a.pick.laneUnder()
 	if !on || row.lane < 0 || !strings.EqualFold(a.pick.lanes[row.lane].Name, "Cloudflare") {
 		t.Fatalf("→ with cloudflare pinned walked onto %+v (on=%v)", row, on)
 	}
-	if line := screenLine(plain(frame(a)), "0.8s · 58 t/s"); !strings.Contains(line, "›") {
+	// The machines are a table, so the row is its name and its cells rather than
+	// a `·` tail (modeltable.go). The row is found by its `note` cell, because
+	// the machine's NAME is also on the model row above it, in the `via` column.
+	if line := screenLine(plain(frame(a)), "no tools"); !strings.Contains(line, "›") {
 		t.Fatalf("the cursor is not on the pinned row:\n%s", plain(frame(a)))
 	}
 }
