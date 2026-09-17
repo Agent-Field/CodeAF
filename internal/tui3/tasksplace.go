@@ -102,6 +102,11 @@ type tasksItem struct {
 	// rather than another terminal. It is a fact about THE WINDOW, not about the
 	// door: what the door is is decided once, in [app.taskOwnerOf].
 	here bool
+	// plan is the STORE ROW this piece of work is, when it is one of the run's
+	// plan tasks rather than a row of the record (taskplan.go). It is nil on
+	// every other row, and the row's own steps and dollars — the figures the
+	// record has no room for while the work is still turning — come off it.
+	plan *session.PlanTaskRow
 }
 
 // pick reports whether the CURSOR may stand on this row, and EVERY ROW OF WORK
@@ -145,6 +150,10 @@ type tasksMine struct {
 	// across the desk — and the difference decides whether the row's door is a
 	// switch or a second view onto the engine.
 	here map[string]bool
+	// plan is the run's own store read for the conversation this page was opened
+	// in, when it has a plan at all ([planAgent]). Nil is a conversation with no
+	// plan, which draws exactly the page this place has always drawn.
+	plan []session.PlanTaskRow
 	// tilde is this machine's home directory, which is what tells a folder
 	// somebody WORKS in from the one they stand in ([chatProjectWord]). It is
 	// read once at boot and handed in like every other fact, because the reading
@@ -275,6 +284,22 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 		put(tasksKeyOf(row.entry), tasksItem{
 			entry: row.entry, row: tasksRowFor(world, mine, row.entry), runs: row.runs, live: row.live,
 		})
+	}
+	// THE RUN'S PLAN COMES AFTER THIS WINDOW'S OWN WORK, which is the order a
+	// person reads them in: the work of this chat, then the store the run is
+	// coordinating through. A row a node already carries is left out — a
+	// plan-born node and its store task are one piece of work (taskplan.go's
+	// [planRowShown]).
+	if len(mine.plan) > 0 {
+		names := planNamesOf(mine.rows, mine.row.ID)
+		for _, task := range mine.plan {
+			if planRowShown(names, task.Title) {
+				continue
+			}
+			item := planItem(task, mine.row.ID)
+			item.row = tasksRowFor(world, mine, item.entry)
+			put(tasksKeyOf(item.entry), item)
+		}
 	}
 	for _, task := range mine.away {
 		// A TASK NOTHING NAMED IS LEFT OFF. A row with no words on it says
@@ -1694,8 +1719,17 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := tasksBareLead + pal.dim(line.kin) + glyphInk(glyph) + " "
 	cells := ansi.StringWidth(tasksBareLead+line.kin) + ansi.StringWidth(glyph) + 1
+	state, second := tasksStateField(line), tasksKeyField(by.key, line.rank, now)
+	// A PLAN ROW SHOWS ITS OWN TELEMETRY AND NOT THE SORT KEY'S COLUMN. The
+	// store carries two figures the record has no room for while the work is
+	// still turning — the steps a worker has taken and the dollars the task has
+	// cost — so they take the two cells, each omitted when it is nothing
+	// (taskplan.go).
+	if item.plan != nil {
+		state, second = planStateField(item), planSpendField(item)
+	}
 	return tasksTableRow(lead, cells, tasksLabel(item.entry),
-		tasksStateField(line), tasksKeyField(by.key, line.rank, now),
+		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
@@ -1845,6 +1879,16 @@ func tasksMiddle(item tasksItem) string {
 		return activity
 	}
 	var parts []string
+	// A PLAN ROW CARRIES WHAT THE STORE KNOWS: its steps and its money
+	// (taskplan.go), the two figures a phone card otherwise has no room for.
+	if item.plan != nil {
+		if steps := planStepWords(item.plan.Steps); steps != "" {
+			parts = append(parts, steps)
+		}
+		if usd := planSpendWord(item.plan.USD); usd != "" {
+			parts = append(parts, usd)
+		}
+	}
 	if entry.FilesChanged > 0 {
 		parts = append(parts, itoa(entry.FilesChanged)+plural(" file", entry.FilesChanged))
 	}
