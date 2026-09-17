@@ -39,6 +39,11 @@ type Store struct {
 	// connection per store (openDatabase), so the pragmas are set once and a
 	// transaction never races its own store for the write lock.
 	db *sql.DB
+	// rdb is the handle every read runs on, a second connection in DEFERRED
+	// transactions (openReadDatabase). It is what lets a read answer the last
+	// committed plan — another process's write included — and run beside a
+	// writer holding the write lock rather than behind it.
+	rdb *sql.DB
 }
 
 // Open loads the plan at path, or creates one when the database does not exist.
@@ -87,6 +92,13 @@ func Open(path, project, rootID, rootTitle, rootDescription string, chat ...stri
 		store.db = nil
 		return nil, err
 	}
+	rdb, err := openReadDatabase(path)
+	if err != nil {
+		_ = db.Close()
+		store.db = nil
+		return nil, err
+	}
+	store.rdb = rdb
 	store.data = loaded
 	return store, nil
 }
@@ -273,6 +285,7 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 func (s *Store) ReadyLeaves() []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	var tasks []*Task
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
@@ -291,6 +304,7 @@ func (s *Store) ReadyLeaves() []*Task {
 func (s *Store) ReadySet(filters ...Filter) ReadySet {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	filter := firstFilter(filters)
 	result := ReadySet{}
 	for _, id := range s.data.Order {
@@ -316,6 +330,7 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 func (s *Store) Show(id string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	task := s.data.Tasks[id]
 	if task == nil {
 		return nil, fmt.Errorf("task %q not found", id)
@@ -333,6 +348,7 @@ func (s *Store) Show(id string) (*Task, error) {
 func (s *Store) RoleOf(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
 	task := s.data.Tasks[id]
 	if task == nil {
@@ -370,6 +386,7 @@ func (s *Store) Task(id string) *Task {
 func (s *Store) Resolve(word string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	if task := s.data.Tasks[strings.TrimPrefix(word, "t-")]; task != nil {
 		return cloneTask(task), nil
 	}
@@ -725,6 +742,7 @@ func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
 func (s *Store) Notes(taskID string, limit int) []Note {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -751,6 +769,7 @@ func (s *Store) Notes(taskID string, limit int) []Note {
 func (s *Store) Changed(since time.Time) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	moved := map[string]bool{}
 	for _, note := range s.data.Notes {
 		if note.At.After(since) {
@@ -827,6 +846,7 @@ func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
 func (s *Store) Contexts(taskID, kind string, limit int, filters ...Filter) []ContextEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	filter := firstFilter(filters)
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -868,6 +888,7 @@ func (s *Store) Prune(id string) error {
 func (s *Store) Summary() Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	result := summarize(s.data)
 	if byProject, byChat, err := s.spendTotals(); err == nil {
 		if len(byProject) > 0 {
@@ -885,6 +906,7 @@ func (s *Store) Summary() Summary {
 func (s *Store) Tasks(filters ...Filter) []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	filter := firstFilter(filters)
 	tasks := make([]*Task, 0, len(s.data.Order))
 	for _, id := range s.data.Order {
@@ -902,6 +924,7 @@ func (s *Store) Tasks(filters ...Filter) []*Task {
 func (s *Store) CanFinalize() (bool, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	root := s.data.Tasks[s.data.RootID]
 	if root == nil {
 		return false, "plan root is missing"
@@ -1009,7 +1032,7 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 func (s *Store) Archived() ([]*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return loadArchived(s.db)
+	return loadArchived(s.rdb)
 }
 
 // archiveSelection chooses the maximal finished subtrees older than the
@@ -1162,6 +1185,7 @@ func keepContexts(entries []ContextEntry, drop map[string]bool) []ContextEntry {
 func (s *Store) Search(query string, limit int, filters ...Filter) []SearchResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	terms := searchTerms(query)
 	if len(terms) == 0 {
 		return nil
@@ -1231,6 +1255,7 @@ type SearchResult struct {
 func (s *Store) CriticalPath() []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	children := map[string][]string{}
 	hasUpstream := map[string]bool{}
 	for _, task := range s.data.Tasks {
@@ -1285,6 +1310,7 @@ func (s *Store) CriticalPath() []*Task {
 func (s *Store) Bottlenecks(limit int) []BlockedCount {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	if limit <= 0 || limit > 50 {
 		limit = 5
 	}
@@ -1330,6 +1356,7 @@ type BlockedCount struct {
 func (s *Store) NextID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	return s.nextIDLocked()
 }
 
@@ -1468,17 +1495,49 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 	return nil
 }
 
-// Close releases the store's database handle. A store opened for one pass —
+// refresh adopts the last committed plan from the database into the handle's
+// memory, through the read handle in a DEFERRED transaction. Every read calls
+// it before answering, so a handle's answer is the plan the database holds and
+// not the plan this handle last wrote itself — which is what makes two
+// processes on one file agree, and is the reason Changed on one handle names a
+// task the other just moved. WAL lets the snapshot run while a writer holds
+// the write lock, so a read never waits behind an open write; and because the
+// read is one transaction, it answers a whole committed plan and never a plan
+// half-written. A refresh that cannot read keeps the memory it has: the store
+// would rather answer its last good plan than fail a read it cannot report.
+func (s *Store) refresh() {
+	if s.rdb == nil {
+		return
+	}
+	tx, err := s.rdb.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	fresh, err := loadState(tx)
+	if err != nil {
+		return
+	}
+	s.data = fresh
+}
+
+// Close releases the store's database handles. A store opened for one pass —
 // the runtime opens one per pulse — must be closed when the pass is done, or
 // every pass would leave a connection and a file descriptor behind.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.db == nil {
-		return nil
+	err := error(nil)
+	if s.rdb != nil {
+		err = s.rdb.Close()
+		s.rdb = nil
 	}
-	err := s.db.Close()
-	s.db = nil
+	if s.db != nil {
+		if closeErr := s.db.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+		s.db = nil
+	}
 	return err
 }
 
@@ -1755,6 +1814,7 @@ func depsDone(value state, task *Task) bool {
 func (s *Store) CanFinish(id string) (bool, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
 	task := s.data.Tasks[id]
 	if task == nil {
@@ -2056,7 +2116,7 @@ func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outT
 func (s *Store) spendTotals() (map[string]SpendTotal, map[string]SpendTotal, error) {
 	byProject := map[string]SpendTotal{}
 	byChat := map[string]SpendTotal{}
-	rows, err := s.db.Query(`SELECT t.project, t.chat, SUM(s.usd), COUNT(*)
+	rows, err := s.rdb.Query(`SELECT t.project, t.chat, SUM(s.usd), COUNT(*)
 		FROM spend s JOIN tasks t ON t.id = s.task_id
 		GROUP BY t.project, t.chat`)
 	if err != nil {
@@ -2090,7 +2150,7 @@ func (s *Store) SpendSummary() SpendSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := SpendSummary{ByRole: map[string]SpendTotal{}, ByModel: map[string]SpendTotal{}}
-	rows, err := s.db.Query(`SELECT role, model, SUM(usd), COUNT(*) FROM spend GROUP BY role, model`)
+	rows, err := s.rdb.Query(`SELECT role, model, SUM(usd), COUNT(*) FROM spend GROUP BY role, model`)
 	if err != nil {
 		return result
 	}

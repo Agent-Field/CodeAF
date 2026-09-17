@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // The population this test throws at one store: eight writers, each a
@@ -165,6 +166,138 @@ func TestPlandbCliCrashBetweenDecomposedVerbsLeavesConsistentStore(t *testing.T)
 	if got := again.Task("b"); len(got.Dependencies) != 1 || got.Dependencies[0].TaskID != "fresh" {
 		t.Fatalf("the completed rewire did not land: %#v", got.Dependencies)
 	}
+}
+
+// The population two claiming handles race over: this many ready leaves are
+// seeded, and the two handles claim from that one set until it is empty.
+const plandbClaimLeaves = 12
+
+// TestPlandbCliTwoHandlesClaimOneReadySet drives two Store values — the two
+// processes two codeaf workers would be — against one plandb.db. Both claim
+// from the same ready set at once, so three things must hold afterwards: no
+// leaf is claimed twice, no claim is lost, and each handle's Changed names
+// the leaves the OTHER handle claimed. The last one is the cross-process
+// promise the store owes a waiting worker: a handle's reads answer the last
+// committed plan, not the plan it last wrote itself.
+func TestPlandbCliTwoHandlesClaimOneReadySet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("two handles claim the same ready set in parallel")
+	}
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	leaves := make([]TaskSpec, 0, plandbClaimLeaves)
+	for i := 0; i < plandbClaimLeaves; i++ {
+		leaves = append(leaves, TaskSpec{ID: fmt.Sprintf("leaf-%02d", i), Title: fmt.Sprintf("Leaf %d", i)})
+	}
+	planAdd(t, seed, leaves...)
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	since := time.Now().UTC().Add(-time.Second)
+
+	first := planReopen(t, path)
+	defer first.Close()
+	second := planReopen(t, path)
+	defer second.Close()
+
+	var mu sync.Mutex
+	var claimedTasks []*Task
+	var claimErrs []error
+	var claimers sync.WaitGroup
+	for i, st := range []*Store{first, second} {
+		claimers.Add(1)
+		go func(st *Store, agent string) {
+			defer claimers.Done()
+			// Each handle claims until the ready set is empty, so every leaf
+			// must be claimed exactly once between the two of them, and neither
+			// may be handed a leaf the other already took.
+			for {
+				task, err := st.ClaimNext(agent)
+				if err != nil {
+					mu.Lock()
+					claimErrs = append(claimErrs, err)
+					mu.Unlock()
+					return
+				}
+				if task == nil {
+					return
+				}
+				mu.Lock()
+				claimedTasks = append(claimedTasks, task)
+				mu.Unlock()
+			}
+		}(st, fmt.Sprintf("agent-%d", i))
+	}
+	claimers.Wait()
+	for _, err := range claimErrs {
+		t.Fatalf("a claim failed: %v", err)
+	}
+
+	owners := map[string]string{}
+	for _, task := range claimedTasks {
+		if prev, dup := owners[task.ID]; dup {
+			t.Fatalf("leaf %q was claimed twice: by %q and %q", task.ID, prev, task.ClaimedBy)
+		}
+		owners[task.ID] = task.ClaimedBy
+	}
+	for i := 0; i < plandbClaimLeaves; i++ {
+		if id := fmt.Sprintf("leaf-%02d", i); owners[id] == "" {
+			t.Fatalf("leaf %q was never claimed — a claim was lost", id)
+		}
+	}
+
+	// Every leaf is running on disk, owned by the one agent that took it.
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	for id, agent := range owners {
+		if task := reopened.Task(id); task == nil || task.Status != StatusRunning || task.ClaimedBy != agent {
+			t.Fatalf("leaf %q on disk = %#v, want running for %q", id, task, agent)
+		}
+	}
+
+	// A fresh reader sees every claim the race committed: a wake that reads
+	// the store after the fact must name all the leaves that moved.
+	reader := planReopen(t, path)
+	defer reader.Close()
+	quiet := map[string]bool{}
+	for _, id := range reader.Changed(since) {
+		quiet[id] = true
+	}
+	for id := range owners {
+		if !quiet[id] {
+			t.Fatalf("a fresh reader's Changed missed leaf %q the race committed: %v", id, reader.Changed(since))
+		}
+	}
+
+	// And a handle's own Changed names what the OTHER handle wrote: first
+	// leaves a note, second must see that leaf move, and then the mirror —
+	// the cross-process promise a waiting worker reads, hold as long as the
+	// read answers the last committed plan and not the plan this handle last
+	// wrote itself.
+	moment := time.Now().UTC()
+	if _, err := first.AddNote("leaf-01", "agent-0", "handoff for the next worker"); err != nil {
+		t.Fatalf("first note: %v", err)
+	}
+	if !named(second.Changed(moment), "leaf-01") {
+		t.Fatalf("second handle missed the leaf first noted: %v", second.Changed(moment))
+	}
+	moment = time.Now().UTC()
+	if _, err := second.AddNote("leaf-02", "agent-1", "handoff for the next worker"); err != nil {
+		t.Fatalf("second note: %v", err)
+	}
+	if !named(first.Changed(moment), "leaf-02") {
+		t.Fatalf("first handle missed the leaf second noted: %v", first.Changed(moment))
+	}
+}
+
+// named reports whether ids carries id.
+func named(ids []string, id string) bool {
+	for _, got := range ids {
+		if got == id {
+			return true
+		}
+	}
+	return false
 }
 
 // TestPlandbCliForeignProjectRefusedOnAWrittenStore proves the refusal across
