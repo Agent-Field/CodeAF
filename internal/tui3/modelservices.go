@@ -190,11 +190,10 @@ func (a *app) modelConnectionRows() []connect.Status {
 	// reading; the sentence is the tab's own (switchSentence). The gate is the
 	// ring alone and not the add row's: the row is offered when there is
 	// somewhere to move to, whatever the panel's other doors are.
-	if ring := switchableConnections(a.sources); len(ring) >= 2 {
-		active, hasActive := config.ActiveConnectionFor(a.conversationModel(), a.sources)
+	if switchReading, ok := switchReading(a.conversationModel(), a.sources); ok {
 		rows = append(rows, connect.Status{Service: connect.Service{
 			ID: modelConnectionID(connectionSwitchRowID), Name: "active connection",
-			Blurb: switchSentence(hasActive, active, nextConnection(ring, active, hasActive)),
+			Blurb: switchReading.sentence,
 			Auth:  connect.AuthKey, Category: "models",
 		}})
 	}
@@ -1166,6 +1165,33 @@ func (s *sheet) conversationModel() string {
 	return s.liveModel()
 }
 
+// switchReading is the one reading the three switcher sites share: which
+// service this conversation answers on ([Connected], hasActive), which one
+// enter would take it to ([nextConnection]), and the sentence the row says
+// ([switchSentence]). The gate is the ring's own — false when it holds fewer
+// than two services, because a ring of one has nowhere to move to
+// (connectionSwitcherRow, modelConnectionRows, switchActiveConnection).
+type connectionSwitch struct {
+	active    modelsource.Connected
+	hasActive bool
+	next      modelsource.Connected
+	sentence  string
+}
+
+func switchReading(model string, sources modelsource.Set) (connectionSwitch, bool) {
+	ring := switchableConnections(sources)
+	if len(ring) < 2 {
+		return connectionSwitch{}, false
+	}
+	active, hasActive := config.ActiveConnectionFor(model, sources)
+	switchReading := connectionSwitch{
+		active: active, hasActive: hasActive,
+		next:     nextConnection(ring, active, hasActive),
+		sentence: switchSentence(hasActive, active, nextConnection(ring, active, hasActive)),
+	}
+	return switchReading, true
+}
+
 // connectionSwitcherRow is the Providers tab's active-connection row, nil
 // when no custom connection is connected, because a row that could never do
 // anything is a row that only says there is nothing here. THE ACTIVE
@@ -1178,14 +1204,11 @@ func (s *sheet) conversationModel() string {
 // up ([sheet.conversationModel], raiseSettings): a snapshot taken when the
 // panel opened would go on naming the model the conversation left behind.
 func (s *sheet) connectionSwitcherRow() *modelServiceRow {
-	ring := switchableConnections(s.sources)
-	if len(ring) < 2 {
+	switchReading, ok := switchReading(s.conversationModel(), s.sources)
+	if !ok {
 		return nil
 	}
-	active, hasActive := config.ActiveConnectionFor(s.conversationModel(), s.sources)
-	next := nextConnection(ring, active, hasActive)
-	value := switchSentence(hasActive, active, next)
-	return &modelServiceRow{name: "active connection", value: value, switcher: true}
+	return &modelServiceRow{name: "active connection", value: switchReading.sentence, switcher: true}
 }
 
 // serviceWrittenWord is the name a person calls a service in the switcher's
@@ -1244,11 +1267,6 @@ func nextConnection(ring []modelsource.Connected, active modelsource.Connected, 
 			return ring[(at+1)%len(ring)]
 		}
 	}
-	for _, service := range ring {
-		if !hasActive || !strings.EqualFold(strings.TrimSpace(service.Source.ID), strings.TrimSpace(active.Source.ID)) {
-			return service
-		}
-	}
 	return ring[0]
 }
 
@@ -1273,12 +1291,11 @@ func customInstances(sources modelsource.Set) []modelsource.Connected {
 // makes. The active connection is derived from the slot's model, so rewriting
 // the slot IS the switch; there is nothing else to store.
 func (a *app) switchActiveConnection() {
-	ring := switchableConnections(a.sources)
-	if len(ring) < 2 {
+	switchReading, ok := switchReading(a.conversationModel(), a.sources)
+	if !ok {
 		return
 	}
-	active, hasActive := config.ActiveConnectionFor(a.conversationModel(), a.sources)
-	next := nextConnection(ring, active, hasActive)
+	next := switchReading.next
 	written := serviceWrittenWord(next)
 	var preferred string
 	if modelsource.IsCustomID(next.Source.ID) {
