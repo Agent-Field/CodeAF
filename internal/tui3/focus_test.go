@@ -208,10 +208,12 @@ func TestPressingTheModelNameOpensThePickerAndKeepsTheDraft(t *testing.T) {
 		t.Fatalf("opening the picker took the draft: %q", a.input.String())
 	}
 
-	// And switching keeps it too: the box is suspended, never emptied.
-	drive(t, a, key("enter"))
+	// And switching keeps it too: the box is suspended, never emptied. Enter
+	// chooses and leaves the list up, so esc is what puts the draft back in
+	// front of the keyboard ([app.pickerKey]).
+	drive(t, a, key("enter"), key("esc"))
 	if a.pick.open {
-		t.Fatal("enter did not close the picker")
+		t.Fatal("esc did not close the picker")
 	}
 	if a.input.String() != "half a sentence" {
 		t.Fatalf("switching the model took the draft: %q", a.input.String())

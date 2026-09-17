@@ -106,7 +106,10 @@ func TestTheFilterRanksAPrefixAboveASubstring(t *testing.T) {
 	}
 }
 
-func TestEnterAppliesTheChoiceAndClosesThePicker(t *testing.T) {
+// ENTER APPLIES AND THE LIST STAYS UP. It used to close on the press, which
+// made every choice final and every comparison a round trip; the list is a
+// table now, and esc is the way out ([app.pickerKey]).
+func TestEnterAppliesTheChoiceAndLeavesTheListOpen(t *testing.T) {
 	agent := &fakeAgent{model: "moonshotai/kimi-k3"}
 	a := pickerApp(t, agent, pickerCatalog)
 	typeLine(t, a, "/model")
@@ -115,8 +118,17 @@ func TestEnterAppliesTheChoiceAndClosesThePicker(t *testing.T) {
 	drive(t, a, key("down")) // gpt-5-classic → openai/gpt-4.1-mini
 	drive(t, a, key("enter"))
 
+	if !a.pick.open {
+		t.Fatal("enter has to leave the picker open")
+	}
+	// AND THE MARK FOLLOWS THE CHOICE, because the row it used to sit on is no
+	// longer the model in use ([picker.restate]).
+	if a.pick.current != "openai/gpt-4.1-mini" {
+		t.Fatalf("the list still marks %q", a.pick.current)
+	}
+	drive(t, a, key("esc"))
 	if a.pick.open {
-		t.Fatal("enter has to close the picker")
+		t.Fatal("esc has to close the picker")
 	}
 	if agent.model != "openai/gpt-4.1-mini" {
 		t.Fatalf("model is %q, want openai/gpt-4.1-mini", agent.model)

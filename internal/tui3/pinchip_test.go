@@ -131,6 +131,7 @@ func TestEnterOnThePinnedMachineUnpinsIt(t *testing.T) {
 
 	// AND ENTER ON A MACHINE THAT IS NOT IN FORCE STILL PINS IT, which is the
 	// other half of a toggle.
+	drive(t, a, key("esc"))
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if got := a.pinnedNow(); got == "" {
@@ -170,6 +171,7 @@ func TestTypingInsideAnOpenFoldFiltersTheMachines(t *testing.T) {
 	}
 
 	// AND A QUERY ONLY ONE MACHINE ANSWERS LEAVES ONLY THAT ONE.
+	drive(t, a, key("esc"))
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))
 	typeInto(t, a, "corew")

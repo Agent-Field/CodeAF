@@ -898,8 +898,15 @@ thinking control takes. enter switches.
 provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
-esc leaves and changes **nothing** — your half-typed draft, the model in use and the
-frame all come back as they were. The filter is forgotten when the picker closes.
+**Enter chooses and the list stays up; esc is the way out.** Pressing enter on a row
+switches to it there and then and leaves the list on screen, so you can compare two models
+by their prices, switch, and switch back without reopening anything — and the mark moves to
+whatever you just chose. The same is true of a provider inside a fold: enter pins it, the
+list stays.
+
+esc itself changes **nothing** — it closes the list and gives your half-typed draft and the
+frame back as they were. What enter already did is already done; esc does not undo it. The
+filter is forgotten when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
 typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.

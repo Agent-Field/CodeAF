@@ -149,8 +149,8 @@ Type to filter. The keys:
 | ctrl+t | walk the reasoning effort of the model under the cursor |
 | tab, → | open the providers — the providers serving the model under the cursor — and move the cursor into them |
 | tab, ← | close them again, back on the model |
-| enter | switch to the row under the cursor — or, on an open provider, pin it |
-| esc | cancel, changing nothing |
+| enter | switch to the row under the cursor — or, on an open provider, pin it — and **leave the list up** |
+| esc | close it; what enter already did stays done |
 
 `→` and `←` open and close the providers only from the **end** and the **start** of what
 you have typed; with characters to step over they move the caret through the filter
@@ -165,6 +165,11 @@ unfolds under them and the foot does not offer the key.
 
 The cursor opens **on the model in use**, which is also the marked row, so enter with
 nothing typed confirms rather than changes.
+
+**Enter does not close the list.** It switches, the mark moves to the row you chose, and
+the list stays where it is — so two models can be compared on their prices, chosen between,
+and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
+what enter did is already done.
 
 Filtering splits what you type on whitespace; every token must match, each in one of three
 tiers — prefix, then substring, then subsequence. So `ds v4` finds

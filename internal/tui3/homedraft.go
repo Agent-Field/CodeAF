@@ -539,6 +539,9 @@ func (a *app) targetPickKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		a.target.pick.close()
+	// ENTER CHOOSES AND LEAVES THE LIST UP, which is /model's own rule and for
+	// its reason ([app.pickerKey]): the list is a table, and a table that shuts
+	// on the first press cannot be compared against. `esc` is the way out.
 	case "enter":
 		chosen, ok := a.target.pick.choice()
 		// ENTER ON A PROVIDER PINS THE PROVIDER — and pins the model under it
@@ -547,16 +550,16 @@ func (a *app) targetPickKey(msg tea.KeyPressMsg) tea.Cmd {
 		// and a lane pinned under a model they never picked is a setting that
 		// takes effect the next time they happen to switch.
 		row, onLane := a.target.pick.laneUnder()
-		lanes := a.target.pick.lanes
-		a.target.pick.close()
 		if ok && onLane {
 			a.pinTargetModel(chosen.ID)
-			a.applyLaneChoice(chosen.ID, row, lanes)
+			a.applyLaneChoice(chosen.ID, row, a.target.pick.lanes)
+			a.restatePicker(&a.target.pick, a.targetModel())
 			a.touch()
 			return nil
 		}
 		if ok {
 			a.pinTargetModel(chosen.ID)
+			a.restatePicker(&a.target.pick, a.targetModel())
 		}
 	// The rung the next conversation starts at, held on the draft until there
 	// is an agent to spend it on ([targetDraft.levels]).

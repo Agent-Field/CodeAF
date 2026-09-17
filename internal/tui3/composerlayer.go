@@ -547,11 +547,13 @@ func (a *app) composerPickKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		a.composer.pick.close()
+	// ENTER CHOOSES AND LEAVES THE LIST UP ([app.pickerKey] argues it), and esc
+	// is the way out.
 	case "enter":
 		if chosen, ok := a.composer.pick.choice(); ok {
 			a.composer.model = chosen.ID
+			a.restatePicker(&a.composer.pick, chosen.ID)
 		}
-		a.composer.pick.close()
 	default:
 		a.composer.pick.navigate(msg)
 	}

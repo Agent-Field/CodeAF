@@ -138,9 +138,14 @@ type picker struct {
 	// not honour — and that is the emptiness law, not a door's permission.
 	laneSlot string
 
-	// current is the model in use when the picker opened. It is what the accent
-	// marks, and it is deliberately a snapshot: the mark answers "what am I on",
-	// which cannot change while a modal overlay owns the keyboard.
+	// current is the model in use. It is what the accent marks, and it is a
+	// snapshot of what was true when the list opened — nothing running
+	// underneath may move it, which is the whole of the freeze on this list.
+	//
+	// THE ONE THING THAT MOVES IT IS THE PERSON ([picker.restate]). Enter
+	// chooses and leaves the list up, so the model in use can change while it
+	// is open; a mark left on the row they had just left would be the one thing
+	// on this list that was no longer true.
 	current string
 
 	// held is each model's row facts, frozen the first time this list drew
@@ -1673,6 +1678,37 @@ func (p *picker) laneHeadBefore(at, width int) string {
 	return p.laneFit(width).header()
 }
 
+// restate moves the marks after a choice has been made with the list still
+// open, which is what `enter` now leaves it ([app.pickerKey]).
+//
+// THE MARKS ARE SNAPSHOTS AND THAT IS STILL RIGHT — nothing running underneath
+// may move them ([picker.current] says why). What just happened is not
+// something running underneath: it is the person pressing enter, and a list
+// that went on marking the model they had just left would be the one thing on
+// the row that was no longer true.
+//
+// A door that writes something else — a task's model, a settings row, home's
+// draft — passes what IT now holds, because the mark is about that door's
+// subject and not about this window's conversation.
+func (p *picker) restate(current, pin, force string) {
+	if !p.open {
+		return
+	}
+	p.current, p.pin, p.force = current, pin, force
+}
+
+// restatePicker is [picker.restate] with the two lane answers read off the
+// profile this window writes to — the row VERBATIM, which is what tells `auto`
+// from `openrouter` ([picker.marked]), and the machine the wire would actually
+// demand.
+func (a *app) restatePicker(p *picker, current string) {
+	pin := ""
+	if p.laneSlot != "" {
+		pin = config.LaneAt(a.profileDir, p.laneSlot)
+	}
+	p.restate(current, pin, a.pinnedNow())
+}
+
 // pinnedLane is the MACHINE this conversation is held to, and empty for every
 // row that names none — `auto`, `openrouter`, and a pairing the wire has retired.
 //
@@ -2605,18 +2641,21 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		a.pick.close()
 
+	// ── ENTER CHOOSES AND THE LIST STAYS OPEN ───────────────────────────────
+	//
+	// It used to close on the press, which made every choice final and every
+	// comparison a round trip: pick a model, watch the list vanish, type
+	// `/model` again to see what the other one cost. The list is a TABLE now —
+	// a thing built to be read down and compared — and a table that shuts the
+	// moment you touch a row is a table you can use once.
+	//
+	// So enter applies and leaves it up, and `esc` is the way out. Applying is
+	// safe to repeat: switching a model twice lands on the second, and pinning
+	// a provider twice writes the second row.
 	case "enter":
 		chosen, ok := a.pick.choice()
-		// THE SUBJECT IS READ BEFORE THE LIST IS CLOSED, because closing it is what
-		// forgets the subject ([picker.close] zeroes the whole struct).
 		task := a.pick.task
-		// AND SO IS THE LANE ROW, for the same reason.
 		row, onLane := a.pick.laneUnder()
-		var lanes []laneView
-		if onLane {
-			lanes = a.pick.lanes
-		}
-		a.pick.close()
 		if ok && onLane && task == 0 {
 			// ENTER ON A LANE IS TWO ANSWERS AT ONCE WHEN THE MODEL IS NOT THE
 			// ONE IN USE: somebody who opened another model's lanes and chose
@@ -2626,7 +2665,8 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			if chosen.ID != a.model {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
-			a.applyLaneChoice(chosen.ID, row, lanes)
+			a.applyLaneChoice(chosen.ID, row, a.pick.lanes)
+			a.restatePicker(&a.pick, a.model)
 			a.touch()
 			return nil
 		}
@@ -2639,6 +2679,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			} else {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
+			a.restatePicker(&a.pick, a.model)
 		}
 
 	// The reasoning cycle sits above the filter's default branch on purpose: it

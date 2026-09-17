@@ -447,8 +447,14 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	drive(t, a, key("down"), key("right")) // openrouter, then into its machines
 	drive(t, a, key("enter"))
 
+	// ENTER CHOOSES AND LEAVES THE LIST UP ([app.pickerKey] argues it), so the
+	// pin is written with the list still on screen and esc is the way out.
+	if !a.pick.open {
+		t.Fatal("pinning a lane closed the picker")
+	}
+	drive(t, a, key("esc"))
 	if a.pick.open {
-		t.Fatal("pinning a lane left the picker open")
+		t.Fatal("esc left the picker open")
 	}
 	name, pinned := config.LanePinned(a.profileDir, talkSlot)
 	if !pinned || !strings.EqualFold(name, "Cloudflare") {
@@ -664,9 +670,10 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 		t.Fatalf("the cursor is not on the first machine: %+v (on=%v)", row, on)
 	}
 	drive(t, a, key("enter"))
-	if a.sheet.sel != nil {
-		t.Fatal("enter on a lane left the list open")
+	if a.sheet.sel == nil {
+		t.Fatal("enter on a lane closed the list; esc is the way out now")
 	}
+	drive(t, a, key("esc"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -708,7 +715,7 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	if !lane.HeardPrefsSilent(base) {
 		t.Fatal("the answer was not filed against the base the sheet is wired to")
 	}
-	drive(t, a, key("down"), key("up"))
+	drive(t, a, key("esc"), key("down"), key("up"))
 	if !sheetHas(a, "pinned: cloudflare (not taken on this base)") {
 		t.Fatalf("the row still reads as though the pin were on the wire:\n%s",
 			strings.Join(sheetLabels(a), "\n"))
@@ -764,10 +771,11 @@ func TestTheLaneRowOpensTheTwoAnswersWhenNothingIsMeasured(t *testing.T) {
 	if row, on := a.sheet.sel.pick.laneUnder(); !on || row.lane != laneAutoAt {
 		t.Fatalf("the list did not open on auto: %+v (on=%v)", row, on)
 	}
-	drive(t, a, key("down"), key("enter"))
+	drive(t, a, key("down"), key("right"), key("enter"))
 	if got := config.LaneAt(dir, talkSlot); got != config.LaneOpenRouter {
-		t.Fatalf("enter on openrouter wrote %q", got)
+		t.Fatalf("enter on default wrote %q", got)
 	}
+	drive(t, a, key("esc"))
 
 	// The speed guard is on until somebody says otherwise, and enter turns it.
 	if !config.LaneGuardAt(dir) {
