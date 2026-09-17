@@ -1241,6 +1241,14 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	}
 	defer func() {
 		_ = auditor.Close()
+		// The model the check ran on is read beside the spend it folds in, for
+		// the same pocket's reason: a landing that later reports who checked the
+		// work names the model that actually answered, failover included, and
+		// not the one that was asked for. The auditor's model is read from the
+		// agent itself rather than from `on`, which is the ASKED-FOR id.
+		node.graph.mu.Lock()
+		node.checkedOn = auditor.Model()
+		node.graph.mu.Unlock()
 		// The audit is part of what the node cost, so it lands in the same
 		// pocket the node's own spend does (task_run.go's foldTaskUsage): the
 		// person asked for a task, not for a task and separately for a judge.

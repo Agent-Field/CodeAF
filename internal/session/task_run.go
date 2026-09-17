@@ -92,6 +92,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -648,6 +649,12 @@ type TaskNode struct {
 	// reaches the project index (task_index.go) and the node's own notice on the
 	// way past.
 	cost float64
+	// checkedOn is the model the node's checking pass ran on, read off the
+	// auditor when its spend folds in (task_audit.go) and empty when there was
+	// none — a node that never reached a check, or one whose check could not
+	// start. It is a fact about the last check, not a setting, and it is read by
+	// the landing hook ([Agent.reportTaskNode]) beside the worker's own model.
+	checkedOn string
 	// input, output, cacheRead and cacheWrite are that same accumulation in
 	// TOKENS, folded in beside the dollars and kept on the checkpoint with them.
 	//
@@ -3805,6 +3812,63 @@ func (n *TaskNode) burned() int {
 
 // ── the world hearing about a node ──────────────────────────────────────────
 
+// tellTaskLanded hands one landed node to the session's own landing reader
+// (Config.TaskLanded), when a door wired one. It runs on its own goroutine
+// through guard.Go, so a reader that is slow — a call to a model outside the
+// crew takes as long as it takes — holds up nothing on the reporting path,
+// which is already answering to the note delivery beside it.
+//
+// THE SNAPSHOT IS TAKEN HERE, on the reporting goroutine, under the node's own
+// lock discipline (graph.mu, the room's spend read outside it as notice does):
+// a landing built later on the reader's goroutine could read a node already
+// re-armed, and the record the reader judged would not be the one that landed.
+func (a *Agent) tellTaskLanded(node *TaskNode) {
+	hook := a.config.TaskLanded
+	if hook == nil {
+		return
+	}
+	// A landing is a FINAL state only — work that ended on an answer: done,
+	// failed, or ended where nobody could check it. A node still queued or
+	// running has no record to judge yet, and its own updates already travelled
+	// the reporting path above.
+	switch node.stateNow() {
+	case TaskDone, TaskFailed, TaskUnverified:
+	default:
+		return
+	}
+	landing := node.landing()
+	guard.Go("task landed", func() { hook(landing) })
+}
+
+// landing copies the node out from under the graph's lock, shaped for a reader
+// outside this package. The spend is read BEFORE the graph lock is taken, the
+// same order [TaskNode.notice] keeps.
+func (n *TaskNode) landing() TaskLanding {
+	tokens := n.burned()
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	wrote := make([]string, len(n.wrote))
+	copy(wrote, n.wrote)
+	checks := make([]string, len(n.Checks))
+	copy(checks, n.Checks)
+	return TaskLanding{
+		ID:          n.id,
+		State:       n.state,
+		Brief:       n.spec.brief,
+		Deliverable: n.spec.deliverable,
+		Report:      n.report,
+		Claim:       n.claim,
+		Ending:      string(n.endingLocked()),
+		Wrote:       wrote,
+		Changed:     len(n.changed),
+		Checks:      checks,
+		Worker:      n.spec.model,
+		High:        n.checkedOn,
+		CostUSD:     n.cost,
+		Tokens:      tokens,
+	}
+}
+
 // reportTaskNode is the graph's report hook: one event for a surface, a row in
 // the project's index, and — on a final state — one note for the model.
 //
@@ -3833,6 +3897,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
+	a.tellTaskLanded(node)
 	transcript := taskURI(node.journalPath())
 	note := landingNoteLead(notice) + taskNote(notice, transcript, a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting

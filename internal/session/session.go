@@ -1077,6 +1077,29 @@ func (u Usage) CachedShare() (float64, bool) {
 // BaseURL are required. APIKey may be empty for a session opened before the
 // person has handed one over — the first-run setup's case — and every request
 // refuses until [Agent.SetAPIKey] lands it.
+// TaskLanding is one landed node, handed whole to Config.TaskLanded. It is the
+// record a caller outside this package needs to judge the work: what was asked,
+// what came home, who ran it and who checked it, and what the run spent. The
+// fields are copied from the node's own record at the moment the node reached a
+// final state, so a reader that arrives late reads a fact rather than a
+// half-open run.
+type TaskLanding struct {
+	ID          uint64
+	State       TaskState
+	Brief       string
+	Deliverable string
+	Report      string
+	Claim       string
+	Ending      string
+	Wrote       []string
+	Changed     int
+	Checks      []string
+	Worker      string
+	High        string
+	CostUSD     float64
+	Tokens      int
+}
+
 type Config struct {
 	Workspace string // tools root here; all relative paths resolve inside it
 	Model     string
@@ -1386,6 +1409,18 @@ type Config struct {
 	// TaskProgressCheck is the test seam for leash checkpoints. Production uses
 	// the node's ordinary read-only checker; a test may answer deterministically.
 	TaskProgressCheck func(brief string, evidence []string) (working bool, reason string)
+
+	// TaskLanded is called ONCE per landed node, on its own goroutine, after the
+	// node's row is in the project's index (task_run.go's [Agent.reportTaskNode]).
+	// It carries [TaskLanding]: the node's record as the landing left it, the
+	// worker's model and the model the checking pass ran on (empty when there was
+	// none). A final state only — running and queued nodes land nothing — and a
+	// call that never blocks the reporting path: the reporting goroutine hands the
+	// landing over and moves on, and a caller that is slow holds up nothing but
+	// its own goroutine. NIL IS OFF, which is what every caller that does not
+	// want the news hands in, and what this package then spends nothing on.
+	TaskLanded func(TaskLanding)
+
 	// TaskDeadline overrides one checkpoint interval. Zero keeps the one-hour
 	// production interval and lets deadline behavior be tested without an hour.
 	TaskDeadline time.Duration
