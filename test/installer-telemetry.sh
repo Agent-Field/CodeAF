@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # THE INSTALLER'S TELEMETRY DUTIES, PROVED WITHOUT A NETWORK.
 #
-# The wire contract (.telemetry-contract.md) is one text in three places — the
-# binary, this installer and the README — and only a test notices when one of
-# them drifts. The installer's main body downloads a release, so this test
-# never sources it whole: it lifts out the three telemetry functions and runs
-# them against a temporary state root. Nothing here opens a socket.
+# The notice text lives once, byte for byte, in docs/TELEMETRY.md and is
+# quoted in three places — the binary, this installer and the README — and
+# only a test notices when one of them drifts. The installer's main body
+# downloads a release, so this test never sources it whole: it lifts out the
+# three telemetry functions and runs them against a temporary state root.
+# Nothing here opens a socket.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 script=scripts/install.sh
-contract=.telemetry-contract.md
-test -f "$contract" || { echo "telemetry contract is missing; this test reads it"; exit 1; }
+doc=docs/TELEMETRY.md
+test -f "$doc" || { echo "docs/TELEMETRY.md is missing; this test reads the notice from it"; exit 1; }
 
 eval "$(awk '/^TELEMETRY_NOTICE=/{f=1} /^VERBOSE=/{f=0} f' "$script")"
 eval "$(sed -n '/^telemetry_off()/,/^}/p; /^write_install_marker()/,/^}/p; /^print_telemetry_notice()/,/^}/p' "$script")"
@@ -80,10 +81,20 @@ ok "unwritable state root does not fail the install" 'write_install_marker /proc
 
 notice="$tmp/notice.txt"
 print_telemetry_notice 2> "$notice"
-expected=$(awk '/^Notice, printed once/{f=1;next} f' "$contract")
+expected=$(awk '
+	/^## The notice$/ {f=1; next}
+	f && /^```$/ {f++; next}
+	f == 2 {print}
+' "$doc")
 body=$(sed 1d "$notice")
 ok "one blank line before the notice" '[ -z "$(head -n 1 "$notice")" ]'
-ok "notice matches the contract verbatim" '[ "$body" = "$expected" ]'
+ok "notice matches docs/TELEMETRY.md verbatim" '[ "$body" = "$expected" ]'
+readme_block=$(awk '
+	/^```text$/ {f = 1; buf = ""; next}
+	/^```$/     {if (f && buf ~ /codeaf sends anonymous usage counts/) {print buf; exit} f = 0; next}
+	f           {buf = buf $0 "\n"}
+' README.md)
+ok "README quotes the notice verbatim" '[ -n "$readme_block" ] && [ "$(printf "%s\n" "$expected")" = "$readme_block" ]'
 ok "notice goes to stderr, nothing to stdout" '[ -z "$(print_telemetry_notice 2>/dev/null)" ]'
 
 for v in off 0 false OFF False; do

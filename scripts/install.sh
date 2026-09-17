@@ -6,7 +6,7 @@ REPOSITORY="Agent-Field/codeaf"
 LEGACY_REPOSITORY="Agent-Field/aforge-v2" # Remove after the one-release repository fallback. # legacy-name
 CHANNEL="${CHANNEL:-stable}"
 VERSION="${VERSION:-}"
-# The telemetry notice, verbatim from the wire contract (.telemetry-contract.md).
+# The telemetry notice, verbatim from docs/TELEMETRY.md.
 # The installer only writes a local install marker and prints this text; it
 # never sends telemetry, and it makes no request that the download steps did
 # not already make.

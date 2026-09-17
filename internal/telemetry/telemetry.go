@@ -1,11 +1,11 @@
 // Package telemetry implements codeaf's anonymous usage counting exactly as
-// .telemetry-contract.md spells it: four typed events, an allowlisted property
+// docs/TELEMETRY.md spells it: four typed events, an allowlisted property
 // set, a local spool, and one deadline-bounded flush. It is a library only —
 // nothing in cmd/codeaf, internal/session or internal/config reads it yet; the
 // wiring is a later job.
 //
-// The law of the package is the contract at the repository root. When this file
-// and the contract disagree, the contract wins and this package is the defect.
+// The law of the package is docs/TELEMETRY.md. When this file and the doc
+// disagree, the doc wins and this package is the defect.
 package telemetry
 
 import (
