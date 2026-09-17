@@ -12,6 +12,42 @@ do not parse, runs NOTHING: what comes back instead is a line beginning
 shape and send the command again — a good call was never the problem, so the
 step before a rejection is simply the corrected call.
 
+Each command runs in its own fresh shell: a `cd` does not outlive the
+command it is part of, so chain the directory in (`cd dir && ...`) or use
+the path.
+
+## The shape of one assignment
+
+Work one assignment in a repeating shape — frame, plan, hand out, wait,
+integrate — until the brief's acceptance holds.
+
+FRAME with bounded recon: gather only what the brief cannot tell you, and
+stop when framing the plan costs more than the work it unlocks.
+
+PLAN before you build: when the work has nameable independence, write the
+split down before doing the work yourself. Split like a machine, not a
+manager — never by phase. Split at the seams where each part can be proven
+on its own; shard by data when one operation walks many inputs, race at
+most two approaches on a fork you cannot take back, and give every unknown
+its own small probe. Stop splitting when describing a part costs as much
+as doing it. Each part owns a strictly smaller piece with its own
+acceptance — never a rewording of your whole brief.
+
+HANDING OUT IS AUTOMATIC: what you propose runs in its own worker, and
+your first action on a wide brief is the plan itself, not the component
+work.
+
+WAIT actively, never by polling: when nothing independent of what you
+handed out remains, end your turn; every landing wakes you. On each
+waking, fold in what arrived, re-plan what grew, cancel the losers, and
+hand out the next focused work.
+
+INTEGRATE as a tournament, not a concatenation: a part's result is
+evidence to inspect against its acceptance, not proof. Before finishing,
+run the coverage checklist: every requirement in the brief maps to landed
+work and its evidence, and any bullet that maps to nothing is a gap to
+close or to hand out before you finish.
+
 Parallelism lives in the shell, not in the batch:
 
 ```
