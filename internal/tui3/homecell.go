@@ -158,11 +158,12 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 	return out
 }
 
-// homeDescNote is one row's note as the lines it takes: the sentence, wrapped,
-// and the row's answers under it. It is only ever asked for the row being read
-// ([homeView.previewAt]) — no note stands permanently in the column since the
-// `needs you` exception went (2026-09-17, [homeCell.grows]) — so the note has
-// the column to itself and may wrap.
+// homeDescNote is one row's note as the lines it takes: the thread's title
+// line and a blank where the row names one ([homeCell.thread]), the sentence,
+// wrapped, and the row's answers under it. It is only ever asked for the row
+// being read ([homeView.previewAt]) — no note stands permanently in the column
+// since the `needs you` exception went (2026-09-17, [homeCell.grows]) — so the
+// note has the column to itself and may wrap.
 func (a *app) homeDescNote(line homeLine, at int, said string, width int, selected bool, pal palette) []string {
 	room := max(1, width-homeDescLeadCells)
 	answers := ""
@@ -170,6 +171,9 @@ func (a *app) homeDescNote(line homeLine, at int, said string, width int, select
 		answers = strings.TrimSpace(a.homeRowAnswers(line, at))
 	}
 	var out []string
+	if thread := strings.TrimSpace(line.cell.thread); thread != "" {
+		out = append(out, homeDescLeadBlank+homeThreadLine(thread, room, pal), "")
+	}
 	for _, words := range wrap(said, room) {
 		out = append(out, homeDescLeadBlank+pal.dim(words))
 	}
@@ -458,8 +462,22 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 	if cell.sub == "" || homeDescOn(a.home.grid.cols) || (cell.grows && at != a.home.previewAt()) {
 		return rows
 	}
+	// THE THREAD'S TITLE LINE AND A BLANK COME FIRST where the row names one
+	// ([homeCell.thread]), and the band covers them with the rest.
+	if thread := strings.TrimSpace(cell.thread); thread != "" {
+		rows = append(rows,
+			homeCellBand(homeCellLeadBlank+homeThreadLine(thread, max(1, width-homeGridLead), pal), width, pal, lit && cell.grows),
+			homeCellBand("", width, pal, lit && cell.grows))
+	}
 	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
 	return append(rows, homeCellBand(homeCellLeadBlank+under, width, pal, lit && cell.grows))
+}
+
+// homeThreadLine is a description's title line: the word dim and the thread's
+// name one shade up, cut whole to the room — `thread: Prime Sieve`.
+func homeThreadLine(thread string, room int, pal palette) string {
+	name := fit(thread, max(1, room-ansi.StringWidth(homeThreadWord)))
+	return pal.dim(homeThreadWord) + pal.muted(name)
 }
 
 // homeCellLead is the row's mark and the air after it, or two blank cells.

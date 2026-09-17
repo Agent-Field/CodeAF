@@ -14,11 +14,16 @@ import (
 // ── THE PANELS (docs/design/home-mission-control/DESIGN.md §1, §3 G2–G6) ────
 
 // homeLineAfter is the frame line under the first one holding a word.
-func homeLineAfter(frame, word string) string {
+func homeLineAfter(frame, word string) string { return homeLineBelow(frame, word, 1) }
+
+// homeLineBelow is the line n rows under the first line of home's body that
+// carries a word: a read row's thread title is one under it, and its sentence
+// with its answers three under it, past the blank.
+func homeLineBelow(frame, word string, n int) string {
 	lines := strings.Split(frame, "\n")
 	for y, line := range lines {
-		if y >= placeHeadRows && strings.Contains(line, word) && y+1 < len(lines) {
-			return lines[y+1]
+		if y >= placeHeadRows && strings.Contains(line, word) && y+n < len(lines) {
+			return lines[y+n]
 		}
 	}
 	return ""
@@ -31,9 +36,12 @@ func TestNeedsYouCarriesTheQuestionAndItsAnswersOnTheRow(t *testing.T) {
 	// The lab's cursor is on the row, which is when its question and answers
 	// are drawn under it; walked off, the row is its mark and title alone.
 	frame := homeText(lab.a)
-	under := homeLineAfter(frame, "Pricing Research")
+	if head := homeLineAfter(frame, "Pricing Research"); !strings.Contains(head, homeThreadWord+"Pricing Research") {
+		t.Fatalf("the read row's description does not open with its thread's title line:\n%s", frame)
+	}
+	under := homeLineBelow(frame, "Pricing Research", 3)
 	if !strings.Contains(under, "needs your ok to run bash") || !strings.Contains(under, "1 allow once") {
-		t.Fatalf("the row does not carry its question and answers:\n%s", frame)
+		t.Fatalf("the row does not carry its question and answers under the thread title:\n%s", frame)
 	}
 	lab.a.home.point(lab.a.file)
 	if under := homeLineAfter(homeText(lab.a), "Pricing Research"); strings.Contains(under, "needs your ok to run bash") {

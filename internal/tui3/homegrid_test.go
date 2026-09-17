@@ -173,7 +173,7 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	homeText(a)
 	homeLineOf(t, a, func(l homeLine) bool {
-		return l.cell != nil && strings.TrimSpace(l.cell.sub) != ""
+		return l.cell != nil && strings.TrimSpace(l.cell.sub) != "" && l.cell.thread == ""
 	})
 	line, _ := a.home.focusedLine()
 	said := strings.TrimSpace(line.cell.sub)
@@ -247,12 +247,16 @@ func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 	if !strings.Contains(frame, a.pal.glyph(tokens.GNeedsHuman)+" "+line.cell.title) {
 		t.Fatalf("the mark left the row with the cursor off it:\n%s", frame)
 	}
-	// AND UNDER THE POINTER IT IS BACK, in the column, on its row's line.
+	// AND UNDER THE POINTER IT IS BACK, in the column: its thread's title line
+	// on its row's line, a blank, then the question two lines under.
 	a.home.hover = question
 	frame = homeText(a)
-	row, at := homeRowOf(frame, firstWordsOf(said))
+	row, at := homeRowOf(frame, homeThreadWord+line.cell.title)
 	if row < 0 {
-		t.Fatalf("the question is not on the frame with the pointer on its row:\n%s", frame)
+		t.Fatalf("the read row's thread title is not on the frame with the pointer on its row:\n%s", frame)
+	}
+	if sentence, _ := homeRowOf(frame, firstWordsOf(said)); sentence != row+2 {
+		t.Fatalf("the question is on row %d, want two under its thread title at %d:\n%s", sentence, row, frame)
 	}
 	_, rail := homeRowOf(frame, "projects · ")
 	if at <= homeGridMargin || at >= rail {
@@ -336,17 +340,17 @@ func TestTheNeedsMarkLeadsTheRowAndNotTheQuestion(t *testing.T) {
 		t.Fatalf("the mark is nowhere on the row's line:\n%s", frame)
 	}
 	// IT IS IN THE ROW'S OWN LEAD, right before the title, and not beside the
-	// question in the column.
-	said := strings.Index(lines[row], firstWordsOf(strings.TrimSpace(line.cell.sub)))
-	if said < 0 {
-		t.Fatalf("the question is not on the row's line under the cursor:\n%s", frame)
+	// question in the column — which is two lines under the row, past the
+	// thread's title line and its blank.
+	if row+2 >= len(lines) || !strings.Contains(lines[row+2], firstWordsOf(strings.TrimSpace(line.cell.sub))) {
+		t.Fatalf("the question is not two lines under the row under the cursor:\n%s", frame)
 	}
 	title := strings.Index(lines[row], line.cell.title)
 	if title < 0 || at > title || title-at > homeGridLead+1 {
 		t.Fatalf("the mark at %d does not lead the row's title at %d:\n%s", at, title, frame)
 	}
-	if said < at {
-		t.Fatalf("the question at %d stands before the mark at %d:\n%s", said, at, frame)
+	if strings.Contains(lines[row+2], mark) {
+		t.Fatalf("the question in the column wears the mark too:\n%s", frame)
 	}
 	// AND THERE IS STILL ONLY ONE OF IT (law 8).
 	if n := strings.Count(lines[row], mark); n != 1 {

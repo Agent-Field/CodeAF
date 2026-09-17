@@ -13,11 +13,13 @@ answering one question you would ask walking up to a colleague's desk:
 
  needs you                                       projects · folders you've opened
  ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
-   needs your ok to run bash  1 allow once  2 always  ~/pricing-site   5 chats
- ? Clever Bet Prediction Model              6h
-                                                  spend                    today $0.14 of $20
- unread                                             ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
-   tier-B subs                                1d   opus 63%  ·  3 chats and 1 task today
+   thread: Searching for Apartments Near Minto      ~/pricing-site   5 chats
+
+   needs your ok to run bash  1 allow once  2 always
+ ? Clever Bet Prediction Model              6h   spend                    today $0.14 of $20
+                                                  ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10
+ unread                                           opus 63%  ·  3 chats and 1 task today
+   tier-B subs                                1d
    package release radar                      1d
    16 more
 
@@ -126,10 +128,13 @@ there on every frame). The `?` never goes away. **The longest wait is at the top
 heading is the two words alone — it carries no count, whether two things are stopped or
 none; the rows under it are the count.
 
-**The description names the thread the row belongs to**, spelled exactly as `threads`
-spells that conversation: a landing's line leads with its conversation's name, and so does a
-watch's that was asked for in one. A question's title already IS its thread — the row is
-the conversation that stopped — so its line is the question alone.
+**Every description opens with the thread the row belongs to**, as a title line of its
+own — `thread: Searching for Apartments Near Minto`, spelled exactly as `threads` spells
+that conversation — then a blank line, and then the rest: the question, or a landing's
+files and sentence, with the answers at the right. A watch made from home's own box belongs
+to no thread and has no title line. On a frame with no description column the read row
+grows three lines under itself for this; a terminal too short to keep those lines free
+keeps one, and while such a row is read the rows under it move down two for the moment.
 
 **A permission question is repeated exactly and nothing is added to it.** The session that
 is stopped writes one sentence — `needs your ok to run ` and the tool's name — and the row
@@ -162,14 +167,16 @@ of every row of the field is a time** — how long a question has waited, how lo
 landing landed, when you last spoke in a conversation, how long a task has run, when an
 order is due — and nothing else stands there.
 
-**The row under the pointer or the cursor grows a second line** — the thread it belongs to,
-how many files it wrote, the first sentence of what the work came to, and its two answers at
-the right. A landing with no files to its name goes straight from the thread to the
-sentence, never `0 files`:
+**The row under the pointer or the cursor grows its description** — the thread's title
+line, a blank, then how many files it wrote, the first sentence of what the work came to,
+and its two answers at the right. A landing with no files to its name starts straight at
+the sentence, never `0 files`:
 
 ```
    tier-B subs                                                                 1d
-   Billing Rewrite · 3 files · built the tier-B subscription flow   1 accept   2 not right
+   thread: Billing Rewrite
+
+   3 files · built the tier-B subscription flow                1 accept   2 not right
 ```
 
 The two words are the task's own — `accept` and `not right` for work nobody could check,

@@ -463,6 +463,13 @@ type homeCell struct {
 	// held row grows into under the cursor ([app.homeCellDoor]).
 	hold bool
 	door string
+	// thread is the conversation the row belongs to, spelled as `threads`
+	// spells it, and it heads the row's description as its own title line —
+	// `thread: <name>`, then a blank line, then [sub] (owner, 2026-09-17). It
+	// is drawn wherever the description is: in the description column, or
+	// under the row on a frame without one, where the row grows three lines
+	// rather than one ([homeCell.grownLines]).
+	thread string
 	// sub is the line under the row, and subRight what that line carries at
 	// its right — the answers a key sends.
 	sub, subRight string
@@ -508,6 +515,24 @@ func (l homeLine) height() int {
 	return 1
 }
 
+// grownLines is how many lines a growing row draws under itself while it is
+// being read on a frame without a description column: its sentence, or — for a
+// row that names its thread — the thread's title line, a blank, and the
+// sentence. It is what a panel reserves for the one row that will grow
+// ([homeGridPanel.growLines]).
+func (c *homeCell) grownLines() int {
+	if c == nil || !c.grows || strings.TrimSpace(c.sub) == "" {
+		return 0
+	}
+	if strings.TrimSpace(c.thread) != "" {
+		return 3
+	}
+	return 1
+}
+
+// homeThreadWord leads a description's thread line: `thread: Prime Sieve`.
+const homeThreadWord = "thread: "
+
 // NO ROW'S SENTENCE IS DRAWN AT REST ANY MORE. `needs you`'s questions were the
 // one exception — the owner made them so on 2026-09-15, so that what was waiting
 // on a person could be read without walking onto it — and reversed it on
@@ -535,6 +560,13 @@ type homeGridPanel struct {
 	// gone from the page.
 	shown   int
 	dropped bool
+	// tight is that the column was too short for the panel's full reservation
+	// for the row that grows ([homeGridPanel.growLines]): a squeezed column
+	// gives up the thread's two extra lines before it gives up a row, keeps one
+	// line as it always did, and while a thread row on it is read the lines
+	// under it move down two and the column's foot is clipped — a short frame
+	// costs a moment of shape, never a row ([squeezeColumn]).
+	tight bool
 	// desc is that this frame draws the description column, which changes what
 	// a ROW is: its second line is drawn there instead of under it, so the panel
 	// neither draws that line nor reserves the room for it ([homeDescOn]).
@@ -606,12 +638,16 @@ func (p homeGridPanel) height() int {
 			n++
 		}
 	}
-	// AND ONE LINE IS KEPT FOR THE ROW THE CURSOR WILL GROW. Which row that is
-	// belongs to the paint; that one of them will grow is known here, and
-	// reserving it is what keeps the column the same height whichever row the
-	// cursor is standing on ([homeCell.grows]).
-	if p.growsARow() && !p.desc {
-		n++
+	// AND THE LINES ARE KEPT FOR THE ROW THE CURSOR WILL GROW. Which row that
+	// is belongs to the paint; that one of them will grow, and by how much, is
+	// known here, and reserving it is what keeps the column the same height
+	// whichever row the cursor is standing on ([homeCell.grows]).
+	if !p.desc {
+		if p.tight {
+			n += min(1, p.growLines())
+		} else {
+			n += p.growLines()
+		}
 	}
 	if p.folds() {
 		n++
@@ -627,13 +663,17 @@ func (p homeGridPanel) groupOpen() bool {
 
 // growsARow reports that one of the rows on the screen will grow a line under
 // the cursor.
-func (p homeGridPanel) growsARow() bool {
+func (p homeGridPanel) growsARow() bool { return p.growLines() > 0 }
+
+// growLines is the most lines any row on the screen grows while it is being
+// read ([homeCell.grownLines]): the panel's reservation for the one row that
+// will.
+func (p homeGridPanel) growLines() int {
+	most := 0
 	for _, line := range p.read.lines[:p.shown] {
-		if line.cell != nil && line.cell.grows {
-			return true
-		}
+		most = max(most, line.cell.grownLines())
 	}
-	return false
+	return most
 }
 
 // homeColumnHeight is a column's height with one blank row between panels.
@@ -701,6 +741,15 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 		return
 	}
 	order := byKeep(column)
+	// THE RESERVATION GIVES WAY BEFORE A ROW DOES: every panel keeps one line for
+	// the row that grows and no more ([homeGridPanel.tight]), and only if the
+	// column is still too tall are rows taken.
+	for _, p := range order {
+		if homeColumnHeight(column) <= room {
+			break
+		}
+		p.tight = true
+	}
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
 			break

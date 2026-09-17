@@ -146,8 +146,11 @@ func needsAsked(in *homeGridInput) []needsItem {
 		item := needsItem{asked: row.at}
 		switch row.kind {
 		case switcherConversation:
-			// The title IS the thread's own label — the one `threads` draws for
-			// the same conversation — so the sentence names no thread again.
+			// THE DESCRIPTION IS HEADED BY THE THREAD (owner, 2026-09-17), which
+			// for a stopped conversation is the row's own title — the label
+			// `threads` draws for it — said once more as the description's
+			// title line so every row of the panel reads the same way.
+			cell.thread = row.title
 			head, whole := needsSentence(row.session)
 			cell.sub = head
 			// A CONVERSATION ALWAYS HAS A DOOR: it is the conversation the
@@ -157,11 +160,12 @@ func needsAsked(in *homeGridInput) []needsItem {
 				cell.answers = answersWord(row.session.Presence.Question)
 			}
 		case switcherStanding:
-			// THE THREAD IT BELONGS TO LEADS THE SENTENCE, spelled as `threads`
-			// spells that conversation, for a watch asked for in one; a watch
-			// made from home's own box belongs to no thread and says none.
-			cell.sub = rowClauses(needsThreadOf(in, row.item.Item.Origin.Transcript),
-				switcherFirstLine(row.item.Item.NeedsPerson))
+			// THE THREAD IT BELONGS TO HEADS THE DESCRIPTION, spelled as
+			// `threads` spells that conversation, for a watch asked for in one;
+			// a watch made from home's own box belongs to no thread and has no
+			// title line.
+			cell.thread = needsThreadOf(in, row.item.Item.Origin.Transcript)
+			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
 			// A watch asked for in a conversation opens that conversation; one
 			// made from home's own box has none — its exchange is kept under the
 			// item's folder rather than as a session ([standing.Origin.Exchange])
@@ -331,12 +335,12 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// and will not move until somebody answers it; a landing has already
 	// finished, and a column of question marks over work that is DONE was the
 	// screen saying the opposite of what was true.
-	// THE THREAD IT BELONGS TO LEADS THE SENTENCE (owner, 2026-09-17), spelled
-	// as `threads` spells the same conversation ([homeName]), then the files and
-	// what the work came to.
+	// THE THREAD IT BELONGS TO HEADS THE DESCRIPTION (owner, 2026-09-17),
+	// spelled as `threads` spells the same conversation ([homeName]); under
+	// that title line come the files and what the work came to.
 	cell := &homeCell{panel: panelNeeds, title: title, right: sinceAt(asked, now),
-		key:   needsCallKey + entry.ID,
-		grows: true, sub: rowClauses(homeName(row), needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
+		key: needsCallKey + entry.ID, thread: homeName(row),
+		grows: true, sub: rowClauses(needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,
 		dir: homeBucketOf(row.Transcript), task: &entry, cell: cell}
 	return needsItem{asked: asked, line: line}

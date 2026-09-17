@@ -570,8 +570,8 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	// keystroke away in a pane: the `needs you` panel draws the question on the
 	// line under the title (homepanel_needs.go).
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Pricing Research" })
-	if under := homeLineAfter(homeText(a), tokens.GlyphNeedsHuman+" Pricing Research"); !strings.Contains(under, "can I run: rm -rf build/") {
-		t.Fatalf("the row does not show what it is stopped on:\n%s", homeText(a))
+	if under := homeLineBelow(homeText(a), tokens.GlyphNeedsHuman+" Pricing Research", 3); !strings.Contains(under, "can I run: rm -rf build/") {
+		t.Fatalf("the row does not show what it is stopped on under its thread title:\n%s", homeText(a))
 	}
 	// And it really is the first row of home — asserted on the lines the grid
 	// is built from rather than on where the words land in the frame. ONE ROW
