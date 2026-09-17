@@ -11,6 +11,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -136,15 +137,16 @@ var invalidActionMarkers = []string{
 // ── collection ──────────────────────────────────────────────────────────────
 
 // collectReadings harvests one invocation's numbers off its disk: the home's
-// ledger, the family's journals, the graph's checkpoint. A reading that
-// cannot be taken (no ledger, no journals) is a zero, and the row says the
-// run never produced one — the same honesty bench/e2e's own autopsy keeps.
-func collectReadings(home, placeDir, journalDir, fixtureDir, seedCommit string) readings {
+// ledger, the family's journals, the graph's checkpoint, and the work's
+// footprint against the embedded pristine. A reading that cannot be taken
+// (no ledger, no journals) is a zero, and the row says the run never
+// produced one — the same honesty bench/e2e's own autopsy keeps.
+func collectReadings(home, placeDir, journalDir, workDir string, pristine fixtureFiles) readings {
 	var r readings
 	r.CostUSD, r.Unbilled, r.ModelsUsed = readLedger(filepath.Join(home, "v3", "usage.jsonl"))
 	r.Steps, r.InvalidActions, r.Truncations, r.EditIdiomFlags = readJournals(journalDir)
 	r.ChildrenDone, r.ChildrenTotal, r.NodesFailed = readCheckpoint(filepath.Join(placeDir, "tasks.json"))
-	r.ChangedFiles = countChangedFiles(fixtureDir, seedCommit)
+	r.ChangedFiles = countChangedFiles(workDir, pristine)
 	return r
 }
 
@@ -339,32 +341,44 @@ func readCheckpoint(path string) (childrenDone, childrenTotal, nodesFailed int) 
 	return childrenDone, childrenTotal, nodesFailed
 }
 
-// countChangedFiles is bench/README.md's own honesty check, carried over:
-// the work's footprint is the diff from the seed commit plus the files it
-// left untracked. A run that changed nothing did nothing, whatever its log
-// narrates — seedCommit is the fixture's first commit, recorded by the
-// runner before the task started.
-func countChangedFiles(fixtureDir, seedCommit string) int {
-	if strings.TrimSpace(seedCommit) == "" {
+// countChangedFiles is the work's footprint: the files whose bytes differ
+// from the embedded pristine fixture, plus the files the work added that the
+// fixture never had. The engine's tree copy carries no .git, so the seed
+// commit is unreachable there — the embedded pristine is the same honesty
+// in a shape the tree can answer. A run that changed nothing did nothing,
+// whatever its log narrates; the harness's own furniture (.codeaf, .furrow)
+// is nobody's work and is not counted.
+func countChangedFiles(workDir string, pristine fixtureFiles) int {
+	if strings.TrimSpace(workDir) == "" || len(pristine) == 0 {
 		return 0
 	}
-	changed, err := gitOutput(fixtureDir, "diff", "--name-only", seedCommit+"..HEAD")
-	if err != nil {
-		return 0
-	}
-	untracked, err := gitOutput(fixtureDir, "ls-files", "--others", "--exclude-standard")
-	if err != nil {
-		untracked = ""
-	}
-	seen := map[string]bool{}
-	for _, listing := range []string{changed, untracked} {
-		for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
-			if line = strings.TrimSpace(line); line != "" {
-				seen[line] = true
-			}
+	changed := 0
+	for name, wantBytes := range pristine {
+		workBytes, err := os.ReadFile(filepath.Join(workDir, name))
+		if err != nil || !bytes.Equal(workBytes, wantBytes) {
+			changed++
 		}
 	}
-	return len(seen)
+	_ = filepath.WalkDir(workDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".codeaf" || entry.Name() == ".furrow" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(workDir, path)
+		if err != nil {
+			return nil
+		}
+		if _, tracked := pristine[filepath.ToSlash(rel)]; !tracked {
+			changed++
+		}
+		return nil
+	})
+	return changed
 }
 
 // applyNotice folds the landing's own facts onto a reading: the ending, the

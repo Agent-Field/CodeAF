@@ -57,6 +57,13 @@ func run(args []string, out, errOut io.Writer) error {
 	if outRoot == "" {
 		outRoot = filepath.Join("bench-results", "bashloop", time.Now().Format("20060102-150405"))
 	}
+	// THE ROOT IS ABSOLUTE, because the engine walks it from working
+	// directories of its own: a relative home reaches the task machinery's
+	// chdir as "no such file or directory" the moment any step moves — the
+	// pair's first live run died exactly there.
+	if absRoot, err := filepath.Abs(outRoot); err == nil {
+		outRoot = absRoot
+	}
 	if *model != "" {
 		setPinnedModel(*model)
 	}

@@ -27,22 +27,28 @@ type grade struct {
 // against.
 type fixtureFiles map[string][]byte
 
-// gradeCell grades one landed invocation. fixtureDir is the seeded fixture
-// as the work left it; pristine is the same fixture as it started.
-func gradeCell(c cell, fixtureDir string, r readings, pristine fixtureFiles) grade {
+// gradeCell grades one landed invocation. workDir is the task's own working
+// copy — the tree under the session folder, which is where the work actually
+// landed; the ground is only the seed that copy was cut from. pristine is the
+// fixture as it started, embedded in the driver. An empty workDir is a run
+// that never prepared a copy, and the row says so in as many words.
+func gradeCell(c cell, workDir string, r readings, pristine fixtureFiles) grade {
+	if workDir == "" {
+		return grade{Pass: false, Detail: "the task never prepared a working copy"}
+	}
 	switch c.id {
 	case "c1":
-		return gradeC1(fixtureDir, pristine)
+		return gradeC1(workDir, pristine)
 	case "c2":
-		return gradeC2(fixtureDir, pristine)
+		return gradeC2(workDir, pristine)
 	case "c3":
-		return gradeC3(fixtureDir, pristine)
+		return gradeC3(workDir, pristine)
 	case "c4":
-		return gradeC4(fixtureDir)
+		return gradeC4(workDir)
 	case "c5":
-		return gradeC5(fixtureDir, r)
+		return gradeC5(workDir, r)
 	case "c6":
-		return gradeC6(fixtureDir)
+		return gradeC6(workDir)
 	default:
 		return grade{Detail: fmt.Sprintf("no grader for cell %s", c.id)}
 	}
@@ -82,11 +88,11 @@ func tail(out string, n int) string {
 // ── c1: small fix ───────────────────────────────────────────────────────────
 
 // The suite goes green, and the test file is byte-for-byte the fixture's own.
-func gradeC1(fixtureDir string, pristine fixtureFiles) grade {
-	if g := gradeSuiteGreen(fixtureDir, "suite green"); !g.Pass {
+func gradeC1(workDir string, pristine fixtureFiles) grade {
+	if g := gradeSuiteGreen(workDir, "suite green"); !g.Pass {
 		return g
 	}
-	if !fileUnchanged(fixtureDir, "clamp_test.go", pristine) {
+	if !fileUnchanged(workDir, "clamp_test.go", pristine) {
 		return grade{Detail: "the suite is green but the test file was changed"}
 	}
 	return grade{Pass: true, Detail: "suite green, tests untouched"}
@@ -96,11 +102,11 @@ func gradeC1(fixtureDir string, pristine fixtureFiles) grade {
 
 // The suite is green, a histogram package exists with tests of its own, and
 // the stats package the fixture started with is untouched.
-func gradeC2(fixtureDir string, pristine fixtureFiles) grade {
-	if g := gradeSuiteGreen(fixtureDir, "suite green"); !g.Pass {
+func gradeC2(workDir string, pristine fixtureFiles) grade {
+	if g := gradeSuiteGreen(workDir, "suite green"); !g.Pass {
 		return g
 	}
-	entries, err := os.ReadDir(filepath.Join(fixtureDir, "histogram"))
+	entries, err := os.ReadDir(filepath.Join(workDir, "histogram"))
 	if err != nil {
 		return grade{Detail: "no histogram package directory"}
 	}
@@ -114,7 +120,7 @@ func gradeC2(fixtureDir string, pristine fixtureFiles) grade {
 		return grade{Detail: "histogram exists but carries no tests of its own"}
 	}
 	for _, name := range []string{"stats.go", "stats_test.go"} {
-		if !fileUnchanged(fixtureDir, name, pristine) {
+		if !fileUnchanged(workDir, name, pristine) {
 			return grade{Detail: name + " was changed"}
 		}
 	}
@@ -129,21 +135,21 @@ const taxLiteral = "0.0825"
 
 // Suite green, one copy of the tax math, and the public surface byte-for-byte
 // what the fixture started with.
-func gradeC3(fixtureDir string, pristine fixtureFiles) grade {
-	if g := gradeSuiteGreen(fixtureDir, "suite green"); !g.Pass {
+func gradeC3(workDir string, pristine fixtureFiles) grade {
+	if g := gradeSuiteGreen(workDir, "suite green"); !g.Pass {
 		return g
 	}
-	if info, err := os.Stat(filepath.Join(fixtureDir, "tax.go")); err != nil || info.IsDir() {
+	if info, err := os.Stat(filepath.Join(workDir, "tax.go")); err != nil || info.IsDir() {
 		return grade{Detail: "no tax.go"}
 	}
-	copies, err := countTaxCopies(fixtureDir)
+	copies, err := countTaxCopies(workDir)
 	if err != nil {
 		return grade{Detail: fmt.Sprintf("count the tax copies: %v", err)}
 	}
 	if copies != 1 {
 		return grade{Detail: fmt.Sprintf("the tax math still lives in %d places, want 1", copies)}
 	}
-	if diff, err := compareAPI(fixtureDir, pristine); err != nil {
+	if diff, err := compareAPI(workDir, pristine); err != nil {
 		return grade{Detail: fmt.Sprintf("read the public surface: %v", err)}
 	} else if diff != "" {
 		return grade{Detail: diff}
@@ -153,8 +159,8 @@ func gradeC3(fixtureDir string, pristine fixtureFiles) grade {
 
 // countTaxCopies counts the non-test files still carrying the pasted tax
 // math.
-func countTaxCopies(fixtureDir string) (int, error) {
-	entries, err := os.ReadDir(fixtureDir)
+func countTaxCopies(workDir string) (int, error) {
+	entries, err := os.ReadDir(workDir)
 	if err != nil {
 		return 0, err
 	}
@@ -163,7 +169,7 @@ func countTaxCopies(fixtureDir string) (int, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(fixtureDir, e.Name()))
+		body, err := os.ReadFile(filepath.Join(workDir, e.Name()))
 		if err != nil {
 			continue
 		}
@@ -178,7 +184,7 @@ func countTaxCopies(fixtureDir string) (int, error) {
 // it, from a pristine copy of the same fixture on this machine with the same
 // toolchain, and compares it against the work's. It answers "" when the two
 // agree and names the first difference when they do not.
-func compareAPI(fixtureDir string, pristine fixtureFiles) (string, error) {
+func compareAPI(workDir string, pristine fixtureFiles) (string, error) {
 	scratch, err := os.MkdirTemp("", "bashloop-api-*")
 	if err != nil {
 		return "", err
@@ -193,7 +199,7 @@ func compareAPI(fixtureDir string, pristine fixtureFiles) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	after, err := goDoc(fixtureDir)
+	after, err := goDoc(workDir)
 	if err != nil {
 		return "", err
 	}
@@ -220,8 +226,8 @@ func compareAPI(fixtureDir string, pristine fixtureFiles) (string, error) {
 
 // REPORT.md exists, carries the four sections with something under each,
 // numbers at least three recommendations, and is grounded in the corpus.
-func gradeC4(fixtureDir string) grade {
-	body, err := os.ReadFile(filepath.Join(fixtureDir, "REPORT.md"))
+func gradeC4(workDir string) grade {
+	body, err := os.ReadFile(filepath.Join(workDir, "REPORT.md"))
 	if err != nil {
 		return grade{Detail: "no REPORT.md at the top level"}
 	}
@@ -284,11 +290,11 @@ func countNumbered(body string) int {
 // Children landed and the integrated result present: the module's suite is
 // green, the integration note exists, and the graph's own record shows at
 // least two of the root task's parts landing as work of their own.
-func gradeC5(fixtureDir string, r readings) grade {
-	if g := gradeSuiteGreen(fixtureDir, "the module's suite is green"); !g.Pass {
+func gradeC5(workDir string, r readings) grade {
+	if g := gradeSuiteGreen(workDir, "the module's suite is green"); !g.Pass {
 		return g
 	}
-	if _, err := os.Stat(filepath.Join(fixtureDir, "INTEGRATION.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(workDir, "INTEGRATION.md")); err != nil {
 		return grade{Detail: "no INTEGRATION.md at the top level"}
 	}
 	if r.ChildrenDone < 2 {
@@ -300,8 +306,8 @@ func gradeC5(fixtureDir string, r readings) grade {
 // ── c6: kept-tool image ─────────────────────────────────────────────────────
 
 // The image exists in the fixture and ARCHITECTURE.md references it by name.
-func gradeC6(fixtureDir string) grade {
-	body, err := os.ReadFile(filepath.Join(fixtureDir, "ARCHITECTURE.md"))
+func gradeC6(workDir string) grade {
+	body, err := os.ReadFile(filepath.Join(workDir, "ARCHITECTURE.md"))
 	if err != nil {
 		return grade{Detail: "no ARCHITECTURE.md at the top level"}
 	}
@@ -310,7 +316,7 @@ func gradeC6(fixtureDir string) grade {
 		return grade{Detail: "ARCHITECTURE.md references no image"}
 	}
 	for _, ref := range refs {
-		if _, err := os.Stat(filepath.Join(fixtureDir, filepath.FromSlash(ref))); err == nil {
+		if _, err := os.Stat(filepath.Join(workDir, filepath.FromSlash(ref))); err == nil {
 			return grade{Pass: true, Detail: "image exists and is referenced: " + ref}
 		}
 	}
