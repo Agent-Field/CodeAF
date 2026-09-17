@@ -396,6 +396,118 @@ func TestPoolJudgeHookStillScoresTheSecondSeatWhenTheFirstSeatsShareRunsOut(t *t
 	}
 }
 
+// decodeJudgeLast reads the hook's own record of the last landing it judged.
+func decodeJudgeLast(t *testing.T, profileDir string) judgeLast {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(config.ProfilePath(profileDir, "pool"), "judge-last.json"))
+	if err != nil {
+		t.Fatalf("the judge-last record: %v", err)
+	}
+	var last judgeLast
+	if err := json.Unmarshal(data, &last); err != nil {
+		t.Fatalf("the judge-last record does not parse: %v", err)
+	}
+	return last
+}
+
+// The hook names the judge that answered and the seats it scored in the small
+// record beside the sheet, so a judge failure reads without --debug.
+func TestPoolJudgeHookRecordsTheJudgeThatScoredTheLanding(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	var asked []string
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, poolTestAsk(settings, &asked), time.Now)
+	hook(poolTestLanding())
+
+	last := decodeJudgeLast(t, profileDir)
+	if last.Judge != "other/judge" {
+		t.Fatalf("the record names judge %q, want the one that answered", last.Judge)
+	}
+	if last.Reason != "" {
+		t.Fatalf("a scored landing carries a reason: %q", last.Reason)
+	}
+	if strings.Join(last.Scored, ", ") != "crew/worker, crew/high" {
+		t.Fatalf("the record scored %v, want both held seats", last.Scored)
+	}
+	if strings.Join(last.Seats, ", ") != "crew/worker, crew/high" {
+		t.Fatalf("the record holds seats %v, want the crew's own order", last.Seats)
+	}
+	if last.Task != 7 {
+		t.Fatalf("the record names task %d, want 7", last.Task)
+	}
+	if last.At.IsZero() {
+		t.Fatal("the record carries no moment")
+	}
+	info, err := os.Stat(filepath.Join(config.ProfilePath(profileDir, "pool"), "judge-last.json"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("the record's mode is %v with err %v, want 0600", info, err)
+	}
+}
+
+// When every candidate fails, the record says which were asked and the last
+// error's one line — the reading a person needs when no score landed.
+func TestPoolJudgeHookRecordsTheCandidatesAndReasonWhenEveryJudgeFails(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	ask := func(model string) judge.Ask {
+		return func(context.Context, string, string) (string, error) {
+			return "", errors.New("the model answered with a 429")
+		}
+	}
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, ask, time.Now)
+	hook(poolTestLanding())
+
+	last := decodeJudgeLast(t, profileDir)
+	if last.Judge != "" {
+		t.Fatalf("a landing no judge scored names judge %q", last.Judge)
+	}
+	if strings.Join(last.Tried, ", ") != "other/flaky, other/steady" {
+		t.Fatalf("the record tried %v, want both candidates in order", last.Tried)
+	}
+	if !strings.Contains(last.Reason, "the model answered with a 429") || strings.Contains(last.Reason, "\n") {
+		t.Fatalf("the record's reason is %q, want the last error's one line", last.Reason)
+	}
+}
+
+// A landing the hook declines before asking — nothing outside the crew to
+// pick — is written too, with the decline itself as the reason.
+func TestPoolJudgeHookRecordsTheDeclineWhenThereIsNoCandidate(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	var asked []string
+	crewOnly := func() []catalog.Model {
+		return poolTestCatalog()[:2]
+	}
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), crewOnly, poolTestAsk(settings, &asked), time.Now)
+	hook(poolTestLanding())
+
+	if len(asked) != 0 {
+		t.Fatalf("a declined landing asked %v", asked)
+	}
+	last := decodeJudgeLast(t, profileDir)
+	if last.Judge != "" || len(last.Tried) != 0 {
+		t.Fatalf("a declined landing names judge %q tried %v", last.Judge, last.Tried)
+	}
+	if last.Reason != "no judge: every candidate is in the crew, unpriced, free, or below the floor" {
+		t.Fatalf("the record's reason is %q, want the decline's own sentence", last.Reason)
+	}
+}
+
 // countLines counts the newlines a row-per-line file holds.
 func countLines(data []byte) int {
 	lines := 0
