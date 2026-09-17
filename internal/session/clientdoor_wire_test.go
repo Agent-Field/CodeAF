@@ -834,3 +834,58 @@ func TestAFirstRunKeyReachesATaskSpawnedAfterItLands(t *testing.T) {
 		t.Fatalf("child inherited stale default-service key %q", got)
 	}
 }
+
+// AND THE OTHER DIRECTION: a service CONNECTED while the conversation is open
+// serves the very next turn, with the bare model id on the wire.
+//
+// IT IS THE HALF THAT WAS BROKEN IN THE FIELD. A conversation whose account set
+// never learned about a service keeps the set it was BORN with, so the written
+// name it was just switched onto matches nothing in [modelsource.Set.For], the
+// id falls through to the default service WITH ITS PREFIX STILL ON IT, and the
+// router answers 400 about a model nobody publishes. Both halves of that are
+// asserted here — which host was asked, and what it was asked for — because the
+// address alone was right the whole time.
+func TestAServiceConnectedMidConversationServesTheNextTurn(t *testing.T) {
+	lanes.Default().Reset()
+	t.Cleanup(func() { lanes.Default().Reset() })
+	defaultServer := newClientDoorServer(t, "default done")
+	connectedServer := newClientDoorServer(t, "connected done")
+	defaults := modelsource.NewSet(modelsource.Connected{
+		Source: modelsource.DefaultSource(defaultServer.URL), Key: "default-key", Address: defaultServer.URL,
+	})
+	agent, err := New(Config{Workspace: t.TempDir(), Model: "default/chat", Sources: defaults})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	drainTurn(t, agent, "before connecting")
+
+	// The connect, said the way the profile says it: the same default member,
+	// and one more service beside it under its own written name.
+	agent.SetSources(modelsource.NewSet(
+		defaults.Default(),
+		modelsource.Connected{
+			Source:  modelsource.Source{ID: modelsource.CustomID, Written: "local-proxy", Address: connectedServer.URL},
+			Key:     "connected-key",
+			Address: connectedServer.URL,
+		},
+	))
+	agent.SetModel("local-proxy/small-model")
+	drainTurn(t, agent, "after connecting")
+
+	calls := connectedServer.allCalls()
+	if len(calls) != 1 {
+		t.Fatalf("the connected service received %d calls, want the turn that was sent after it connected", len(calls))
+	}
+	if calls[0].authorization != "Bearer connected-key" {
+		t.Fatalf("the connected service was asked with %q, want its own key", calls[0].authorization)
+	}
+	if got := clientDoorModel(t, calls[0]); got != "small-model" {
+		t.Fatalf("the wire model was %q, want the bare id with the written name removed", got)
+	}
+	// And the default service was not asked a second time: a qualified id that
+	// reaches it is the whole defect, and it answers 400 rather than a turn.
+	if got := defaultServer.allCalls(); len(got) != 1 {
+		t.Fatalf("the default service received %d calls, want only the turn sent before connecting: %+v", len(got), got)
+	}
+}

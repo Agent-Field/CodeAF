@@ -182,10 +182,10 @@ func TestASourceWithoutRegionsOpensItsOwnBoxAsBefore(t *testing.T) {
 		a, _ := modelRegionApp(t)
 		openModelRegion(t, a, "custom")
 		if a.connPanel.entry == nil || a.connPanel.entry.choosing() || a.connPanel.entry.secret {
-			t.Fatal("Something else did not open its visible address box")
+			t.Fatal("Custom OpenAI-compatible API did not open its visible address box")
 		}
 		if block := modelRegionBlock(a); !strings.Contains(block, "your base url") {
-			t.Fatalf("Something else did not ask for its base URL:\n%s", block)
+			t.Fatalf("Custom OpenAI-compatible API did not ask for its base URL:\n%s", block)
 		}
 	})
 

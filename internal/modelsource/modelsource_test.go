@@ -21,6 +21,93 @@ func TestAServiceNameThatCollidesWithAModelAuthorGetsASuggestion(t *testing.T) {
 	}
 }
 
+// THE HOST'S SLUG IS WHAT THE PERSON READS, INCLUDING FOR AN IP LITERAL. The
+// talk surface and config both pass url.Hostname() here — brackets already
+// stripped — so an IPv6 literal's :: arrives as dashes and dash-trimming used
+// to leave "1" for ::1. A host that held a colon and now reads digits and
+// dashes alone carries the ipv6- prefix; a hostname keeps collapsing to its
+// last label's letters.
+func TestSourceSlugSpellsAnIPHostDashesNotDots(t *testing.T) {
+	for _, row := range []struct {
+		host, want string
+	}{
+		{"127.0.0.1", "127-0-0-1"},
+		{"::1", "ipv6-1"},
+		{"fe80::1", "fe80-1"},
+		{"2001:db8::8a2e:370:7334", "2001-db8-8a2e-370-7334"},
+		// An IPv6 literal arriving with its brackets still on is read whole.
+		{"[::1]", "ipv6-1"},
+		// A zone id names the interface, not the host, and is cut first.
+		{"fe80::1%eth0", "fe80-1"},
+		// A bare "::" reduces to no host word at all.
+		{"::", CustomID},
+		// A hostname is not an IP literal and keeps the old collapsing: last
+		// label's letters and digits, everything else one dash.
+		{"api.deepseek.com", "deepseek"},
+		{"mybox.local", "mybox"},
+		{"MYBOX.local", "mybox"},
+		{"", "custom"},
+	} {
+		if got := SourceSlug(row.host); got != row.want {
+			t.Errorf("SourceSlug(%q) = %q, want %q", row.host, got, row.want)
+		}
+	}
+}
+
+// ADDRESSHOST IS THE STEP BEFORE THE SLUG, and its fallback is the reason a
+// bare host typed with no scheme still answers a usable name: url.Parse reads
+// mybox.local:9001 as a scheme and an opaque path and has no Hostname at all,
+// so the raw trimmed text is what carries. config's mint and the chat
+// surface's two name defaults all take this one road.
+func TestAddressHostAnswersTheHostOrTheTextItWasGiven(t *testing.T) {
+	for _, row := range []struct {
+		address, want string
+	}{
+		{"http://api.deepseek.com/v1", "api.deepseek.com"},
+		{"  https://mybox.local:9001/v1  ", "mybox.local"},
+		{"http://127.0.0.1:9001/v1", "127.0.0.1"},
+		{"http://[::1]:9001/v1", "::1"},
+		// NO SCHEME, NO HOSTNAME: the trimmed text itself is the answer, and
+		// the slug reads a name off it.
+		{"mybox.local", "mybox.local"},
+		{"mybox.local:9001", "mybox.local:9001"},
+		{"  mybox.local  ", "mybox.local"},
+		{"", ""},
+	} {
+		if got := AddressHost(row.address); got != row.want {
+			t.Errorf("AddressHost(%q) = %q, want %q", row.address, got, row.want)
+		}
+	}
+	// The pair is what every caller uses: the host's own slug is the name a
+	// new connection defaults to.
+	if got := SourceSlug(AddressHost("http://api.deepseek.com/v1")); got != "deepseek" {
+		t.Errorf("the address default named %q", got)
+	}
+	if got := SourceSlug(AddressHost("mybox.local")); got != "mybox" {
+		t.Errorf("the schemeless address default named %q", got)
+	}
+}
+
+// THE MINTED ID IS PLAIN PERSISTENCE VOCABULARY: a written name collapses to
+// lowercase letters and digits, every other run one dash, edges trimmed, and
+// a name with nothing left answers connection.
+func TestIDWordSpellsAPlainWordForTheMintedId(t *testing.T) {
+	for _, row := range []struct {
+		written, want string
+	}{
+		{"homelab", "homelab"},
+		{"My Lab", "my-lab"},
+		{"a..b__c", "a-b-c"},
+		{"-edge-", "edge"},
+		{"\u7814\u7a76", "connection"},
+		{"Lab 2", "lab-2"},
+	} {
+		if got := IDWord(row.written); got != row.want {
+			t.Errorf("IDWord(%q) = %q, want %q", row.written, got, row.want)
+		}
+	}
+}
+
 func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	defaultService := Connected{Source: DefaultSource("https://router.example/v1"), Key: "router-key", Address: "https://router.example/v1"}
 	direct := Connected{Source: Source{ID: "deepseek", Written: "deepseek-direct"}, Key: "direct-key", Address: "https://direct.example/v1"}
