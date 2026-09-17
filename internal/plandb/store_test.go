@@ -1021,7 +1021,7 @@ func TestPlandbCliPromotesWavesAndLeavesTheRootToTheRuntime(t *testing.T) {
 
 func TestPlandbCliParallelSafeDefaultAndTheConflictsThatRemain(t *testing.T) {
 	// The default is parallel-unless-declared: two plain tasks run at once,
-	// which is the reference loop's whole point.
+	// which is the whole point of the loop the belt is measuring.
 	store := planOpen(t, filepath.Join(t.TempDir(), "plan.json"))
 	planAdd(t, store, planSpec("one", "One"), planSpec("two", "Two"))
 	if _, err := store.Claim("one", "worker-1"); err != nil {

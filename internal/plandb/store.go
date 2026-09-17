@@ -23,9 +23,9 @@ var idPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 // WHAT THE ADAPTATION TOOK OUT, deliberately, is written at the functions that
 // changed: the earlier store doubled as a governance gate — validateSpec
 // required a role, deliverables and acceptance on every task, and Claim refused
-// a task whose effect was unresolved or that claimed no resources. The rust
-// CLI has no flags for any of that, so every `plandb add` the doctrine teaches
-// would have been refused by the port's own gates. The gates are gone; the
+// a task whose effect was unresolved or that claimed no resources. The CLI has
+// no flags for any of that, so every `plandb add` the doctrine teaches would
+// have been refused by the port's own gates. The gates are gone; the
 // graph laws stay.
 type Store struct {
 	mu   sync.Mutex
@@ -40,11 +40,10 @@ type Store struct {
 
 // Open loads the plan at path, or creates one when the file does not exist.
 //
-// THE ROOT IS THE RUN, which is the reference loop's own model: `plandb init`
-// makes a project and the runtime runs it by seeding a root task for the work
-// it was given. A file that exists but belongs to a different run is a
-// refusal, not a merge: two sessions sharing one store by accident would each
-// dispatch the other's children.
+// THE ROOT IS THE RUN: `plandb init` makes a project and the runtime runs it
+// by seeding a root task for the work it was given. A file that exists but
+// belongs to a different run is a refusal, not a merge: two sessions sharing
+// one store by accident would each dispatch the other's children.
 func Open(path, project, rootID, rootTitle, rootDescription string) (*Store, error) {
 	store := &Store{path: path, now: time.Now}
 	loaded, err := loadState(path)
@@ -124,8 +123,8 @@ func (s *Store) RootID() string {
 // answer and the runtime's dispatch both rest on.
 //
 // THE ID IS THE CALLER'S. The runtime mints ids it can match to nodes; the
-// CLI mints short random ones the rust CLI's shape (`t-` + four base-36
-// characters) and honours `--as` names. Both roads end here.
+// CLI mints short random ones — `t-` + four base-36 characters — and honours
+// `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 	// EVERY WRITE IS ONE TRANSACTION. This store is written by more than one
 	// process — the CLI's add and split are separate processes — so the batch
@@ -268,8 +267,8 @@ func (s *Store) Task(id string) *Task {
 
 // Resolve answers one task for a word the model may have written loosely:
 // an exact id first, then `t-` + the word, then a unique prefix of either.
-// The rust CLI fuzzy-matches ids and the doctrine leans on that; a prefix
-// that fits more than one task is a question the caller must not guess at.
+// Ids fuzzy-match because the doctrine leans on that; a prefix that fits
+// more than one task is a question the caller must not guess at.
 func (s *Store) Resolve(word string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -300,10 +299,10 @@ func (s *Store) Resolve(word string) (*Task, error) {
 }
 
 // Claim hands a ready leaf to an agent. THE AGENT NAME IS THE RUNTIME'S
-// NAMING TRICK from the reference loop: the supervisor claims with the task's
-// own id, so the worker that later finishes "as" the task can only be the
-// worker the task was handed to. Ownership in Done and Fail is enforced
-// against exactly this name.
+// NAMING TRICK: the supervisor claims with the task's own id, so the worker
+// that later finishes "as" the task can only be the worker the task was
+// handed to. Ownership in Done and Fail is enforced against exactly this
+// name.
 func (s *Store) Claim(id, agent string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if task.Status != StatusReady || task.Composite {
@@ -318,8 +317,7 @@ func (s *Store) Claim(id, agent string) (*Task, error) {
 }
 
 // Done completes a task its agent owns. The root is the runtime's, exactly as
-// the earlier port had it and the reference loop enforces: a worker cannot
-// finish the run, only its own task.
+// the earlier port had it: a worker cannot finish the run, only its own task.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if len(result) > 64<<10 {
@@ -420,9 +418,9 @@ func (s *Store) Retry(id string) (*Task, error) {
 }
 
 // Cancel ends a task, its descendants, and the work that hard-depends on it.
-// The cascade is the port's own law and matches the reference's `--cascade`
-// default: a cancelled dependency is a cancelled dependent, because nothing
-// in this store can resolve a hard edge whose upstream will never answer.
+// The cascade is the port's own law and runs unconditionally: a cancelled
+// dependency is a cancelled dependent, because nothing in this store can
+// resolve a hard edge whose upstream will never answer.
 func (s *Store) Cancel(id, reason string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if id == next.RootID {
@@ -590,9 +588,8 @@ func (s *Store) Notes(taskID string, limit int) []Note {
 	return notes
 }
 
-// AddContext records a run-wide fact. Kinds are freeform because the rust
-// CLI's are — the doctrine says `--kind decision` and the store takes the
-// word at face value.
+// AddContext records a run-wide fact. Kinds are freeform — the doctrine says
+// `--kind decision` and the store takes the word at face value.
 func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
 	if err := s.holdFile(); err != nil {
 		return ContextEntry{}, err
@@ -759,9 +756,9 @@ func (s *Store) CompleteRoot(result string) error {
 }
 
 // Search answers the tasks, notes and context entries whose words match the
-// query, best first. The ranking is simple term overlap rather than the rust
-// CLI's BM25 — the CLI contract is "ranked results", and what ranks them is
-// the store's own choice so long as the same query answers the same order.
+// query, best first. The ranking is simple term overlap — the CLI contract is
+// "ranked results", and what ranks them is the store's own choice so long as
+// the same query answers the same order.
 func (s *Store) Search(query string, limit int) []SearchResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -916,10 +913,9 @@ type BlockedCount struct {
 	Downstream int   `json:"downstream"`
 }
 
-// NextID mints one short id the store has never used, in the rust CLI's
-// shape: `t-` + four base-36 characters. Collision is retried, not mapped
-// around — four characters is 1.6 million spellings and a plan is bounded
-// far below that.
+// NextID mints one short id the store has never used: `t-` + four base-36
+// characters. Collision is retried, not mapped around — four characters is
+// 1.6 million spellings and a plan is bounded far below that.
 func (s *Store) NextID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1077,10 +1073,10 @@ func normalizeSpec(spec TaskSpec, rootID string) TaskSpec {
 }
 
 // validateSpec is what the CLI itself can see, no more. The earlier gate
-// demanded a role, deliverables and acceptance on every task; the rust
-// `plandb add "t" --description "d"` creates a task with none of them, so the
-// gate would have refused the reference's own doctrine sentence. The graph
-// laws are asked separately, in validateGraphs, and they stay whole.
+// demanded a role, deliverables and acceptance on every task; `plandb add
+// "t" --description "d"` creates a task with none of them, so the gate would
+// have refused the doctrine's own sentence. The graph laws are asked
+// separately, in validateGraphs, and they stay whole.
 func validateSpec(spec TaskSpec) error {
 	if !validID(spec.ID) {
 		return fmt.Errorf("invalid id %q", spec.ID)
@@ -1211,9 +1207,8 @@ func promote(value *state, now time.Time) {
 			}
 		}
 		// A COMPOSITE TASK AUTO-COMPLETES when its children are all terminal
-		// and all done — the reference's own promise, and the half the
-		// doctrine's parents rely on to finish without a worker ever touching
-		// them.
+		// and all done — the half the doctrine's parents rely on to finish
+		// without a worker ever touching them.
 		for _, id := range value.Order {
 			task := value.Tasks[id]
 			if id == value.RootID || !task.Composite || terminal(task.Status) || !allChildrenTerminal(*value, id) {
