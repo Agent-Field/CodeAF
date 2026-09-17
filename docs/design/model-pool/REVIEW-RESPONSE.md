@@ -37,3 +37,18 @@ The report in `REVIEW.md` was written against the draft at the head before this 
 
 - A catalog bias term `b` is added to the hierarchy with its estimator, and the seed's own `b̂ = −13.7`, `τ̂₀² = 0` are reported with the reason the day-one `k = 30` stands.
 - Experiments on judge effects, drift, the settled probability and the pair term, and a flood analysis, remain future work; the Status paragraph lists them among what is specified but not landed.
+
+## Second round (`REVIEW-2.md`)
+
+Verdict was minor revision; the eight new defects are answered here.
+
+1. The relay folds rows additively; the paper said the join. §5.2 now says which merge is which: addition within a store (own sheet, relay), the join between copies of sheets, and names the retry double-count and the quota that bounds it. Status and §9 no longer say the relay's store is join-merged.
+2. Proposition 3's proof: the sentence the referee quotes is not in the revised proof; the proof ends at the kernel and the per-component constraint.
+3. §5.3 now says the reference relay centres by one global weighted mean and that per-component levels are a convention on a disconnected graph.
+4. Drift is out of §9's job description and both figures' relay nodes; it stays in Status as next to land.
+5. §6 now states the constants' publication and the ten-degrees-of-freedom rule as the design, and that this head's index carries the cells and the day-one constants.
+6. "the runbook beside this document".
+7. `pool status` reaches the relay on this head (client B, after the referee's clone); the sentence stands.
+8. README's field list now names the row's seven fields.
+
+Camera-ready items not taken here: join-merged relay writes or batch ids; per-component centring in the relay; the distinct-install count through the readers; a checkable home for the 72 runs; the seed's offset numbers computed by `figures.py`.

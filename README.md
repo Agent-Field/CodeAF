@@ -199,7 +199,8 @@ any OpenAI-compatible endpoint.
 
 The picker can choose models from what other installs have found. It is on by
 default: what an install sends is computed, text-free numbers about the models
-it ran (role, model, a number, a day) under a per-install nonce, never code,
+it ran (role, model, a number, which model judged, door, size bucket, day) under
+a per-install nonce, never code,
 prompts, paths or an identity, and `codeaf pool status` shows exactly what is
 waiting to go. Turn it off with `model_pool = off` on the settings sheet or
 `CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing. The relay
