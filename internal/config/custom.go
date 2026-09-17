@@ -42,7 +42,7 @@ func PrepareCustomSource(profileDir, address, written string) PersistedSource {
 	}
 	id := modelsource.CustomID
 	if taken[strings.ToLower(id)] {
-		base := modelsource.CustomID + "-" + strings.ToLower(written)
+		base := modelsource.CustomID + "-" + modelsource.IDWord(written)
 		id = base
 		for n := 2; taken[strings.ToLower(id)]; n++ {
 			id = base + "-" + strconv.Itoa(n)

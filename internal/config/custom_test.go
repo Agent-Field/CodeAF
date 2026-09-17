@@ -85,6 +85,28 @@ func TestPrepareCustomSourceMintsAFreeIdForEveryAdd(t *testing.T) {
 		},
 		written: "homelab",
 		want:    modelsource.CustomID + "-homelab-3",
+	}, {
+		name: "a written name with spaces and punctuation mints the plain word",
+		held: []PersistedSource{
+			{ID: modelsource.CustomID, Written: "mybox", Address: "http://127.0.0.1:9001/v1", Order: 1},
+		},
+		written: "My Lab!",
+		want:    modelsource.CustomID + "-my-lab",
+	}, {
+		name: "a non-ASCII name mints the fallback word",
+		held: []PersistedSource{
+			{ID: modelsource.CustomID, Written: "mybox", Address: "http://127.0.0.1:9001/v1", Order: 1},
+		},
+		written: "\u7814\u7a76",
+		want:    modelsource.CustomID + "-connection",
+	}, {
+		name: "the fallback word takes the numeric tiebreak on a repeat",
+		held: []PersistedSource{
+			{ID: modelsource.CustomID, Written: "mybox", Address: "http://127.0.0.1:9001/v1", Order: 1},
+			{ID: modelsource.CustomID + "-connection", Written: "\u7814\u7a76", Address: "http://127.0.0.1:9002/v1", Order: 2},
+		},
+		written: "\u7814\u7a76",
+		want:    modelsource.CustomID + "-connection-2",
 	}} {
 		t.Run(probe.name, func(t *testing.T) {
 			dir := t.TempDir()

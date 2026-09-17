@@ -36,6 +36,28 @@ func IsCustomID(id string) bool {
 	return id == CustomID || strings.HasPrefix(id, CustomID+"-")
 }
 
+// IDWord turns a written connection name into the plain word a minted custom
+// id carries: lowercase, every run of characters outside a-z and 0-9 one
+// dash, edge dashes trimmed, and connection when nothing remains. Routing
+// keys on the written name, so this is persistence vocabulary only.
+func IDWord(written string) string {
+	written = strings.ToLower(strings.TrimSpace(written))
+	var out []rune
+	for _, r := range written {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			out = append(out, r)
+		case len(out) > 0 && out[len(out)-1] != '-':
+			out = append(out, '-')
+		}
+	}
+	word := strings.Trim(string(out), "-")
+	if word == "" {
+		return "connection"
+	}
+	return word
+}
+
 // ProbeTimeout is the watching-person ceiling shared by every vendored probe.
 const ProbeTimeout = 10 * time.Second
 

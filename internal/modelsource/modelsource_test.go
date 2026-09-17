@@ -88,6 +88,26 @@ func TestAddressHostAnswersTheHostOrTheTextItWasGiven(t *testing.T) {
 	}
 }
 
+// THE MINTED ID IS PLAIN PERSISTENCE VOCABULARY: a written name collapses to
+// lowercase letters and digits, every other run one dash, edges trimmed, and
+// a name with nothing left answers connection.
+func TestIDWordSpellsAPlainWordForTheMintedId(t *testing.T) {
+	for _, row := range []struct {
+		written, want string
+	}{
+		{"homelab", "homelab"},
+		{"My Lab", "my-lab"},
+		{"a..b__c", "a-b-c"},
+		{"-edge-", "edge"},
+		{"\u7814\u7a76", "connection"},
+		{"Lab 2", "lab-2"},
+	} {
+		if got := IDWord(row.written); got != row.want {
+			t.Errorf("IDWord(%q) = %q, want %q", row.written, got, row.want)
+		}
+	}
+}
+
 func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	defaultService := Connected{Source: DefaultSource("https://router.example/v1"), Key: "router-key", Address: "https://router.example/v1"}
 	direct := Connected{Source: Source{ID: "deepseek", Written: "deepseek-direct"}, Key: "direct-key", Address: "https://direct.example/v1"}
