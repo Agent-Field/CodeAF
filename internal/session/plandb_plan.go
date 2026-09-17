@@ -1,8 +1,8 @@
 package session
 
 // The plan side of the bash belt (docs/design/plandb-cli/DESIGN.md, the
-// wiring section): the store the worker's `plandb` calls write, and the two
-// pulse points that make the graph and the store one thing. THE STORE IS THE
+// wiring section): the store the worker's `plandb` calls write, and the pulse
+// points that make the graph and the store one thing. THE STORE IS THE
 // WORKER'S CLI's STORE and this file's store at once — one JSON file in the
 // session folder, found by both roads the same way (the runtime by path, the
 // CLI by walking up from its own working directory) — so a task the model
@@ -12,9 +12,10 @@ package session
 // LOCK ORDER, stated once because everything here depends on it: a pulse may
 // hold the plan gate while taking the graph's mu (claimChild and admit take
 // it internally), and nothing may hold the graph's mu while asking for the
-// plan gate. The two pulse points — after a worker's bash call, after a node
-// lands — are called from code that holds neither, and the seed takes the
-// plan gate BEFORE admit takes the graph's mu, never inside it.
+// plan gate. Every pulse point — after a worker's bash call, at the end of its
+// turn, when a fan slot goes back, and after a node lands — is called from
+// code that holds neither, and the seed takes the plan gate BEFORE admit takes
+// the graph's mu, never inside it.
 
 import (
 	"context"
@@ -250,10 +251,19 @@ func (g *TaskGraph) planNote(line string) {
 
 // planPulse is one pass: write settled nodes back to the store, dispatch
 // what became ready, and end the run's root when the whole tree has. It is
-// called from exactly two places — after a bash-belt worker's bash call, and
-// on every road a node lands by — and from nowhere else; there is no timer
-// and no polling, because a pass that reads a plan nobody has touched is
+// called from the four moments the plan can have moved and from nowhere else
+// — after a bash-belt worker's bash call, at the end of such a worker's turn,
+// when a fan slot goes back, and on every road a node lands by; there is no
+// timer and no polling, because a pass that reads a plan nobody has touched is
 // work the harness does for nothing.
+//
+// THE THREE MOMENTS BESIDE THE LANDING ARE THE THREE WAYS A TASK CAN BECOME
+// DELIVERABLE WITH NO BASH CALL IN FRONT OF IT: the store grew while the
+// worker that owns the parent was between calls, a worker's turn ended and the
+// pass after its last call had already run, and a proposal that came to
+// nothing handed a fan slot back. A ready task that waits for a pass that
+// never comes is not a delay: the run can end first, and its ending cancels
+// what nothing delivered.
 func (g *TaskGraph) planPulse() {
 	plan := g.planIfArmed()
 	if plan == nil {
@@ -331,10 +341,10 @@ func (g *TaskGraph) planPulse() {
 	// graph's own door, with the store task claimed under its own id — the
 	// reference supervisor's trick, and what makes the worker's
 	// `plandb done --agent <id>` the ownership check. A fan-cap refusal or a
-	// missing parent leaves the task in the store for the next pass. The ids
-	// dispatched THIS pass are remembered, because the root-completion step
-	// below reads the same pass and must not cancel work it just handed out.
-	dispatched := map[string]bool{}
+	// missing parent leaves the task in the store for the next pass. Whether
+	// this pass handed ANY out is kept, because the root-completion step below
+	// reads the same pass and must not end a run a node was just admitted to.
+	handedOut := false
 	for _, task := range store.Tasks() {
 		if task.Composite || snapshot[task.ID] != nil {
 			continue
@@ -389,7 +399,7 @@ func (g *TaskGraph) planPulse() {
 		if _, err := store.Claim(task.ID, task.ID); err != nil {
 			g.planNote("dispatch claim failed for " + planStoreID(task.ID) + ": " + err.Error())
 		}
-		dispatched[task.ID] = true
+		handedOut = true
 	}
 
 	// ROOT COMPLETION: the run is over when the seeding node has landed and
@@ -404,8 +414,21 @@ func (g *TaskGraph) planPulse() {
 			return
 		}
 	}
+	// AND A PASS THAT HANDED WORK OUT IS NOT THE RUN'S END. Every reader below
+	// reads the snapshot taken at the top of this pass, so the nodes the
+	// dispatch above just admitted are invisible to it: left to the snapshot,
+	// this pass would cancel the ready tasks whose one remaining deliverer is
+	// the worker it just made — a leaf whose parent has no node YET is exactly
+	// what a fresh node is about to become — and complete a root whose tree is
+	// still growing. The pass's own two facts answer the question instead:
+	// nothing open in the snapshot, and nothing handed out here. The next pass
+	// is guaranteed, because a node this pass admitted lands, and every landing
+	// is a pass.
+	if handedOut {
+		return
+	}
 	for _, task := range store.Tasks() {
-		if task.ID == store.RootID() || terminalStoreStatus(task.Status) || snapshot[task.ID] != nil || dispatched[task.ID] {
+		if task.ID == store.RootID() || terminalStoreStatus(task.Status) || snapshot[task.ID] != nil {
 			continue
 		}
 		_, _ = store.Cancel(task.ID, "the run has ended and nothing will deliver this task")

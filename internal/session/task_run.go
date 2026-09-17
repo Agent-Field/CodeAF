@@ -1424,10 +1424,25 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 // releaseChild hands a slot back for a proposal that never became a node — the
 // person declined it, the turn ended under the question, the model named a
 // model this install does not have.
+//
+// AND A SLOT GOING BACK IS A PASS. The fan cap is the one refusal the plan's
+// dispatch answers with "left in the store for the next pass"
+// (plandb_plan.go), and a landing does not free a slot — an admitted child
+// counts against its parent's fan for as long as the graph holds it — so this
+// is the road the cap's refusal is undone by. Taken here, the pass hands the
+// refused task to the worker that owns it while that worker is still running;
+// left to whatever bash call happens next, the task waits on a pass that may
+// never come and the run's ending cancels it first. The pass runs OUTSIDE the
+// lock: it takes the plan gate before the graph's mu, and nothing may hold
+// that mu while asking for the gate.
 func (g *TaskGraph) releaseChild(parent uint64) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	freed := g.claims[parent] > 0
 	g.releaseChildLocked(parent)
+	g.mu.Unlock()
+	if freed {
+		g.planPulse()
+	}
 }
 
 func (g *TaskGraph) releaseChildLocked(parent uint64) {
