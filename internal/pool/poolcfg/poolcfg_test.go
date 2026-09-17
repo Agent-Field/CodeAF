@@ -146,6 +146,13 @@ func TestResolveIndexURL(t *testing.T) {
 		{"plain http elsewhere with port", "http://pool.example.com:8080", true, DefaultIndexURL, "default"},
 		{"http host that merely contains localhost", "http://localhost.example.com", true, DefaultIndexURL, "default"},
 		{"http loopback that is not 127.0.0.1", "http://127.0.0.2", true, DefaultIndexURL, "default"},
+		// The host is the host the request would reach, so a loopback name in
+		// the userinfo or as a label of somebody else's name is not one. These
+		// rows pin the read: a shape check written against the raw text rather
+		// than the parsed host would take all three.
+		{"http loopback name in the userinfo", "http://localhost@pool.example.com", true, DefaultIndexURL, "default"},
+		{"http loopback name and port in the userinfo", "http://localhost:80@pool.example.com", true, DefaultIndexURL, "default"},
+		{"http loopback address as a leading label", "http://127.0.0.1.pool.example.com", true, DefaultIndexURL, "default"},
 		{"other scheme", "ftp://pool.example.com", true, DefaultIndexURL, "default"},
 		{"scheme without the double slash", "https:pool.example.com", true, DefaultIndexURL, "default"},
 		{"http without the double slash", "http:/localhost", true, DefaultIndexURL, "default"},

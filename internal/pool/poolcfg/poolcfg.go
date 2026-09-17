@@ -210,8 +210,10 @@ func acceptURL(value string) (string, bool) {
 	lower := strings.ToLower(value)
 	switch {
 	case strings.HasPrefix(lower, "https://"), strings.HasPrefix(lower, "file://"):
-		_, err := url.Parse(value)
-		return value, err == nil
+		if _, err := url.Parse(value); err != nil {
+			return "", false
+		}
+		return value, true
 	case strings.HasPrefix(lower, "http://"):
 		u, err := url.Parse(value)
 		if err != nil {
