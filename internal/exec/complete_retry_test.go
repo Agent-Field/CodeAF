@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -35,8 +36,8 @@ func upstreamError(status int, providerName string) error {
 	return &provider.APIError{Status: status, Message: "upstream broke", Provider: providerName}
 }
 
-// complete is the node call under test, with the fields the loop itself needs
-// and nothing else.
+// completeCall is the node call under test, with the fields the loop itself
+// needs and nothing else.
 func (l *Linear) completeCall(ctx context.Context) (*ai.Response, error) {
 	return l.complete(ctx, []ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "work"}}}}, nil)
 }
@@ -78,7 +79,7 @@ func TestARetryAfterANamedUpstreamFailureAvoidsEveryLaneThatFailed(t *testing.T)
 
 func TestARetryAfterACutStreamAvoidsTheLaneTheStreamNamed(t *testing.T) {
 	client := &retryRecordingCompleter{errors: []error{
-		&provider.StreamCut{Reason: provider.CutOverrun, Provider: "Alpha", Waited: 4 * 60 * 1e9},
+		&provider.StreamCut{Reason: provider.CutOverrun, Provider: "Alpha", Waited: 4 * time.Minute},
 		nil,
 	}}
 	linear := &Linear{client: client}
