@@ -31,7 +31,7 @@ func runImage(args []string) error {
 
 	positionals := flags.Args()
 	if len(positionals) < 1 || strings.TrimSpace(strings.Join(positionals, " ")) == "" {
-		return errors.New("what to draw — codeaf image \"PROMPT\" --out PATH")
+		return wrongCall("what to draw — codeaf image \"PROMPT\" --out PATH")
 	}
 	if strings.TrimSpace(*out) == "" {
 		return errors.New("where to write it — codeaf image \"PROMPT\" --out PATH")
