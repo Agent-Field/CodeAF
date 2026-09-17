@@ -1155,10 +1155,11 @@ func (t taskTree) releaseLanded() {
 	if strings.TrimSpace(t.root) == "" || strings.TrimSpace(t.dir) == "" {
 		return
 	}
-	// THE REMOVAL AND THE DELETION ARE ONE SPAN OF GIT COMMANDS against the
-	// ground repository, so they take its lock the way every landing does
-	// ([taskTree.releaseKept] and [taskTree.carryBranchHome]).
-	defer lockGitRoot(t.place, t.root)()
+	// THE ROOT LOCK IS THE CALLER'S. Every road that reaches here is a landing
+	// that already holds it ([taskTree.carryBranchHome]'s span, task_run.go),
+	// the same way [taskTree.releaseKeptLocked] is reached, and the lock is not
+	// re-entrant: taking it again here waited on itself for the whole of a
+	// suite's timeout.
 	if t.ownRepository() {
 		_ = os.RemoveAll(t.dir)
 	} else if _, err := git(t.root, "worktree", "remove", t.dir); err != nil {
