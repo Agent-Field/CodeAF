@@ -288,9 +288,9 @@ func TestTheWithdrawalNoticeNamesTheBeltTheModelActuallyHas(t *testing.T) {
 	restore := agent.withdrawTools(landingBelt, landingWithdrawal)
 	defer restore()
 
-	notice, withdrawn := agent.withdrawalNotice("read")
+	notice, withdrawn := agent.withdrawalNotice("bash")
 	if !withdrawn {
-		t.Fatal("read survived a landing belt")
+		t.Fatal("bash survived a landing belt")
 	}
 	for _, tool := range agent.beltTools() {
 		if !strings.Contains(notice, tool.Name) {
