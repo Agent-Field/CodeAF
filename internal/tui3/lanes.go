@@ -834,8 +834,9 @@ func laneRateBare(rate float64) string {
 
 // laneExactly is one lane's view by its whole name, false when nothing is
 // believed about a lane by that name — which is every reading of an empty name.
-// It is the strict sibling of [laneNamed], which matches the part of a name a
-// person half-remembers; a row's own numbers may not be found that loosely.
+// IT IS THE WHOLE NAME AND NEVER A PART OF ONE: a row's own numbers may not be
+// found by the fragment a person half-remembers, because the wrong row's figures
+// are worse than no figures.
 func laneExactly(views []laneView, name string) (laneView, bool) {
 	if strings.TrimSpace(name) == "" {
 		return laneView{}, false
@@ -989,136 +990,10 @@ func laneNote(view laneView) string {
 	return ""
 }
 
-// ── THE FILTER GRAMMAR ──────────────────────────────────────────────────────
-//
-// The picker's box has always been a fuzzy search over model ids, and it stays
-// one: EVERY TOKEN THAT DOES NOT PARSE AS ONE OF THESE FALLS THROUGH TO
-// [picker.rank] UNCHANGED, so nothing a person types today ranks differently
-// tomorrow. What is added is a handful of tokens that are not names at all —
-// they are questions about the machines behind the name, and a fuzzy search
-// over ids can never answer them.
-//
-// A term either KEEPS rows or ORDERS them, never both. Keeping is ANDed with
-// every other token, which is the only thing typing more can sensibly do; the
-// two ordering words come last and win over the text score, because a person
-// who typed `fast` asked for an order out loud.
-
-// laneTermKind says what a parsed token does.
-type laneTermKind uint8
-
-const (
-	// termLane keeps models served by a lane whose name carries the word, and
-	// unfolds the first of them with that lane at the top.
-	termLane laneTermKind = iota
-	// termTTFT keeps models whose best lane starts within a bound.
-	termTTFT
-	// termRate keeps models whose best lane writes at least this fast.
-	termRate
-	// termPrice keeps models whose best lane charges under this per million
-	// output tokens.
-	termPrice
-	// termQuant keeps models with a lane serving at least this precision.
-	termQuant
-	// termTools keeps models with a lane that honours a tool call.
-	termTools
-	// termSees and termDraws are the model's own modalities.
-	//
-	// THEY KEEP THE VERBS THE ROW GAVE UP, and the reason is collision rather
-	// than taste. The row says the catalog's nouns now under `reads` and
-	// `makes` heads (models.go), and `image` would be the matching word — but
-	// `image` is a word in dozens of model ids (`qwen/qwen-image-3`,
-	// `google/gemini-3.1-flash-image`), so a person typing it to find one of
-	// those would get every model that can see instead. A filter word has to be
-	// a word no id carries, and `sees` and `draws` are.
-	termSees
-	termDraws
-	// termFast and termCheap order what is left.
-	termFast
-	termCheap
-)
-
-// laneTerm is one parsed token.
-type laneTerm struct {
-	kind  laneTermKind
-	word  string
-	value float64
-}
-
-// parseLaneTerm reads one lowercased token, and reports false for everything
-// that is not one of the forms above — which is how an ordinary search word
-// reaches the ranking it has always reached.
-func parseLaneTerm(token string) (laneTerm, bool) {
-	switch token {
-	case "":
-		return laneTerm{}, false
-	case "tools":
-		return laneTerm{kind: termTools}, true
-	case "sees":
-		return laneTerm{kind: termSees}, true
-	case "draws":
-		return laneTerm{kind: termDraws}, true
-	case "fast":
-		return laneTerm{kind: termFast}, true
-	case "cheap":
-		return laneTerm{kind: termCheap}, true
-	case "fp4", "fp8", "int8", "bf16", "fp16", "fp32":
-		return laneTerm{kind: termQuant, word: token}, true
-	}
-	if strings.HasPrefix(token, "@") {
-		if name := strings.TrimPrefix(token, "@"); name != "" {
-			return laneTerm{kind: termLane, word: name}, true
-		}
-		return laneTerm{}, false
-	}
-	// `$<0.3` — the dollar leads because that is how a person writes a price,
-	// and the comparison follows it.
-	if rest, ok := strings.CutPrefix(token, "$<"); ok {
-		if value, err := strconv.ParseFloat(rest, 64); err == nil && value > 0 {
-			return laneTerm{kind: termPrice, value: value}, true
-		}
-		return laneTerm{}, false
-	}
-	// `<1s` and `<800ms` — a bound on the wait before the first word, kept in
-	// SECONDS because that is the unit the row is drawn in.
-	if rest, ok := strings.CutPrefix(token, "<"); ok {
-		if seconds, ok := parseLaneSeconds(rest); ok {
-			return laneTerm{kind: termTTFT, value: seconds}, true
-		}
-		return laneTerm{}, false
-	}
-	// `>50t/s` — a floor under how fast it writes.
-	if rest, ok := strings.CutPrefix(token, ">"); ok {
-		rest = strings.TrimSuffix(strings.TrimSuffix(rest, "t/s"), "tok/s")
-		if value, err := strconv.ParseFloat(rest, 64); err == nil && value > 0 {
-			return laneTerm{kind: termRate, value: value}, true
-		}
-		return laneTerm{}, false
-	}
-	return laneTerm{}, false
-}
-
-// parseLaneSeconds reads `1s`, `800ms` or a bare number of seconds.
-func parseLaneSeconds(text string) (float64, bool) {
-	switch {
-	case strings.HasSuffix(text, "ms"):
-		value, err := strconv.ParseFloat(strings.TrimSuffix(text, "ms"), 64)
-		if err != nil || value <= 0 {
-			return 0, false
-		}
-		return value / 1000, true
-	case strings.HasSuffix(text, "s"):
-		text = strings.TrimSuffix(text, "s")
-	}
-	value, err := strconv.ParseFloat(text, 64)
-	if err != nil || value <= 0 {
-		return 0, false
-	}
-	return value, true
-}
-
-// laneQuantRank orders the weight precisions a sheet publishes, coarsest first.
-// Zero is "nobody said", which no `fp8` filter can satisfy and no row is judged
-// by: a lane that published no precision has not published a bad one.
+// laneQuantRank orders the weight precisions a sheet publishes, coarsest first,
+// so [laneNote] can ask whether a lane is serving BELOW the floor without
+// comparing the words themselves. Zero is "nobody said", and no row is judged by
+// it: a lane that published no precision has not published a bad one.
 func laneQuantRank(quant string) int {
 	switch strings.ToLower(strings.TrimSpace(quant)) {
 	case "fp4", "int4", "nf4":
@@ -1133,64 +1008,6 @@ func laneQuantRank(quant string) int {
 		return 5
 	}
 	return 0
-}
-
-// keeps reports whether one model survives this term. Terms that only order
-// keep everything.
-func (t laneTerm) keeps(model Model, views []laneView) bool {
-	best, known := bestLane(views)
-	switch t.kind {
-	case termLane:
-		_, found := laneNamed(views, t.word)
-		return found
-	case termTTFT:
-		return known && best.TTFT > 0 && best.TTFT <= t.value
-	case termRate:
-		return known && best.Rate >= t.value
-	case termPrice:
-		// THE CHEAPEST LANE ANSWERS THIS ONE, not the best. `$<0.3` is a
-		// question about what this model CAN be served for — the same shape as
-		// `tools` and `fp8` — while `<1s` and `>50t/s` are about the lane you
-		// would actually land on.
-		for _, view := range views {
-			if view.PriceOut > 0 && view.PriceOut*1_000_000 < t.value {
-				return true
-			}
-		}
-		return false
-	case termQuant:
-		want := laneQuantRank(t.word)
-		for _, view := range views {
-			if laneQuantRank(view.Quant) >= want {
-				return true
-			}
-		}
-		return false
-	case termTools:
-		for _, view := range views {
-			if view.Tools {
-				return true
-			}
-		}
-		return false
-	case termSees:
-		return hasModality(model.Input, "image")
-	case termDraws:
-		return hasModality(model.Output, "image")
-	}
-	return true
-}
-
-// laneNamed finds the first lane whose name CARRIES the word, so `@cloud` finds
-// cloudflare — a person filtering types the part they remember, exactly as they
-// do for a model id.
-func laneNamed(views []laneView, word string) (laneView, bool) {
-	for _, view := range views {
-		if strings.Contains(strings.ToLower(view.Name), strings.ToLower(word)) {
-			return view, true
-		}
-	}
-	return laneView{}, false
 }
 
 // ── PINNING ─────────────────────────────────────────────────────────────────
@@ -1327,9 +1144,11 @@ func (a *app) routingRowChanged() {
 
 // ── THE PIN, WRITTEN ON THE MODEL ───────────────────────────────────────────
 
-// laneAtSign is what joins a model to the machine it is pinned to. It is the
-// `@` of the picker's own filter grammar ([parseLaneTerm]) and of `/model
-// @cloudflare`, so what a person reads on the chrome is what they would type.
+// laneAtSign is what joins a model to the machine it is pinned to. It is the `@`
+// of `/model @cloudflare`, so what a person reads on the chrome is what they
+// would type to put it there. The picker's filter box once took the same `@` and
+// no longer does — it searches names only ([picker.rank]) — which leaves the
+// command as the one place a person types this character.
 const laneAtSign = "@"
 
 // pinnedNow is the machine this conversation's requests are held to, as the

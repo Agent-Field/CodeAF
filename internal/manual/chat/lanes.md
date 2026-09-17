@@ -266,6 +266,12 @@ word you type has to match, prefix first — and a query that matches none of th
 providers falls through to filtering the model list as it always has, closing the fold with
 it.
 
+**But `@cloudflare` in the picker's box finds nothing.** Until 2026-09-17 typing it there
+kept the models that provider serves and opened the first of them on it; the box searches
+names only now, and no model id carries an `@`, so the list comes back empty. The two doors
+onto a provider are still open and are the ones to use: `→` on a model lists its providers,
+and `/model @cloudflare` from the box pins one outright.
+
 **The provider you are pinned to is written on the model's name** — `deepseek-v4-flash@cloudflare`
 on the line above the box and on a phone's status deck — with the same `@` you would
 type in `/model @cloudflare`. `/status` says it on a `lane` line under `model` — that one row

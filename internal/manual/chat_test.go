@@ -248,6 +248,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model row used to say reads and makes", "models-and-cost"},
 		{"what are the columns in the model picker", "models-and-cost"},
 		{"what does in/M and out/M mean on the model list", "models-and-cost"},
+		// AND WHAT THE FILTER BOX WILL NOT DO. These are asked by two different
+		// people: one who never knew the box took a query language and is simply
+		// hoping it does, and one who used the old terms and is looking for the
+		// keystrokes that stopped working. Both have to land on the section that
+		// says no and names the columns to read instead — a person who types
+		// `$<0.3`, gets an empty list and finds nothing on the subject concludes
+		// the catalog has no cheap models in it.
+		{"can I filter the model list by price", "models-and-cost"},
+		{"how do I find the cheapest model", "models-and-cost"},
+		{"how do I search models by speed", "models-and-cost"},
+		{"filter models that support tools", "models-and-cost"},
+		{"why does typing $<0.3 in the model picker find nothing", "models-and-cost"},
+		{"typing cheap in the model list stopped sorting it", "models-and-cost"},
+		{"what happened to the model picker filter grammar", "models-and-cost"},
+		{"can I type fast in the model filter to sort by speed", "models-and-cost"},
 		{"can I change the model while it is replying", "models-and-cost"},
 		{"does switching the model take effect now or later", "models-and-cost"},
 		{"I changed the model in the middle of an answer", "models-and-cost"},

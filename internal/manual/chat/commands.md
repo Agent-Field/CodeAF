@@ -914,8 +914,13 @@ typed confirms rather than changes. Emptying the filter with ctrl+u puts it back
 The placeholder in the empty filter box reads:
 
 ```
-filter · ctrl+r refresh
+filter by name · ctrl+r refresh
 ```
+
+It says **by name** because that is the whole of what the box does: there is no way to type
+a question about speed, price or capability into it (the *models and cost* page, "You cannot
+filter the picker by speed, price or capability"). On a frame too narrow for the words it
+falls back to `filter`.
 
 **The keys are named on the foot and not in the box**, because a placeholder disappears the
 moment you type — which is exactly when you have found your model and want its providers.
@@ -943,10 +948,11 @@ each rung used only when the one above it came back empty after filtering:
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
-Filtering splits your text on whitespace and every token must match, each in one of three
-tiers: prefix, then substring, then subsequence. So `ds v4` finds
-`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, with
-fuzzy hits sitting at the bottom rather than mixed through.
+Filtering is over the model's **name** and nothing else. It splits your text on whitespace
+and every token must match, each in one of three tiers: prefix, then substring, then
+subsequence. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
+`anthropic/claude-sonnet-4.5`, with fuzzy hits sitting at the bottom rather than mixed
+through. No word in the box means anything but itself.
 
 Twelve rows show at a time, under a dim heading line. The list is a **table**: `<id>:<level>`
 on the left under `model`, and dim columns to the right of it for what the catalog

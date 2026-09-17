@@ -3627,8 +3627,7 @@ func (a *app) applyTargetLevels() {
 		return
 	}
 	for id, level := range a.target.levels {
-		a.agent.SetReasoningFor(id, level)
-		a.keepLevel(id, level)
+		a.setLevel(id, level)
 	}
 }
 

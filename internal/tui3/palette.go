@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -88,10 +87,8 @@ type picker struct {
 	// choose from is the same list.
 	machines bool
 	// lanes is what was believed about that model's lanes at the moment it was
-	// opened, best first, and first names the lane an `@` filter asked to see
-	// at the top of them.
+	// opened, in the order they are drawn in.
 	lanes []laneView
-	first string
 	// auto is the lane the CHOOSER would send the next turn to, taken with the
 	// views at the moment the fold opened. It is not [bestLane]'s answer and
 	// must not be: this file's own sort orders the rows a person reads, and the
@@ -325,6 +322,24 @@ func (p *picker) close() { *p = picker{} }
 // MATCH, and each token matches in one of three tiers — prefix, then substring,
 // then subsequence.
 //
+// THE BOX SEARCHES NAMES AND NOTHING ELSE. It used to carry a small query
+// language beside the search — `@cloudflare`, `<1s`, `>50t/s`, `$<0.3`, `fp8`,
+// `tools`, `sees`, `draws`, and `fast` and `cheap` to reorder what was left —
+// and every one of those words is now an ordinary thing to search for. The
+// reason is the table: those terms were asking about the FACTS, and a person
+// reading a column of first-token times or prices can see which rows answer
+// them without describing the question in a syntax nobody can discover. What a
+// person cannot see is where their model's name is in six hundred rows, and
+// that is the one job left here.
+//
+// A QUERY LANGUAGE HAS TO BE LEARNED AND A NAME DOES NOT. `$<0.3` could only
+// ever be typed by somebody who had read a page about it, while every person who
+// opens this list already knows the name they are looking for — so the box that
+// answers only the second is the box that answers for everybody. It also means
+// there is no longer a token that silently means something other than itself:
+// `fast` searches for `fast`, and the rows that come back are the rows carrying
+// those letters.
+//
 // THE QUERY IS TOKENS AND NOT A PHRASE. A person hunting a model types the
 // pieces they remember in the order they remember them, and the pieces are not
 // adjacent in the id: "ds v4" is deepseek/deepseek-v4-flash, "claude 4.5" is
@@ -343,25 +358,17 @@ func (p *picker) close() { *p = picker{} }
 // of those sits under the models that really carry the word. Ties keep source
 // order, which is the catalog's, so an empty box shows the list as handed over.
 func (p *picker) rank() {
-	// THE QUERY IS SPLIT BEFORE IT IS SCORED. A token that parses as a question
-	// about the machines behind a model (lanes.go's [parseLaneTerm]) is a
-	// filter, and everything else is a word to be ranked exactly as it always
-	// was — which is why a person who has never heard of any of this types the
-	// same query and gets the same list.
-	tokens, terms := splitQuery(p.filter.String())
+	tokens := strings.Fields(strings.ToLower(p.filter.String()))
 	now := timeNow()
 	// AN OPEN FOLD IS THE SUBJECT OF WHAT IS TYPED NEXT, and it is read before
 	// the fold is forgotten below ([picker.narrowFold]).
 	open := p.unfold
 	p.hits = p.hits[:0]
-	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
-	if p.narrowFold(open, tokens, terms, now) {
+	p.unfold, p.lanes, p.auto = "", nil, ""
+	if p.narrowFold(open, tokens, now) {
 		return
 	}
 	for i, id := range p.lower {
-		if len(terms) > 0 && !keepsLanes(p.all[i], terms, now) {
-			continue
-		}
 		if len(tokens) == 0 {
 			p.hits = append(p.hits, i)
 			continue
@@ -382,23 +389,15 @@ func (p *picker) rank() {
 			return p.score[p.hits[a]] < p.score[p.hits[b]]
 		})
 	}
-	p.orderByLanes(terms, now)
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose.
 	p.cursor, p.top = 0, 0
-	// AN `@lane` QUERY OPENS THE ROW IT WAS ABOUT. Somebody who typed
-	// `@cloudflare` asked a question about a machine, and answering it with a
-	// list of model names they would then have to open one by one would be the
-	// filter working and the surface not.
-	if word, ok := laneTermWord(terms); ok && len(p.hits) > 0 {
-		p.unfoldAt(0, word, now)
-	}
 	p.relist()
 	// AND A BOX WITH NOTHING IN IT IS THE LIST THE PICKER OPENED ON, so the
 	// cursor goes back to where it opened: on the model in use. Emptying the
 	// box with ctrl+u used to leave it on row zero, which made the enter that
 	// followed a switch to whatever sorted first.
-	if len(tokens) == 0 && len(terms) == 0 {
+	if len(tokens) == 0 {
 		p.cursorToCurrent()
 	}
 }
@@ -416,10 +415,11 @@ func (p *picker) rank() {
 //
 // IT IS THE SAME MATCHER AND NOT A SECOND ONE ([tokenScore], every token ANDed),
 // so `cloud fl` finds Cloudflare in a fold exactly as it finds a model in the
-// list, and a lane term (`@name`, `<1s`) is left to the list because those are
-// questions about which MODELS to keep.
-func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now time.Time) bool {
-	if model == "" || len(tokens) == 0 || len(terms) > 0 {
+// list. It is a NAME search on both sides of that fall-through, which is the
+// whole of what this box does ([picker.rank]): the only thing that changes with
+// the fold is whose names are being searched.
+func (p *picker) narrowFold(model string, tokens []string, now time.Time) bool {
+	if model == "" || len(tokens) == 0 {
 		return false
 	}
 	at := -1
@@ -461,7 +461,7 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 	// filter's whole answer is a shorter list of them, and a fold that answered
 	// by narrowing a list it then left closed would have hidden the answer.
 	p.hits = append(p.hits, at)
-	p.unfold, p.lanes, p.first, p.machines = model, kept, "", true
+	p.unfold, p.lanes, p.machines = model, kept, true
 	p.auto = laneAuto(p.routing, model, views, now)
 	p.relist()
 	p.top = 0
@@ -497,77 +497,6 @@ func queryScore(text string, tokens []string) (int, bool) {
 		total += score
 	}
 	return total, true
-}
-
-// splitQuery divides what is typed into the words that rank and the terms that
-// filter. Every token that does not parse is a word, unchanged.
-func splitQuery(query string) ([]string, []laneTerm) {
-	var words []string
-	var terms []laneTerm
-	for _, token := range strings.Fields(strings.ToLower(query)) {
-		if term, ok := parseLaneTerm(token); ok {
-			terms = append(terms, term)
-			continue
-		}
-		words = append(words, token)
-	}
-	return words, terms
-}
-
-// keepsLanes is every keeping term ANDed over one model.
-func keepsLanes(model Model, terms []laneTerm, now time.Time) bool {
-	views := laneViews(model.ID, now)
-	for _, term := range terms {
-		if !term.keeps(model, views) {
-			return false
-		}
-	}
-	return true
-}
-
-// orderByLanes is the two words that ORDER rather than keep. They come last, so
-// `deep fast` is the deepseek rows soonest-first rather than the fastest rows
-// that happen to say deep.
-func (p *picker) orderByLanes(terms []laneTerm, now time.Time) {
-	for _, term := range terms {
-		switch term.kind {
-		case termFast:
-			sort.SliceStable(p.hits, func(a, b int) bool {
-				return laneFeel(bestOf(p.all[p.hits[a]], now)) < laneFeel(bestOf(p.all[p.hits[b]], now))
-			})
-		case termCheap:
-			sort.SliceStable(p.hits, func(a, b int) bool {
-				return lanePrice(bestOf(p.all[p.hits[a]], now)) < lanePrice(bestOf(p.all[p.hits[b]], now))
-			})
-		}
-	}
-}
-
-// bestOf is one model's best-believed lane, or a lane that knows nothing —
-// which sorts last under both words rather than first under either.
-func bestOf(model Model, now time.Time) laneView {
-	best, _ := bestLane(laneViews(model.ID, now))
-	return best
-}
-
-// lanePrice is what a million output tokens cost on a lane, and a very large
-// number for a lane with no published tariff: `cheap` must not put the rows
-// nobody knows the price of at the top of the list.
-func lanePrice(view laneView) float64 {
-	if view.PriceOut <= 0 {
-		return math.Inf(1)
-	}
-	return view.PriceOut * 1_000_000
-}
-
-// laneTermWord is the first `@lane` word in a query, if there is one.
-func laneTermWord(terms []laneTerm) (string, bool) {
-	for _, term := range terms {
-		if term.kind == termLane {
-			return term.word, true
-		}
-	}
-	return "", false
 }
 
 // The three rungs, far enough apart that no offset inside one can reach the
@@ -683,9 +612,8 @@ func (p *picker) follow(height int) { p.top = listTop(p.cursor, p.top, len(p.lis
 // knocks on — so the machines are on the way while the person is still looking
 // at the two answers. The picker still fetches nothing itself.
 
-// unfoldAt unfolds the model at hit `at`, with `first` — a lane an `@` filter asked
-// about — lifted to the top of the lanes. It reports whether anything opened.
-func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
+// unfoldAt unfolds the model at hit `at`. It reports whether anything opened.
+func (p *picker) unfoldAt(at int, now time.Time) bool {
 	if at < 0 || at >= len(p.hits) {
 		return false
 	}
@@ -697,21 +625,6 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 	if len(views) == 0 {
 		lane.WantSheet(model.ID)
 	}
-	if first != "" {
-		// AND AN `@name` FILTER OPENS THE MACHINES, because the whole of what it
-		// asked for is one of them: a fold that lifted a machine to the top of a
-		// list it then left closed would have answered by hiding the answer.
-		p.machines = true
-		if named, ok := laneNamed(views, first); ok {
-			lifted := []laneView{named}
-			for _, view := range views {
-				if !strings.EqualFold(view.Name, named.Name) {
-					lifted = append(lifted, view)
-				}
-			}
-			views = lifted
-		}
-	}
 	// THE ROWS ARE DRAWN IN ALPHABETICAL ORDER and the chooser's order is left
 	// where it is. [laneViews] hands them back fastest-feeling first, which is
 	// the right order for a MACHINE TO BE PICKED BY — `auto` reads it, the
@@ -721,12 +634,10 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 	// prediction is taken from `views` before the copy is sorted, so nothing
 	// downstream is looking at this order.
 	p.auto = laneAuto(p.routing, model.ID, views, now)
-	if first == "" {
-		views = slices.SortedFunc(slices.Values(views), func(a, b laneView) int {
-			return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
-		})
-	}
-	p.unfold, p.lanes, p.first = model.ID, views, first
+	views = slices.SortedFunc(slices.Values(views), func(a, b laneView) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	p.unfold, p.lanes = model.ID, views
 	return true
 }
 
@@ -736,7 +647,7 @@ func (p *picker) fold() bool {
 	if p.unfold == "" {
 		return false
 	}
-	p.unfold, p.lanes, p.first, p.auto, p.machines = "", nil, "", "", false
+	p.unfold, p.lanes, p.auto, p.machines = "", nil, "", false
 	return true
 }
 
@@ -777,10 +688,11 @@ func (p *picker) unfoldHere() bool {
 	if row.lane != laneNone {
 		return false
 	}
-	// A model whose block an `@` filter already opened is walked into rather
-	// than opened twice.
+	// A model whose block the filter box already opened — by narrowing that
+	// model's own machines ([picker.narrowFold]) — is walked into rather than
+	// opened twice.
 	if p.all[p.hits[row.hit]].ID != p.unfold {
-		if !p.unfoldAt(row.hit, "", timeNow()) {
+		if !p.unfoldAt(row.hit, timeNow()) {
 			return false
 		}
 		p.relist()
@@ -2199,9 +2111,7 @@ func (a *app) cycleReasoning() {
 	if _, known := a.levels[session.ReasoningKey(chosen.ID)]; !known {
 		a.learnLevel(chosen.ID)
 	}
-	next := nextReasoning(a.reasoningFor(chosen.ID))
-	a.agent.SetReasoningFor(chosen.ID, next)
-	a.keepLevel(chosen.ID, next)
+	a.setLevel(chosen.ID, nextReasoning(a.reasoningFor(chosen.ID)))
 }
 
 // pickerHint is the placeholder in the empty filter box, and it names the box
@@ -2216,17 +2126,26 @@ func (a *app) cycleReasoning() {
 // rung). The foot is a line that stays, follows the cursor, and can say what
 // each key does WHERE IT DOES IT ([picker.keysHint]).
 //
-// WHAT IS LEFT IS WHAT THE FOOT CANNOT SAY. `filter` is what the box IS, which
-// no foot can tell you about an empty box, and the refresh key belongs to the
-// LIST rather than to the row the cursor is on — the foot is cursor-shaped and
-// this key is not.
-const pickerHint = "filter · " + refreshModelsHint
+// WHAT IS LEFT IS WHAT THE FOOT CANNOT SAY. `filter by name` is what the box IS,
+// which no foot can tell you about an empty box, and the refresh key belongs to
+// the LIST rather than to the row the cursor is on — the foot is cursor-shaped
+// and this key is not.
+//
+// AND IT SAYS `by name` BECAUSE THAT IS THE WHOLE SCOPE OF IT. The box once took
+// a query language over the facts as well ([picker.rank] buries it), and while it
+// did, `filter` was the honest word: it could not promise names without
+// under-selling the rest. Now that names are all it answers, a person who types
+// `cheap` deserves to have been told, in the one line that was on the screen
+// before they typed, that this box was never going to understand them. The two
+// spellings degrade to `filter` on a narrow frame (rowfit.go's second law), where
+// naming the box at all beats naming its scope.
+const pickerHint = "filter by name · " + refreshModelsHint
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
 // test that joins them and compares against [pickerHint] is what keeps the two
 // spellings one (the one-source-of-truth law: a constant read by a person and a
 // list read by the fitter would otherwise drift).
-var pickerHintFields = []rowField{rowSay("filter"), rowSay(refreshModelsHint)}
+var pickerHintFields = []rowField{rowSay("filter by name", "filter"), rowSay(refreshModelsHint)}
 
 // pickerHintFieldsBare is the line for a list that cannot be refreshed: the
 // same fields with the refresh key taken out, since a key that does nothing is

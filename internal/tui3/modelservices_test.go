@@ -546,7 +546,7 @@ func TestAServiceWithNoListingDrawsNoCount(t *testing.T) {
 			break
 		}
 	}
-	if placeholder < 0 || a.pick.unfoldAt(placeholder, "", timeNow()) {
+	if placeholder < 0 || a.pick.unfoldAt(placeholder, timeNow()) {
 		t.Fatal("the empty-group notice reached the lane-sheet door")
 	}
 	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))

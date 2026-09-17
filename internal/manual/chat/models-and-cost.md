@@ -157,8 +157,8 @@ you have typed; with characters to step over they move the caret through the fil
 instead. `tab` always opens and closes.
 
 **This is one list with two doors.** `/model` opens it, and so does the **your model**
-row at the top of the Providers tab in `/settings` — the same rows, the same filter
-grammar, the same providers under `→`, and `enter` on a provider pins it either way. The media
+row at the top of the Providers tab in `/settings` — the same rows, the same name
+search, the same providers under `→`, and `enter` on a provider pins it either way. The media
 slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
 component over their own models, but they have no provider row behind them, so nothing
 unfolds under them and the foot does not offer the key.
@@ -171,10 +171,13 @@ the list stays where it is — so two models can be compared on their prices, ch
 and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
 what enter did is already done.
 
-Filtering splits what you type on whitespace; every token must match, each in one of three
-tiers — prefix, then substring, then subsequence. So `ds v4` finds
-`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, and fuzzy
-hits sit at the bottom rather than mixed through. Twelve rows show at a time.
+**The box searches the model's name and nothing else.** Filtering splits what you type on
+whitespace; every token must match, each in one of three tiers — prefix, then substring,
+then subsequence. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
+`anthropic/claude-sonnet-4.5`, and fuzzy hits sit at the bottom rather than mixed through.
+Twelve rows show at a time. No word means anything but itself — the speed, price and
+capability terms this box used to take are gone, and the section "You cannot filter the
+picker by speed, price or capability" says what to read instead.
 
 The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
 router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
@@ -185,7 +188,8 @@ remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 tried only when the one above it came back empty after filtering.
 
 The placeholder in the empty filter box is the only place the overlay explains itself:
-`filter · ctrl+r refresh` — the keys themselves are named on the foot under the list,
+`filter by name · ctrl+r refresh` — it says `by name` because that is the whole scope of the
+box, and on a frame too narrow for it the words fall back to `filter`. The keys themselves are named on the foot under the list,
 where they stay while you type and say what they do on the row the cursor is on
 
 There is no mouse commit on the picker's rows.
@@ -337,11 +341,11 @@ the side as well as the thing, which is six words to learn before a row could be
 For a short while the two columns were headed `reads` and `makes`. They are `inputs` and
 `outputs` now.
 
-`sees` and `draws` survive in **one** place — the model picker's filter box, where typing
-`sees` keeps the models that read images and `draws` keeps the ones that answer with them.
-They stayed verbs there because `image` is a word dozens of model ids carry
-(`qwen/qwen-image-3`, `google/gemini-3.1-flash-image`), and typing it has to keep finding
-those. A filter word has to be a word no id carries.
+**None of them survives anywhere.** `sees` and `draws` outlived the rest for a while as
+filter words in the model picker's box — typing `sees` kept the models that read images —
+and that box now searches names only, so `sees` is four letters to look for like any other.
+It still finds `deepseek/deepseek-v4-flash`, because those letters run through that id in
+order; it no longer finds a model because of what the model can see.
 
 ## Switching model by name in one command
 
@@ -355,11 +359,14 @@ The words after `/model` are read for their **shape**, not for a flag:
 | `/model deepseek/deepseek-v4-flash` | switches to that slug |
 | `/model @cloudflare` | pins the provider that serves your model — the model does not change |
 | `/model auto` | gives the choice of provider back to codeaf |
-| `/model deepseek <1s` | opens the picker with `deepseek <1s` already in the filter |
+| `/model deepseek flash` | opens the picker with `deepseek flash` already in the filter |
 
-Anything with a space in it, and any single word the picker's filter grammar understands
-(`fast`, `cheap`, `tools`, `<1s`, `>50t/s`, `$<0.3`, `fp8`), opens the list already
-narrowed. A slug has no spaces in it, so two words were never a name.
+**Anything with a space in it opens the list already narrowed**, because a slug has no
+spaces in it — so two words were never a name, and the two sensible words to do with them
+are to search names with them. A **single** word is always taken as a slug. Until
+2026-09-17 a single word the picker's filter grammar recognised (`fast`, `cheap`, `tools`,
+`<1s`, `>50t/s`, `$<0.3`, `fp8`) opened a narrowed list instead; that grammar is gone, and
+`/model fast` is now a request to switch to a model called `fast`.
 
 There is one check, and only one. If the slug **is** in the catalog and cannot hold a
 conversation — a drawing model, a speech model, a transcriber — codeaf refuses in one line
@@ -3027,26 +3034,38 @@ and say where they came from, and it is gone — it said the row's own three num
 time, under a name the row had just written, and cost the open fold a line on every move
 of the cursor.
 
-## Filtering the picker by speed, price and capability — @cloudflare, <1s, >50t/s, $<0.3
+## You cannot filter the picker by speed, price or capability — @cloudflare, <1s, >50t/s, $<0.3, fast, cheap
 
-The filter box takes a few words that are not names at all. Each narrows the list, and
-they combine:
+**The filter box searches model names and nothing else.** There is no way to type a
+question about speed, price, tool support, precision or modality into it.
 
-| What you type | What it keeps |
-|---|---|
-| `@cloudflare` | models with a provider whose name carries that word — and it opens the first one on that provider |
-| `<1s`, `<800ms` | the best provider starts within that |
-| `>50t/s` | the best provider writes at least that fast |
-| `$<0.3` | the best provider charges under that per million output tokens |
-| `fp8`, `bf16` | it has a provider serving at least that precision |
-| `tools` | it has a provider that honours a tool call |
-| `sees`, `draws` | the model reads images, or answers with them — the two filter words that are still verbs, because `image` is a word dozens of model ids carry and typing it has to keep finding those |
-| `fast` | sorts what is left by how soon an answer would start |
-| `cheap` | sorts what is left by price |
+Until 2026-09-17 there was: `@cloudflare` kept the models one provider serves, `<1s` and
+`<800ms` bounded how soon an answer starts, `>50t/s` put a floor under how fast it writes,
+`$<0.3` capped the price per million output tokens, `fp8` and `bf16` asked for a precision,
+`tools` asked for tool support, `sees` and `draws` asked about images in and out, and `fast`
+and `cheap` reordered what was left. **Every one of those is now an ordinary thing to search
+for.** Typing `$<0.3` looks for a model whose name carries those characters, finds none, and
+the list is empty — it does not quietly answer the old question.
 
-**Anything else you type is still the search it has always been** — prefix, then
-substring, then subsequence over the model id — so `ds v4` and `claude 4.5` work exactly
-as before, and a word this grammar does not know is simply a word to search for.
+**What replaced it is the table.** Every fact those words asked about is a column you can
+read: `first` is how soon an answer starts, `t/s` how fast it writes, `in/M` and `out/M` the
+price, `window` the context, `inputs` and `outputs` the modalities — and inside a provider
+fold, `$/M`, `note` and `up` per provider. A question you can see the answer to does not
+need a syntax, and a syntax nobody can discover is a feature only the person who wrote it
+can use.
+
+**To sort or filter by these, use the places that do it:**
+
+- **`codeaf models`** from a terminal prints the same catalog as text, where `grep`, `sort`
+  and `awk` do anything this box ever did and more.
+- **`→` on a model** lists its providers with their own figures, alphabetically, so the
+  cheapest or quickest of them is one column-read away.
+- **`/settings` → routing** is how you say *which* of them to prefer for every model at
+  once — `price`, `latency` or `simple` — rather than hunting one model at a time.
+
+The name search itself is unchanged: whitespace splits, every token must match, and each
+matches by prefix, then substring, then subsequence over the id. So `ds v4` finds
+`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`.
 
 ## Why did it say via cloudflare — the provider named beside your model
 

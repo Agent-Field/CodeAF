@@ -1134,7 +1134,7 @@ func helpText(file string, chords chordSpelling) string {
 //	/model deepseek/deepseek-v4-flash    a name: switch, exactly as before
 //	/model @cloudflare                   a machine: pin the lane, stay on the model
 //	/model auto                          give the lane choice back
-//	/model deepseek <1s                  a question: open the list already narrowed
+//	/model deep seek                     words: open the list with them typed in
 //
 // THE SLUG CASE IS UNCHANGED AND IS THE FALL-THROUGH, which is the same
 // arrangement the filter box has: anything this grammar does not recognise is
@@ -1170,12 +1170,16 @@ func modelArg(rest string) (modelIntent, string) {
 			return modelPinLane, strings.TrimPrefix(fields[0], "@")
 		}
 	}
-	// A QUESTION IS ANYTHING THE FILTER GRAMMAR CAN ANSWER, and anything with a
-	// space in it: a slug has no spaces, so two words were never a name.
+	// A QUERY IS ANYTHING WITH A SPACE IN IT: a slug has no spaces, so two words
+	// were never a name, and the only sensible thing to do with two words is hand
+	// them to the box that searches names by their pieces ([picker.rank]).
+	//
+	// A SINGLE WORD IS A SLUG, whatever it looks like. It used to be checked
+	// against the filter box's own query language first — so `/model fast` and
+	// `/model <1s` opened a narrowed list — and that language is gone: the box
+	// searches names only, and a word this command took as a question would be
+	// a word it refused to take as the name of a model.
 	if len(fields) > 1 {
-		return modelQuery, rest
-	}
-	if _, ok := parseLaneTerm(strings.ToLower(fields[0])); ok {
 		return modelQuery, rest
 	}
 	return modelSwitch, rest

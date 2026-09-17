@@ -358,63 +358,76 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 	}
 }
 
-// ── 3. the filter grammar ───────────────────────────────────────────────────
+// ── 3. the filter box ───────────────────────────────────────────────────────
 
-// `@name` KEEPS THE MODELS SERVED BY THAT LANE, and opens the first of them on
-// the lane that was asked about.
-func TestTheLaneFilterKeepsTheModelsThatLaneServesAndOpensIt(t *testing.T) {
+// THE BOX SEARCHES NAMES AND NOTHING ELSE, and these are the words that used to
+// mean something else. `@cloudflare` kept the models one provider serves, `<1s`
+// and `>50t/s` and `$<0.3` read the best provider's figures, `fp8` and `tools`
+// asked what some provider could do, and `sees` and `draws` read the model's own
+// modalities. Every one of them is now an ordinary thing to look for, and what
+// comes back is whatever carries those letters — for most of them nothing at all,
+// since no model id carries an `@`, a `<` or a `$` (palette.go's [picker.rank]
+// argues why the facts belong in the columns rather than in a syntax).
+func TestTheFilterBoxSearchesNamesAndNotFacts(t *testing.T) {
 	laneLab(t, threeLanes())
-	a := laneApp(t)
-	typeLine(t, a, "/model")
-
-	typeInto(t, a, "@cloud")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf("@cloud kept %v, want only the model with that lane", got)
-	}
-	if a.pick.unfold != flash {
-		t.Fatal("an @ filter has to open the row it was about")
-	}
-	if len(a.pick.lanes) == 0 || !strings.EqualFold(a.pick.lanes[0].Name, "Cloudflare") {
-		t.Fatalf("the lane asked about is not first: %+v", a.pick.lanes)
-	}
-}
-
-// `<1s` IS A BOUND ON THE FIRST TOKEN of the best lane, and it is measured
-// against the posterior rather than against anything published.
-func TestTheSpeedFilterKeepsWhatStartsInTime(t *testing.T) {
-	slow := "vendor/slow-model"
-	rows := threeLanes()
-	rows[slow] = []lane.Belief{
-		laneBelief(slow, "GMICloud", 3030, 30, 0.1, lane.Facts{Tools: true, Uptime5m: 97}),
-	}
-	laneLab(t, rows)
-	a := pickerApp(t, &fakeAgent{model: flash}, append(append([]Model{}, laneCatalog...), Model{ID: slow}))
-	a.profileDir = t.TempDir()
-	typeLine(t, a, "/model")
-
-	typeInto(t, a, "<1s")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf("<1s kept %v, want only what starts inside a second", got)
-	}
-
-	drive(t, a, key("ctrl+u"))
-	typeInto(t, a, ">50t/s")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf(">50t/s kept %v", got)
-	}
-
-	drive(t, a, key("ctrl+u"))
-	typeInto(t, a, "$<0.3")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf("$<0.3 kept %v — the best lane's price per million", got)
+	for _, probe := range []struct {
+		typed string
+		want  []string
+	}{
+		{"@cloudflare", nil},
+		{"@cloud", nil},
+		{"<1s", nil},
+		{"<800ms", nil},
+		{">50t/s", nil},
+		{"$<0.3", nil},
+		{"fp8", nil},
+		{"tools", nil},
+		{"draws", nil},
+		// `sees` IS THE ONE THAT PROVES THE POINT. No model in this lab publishes
+		// an image input, so the old term kept NOTHING here — and the letters
+		// s-e-e-s run through `deepseek/deepseek-v4-flash` in order, so the name
+		// search keeps exactly one. Same keystrokes, a different question, and the
+		// answer the letters give is the one a person can see the reason for.
+		{"sees", []string{flash}},
+		{"flas", []string{flash}},
+	} {
+		a := laneApp(t)
+		typeLine(t, a, "/model")
+		typeInto(t, a, probe.typed)
+		if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(probe.want, ",") {
+			t.Fatalf("%q kept %v, want %v", probe.typed, got, probe.want)
+		}
+		// AND NOTHING OPENS A FOLD ANY MORE. `@name` used to open the first model
+		// it kept with that machine lifted to the top, which was the one place in
+		// this surface where typing walked the cursor into a fold.
+		if a.pick.unfold != "" {
+			t.Fatalf("%q opened the fold at %q", probe.typed, a.pick.unfold)
+		}
 	}
 }
 
-// AND EVERYTHING ELSE RANKS EXACTLY AS IT ALWAYS DID. This is the promise the
-// grammar is built on: a word it does not recognise is a word to search for,
-// with the same three tiers and the same order, whether or not a single lane
-// has ever been measured.
-func TestAnUnparsedTokenRanksTheWayItAlwaysHas(t *testing.T) {
+// AND THE TWO WORDS THAT ORDERED THE LIST NO LONGER TOUCH IT. `fast` sorted what
+// was left by how soon an answer would start and `cheap` sorted it by price, so
+// either of them over this lab's five models kept all five and reordered them.
+// They are letters now, and no id in the lab carries either run — so the honest
+// answer is an EMPTY list rather than five rows in an order nobody asked for.
+func TestTheOrderingWordsNoLongerOrderAnything(t *testing.T) {
+	laneLab(t, threeLanes())
+	for _, typed := range []string{"fast", "cheap"} {
+		a := laneApp(t)
+		typeLine(t, a, "/model")
+		typeInto(t, a, typed)
+		if got := pickerIDs(a); len(got) != 0 {
+			t.Fatalf("%q kept %v, want nothing — it is a word, not a sort", typed, got)
+		}
+	}
+}
+
+// AND EVERYTHING ELSE RANKS EXACTLY AS IT ALWAYS DID — the three tiers, in the
+// same order, whether or not a single provider has ever been measured. This was
+// the promise the old grammar was built on ("a word it does not recognise is a
+// word to search for"), and it outlives the grammar: now every word is one.
+func TestAWordRanksTheWayItAlwaysHas(t *testing.T) {
 	want := []string{"gpt-5-classic", "openai/gpt-4.1-mini", "anthropic/claude-gpt-echo"}
 
 	forgetLanes()
@@ -501,13 +514,16 @@ func TestSlashModelPinsAndUnpinsTheLane(t *testing.T) {
 		t.Fatal("/model auto did not clear the pin")
 	}
 
-	// AND A QUESTION OPENS THE LIST rather than switching to a slug nobody
-	// meant: two words were never a name.
-	typeLine(t, a, "/model deepseek <1s")
+	// AND TWO WORDS OPEN THE LIST rather than switching to a slug nobody meant:
+	// a slug has no spaces, so two words were never a name. They go into the
+	// filter box as typed, and the box searches names with them — `/model
+	// deepseek <1s` used to reach the same door through the filter GRAMMAR, and
+	// the grammar is gone while this shape of the rule is not.
+	typeLine(t, a, "/model deepseek flash")
 	if !a.pick.open {
-		t.Fatal("/model with a filter query has to open the picker")
+		t.Fatal("/model with two words has to open the picker")
 	}
-	if got := a.pick.filter.String(); got != "deepseek <1s" {
+	if got := a.pick.filter.String(); got != "deepseek flash" {
 		t.Fatalf("the picker opened on the filter %q", got)
 	}
 	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
