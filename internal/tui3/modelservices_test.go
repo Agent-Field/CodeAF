@@ -1610,3 +1610,203 @@ func TestASettleWithNothingToSpendLeavesTheConnectPanelWhereItWas(t *testing.T) 
 		t.Fatalf("a settle with nothing to spend moved the conversation to %q", a.model)
 	}
 }
+
+// customConnectionApp is the picker-grouping fixture: the default service plus
+// the two custom connections homelab (id custom) and studio (id custom-studio),
+// in persisted order, with each connection's own model list served from held by
+// the connection id. A connection missing from held has no model list, which is
+// the empty group the notice row stands for.
+func customConnectionApp(t *testing.T, held map[string][]Model) *app {
+	t.Helper()
+	dir := t.TempDir()
+	customs := connectionWriteSources(t, dir, "homelab", "studio")
+	sources := modelsource.NewSet(append([]modelsource.Connected{connectionDefaultService()}, customs...)...)
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, []Model{{ID: "openai/gpt-4.1-mini"}})
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return append([]Model(nil), held[service.Source.ID]...)
+	}
+	return a
+}
+
+// groupPickerLines is the drawn list as a reader sees it, with room for every
+// service heading and its rows: [pickerLines] hands the picker the row count as
+// the line budget, which is right when every row is one line but cuts a list
+// with headings off partway through.
+func groupPickerLines(a *app) []string {
+	lines := a.pick.rows(a.width, a.pick.height(a.width), a.pal, -1, a.reasoningFor)
+	plainLines := make([]string, len(lines))
+	for at, line := range lines {
+		plainLines[at] = plain(line)
+	}
+	return plainLines
+}
+
+// lineIndex is the first line whose trimmed text satisfies match, -1 when none.
+func lineIndex(lines []string, match func(string) bool) int {
+	for at, line := range lines {
+		if match(strings.TrimSpace(line)) {
+			return at
+		}
+	}
+	return -1
+}
+
+// headingLines counts the drawn service headings equal to group. A heading is a
+// dim line whose whole text is the group's name; a model's own row carries more
+// than the name, so this counts headings and never rows.
+func headingLines(lines []string, group string) int {
+	count := 0
+	for _, line := range lines {
+		if strings.TrimSpace(line) == group {
+			count++
+		}
+	}
+	return count
+}
+
+// TWO CUSTOM CONNECTIONS GROUP APART: the default service and two custom
+// connections each carry their own heading, in persisted order, and every custom
+// model's id is qualified with its own connection's name so no row can sit under
+// the wrong heading. The drawn picker shows each heading once, above its models.
+func TestTwoCustomConnectionsGroupApartInThePicker(t *testing.T) {
+	a := customConnectionApp(t, map[string][]Model{
+		"custom":        {{ID: "qwen-local"}},
+		"custom-studio": {{ID: "mistral-local"}},
+	})
+
+	list := a.modelList()
+	want := []struct {
+		id, group string
+		order     int
+	}{
+		{"openai/gpt-4.1-mini", "openrouter", 0},
+		{"homelab/qwen-local", "homelab", 1},
+		{"studio/mistral-local", "studio", 2},
+	}
+	if len(list) != len(want) {
+		t.Fatalf("model list = %+v, want %d rows", list, len(want))
+	}
+	for at, w := range want {
+		row := list[at]
+		if row.ID != w.id || row.Group != w.group || row.GroupOrder != w.order || row.Unavailable {
+			t.Fatalf("row %d = %+v, want id=%q group=%q order=%d", at, row, w.id, w.group, w.order)
+		}
+		// NO MODEL APPEARS UNDER THE WRONG HEADING: a custom row's own group is
+		// the Written prefix its id carries, and the default row is bare.
+		if w.order > 0 && !strings.HasPrefix(row.ID, row.Group+"/") {
+			t.Fatalf("row %d is not qualified by its own heading: %+v", at, row)
+		}
+	}
+
+	a.openPicker()
+	lines := groupPickerLines(a)
+	drawn := strings.Join(lines, "\n")
+	for _, group := range []string{"openrouter", "homelab", "studio"} {
+		if got := headingLines(lines, group); got != 1 {
+			t.Fatalf("the picker drew the %q heading %d times, want once:\n%s", group, got, drawn)
+		}
+	}
+	for _, id := range []string{"homelab/qwen-local", "studio/mistral-local"} {
+		group := id[:strings.Index(id, "/")]
+		headAt := lineIndex(lines, func(line string) bool { return line == group })
+		modelAt := lineIndex(lines, func(line string) bool { return strings.Contains(line, id) })
+		if headAt < 0 || modelAt < 0 || headAt > modelAt {
+			t.Fatalf("the %q heading did not stand above %q:\n%s", group, id, drawn)
+		}
+	}
+}
+
+// A RENAME MOVES THE HEADING: after a custom connection is renamed through the
+// same edit draft the name step builds, the next picker build draws the new name
+// as the heading and qualifies its models under the new prefix, and no heading
+// with the old name remains.
+func TestRenamingACustomConnectionMovesItsPickerHeading(t *testing.T) {
+	a := customConnectionApp(t, map[string][]Model{
+		"custom":        {{ID: "qwen-local"}},
+		"custom-studio": {{ID: "mistral-local"}},
+	})
+	if list := a.modelList(); len(list) != 3 || list[1].ID != "homelab/qwen-local" {
+		t.Fatalf("the fixture did not start on homelab/qwen-local: %+v", list)
+	}
+
+	persisted := config.PersistedSources(a.profileDir)
+	if len(persisted) != 2 || persisted[0].Written != "homelab" {
+		t.Fatalf("the profile does not hold the two custom connections: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	// THE RENAME: an edit draft whose Written moved, exactly what the name step
+	// builds on an answer that differs from the stored one. The probe is empty,
+	// so the connect persists the renamed row without a network read.
+	msg := a.beginModelConnect(modelConnectDraft{
+		source:      modelsource.Source{ID: "custom", Written: "lab", Listing: modelsource.ListingModels},
+		row:         renamed,
+		renamedFrom: "homelab",
+		entryID:     modelConnectionID("custom"),
+		editing:     true,
+	})().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	list := a.modelList()
+	if len(list) != 3 || list[1].ID != "lab/qwen-local" || list[1].Group != "lab" {
+		t.Fatalf("the renamed connection's models did not move to lab: %+v", list)
+	}
+	if list[2].ID != "studio/mistral-local" || list[2].Group != "studio" {
+		t.Fatalf("the rename touched the other connection: %+v", list[2])
+	}
+	for _, row := range list {
+		if row.Group == "homelab" || strings.HasPrefix(row.ID, "homelab/") {
+			t.Fatalf("the old name survived the rename: %+v", row)
+		}
+	}
+
+	a.openPicker()
+	lines := groupPickerLines(a)
+	drawn := strings.Join(lines, "\n")
+	if got := headingLines(lines, "lab"); got != 1 {
+		t.Fatalf("the picker drew the %q heading %d times, want once:\n%s", "lab", got, drawn)
+	}
+	if got := headingLines(lines, "homelab"); got != 0 {
+		t.Fatalf("a heading with the old name remained:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, "lab/qwen-local") || strings.Contains(drawn, "homelab/") {
+		t.Fatalf("the picker did not draw the models under the new prefix:\n%s", drawn)
+	}
+}
+
+// A CONNECTION WITH NO LIST KEEPS ITS PLACE: one of the two custom connections
+// holds no model list, and its heading still draws with the notice row, between
+// the others in persisted order.
+func TestACustomConnectionWithNoListKeepsItsPlaceInThePicker(t *testing.T) {
+	a := customConnectionApp(t, map[string][]Model{
+		"custom": {{ID: "qwen-local"}},
+	})
+
+	list := a.modelList()
+	if len(list) != 3 {
+		t.Fatalf("model list = %+v", list)
+	}
+	if list[1].ID != "homelab/qwen-local" || list[1].Group != "homelab" || list[1].Unavailable {
+		t.Fatalf("the listing connection did not sit second: %+v", list[1])
+	}
+	placeholder := list[2]
+	if !placeholder.Unavailable || placeholder.ID != "" || placeholder.Group != "studio" ||
+		placeholder.GroupOrder != 2 || placeholder.Notice != noServiceModelListWord {
+		t.Fatalf("the listing-less connection did not keep its place: %+v", placeholder)
+	}
+
+	a.openPicker()
+	lines := groupPickerLines(a)
+	drawn := strings.Join(lines, "\n")
+	if got := headingLines(lines, "studio"); got != 1 {
+		t.Fatalf("the listing-less service drew its heading %d times, want once:\n%s", got, drawn)
+	}
+	if !strings.Contains(drawn, noServiceModelListWord) {
+		t.Fatalf("the listing-less service drew no notice row:\n%s", drawn)
+	}
+	homelabAt := lineIndex(lines, func(line string) bool { return line == "homelab" })
+	studioAt := lineIndex(lines, func(line string) bool { return line == "studio" })
+	if homelabAt < 0 || studioAt < 0 || homelabAt > studioAt {
+		t.Fatalf("the listing-less service was drawn out of order:\n%s", drawn)
+	}
+}
