@@ -96,9 +96,64 @@ func (g *TaskGraph) planPath() string {
 		return filepath.Join(place.Dir, planStoreFilename)
 	}
 	if g.home.config.Workspace != "" {
-		return filepath.Join(g.home.config.Workspace, ".codeaf", planStoreFilename)
+		return PlanStorePath(g.home.config.Workspace)
 	}
 	return ""
+}
+
+// PlanStorePath is where a run's plan store lives under a working copy that has
+// no session folder of its own: <dir>/.codeaf/plandb.db. It is the same name and
+// the same folder [planPath] falls to for a session with no Place, so a run
+// dispatched by a headless door and a session that seeds one of its own find one
+// file — two spellings of the path would be two stores with half a run in each.
+func PlanStorePath(dir string) string {
+	return filepath.Join(dir, ".codeaf", planStoreFilename)
+}
+
+// OpenRunPlan opens the plan store a headless door outside a session runs over:
+// the working copy's own .codeaf/plandb.db, seeded with the run's words when it
+// is not there, adopted when it holds a live run, and replaced by a fresh one
+// when the run it holds has finished — the same three roads [planSeed] takes,
+// because a finished plan is not a live one and a door that ran on a done root
+// would report the previous run's result as its own. The store is the caller's
+// to close.
+func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
+	path := PlanStorePath(dir)
+	if _, err := os.Stat(path); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, err
+		}
+		return plandb.Open(path, title, planRootID, title, brief)
+	}
+	// ADOPT: the store under this name is the run's, and its own root says
+	// whether there is still work in it. The title and the brief are the store's
+	// own on this road — a resumed run reads the words it was seeded with — which
+	// is why the adopt demands the root id and nothing else.
+	adopted, err := plandb.Open(path, "", planRootID, "", "")
+	if err != nil {
+		return nil, err
+	}
+	if root := adopted.Task(planRootID); root != nil && !terminalStoreStatus(root.Status) {
+		return adopted, nil
+	}
+	_ = adopted.Close()
+	// A FINISHED PLAN IS NOT A LIVE ONE. The finished store is archived beside
+	// the run with its own number and a fresh one is seeded, the way planSeed
+	// archives it, so a second errand in one project is a second run rather than
+	// a reader of the first one's ending.
+	for suffix := 1; ; suffix++ {
+		archived := fmt.Sprintf("%s.%d", path, suffix)
+		if _, err := os.Stat(archived); os.IsNotExist(err) {
+			if err := os.Rename(path, archived); err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+	return plandb.Open(path, title, planRootID, title, brief)
 }
 
 // planChat is the conversation's tag — the id every row the seed makes carries,
