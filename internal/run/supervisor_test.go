@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -416,6 +417,94 @@ func TestRunAnswersIncompleteWhenTheRootWasCancelledAfterItRan(t *testing.T) {
 	}
 	if root := store.Task(rootID); root.Status != plandb.StatusCancelled {
 		t.Fatalf("root status = %s, want cancelled", root.Status)
+	}
+}
+
+// startOpenStore opens the store a run's words are still owed to: the root
+// task exists, its description bare, because the title is the caller's to
+// put on at open and the brief is Start's to put on after.
+func startOpenStore(t *testing.T, title string) *plandb.Store {
+	t.Helper()
+	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.json"), "run-test", "root", title, "")
+	if err != nil {
+		t.Fatalf("open the plan store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+func TestStartRunsABriefAndAnswersTheRunSummary(t *testing.T) {
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		return run.Report{Result: "the run's answer", Steps: 3, USD: 0.42}, nil
+	}
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "the whole brief the worker reads",
+		Slots:     1,
+		Factory:   seat.workerFor,
+	})
+
+	if outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if summary.Outcome != run.OutcomeDone {
+		t.Fatalf("summary outcome = %q, want %q", summary.Outcome, run.OutcomeDone)
+	}
+	if summary.Result != "the run's answer" {
+		t.Fatalf("summary result = %q, want the root worker's own report", summary.Result)
+	}
+	if summary.Nodes != 1 {
+		t.Fatalf("summary nodes = %d, want the one worker the brief took", summary.Nodes)
+	}
+	if summary.Steps != 3 {
+		t.Fatalf("summary steps = %d, want the worker's reported steps", summary.Steps)
+	}
+	if summary.USD != 0.42 {
+		t.Fatalf("summary usd = %v, want what the worker reported", summary.USD)
+	}
+	if summary.Seconds <= 0 {
+		t.Fatalf("summary seconds = %v, want the run's wall", summary.Seconds)
+	}
+	root := store.Task(store.RootID())
+	if root.Status != plandb.StatusDone || root.Result != "the run's answer" {
+		t.Fatalf("root = %s with result %q, want done with the worker's report", root.Status, root.Result)
+	}
+	// The title rode the store's open, and the brief went on the root task
+	// through Start: the assignment the worker reads is the store's own row.
+	if root.Title != "the run's own title" {
+		t.Fatalf("root title = %q, want the run's own", root.Title)
+	}
+	if brief := strings.TrimSpace(root.Description); brief != "the whole brief the worker reads" {
+		t.Fatalf("root description = %q, want the brief Start put there", root.Description)
+	}
+}
+
+func TestStartRefusesADoorBuiltWithoutItsStoreOrItsFactory(t *testing.T) {
+	store := startOpenStore(t, "")
+	ctx := runContext(t)
+
+	outcome, summary := run.Start(ctx, run.Spec{})
+	if outcome != run.OutcomeCannotRun || summary.Outcome != run.OutcomeCannotRun {
+		t.Fatalf("outcome = %q, want %q for a door with no store", outcome, run.OutcomeCannotRun)
+	}
+
+	// A door with a store but no factory refuses before anything launches and
+	// leaves the store as it stood — the run's words unwritten, nothing spent.
+	outcome, summary = run.Start(ctx, run.Spec{Store: store, Brief: "a brief nothing will run"})
+	if outcome != run.OutcomeCannotRun || summary.Outcome != run.OutcomeCannotRun {
+		t.Fatalf("outcome = %q, want %q for a door with no factory", outcome, run.OutcomeCannotRun)
+	}
+	if summary.Nodes != 0 || summary.USD != 0 || summary.Seconds != 0 {
+		t.Fatalf("summary = %+v, want a run that did nothing", summary)
+	}
+	if root := store.Task(store.RootID()); root.Description != "" {
+		t.Fatalf("root description = %q, want a refused door to leave the store as it stood", root.Description)
 	}
 }
 

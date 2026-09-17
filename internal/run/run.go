@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -357,4 +358,84 @@ func (s *Supervisor) outcomeForRoot(status plandb.Status) Outcome {
 		return OutcomeCannotRun
 	}
 	return OutcomeIncomplete
+}
+
+// Spec is what a caller hands Start: the plan store the run lives in, the
+// working copy its workers share, the run's own words, and the factory that
+// resolves every task — the root's included — into the seat that runs it.
+type Spec struct {
+	// Store is the run's plan, opened by the caller and shared with the run's
+	// other writers. The root task it was seeded with is the run itself.
+	Store *plandb.Store
+	// Workspace is the run's own working copy, carried for the worker seat
+	// and the landing that follow this loop.
+	Workspace string
+	// Title and Brief are the run's own words. The store writes a root task's
+	// title nowhere but its own open, so the title is the caller's to seed
+	// there; the brief is Start's to put down — on a root opened without a
+	// description it becomes the root task's description, which is the
+	// assignment the root worker reads.
+	Title string
+	Brief string
+	// Slots bounds how many workers run at once, and Limits bound the run's
+	// cost and its per-task steps. Both pass through to the supervisor as
+	// given.
+	Slots  int
+	Limits Limits
+	// Factory makes the worker for every task the run dispatches. Start holds
+	// no seat of its own: the root's worker comes from here like the rest.
+	Factory WorkerFactory
+}
+
+// Summary is what a run came to, in the figures a headless caller prints
+// beside its exit code: the outcome word off the same ladder the envelope
+// speaks, the root's result where a deliverable goes, the run's size — every
+// worker launched, every step its workers reported — what they cost, and the
+// wall the run took.
+type Summary struct {
+	Outcome Outcome
+	// Result is the root's own result: what the run's last worker reported
+	// when the tree finished whole, and empty whenever it did not.
+	Result  string
+	Nodes   int
+	Steps   int
+	USD     float64
+	Seconds float64
+}
+
+// Start is the one door a caller runs a plan through: it puts the run's
+// words on the store's root task, runs the supervisor over the store to one
+// outcome word, and answers what came of it. The context is the run's wall —
+// workers end with it — and nothing here needs a worker of its own: every
+// seat, the root's included, comes from the spec's factory.
+func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
+	started := time.Now()
+	if spec.Store == nil || spec.Factory == nil {
+		// A door with no store to run over, or no seat to run a task in, is a
+		// run that could not begin: the first rung of the ladder, nothing
+		// attempted and nothing spent.
+		return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
+	}
+	store := spec.Store
+	// THE RUN'S WORDS GO ON ITS ROOT TASK before anything launches, so the
+	// root worker reads its assignment from the store the way every other
+	// worker does. A store opened with a description on the root keeps it; a
+	// root opened bare takes the brief here — the store's one write onto a
+	// running task's description — and a resume of the same run finds the
+	// words already there and writes nothing.
+	if root := store.Task(store.RootID()); root != nil && strings.TrimSpace(root.Description) == "" && strings.TrimSpace(spec.Brief) != "" {
+		if _, err := store.Amend(root.ID, spec.Brief); err != nil {
+			return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
+		}
+	}
+	supervisor := NewSupervisor(store, spec.Workspace, spec.Slots, spec.Limits, spec.Factory)
+	outcome := supervisor.Run(ctx)
+	return outcome, Summary{
+		Outcome: outcome,
+		Result:  supervisor.rootResult,
+		Nodes:   supervisor.nodes,
+		Steps:   supervisor.steps,
+		USD:     supervisor.spent,
+		Seconds: time.Since(started).Seconds(),
+	}
 }
