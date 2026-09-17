@@ -11,7 +11,7 @@ routes = [
 [[kv_namespaces]]
 binding = "POOL"
 # The runbook fills this id: `cd relay && wrangler kv namespace create POOL`.
-id = "REPLACE_WITH_POOL_KV_NAMESPACE_ID"
+id = "4b5cf70bed444ceb84a23ebf2be692e9"
 
 [triggers]
 crons = ["17 * * * *"]
