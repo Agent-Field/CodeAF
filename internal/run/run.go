@@ -49,16 +49,25 @@ type Supervisor struct {
 	limits    Limits
 	factory   WorkerFactory
 
-	// finished carries worker endings back to the loop. inFlight is the count
-	// of workers running, and the counters beside it are the run's memory; all
-	// of them belong to the loop goroutine and are touched by no one else.
+	// finished carries worker endings back to the loop, buffered at the slot
+	// bound plus the root's seat: a worker whose run has already ended deposits
+	// its return and exits rather than blocking on a reader that is gone.
+	// inFlight is the count of workers running, and the counters beside it are
+	// the run's memory — nodes counts every worker launched, steps sums what
+	// those workers reported; all of them belong to the loop goroutine and are
+	// touched by no one else. cancels maps a running task to the context
+	// cancel that ends its worker, so a pass can end one worker's context
+	// without touching the rest.
 	finished       chan workerReturn
 	inFlight       int
 	spent          float64
+	nodes          int
+	steps          int
 	rootResult     string
 	rootFailed     bool
 	limitHit       bool
 	dispatchedRoot bool
+	cancels        map[string]context.CancelFunc
 }
 
 // NewSupervisor builds a run over store. The workspace is the run's own
@@ -76,7 +85,8 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		slots:     slots,
 		limits:    limits,
 		factory:   factory,
-		finished:  make(chan workerReturn),
+		finished:  make(chan workerReturn, slots+1),
+		cancels:   make(map[string]context.CancelFunc),
 	}
 }
 
@@ -101,11 +111,14 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		return OutcomeCannotRun
 	}
 	s.spent = 0
+	s.nodes = 0
+	s.steps = 0
 	s.rootResult = ""
 	s.rootFailed = false
 	s.limitHit = false
 	s.dispatchedRoot = false
 	s.inFlight = 0
+	s.cancels = make(map[string]context.CancelFunc)
 
 	timer := time.NewTimer(passInterval)
 	defer timer.Stop()
@@ -140,8 +153,9 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	if root == nil {
 		return OutcomeCannotRun
 	}
+	s.endCancelledWorkers()
 	if terminalStatus(root.Status) {
-		return outcomeForRoot(root.Status)
+		return s.outcomeForRoot(root.Status)
 	}
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
 		// Nothing of ours is running and the run cannot complete itself: the
@@ -183,17 +197,22 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	return ""
 }
 
-// launch starts one worker in its own goroutine. The task's context carries
-// the step cap; the goroutine reports back on the channel and ends.
+// launch starts one worker in its own goroutine. The task's context is the
+// run's with a cancel of its own, recorded so a pass can end this one worker
+// — a task the store has cancelled — without ending the run; it carries the
+// step cap. The goroutine reports back on the channel and ends.
 func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
 	worker := s.factory(task)
+	taskCtx, cancel := context.WithCancel(ctx)
+	s.cancels[task.ID] = cancel
 	s.inFlight++
+	s.nodes++
 	go func() {
 		report, err := Report{}, error(nil)
 		if worker == nil {
 			err = errors.New("no worker for task " + task.ID)
 		} else {
-			report, err = worker.Run(WithStepsPerTask(ctx, s.limits.StepsPerTask), task)
+			report, err = worker.Run(WithStepsPerTask(taskCtx, s.limits.StepsPerTask), task)
 		}
 		s.finished <- workerReturn{task: task, report: report, err: err}
 	}()
@@ -206,7 +225,20 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
 // that stays open would stall the whole run: nothing else can make it
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
+	// A RETURN FOR A TASK THE STORE ALREADY ENDED is written as nothing. The
+	// ending the store carries — a cancellation that landed while the worker
+	// ran, which the same write cleared the claim and cascaded down — is the
+	// one that stands, and no Done or Fail of this run may speak over it. The
+	// report is dropped whole, spend included: a worker stopped mid-flight
+	// hands back no account this run counts. The completion check below still
+	// runs, because the cancellation may be the write that finished the tree.
+	delete(s.cancels, ret.task.ID)
+	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
+		s.completeTree()
+		return
+	}
 	s.spent += ret.report.USD
+	s.steps += ret.report.Steps
 	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
 		s.limitHit = true
 	}
@@ -242,14 +274,20 @@ func (s *Supervisor) absorb(ret workerReturn) {
 			}
 		}
 	}
+	s.completeTree()
+}
+
+// completeTree finishes the run once every task but the root has ended: the
+// one write the loop makes on a tree that finished under it, whole or not.
+// CompleteRoot marks the root done when the whole tree did and failed when
+// any part of it did not, with the root's own result the one its worker
+// reported. A root whose own worker failed stays open — the run cannot
+// complete itself, and a later pass may pick it up.
+func (s *Supervisor) completeTree() {
 	if s.rootFailed {
 		return
 	}
 	if s.treeTerminal() {
-		// Every non-root task is terminal, so the run is over whether its
-		// last worker came home well or not: CompleteRoot marks the root done
-		// when the whole tree did, and failed when any part of it did not.
-		// The root's own result is the one its worker reported.
 		_ = s.store.CompleteRoot(s.rootResult)
 	}
 }
@@ -265,6 +303,24 @@ func (s *Supervisor) treeTerminal() bool {
 		}
 	}
 	return true
+}
+
+// endCancelledWorkers ends the context of every running worker whose task
+// the store has ended out from under it. The store's cancel writes the
+// ending under the task and everything under it and releases the claim in
+// the same write — ClaimedBy goes with the cancelled row, and a Release
+// against a cancelled task is refused — so the part left to the loop is the
+// context: cancelled here, the worker stops at its next step, and the return
+// it makes afterwards is dropped whole in absorb. The ancestor walk is the
+// belt over a row this handle read before the ending landed.
+func (s *Supervisor) endCancelledWorkers() {
+	for id, cancel := range s.cancels {
+		task := s.store.Task(id)
+		if task == nil || task.Status == plandb.StatusCancelled || s.hasCancelledAncestor(*task) {
+			cancel()
+			delete(s.cancels, id)
+		}
+	}
 }
 
 // hasCancelledAncestor walks the containment chain and answers whether any
@@ -288,11 +344,17 @@ func terminalStatus(status plandb.Status) bool {
 }
 
 // outcomeForRoot reads the run's word off the root's own ending: done when
-// the run completed whole, and the incomplete word when it ended any other
-// way — failed leaves, a cancelled run.
-func outcomeForRoot(status plandb.Status) Outcome {
+// the run completed whole; the cannot-run word when the run itself was
+// cancelled before anything of it started — no worker dispatched, none
+// running, so nothing was spent and there is nothing to read; and the
+// incomplete word every other way — failed leaves, or a cancelled run that
+// had already begun.
+func (s *Supervisor) outcomeForRoot(status plandb.Status) Outcome {
 	if status == plandb.StatusDone {
 		return OutcomeDone
+	}
+	if status == plandb.StatusCancelled && !s.dispatchedRoot && s.inFlight == 0 {
+		return OutcomeCannotRun
 	}
 	return OutcomeIncomplete
 }

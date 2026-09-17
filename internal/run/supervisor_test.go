@@ -8,6 +8,7 @@ package run_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -71,6 +72,19 @@ func (f *fakeSeat) launches() []string {
 	return append([]string(nil), f.order...)
 }
 
+// launched answers whether the seat ever began the named task, for a test
+// that must react to a worker going out.
+func (f *fakeSeat) launched(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, began := range f.order {
+		if began == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fakeSeat) peakConcurrency() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -98,6 +112,32 @@ func runContext(t *testing.T) context.Context {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 	return ctx
+}
+
+// storePoke opens the store's database directly, for the one ending no
+// exported verb writes: the root's own cancellation, which the store keeps
+// out of every writer's hands and which a writer outside this process can
+// still put in the file. The handle is idle between runs, so one write lands
+// without contention.
+func storePoke(t *testing.T, path string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open the store's database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// adoptForeignWrite makes the store's handle look at the database again. A
+// handle keeps what its own transactions last read, so a write another
+// connection made is invisible to it until its next transaction — and one
+// that changes nothing still re-reads the plan whole.
+func adoptForeignWrite(t *testing.T, store *plandb.Store) {
+	t.Helper()
+	if _, err := store.Archive(time.Hour); err != nil {
+		t.Fatalf("re-read the plan after a foreign write: %v", err)
+	}
 }
 
 // splitRootAction is the root worker of every test here: it adds three leaves
@@ -267,6 +307,118 @@ func TestSupervisorWritesAFailedWorkersErrorAndEndsIncomplete(t *testing.T) {
 	}
 }
 
+func TestSupervisorEndsAWorkerWhoseTaskTheStoreCancelled(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store, leafDone("l1"))
+	// The leaf holds its seat until its context ends and reports the ending
+	// it saw, so the test can tell a cancellation of its own from the run's
+	// wall — the one ends the worker's context with cancelled, the other with
+	// a deadline.
+	ended := make(chan error, 1)
+	seat.actions["l1"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		<-ctx.Done()
+		ended <- ctx.Err()
+		return run.Report{Result: "did " + task.ID, Steps: 1, USD: 0.20}, ctx.Err()
+	}
+	reason := "stopped by hand"
+	cancelWhenLaunched(store, seat, "l1", reason)
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+
+	started := time.Now()
+	outcome := supervisor.Run(ctx)
+
+	// A working cascade ends the worker within a pass of the store's cancel;
+	// a broken one holds the run to its wall.
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("run took %s, want the worker ended within a pass of the cancel", elapsed)
+	}
+	if outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	if got := <-ended; !errors.Is(got, context.Canceled) {
+		t.Fatalf("worker ended with %v, want context.Canceled", got)
+	}
+	// The store's cancel is the ending that stands: the claim went with it,
+	// the late return wrote nothing over it, and nothing relaunched the task.
+	leaf := store.Task("l1")
+	if leaf.Status != plandb.StatusCancelled {
+		t.Fatalf("leaf l1 status = %s, want cancelled", leaf.Status)
+	}
+	if leaf.ClaimedBy != "" {
+		t.Fatalf("leaf l1 claim = %q, want released by the cancel write", leaf.ClaimedBy)
+	}
+	if leaf.Result != "" {
+		t.Fatalf("leaf l1 result = %q, want nothing written over the cancel", leaf.Result)
+	}
+	if leaf.Error != reason {
+		t.Fatalf("leaf l1 reason = %q, want the cancel's own %q", leaf.Error, reason)
+	}
+	if root := store.Task(store.RootID()); root.Status != plandb.StatusFailed {
+		t.Fatalf("root status = %s, want failed with a cancelled leaf in the tree", root.Status)
+	}
+}
+
+func TestRunAnswersCannotRunWhenTheRootWasCancelledBeforeAnythingRan(t *testing.T) {
+	store := runOpenStore(t)
+	// The root's ending is a write the store's own verbs refuse — the root is
+	// the run itself — so the test puts it in the database the way a writer
+	// outside this process would, and makes the handle adopt it.
+	if _, err := storePoke(t, store.Path()).Exec(
+		`UPDATE tasks SET status = 'cancelled', claimed_by = '' WHERE id = ?`, store.RootID()); err != nil {
+		t.Fatalf("cancel the run under the store: %v", err)
+	}
+	adoptForeignWrite(t, store)
+	seat := newFakeSeat()
+	supervisor := run.NewSupervisor(store, t.TempDir(), 1, run.Limits{}, seat.workerFor)
+
+	outcome := supervisor.Run(runContext(t))
+
+	if outcome != run.OutcomeCannotRun {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeCannotRun)
+	}
+	if launches := seat.launches(); len(launches) != 0 {
+		t.Fatalf("launches = %v, want none — nothing of the run started", launches)
+	}
+}
+
+func TestRunAnswersIncompleteWhenTheRootWasCancelledAfterItRan(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = func(ctx context.Context, _ plandb.Task) (run.Report, error) {
+		<-ctx.Done()
+		return run.Report{}, ctx.Err()
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 1, run.Limits{}, seat.workerFor)
+	rootID := store.RootID()
+	go func() {
+		for i := 0; i < 5000; i++ {
+			if seat.launched(rootID) {
+				_, _ = storePoke(t, store.Path()).Exec(
+					`UPDATE tasks SET status = 'cancelled', claimed_by = '' WHERE id = ?`, rootID)
+				adoptForeignWrite(t, store)
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	started := time.Now()
+	outcome := supervisor.Run(ctx)
+
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("run took %s, want the cancellation seen within a pass", elapsed)
+	}
+	if outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	if root := store.Task(rootID); root.Status != plandb.StatusCancelled {
+		t.Fatalf("root status = %s, want cancelled", root.Status)
+	}
+}
+
 // holdSeat is a leaf action that keeps its worker seat for a while, so a
 // supervisor that launches too eagerly meets a seat that is still taken.
 func holdSeat(d time.Duration) func(context.Context, plandb.Task) (run.Report, error) {
@@ -274,4 +426,20 @@ func holdSeat(d time.Duration) func(context.Context, plandb.Task) (run.Report, e
 		time.Sleep(d)
 		return run.Report{Result: "did " + task.ID, Steps: 2, USD: 0.30}, nil
 	}
+}
+
+// cancelWhenLaunched ends a task in the store as soon as the seat shows its
+// worker out, the way a person's cancellation lands while the worker runs.
+// It gives up after a full wall's worth of tries so a broken loop cannot
+// spin the test process forever.
+func cancelWhenLaunched(store *plandb.Store, seat *fakeSeat, id, reason string) {
+	go func() {
+		for i := 0; i < 5000; i++ {
+			if seat.launched(id) {
+				_, _ = store.Cancel(id, reason)
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
 }
