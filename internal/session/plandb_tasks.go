@@ -102,7 +102,7 @@ const planTrajectoryFile = "trajectory.jsonl"
 // ever seeded — and an empty slice (not nil) is a plan that holds only other
 // chats' work: the store is there and this chat's part of it is not.
 func (a *Agent) PlanTasks() []PlanTaskRow {
-	store, plan, closeStore := a.openPlanForRead()
+	store, plan, closeStore := a.openPlanHandle()
 	if store == nil {
 		return nil
 	}
@@ -122,7 +122,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 // task this chat did not spawn, whether it is another conversation's or no
 // task at all: the page is the chat's own reading of its own plan.
 func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
-	store, plan, closeStore := a.openPlanForRead()
+	store, plan, closeStore := a.openPlanHandle()
 	if store == nil {
 		return PlanTaskPage{}, false
 	}
@@ -141,15 +141,16 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	}, true
 }
 
-// openPlanForRead opens the run's store for a reading verb, under the plan
-// gate the way every pulse takes it, and answers the store, its plan and the
-// close to run. A nil store is a conversation with no plan to read, and the
-// caller answers from that emptiness rather than opening one.
+// openPlanHandle opens the run's store for one pass — a reading verb or one of
+// the person's steering writes (plandb_steer.go) — under the plan gate the way
+// every pulse takes it, and answers the store, its plan and the close to run. A
+// nil store is a conversation with no plan, and the caller answers from that
+// emptiness rather than opening one.
 //
 // The handle is fresh every call, for the reason every pass opens one: the
 // store's memory is only as fresh as its last transaction and the worker's CLI
 // is a separate process that has been writing since.
-func (a *Agent) openPlanForRead() (*plandb.Store, *planState, func()) {
+func (a *Agent) openPlanHandle() (*plandb.Store, *planState, func()) {
 	g := a.graph()
 	if g == nil {
 		return nil, nil, func() {}
