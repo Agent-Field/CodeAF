@@ -563,6 +563,45 @@ func TestCrewPickDefaultsToTheTable(t *testing.T) {
 	}
 }
 
+// THE AUTO ROW IS THE OTHER WAY A SEAT IS COMPUTED FROM THE CATALOG'S ROWS,
+// beside the pick row this section's tests read. A pick off the table and a
+// tier row that says auto both compute from the rows the process holds, and
+// the door that waits for them asks [AnyTierAutoAt] for the second. A row
+// cleared on purpose says nothing about models, and a crew of model ids asks
+// for nothing — but the word reaches the read through the lineage too, so a
+// profile older than the worker seat counts its small-work row as well.
+func TestAnyTierAutoAtAnswersWhenARowSaysAuto(t *testing.T) {
+	dir := t.TempDir()
+	if AnyTierAutoAt(dir) {
+		t.Fatal("an untouched profile has no auto row to wait for")
+	}
+	if err := ApplyCrew(dir, CrewBalanced); err != nil {
+		t.Fatal(err)
+	}
+	if AnyTierAutoAt(dir) {
+		t.Fatal("a crew of model ids has no auto row to wait for")
+	}
+	if err := writeProfileValue(dir, tierKeyFor(ModelTierWorker), AutoValue); err != nil {
+		t.Fatal(err)
+	}
+	if !AnyTierAutoAt(dir) {
+		t.Fatal("a worker row that says auto went unnoticed")
+	}
+	if err := writeProfileValue(dir, tierKeyFor(ModelTierWorker), ""); err != nil {
+		t.Fatal(err)
+	}
+	if AnyTierAutoAt(dir) {
+		t.Fatal("a row cleared on purpose read as an auto row")
+	}
+	vintage := t.TempDir()
+	if err := writeProfileValue(vintage, tierKeyFor(ModelTierLow), AutoValue); err != nil {
+		t.Fatal(err)
+	}
+	if !AnyTierAutoAt(vintage) {
+		t.Fatal("an auto row reached through the lineage went unnoticed")
+	}
+}
+
 // THE PICK-AWARE CREW WORD READS THE BUDGET THE SEATS ARE COMPUTED AT. The
 // live seats are computed ids the preset tables do not hold, so the word is
 // read off the STORED rows — a profile that applied a crew and then set the

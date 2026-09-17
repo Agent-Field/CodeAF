@@ -172,6 +172,22 @@ func CrewPickAt(profileDir string) string {
 	return DefaultCrewPick
 }
 
+// AnyTierAutoAt answers whether any of the five tier rows reads `auto` on this
+// profile — written directly, or reaching the word through an older row
+// ([crewRow]) — which is the second way a seat resolution is computed from the
+// catalog's rows, beside the pick row ([CrewPickAt]). A door that resolves
+// seats asks both before it resolves, because both answers are computed from
+// the rows the process already holds, and a door that asks before they land
+// reads the family's table row over a profile that never chose it.
+func AnyTierAutoAt(profileDir string) bool {
+	for _, tier := range ModelTiers {
+		if model, _, _, _ := crewRow(profileDir, tier); IsAuto(model) {
+			return true
+		}
+	}
+	return false
+}
+
 // SetCrewPick writes the pick row ALONE, in one file write. The word is
 // refused the way every choice row refuses one, so a typo cannot land a pick
 // nothing reads. It writes no tier row: the pick says where seats are read
