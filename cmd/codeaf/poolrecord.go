@@ -18,8 +18,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -67,6 +69,51 @@ func poolJudgeHook(settings config.Config, profileDir, workspace string, models 
 	}
 }
 
+// judgeLast is the small record the hook leaves after every landing it
+// handles, for the one reading that would otherwise need --debug: what the
+// last judge did, and what became of it. Judge names the model that answered
+// and Scored the seats it scored on a success; on a failure Judge is empty,
+// Tried the candidates in the order they were asked and Reason the last
+// error's one line. A landing the hook declines before asking carries the
+// decline itself as the reason.
+type judgeLast struct {
+	At     time.Time `json:"at"`
+	Task   uint64    `json:"task"`
+	Judge  string    `json:"judge"`
+	Tried  []string  `json:"tried"`
+	Seats  []string  `json:"seats"`
+	Scored []string  `json:"scored"`
+	Reason string    `json:"reason"`
+}
+
+// errNoJudgeCandidate is the decline a landing with nothing to ask says: the
+// one sentence a person reads when the record holds no candidates at all.
+const errNoJudgeCandidate = "no judge: every candidate is in the crew, unpriced, free, or below the floor"
+
+// writeJudgeLast leaves the record under the pool directory, mode 0600 like
+// the sheet beside it. It never panics and its errors are debug-only, for the
+// hook's own reason: a record that could not be written must not cost a
+// landing its scores, and nobody reading the chat surface moves for it.
+func writeJudgeLast(poolDir string, last judgeLast) {
+	defer guard.Recover("pool/judge-last")
+	data, err := json.Marshal(last)
+	if err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: judge-last: %v", err)
+		}
+		return
+	}
+	if err := os.MkdirAll(poolDir, 0o700); err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: judge-last: %v", err)
+		}
+		return
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "judge-last.json"), data, 0o600); err != nil && trace.Enabled() {
+		log.Printf("model pool: judge-last: %v", err)
+	}
+}
+
 // poolJudgeLanding scores one landed task and records what came back. The
 // order is the sheet's own law: every score is observed before the rows are
 // appended, the sheet is saved once, and the picker's own-cells seam is
@@ -81,10 +128,17 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		seats[judge.RoleHigh] = landing.High
 	}
 	candidates := judge.Candidates(models(), seats, judge.DefaultFloor)
+	// The seats are said in the crew's own order — the worker, then the high
+	// seat when the run held one — so the record reads the way the crew ran.
+	held := []string{landing.Worker}
+	if landing.High != "" {
+		held = append(held, landing.High)
+	}
 	if len(candidates) == 0 {
 		if trace.Enabled() {
 			log.Printf("model pool: no judge to ask about task %d", landing.ID)
 		}
+		writeJudgeLast(poolDir, judgeLast{At: now(), Task: landing.ID, Seats: held, Reason: errNoJudgeCandidate})
 		return
 	}
 	if len(candidates) > judgeTries {
@@ -132,12 +186,27 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 			log.Printf("model pool: judge %s scored no seat of task %d: %v", candidate, landing.ID, err)
 		}
 	}
+	// What the judge did is said before anything else is recorded, so the
+	// record stands even when the sheet or the outbox refuses it: a failure
+	// names the candidates in the order they were asked and the last error's
+	// one line; a success names the judge that answered and the seats it
+	// scored, with no reason to say.
 	if len(scores) == 0 {
+		reason := "no judge answered"
+		if err != nil {
+			reason = oneLine(err.Error())
+		}
+		writeJudgeLast(poolDir, judgeLast{At: now(), Task: landing.ID, Tried: candidates, Seats: held, Reason: reason})
 		if trace.Enabled() {
 			log.Printf("model pool: no judge scored task %d", landing.ID)
 		}
 		return
 	}
+	scored := make([]string, 0, len(scores))
+	for _, seat := range scores {
+		scored = append(scored, seat.Model)
+	}
+	writeJudgeLast(poolDir, judgeLast{At: now(), Task: landing.ID, Judge: judgeID, Seats: held, Scored: scored})
 	// The scores obtained are recorded even when the error names a seat: a
 	// judge that scored the worker but not the high seat scored the worker,
 	// and a seat the call failed on is the judge's evidence of that model too.

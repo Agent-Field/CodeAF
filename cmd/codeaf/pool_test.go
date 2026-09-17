@@ -246,6 +246,127 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	}
 }
 
+// seedJudgeLast writes the hook's record the way the hook leaves it, so
+// status is read against what stands on disk.
+func seedJudgeLast(t *testing.T, dir string, last judgeLast) {
+	t.Helper()
+	data, err := json.Marshal(last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "pool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pool", "judge-last.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// status says what the last judge did: which model, which seats it scored —
+// or, when none answered, how many were asked and the reason the last one
+// failed. With no record at all it says none yet, and a file that does not
+// parse reads the same way, still on exit 0.
+func TestPoolStatusSaysWhatTheLastJudgeDid(t *testing.T) {
+	dir := t.TempDir()
+	moment := time.Date(2026, 9, 17, 14, 5, 0, 0, time.Local)
+
+	seedJudgeLast(t, dir, judgeLast{
+		At: moment, Task: 7, Judge: "other/judge",
+		Seats:  []string{"crew/worker", "crew/high"},
+		Scored: []string{"crew/worker", "crew/high"},
+	})
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last judge: 14:05 · other/judge · scored crew/worker, crew/high") {
+		t.Fatalf("status did not say what the last judge did:\n%s", out.String())
+	}
+
+	out.Reset()
+	seedJudgeLast(t, dir, judgeLast{
+		At: moment, Task: 7,
+		Tried:  []string{"other/flaky", "other/steady"},
+		Seats:  []string{"crew/worker", "crew/high"},
+		Reason: "the model answered with a 429",
+	})
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last judge: 14:05 · failed after 2 candidates (other/flaky, …) · the model answered with a 429") {
+		t.Fatalf("status did not say how the judging failed:\n%s", out.String())
+	}
+
+	// No record, and a record that does not parse: the same sentence, and the
+	// reading form still exits 0.
+	for name, seed := range map[string]func(t *testing.T, dir string){
+		"absent": func(t *testing.T, dir string) {},
+		"malformed": func(t *testing.T, dir string) {
+			if err := os.MkdirAll(filepath.Join(dir, "pool"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "pool", "judge-last.json"), []byte("{"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("CODEAF_HOME", t.TempDir())
+			quiet := t.TempDir()
+			seed(t, quiet)
+			var out strings.Builder
+			if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+				t.Fatalf("a reading form failed over a judge record: %v", err)
+			}
+			if !strings.Contains(out.String(), "last judge: none yet") {
+				t.Fatalf("status did not say none yet:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// The JSON form carries the record whole — the moment in RFC 3339, the judge,
+// the seats — and null when there is none.
+func TestPoolStatusJSONCarriesTheLastJudge(t *testing.T) {
+	moment := time.Date(2026, 9, 17, 14, 5, 0, 0, time.UTC)
+	dir := t.TempDir()
+	seedJudgeLast(t, dir, judgeLast{
+		At: moment, Task: 7, Judge: "other/judge",
+		Seats:  []string{"crew/worker"},
+		Scored: []string{"crew/worker"},
+	})
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		LastJudge *judgeLast `json:"last_judge"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.LastJudge == nil {
+		t.Fatal("a written record read as none")
+	}
+	if answer.LastJudge.Judge != "other/judge" || answer.LastJudge.Task != 7 ||
+		strings.Join(answer.LastJudge.Scored, ", ") != "crew/worker" || answer.LastJudge.Reason != "" {
+		t.Fatalf("the record moved: %+v", answer.LastJudge)
+	}
+	if got, err := time.Parse(time.RFC3339, "2026-09-17T14:05:00Z"); err != nil || !answer.LastJudge.At.Equal(got) {
+		t.Fatalf("the moment is %v, want the record's own in RFC 3339", answer.LastJudge.At)
+	}
+
+	// No record: the field is null and not absent, so a script can tell the
+	// two apart.
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, t.TempDir(), poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"last_judge":null`) {
+		t.Fatalf("a missing record was not said as null:\n%s", out.String())
+	}
+}
+
 // An empty profile is the state root's own profile, the way every other file
 // under the profile resolves — never a directory called "pool" beside wherever
 // the command happened to run.

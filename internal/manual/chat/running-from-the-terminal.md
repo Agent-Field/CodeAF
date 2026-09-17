@@ -578,7 +578,8 @@ one is cached. Your install also keeps the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
 the crew reads them beside the index. `status` adds what is waiting to be sent
 and whether the mode allows sending and reading. `codeaf pool status` also
-says whether the relay answered, and whether the mirror did. `--json` prints
+says whether the relay answered, and whether the mirror did, and what the
+last judge did — which model, which seats it scored, or why it failed. `--json` prints
 the same answer as one object; `show` reads nothing off the network.
 
 **The scores start here.** In a conversation, after a task lands, a model

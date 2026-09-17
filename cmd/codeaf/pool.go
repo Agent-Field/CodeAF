@@ -244,7 +244,13 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		countWord(own.Cells, "cell", "cells"), countWord(own.Observations, "observation", "observations")); err != nil {
 		return err
 	}
+	// The last judge's record is read the way every other nothing here is
+	// read: a missing or malformed file is no judge yet, said in a sentence.
+	last := readJudgeLast(poolDir)
 	if withStatus {
+		if _, err := fmt.Fprintln(output, judgeLastLine(last)); err != nil {
+			return err
+		}
 		relay, mirror := probePool(poolDir, cfg, now, keys)
 		if _, err := fmt.Fprintln(output, relayStatusLine(cfg, relay, mirror, cached)); err != nil {
 			return err
@@ -398,6 +404,7 @@ type poolAnswer struct {
 	CanRead    *bool         `json:"can_read,omitempty"`
 	Relay      *probeSummary `json:"relay,omitempty"`
 	Mirror     *probeSummary `json:"mirror,omitempty"`
+	LastJudge  *judgeLast    `json:"last_judge"`
 	Index      *indexSummary `json:"index"`
 	Own        ownSummary    `json:"own"`
 }
@@ -459,6 +466,11 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		answer.Mirror = &mirror
 	}
 	answer.Own = ownSheetSummary(poolDir)
+	// The record is null when there is none, so a script can tell a judge
+	// that has not run from one that failed.
+	if last := readJudgeLast(poolDir); last != nil {
+		answer.LastJudge = last
+	}
 	encoded, err := json.Marshal(answer)
 	if err != nil {
 		return err
@@ -563,6 +575,44 @@ func verifyPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 	_, err = fmt.Fprintf(output, "signature good: version %d, generated %s, %d metrics\n",
 		result.Version, generated, len(held.Metrics()))
 	return err
+}
+
+// readJudgeLast reads what the hook left about the last landing it judged:
+// the judge that answered and the seats it scored, or the candidates tried
+// and why none of them did. A file that is missing, or one that does not
+// parse, reads as none yet — the reading form reports what a person has.
+func readJudgeLast(poolDir string) *judgeLast {
+	data, err := os.ReadFile(filepath.Join(poolDir, "judge-last.json"))
+	if err != nil {
+		return nil
+	}
+	var last judgeLast
+	if json.Unmarshal(data, &last) != nil {
+		return nil
+	}
+	return &last
+}
+
+// judgeLastLine is the one line status says about the last judge: which model
+// answered and which seats it scored, or — when none did — how many were
+// asked, the first of them, and the one-line reason the last one failed. The
+// moment is the record's own, said in local hours and minutes.
+func judgeLastLine(last *judgeLast) string {
+	if last == nil {
+		return "last judge: none yet"
+	}
+	at := last.At.Format("15:04")
+	if last.Judge != "" {
+		return fmt.Sprintf("last judge: %s · %s · scored %s", at, last.Judge, strings.Join(last.Scored, ", "))
+	}
+	asked := ""
+	if len(last.Tried) > 0 {
+		asked = last.Tried[0]
+		if len(last.Tried) > 1 {
+			asked += ", …"
+		}
+	}
+	return fmt.Sprintf("last judge: %s · failed after %d candidates (%s) · %s", at, len(last.Tried), asked, last.Reason)
 }
 
 // pendingRows counts what the outbox is holding. It reads the file by count
