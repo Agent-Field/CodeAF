@@ -607,10 +607,12 @@ signature good: version 7, generated 2026-09-10, 3 metrics
 
 It wants a public key: `--key <base64 ed25519 public key>`, repeatable, or
 one built into the build. The build carries the index signer's key, so
-`verify` works as it stands; `--key` checks a document signed under some
-other key instead — a mirror's, for instance. A fetch or a signature that
-fails is exit 1; a `verify` on a machine whose setting is `off` is refused
-with exit 2 and fetches nothing.
+`verify` works as it stands; `--key` checks under that key alone — the
+build's key is not consulted beside it, so a document signed under any
+other key does not verify. A fetch or a signature that fails is exit 1; a
+`verify` on a machine whose setting is `off`, or whose
+`models.pool.public_key` does not decode, is refused with exit 2 and
+fetches nothing.
 
 A private relay is a copy of `relay/` deployed to your own account with your
 own keypair, and `CODEAF_MODEL_POOL_RELAY_URL` with `models.pool.public_key`
