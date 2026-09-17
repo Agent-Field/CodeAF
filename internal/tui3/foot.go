@@ -9,19 +9,26 @@ import (
 
 // ── THE FOOT OF THE FRAME: TWO ROWS, EACH WITH ONE JOB ──────────────────────
 //
-//	─ porting the parser · glm-5.3-flash · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
 //	 space space home · tab last · alt+k chats · / commands
 //
-// THE SEAM IS WHO, WHERE AND HOW MUCH. The rule above the box carries the
-// conversation's name and the model answering it on the left, and the numbers
-// on the right (footswap.go says why they moved up on 2026-09-17). It is the
-// line a person's eye crosses on the way into the box, which is why the two
-// facts they most often want to change — which conversation, which model — are
+// THE SEAM IS WHAT ANSWERS AND HOW MUCH. The rule above the box carries the
+// model answering the conversation on the left, and the numbers on the right
+// (footswap.go says why they moved up on 2026-09-17). It is the line a
+// person's eye crosses on the way into the box, which is why the facts they
+// most often want to change — which model, how hard, what it may run — are
 // written on it and pressable there. The `via <machine>` rider is ALWAYS on it
-// while a sighting is fresh, whoever served: the model is spelled there as its
-// basename, so the vendor half of the id is not on the screen for the rider to
-// repeat.
+// while a sighting is fresh, whoever served, and IT STANDS RIGHT AFTER THE
+// MODEL: the model is spelled as its basename, so the vendor half of the id
+// is not on the screen for the rider to repeat, and the two halves of "who is
+// answering" read as one cell.
+//
+// THE CONVERSATION'S NAME IS NOT ON IT. It was, from 2026-09-09 until
+// 2026-09-17, and the owner ruled it off: a title takes up the room the
+// numbers need, and it is already on the tab strip and the breadcrumb bar
+// (chattabs.go, title.go). The machine on a `--host` session still leads the
+// line — it is the half nobody can reconstruct from anything else on screen.
 //
 // THE NUMBERS ARE GROUPED BY THE QUESTION EACH GROUP ANSWERS, three cells of
 // air between groups and a dot only inside one: the bill (what it cost, and
@@ -43,8 +50,8 @@ import (
 // Until 2026-09-09 the name and model were on the status row's left and every
 // figure sat in one dotted run beside them, so a long title pushed the numbers
 // off the frame and nothing on the row read first. The seam had the branch on
-// it and nothing else. Until 2026-09-17 the numbers were the last row and the
-// keys were the seam's right.
+// it and nothing else. Until 2026-09-17 the numbers were the last row, the
+// keys were the seam's right, and the name led the seam.
 
 // hudGroup is which question a segment answers, and therefore which run of the
 // ledger it is drawn in. Segments in one group are joined by ` · `; groups are
@@ -421,21 +428,21 @@ func (a *app) runStatusNote() tea.Cmd {
 // ── THE SEAM'S IDENTITY ─────────────────────────────────────────────────────
 
 // seamIdentity is the legend's left cluster out of a room, built to a budget,
-// and the columns its two doors occupy within it.
+// and the columns its three doors occupy within it.
 //
-//	devbox · porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main*
+//	devbox · glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main*
 //
 // THE LADDER IS [seamLadder], read top to bottom, and it never clips.
 //
 // THREE CELLS ON THIS CLUSTER ARE CONTROLS AND ALL THREE RETURN THEIR COLUMNS:
 // the model opens the picker ([app.legendModelPress]), the rung walks one step
 // ([app.legendEffortPress]) and the approvals chip walks the gate's wheel one
-// stop ([app.legendApprovalPress]). The rider is no longer inside the model's
-// own span — the rung and the chip stand between them now — which is the price
-// of anchoring both to the name they are about rather than to whatever the
-// line happens to end with (effortchip.go). A room does not come through here:
-// its legend says the way out, and its status row carries the room chip
-// ([app.identityParts]).
+// stop ([app.legendApprovalPress]). The rider stands between the model and
+// the rung — the owner's ruling of 2026-09-17 that the model and its machine
+// read as one thing — and is outside the model's span, so a press on `via`
+// opens nothing; the rung and the chip are measured past it (seamSpans). A
+// room comes through [app.roomSeamIdentity] with the way out where the name
+// slot is.
 func (a *app) seamIdentity(width, room int, tier seamTier) (string, hudSpan, hudSpan, hudSpan) {
 	pieces := a.seamPieces(width)
 	return seamLay(&pieces, room, tier)
@@ -498,15 +505,13 @@ type seamPieces struct {
 }
 
 func (a *app) seamPieces(width int) seamPieces {
-	name := a.sessionName()
-	if name == "" {
-		// THE FOLDER STANDS IN UNTIL THE SESSION HAS NAMED ITSELF, so this slot
-		// is never empty — and it stands in ALONE. [app.place] is written with
-		// the machine in front of it (`devbox:app`) for the status row, which
-		// had no host segment of its own; this line has one, and `devbox ·
-		// devbox:app` would name the machine twice (host.go).
-		name = strings.TrimPrefix(a.place, a.host+":")
-	}
+	// THE NAME SLOT IS EMPTY ON A CONVERSATION. The title stood here from
+	// 2026-09-09 (with the folder standing in until the session had named
+	// itself) until the owner ruled it off on 2026-09-17: it took the room the
+	// numbers need, and the tab strip and the breadcrumb bar already say it.
+	// The slot is still a slot because a room writes its way out into it
+	// (roomseam.go).
+	//
 	// THE MODEL IS ITS BASENAME, AND HOW HARD IT IS BEING ASKED TO THINK IS THE
 	// CELL AFTER IT. The level used to be spelled onto the id with a colon —
 	// `glm-5.3-flash:high` — which said the picker-dialled level and nothing
@@ -522,7 +527,7 @@ func (a *app) seamPieces(width int) seamPieces {
 	// AND A PINNED LANE RIDES THE ID AS `@lane` ([app.modelWord]), which is the
 	// one place the pin is written on the chrome: the status row and the phone
 	// deck take the same word from the same function.
-	pieces := seamPieces{host: a.host, name: name, model: a.modelWord()}
+	pieces := seamPieces{host: a.host, model: a.modelWord()}
 	if pieces.model != "" {
 		// A rung with no model beside it has nothing to be about, and the ladder
 		// it belongs to is reached by name (`/effort`) rather than from a cell
@@ -549,7 +554,9 @@ type seamTry struct {
 	// allows (which may be none), [riderNone] leaves it off.
 	rider riderWant
 	// cut allows the name to be shortened with one ellipsis, never under
-	// [legendNameFloor] cells, to make the rest fit.
+	// [legendNameFloor] cells, to make the rest fit. A rung that cuts is
+	// skipped outright where there is no name to cut — a conversation's seam —
+	// since it could only ever fit where the rung above it already did.
 	cut bool
 }
 
@@ -562,13 +569,16 @@ const (
 )
 
 // seamLadder is THE LADDER, top to bottom: the first rung that fits is drawn.
-// It gives up the cheapest true thing first and never clips a word:
+// It gives up the cheapest true thing first and never clips a word. The name
+// slot is empty on a conversation since 2026-09-17, so the rungs that cut or
+// keep a name are a room's (its way out stands there) and a conversation
+// walks past them:
 //
 //	1  everything, the rider entire
 //	2  the branch goes — the shell prompt behind this pane still says it
 //	3  the name is cut to seat the rider entire — which machine is answering
 //	   is the one fact on this line about NOW (the owner's ruling of
-//	   2026-09-10), and the rest of the title is in the tab strip
+//	   2026-09-10)
 //	4  the rider is said shorter, then not at all, with the branch back on
 //	5  and without it
 //	6  the thinking rung goes, WHOLE — half a rung word is a word somebody
@@ -577,7 +587,7 @@ const (
 //	   without asking outranks how hard it thinks, and it is the one cell on
 //	   this line that is a safety claim (approvalchip.go)
 //	8  the name is cut for the model alone
-//	9  the model goes — the name is what tells two panes apart
+//	9  the model goes — in a room the way out is what is left
 //	10 the name goes — and the machine, on a --host session, is the last
 //	   thing standing, because it is the half nobody can reconstruct
 var seamLadder = []seamTry{
@@ -597,8 +607,16 @@ var seamLadder = []seamTry{
 // that rung asks for does not fit. The three spans are where the model, the
 // rung and the approvals chip fell, measured off the head that was actually
 // drawn, so a door is only ever recorded where its cell is.
+//
+// THE RIDER IS WRITTEN ONTO THE MODEL — `glm-5.3-flash · via deepinfra` — and
+// the rung and the gate come after the pair, so the two halves of "who is
+// answering" are never separated by a cell about something else (the owner's
+// ruling of 2026-09-17).
 func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpan, bool) {
 	none := hudSpan{}
+	if try.cut && p.name == "" {
+		return "", none, none, none, false
+	}
 	model, rung, gate, branch, rider := "", "", "", "", ""
 	if try.model {
 		model = p.model
@@ -626,7 +644,7 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	if try.name {
 		name = p.name
 		if try.cut {
-			rest := dotted(p.host, dotted(model, rung, gate)+rider, branch)
+			rest := dotted(p.host, dotted(model+rider, rung, gate), branch)
 			left := room - ansi.StringWidth(rest)
 			if rest != "" {
 				left -= ansi.StringWidth(legendJoin)
@@ -645,19 +663,20 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 		}
 		rider = p.fit(room - ansi.StringWidth(bare))
 	}
-	cluster := dotted(head, dotted(model, rung, gate)+rider, branch)
+	cluster := dotted(head, dotted(model+rider, rung, gate), branch)
 	if ansi.StringWidth(cluster) > room {
 		return "", none, none, none, false
 	}
-	named, dial, chip := seamSpans(head, model, rung, gate)
+	named, dial, chip := seamSpans(head, model, rider, rung, gate)
 	return cluster, named, dial, chip, true
 }
 
 // seamSpans is where the model, the rung and the approvals chip stand in a
 // cluster that begins with head, or empty spans for a cluster with no model on
 // it. Each cell is measured from the one before it, so a cell that was given up
-// leaves the next one's columns where they were drawn.
-func seamSpans(head, model, rung, gate string) (hudSpan, hudSpan, hudSpan) {
+// leaves the next one's columns where they were drawn. The rider rides the
+// model and is no door: the rung is measured past it.
+func seamSpans(head, model, rider, rung, gate string) (hudSpan, hudSpan, hudSpan) {
 	if model == "" {
 		return hudSpan{}, hudSpan{}, hudSpan{}
 	}
@@ -666,7 +685,7 @@ func seamSpans(head, model, rung, gate string) (hudSpan, hudSpan, hudSpan) {
 		from = ansi.StringWidth(head + legendJoin)
 	}
 	named := hudSpan{from: from, to: from + ansi.StringWidth(model)}
-	at, dial := named.to, hudSpan{}
+	at, dial := named.to+ansi.StringWidth(rider), hudSpan{}
 	if rung != "" {
 		dial = hudSpan{from: at + ansi.StringWidth(legendJoin), to: at + ansi.StringWidth(legendJoin) + ansi.StringWidth(rung)}
 		at = dial.to

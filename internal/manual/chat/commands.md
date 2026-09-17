@@ -1088,8 +1088,8 @@ conversation waiting to be sent AND a live search over every project on the mach
 panels give way to the matches, with `start a new conversation: "…"` directly above the box
 holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
-the command list*). The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`.
+the command list*). The box says `› type to search or start something new` and the foot
+reads exactly `↑↓ pick · enter open · ctrl+o open folder · tab next place`.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including

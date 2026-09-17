@@ -948,8 +948,13 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // so the fifth clause left the resting row — and only the resting row: `esc`
 // still closes home, and every other row's hint still ends with it, which is the
 // second half of this test.
+//
+// AND THE PROMISE MOVED INTO THE BOX ON 2026-09-17. `type to search or start
+// something new` opened this foot until the owner ruled that the one box
+// left on a place says what it is for, and the lowest line is for keys
+// (footswap.go): the box row is the promise, the foot is the keys.
 func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
-	const design = "type to search or start something new · ↑↓ pick · enter open · tab next place"
+	const design = "↑↓ pick · enter open · tab next place"
 	if homeRestHint != design {
 		t.Fatalf("home's resting foot reads %q, want the design's own sentence %q", homeRestHint, design)
 	}
@@ -978,18 +983,19 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	if rest != want {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)
 	}
-	if !strings.HasPrefix(rest, "type to search or start something new · ↑↓ pick · enter open") {
+	if !strings.HasPrefix(rest, "↑↓ pick · enter open") {
 		t.Fatalf("the resting hint no longer opens with the design's own words: %q", rest)
 	}
-	// THE BOX ROW IS THE SAME SENTENCE AS EVERY OTHER PLACE'S (SCREEN 2b). What
-	// home's box ALSO does — filter the list — is said on the hint above, which is
-	// where the design puts it; the box says only what enter will do with what is
-	// typed into it. The prompt is demanded as a prefix rather than as the whole
-	// row, so a row that grows a tail later does not turn this into a test about
-	// the tail.
+	if strings.Contains(rest, "type to search") {
+		t.Fatalf("the foot repeats the box's promise: %q", rest)
+	}
+	// THE BOX ROW IS THE PROMISE — both readings of what is typed into it, the
+	// search and the start. The prompt is demanded as a prefix rather than as
+	// the whole row, so a row that grows a tail later does not turn this into
+	// a test about the tail.
 	box := strings.TrimSpace(ansi.Strip(lines[len(lines)-2]))
-	if !strings.HasPrefix(box, "› "+placeRestWord) {
-		t.Fatalf("the box row reads %q, want the design's prompt", box)
+	if !strings.HasPrefix(box, "› type to search or start something new") {
+		t.Fatalf("the box row reads %q, want the promise", box)
 	}
 	// AND THE CLAUSE THAT LEFT IS REALLY GONE from the foot — not merely absent
 	// from the constant this test already compared.

@@ -169,7 +169,7 @@ to its name starts straight at the sentence, never `0 files`:
 The two words are the task's own — `accept` and `not right` for work nobody could check,
 which is every row that reaches this group. **The two keys are `1` and `2`
 here and `[a]`/`[n]` everywhere else**, and that is deliberate: a bare letter on home always
-types, because the box under it promises "type to search or start something new" and the
+types, because the box under it says "type to search or start something new" and the
 promise has no asterisk. A digit drawn on the row is the one printable exception home makes,
 so a landing takes `1` and `2` on this screen and its own letters on its card, in its room
 and on its record. `enter` opens the conversation on the task's record.
@@ -764,8 +764,11 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The foot line reads exactly:
 
 ```
-type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place
+↑↓ pick · enter open · ctrl+o open folder · tab next place
 ```
+
+(the box above it says `› type to search or start something new`, which is where that
+promise moved on 2026-09-17: the lowest line is for keys)
 
 and it says what THAT row's keys do on a row that has its own — a `since you left` line,
 a fold door, the action row — always with `alt+. map · tab next place` before the way out.

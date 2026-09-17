@@ -129,11 +129,14 @@ func TestTheRightEdgeSaysWhatTheStreamIsProducingRightNow(t *testing.T) {
 	}
 	// NOT THE SIGHTING'S FIGURE, and not the phase's own words either: the state
 	// word two runs to the right already says `working · 4s`, and who is serving
-	// is on the seam.
-	for _, gone := range []string{"92 tok/s", "writing", "friendli"} {
+	// is on the seam's LEFT, beside the model, and nowhere else on the line.
+	for _, gone := range []string{"92 tok/s", "writing"} {
 		if strings.Contains(line, gone) {
 			t.Fatalf("the right edge still says %q:\n%q", gone, line)
 		}
+	}
+	if !strings.Contains(line, "kimi-k3 · via friendli") || strings.Count(line, "friendli") != 1 {
+		t.Fatalf("the machine is not said once, beside the model:\n%q", line)
 	}
 
 	// A THINKING PASS IS THE SAME SEGMENT, because it is the same claim: the

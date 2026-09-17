@@ -37,7 +37,7 @@ package tui3
 //	     3 tasks · 2h
 //	 ▸ wisp                      6 · 2d
 //	 ─────────────────────────────────────
-//	 type to search or start something new
+//	 › type to search or start something new
 //	  open      new       ask here
 //
 // FOUR LAWS, AND EVERY ONE OF THEM IS ABOUT A THUMB.
@@ -520,7 +520,7 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	add(a.targetPhoneRule(width, pal), -1)
 	caretX, caretY := 0, 0
 	if a.home.box.empty() {
-		add(" "+pal.dim(hintFit(homeFootWord, width-2)), -1)
+		add(" "+pal.dim(fit(a.placeRestWord(), width-2)), -1)
 		// Same as the wide frame: at rest there is nothing to type into, so the
 		// caret is hidden rather than blinking over the heading.
 		a.caret = false

@@ -10,7 +10,7 @@ import (
 // node's facts on it — the same four cells as a conversation's and a draft's
 // (boxseam.go), with the way out where the name would be:
 //
-//	─ room · esc/←← main · task glm-5.2 · ⠿ high · ◇ on its own · via z-ai ──── ↑↓ history ─
+//	─ room · esc/←← main · task glm-5.2 · via z-ai · ⠿ high · ◇ on its own ──── ↑↓ history ─
 //	 › steer the node
 //
 // Until this file the room's seam said `room · esc/←← main` and nothing else;

@@ -302,10 +302,13 @@ const homeDraftFloor = 3
 // The sentences this surface says. Each is quoted in the manual exactly as it
 // is spelled here.
 const (
-	// homeFootWord is the three verbs, and it stays three. A footer that grew a
-	// key for everything this screen can do would be the cockpit this is
-	// deliberately not.
-	homeFootWord = "type to search or start something new · ↑↓ pick · enter open"
+	// homeFootWord is the two keys, and it stays two. A footer that grew a key
+	// for everything this screen can do would be the cockpit this is
+	// deliberately not. It opened with `type to search or start something new`
+	// until 2026-09-17; that clause is the box's own now ([placeRestWord]) —
+	// the lowest line is for keys (footswap.go), and a promise about typing
+	// belongs where the typing lands.
+	homeFootWord = "↑↓ pick · enter open"
 	// homeRestHint is that sentence as the whole foot of the resting screen, with
 	// the one key that leaves it. It is composed rather than spelled a second
 	// time, so the box's prompt and the foot can never drift apart.

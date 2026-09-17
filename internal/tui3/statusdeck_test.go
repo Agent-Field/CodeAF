@@ -281,8 +281,8 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 		// have replaced here; the ledger gives up rungs as the frame narrows
 		// but the state word is the last thing standing.
 		seam := plain(a.legend(width))
-		if !strings.Contains(seam, "Fix the nil-map crash · deepseek-v4-flash") {
-			t.Fatalf("at %d columns the identity cluster is not on the seam:\n%q", width, seam)
+		if !strings.Contains(seam, "deepseek-v4-flash") || strings.Contains(seam, "Fix the nil-map crash") {
+			t.Fatalf("at %d columns the seam is not the model and never the name:\n%q", width, seam)
 		}
 		if !strings.Contains(seam, "idle") {
 			t.Fatalf("at %d columns the seam lost the state word:\n%q", width, seam)
@@ -303,9 +303,10 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 // against the right edge, the crew word at the head of it (#315). Then the
 // name and the model went up onto the seam and the row became a LEDGER laid
 // from the left. Since the second date the ledger is on the seam too, after
-// the identity: the bill, three cells of air, the meter, three more, and the
-// state word — and the last row is the keys (footswap.go). The crew word is
-// off both lines entirely (foot.go's [groupOff]).
+// the model (the name came off the seam the same day — foot.go): the bill,
+// three cells of air, the meter, three more, and the state word — and the
+// last row is the keys (footswap.go). The crew word is off both lines
+// entirely (foot.go's [groupOff]).
 //
 // The three cells in front of `$0.31` are the money segment's own reservation,
 // which holds one width for every spelling a turn walks through so the line
@@ -316,7 +317,7 @@ func TestTheWideStatusRowIsByteForByteWhatItIs(t *testing.T) {
 	a.width = 120
 	a.touch()
 
-	head := "─ Fix the nil-map crash · deepseek-v4-flash · chat-v3-task* "
+	head := "─ deepseek-v4-flash · chat-v3-task* "
 	tail := "    $0.31   24k/200k · 12%   idle ─"
 	want := head + strings.Repeat("─", 120-ansi.StringWidth(head)-ansi.StringWidth(tail)) + tail
 	if got := plain(a.legend(120)); got != want {

@@ -69,9 +69,10 @@ the hint line last. See the **Places** page.
 has over its message box, reading `◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto ·
 ◇ asks` — where the next conversation opens, what it will run on, how hard it will think and
 what it will run without asking, with the same doors on the cells (`alt+o`, `ctrl+v`,
-`alt+y`, or a press) — and the box `› say what you want done` sits under it. The chords
-that move those cells are on the hint line under the box, with home's own keys: `alt+w
-folder · alt+o model · alt+k chats · / commands`. Every other place ends in its rule and
+`alt+y`, or a press) — and the box `› type to search or start something new` sits under
+it. The chords that move those cells are on the hint line under the box, with home's own
+keys: `↑↓ pick · enter open · alt+w folder · alt+o model · alt+k chats · / commands`.
+Every other place ends in its rule and
 its hint, with no box: only home starts things. *Typing on a place* and *The rule above
 home's box* on the Places page have the whole of it.
 
@@ -661,15 +662,20 @@ and from then on new output keeps you at the edge again.
 Three things do deliberately put you back at the bottom, because in each you asked for
 it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 
-## The line above the message box (the legend) — the conversation name, the model and the branch
+## The line above the message box (the legend) — the model, via which machine, the branch, and why the conversation's name is not on it
 
-The rule that separates the conversation from your own business carries **who you are
-talking to and where** on the left, and **the numbers** — the bill, the meter, the state
+The rule that separates the conversation from your own business carries **what is
+answering and where** on the left, and **the numbers** — the bill, the meter, the state
 word — on the right, like the legend on a fieldset:
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 ```
+
+**The conversation's name is not on this line.** It was, from 2026-09-09 to 2026-09-17,
+and it came off because a title takes the room the numbers need: the name is on the tab
+strip at the top of the frame and on the breadcrumb bar, and nowhere else. Nothing stands
+in for it — an unnamed conversation draws the same line.
 
 Until 2026-09-17 the right end carried the keys that work now (`space space home · /
 commands`, `esc interrupt`); those are on the row under the box now — see *The keys row
@@ -677,15 +683,16 @@ under the box* below — and the numbers came up here from the last row of the f
 that home and a conversation end in the same shape: a rule of facts, the box, a line of
 keys.
 
-The left, in order: the machine on a `--host` session (`devbox · …`), the conversation's
-**name** (the one the session chose for itself, falling back to the folder's name until
-it has named itself, so it is never empty), the **model** as its basename
-(`glm-5.3-flash`), the **thinking rung** this conversation is running at (`⠿ high`, `~
+The left, in order: the machine on a `--host` session (`devbox · …`), the **model** as
+its basename (`glm-5.3-flash`), **immediately followed by** a `· via deepinfra` rider
+naming the endpoint that answered — the two read as one cell, "who is answering" (the
+name alone, never a timing: the last answer's wait and speed are the `served` row of
+`/status`) — then the **thinking rung** this conversation is running at (`⠿ high`, `~
 high` on a plain terminal — `⠿ auto` until something is dialled, which is what a fresh
-install says), a `· via deepinfra` rider naming the endpoint that answered (the name alone, never a timing: the last answer's wait and speed are the `served` row of `/status`),
-and the git **branch** with a `*` when the tree has uncommitted work. In a directory that
-is not a repository there is no branch. It never says "untitled" and never invents a
-placeholder.
+install says), the **approvals chip** (`◇ asks`), and the git **branch** with a `*` when
+the tree has uncommitted work. In a directory that is not a repository there is no
+branch. Until 2026-09-17 the rider came after the rung and the chip; it stands beside the
+model now so a cell about something else never separates the model from its machine.
 
 **Two of those are doors.** Press the model's name and the model picker opens, exactly as
 typing `/model` does. Press the thinking rung and it walks one step up the ladder —
@@ -720,24 +727,21 @@ either one is absent.
 things up in this order, and each step is a shorter *true* sentence:
 
 1. the branch goes — the shell prompt behind this pane still says it;
-2. the name is cut with one `…` to seat the `via` rider whole, never to fewer than
-   12 cells — which machine is answering is the one fact on this line about *now*, and
-   the rest of the title is in the tab strip;
-3. the `via` rider goes, only once the name is at its floor;
-4. the thinking rung goes, **whole** — half a rung word is a word you would read as
+2. the `via` rider is said shorter (`glm-5.3-flash · relace`), then not at all;
+3. the thinking rung goes, **whole** — half a rung word is a word you would read as
    another rung, and `/effort` says it in full;
-5. the name is cut again, and never to fewer than 12 cells;
-6. the model goes — the name is what tells two panes apart;
-7. the name goes — on a `--host` session the machine is the last thing standing.
+4. the approvals chip goes, whole, after the rung — what may run without asking
+   outranks how hard it thinks;
+5. the model goes — on a `--host` session the machine is the last thing standing.
 
-So a long title never hides who served: `first line: casual greeting… · glm-5.3-flash ·
-via relace` is what an 80-column frame draws, and until 2026-09-10 the same frame drew
-the whole title, the branch, and no `via` at all.
+A long title costs this line nothing, because the title is not on it. Until 2026-09-17
+the name was, and a long one was cut with one `…` to seat the rider.
 
 Under 70 columns the branch is dropped outright. Only a frame with no room for a label
 at either end falls back to the plain rule. Until 2026-09-09 this line carried only the
 branch, and the name and model were on the status row below; they moved up so that a
-long title could never push the numbers off the frame.
+long title could never push the numbers off the frame, and the name moved off again on
+2026-09-17 for the same reason.
 
 **The keys row under the box** — the last row of the frame — is the hint slot. Until
 2026-09-17 it was the right end of the rule above the box; the numbers took that end and
@@ -979,8 +983,8 @@ controls. The control for the gate is the `◇` cell on the legend (the keys pag
 
 While a task **room** is open the task's own name is on the breadcrumb bar at the top of
 the frame (the room chip that used to lead this row is gone with the row), and the legend
-above the box becomes the task's: `room · esc/←← main · task glm-5.2 · ⠿ high · ◇ on its
-own · via friendli`, with the conversation's numbers after it. **Pressing the model's name
+above the box becomes the task's: `room · esc/←← main · task glm-5.2 · via friendli · ⠿
+high · ◇ on its own`, with the conversation's numbers after it. **Pressing the model's name
 there moves the task**, not the conversation: the same picker opens aimed at that node, and
 the task switches from its next request onward; pressing the rung, or `ctrl+v`, walks the
 task's thinking. One `esc` restores both lines. Where the pick could not land the name is
@@ -1000,12 +1004,13 @@ back. Until 2026-09-10 a room drew no rate and no machine at all and could show 
 line left over from the conversation — the news said which model it was about but not
 which piece of work.
 
-The numbers never take a second row: when the rule cannot hold the name, the model and
-every figure, the figures go first, one at a time in the order "What the status line
-drops when it is narrow" gives, and the state word is the last thing standing on the
-right. The name and the model give way only when not even the state word fits beside them
-whole; a `via` machine on the seam outlasts the cheap figures (the jobs, the forecast,
-the cache's cash half, the rate) and gives way before the cache, the bill and the meter.
+The numbers never take a second row: when the rule cannot hold the model and every
+figure, the figures go first, one at a time in the order "What the status line drops
+when it is narrow" gives, and the state word is the last thing standing on the right.
+The model gives way only when not even the state word fits beside it whole; a `via`
+machine on the seam outlasts the cheap figures (the jobs, the forecast, the cache's cash
+half, the rate) and gives way before the cache, the bill and the meter. The branch goes
+before any number does, and comes back whenever the numbers shrink enough to make room.
 
 Until 2026-09-09 the name and the model were the left half of this row and every figure
 sat in one dotted run beside them; the crew word, the `Σ +128 −14` session delta, the
@@ -1137,7 +1142,7 @@ deck **do print `$0.00`** on a session that has sent a turn and spent nothing. T
 is that the status row is a live row: a segment that came into existence on the first
 priced turn would shove every segment beside it sideways. **While the empty screen's
 greeting is up there is no spend segment and no context meter at all** — the row is
-the name, the model and `idle`, and the numbers arrive with your first keystroke (see
+the model and `idle`, and the numbers arrive with your first keystroke (see
 *The empty screen* page).
 
 The commands keep the law instead. `/status` filters the spend line out when the cost is

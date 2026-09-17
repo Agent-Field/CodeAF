@@ -780,13 +780,12 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	if strings.Contains(last, product) {
 		t.Fatalf("the seam is still carrying %q: %q", product, last)
 	}
-	// AND THE SEAM CARRIES BOTH, the model as its BASENAME — the vendor is a
-	// routing address, and it stays in the picker.
+	// AND THE SEAM CARRIES THE MODEL as its BASENAME — the vendor is a
+	// routing address, and it stays in the picker — and not the name, which
+	// is the tab strip's (foot.go, 2026-09-17).
 	seam := plain(a.legend(a.width))
-	for _, want := range []string{"porting the parser", "gpt-4.1-mini"} {
-		if !strings.Contains(seam, want) {
-			t.Fatalf("the seam is missing %q:\n%q", want, seam)
-		}
+	if !strings.Contains(seam, "gpt-4.1-mini") || strings.Contains(seam, "porting the parser") {
+		t.Fatalf("the seam is not the model alone:\n%q", seam)
 	}
 	if strings.Contains(seam, "openai/") {
 		t.Fatalf("the vendor prefix is on the seam: %q", seam)
@@ -822,9 +821,6 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 // is (view.go's [app.footClearance]).
 func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	// Named, because the border's label is the conversation's name and an
-	// unnamed session in a directory with no repository has nothing to put in it
-	// — which is the emptiness law, and is its own test (bundle_test.go).
 	a.title = "trimming the parser"
 	typeInto(t, a, "half a sentence")
 
@@ -844,15 +840,15 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if strings.TrimSpace(lines[draft-2]) != "" {
 		t.Fatalf("the row above the rule is not blank: %q", lines[draft-2])
 	}
-	// The rule directly above the box is the LEGEND (render.go), and the
-	// conversation's name is written into it: the seam is where identity lives
-	// (foot.go's [app.seamIdentity]).
+	// The rule directly above the box is the LEGEND (render.go), and the model
+	// is written into it — never the conversation's name, which is the tab
+	// strip's (foot.go's [app.seamIdentity]).
 	rule := lines[draft-1]
 	if !strings.HasPrefix(rule, "─") || !strings.Contains(rule, "───") {
 		t.Fatalf("the row above the draft is not the input's legend border: %q", rule)
 	}
-	if !strings.Contains(rule, "trimming the parser") {
-		t.Fatalf("the seam is not carrying the conversation's name: %q", rule)
+	if !strings.Contains(rule, "─ m ") || strings.Contains(rule, "trimming the parser") {
+		t.Fatalf("the seam is not the model alone: %q", rule)
 	}
 	if draft != len(lines)-2 {
 		t.Fatalf("the draft is %d rows from the bottom, want 1 (the status line)",

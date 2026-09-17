@@ -193,8 +193,8 @@ box:
 
 ```
 ─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ──────────────────────────
-› say what you want done
-type to search or start something new · ↑↓ pick · enter open · alt+w folder · alt+o model · alt+k chats · / commands · tab next place
+› type to search or start something new
+↑↓ pick · enter open · alt+w folder · alt+o model · alt+k chats · / commands · tab next place
 ```
 
 Left to right it says four things about the conversation `enter` will open: **where** (the
@@ -462,7 +462,7 @@ branch stays available to inspect and does not, by itself, ask you to merge it.
 **Typing here narrows the list.** While this place is up every printable key goes to its
 filter — the one exception being `1` and `2` over a row the record pane beside the list is
 offering those two answers for, which answer it — and **the box at the foot says so itself** — it rests on `› type to filter this list`
-rather than the `› say what you want done` every other place shows. It used to show the
+rather than home's `› type to search or start something new`. It used to show the
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens

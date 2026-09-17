@@ -1110,7 +1110,7 @@ func TestTheContextSegmentIsPaintedOnlyWhenItIsCrowded(t *testing.T) {
 	crowded := newTestApp(&fakeAgent{model: "m"})
 	crowded.ctxWindow, crowded.ctxTokens = 200_000, 170_000
 
-	quiet, loud := calm.status(90), crowded.status(90)
+	quiet, loud := calm.legend(90), crowded.legend(90)
 	segment, _ := crowded.contextSegment()
 	if !strings.Contains(plain(loud), segment) {
 		t.Fatalf("the crowded segment is missing from the line:\n%q", plain(loud))

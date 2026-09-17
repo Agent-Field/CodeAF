@@ -45,9 +45,9 @@ the conversation identity stays the same.
 
 ## How do I pick a different model — which model am I talking to, which model is it using right now, and how do I switch or change it
 
-The model in use is written on the legend line directly above the message box, after the
-conversation's name (`porting the parser · glm-5.3-flash`). There are two doors to the
-picker:
+The model in use is the first thing written on the legend line directly above the message
+box (`glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks`; on a `--host` session the machine
+leads it). There are two doors to the picker:
 
 - type `/model` with nothing after it, or
 - press the model's name on that line above the box.

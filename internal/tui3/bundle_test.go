@@ -1762,20 +1762,24 @@ func hudApp(t *testing.T) (*app, *fakeAgent, *time.Time) {
 
 // ── the legend ──────────────────────────────────────────────────────────────
 
-// THE SEAM OWNS IDENTITY FROM 2026-09-09. The rule above the box carries who
-// you are talking to and where — the conversation's name, the model answering
-// it, the branch — on the left, and the keys that work now on the right. The
-// name and the model came UP here from the status row so that a long title
-// could never push the numbers off the frame (foot.go's [app.seamIdentity]).
+// THE SEAM OWNS WHAT ANSWERS FROM 2026-09-09. The rule above the box carries
+// the model answering the conversation and the branch on the left, and the
+// numbers on the right. The name came UP here from the status row that day so
+// that a long title could never push the numbers off the frame, and came OFF
+// again on 2026-09-17: it took the room the numbers need, and the tab strip
+// already says it (foot.go's [app.seamIdentity]).
 func TestTheSeamCarriesTheIdentityTheBranchAndTheInputsAffordances(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
 
 	line := plain(a.legend(100))
-	for _, want := range []string{"porting the parser", "deepseek-v4-flash", "chat-v3-task*"} {
+	for _, want := range []string{"deepseek-v4-flash", "chat-v3-task*"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the legend is missing %q:\n%q", want, line)
 		}
+	}
+	if strings.Contains(line, "porting the parser") {
+		t.Fatalf("the conversation's name is on the seam: %q", line)
 	}
 	// AND THE INPUT'S OWN AFFORDANCE IS ON THE KEYS ROW under the box, where
 	// every key on this surface is named since 2026-09-17 (footswap.go).
@@ -1811,36 +1815,33 @@ func TestTheSeamCarriesTheIdentityTheBranchAndTheInputsAffordances(t *testing.T)
 	a.branch = ""
 	line = plain(a.legend(100))
 	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
-	if label != "porting the parser · deepseek-v4-flash" {
+	if label != "deepseek-v4-flash" {
 		t.Fatalf("a workspace outside a repository left a separator behind: %q", label)
 	}
 }
 
-// THE EMPTINESS LAW ON THE BORDER: a session names itself one turn in, and until
-// it has, the slot where the name goes is EMPTY — never "untitled", never the
-// workspace standing in for it.
+// THE EMPTINESS LAW ON THE BORDER: a session names itself one turn in, and the
+// seam draws the same line before and after — never "untitled", never the
+// workspace standing in for a name the seam does not carry (foot.go).
 func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = ""
 
-	// THE FOLDER'S NAME IS A TRUE FACT AND "untitled" IS NOT. The slot falls back
-	// to where the conversation is running — which the status row's identity
-	// cluster did before this moved up here — rather than inventing a word for a
-	// session that has not named itself yet.
+	// The folder stood in for the name here from 2026-09-09 until the name
+	// came off the seam on 2026-09-17; nothing stands in now.
 	line := plain(a.legend(100))
 	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
-	if label != "codeaf · deepseek-v4-flash · chat-v3-task*" {
-		t.Fatalf("an unnamed session's legend label = %q, want the folder standing in for the name", label)
+	if label != "deepseek-v4-flash · chat-v3-task*" {
+		t.Fatalf("an unnamed session's legend label = %q, want the model and the branch alone", label)
 	}
-	for _, banned := range []string{"untitled", "Untitled", "new chat"} {
+	for _, banned := range []string{"untitled", "Untitled", "new chat", "codeaf"} {
 		if strings.Contains(label, banned) {
 			t.Fatalf("the legend invented %q for a session with no name: %q", banned, line)
 		}
 	}
 
-	// And with the branch gone too, what is left is the folder and the model —
-	// with the input's own affordance still on the other end, because a person
-	// who has not typed anything yet is exactly who "/ commands" is for.
+	// And with the branch gone too, what is left is the model — with the
+	// numbers still on the other end.
 	a.branch = ""
 	line = plain(a.legend(100))
 	if !strings.Contains(line, "idle") {
@@ -1878,11 +1879,10 @@ func TestTheSeamNamesTheMachineEvenWhereTheVendorServesItsOwnModel(t *testing.T)
 	}
 }
 
-// A LONG IDENTITY IS SAID SHORTER, NEVER CLIPPED, AND NEVER AT THE KEYS' COST.
-// The seam gives up the cheapest true thing first (foot.go's [app.seamIdentity]):
-// the branch, which the shell prompt behind this pane still says, and only then
-// is the name cut with one ellipsis. The state word at the other end is not on
-// that ladder at all — it is why the line is there (footswap.go).
+// A LONG TITLE COSTS THE SEAM NOTHING, because the title is not on it (foot.go:
+// the owner's ruling of 2026-09-17). Until that day a long name was cut with
+// one ellipsis after the branch had gone; now the branch stays, the numbers
+// stay, and the name is on the tab strip whatever its length.
 func TestALongNameIsCutOnTheSeamAndNeverTakesTheNumbersSlot(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser off the old tokenizer and onto the new one at last"
@@ -1891,19 +1891,14 @@ func TestALongNameIsCutOnTheSeamAndNeverTakesTheNumbersSlot(t *testing.T) {
 	if !strings.Contains(line, "idle") {
 		t.Fatalf("a long name pushed the state word off the seam: %q", line)
 	}
-	if strings.Contains(line, "chat-v3-task*") {
-		t.Fatalf("the branch outlasted the name it stands after: %q", line)
+	if !strings.Contains(line, "chat-v3-task*") || !strings.Contains(line, "deepseek-v4-flash") {
+		t.Fatalf("a title that is not on the seam cost it a cell: %q", line)
 	}
-	if !strings.Contains(line, "…") || !strings.Contains(line, "porting the parser") {
-		t.Fatalf("the name was neither kept whole nor cut with one ellipsis: %q", line)
+	if strings.Contains(line, "…") || strings.Contains(line, "porting") {
+		t.Fatalf("the name is on the seam: %q", line)
 	}
 	if ansi.StringWidth(line) != 100 {
 		t.Fatalf("the legend is %d cells wide, want the frame's 100", ansi.StringWidth(line))
-	}
-	// AND THE MODEL OUTLIVES THE BRANCH. Its rung is below the branch's, so a
-	// frame that had to drop one of them dropped the recoverable one.
-	if !strings.Contains(line, "deepseek-v4-flash") {
-		t.Fatalf("the model went before the branch did: %q", line)
 	}
 }
 
@@ -1932,16 +1927,16 @@ func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
 	if !strings.Contains(tight, "idle") {
 		t.Fatalf("a tight frame is a rule with nothing written on it: %q", tight)
 	}
-	// AND WHAT IT KEPT IS THE IDENTITY. The branch is the first rung of the
+	// AND WHAT IT KEPT IS THE MODEL. The branch is the first rung of the
 	// seam's own ladder for the same reason it is dropped outright under
 	// [hudTight]: it is the one fact on this line a person can read off the
 	// shell prompt behind the pane (foot.go's [app.seamIdentity]).
-	if !strings.Contains(tight, "porting the parser") {
-		t.Fatalf("the tight legend gave up the name before the branch: %q", tight)
+	if !strings.Contains(tight, "deepseek-v4-flash") {
+		t.Fatalf("the tight legend gave up the model before the branch: %q", tight)
 	}
 
 	// A frame wide enough for all three says all three — the door on the keys
-	// row under the box (footswap.go), the branch and the name on the seam.
+	// row under the box (footswap.go), the branch and the model on the seam.
 	middle := plain(a.legend(140))
 	if !strings.Contains(plain(a.hintRow(140)), microcopy) {
 		t.Fatalf("the keys row dropped usable hints: %q", plain(a.hintRow(140)))
@@ -1949,8 +1944,8 @@ func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
 	if !strings.Contains(middle, branch) {
 		t.Fatalf("the branch was dropped before the microcopy: %q", middle)
 	}
-	if !strings.Contains(middle, "porting the parser") {
-		t.Fatalf("a roomy legend is missing the conversation's name: %q", middle)
+	if !strings.Contains(middle, "deepseek-v4-flash") {
+		t.Fatalf("a roomy legend is missing the model: %q", middle)
 	}
 
 	// And a frame with no room for a label at all is the rule it always was.
@@ -2411,16 +2406,13 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	if !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("a number is competing with a question:\n%q", line)
 	}
-	// AND THE SEAM IS THE HUE'S SECOND HOME AGAIN. The conversation's name came
-	// back onto the legend on 2026-09-09, and while a person is being asked
-	// something the whole left label goes violet with the state word — the
+	// AND THE SEAM IS THE HUE'S SECOND HOME AGAIN. While a person is being
+	// asked something the whole left label — the model, since the name came
+	// off the seam on 2026-09-17 — goes violet with the state word: the
 	// question is bottom-anchored and so is this border, which is the surface
 	// pointing at it with both hands (render.go's [app.legend]).
 	legend := a.legend(120)
-	if !strings.Contains(plain(legend), "cleaning the build directory") {
-		t.Fatalf("the seam lost the conversation's name:\n%q", legend)
-	}
-	if !strings.Contains(legend, a.pal.ask("cleaning the build directory · m")) {
+	if !strings.Contains(legend, a.pal.ask("m")) {
 		t.Fatalf("the seam's label is not the question hue:\n%q", legend)
 	}
 
@@ -2474,20 +2466,27 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		eta, branch, cost, meter bool
 	}{
 		{width: 200, eta: true, branch: true, cost: true, meter: true},
-		// THE NUMBERS' OWN LADDER RUNS FIRST ([dropOrder], footswap.go): the
-		// forecast is the cheapest thing on the seam — the meter beside it is
-		// already painted the warning — and it goes before the branch does.
-		{width: 120, eta: false, branch: true, cost: true, meter: true},
-		// Then the branch, because the shell prompt behind this pane still
-		// says it; then the cache and the bill; the meter outlasts the bill
-		// because it is the decision the numbers force.
-		{width: 100, eta: false, branch: false, cost: true, meter: true},
-		{width: 80, eta: false, branch: false, cost: false, meter: true},
-		{width: 70, eta: false, branch: false, cost: false, meter: true},
-		// At sixty every number gives way to the name and the model, which are
-		// the one fact on this frame written nowhere else — and the state word
-		// is the last thing standing on the right.
-		{width: 60, eta: false, branch: false, cost: false, meter: false},
+		{width: 120, eta: true, branch: true, cost: true, meter: true},
+		// THE BRANCH GOES BEFORE ANY NUMBER DOES: each rung of the numbers'
+		// ladder ([dropOrder], footswap.go) is tried against the seam's whole
+		// left ladder — branch, then no branch — before the next rung is, so
+		// the shell prompt's fact is the first thing spent (render.go's
+		// [app.legend]) …
+		{width: 110, eta: true, branch: false, cost: true, meter: true},
+		// … and it comes BACK the moment the numbers shrink enough to make
+		// room: at ninety the forecast — the cheapest number, the meter
+		// beside it already painted the warning — has gone, and the branch
+		// fits again beside what is left.
+		{width: 90, eta: false, branch: true, cost: true, meter: true},
+		{width: 80, eta: false, branch: false, cost: true, meter: true},
+		// Then the cache's half of the bill goes, and the bill and the meter
+		// stand to the bottom of this tier: the deck takes over under sixty
+		// (statusdeck.go), and on a frame that keeps the seam's numbers the
+		// model is never spent for one — it is the one fact on this frame
+		// written nowhere else, and the state word is the last thing
+		// standing on the right.
+		{width: 70, eta: false, branch: false, cost: true, meter: true},
+		{width: 60, eta: false, branch: false, cost: true, meter: true},
 	} {
 		// THE LAST ROW IS THE KEYS, one row at every width, and it names the
 		// commands door at every one of them.
@@ -2528,13 +2527,14 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		if has := strings.Contains(legend, "chat-v3-task"); has != tc.branch {
 			t.Fatalf("at %d columns the branch is %v: %q", tc.width, has, legend)
 		}
-		// The name and the model are on the seam WHOLE at every width this
-		// ladder covers — the two facts that tell one pane from another, and
-		// the numbers give way before either does.
-		for _, want := range []string{"the bottom hud wave", "deepseek-v4-flash"} {
-			if !strings.Contains(legend, want) {
-				t.Fatalf("at %d columns the seam is missing %q: %q", tc.width, want, legend)
-			}
+		// The model is on the seam WHOLE at every width this ladder covers —
+		// the numbers give way before it does — and the name is on none of
+		// them: it left the seam for good on 2026-09-17 (foot.go).
+		if !strings.Contains(legend, "deepseek-v4-flash") {
+			t.Fatalf("at %d columns the seam is missing the model: %q", tc.width, legend)
+		}
+		if strings.Contains(legend, "the bottom hud wave") {
+			t.Fatalf("at %d columns the seam carries the name: %q", tc.width, legend)
 		}
 		if strings.Contains(legend, "codeaf") {
 			t.Fatalf("at %d columns the legend is still carrying the path: %q", tc.width, legend)
@@ -5043,13 +5043,14 @@ func TestASessionWithoutRoomDoorsSaysSoAndStaysPut(t *testing.T) {
 	}
 }
 
-// THE RIDER OUTRANKS THE BRANCH AND THE NAME'S TAIL. On 2026-09-10 the owner
-// opened a conversation whose title ran to five words and the seam read `… ·
-// glm-5.3-flash · main` with no `via` at all, while `/status` said `served via
-// relace`: the rider was the filler after everything fixed, and a long title
-// left it nothing. Which machine is answering is the one fact on this line about
-// NOW, so it takes the branch's cells first and then the name's, and only a
-// name at its floor gives it up (foot.go's [app.seamIdentity]).
+// THE RIDER OUTRANKS THE BRANCH, AND A TITLE COSTS IT NOTHING. On 2026-09-10
+// the owner opened a conversation whose title ran to five words and the seam
+// read `… · glm-5.3-flash · main` with no `via` at all, while `/status` said
+// `served via relace`: the rider was the filler after everything fixed, and a
+// long title left it nothing. Which machine is answering is the one fact on
+// this line about NOW, so it takes the branch's cells first (foot.go's
+// [app.seamIdentity]) — and since 2026-09-17 the title is not on the line at
+// all, so it stands beside the model whatever the title's length.
 func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
 	a, _, now := hudApp(t)
 	a.title = "first line: casual greeting exchange about nothing"
@@ -5058,31 +5059,33 @@ func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
 		Model: "deepseek/deepseek-v4-flash", Provider: "relace", Rate: 40, At: now.Add(-time.Second),
 	}, true)
 
-	// Wide enough for everything: name, model, rider, branch.
-	if line := plain(a.legend(160)); !strings.Contains(line, "via relace") || !strings.Contains(line, "· main") {
-		t.Fatalf("with room for all of it, something was dropped: %q", line)
+	// Wide enough for everything: model, rider, branch — and the rider rides
+	// the model, not the end of the line.
+	line := plain(a.legend(160))
+	if !strings.Contains(line, "deepseek-v4-flash · via relace · main") {
+		t.Fatalf("with room for all of it, something was dropped or moved: %q", line)
 	}
-	// Room for the name and the rider, but not the branch: the branch goes.
-	// (A hundred and ten, not a hundred: the bill and the state word are on
-	// this line too since 2026-09-17, and they take the cells the rider had
-	// at a hundred — footswap.go.)
-	line := plain(a.legend(110))
-	if !strings.Contains(line, "via relace") {
-		t.Fatalf("the rider was given up before the branch: %q", line)
+	if strings.Contains(line, "casual") || strings.Contains(line, "…") {
+		t.Fatalf("the title is on the seam: %q", line)
 	}
-	if strings.Contains(line, "· main") {
-		t.Fatalf("the branch stayed while the rider had no room: %q", line)
+	// Narrowing, THE BRANCH GOES BEFORE THE RIDER at every width: there is no
+	// frame that keeps `· main` and drops `via relace`.
+	branchless := -1
+	for width := 160; width >= 40; width-- {
+		line := plain(a.legend(width))
+		if ansi.StringWidth(line) != width {
+			t.Fatalf("the legend is %d cells wide, want %d", ansi.StringWidth(line), width)
+		}
+		hasBranch, hasRider := strings.Contains(line, "· main"), strings.Contains(line, "via relace")
+		if hasBranch && !hasRider {
+			t.Fatalf("at %d columns the branch stayed while the rider had no room: %q", width, line)
+		}
+		if !hasBranch && hasRider && branchless < 0 {
+			branchless = width
+		}
 	}
-	// Tighter still: the name is cut and the rider stays whole.
-	line = plain(a.legend(80))
-	if !strings.Contains(line, "via relace") {
-		t.Fatalf("the rider was given up before the name's tail: %q", line)
-	}
-	if !strings.Contains(line, "…") {
-		t.Fatalf("the name was not cut to seat the rider: %q", line)
-	}
-	if ansi.StringWidth(line) != 80 {
-		t.Fatalf("the legend is %d cells wide, want 80", ansi.StringWidth(line))
+	if branchless < 0 {
+		t.Fatal("no width dropped the branch while keeping the rider")
 	}
 }
 

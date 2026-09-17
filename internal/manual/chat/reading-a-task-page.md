@@ -281,12 +281,13 @@ The rule over a task page's message box is the same seam a conversation has over
 box, with the task's facts on it and the way out where the conversation's name would be:
 
 ```
-─ room · esc/←← main · task glm-5.2 · ⠿ high · ◇ on its own · via friendli ──── ↑↓ history ─
+─ room · esc/←← main · task glm-5.2 · via friendli · ⠿ high · ◇ on its own ──── ↑↓ history ─
 › steer the node
 ```
 
 Left to right: the way out, **the task's own model** (led by the word `task`, and
-`next model …` once you have retargeted it), **how hard this task thinks** — the rung set on
+`next model …` once you have retargeted it) with its `via` machine right beside it,
+**how hard this task thinks** — the rung set on
 it, or the rung it inherited from your conversation — and **`◇ on its own`**, then the
 machine answering for it, `via friendli`, whoever served it.
 

@@ -1136,7 +1136,7 @@ The line above the message box — the legend — names how hard the model will 
 your next turn, immediately after the model that will be doing the thinking:
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
+─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ──── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1223,7 +1223,7 @@ decides*.
 After the thinking rung, the legend names what this conversation runs **without asking**:
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · ◇ asks · via deepinfra · main* ─── / commands ─
+─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ─── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -2222,8 +2222,11 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The box row reads `› say what you want done`. **The rule above it is a legend on home and
-nowhere else**, and it says what the box is a draft *for*:
+The box row reads `› type to search or start something new` — the promise itself, both
+readings of what you type: a search of everything home shows, or the first message of a
+new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
+promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
+it says what the box is a draft *for*:
 `─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────`
 
 — the folder the next conversation opens in, the model it will answer on, how hard it will
@@ -2237,15 +2240,16 @@ conversation's box, and it is absent when there is nowhere to go.
 **On a Mac those clauses read `opt+w folder · opt+o model · opt+k chats`** — the same
 keys, drawn with the modifier your keycaps wear.
 The line under the box is the foot, and **at rest it is exactly**
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · alt+w folder · alt+o model · alt+k chats · / commands · tab next place`
-— the design's four keys, the folder chord, the draft's chords, and the way to the next
-place; on a narrow frame the clauses nearest `tab next place` go first, the draft's chords
-before the rest. `esc` still closes home from anywhere; the resting foot does not spend a
-cell naming it, and `alt+.` draws the whole map when you want it.
+`↑↓ pick · enter open · ctrl+o open folder · alt+w folder · alt+o model · alt+k chats · / commands · tab next place`
+— keys and nothing else: the two the list answers to, the folder chord, the draft's
+chords, and the way to the next place; on a narrow frame the clauses nearest `tab next
+place` go first, the draft's chords before the rest. `esc` still closes home from
+anywhere; the resting foot does not spend a cell naming it, and `alt+.` draws the whole
+map when you want it.
 
 On the grid every row under a moving heading — a conversation, a question, a running task,
 a `scheduled` order, a `since you left` line — rests on the one sentence,
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`,
+`↑↓ pick · enter open · ctrl+o open folder · tab next place`,
 and it does not change as the cursor walks. Elsewhere, on a row with keys of its own, the
 foot says what THAT row's keys do and gains the two that are true everywhere —
 `enter opens the place this happened in · alt+. map · tab next place · esc close` on a

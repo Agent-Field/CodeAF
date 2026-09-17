@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
@@ -257,23 +259,38 @@ func TestAHostedConversationDrawsTheRungItsEngineAdmitsTo(t *testing.T) {
 	}
 }
 
-// THE RUNG IS ANCHORED TO THE MODEL AND NOT TO THE END OF THE LINE. The `via`
-// rider comes and goes on a sighting's own clock, so a rung drawn after it would
-// slide sideways under a hand that had just learned where it was.
+// THE RIDER STANDS BETWEEN THE MODEL AND THE RUNG. Until 2026-09-17 the rung
+// was anchored to the model so that a rider coming and going on a sighting's
+// own clock could not slide it sideways; the owner ruled that day that the
+// model and its machine read as one cell — `deepseek-v4 · via quicksilver` —
+// so the rung stands past the pair and moves with it. What holds still is
+// the model's own column, and the recorded doors move with their cells
+// (foot.go's seamSpans).
 func TestTheRungKeepsItsColumnsWhenTheRiderComesAndGoes(t *testing.T) {
 	_, a := dialled(t)
 	bare := seamLine(t, a)
+	_ = frame(a)
+	bareDial := a.seamEffortSpan
 	at := a.now()
 	pinSighting(t, provider.Sighting{
 		Model: "deepseek/deepseek-v4", Provider: "quicksilver", At: at.Add(-time.Second),
 	}, true)
 	served := seamLine(t, a)
+	_ = frame(a)
 
-	if !strings.Contains(served, glyphEffort+" high · via quicksilver") {
-		t.Fatalf("the rider does not follow the rung: %q", served)
+	if !strings.Contains(served, "deepseek-v4 · via quicksilver · "+glyphEffort+" high") {
+		t.Fatalf("the rider does not stand between the model and the rung: %q", served)
 	}
-	if strings.Index(bare, glyphEffort) != strings.Index(served, glyphEffort) {
-		t.Fatalf("the rung moved when the rider arrived:\n%q\n%q", bare, served)
+	if strings.Index(bare, "deepseek-v4") != strings.Index(served, "deepseek-v4") {
+		t.Fatalf("the model moved when the rider arrived:\n%q\n%q", bare, served)
+	}
+	// AND THE RUNG'S DOOR MOVED WITH ITS CELL: the span is measured past the
+	// rider, so a press on the rung's word is still a press on the rung.
+	if !a.seamEffortSpan.pressable() || a.seamEffortSpan.from <= bareDial.from {
+		t.Fatalf("the rung's door did not move past the rider: %+v then %+v", bareDial, a.seamEffortSpan)
+	}
+	if got := ansi.StringWidth(served[:strings.Index(served, glyphEffort)]); got != a.seamEffortSpan.from {
+		t.Fatalf("the rung's door is at %+v but its cell starts at cell %d:\n%q", a.seamEffortSpan, got, served)
 	}
 }
 

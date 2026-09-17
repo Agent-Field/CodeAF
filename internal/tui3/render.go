@@ -3561,13 +3561,14 @@ func (a *app) branchWord() string {
 	return a.branch
 }
 
-// legendLeft is where this conversation is running: its branch and, on a remote
-// session, its machine. The status line owns session identity, so the adjacent
-// legend does not repeat the conversation name.
+// legendLeft is what is answering this conversation and where it is running:
+// the model with its machine, the rung, the gate, the branch and, on a remote
+// session, the host. The tab strip and the breadcrumb bar own the
+// conversation's name, so the legend does not repeat it (foot.go).
 //
 // THE MACHINE KEEPS ITS PLACE NOW THAT THE PATH HAS LOST ITS OWN. host.go's law
 // is that a connection is shown as the place and nowhere else, and this end of
-// the legend is that place: `devbox · porting the parser`. It is written as a
+// the legend is that place: `devbox · glm-5.3-flash`. It is written as a
 // SEGMENT rather than with the path's colon, because `devbox:` in front of a
 // sentence of English is scp syntax pointed at something nobody can copy. It is
 // never cut, for the reason the path never cut it either — which machine is the

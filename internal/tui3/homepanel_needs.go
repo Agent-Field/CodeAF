@@ -381,7 +381,7 @@ func needsCallFiles(entry session.TaskIndexEntry) string {
 // A landing is `[a] accept · [n] not right` on its card, in its room and on its
 // record, and [session.LandingYesKey] is that letter (answers.go: the landing
 // keys are task-states' own, letter for letter). HOME CANNOT OFFER A LETTER. Its
-// foot promises "type to search or start something new" and the promise has no
+// box says "type to search or start something new" and the promise has no
 // asterisk — a bare letter on this screen always types, whatever the cursor is
 // resting on (home.go's [app.homeKey] states it), and the ONE printable
 // exception it allows is a digit drawn on the row itself. An `a` that sometimes

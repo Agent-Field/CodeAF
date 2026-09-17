@@ -18,13 +18,13 @@ import (
 // over it, in the same shape, with the same three cells and the same three
 // doors on them:
 //
-//	─ porting the parser · glm-5.3-flash · ⠿ high · ◇ asks · via deepinfra · main* ─── / commands ─
+//	─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks · main* ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
 //	 › what changed in the relay this week
 //
-//	─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model · / commands ─
-//	 › say what you want done
+//	─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────
+//	 › type to search or start something new
 //
-// The first is a conversation's seam (foot.go's THE SEAM IS WHO AND WHERE).
+// The first is a conversation's seam (foot.go's THE SEAM IS WHAT ANSWERS).
 // The second is the rule over the box on home — the draft for a conversation
 // that does not exist yet, and the one box on a place, because only home
 // starts things (pages.go's [place.box]). Left to right, both say

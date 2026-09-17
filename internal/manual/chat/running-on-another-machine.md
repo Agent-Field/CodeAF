@@ -247,9 +247,9 @@ would type it into `scp`:
 - `devbox:app` in the status line's place segment
 - `devbox:/srv/code/app` in full in `/status`
 
-The legend under the input box says the machine too, but as a segment of its own rather
-than as a path prefix, because that line carries the conversation's name and not the
-folder: `devbox · porting the parser`.
+The legend above the input box says the machine too, but as a segment of its own rather
+than as a path prefix, because that line carries the model and not the folder:
+`devbox · glm-5.3-flash`.
 
 `/status` also names the session file with its machine in front of it, because that is a
 path you may want to copy. Once a measurement exists it also says `the round trip to

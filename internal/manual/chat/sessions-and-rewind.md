@@ -488,8 +488,10 @@ in the older spelling.
 
 ## Why does the line above my box say something I did not type — who names this conversation, how long can a conversation name be, and can I rename it
 
-The name is written by a model, once, and appears in the status line below the message
-box: `porting the parser · gpt-4.1-mini:high`.
+The name is written by a model, once, and appears on the tab strip at the top of the frame
+and on the breadcrumb bar. It is not on the line above the message box: that line is the
+model's (`gpt-4.1-mini · ⠿ high`), and the name came off it on 2026-09-17 because a title
+takes the room the numbers need.
 
 **It starts with your first message.** The small model on the `title` role is shown the
 opening question and asked for a descriptive conversation title plus a compact tab label

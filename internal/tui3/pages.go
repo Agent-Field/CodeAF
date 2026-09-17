@@ -1545,11 +1545,13 @@ func scopeAddress(line homeLine) string {
 // The sentences the router says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// placeRestWord is what the box row says on a place with nothing typed into
-	// it — home included, exactly as SCREEN 2b draws it. What home's box ALSO
-	// does is filter, and that is said on the foot rather than in the box, where
-	// the design puts it ([homeRestHint]).
-	placeRestWord = "say what you want done"
+	// placeRestWord is what home's box row says with nothing typed into it: the
+	// promise the foot used to open with. It said `say what you want done` on
+	// every place until 2026-09-17, when the box came off every place but home
+	// and the owner ruled that the one box left says what it is for — both of
+	// its readings, the search and the start — and the foot under it keeps
+	// only the keys ([homeFootWord]).
+	placeRestWord = "type to search or start something new"
 	// placeHintWords is the second line of the composer, AND IT IS THE DESIGN'S
 	// OWN SENTENCE WORD FOR WORD (SCREEN 2b, and FIDELITY.md item 3 quotes it as
 	// the composer's foot). Four clauses: what enter does, what the chord does,

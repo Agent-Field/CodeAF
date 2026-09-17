@@ -46,8 +46,8 @@ import (
 //
 // THE SCREEN AND THE SOURCE ARE TWO DIFFERENT FACTS and the table carries both.
 // Most sentences this surface draws are one constant and the two are the same
-// string; some are composed at the draw — `type to search or start something new
-// · ↑↓ pick · enter open · tab next place` is two constants joined — and a gate
+// string; some are composed at the draw — `↑↓ pick · enter open · tab next
+// place` is two constants joined — and a gate
 // that grepped for the whole painted line would fail on a sentence the code
 // spells perfectly well in two halves. So `source` is what must stand in the
 // sources, and it defaults to `screen` when the two agree.
@@ -142,16 +142,16 @@ var tuiWords = map[string]tuiWord{
 
 	// ── home at rest ─────────────────────────────────────────────────────────
 	"homeFootWord": {
-		screen: "type to search or start something new · ↑↓ pick · enter open",
-		why:    "home's resting foot: the three verbs this screen offers and stays at three",
+		screen: "↑↓ pick · enter open",
+		why:    "home's resting foot: the two keys this screen offers and stays at two",
 	},
 	"placeHintTail": {
 		screen: "tab next place",
 		why:    "every place's foot ends with the one key that leaves it",
 	},
 	"placeRestWord": {
-		screen: "say what you want done",
-		why:    "the prompt in the box at the foot of a resting place",
+		screen: "type to search or start something new",
+		why:    "the promise in home's box with nothing typed into it — the one box on a place",
 	},
 	"homeDoorWord": {
 		screen: "space space home",

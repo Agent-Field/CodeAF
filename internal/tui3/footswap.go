@@ -20,17 +20,18 @@ import (
 // different programs. The owner ruled that THE LOWEST LINE IS FOR KEYS on both,
 // and that the telemetry goes up onto the seam where the chords were:
 //
-//	─ porting the parser · glm-5.3-flash · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash · via deepinfra · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
 //	 space space home · tab last · alt+k chats · / commands
 //
 //	─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────────
-//	 › say what you want done
-//	 type to search or start something new · ↑↓ pick · enter open · alt+w folder · alt+o model · / commands · tab next place
+//	 › type to search or start something new
+//	 ↑↓ pick · enter open · alt+w folder · alt+o model · / commands · tab next place
 //
-// THE SEAM IS WHO, WHERE AND HOW MUCH. Everything on it is a fact about the
-// conversation — its name, its model, its rung, its gate, and now its bill, its
-// meter and what it is doing — and three of its cells are still doors: the
+// THE SEAM IS WHAT ANSWERS AND HOW MUCH. Everything on it is a fact about the
+// conversation — its model and the machine serving it, its rung, its gate,
+// and now its bill, its meter and what it is doing (the name came off it the
+// same day: foot.go) — and three of its cells are still doors: the
 // model, the rung and the gate on the left (foot.go), the bill and the meter on
 // the right (the same two doors they were on the row below, recorded on the
 // seam's own row under [legendDoorRow]). The telemetry keeps every law it had:
