@@ -24,6 +24,13 @@ stays on disk; the id is derived on every read.
   to empty.
 - A seat on either new rung names the preset it ran at: `crew frugal,
   computed` on a run's receipt.
+- The preset an auto row runs at is read from the profile's other stored
+  rows, an auto row matching whichever preset is being compared. **When the
+  stored rows match more than one preset, the default preset — `balanced` —
+  wins the tie**, which is also what a profile matching none of them reads.
+  Since `max` differs from `balanced` only in the worker seat, a crew with
+  `auto` on the worker and the shipped rows elsewhere matches both and reads
+  as `balanced`; the worker's own id is what identifies `max` to the seam.
 - Rows that don't say auto are unchanged, and so is everything above the
   crew: a flag, `--plan-model` and the environment still outrank an auto
   row, and a flag whose text is `auto` is handed on whole.

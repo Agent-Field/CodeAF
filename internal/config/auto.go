@@ -203,6 +203,14 @@ func autoCatalogRows() []catalog.Model {
 // The answer is the first preset whose every row matches, the default preset
 // tried first and then the crew's own order; when none matches, the default —
 // the budget an undecided profile runs at is the budget an auto seat runs at.
+//
+// THE DEFAULT PRESET WINS EVERY TIE, and ties are ordinary rather than rare:
+// the presets differ in only a few cells, so an auto row on a seat the two
+// presets share leaves the rest of the rows matching both. Max differs from
+// balanced only in the worker seat today, which makes a crew with an auto
+// worker and the shipped rows elsewhere exactly that tie — it reads balanced.
+// Trying the default first is what decides it, so the order above is the rule
+// and not an accident of iteration.
 func crewPresetUnder(profileDir, family string) string {
 	defaults := crewTableFor(family)[DefaultCrew]
 	read := make(map[string]string, len(ModelTiers))

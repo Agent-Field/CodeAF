@@ -437,6 +437,30 @@ puts all five back in one write. A profile that applied a crew before the worker
 existed reads `custom` until a preset is applied again, because its four old rows and the
 new fifth are not any of the three.
 
+### A class row that says `auto`
+
+Any of the five class rows may hold the bare word `auto` instead of a model id, case
+folded. The seat's model is then **computed from the catalog** — the three published
+capability indexes against the three published prices, under that seat's own call shape —
+every time the row is read. The word stays on disk; the id is worked out on every read, so
+a catalog that moves moves the seat with it and your profile never holds a model id this
+build chose for you. A row with nothing to compute from — no catalog yet — falls back to
+the table row for your preset, never to `auto` and never to empty.
+
+**The budget it computes at comes from the other four rows.** `auto` has no opinion about
+cost of its own, so it runs at whatever preset the rows around it name: four rows that are
+`balanced`'s make an `auto` row a balanced seat, four that are `max`'s make it a max seat.
+
+**When the other rows match more than one preset, `balanced` wins.** It is the default
+preset, and the budget an undecided profile runs at is the budget an `auto` seat runs at.
+This is not a rare corner: `max` differs from `balanced` only in the worker seat, so a
+crew with `auto` on the worker and the other four rows as shipped matches both, and reads
+as `balanced`. Pin the worker to `max`'s own id and put the `auto` row on a seat above it
+if you want a computed seat at `max`'s budget.
+
+A seat on a computed row names both facts where a seat is shown — `crew balanced,
+computed` — so the reading is never a guess.
+
 ### The roles under each class
 
 Directly under the **pinned roles** row the panel lists **every registered role**, grouped

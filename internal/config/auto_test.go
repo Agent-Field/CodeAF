@@ -242,31 +242,72 @@ func TestThePresetAnAutoSeatRunsAtIsReadFromTheStoredRows(t *testing.T) {
 	if seat.Rung() != "crew "+CrewMax+", computed" {
 		t.Errorf("the rung reads %q, want crew max, computed", seat.Rung())
 	}
-	// And the tie itself, pinned: max's four other rows are balanced's, so the
-	// auto row on the worker reads the default preset — balanced wins it — and
-	// the worker runs at balanced's budget.
-	rows = map[string]string{KeyTierWorkerModel: AutoValue}
-	for _, tier := range ModelTiers {
-		if tier != ModelTierWorker {
-			rows[tierKeyFor(tier)] = models[tier]
-		}
-	}
-	dir = writeProfileRows(t, rows)
-	AutoModels = func() []catalog.Model { return autoTestRows() }
-	seat = TierSeatAt(dir, ModelTierWorker)
-	AutoModels = restore
-	if seat.Crew != CrewBalanced {
-		t.Errorf("max's rows with an auto worker read as %q, want balanced, the default preset", seat.Crew)
-	}
-	if seat.Rung() != "crew "+CrewBalanced+", computed" {
-		t.Errorf("the rung reads %q, want crew balanced, computed", seat.Rung())
-	}
 	// A profile with no auto row anywhere reads as it always read — the
 	// default rung, no crew word — which is the unchanged-behaviour law: the
 	// seam fires only on a row that says the word.
 	seat = TierSeatAt(t.TempDir(), ModelTierWorker)
 	if seat.Rung() != "default" || seat.Crew != "" {
 		t.Errorf("an untouched profile reads %q (%s), want the default rung as before", seat.Rung(), seat.Crew)
+	}
+}
+
+// THE DEFAULT PRESET WINS EVERY TIE. An auto row matches whichever preset is
+// being compared, so a profile whose OTHER rows match two presets at once has
+// no single answer from the rows alone — and the answer is the default preset,
+// balanced, the budget an undecided profile already runs at.
+//
+// The tie is built here rather than assumed: the worker holds auto and the
+// other four rows are taken from max, and the test first states that those
+// four are balanced's rows too, which is what makes this a tie at all. Should
+// the tables move so the two presets differ somewhere above the worker, that
+// first check fails and says so, rather than the test quietly pinning nothing.
+func TestTheDefaultPresetWinsWhenTheStoredRowsMatchTwoPresets(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	balanced, ok := CrewModelsForSource(DefaultCrewSource, CrewBalanced)
+	if !ok {
+		t.Fatalf("there is no %s preset in the %s family", CrewBalanced, DefaultCrewSource)
+	}
+	max, ok := CrewModelsForSource(DefaultCrewSource, CrewMax)
+	if !ok {
+		t.Fatalf("there is no %s preset in the %s family", CrewMax, DefaultCrewSource)
+	}
+	rows := map[string]string{KeyTierWorkerModel: AutoValue}
+	for _, tier := range ModelTiers {
+		if tier == ModelTierWorker {
+			continue
+		}
+		if balanced[tier] != max[tier] {
+			t.Fatalf("the %s seat differs between balanced (%s) and max (%s), so an auto worker is no longer a tie",
+				tier, balanced[tier], max[tier])
+		}
+		rows[tierKeyFor(tier)] = max[tier]
+	}
+	if balanced[ModelTierWorker] == max[ModelTierWorker] {
+		t.Fatalf("balanced and max name the same worker, so the two presets are not two")
+	}
+
+	dir := writeProfileRows(t, rows)
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	seat := TierSeatAt(dir, ModelTierWorker)
+	AutoModels = restore
+
+	if seat.Crew != CrewBalanced {
+		t.Errorf("rows matching both presets read as %q, want %s, the default preset", seat.Crew, CrewBalanced)
+	}
+	if seat.Rung() != "crew "+CrewBalanced+", computed" {
+		t.Errorf("the rung reads %q, want crew %s, computed", seat.Rung(), CrewBalanced)
+	}
+	// And the same tie on the table rung, with nothing to compute from: the
+	// default preset decides the fallback id too, not just the budget word.
+	dir = writeProfileRows(t, rows)
+	seat = TierSeatAt(dir, ModelTierWorker)
+	if seat.Crew != CrewBalanced || seat.Source != SeatTable {
+		t.Errorf("with no catalog the tie reads %q (%s), want balanced on the table rung", seat.Crew, seat.Rung())
+	}
+	if seat.Model != balanced[ModelTierWorker] {
+		t.Errorf("the tie's table id is %q, want balanced's own worker %q", seat.Model, balanced[ModelTierWorker])
 	}
 }
 
