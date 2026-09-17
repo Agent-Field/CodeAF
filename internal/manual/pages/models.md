@@ -90,6 +90,10 @@ that works, one that plans — and both resolve the same way. First answer wins:
 The crew is the same one `/crew` sets in the chat, so a machine told `frugal` there runs
 frugal here. It answers only where a crew has actually been set; an untouched profile takes
 the build's default. `CODEAF_HOME` and `CODEAF_PROFILE_DIR` decide which profile is asked.
+A seat computed from the catalog says so where the preset would be — `crew frugal,
+computed from the catalog` — and one computed with what your runs measured says `crew
+frugal, learned`; the **picked from** row in the chat's settings decides which, and a
+pick of `catalog` or `learn` seats a run from the shell exactly as it seats the chat.
 
 Every one of those runs opens with a line on stderr naming both seats and what chose each:
 

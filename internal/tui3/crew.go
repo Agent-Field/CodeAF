@@ -38,21 +38,45 @@ func (a *app) runCrew(arg string) {
 	arg = strings.ToLower(strings.TrimSpace(arg))
 	if arg == "" {
 		a.closeLists()
-		a.crewPick.start(config.CrewAt(a.profileDir), config.CrewSourceAt(a.profileDir), a.crewInheritedLine())
+		a.crewPick.start(config.CrewAt(a.profileDir), config.CrewSourceAt(a.profileDir),
+			a.crewInheritedLine(), config.CrewPickAt(a.profileDir))
 		a.touch()
 		return
 	}
+	// THE THREE PICK WORDS, beside the presets: `/crew learn` says where the
+	// seats come from without moving any of them. The row is written alone and
+	// the confirmation is [app.crewApplied]'s, which names the pick beside the
+	// preset ([config.CrewSummaryPick]) — the same word the segment and
+	// /status now carry, so the answer and the frame cannot drift apart.
+	for _, pick := range config.CrewPicks {
+		if arg != pick {
+			continue
+		}
+		if err := config.SetCrewPick(a.profileDir, pick); err != nil {
+			a.note("could not set the pick · " + err.Error())
+			return
+		}
+		a.crewApplied()
+		return
+	}
 	if _, ok := config.CrewModels(arg); !ok {
-		// AN UNKNOWN WORD CHANGES NOTHING AND SHOWS THE THREE. A refusal that
-		// only said "no" would leave a person guessing at a word they were one
-		// letter away from, and the listing is the answer to the question they
-		// were really asking.
-		// The listing is a two-column page — a class word, then the model it would
-		// set — so its right-hand column is what THE PAYLOAD RULE lifts, read back
-		// off the text this call just built (payload.go's [columnFacts]).
+		// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE SIX, the shape every
+		// choice this surface refuses takes (effortchip.go's [app.runEffort]):
+		// a refusal that only said "no" would leave a person guessing at a word
+		// they were one letter away from, and the words are the answer to the
+		// question they were really asking. The listing is kept under them,
+		// because it is the comparison between the presets the words set.
+		// The listing is a two-column page — a class word, then the model it
+		// would set — so its right-hand column is what THE PAYLOAD RULE lifts,
+		// read back off the text this call just built (payload.go's
+		// [columnFacts]).
+		words := make([]string, 0, len(config.CrewPresets)+len(config.CrewPicks))
+		words = append(words, config.CrewPresets...)
+		words = append(words, config.CrewPicks...)
 		listing := a.crewListing()
-		a.noteFacts("/crew "+arg+" · not one of the three\n\n"+listing,
-			columnFacts(listing, false)...)
+		facts := append(words, columnFacts(listing, false)...)
+		a.noteFacts("/crew "+arg+" · not a crew word · "+strings.Join(words, " · ")+"\n\n"+listing,
+			facts...)
 		return
 	}
 	a.applyCrew(arg)
@@ -99,7 +123,12 @@ func (a *app) crewApplied() {
 	if id := a.talkingTo(); id != "" {
 		facts = append(facts, id)
 	}
-	a.noteFacts(config.CrewSummary(a.profileDir)+" · "+a.crewUnchangedClause(), facts...)
+	// THE SUMMARY IS THE PICK-AWARE ONE ([config.CrewSummaryPick]), so a crew
+	// applied under a pick of catalog or learn confirms with the pick named
+	// beside the preset — the half the frame's segment and /status now carry.
+	// At the default pick it is the line the command has always confirmed
+	// with.
+	a.noteFacts(config.CrewSummaryPick(a.profileDir)+" · "+a.crewUnchangedClause(), facts...)
 }
 
 // applyCrewUnder is the chooser's enter: the family and the preset are ONE
@@ -194,8 +223,9 @@ func (a *app) crewSegment() string {
 // ── the one reading of the four rows ────────────────────────────────────────
 
 // crewReading is the profile's crew as this surface last read it: the preset
-// word [config.CrewAt] derives from the live rows, the three class names beside
-// it, and the settings generation the pair was read at.
+// word [config.CrewAt] derives from the live rows, the pick row's word
+// ([config.CrewPickAt]) when it is not the default one, the three class names
+// beside it, and the settings generation the pair was read at.
 type crewReading struct {
 	// word and segment are the two readings BUILT AT THE READING and not at the
 	// draw. The status line asks for the segment on every frame, and a surface
@@ -211,6 +241,11 @@ type crewReading struct {
 	clause  string
 	preset  string
 	classes string
+	// pick is the pick row's word as the reading read it, and is the default
+	// word rather than empty — a surface that wants to know whether the pick
+	// is off the table compares it with [config.CrewPickTable], the way the
+	// word and segment above were built.
+	pick string
 	// dir is the profile the pair was read from, so a surface handed a
 	// different one answers from that one and not from a snapshot of the last.
 	dir string
@@ -280,12 +315,27 @@ func (a *app) crewReading() (crewReading, bool) {
 	}
 	if generation := config.SettingsGeneration(); !a.crew.taken || a.crew.generation != generation || a.crew.dir != a.profileDir {
 		preset, classes := config.CrewAt(a.profileDir), config.CrewClasses(a.profileDir)
+		pick := config.CrewPickAt(a.profileDir)
+		// THE PICK RIDES THE WORD WHEN IT IS NOT THE DEFAULT ONE, in both the
+		// page's word and the status line's segment: `balanced · learn` says
+		// the budget and where the models for it come from in one word, and a
+		// segment that said only `balanced` under a learn pick would be the
+		// half-answer the crew segment exists to prevent. At the default pick
+		// the word is exactly what it has always been — the table is where the
+		// seats have always come from, and a word that named it would say
+		// something a person did not choose.
+		word, segment := preset+" · "+classes, "crew "+preset
+		if pick != config.CrewPickTable {
+			word = preset + " · " + pick + " · " + classes
+			segment = "crew " + preset + " · " + pick
+		}
 		a.crew = crewReading{
-			word:       preset + " · " + classes,
-			segment:    "crew " + preset,
+			word:       word,
+			segment:    segment,
 			clause:     preset + " crew",
 			preset:     preset,
 			classes:    classes,
+			pick:       pick,
 			dir:        a.profileDir,
 			generation: generation,
 			taken:      true,
@@ -440,13 +490,19 @@ type crewPicker struct {
 	// file, so a picker that asked the profile per frame would put a disk read
 	// on the frame clock for a fact that cannot move while the list is up.
 	inherited string
+	// pick is the pick row's word as the door read it, and the default word
+	// rather than empty. IT IS NOT STAGED: the family below is staged and
+	// enter writes it, but a pick word typed at the door is written at once
+	// ([app.runCrew]), so the pick on screen is always the pick in force — a
+	// reading, and not a row the list's keys could move.
+	pick string
 }
 
-func (p *crewPicker) start(current, source, inherited string) {
+func (p *crewPicker) start(current, source, inherited, pick string) {
 	// source is already a word this build knows: every caller hands it
 	// [config.CrewSourceAt]'s answer, which folds blank, unknown and retired words
 	// back to the default family. The fold lives there and nowhere else.
-	*p = crewPicker{open: true, current: current, persistedSource: source, inherited: inherited, source: source}
+	*p = crewPicker{open: true, current: current, persistedSource: source, inherited: inherited, source: source, pick: pick}
 	for i, preset := range config.CrewPresets {
 		if preset == current {
 			p.cursor = i
@@ -489,6 +545,12 @@ const (
 	// crewCustomLine is the fourth reading, said as a fact about where the person
 	// is rather than as a fourth row they could pick.
 	crewCustomLine = "yours is none of the three — picking one puts all five back"
+	// crewPickLead is the pick's lead in the chooser — `picked from learn` —
+	// the same words the crew word and the segment ride when the pick is off
+	// its default ([app.crewReading]). It is said as a reading and not a row:
+	// the pick is written by a word at the door, not by anything this list's
+	// keys move.
+	crewPickLead = "picked from "
 	// crewInheritedLead and crewInheritedTail wrap the row a profile older than
 	// a seat never wrote:
 	//
@@ -513,6 +575,9 @@ func (p *crewPicker) height() int {
 	}
 	height := crewFrameRows + len(config.CrewPresets)*2
 	if p.current == config.CrewCustom {
+		height++
+	}
+	if p.pick != "" && p.pick != config.CrewPickTable {
 		height++
 	}
 	if p.inherited != "" {
@@ -633,6 +698,14 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 	// staged: hiding it would drop a row [crewPicker.height] still counts.
 	if p.current == config.CrewCustom {
 		out = append(out, pal.dim(fit(crewCustomLine, width)))
+	}
+	// AND THE PICK, a fact about the saved crew like the custom line above it.
+	// It is said only when it is off the default — the table is where the
+	// seats have always come from, and a line naming it would say something
+	// nobody chose — and it takes no cursor and no ground, because the pick is
+	// not staged here: a word typed at the door writes it at once.
+	if p.pick != "" && p.pick != config.CrewPickTable {
+		out = append(out, pal.dim(fit(crewPickLead+p.pick, width)))
 	}
 	// AND THE ROW NOBODY WROTE, said last among the readings and before the door
 	// out: it is the one fact on this list that is about the person's own five

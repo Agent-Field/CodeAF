@@ -380,6 +380,21 @@ var settingUI = map[string]settingMeta{
 		about: "which models the crew word draws from: open weights, or the whole " +
 			"catalog with closed and frontier models in it. All is the default.",
 	},
+	// WHERE THE CREW'S MODELS COME FROM, beside the crew word itself. The crew
+	// row says how much to spend and this says where the models for that money
+	// are read from when a class row does not hold a person's own id: the rows
+	// this build measured, or the same budgets recomputed off the catalog on
+	// every read, with or without what the Model Pool and the person's own
+	// judged runs measured. The about is the registry's own hint whole, not its
+	// first sentence, because the three words are the answer and the first
+	// sentence alone would send a person hunting for what catalog means.
+	config.KeyCrewPick: {
+		tab: tabProviders, label: "picked from", widget: widgetCycle,
+		about: "where the crew's models come from. table: the rows we measured. " +
+			"catalog: recomputed from today's published prices and scores at your " +
+			"crew's budget. learn: catalog plus the Model Pool's measurements and " +
+			"your own judged runs.",
+	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
 		about: "cheap · the small calls — names, digests, the safety gate",
@@ -808,6 +823,10 @@ func modelsSectionOrder() []string {
 		config.KeyRouting,
 		config.KeyPromptProfile,
 		config.KeyCrew,
+		// THE PICK ANSWERS THE CREW WORD'S OWN QUESTION ONE LEVEL DOWN — where
+		// the models for that budget come from — so it reads directly under the
+		// crew word, before the classes it seats.
+		config.KeyCrewPick,
 	}
 	for _, tier := range roles.Tiers {
 		order = append(order, tierSettingKey(tier))

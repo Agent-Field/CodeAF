@@ -73,10 +73,18 @@ const (
 	// derived, not named.
 	SeatComputed SeatSource = "computed"
 	// SeatTable is a tier row that says `auto` answering from the family's
-	// table row ([autoRow]) because nothing could be computed — no catalog, or
-	// no pick off it. The id is the preset's own, and the rung says which kind
-	// of answer it was.
+	// table row ([autoRow], [pickedModel]) because nothing could be computed —
+	// no catalog, or no pick off it. The id is the preset's own, and the rung
+	// says which kind of answer it was.
 	SeatTable SeatSource = "table"
+	// SeatLearned is a seat computed at the crew's budget under the `learn`
+	// pick ([CrewPickAt]): the catalog's own figures, plus the Model Pool's
+	// measurements and the person's own judged runs carried as a quality
+	// prior. It is a rung of its own, beside [SeatComputed], because the one
+	// fact a reader of a run is checking — was this id derived, and from
+	// what — is a different answer under the two words: the catalog alone,
+	// or the catalog plus what runs measured.
+	SeatLearned SeatSource = "learned"
 	// SeatDefault is this build's choice, for a profile that has never said
 	// anything about models at all.
 	SeatDefault SeatSource = "default"
@@ -265,6 +273,17 @@ func tierSeatUnder(profileDir, family, tier string) Seat {
 		model, source, preset = autoRow(profileDir, family, tier)
 		return Seat{Role: tierSeatRole(tier), Model: model, Source: source, Crew: preset}
 	}
+	// AND THE PICK ROW ANSWERS FOR THE SEATS NOBODY NAMED, before the row's
+	// own rung is read: a pick of catalog or learn computes the dial seats at
+	// the crew's preset ([pickedSeat]), and leaves everything it does not
+	// answer — a hand-typed id, a cleared row, the two seats that always read
+	// the table — exactly as it was. A cleared row is a deliberate answer
+	// ("follow the conversation") and no pick unsays it on this surface.
+	if !cleared {
+		if seat, ok := pickedSeat(profileDir, family, tier, model); ok {
+			return seat
+		}
+	}
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}
 }
 
@@ -339,7 +358,9 @@ func (s Seat) Rung() string {
 		// substitution this rung exists to report.
 		return s.crewRung() + ", inherited"
 	case SeatComputed:
-		return s.crewRung() + ", computed"
+		return s.crewRung() + ", computed from the catalog"
+	case SeatLearned:
+		return s.crewRung() + ", learned"
 	case SeatTable:
 		return s.crewRung() + ", table"
 	}
@@ -599,8 +620,18 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 	// fallback except silence: a row cleared on purpose says "follow the
 	// conversation", which a headless run has no conversation to answer with,
 	// and it lands on the same bottom rung a profile that said nothing does.
-	model, from, source, _ := crewRow(profileDir, tier)
+	model, from, source, cleared := crewRow(profileDir, tier)
 	if source == "" {
+		// THE PICK ANSWERS BEFORE THE BOTTOM RUNG: an unwritten seat under a
+		// pick of catalog or learn is computed at the crew's preset
+		// ([pickedSeat]), the same answer the conversation reads, and a row
+		// cleared on purpose still falls through — the pick answers for seats
+		// nobody named, and a cleared row is somebody naming emptiness.
+		if !cleared {
+			if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, ""); ok {
+				return seat
+			}
+		}
 		seat.Model, seat.Source = fallback, SeatDefault
 		return seat
 	}
@@ -612,6 +643,12 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 		var preset string
 		seat.Model, seat.Source, preset = autoRow(profileDir, CrewSourceAt(profileDir), tier)
 		seat.Crew = preset
+		return seat
+	}
+	// AND BETWEEN THE ROW AND ITS OWN RUNG, the pick: a written row holding
+	// the preset's own table value is the preset answering rather than a pin,
+	// and the pick computes it ([pickedSeat]); a hand-typed id keeps its rung.
+	if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, model); ok {
 		return seat
 	}
 	seat.Model, seat.Source, seat.From, seat.Crew = model, source, from, CrewAt(profileDir)

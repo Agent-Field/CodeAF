@@ -345,7 +345,7 @@ that answer a handful of times. You can pin any vendor's model on any row yourse
 can connect that vendor as a direct service; the
 [services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
-**The `model family` row** (`models.crew.source`, just under the crew row) decides which family
+**The `model family` row** (`models.crew.source`) decides which family
 the three preset words draw from. `all` is the default and is the table above: the whole
 catalog, closed and frontier models included, costing what those models cost. `open` reads the
 same three words, `frugal`, `balanced` and `max`, off the open-weight rows only, so no seat is a
@@ -427,9 +427,13 @@ enter applies and esc cancels. If the five classes make a custom crew, no row is
 the chooser says picking one puts all five back. `/crew max` still sets it directly and
 confirms in one line, which ends `· you are still talking to deepseek-v4-flash — /model
 changes that` — naming the conversation's own model by id, because the crew changes
-nothing about it and the model segment on the status line goes on saying what it said before.
-The **crew** row in `/settings` → Providers is the same thing: enter or space walks it
-frugal → balanced → max.
+nothing about it and the model segment on the status line goes on saying what it said
+before. `/crew learn`, `/crew catalog` and `/crew table` move the **picked from** row and
+nothing else — the three words the row takes, answered without touching a model id — and
+when the pick is off `table` the crew word says so beside the preset: `balanced · learn`
+in `/status`, `crew balanced · learn` on the status line. The **crew** row in `/settings`
+→ Providers is the same thing: enter or space walks it frugal → balanced → max, and the
+**picked from** row under it walks table → catalog → learn.
 
 **The crew row is not stored — it is worked out from the five.** Answer any one of the five
 rows yourself and the crew row reads `custom`, because that is what is true. `/crew balanced`
@@ -437,15 +441,43 @@ puts all five back in one write. A profile that applied a crew before the worker
 existed reads `custom` until a preset is applied again, because its four old rows and the
 new fifth are not any of the three.
 
-### A class row that says `auto`
+### Where the seats are picked from — table, catalog, learn
 
-Any of the five class rows may hold the bare word `auto` instead of a model id, case
-folded. The seat's model is then **computed from the catalog** — the three published
-capability indexes against the three published prices, under that seat's own call shape —
-every time the row is read. The word stays on disk; the id is worked out on every read, so
-a catalog that moves moves the seat with it and your profile never holds a model id this
-build chose for you. A row with nothing to compute from — no catalog yet — falls back to
-the table row for your preset, never to `auto` and never to empty.
+The **picked from** row (`models.crew.pick`, just under the crew row) says where the
+seats' models come from when a class row does not hold a model id of its own. The crew
+row above it still says how much to spend; this row says where the models for that
+money are read from:
+
+- **table** — the rows we measured: the ids this build shipped with, the same ones every
+  preset table holds. This is the default, and it is what an unwritten class has always
+  read.
+- **catalog** — recomputed from today's published prices and scores at your crew's
+  budget, on every read. Nothing is stored; a catalog that moves moves the seat with it,
+  and your profile never holds a model id this build chose for you.
+- **learn** — the catalog computation plus the Model Pool's measurements and your own
+  judged runs, carried as a quality rating the better-measured models read on top of
+  their published scores.
+
+A pick moves the three seats the presets dial — **worker**, **careful work** and
+**mastermind** — and never the two that read every turn: **reflex** and **small work**
+keep their near-free ids, the same ones in every preset.
+
+**A model you typed by hand wins.** The pick answers for the seats nobody named. A class
+row holding a model id that is not the preset's own keeps it, spelled as you typed it;
+a row holding the preset's own id is the preset answering rather than a pin, and the
+pick computes it. **A flag or an environment variable still outranks the pick** — the
+pick reads the profile, and `--model` and `CODEAF_MODEL` are what an invocation said.
+
+When the catalog cannot compute a seat — no catalog yet, or no pick off its front — the
+seat falls back to the table row for your preset, never to `auto` and never to empty. A
+seat the pick computed names it where the preset would be: `crew balanced, computed
+from the catalog` under **catalog**, `crew balanced, learned` under **learn**.
+
+**The per-seat alias is the bare word `auto`.** Any of the five class rows may hold the
+bare word `auto` instead of a model id, case folded. The seat's model is then
+**computed from the catalog** — the three published capability indexes against the three
+published prices, under that seat's own call shape — every time the row is read. The
+word stays on disk; the id is worked out on every read.
 
 **The budget it computes at comes from the other four rows.** `auto` has no opinion about
 cost of its own, so it runs at whatever preset the rows around it name: four rows that are
@@ -459,7 +491,7 @@ as `balanced`. Pin the worker to `max`'s own id and put the `auto` row on a seat
 if you want a computed seat at `max`'s budget.
 
 A seat on a computed row names both facts where a seat is shown — `crew balanced,
-computed` — so the reading is never a guess.
+computed from the catalog` — so the reading is never a guess.
 
 ### The roles under each class
 

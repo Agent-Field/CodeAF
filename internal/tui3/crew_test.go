@@ -169,7 +169,10 @@ func TestCrewAppliesAPresetAndConfirmsInOneLine(t *testing.T) {
 	}
 }
 
-// AN UNKNOWN WORD CHANGES NOTHING AND SHOWS THE THREE.
+// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE SIX — the three presets and the
+// three pick words — the shape every choice this surface refuses takes
+// (effortchip.go's [app.runEffort]): a refusal that only said "no" would leave
+// a person guessing at a word they were one letter away from.
 func TestCrewRefusesAWordThatIsNotOneOfTheThree(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.slash("/crew cheap")
@@ -178,13 +181,19 @@ func TestCrewRefusesAWordThatIsNotOneOfTheThree(t *testing.T) {
 		t.Fatalf("an unknown word changed the crew to %q", got)
 	}
 	text := lastNote(t, a)
-	if !strings.Contains(text, "not one of the three") {
+	if !strings.Contains(text, "not a crew word") {
 		t.Fatalf("the refusal reads %q", text)
 	}
-	for _, preset := range config.CrewPresets {
-		if !strings.Contains(text, preset) {
-			t.Errorf("the refusal does not offer %q:\n%s", preset, text)
+	words := make([]string, 0, len(config.CrewPresets)+len(config.CrewPicks))
+	words = append(words, config.CrewPresets...)
+	words = append(words, config.CrewPicks...)
+	for _, word := range words {
+		if !strings.Contains(text, word) {
+			t.Errorf("the refusal does not offer %q:\n%s", word, text)
 		}
+	}
+	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
+		t.Fatalf("an unknown word changed the pick to %q", got)
 	}
 }
 
@@ -882,4 +891,104 @@ func TestTheStatusSheetCarriesTheCrewUnderTheModel(t *testing.T) {
 		return
 	}
 	t.Fatalf("the sheet has no crew line: %+v", items)
+}
+
+// ── the pick row ────────────────────────────────────────────────────────────
+
+// THE THREE PICK WORDS ARE DOOR WORDS, beside the presets: `/crew learn` says
+// where the seats come from and moves no model id, and the confirmation, the
+// crew word and the segment all carry it. `/crew table` is the way back.
+func TestCrewTakesThePickWords(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.slash("/crew learn")
+
+	if got := config.CrewPickAt(dir); got != config.CrewPickLearn {
+		t.Fatalf("/crew learn left the pick reading %q", got)
+	}
+	if got := config.CrewAt(dir); got != config.DefaultCrew {
+		t.Fatalf("a pick word moved the crew to %q", got)
+	}
+	// THE CREW WORD AND THE SEGMENT SAY IT: `balanced · learn` on the page,
+	// `crew balanced · learn` on the status line — the word a person reads in
+	// /status is the word the frame carries.
+	if word := a.crewWord(); !strings.Contains(word, "· learn") {
+		t.Fatalf("the crew word reads %q, want the pick beside the preset", word)
+	}
+	if seg := a.crewSegment(); seg != "crew balanced · learn" {
+		t.Fatalf("the segment reads %q, want crew balanced · learn", seg)
+	}
+	if text := lastNote(t, a); !strings.Contains(text, "crew → "+config.DefaultCrew+" · learn") {
+		t.Fatalf("the confirmation reads %q, want the pick named", text)
+	}
+
+	a.slash("/crew table")
+	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
+		t.Fatalf("/crew table left the pick reading %q", got)
+	}
+	if seg := a.crewSegment(); seg != "crew "+config.DefaultCrew {
+		t.Fatalf("the segment reads %q after the way back, want the plain crew word", seg)
+	}
+}
+
+// THE CHOOSER NAMES THE PICK when it is off the table, and says nothing about
+// the default: the table is where the seats have always come from, and a line
+// naming it would say something nobody chose.
+func TestTheCrewChooserNamesThePickWhenItIsOffTheTable(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.slash("/crew learn")
+	a.slash("/crew")
+	text := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
+	if !strings.Contains(text, "picked from learn") {
+		t.Fatalf("the chooser does not name the pick:\n%s", text)
+	}
+	a.crewPick.close()
+	a.slash("/crew table")
+	a.slash("/crew")
+	text = plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
+	if strings.Contains(text, "picked from") {
+		t.Fatalf("the chooser names the default pick:\n%s", text)
+	}
+}
+
+// THE PICK ROW SITS UNDER THE CREW ROW AND CYCLES, like every other enum row
+// on the sheet: the crew word above it says how much to spend, and this says
+// where the models for that money come from.
+func TestThePickRowSitsUnderTheCrewRowAndCycles(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.openSettings()
+	toProviders(t, a)
+
+	// THE PLACE: directly under the crew row, before the classes it seats. A
+	// pick row a tab away from the crew word would be two errands on two
+	// screens for one decision.
+	crew, pick := -1, -1
+	for i, item := range a.sheet.items {
+		switch item.row.Key {
+		case config.KeyCrew:
+			crew = i
+		case config.KeyCrewPick:
+			pick = i
+		}
+	}
+	if crew < 0 || pick < 0 {
+		t.Fatalf("the Providers tab holds no crew/pick pair (crew %d, pick %d)", crew, pick)
+	}
+	if pick != crew+1 {
+		t.Fatalf("the pick row sits at %d with the crew at %d, want it directly under", pick, crew)
+
+	}
+
+	cursorTo(t, a, config.KeyCrewPick)
+	drive(t, a, key("enter"))
+	if got := config.CrewPickAt(dir); got != config.CrewPickCatalog {
+		t.Fatalf("enter on table landed on %q, want %q", got, config.CrewPickCatalog)
+	}
+	drive(t, a, key("enter"))
+	if got := config.CrewPickAt(dir); got != config.CrewPickLearn {
+		t.Fatalf("enter on catalog landed on %q, want %q", got, config.CrewPickLearn)
+	}
+	drive(t, a, key("enter"))
+	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
+		t.Fatalf("enter on learn landed on %q, want %q", got, config.CrewPickTable)
+	}
 }

@@ -536,3 +536,69 @@ func TestAnUnwrittenSeatFollowsTheFamily(t *testing.T) {
 		t.Fatalf("an all profile with no rows reads the crew as %q, want %q", got, CrewBalanced)
 	}
 }
+
+// ── the pick row ────────────────────────────────────────────────────────────
+
+// THE PICK ROW DEFAULTS TO THE TABLE, and a word that is not one of the three
+// is refused the way every choice row refuses one.
+func TestCrewPickDefaultsToTheTable(t *testing.T) {
+	dir := t.TempDir()
+	if got := CrewPickAt(dir); got != CrewPickTable {
+		t.Fatalf("an untouched profile reads the pick %q, want %q", got, CrewPickTable)
+	}
+	if got := CrewAt(dir); got != DefaultCrew {
+		t.Fatalf("an untouched profile reads the crew %q, want %q", got, DefaultCrew)
+	}
+	if err := SetCrewPick(dir, CrewPickLearn); err != nil {
+		t.Fatalf("learn would not set: %v", err)
+	}
+	if got := CrewPickAt(dir); got != CrewPickLearn {
+		t.Fatalf("the pick reads %q after learn was set", got)
+	}
+	if err := SetCrewPick(dir, "measured"); err == nil {
+		t.Fatal("a word that is not one of the three was accepted")
+	}
+	if got := CrewPickAt(dir); got != CrewPickLearn {
+		t.Fatalf("a refused write left the pick reading %q", got)
+	}
+}
+
+// THE PICK-AWARE CREW WORD READS THE BUDGET THE SEATS ARE COMPUTED AT. The
+// live seats are computed ids the preset tables do not hold, so the word is
+// read off the STORED rows — a profile that applied a crew and then set the
+// pick keeps saying the crew it picked — and a row the person emptied on
+// purpose still reads custom, because "follows the conversation" is not any
+// of the three.
+func TestTheCrewWordReadsThePresetThePickComputesAt(t *testing.T) {
+	dir := t.TempDir()
+	if err := ApplyCrew(dir, CrewMax); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewPick(dir, CrewPickLearn); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewAt(dir); got != CrewMax {
+		t.Fatalf("a max crew under learn reads %q, want %q", got, CrewMax)
+	}
+	// And a hand-typed row makes the word custom, as it always has: the stored
+	// comparison is the honest one, not a second way to say balanced.
+	rows, err := os.ReadFile(BudgetConfigPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	if err := json.Unmarshal(rows, &values); err != nil {
+		t.Fatal(err)
+	}
+	values[tierKeyFor(ModelTierMastermind)] = "openai/gpt-5"
+	raw, err := json.Marshal(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(BudgetConfigPath(dir), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewAt(dir); got != CrewCustom {
+		t.Fatalf("a hand-typed row under learn reads the crew %q, want custom", got)
+	}
+}

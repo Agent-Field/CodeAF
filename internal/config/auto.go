@@ -56,7 +56,20 @@ var AutoIndex func() *index.Index
 // crewpick scores a seat on, with one cell per role and model.
 const PoolQualityMetric = "role_quality"
 
-// AutoPick is the word's own answer for one tier, computed from the rows.
+// AutoPick is the bare `auto` word's own answer for one tier, computed from
+// the rows. It is [AutoPickWith] with the measured quality the Model Pool
+// holds carried as a prior — the behaviour the bare word has always had — and
+// it stays the seam a row that says `auto` resolves through ([autoRow]). The
+// pick row's words answer through [AutoPickWith] directly ([pickedSeat]).
+func AutoPick(tier, family, preset string, models []catalog.Model) (modelID string, ok bool) {
+	return AutoPickWith(tier, family, preset, models, autoPrior(autoIndex()))
+}
+
+// AutoPickWith is the pick itself, with the measured quality NAMED: prior is
+// carried into the front as a rating seats read on top of the catalog's own
+// published scores, and a nil prior leaves every seat on those scores alone —
+// the answer the `catalog` pick word carries, where `learn` passes the pool's
+// measurements and the person's own judged runs ([autoPrior]).
 //
 // It is PURE: no disk, no network, the rows are only read, and the same rows
 // give the same answer however often it is asked and in whatever order they
@@ -74,8 +87,8 @@ const PoolQualityMetric = "role_quality"
 // whole catalog. preset is one of the three crew words, and any other word
 // has no answer. No rows, an empty front or an empty id are no answer too;
 // no answer is ok false and an empty id, which is the caller's cue to read
-// the family's table row instead ([autoRow]).
-func AutoPick(tier, family, preset string, models []catalog.Model) (modelID string, ok bool) {
+// the family's table row instead ([autoRow], [pickedSeat]).
+func AutoPickWith(tier, family, preset string, models []catalog.Model, prior crewpick.Prior) (modelID string, ok bool) {
 	seat, ok := autoSeat(tier)
 	if !ok || len(models) == 0 {
 		return "", false
@@ -88,7 +101,7 @@ func AutoPick(tier, family, preset string, models []catalog.Model) (modelID stri
 	if len(candidates) == 0 {
 		return "", false
 	}
-	frugal, balanced, max := crewpick.Presets(crewpick.FrontWith(candidates, crewpick.DefaultShapes(), fam, autoPrior(autoIndex())))
+	frugal, balanced, max := crewpick.Presets(crewpick.FrontWith(candidates, crewpick.DefaultShapes(), fam, prior))
 	var pick crewpick.Crew
 	switch strings.ToLower(strings.TrimSpace(preset)) {
 	case CrewFrugal:
@@ -223,6 +236,77 @@ func autoRow(profileDir, family, tier string) (model string, source SeatSource, 
 	// five — but the never-empty law is carried rather than assumed: the
 	// family's default row is the last word.
 	return defaultTierModel(family, tier), SeatTable, preset
+}
+
+// pickedSeat is THE PICK ROW'S HALF OF THE LADDER: where a seat's model comes
+// from when the pick is off the table and the tier row does not name a model
+// of its own. Both ladders call it — [tierSeatUnder] for the conversation and
+// the settings sheet, [resolveSeat] for every headless door — so a pick
+// cannot mean one thing in chat and another headless.
+//
+// The rule, in the order it is applied:
+//
+//   - the two seats that read every turn are NOT asked: reflex and small work
+//     always read the table, the same law their columns in the shipped tables
+//     keep, and the caller decides which tiers reach here;
+//   - a row holding a model id that is not the preset's own table value is a
+//     person's own model, and it wins — the pick answers for the seats nobody
+//     named, not over the names they typed. A row holding the preset's OWN id
+//     is the preset answering rather than a pin, and the pick computes it;
+//   - every other seat among worker, careful work and mastermind is computed
+//     at the crew's preset ([crewPresetUnder]), on the rung the pick names:
+//     [SeatComputed] under the `catalog` word, [SeatLearned] under `learn`;
+//   - when the catalog cannot compute one — no rows, no pick off the front —
+//     the preset's own table row is the answer, on the table rung, the same
+//     fallback [autoRow] keeps. Never `auto` and never empty.
+//
+// ok is false only when the pick has nothing to say — the pick row at its
+// default, a hand-typed id, or a tier that always reads the table — and the
+// caller answers with the row's own rung instead. The DEFAULT PICK IS THE
+// FIRST CHECK: a profile that has never answered the row reads every seat
+// exactly as it read before the row existed, which is what a default is for.
+func pickedSeat(profileDir, family, tier, model string) (Seat, bool) {
+	if CrewPickAt(profileDir) == CrewPickTable {
+		return Seat{}, false
+	}
+	if tier != ModelTierWorker && tier != ModelTierHigh && tier != ModelTierMastermind {
+		return Seat{}, false
+	}
+	preset := crewPresetUnder(profileDir, family)
+	if row, ok := CrewModelsForSource(family, preset); ok {
+		if model != "" && !strings.EqualFold(strings.TrimSpace(model), row[tier]) {
+			return Seat{}, false
+		}
+	}
+	id, source := pickedModel(tier, family, preset, CrewPickAt(profileDir))
+	return Seat{Role: tierSeatRole(tier), Model: id, Source: source, Crew: preset}, true
+}
+
+// pickedModel is the pick word's own answer for one tier: the catalog's pick
+// at the preset, on the rung the word names; and, when nothing can be
+// computed, the preset's own table row on the table rung — the id a preset
+// write would have landed, and never `auto` and never empty.
+func pickedModel(tier, family, preset, pick string) (modelID string, source SeatSource) {
+	pick = normalCrewPick(pick)
+	var prior crewpick.Prior
+	if pick == CrewPickLearn {
+		prior = autoPrior(autoIndex())
+	}
+	if id, ok := AutoPickWith(tier, family, preset, autoCatalogRows(), prior); ok {
+		if pick == CrewPickLearn {
+			return id, SeatLearned
+		}
+		return id, SeatComputed
+	}
+	if row, ok := CrewModelsForSource(family, preset); ok {
+		if id := strings.TrimSpace(row[tier]); id != "" {
+			return id, SeatTable
+		}
+	}
+	// Unreachable for a tier this build knows — every preset row answers all
+	// five — but the never-empty law is carried rather than assumed, the same
+	// last word [autoRow] keeps.
+	return defaultTierModel(family, tier), SeatTable
 }
 
 // autoCatalogRows is [AutoModels] read with its two ordinary absences folded
