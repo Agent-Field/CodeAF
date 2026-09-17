@@ -124,7 +124,7 @@ answered it answers by **re-planning**. The verbs a node worker has for handing
 work out — the task graph's own — are off this belt for the same reason: a belt
 carrying both would teach two ways to say one thing.
 
-## Costs and limits
+## Costs and limits — what a task costs
 
 - **The cost cap.** A run may spend what the conversation's own **spend rail**
   allows — `/settings` → Spending → **per conversation** — which is off by default.
