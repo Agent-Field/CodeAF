@@ -122,6 +122,7 @@ func cliScan(argv []string) (*cliParsed, error) {
 		"after": true, "before": true, "title": true, "prepend": true,
 		"result": true, "subtasks": true, "task": true, "limit": true,
 		"status": true, "chat": true, "older-than": true, "role": true,
+		"by": true, "since": true,
 	}
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
@@ -1240,9 +1241,13 @@ func cliSpend(st *Store) {
 }
 
 // cliSpendVerb is `plandb spend`: the ledger read back by the two groupings
-// the seats care about — what each role spent and what each model spent. The
-// tags are sorted so the same ledger prints the same lines twice.
+// the seats care about — what each role spent and what each model spent — or,
+// when --by names an axis, rolled up under that axis alone. The tags are
+// sorted so the same ledger prints the same lines twice.
 func cliSpendVerb(st *Store, p *cliParsed) error {
+	if axis := strings.TrimSpace(p.vals["by"]); axis != "" {
+		return cliSpendBy(st, p, axis)
+	}
 	summary := st.SpendSummary()
 	if p.bools["json"] {
 		return cliPrintJSON(summary)
@@ -1260,6 +1265,57 @@ func cliSpendVerb(st *Store, p *cliParsed) error {
 		fmt.Fprintf(cliOut, "spend model %s: $%.4f (%d calls)\n", model, total.USD, total.Calls)
 	}
 	return nil
+}
+
+// cliSpendBy is `plandb spend --by AXIS`: the ledger rolled up under one axis,
+// the heaviest key first. --since bounds the window to the charges written
+// since a duration or a date. A store nobody charged prints one line saying
+// what arrives there, never a zero row.
+func cliSpendBy(st *Store, p *cliParsed, axis string) error {
+	if !oneOf(axis, spendAxes...) {
+		return fmt.Errorf("--by %s is not one of %s", axis, strings.Join(spendAxes, ", "))
+	}
+	since, err := cliSince(p.vals["since"])
+	if err != nil {
+		return err
+	}
+	lines := st.SpendBy(axis, since)
+	if p.bools["json"] {
+		if lines == nil {
+			lines = []SpendLine{}
+		}
+		return cliPrintJSON(lines)
+	}
+	if len(lines) == 0 {
+		fmt.Fprintf(cliOut, "no spend by %s yet — every charge the run makes lands here\n", axis)
+		return nil
+	}
+	for _, line := range lines {
+		fmt.Fprintf(cliOut, "spend %s %s: $%.4f (in %d out %d, %d calls)\n", axis, line.Key, line.USD, line.In, line.Out, line.Calls)
+	}
+	return nil
+}
+
+// cliSince reads the --since bound: a Go duration (24h, 90m), a whole number
+// of days (7d), or a date (2026-09-01). An empty value bounds nothing, so the
+// whole ledger is read.
+func cliSince(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	if days, ok := strings.CutSuffix(raw, "d"); ok {
+		if n, err := strconv.Atoi(days); err == nil && n >= 0 {
+			return time.Now().AddDate(0, 0, -n), nil
+		}
+	}
+	if span, err := time.ParseDuration(raw); err == nil {
+		return time.Now().Add(-span), nil
+	}
+	if date, err := time.Parse("2006-01-02", raw); err == nil {
+		return date, nil
+	}
+	return time.Time{}, fmt.Errorf("--since %q is not a duration like 24h, a day count like 7d, or a date like 2026-09-01", raw)
 }
 
 // sortedSpendTags answers a spend map's keys in order, so a render is stable.
@@ -2106,7 +2162,7 @@ func cliVerbHelp(verb string) string {
 		"critical-path":  `usage: plandb critical-path`,
 		"bottlenecks":    `usage: plandb bottlenecks [--limit N]`,
 		"show":           `usage: plandb show TASK_ID`,
-		"spend":          `usage: plandb spend — the ledger by role and by model`,
+		"spend":          `usage: plandb spend [--by chat|project|seat|model|task] [--since 7d|24h|2026-09-01] — the ledger by role and by model, or rolled up under one axis`,
 		"help":           `usage: plandb help`,
 		"task":           `usage: plandb task <add-dep|amend|cancel|get|insert|note|notes|overview|pause|pivot|resume>`,
 		"task add-dep":   `usage: plandb task add-dep DOWNSTREAM --after UPSTREAM [--kind feeds_into|blocks|suggests]`,
@@ -2157,7 +2213,7 @@ reading:
   archive [--older-than 72h]  move old finished subtrees into the archive
   status [--full] | search QUERY [--limit N] [--project P] [--chat C] | critical-path | bottlenecks [--limit N]
   context TEXT [--kind K] [--task TASK_ID] | contexts [--kind K] [--limit N] [--project P] [--chat C] | prune CONTEXT_ID
-  spend                     the ledger grouped by role and by model
+  spend                     the ledger by role and by model, or --by chat|project|seat|model|task [--since WHEN]
 
 global flags:
   --db PATH      the store file (found by walking up when not given)
