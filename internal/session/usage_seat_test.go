@@ -13,10 +13,10 @@ import (
 
 // ── the vocabulary ──────────────────────────────────────────────────────────
 
-func TestTheSeatVocabularyIsSixWordsCheapestFirstTalkLast(t *testing.T) {
-	want := []Seat{SeatReflex, SeatLow, SeatWorker, SeatHigh, SeatMastermind, SeatTalk}
+func TestTheSeatVocabularyIsSevenWordsCheapestFirstTalkLast(t *testing.T) {
+	want := []Seat{SeatReflex, SeatLow, SeatWorker, SeatHigh, SeatMastermind, SeatJudge, SeatTalk}
 	if len(Seats) != len(want) {
-		t.Fatalf("the vocabulary holds %d words, want the six: %v", len(Seats), Seats)
+		t.Fatalf("the vocabulary holds %d words, want the seven: %v", len(Seats), Seats)
 	}
 	for i, seat := range want {
 		if Seats[i] != seat {
@@ -45,12 +45,13 @@ func TestSeatOfTierMapsEveryTierAndNothingElse(t *testing.T) {
 			t.Fatalf("SeatOfTier(%q) is false — a tier of the registry has no seat word", tier)
 		}
 		if !SeatValid(string(seat)) {
-			t.Fatalf("SeatOfTier(%q) wrote %q, which is not one of the six", tier, seat)
+			t.Fatalf("SeatOfTier(%q) wrote %q, which is not one of the seven", tier, seat)
 		}
 	}
 	// Talk is the word for a conversation's own turns, and no tier governs
-	// those, so no tier answers talk.
-	for _, tier := range []roles.Tier{"", "talk", "speech", "execution"} {
+	// those, so no tier answers talk. Judge is the seat a run's judge is
+	// billed to, and no tier holds that either.
+	for _, tier := range []roles.Tier{"", "talk", "judge", "speech", "execution"} {
 		if _, ok := SeatOfTier(tier); ok {
 			t.Fatalf("SeatOfTier(%q) answered, want false", tier)
 		}
@@ -83,6 +84,13 @@ func TestSeatOfRoleIsOneHopThroughTheRegistry(t *testing.T) {
 	for _, role := range []roles.Role{roles.RoleSpeech, roles.RoleVideo, "hand", "nowhere"} {
 		if seat, ok := SeatOfRole(role); ok {
 			t.Fatalf("SeatOfRole(%q) answered %q, want false — a role the registry never had", role, seat)
+		}
+	}
+	// And no role of the registry answers judge: judge is the seat a run's
+	// judge is billed to, and the registry holds no role for it.
+	for role := range want {
+		if seat, ok := SeatOfRole(role); ok && seat == SeatJudge {
+			t.Fatalf("SeatOfRole(%q) answered judge, want a tier's word", role)
 		}
 	}
 }

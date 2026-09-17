@@ -27,6 +27,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/pool/pull"
+	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
 )
 
@@ -119,8 +120,8 @@ func poolReading(name string, args []string, output io.Writer, poolDir string, c
 
 // printPool is the reading form's whole answer. The config first — every value
 // beside the word saying where it came from, one of default, setting, env or
-// ci — then the cached index with its age, then, for status, the outbox and
-// the two doors the mode opens.
+// ci — then the cached index with its age, then the install's own sheet,
+// then, for status, the outbox and the two doors the mode opens.
 func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withStatus bool) error {
 	var cached *index.Index
 	// The cache is read the way show reads everything else, as an answer and
@@ -168,12 +169,48 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 			return err
 		}
 	}
+	// The install's own sheet is said the way every other nothing here is
+	// said: a sheet that holds no cell yet is `none`, and one that holds some
+	// is counted with its noun.
+	own := ownSheetSummary(poolDir)
+	if own.Cells == 0 {
+		if _, err := fmt.Fprintln(output, "own sheet: none"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintf(output, "own sheet: %s, %s\n",
+		countWord(own.Cells, "cell", "cells"), countWord(own.Observations, "observation", "observations")); err != nil {
+		return err
+	}
 	if withStatus {
 		_, err := fmt.Fprintf(output, "pending %d · can send %s · can read %s\n",
 			pendingRows(poolDir), yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
 		return err
 	}
 	return nil
+}
+
+// ownSummary is the install's own sheet as the reading forms carry it: the
+// cells the picker reads beside the index, and the observations behind them.
+type ownSummary struct {
+	Cells        int `json:"cells"`
+	Observations int `json:"observations"`
+}
+
+// ownSheetSummary counts what the install's own sheet holds for the picker:
+// the role_quality cells recorded with no dim labels and the observations
+// behind them. A sheet that is missing, or one that does not parse, reads as
+// none — the reading form reports what a person has.
+func ownSheetSummary(poolDir string) ownSummary {
+	sheet, err := record.LoadSheet(record.OwnSheetPath(poolDir))
+	if err != nil {
+		return ownSummary{}
+	}
+	var summary ownSummary
+	for _, cell := range record.Cells(sheet) {
+		summary.Cells++
+		summary.Observations += cell.N
+	}
+	return summary
 }
 
 // poolAnswer is the --json shape of the reading forms: the config flat, the
@@ -190,6 +227,7 @@ type poolAnswer struct {
 	CanSend    *bool         `json:"can_send,omitempty"`
 	CanRead    *bool         `json:"can_read,omitempty"`
 	Index      *indexSummary `json:"index"`
+	Own        ownSummary    `json:"own"`
 }
 
 // indexSummary is the cached index as the reading forms carry it: the
@@ -243,6 +281,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		answer.CanSend = &send
 		answer.CanRead = &read
 	}
+	answer.Own = ownSheetSummary(poolDir)
 	encoded, err := json.Marshal(answer)
 	if err != nil {
 		return err

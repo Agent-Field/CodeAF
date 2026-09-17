@@ -152,7 +152,7 @@ type UsageLine struct {
 	// labelled this column with those words would be inventing the join.
 	Role string `json:"role,omitempty"`
 	// Seat is WHICH TIER'S MODEL ANSWERED, one word of the closed vocabulary
-	// [Seat] spells — reflex, low, worker, high, mastermind, talk — derived at
+	// [Seat] spells — reflex, low, worker, high, mastermind, judge, talk — derived at
 	// the bank door ([TagUsage], [SeatOfRole], [SeatOfAgent]) and never typed
 	// at a call site. It is the fact a spend page wants when it asks whether
 	// the money went on the seat that does the work or the seat that thinks,

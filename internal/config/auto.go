@@ -51,6 +51,15 @@ var AutoModels func() []catalog.Model
 // seam existed.
 var AutoIndex func() *index.Index
 
+// AutoOwnCells is how an install's own judged scores reach seat resolution:
+// the binary holding the pool sets it ONCE AT START-UP, from the own sheet it
+// read from disk under the pool directory, the same posture AutoIndex keeps.
+// Nil is an ordinary state, not an error: the prior then reads the index's
+// cells alone, which is what it read before this seam existed. The cells are
+// never held to the index's min_installs — an install's own scores are its
+// own evidence, one observation of which is worth having.
+var AutoOwnCells func() []crewpick.Cell
+
 // PoolQualityMetric names the index metric the picker reads a measured seat
 // quality from: a gaussian metric whose mean is on the same 0-100 scale
 // crewpick scores a seat on, with one cell per role and model.
@@ -134,26 +143,56 @@ func autoIndex() *index.Index {
 	return AutoIndex()
 }
 
-// autoPrior reads the index's measured quality into a crewpick prior: the
-// cells of PoolQualityMetric, kept only when the metric is declared gaussian
-// — a mean on any other scale would be blended against figures it does not
-// share units with — and dropped by PriorFromCells below the index's own
-// min_installs, resolved through the index's canonical ids so an alias meets
-// its candidate. A nil index, or a metric that is not there or not gaussian,
-// answers no prior, which leaves every seat on the catalog quality.
+// autoPrior reads the measured quality of the index AND of this install's own
+// sheet into a crewpick prior. The index's cells of PoolQualityMetric are kept
+// only when the metric is declared gaussian — a mean on any other scale would
+// be blended against figures it does not share units with — and dropped by
+// PriorFromCells below the index's own min_installs, resolved through the
+// index's canonical ids so an alias meets its candidate. The own sheet's cells
+// are this install's own evidence: they are read through a second
+// PriorFromCells at a floor of one and folded into the index's prior seat by
+// seat, the means combined by observation count. Their scores are on the
+// 0-100 scale a judge answers on whatever the index's metric says, so they
+// are read even beside an index whose role_quality is not gaussian. A nil
+// index and a nil seam answer no prior, which leaves every seat on the
+// catalog quality.
 func autoPrior(idx *index.Index) crewpick.Prior {
+	canonical := autoCanonical(idx)
+	var indexPrior crewpick.Prior
+	if idx != nil {
+		if kind, ok := idx.Kind(PoolQualityMetric); ok && kind == "gaussian" {
+			cells := idx.Cells(PoolQualityMetric)
+			measured := make([]crewpick.Cell, 0, len(cells))
+			for _, c := range cells {
+				measured = append(measured, crewpick.Cell{Role: c.Role, Model: c.Model, Mean: c.Mean, N: c.N})
+			}
+			indexPrior = crewpick.PriorFromCells(measured, idx.MinInstalls(), idx.Canonical)
+		}
+	}
+	var ownPrior crewpick.Prior
+	if own := autoOwnCells(); len(own) > 0 {
+		ownPrior = crewpick.PriorFromCells(own, 1, canonical)
+	}
+	return crewpick.MergePriors(indexPrior, ownPrior)
+}
+
+// autoCanonical is the index's canonical ids, nil when there is no index. The
+// own sheet's ids are the ones this install resolved its seats to, and a nil
+// canonical leaves them as they stand.
+func autoCanonical(idx *index.Index) func(string) string {
 	if idx == nil {
 		return nil
 	}
-	if kind, ok := idx.Kind(PoolQualityMetric); !ok || kind != "gaussian" {
+	return idx.Canonical
+}
+
+// autoOwnCells is [AutoOwnCells] read with its ordinary absence folded into
+// one answer.
+func autoOwnCells() []crewpick.Cell {
+	if AutoOwnCells == nil {
 		return nil
 	}
-	cells := idx.Cells(PoolQualityMetric)
-	measured := make([]crewpick.Cell, 0, len(cells))
-	for _, c := range cells {
-		measured = append(measured, crewpick.Cell{Role: c.Role, Model: c.Model, Mean: c.Mean, N: c.N})
-	}
-	return crewpick.PriorFromCells(measured, idx.MinInstalls(), idx.Canonical)
+	return AutoOwnCells()
 }
 
 // autoSeat is the tier word that names which of crewpick's three seats the

@@ -24,10 +24,12 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/pool/index"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/pool/pull"
+	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -102,13 +104,41 @@ func refreshPoolIndex(ctx context.Context, profileDir string, cfg poolcfg.Config
 	}
 }
 
-// wirePoolIndex seats this process's index beside its catalog: it hands the
-// reader to seat resolution (config.AutoIndex) and starts the refresh beside
-// it. It is called once at start-up, from the same places config.AutoModels is
-// set, so a tier row that says `auto` resolves against an index on every door
-// that resolves a seat.
+// wirePoolIndex seats this process's pool readings beside its catalog: it
+// hands the index reader to seat resolution (config.AutoIndex), the install's
+// own judged scores beside them (config.AutoOwnCells, read off the own sheet
+// under the pool directory), and starts the refresh beside both. It is called
+// once at start-up, from the same places config.AutoModels is set, so a tier
+// row that says `auto` resolves against a prior on every door that resolves a
+// seat.
 func wirePoolIndex(profileDir string) {
 	cfg := config.ModelPoolAt(profileDir)
 	config.AutoIndex = poolIndexFor(profileDir, cfg, time.Now)
+	config.AutoOwnCells = poolOwnCellsFor(profileDir, cfg)
 	startPoolIndexRefresh(context.Background(), profileDir, cfg, poolPublicKeys)
+}
+
+// poolOwnCellsFor builds this process's one reader of the install's own judged
+// scores. THE READ IS START-UP WORK AND NOTHING ON A RUN'S PATH, the same
+// posture the index reader keeps: the own sheet under the profile's pool
+// directory is read and parsed here, once, and the returned function answers
+// the cells already in hand, so a pick does no disk and no decode per call.
+// A mode that forbids reading answers nil — the same nothing the seam reads
+// before any sheet exists — and so does a sheet that does not parse, which is
+// said under the debug record's switch and read as absent rather than fatal:
+// an own sheet is the install's own evidence, and a broken one is a loss, not
+// a fault a pick should stop for.
+func poolOwnCellsFor(profileDir string, cfg poolcfg.Config) func() []crewpick.Cell {
+	if !cfg.CanRead() {
+		return nil
+	}
+	sheet, err := record.LoadSheet(record.OwnSheetPath(config.ProfilePath(profileDir, "pool")))
+	if err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: own sheet: %v", err)
+		}
+		return nil
+	}
+	cells := record.Cells(sheet)
+	return func() []crewpick.Cell { return cells }
 }

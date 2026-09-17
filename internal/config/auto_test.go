@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -448,5 +449,102 @@ func TestAutoPickWithCarriesThePriorItIsGiven(t *testing.T) {
 	}
 	if measured != "a/cheap" {
 		t.Fatalf("the rated row did not take the worker seat: got %q", measured)
+	}
+}
+
+// ── the install's own sheet ─────────────────────────────────────────────────
+
+// ownCells is the install's own evidence for the prior tests: one cell the
+// index document also carries, one it does not, both on the worker seat.
+func ownCells() []crewpick.Cell {
+	return []crewpick.Cell{
+		{Role: "worker", Model: "a/cheap", Mean: 90, N: 3},
+		{Role: "worker", Model: "b/only", Mean: 40, N: 1},
+	}
+}
+
+// With no index in hand the own sheet's cells are the whole prior — and a
+// one-observation cell of this install's own is worth having, where an
+// index's min_installs would have dropped it.
+func TestAutoPriorReadsTheOwnCellsAloneWithNoIndex(t *testing.T) {
+	restore := AutoOwnCells
+	defer func() { AutoOwnCells = restore }()
+	AutoOwnCells = ownCells
+
+	prior := autoPrior(nil)
+	if len(prior[crewpick.Worker]) != 2 {
+		t.Fatalf("the own cells made a prior of %d worker ratings, want two: %v", len(prior[crewpick.Worker]), prior)
+	}
+	if r := prior[crewpick.Worker]["b/only"]; r.Mean != 40 || r.N != 1 {
+		t.Fatalf("a one-observation own cell did not survive: %v", r)
+	}
+	if r := prior[crewpick.Worker]["a/cheap"]; r.Mean != 90 || r.N != 3 {
+		t.Fatalf("the shared cell came back %v, want mean 90 over 3", r)
+	}
+}
+
+// A model both the index and the own sheet rate folds by observation count:
+// the counts add, the mean is the mean of the means weighted by them, and the
+// cells either one holds alone are carried beside it.
+func TestAutoPriorFoldsTheOwnCellsIntoTheIndexByObservationCount(t *testing.T) {
+	restoreIndex, restoreOwn := AutoIndex, AutoOwnCells
+	defer func() { AutoIndex, AutoOwnCells = restoreIndex, restoreOwn }()
+	AutoIndex = func() *index.Index { return mustIndex(t, priorDocument) }
+	AutoOwnCells = ownCells
+
+	prior := autoPrior(AutoIndex())
+	shared := prior[crewpick.Worker]["a/cheap"]
+	wantMean := (1000*95.0 + 3*90.0) / 1003
+	if shared.N != 1003 {
+		t.Fatalf("the shared cell folded to N %d, want 1003", shared.N)
+	}
+	if math.Abs(shared.Mean-wantMean) > 1e-9 {
+		t.Fatalf("the shared cell folded to mean %v, want %v", shared.Mean, wantMean)
+	}
+	if r := prior[crewpick.Worker]["b/only"]; r.Mean != 40 || r.N != 1 {
+		t.Fatalf("the own-only cell did not survive the fold: %v", r)
+	}
+}
+
+// A nil seam changes nothing: the index's prior is exactly what it was, and
+// with no index there is no prior at all.
+func TestANilOwnCellsSeamLeavesThePriorAlone(t *testing.T) {
+	restoreIndex, restoreOwn := AutoIndex, AutoOwnCells
+	defer func() { AutoIndex, AutoOwnCells = restoreIndex, restoreOwn }()
+	AutoIndex = func() *index.Index { return mustIndex(t, priorDocument) }
+	AutoOwnCells = nil
+
+	prior := autoPrior(AutoIndex())
+	if len(prior[crewpick.Worker]) != 1 || prior[crewpick.Worker]["a/cheap"] != (crewpick.Rating{Mean: 95, N: 1000}) {
+		t.Fatalf("a nil seam changed the index prior: %v", prior)
+	}
+	if prior := autoPrior(nil); prior != nil {
+		t.Fatalf("a nil seam and no index made a prior: %v", prior)
+	}
+}
+
+// The own sheet's scores are on the 0-100 scale a judge answers on whatever
+// the index's metric says, so they are read even beside an index whose
+// role_quality is not gaussian — while the index's own cells are not.
+func TestAutoPriorReadsTheOwnCellsBesideANonGaussianIndex(t *testing.T) {
+	restoreIndex, restoreOwn := AutoIndex, AutoOwnCells
+	defer func() { AutoIndex, AutoOwnCells = restoreIndex, restoreOwn }()
+	AutoIndex = func() *index.Index {
+		return mustIndex(t, `{
+		"schema": 1,
+		"generated": "2026-09-17",
+		"min_installs": 1,
+		"metrics": {"role_quality": {"kind": "tally", "dims": ["role", "model"]}},
+		"cells": [{"metric": "role_quality", "role": "worker", "model": "a/cheap", "mean": 5, "n": 900}]
+	}`)
+	}
+	AutoOwnCells = ownCells
+
+	prior := autoPrior(AutoIndex())
+	if r, ok := prior[crewpick.Worker]["a/cheap"]; !ok || r.Mean != 90 || r.N != 3 {
+		t.Fatalf("the own cell was not read beside a non-gaussian index: %v ok %v", prior[crewpick.Worker]["a/cheap"], ok)
+	}
+	if _, ok := prior[crewpick.Worker]["b/only"]; !ok {
+		t.Fatalf("the second own cell did not survive: %v", prior)
 	}
 }
