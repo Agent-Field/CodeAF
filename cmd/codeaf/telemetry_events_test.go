@@ -111,3 +111,60 @@ func (s *countingStubAgent) Submit(ctx context.Context, text string) (<-chan ses
 	}()
 	return src, nil
 }
+
+// TestTelemetryTheHostedBootAgentIsCounted: the agent the shared door hands the
+// surface is the counting tee, and so is the handle its Resume and Fresh hand
+// back — one object under one name (chatv3_host_shared_test.go), counted.
+func TestTelemetryTheHostedBootAgentIsCounted(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	client, _ := swapClient(t, &swapEngine{})
+	options, _ := hostOptions(onePipeFleet("devbox", client), client.Welcome(), false)
+	if _, counted := options.Agent.(*countingAgent); !counted {
+		t.Fatalf("the hosted door's boot agent is a %T, so a hosted chat's session_ended carries zeros again", options.Agent)
+	}
+	next, err := options.Resume("/srv/app/b.jsonl")
+	if err != nil {
+		t.Fatalf("resume over the connection: %v", err)
+	}
+	if next != options.Agent {
+		t.Fatal("the counted door's Resume handed back a different handle from the one the surface holds")
+	}
+}
+
+// TestTelemetryAConversationOpenedBesideIsCounted: a conversation the ordinary
+// engine door opens beside the first one runs in the engine too, so the turns
+// and tools its stream reports reach this process's tally like the first's.
+func TestTelemetryAConversationOpenedBesideIsCounted(t *testing.T) {
+	telemetry.ResetCountersForTest(t)
+	far := &farMachine{workspace: "/home/somebody/api"}
+	farHost(t, far)
+	options, _, done := besideDoor(t, far)
+	defer done()
+
+	conv, err := options.Start("")
+	if err != nil {
+		t.Fatalf("start a conversation beside: %v", err)
+	}
+	stream, err := conv.Agent.Submit(context.Background(), "beside")
+	if err != nil {
+		t.Fatalf("submit into the conversation beside: %v", err)
+	}
+	engineSide := far.held(conv.SessionFile)
+	if engineSide == nil {
+		t.Fatalf("the engine opened no conversation for %q", conv.SessionFile)
+	}
+	waitUntilBeside(t, "the beside conversation had a turn in flight", engineSide.running)
+	engineSide.mu.Lock()
+	lane := engineSide.turn
+	engineSide.mu.Unlock()
+	lane <- session.Event{Kind: session.EventToolEnd, Tool: "bash"}
+	lane <- session.Event{Kind: session.EventTurnDone, Usage: session.Usage{Calls: 1, CostUSD: 0.5}}
+	close(lane)
+	for range stream {
+	}
+
+	got := telemetry.Snapshot()
+	if got.Turns != 1 || got.ModelCalls != 1 || got.ToolCalls != 1 || got.CostUSD != 0.5 {
+		t.Fatalf("the conversation opened beside counted %+v, want one turn, one call, one tool and its cost", got)
+	}
+}
