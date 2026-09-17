@@ -328,6 +328,102 @@ func TestEnterOnTheSwitcherRowWhileWorkingDefersTheMoveAndKeepsNamingIt(t *testi
 	}
 }
 
+// A DEFAULT SERVICE WITH NO USABLE KEY CANNOT TAKE THE CONVERSATION: with one
+// custom connection and no key anywhere — no profile key, no key on the
+// connected default, nothing in the environment — enter on the switcher row is
+// refused. The model list would answer (the door hands it one), so without this
+// gate the move would succeed and the next send would open a key door nobody
+// asked for (defaultServiceHasKey, switchActiveConnection).
+func TestEnterOnTheSwitcherRowRefusesADefaultServiceWithNoKey(t *testing.T) {
+	dir := t.TempDir()
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	customs := connectionWriteSources(t, dir, "homelab")
+	sources := modelsource.NewSet(append([]modelsource.Connected{testDefaultService("")}, customs...)...)
+	a := modelServiceTestApp(t, dir, "homelab/qwen-local", sources, []Model{{ID: config.DefaultModel}})
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return []Model{{ID: "qwen-local"}}
+	}
+
+	item := connectionTabRow(t, a)
+	if item == nil {
+		t.Fatal("the Providers tab drew no switcher row with a custom connection connected")
+	}
+	a.sheet.cursor = indexOfSheetItem(a, item)
+	if cmd := a.activate(); cmd != nil {
+		t.Fatalf("enter on the switcher row started a command: %v", cmd)
+	}
+	if a.model != "homelab/qwen-local" {
+		t.Fatalf("enter moved the conversation to %q, want it kept on homelab/qwen-local", a.model)
+	}
+	if got := a.sheet.msg; !strings.Contains(got, "has no key yet") {
+		t.Fatalf("the switcher row did not refuse the keyless default service: %q", got)
+	}
+}
+
+// A KEY IN THE PROFILE IS A USABLE KEY: the same profile and conversation with
+// a configured default key moves onto the default service's preferred bare
+// model, the existing behaviour the refusal must not reach
+// (defaultServiceHasKey, config.APIKeyConfigured).
+func TestEnterOnTheSwitcherRowMovesOntoADefaultServiceWithAConfiguredKey(t *testing.T) {
+	dir := t.TempDir()
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	customs := connectionWriteSources(t, dir, "homelab")
+	if err := config.WriteAPIKey(dir, "sk-or-v1-1234567890"); err != nil {
+		t.Fatal(err)
+	}
+	sources := modelsource.NewSet(append([]modelsource.Connected{testDefaultService("")}, customs...)...)
+	a := modelServiceTestApp(t, dir, "homelab/qwen-local", sources, []Model{{ID: config.DefaultModel}})
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return []Model{{ID: "qwen-local"}}
+	}
+
+	item := connectionTabRow(t, a)
+	if item == nil {
+		t.Fatal("the Providers tab drew no switcher row with a custom connection connected")
+	}
+	a.sheet.cursor = indexOfSheetItem(a, item)
+	if cmd := a.activate(); cmd != nil {
+		t.Fatalf("enter on the switcher row started a command: %v", cmd)
+	}
+	if a.model != config.DefaultModel {
+		t.Fatalf("enter moved the conversation to %q, want the default service's %q", a.model, config.DefaultModel)
+	}
+}
+
+// A SERVICE THAT SAYS A BLANK KEY IS USABLE NEEDS NO KEY: a default service
+// marked KeyOptional with no key anywhere takes the conversation like a keyed
+// one (defaultServiceHasKey, Source.KeyOptional).
+func TestEnterOnTheSwitcherRowMovesOntoAKeyOptionalDefaultServiceWithNoKey(t *testing.T) {
+	dir := t.TempDir()
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	customs := connectionWriteSources(t, dir, "homelab")
+	local := testDefaultService("")
+	local.Source.KeyOptional = true
+	sources := modelsource.NewSet(append([]modelsource.Connected{local}, customs...)...)
+	a := modelServiceTestApp(t, dir, "homelab/qwen-local", sources, []Model{{ID: config.DefaultModel}})
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return []Model{{ID: "qwen-local"}}
+	}
+
+	item := connectionTabRow(t, a)
+	if item == nil {
+		t.Fatal("the Providers tab drew no switcher row with a custom connection connected")
+	}
+	a.sheet.cursor = indexOfSheetItem(a, item)
+	if cmd := a.activate(); cmd != nil {
+		t.Fatalf("enter on the switcher row started a command: %v", cmd)
+	}
+	if a.model != config.DefaultModel {
+		t.Fatalf("enter moved the conversation to %q, want the default service's %q", a.model, config.DefaultModel)
+	}
+}
+
 // indexOfSheetItem finds an item's position in the sheet's list, so a test can
 // put the cursor on a row it holds.
 func indexOfSheetItem(a *app, item *sheetItem) int {

@@ -1060,6 +1060,19 @@ func (a *app) modelIsDirect(model string) bool {
 	return service.Source.ID != "" && !strings.EqualFold(service.Source.ID, modelsource.DefaultID)
 }
 
+// defaultServiceHasKey is whether the default service can answer a turn: the
+// profile carries a key for it, the connected default holds one of its own, or
+// the service itself accepts a blank. It is the ONE spelling of that rule, so
+// the switcher's refusal ([switchActiveConnection]) and the prerequisite
+// reading below cannot drift apart.
+func (a *app) defaultServiceHasKey() bool {
+	if config.APIKeyConfigured(a.profileDir) {
+		return true
+	}
+	service := a.sources.Default()
+	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+}
+
 // defaultProviderNeeded is the ONE answer to "does this person still owe us an
 // OpenRouter key before they can say anything". A CONNECTED SERVICE THAT CAN
 // CARRY THE CONVERSATION IS THE PROVIDER: opening the default service's browser
@@ -1067,7 +1080,7 @@ func (a *app) modelIsDirect(model string) bool {
 // does not use. Blank is usable only when the service says so explicitly, which
 // is how a local Ollama seat remains a real seat rather than a broken key row.
 func (a *app) defaultProviderNeeded() bool {
-	if a.routerConnect == nil || config.APIKeyConfigured(a.profileDir) {
+	if a.routerConnect == nil || a.defaultServiceHasKey() {
 		return false
 	}
 	return !a.connectedServiceCarriesModel()
@@ -1339,6 +1352,16 @@ func (a *app) switchActiveConnection() {
 	}
 	next := reading.next
 	written := serviceWrittenWord(next)
+	// A DEFAULT SERVICE WITH NO USABLE KEY CANNOT TAKE THE CONVERSATION: the
+	// model list may be cached, so the move would succeed here and the next
+	// send would open a key door nobody asked for. The refusal keeps the
+	// conversation where it is and names the door a key goes through
+	// (defaultServiceHasKey); a custom connection's key was checked when it
+	// connected.
+	if !modelsource.IsCustomID(next.Source.ID) && !a.defaultServiceHasKey() {
+		a.modelServiceMessage(written + " has no key yet · add one in /connect first")
+		return
+	}
 	var preferred string
 	if modelsource.IsCustomID(next.Source.ID) {
 		preferred = next.Source.PreferredModel(next.Door, listedModelIDs(a.modelsForConnectedService(next)))
