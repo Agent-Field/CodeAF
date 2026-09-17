@@ -65,6 +65,18 @@ const (
 	// difference between "the row you wrote" and "the row your row was split out
 	// of".
 	SeatInherited SeatSource = "inherited"
+	// SeatComputed is a tier row that says `auto` answering from the catalog:
+	// the seat's model computed off the published figures at read time
+	// ([AutoPick]). It is a rung of the crew's own, not the build's default —
+	// the person wrote the row — and it says so because a receipt that called it
+	// `crew` would hide the one fact a reader of the run is checking: the id was
+	// derived, not named.
+	SeatComputed SeatSource = "computed"
+	// SeatTable is a tier row that says `auto` answering from the family's
+	// table row ([autoRow]) because nothing could be computed — no catalog, or
+	// no pick off it. The id is the preset's own, and the rung says which kind
+	// of answer it was.
+	SeatTable SeatSource = "table"
 	// SeatDefault is this build's choice, for a profile that has never said
 	// anything about models at all.
 	SeatDefault SeatSource = "default"
@@ -244,6 +256,15 @@ func tierSeatUnder(profileDir, family, tier string) Seat {
 			model = defaultTierModel(family, tier)
 		}
 	}
+	// A row that says auto resolves through the one seam both ladders share
+	// ([autoRow]). Only a row somebody WROTE — directly, or through the lineage
+	// — can say it: the default rung names a model id, and a cleared row names
+	// nothing at all.
+	if IsAuto(model) {
+		var preset string
+		model, source, preset = autoRow(profileDir, family, tier)
+		return Seat{Role: tierSeatRole(tier), Model: model, Source: source, Crew: preset}
+	}
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}
 }
 
@@ -272,8 +293,12 @@ type Seat struct {
 	From string
 	// Crew is the preset word the profile's five tier rows make — `frugal`,
 	// `balanced`, `max` or `custom` ([CrewAt]) — and is empty unless Source is
-	// [SeatCrew]. It is read rather than stored, exactly as the settings sheet
-	// reads it, so a receipt and the sheet cannot disagree about which crew ran.
+	// [SeatCrew], [SeatInherited], [SeatComputed] or [SeatTable]. It is read
+	// rather than stored, exactly as the settings sheet reads it, so a receipt
+	// and the sheet cannot disagree about which crew ran. On the computed and
+	// table rungs it is the preset the auto row is computed at, read from the
+	// stored rows ([crewPresetUnder]) rather than derived through the resolver,
+	// which would be the seam asking itself.
 	Crew string
 }
 
@@ -313,6 +338,10 @@ func (s Seat) Rung() string {
 		// because a receipt that said only `crew custom` would hide exactly the
 		// substitution this rung exists to report.
 		return s.crewRung() + ", inherited"
+	case SeatComputed:
+		return s.crewRung() + ", computed"
+	case SeatTable:
+		return s.crewRung() + ", table"
 	}
 	return "default"
 }
@@ -573,6 +602,16 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 	model, from, source, _ := crewRow(profileDir, tier)
 	if source == "" {
 		seat.Model, seat.Source = fallback, SeatDefault
+		return seat
+	}
+	// A row that says auto resolves through the one seam both ladders share
+	// ([autoRow]) — on the rung it earned, with the preset it was computed at
+	// carried for the receipt — and never to `auto` and never to empty, which
+	// is what a headless run could do nothing with.
+	if IsAuto(model) {
+		var preset string
+		seat.Model, seat.Source, preset = autoRow(profileDir, CrewSourceAt(profileDir), tier)
+		seat.Crew = preset
 		return seat
 	}
 	seat.Model, seat.Source, seat.From, seat.Crew = model, source, from, CrewAt(profileDir)
