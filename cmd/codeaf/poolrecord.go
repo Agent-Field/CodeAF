@@ -149,6 +149,11 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	// index's min_installs.
 	cells := record.Cells(sheet)
 	config.AutoOwnCells = func() []crewpick.Cell { return cells }
+	// The sheet is saved, so what the recorder appended is the install's own
+	// evidence now; the copies waiting in the outbox leave for the relay
+	// here, on this hook's own goroutine (the session runs TaskLanded on
+	// one), under the push's own bound.
+	poolPush(ctx, profileDir, pool, poolPushBudget)
 }
 
 // poolSize is the day-row bucket a landing's token count answers: S under

@@ -80,6 +80,12 @@ type Outbox struct {
 	// MaxPending caps the pending rows, dropping from the old end; zero or
 	// below means DefaultMaxPending.
 	MaxPending int
+	// Install is the install's own nonce, carried as the X-Codeaf-Install
+	// header on every batch sent over http; empty sends no header. A
+	// destination that requires the header names it in its error, so a batch
+	// sent without one is a batch the destination refuses — the caller sets
+	// this from its own store before the first Send.
+	Install string
 
 	path   string
 	sendMu sync.Mutex // one Send at a time, so two never carry the same rows
@@ -445,6 +451,9 @@ func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, er
 			return n, err
 		}
 		req.Header.Set("Content-Type", "application/x-ndjson")
+		if o.Install != "" {
+			req.Header.Set("X-Codeaf-Install", o.Install)
+		}
 		resp, err := client.Do(req)
 		if err != nil {
 			return n, err

@@ -116,9 +116,14 @@ const (
 	// answers the CODEAF_MODEL_POOL pin and a CI environment may give it
 	// (internal/pool/poolcfg). The resolver beside the search rows is the one
 	// place the process environment is read for the pool.
-	KeyModelPool   = "model_pool"
-	KeyAttribution = "attribution"
-	KeySplitPct    = "split_pct"
+	KeyModelPool = "model_pool"
+	// KeyModelPoolPublicKey is the trusted key a fetched pool index is checked
+	// under: base64 text beside the pool row it narrows, and empty for the
+	// key the binary carries. The environment pin CODEAF_MODEL_POOL_PUBLIC_KEY
+	// outranks it, through the same resolver.
+	KeyModelPoolPublicKey = "models.pool.public_key"
+	KeyAttribution        = "attribution"
+	KeySplitPct           = "split_pct"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
 	// what was typed, and what was half-typed. They are one pair of questions —
@@ -1288,12 +1293,13 @@ var OperatorEnvPins = []string{
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
-	// The three pool names that stay plumbing (internal/pool/poolcfg, which
+	// The four pool names that stay plumbing (internal/pool/poolcfg, which
 	// names them and reads none of them: the environment reaches that package
-	// as a function the caller hands in). The two URLs are where the index is
-	// read and where measurements are handed to, and the TTL is how long a
-	// read copy stays young — endpoints and a cadence, on the terms the other
-	// addresses here are on.
+	// as a function the caller hands in). The relay is the base the two URLs
+	// derive from — index.json and /v1/rows under it — and the TTL is how
+	// long a read copy stays young: endpoints and a cadence, on the terms the
+	// other addresses here are on. The public key is a row, not plumbing: it
+	// narrows what the install trusts, which is a preference.
 	//
 	// THE WORD ITSELF IS NOT HERE ANY MORE. CODEAF_MODEL_POOL fronts the
 	// model_pool row now, which is what the comment below used to promise:
@@ -1301,6 +1307,7 @@ var OperatorEnvPins = []string{
 	// nothing in the binary called it, and a pin with no row was the honest
 	// answer then. With the row here, the word renders through the row — dim,
 	// "pinned by CODEAF_MODEL_POOL" — the way CODEAF_DOC_ENGINE does.
+	"CODEAF_MODEL_POOL_RELAY_URL",
 	"CODEAF_MODEL_POOL_URL",
 	"CODEAF_MODEL_POOL_SUBMIT_URL",
 	"CODEAF_MODEL_POOL_TTL",
@@ -1900,6 +1907,19 @@ func (s *Settings) build() []Setting {
 				"read: use the pool, send nothing. off: neither.",
 			read:  func() string { return ModelPoolAt(dir).Mode.String() },
 			write: func(raw string) error { return writeChoice(dir, KeyModelPool, raw, ModelPoolChoices) },
+		},
+		// The key a fetched pool index is checked under. The binary carries the
+		// index signer's key, and this row exists to pin a different one — a
+		// mirror serving its own signed index, or an install proving a key out
+		// for itself. It sits beside the pool row because it narrows that row's
+		// reading, the way the keys under searching narrow theirs.
+		Setting{
+			Key: KeyModelPoolPublicKey, Category: CategoryModels, Kind: SettingText,
+			Label: "pool key", Env: "CODEAF_MODEL_POOL_PUBLIC_KEY", EmptyLabel: "built in",
+			Hint: "the base64 Ed25519 public key an index must be signed with. " +
+				"Empty means the key built into this binary.",
+			read:  func() string { return ModelPoolAt(dir).PublicKey },
+			write: func(raw string) error { return writeText(dir, KeyModelPoolPublicKey, raw) },
 		},
 		// THE KEY EVERY MODEL CALL RIDES. The default local door normally creates
 		// one through the browser (tui3's firstrun.go); this row remains the place
@@ -3340,14 +3360,23 @@ func ModelPoolSettingAt(profileDir string) string {
 	return value
 }
 
-// ModelPoolAt resolves how the Model Pool behaves: the stored word and the
-// pool's environment names, through poolcfg.Resolve. IT IS THE ONE PLACE THE
-// PROCESS ENVIRONMENT IS READ FOR THE POOL — poolcfg itself takes the
-// environment as a function, and a caller with its own (the `codeaf pool`
-// verb, whose tests inject one) resolves [ModelPoolSettingAt] against its own
-// lookup rather than calling this.
+// ModelPoolPublicKeySettingAt is the stored word the pool key row holds:
+// base64 text, or empty for the key the binary carries. It is the second
+// setting [ModelPoolAt] resolves.
+func ModelPoolPublicKeySettingAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyModelPoolPublicKey)
+	return value
+}
+
+// ModelPoolAt resolves how the Model Pool behaves: the stored mode word, the
+// stored public key and the pool's environment names, through poolcfg.Resolve.
+// IT IS THE ONE PLACE THE PROCESS ENVIRONMENT IS READ FOR THE POOL — poolcfg
+// itself takes the environment as a function, and a caller with its own (the
+// `codeaf pool` verb, whose tests inject one) resolves [ModelPoolSettingAt]
+// and [ModelPoolPublicKeySettingAt] against its own lookup rather than
+// calling this.
 func ModelPoolAt(profileDir string) poolcfg.Config {
-	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), os.LookupEnv)
+	return poolcfg.Resolve(ModelPoolSettingAt(profileDir), ModelPoolPublicKeySettingAt(profileDir), os.LookupEnv)
 }
 
 // ExaKeyAt resolves the Exa credential: the environment first, then the sheet,

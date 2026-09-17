@@ -127,6 +127,10 @@ var settingReaders = map[string]string{
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
 	KeyModelPool:      "ModelPoolSettingAt",
+	// The pool key row names the resolver that reads it: [ModelPoolAt] carries
+	// the word into poolcfg beside the mode, and the puller's keys resolve
+	// from there (cmd/codeaf's poolTrustedKeys).
+	KeyModelPoolPublicKey: "ModelPoolAt",
 	// The crew's pick row names its resolver: the surfaces read the pick to
 	// say it beside the crew word, and the ladder turns it into computed seats
 	// ([pickedSeat]) — the identifier proves the word reaches a surface.

@@ -6,7 +6,7 @@
 // sent. It spends nothing and reaches the network only under `verify`, which
 // fetches a fresh index and checks its signature. THE KEY STANDS IN FRONT OF
 // THE FETCH: a signature nobody can check is a fetch nobody should make, so
-// a build carrying no public key refuses verify at the door rather than
+// a build left with no key in hand refuses verify at the door rather than
 // downloading bytes it cannot vouch for.
 package main
 
@@ -32,10 +32,37 @@ import (
 )
 
 // poolPublicKeys are the ed25519 public keys a fetched index's signature is
-// checked under. EMPTY ON THIS BRANCH: the key is published beside the first
-// index, and a build with no key in it would verify nothing — so verify asks
-// for one with --key rather than fetching bytes nothing here can vouch for.
-var poolPublicKeys []ed25519.PublicKey
+// checked under when no key is stored beside the pool row. The list carries
+// the key the index signer publishes (relay/wrangler.toml's POOL_PUBLIC_KEY),
+// decoded once here from its base64 literal: a build whose literal could not
+// decode would verify nothing, so the test beside the verb pins the length.
+var poolPublicKeys = mustPoolKey("WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0=")
+
+func mustPoolKey(encoded string) []ed25519.PublicKey {
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		panic(fmt.Sprintf("pool: the built-in public key does not decode: %q", encoded))
+	}
+	return []ed25519.PublicKey{ed25519.PublicKey(raw)}
+}
+
+// poolTrustedKeys resolves the keys a fetched index is checked under: the
+// stored key when one is set, AND ONLY IT — the row is the one word the
+// install trusts, so a word that does not decode is a key nobody can vouch
+// for, and the answer is no keys rather than a fall back to the built-in one
+// a fetch under would verify nothing with. Nothing stored: the key the build
+// carries.
+func poolTrustedKeys(cfg poolcfg.Config) []ed25519.PublicKey {
+	word := strings.TrimSpace(cfg.PublicKey)
+	if word == "" {
+		return poolPublicKeys
+	}
+	raw, err := base64.StdEncoding.DecodeString(word)
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		return nil
+	}
+	return []ed25519.PublicKey{ed25519.PublicKey(raw)}
+}
 
 // poolKeys is --key's value: a base64 ed25519 public key, repeatable, each
 // decoded the moment it is typed rather than carried as text and decoded at
@@ -74,7 +101,7 @@ func runPool(args []string) error {
 // emptiness is the state root's own profile, never a directory called "pool"
 // beside wherever the command happened to run.
 func runPoolWith(args []string, output io.Writer, profileDir string, now func() time.Time, lookup func(string) (string, bool)) error {
-	cfg := poolcfg.Resolve(config.ModelPoolSettingAt(profileDir), lookup)
+	cfg := poolcfg.Resolve(config.ModelPoolSettingAt(profileDir), config.ModelPoolPublicKeySettingAt(profileDir), lookup)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	if len(args) == 0 {
 		args = []string{"show"}
@@ -138,6 +165,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 	}
 	for _, line := range []string{
 		fmt.Sprintf("mode %s · %s", cfg.Mode, cfg.Source.Mode),
+		fmt.Sprintf("relay %s · %s", cfg.RelayURL, cfg.Source.RelayURL),
 		fmt.Sprintf("index %s · %s", cfg.IndexURL, cfg.Source.IndexURL),
 		fmt.Sprintf("submit %s · %s", orNowhere(cfg.SubmitURL), cfg.Source.SubmitURL),
 		fmt.Sprintf("ttl %s · %s", reltime.Elapsed(cfg.TTL), cfg.Source.TTL),
@@ -220,6 +248,7 @@ func ownSheetSummary(poolDir string) ownSummary {
 type poolAnswer struct {
 	Mode       string        `json:"mode"`
 	ModeSource string        `json:"mode_source"`
+	RelayURL   string        `json:"relay_url"`
 	IndexURL   string        `json:"index_url"`
 	SubmitURL  string        `json:"submit_url"`
 	TTLSeconds int           `json:"ttl_seconds"`
@@ -249,6 +278,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 	answer := poolAnswer{
 		Mode:       cfg.Mode.String(),
 		ModeSource: cfg.Source.Mode,
+		RelayURL:   cfg.RelayURL,
 		IndexURL:   cfg.IndexURL,
 		SubmitURL:  cfg.SubmitURL,
 		TTLSeconds: int(cfg.TTL / time.Second),
@@ -314,15 +344,18 @@ func verifyPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 	// question asked of this build does not stand, and the remedy is on the
 	// line above the exit. verify's third refusal — a fetch or a signature
 	// that fails — is exit 1, in the error main() says in front of it.
+	//
+	// The door refusal below is nearly unreachable since the key shipped in
+	// the binary: a stored key that does not decode is the one word that
+	// still leaves the verb with no key in hand.
 	if cfg.Mode == poolcfg.Off {
 		if _, err := fmt.Fprintln(output, "the Model Pool is off in settings"); err != nil {
 			return err
 		}
 		return exitIncomplete
 	}
-	var trusted []ed25519.PublicKey
-	trusted = append(trusted, keys...)
-	trusted = append(trusted, poolPublicKeys...)
+	trusted := append([]ed25519.PublicKey{}, keys...)
+	trusted = append(trusted, poolTrustedKeys(cfg)...)
 	if len(trusted) == 0 {
 		if _, err := fmt.Fprintln(output, "no public key built into this build; pass --key"); err != nil {
 			return err

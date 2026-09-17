@@ -53,6 +53,52 @@ func TestSlackApplicationRowShowsOnlyThePersonsAnswer(t *testing.T) {
 	}
 }
 
+// The pool key row: the trusted word a fetched index is checked under. Empty
+// is the ordinary answer and reads as the key the binary carries; a stored
+// word is the one the install trusts, and the pin outranks it.
+func TestThePoolKeyRowReadsBuiltInAndFollowsItsStoredWordAndItsPin(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_MODEL_POOL_PUBLIC_KEY", "")
+	t.Setenv("CODEAF_MODEL_POOL", "")
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyModelPoolPublicKey)
+	if !ok {
+		t.Fatal("the pool key is not registered")
+	}
+	if row.Category != CategoryModels || row.Kind != SettingText || row.Label != "pool key" {
+		t.Fatalf("pool key row = %+v", row)
+	}
+	if row.Value() != "built in" {
+		t.Fatalf("an unset key row reads %q, want built in", row.Value())
+	}
+	if got := ModelPoolAt(dir); got.PublicKey != "" || got.Source.PublicKey != "default" {
+		t.Fatalf("an untouched profile resolved %+v", got)
+	}
+
+	if err := row.Apply("A-base64-word="); err != nil {
+		t.Fatal(err)
+	}
+	reread, _ := registry(t, dir).Row(KeyModelPoolPublicKey)
+	if reread.Value() != "A-base64-word=" {
+		t.Fatalf("the reread row lost the persisted word: %q", reread.Value())
+	}
+	if got := ModelPoolAt(dir); got.PublicKey != "A-base64-word=" || got.Source.PublicKey != "setting" {
+		t.Fatalf("the stored key did not take: %+v", got)
+	}
+
+	t.Setenv("CODEAF_MODEL_POOL_PUBLIC_KEY", "a-pinned-key")
+	pinned, _ := registry(t, dir).Row(KeyModelPoolPublicKey)
+	if name, isPinned := pinned.PinnedBy(); !isPinned || name != "CODEAF_MODEL_POOL_PUBLIC_KEY" {
+		t.Fatalf("the key row did not report its pin: %q %v", name, isPinned)
+	}
+	if got := ModelPoolAt(dir); got.PublicKey != "a-pinned-key" || got.Source.PublicKey != "env" {
+		t.Fatalf("the pin lost: %+v", got)
+	}
+	if err := pinned.Apply("another"); err == nil || !strings.Contains(err.Error(), "CODEAF_MODEL_POOL_PUBLIC_KEY") {
+		t.Fatalf("a pinned key row accepted an edit: %v", err)
+	}
+}
+
 // The registry is the completeness gate: a user-tunable environment pin added
 // anywhere in the tree has to arrive as a row here, or land on the explicit
 // operator-plumbing allowlist. Until then this test fails the build.
