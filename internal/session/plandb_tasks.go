@@ -176,10 +176,19 @@ func (a *Agent) openPlanHandle() (*plandb.Store, *planState, func()) {
 // steps, already read.
 func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64) PlanTaskRow {
 	seat, _ := store.RoleOf(task.ID)
+	// A HELD TASK WEARS THE HOLD'S OWN WORD. Pause is status-independent in the
+	// store — a held task keeps the rung it reached — while the row says what a
+	// person does next, and a hold is the person's call. The surface maps the
+	// word "paused" onto that state, so the row carries it rather than the rung
+	// underneath it (tui3's planStateWord owns the one mapping).
+	status := string(task.Status)
+	if task.Paused {
+		status = "paused"
+	}
 	row := PlanTaskRow{
 		ID:             planStoreID(task.ID),
 		Title:          task.Title,
-		Status:         string(task.Status),
+		Status:         status,
 		Seat:           seat,
 		Steps:          len(planTrajectory(dir, task.ID)),
 		USD:            spend[task.ID],
