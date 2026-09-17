@@ -73,6 +73,10 @@ import (
 type modelColumn struct {
 	head  string
 	right bool
+	// selects marks a column that LISTS ARE FILTERED ON, and it is the one
+	// thing that lets a constant value be read as furniture rather than as a
+	// coincidence ([modelTable.varies] holds the argument).
+	selects bool
 }
 
 // modelColumns are the table's columns IN RANK ORDER — the order they are drawn
@@ -103,8 +107,8 @@ var modelColumns = [...]modelColumn{
 	{head: "window", right: true},
 	{head: "t/s", right: true},
 	{head: "elo", right: true},
-	{head: modalityReadsLead},
-	{head: modalityMakesLead},
+	{head: modalityReadsLead, selects: true},
+	{head: modalityMakesLead, selects: true},
 }
 
 // modelHead is what stands over the name column. It is the only head that names
@@ -183,10 +187,16 @@ func (f modelFacts) cells() [len(modelColumns)]string {
 // tinguishable from the list having scrolled. A column's width is not worth
 // that. Measured once, it is furniture — and furniture stays where it was put.
 type modelTable struct {
-	// wide is the widest CELL in each column, ignoring the head — which is what
-	// makes zero mean "not one row on this list said anything here" and makes
-	// that column absent rather than empty (law 4: unknown is not narrow).
+	// wide is the widest CELL in each column, ignoring the head.
 	wide [len(modelColumns)]int
+	// rows is how many rows have been measured, and one is the single value
+	// each column has said so far — the two together answering the only
+	// question [modelTable.varies] asks.
+	rows int
+	one  [len(modelColumns)]string
+	// many is true for a column that has said TWO different things, and it is
+	// what decides whether the column is drawn at all. See [modelTable.varies].
+	many [len(modelColumns)]bool
 	// name is what the name column ASKS FOR: the widest label this list will
 	// draw — an id, plus the room a reasoning level takes on a row that can
 	// carry one — capped at [modelNameWide].
@@ -210,7 +220,14 @@ func (t *modelTable) add(cells [len(modelColumns)]string, name int) {
 		if wide := ansi.StringWidth(cell); wide > t.wide[at] {
 			t.wide[at] = wide
 		}
+		switch {
+		case t.rows == 0:
+			t.one[at] = cell
+		case cell != t.one[at]:
+			t.many[at] = true
+		}
 	}
+	t.rows++
 	if name > modelNameWide {
 		name = modelNameWide
 	}
@@ -257,6 +274,35 @@ type modelTableFit struct {
 	room int
 }
 
+// varies reports whether a column said two different things anywhere on this
+// list.
+//
+// ── A COLUMN A LIST WAS CHOSEN BY IS NOT A COLUMN ───────────────────────────
+//
+// Every list on this surface is a filtered view of one catalog, and what each
+// one filters ON is a modality: `/model` keeps the models that answer in text
+// and nothing else, the drawing slot keeps the ones that make an image, the
+// looking slot the ones that read one. So a modality column on such a list can
+// be constant BY CONSTRUCTION — and when it is, it is the list's own definition
+// written once per row, which looks like information and is not.
+//
+// The measurement found it. `makes` has exactly ONE distinct value in every
+// list this surface has: empty on `/model`, `image` on all fifty-four rows of
+// the drawing slot, `speech` on all eighteen of speaking, `video` on all
+// twenty-nine of filming. Four lists, four constants, and a head over each that
+// a person reads before discovering it says nothing. `reads` on `/model` has
+// eleven distinct values over three hundred and fifty-five rows and earns its
+// cells every time.
+//
+// IT IS ASKED OF THE MODALITY COLUMNS ONLY ([modelColumn.selects]), and the
+// restriction is the whole of what makes it safe. Constancy means "this is the
+// filter" only where a filter could have caused it. Two models that happen to
+// cost the same are a coincidence, and a price column that vanished because a
+// short list agreed with itself would be hiding a figure a person came to read
+// — the emptiness law is about facts NOBODY PUBLISHED, and it must not grow
+// into hiding facts that were.
+func (t modelTable) varies(at int) bool { return t.many[at] }
+
 // drawn reports whether this fit has a table in it at all.
 func (f modelTableFit) drawn() bool { return len(f.at) >= modelTableLeast }
 
@@ -284,6 +330,13 @@ func (t modelTable) fit(width int) modelTableFit {
 		// `first` and no `t/s` rather than three heads over three hundred
 		// blanks.
 		if t.wide[at] == 0 {
+			continue
+		}
+		// AND A COLUMN THE LIST WAS CHOSEN BY is no column either, however much
+		// it published: a list of drawing models draws no `makes`, because
+		// `image` on every row of it is the slot's own name read back
+		// ([modelTable.varies]).
+		if modelColumns[at].selects && !t.varies(at) {
 			continue
 		}
 		wide := t.wide[at]

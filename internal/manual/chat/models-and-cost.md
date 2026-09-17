@@ -285,13 +285,26 @@ indistinguishable from a plain text model.
 the word would be furniture on five hundred rows. An empty cell on both sides means text
 in, text out — which is also what a row that published no modalities at all means.
 
-**In the `/model` list `makes` is not drawn**, and that is not an accident of width.
-`/model` lists models you can hold a conversation with, which means answering in text
-**and nothing else** — a model publishing `["text","image"]` out is a drawing model that
-also captions, and it is left off the list entirely. So on that list every row's `makes`
-would be empty, and a column no row can fill is not drawn. `makes` appears on the media
-slots on the Providers tab — **drawing**, **speaking**, **composing**, **filming** — which
-open the same list over their own models, and it is the column those slots exist for.
+**`makes` is usually not drawn at all, and that is not an accident of width.** A list
+here is always a filtered view of one catalog, and what each list filters on is a
+modality — so a modality column can end up saying the same thing on every row, which is
+the list's own definition written out once per row rather than a fact about any of them.
+Where that happens the column is dropped, head and all:
+
+| List | What `makes` would say | Drawn? |
+|---|---|---|
+| `/model` | nothing, on every row — a model you can converse with answers in text and nothing else, so a drawing model that also captions is off the list entirely | no |
+| **drawing** | `image`, on every row | no |
+| **speaking** | `speech`, on every row | no |
+| **filming** | `video`, on every row | no |
+
+`reads` survives the same test on most lists because it genuinely varies: on `/model` it
+has eleven different values across three hundred-odd models, and in the **filming** slot
+some models take a picture to animate and some take a clip.
+
+**This is only asked of `reads` and `makes`,** because they are the only columns a list is
+ever chosen by. A price or a window that happens to be the same on every row of a short
+list is a coincidence, not a definition, and those columns are always drawn.
 
 **The cells report only what was published — they never read the id.** A model whose name
 says `vl` or `vision` but whose catalog row lists no modalities draws two blank cells,

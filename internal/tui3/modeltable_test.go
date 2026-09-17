@@ -184,6 +184,56 @@ func TestTheMakesColumnAppearsOnAListOfModelsThatMakeSomething(t *testing.T) {
 	}
 }
 
+// A COLUMN THE LIST WAS CHOSEN BY IS NOT DRAWN. Every row of a drawing slot
+// makes an image — that is what the slot means — so a `makes` column there is
+// the slot's own name written fifty-four times under a head somebody had to
+// read first.
+func TestAColumnEveryRowAgreesOnIsNotDrawnWhenTheListWasChosenByIt(t *testing.T) {
+	const width = 100
+	drawing := []Model{
+		{ID: "vendor/painter", ContextLength: 65_000, Input: []string{"text", "image"}, Output: []string{"image"}},
+		{ID: "vendor/dreamer", ContextLength: 4_000, Input: []string{"text"}, Output: []string{"image"}},
+		{ID: "vendor/sketcher", ContextLength: 65_000, Input: []string{"text"}, Output: []string{"image"}},
+	}
+	p := &picker{}
+	p.start(drawing, "vendor/painter")
+	head := p.tableFit(width).header()
+	if strings.Contains(head, modalityMakesLead) {
+		t.Fatalf("every row makes an image, so the column says nothing:\n%s", head)
+	}
+	// AND THE SIDE THAT DOES VARY IS STILL DRAWN — one of the three reads an
+	// image and two do not, which is exactly the thing somebody is choosing on.
+	if !strings.Contains(head, modalityReadsLead) {
+		t.Fatalf("the side that varies has to be drawn:\n%s", head)
+	}
+}
+
+// AND A COLUMN NOBODY FILTERED ON KEEPS ITS CELLS EVEN WHEN EVERY ROW AGREES.
+// Two models that happen to hold the same number of tokens are a coincidence,
+// not a definition, and a person who came to read that number would find the
+// column gone. The emptiness law is about facts nobody published; it may not
+// grow into hiding facts that were.
+func TestAConstantColumnTheListWasNotChosenByIsStillDrawn(t *testing.T) {
+	const width = 100
+	same := []Model{
+		{ID: "vendor/one", ContextLength: 1_000_000, PromptPrice: 3e-6, CompletionPrice: 9e-6},
+		{ID: "vendor/two", ContextLength: 1_000_000, PromptPrice: 1e-6, CompletionPrice: 9e-6},
+	}
+	p := &picker{}
+	p.start(same, "vendor/one")
+	head := p.tableFit(width).header()
+	for _, want := range []string{"window", "in/M", "out/M"} {
+		if !strings.Contains(head, want) {
+			t.Fatalf("%q agrees across the list but nothing filtered on it:\n%s", want, head)
+		}
+	}
+	lines := tableRows(p, width)
+	at, wide := columnCells(p.tableFit(width), lines[0], "window")
+	if !columnHolds(lines, at, wide, "1M") {
+		t.Fatalf("the window both rows share still has to be readable:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
 // AN EMPTY CELL IS A FACT. A row that published no price draws blank under the
 // price heads — never a zero, and never a row that is simply shorter than its
 // neighbours, which is what the ragged tail could not tell apart.
