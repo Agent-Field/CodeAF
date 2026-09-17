@@ -16,12 +16,12 @@ import (
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
 // Store is the plan: one file, a mutex for this process, and an advisory file
-// lock for every other one (lock.go). Its method set is the aforge-v1 port's,
+// lock for every other one (lock.go). Its method set is the earlier port's,
 // kept because it already answers the CLI's questions: the graph laws
 // (validateGraphs below) are the port's own and were correct there.
 //
 // WHAT THE ADAPTATION TOOK OUT, deliberately, is written at the functions that
-// changed: the aforge-v1 store doubled as a governance gate — validateSpec
+// changed: the earlier store doubled as a governance gate — validateSpec
 // required a role, deliverables and acceptance on every task, and Claim refused
 // a task whose effect was unresolved or that claimed no resources. The rust
 // CLI has no flags for any of that, so every `plandb add` the doctrine teaches
@@ -318,7 +318,7 @@ func (s *Store) Claim(id, agent string) (*Task, error) {
 }
 
 // Done completes a task its agent owns. The root is the runtime's, exactly as
-// the aforge-v1 port had it and the reference loop enforces: a worker cannot
+// the earlier port had it and the reference loop enforces: a worker cannot
 // finish the run, only its own task.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
@@ -1039,7 +1039,7 @@ func normalizeSpec(spec TaskSpec, rootID string) TaskSpec {
 	return spec
 }
 
-// validateSpec is what the CLI itself can see, no more. The aforge-v1 gate
+// validateSpec is what the CLI itself can see, no more. The earlier gate
 // demanded a role, deliverables and acceptance on every task; the rust
 // `plandb add "t" --description "d"` creates a task with none of them, so the
 // gate would have refused the reference's own doctrine sentence. The graph
@@ -1240,7 +1240,7 @@ func hasOpenDescendants(value state, rootID string) bool {
 }
 
 // executionBlockReasons answers why a ready task still cannot start. The
-// aforge-v1 port asked an eligibility ladder here (unresolved effects,
+// the earlier port asked an eligibility ladder here (unresolved effects,
 // unclaimed resources); the CLI has no verbs for any of that, so the ladder
 // went with it and what remains is conflict with running work — the one
 // reason this store can still state in the CLI's own words.
