@@ -681,6 +681,14 @@ var settingUI = map[string]settingMeta{
 			"improve it. Nothing about your code leaves your machine. read uses " +
 			"the pool and sends nothing; off does neither.",
 	},
+	// The key sits under the pool row it guards: a private relay is the same
+	// code under another keypair, and this is where the install is told whose
+	// signature to trust. Blank is the key built into this binary.
+	config.KeyModelPoolPublicKey: {
+		tab: tabProviders, label: "pool key", widget: widgetText,
+		about: "the public key a Model Pool index must be signed with. Blank " +
+			"trusts the key built into codeaf; set it to read a relay of your own.",
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",
