@@ -4380,6 +4380,13 @@ func TelemetryAtIn(cwd, profileDir string) bool {
 	return DefaultTelemetry
 }
 
+// WriteTelemetry persists the person's own answer to the telemetry row —
+// the writer `codeaf telemetry on|off` goes through, so the command and the
+// settings sheet write the same file the same way and cannot drift.
+func WriteTelemetry(profileDir string, on bool) error {
+	return writeProfileValue(profileDir, KeyTelemetry, on)
+}
+
 // TelemetryOffReason answers what turned the pipe off, in the words the
 // telemetry command prints beside the off reading: the environment pin, the
 // project file, the profile config, or nothing at all when the answer is on.

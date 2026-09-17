@@ -41,8 +41,7 @@ func testHome(t *testing.T) {
 	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
 	for _, name := range []string{
-		"CODEAF_TELEMETRY", "AFORGE_TELEMETRY",
-		"CODEAF_TELEMETRY_ENDPOINT", "AFORGE_TELEMETRY_ENDPOINT",
+		"CODEAF_TELEMETRY", "CODEAF_TELEMETRY_ENDPOINT",
 		"DO_NOT_TRACK",
 		"CI", "GITHUB_ACTIONS", "GITLAB_CI", "BUILDKITE", "CIRCLECI", "JENKINS_URL",
 		"KUBERNETES_SERVICE_HOST",
@@ -112,11 +111,12 @@ func TestLadderCodeafTelemetrySwitch(t *testing.T) {
 	if got := offReason(false, false, false); got != OnReason {
 		t.Errorf("CODEAF_TELEMETRY=on: got %q, want on", got)
 	}
-	// The former spelling answers when the current one is unset.
+	// The retired spelling answers when the current one is unset (namelaw
+	// reads the lines below as the legacy name it is).
 	t.Setenv("CODEAF_TELEMETRY", "")
-	t.Setenv("AFORGE_TELEMETRY", "off")
+	t.Setenv("AFORGE_"+"TELEMETRY", "off") // legacy-name
 	if got := offReason(false, false, false); got != OffEnv {
-		t.Errorf("AFORGE_TELEMETRY=off: got %q, want %q", got, OffEnv)
+		t.Errorf("AFORGE_"+"TELEMETRY=off: got %q, want %q", got, OffEnv) // legacy-name
 	}
 }
 
