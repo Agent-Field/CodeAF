@@ -59,6 +59,28 @@ pinning are on the [releases page](https://github.com/Agent-Field/codeaf/release
 On first start it asks for a key: OpenRouter, DeepSeek, GLM, Kimi, MiniMax or
 Qwen. Ollama needs none.
 
+## Telemetry
+
+codeaf sends anonymous usage counts to AgentField.
+  Sent:  version, OS, mode (chat or task), how many sessions, how many errors.
+  Never: anything about you or your work. No prompts, code, file names,
+         paths, repo names, keys, email, IP, or machine name.
+  See exactly what leaves:  codeaf telemetry show
+  Turn off:                 CODEAF_TELEMETRY=off
+
+The events are counts and buckets only — no prompts, code, or file names ever
+leave the machine. `docs/TELEMETRY.md` lists every field that is sent. The
+installer records how and when this copy was installed (`telemetry/install.json`
+under the state root) so the counts can bucket by channel; it sends nothing.
+
+To turn it off:
+
+```bash
+export CODEAF_TELEMETRY=off
+```
+
+`DO_NOT_TRACK=1` works too.
+
 ## One window for every project
 
 An agent that lives in one folder means a terminal per repository, and a tmux
