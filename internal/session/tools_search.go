@@ -31,6 +31,16 @@ const (
 	searchMaxCount     = 8
 )
 
+// SearchDefaultCount is what a search that asked for nothing gets, exported
+// because the command line's web door defaults the same ask to the same
+// number rather than to a second literal that can drift from this one.
+const SearchDefaultCount = searchDefaultCount
+
+// WebSearchCount clamps a caller's ask exactly as the tool clamps the model's:
+// an absent ask is the default; a zero, a negative or an over-ask is corrected
+// silently rather than refused.
+func WebSearchCount(asked int) int { return searchCount(&asked) }
+
 const webSearchDescription = "Search the web and get back a numbered list of results: title, URL, and a snippet of each page. Use it for anything outside this machine and outside your training data — current events, release notes, error messages you do not recognise, library documentation. Follow it with web_fetch on the URLs worth reading in full: the snippets are extracts, not the page."
 
 const webSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to search for, as you would type it into a search engine"},"count":{"type":"integer","description":"How many results to return (default: 5, maximum: 8)"}},"required":["query"],"additionalProperties":false}`

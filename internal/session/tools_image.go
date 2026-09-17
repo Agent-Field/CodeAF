@@ -96,10 +96,10 @@ func (a *Agent) imageTools() []bare.Tool {
 	return []bare.Tool{a.generateImageTool(client, model)}
 }
 
-// generateImageArguments is the wire form, and the road's argument shape in
-// one: the belt decodes into it, and the command line's image door fills it
+// GenerateImageArgs is the wire form, and the road's argument shape in one:
+// the belt decodes into it, and the command line's image door fills it
 // directly, so the two doors cannot disagree about what one call carries.
-type generateImageArguments struct {
+type GenerateImageArgs struct {
 	Prompt         string   `json:"prompt"`
 	ReferencePaths []string `json:"reference_paths"`
 	AspectRatio    string   `json:"aspect_ratio"`
@@ -108,12 +108,12 @@ type generateImageArguments struct {
 	Model          string   `json:"model"`
 }
 
-// imageGen is everything one generation needs from the surface it runs in:
+// ImageGen is everything one generation needs from the surface it runs in:
 // the client, the default model its resolver answers, the picker for a call's
 // own word, where unnamed pictures land, and the two hooks the belt adds —
 // the bill and the artifacts row. Account and Record are optional: a caller
 // with no session passes neither, and the picture still lands.
-type imageGen struct {
+type ImageGen struct {
 	Client       MediaGenerator
 	DefaultModel string
 	Pick         func(modality, word string) (string, error)
@@ -131,11 +131,11 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 		Description: generateImageDescription,
 		Schema:      a.mediaSchema(generateImageSchemaJSON, "image"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			var parsed generateImageArguments
+			var parsed GenerateImageArgs
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
-			text, failed := generateImage(ctx, imageGen{
+			text, failed := GenerateImage(ctx, ImageGen{
 				Client:       client,
 				DefaultModel: defaultModel,
 				Pick:         a.config.MediaPick,
@@ -174,16 +174,16 @@ func (a *Agent) recordImageArtifact(path, prompt string) {
 	})
 }
 
-// generateImage is the whole road behind generate_image, as a plain function
+// GenerateImage is the whole road behind generate_image, as a plain function
 // the command line's image door runs too: pick the model, read the
-// references, send the request, decode, account, write, describe. It exists so
-// the belt's tool and the command line's door cannot drift.
+// references, send the request, decode, account, write, describe. It exists
+// so the belt's tool and the command line's door cannot drift.
 //
 // Every failure is the tool error the belt returns and the command line
-// prints, never a Go error: a refused prompt, an expired key, a model having a
-// bad minute are all things a caller can act on, and none of them is a reason
-// to crash anything.
-func generateImage(ctx context.Context, gen imageGen, parsed generateImageArguments) (string, bool) {
+// prints, never a Go error: a refused prompt, an expired key, a model having
+// a bad minute are all things a caller can act on, and none of them is a
+// reason to crash anything.
+func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) (string, bool) {
 	// The call's own choice, resolved before anything is paid for, so a word
 	// that matches nothing costs nothing. From here down `model` is the model
 	// that actually draws, wherever it is named — the request, the failure
