@@ -1380,16 +1380,18 @@ func TestPlandbCliAnOlderStoreGainsTheTagColumnsOnOpen(t *testing.T) {
 }
 
 // A task's role follows its shape, never the word it was born with: a leaf
-// answers the seat it declared, and splitting it makes it a coordinator that
-// answers plan without a word on the task being rewritten.
+// answers the seat it declared, and giving it a child — the same parent write
+// plandb split makes — moves it up to the plan seat without a word on the task
+// being rewritten.
 func TestPlandbCliRoleFollowsTheShape(t *testing.T) {
 	store := planOpen(t, "")
 	planAdd(t, store, planSpec("leaf", "Leaf"))
 	if role, err := store.RoleOf("leaf"); err != nil || role != RoleWork {
 		t.Fatalf("leaf role = %q, %v, want work", role, err)
 	}
-	// Splitting the leaf gives it a child; its seat moves up on the shape
-	// alone, so nothing had to be declared for it to answer plan.
+	// Giving the leaf a child is the split road's own write — both go through
+	// AddMany with a ParentID — so this is the plan seat a split leaf answers
+	// while that child is open.
 	planAdd(t, store, TaskSpec{ID: "kid", Title: "Kid", ParentID: "leaf"})
 	if role, err := store.RoleOf("leaf"); err != nil || role != RolePlan {
 		t.Fatalf("coordinator role = %q, %v, want plan while its child is open", role, err)
@@ -1406,8 +1408,11 @@ func TestPlandbCliRoleFollowsTheShape(t *testing.T) {
 
 // The seat a coordinator loses when its children leave: the run's root is the
 // one task that survives its last child being archived away — every other
-// parent auto-completes with its last child — so it is the task that shows the
-// fallback, plan with children and work again once the archive has taken them.
+// parent, including a split leaf, is swept with its finished children, because
+// the archive moves a maximal finished subtree as one unit. The root is the
+// task that shows the fallback the shape rule owes elsewhere: plan while it
+// has a child, and work again once the archive has taken them, without a word
+// on it ever changing.
 func TestPlandbCliRoleFallsBackWhenChildrenArchive(t *testing.T) {
 	store := planOpen(t, "")
 	clock := time.Now().UTC()
