@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // InstallOptions describes one in-place replacement.
@@ -120,22 +122,136 @@ func installRepositories(first string) []string {
 
 func (c *Client) downloadRelease(ctx context.Context, release Release, asset, goos, goarch, extension string) ([]byte, string, []byte, error) {
 	shownAsset := asset
-	body, err := c.get(ctx, c.assetURL(release, asset), "application/octet-stream", false)
+	body, err := c.downloadAsset(ctx, c.assetURL(release, asset), shownAsset)
 	if isStatus(err, http.StatusNotFound) {
 		legacyAsset := "aforge-" + goos + "-" + goarch + extension // legacy-name
-		body, err = c.get(ctx, c.assetURL(release, legacyAsset), "application/octet-stream", false)
+		body, err = c.downloadAsset(ctx, c.assetURL(release, legacyAsset), shownAsset)
 		if err == nil {
 			asset = legacyAsset
 		}
 	}
 	if err != nil {
-		return nil, asset, nil, nameReleaseResource(err, shownAsset)
+		return nil, asset, nil, err
 	}
-	checksums, err := c.get(ctx, c.assetURL(release, "checksums.txt"), "application/octet-stream", false)
+	checksums, err := c.get(ctx, c.assetURL(release, "checksums.txt"), "application/octet-stream", false, "checksums.txt")
 	if err != nil {
-		return nil, asset, nil, nameReleaseResource(err, "checksums.txt")
+		return nil, asset, nil, err
 	}
 	return body, asset, checksums, nil
+}
+
+type downloadRead struct {
+	bytes []byte
+	err   error
+}
+
+func (c *Client) downloadAsset(ctx context.Context, rawURL, asset string) ([]byte, error) {
+	ceiling := c.downloadCeiling()
+	downloadContext, cancel := context.WithTimeout(ctx, ceiling)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(downloadContext, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%s could not start arriving", asset)
+	}
+	request.Header.Set("Accept", "application/octet-stream")
+	request.Header.Set("User-Agent", c.userAgent())
+	response, err := c.requestClient().Do(request)
+	if err != nil {
+		switch {
+		case ctx.Err() != nil:
+			return nil, fmt.Errorf("downloading %s was stopped", asset)
+		case errors.Is(downloadContext.Err(), context.DeadlineExceeded):
+			return nil, downloadCeilingError(asset, ceiling)
+		case responseHeaderTimedOut(err):
+			return nil, fmt.Errorf("%s did not start arriving within %s", asset, spellDuration(apiRequestTimeout))
+		default:
+			return nil, fmt.Errorf("%s could not start arriving", asset)
+		}
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, &statusError{code: response.StatusCode, resource: asset}
+	}
+	return readDownloadBody(ctx, downloadContext, response.Body, asset, c.stallWindow(), ceiling)
+}
+
+func responseHeaderTimedOut(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "timeout awaiting response headers")
+}
+
+// readDownloadBody watches successful reads rather than wall time. A slow link
+// that keeps delivering bytes is healthy; one silent read must not hold the
+// installer forever even though the HTTP client has no whole-body timeout.
+func readDownloadBody(parent, download context.Context, body io.Reader, asset string, stall, ceiling time.Duration) ([]byte, error) {
+	reads := make(chan downloadRead, 1)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		buffer := make([]byte, 32*1024)
+		for {
+			count, err := body.Read(buffer)
+			var copied []byte
+			if count > 0 {
+				copied = append([]byte(nil), buffer[:count]...)
+			}
+			select {
+			case reads <- downloadRead{bytes: copied, err: err}:
+			case <-done:
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	timer := time.NewTimer(stall)
+	defer timer.Stop()
+	var downloaded []byte
+	for {
+		select {
+		case <-download.Done():
+			if parent.Err() != nil {
+				return nil, fmt.Errorf("downloading %s was stopped", asset)
+			}
+			return nil, downloadCeilingError(asset, ceiling)
+		case <-timer.C:
+			return nil, downloadStallError(asset, stall)
+		case read := <-reads:
+			if len(read.bytes) > 0 {
+				downloaded = append(downloaded, read.bytes...)
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(stall)
+			}
+			if read.err == nil {
+				continue
+			}
+			if errors.Is(read.err, io.EOF) {
+				return downloaded, nil
+			}
+			if parent.Err() != nil {
+				return nil, fmt.Errorf("downloading %s was stopped", asset)
+			}
+			if errors.Is(download.Err(), context.DeadlineExceeded) {
+				return nil, downloadCeilingError(asset, ceiling)
+			}
+			return nil, fmt.Errorf("downloading %s stopped before it finished", asset)
+		}
+	}
+}
+
+func downloadStallError(asset string, window time.Duration) error {
+	return fmt.Errorf("downloading %s stalled — no bytes for %s", asset, spellDuration(window))
+}
+
+func downloadCeilingError(asset string, ceiling time.Duration) error {
+	return fmt.Errorf("downloading %s took longer than %s", asset, spellDuration(ceiling))
 }
 
 func checksumFor(raw []byte, name string) (string, bool) {
