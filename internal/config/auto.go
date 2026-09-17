@@ -5,6 +5,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/crewpick"
+	"github.com/Agent-Field/codeaf/internal/pool/index"
 )
 
 // THE WORD THAT ASKS THE CATALOG TO ANSWER A TIER ROW.
@@ -41,6 +42,20 @@ func IsAuto(value string) bool {
 // is the answer it had before this word existed.
 var AutoModels func() []catalog.Model
 
+// AutoIndex is how the Model Pool's measurement index reaches seat
+// resolution: the binary holding the index sets it ONCE AT START-UP, from
+// whatever read it already made, and never a fetch — a tier row that says
+// auto resolves from the index already in hand, the same posture AutoModels
+// keeps. Nil is an ordinary state, not an error: a row that says auto then
+// reads the catalog's own figures alone, which is what it read before this
+// seam existed.
+var AutoIndex func() *index.Index
+
+// PoolQualityMetric names the index metric the picker reads a measured seat
+// quality from: a gaussian metric whose mean is on the same 0-100 scale
+// crewpick scores a seat on, with one cell per role and model.
+const PoolQualityMetric = "role_quality"
+
 // AutoPick is the word's own answer for one tier, computed from the rows.
 //
 // It is PURE: no disk, no network, the rows are only read, and the same rows
@@ -73,7 +88,7 @@ func AutoPick(tier, family, preset string, models []catalog.Model) (modelID stri
 	if len(candidates) == 0 {
 		return "", false
 	}
-	frugal, balanced, max := crewpick.Presets(crewpick.Front(candidates, crewpick.DefaultShapes(), fam))
+	frugal, balanced, max := crewpick.Presets(crewpick.FrontWith(candidates, crewpick.DefaultShapes(), fam, autoPrior(autoIndex())))
 	var pick crewpick.Crew
 	switch strings.ToLower(strings.TrimSpace(preset)) {
 	case CrewFrugal:
@@ -95,6 +110,37 @@ func AutoPick(tier, family, preset string, models []catalog.Model) (modelID stri
 		id = pick.Mastermind
 	}
 	return id, id != ""
+}
+
+// autoIndex is [AutoIndex] read with its ordinary absence folded into one
+// answer.
+func autoIndex() *index.Index {
+	if AutoIndex == nil {
+		return nil
+	}
+	return AutoIndex()
+}
+
+// autoPrior reads the index's measured quality into a crewpick prior: the
+// cells of PoolQualityMetric, kept only when the metric is declared gaussian
+// — a mean on any other scale would be blended against figures it does not
+// share units with — and dropped by PriorFromCells below the index's own
+// min_installs, resolved through the index's canonical ids so an alias meets
+// its candidate. A nil index, or a metric that is not there or not gaussian,
+// answers no prior, which leaves every seat on the catalog quality.
+func autoPrior(idx *index.Index) crewpick.Prior {
+	if idx == nil {
+		return nil
+	}
+	if kind, ok := idx.Kind(PoolQualityMetric); !ok || kind != "gaussian" {
+		return nil
+	}
+	cells := idx.Cells(PoolQualityMetric)
+	measured := make([]crewpick.Cell, 0, len(cells))
+	for _, c := range cells {
+		measured = append(measured, crewpick.Cell{Role: c.Role, Model: c.Model, Mean: c.Mean, N: c.N})
+	}
+	return crewpick.PriorFromCells(measured, idx.MinInstalls(), idx.Canonical)
 }
 
 // autoSeat is the tier word that names which of crewpick's three seats the
