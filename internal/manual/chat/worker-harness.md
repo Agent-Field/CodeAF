@@ -124,7 +124,7 @@ answered it answers by **re-planning**. The verbs a node worker has for handing
 work out — the task graph's own — are off this belt for the same reason: a belt
 carrying both would teach two ways to say one thing.
 
-## Costs and limits — what a task costs
+## Costs and limits
 
 - **The cost cap.** A run may spend what the conversation's own **spend rail**
   allows — `/settings` → Spending → **per conversation** — which is off by default.
@@ -134,9 +134,8 @@ carrying both would teach two ways to say one thing.
   figure a node worker carries. The cap is a bound on spend and not a finding about
   the work: the turn is stopped there rather than judged, and a worker stopped this
   way did not finish.
-- **Spend rows by seat.** When a worker's turn ends, its calls land as one row in
-  the plan store's ledger, tagged with the task, the model, and the role — the
-  **seat** — it ran on.
+- **Spend rows by seat.** Every call a run makes lands one row in the plan store's
+  ledger, tagged with the task, the model, and the role — the **seat** — it ran on.
   Read it back with `plandb spend`, by role and by model, or rolled up under one
   axis: `plandb spend --by seat` (also `chat`, `project`, `model`, `task`), with
   `--since 7d` to bound the window.
