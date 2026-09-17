@@ -64,18 +64,6 @@ func PrepareCustomSource(profileDir, address, written string) PersistedSource {
 	}
 }
 
-// ActiveCustomSource is the custom connection the conversation answers on: the
-// thin wrapper over [ActiveConnection] that keeps a false for the default
-// service, for a vendored service, and for no service at all, so the Providers
-// tab can show the active connection and switch away from it.
-func ActiveCustomSource(profileDir string, sources modelsource.Set) (modelsource.Connected, bool) {
-	service, ok := ActiveConnection(profileDir, sources)
-	if !ok || !modelsource.IsCustomID(service.Source.ID) {
-		return modelsource.Connected{}, false
-	}
-	return service, true
-}
-
 // ActiveConnectionFor answers the service a conversation's live model answers on.
 // THE ACTIVE CONNECTION IS DERIVED FROM THE CONVERSATION'S MODEL, NOT THE
 // SHARED PROFILE: a caller holding the model this conversation actually runs
@@ -95,18 +83,6 @@ func ActiveConnectionFor(model string, sources modelsource.Set) (modelsource.Con
 	}
 	service, _ := sources.For(model)
 	return service, true
-}
-
-// ActiveConnection reads the service this conversation answers on from the
-// profile's conversation slot. THE ACTIVE CONNECTION IS DERIVED, NEVER
-// STORED: the conversation slot's model already carries the answer in its
-// Written prefix, and a second key would be a second source of truth that can
-// disagree with the model actually in use. The slot's model is read from disk
-// ([ChatModelAt]) and resolved through [ActiveConnectionFor], which holds the
-// derivation so a caller with the conversation's LIVE model ([app.model] in
-// the talk surface) reads the same answer the profile does.
-func ActiveConnection(profileDir string, sources modelsource.Set) (modelsource.Connected, bool) {
-	return ActiveConnectionFor(ChatModelAt(profileDir), sources)
 }
 
 // RenameConnectionModels carries a connection rename across every STORED model

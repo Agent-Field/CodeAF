@@ -284,34 +284,3 @@ func TestActiveConnectionForResolvesTheConversationModelThroughTheSet(t *testing
 		t.Fatal("an empty set with a blank model answered active")
 	}
 }
-
-// ActiveConnection keeps its profile-reading door on the same derivation: a
-// conversation model the profile holds comes back as the service that serves
-// it, and a profile that has settled on nothing answers false.
-func TestActiveConnectionReadsTheProfileConversationSlot(t *testing.T) {
-	dir := t.TempDir()
-	defaultService := modelsource.Connected{
-		Source: modelsource.DefaultSource("https://router.example/v1"),
-		Key:    "router-key", Address: "https://router.example/v1",
-	}
-	customService := modelsource.Connected{
-		Source: modelsource.Source{
-			ID: modelsource.CustomID, Written: "homelab",
-			Address: "http://127.0.0.1:9001/v1", KeyOptional: true,
-		},
-		Key: "homelab-key", Address: "http://127.0.0.1:9001/v1",
-	}
-	sources := modelsource.NewSet(defaultService, customService)
-	if _, ok := ActiveConnection(dir, sources); ok {
-		t.Fatal("a profile that settled on no model answered active")
-	}
-	if err := WriteChatModel(dir, "homelab/local-model"); err != nil {
-		t.Fatal(err)
-	}
-	if service, ok := ActiveConnection(dir, sources); !ok || service.Source.ID != modelsource.CustomID {
-		t.Fatalf("the profile's conversation model resolved to %q, ok %v", service.Source.ID, ok)
-	}
-	if _, ok := ActiveCustomSource(dir, sources); !ok {
-		t.Fatal("ActiveCustomSource lost the custom connection its wrapper derives")
-	}
-}

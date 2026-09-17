@@ -50,8 +50,8 @@ Routing already keys on the `Written` prefix of a model id (`Set.For` splits
 `written/bare`), so a stored `active` key would be a second source of truth that can
 disagree with the model actually in use.
 
-- READ: `config.ActiveCustomSource(profileDir, sources)` splits the conversation
-  slot's model against the instances' `Written` names.
+- READ: `config.ActiveConnectionFor(model, sources)` resolves the conversation's
+  live model against the instances' `Written` names.
 - WRITE: the Providers tab switcher rewrites the slot's model to
   `<written>/<preferred>` through the same config write the /model picker uses.
 
