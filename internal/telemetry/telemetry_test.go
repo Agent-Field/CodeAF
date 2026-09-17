@@ -4,9 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -487,5 +491,68 @@ func TestEndpointOverrideAndDefault(t *testing.T) {
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "https://example.invalid/relay")
 	if got := Endpoint(); got != "https://example.invalid/relay" {
 		t.Errorf("Endpoint() = %q, want the override", got)
+	}
+}
+
+// roundTripCounter is the recording transport TestNoTestBinaryCanReachThe
+// ProductionRelay swaps in behind the package's client: it counts the round
+// trips it is asked to make and answers a refusal it is never expected to see.
+type roundTripCounter struct {
+	mu    sync.Mutex
+	trips int
+}
+
+func (c *roundTripCounter) RoundTrip(request *http.Request) (*http.Response, error) {
+	c.mu.Lock()
+	c.trips++
+	c.mu.Unlock()
+	return nil, fmt.Errorf("telemetry test transport: no round trip may happen, saw %s %s", request.Method, request.URL)
+}
+
+func (c *roundTripCounter) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.trips
+}
+
+// TestNoTestBinaryCanReachTheProductionRelay pins the send path's law: when a
+// test binary ends up with the default endpoint — an endpoint override nobody
+// set — the flush refuses before building any request, and does so even with
+// the ladder forced on. The recording transport proves no HTTP round trip was
+// attempted, not merely that the spool survived; the event stays spooled the
+// way a failed send leaves it, and nothing reaches the real relay.
+func TestNoTestBinaryCanReachTheProductionRelay(t *testing.T) {
+	testHome(t)
+	// The default is what must be watched here: unset the dead loopback
+	// address testHome set, so Endpoint() answers the production relay.
+	unsetEnv(t, "CODEAF_TELEMETRY_ENDPOINT")
+	if got := Endpoint(); got != DefaultEndpoint {
+		t.Fatalf("Endpoint() = %q, want the default the law watches for", got)
+	}
+	counter := &roundTripCounter{}
+	previous := httpClient
+	httpClient = &http.Client{Transport: counter}
+	t.Cleanup(func() { httpClient = previous })
+	MarkNoticeShown()
+	event := SessionStarted(ModeChat, false, "session-law", freshClock(t))
+	if err := SpoolSync(event); err != nil {
+		t.Fatalf("SpoolSync returned %v; a spool that is never sent answers nil", err)
+	}
+	if err := Flush(context.Background()); err != nil {
+		t.Fatalf("Flush returned %v; a refused send must stay silent", err)
+	}
+	if trips := counter.count(); trips != 0 {
+		t.Fatalf("the send path made %d round trips under go test against the default endpoint, want 0", trips)
+	}
+	left := SpoolContents()
+	if len(left) != 1 {
+		t.Fatalf("%d lines remain in the spool, want the refused event still spooled", len(left))
+	}
+	var row map[string]any
+	if err := json.Unmarshal(left[0], &row); err != nil {
+		t.Fatal(err)
+	}
+	if row["event_id"] != event.ID {
+		t.Errorf("the remaining event is %v, want the one that was spooled", row["event_id"])
 	}
 }
