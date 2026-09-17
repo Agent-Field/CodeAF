@@ -1903,8 +1903,9 @@ func (s *Settings) build() []Setting {
 			Key: KeyModelPool, Category: CategoryModels, Kind: SettingChoice,
 			Label: "model pool", Env: "CODEAF_MODEL_POOL", Choices: ModelPoolChoices,
 			Hint: "codeaf picks your models from the public Model Pool, and your runs improve it. " +
-				"Nothing about your code leaves your machine. " +
-				"read: use the pool, send nothing. off: neither.",
+				"On by default: what leaves is computed, text-free numbers under a per-install nonce, " +
+				"never code, prompts or paths. read: use the pool, send nothing. off: neither " +
+				"(CODEAF_MODEL_POOL=off for one run).",
 			read:  func() string { return ModelPoolAt(dir).Mode.String() },
 			write: func(raw string) error { return writeChoice(dir, KeyModelPool, raw, ModelPoolChoices) },
 		},

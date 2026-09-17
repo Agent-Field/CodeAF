@@ -678,7 +678,8 @@ var settingUI = map[string]settingMeta{
 	config.KeyModelPool: {
 		tab: tabProviders, label: "model pool", widget: widgetCycle,
 		about: "codeaf picks your models from the public Model Pool, and your runs " +
-			"improve it. Nothing about your code leaves your machine. read uses " +
+			"improve it. On by default: what leaves is computed, text-free numbers " +
+			"under a per-install nonce, never code, prompts or paths. read uses " +
 			"the pool and sends nothing; off does neither.",
 	},
 	// The key sits under the pool row it guards: a private relay is the same

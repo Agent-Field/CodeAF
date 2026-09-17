@@ -197,9 +197,13 @@ any OpenAI-compatible endpoint.
 
 ## Model Pool
 
-Installs that opt in send text-free scores of their crews to a relay, which
-publishes a signed index of seat quality; the crew picker reads it under
-`picked from = learn`. The index is mirrored on the `model-pool` branch at
+The picker can choose models from what other installs have found. It is on by
+default: what an install sends is computed, text-free numbers about the models
+it ran (role, model, a number, a day) under a per-install nonce, never code,
+prompts, paths or an identity, and `codeaf pool status` shows exactly what is
+waiting to go. Turn it off with `model_pool = off` on the settings sheet or
+`CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing. The relay
+publishes a signed index the crew picker reads under `picked from = learn`. The index is mirrored on the `model-pool` branch at
 `pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
 the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
 that includes running your own.
