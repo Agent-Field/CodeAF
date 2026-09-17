@@ -45,7 +45,7 @@ func TestSeatOfTierMapsEveryTierAndNothingElse(t *testing.T) {
 			t.Fatalf("SeatOfTier(%q) is false — a tier of the registry has no seat word", tier)
 		}
 		if !SeatValid(string(seat)) {
-			t.Fatalf("SeatOfTier(%q) wrote %q, which is not one of the six", tier, seat)
+			t.Fatalf("SeatOfTier(%q) wrote %q, which is not one of the seven", tier, seat)
 		}
 	}
 	// Talk is the word for a conversation's own turns, and no tier governs
