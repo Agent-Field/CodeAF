@@ -676,8 +676,17 @@ func TestAnAnsweredProposalIsNotAskedAgainOfASurfaceThatArrivesLater(t *testing.
 	})
 	heldClock(agent)
 	ran := make(ranNodes, 2)
+	// THE WORK IS HELD UNTIL THE LATE SURFACE HAS READ ITS REPLAY. A node that
+	// finishes reports back, and the report opens a turn of its own with a hub of
+	// its own — so on a loaded machine, where this goroutine is the slow one, the
+	// replay was read off the report's empty hub and carried no card at all. The
+	// question here is what the turn that asked hands a late surface, so the
+	// report is kept from arriving until that has been read.
+	finish := make(chan struct{})
+	defer close(finish)
 	stubbedGraph(agent, func(node *TaskNode) {
 		ran <- node
+		<-finish
 		node.graph.complete(node, TaskDone)
 	})
 	events := watched(agent)
