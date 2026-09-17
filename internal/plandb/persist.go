@@ -96,7 +96,9 @@ var schemaStatements = []string{
 		evidence              TEXT    NOT NULL,
 		created_at            TEXT    NOT NULL,
 		updated_at            TEXT    NOT NULL,
-		completed_at          TEXT    NOT NULL
+		completed_at          TEXT    NOT NULL,
+		project               TEXT    NOT NULL DEFAULT '',
+		chat                  TEXT    NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS deps (
 		downstream TEXT    NOT NULL,
@@ -111,7 +113,9 @@ var schemaStatements = []string{
 		task_id TEXT NOT NULL,
 		agent   TEXT NOT NULL,
 		body    TEXT NOT NULL,
-		at      TEXT NOT NULL
+		at      TEXT NOT NULL,
+		project TEXT NOT NULL DEFAULT '',
+		chat    TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS contexts (
 		seq        INTEGER PRIMARY KEY,
@@ -119,7 +123,9 @@ var schemaStatements = []string{
 		task_id    TEXT NOT NULL,
 		kind       TEXT NOT NULL,
 		content    TEXT NOT NULL,
-		created_at TEXT NOT NULL
+		created_at TEXT NOT NULL,
+		project    TEXT NOT NULL DEFAULT '',
+		chat       TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS spend (
 		task_id    TEXT    NOT NULL,
@@ -177,18 +183,68 @@ func ensureSchema(db *sql.DB) error {
 	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'`).Scan(&present); err != nil {
 		return err
 	}
-	if present > 0 {
-		return nil
+	if present == 0 {
+		if err := enterWAL(db); err != nil {
+			return err
+		}
+		for _, statement := range schemaStatements {
+			if _, err := db.Exec(statement); err != nil {
+				return fmt.Errorf("create plan store schema: %w", err)
+			}
+		}
 	}
-	if err := enterWAL(db); err != nil {
-		return err
-	}
-	for _, statement := range schemaStatements {
-		if _, err := db.Exec(statement); err != nil {
-			return fmt.Errorf("create plan store schema: %w", err)
+	// THE TAGS ARRIVED AFTER THE FIRST STORES. A store built before the
+	// project and chat columns existed still opens: the columns are added,
+	// and its old rows read back with the empty tag an honest "made before
+	// this change" carries.
+	return migrateTags(db)
+}
+
+// migrateTags adds the project and chat columns to every table that carries
+// them when the store predates them. It runs on a fresh store too, where the
+// columns are already there and every step is a no-op.
+func migrateTags(db *sql.DB) error {
+	for _, table := range []string{"tasks", "notes", "contexts"} {
+		for _, column := range []string{"project", "chat"} {
+			if err := ensureColumn(db, table, column); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// ensureColumn adds one column when its table predates it and does nothing
+// when it is already there. SQLite has no ADD COLUMN IF NOT EXISTS, so the
+// check is a read of the table's own description.
+func ensureColumn(db *sql.DB, table, column string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var (
+			cid, notNull, primary int
+			name, ctype           string
+			fallback              sql.NullString
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &fallback, &primary); err != nil {
+			return err
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " TEXT NOT NULL DEFAULT ''")
+	return err
 }
 
 // enterWAL puts a new store in WAL journal mode. The mode is a property of the
@@ -257,7 +313,7 @@ func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
 	rows, err := tx.Query(`SELECT id, title, description, kind, parent_id, priority, effect,
 		parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
 		deliverables, evidence_requirements, status, composite, claimed_by, result, err,
-		artifacts, evidence, created_at, updated_at, completed_at
+		artifacts, evidence, created_at, updated_at, completed_at, project, chat
 		FROM tasks ORDER BY ord`)
 	if err != nil {
 		return nil, nil, err
@@ -278,7 +334,7 @@ func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
 			&task.Priority, &effect, &parallel, &isolation, &task.Role, &task.Agent, &task.Acceptance,
 			&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 			&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
-			&artifacts, &evidence, &createdAt, &updatedAt, &completedAt); err != nil {
+			&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat); err != nil {
 			return nil, nil, err
 		}
 		task.Effect = Effect(effect)
@@ -342,7 +398,7 @@ func loadDeps(tx *sql.Tx, tasks map[string]*Task) error {
 }
 
 func loadNotes(tx *sql.Tx) ([]Note, error) {
-	rows, err := tx.Query(`SELECT id, task_id, agent, body, at FROM notes ORDER BY seq`)
+	rows, err := tx.Query(`SELECT id, task_id, agent, body, at, project, chat FROM notes ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +407,7 @@ func loadNotes(tx *sql.Tx) ([]Note, error) {
 	for rows.Next() {
 		var note Note
 		var at string
-		if err := rows.Scan(&note.ID, &note.TaskID, &note.Agent, &note.Body, &at); err != nil {
+		if err := rows.Scan(&note.ID, &note.TaskID, &note.Agent, &note.Body, &at, &note.Project, &note.Chat); err != nil {
 			return nil, err
 		}
 		if note.At, err = parseTime(at); err != nil {
@@ -363,7 +419,7 @@ func loadNotes(tx *sql.Tx) ([]Note, error) {
 }
 
 func loadContexts(tx *sql.Tx) ([]ContextEntry, error) {
-	rows, err := tx.Query(`SELECT id, task_id, kind, content, created_at FROM contexts ORDER BY seq`)
+	rows, err := tx.Query(`SELECT id, task_id, kind, content, created_at, project, chat FROM contexts ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +428,7 @@ func loadContexts(tx *sql.Tx) ([]ContextEntry, error) {
 	for rows.Next() {
 		var entry ContextEntry
 		var createdAt string
-		if err := rows.Scan(&entry.ID, &entry.TaskID, &entry.Kind, &entry.Content, &createdAt); err != nil {
+		if err := rows.Scan(&entry.ID, &entry.TaskID, &entry.Kind, &entry.Content, &createdAt, &entry.Project, &entry.Chat); err != nil {
 			return nil, err
 		}
 		if entry.CreatedAt, err = parseTime(createdAt); err != nil {
@@ -416,8 +472,8 @@ func saveTasks(tx *sql.Tx, value state) error {
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -457,7 +513,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 			task.Role, task.Agent, task.Acceptance, columns, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
-			formatTime(task.UpdatedAt), formatTime(task.CompletedAt)); err != nil {
+			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat); err != nil {
 			return err
 		}
 	}
@@ -481,13 +537,13 @@ func saveDeps(tx *sql.Tx, value state) error {
 }
 
 func saveNotes(tx *sql.Tx, notes []Note) error {
-	statement, err := tx.Prepare(`INSERT INTO notes (seq, id, task_id, agent, body, at) VALUES (?, ?, ?, ?, ?, ?)`)
+	statement, err := tx.Prepare(`INSERT INTO notes (seq, id, task_id, agent, body, at, project, chat) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
 	for seq, note := range notes {
-		if _, err := statement.Exec(seq, note.ID, note.TaskID, note.Agent, note.Body, formatTime(note.At)); err != nil {
+		if _, err := statement.Exec(seq, note.ID, note.TaskID, note.Agent, note.Body, formatTime(note.At), note.Project, note.Chat); err != nil {
 			return err
 		}
 	}
@@ -495,13 +551,13 @@ func saveNotes(tx *sql.Tx, notes []Note) error {
 }
 
 func saveContexts(tx *sql.Tx, entries []ContextEntry) error {
-	statement, err := tx.Prepare(`INSERT INTO contexts (seq, id, task_id, kind, content, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+	statement, err := tx.Prepare(`INSERT INTO contexts (seq, id, task_id, kind, content, created_at, project, chat) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
 	for seq, entry := range entries {
-		if _, err := statement.Exec(seq, entry.ID, entry.TaskID, entry.Kind, entry.Content, formatTime(entry.CreatedAt)); err != nil {
+		if _, err := statement.Exec(seq, entry.ID, entry.TaskID, entry.Kind, entry.Content, formatTime(entry.CreatedAt), entry.Project, entry.Chat); err != nil {
 			return err
 		}
 	}

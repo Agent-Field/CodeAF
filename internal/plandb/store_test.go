@@ -1219,3 +1219,162 @@ func TestPlandbCliFlockSerializesTwoHandles(t *testing.T) {
 		t.Fatalf("a write was lost across the two handles: %q", got.Description)
 	}
 }
+
+// Every task, note and context row carries the run's project and the chat it
+// was made in, and a child inherits both from its parent. A reading verb's
+// Filter narrows to one tag, and the zero Filter keeps everything — the
+// answer the store gave before the tags existed.
+func TestPlandbCliRowsCarryTagsAndFilterNarrows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store, err := Open(path, "plan-test", "root", "The run", "drive the plan", "chat-9")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if root := store.Task("root"); root.Project != "plan-test" || root.Chat != "chat-9" {
+		t.Fatalf("root tags = %q/%q, want plan-test/chat-9", root.Project, root.Chat)
+	}
+
+	planAdd(t, store, planSpec("p", "P"))
+	child := planSpec("c", "C")
+	child.ParentID = "p"
+	planAdd(t, store, child)
+	if got := store.Task("c"); got.Project != "plan-test" || got.Chat != "chat-9" {
+		t.Fatalf("child tags = %q/%q, want the parent's", got.Project, got.Chat)
+	}
+	if _, err := store.AddNote("c", "worker", "a note"); err != nil {
+		t.Fatalf("add note: %v", err)
+	}
+	if _, err := store.AddContext("", "decision", "run-wide"); err != nil {
+		t.Fatalf("add context: %v", err)
+	}
+	if notes := store.Notes("c", 0); len(notes) != 1 || notes[0].Project != "plan-test" || notes[0].Chat != "chat-9" {
+		t.Fatalf("note tags = %#v, want the task's", notes)
+	}
+	if contexts := store.Contexts("", "", 0); len(contexts) != 1 || contexts[0].Project != "plan-test" || contexts[0].Chat != "chat-9" {
+		t.Fatalf("context tags = %#v, want the run's", contexts)
+	}
+
+	// The zero Filter keeps every row; a foreign tag drops them; a matching
+	// tag keeps them.
+	if got := store.Tasks(); len(got) != 3 {
+		t.Fatalf("unfiltered tasks = %d, want 3", len(got))
+	}
+	if got := store.Tasks(Filter{Project: "plan-test", Chat: "chat-9"}); len(got) != 3 {
+		t.Fatalf("matching filter = %d, want 3", len(got))
+	}
+	if got := store.Tasks(Filter{Chat: "other"}); len(got) != 0 {
+		t.Fatalf("foreign chat filter = %d, want 0", len(got))
+	}
+	if ready := store.ReadySet(Filter{Chat: "chat-9"}); len(ready.Runnable) != 1 {
+		t.Fatalf("ready set under the chat = %#v, want the one leaf", ready)
+	}
+	if ready := store.ReadySet(Filter{Chat: "other"}); len(ready.Runnable)+len(ready.Blocked) != 0 {
+		t.Fatalf("ready set under a foreign chat = %#v, want nothing", ready)
+	}
+	if got := store.Contexts("", "", 0, Filter{Chat: "other"}); len(got) != 0 {
+		t.Fatalf("contexts under a foreign chat = %d, want 0", len(got))
+	}
+	if got := store.Search("note", 0, Filter{Chat: "chat-9"}); len(got) != 1 {
+		t.Fatalf("search under the chat = %d, want the note", len(got))
+	}
+	if got := store.Search("note", 0, Filter{Chat: "other"}); len(got) != 0 {
+		t.Fatalf("search under a foreign chat = %d, want 0", len(got))
+	}
+}
+
+// NextID mints six base-36 characters, drawn from crypto/rand, and never
+// hands the same one out twice.
+func TestPlandbCliNextIDMintsSixBase36Characters(t *testing.T) {
+	store := planOpen(t, "")
+	const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
+	seen := map[string]bool{}
+	for i := 0; i < 500; i++ {
+		id := store.NextID()
+		if len(id) != 6 {
+			t.Fatalf("id %q has %d characters, want 6", id, len(id))
+		}
+		for _, r := range id {
+			if !strings.ContainsRune(alphabet, r) {
+				t.Fatalf("id %q carries a non-base-36 character %q", id, r)
+			}
+		}
+		if seen[id] {
+			t.Fatalf("NextID handed out %q twice", id)
+		}
+		seen[id] = true
+	}
+}
+
+// AddSpend writes the ledger, and Summary rolls it up per project and per
+// chat from the tags of the task each charge names.
+func TestPlandbCliSpendRollsUpPerProjectAndChat(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store, err := Open(path, "plan-test", "root", "The run", "drive the plan", "chat-a")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	planAdd(t, store, planSpec("one", "One"), planSpec("two", "Two"))
+	if err := store.AddSpend("one", "model-x", "worker", 1.50, 100, 20); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := store.AddSpend("two", "model-y", "worker", 0.25, 10, 5); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+
+	summary := store.Summary()
+	if got := summary.ProjectSpend["plan-test"]; got.Calls != 2 || got.USD != 1.75 {
+		t.Fatalf("project total = %#v, want 2 calls and $1.75", got)
+	}
+	if got := summary.ChatSpend["chat-a"]; got.Calls != 2 || got.USD != 1.75 {
+		t.Fatalf("chat total = %#v, want 2 calls and $1.75", got)
+	}
+	// The charge the CLI prints carries the t- prefix too; the store trims it
+	// the same way every other task id road does.
+	if err := store.AddSpend("t-one", "model-x", "worker", 0.5, 1, 1); err != nil {
+		t.Fatalf("add spend by t- id: %v", err)
+	}
+	if got := store.Summary().ProjectSpend["plan-test"]; got.Calls != 3 {
+		t.Fatalf("project calls after the t- id charge = %d, want 3", got.Calls)
+	}
+	// A store nobody charged carries no totals.
+	if fresh := planOpen(t, ""); fresh.Summary().ProjectSpend != nil || fresh.Summary().ChatSpend != nil {
+		t.Fatalf("an uncharged store carried spend totals")
+	}
+}
+
+// A store made before the tags existed still opens: the columns are added on
+// open, and its old rows read back with the empty tag.
+func TestPlandbCliAnOlderStoreGainsTheTagColumnsOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store, err := Open(path, "plan-test", "root", "The run", "drive the plan")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	planAdd(t, store, planSpec("a", "A"))
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	// Strip the columns a store made before this change never had.
+	db, err := openDatabase(path)
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	for _, table := range []string{"tasks", "notes", "contexts"} {
+		for _, column := range []string{"project", "chat"} {
+			if _, err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column); err != nil {
+				t.Fatalf("drop %s.%s: %v", table, column, err)
+			}
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+	// Opening again migrates, and the old rows carry the empty tag.
+	store, err = Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if got := store.Task("a"); got == nil || got.Project != "" || got.Chat != "" {
+		t.Fatalf("old task tags = %#v, want the empty tag", got)
+	}
+}
