@@ -265,7 +265,7 @@ func (s *Store) ReadyLeaves() []*Task {
 	var tasks []*Task
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
-		if task.Status != StatusReady || task.Composite || len(executionBlockReasons(s.data, task)) > 0 {
+		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) || len(executionBlockReasons(s.data, task)) > 0 {
 			continue
 		}
 		tasks = append(tasks, cloneTask(task))
@@ -287,7 +287,7 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 		if !filter.admits(task.Project, task.Chat) {
 			continue
 		}
-		if task.Status != StatusReady || task.Composite {
+		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) {
 			continue
 		}
 		if reasons := executionBlockReasons(s.data, task); len(reasons) > 0 {
@@ -394,8 +394,8 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 			if err := requireOwner(task, agent); err != nil {
 				return err
 			}
-			if task.Composite && !allChildrenDone(*next, id) {
-				return fmt.Errorf("task %q has unfinished or failed children", id)
+			if ok, reason := canFinish(*next, task); !ok {
+				return errors.New(reason)
 			}
 			switch task.Status {
 			case StatusClaimed, StatusRunning:
@@ -453,6 +453,38 @@ func (s *Store) Release(id, agent string) (*Task, error) {
 		}
 		task.Status, task.ClaimedBy, task.UpdatedAt = StatusPending, "", now
 		promote(next, now)
+		return nil
+	})
+}
+
+// Pause holds a task, and by inheritance everything under it, out of the
+// ready frontier without changing a single status: the flag is what readiness
+// reads, not a rung of the ladder. It is the runtime's and a person's hold,
+// never a worker's — the bare lifecycle verb stays refused to workers — and
+// the root, which is the run itself, is nobody's to pause.
+func (s *Store) Pause(id string) (*Task, error) {
+	return s.hold(id, true)
+}
+
+// Resume releases a hold Pause set. Resuming a task that was not paused
+// changes nothing and reports no error, so a caller may call it without
+// asking first.
+func (s *Store) Resume(id string) (*Task, error) {
+	return s.hold(id, false)
+}
+
+// hold is the one road both Pause and Resume take: refuse the root, set the
+// flag to the wanted value, and leave an already-settled task alone.
+func (s *Store) hold(id string, paused bool) (*Task, error) {
+	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
+	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if task.ID == next.RootID {
+			return errors.New("the harness owns the root task")
+		}
+		if task.Paused == paused {
+			return errNoChange
+		}
+		task.Paused, task.UpdatedAt = paused, now
 		return nil
 	})
 }
@@ -585,11 +617,33 @@ func (s *Store) RemoveDep(downstream, upstream string) (*Task, error) {
 	})
 }
 
+// A NOTE'S AUTHOR IS ONE OF TWO HANDS: a worker leaving a handoff for the
+// next worker, or the person steering the run. The store records which, and
+// nothing else about the note changes with it.
+const (
+	NoteFromWorker = "worker"
+	NoteFromPerson = "person"
+)
+
 // AddNote leaves a task-scoped message. The note is public to every worker on
 // the run — the CLI's notes listing prints all of them — and the author is
 // recorded so a reader can tell an owner's handoff from a bystander's
 // observation.
 func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
+	return s.addNote(taskID, agent, body, NoteFromWorker)
+}
+
+// AddPersonNote leaves a note in the person's own voice. It is AddNote with
+// the author taken to be the person and no agent name; the CLI prints it with
+// a `person:` prefix, and it is the same store row, because a note's home is
+// the task either way.
+func (s *Store) AddPersonNote(taskID, body string) (Note, error) {
+	return s.addNote(taskID, "", body, NoteFromPerson)
+}
+
+// addNote is the one road both note writers take: validate, mint an id, and
+// stamp the change on the task the note hangs on.
+func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
 	// One transaction, like every writer: the database's write lock, a fresh
 	// load, the change, the commit. See AddMany for why.
 	s.mu.Lock()
@@ -609,10 +663,14 @@ func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
 		next.NextID++
 		note = Note{
 			ID: fmt.Sprintf("n-%08x", next.NextID), TaskID: taskID,
-			Agent: strings.TrimSpace(agent), Body: text, At: now,
+			Agent: strings.TrimSpace(agent), Body: text, At: now, From: from,
 			Project: next.Tasks[taskID].Project, Chat: next.Tasks[taskID].Chat,
 		}
 		next.Notes = append(next.Notes, note)
+		// A note is a change to the task it hangs on, so it moves the task's
+		// own updated_at too — the field a waiting worker's wake reads beside
+		// the note's timestamp.
+		next.Tasks[taskID].UpdatedAt = now
 		return nil
 	})
 	if err != nil {
@@ -640,6 +698,36 @@ func (s *Store) Notes(taskID string, limit int) []Note {
 		}
 	}
 	return notes
+}
+
+// Changed answers the ids of the tasks that moved since a moment: the task
+// row itself, a note left on it, or a context entry scoped to it. It is what
+// a waiting worker's wake reads — one read over the three places a task's
+// state lives — and it names which tasks to look at again, never what
+// changed about them. The ids are the store's bare spelling, in admission
+// order, and a task created after the moment counts as changed because its
+// own row is newer than the moment.
+func (s *Store) Changed(since time.Time) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	moved := map[string]bool{}
+	for _, note := range s.data.Notes {
+		if note.At.After(since) {
+			moved[note.TaskID] = true
+		}
+	}
+	for _, entry := range s.data.Contexts {
+		if entry.TaskID != "" && entry.CreatedAt.After(since) {
+			moved[entry.TaskID] = true
+		}
+	}
+	var ids []string
+	for _, id := range s.data.Order {
+		if moved[id] || s.data.Tasks[id].UpdatedAt.After(since) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // AddContext records a run-wide fact. Kinds are freeform — the doctrine says
@@ -680,6 +768,11 @@ func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
 			Content: text, CreatedAt: now, Project: project, Chat: chat,
 		}
 		next.Contexts = append(next.Contexts, entry)
+		// A task-scoped entry is a change to that task, so it moves the
+		// task's updated_at; a run-wide entry has no task to move.
+		if taskID != "" {
+			next.Tasks[taskID].UpdatedAt = now
+		}
 		return nil
 	})
 	if err != nil {
@@ -816,6 +909,209 @@ func (s *Store) CompleteRoot(result string) error {
 		root.Result, root.UpdatedAt, root.CompletedAt = result, now, now
 		return nil
 	})
+}
+
+// Archive moves whole finished subtrees out of the live plan and into the
+// archive: a task and every task under it, when each one has been terminal —
+// done, cancelled or failed — for longer than the window. The moved tasks
+// leave Tasks, ReadySet and Search whole, so nothing that reads the plan sees
+// them again, and Archived reads the rows back whole. Two things are kept
+// honest: a subtree a still-live task depends on stays in the plan, because
+// an edge to a task that is gone would break the next open, and every
+// surviving parent's composite flag is recomputed, because a parent whose
+// last child left is no longer composite. The root is never archived: it is
+// the run.
+func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.beginWrite()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	fresh, err := loadState(tx)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now().UTC()
+	doomed, moved := archiveSelection(fresh, now.Add(-olderThan))
+	if len(moved) == 0 {
+		s.data = fresh
+		return nil, nil
+	}
+	for _, task := range moved {
+		task.ArchivedAt = now
+	}
+	if err := insertArchived(tx, moved, now); err != nil {
+		return nil, err
+	}
+	for id := range doomed {
+		delete(fresh.Tasks, id)
+	}
+	fresh.Order = keepIDs(fresh.Order, doomed)
+	fresh.Notes = keepNotes(fresh.Notes, doomed)
+	fresh.Contexts = keepContexts(fresh.Contexts, doomed)
+	recomputeComposite(&fresh)
+	if err := saveState(tx, fresh); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	s.data = fresh
+	return moved, nil
+}
+
+// Archived lists the tasks the archive holds, in admission order, each
+// carrying the moment it was archived. It is the read behind the CLI's
+// `list --archived`.
+func (s *Store) Archived() ([]*Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return loadArchived(s.db)
+}
+
+// archiveSelection chooses the maximal finished subtrees older than the
+// cutoff. A task is a candidate when it is terminal, its whole subtree is
+// terminal, and every task in it has been terminal since before the cutoff;
+// a candidate whose parent is itself a candidate is not a root, because the
+// parent's move already carries it. Each root's subtree is then kept only when
+// no still-live task depends on anything in it.
+func archiveSelection(value state, cutoff time.Time) (map[string]bool, []*Task) {
+	children := map[string][]string{}
+	for _, id := range value.Order {
+		children[value.Tasks[id].ParentID] = append(children[value.Tasks[id].ParentID], id)
+	}
+	allTerminal := map[string]bool{}
+	latest := map[string]time.Time{}
+	var walk func(id string)
+	walk = func(id string) {
+		if _, seen := allTerminal[id]; seen {
+			return
+		}
+		task := value.Tasks[id]
+		allTerminal[id] = terminal(task.Status)
+		// A terminal task's moment is when it completed; the fallback is the
+		// last write that touched it, which is what an older store carries.
+		latest[id] = task.CompletedAt
+		if latest[id].IsZero() {
+			latest[id] = task.UpdatedAt
+		}
+		for _, child := range children[id] {
+			walk(child)
+			if !allTerminal[child] {
+				allTerminal[id] = false
+			}
+			if latest[child].After(latest[id]) {
+				latest[id] = latest[child]
+			}
+		}
+	}
+	for _, id := range value.Order {
+		walk(id)
+	}
+	eligible := func(id string) bool {
+		return id != value.RootID && terminal(value.Tasks[id].Status) && allTerminal[id] && latest[id].Before(cutoff)
+	}
+	doomed := map[string]bool{}
+	for _, id := range value.Order {
+		if !eligible(id) {
+			continue
+		}
+		if parent := value.Tasks[id].ParentID; parent != "" && eligible(parent) {
+			continue
+		}
+		set := map[string]bool{}
+		markSubtree(children, id, set)
+		if referencedFromOutside(value, set) {
+			continue
+		}
+		for member := range set {
+			doomed[member] = true
+		}
+	}
+	if len(doomed) == 0 {
+		return nil, nil
+	}
+	var moved []*Task
+	for _, id := range value.Order {
+		if doomed[id] {
+			moved = append(moved, cloneTask(value.Tasks[id]))
+		}
+	}
+	return doomed, moved
+}
+
+// markSubtree collects a task and every task under it.
+func markSubtree(children map[string][]string, id string, into map[string]bool) {
+	if into[id] {
+		return
+	}
+	into[id] = true
+	for _, child := range children[id] {
+		markSubtree(children, child, into)
+	}
+}
+
+// referencedFromOutside reports whether any task outside the set depends on a
+// task inside it. Such a set may not be archived: its edges would dangle.
+func referencedFromOutside(value state, set map[string]bool) bool {
+	for id, task := range value.Tasks {
+		if set[id] {
+			continue
+		}
+		for _, dep := range task.Dependencies {
+			if set[dep.TaskID] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// recomputeComposite restores the one invariant the archive can break: a
+// task's composite flag is exactly whether it still has a child in the plan.
+// A parent whose last child left the plan stops being composite.
+func recomputeComposite(value *state) {
+	hasChild := map[string]bool{}
+	for _, id := range value.Order {
+		if parent := value.Tasks[id].ParentID; parent != "" {
+			hasChild[parent] = true
+		}
+	}
+	for _, id := range value.Order {
+		value.Tasks[id].Composite = hasChild[id]
+	}
+}
+
+func keepIDs(order []string, drop map[string]bool) []string {
+	kept := order[:0]
+	for _, id := range order {
+		if !drop[id] {
+			kept = append(kept, id)
+		}
+	}
+	return kept
+}
+
+func keepNotes(notes []Note, drop map[string]bool) []Note {
+	kept := notes[:0]
+	for _, note := range notes {
+		if !drop[note.TaskID] {
+			kept = append(kept, note)
+		}
+	}
+	return kept
+}
+
+func keepContexts(entries []ContextEntry, drop map[string]bool) []ContextEntry {
+	kept := entries[:0]
+	for _, entry := range entries {
+		if entry.TaskID == "" || !drop[entry.TaskID] {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // Search answers the tasks, notes and context entries whose words match the
@@ -1044,7 +1340,7 @@ func (s *Store) ClaimNext(agent string) (*Task, error) {
 		var pick *Task
 		for _, id := range next.Order {
 			task := next.Tasks[id]
-			if task.Status != StatusReady || task.Composite || len(executionBlockReasons(*next, task)) > 0 {
+			if task.Status != StatusReady || task.Composite || pausedInLineage(*next, task) || len(executionBlockReasons(*next, task)) > 0 {
 				continue
 			}
 			if pick == nil || task.Priority > pick.Priority {
@@ -1348,6 +1644,21 @@ func promote(value *state, now time.Time) {
 	}
 }
 
+// pausedInLineage reports whether the task or any ancestor of it is paused.
+// Pause is inherited down the containment tree without touching a single
+// status, so every readiness read consults it beside the status ladder: a
+// paused subtree leaves the frontier whole while the tasks in it keep the
+// status they had. The walk is the same parent chain the ready ladder uses,
+// and it ends at the root, whose parent is the empty string.
+func pausedInLineage(value state, task *Task) bool {
+	for current := task; current != nil; current = value.Tasks[current.ParentID] {
+		if current.Paused {
+			return true
+		}
+	}
+	return false
+}
+
 // depsDone is the readiness rule: every hard dependency of the task AND of
 // each of its ancestors is done. The ancestor half is what makes the
 // containment graph part of scheduling — a child cannot run out from under
@@ -1369,18 +1680,45 @@ func depsDone(value state, task *Task) bool {
 	return true
 }
 
-func allChildrenDone(value state, id string) bool {
-	hasChildren := false
-	for _, child := range value.Tasks {
-		if child.ParentID != id {
+// CanFinish reports whether a task may be completed now, and when it may
+// not, the reason naming the first task in the way: a child that is not
+// terminal, or a hard dependency that is not done. `suggests` does not block
+// — it is advice, not a gate — and the child scan walks the plan in the order
+// it is carried, so the reason a refusal names is the same one on every call.
+// Done refuses with this same reason.
+func (s *Store) CanFinish(id string) (bool, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
+	task := s.data.Tasks[id]
+	if task == nil {
+		return false, fmt.Sprintf("task %q not found", id)
+	}
+	return canFinish(s.data, task)
+}
+
+// canFinish is the law CanFinish reads, as a free function so Done can ask it
+// against the transaction's own fresh state rather than the locked copy.
+func canFinish(value state, task *Task) (bool, string) {
+	for _, id := range value.Order {
+		child := value.Tasks[id]
+		if child.ParentID != task.ID {
 			continue
 		}
-		hasChildren = true
-		if child.Status != StatusDone {
-			return false
+		if !terminal(child.Status) {
+			return false, fmt.Sprintf("task %q has a child %q that has not finished", task.ID, id)
 		}
 	}
-	return hasChildren
+	for _, dep := range task.Dependencies {
+		if dep.Kind == DepSuggests {
+			continue
+		}
+		upstream := value.Tasks[dep.TaskID]
+		if upstream == nil || upstream.Status != StatusDone {
+			return false, fmt.Sprintf("task %q has an unfinished dependency %q", task.ID, dep.TaskID)
+		}
+	}
+	return true, ""
 }
 
 func allChildrenTerminal(value state, id string) bool {
