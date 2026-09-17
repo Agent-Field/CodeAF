@@ -60,9 +60,11 @@ func WithRetryAvoid(ctx context.Context, lanes []string) context.Context {
 	return context.WithValue(ctx, retryAvoidKey{}, kept)
 }
 
-// retryAvoidFrom is the list of lanes the caller has asked this call's bodies
-// to ignore, nil when the call is not a retry after a named failure.
-func retryAvoidFrom(ctx context.Context) []string {
+// RetryAvoidFrom is the list of lanes the caller has asked this call's bodies
+// to ignore, nil when the call is not a retry after a named failure. It is the
+// read side of [WithRetryAvoid], exported for the layer that composes the
+// retry and asserts what it stamped.
+func RetryAvoidFrom(ctx context.Context) []string {
 	if ctx == nil {
 		return nil
 	}

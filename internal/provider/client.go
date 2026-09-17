@@ -489,7 +489,7 @@ func knobsFrom(ctx context.Context) callKnobs {
 		hedgeLane:  hedgeLaneFrom(ctx),
 		reasoning:  MessageReasoningFrom(ctx),
 		refused:    &refusedHere{},
-		retryAvoid: retryAvoidFrom(ctx),
+		retryAvoid: RetryAvoidFrom(ctx),
 		trace:      newCallTrace(),
 	}
 	// The choice this call was already made on, if it was. See

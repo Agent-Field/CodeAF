@@ -556,6 +556,11 @@ func (c *Client) wirePreferences(model string, knobs callKnobs) *providerPrefs {
 		return nil
 	}
 	prefs := hedgePreference(c.providerPreferences(model, knobs), knobs)
+	// AND THE LANES A RETRY OF THIS CALL ALREADY SAW FAIL (retryavoid.go) go in
+	// beside the hedge's demand, before the ladder and the set-servable law read
+	// the object — so a widened rung can still take the list off and the law can
+	// still release a lane, exactly as it can for any other veto.
+	prefs = c.applyRetryAvoid(prefs, model, knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		prefs = relaxedPreferences(prefs)
 	}
@@ -626,17 +631,69 @@ func (c *Client) dropRefusedHere(prefs *providerPrefs, knobs callKnobs) *provide
 		}
 		return &providerPrefs{Ignore: refused}
 	}
-	narrowed := *prefs
 	alone, _ := demandedLane(knobs)
-	for _, name := range refused {
+	return prefs.strike(refused, alone)
+}
+
+// applyRetryAvoid writes the lanes a RETRY of this call must not re-ask into
+// the object about to go out (retryavoid.go). The list is the caller's own
+// scoping — the lanes an earlier attempt of the same retry loop failed on —
+// and it is empty on every call that is not such a retry, which is what keeps
+// every healthy request byte-for-byte what it always was.
+//
+// A PERSON'S PIN IS READ FIRST AND OUTRIGHT. A row that names one machine is
+// the whole ask, and "not that machine" written beside it is the request
+// arguing with itself (affinity.go's law about one object naming a lane and
+// refusing it in the same breath). A pin that retired itself is not a pin in
+// force, so the avoidance reads again once the row has let go (lanepin.go).
+//
+// THE NIL OBJECT IS BUILT WHEN THERE IS A VETO, on the same law
+// [Client.dropRefusedHere] states: a base that carries preferences and has had
+// a machine fail it has something to ask with even when nothing else about the
+// request wanted a preference — the veto itself. A base that does not carry one
+// is left alone: a field it 400s on is worse than a machine asked twice
+// (prefcarry.go). A row of `off` — and the direct, one-road services that
+// resolve to it ([Client.routingChoice]) — is a person's own standing answer
+// that no preference object goes out at all, and the veto does not overrule it.
+//
+// OTHERWISE THE LIST NARROWS THROUGH THE SAME FIELD LAW every other veto
+// follows ([providerPrefs.strike]): off the ranking, out of a demand that may
+// be narrowed, into `ignore`, and a demand that emptied stops being one.
+func (c *Client) applyRetryAvoid(prefs *providerPrefs, model string, knobs callKnobs) *providerPrefs {
+	if len(knobs.retryAvoid) == 0 || c.pinnedLaneFor(model) != "" {
+		return prefs
+	}
+	if prefs == nil {
+		if !c.carriesPreferences() || c.routing() == RoutingOff {
+			return nil
+		}
+		return &providerPrefs{Ignore: append([]string(nil), knobs.retryAvoid...)}
+	}
+	alone, _ := demandedLane(knobs)
+	return prefs.strike(knobs.retryAvoid, alone)
+}
+
+// strike takes the named machines out of what this object offers: off the
+// ranking, and — while the demand may be narrowed — out of the demand, into
+// the veto list. It is the one body of field law over `only`, `order` and
+// `ignore`, walked by [Client.dropRefusedHere] and by the retry-avoid list
+// ([Client.applyRetryAvoid]) alike, so that two lists narrowing one object
+// cannot carry two answers about how the three fields fit together.
+//
+// alone is the one machine a demand that must not be narrowed names — a
+// person's strict pin, or the single lane a choice admitted ([demandedLane]);
+// a hedge's machine arrives narrowable and is struck a name at a time like
+// the rest. A machine the demand still names is never also written into
+// `ignore`: the two fields would say opposite things about one name, and the
+// router reads both — which is an empty serving set written by us, in one
+// object, about the machine we just asked for.
+func (p *providerPrefs) strike(names []string, alone string) *providerPrefs {
+	narrowed := *p
+	for _, name := range names {
 		if alone == "" {
 			narrowed.Only = withoutEndpoint(narrowed.Only, name)
 		}
 		narrowed.Order = withoutEndpoint(narrowed.Order, name)
-		// A DEMANDED MACHINE IS NEVER ALSO VETOED. The two fields would then say
-		// opposite things about one name, and the router reads both — which is an
-		// empty serving set written by us, in one object, about the machine we
-		// just asked for.
 		if !namesEndpoint(narrowed.Only, name) && !namesEndpoint(narrowed.Ignore, name) {
 			narrowed.Ignore = append(narrowed.Ignore, name)
 		}
@@ -648,7 +705,7 @@ func (c *Client) dropRefusedHere(prefs *providerPrefs, knobs callKnobs) *provide
 	// are available", bought with a round trip. Both come off together, so the
 	// one body that had nowhere left to go carries the request the way a request
 	// with no belief behind it has always been carried.
-	if prefs.Only != nil && len(narrowed.Only) == 0 {
+	if p.Only != nil && len(narrowed.Only) == 0 {
 		narrowed.Only = nil
 		yes := true
 		narrowed.AllowFallbacks = &yes
@@ -674,8 +731,7 @@ func (p *providerPrefs) membershipNarrowing() bool {
 }
 
 // keepTheSetServable is the one place AN IGNORE LIST NEVER EMPTIES THE SET THE
-// REQUEST IS SENT TO is enforced.
-//
+// REQUEST IS SENT TO is enforced.//
 // IT READS THE FINISHED OBJECT, LAST, because the two things that can empty a
 // set arrive at different moments and neither can see the other. The ledger
 // writes its vetoes while the request is being composed
