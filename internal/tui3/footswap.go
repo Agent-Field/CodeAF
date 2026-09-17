@@ -26,7 +26,7 @@ import (
 //
 //	─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────────
 //	 › type to search or start something new
-//	 ↑↓ pick · enter open · alt+w folder · alt+o model · / commands · tab next place
+//	 ↑↓ pick · enter open · alt+w project · alt+y approvals · / commands
 //
 // THE SEAM IS WHAT ANSWERS AND HOW MUCH. Everything on it is a fact about the
 // conversation — its model and the machine serving it, its rung, its gate,

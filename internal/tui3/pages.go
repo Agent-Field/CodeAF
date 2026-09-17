@@ -1694,7 +1694,7 @@ func (a *app) placeRestWord() string { return "› " + placeRestWord }
 
 // placeHintSaid is the line under the composer, IN THE ONE SPELLING EVERY
 // CONSTANT ON THIS SURFACE IS AUTHORED IN. Home writes its own sentence for
-// every row it can stand on ([app.homeHint]) and gains the router's tail; every
+// every row it can stand on ([app.homeHint]) without the router's tail; every
 // other place says the router's own line.
 //
 // WHAT THIS TERMINAL ACTUALLY DRAWS IS [app.placeHint], one call above it: on a
@@ -1742,11 +1742,9 @@ func (a *app) placeHintSaid() string {
 	if pl := a.showing(); pl != nil && a.sheetLayerOwnsKeys() {
 		return pl.hint(a)
 	}
-	// AND THE MODEL LIST OVER HOME'S TARGET IS THE THIRD OF THOSE, on identical
-	// terms: it has taken `tab` along with every other key while it is up
-	// (boxseam.go's [app.placeTargetKey]), so the tail would name two keys that
-	// do nothing.
-	if a.targetPickShowing() {
+	// HOME OWNS ITS WHOLE FOOT, including the model list's keys while it is
+	// open. Its navigation chords still work but no longer get a router tail.
+	if a.at(pageHome) {
 		return a.homeHint()
 	}
 	// EVERY PLACE'S OWN SENTENCE, WITH THE ROUTER'S KEYS ON THE END OF IT. The

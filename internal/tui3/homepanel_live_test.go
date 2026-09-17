@@ -478,8 +478,8 @@ func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
 // door: `ctrl+x` raises the stop card from the row. THE FOOT DOES NOT NAME IT.
 // It used to say `ctrl+x stop it` on this row and something else on every
 // other, and the owner ruled the same day that every row of the field rests on
-// the one sentence — the four keys and `ctrl+o open folder`, which is as true
-// of a task's conversation as of any other row ([app.homeCrossChord]).
+// one sentence. The later foot cleanup removed the folder hint while keeping
+// its chord; the draft controls now follow the list's two keys.
 //
 // THE CROSSING SKIPS THE EMPTY MIDDLE. A field that fits in one column leaves
 // the next one white, and `→` reaches the rail over it rather than stopping on
@@ -502,8 +502,8 @@ func TestAThreeColumnRunningRowRestsOnTheOneFootAndStillStops(t *testing.T) {
 	if verbs := a.runningVerbs(a.home.lines[mine]); len(verbs) != 1 || verbs[0].word != stopActWord {
 		t.Fatalf("the row's strip offers %+v, want the tasks place's `%s`", verbs, stopActWord)
 	}
-	if foot := a.homeHint(); foot != restingFoot(a, homeFolderChordWord) {
-		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and the folder chord", foot)
+	if foot := a.homeHint(); foot != restingFoot(a) {
+		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and draft controls", foot)
 	}
 	a.placeKeyPress(key("right"))
 	if a.strip.open || a.home.columnOf(a.home.cursor) != homeRailCol(a.home.cols) {

@@ -309,10 +309,8 @@ const (
 	// the lowest line is for keys (footswap.go), and a promise about typing
 	// belongs where the typing lands.
 	homeFootWord = "↑↓ pick · enter open"
-	// homeRestHint is that sentence as the whole foot of the resting screen, with
-	// the one key that leaves it. It is composed rather than spelled a second
-	// time, so the box's prompt and the foot can never drift apart.
-	homeRestHint = homeFootWord + " · tab next place"
+	// homeRestHint is the resting sentence before the available draft controls.
+	homeRestHint = homeFootWord
 	// homeEmptyWord is a machine that has not held a conversation yet. It is
 	// drawn where the first project's rows will be, under the zones
 	// ([homeEmptyRow]), so an empty home keeps the shape of a full one.
@@ -2670,9 +2668,8 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		// EVERY ROW WITH A FOLDER OPENS IT — a conversation's workspace, a
 		// project's path, the workspace a standing order stands over, the
-		// conversation a `since you left` line happened in — because the foot
-		// names this chord on every row of the field and a key the foot names
-		// must work (homegrid.go's [app.homeCrossChord] and [homeRowFolder]). A
+		// conversation a `since you left` line happened in ([homeRowFolder]).
+		// The chord keeps working even though the foot no longer names it. A
 		// row with no folder says nothing, which is the emptiness law on a key.
 		if line, ok := h.previewLine(); ok {
 			path := homeRowFolder(line)
@@ -5326,15 +5323,8 @@ func homeFilesTouched(row session.SessionRow) int {
 	return total
 }
 
-// homeHint is the whole line under the foot — the router's keys included, which
-// is why pages.go hands this place its own hint rather than tailing it.
-//
-// AT REST IT IS THE DESIGN'S SENTENCE, WORD FOR WORD (SCREEN 1a): `type to
-// search or start something new · ↑↓ pick · enter open · tab next place`. That
-// is the whole foot of the resting screen and it names four things and no more —
-// a footer that grew a key for everything this screen can do would be the cockpit
-// this is deliberately not. Every other row says what ITS keys do and takes the
-// router's two on the end.
+// homeHint is the whole line under home's box. The list's keys lead, then
+// the available draft controls; `ctrl+o` and `tab` keep working without hints.
 func (a *app) homeHint() string {
 	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
 	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
@@ -5348,7 +5338,7 @@ func (a *app) homeHint() string {
 	// cheapest clauses on it — [hintFit] gives up the clause nearest the tail
 	// first — because the rule above says what they change, and a person who
 	// has found the rule has found the cells to press.
-	return placeTailed(withChords(a.homeHintWords(), a.targetChordWords()))
+	return withChords(a.homeHintWords(), a.targetChordWords())
 }
 
 // withChords puts the draft's chords on a foot sentence BEFORE ITS WAY OUT:
@@ -5370,7 +5360,7 @@ func withChords(hint, chords string) string {
 // noun, in the hint slot's own grammar (render.go's [app.hintWord]), and never
 // the letters themselves — those are drawn on the strip and nowhere else, which
 // is SCREEN 3a's whole clause. The foot does not say it: `alt+.` draws the map
-// that does ([placeMapWords]), and the resting foot is four keys exactly.
+// that does ([placeMapWords]); the resting foot keeps the list and draft keys.
 const homeVerbsWord = "→ verbs"
 
 // homeHintWords is that line before the tier's own key is put on it.
@@ -5434,8 +5424,8 @@ func (a *app) homeHintWords() string {
 		// step of the cursor. The owner ruled (2026-09-15) that the rows under
 		// the moving headings all rest on the resting sentence, so the foot is
 		// something a person reads once and then stops reading; `enter open` is
-		// true of every one of them, and the chord the tail adds is the one true
-		// on all of them too ([app.homeCrossChord]). The rows' own sentences
+		// true of every one of them. The available draft controls follow those
+		// two list keys. The rows' own sentences
 		// below still serve the phone and the filtered list, where there is no
 		// grid to be consistent across.
 	case line.kind == homeFold:
@@ -5462,21 +5452,12 @@ func (a *app) homeHintWords() string {
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
-		// [homeItemActions]) — except on a grid row whose `→` crosses columns,
-		// where the strip is not one arrow away and its chord is named instead.
-		if chord := a.homeCrossChord(line); chord != "" {
-			return homeItemEnterWord + " · " + chord + " · esc close"
-		}
+		// [homeItemActions]). Grid rows already took the resting sentence above.
 		return homeItemActions + " · esc close"
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
-	// AT REST THE FOOT IS THE PROMISE THE BOX MAKES, and [app.homeHint] turns it
-	// into the design's whole sentence. Every other row said its own thing above,
-	// and a row whose verbs `→` cannot reach adds the one chord that can.
-	if chord := a.homeCrossChord(line); chord != "" {
-		return homeFootWord + " · " + chord
-	}
+	// At rest the list names its two keys; the draft controls are added above.
 	return homeFootWord
 }
 

@@ -989,8 +989,8 @@ If it fails, the list stays exactly as it was and the note says why in one line 
 `ctrl+r` is offered again.
 
 Where it is absent: only `/model` (and the model word in a task's status line, which opens
-the same list) has the key. Every other model list — the settings panel's rows, home's, the
-`alt+o model` one — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
+the same list) has the key. Every other model list — the settings panel's rows, home's `/model` list, and the
+task composer's `alt+o` list — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
 machine, whose list of names the picker shows.
 
 ## /resume — open an earlier conversation
@@ -1089,7 +1089,9 @@ panels give way to the matches, with `start a new conversation: "…"` directly 
 holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The box says `› type to search or start something new` and the foot
-reads exactly `↑↓ pick · enter open · ctrl+o open folder · tab next place`.
+reads `↑↓ pick · enter open` followed by the available draft controls:
+`alt+w project · alt+y approvals · alt+k chats · / commands`. The `ctrl+o` and `tab`
+keys still work, without hints on this row.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including

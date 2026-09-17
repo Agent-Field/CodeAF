@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The box seam's acceptance tests: one rule over every box a person types to
@@ -122,6 +123,9 @@ func TestTheDraftsChordsWalkTheRungAndTheGateOnHome(t *testing.T) {
 	for _, id := range draftPlaces {
 		_, a := drafting(t)
 		a.showPage(id)
+		if hint := a.homeHint(); !strings.Contains(hint, "alt+y approvals") {
+			t.Fatalf("home does not name its approval control: %q", hint)
+		}
 		drive(t, a, key("alt+y"))
 		if got, _ := a.targetApproval(); got != session.PostureGuardian {
 			t.Fatalf("%s: one alt+y from ask lands on %q, want guardian", id.word(), got)
@@ -179,6 +183,9 @@ func TestADraftWithNoDialDrawsNoRungAndNoGate(t *testing.T) {
 	}
 	if !strings.Contains(text, targetLeadWord) {
 		t.Fatalf("the folder and the model still belong on the rule:\n%s", text)
+	}
+	if hint := a.homeHint(); strings.Contains(hint, "alt+y") {
+		t.Fatalf("home advertises an unavailable approval control: %q", hint)
 	}
 	drive(t, a, key("alt+y"), key("ctrl+v"))
 	if a.target.approval != "" || a.target.effort != "" {
@@ -251,5 +258,26 @@ func TestTheDraftsRuleGivesUpTheRungThenTheGateThenTheModel(t *testing.T) {
 	}
 	if !strings.Contains(got, gate) || !strings.Contains(got, "m") || !strings.Contains(got, targetLeadWord) {
 		t.Fatalf("the gate, the model or the folder went before the rung:\n%s", got)
+	}
+}
+
+// The model stays identifiable before anyone pins it or points at it.
+func TestTheCurrentModelIsBoldAndBrightOnBothSeams(t *testing.T) {
+	_, home := drafting(t)
+	_, conversation := gated(t)
+	for _, a := range []*app{home, conversation} {
+		a.pal = newPalette(tokens.TrueColor, false)
+		a.model = "moonshotai/kimi-k3"
+	}
+	for _, pinned := range []string{"", "zhipu/glm-5.3"} {
+		home.target.model = pinned
+		line, ok := home.targetLegend(200, home.pal)
+		if !ok || !strings.Contains(line, home.pal.bold(home.pal.data(modelBase(home.targetModel())))) {
+			t.Fatalf("home's model is not bold and bright (pin %q): %q", pinned, line)
+		}
+	}
+	line := conversation.legend(200)
+	if !strings.Contains(line, conversation.pal.bold(conversation.pal.data(conversation.modelWord()))) {
+		t.Fatalf("the conversation's model is not bold and bright: %q", line)
 	}
 }

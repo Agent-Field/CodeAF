@@ -3297,26 +3297,18 @@ func (a *app) legend(width int) string {
 	// (inputsmooth_test.go's
 	// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
 	pieces := a.legendPieces(width)
-	// THREE CELLS ON THIS LINE ARE DOORS. The model's columns, the thinking
-	// rung's and the approvals chip's are those the chosen attempt drew them at,
-	// offset by the border's own two cells, and each brightens under the pointer
-	// to say so (foot.go's [app.legendModelPress], [app.legendEffortPress] and
-	// [app.legendApprovalPress]).
-	//
-	// THE LIFTS ARE PAINTED SIDE BY SIDE AND NEVER NESTED, because these hues
-	// are raw SGR with an explicit reset and a lift inside a lift would end at
-	// the inner reset ([paintSpan] states it). Two of the three could not both
-	// want it — the model lifts only under the pointer, which is on one cell at
-	// a time — but the chip is lit for as long as the gate is open, so it can be
-	// lit beside a hovered model or a flashing rung. [paintSpans] walks the three
-	// disjoint spans in order and paints the plain runs between them.
+	// THREE CELLS ON THIS LINE ARE DOORS. Their columns come from the chosen
+	// layout, offset by the border's two cells. The model always wears bold
+	// data ink, while the rung and gate keep their hover, flash and state cues.
+	// THE LIFTS ARE PAINTED SIDE BY SIDE AND NEVER NESTED, because raw SGR
+	// resets would end an outer hue at the inner reset ([paintSpans]).
 	//
 	// IN A ROOM THE THREE SPANS ARE THE NODE'S DOORS (roomseam.go), recorded
 	// on the same bargain and pressed through the same three functions.
 	seam, dial, gate := hudSpan{}, hudSpan{}, hudSpan{}
 	lift := func(text string) string {
 		return paintSpans(text, paint,
-			spanLift{span: seam, lift: a.pal.accent, on: a.hoveringStatusModel()},
+			spanLift{span: seam, lift: a.pal.seamModel, on: true},
 			spanLift{span: dial, lift: a.paintEffortChip, on: a.effortSeamLit()},
 			spanLift{span: gate, lift: a.paintApprovalChip, on: a.approvalSeamLit()})
 	}

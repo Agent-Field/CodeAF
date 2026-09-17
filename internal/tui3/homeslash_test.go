@@ -260,8 +260,8 @@ func TestHomesRuleSaysWhereTheNextConversationGoes(t *testing.T) {
 	if !strings.Contains(text, targetLeadWord+targetPathWord(a)) {
 		t.Fatalf("the rule does not say where the next conversation opens:\n%s", text)
 	}
-	if !strings.Contains(text, targetModelKeyWord) {
-		t.Fatalf("the rule does not name the model chord:\n%s", text)
+	if strings.Contains(text, "alt+o model") || strings.Contains(text, "opt+o model") {
+		t.Fatalf("home still names the retired model shortcut:\n%s", text)
 	}
 	// AND THE CHIP IS OFF THE BOX ROW. It said the same fact one row down, in
 	// competition with the draft, and it was the reading `enter` did not honour.
@@ -442,6 +442,10 @@ func TestModelThenEscLeavesNoPickerOverTheConversation(t *testing.T) {
 	a.openHome()
 	runCmd(a.openHome())
 
+	runCmd(a.key(key("alt+o")))
+	if a.target.pick.open || a.pick.open || !a.home.box.empty() {
+		t.Fatal("the retired alt+o shortcut changed home")
+	}
 	typeHome(a, "/model")
 	runCmd(a.key(key("enter")))
 	if !a.target.pick.open {

@@ -670,19 +670,17 @@ func focusedTitle(a *app) string {
 	return ""
 }
 
-// COLUMNS WIN THE ARROW, SO THE FOOT NAMES A CHORD (DESIGN §6 ruling 6). On a
-// left-column row whose `→` crosses to the right, the foot says `ctrl+o open
-// folder`, and the chord opens that row's folder — a project's too. On a row
-// whose `→` is its strip, the foot is the resting sentence.
-func TestTheFootNamesAChordWhereTheArrowCrossesColumns(t *testing.T) {
+// The home foot omits the folder shortcut while ctrl+o still opens the
+// selected row's folder, whether arrows cross columns or open its verbs.
+func TestTheHomeFootOmitsTheFolderChordButTheKeyStillWorks(t *testing.T) {
 	var opened string
 	was := processOpener
 	processOpener = func(target string) error { opened = target; return nil }
 	t.Cleanup(func() { processOpener = was })
 
 	a := newSwitchLab(t).open(120, 45)
-	if hint := a.homeHint(); !strings.Contains(hint, homeFolderChordWord) || !strings.HasSuffix(hint, placeHintTail) {
-		t.Fatalf("a left-column conversation's foot is %q, want it to name %q before the way out", hint, homeFolderChordWord)
+	if hint := a.homeHint(); strings.Contains(hint, "ctrl+o") || strings.Contains(hint, "tab next place") || hint != restingFoot(a) {
+		t.Fatalf("a left-column conversation's foot is %q, want the shared home hints", hint)
 	}
 	a.placeKeyPress(key("ctrl+o"))
 	if opened == "" || !strings.HasSuffix(opened, "alpha") {
@@ -699,7 +697,7 @@ func TestTheFootNamesAChordWhereTheArrowCrossesColumns(t *testing.T) {
 	if got := a.home.columnOf(a.home.cursor); got != homeRailCol(a.home.cols) {
 		t.Fatalf("a project is in column %d, want the rail at %d", got, homeRailCol(a.home.cols))
 	}
-	if hint := a.homeHint(); hint != restingFoot(a, "") {
+	if hint := a.homeHint(); hint != restingFoot(a) {
 		t.Fatalf("a rail row's foot is %q, want the resting sentence", hint)
 	}
 	a.placeKeyPress(key("right"))
@@ -774,8 +772,8 @@ func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
 
 // EVERY ROW OF THE FIELD RESTS ON ONE SENTENCE (owner, 2026-09-15). A
 // conversation, a standing order on `next up`, a landing on `since you left`:
-// the foot under each is the four keys and `ctrl+o open folder`, and the chord
-// opens the folder that row belongs to — an order's workspace, the conversation
+// the foot under each is the list's two keys and draft controls. The unprinted
+// ctrl+o chord opens the folder that row belongs to — an order's workspace, the conversation
 // a landing ran in. It used to be a different sentence on each kind of row.
 func TestEveryFieldRowRestsOnTheOneFootAndItsChordOpensItsFolder(t *testing.T) {
 	var opened string
@@ -790,7 +788,7 @@ func TestEveryFieldRowRestsOnTheOneFootAndItsChordOpensItsFolder(t *testing.T) {
 		Workspace: "/w/alpha", Status: standing.StatusActive, When: standing.When{Kind: standing.WhenAt},
 		NextDue: lab.now.Add(2 * time.Hour)}}}}
 	a.home.build()
-	want := restingFoot(a, homeFolderChordWord)
+	want := restingFoot(a)
 
 	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelRecent })
 	if hint := a.homeHint(); hint != want {
@@ -822,7 +820,7 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 	a.home.seen = l.now.Add(-4 * time.Hour)
 	a.home.build()
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelLeft && l.cell.kind == cellRow })
-	if hint, want := a.homeHint(), restingFoot(a, homeFolderChordWord); hint != want {
+	if hint, want := a.homeHint(), restingFoot(a); hint != want {
 		t.Fatalf("a since you left row's foot is %q, want %q", hint, want)
 	}
 	a.placeKeyPress(key("ctrl+o"))
@@ -941,9 +939,7 @@ func TestAnOpenFoldOnAShortFrameCountsTheRestAndNamesNoPlace(t *testing.T) {
 	}
 }
 
-// restingFoot is home's resting sentence as the foot draws it since 2026-09-17
-// (footswap.go): the design's four keys, the row's cross chord when it has one,
-// the draft's chords, and the way out.
-func restingFoot(a *app, cross string) string {
-	return placeTailed(dotted(homeFootWord, cross, a.targetChordWords()))
+// restingFoot is the list's two keys followed by the available draft controls.
+func restingFoot(a *app) string {
+	return dotted(homeFootWord, a.targetChordWords())
 }

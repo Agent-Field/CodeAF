@@ -68,10 +68,13 @@ the hint line last. See the **Places** page.
 **Only home has a box under that rule.** On home the rule is the same legend a conversation
 has over its message box, reading `◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto ·
 ◇ asks` — where the next conversation opens, what it will run on, how hard it will think and
-what it will run without asking, with the same doors on the cells (`alt+o`, `ctrl+v`,
+what it will run without asking, with the same doors on the cells (`/model`, `ctrl+v`,
 `alt+y`, or a press) — and the box `› type to search or start something new` sits under
 it. The chords that move those cells are on the hint line under the box, with home's own
-keys: `↑↓ pick · enter open · alt+w folder · alt+o model · alt+k chats · / commands`.
+keys: `↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands`.
+The model name is always bold and bright cyan here and in conversations. `alt+o` no
+longer opens the model list on home; use `/model` or press the name. Home omits the
+`ctrl+o` and `tab` hints while keeping both keys active.
 Every other place ends in its rule and
 its hint, with no box: only home starts things. *Typing on a place* and *The rule above
 home's box* on the Places page have the whole of it.

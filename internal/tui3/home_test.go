@@ -954,7 +954,7 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // left on a place says what it is for, and the lowest line is for keys
 // (footswap.go): the box row is the promise, the foot is the keys.
 func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
-	const design = "↑↓ pick · enter open · tab next place"
+	const design = "↑↓ pick · enter open"
 	if homeRestHint != design {
 		t.Fatalf("home's resting foot reads %q, want the design's own sentence %q", homeRestHint, design)
 	}
@@ -968,18 +968,9 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	// The last row is the hint and the row above it is the box, which is the
 	// order pages.go assembles every place's foot in.
 	//
-	// THE RESTING ROW CARRIES ONE CHORD BESIDE THE DESIGN'S FOUR KEYS, and it is
-	// the door §6.6 refuses to leave invisible: the rail is a column with rows in
-	// it (projects is pinned there and is never empty), so `→` on a field row
-	// crosses columns rather than opening the row's verbs, and the foot names the
-	// one key that still reaches them ([app.homeCrossChord]). It was already on
-	// this row on any machine whose right column had rows; what the 2026-09-15
-	// ruling changed is that the right column now always does.
-	// AND THE DRAFT'S CHORDS RIDE THE SAME ROW, before the way out, since
-	// 2026-09-17: the lowest line is for keys on home as in a conversation
-	// (footswap.go).
+	// The resting row adds the available draft controls without navigation hints.
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
-	want := hintFit(strings.Replace(design, " · tab next place", rowSep+homeFolderChordWord+rowSep+a.targetChordWords()+" · tab next place", 1), a.width-2)
+	want := hintFit(dotted(design, a.targetChordWords()), a.width-2)
 	if rest != want {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)
 	}
@@ -1867,17 +1858,10 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatal("a bare launch did not open on home")
 	}
-	// THE FRAME IS RECOGNISED BY HOME'S OWN FOOT, WHICH IS NOW THE DESIGN'S
-	// SENTENCE. It used to be recognised by `esc close`, and that clause is not
-	// on the resting foot any more: SCREEN 1a spells the whole line as four keys
-	// — `type to search or start something new · ↑↓ pick · enter open · tab next
-	// place` — and the owner ordered the design followed exactly (FIDELITY.md
-	// item 3). The old law ("every hint this screen draws ends with `esc`,
-	// because the way out is the first thing a person looks for") died on the
-	// RESTING row only; [TestHomesRestingFootIsTheDesignsSentence] pins both
-	// halves of what replaced it.
+	// The box's promise and the list's two keys identify home. Navigation
+	// chords still work but no longer appear in the resting foot.
 	frame, _, _ := a.frame()
-	if !strings.Contains(ansi.Strip(frame), homeFootWord) || !strings.Contains(ansi.Strip(frame), placeHintTail) {
+	if !strings.Contains(ansi.Strip(frame), homeFootWord) || !strings.Contains(ansi.Strip(frame), placeRestWord) {
 		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
 	}
 	// AND THE CURSOR IS VISIBLY ON THE CONVERSATION THE DOOR PICKED: home opens
@@ -2528,7 +2512,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		// the design's own foot does not name it (FIDELITY.md item 3) — so what is
 		// demanded instead is the pair of sentences the design does spell, which
 		// is a stricter claim than the two fragments this asked for before.
-		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, homeFootWord, placeHintTail)
+		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, homeFootWord)
 		for _, want := range want {
 			if !strings.Contains(text, want) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)

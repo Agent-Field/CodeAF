@@ -195,14 +195,8 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "alt+w", "alt+o":
-		// THE DRAFT'S TWO CHORDS ARE HELD BACK FROM THE PLACE'S OWN ROWS. On home
-		// they were taken above this function by [app.placeTargetKey] — the rule
-		// over the box states where the next conversation opens and what it will
-		// run on, and these are the two chords that move those two facts. What
-		// reaches here is a place with no draft, where the chords mean nothing
-		// and a place that bound either of them would be a place whose view moved
-		// when somebody was aiming at a destination. The layer itself is read
-		// above all of this, so a press that arrives here has no layer up.
+		// Home takes the project chord before the router. Other places swallow
+		// it, and `alt+o` no longer opens a model list outside the task layer.
 		return nil, true
 
 	case "shift+left", "shift+right", "shift+up", "shift+down":

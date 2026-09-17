@@ -10,7 +10,7 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
  + start a new conversation: "remind me at 6 to leave"
  ─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────
  › remind me at 6 to leave
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w folder · alt+o model · tab next place · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · alt+y approvals · esc clear
 ```
 
 What you get is **a row at the top of home's `where you were` panel and a pane holding the exchange**. The row

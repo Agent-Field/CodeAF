@@ -190,7 +190,7 @@ func runningStandingLine(row switcherRow) homeLine {
 // `stop` on home and `stop it` one `tab` away would be two verbs to a person.
 // `ctrl+x` reaches it without the strip, which is what a three-column home
 // needs: there `running` is the middle column and `→` crosses rather than
-// opening the strip ([app.homeCrossChord] names the chord on the foot).
+// opening the strip. The map names the chord.
 func (a *app) runningVerbs(line homeLine) []verb {
 	target := a.runningStopTarget(line)
 	if target.empty() {
@@ -213,8 +213,8 @@ func (a *app) runningVerbs(line homeLine) []verb {
 //
 // WHICH CONVERSATION THIS WINDOW HOLDS IS THE READING'S OWN FACT
 // ([switcherRow.here], the fact the row's `here` margin is drawn from), and
-// never a path resolved again here. The foot asks this on every frame a
-// running row is under the cursor ([app.homeCrossChord]), and a draw may not
+// never a path resolved again here. A row's verbs can be read while drawing,
+// and a draw may not
 // walk the disk to answer it — resolving the transcript's symlinks would be a
 // syscall a frame.
 func (a *app) runningStopTarget(line homeLine) stopTarget {

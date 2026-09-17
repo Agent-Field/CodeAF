@@ -42,7 +42,7 @@ import (
 //
 // A target is that reading with a pin on it. With nothing pinned it IS the
 // reading — [app.scopeWorkspace], the cursor's own row — and `enter` honours it,
-// which is what closes the disagreement. `alt+w` and `alt+o` pin it, and a pin
+// which is what closes the disagreement. `alt+w` and `/model` pin it, and a pin
 // is a decision a person made.
 //
 // ── OWNER RULING: WHAT PERSISTS AND WHAT IS SPENT ───────────────────────────
@@ -70,8 +70,8 @@ type homeTarget struct {
 	where string
 	// model is the model the next conversation opens on, and "" is this
 	// window's own ([app.model]). It is pinned by `/model` at home and by
-	// `alt+o`, and — the owner's ruling above — it survives the conversation
-	// that spends the folder pin.
+	// a press on its cell, and it survives the conversation that spends the
+	// folder pin (the owner's ruling above).
 	model string
 	// effort is the rung the next conversation thinks at, "" for what the
 	// install would do anyway ([app.targetEffortStanding]). It is pinned by
@@ -111,10 +111,8 @@ func (a *app) targetModel() string {
 	return strings.TrimSpace(a.model)
 }
 
-// targetModelPinned is whether a person SET this model, which is the one thing
-// the rule paints differently. A pin that matches the window's own model is not
-// a pin worth shouting about — the accent says "you changed this", and a change
-// that changed nothing would be the surface pointing at itself.
+// targetModelPinned reports a draft model that differs from this window's own.
+// Starting a conversation applies only a pin that changes the model.
 func (a *app) targetModelPinned() bool {
 	pinned := strings.TrimSpace(a.target.model)
 	return pinned != "" && pinned != strings.TrimSpace(a.model)
@@ -140,22 +138,11 @@ const (
 	// `here` because this line is about something that does not exist yet: the
 	// conversation `enter` is about to open.
 	targetLeadWord = "new conversation in "
-	// targetFolderKeyWord and targetModelKeyWord are the two chords, in the hint
-	// grammar every other legend on this surface is written in — the key is the
-	// payload and the noun says what it moves (payload.go).
-	targetFolderKeyWord = "alt+w folder"
-	targetModelKeyWord  = "alt+o model"
-	// targetSwitcherKeyWord is the third chord, and it is the only one on this
-	// line that does not edit the draft the line is about — it is the way to the
-	// conversations this machine already has (hop.go).
-	//
-	// IT SAYS `chats` WHERE THE CONVERSATION'S OWN LEGEND SAYS `switch`, and that
-	// is this line's grammar rather than a second name for one door. Every clause
-	// here is a key and the NOUN IT MOVES — `alt+w folder`, `alt+o model` — so
-	// the noun is what the third one has to carry too, and `chats` is the word
-	// the tab bar's own control used to use before it was deleted (chattabs.go).
-	// The conversation's legend is a list of VERBS in the same slot (`tab last`,
-	// `space space home`), which is why the same door is `alt+k switch` there.
+	// The draft's hints name the project and approval controls. The model's
+	// command is `/model`, so it spends no extra shortcut on the foot.
+	targetFolderKeyWord   = "alt+w project"
+	targetApprovalKeyWord = "alt+y approvals"
+	// The switcher reaches conversations this machine already has (hop.go).
 	targetSwitcherKeyWord = "alt+k chats"
 	// targetPinnedModelWord is what home's message line says when a model has
 	// been pinned onto the draft. It names the slug and then the SCOPE of what
@@ -172,8 +159,9 @@ const (
 
 // targetChordWords is the draft's chords as a clause on home's foot
 // (footswap.go: the lowest line is for keys): the folder chord where there is
-// somewhere to walk to, the model chord, the switcher where there is anywhere
-// to go, and `/ commands` while the box is empty. Nothing while the model list
+// somewhere to walk to, approvals where the control can act, the switcher
+// where there is anywhere to go, and `/ commands` while the box is empty.
+// Nothing while the model list
 // is up — it has the whole keyboard (SCREEN 3a's clause: no key does anything
 // that is not drawn on screen right now), and the foot is already saying the
 // keys that do ([targetPickWord]). It is spelled for this keyboard by
@@ -185,9 +173,12 @@ func (a *app) targetChordWords() string {
 	if a.target.pick.open {
 		return ""
 	}
-	right := targetModelKeyWord
+	right := ""
 	if a.targetMovable() {
-		right = dotted(targetFolderKeyWord, targetModelKeyWord)
+		right = targetFolderKeyWord
+	}
+	if _, ok := a.targetApproval(); ok {
+		right = dotted(right, targetApprovalKeyWord)
 	}
 	// The switcher is named where it would act and nowhere else
 	// ([app.hopAvailable] answers off a remembered count rather than walking
@@ -304,7 +295,7 @@ func (a *app) targetLegendCut(room int) (string, hudSpan) {
 
 // ── the chords ──────────────────────────────────────────────────────────────
 //
-// `alt+w`, `alt+o`, `ctrl+v`, `alt+y` and every key the model list over the
+// `alt+w`, `ctrl+v`, `alt+y` and every key the model list over the
 // target takes are [app.placeTargetKey] (boxseam.go), read from
 // [placeHome.owns] before the router claims a single chord and from
 // [app.placeKeyPress] on the other places.
@@ -364,8 +355,8 @@ func (a *app) moveTarget() bool {
 	return true
 }
 
-// openTargetPicker is `alt+o` and a bare `/model` at home: THE model list,
-// asked the chat slot's own question and pointed at the TARGET rather than at
+// openTargetPicker opens the model list for a press on the name or `/model`.
+// It asks the chat slot's question and points at the TARGET rather than at
 // the conversation behind the screen.
 //
 // It opens on the target's own model for [picker.start]'s stated reason: the

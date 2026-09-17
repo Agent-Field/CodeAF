@@ -194,20 +194,21 @@ box:
 ```
 ─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ──────────────────────────
 › type to search or start something new
-↑↓ pick · enter open · alt+w folder · alt+o model · alt+k chats · / commands · tab next place
+↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands
 ```
 
 Left to right it says four things about the conversation `enter` will open: **where** (the
 project the cursor is on, this window's own project, or the folder you pinned), **what
 model** answers, **how hard it thinks** (`⠿` and a rung, or `auto`), and **what it runs
 without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
-approvals chip uses inside a conversation). The right names the chords that change the
-first two; the other two are moved the way the cells inside a conversation are moved:
+approvals chip uses inside a conversation). The model is always bold and bright cyan,
+on home and in conversations. The bottom row names the available project and approval
+controls; the cells can also be pressed:
 
 | cell | chord | or |
 |---|---|---|
 | the folder | `alt+w` walks to the next project | press the path |
-| the model | `alt+o` opens the model list | press the name |
+| the model | `/model` opens the model list | press the name |
 | the rung | `ctrl+v` walks auto → low → … → max → auto | press the cell |
 | the gate | `alt+y` walks asks → guardian → YOLO → asks | press the cell |
 
@@ -235,6 +236,13 @@ machine" line over `--host` — says it on its rule, where the box's rule would 
 **Over `--host`, and on a session with no dial**, the rung and the gate are simply not on
 home's rule — the folder and the model still are. The far machine's rows decide what a
 conversation there runs without asking.
+
+## Why did pressing alt+enter not send my task straight away
+
+On home, the first `alt+enter` opens the task composer so you can check the project,
+execution model and spending cap. Press `alt+enter` again to send it off. `enter`
+talks about the sentence in a conversation instead; `esc` returns to home with the
+sentence still in the box. Other places have no message box and do not start tasks.
 
 ## The composer layer — `alt+w` and `alt+o`, what does alt+w do, set which project, pick the model and set a spend limit before starting a task
 
@@ -308,9 +316,9 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
-`alt+w` and `alt+o` belong to the composer layer and to nothing else. No place binds either
-of them, so they can never move a view out from under you while you are aiming at a
-destination; pressed with no layer up, they do nothing.
+`alt+o` changes a model only inside the task composer layer; on home use `/model`
+or press the model name instead. `alt+w` also works on home, where it moves the draft
+to the next project. Other places bind neither chord.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
 `alt+s` on the memory place, which changes which shelf it is showing; home's panels have no

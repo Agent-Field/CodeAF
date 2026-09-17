@@ -49,14 +49,12 @@ in the right-hand rail instead — heading and one dim line each — so the left
 is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
-nothing was sent while you were looking. The foot reads `type to search or start
-something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`, **and it is the
-same sentence on every row of the field** — a conversation, a question, a running task, a
-standing order on `scheduled`, a line of `since you left`. It does not change as the cursor
-walks, so it is something you read once. The chord is there because `→` on a field row
-crosses to the rail rather than opening the row's verbs, and a door you cannot see is a door
-you never learn; `ctrl+o` opens the folder each row belongs to — a conversation's workspace,
-the workspace an order stands over, the conversation a landing ran in. `alt+.` draws the
+nothing was sent while you were looking. The resting foot reads
+`↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands`.
+The project, approvals and chats hints appear only where those controls can act.
+The list's two keys stay the same as the cursor walks between rows.
+`ctrl+o` still opens the selected row's folder and `tab` still walks places, but neither
+is advertised in this bottom row. `alt+.` draws the
 whole map over the cells you are already reading.
 
 There is no argument form. The screen is how you name what you want; a command that took a
@@ -492,12 +490,11 @@ while the pointer is on it.
 **Columns win the arrow: `→` opens a row's verbs only where no column with rows lies to its
 right** — on the rail, and everywhere at one column. Where the next column along is empty
 the arrow steps over it to the next one that has a row, so the rail is always reachable. On a row where `→` crosses
-instead, **the foot names the one chord that is true on every row** — `ctrl+o open folder`,
-which opens a conversation's workspace, the workspace a standing order stands over, or the
-conversation a `since you left` line happened in — and the rest are on their chords too:
-`ctrl+y` copy path, `ctrl+e` put away or pause, `ctrl+x` stop. The foot does not change
-from row to row; `alt+.` draws the map when you want the rest. `ctrl+o` on a `projects` row
-opens that project's folder.
+instead, `ctrl+o` still opens a conversation's workspace, the workspace a standing order
+stands over, or the conversation a `since you left` line happened in. The other verbs
+keep their chords too: `ctrl+y` copy path, `ctrl+e` put away or pause, `ctrl+x` stop.
+The foot omits these shortcuts; `alt+.` draws the map when you want them.
+`ctrl+o` on a `projects` row opens that project's folder.
 
 A digit answers the one row of `needs you` drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
@@ -761,17 +758,18 @@ already loaded underneath, so there is nothing to reopen and nothing to announce
 `enter` on a conversation **this** terminal is already holding behind the screen goes
 straight back to it, for the same reason: it is alive, so there is nothing to reopen.
 
-The foot line reads exactly:
+The resting foot reads, when all its controls are available:
 
 ```
-↑↓ pick · enter open · ctrl+o open folder · tab next place
+↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands
 ```
 
 (the box above it says `› type to search or start something new`, which is where that
 promise moved on 2026-09-17: the lowest line is for keys)
 
 and it says what THAT row's keys do on a row that has its own — a `since you left` line,
-a fold door, the action row — always with `alt+. map · tab next place` before the way out.
+a fold door or the action row — with the available draft controls before `esc`.
+The foot omits the `ctrl+o` and `tab` hints; both keys still work.
 
 ## Typing a long question on home — does the box wrap, and where does a paste go
 
@@ -1209,7 +1207,7 @@ quoted back — sitting directly above the box you are typing into.
  + start a new conversation: "pricing"
  ─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────
  › pricing
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w folder · alt+o model · tab next place · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · alt+y approvals · esc clear
 ```
 
 **The cursor rests on the action row by default.** So typing and pressing `enter` starts a
@@ -1221,7 +1219,7 @@ conversation will open in, the model it will answer on, how hard it will think, 
 will run without asking — the same four cells a conversation's own message box has over it.
 With nothing pinned the folder **follows the row your cursor is on** — walk onto another
 project's row and the rule re-points — and with nothing under the cursor it is this window's
-own project. `alt+w` pins it, `alt+o` pins the model, `ctrl+v` walks the rung and `alt+y`
+own project. `alt+w` pins it, `/model` pins the model, `ctrl+v` walks the rung and `alt+y`
 walks the gate; *Change the model before starting* has the whole of all four.
 
 One `↑` steps off that row **up** onto `ask here: "…"`, which answers the same sentence in
@@ -1324,22 +1322,22 @@ starts with. Home's tray is a reading and not a target: a chip comes off on the 
 conversation's own box, where the `x` is. At phone width home draws no tray row at all; the
 files are still there, and the conversation you open shows them.
 
-## Change the model before starting — /model on home, alt+o, the arrow line above the box
+## Change the model before starting — /model on home, the arrow line above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
 after the folder: `◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks`.
 With nothing pinned that is this window's own model. Two doors change it, and they are the
 same door:
 
-- **`alt+o`**, or **pressing the model's name on that rule**, opens the model list in home's
+- **`/model`**, or **pressing the model's name on that rule**, opens the model list in home's
   own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
   `↑↓` to walk it, `enter` to take the row, `esc` to leave it alone. The foot while it is up
   reads `↑↓ pick · enter use it · esc back`.
 - **`/model <slug>`** typed into the box pins it straight away, with no list.
 
 Either way home says, on the line under the box:
-`model · glm-5.3 · for the next conversation you start here`. A pinned model that differs
-from this window's own is drawn in the accent on the rule.
+`model · glm-5.3 · for the next conversation you start here`. The current model is always bold and bright cyan on the rule, whether pinned or not.
+`alt+o` (`opt+o` on a Mac) no longer opens the model list on home.
 
 **It changes the draft and nothing else.** The conversation this window is holding behind
 home keeps the model it had, and nothing is written down until a conversation actually opens
@@ -1352,7 +1350,7 @@ cursor.
 **`alt+w` is the same gesture for the folder** — press it, or press the path on the rule, and
 the target walks to the next project on this machine, round again from the last. Home says
 `next conversation opens in ~/work/beta`. On a machine with one project there is nowhere to
-move to, and `alt+w folder` is simply not on the line under the box.
+move to, and `alt+w project` is simply not on the line under the box.
 
 **`ctrl+v` and `alt+y` are the same gesture for the two cells after the model.** `⠿ auto`
 is how hard the next conversation will think — with nothing pinned, the `thinking` row in
@@ -1924,8 +1922,8 @@ window runs, `s stop`; a project's `its chats` and `open folder`.
 **In the field `→` crosses to the rail instead** — columns win the arrow, and the rail
 always has rows in it because `projects` is pinned there — so a question in the field is
 answered with its digit, and a conversation's verbs are on their chords —
-`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that is true on every row,
-`ctrl+o open folder`, and says the same sentence on all of them.
+`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. These row shortcuts are on the map (`alt+.`);
+the bottom row keeps the list keys and draft controls.
 
 ## The work on the right of home — what each task came to
 

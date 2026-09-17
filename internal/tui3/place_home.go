@@ -531,12 +531,9 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd, true
 	}
-	// THE TARGET IS READ NEXT, and it is read here rather than in [app.placeKey]
-	// because the router SWALLOWS its two chords for every place (placekeys.go's
-	// `case "alt+w", "alt+o"`). Home is the one place with something for them to
-	// do — the rule above its box states exactly the two facts they change — and
-	// the model list one of them opens has the whole keyboard while it is up
-	// (boxseam.go's [app.placeTargetKey]).
+	// THE TARGET IS READ NEXT, before the router swallows unclaimed chords.
+	// Home owns the draft's project, thinking and approval controls, and the
+	// model list opened by `/model` owns the keyboard while it is up.
 	//
 	// IT LOSES TO THE PHONE SHEET AND WINS OVER EVERYTHING ELSE. The sheet is a
 	// full-frame card a thumb is in the middle of, and the phone's rule names no

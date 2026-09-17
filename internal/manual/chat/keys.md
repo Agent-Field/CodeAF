@@ -2071,9 +2071,9 @@ these are its keys.
 | `enter` | talk about it instead — an ordinary conversation carrying the same sentence |
 | `esc` | back to the place you were on, sentence still in the box |
 
-`alt+w` and `alt+o` are bound **only** inside this layer. No place binds either of them, so
-neither can move a view while you are aiming at a destination, and pressing them with no
-layer up does nothing at all.
+`alt+o` changes a model only inside this task layer. On home, `/model` or a press on
+the model name opens the draft's model list instead. `alt+w` also works on home to move
+the draft to the next project; other places bind neither chord.
 
 While the layer is up it has the whole keyboard: `tab` does not walk to the next place, and
 letters do not reach the composer — what you typed is already written and is on the screen
@@ -2232,32 +2232,23 @@ it says what the box is a draft *for*:
 — the folder the next conversation opens in, the model it will answer on, how hard it will
 think and what it will run without asking. The chords that change them are on **the line
 under the box**, with home's own keys, because the lowest line is for keys on home as in a
-conversation (since 2026-09-17; until then they were the rule's right end): `alt+w`
-walks the folder round the projects on this machine and `alt+o` opens the model list in
-home's own body; pressing either cell on the rule does the same as its chord. `alt+k
-chats` is the conversation switcher, named for the same reason it is named under a
-conversation's box, and it is absent when there is nowhere to go.
-**On a Mac those clauses read `opt+w folder · opt+o model · opt+k chats`** — the same
-keys, drawn with the modifier your keycaps wear.
-The line under the box is the foot, and **at rest it is exactly**
-`↑↓ pick · enter open · ctrl+o open folder · alt+w folder · alt+o model · alt+k chats · / commands · tab next place`
-— keys and nothing else: the two the list answers to, the folder chord, the draft's
-chords, and the way to the next place; on a narrow frame the clauses nearest `tab next
-place` go first, the draft's chords before the rest. `esc` still closes home from
-anywhere; the resting foot does not spend a cell naming it, and `alt+.` draws the whole
-map when you want it.
+conversation: `alt+w project` walks the projects on this machine, and `alt+y approvals`
+walks asks → guardian → YOLO → asks. Pressing the project or approvals cell does the
+same. `/model`, or pressing the model name, opens home's model list; `alt+o` no longer
+does. The model is always bold and bright cyan on both home's and a conversation's seam.
+`alt+k chats` opens the conversation switcher and is absent when there is nowhere to go.
+**On a Mac these clauses read `opt+w project · opt+y approvals · opt+k chats`.**
 
-On the grid every row under a moving heading — a conversation, a question, a running task,
-a `scheduled` order, a `since you left` line — rests on the one sentence,
-`↑↓ pick · enter open · ctrl+o open folder · tab next place`,
-and it does not change as the cursor walks. Elsewhere, on a row with keys of its own, the
-foot says what THAT row's keys do and gains the two that are true everywhere —
-`enter opens the place this happened in · alt+. map · tab next place · esc close` on a
-`since you left` line or a standing order's row of the phone's list, on a spend row, or on a fold door, and
-`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
-on the action row — and
-`enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
-on that same row when what is typed is a slash command.
+With all controls available the resting foot is
+`↑↓ pick · enter open · alt+w project · alt+y approvals · alt+k chats · / commands`.
+The project and approvals hints are absent where those controls cannot act. `ctrl+o`
+still opens the selected row's folder and `tab` still moves to the next place, but neither
+has a hint in home's bottom row. `esc` still closes home; `alt+.` draws the whole map.
+
+Every ordinary grid row keeps the same list keys as the cursor walks. A fold or action
+row names its own keys, with the available draft controls before `esc`. For example:
+`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · alt+y approvals · esc clear`.
+Typing a slash command changes the first clause to `enter runs this command`.
 
 **With nothing typed home is the panels**, hanging from the top. **While anything is typed
 it is one list, a drop-up**: the action row — `start a new conversation: "…"` — is the LAST

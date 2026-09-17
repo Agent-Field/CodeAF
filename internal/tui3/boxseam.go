@@ -312,11 +312,9 @@ func (a *app) applyTargetPins() tea.Cmd {
 // chords.
 func (a *app) placeHasDraft() bool { return a.at(pageHome) }
 
-// placeTargetKey is the four chords that edit the draft on home: `alt+w`
-// moves the folder, `alt+o` opens the model list, `ctrl+v` walks the rung and
-// `alt+y` walks the gate. They are the conversation's own chords wherever the
-// conversation has them — `alt+w`/`alt+o` are the layer's two
-// (composerlayer.go), lifted to the draft they edit.
+// placeTargetKey edits the draft on home: `alt+w` moves the project,
+// `ctrl+v` walks the rung and `alt+y` walks the gate. The model list opens
+// through `/model` or a press on the model, not a separate shortcut.
 //
 // It is read from home's [placeHome.owns], after the phone sheet and before
 // the grid; no other place has a draft ([app.placeHasDraft]).
@@ -334,9 +332,6 @@ func (a *app) placeTargetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.targetPickKey(msg), true
 	}
 	switch msg.String() {
-	case "alt+o":
-		a.openTargetPicker()
-		return nil, true
 	case "alt+w":
 		a.moveTarget()
 		return nil, true
@@ -448,16 +443,14 @@ func (a *app) draftSeamLeft(room int) (string, hudSpan, hudSpan, hudSpan, hudSpa
 	return "", none, none, none, none
 }
 
-// draftSeamPaint is the draft's line painted the way the conversation's seam
-// is (render.go's [app.legend]): dim furniture, the pinned cells in the accent
-// because a pin is a thing a person set, the open gate in the bad hue for as
-// long as it is true, and the cell that just moved wearing THE EMPHASIS LAW's
-// two moves for two seconds. The lifts are disjoint and painted side by side,
-// never nested ([paintSpans]).
+// draftSeamPaint shares the conversation's bold data hue for the model, so
+// the current choice is visible even without a pin. The other cells keep their
+// pin, flash and open-gate cues. The lifts are disjoint and painted side by
+// side, never nested ([paintSpans]).
 func (a *app) draftSeamPaint(pal palette, model, rung, gate hudSpan) func(string) string {
 	return func(text string) string {
 		return paintSpans(text, pal.dim,
-			spanLift{span: model, lift: pal.accent, on: a.targetModelPinned()},
+			spanLift{span: model, lift: pal.seamModel, on: true},
 			spanLift{span: rung, lift: a.paintDraftEffortChip, on: a.draftEffortLit()},
 			spanLift{span: gate, lift: a.paintDraftApprovalChip, on: a.draftApprovalLit()})
 	}
