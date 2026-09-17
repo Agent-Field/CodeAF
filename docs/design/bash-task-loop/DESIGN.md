@@ -226,7 +226,7 @@ branch belt, with the reason it cannot be a shell command.
 | `read_document` | **kept** | the billed parser; the split from `read` is where the bill is (`tools_doc.go`). No shell command is a paid document parse, and the absence law forbids a fake one |
 | `jobs` | **kept** | the other end of bash's `background` argument (Decision 6) |
 | `manual` | **kept** | the packed BM25 corpus; a worktree holds the Markdown but not the index, and the chat's account of itself is not a `grep` away |
-| `ask` | **kept** | the consent gate to the person. A question is a routed message with an answer slot, not a process |
+| `ask` | **removed** | the loop reaches the person through the plan CLI, not a consent gate. A question the loop answers by re-planning is not a message to route, and a belt carrying both would teach two ways to say one thing |
 | `watch` | already absent on nodes (`mayWatch`) | — |
 | `settings`, `change_setting` | already absent on nodes | — |
 | `propose_task`, `tasks` | **kept** | the task graph's doors (Decision 5) |
@@ -243,7 +243,7 @@ branch belt, with the reason it cannot be a shell command.
 | `generate_image`, `speak`, `generate_music`, `generate_video` | **kept** | billed model calls; nothing in bash paints |
 | `view_image` | **kept** | a vision model call |
 | `edit_video` | **kept** | ffmpeg is bash-reachable, but the tool is the curated door with measured joins and letterboxing; bash ffmpeg remains possible because bash exists — the tool stays as the safe default |
-| `load_capability` (the shelf) | kept as machinery | the kept-but-rare families (media, services, furrow) ride the shelf exactly as today, so the branch belt's *fixed* surface is: `bash`, `jobs`, `ask`, `manual`, the graph verbs, the state trio, `read_document` |
+| `load_capability` (the shelf) | kept as machinery | the kept-but-rare families (media, services, furrow) ride the shelf exactly as today, so the branch belt's *fixed* surface is: `bash`, `jobs`, `manual`, the graph verbs, the state trio, `read_document` |
 
 ### The safety rails, restated against the new belt
 

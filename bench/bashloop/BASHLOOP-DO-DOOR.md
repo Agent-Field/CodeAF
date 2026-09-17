@@ -83,7 +83,7 @@ own records:
    `share`×1, `write`×4 (c1 the same shape, smaller). Arm B carries **zero**
    calls of a bash-belt hand (`bash` — the belt's own shell, `branchBash` — is
    a different name than the linear executor's `sh`), and the belt's tool
-   composition (`bashBelt()`: branch bash, document, jobs, manual, ask)
+   composition (`bashBelt()`: branch bash, document, jobs, manual)
    appears nowhere.
 2. **The composed page** — per-node first-turn `prompt_tokens` off
    `usage_turns`: arm A 4640/6468/6667, arm B 4663/6714/6552/6771 (c1's three
