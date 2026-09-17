@@ -856,6 +856,28 @@ func (p *picker) cursorToPin() {
 	p.follow(pickerRows)
 }
 
+// pasteFilter puts clipboard text into the filter box, as ONE edit by somebody
+// who is standing at that box.
+//
+// IT STAMPS [picker.typed] AND `/model <query>` DELIBERATELY DOES NOT, and the
+// difference is where the person's hands are. A paste happens with the list
+// already open and the caret already in the box — it is editing, arriving through
+// a different door than the keyboard, and the arrows belong to the caret
+// afterwards for the same reason they do after a typed character. Opening the
+// list with text already in it ([app.openPickerFiltered], home's and a room's
+// `/model <query>`) is the opposite: the query was finished before the list
+// existed, so the arrows are the tree's from the first frame and a person who
+// meant to edit that text still has 600ms of nothing to wait for.
+//
+// It also spares the insert-then-rank pair from being written out at each door;
+// a paste that filtered nothing because one site forgot the second call is a bug
+// this shape cannot have.
+func (p *picker) pasteFilter(text string) {
+	p.filter.insert(text)
+	p.rank()
+	p.typed = timeNow()
+}
+
 // pickerQuiet is how long the filter box must go untouched before `→` and `←`
 // stop being the caret and go back to being the tree.
 //

@@ -162,7 +162,7 @@ where there is no character to step over, which is why an empty box never waits.
 providers open, `←` used to step through `p`, `e`, `e`, `d` before it would close anything.
 Now you pause and press it once.
 
-**Any edit takes the caret back** — a letter, `backspace`, `ctrl+w` — and so do
+**Any edit takes the caret back** — a letter, `backspace`, `ctrl+w`, a paste — and so do
 `ctrl+b`/`ctrl+f`, which are never the providers' keys and so move the caret without changing
 your query. `↑`/`↓` do not count as editing. `tab` always opens and closes.
 

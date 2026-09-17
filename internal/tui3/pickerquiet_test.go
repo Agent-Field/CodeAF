@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/config"
 )
 
@@ -124,6 +126,58 @@ func TestAnyEditHandsTheArrowsBackToTheCaret(t *testing.T) {
 				t.Fatalf("the filter reads %q, want %q", got, probe.want)
 			}
 		})
+	}
+}
+
+// A PASTE IS AN EDIT, arriving through a different door than the keyboard. It
+// reaches the box without going through [picker.navigate] at all, so it stamps for
+// itself ([picker.pasteFilter]) — and a paste that left the arrows on the tree
+// would be the one way to put text in this box that did not count as typing it.
+func TestAPasteIntoTheFilterCountsAsEditing(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width, a.height = 130, 40
+	typeLine(t, a, "/model")
+	typeInto(t, a, "deep")
+	a.pick.typed = time.Now().Add(-pickerQuiet)
+	if a.pick.editing() {
+		t.Fatal("the box did not go quiet")
+	}
+
+	drive(t, a, tea.PasteMsg{Content: "seek"})
+	if !a.pick.editing() {
+		t.Fatal("a paste did not hand the arrows back to the caret")
+	}
+	if got := string(a.pick.filter.value); got != "deepseek" {
+		t.Fatalf("the filter reads %q after the paste", got)
+	}
+	// AND IT FILTERED, which is the other half of what [picker.pasteFilter] owes:
+	// text in the box that the list has not been re-ranked against is a list
+	// showing rows the query excludes.
+	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
+		t.Fatalf("the paste left the list at %v", got)
+	}
+}
+
+// AND OPENING THE LIST WITH A QUERY ALREADY IN IT IS NOT EDITING. `/model deep
+// flash` finished its query before the list existed, so the arrows are the tree's
+// on the first frame — which is the whole reason that door exists.
+func TestOpeningThePickerPreFilledLeavesTheArrowsOnTheTree(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width, a.height = 130, 40
+	typeLine(t, a, "/model deepseek flash")
+
+	if a.pick.editing() {
+		t.Fatal("a pre-filled list opened with the arrows on the caret")
+	}
+	if got := string(a.pick.filter.value); got != "deepseek flash" {
+		t.Fatalf("the box reads %q", got)
+	}
+	// So `→` opens the providers on the very first press, with no wait.
+	drive(t, a, key("right"))
+	if a.pick.unfold == "" {
+		t.Fatal("→ did not open the fold on a pre-filled list")
 	}
 }
 

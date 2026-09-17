@@ -1482,7 +1482,7 @@ are also always the tree's at the very end and the very start of the text, where
 character to step over — so an empty box, which is most of this list's life, never waits.
 
 **To get the caret back without waiting, press any key that edits** — a letter, `backspace`,
-`ctrl+w` — or `ctrl+b`/`ctrl+f`, which are `←`/`→`'s understudies, are never the tree's, and
+`ctrl+w`, or a paste — or `ctrl+b`/`ctrl+f`, which are `←`/`→`'s understudies, are never the tree's, and
 so move the caret without changing a letter of what you typed. Walking the list with
 `↑`/`↓` does **not** count as editing, so reading a filtered list never takes the arrows back
 from the tree. `tab` always opens and closes whatever the box is doing.
