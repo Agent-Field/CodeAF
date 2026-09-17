@@ -96,12 +96,15 @@ func TestThePrecedenceRunsTurnConversationTaskRoleDefault(t *testing.T) {
 	}
 }
 
-// THE ONE ROLE THAT ANSWERS FOR ITSELF, AND THE FOUR THAT DO NOT.
+// THE TWO ROLES THAT ANSWER FOR THEMSELVES, AND THE FOUR THAT DO NOT.
 //
 // An errand asks for nothing at all: the person's dial is not spent on naming
-// their own conversation. Everybody else — a turn, the work handed out, a
-// standing firing, the sentinel in front of it — gets what was configured, and
-// on an install that configured NOTHING that is nothing.
+// their own conversation. A work seat — a task worker on the bash belt — asks
+// for low: the belt's one action per response spends a deep answer again on
+// every round, so the seat holds a cheap answer of its own. Everybody else — a
+// turn, the work handed out, a standing firing, the sentinel in front of it —
+// gets what was configured, and on an install that configured NOTHING that is
+// nothing.
 //
 // The two rows that moved here are standing and sentinel. They used to hold a
 // floor of `low`, which was a rung this harness chose for a model it knew
@@ -116,6 +119,7 @@ func TestOnlyAnErrandAnswersForItselfAndTheRestTakeWhatWasConfigured(t *testing.
 		{RoleChat, Max},
 		{RoleWorker, Max},
 		{RoleErrand, None},
+		{RoleWork, Low},
 		{RoleStanding, Max},
 		{RoleSentinel, Max},
 	} {
@@ -124,7 +128,9 @@ func TestOnlyAnErrandAnswersForItselfAndTheRestTakeWhatWasConfigured(t *testing.
 		}
 	}
 	// And with nothing dialled anywhere, every one of them is absence — no
-	// reasoning field on the wire, whoever the call is for.
+	// reasoning field on the wire, whoever the call is for. The work seat is
+	// not among them: its floor answers low on a silent install too, which is
+	// the next test's business.
 	for _, role := range []Role{RoleChat, RoleWorker, RoleErrand, RoleStanding, RoleSentinel} {
 		if got := Resolve(Scope{Role: role}); got != None {
 			t.Fatalf("with nothing configured, %q resolves to %q, want absence", role, got)
@@ -134,6 +140,35 @@ func TestOnlyAnErrandAnswersForItselfAndTheRestTakeWhatWasConfigured(t *testing.
 	// is what makes a deliberately deep standing item possible at all.
 	if got := Resolve(Scope{Task: Max, Role: RoleErrand, Default: Low}); got != Max {
 		t.Fatalf("a rung set on the work resolved to %q, want max — the role is a fallback, not a cap", got)
+	}
+}
+
+// THE WORK SEAT, PROVED FROM BOTH SIDES.
+//
+// A task worker on the bash belt thinks at low when nothing above the role
+// spoke — and nothing above it means nothing: the install's default is the
+// answer to "and otherwise?", and the role spoke before the default was asked.
+// What does lift the seat is a rung closer to the call, one scope at a time,
+// exactly as it does for every other role. The ladder is unchanged; only the
+// role's own answer is new.
+func TestTheWorkSeatAnswersLowAndARungAboveItStillWins(t *testing.T) {
+	if got := Resolve(Scope{Role: RoleWork}); got != Low {
+		t.Fatalf("the work seat on a silent install resolves to %q, want low", got)
+	}
+	if got := Resolve(Scope{Role: RoleWork, Default: Max}); got != Low {
+		t.Fatalf("the work seat over an install dialled to max resolves to %q, want low", got)
+	}
+	for _, said := range []struct {
+		what  string
+		scope Scope
+	}{
+		{"the turn", Scope{Turn: Max, Role: RoleWork, Default: Low}},
+		{"the conversation", Scope{Conversation: Max, Role: RoleWork, Default: Low}},
+		{"the task", Scope{Task: Max, Role: RoleWork, Default: Low}},
+	} {
+		if got := Resolve(said.scope); got != Max {
+			t.Fatalf("with %s set, the work seat resolved to %q, want max", said.what, got)
+		}
 	}
 }
 

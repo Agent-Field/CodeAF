@@ -7418,6 +7418,17 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// gate reads it the same way rather than a second time from the env.
 	bashExperiment := bashBeltAsked()
 
+	// AND THE SEAT IT THINKS FROM, the effort half of the same switch. On the
+	// bash belt the worker's one action per response turns the person's depth
+	// into a run of reasoning rounds, so the seat is work (effort.RoleWork),
+	// which answers low when nothing above it spoke; elsewhere the role is
+	// worker, which has no floor of its own and answers whatever was
+	// configured. A rung set on the task outranks both (effort.Resolve).
+	workerSeat := effort.RoleWorker
+	if bashExperiment {
+		workerSeat = effort.RoleWork
+	}
+
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
@@ -7479,9 +7490,12 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// piece of work, not the conversation it came from.
 		//
 		// The role is worker, which has no floor of its own — a task is not
-		// machinery running while nobody watches, it is the job.
+		// machinery running while nobody watches, it is the job. On the bash
+		// belt it is the work seat instead, whose floor of low is the belt's
+		// own answer (the switch above carries the why); the task's rung is set
+		// beside it and outranks the seat either way.
 		Effort:        node.effortRung(),
-		EffortRole:    effort.RoleWorker,
+		EffortRole:    workerSeat,
 		DefaultEffort: inherited,
 		// ALLOW EVERYTHING EXCEPT THE FLOOR. approval's critical table still
 		// turns an allow into a "prompt" for the handful of shapes that destroy
