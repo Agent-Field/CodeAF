@@ -400,7 +400,7 @@ func spendPanelText(a *app, width int) []string {
 		if got, ok := line.panelOf(); !ok || got != panelSpend {
 			continue
 		}
-		for _, row := range a.homeLineRows(line, at, width, a.pal, false) {
+		for _, row := range a.homeLineRows(line, at, width, a.pal, false, false) {
 			out = append(out, plain(row.text))
 		}
 	}

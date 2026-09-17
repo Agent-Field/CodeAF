@@ -747,9 +747,11 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A click on a panel's **heading** opens the place the heading names:
 `needs you`, `tasks` and `since you left` open tasks, `spend` opens spend, `scheduled` opens
-standing, and `threads` and `projects` open nothing. A click never starts
-a paid turn, so on the row of what you typed, on `ask here` and on a `/` command it only
-puts the cursor there, and `enter` does the rest.
+standing, and `threads` and `projects` open nothing. **A heading that opens somewhere
+underlines its word while the mouse pointer is over it**; `threads` and `projects` never
+underline, and the pointer on a heading moves neither the cursor nor the marked heading.
+A click never starts a paid turn, so on the row of what you typed, on `ask here` and on a
+`/` command it only puts the cursor there, and `enter` does the rest.
 
 `enter` opens the session under the cursor — **any row on the screen, in any project.**
 The chosen journal is opened and replayed, and **the conversation you were in stays open

@@ -54,7 +54,7 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 			break
 		}
 		c := min(h.grid.col[at], len(xs)-1)
-		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at))...)
+		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at), at == h.headHover)...)
 	}
 	if at := homeDescCol(h.grid.cols); at != homeNoLine && at < len(columns) {
 		columns[at] = a.homeDescLines(widths[at], room, pal, columns[0])
@@ -218,7 +218,7 @@ func homeGridZip(columns [][]homeCellLine, y int, xs []int) placeRow {
 }
 
 // homeLineRows paints one line of the list at one column's width.
-func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bool) []homeCellLine {
+func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading, hovered bool) []homeCellLine {
 	h := &a.home
 	hit := -1
 	if line.stop() {
@@ -236,7 +236,7 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 	var texts []string
 	switch cell.kind {
 	case cellHead:
-		texts, head = []string{homeCellHead(cell, width, pal, heading)}, at
+		texts, head = []string{homeCellHead(cell, width, pal, heading, hovered)}, at
 	case cellWhisper, cellFold:
 		texts = []string{homeCellQuiet(cell, width, pal, lit)}
 	case cellGroup:
@@ -293,13 +293,41 @@ var homeDescLeadBlank = strings.Repeat(" ", homeDescLeadCells)
 // cursor step's ground on its heading, and the words stay where they were
 // (docs/DESIGN-LANGUAGE.md, "the section holding the cursor marks its own
 // heading") — one heading per frame, following the keyboard only.
-func homeCellHead(cell *homeCell, width int, pal palette, marked bool) string {
+//
+// A HEADING THAT IS A DOOR UNDERLINES UNDER THE POINTER, and that is the whole
+// of what the pointer does to a heading: the word keeps its ink and takes no
+// ground, so it cannot be mistaken for the cursor's mark, and the underline is
+// the one attribute every terminal has used to say "this opens somewhere"
+// ([palette.underline]). Only the word underlines — the explainer and the
+// clause at the right are not the door — and hovered is true only for a
+// heading that names a place ([app.homeHeadDoor]), so `projects` and
+// `threads` never wear it.
+func homeCellHead(cell *homeCell, width int, pal palette, marked, hovered bool) string {
 	left := homeCellHeadLeft(cell, width)
-	text := switcherSides(width, left, cell.right, homeCellHeadInk(left, cell.note, pal), homeCellMoneyInk(cell.money, pal))
+	ink := homeCellHeadInk(left, cell.note, pal)
+	if hovered {
+		ink = homeCellHeadDoorInk(ink, cell.title, pal)
+	}
+	text := switcherSides(width, left, cell.right, ink, homeCellMoneyInk(cell.money, pal))
 	if marked {
 		return pal.cursor(text, width)
 	}
 	return text
+}
+
+// homeCellHeadDoorInk is a heading's left-side ink with the word underlined:
+// the panel's word at the front of the text, and nothing after it — not the
+// count a heading carries after its separator (`tasks · 3`), and not the
+// explainer. A left side that does not start with the word (which
+// [homeCellHeadLeft] never hands out) is painted as it was.
+func homeCellHeadDoorInk(ink func(string) string, title string, pal palette) func(string) string {
+	word, _, _ := strings.Cut(title, rowSep)
+	return func(s string) string {
+		if word == "" || !strings.HasPrefix(s, word) {
+			return ink(s)
+		}
+		return ink(pal.underline(word) + s[len(word):])
+	}
 }
 
 // homeCellHeadLeft is a heading's left side: its word, and its explainer beside

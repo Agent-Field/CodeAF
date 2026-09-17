@@ -602,6 +602,13 @@ type homeView struct {
 	top    int
 	// hover is the line the pointer is over, or -1.
 	hover int
+	// headHover is the heading line the pointer is over WHEN THAT HEADING IS A
+	// DOOR — a panel whose heading names a place ([homeHeadAt],
+	// [app.homeHeadDoor]) — or -1. A heading is no cursor stop, so [hover] never
+	// lands on one; this is the one fact the pointer adds to a heading, and it
+	// is drawn as an underline under the word rather than a ground (owner,
+	// 2026-09-17: a clickable heading should say so under the mouse).
+	headHover int
 	// says is what each place answers about WHAT IS IN IT, cached on the same
 	// beat the bands are read on so that building the typed drop-up costs no
 	// seam at all ([app.readPlaceSummaries], homeplaces.go).
@@ -1264,6 +1271,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		gridWidth: a.homeGridWidthNow(),
 		tilde:     a.tilde,
 		hover:     -1,
+		headHover: -1,
 		last:      map[string]session.Summary{},
 		news:      map[string]homeNewsCache{},
 		expanded:  map[string]bool{},
@@ -4192,6 +4200,16 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 	a.exchangeHover(row)
 	was := a.home.hover
 	a.home.hover = -1
+	// A HEADING THAT IS A DOOR SAYS SO UNDER THE POINTER. It is resolved against
+	// the headings the last frame drew, the same map a press reads
+	// ([app.homeHeadPress]), so the word that underlines is the word a click
+	// would open — and a heading that names no place (`projects`, `threads`)
+	// never underlines, because a link that goes nowhere is a lie.
+	wasHead := a.home.headHover
+	a.home.headHover = -1
+	if at, ok := a.homeHeadAt(x, y); ok && a.homeHeadDoor(at) {
+		a.home.headHover = at
+	}
 	// THE LIST'S HOVER BELONGS TO THE LIST'S COLUMN. The hover is what the card
 	// previews ([homeView.previewLine]), so a pointer resting on the CARD must
 	// not count as a hover on the list row that happens to share its screen line
@@ -4215,6 +4233,9 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 		asked := a.refreshHomeCard(time.Now())
 		a.touch()
 		return asked
+	}
+	if a.home.headHover != wasHead {
+		a.touch()
 	}
 	return nil
 }

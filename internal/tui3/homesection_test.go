@@ -186,14 +186,14 @@ func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 		t.Fatalf("standing in threads marks no heading:\n%s", homeText(a))
 	}
 	cell := a.home.lines[head].cell
-	marked := homeCellHead(cell, 40, a.pal, true)
+	marked := homeCellHead(cell, 40, a.pal, true, false)
 	if !strings.HasPrefix(marked, cursorGround(a.pal)) {
 		t.Fatalf("the marked heading wears no ground: %q", marked)
 	}
 	if !strings.Contains(marked, a.pal.muted(cell.title)) || strings.Contains(marked, a.pal.accent(cell.title)) {
 		t.Fatalf("the marked heading's words changed ink: %q", marked)
 	}
-	if rest := homeCellHead(cell, 40, a.pal, false); strings.HasPrefix(rest, cursorGround(a.pal)) {
+	if rest := homeCellHead(cell, 40, a.pal, false, false); strings.HasPrefix(rest, cursorGround(a.pal)) {
 		t.Fatalf("an unmarked heading wears the ground: %q", rest)
 	}
 }

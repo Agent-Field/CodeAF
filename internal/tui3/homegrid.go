@@ -1375,21 +1375,37 @@ func (a *app) homeHitAt(x, y int, hits []int) int {
 // heading worked out apart from the draw would open the wrong place on exactly
 // the frame a person could not tell why.
 func (a *app) homeHeadPress(x, y int) (tea.Cmd, bool) {
+	at, ok := a.homeHeadAt(x, y)
+	if !ok {
+		return nil, false
+	}
+	if !a.homeHeadDoor(at) {
+		return nil, true
+	}
+	return a.showPage(homeSlotOf(a.home.lines[at].cell.panel).head), true
+}
+
+// homeHeadAt is the heading line under a pointer at (x, y), read from the
+// headings the frame drew ([homeMark.heads]). It is the one lookup a press and
+// a hover share, so the heading that underlines under the pointer is the
+// heading the press would open ([app.homeHover]).
+func (a *app) homeHeadAt(x, y int) (int, bool) {
 	marks := a.home.gridMarks
 	if y < 0 || y >= len(marks) || !marks[y].grid {
-		return nil, false
+		return -1, false
 	}
 	at := marks[y].heads[a.home.gridColumnAt(x)]
 	if at < 0 || at >= len(a.home.lines) || a.home.lines[at].cell == nil {
-		return nil, false
+		return -1, false
 	}
-	// The registry answers whether the heading names a place at all, which keeps
-	// this file from asking a page id what it is (placelaws_test.go, law 1).
-	id := homeSlotOf(a.home.lines[at].cell.panel).head
-	if placeFor(id) == nil {
-		return nil, true
-	}
-	return a.showPage(id), true
+	return at, true
+}
+
+// homeHeadDoor reports whether the heading on line at names a place. The
+// registry answers rather than the page id, which keeps this file from asking
+// a page id what it is (placelaws_test.go, law 1).
+func (a *app) homeHeadDoor(at int) bool {
+	return placeFor(homeSlotOf(a.home.lines[at].cell.panel).head) != nil
 }
 
 // gridColumnAt is the column an x falls in: the last one starting at or before

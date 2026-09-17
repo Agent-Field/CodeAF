@@ -541,27 +541,27 @@ func TestAHeadingExplainerIsDimAndGivesWayBeforeTheHeadingIsCut(t *testing.T) {
 	whole := ansi.StringWidth(cell.title) + ansi.StringWidth(tail)
 
 	// Room for all of it: the gloss is dim, and the heading keeps its own ink.
-	drawn := homeCellHead(cell, whole, pal, false)
+	drawn := homeCellHead(cell, whole, pal, false, false)
 	if !strings.Contains(drawn, placeHeadingInk(pal)(cell.title)+pal.dim(tail)) {
 		t.Fatalf("the explainer is not painted dim after the heading's own ink:\n%q", drawn)
 	}
 	// One cell short of the whole: the gloss goes, and the heading is untouched.
-	if got := plain(homeCellHead(cell, whole-1, pal, false)); got != cell.title {
+	if got := plain(homeCellHead(cell, whole-1, pal, false, false)); got != cell.title {
 		t.Fatalf("a column one cell short drew %q, want the heading alone", got)
 	}
 	// A column too narrow for even the heading cuts it, exactly as it always
 	// did — the gloss never turns that cut into something worse.
-	cut := plain(homeCellHead(cell, ansi.StringWidth(cell.title)-1, pal, false))
+	cut := plain(homeCellHead(cell, ansi.StringWidth(cell.title)-1, pal, false, false))
 	if !strings.Contains(cut, glyphMore) || strings.Contains(cut, cell.note) {
 		t.Fatalf("a too-narrow column drew %q, want the heading cut with no gloss", cut)
 	}
 	// A heading with a right-hand clause drops its gloss past the room the
 	// clause leaves, not the whole column.
 	clause := &homeCell{kind: cellHead, title: "spend", note: "spent today", right: "today $6.51 of $500"}
-	if !strings.Contains(plain(homeCellHead(clause, 39, pal, false)), clause.note) {
+	if !strings.Contains(plain(homeCellHead(clause, 39, pal, false, false)), clause.note) {
 		t.Fatalf("the gloss does not fit the room its right-hand clause leaves at 39 cells")
 	}
-	if got := plain(homeCellHead(clause, 38, pal, false)); strings.Contains(got, clause.note) {
+	if got := plain(homeCellHead(clause, 38, pal, false, false)); strings.Contains(got, clause.note) {
 		t.Fatalf("the gloss was kept past the room its right-hand clause leaves: %q", got)
 	}
 }
