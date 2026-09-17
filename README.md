@@ -195,6 +195,14 @@ request goes to the provider that has been fastest for that kind of call.
 Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Ollama and
 any OpenAI-compatible endpoint.
 
+## Model Pool
+
+The Model Pool index is mirrored on the `model-pool` branch at `pool/index.json`.
+[How to run your own relay](docs/design/model-pool/learn.pdf) explains the worker
+behind it.
+
+[![pool updated](https://img.shields.io/github/last-commit/Agent-Field/CodeAF/model-pool?label=pool%20updated)](https://github.com/Agent-Field/CodeAF/tree/model-pool)
+
 ## Standing orders
 
 Rules, reminders and watches are one thing, and you set them up by saying them.
