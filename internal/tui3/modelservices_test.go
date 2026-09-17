@@ -555,6 +555,144 @@ func TestARenameCarriesTheModelIdsAlreadyPicked(t *testing.T) {
 	}
 }
 
+// groupedModelIDs is every id the picker shows under one connection's group,
+// which is the qualified spelling the person actually selects (modelsFor is
+// the single door that calls Connected.Qualify).
+func groupedModelIDs(a *app, group string) []string {
+	var ids []string
+	for _, model := range a.modelList() {
+		if !model.Unavailable && strings.EqualFold(model.Group, group) {
+			ids = append(ids, model.ID)
+		}
+	}
+	return ids
+}
+
+// renamedRelistedApp connects a custom connection written `homelab` whose stub
+// lists the one model, renames it to `lab`, and lists it AGAIN from the renamed
+// connection — the road ctrl+r on the row and a reconnect both take
+// ([app.reconnectModelService] -> [app.beginModelConnect]). The re-listing is
+// the moment nothing covered before: a listing path that qualified an id that
+// was already qualified would draw lab/homelab/... or lab/lab/....
+func renamedRelistedApp(t *testing.T, model string) *app {
+	t.Helper()
+	server := sourcestub.New(model)
+	t.Cleanup(server.Close)
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+
+	source := modelsource.Vendored()[6] // Custom OpenAI-compatible API
+	first := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "homelab", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	a.adoptModelConnectResult(a.beginModelConnect(first)().(modelConnectResultMsg))
+	a.switchModel("homelab/"+model, 0)
+
+	// THE RENAME: an edit draft whose Written moved, exactly what the name step
+	// builds on an answer that differs from the stored one.
+	persisted := config.PersistedSources(dir)
+	if len(persisted) != 1 {
+		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
+	}
+	renamed := persisted[0]
+	renamed.Written = "lab"
+	renamedSource := source
+	renamedSource.Written = "lab"
+	renamedDraft := modelConnectDraft{
+		source: renamedSource, row: renamed, renamedFrom: "homelab",
+		entryID: modelConnectionID("custom"), editing: true,
+	}
+	a.adoptModelConnectResult(a.beginModelConnect(renamedDraft)().(modelConnectResultMsg))
+	if a.model != "lab/"+model {
+		t.Fatalf("the rename left the conversation on %q", a.model)
+	}
+
+	// THE RE-LISTING: the row's own road, carrying no renamedFrom at all.
+	cmd := a.reconnectModelService("custom")
+	if cmd == nil {
+		t.Fatal("the renamed connection did not offer a re-listing")
+	}
+	a.adoptModelConnectResult(cmd().(modelConnectResultMsg))
+	return a
+}
+
+// A RE-LISTING AFTER A RENAME CARRIES THE PREFIX ONCE. The written name is the
+// routing prefix of every model id the connection qualifies, so a re-listing
+// must draw the id the connection's own name spells — never the previous name
+// and never its own name twice.
+func TestReListingARenamedConnectionCarriesOnePrefix(t *testing.T) {
+	a := renamedRelistedApp(t, "qwen-local")
+
+	ids := groupedModelIDs(a, "lab")
+	if len(ids) != 1 || ids[0] != "lab/qwen-local" {
+		t.Fatalf("the re-listed group = %q, want exactly [lab/qwen-local]", ids)
+	}
+	for _, id := range ids {
+		if id == "lab/homelab/qwen-local" || id == "lab/lab/qwen-local" || strings.Count(id, "/") != 1 {
+			t.Fatalf("the re-listing qualified the prefix more than once: %q", id)
+		}
+	}
+	if a.model != "lab/qwen-local" {
+		t.Fatalf("the conversation model after the re-listing = %q, want lab/qwen-local", a.model)
+	}
+}
+
+// THE STORED LIST HOLDS THE BARE IDS THE SERVER ANSWERED. The prefix is added
+// at ONE door ([app.modelsFor] calling Connected.Qualify) and must not be baked
+// into the cache: a cache that stored lab/qwen-local would be qualified again
+// on the next read and read lab/lab/qwen-local.
+func TestReListingStoresTheBareModelIDsTheServerAnswered(t *testing.T) {
+	a := renamedRelistedApp(t, "qwen-local")
+
+	got := a.sourceModels["custom"]
+	if len(got) != 1 || got[0].ID != "qwen-local" {
+		t.Fatalf("the stored list = %+v, want the bare qwen-local the server answered", got)
+	}
+}
+
+// TWO CONNECTIONS DO NOT BORROW EACH OTHER'S PREFIX. Each connection's own
+// listing is qualified with its OWN written name, including a bare id whose
+// spelling could be read as the other connection's prefix.
+func TestTwoConnectionsDoNotBorrowEachOthersPrefix(t *testing.T) {
+	labServer := sourcestub.New("qwen-local", "shared")
+	defer labServer.Close()
+	studioServer := sourcestub.New("qwen-local", "shared")
+	defer studioServer.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+
+	template := modelsource.Vendored()[6] // Custom OpenAI-compatible API
+	labSource := template
+	labSource.ID, labSource.Written = "custom", "lab"
+	a.adoptModelConnectResult(a.beginModelConnect(modelConnectDraft{source: labSource, row: config.PersistedSource{
+		ID: "custom", Written: "lab", Address: labServer.URL(), Key: "a-custom-key", Order: 1,
+	}})().(modelConnectResultMsg))
+	studioSource := template
+	studioSource.ID, studioSource.Written = "custom-studio", "studio"
+	a.adoptModelConnectResult(a.beginModelConnect(modelConnectDraft{source: studioSource, row: config.PersistedSource{
+		ID: "custom-studio", Written: "studio", Address: studioServer.URL(), Key: "a-custom-key2", Order: 2,
+	}})().(modelConnectResultMsg))
+
+	for _, want := range []string{"lab/qwen-local", "lab/shared", "studio/qwen-local", "studio/shared"} {
+		found := false
+		for _, model := range a.modelList() {
+			found = found || model.ID == want
+		}
+		if !found {
+			t.Fatalf("the picker missed %q: %+v", want, a.modelList())
+		}
+	}
+	for _, model := range a.modelList() {
+		if strings.HasPrefix(model.ID, "lab/studio/") || strings.HasPrefix(model.ID, "studio/lab/") {
+			t.Fatalf("a connection borrowed the other's prefix: %q", model.ID)
+		}
+	}
+}
+
 // A RENAME DURING A WORKING TURN FREEZES THE LIVE PICK AND CARRIES THE PENDING
 // MOVE UNDER THE NEW NAME. reprefixRenamedModel leaves a.model alone while a
 // turn is working — the answering turn is frozen to its model until it settles
