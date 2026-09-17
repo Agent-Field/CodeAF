@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -30,6 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
 // runChatV3 is the v3 door: one session agent over this directory, and the
@@ -68,6 +70,7 @@ func v3OpenRouterConnection(settings config.Config, interactive bool) func(conte
 }
 
 func openChatV3(name string, args []string, pickSession bool) error {
+	restart := &codeupdate.Plan{}
 	flags := commandFlags(name)
 	model := flags.String("model", "", "model slug for this session; beats the configured default")
 	once := flags.String("once", "", "run one message non-interactively, print the reply, and exit")
@@ -184,7 +187,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// the harnesses are all the far machine's, and reading this one's would be
 	// resolving a launch nobody asked for (chatv3_host.go).
 	if dest := strings.TrimSpace(*host); dest != "" {
-		return openChatV3Host(hostLaunch{
+		err := openChatV3Host(hostLaunch{
 			target:    dest,
 			session:   strings.TrimSpace(*file),
 			model:     strings.TrimSpace(*model),
@@ -194,7 +197,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			noCompact: *noCompact,
 			yolo:      *yolo,
 			budget:    chatBudget(*maxHours, *maxCost).Set(),
+			restart:   restart,
 		})
+		return finishChatRestart(err, restart, "")
 	}
 
 	// THE THIRD DOOR, and it forks here for the reason --host does: a machine
@@ -203,7 +208,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// a relay tunnel here — which is the whole point of the transport being an
 	// io.ReadWriteCloser and nothing more (chatv3_at.go, docs/REMOTE.md).
 	if name := strings.TrimSpace(*at); name != "" {
-		return openChatV3At(atLaunch{
+		err := openChatV3At(atLaunch{
 			target:    name,
 			session:   strings.TrimSpace(*file),
 			model:     strings.TrimSpace(*model),
@@ -213,7 +218,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			noCompact: *noCompact,
 			yolo:      *yolo,
 			budget:    chatBudget(*maxHours, *maxCost).Set(),
+			restart:   restart,
 		})
+		return finishChatRestart(err, restart, "")
 	}
 
 	// The fourth door, and the only one with no machine in it: this workspace's
@@ -255,6 +262,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			once:      strings.TrimSpace(*once),
 			pick:      pickSession,
 			shape:     v3LaunchShape(*yolo, *noCompact, *oneModel, *maxHours, *maxCost, strings.TrimSpace(*once) == ""),
+			restart:   restart,
 		})
 		var taken *hostShapeTaken
 		var unreachable *hostUnreachable
@@ -264,7 +272,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		case errors.As(err, &unreachable):
 			entryNotice = "this conversation opened in this terminal instead, and ends with it: " + unreachable.reason
 		default:
-			return err
+			return finishChatRestart(err, restart, workspace)
 		}
 	}
 
@@ -461,7 +469,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// The byte meter and the logger redirect both belong to the surface rather
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
 	// door gets them.
-	return runSurface(ctx, tui3.Options{
+	err = runSurface(ctx, tui3.Options{
 		Agent: agent,
 		Build: buildinfo.String(),
 		// The memory place and the search place read the SAME database the
@@ -613,6 +621,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Owned:       launch.Place.Owned,
 		SessionFile: transcript,
 		Resumed:     resumed,
+		Restart:     restart,
 		// AND THE LAUNCH FACTS A PERSON CAN ACT ON. The unattended boundary and
 		// a replaced codeaf both ride the session-moved line — one dim row at
 		// the top of the conversation — rather than growing surfaces of their
@@ -637,6 +646,48 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		SaveBashApproval: bankBashApproval(agent, workspace, settings.ProfileDir, *yolo),
 		ApplyApprovals:   applyV3Approvals(agent, workspace, settings.ProfileDir, *yolo),
 	})
+	return finishChatRestart(err, restart, "")
+}
+
+// finishChatRestart runs only after the surface door has returned, so every
+// connection, session, and terminal cleanup deferred by that door has finished.
+func finishChatRestart(err error, restart *codeupdate.Plan, localWorkspace string) error {
+	if err != nil || restart == nil || restart.Path == "" {
+		return err
+	}
+	// A linked-local engine outlives its surface, so replacing the executable
+	// does not by itself put the new build behind the conversation. Ask it to
+	// retire only after the surface has detached; the host itself refuses while
+	// another view or any work is active, and a refusal never stops that work.
+	if localWorkspace != "" {
+		retireUpdateEngine(localWorkspace)
+	}
+	return restartUpdatedChat(*restart)
+}
+
+const updateEngineDetachGrace = time.Second
+const updateEngineDetachPoll = 25 * time.Millisecond
+
+var (
+	retireChatEngine   = enginehost.Retire
+	restartUpdatedChat = codeupdate.Restart
+	updateRestartNow   = time.Now
+	updateRestartPause = time.Sleep
+)
+
+// retireUpdateEngine gives the connection close immediately above long enough
+// to reach the host before deciding that somebody else really is keeping it.
+// It never uses the force door: another window or live work keeps the old host,
+// while the ordinary one-window handoff reliably starts the replacement build.
+func retireUpdateEngine(workspace string) {
+	deadline := updateRestartNow().Add(updateEngineDetachGrace)
+	for {
+		err := retireChatEngine(workspace, false)
+		if !errors.Is(err, enginehost.ErrHostBusy) || !updateRestartNow().Before(deadline) {
+			return
+		}
+		updateRestartPause(updateEngineDetachPoll)
+	}
 }
 
 // ── the shared assembly ─────────────────────────────────────────────────────

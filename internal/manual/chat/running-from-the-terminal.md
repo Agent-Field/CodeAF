@@ -1,6 +1,37 @@
 # Commands you type in a terminal
 
-## How do I install or update codeaf to the latest version — the curl line, dev, staging, rc and stable
+## Is there a newer version — how do I update codeaf — /update — codeaf update — why does it say this every time I start
+
+At launch, a stable release behind the newest stable gets one dim line naming both
+versions and offering `/update`. That command downloads the release, checks its
+sha256, replaces this executable and restarts the same conversation; `/upgrade` is
+its alias. Finish a running turn or task first. A matching release says `you are on
+the newest codeaf, <tag>` and does not restart.
+
+Release candidates get the launch line once their stable line is published. A
+stable build already newest or ahead gets no launch line. That silence does not
+authorize a downgrade: if this build is `v0.3.0` and stable is `v0.2.0`, `/update`
+refuses with `this codeaf is v0.3.0, ahead of the newest stable v0.2.0 — /update
+v0.2.0 installs it anyway`. Naming the tag is the deliberate road and installs it.
+Dev, staging, source and unstamped builds make no launch request. Set
+`CODEAF_NO_UPDATE_CHECK=1` to skip only this check. Its answer is cached in
+`update-check.json` beside `config.json` for 24 hours for the same running build;
+a cached newer release is still shown at every launch.
+
+From a shell, `codeaf update --check` exits 3 for a newer selected stable or rc,
+or a different selected dev or staging tag; 0 when a stable or rc build is equal
+or ahead, or a channel tag is equal; and 1 when it could not check. `--version
+<tag>` exits 0 only on that tag and 3 otherwise. Every answer names the selected
+tag. `codeaf update` installs stable by default;
+`--rc`, `--dev`, and `--staging` select another channel. On `v0.3.0` with stable
+at `v0.2.0`, it exits 2 with `this codeaf is v0.3.0, ahead of the newest stable
+v0.2.0 — pass --version v0.2.0 to install it anyway`. `--version v0.2.0` installs
+what was named. A source build refuses and names its path: rebuild with `make
+build`, or install a release with `curl -fsSL https://agentfield.ai/get/codeaf | bash`.
+An unwritable target, failed download or bad checksum leaves the original in
+place and offers that same line; codeaf never tries sudo.
+
+## How do I install codeaf — the curl line, agentfield.ai/get/codeaf, dev, staging, rc and stable channels
 
 The install line is one curl, the same one the README prints:
 
@@ -40,8 +71,9 @@ wrong thing.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf`; its last line is `codeaf version`. Nothing
-self-updates: run the line again when you want a newer build.
+The installer writes `~/.codeaf/bin/codeaf`; its last line is `codeaf version`. For a
+newer build later, `/update` in the chat or `codeaf update` in a terminal replaces the
+binary in place (the section above); running the line again works too.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 

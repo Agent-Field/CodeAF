@@ -2,14 +2,161 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/tui3"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
+
+type surfaceFrameWriter struct {
+	mu sync.Mutex
+	bytes.Buffer
+	ready chan struct{}
+	once  sync.Once
+}
+
+func (writer *surfaceFrameWriter) Write(raw []byte) (int, error) {
+	writer.mu.Lock()
+	written, err := writer.Buffer.Write(raw)
+	if strings.Contains(writer.Buffer.String(), "codeaf") {
+		writer.once.Do(func() { close(writer.ready) })
+	}
+	writer.mu.Unlock()
+	return written, err
+}
+
+func (writer *surfaceFrameWriter) String() string {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	return writer.Buffer.String()
+}
+
+// TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit proves
+// C5, C7, and the live capture half of C14 at the shared surface door.
+func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *testing.T) {
+	asset := []byte("new executable")
+	digest := sha256.Sum256(asset)
+	requestStarted := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	var requestOnce sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/releases/latest"):
+			requestOnce.Do(func() { close(requestStarted) })
+			select {
+			case <-releaseResponse:
+				fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+			case <-request.Context().Done():
+			}
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		default:
+			_, _ = w.Write(asset)
+		}
+	}))
+	defer server.Close()
+
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldRun := runSurfaceProgram
+	oldClient, oldExecutable := surfaceUpdateClient, surfaceExecutable
+	oldRevision, oldArguments := surfaceRevision, surfaceArguments
+	t.Cleanup(func() {
+		runSurfaceProgram = oldRun
+		surfaceUpdateClient, surfaceExecutable = oldClient, oldExecutable
+		surfaceRevision, surfaceArguments = oldRevision, oldArguments
+	})
+	frame := &surfaceFrameWriter{ready: make(chan struct{})}
+	input, inputWriter := io.Pipe()
+	defer inputWriter.Close()
+	optionsSeen := make(chan tui3.Options, 1)
+	runSurfaceProgram = func(ctx context.Context, options tui3.Options) error {
+		optionsSeen <- options
+		options.Input = input
+		options.Output = frame
+		options.Width, options.Height = 80, 24
+		return tui3.Run(ctx, options)
+	}
+	surfaceUpdateClient = func(revision string, timeout time.Duration) *codeupdate.Client {
+		if revision != "v0.1.1" || timeout != 3*time.Second {
+			t.Fatalf("client revision %q timeout %s", revision, timeout)
+		}
+		return &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL, Revision: revision}
+	}
+	resolved := 0
+	surfaceExecutable = func(executable func() (string, error)) (string, error) {
+		resolved++
+		return target, nil
+	}
+	surfaceRevision = func() string { return "v0.1.1" }
+	surfaceArguments = func() []string { return []string{"chat", "--model", "x"} }
+	profile := t.TempDir()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan error, 1)
+	go func() {
+		finished <- runSurface(ctx, tui3.Options{
+			Agent: &quietAgent{}, Workspace: "/tmp/lab", ProfileDir: profile, SessionFile: "/tmp/this.jsonl",
+		})
+	}()
+	seen := <-optionsSeen
+	if seen.UpdateCheck == nil || seen.ResolveUpdate == nil || seen.InstallUpdate == nil {
+		cancel()
+		t.Fatal("runSurface did not wire every update door")
+	}
+	restartArgs := codeupdate.RestartArgs(seen.UpdateArgs, seen.SessionFile)
+	if strings.Join(restartArgs, " ") != "chat --model x --session /tmp/this.jsonl" || seen.UpdateRunning != "v0.1.1" {
+		cancel()
+		t.Fatalf("running %q restart args %q", seen.UpdateRunning, restartArgs)
+	}
+	select {
+	case <-requestStarted:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("Init never started the launch check")
+	}
+	select {
+	case <-frame.ready:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("the first frame did not render while the release request waited")
+	}
+	if resolved != 0 || !strings.Contains(frame.String(), "codeaf") {
+		cancel()
+		t.Fatalf("executable resolutions = %d; first frame:\n%s", resolved, frame.String())
+	}
+	close(releaseResponse)
+	cancel()
+	if err := <-finished; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("surface exit: %v", err)
+	}
+
+	result, err := seen.InstallUpdate(context.Background(), codeupdate.Release{Tag: "v0.2.0", Repository: "Agent-Field/codeaf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.ReadFile(target)
+	if err != nil || string(installed) != string(asset) || result.Path != target || resolved != 1 {
+		t.Fatalf("result = %+v resolved = %d installed = %q, %v", result, resolved, installed, err)
+	}
+}
 
 // A SURFACE THAT OWNS THE TERMINAL OWNS THE LOGGER, AND IT OWNS IT FROM ONE
 // PLACE.

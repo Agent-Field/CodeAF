@@ -1,6 +1,9 @@
 package remote
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // viewOn dials a real client at one served conversation over an in-memory pipe.
 // It is [Loopback] for a session the test built itself, which is the only way to
@@ -31,6 +34,9 @@ func TestDetachingFromAHostLeavesTheConversationRunning(t *testing.T) {
 	agent := &fakeAgent{}
 	sess := NewSession(engineOn(agent), true)
 	client := viewOn(t, sess)
+	sess.mu.Lock()
+	sess.acted = time.Now()
+	sess.mu.Unlock()
 
 	if !client.Welcome().Persistent {
 		t.Fatal("a session host did not say its engine outlives the connection")
@@ -49,11 +55,30 @@ func TestDetachingFromAHostLeavesTheConversationRunning(t *testing.T) {
 	// what the process exiting looks like from the host's side.
 	_ = client.Close()
 	waitFor(t, "the host noticed the surface leave", func() bool { return sess.Attached() == 0 })
+	if sess.IdleSince().IsZero() {
+		t.Fatal("a deliberate detach kept the torn-link watching grace")
+	}
 	if sess.Ended() {
 		t.Fatal("a dropped connection ended a hosted conversation")
 	}
 	if closes := agent.closed(); closes != 0 {
 		t.Fatalf("a dropped connection closed the engine's agent %d times", closes)
+	}
+}
+
+// A TORN LINK KEEPS THE GRACE. Only MethodDetach is a window saying it left;
+// an EOF by itself may be a stalled call or a laptop between redial attempts.
+func TestATornHostedConnectionKeepsTheWatchingGrace(t *testing.T) {
+	sess := NewSession(engineOn(&fakeAgent{}), true)
+	client := viewOn(t, sess)
+	sess.mu.Lock()
+	sess.acted = time.Now()
+	sess.mu.Unlock()
+
+	_ = client.Close()
+	waitFor(t, "the host noticed the torn link", func() bool { return sess.Attached() == 0 })
+	if !sess.IdleSince().IsZero() {
+		t.Fatal("a torn link lost the watching grace that protects its redial")
 	}
 }
 

@@ -1085,6 +1085,14 @@ var OperatorEnvPins = []string{
 	// would be promising an override that does nothing, which is worse than
 	// saying nothing at all.
 	"CODEAF_PROFILE_DIR",
+	// The release check's one-launch opt-out and its two mirror addresses
+	// (internal/update). They are plumbing rather than settings rows: the first
+	// is a shell's decision not to make a launch request, while the other two
+	// redirect GitHub traffic for a mirror or a test. Persisting any of them in
+	// the profile would make a temporary network posture outlive its reason.
+	"CODEAF_NO_UPDATE_CHECK",
+	"CODEAF_GITHUB_API",
+	"CODEAF_GITHUB_DOWNLOAD",
 	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
 	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,

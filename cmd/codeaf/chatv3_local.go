@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
 // localLaunch is one launch that goes through this machine's own session host.
@@ -62,6 +63,9 @@ type localLaunch struct {
 	// that conversation's shape back on the welcome and is refused here
 	// ([hostShapeTaken]).
 	shape *remote.LaunchShape
+	// restart is filled by the surface and read only after this door's
+	// connection cleanup has run.
+	restart *codeupdate.Plan
 }
 
 // localLink is the dialer for a conversation on this machine.
@@ -272,6 +276,7 @@ func openChatV3Local(launch localLaunch) error {
 	// and the surface lands on home with that row under the cursor
 	// (internal/tui3's takeover.go).
 	options.TakeOver = takeOver
+	options.Restart = launch.restart
 	// AND WHAT THE DIAL FOUND ON THE WAY IN, on the same line the engine's own
 	// welcome speaks (chatv3_host.go's [hostEntryNotice]). It is joined here
 	// rather than inside that function because it is a fact about THIS ROAD's

@@ -253,7 +253,7 @@ func homeFate(word, rest string) string {
 			return fatePlace
 		}
 		return fateAnswers
-	case "help", "manual", "status", "cost", "budget", "cache", "debug",
+	case "help", "manual", "status", "cost", "budget", "cache", "debug", "update",
 		"stop", "remember", "forget":
 		return fateAnswers
 	}
