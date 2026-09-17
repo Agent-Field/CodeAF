@@ -141,7 +141,7 @@ func TestCountersSurviveManyGoroutines(t *testing.T) {
 		ModelCalls:       goroutines * models,
 		ModelCallsFailed: goroutines * (models / 10),
 		ToolCalls:        goroutines * tools,
-		ToolCallsFailed:  goroutines * ((tools - 1) / 7 + 1),
+		ToolCallsFailed:  goroutines * ((tools-1)/7 + 1),
 		CostUSD:          float64(goroutines*models) * modelCost,
 	}
 	if got.Turns != want.Turns ||
