@@ -1572,6 +1572,15 @@ func (f *feed) confirmResponse() {
 		}
 		e := &f.entries[last]
 		e.text, e.replyTags, e.demoted = text.String(), tags, false
+		// A RESPONSE THAT IS ONLY [session.NoChangeReply] WITHDREW ITSELF AS THE
+		// ANSWER. It is the model telling the completion check its note was wrong,
+		// never words for the person, so the confirmed block is emptied in place
+		// like every other discarded fragment — and the settled answer above it is
+		// the last words the turn's fold finds (workfold.go), exactly as replay
+		// finds it with the row left out (#1065).
+		if session.IsNoChangeReply(e.text) {
+			e.text, e.stale = "", true
+		}
 	}
 	f.touch()
 }

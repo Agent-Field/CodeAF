@@ -257,8 +257,9 @@ func TestCarryingOnAnAskHasACeilingOfItsOwn(t *testing.T) {
 // the same piece said twice.
 //
 // The model's continuation answer is scripted as a rebuttal rather than a
-// change, which is what a model does with an observation that is already
-// satisfied: the lead itself tells it to explain and finish.
+// change, which is what a model did with an observation that was already
+// satisfied while the lead told it to explain and finish — and what a model
+// that ignores the lead's [NoChangeReply] still does.
 func TestAReaderObservationThatWasAnsweredIsNotRaisedAgain(t *testing.T) {
 	const answered = "there is no zeta.txt, so nothing was written about it; the check ran and reported the miss"
 	const observation = "the missing zeta.txt has not been reported"
