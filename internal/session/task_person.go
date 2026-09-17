@@ -76,6 +76,23 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	if brief == "" {
 		return 0, "", "", errors.New("a task needs a brief")
 	}
+	// WHEN THE BASH BELT IS ASKED FOR this door takes its second road: a run on
+	// the run engine, answered AT ONCE with the id the store knows the work by,
+	// so the conversation stays usable while the run goes (task_run_belt.go).
+	// The run road falls back here for every store it cannot serve, so the road
+	// below is the whole of this door whenever the belt is not asked for — which
+	// is every build and every caller that never asked.
+	if bashBeltAsked() {
+		return a.startTaskRun(ctx, brief, solo)
+	}
+	return a.startTaskLegacy(ctx, brief, solo)
+}
+
+// startTaskLegacy is a person's task on this session's own tree: the node is
+// admitted here, at once, and its readings run beside its first worker. It is
+// the door this one has always been, kept whole for every build and every
+// caller that did not ask for the bash belt's run road.
+func (a *Agent) startTaskLegacy(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
 	graph := a.graph()
 	id := graph.reserve()
 	// THE MODEL IS SETTLED HERE, AT ADMISSION, and frozen with the rest of the
