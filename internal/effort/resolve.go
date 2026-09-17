@@ -28,6 +28,14 @@ const (
 	// their depth.
 	RoleWorker Role = "worker"
 
+	// RoleWork is a task worker on the bash belt (internal/session's
+	// bashbelt.go): the same work at one remove as [RoleWorker], but on a belt
+	// whose one action per response spends the worker's depth again on every
+	// round of a run. The seat holds a floor of [Low], so the depth the person
+	// configured is not paid several times over for the same thinking; a rung
+	// set on the task, the conversation or the turn still outranks it.
+	RoleWork Role = "work"
+
 	// RoleErrand is the session's own housekeeping: naming a conversation,
 	// summarising it, judging a route. THE PERSON'S DIAL IS NOT SPENT ON THESE
 	// and neither is a default — a rung somebody set so their question would be
@@ -51,7 +59,7 @@ const (
 // roleFloor is the rung a role falls back to when nothing above it was set.
 //
 // A ROLE MISSING FROM THIS MAP FALLS THROUGH TO THE INSTALL'S DEFAULT, which is
-// where every role but one now lands: chat, worker, standing and sentinel all
+// where every role but two now lands: chat, worker, standing and sentinel all
 // answer "whatever the person configured", and an install that configured
 // nothing asks for nothing.
 //
@@ -73,8 +81,16 @@ const (
 // is ABSENCE, the one value that puts no field on the wire. It says the person's
 // dial is not spent on naming their own conversation — never that this harness
 // has an opinion about how hard a title should be thought about.
+//
+// WORK IS THE OTHER, and it is a choice about depth: a task worker on the bash
+// belt walks its work as a run of one-action rounds, so a deep answer arrives
+// once per round and the same thinking costs the run several times over. Its
+// seat answers [Low] when nothing above the role spoke — and only then: a rung
+// on the task, the conversation or the turn still wins, which is what keeps a
+// deliberately deep task deep.
 var roleFloor = map[Role]Rung{
 	RoleErrand: None,
+	RoleWork:   Low,
 }
 
 // Scope is everything that has an opinion about one call's depth, most specific
