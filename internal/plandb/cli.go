@@ -705,8 +705,8 @@ func cliAgent(p *cliParsed) string {
 }
 
 // cliAddDep adds one edge. The graph laws are asked of the whole result — a
-// cycle or a cross-lineage hard edge refuses the edge rather than bending
-// the plan.
+// hard edge between a task and its own ancestor or descendant, or one that
+// closes a cycle, refuses the edge rather than bending the plan.
 func cliAddDep(st *Store, p *cliParsed) error {
 	if len(p.pos) < 2 {
 		return errors.New(`add-dep needs the downstream task — plandb task add-dep <downstream> --after <upstream>`)
@@ -759,11 +759,9 @@ func cliAmend(st *Store, p *cliParsed) error {
 }
 
 // cliInsert adds a task between two existing ones. The new task depends on
-// --after and takes --after's place in the containment tree; with --before,
-// the new task is wired as --before's upstream TOO — the store's methods add
-// edges and never remove one, so the old after→before edge stays. It is
-// redundant, not wrong: before still waits on after transitively through
-// the new task, which is what "rewired through" means here.
+// --after and takes --after's place in the chain; with --before, the DIRECT
+// after→before edge is lifted once the new task is wired between them, so
+// --before waits on the new task alone rather than on both.
 func cliInsert(st *Store, p *cliParsed) error {
 	after := p.vals["after"]
 	if after == "" {
@@ -776,13 +774,13 @@ func cliInsert(st *Store, p *cliParsed) error {
 	if err != nil {
 		return err
 	}
-	var beforeID string
+	var before *Task
 	if word := p.vals["before"]; word != "" {
 		down, err := cliResolve(st, word)
 		if err != nil {
 			return err
 		}
-		beforeID = down.ID
+		before = down
 	}
 	created, err := st.AddMany([]TaskSpec{{
 		ID: st.NextID(), Title: p.vals["title"], Description: p.vals["description"],
@@ -792,24 +790,26 @@ func cliInsert(st *Store, p *cliParsed) error {
 		return err
 	}
 	newID := created[0].ID
-	// THE NEW TASK WAITS ON --after. Inserted between the two, it holds
-	// --after's place, so the work downstream reads must arrive through it —
+	// THE NEW TASK WAITS ON --after, and takes --after's place. Inserted
+	// between the two, the work downstream reads must arrive through it —
 	// without this edge the new task is free to start beside --after, which
-	// is not "between". With --before it becomes --before's upstream too.
-	// The store's methods add edges and never remove one, so the old
-	// after→before edge stays: redundant, not wrong — before still waits on
-	// after transitively through the new task, which is what "rewired
-	// through" means here.
+	// is not "between". With --before it becomes --before's upstream AND the
+	// old direct after→before edge goes: leaving it would make --before wait
+	// on both the new task and the task it was inserted to follow, which is
+	// not between them.
 	if _, err := st.AddDep(newID, up.ID, DepFeedsInto); err != nil {
 		return err
 	}
-	if beforeID != "" {
-		if _, err := st.AddDep(beforeID, newID, DepFeedsInto); err != nil {
+	if before != nil {
+		if _, err := st.AddDep(before.ID, newID, DepFeedsInto); err != nil {
+			return err
+		}
+		if _, err := st.RemoveDep(before.ID, up.ID); err != nil {
 			return err
 		}
 	}
 	if p.bools["json"] {
-		return cliPrintJSON(cliTaskObject(st, st.Task(newID)))
+		return cliPrintJSON(cliInsertObject(st, st.Task(newID)))
 	}
 	fmt.Fprintf(cliOut, "inserted %s\n", cliID(newID))
 	return nil
@@ -851,6 +851,9 @@ func cliPivot(st *Store, p *cliParsed) error {
 		return err
 	}
 	doomed := cliSubtree(st, parent.ID, p.bools["keep-done"])
+	// The whole subtree, read before the new children go in, so what
+	// --keep-done spared can be told apart from the replacements and reported.
+	standing := cliSubtreeAll(st, parent.ID)
 	created, err := st.AddMany(specs)
 	if err != nil {
 		return err
@@ -870,11 +873,29 @@ func cliPivot(st *Store, p *cliParsed) error {
 		for _, task := range created {
 			ids = append(ids, cliID(task.ID))
 		}
+		// kept is what --keep-done spared: the finished and in-flight tasks the
+		// pivot left standing. Without the flag nothing is spared, so it is
+		// empty even though terminal work survives either way.
+		kept := []string{}
+		if p.bools["keep-done"] {
+			cancelledSet := map[string]bool{}
+			for _, id := range cancelled {
+				cancelledSet[id] = true
+			}
+			for _, task := range standing {
+				if !cancelledSet[cliID(task.ID)] {
+					kept = append(kept, cliID(task.ID))
+				}
+			}
+		}
 		return cliPrintJSON(struct {
-			ParentTaskID string   `json:"parent_task_id"`
-			Created      []string `json:"created"`
-			Cancelled    []string `json:"cancelled"`
-		}{cliID(parent.ID), ids, cancelled})
+			ParentTaskID string          `json:"parent_task_id"`
+			Created      []string        `json:"created"`
+			Cancelled    []string        `json:"cancelled"`
+			Kept         []string        `json:"kept"`
+			Effect       cliEffectJSON   `json:"effect"`
+			ProjectState cliProjectState `json:"project_state"`
+		}{cliID(parent.ID), ids, cancelled, kept, cliEffect(st, created, nil), cliProjectStateOf(st)})
 	}
 	fmt.Fprintf(cliOut, "pivoted %s\n", cliID(parent.ID))
 	return nil
@@ -1018,6 +1039,31 @@ func cliSubtree(st *Store, parentID string, keepDone bool) []*Task {
 				if keepDone && child.Status != StatusPending && child.Status != StatusReady {
 					continue
 				}
+				out = append(out, child)
+				next = append(next, child.ID)
+			}
+		}
+		frontier = next
+	}
+	return out
+}
+
+// cliSubtreeAll answers every descendant of the parent, terminal and
+// in-flight work included — the set a pivot leaves standing once --keep-done
+// has protected them. It is read before the replacements go in, so the new
+// children are never mistaken for kept work.
+func cliSubtreeAll(st *Store, parentID string) []*Task {
+	tasks := st.Tasks()
+	byParent := make(map[string][]*Task, len(tasks))
+	for _, task := range tasks {
+		byParent[task.ParentID] = append(byParent[task.ParentID], task)
+	}
+	var out []*Task
+	frontier := []string{parentID}
+	for len(frontier) > 0 {
+		var next []string
+		for _, id := range frontier {
+			for _, child := range byParent[id] {
 				out = append(out, child)
 				next = append(next, child.ID)
 			}
@@ -1291,19 +1337,23 @@ func cliPrune(st *Store, p *cliParsed) error {
 }
 
 // cliCriticalPath answers the longest hard-dependency chain, upstream
-// first. Empty is the honest answer for a plan with no such chain.
+// first. Empty is the honest answer for a plan with no such chain; --json
+// spells it as length zero and an empty path.
 func cliCriticalPath(st *Store, p *cliParsed) error {
 	path := st.CriticalPath()
+	if p.bools["json"] {
+		ids := make([]string, 0, len(path))
+		for _, task := range path {
+			ids = append(ids, cliID(task.ID))
+		}
+		return cliPrintJSON(struct {
+			Length int    `json:"length"`
+			Path   string `json:"path"`
+		}{len(ids), strings.Join(ids, " > ")})
+	}
 	if len(path) == 0 {
 		fmt.Fprintln(cliOut, "no critical path — no unfinished hard dependency chain.")
 		return nil
-	}
-	if p.bools["json"] {
-		out := make([]*cliTaskJSON, 0, len(path))
-		for _, task := range path {
-			out = append(out, cliTaskObject(st, task))
-		}
-		return cliPrintJSON(out)
 	}
 	fmt.Fprintf(cliOut, "Critical path (%d tasks):\n", len(path))
 	for _, task := range path {
@@ -1325,9 +1375,12 @@ func cliBottlenecks(st *Store, p *cliParsed) error {
 	}
 	rows := st.Bottlenecks(limit)
 	if p.bools["json"] {
-		out := make([]map[string]any, 0, len(rows))
+		out := make([]cliBottleneckJSON, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, map[string]any{"task": cliTaskObject(st, row.Task), "downstream": row.Downstream})
+			out = append(out, cliBottleneckJSON{
+				TaskID: cliID(row.Task.ID), Title: row.Task.Title,
+				Status: row.Task.Status, DownstreamCount: row.Downstream,
+			})
 		}
 		return cliPrintJSON(out)
 	}
@@ -1340,6 +1393,15 @@ func cliBottlenecks(st *Store, p *cliParsed) error {
 		fmt.Fprintf(cliOut, "  %s %s — blocks %d tasks [%s]\n", cliID(row.Task.ID), row.Task.Title, row.Downstream, row.Task.Status)
 	}
 	return nil
+}
+
+// cliBottleneckJSON is one bottleneck row as --json prints it: the task's id,
+// title and status, and the count of work that hard-depends on it directly.
+type cliBottleneckJSON struct {
+	TaskID          string `json:"task_id"`
+	Title           string `json:"title"`
+	Status          Status `json:"status"`
+	DownstreamCount int    `json:"downstream_count"`
 }
 
 // cliShow renders one task's card, fuzzy id and all — `task get` is the
@@ -1382,27 +1444,32 @@ func cliShow(st *Store, p *cliParsed) error {
 }
 
 // cliOverview renders every task in admission order — the reading set's
-// widest answer.
+// widest answer. The --json shape pairs the task rows with the dependency
+// edges between them, so a reader sees the plan's whole picture in one parse.
 func cliOverview(st *Store, p *cliParsed) error {
-	tasks := st.Tasks()
+	all := st.Tasks()
 	if p.bools["json"] {
-		out := make([]*cliTaskJSON, 0, len(tasks))
-		for _, task := range tasks {
+		tasks := make([]*cliTaskJSON, 0, len(all))
+		for _, task := range all {
 			if task.ID == st.RootID() {
 				continue
 			}
-			out = append(out, cliTaskObject(st, task))
+			tasks = append(tasks, cliTaskObject(st, task))
 		}
-		return cliPrintJSON(out)
+		return cliPrintJSON(struct {
+			Tasks        []*cliTaskJSON   `json:"tasks"`
+			Dependencies []cliDepEdgeJSON `json:"dependencies"`
+			Total        int              `json:"total"`
+		}{tasks, cliDepEdges(st), len(tasks)})
 	}
 	count := 0
-	for _, task := range tasks {
+	for _, task := range all {
 		if task.ID != st.RootID() {
 			count++
 		}
 	}
 	fmt.Fprintf(cliOut, "Project overview: %d tasks\n", count)
-	for _, task := range tasks {
+	for _, task := range all {
 		if task.ID == st.RootID() {
 			continue
 		}
@@ -1413,6 +1480,38 @@ func cliOverview(st *Store, p *cliParsed) error {
 		fmt.Fprintln(cliOut)
 	}
 	return nil
+}
+
+// cliDepEdgeJSON is one dependency in the overview's --json: the upstream
+// task the work flows from, the downstream task it flows to, the edge's kind,
+// and the condition every hard edge carries.
+type cliDepEdgeJSON struct {
+	ID        int     `json:"id"`
+	FromTask  string  `json:"from_task"`
+	ToTask    string  `json:"to_task"`
+	Kind      DepKind `json:"kind"`
+	Condition string  `json:"condition"`
+	Metadata  any     `json:"metadata"`
+}
+
+// cliDepEdges lists every dependency edge in admission order, numbered from
+// one, the way the overview's --json carries them.
+func cliDepEdges(st *Store) []cliDepEdgeJSON {
+	out := []cliDepEdgeJSON{}
+	n := 0
+	for _, task := range st.Tasks() {
+		if task.ID == st.RootID() {
+			continue
+		}
+		for _, dep := range task.Dependencies {
+			n++
+			out = append(out, cliDepEdgeJSON{
+				ID: n, FromTask: cliID(dep.TaskID), ToTask: cliID(task.ID),
+				Kind: dep.Kind, Condition: "All", Metadata: nil,
+			})
+		}
+	}
+	return out
 }
 
 // cliNote leaves a task-scoped message for the workers around the same
@@ -1431,7 +1530,7 @@ func cliNote(st *Store, p *cliParsed) error {
 		return err
 	}
 	if p.bools["json"] {
-		return cliPrintJSON(note)
+		return cliPrintJSON(cliNoteObject(note))
 	}
 	fmt.Fprintf(cliOut, "noted %s (%s)\n", cliID(task.ID), note.ID)
 	return nil
@@ -1448,8 +1547,10 @@ func cliNotes(st *Store, p *cliParsed) error {
 	}
 	notes := st.Notes(task.ID, 0)
 	if p.bools["json"] {
-		out := make([]Note, 0, len(notes))
-		out = append(out, notes...)
+		out := make([]cliNoteJSON, 0, len(notes))
+		for _, note := range notes {
+			out = append(out, cliNoteObject(note))
+		}
 		return cliPrintJSON(out)
 	}
 	if len(notes) == 0 {
@@ -1464,6 +1565,24 @@ func cliNotes(st *Store, p *cliParsed) error {
 		}
 	}
 	return nil
+}
+
+// cliNoteJSON is one note as --json prints it: the note's own id, the task it
+// hangs on spelled with its t- prefix, the agent that left it, its words and
+// when it was left.
+type cliNoteJSON struct {
+	ID        string    `json:"id"`
+	TaskID    string    `json:"task_id"`
+	AgentID   string    `json:"agent_id,omitempty"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func cliNoteObject(note Note) cliNoteJSON {
+	return cliNoteJSON{
+		ID: note.ID, TaskID: cliID(note.TaskID), AgentID: note.Agent,
+		Content: note.Body, CreatedAt: note.At,
+	}
 }
 
 // cliResolve answers one task for a word the model may have written loosely,
@@ -1697,32 +1816,67 @@ func cliSplitObject(st *Store, parent *Task, created []*Task) cliSplitJSON {
 	out := cliSplitJSON{
 		Created:      make([]string, 0, len(created)),
 		Done:         []string{},
-		Effect:       cliEffectJSON{Accelerated: []string{}, BlockedNow: []string{}, CriticalPath: []string{}, Delayed: []string{}, ReadyNow: []string{}},
+		Effect:       cliEffect(st, created, nil),
 		ParentTaskID: cliID(parent.ID),
 		ProjectState: cliProjectStateOf(st),
 		TitleToID:    make(map[string]string, len(created)),
-	}
-	blocked := map[string]bool{}
-	for _, bt := range st.ReadySet().Blocked {
-		blocked[bt.Task.ID] = true
 	}
 	for _, task := range created {
 		id := cliID(task.ID)
 		out.Created = append(out.Created, id)
 		out.TitleToID[task.Title] = id
-		out.Effect.Accelerated = append(out.Effect.Accelerated, id)
+	}
+	return out
+}
+
+// cliInsertJSON is the insert answer as --json prints it: the new task's id,
+// title and status, and the effect the inserted step had on the plan.
+type cliInsertJSON struct {
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Status       Status          `json:"status"`
+	Effect       cliEffectJSON   `json:"effect"`
+	ProjectState cliProjectState `json:"project_state"`
+}
+
+func cliInsertObject(st *Store, task *Task) cliInsertJSON {
+	return cliInsertJSON{
+		ID: cliID(task.ID), Title: task.Title, Status: task.Status,
+		Effect: cliEffect(st, []*Task{task}, nil), ProjectState: cliProjectStateOf(st),
+	}
+}
+
+// cliEffect is the effect a mutation writes into its --json answer: the tasks
+// it accelerated, the created ones it left blocked or ready now, the plan's
+// critical path and its depth. delayed names tasks a mutation pushed out of
+// the ready set, which the additive verbs pass none of.
+func cliEffect(st *Store, created []*Task, delayed []string) cliEffectJSON {
+	blocked := map[string]bool{}
+	for _, bt := range st.ReadySet().Blocked {
+		blocked[bt.Task.ID] = true
+	}
+	out := cliEffectJSON{
+		Accelerated: []string{}, BlockedNow: []string{}, CriticalPath: []string{},
+		Delayed: []string{}, ReadyNow: []string{},
+	}
+	for _, task := range created {
+		id := cliID(task.ID)
+		out.Accelerated = append(out.Accelerated, id)
 		if task.Status == StatusReady {
 			if blocked[task.ID] {
-				out.Effect.BlockedNow = append(out.Effect.BlockedNow, id)
+				out.BlockedNow = append(out.BlockedNow, id)
 			} else {
-				out.Effect.ReadyNow = append(out.Effect.ReadyNow, id)
+				out.ReadyNow = append(out.ReadyNow, id)
 			}
 		}
 	}
-	for _, task := range st.CriticalPath() {
-		out.Effect.CriticalPath = append(out.Effect.CriticalPath, cliID(task.ID))
+	for _, id := range delayed {
+		out.Delayed = append(out.Delayed, cliID(id))
 	}
-	out.Effect.Depth = len(out.Effect.CriticalPath)
+	for _, task := range st.CriticalPath() {
+		out.CriticalPath = append(out.CriticalPath, cliID(task.ID))
+	}
+	out.Depth = len(out.CriticalPath)
 	return out
 }
 
