@@ -3970,7 +3970,7 @@ func (a *app) hintWord() string {
 		}
 		return keys
 	case a.crewPick.open:
-		return "↑↓ · enter apply · esc"
+		return "↑↓ · ←→ family · enter apply · esc"
 	case a.effPick.open:
 		// The chord is named beside the keys because this list is the only place
 		// on the surface that can teach it: the chip it opens from prints a mark

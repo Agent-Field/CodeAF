@@ -370,6 +370,16 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "reflex", widget: widgetSelect,
 		about: "near-free · reads every turn — memory, titles, safety",
 	},
+
+	// The row is placed by build(), not by this map, and it sits directly under
+	// the crew word because it changes what that word means rather than pinning a
+	// model of its own: the three presets answer from open weights or from the
+	// whole catalog, and this is the switch.
+	config.KeyCrewSource: {
+		tab: tabProviders, label: "model family", widget: widgetCycle,
+		about: "which models the crew word draws from: open weights, or the whole " +
+			"catalog with closed and frontier models in it. Open is the default.",
+	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
 		about: "cheap · the small calls — names, digests, the safety gate",
@@ -727,7 +737,7 @@ func init() {
 	// same row, the same write, the same live seam onto [app.switchModel] — only
 	// the word above the Models section changed.
 	crew := settingUI[config.KeyCrew]
-	crew.about = crewAbout()
+	crew.about = crewAbout(config.CrewSourceOpen)
 	settingUI[config.KeyCrew] = crew
 
 	talk := settingUI[config.ModelSettingKey(talkSlot)]
@@ -739,12 +749,14 @@ func init() {
 
 // crewAbout is the crew row's one line: the five rows it writes, then each preset
 // with its own sentence, then what makes the row read custom. The sentences are
-// [config.CrewLine]'s, so the panel and /crew say the same words about the same
-// thing (internal/config's crew.go holds the table).
-func crewAbout() string {
+// [config.CrewLineFor]'s IN THE FAMILY ON SCREEN, so the panel and /crew say the
+// same words about the same thing and neither names an open model above frontier
+// ids. The init-time value is the open family; [sheet.metaFor] re-says it from the
+// profile, which is where a family that is not the default comes from.
+func crewAbout(source string) string {
 	said := make([]string, 0, len(config.CrewPresets))
 	for _, preset := range config.CrewPresets {
-		said = append(said, preset+" — "+config.CrewLine(preset))
+		said = append(said, preset+" — "+config.CrewLineFor(source, preset))
 	}
 	// The three options lead, because they are what the keypress chooses between
 	// and the panel gives a row's line the width it has: what gets cut on a narrow
@@ -1402,6 +1414,11 @@ func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
 	meta, ok := settingMetaFor(row)
 	if ok && row.Key == config.KeySearchProvider {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
+	}
+	// The crew row names three presets in whichever family the profile is on, so
+	// its sentence is read from the profile for the same reason.
+	if ok && row.Key == config.KeyCrew {
+		meta.about = crewAbout(config.CrewSourceAt(s.profileDir))
 	}
 	// AND THE `lane` ROW IS EXPLAINED BY THE ROUTING IN FORCE, because `auto` is
 	// a different promise under `simple` than under the row codeaf ships with —

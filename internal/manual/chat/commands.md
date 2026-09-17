@@ -1422,10 +1422,11 @@ opens the six-seat reading, bottom-anchored like the model picker. From the top:
 ```
 the five models codeaf uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
-  frugal — deepseek works, glm-flash thinks · pennies a day
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3-flash
-› balanced — glm-flash works, glm-5.3 thinks, qwen checks
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work qwen/qwen3.8-27b · mastermind   z-ai/glm-5.3
+  family ‹ open models · all models ›
+  frugal — deepseek works, glm-5.3 thinks · pennies a day
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3
+› balanced — glm-flash works, kimi-k3 checks and thinks
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3
   max — glm-5.3 works, kimi-k3 thinks and checks
     reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3
 each of the five can be pinned on its own in /settings → Providers
@@ -1433,7 +1434,8 @@ each of the five can be pinned on its own in /settings → Providers
 
 The first line says what the presets change and what they do not. The second is **seat
 one** — `you talk to · <model>`, spelled as the legend above the box spells it — with no marker and
-no highlight, because nothing in this chooser can move it. Then the three presets: the one
+no highlight, because nothing in this chooser can move it. The third is the **family**: **←→** moves `family`, which says which pool the three presets below it draw from, open weights or the
+whole catalog. Then the three presets: the one
 in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
 ↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
 line points at the settings row where one seat can be pinned by itself; the chooser does not
