@@ -212,8 +212,16 @@ func TestTheApprovalsChipMatchesThePostureInForce(t *testing.T) {
 		if got := a.approvalWord(); got != approvalYoloWord {
 			t.Fatalf("the chip reads %q while every tool call runs without asking", got)
 		}
+		// THE GREETING SAYS NOTHING ABOUT THE GATE (approvalchip.go's header).
+		// The first conversation's greeting stands through typing and goes
+		// with the first message ([app.spendWelcome]); the cell is on the seam
+		// the moment it does.
+		if screen := ordinaryScreen(a); strings.Contains(screen, approvalYoloWord) {
+			t.Fatalf("the greeting carries the gate's word:\n%s", screen)
+		}
+		a.spendWelcome()
 		if screen := ordinaryScreen(a); !strings.Contains(screen, approvalYoloWord) {
-			t.Fatalf("the chip never reached the frame:\n%s", screen)
+			t.Fatalf("the chip never reached the frame once the greeting was spent:\n%s", screen)
 		}
 	})
 
@@ -224,8 +232,12 @@ func TestTheApprovalsChipMatchesThePostureInForce(t *testing.T) {
 		if got := a.approvalWord(); got != approvalYoloWord {
 			t.Fatalf("the chip reads %q while the launch's flag held the gate open", got)
 		}
+		if screen := ordinaryScreen(a); strings.Contains(screen, approvalYoloWord) {
+			t.Fatalf("the greeting carries the gate's word:\n%s", screen)
+		}
+		a.spendWelcome()
 		if screen := ordinaryScreen(a); !strings.Contains(screen, approvalYoloWord) {
-			t.Fatalf("the chip never reached the frame:\n%s", screen)
+			t.Fatalf("the chip never reached the frame once the greeting was spent:\n%s", screen)
 		}
 		if force := config.ToolApprovalModeAt(""); force != config.DefaultToolApprovalMode {
 			t.Fatalf("the launch wrote %q into a profile whose strict default should stand", force)

@@ -571,7 +571,7 @@ straight away, unless the panel says it lands on the next session."
 **Cycling the row changes the gate you are already behind — or says it could
 not.** The rules are rebuilt from this row and the two under it on the same
 keystroke, the `◇` cell on the legend moves with them (and the `YOLO` badge on
-the status line, where the legend has no cell), and `/status` says the posture
+the status line, where the legend has no cell — never on the welcome box), and `/status` says the posture
 in words under `approvals`. There is no turn to wait for.
 
 **A conversation that set its own posture keeps it.** `alt+y` and `/approvals`

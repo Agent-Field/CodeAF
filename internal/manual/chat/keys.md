@@ -1284,8 +1284,11 @@ What it changes and what it does not:
 
 The cell flashes for about two seconds after it changes and writes one line —
 *approvals · YOLO · every tool runs without asking · dangerous commands still ask* — and
-then settles. While the welcome box or a task's page is on screen there is no legend, and
-the status line carries the old `YOLO` badge instead, drawn only while the gate is open.
+then settles. While the welcome box is on screen there is no legend and no badge either —
+the cell arrives with the legend the moment the greeting goes (the first keystroke, or on the
+very first conversation the first message). The status line carries the old
+`YOLO` badge only on a frame whose legend has no cell, over an engine with no approvals
+door, and only while the gate is open.
 
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
 

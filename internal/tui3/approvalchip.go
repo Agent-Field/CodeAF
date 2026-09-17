@@ -49,10 +49,19 @@ import (
 // (effortchip.go), so while a cell is drawn the row says nothing. Inside a
 // task's room the seam carries the NODE's cell — `◇ on its own`, a reading of
 // how a task runs (roomseam.go) — and the row is quiet there too. The seam is
-// not always there: the welcome box stands where the conversation will be,
-// and on that one frame the old badge — `YOLO`, only when the gate is open —
-// is back on the status row ([app.approvalSegment]), because the welcome is
-// exactly where a person who typed `--yolo` reads whether it took.
+// not always there: a window whose engine has no approvals door draws no
+// cell, and on those frames the old badge — `YOLO`, only when the gate is
+// open — is still on the status row ([app.approvalSegment]).
+//
+// AND THE GREETING DRAWS NEITHER. The welcome box stands where the
+// conversation will be, with no seam over it, and the badge used to be the one
+// thing on that frame saying the gate was open. It was a red word in the
+// bottom-left corner of an otherwise empty screen, and the owner asked for it
+// to go (2026-09-17): the seam goes up with the cell on it the moment the
+// greeting goes — the first keystroke on every later greeting, the first
+// message on the very first one ([app.spendWelcome]) — so the fact is never
+// more than one message away. The row says nothing while the greeting is up,
+// whatever the posture.
 //
 // ── THE WHEEL HAS THREE STOPS AND `deny` IS NOT ONE OF THEM ────────────────
 //
@@ -251,6 +260,11 @@ func (a *app) seamCarriesChip() bool {
 // header says which frames those are). Absence is the safe state on this row
 // because the row is not a control; the chip is, and it says every posture.
 func (a *app) approvalSegment() string {
+	// THE GREETING IS QUIET (the header): the cell arrives with the seam on
+	// the first keystroke.
+	if a.welcome.open {
+		return ""
+	}
 	if a.seamCarriesChip() {
 		return ""
 	}

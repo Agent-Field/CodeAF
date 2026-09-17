@@ -98,28 +98,35 @@ func TestTheSeamSaysWhatRunsWithoutAskingAtEveryPosture(t *testing.T) {
 	}
 }
 
-// THE BADGE COMES BACK ON THE FRAMES THE SEAM IS NOT ON. The welcome box
-// stands where the conversation will be, and it is exactly where a person who
-// typed --yolo reads whether it took; a room replaces the seam's left with the
-// way out. On both the row says `YOLO` when the gate is open, and only then.
-func TestTheRowCarriesTheBadgeWhereTheSeamHasNoChip(t *testing.T) {
+// THE GREETING DRAWS NO BADGE, AT ANY POSTURE. The welcome box stands where
+// the conversation will be with no seam over it, and the red word in the
+// corner of that empty frame was the thing the owner asked to have removed:
+// the first keystroke puts the seam up with the cell on it. And a frame with
+// no greeting and no cell — a window whose engine has no dial — still says
+// `YOLO` on the row when the gate is open, and only then.
+func TestTheGreetingDrawsNoBadgeAndAFrameWithNoChipStillDoes(t *testing.T) {
 	agent, a := gated(t)
 	agent.stored = session.PostureAllow
 	a.welcome.open = true
-	if got := a.approvalSegment(); got != approvalYoloWord {
-		t.Fatalf("with the welcome up the row says %q, want the badge", got)
-	}
-	if !strings.Contains(plain(a.status(200)), approvalYoloWord) {
-		t.Fatalf("the welcome frame does not say the gate is open:\n%q", plain(a.status(200)))
-	}
-	agent.stored = session.PostureAsk
 	if got := a.approvalSegment(); got != "" {
-		t.Fatalf("with the welcome up and the gate asking the row says %q", got)
+		t.Fatalf("with the welcome up the row says %q, want nothing", got)
+	}
+	if strings.Contains(plain(a.status(200)), approvalYoloWord) {
+		t.Fatalf("the greeting's frame carries the badge:\n%q", plain(a.status(200)))
 	}
 	a.welcome.open = false
-	agent.stored = session.PostureAllow
 	if got := a.approvalSegment(); got != "" {
 		t.Fatalf("with the seam back the row still says %q", got)
+	}
+	// AND WITHOUT A DIAL THE ROW IS STILL WHERE THE OPEN GATE IS READ.
+	agent.door = false
+	a.approval = "allow"
+	if got := a.approvalSegment(); got != approvalYoloWord {
+		t.Fatalf("a frame with no chip and an open gate says %q on the row, want the badge", got)
+	}
+	a.welcome.open = true
+	if got := a.approvalSegment(); got != "" {
+		t.Fatalf("the greeting with no dial says %q on the row, want nothing", got)
 	}
 }
 
