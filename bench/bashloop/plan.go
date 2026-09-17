@@ -104,7 +104,7 @@ func (iv invocation) specFingerprint() string {
 
 // plan is the whole run, in execution order.
 type plan struct {
-	Mode        string       // "grid" or "pair"
+	Mode        string // "grid" or "pair"
 	Door        door
 	Invocations []invocation // ordered: replicates outer, cells inner, arms innermost
 	Cells       []cell
