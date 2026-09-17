@@ -829,6 +829,17 @@ func (a *app) applyDeferredModelServiceMove() {
 	next := a.deferredModelServiceModel
 	a.deferredModelServiceModel = ""
 	a.moveConversationToConnectedModel(next)
+	// THE PANELS ANSWER THE MODEL THE MOVE JUST CHANGED: an open /connect
+	// panel and the Providers tab each read the conversation's model for their
+	// active-connection row ([app.connectionRows], [sheet.build]), and a move
+	// they did not see would leave the row naming the old target until
+	// something else redrew it.
+	if a.connPanel.open {
+		a.connPanel.adopt(a.connectionRows())
+	}
+	if a.at(pageSettings) {
+		a.sheet.build()
+	}
 }
 
 // moveConversationOrDefer is the ONE move-or-defer step the switcher makes:

@@ -1320,3 +1320,49 @@ func TestThePlanDoorSaysItsPositionAndDefaultsToWait(t *testing.T) {
 		t.Fatal("the default wait value was not stored as the default")
 	}
 }
+
+// A MOVE A TURN SPENT MUST BE A MOVE ITS PANELS SEE: the deferred switch is
+// recorded while the turn works (moveConversationOrDefer) and spent when it
+// settles (applyDeferredModelServiceMove), and the /connect panel's switch
+// row reads the conversation's model to say what it answers on
+// (switchReading) — so a move that lands under an open panel would leave the
+// row naming the old target until something else redrew it.
+func TestSpendingADeferredMoveReadoptsTheOpenConnectPanelSoItsSwitchRowFollowsTheMove(t *testing.T) {
+	dir := t.TempDir()
+	customs := connectionWriteSources(t, dir, "homelab")
+	sources := modelsource.NewSet(append([]modelsource.Connected{connectionDefaultService()}, customs...)...)
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", sources, []Model{{ID: config.DefaultModel}})
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return []Model{{ID: "qwen-local"}}
+	}
+	a.state = stateWorking
+	a.openConnect()
+	row, _, ok := connectionFindRow(t, a, connectionSwitchRowID)
+	if !ok {
+		t.Fatal("the /connect panel drew no active-connection row with a custom connection connected")
+	}
+	if !strings.Contains(row.Blurb, "answering on openrouter") {
+		t.Fatalf("the panel's switch row before the switch said %q", row.Blurb)
+	}
+	// The switch is pressed while the turn works: the move waits in the
+	// deferred slot (moveConversationOrDefer) and the row keeps naming the
+	// service the conversation is still answering on.
+	a.moveConversationOrDefer("homelab/qwen-local", "homelab")
+	if a.deferredModelServiceModel != "homelab/qwen-local" || a.model != "openai/gpt-4.1-mini" {
+		t.Fatalf("the working switch did not defer: model %q, deferred %q", a.model, a.deferredModelServiceModel)
+	}
+	// The settling turn is idle before it spends the move (app.settle), so the
+	// move here goes through the road a spent move really takes.
+	a.state = stateIdle
+	a.applyDeferredModelServiceMove()
+	if a.model != "homelab/qwen-local" || a.deferredModelServiceModel != "" {
+		t.Fatalf("the deferred move did not spend: model %q, deferred %q", a.model, a.deferredModelServiceModel)
+	}
+	row, _, ok = connectionFindRow(t, a, connectionSwitchRowID)
+	if !ok {
+		t.Fatal("the /connect panel drew no active-connection row after the move")
+	}
+	if !strings.Contains(row.Blurb, "answering on homelab") || strings.Contains(row.Blurb, "answering on openrouter") {
+		t.Fatalf("the panel's switch row did not follow the spent move: %q", row.Blurb)
+	}
+}
