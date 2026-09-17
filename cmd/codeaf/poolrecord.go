@@ -38,10 +38,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
-// judgeTimeout bounds one landing's whole judging: every seat question rides
-// the same context, so a slow model cannot hold one landing open forever. It
-// is a bound on an errand nobody is waiting for, not on work the person asked
-// for, and it is generous on purpose — the questions are one call each.
+// judgeTimeout bounds ONE seat's question, and the landing as a whole gets one
+// share per seat and one to spare, so a slow model cannot hold a landing open
+// forever and a slow first answer does not eat the second question's time: a
+// reasoning judge took 64 s over the worker and the checker's question was
+// then cut at the landing's 90 s, and the checker seat went unscored. It is a
+// bound on an errand nobody is waiting for, not on work the person asked for,
+// and it is generous on purpose — the questions are one call each.
 const judgeTimeout = 90 * time.Second
 
 // poolJudgeHook builds the session's landing reader. Nil is off, for the pool
@@ -93,9 +96,15 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	// A landing is news, not a turn: nobody is waiting on the answer, and the
 	// one thing this context owes anybody is a bound on how long it holds the
 	// pool's own goroutine.
-	ctx, cancel := context.WithTimeout(context.Background(), judgeTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), judgeTimeout*time.Duration(len(seats)+1))
 	defer cancel()
-	scores, err := judge.Judge(ctx, ask(judgeID), rec)
+	one := ask(judgeID)
+	perSeat := func(ctx context.Context, system, user string) (string, error) {
+		qctx, cancel := context.WithTimeout(ctx, judgeTimeout)
+		defer cancel()
+		return one(qctx, system, user)
+	}
+	scores, err := judge.Judge(ctx, perSeat, rec)
 	// The scores obtained are recorded even when the error names a seat: a
 	// judge that scored the worker but not the high seat scored the worker,
 	// and a seat the call failed on is the judge's evidence of that model too.
