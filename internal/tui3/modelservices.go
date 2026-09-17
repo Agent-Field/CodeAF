@@ -178,7 +178,7 @@ func (a *app) modelConnectionRows() []connect.Status {
 	// still the unconnected door onto the first connection.
 	if len(customInstances(a.sources)) > 0 {
 		rows = append(rows, connect.Status{Service: connect.Service{
-			ID: modelConnectionID("custom-add"), Name: "add custom connection",
+			ID: modelConnectionID(customAddRowID), Name: "add custom connection",
 			Blurb: "address · key", Auth: connect.AuthKey, Category: "models",
 		}})
 	}
@@ -326,16 +326,28 @@ func (a *app) nextModelServiceOrder() int {
 func (a *app) startCustomAdd(inSheet bool) tea.Cmd {
 	source, ok := a.modelSource(modelsource.CustomID)
 	if !ok {
+		for _, candidate := range modelsource.Vendored() {
+			if candidate.ID == modelsource.CustomID {
+				source, ok = candidate, true
+				break
+			}
+		}
+	}
+	if !ok {
 		return nil
 	}
-	id := "custom-add"
+	id := customAddRowID
 	draft := &modelConnectDraft{
 		source: source, row: config.PersistedSource{Order: a.nextModelServiceOrder()},
 		sheet: inSheet, entryID: modelConnectionID(id), step: modelConnectAddress,
 	}
 	a.modelDraft = draft
 	a.showModelEntry(newModelEntry(modelConnectionID(id), source.Name, "base URL", nil, false), inSheet)
-	return nil
+	// A COMMAND, ALWAYS. The box is up over the list and the keyboard belongs to
+	// it, which is a change of state a keypress produced — the same act the
+	// panel's other activations answer with a command, and a nil here read as
+	// "enter started nothing" by the caller's own test for that.
+	return a.frameTick()
 }
 
 // modelEntryAnswer advances a region/address answer to the key box, or starts
@@ -1150,13 +1162,21 @@ type modelServiceRow struct {
 	switcher bool
 }
 
+// customAddRowID is the add row's sentinel id. A SENTINEL ROW ID LIVES OUTSIDE
+// THE custom/custom- NAMESPACE, so modelsource.IsCustomID is false for it and
+// config.PrepareCustomSource — which mints custom or custom-<name> — can never
+// mint it: cursor and armed state are keyed by row id, and an id that could
+// also be a connection named `add` would make one row answer for two
+// (customAddRow, modelConnectionRows, connectAct).
+const customAddRowID = "new-custom-connection"
+
 // customAddRow is the Providers tab's add row. It stands whether or not any
 // connection exists, because a profile with no custom connection yet is the
 // one that needs the door; the flow behind it is the ONE flow /connect runs,
 // never a second implementation of the mint or the connect.
 func customAddRow() *modelServiceRow {
 	return &modelServiceRow{
-		id: "custom-add", name: "add custom connection",
+		id: customAddRowID, name: "add custom connection",
 		value: "an OpenAI-compatible base URL · a name of your own", addCustom: true,
 	}
 }

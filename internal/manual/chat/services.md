@@ -4,7 +4,7 @@
 
 An api key for another provider is added here. Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
 MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
-connected and, once a custom connection is connected, an `add custom connection` row.
+connected and an `add custom connection` row.
 Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A service with more than one billing door names the one it
@@ -251,10 +251,10 @@ every model id it serves, so a model on a connection named `homelab` reads
 names the connection by the name it was given; neither switches back to `custom`.
 
 Several custom connections coexist, each under the name you gave it, each with its own
-key, its own rows and its own picker group. Once one is connected, the **Something
-else** row becomes that first connection's edit door and an `add custom connection` row
-connects a new one; with none connected yet, **Something else** is the door onto the
-first.
+key, its own rows and its own picker group. On /connect the **Something else** row
+becomes that first connection's edit door once one is connected and an `add custom
+connection` row connects a new one; with none connected yet, **Something else** is the
+door onto the first.
 
 On the Providers tab in `/settings` each custom connection is a row of its own. `enter`
 opens it for editing with the address and name pre-filled, and an empty key box keeps

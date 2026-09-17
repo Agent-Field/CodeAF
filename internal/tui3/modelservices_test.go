@@ -1202,10 +1202,26 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 		}
 	}
 	a.sheet.build()
+	// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services head,
+	// no switcher, no connection row — but the add row stands, because a profile
+	// with no custom connection yet is the one that needs the door (customAddRow).
+	addRows, connectionRows := 0, 0
 	for _, item := range a.sheet.items {
-		if item.head == "services" || item.service != nil {
-			t.Fatal("an empty profile drew the services section")
+		if item.head == "services" {
+			t.Fatal("an empty profile drew the services head")
 		}
+		if item.service != nil && item.service.switcher {
+			t.Fatal("an empty profile drew the switcher row")
+		}
+		if item.service != nil && !item.service.addCustom {
+			connectionRows++
+		}
+		if item.service != nil && item.service.addCustom {
+			addRows++
+		}
+	}
+	if addRows != 1 || connectionRows != 0 {
+		t.Fatalf("an empty profile drew add=%d connection=%d rows, want one add row and no connection row", addRows, connectionRows)
 	}
 
 	row := config.PersistedSource{ID: "deepseek", Written: "deepseek-direct", Key: "sk-direct-1234567890", Order: 1}

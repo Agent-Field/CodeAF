@@ -689,7 +689,7 @@ func (a *app) connectAct(at int) tea.Cmd {
 		if id, model := modelConnectionSource(row.ID); model {
 			// THE ADD ROW MINTS, never edits: startModelConnect on the
 			// catalog's custom row is instance one's edit door.
-			if id == "custom-add" {
+			if id == customAddRowID {
 				return a.startCustomAdd(false)
 			}
 			return a.startModelConnect(row, false)

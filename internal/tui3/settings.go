@@ -1327,8 +1327,12 @@ func (s *sheet) build() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
-				// The services section stands only with services: an empty profile draws
-				// nothing (the emptiness test pins it). The add row lives inside it; the /connect panel carries the first door.
+				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services
+				// head, no connection row, no switcher (the emptiness test pins the
+				// absence of the section), because a row that could do nothing is
+				// decoration. The add row is an action, not decoration — a profile with
+				// no custom connection yet is the one that needs the door — so it stands
+				// alone when no service row stands beside it (customAddRow).
 				services := modelServiceRows(s.profileDir, s.sources)
 				if len(services) > 0 {
 					s.items = append(s.items, sheetItem{head: "services"})
@@ -1339,6 +1343,8 @@ func (s *sheet) build() {
 					if switcher := s.connectionSwitcherRow(); switcher != nil {
 						s.items = append(s.items, sheetItem{service: switcher})
 					}
+				} else {
+					s.items = append(s.items, sheetItem{service: customAddRow()})
 				}
 			}
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
