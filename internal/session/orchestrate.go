@@ -1093,9 +1093,15 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		ApprovalPolicy:   &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:       false,
 		InTask:           true,
-		writeScope:       node.WriteScope,
-		SupportsImages:   parent.SupportsImages,
-		RolesSource:      parent.RolesSource,
+		// AND THE EXPERIMENT'S BELT TRAVELS TO THIS DOOR TOO. An adaptive run's
+		// leaves are built HERE rather than at newTaskAgentOn, so before this
+		// line CODEAF_TASK_BELT armed nothing on the `do` door: the switch
+		// reached the process and no belt read it
+		// (docs/design/bash-task-loop/INVESTIGATION.md, the DeepSWE sweep).
+		bashBelt:       bashBeltAsked(),
+		writeScope:     node.WriteScope,
+		SupportsImages: parent.SupportsImages,
+		RolesSource:    parent.RolesSource,
 		// Beside the ladder it overrides, for task_run.go's reason.
 		OneModel:       parent.OneModel,
 		SearchProvider: parent.SearchProvider,
