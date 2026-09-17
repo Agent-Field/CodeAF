@@ -233,6 +233,49 @@ page must never name a command that is not there. Wave 3 lands the
 subcommands; the worker page names only the ones that exist on the build it
 ships in.
 
+### D11 — roles: the seat is a property of the task, and the crew picks the model
+
+The loop has one worker shape, but its calls fall into classes the product
+already names — the five crew tiers (`reflex`, `low`, `worker`, `high`,
+`mastermind`), the two seats every door resolves (`work`, `plan`;
+`internal/config/seats.go`), the Pareto crew the learning session tunes per
+role. The harness does not invent a sixth thing. **Every store task carries a
+role**, and the supervisor resolves the role to a model through the crew the
+moment it launches the task, so the crew's own machinery — presets, the open
+and all families, `/crew`, the tuned rows — decides which model sits where,
+and the harness only says which seat a call belongs to.
+
+| role | who gets it | crew seat |
+| --- | --- | --- |
+| `plan` | the run's root, and any task that has children — the coordinator's turns are FRAME, PLAN, WAIT and INTEGRATE | `mastermind` (the plan seat) |
+| `work` | a leaf that does the work itself; the default for a task born from `add` or `split` | `worker` |
+| `check` | the review round (D7): reads a finished leaf's result against its acceptance and answers with a note | `high` |
+| `probe` | a task the plan names as an unknown to discriminate — small, disposable | `low` |
+| `reflex` | the harness's own non-model chores stay non-model; nothing in the loop uses this tier | — |
+
+Two rules make it clever rather than a knob:
+
+- **The role follows the shape, not a guess.** A task's role is read off the
+  store when its next turn is composed: a task with children is a coordinator
+  and takes the plan seat; a task with none takes the work seat; `check` and
+  `probe` are declared at `add` (`--role`). So a leaf that splits mid-work
+  moves up to the plan seat for its coordinating turns and nothing is
+  configured. The cost of switching models between turns is a cold prompt
+  cache; a coordinator's turns are few and its context is the store, not a
+  transcript, so the switch is cheap where it happens.
+- **The crew is the one source, and the harness feeds it.** The supervisor
+  asks `config` for the tier's model exactly as `/task` and `do` do today, so
+  a Pareto-tuned crew row changes the harness's seat with no harness change.
+  In return every task's spend row carries `role`, `model`, steps, cost, wall
+  and its review verdict, so the learning session's per-role fronts get a row
+  from every run rather than from bench cells alone — the dynamic crew closes
+  its loop on real work.
+
+Later, not now: a size hint at `add` (`--size S|M|L`) so a crew row can say
+"this worker only on small leaves", which is a rule the tuning already
+produces; and per-request lane choice (`internal/lane/choose.go`'s Pareto
+prune) applied per seat, which exists and needs no design.
+
 ## The bar — what "ready" means
 
 The goal is a drastic improvement in what `/task` and `do` cost and how long
@@ -255,7 +298,7 @@ request describes what has landed so far.
 | --- | --- | --- |
 | **1** | the worker page opens with the policy near-verbatim and drops the contradicting chat sections; the store's gaps (cross-branch hard edges, `insert --before` rewiring, JSON shapes, note ids) | focused `internal/session` bash-belt tests; `internal/plandb` suite |
 | **2** | `internal/plandb`: SQLite persistence, project and chat tags, six-character ids, `pause`, person-notes, `finish` semantics, archive, spend summary | store suite, a concurrent-writers test |
-| **3** | `internal/run`: the supervisor (launch loop, wait/finish, limits, cancel and pause cascade, per-process ownership, take-over), the worker (bash belt agent, trajectory record, resume clause), landing from the working copy; the `codeaf` subcommands the belt reaches through bash (D10) | scripted-model tests |
+| **3** | `internal/run`: the supervisor (launch loop, wait/finish, limits, cancel and pause cascade, per-process ownership, take-over), the worker (bash belt agent, trajectory record, resume clause), landing from the working copy; roles resolved through the crew (D11); the `codeaf` subcommands the belt reaches through bash (D10) | scripted-model tests; a third bench arm: legacy on the crew's seats vs harness on the same seats |
 | **4** | `codeaf do` on the run engine | `bench/bashloop -door do` against legacy on the Spark |
 | **5** | the chat: `/task` creates a run; the pane's filter and linked rows; the thread with soft and hard steering; the offer card | `bench/bashloop -door task` against legacy; the tmux e2e suite |
 | **6** | legacy deleted; manual pages; change entries; the pull request leaves draft | `make check` on the Spark |
