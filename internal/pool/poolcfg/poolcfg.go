@@ -14,11 +14,14 @@ import (
 
 // Addresses held when the environment offers nothing readable. The relay is
 // the one base the resolver holds: the index and the submit addresses are
-// read from beside it, and each keeps its own override.
+// read from beside it, and each keeps its own override. The mirror is a
+// second index address — the relay's document copied to GitHub — held on its
+// own, because it derives from nothing here.
 const (
 	DefaultRelayURL  = "https://codeaf.agentfield.ai/pool"
 	DefaultIndexURL  = DefaultRelayURL + indexPath
 	DefaultSubmitURL = DefaultRelayURL + submitPath
+	DefaultMirrorURL = "https://raw.githubusercontent.com/Agent-Field/CodeAF/model-pool/pool/index.json"
 )
 
 // The two addresses a relay serves, under its base.
@@ -57,6 +60,7 @@ type Sources struct {
 	RelayURL  string
 	IndexURL  string
 	SubmitURL string
+	MirrorURL string
 	PublicKey string
 	TTL       string
 }
@@ -68,25 +72,28 @@ type Sources struct {
 //
 // The relay is the base the index and submit addresses derive from: each is
 // RelayURL with its own path appended, unless its own environment name
-// overrides it. An empty PublicKey is the ordinary answer — it means the key
-// the binary carries.
+// overrides it. The mirror is a second index address held on its own, since
+// it derives from nothing here; an empty one turns the fallback off. An empty
+// PublicKey is the ordinary answer — it means the key the binary carries.
 type Config struct {
 	Mode      Mode
 	RelayURL  string
 	IndexURL  string
 	SubmitURL string
+	MirrorURL string
 	PublicKey string
 	TTL       time.Duration
 	Source    Sources
 }
 
-// The seven names Resolve reads, and no others.
+// The eight names Resolve reads, and no others.
 const (
 	envMode   = "CODEAF_MODEL_POOL"
 	envCI     = "CI"
 	envRelay  = "CODEAF_MODEL_POOL_RELAY_URL"
 	envIndex  = "CODEAF_MODEL_POOL_URL"
 	envSubmit = "CODEAF_MODEL_POOL_SUBMIT_URL"
+	envMirror = "CODEAF_MODEL_POOL_MIRROR_URL"
 	envTTL    = "CODEAF_MODEL_POOL_TTL"
 	envKey    = "CODEAF_MODEL_POOL_PUBLIC_KEY"
 )
@@ -117,7 +124,7 @@ const (
 // Config, it keeps nothing between calls, and many goroutines may call it at
 // once.
 func Resolve(setting, publicKey string, lookup func(name string) (value string, set bool)) Config {
-	// One injection for the whole environment: the seven names are read once,
+	// One injection for the whole environment: the eight names are read once,
 	// here, in this order, and each value is trimmed as it is read.
 	get := func(name string) (string, bool) {
 		if lookup == nil {
@@ -134,6 +141,7 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 	relayWord, _ := get(envRelay)
 	indexWord, _ := get(envIndex)
 	submitWord, submitSet := get(envSubmit)
+	mirrorWord, mirrorSet := get(envMirror)
 	ttlWord, _ := get(envTTL)
 	keyWord, _ := get(envKey)
 
@@ -176,6 +184,18 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 		}
 	}
 
+	// The mirror derives from nothing: it is the address held, or the one the
+	// environment names, or — a value set and empty — nothing at all, which
+	// turns the fallback off.
+	mirrorURL, mirrorSrc := DefaultMirrorURL, srcDefault
+	if mirrorSet {
+		if mirrorWord == "" {
+			mirrorURL, mirrorSrc = "", srcEnv
+		} else if u, ok := acceptURL(mirrorWord); ok {
+			mirrorURL, mirrorSrc = u, srcEnv
+		}
+	}
+
 	// A readable TTL is held between the floor and the ceiling; a name nobody
 	// set, or one no duration can be read from, is the default.
 	ttl, ttlSrc := defaultTTL, srcDefault
@@ -199,6 +219,7 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 		RelayURL:  relayURL,
 		IndexURL:  indexURL,
 		SubmitURL: submitURL,
+		MirrorURL: mirrorURL,
 		PublicKey: publicKey,
 		TTL:       ttl,
 		Source: Sources{
@@ -206,6 +227,7 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 			RelayURL:  relaySrc,
 			IndexURL:  indexSrc,
 			SubmitURL: submitSrc,
+			MirrorURL: mirrorSrc,
 			PublicKey: keySrc,
 			TTL:       ttlSrc,
 		},

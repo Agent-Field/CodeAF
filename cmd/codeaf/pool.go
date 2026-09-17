@@ -167,6 +167,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		fmt.Sprintf("mode %s · %s", cfg.Mode, cfg.Source.Mode),
 		fmt.Sprintf("relay %s · %s", cfg.RelayURL, cfg.Source.RelayURL),
 		fmt.Sprintf("index %s · %s", cfg.IndexURL, cfg.Source.IndexURL),
+		fmt.Sprintf("mirror %s · %s", orNowhere(cfg.MirrorURL), cfg.Source.MirrorURL),
 		fmt.Sprintf("submit %s · %s", orNowhere(cfg.SubmitURL), cfg.Source.SubmitURL),
 		fmt.Sprintf("ttl %s · %s", reltime.Elapsed(cfg.TTL), cfg.Source.TTL),
 	} {
@@ -250,6 +251,7 @@ type poolAnswer struct {
 	ModeSource string        `json:"mode_source"`
 	RelayURL   string        `json:"relay_url"`
 	IndexURL   string        `json:"index_url"`
+	MirrorURL  string        `json:"mirror_url"`
 	SubmitURL  string        `json:"submit_url"`
 	TTLSeconds int           `json:"ttl_seconds"`
 	Pending    *int          `json:"pending,omitempty"`
@@ -280,6 +282,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		ModeSource: cfg.Source.Mode,
 		RelayURL:   cfg.RelayURL,
 		IndexURL:   cfg.IndexURL,
+		MirrorURL:  cfg.MirrorURL,
 		SubmitURL:  cfg.SubmitURL,
 		TTLSeconds: int(cfg.TTL / time.Second),
 	}

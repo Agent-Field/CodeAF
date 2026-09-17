@@ -40,6 +40,7 @@ func TestResolveDefaults(t *testing.T) {
 		RelayURL:  DefaultRelayURL,
 		IndexURL:  DefaultIndexURL,
 		SubmitURL: DefaultSubmitURL,
+		MirrorURL: DefaultMirrorURL,
 		PublicKey: "",
 		TTL:       24 * time.Hour,
 		Source: Sources{
@@ -47,6 +48,7 @@ func TestResolveDefaults(t *testing.T) {
 			RelayURL:  "default",
 			IndexURL:  "default",
 			SubmitURL: "default",
+			MirrorURL: "default",
 			PublicKey: "default",
 			TTL:       "default",
 		},
@@ -240,6 +242,45 @@ func TestResolveRelayURL(t *testing.T) {
 	}
 }
 
+func TestResolveMirrorURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		value   string
+		set     bool
+		want    string
+		wantSrc string
+	}{
+		{"nobody set", "", false, DefaultMirrorURL, "default"},
+		{"https", "https://mirror.example.com/index.json", true, "https://mirror.example.com/index.json", "env"},
+		{"http loopback with port", "http://127.0.0.1:9000/index.json", true, "http://127.0.0.1:9000/index.json", "env"},
+		{"file", "file:///var/tmp/index.json", true, "file:///var/tmp/index.json", "env"},
+		{"absolute path", "/var/tmp/index.json", true, "/var/tmp/index.json", "env"},
+		{"padded", "  https://mirror.example.com  ", true, "https://mirror.example.com", "env"},
+		// An empty mirror is an answer: it turns the fallback off.
+		{"empty disables the mirror", "", true, "", "env"},
+		{"blank disables the mirror", "   ", true, "", "env"},
+		{"plain http elsewhere", "http://mirror.example.com/index.json", true, DefaultMirrorURL, "default"},
+		{"other scheme", "ftp://mirror.example.com", true, DefaultMirrorURL, "default"},
+		{"bare host", "mirror.example.com/index.json", true, DefaultMirrorURL, "default"},
+	}
+	for _, c := range cases {
+		lookup := envOf(nil)
+		if c.set {
+			lookup = envOf(map[string]string{"CODEAF_MODEL_POOL_MIRROR_URL": c.value})
+		}
+		got := Resolve("", "", lookup)
+		if got.MirrorURL != c.want || got.Source.MirrorURL != c.wantSrc {
+			t.Errorf("%s: MirrorURL = %q from %q, want %q from %q", c.name, got.MirrorURL, got.Source.MirrorURL, c.want, c.wantSrc)
+		}
+	}
+
+	// The mirror is its own address: a pinned relay does not move it.
+	got := Resolve("", "", envOf(map[string]string{"CODEAF_MODEL_POOL_RELAY_URL": "https://relay.example.com"}))
+	if got.MirrorURL != DefaultMirrorURL || got.Source.MirrorURL != "default" {
+		t.Errorf("a pinned relay moved the mirror: %q from %q", got.MirrorURL, got.Source.MirrorURL)
+	}
+}
+
 // The two addresses derive from the relay, and each override wins over its
 // derivation. A relay read from the environment hands its source down to both
 // derived addresses; an override of its own names itself instead.
@@ -361,6 +402,7 @@ func TestResolveFieldsAreIndependent(t *testing.T) {
 		RelayURL:  DefaultRelayURL,
 		IndexURL:  DefaultIndexURL,
 		SubmitURL: "https://submit.example.com",
+		MirrorURL: DefaultMirrorURL,
 		PublicKey: "",
 		TTL:       2 * time.Hour,
 		Source: Sources{
@@ -368,6 +410,7 @@ func TestResolveFieldsAreIndependent(t *testing.T) {
 			RelayURL:  "default",
 			IndexURL:  "default",
 			SubmitURL: "env",
+			MirrorURL: "default",
 			PublicKey: "default",
 			TTL:       "env",
 		},
@@ -441,19 +484,19 @@ func TestResolveNilLookupUsesSetting(t *testing.T) {
 	if got.Mode != Read || got.Source.Mode != "setting" {
 		t.Errorf("Resolve(\"read\", \"\", nil): Mode = %v from %q, want read from %q", got.Mode, got.Source.Mode, "setting")
 	}
-	if got.IndexURL != DefaultIndexURL || got.SubmitURL != DefaultSubmitURL || got.RelayURL != DefaultRelayURL || got.TTL != 24*time.Hour {
+	if got.IndexURL != DefaultIndexURL || got.SubmitURL != DefaultSubmitURL || got.RelayURL != DefaultRelayURL || got.MirrorURL != DefaultMirrorURL || got.TTL != 24*time.Hour {
 		t.Errorf("Resolve(\"read\", \"\", nil) = %+v, want the defaults beside the setting", got)
 	}
 }
 
-func TestResolveAsksSevenNames(t *testing.T) {
+func TestResolveAsksEightNames(t *testing.T) {
 	var asked []string
 	Resolve("", "", func(name string) (string, bool) {
 		asked = append(asked, name)
 		return "", false
 	})
 	sort.Strings(asked)
-	want := []string{envMode, envCI, envRelay, envIndex, envSubmit, envTTL, envKey}
+	want := []string{envMode, envCI, envRelay, envIndex, envSubmit, envMirror, envTTL, envKey}
 	sort.Strings(want)
 	if !reflect.DeepEqual(asked, want) {
 		t.Errorf("Resolve asked lookup for %v, want %v", asked, want)

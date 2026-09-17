@@ -118,6 +118,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 		"mode on · default",
 		"relay https://codeaf.agentfield.ai/pool · default",
 		"index https://codeaf.agentfield.ai/pool/index.json · default",
+		"mirror https://raw.githubusercontent.com/Agent-Field/CodeAF/model-pool/pool/index.json · default",
 		"submit https://codeaf.agentfield.ai/pool/v1/rows · default",
 		"ttl 1d · default",
 		"no index cached yet · built-in seed of 2026-09-17",
