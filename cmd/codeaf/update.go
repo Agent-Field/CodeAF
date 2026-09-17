@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -72,8 +71,14 @@ func runUpdate(args []string) error {
 			return exitStatus(2)
 		}
 	}
-	client := updateClient(running, 3*time.Second)
-	release, err := client.Select(context.Background(), choice)
+	client := updateClient(running, codeupdate.CheckTimeout)
+	var release codeupdate.Release
+	var err error
+	if *check {
+		release, err = client.Check(context.Background(), choice)
+	} else {
+		release, err = client.Select(context.Background(), choice)
+	}
 	if err != nil {
 		if *check {
 			fmt.Fprintln(updateErr, "codeaf: could not check for an update:", err)

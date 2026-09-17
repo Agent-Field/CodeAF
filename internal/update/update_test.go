@@ -171,6 +171,248 @@ func servedRelease(t *testing.T, asset []byte, checksum string) (*httptest.Serve
 	return server, requests
 }
 
+// TestTimeoutContractC1SlowAssetOutlivesTheCheckClock proves C1: the check
+// clock cannot cut off an asset that continues to deliver bytes.
+func TestTimeoutContractC1SlowAssetOutlivesTheCheckClock(t *testing.T) {
+	asset := make([]byte, 1<<20)
+	for index := range asset {
+		asset[index] = byte(index)
+	}
+	digest := sha256.Sum256(asset)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		case strings.HasSuffix(request.URL.Path, "/codeaf-"+runtime.GOOS+"-"+runtime.GOARCH):
+			flusher := w.(http.Flusher)
+			const chunks = 13
+			for chunk := 0; chunk < chunks; chunk++ {
+				select {
+				case <-request.Context().Done():
+					return
+				case <-time.After(500 * time.Millisecond):
+				}
+				start := len(asset) * chunk / chunks
+				end := len(asset) * (chunk + 1) / chunks
+				if _, err := w.Write(asset[start:end]); err != nil {
+					return
+				}
+				flusher.Flush()
+			}
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "codeaf")
+	if err := os.WriteFile(target, []byte("old codeaf"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	client := releaseClient(server, "v0.1.0")
+	client.HTTP.Timeout = CheckTimeout
+	result, err := Install(context.Background(), InstallOptions{
+		Client: client, Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.ReadFile(target)
+	if err != nil || string(installed) != string(asset) {
+		t.Fatalf("installed bytes = %d, error %v; want %d matching bytes", len(installed), err, len(asset))
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 || result.Path != target {
+		t.Fatalf("result = %+v mode = %v", result, info.Mode().Perm())
+	}
+	if matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*")); len(matches) != 0 {
+		t.Fatalf("temporary files remain: %v", matches)
+	}
+}
+
+// TestTimeoutContractC2HangingLaunchCheckEndsInsideItsBudget proves C2 for the
+// silent launch door with a server that accepts the request and never answers.
+func TestTimeoutContractC2HangingLaunchCheckEndsInsideItsBudget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	started := time.Now()
+	answer, show := CheckLaunch(context.Background(), CheckOptions{
+		Running: "v0.1.0", ProfileDir: t.TempDir(), Client: releaseClient(server, "v0.1.0"),
+	})
+	if elapsed := time.Since(started); elapsed > 6*time.Second {
+		t.Fatalf("hanging launch check took %s, want at most 6s", elapsed)
+	}
+	if show || answer != (Available{}) {
+		t.Fatalf("hanging launch check returned %+v, show %t", answer, show)
+	}
+}
+
+// TestTimeoutContractC3StallAndCeilingPreserveTheOriginal proves C3 with two
+// real response bodies: one sends no bytes and one never stops trickling them.
+func TestTimeoutContractC3StallAndCeilingPreserveTheOriginal(t *testing.T) {
+	assetName := "codeaf-" + runtime.GOOS + "-" + runtime.GOARCH
+	if got, want := downloadStallError(assetName, downloadStallWindow).Error(), "downloading "+assetName+" stalled — no bytes for 30 s"; got != want {
+		t.Fatalf("default stall sentence = %q, want %q", got, want)
+	}
+	if got, want := downloadCeilingError(assetName, downloadCeiling).Error(), "downloading "+assetName+" took longer than 15 minutes"; got != want {
+		t.Fatalf("default ceiling sentence = %q, want %q", got, want)
+	}
+
+	for _, row := range []struct {
+		name        string
+		stall       time.Duration
+		ceiling     time.Duration
+		serve       func(http.ResponseWriter, *http.Request)
+		want        string
+		upperMargin time.Duration
+	}{
+		{
+			name: "stalled body", stall: 60 * time.Millisecond, ceiling: 2 * time.Second,
+			serve: func(w http.ResponseWriter, request *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.(http.Flusher).Flush()
+				<-request.Context().Done()
+			},
+			want: downloadStallError(assetName, 60*time.Millisecond).Error(), upperMargin: time.Second,
+		},
+		{
+			name: "endless trickle", stall: 100 * time.Millisecond, ceiling: 140 * time.Millisecond,
+			serve: func(w http.ResponseWriter, request *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				flusher := w.(http.Flusher)
+				flusher.Flush()
+				ticker := time.NewTicker(15 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-request.Context().Done():
+						return
+					case <-ticker.C:
+						if _, err := w.Write([]byte("x")); err != nil {
+							return
+						}
+						flusher.Flush()
+					}
+				}
+			},
+			want: downloadCeilingError(assetName, 140*time.Millisecond).Error(), upperMargin: time.Second,
+		},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if strings.HasSuffix(request.URL.Path, "/"+assetName) {
+					row.serve(w, request)
+					return
+				}
+				http.NotFound(w, request)
+			}))
+			defer server.Close()
+			dir := t.TempDir()
+			target := filepath.Join(dir, "codeaf")
+			original := []byte("original codeaf")
+			if err := os.WriteFile(target, original, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			client := releaseClient(server, "v0.1.0")
+			client.StallWindow = row.stall
+			client.DownloadCeiling = row.ceiling
+			started := time.Now()
+			_, err := Install(context.Background(), InstallOptions{
+				Client: client, Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
+			})
+			if err == nil || err.Error() != row.want {
+				t.Fatalf("error = %v, want %q", err, row.want)
+			}
+			if elapsed := time.Since(started); elapsed > row.upperMargin {
+				t.Fatalf("failure took %s, want at most %s", elapsed, row.upperMargin)
+			}
+			installed, readErr := os.ReadFile(target)
+			if readErr != nil || string(installed) != string(original) {
+				t.Fatalf("target = %q, error %v; want untouched original", installed, readErr)
+			}
+			info, statErr := os.Stat(target)
+			if statErr != nil {
+				t.Fatal(statErr)
+			}
+			if info.Mode().Perm() != 0o700 {
+				t.Fatalf("original mode = %v, want 0700", info.Mode().Perm())
+			}
+			if matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*")); len(matches) != 0 {
+				t.Fatalf("temporary files remain: %v", matches)
+			}
+		})
+	}
+}
+
+// TestTimeoutContractC4HangingReleaseAPINamesTheAPI proves C4 with an injected
+// API window, so the test exercises the real deadline without waiting ten seconds.
+func TestTimeoutContractC4HangingReleaseAPINamesTheAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	client := releaseClient(server, "v0.1.0")
+	client.APIWindow = 60 * time.Millisecond
+	started := time.Now()
+	_, err := client.Select(context.Background(), Choice{Channel: "stable"})
+	if err == nil || err.Error() != "release API did not answer within 60 ms" {
+		t.Fatalf("error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("hanging API took %s, want at most 1s", elapsed)
+	}
+	if strings.Contains(err.Error(), "codeaf-") || strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("API failure named an asset or Go's deadline: %q", err)
+	}
+}
+
+// TestTimeoutContractD1AndD3DefaultTransportHasNoWholeBodyClock proves the
+// default client's transport clocks and the exact delayed-header sentence.
+func TestTimeoutContractD1AndD3DefaultTransportHasNoWholeBodyClock(t *testing.T) {
+	client := NewClient("v0.1.0", CheckTimeout)
+	if client.HTTP.Timeout != 0 {
+		t.Fatalf("Client.Timeout = %s, want zero", client.HTTP.Timeout)
+	}
+	transport, ok := client.HTTP.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %T, want *http.Transport", client.HTTP.Transport)
+	}
+	if transport.TLSHandshakeTimeout != networkSetupTimeout || transport.ResponseHeaderTimeout != apiRequestTimeout {
+		t.Fatalf("transport TLS %s header %s", transport.TLSHandshakeTimeout, transport.ResponseHeaderTimeout)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	testTransport := server.Client().Transport.(*http.Transport).Clone()
+	testTransport.ResponseHeaderTimeout = 50 * time.Millisecond
+	client.HTTP = &http.Client{Transport: testTransport}
+	client.DownloadBase = server.URL
+	client.DownloadCeiling = time.Second
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Install(context.Background(), InstallOptions{
+		Client: client, Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
+	})
+	want := assetHeaderTimeoutSentence(runtime.GOOS, runtime.GOARCH)
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+}
+
+func assetHeaderTimeoutSentence(goos, goarch string) string {
+	return fmt.Sprintf("codeaf-%s-%s did not start arriving within 10 s", goos, goarch)
+}
+
 // TestC7CheckedInstallReplacesAtomicallyAndMismatchPreservesTheOriginal proves C7.
 func TestC7CheckedInstallReplacesAtomicallyAndMismatchPreservesTheOriginal(t *testing.T) {
 	asset := []byte("new codeaf")
