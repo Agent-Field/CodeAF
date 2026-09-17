@@ -360,13 +360,13 @@ Under `open`, the same three words resolve to these:
 | --- | --- | --- | --- |
 | reflex | `mistralai/mistral-nemo` | `mistralai/mistral-nemo` | `mistralai/mistral-nemo` |
 | small work | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` |
-| worker | `deepseek/deepseek-v4-flash-0731` | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` |
+| worker | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` |
 | careful work | `z-ai/glm-5.3-flash` | `moonshotai/kimi-k3` | `moonshotai/kimi-k3` |
 | mastermind | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` | `z-ai/glm-5.3` |
 
-The worker column is the dial in that family — it climbs one step per preset, because it is
-the seat that pays most of a task's bill and a preset that moved every other seat would
-change everything about a task except its cost.
+The worker column is the dial in that family — it holds `glm-5.3-flash` through `balanced`, and
+`max` moves it to `glm-5.3` — because it is the seat that pays most of a task's bill and a
+preset that moved every other seat would change everything about a task except its cost.
 
 **Why these ids.** Every row of the catalog was placed on two axes on 2026-09-16: the bill a
 seat's own call shape runs up, built from the catalog's published prompt, completion and

@@ -297,7 +297,7 @@ func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
 	// pick is the contradiction the chooser exists to prevent.
 	wantLines := map[string]map[string]string{
 		CrewSourceOpen: {
-			CrewFrugal:   "deepseek works, glm-flash checks and thinks · pennies a day",
+			CrewFrugal:   "glm-flash works, checks and thinks · pennies a day",
 			CrewBalanced: "glm-flash works, kimi-k3 checks, glm-5.3 thinks",
 			CrewMax:      "glm-5.3 works and thinks, kimi-k3 checks",
 		},
