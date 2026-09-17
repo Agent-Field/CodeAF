@@ -1519,3 +1519,136 @@ func TestPlandbCliSpendSummaryGroupsByRoleAndModel(t *testing.T) {
 		t.Fatalf("untagged seat = %#v, want 1 call and $0.10", got)
 	}
 }
+
+// SpendBy rolls the ledger up under each axis: rows across two chats and two
+// seats with two models answer under every key with the exact sums, the model
+// and seat axes name their word, and a key with no rows under it is absent
+// rather than a zero line.
+func TestPlandbCliSpendByRollsUpEachAxis(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	store, err := Open(path, "plan-test", "root", "The run", "drive the plan", "chat-a")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	planAdd(t, store,
+		TaskSpec{ID: "one", Title: "One"},
+		TaskSpec{ID: "two", Title: "Two"},
+	)
+	// A store's rows all inherit the root's chat, so a second chat is only
+	// reachable by moving one task's tag — the column every chat rollup reads.
+	if _, err := store.db.Exec("UPDATE tasks SET chat = 'chat-b' WHERE id = 'two'"); err != nil {
+		t.Fatalf("retag task: %v", err)
+	}
+	spend := func(id, model, role string, usd float64, in, out int) {
+		t.Helper()
+		if err := store.AddSpend(id, model, role, usd, in, out); err != nil {
+			t.Fatalf("add spend: %v", err)
+		}
+	}
+	spend("one", "model-x", RoleWork, 1.50, 100, 20)
+	spend("one", "model-y", RoleCheck, 0.50, 10, 5)
+	spend("two", "model-x", RoleWork, 0.25, 4, 1)
+
+	// byKey reads a rollup as a map keyed by the line's own key, so a key with
+	// no line under it reads back as the zero line a caller must not print.
+	byKey := func(axis string) map[string]SpendLine {
+		t.Helper()
+		out := map[string]SpendLine{}
+		for _, line := range store.SpendBy(axis, time.Time{}) {
+			out[line.Key] = line
+		}
+		return out
+	}
+
+	chats := byKey("chat")
+	if len(chats) != 2 {
+		t.Fatalf("chat rollup has %d lines, want 2: %#v", len(chats), chats)
+	}
+	if got := chats["chat-a"]; got.USD != 2.00 || got.Calls != 2 || got.In != 110 || got.Out != 25 {
+		t.Fatalf("chat-a = %#v, want $2.00, 2 calls, 110 in, 25 out", got)
+	}
+	if got := chats["chat-b"]; got.USD != 0.25 || got.Calls != 1 || got.In != 4 || got.Out != 1 {
+		t.Fatalf("chat-b = %#v, want $0.25, 1 call, 4 in, 1 out", got)
+	}
+
+	projects := byKey("project")
+	if len(projects) != 1 || projects["plan-test"].USD != 2.25 || projects["plan-test"].Calls != 3 {
+		t.Fatalf("project rollup = %#v, want one line of $2.25 and 3 calls", projects)
+	}
+
+	seats := byKey("seat")
+	if len(seats) != 2 {
+		t.Fatalf("seat rollup has %d lines, want 2: %#v", len(seats), seats)
+	}
+	if got := seats[RoleWork]; got.USD != 1.75 || got.Calls != 2 || got.Role != RoleWork {
+		t.Fatalf("work seat = %#v, want $1.75, 2 calls, named work", got)
+	}
+	if got := seats[RoleCheck]; got.USD != 0.50 || got.Calls != 1 || got.Role != RoleCheck {
+		t.Fatalf("check seat = %#v, want $0.50, 1 call, named check", got)
+	}
+
+	models := byKey("model")
+	if len(models) != 2 {
+		t.Fatalf("model rollup has %d lines, want 2: %#v", len(models), models)
+	}
+	if got := models["model-x"]; got.USD != 1.75 || got.Calls != 2 || got.Model != "model-x" {
+		t.Fatalf("model-x = %#v, want $1.75, 2 calls, named model-x", got)
+	}
+	if got := models["model-y"]; got.USD != 0.50 || got.Calls != 1 || got.Model != "model-y" {
+		t.Fatalf("model-y = %#v, want $0.50, 1 call, named model-y", got)
+	}
+
+	tasks := byKey("task")
+	if len(tasks) != 2 || tasks["one"].USD != 2.00 || tasks["one"].Calls != 2 {
+		t.Fatalf("task rollup = %#v, want one=2.00/2 calls and two=0.25/1 call", tasks)
+	}
+	if got := tasks["two"]; got.USD != 0.25 || got.Calls != 1 {
+		t.Fatalf("task two = %#v, want $0.25 and 1 call", got)
+	}
+
+	// A charge against a task the store does not hold has no tag to be counted
+	// under, so no chat line appears for it — while seat, model and task read
+	// the ledger's own columns and answer it anyway.
+	spend("ghost", "model-x", RoleWork, 9.99, 1, 1)
+	if got := byKey("chat"); len(got) != 2 {
+		t.Fatalf("a tagless charge made a chat line: %#v", got)
+	}
+	if got := byKey("task"); len(got) != 3 || got["ghost"].USD != 9.99 {
+		t.Fatalf("the tagless charge did not answer under its task: %#v", got)
+	}
+}
+
+// SpendBy cuts the ledger at the moment it is handed: rows written before it
+// are excluded, and the zero time keeps every row.
+func TestPlandbCliSpendBySinceExcludesOlderRows(t *testing.T) {
+	store := planOpen(t, "")
+	planAdd(t, store, planSpec("one", "One"))
+	start := time.Now().UTC()
+	store.now = func() time.Time { return start }
+	if err := store.AddSpend("one", "model-x", RoleWork, 1.00, 10, 2); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	store.now = func() time.Time { return start.Add(time.Hour) }
+	if err := store.AddSpend("one", "model-x", RoleWork, 2.00, 20, 4); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+
+	all := store.SpendBy("model", time.Time{})
+	if len(all) != 1 || all[0].USD != 3.00 || all[0].Calls != 2 || all[0].In != 30 || all[0].Out != 6 {
+		t.Fatalf("whole ledger = %#v, want one line of $3.00, 2 calls, 30 in, 6 out", all)
+	}
+	recent := store.SpendBy("model", start.Add(30*time.Minute))
+	if len(recent) != 1 || recent[0].USD != 2.00 || recent[0].Calls != 1 || recent[0].In != 20 || recent[0].Out != 4 {
+		t.Fatalf("cut at 30m = %#v, want only the newer $2.00 row", recent)
+	}
+	// A bound past the last row leaves a key with nothing under it, so the
+	// rollup is empty rather than a zero line.
+	if later := store.SpendBy("model", start.Add(2*time.Hour)); len(later) != 0 {
+		t.Fatalf("a bound past every row answered %#v, want nothing", later)
+	}
+	// An axis outside the five answers nothing at all.
+	if wrong := store.SpendBy("team", time.Time{}); len(wrong) != 0 {
+		t.Fatalf("an unknown axis answered %#v, want nothing", wrong)
+	}
+}
