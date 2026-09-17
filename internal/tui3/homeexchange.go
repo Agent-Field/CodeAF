@@ -972,6 +972,9 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	if a.updateStopsTurn() {
+		return nil
+	}
 	h := &a.home
 	if a.errand == nil {
 		h.say(homeAskUnavailableWord, "")

@@ -49,6 +49,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/remote"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
 // ── the surface: codeaf chat --at <name> ────────────────────────────────────
@@ -78,6 +79,9 @@ type atLaunch struct {
 	// the session is on the far machine. A ceiling accepted here would bound
 	// nothing at all.
 	budget bool
+	// restart is filled by the surface and read after this door has closed the
+	// relay tunnel and all conversation connections.
+	restart *codeupdate.Plan
 }
 
 // check refuses the flags this door cannot honour, in the same words the ssh
@@ -223,6 +227,7 @@ func openChatV3At(launch atLaunch) error {
 	// one is resolved here; the only thing that differs between the two doors is
 	// the pipe, so anything that differed in the surface would be a bug.
 	options, _ := hostOptions(fleet, client.Welcome(), launch.pick)
+	options.Restart = launch.restart
 	return runSurface(context.Background(), options)
 }
 
