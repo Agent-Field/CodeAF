@@ -124,7 +124,7 @@ import (
 //
 // The diet that set it left the prefix at 41,684 bytes — 21,499 of system prompt
 // and 20,185 of tool block, down from 37,285 and 32,097. Of what remains, 6,551
-// bytes are the seven tools this belt takes VERBATIM from pi (internal/exec's
+// bytes are the seven tools this belt takes VERBATIM from internal/exec's
 // bare package): they are the lean baseline the diet was measured against and
 // are not codeaf's to trim. The other 35,133 bytes are codeaf's own words, down
 // from 62,810 — and that is the half of the bill a lane adding a sentence is
@@ -470,7 +470,7 @@ const (
 // caps and the quick-task wave that took `fork` off the belt — it is 31,006
 // against 38,742: page 16,825 plus tool block 14,181 over twelve tools.
 //
-// THE BELT IT WEIGHS IS THE SHAPE THE DESIGN ASKED FOR: the seven pi tools,
+// THE BELT IT WEIGHS IS THE SHAPE THE DESIGN ASKED FOR: the seven file tools,
 // `quick_task`, `jobs`, `manual`, `load_capability` and `ask`, with
 // `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
 // `read_document` one call away.
