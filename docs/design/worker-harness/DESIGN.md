@@ -202,6 +202,37 @@ the plan and contract calls, the growth and reshape-and-judge steps. The
 manual pages that describe them are rewritten in the same change, as THE
 MANUAL LAW demands.
 
+### D10 — the belt: one bash on the wire, and every internal hand reached through it
+
+The worker's belt carries `bash` and nothing that a shell command can be. The
+legacy task verbs (`propose_task`, `quick_task`, `divide_work`, the `tasks`
+window, `ask`) are not on it — the plan store is their replacement and the
+chat is the person's door. What codeaf can do that no shell command can —
+**generate an image or other media, parse a document with the billed parser,
+fetch a page, search the manual, an exact-match edit that refuses zero or two
+regions, read a background job** — the worker keeps, and it keeps it through
+bash: each is a `codeaf` subcommand, resolved the way `plandb` is (a shim in
+the run's `bin/` that execs the running binary), so the wire carries one tool
+and the policy's one-action rule has nothing to fight. The old belt put ten
+tools beside bash under that rule and paid 1–17 rejected responses a run for
+it.
+
+| hand | on the loop |
+| --- | --- |
+| image and media generation | `codeaf image …` / `codeaf media …` writing into the working copy; the billed call, the profile's key, the spend row — all the binary's own |
+| `read_document` (the billed parse) | `codeaf doc PATH`, text to stdout |
+| `web_fetch`, `web_search` | `codeaf web fetch URL` / `codeaf web search Q`, markup stripped, bounded |
+| `manual` | `codeaf manual QUERY`, which exists |
+| exact-match edit | `codeaf patch FILE --old … --new …`, refusing zero or several matches |
+| background jobs | bash's `background` flag as today; `codeaf jobs` to read them |
+| `revise_assignment` | gone as a tool: a person's revision is a store write (D1, D5) |
+
+A hand whose subcommand does not exist yet stays a native tool beside bash
+until it does — A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, and a
+page must never name a command that is not there. Wave 3 lands the
+subcommands; the worker page names only the ones that exist on the build it
+ships in.
+
 ## The waves
 
 Each lands on `harness/worker-loop`, green on the Spark, and the draft pull
@@ -211,7 +242,7 @@ request describes what has landed so far.
 | --- | --- | --- |
 | **1** | the worker page opens with the policy near-verbatim and drops the contradicting chat sections; the store's gaps (cross-branch hard edges, `insert --before` rewiring, JSON shapes, note ids) | focused `internal/session` bash-belt tests; `internal/plandb` suite |
 | **2** | `internal/plandb`: SQLite persistence, project and chat tags, six-character ids, `pause`, person-notes, `finish` semantics, archive, spend summary | store suite, a concurrent-writers test |
-| **3** | `internal/run`: the supervisor (launch loop, wait/finish, limits, cancel and pause cascade, per-process ownership, take-over), the worker (bash belt agent, trajectory record, resume clause), landing from the working copy | scripted-model tests |
+| **3** | `internal/run`: the supervisor (launch loop, wait/finish, limits, cancel and pause cascade, per-process ownership, take-over), the worker (bash belt agent, trajectory record, resume clause), landing from the working copy; the `codeaf` subcommands the belt reaches through bash (D10) | scripted-model tests |
 | **4** | `codeaf do` on the run engine | `bench/bashloop -door do` against legacy on the Spark |
 | **5** | the chat: `/task` creates a run; the pane's filter and linked rows; the thread with soft and hard steering; the offer card | `bench/bashloop -door task` against legacy; the tmux e2e suite |
 | **6** | legacy deleted; manual pages; change entries; the pull request leaves draft | `make check` on the Spark |
