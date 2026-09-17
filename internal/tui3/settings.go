@@ -651,6 +651,15 @@ var settingUI = map[string]settingMeta{
 		about:  "Rich icons normally; plain symbols when your terminal needs them.",
 		widget: widgetCycle,
 	},
+	// The pool row sits with the models it chooses among: the word decides
+	// whether this machine reads the shared measurements and whether its own
+	// runs are sent back, and nothing about the code leaves either way.
+	config.KeyModelPool: {
+		tab: tabProviders, label: "model pool", widget: widgetCycle,
+		about: "codeaf picks your models from the public Model Pool, and your runs " +
+			"improve it. Nothing about your code leaves your machine. read uses " +
+			"the pool and sends nothing; off does neither.",
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",
