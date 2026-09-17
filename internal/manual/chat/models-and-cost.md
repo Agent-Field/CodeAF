@@ -46,7 +46,7 @@ the conversation identity stays the same.
 ## How do I pick a different model — which model am I talking to, which model is it using right now, and how do I switch or change it
 
 The model in use is the first thing written on the legend line directly above the message
-box, with the endpoint answering for it in brackets (`glm-5.3-flash (deepinfra): high ·
+box, with the endpoint answering for it in brackets (`glm-5.3-flash (deepinfra):high ·
 ◇ asks`; on a `--host` session the machine leads it). There are two doors to the picker:
 
 - type `/model` with nothing after it, or
@@ -990,7 +990,7 @@ Several things can name a rung, and the most specific one wins:
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which is named on the line above the box, beside the model:
-`glm-5.3-flash: high`. On a task — the roster row under the cursor, or the page you are
+`glm-5.3-flash:high`. On a task — the roster row under the cursor, or the page you are
 inside — it moves that task's rung. On a standing item's card it moves that item's. A
 conversation's rung, a task's rung, and the level `ctrl+t` dials onto one model in
 `/model` all climb one step each press and come back to `auto` off the top — that is how

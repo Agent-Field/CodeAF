@@ -570,7 +570,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the `⠿` cell on the rule above that box |
+| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
 | `alt+y` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
@@ -1134,10 +1134,11 @@ meanings.
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
-The effort follows a colon; the old six-dot badge is no longer shown.
+The effort follows a colon with no space: `model:effort`. The model stays bold and
+bright; effort keeps its own styling. The old six-dot badge is no longer shown.
 
 ```
-─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ──── $0.27   66.8k/1.3M · 5%   idle ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks ──── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1224,7 +1225,7 @@ decides*.
 After the thinking rung, the legend names what this conversation runs **without asking**:
 
 ```
-─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ─── $0.27   66.8k/1.3M · 5%   idle ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks ─── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1738,12 +1739,9 @@ All of these are modal: while one is up, every chord except `ctrl+c` belongs to 
 were in before this one.** Press it again and you are back. It is `cd -`.
 
 It **does nothing at all** when there is nowhere to go: one conversation open, or none this
-terminal has been in before. A key that cannot act says so by not being advertised — and
-when it can, the keys row under the box says `space space home · tab last · / commands`.
-
-With **three or more** open, that slot says `alt+k chats` instead, and `alt+k` opens the
-card of all of them — see *Switch between open conversations*. `tab` still works and still
-goes to the last one.
+terminal has been in before. The bottom row no longer advertises `tab`, but the key still
+works. `alt+k` opens the card of conversations whenever there is another to switch to —
+see *Switch between open conversations*.
 
 It works while either conversation is running, over every door: the one you leave keeps
 streaming into its own transcript and is all there when you come back.
@@ -1859,8 +1857,9 @@ own line, so you can read it.
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
 else — and says so by not being there: no card, and the keys row under the box does not
-name it. Everywhere else that row reads `space space home · tab last · alt+k chats ·
-/ commands` — `opt+k chats` on a Mac — dropping clauses from the right as the frame narrows.
+name it. Everywhere else that row reads `ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home` — `opt` in place of `alt` on a Mac. Effort and approvals appear only when the session
+has those controls. As the frame narrows, controls give way from the left, keeping
+`/ commands · space space home`, then `/ commands` on its own.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -2154,8 +2153,8 @@ It works while a turn is running; the answer keeps streaming underneath and `esc
 back in it.
 
 When the box is empty, the keys row under the box says so:
-`space space home · / commands`. Clicking those words opens home. It vanishes as soon as
-you type.
+`/ commands · space space home`, after any effort, approvals and chats hints. Clicking
+`space space home` opens home; that clause vanishes as soon as you type.
 
 **The door does not ask what the machine holds.** It is open on a machine with only this
 conversation and on one with none, from the first minute, and starting a second
@@ -2228,7 +2227,7 @@ readings of what you type: a search of everything home shows, or the first messa
 new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
 promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
 it says what the box is a draft *for*:
-`─ glm-5.3-flash: auto · ◇ asks ─── project: ~/codeaf`
+`─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`
 
 — the model, a colon and effort, then approvals at the left; the project the next
 conversation opens in at the far right. The arrow and effort badge are gone. A long

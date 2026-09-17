@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -178,7 +179,7 @@ func TestADraftWithNoDialDrawsNoRungAndNoGate(t *testing.T) {
 	a.width = 200
 	a.showPage(pageHome)
 	text := placeFrameText(a)
-	if strings.Contains(text, glyphPermTool+" ") || strings.Contains(text, ": auto") {
+	if strings.Contains(text, glyphPermTool+" ") || strings.Contains(text, ":auto") {
 		t.Fatalf("a session with no dial drew a cell it cannot move:\n%s", text)
 	}
 	if !strings.Contains(text, targetProjectLead) {
@@ -241,7 +242,7 @@ func TestTheDraftRuleStartsWithTheModelAndEndsWithTheProject(t *testing.T) {
 	a.target.where = "/tmp/landing-test"
 	line, drew := a.targetLegend(120, a.pal)
 	text := ansi.Strip(line)
-	if !drew || !strings.HasPrefix(text, "─ kimi-k3: high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
+	if !drew || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
 		t.Fatalf("the draft seam has the wrong order: %q", text)
 	}
 	if a.targetModelSpan.from != 2 || a.targetFolderSpan.from <= a.targetApprovalSpan.to {
@@ -253,7 +254,7 @@ func TestTheDraftRuleStartsWithTheModelAndEndsWithTheProject(t *testing.T) {
 	a.target.where = "/tmp/" + strings.Repeat("long-project/", 12)
 	line, drew = a.targetLegend(80, a.pal)
 	text = ansi.Strip(line)
-	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ kimi-k3: high · ") || !strings.Contains(text, "project: /tmp/") || !strings.HasSuffix(text, "… ─") {
+	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.Contains(text, "project: /tmp/") || !strings.HasSuffix(text, "… ─") {
 		t.Fatalf("the long project displaced controls or lost its root: %q", text)
 	}
 	for width := 1; width <= 120; width++ {
@@ -282,5 +283,54 @@ func TestTheCurrentModelIsBoldAndBrightOnBothSeams(t *testing.T) {
 	line := conversation.legend(200)
 	if !strings.Contains(line, conversation.pal.bold(conversation.pal.data(conversation.modelWord()))) {
 		t.Fatalf("the conversation's model is not bold and bright: %q", line)
+	}
+}
+
+// The idle footer shares home's control order and keeps its way home clickable
+// after the commands door, including on the phone deck.
+func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Date(2026, 9, 17, 18, 0, 0, 0, time.UTC)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	a := lab.door(mine)
+	agent, _ := drafting(t)
+	a.agent = agent
+	a.stow(Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/lab/other.jsonl"}, &aside{since: a.now()})
+	a.chords.meta = chordMetaWord
+	a.notices.enabled = false
+	a.branch = "dev"
+	want := "ctrl+v effort · opt+y approvals · opt+k chats · / commands · space space home"
+	if got := a.footHint(200); got != want {
+		t.Fatalf("conversation controls = %q, want %q", got, want)
+	}
+	for _, width := range []int{200, 100, 80, 60, 44, 30, 15} {
+		a.width, a.height = width, 30
+		frame, _, _ := a.frame()
+		if strings.Contains(plain(a.legend(width)), " · dev") {
+			t.Fatalf("the seam carries a branch at %d columns", width)
+		}
+		if !strings.Contains(plain(frame), microcopy) {
+			t.Fatalf("commands vanished at %d columns:\n%s", width, plain(frame))
+		}
+		if !a.homeDoor.pressable() {
+			continue
+		}
+		row := -1
+		for y := 0; y < a.height; y++ {
+			if mark, ok := a.chromeAt(y); ok && mark.kind == a.hintRowKind() {
+				row = y
+			}
+		}
+		if row < 0 {
+			t.Fatal("no hint row")
+		}
+		line := strings.Split(plain(frame), "\n")[row]
+		if got := ansi.Cut(line, a.homeDoor.from, a.homeDoor.to); got != homeDoorWord {
+			t.Fatalf("home hit target covers %q at %d columns: %q", got, width, line)
+		}
+		if _, took := a.homeDoorPress(a.homeDoor.from, row); !took || !a.at(pageHome) {
+			t.Fatalf("home hint did not open home at %d columns", width)
+		}
+		a.closeHome()
 	}
 }

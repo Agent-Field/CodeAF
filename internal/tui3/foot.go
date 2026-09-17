@@ -9,9 +9,9 @@ import (
 
 // ── THE FOOT OF THE FRAME: TWO ROWS, EACH WITH ONE JOB ──────────────────────
 //
-//	─ glm-5.3-flash (deepinfra): high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
-//	 space space home · tab last · alt+k chats · / commands
+//	 ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home
 //
 // THE SEAM IS WHAT ANSWERS AND HOW MUCH. The rule above the box carries the
 // model answering the conversation on the left, and the numbers on the right
@@ -429,7 +429,7 @@ func (a *app) runStatusNote() tea.Cmd {
 // seamIdentity is the legend's left cluster out of a room, built to a budget,
 // and the columns its three doors occupy within it.
 //
-//	devbox · glm-5.3-flash (deepinfra): high · ◇ asks · main*
+//	devbox · glm-5.3-flash (deepinfra):high · ◇ asks
 //
 // THE LADDER IS [seamLadder], read top to bottom, and it never clips.
 //
@@ -494,7 +494,7 @@ func (t seamTry) on(tier seamTier) bool {
 // seamPieces is everything the identity cluster can be made of, gathered once
 // per frame so the ladder below is only ever choosing between them.
 type seamPieces struct {
-	host, name, model, rung, gate, branch string
+	host, name, model, rung, gate string
 	// rider is the WHOLE rider — ` (relace)`, ` (parasail · rescued)`, or a
 	// rescue's own ` · slow · trying coreweave…` — and fit is the door that
 	// answers it for a given room, or says nothing ([app.modelRiderAt]). The
@@ -539,16 +539,13 @@ func (a *app) seamPieces(width int) seamPieces {
 		pieces.rider = a.modelRiderAt(-1)
 		pieces.fit = a.modelRiderAt
 	}
-	if width >= hudTight {
-		pieces.branch = a.branchWord()
-	}
 	return pieces
 }
 
 // seamTry is one rung of the ladder: which of the pieces are on the line, and
 // whether the name may be cut to seat them.
 type seamTry struct {
-	branch, rung, gate, model, name bool
+	rung, gate, model, name bool
 	// rider is how the rider is treated: [riderWhole] means the step fails
 	// unless the rider fits entire, [riderFit] takes whatever spelling the room
 	// allows (which may be none), [riderNone] leaves it off.
@@ -575,26 +572,16 @@ const (
 // walks past them:
 //
 //	1  everything, the rider entire
-//	2  the branch goes — the shell prompt behind this pane still says it
-//	3  the name is cut to seat the rider entire — which machine is answering
-//	   is the one fact on this line about NOW (the owner's ruling of
-//	   2026-09-10)
-//	4  the rider goes, with the branch back on
-//	5  and without it
-//	6  the thinking rung goes, WHOLE — half a rung word is a word somebody
-//	   reads as another rung, and its ladder is one command away
-//	7  the approvals chip goes, whole, and AFTER the rung: what may run
-//	   without asking outranks how hard it thinks, and it is the one cell on
-//	   this line that is a safety claim (approvalchip.go)
-//	8  the name is cut for the model alone
-//	9  the model goes — in a room the way out is what is left
-//	10 the name goes — and the machine, on a --host session, is the last
-//	   thing standing, because it is the half nobody can reconstruct
+//	2  the name is cut to seat the rider entire
+//	3  the rider is shortened to fit
+//	4  the thinking rung goes, whole
+//	5  the approvals chip goes, whole
+//	6  the name is cut for the model alone
+//	7  the model goes, leaving a room's way out
+//	8  the name goes, leaving only a remote machine's identity
 var seamLadder = []seamTry{
-	{name: true, model: true, rung: true, gate: true, rider: riderWhole, branch: true},
 	{name: true, model: true, rung: true, gate: true, rider: riderWhole},
 	{name: true, model: true, rung: true, gate: true, rider: riderWhole, cut: true},
-	{name: true, model: true, rung: true, gate: true, rider: riderFit, branch: true},
 	{name: true, model: true, rung: true, gate: true, rider: riderFit},
 	{name: true, model: true, gate: true, rider: riderFit},
 	{name: true, model: true, rider: riderFit},
@@ -617,7 +604,7 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	if try.cut && p.name == "" {
 		return "", none, none, none, false
 	}
-	model, rung, gate, branch, rider := "", "", "", "", ""
+	model, rung, gate, rider := "", "", "", ""
 	if try.model {
 		model = p.model
 	}
@@ -626,9 +613,6 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	}
 	if try.gate && model != "" {
 		gate = p.gate
-	}
-	if try.branch {
-		branch = p.branch
 	}
 	// A rung that wants the rider entire fails outright when there is none to
 	// seat, so the ladder moves on to the rungs that do not ask for it.
@@ -644,7 +628,7 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	if try.name {
 		name = p.name
 		if try.cut {
-			rest := dotted(p.host, dotted(seamModelEffort(model+rider, rung), gate), branch)
+			rest := dotted(p.host, dotted(seamModelEffort(model+rider, rung), gate))
 			left := room - ansi.StringWidth(rest)
 			if rest != "" {
 				left -= ansi.StringWidth(legendJoin)
@@ -657,13 +641,13 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 	}
 	head := dotted(p.host, name)
 	if try.rider == riderFit && model != "" {
-		bare := dotted(head, dotted(seamModelEffort(model, rung), gate), branch)
+		bare := dotted(head, dotted(seamModelEffort(model, rung), gate))
 		if ansi.StringWidth(bare) > room {
 			return "", none, none, none, false
 		}
 		rider = p.fit(room - ansi.StringWidth(bare))
 	}
-	cluster := dotted(head, dotted(seamModelEffort(model+rider, rung), gate), branch)
+	cluster := dotted(head, dotted(seamModelEffort(model+rider, rung), gate))
 	if ansi.StringWidth(cluster) > room {
 		return "", none, none, none, false
 	}
@@ -672,7 +656,7 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 }
 
 // seamEffortJoin binds effort to the model without spending a separate badge.
-const seamEffortJoin = ": "
+const seamEffortJoin = ":"
 
 func seamModelEffort(model, rung string) string {
 	if model == "" || rung == "" {

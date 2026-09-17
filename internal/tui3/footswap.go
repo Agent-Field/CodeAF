@@ -11,7 +11,7 @@ import (
 // Until 2026-09-17 the seam over the box carried the keys that work right now
 // on its right, and the row under the box carried the numbers:
 //
-//	─ porting the parser · glm-5.3-flash: high · ◇ asks ──── space space home · / commands ─
+//	─ porting the parser · glm-5.3-flash:high · ◇ asks ──── space space home · / commands ─
 //	 › your sentence
 //	 $0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%             38 tok/s · ⠹ working · 12s
 //
@@ -20,11 +20,11 @@ import (
 // different programs. The owner ruled that THE LOWEST LINE IS FOR KEYS on both,
 // and that the telemetry goes up onto the seam where the chords were:
 //
-//	─ glm-5.3-flash (deepinfra): high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
-//	 space space home · tab last · alt+k chats · / commands
+//	 ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home
 //
-//	─ glm-5.3-flash: auto · ◇ asks ───────────────── project: ~/codeaf ─
+//	─ glm-5.3-flash:auto · ◇ asks ───────────────── project: ~/codeaf ─
 //	 › type to search or start something new
 //	 ↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · / commands
 //
@@ -235,8 +235,9 @@ func (a *app) hintRow(width int) string {
 	} else {
 		hint = ""
 	}
-	if strings.HasPrefix(hint, homeDoorWord) {
-		a.homeDoor = hudSpan{from: 1, to: 1 + ansi.StringWidth(homeDoorWord)}
+	if offset := strings.Index(hint, homeDoorWord); offset >= 0 {
+		from := 1 + ansi.StringWidth(hint[:offset])
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
 	}
 	// THE ROW FILLS THE FRAME, as every foot row does: a row shorter than the
 	// frame would leave the cells behind it to whatever the last frame drew.

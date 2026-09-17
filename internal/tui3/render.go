@@ -3188,52 +3188,16 @@ const stoppingWord = "stopping"
 
 // ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE CONVERSATION IN IT ─────────
 //
-// The rule above the input was one unbroken line whose only job was to say
-// "below this is your business". It still says that, and it now carries the two
-// facts that identify the conversation you are typing into, in the shape a form
-// has used for fifty years — a fieldset legend, the label sitting in the border
-// itself:
+// The seam above the input carries the model, effort and approvals at the left,
+// with the numbers at the right. The conversation's name belongs to its tab and
+// breadcrumb; the branch and workspace remain in /status. Keeping them off this
+// line leaves room for the model and its serving machine (foot.go).
 //
-//	─ porting the parser · chat-v3-task* ─────────── / commands ─
-//
-// LEFT IS WHICH CONVERSATION THIS IS. It was the workspace path for a long
-// time, and a path is the one fact on this frame a person already has: they
-// typed the cd that got them here, the shell prompt behind this pane still says
-// it, and every other pane they have open says the same abbreviated three
-// letters. What they cannot recover from anywhere is WHICH of their
-// conversations this pane is — so the session's own name leads, the name it
-// gave itself from its first exchange (internal/session's title.go), read back
-// as words by [app.sessionName]. The branch follows it with a "*" when the tree
-// is dirty, which is the one bit of git state a person acts on without asking
-// for more.
-//
-// THE PATH IS MOVED, NOT LOST. /status prints it in full, and the phone tier's
-// sheet carries it under "place" with the branch beside it (statusdeck.go's
-// [app.deckItems]). A path is a thing a person copies into another program,
-// which is something you do from a note and not from a border.
-//
-// AN UNNAMED SESSION SAYS NOTHING WHERE THE NAME WOULD GO. The name lands one
-// turn in, and THE EMPTINESS LAW governs the gap before it: the legend reads
-// `─ chat-v3-task* ───` and never "untitled", never a placeholder. A session
-// with neither a name nor a branch leaves the left end empty and the line is
-// the plain rule it always was, with the hints still on its right.
-//
-// RIGHT IS WHAT THIS BOX ANSWERS TO. The affordance of the input line itself —
-// "/ commands" — and it is here rather than in the status line for the reason it
-// exists at all: it is about the thing directly below it.
-// While a state has keys of its own the hints REPLACE them (see [app.hintWord]),
-// because the two are the same slot answering the same question, and a
-// cheatsheet beside a live prompt is a cheatsheet nobody reads.
-//
-// The narrow ladder drops in the order of what a person can recover elsewhere:
-// the microcopy first (the keys still work whether or not they are printed),
-// then the branch (the shell prompt behind this one says it) — and THE NAME IS
-// CUT RATHER THAN DROPPED. It is the only thing on this line that can be eighty
-// cells long (session's titleLimit), so it is what gives cells back, one
-// ellipsis at a time, while the branch and the hints keep theirs. The last thing
-// standing is the rule it always was.
+// The keys have their own row under the box, except on the phone deck where
+// they occupy the seam's right end. A state with its own keys replaces the idle
+// controls, so a live prompt never competes with a second set of instructions.
 
-// microcopy is the input's own affordance, and the legend's default right.
+// microcopy is the input's own affordance and the idle hint's narrowest form.
 //
 // IT NAMES ONE KEY AND IT USED TO NAME TWO. "@ files" was true — the completion
 // still opens on "@" and always will (files.go, taskmention.go) — and it was
@@ -3502,8 +3466,9 @@ func (a *app) legendLinePainted(left, right, rightPainted string, width int, pai
 	// legend had just recorded, and `space space home` became a label nothing
 	// answered for. What makes the span its own answer to "was it drawn" is
 	// [app.legend] clearing it before its own ladder starts.
-	if strings.HasPrefix(right, homeDoorWord) {
-		a.homeDoor = hudSpan{from: at, to: at + ansi.StringWidth(homeDoorWord)}
+	if offset := strings.Index(right, homeDoorWord); offset >= 0 {
+		from := at + ansi.StringWidth(right[:offset])
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
 	}
 	line := a.pal.dim("─")
 	if left != "" {
@@ -3526,20 +3491,16 @@ func (a *app) legendLinePainted(left, right, rightPainted string, width int, pai
 	return line, at, true
 }
 
-// legendNameFloor is the fewest cells worth spending on a cut name. Below it
-// the name is dropped entirely and the branch stands alone, because "po…" names
-// no conversation — it is an ellipsis wearing two letters, and the cells it took
-// said less than the branch they were taken from.
+// legendNameFloor is the fewest cells worth spending on a room's cut way out.
+// Below it, an ellipsis wearing a few letters says too little to be useful.
 const legendNameFloor = 12
 
 // branchWord is the branch as every surface writes it: its name, and a "*" when
 // the tree has uncommitted work. An unknown branch is the empty string, which
 // the emptiness law then draws as nothing wherever this is spent.
 //
-// It is one function because it is printed twice — here in the border and in the
-// status sheet's "place" row (statusdeck.go) — and a dirty mark that appeared in
-// one of those and not the other would be a person's answer to "is this tree
-// clean" depending on which line they happened to read.
+// The status sheet and /status share this spelling so the dirty mark agrees
+// wherever a person asks which repository they are working in.
 func (a *app) branchWord() string {
 	if a.branch == "" {
 		return ""
@@ -3551,7 +3512,7 @@ func (a *app) branchWord() string {
 }
 
 // legendLeft is what is answering this conversation and where it is running:
-// the model with its machine, the rung, the gate, the branch and, on a remote
+// the model with its machine, the rung, the gate and, on a remote
 // session, the host. The tab strip and the breadcrumb bar own the
 // conversation's name, so the legend does not repeat it (foot.go).
 //
@@ -3562,9 +3523,6 @@ func (a *app) branchWord() string {
 // sentence of English is scp syntax pointed at something nobody can copy. It is
 // never cut, for the reason the path never cut it either — which machine is the
 // half of the answer a person cannot reconstruct from anything else on screen.
-//
-// THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
-// branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
 	left, _, _, _, named := a.legendLeftSpan(width, room, seamTierAny)
 	return left, named
@@ -3619,8 +3577,7 @@ func (a *app) legendLeftSpanFrom(pieces *seamPieces, room int, tier seamTier) (s
 	if room < 1 {
 		return "", hudSpan{}, hudSpan{}, hudSpan{}, tier == seamTierAny
 	}
-	// THE NAME, THE MODEL AND ITS THINKING RUNG ARE HERE NOW, and the branch
-	// rides after them (foot.go's [seamLay] holds the ladder).
+	// The model, thinking rung and approvals share the ladder in foot.go.
 	cluster, span, dial, gate := seamLay(pieces, room, tier)
 	if tier != seamTierAny && cluster == "" {
 		return "", hudSpan{}, hudSpan{}, hudSpan{}, false
@@ -3667,15 +3624,8 @@ func (a *app) placePath(hard int) string {
 // input's own affordances when it does not. It is the whole of the last row
 // now (footswap.go's [app.hintRow]), and the seam's right at phone width.
 //
-// IT SPEAKS AT EVERY WIDTH, and it used to go silent under [hudTight] on the
-// reasoning that the cells were worth more to the conversation's name. That was
-// exactly backwards. The narrow tier is where a newcomer most needs to be told
-// that `/` opens a list of everything this surface can be told to do, and it was
-// the ONE tier where they were never told it exists: with this slot empty and
-// the branch dropped at the other end ([app.legendLeft]), the line was refused
-// at both ends and fell back to a bare rule with nothing written on it at all.
-// The tight frame gives up THE BRANCH — which the shell prompt behind this one
-// still says — and keeps the door.
+// The narrowest usable frame keeps / commands: it is how someone who does not
+// know the keys discovers what the surface can do (steer.go's [app.hintShorter]).
 func (a *app) footHint(width int) string {
 	// A QUESTION'S PAGE BRINGS ITS OWN FOOT (questionroom.go's
 	// [app.questionFootRows]) and names the keys it takes there; a second line
@@ -3706,62 +3656,30 @@ func (a *app) footHint(width int) string {
 	if tip := a.noticeHint(); tip != "" {
 		return tip
 	}
-	// THE IDLE SLOT CARRIES BOTH DOORS. `/ commands` is recoverable a dozen
-	// other ways — the manual, /help, typing a slash — and home, until this
-	// line existed, was recoverable only by knowing it was there. So the rest
-	// state of the slot names them both, and neither costs a row: this is the
-	// legend, which is on the frame either way (home.go).
-	// THE SWITCHER IS NAMED WHEREVER IT WOULD ACT, AND ITS CONDITION IS ITS OWN.
-	// `tab last` rides on the home door because both need a door onto a session
-	// ([app.canOpen]); the switcher needs none — it re-points the surface at a
-	// conversation this process is already holding — so a build with no resume
-	// door still has one, and the slot still says so (hop.go).
-	//
-	// IT IS NAMED WHENEVER IT WOULD ACT, AND FROM THE FIRST FRAME. It used to be
-	// held back until three conversations were open, on the reasoning that `tab`
-	// reaches the only other one in a single key — which was true and was the
-	// wrong trade: the card lists every conversation on this machine, not only
-	// the ones already open, so on a fresh session it is the thing that gets you
-	// anywhere at all, and a person who is never told about it never finds it.
-	// THE IDLE SLOT NAMES EVERY DOOR THAT WOULD ACT, IN THE ORDER A PERSON MEETS
-	// THEM: home, the flick back, the switcher, the commands. Each clause is
-	// under its own condition and none of them is under another's — a key that
-	// cannot act says so by not being advertised, and the converse defect is the
-	// one this wave was written to fix: a key that acts and is never named.
-	//
-	// `tab last` needs an empty box, because that is the only state it acts in
-	// (keeper.go's [app.lastConversation]); the switcher needs no box at all and
-	// no door onto sessions, because it re-points the surface at conversations
-	// this machine already has.
-	doors := make([]string, 0, 4)
+	return a.idleHint()
+}
+
+// idleHint keeps the shared controls in home's order, followed by the way home.
+// Each control is named only where the session can take its key.
+func (a *app) idleHint() string {
+	doors := make([]string, 0, 5)
+	if !a.roomOpen() {
+		if _, ok := a.effortDial(); ok {
+			doors = append(doors, targetEffortKeyWord)
+		}
+		if _, ok := a.approvalDial(); ok {
+			doors = append(doors, a.chords.say(targetApprovalKeyWord))
+		}
+	}
+	if a.hopAvailable() {
+		doors = append(doors, a.chords.say(hopDoorWord))
+	}
+	doors = append(doors, microcopy)
 	if a.homeDoorShowing() {
 		doors = append(doors, homeDoorWord)
 	}
-	if _, ok := a.lastBehind(); ok && a.input.empty() && !a.copy.on && !a.rew.on {
-		doors = append(doors, lastDoorWord)
-	}
-	if a.hopAvailable() {
-		// AND IT IS SPELLED THE WAY THIS KEYBOARD SPELLS IT. The switcher took an
-		// `alt+` chord when it gave `ctrl+k` back to the draft (hop.go), so this
-		// clause is the one door on the line with a modifier that has two
-		// keycaps, and it goes through the same substitution every other sentence
-		// about a chord goes through (chords.go's [chordSpelling.say]). It is
-		// said HERE rather than on the way to the paint because the ladder below
-		// measures what it is about to draw, and a line measured in one spelling
-		// and painted in another is a line that can overrun the frame. It costs
-		// nothing on THIS chord — `opt+k` and `alt+k` are both five cells — and
-		// the discipline is the door's, not this clause's: `cmd+` becomes the one
-		// cell `⌘` through the same call.
-		doors = append(doors, a.chords.say(hopDoorWord))
-	}
-	return strings.Join(append(doors, microcopy), " · ")
+	return strings.Join(doors, hintSegment)
 }
-
-// lastDoorWord advertises the key back to the conversation before this one. It
-// is the shortest true sentence about it: `tab` is the key, and `last` is what
-// it goes to — the conversation you were in last, which is the same promise
-// `cd -` makes.
-const lastDoorWord = "tab last"
 
 // hopDoorWord advertises the switcher, and it names the binding rather than the
 // `ctrl+tab` alias because this line is drawn on every terminal and the alias is

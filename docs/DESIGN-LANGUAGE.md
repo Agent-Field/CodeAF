@@ -492,7 +492,8 @@ Owner ruling, 2026-09-17: the current model is always **bold in the data hue** o
 home and conversation seams. It must be easy to find without hovering or first
 changing it. The provider beside it and the surrounding telemetry keep their
 existing weight; the emphasis is confined to the model name.
-The effort follows a colon without a badge: `model (provider): effort`. Home starts
+The effort follows a colon without a space or badge: `model (provider):effort`. Its
+styling stays separate from the model. The conversation seam carries no git branch. Home starts
 with those controls and puts `project: <path>` at the far right. Project paths on
 home preserve their absolute root (or `~/` under the home directory) and truncate
 at the right end, never at the left.

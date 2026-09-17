@@ -232,12 +232,12 @@ func TestASingleConversationHasNoSwitcherAndIsNeverToldAboutOne(t *testing.T) {
 		t.Fatalf("the legend named the switcher with one conversation open: %q", a.footHint(a.width))
 	}
 
-	// A SECOND CONVERSATION MAKES IT REAL, and the slot names BOTH doors: `tab`
-	// is one key to the last one, and the card is every one of them.
+	// A second conversation makes the switcher real. Tab still works, but its
+	// hint no longer takes a place on the keys row.
 	a.stow(Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/lab/other.jsonl"},
 		&aside{since: a.now()})
 	got := a.footHint(a.width)
-	if !strings.Contains(got, hopDoorWord) || !strings.Contains(got, lastDoorWord) {
+	if !strings.Contains(got, hopDoorWord) || strings.Contains(got, "tab last") {
 		t.Fatalf("the legend names %q with two open", got)
 	}
 

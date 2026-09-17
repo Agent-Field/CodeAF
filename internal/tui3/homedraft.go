@@ -14,7 +14,7 @@ import (
 // Home and conversations start their seams with the same model, effort and
 // approvals. Home names the destination separately at the far right:
 //
-//	─ glm-5.3-flash: auto · ◇ asks ───── project: ~/src/parser ─
+//	─ glm-5.3-flash:auto · ◇ asks ───── project: ~/src/parser ─
 //	 › type to search or start something new
 //
 // The project stays a path, so two checkouts with the same name remain

@@ -107,7 +107,7 @@ travel over ssh.
 
 **On local home the same command opens the same sheet, aimed at a conversation that does not
 exist yet.** Home's box is a draft for the conversation `enter` will open, and the rule above
-it says where that will be: `glm-5.3-flash: auto · ◇ asks ─── project: ~/src/parser`.
+it says where that will be: `glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`.
 `/folder`, `/place` and `/dir` typed there — bare, or with a path after them — open the
 browser to change that folder. Over `--host`, they do not open it: this machine's directory
 cannot be the far conversation's folder, so they say the refusal in the section above.

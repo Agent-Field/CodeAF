@@ -134,20 +134,14 @@ func TestTheSeamNamesTheResolvedThinkingRung(t *testing.T) {
 		t.Fatalf("the session started with a chosen rung: %q", got)
 	}
 	line := seamLine(t, a)
-	if !strings.Contains(line, "deepseek-v4: high") {
+	if !strings.Contains(line, "deepseek-v4:high") {
 		t.Fatalf("the seam does not name the configured rung beside the model: %q", line)
-	}
-	// THE PICKER SUFFIX IS STILL ABSENT. The level used to ride the model id —
-	// `deepseek-v4:high` — which said only the picker-dialled level while the
-	// chip beside it said the resolved rung: one ladder, two spellings, one line.
-	if strings.Contains(line, "deepseek-v4:high") {
-		t.Fatalf("the seam still spells a level onto the model id: %q", line)
 	}
 
 	// And it follows the resolver rather than remembering anything: a rung set on
 	// the conversation moves the word on the next frame.
 	agent.conversation = effort.Max
-	if line := seamLine(t, a); !strings.Contains(line, ": max") {
+	if line := seamLine(t, a); !strings.Contains(line, ":max") {
 		t.Fatalf("the seam kept the old rung: %q", line)
 	}
 }
@@ -166,7 +160,7 @@ func TestAFreshConversationSaysAutoAndIsPressable(t *testing.T) {
 		t.Fatalf("the shipped session resolved to %q, want absence", got)
 	}
 	line := seamLine(t, a)
-	if !strings.Contains(line, "deepseek-v4: "+effortAutoWord) {
+	if !strings.Contains(line, "deepseek-v4:"+effortAutoWord) {
 		t.Fatalf("a fresh conversation does not say auto beside the model: %q", line)
 	}
 	if !a.seamEffortSpan.pressable() {
@@ -178,7 +172,7 @@ func TestAFreshConversationSaysAutoAndIsPressable(t *testing.T) {
 	if got := agent.ConversationEffort(); got != "low" {
 		t.Fatalf("the first press off auto left the conversation at %q, want low", got)
 	}
-	if line := seamLine(t, a); !strings.Contains(line, ": low") {
+	if line := seamLine(t, a); !strings.Contains(line, ":low") {
 		t.Fatalf("the chord did not walk the cell onto low: %q", line)
 	}
 }
@@ -191,7 +185,7 @@ func TestEffortAutoPutsTheCellBackToAuto(t *testing.T) {
 	for _, word := range []string{"auto", "off"} {
 		agent, a := shipped(t)
 		a.slash("/effort high")
-		if line := seamLine(t, a); !strings.Contains(line, ": high") {
+		if line := seamLine(t, a); !strings.Contains(line, ":high") {
 			t.Fatalf("/effort high did not reach the seam: %q", line)
 		}
 
@@ -249,7 +243,7 @@ func TestAHostedConversationDrawsTheRungItsEngineAdmitsTo(t *testing.T) {
 		a.model, a.title = "deepseek/deepseek-v4", "porting the parser"
 
 		line := seamLine(t, a)
-		if drew := strings.Contains(line, ": high"); drew != known {
+		if drew := strings.Contains(line, ":high"); drew != known {
 			t.Fatalf("an engine that says known=%v drew rung=%v: %q", known, drew, line)
 		}
 		drive(t, a, key(effortKey))
@@ -278,7 +272,7 @@ func TestTheRungKeepsItsColumnsWhenTheRiderComesAndGoes(t *testing.T) {
 	served := seamLine(t, a)
 	_ = frame(a)
 
-	if !strings.Contains(served, "deepseek-v4 (quicksilver): high") {
+	if !strings.Contains(served, "deepseek-v4 (quicksilver):high") {
 		t.Fatalf("the rider does not stand between the model and the rung: %q", served)
 	}
 	if strings.Index(bare, "deepseek-v4") != strings.Index(served, "deepseek-v4") {
@@ -395,7 +389,7 @@ func TestClearingOnAnInstallWithItsOwnRungNamesThatRow(t *testing.T) {
 	if got := agent.ConversationEffort(); got != "" {
 		t.Fatalf("the press off max left the conversation at %q, want absence", got)
 	}
-	if line := seamLine(t, a); !strings.Contains(line, ": high") {
+	if line := seamLine(t, a); !strings.Contains(line, ":high") {
 		t.Fatalf("the seam did not fall back to the install's rung: %q", line)
 	}
 	got := plain(frame(a))

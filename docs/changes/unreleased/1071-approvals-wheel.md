@@ -4,6 +4,8 @@ title: The approvals chip — what a conversation runs without asking is a contr
 pr: 1071
 surface: [chat]
 invalidates:
+  - "The conversation footer advertised home first and included `tab last`. It now shares home's control order: `ctrl+v effort · alt+y approvals · alt+k chats · / commands`, followed by `space space home` over an empty box. Tab still works. Unsupported controls are absent, and narrow frames keep commands after giving up whole clauses. The home hint remains clickable in its new position."
+  - "The conversation seam ended with the git branch. The branch is absent at every width now; `/status` still carries it. Both home and conversation seams use `model:effort` with no space after the colon, while retaining separate model and effort styling."
   - "Home's foot now names `ctrl+v effort` before `alt+y approvals`. Effort still cycles auto, low, medium, high, xhigh, max and back to auto; on a standing item's row the chord continues to belong to that item."
   - "The seam separated the model and effort with a middle dot and a six-dot badge. Home, conversations and task rooms now say `model (provider): effort`, without the effort badge. The clickable effort span follows the colon."
   - "Home's seam began with an arrow and `new conversation in <project>`. It now starts with the model, effort and approvals; `project: <path>` is right-aligned and remains clickable. Long project labels truncate on the right before controls give way. Phone home uses the same order."

@@ -3378,7 +3378,7 @@ local conversation the same page tails that log live.
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; a dim `+N` at the strip's right end counts the tabs it could not spell, and `alt+k` opens the chats card | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
-| legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
+| legend word | the model, effort and approvals, with the remote machine when connected | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next request — and does nothing at all once the task has landed |

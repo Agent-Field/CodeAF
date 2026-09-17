@@ -192,7 +192,7 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ glm-5.3-flash: auto · ◇ asks ─── project: ~/src/parser
+─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
 › type to search or start something new
 ↑↓ pick · enter open · alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
 ```

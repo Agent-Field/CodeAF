@@ -66,7 +66,7 @@ naming the four (and the one you stand in, when it is off the bar), a dim rule, 
 the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** Its seam starts with the model, a colon and
-its effort word, then approvals: `glm-5.3-flash: auto · ◇ asks`. The project is at the
+its effort word, then approvals: `glm-5.3-flash:auto · ◇ asks`. The project is at the
 far right: `project: ~/codeaf`, truncated on the right when necessary. The model stays
 bold and bright cyan on home and in conversations, and the effort has no badge.
 The box says `› type to search or start something new`. Its bottom row carries
@@ -663,14 +663,14 @@ and from then on new output keeps you at the edge again.
 Three things do deliberately put you back at the bottom, because in each you asked for
 it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 
-## The line above the message box (the legend) — the model, the machine in brackets after it, the branch, and why the conversation's name is not on it
+## The line above the message box (the legend) — the model, the machine in brackets after it, and why the conversation's name is not on it
 
 The rule that separates the conversation from your own business carries **what is
 answering and where** on the left, and **the numbers** — the bill, the meter, the state
 word — on the right, like the legend on a fieldset:
 
 ```
-─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 ```
 
 **The conversation's name is not on this line.** It was, from 2026-09-09 to 2026-09-17,
@@ -689,10 +689,10 @@ its basename (`glm-5.3-flash`) **with the endpoint that answered in brackets rig
 it** — `glm-5.3-flash (deepinfra)`, `deepseek-v4.1-flash (baidu)` — the two read as one
 word, "who is answering" (the name alone, never a timing: the last answer's wait and
 speed are the `served` row of `/status`); then the **thinking rung** this conversation is
-running at after a colon (`: high`, with no badge on any terminal — `: auto` until something is dialled,
-which is what a fresh install says), the **approvals chip** (`◇ asks`), and the git
-**branch** with a `*` when the tree has uncommitted work. In a directory that is not a
-repository there is no branch. Until 2026-09-17 the machine was a `· via deepinfra`
+running at after a colon (`:high`, with no badge on any terminal — `:auto` until something is dialled,
+which is what a fresh install says), then the **approvals chip** (`◇ asks`). There is
+no space after the colon: `model:effort`. The model and effort keep their separate
+styling. The git branch is no longer on this seam; `/status` still shows it. Until 2026-09-17 the machine was a `· via deepinfra`
 segment after the rung and the chip; it is written into the model's own cell now so
 nothing about something else ever separates the model from its machine.
 
@@ -730,18 +730,17 @@ below lists every reason it is absent.
 **When the line is too narrow, it says less rather than cutting.** The left end gives
 things up in this order, and each step is a shorter *true* sentence:
 
-1. the branch goes — the shell prompt behind this pane still says it;
-2. the machine in brackets goes, whole — it has no shorter spelling;
-3. the thinking rung goes, **whole** — half a rung word is a word you would read as
+1. the machine in brackets goes, whole — it has no shorter spelling;
+2. the thinking rung goes, **whole** — half a rung word is a word you would read as
    another rung, and `/effort` says it in full;
-4. the approvals chip goes, whole, after the rung — what may run without asking
+3. the approvals chip goes, whole, after the rung — what may run without asking
    outranks how hard it thinks;
-5. the model goes — on a `--host` session the machine is the last thing standing.
+4. the model goes — on a `--host` session the machine is the last thing standing.
 
 A long title costs this line nothing, because the title is not on it. Until 2026-09-17
 the name was, and a long one was cut with one `…` to seat the machine's name.
 
-Under 70 columns the branch is dropped outright. Only a frame with no room for a label
+Only a frame with no room for a label
 at either end falls back to the plain rule. Until 2026-09-09 this line carried only the
 branch, and the name and model were on the status row below; they moved up so that a
 long title could never push the numbers off the frame, and the name moved off again on
@@ -786,18 +785,21 @@ compete. It is the same in every hint the slot carries, in home's foot hint, in 
 line at the bottom of the card beside a search on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
 below.
 
-**At rest it carries the two doors out of the conversation.** With an empty box, it reads
-exactly:
+**At rest it names the shared controls in home's order**, followed by the way home:
 
 ```
-space space home · / commands
+ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home
 ```
 
-Pressing the space bar twice on an empty box opens the home screen, and clicking those
-words does the same; `/` opens the command list. It is there on a fresh machine from the
-first minute — an empty home is still a home — and over `--host` too, where it opens the far
-machine's home. The whole row gives way the moment you type or a state
-above claims it. It is one row, and it is on the frame regardless.
+On a Mac the modifier reads `opt`. Effort and approvals appear only when the session
+has those controls, and chats appears when there is another conversation to switch to.
+`tab` still returns to the last conversation but has no hint here. On narrow frames,
+clauses give way from the left until `/ commands · space space home` remains, then
+`/ commands` alone if needed.
+
+Pressing the space bar twice on an empty box opens home; clicking `space space home`
+does the same. That clause disappears when you type. `/` opens the command list.
+A state with its own keys, or an earned tip, takes over this row while it applies.
 
 **Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
@@ -873,8 +875,8 @@ the ones listed above are the ones that step up.
 
 ## Which folder am I in — where the workspace path and the git branch are shown
 
-The line above the message box carries this conversation's name, its model and the git
-branch, not the folder. The workspace path lives in two places, and both say it in full:
+The line above the message box carries the model, effort and approvals. The name and
+git branch are absent from it. The workspace path lives in two places, and both say it in full:
 
 - **`/status`** (aliases `/info`, `/context`) prints a `place` line — the whole path,
   then ` · ` and the branch with its `*` if the tree is dirty. On a remote session the
@@ -882,12 +884,9 @@ branch, not the folder. The workspace path lives in two places, and both say it 
 - **The status sheet**, which is `/status`'s own list on screen: the same `place` row,
   with the path abbreviated fish-style (`~/s/codeaf`) because a sheet row is one line.
 
-The **branch** is on the legend after the model — `… · glm-5.3-flash · main*` — so a
-glance above the box tells you which branch you are working on without opening anything.
-It is the first thing that line gives up when it is narrow, and it is dropped outright
-under 70 columns. There is no branch on a session running over `--host`: the git probe
-would read *this* machine's repository at the other one's path, so nothing is shown
-rather than something possibly wrong.
+The **branch** is in `/status`'s `place` row, with a `*` for uncommitted work. It is
+absent from the message-box seam at every width. A session running over `--host` does
+not probe this machine's repository for the far machine's branch.
 
 If the answer is just the word `codeaf`, this conversation has no project — it was
 started somewhere with nothing to borrow, and works in a directory of its own. `/status`
@@ -997,7 +996,7 @@ controls. The control for the gate is the `◇` cell on the legend (the keys pag
 
 While a task **room** is open the task's own name is on the breadcrumb bar at the top of
 the frame (the room chip that used to lead this row is gone with the row), and the legend
-above the box becomes the task's: `room · esc/←← main · task glm-5.2 (friendli): high
+above the box becomes the task's: `room · esc/←← main · task glm-5.2 (friendli):high
 · ◇ on its own`, with the conversation's numbers after it. **Pressing the model's name
 there moves the task**, not the conversation: the same picker opens aimed at that node, and
 the task switches from its next request onward; pressing the rung, or `ctrl+v`, walks the
@@ -1023,8 +1022,7 @@ figure, the figures go first, one at a time in the order "What the status line d
 when it is narrow" gives, and the state word is the last thing standing on the right.
 The model gives way only when not even the state word fits beside it whole; the machine
 in brackets after it outlasts the cheap figures (the jobs, the forecast, the cache's cash
-half, the rate) and gives way before the cache, the bill and the meter. The branch goes
-before any number does, and comes back whenever the numbers shrink enough to make room.
+half, the rate) and gives way before the cache, the bill and the meter.
 
 Until 2026-09-09 the name and the model were the left half of this row and every figure
 sat in one dotted run beside them; the crew word, the `Σ +128 −14` session delta, the
@@ -1339,8 +1337,7 @@ Under 60 columns, eight things change shape:
    *Tasks on a phone* on the tasks page.
 
 On top of those eight: preview blocks under a pending call are capped at 4 rows instead of
-12; there is no task rail column (that already went at 100); and the legend has already
-dropped its branch (that went at 70).
+12; there is no task rail column (that already went at 100).
 
 ## What the top line of home drops when it is narrow — the clock goes first
 
@@ -1385,7 +1382,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | what | threshold |
 | --- | --- |
 | the status row's right edge may wrap to its own row | below width 100 |
-| the legend drops the branch outright, and the ledger drops its compaction forecast | below width 70 |
+| the ledger drops its compaction forecast | below width 70 |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `alt+t` overlays the roster instead | below width 100 |

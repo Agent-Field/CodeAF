@@ -490,7 +490,7 @@ in the older spelling.
 
 The name is written by a model, once, and appears on the tab strip at the top of the frame
 and on the breadcrumb bar. It is not on the line above the message box: that line is the
-model's (`gpt-4.1-mini: high`), and the name came off it on 2026-09-17 because a title
+model's (`gpt-4.1-mini:high`), and the name came off it on 2026-09-17 because a title
 takes the room the numbers need.
 
 **It starts with your first message.** The small model on the `title` role is shown the
@@ -540,8 +540,8 @@ survives, so `fix: nil map crash` is kept whole.
 **A refused name is not a blank row.** The conversation simply has no name of its own, and
 the lists that draw a name — home, `/resume`, `recent sessions` — fall back to **your own
 opening words**, the first line you typed, exactly as they do for a conversation whose
-background naming has not finished yet. The legend above the message box shows only the branch
-until a real name lands.
+background naming has not finished yet. The legend above the message box shows the model, effort and approvals; neither the
+conversation name nor the git branch appears there.
 
 **The ones already named badly heal themselves.** A transcript or a folder that was written
 down under the instruction is read back as having no name at all, and the folder's row gets

@@ -2431,7 +2431,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	if !a.homeDoorOpen() || !a.homeDoorShowing() {
 		t.Fatal("the door is shut on a machine whose only conversation is this one")
 	}
-	if got := a.footHint(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q on a one-conversation machine", got)
 	}
 	a.key(key(" "))
@@ -2447,7 +2447,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	// The row wears its title cased the way every row does ([homeName]), so
 	// the look is case-blind: the claim is that the conversation is there.
 	text := strings.ToLower(homeText(a))
-	for _, want := range []string{"alpha", "the only one", homeFootWord} {
+	for _, want := range []string{strings.ToLower(ansi.Cut(lab.workspace("alpha"), 0, 12)), "the only one", homeFootWord} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
 		}
@@ -2466,7 +2466,7 @@ func TestTheDoorIsOpenOnAMachineThatHoldsNothing(t *testing.T) {
 	if !a.homeDoorOpen() || !a.homeDoorShowing() {
 		t.Fatal("the door is shut on an empty machine")
 	}
-	if got := a.footHint(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q on an empty machine", got)
 	}
 	a.key(key(" "))
@@ -2568,7 +2568,7 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 	// The row wears the title the way every row does ([homeName] cases it), so
 	// the comparison is case-blind: the claim is that the title is there.
 	text := strings.ToLower(homeText(a))
-	for _, want := range []string{"alpha", "first thing"} {
+	for _, want := range []string{strings.ToLower(ansi.Cut(alpha, 0, 12)), "first thing"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home opened from a fresh conversation does not list it (%q):\n%s", want, text)
 		}
@@ -2731,7 +2731,7 @@ func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	if !a.homeDoorShowing() {
 		t.Fatal("the door is not advertised at rest")
 	}
-	if got := a.footHint(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q", got)
 	}
 	frame, _, _ := a.frame()

@@ -157,8 +157,8 @@ func TestTheNarrowLegendStillNamesTheCommandsDoor(t *testing.T) {
 	if line := plain(a.legend(hudTight - 1)); strings.Contains(line, "master") {
 		t.Fatalf("the tight legend kept the branch: %q", line)
 	}
-	if line := plain(a.legend(hudTight)); !strings.Contains(line, "master") {
-		t.Fatalf("the legend lost the branch at a width that has room for it: %q", line)
+	if line := plain(a.legend(hudTight)); strings.Contains(line, "master") {
+		t.Fatalf("the legend kept the branch at a width that has room for it: %q", line)
 	}
 }
 

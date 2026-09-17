@@ -281,7 +281,7 @@ The rule over a task page's message box is the same seam a conversation has over
 box, with the task's facts on it and the way out where the conversation's name would be:
 
 ```
-─ room · esc/←← main · task glm-5.2 (friendli): high · ◇ on its own ──── ↑↓ history ─
+─ room · esc/←← main · task glm-5.2 (friendli):high · ◇ on its own ──── ↑↓ history ─
 › steer the node
 ```
 
