@@ -269,6 +269,15 @@ const (
 	laneNone   = -1
 	laneAutoAt = -2
 	laneRoutAt = -3
+	// laneDefaultAt is the last row inside the `openrouter` fold: no machine
+	// named, the router's own default answering. It is a row among the machines
+	// rather than a word beside them because it is the same KIND of choice —
+	// "serve this from here" — and a person picking one down that list should
+	// not have to leave it to pick the one that declines to pick.
+	//
+	// Its cells are empty, and honestly so: nothing has been measured about
+	// "whatever the router feels like", because it is not one machine.
+	laneDefaultAt = -4
 )
 
 // relist rebuilds the drawn rows from the hits and the fold. It is called
@@ -298,6 +307,7 @@ func (p *picker) relist() {
 		for i := range p.lanes {
 			p.list = append(p.list, pickRow{hit: at, lane: i})
 		}
+		p.list = append(p.list, pickRow{hit: at, lane: laneDefaultAt})
 	}
 }
 
@@ -746,7 +756,11 @@ func (p *picker) unfoldHere() bool {
 	// The key means the same thing at both depths — show me what is inside this
 	// — which is the only way a tree is learnable from one press.
 	if row.lane == laneRoutAt {
-		if p.machines || len(p.lanes) == 0 {
+		// IT OPENS WITH NOTHING MEASURED TOO. The `default` row is always in
+		// there, and the line saying why the machines are missing is in there
+		// with it ([picker.lineUnder]) — which is the only place a person
+		// looking for machines will go to find out.
+		if p.machines {
 			return false
 		}
 		p.machines = true
@@ -854,7 +868,10 @@ func (p *picker) foldHere() bool {
 func (p *picker) cursorToMachine() {
 	land := -1
 	for at, row := range p.list {
-		if row.lane < 0 || p.all[p.hits[row.hit]].ID != p.unfold {
+		// A MACHINE, OR THE ROW THAT DECLINES TO NAME ONE. With nothing measured
+		// the fold holds only `default`, and walking in has to land somewhere
+		// that is inside it.
+		if (row.lane < 0 && row.lane != laneDefaultAt) || p.all[p.hits[row.hit]].ID != p.unfold {
 			continue
 		}
 		if land < 0 {
@@ -1692,8 +1709,13 @@ func (p *picker) marked(at int) bool {
 		return false
 	case row.lane == laneAutoAt:
 		return p.force == "" && !strings.EqualFold(p.pin, config.LaneOpenRouter)
-	case row.lane == laneRoutAt:
+	case row.lane == laneDefaultAt:
 		return strings.EqualFold(p.pin, config.LaneOpenRouter)
+	case row.lane == laneRoutAt:
+		// THE CONTAINER WEARS THE MARK ONLY WHILE IT IS SHUT. Open, the row
+		// that holds this answer is visible and wears it itself; marking both
+		// would draw one answer twice.
+		return !p.machines && strings.EqualFold(p.pin, config.LaneOpenRouter)
 	}
 	return p.force != "" && strings.EqualFold(p.force, p.lanes[row.lane].Name)
 }
@@ -1770,10 +1792,16 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		}
 		return rowHalves(rowPlan{primary: "  auto", fields: fields}, width, 0)
 	case laneRoutAt:
-		return rowHalves(rowPlan{
-			primary: "  openrouter",
-			fields:  []rowField{rowSay(laneRouterNote)},
-		}, width, 0)
+		// NO SENTENCE ON THIS ROW. It said `default routing`, which is the
+		// answer the `default` row inside it now carries — and a container that
+		// describes one of the things it contains reads like a third choice.
+		return rowHalves(rowPlan{primary: "  openrouter"}, width, 0)
+	case laneDefaultAt:
+		label := strings.Repeat(" ", laneIndent-2) + laneDefaultWord
+		if fit := p.laneFit(width); fit.drawn() {
+			return label, fit.row(make([]string, len(laneColumns)))
+		}
+		return label, ""
 	}
 	// A MACHINE SITS UNDER `openrouter`, indented past it, because it is one of
 	// the machines that row routes to ([picker.machines] says why the list
@@ -1807,9 +1835,14 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 // does not make. A mark that is wrong on the default install is worse than no
 // mark, and the sentence beside each row says what it does in words.
 
-// laneRouterNote is the `openrouter` row's sentence: what this build did before
-// it held an opinion, which is what the row still asks for.
-const laneRouterNote = "default routing"
+// laneDefaultWord is the row inside the `openrouter` fold that names no machine
+// — what this build did before it held an opinion, and what it still does when
+// nobody has asked for anything.
+//
+// IT IS A WORD AND NOT A SENTENCE because it stands in a list of machines and
+// is read as one of them. The row it used to be — `openrouter · default
+// routing` — described the container instead of the choice.
+const laneDefaultWord = "default"
 
 // laneAutoSay is what the `auto` row may honestly claim, as the routing row in
 // force decides it: the sentence saying what leaving the choosing alone DOES,
@@ -1917,7 +1950,10 @@ func (p *picker) lineUnder(at int) string {
 	if at < 0 || at >= len(p.list) {
 		return ""
 	}
-	if p.list[at].lane == laneAutoAt && len(p.lanes) == 0 {
+	// IT IS UNDER `openrouter` AND INSIDE ITS OPEN FOLD, which is where somebody
+	// went looking: the machines are that row's, so their absence is that row's
+	// to explain, and it stands exactly where they would.
+	if p.list[at].lane == laneRoutAt && p.machines && len(p.lanes) == 0 {
 		return laneUnmeasured
 	}
 	return ""

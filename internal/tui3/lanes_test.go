@@ -138,7 +138,7 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	screen := plain(frame(a))
 	for _, want := range []string{
 		"auto", laneAutoNote,
-		"openrouter", laneRouterNote,
+		"openrouter", laneDefaultWord,
 		// The machines are a TABLE now, under their own heading, so the unit is
 		// on the head and the cell carries the figure alone (modeltable.go).
 		laneHead, "first", "t/s", "$/M", "note", "up",
@@ -316,11 +316,17 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 	if a.pick.unfold != flash {
 		t.Fatal("→ on a model nothing is believed about opened nothing")
 	}
+	// THE LINE SAYING WHY THERE ARE NO MACHINES IS INSIDE `openrouter`, where
+	// the machines would be ([picker.lineUnder]) — and that row opens even with
+	// nothing measured, because `default` is always in it.
 	screen := plain(frame(a))
-	for _, want := range []string{"auto", laneUnmeasured, "openrouter"} {
+	for _, want := range []string{"auto", "openrouter"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the unmeasured fold does not say %q:\n%s", want, screen)
 		}
+	}
+	if strings.Contains(screen, laneUnmeasured) {
+		t.Fatalf("the line about missing machines is drawn before anybody opened them:\n%s", screen)
 	}
 	for _, forbidden := range []string{"t/s", "▲", "%"} {
 		if strings.Contains(screen, forbidden) {
@@ -333,10 +339,22 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 	if wantedCount(sheet, flash) <= asked {
 		t.Fatalf("the unfold did not ask the beat for %s's sheet: %v", flash, sheet.wanted)
 	}
-	// And the two answers are real: enter on openrouter writes it.
-	drive(t, a, key("down"), key("enter"))
+	// AND `openrouter` OPENS EVEN WITH NOTHING MEASURED, onto the line that says
+	// why and the `default` row that is always in there.
+	drive(t, a, key("down"), key("right"))
+	opened := plain(frame(a))
+	for _, want := range []string{laneUnmeasured, laneDefaultWord} {
+		if !strings.Contains(opened, want) {
+			t.Fatalf("the opened fold does not say %q:\n%s", want, opened)
+		}
+	}
+	if row, on := a.pick.laneUnder(); !on || row.lane != laneDefaultAt {
+		t.Fatalf("→ did not walk onto default: %+v (on=%v)", row, on)
+	}
+	// And the answer is real: enter on it writes the router's own routing.
+	drive(t, a, key("enter"))
 	if got := config.LaneAt(a.profileDir, talkSlot); got != config.LaneOpenRouter {
-		t.Fatalf("enter on openrouter wrote %q", got)
+		t.Fatalf("enter on default wrote %q", got)
 	}
 }
 
@@ -610,7 +628,7 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 		"auto", laneAutoNote,
 		"cloudflare", "0.8s", "no tools",
 		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
-		"openrouter", laneRouterNote,
+		"openrouter", laneDefaultWord,
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the unfolded settings picker never said %q:\n%s", want, screen)
@@ -785,9 +803,14 @@ func TestTheSettingsPanelDrawsNoLanesWhenNothingIsKnown(t *testing.T) {
 	if n := len(a.sheet.sel.pick.lanes); n != 0 {
 		t.Fatalf("a ledger that believes nothing put %d machines in the fold", n)
 	}
+	// The line saying why lives inside `openrouter`, where the machines would
+	// be, and that row opens with nothing measured ([picker.lineUnder]).
+	drive(t, a, key("down"), key("right"))
 	screen := strings.Join(sheetLabels(a), "\n")
-	if !strings.Contains(screen, laneUnmeasured) {
-		t.Fatalf("the empty fold does not say why it is empty:\n%s", screen)
+	for _, want := range []string{laneUnmeasured, laneDefaultWord} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the empty fold does not say %q:\n%s", want, screen)
+		}
 	}
 }
 

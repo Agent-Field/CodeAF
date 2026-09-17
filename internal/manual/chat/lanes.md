@@ -283,8 +283,9 @@ terminal and a task running overnight therefore ask for your pinned provider too
 
 ## A model with no providers measured yet — the model picker says no machine has been measured for this model, and no provider list opens
 
-**A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
-line where the providers would be:
+**A model nobody has measured still opens**, onto `auto` and `openrouter` — and
+`openrouter` opens too, because the `default` row is always inside it. Where the machines
+would be there is one line:
 `no provider has been measured for this model yet — providers show up after its first answer`.
 Opening it asks for that model's list of providers in the background. With the routing
 row at `off` nothing opens at all.

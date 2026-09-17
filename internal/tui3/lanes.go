@@ -709,7 +709,10 @@ func (a *app) applyLaneChoice(model string, row pickRow, lanes []laneView) {
 	switch {
 	case row.lane == laneAutoAt:
 		a.clearLanePin(model)
-	case row.lane == laneRoutAt:
+	case row.lane == laneRoutAt, row.lane == laneDefaultAt:
+		// THE CONTAINER AND THE ROW INSIDE IT WRITE THE SAME THING, which is
+		// what makes `enter` on `openrouter` a shortcut rather than a fourth
+		// answer: it is the same choice reached one press earlier.
 		a.setLaneRouterOnly(model)
 	case row.lane >= 0 && row.lane < len(lanes):
 		if name := lanes[row.lane].Name; strings.EqualFold(laneInForce(model).name, name) {
