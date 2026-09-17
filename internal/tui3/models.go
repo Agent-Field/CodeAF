@@ -767,20 +767,12 @@ func modelFields(model Model, pin, routing string) []rowField {
 	// and the two shapes rank the same facts the same way. Each spells its own
 	// side, because a tail has no head to spell it ([ModalityWord]).
 	//
-	// AND THE TAIL LEAVES `text` OUT WHERE THE CELL PUTS IT IN, which is not two
-	// vocabularies but one reading asked two ways ([modalitySay]'s withText). A
-	// CELL has to be true of every row under its head, so a blank one beneath
-	// `inputs` would read as "nothing" rather than as "text, like everything
-	// else here". A TAIL is a ranked list of the facts that TELL ROWS APART —
-	// that is the whole of rowfit.go's design — and `inputs text · outputs text`
-	// is the same nine words on five hundred rows, spending the budget the
-	// window and the price are queueing for.
 	inputs, outputs := rowField{}, rowField{}
-	if said := modalitySay(model.Input, modalityOrderIn, false); said != "" {
-		inputs = rowSay(modalityInputsLead + " " + said)
+	if facts.inputs != "" {
+		inputs = rowSay(modalityInputsLead + " " + facts.inputs)
 	}
-	if said := modalitySay(model.Output, modalityOrderOut, false); said != "" {
-		outputs = rowSay(modalityOutputsLead + " " + said)
+	if facts.outputs != "" {
+		outputs = rowSay(modalityOutputsLead + " " + facts.outputs)
 	}
 	return []rowField{
 		lane,
@@ -828,11 +820,11 @@ type modelFacts struct {
 	rate string
 	// elo is the arena score as a bare number, `1424`, with no `elo ` on it.
 	elo string
-	// inputs and outputs are everything the model takes in and gives back, in
-	// the catalog's own nouns and with `text` among them: `text image file`,
-	// `text`. They are the two facts here that are already words rather than
-	// figures, and the two that a head can only name by side — which is why
-	// they are a pair rather than one fact ([modalityInputs], [modalityOutputs]).
+	// inputs and outputs are what the model takes in and gives back BEYOND text,
+	// in the catalog's own nouns: `image file`, `speech`. They are the two facts
+	// here that are already words rather than figures, and the two that a head
+	// can only name by side — which is why they are a pair rather than one fact
+	// ([modalityInputs], [modalityOutputs]).
 	inputs, outputs string
 }
 
@@ -933,37 +925,36 @@ func (f modelFacts) eloWord() string {
 // order would put the same fact in a different place on three neighbouring rows,
 // which is the exact defect the table was built to end.
 //
-// TEXT LEADS BOTH because it is true of nearly every row and a list that starts
-// somewhere else on some rows is a list the eye cannot run down. After it, the
-// order is what a person is shopping for, commonest first: sight before sound
-// before video, and attachments last because a model that takes a file usually
-// takes a picture too.
+// TEXT IS NOT IN EITHER LIST. Every model on every list here reads and writes
+// it — that is what makes them models you can talk to — so the word would be the
+// same five cells on five hundred rows, and a column is as wide as its widest
+// row. It was tried the other way for one wave and taken back out: what the
+// owner wanted from a cell is what the model can do BEYOND the ordinary, and
+// `text` on every row is the ordinary.
+//
+// The order is what a person is shopping for, commonest first: sight before
+// sound before video, and attachments last because a model that takes a file
+// usually takes a picture too.
 var (
-	modalityOrderIn  = []string{"text", "image", "audio", "video", "file"}
-	modalityOrderOut = []string{"text", "image", "speech", "audio", "music", "video"}
+	modalityOrderIn  = []string{"image", "audio", "video", "file"}
+	modalityOrderOut = []string{"image", "speech", "audio", "music", "video"}
 )
 
-// modalityInputs is everything a model takes in: "text image file".
-func modalityInputs(input []string) string { return modalitySay(input, modalityOrderIn, true) }
+// modalityInputs is what a model takes in beyond text: "image file".
+func modalityInputs(input []string) string { return modalitySay(input, modalityOrderIn) }
 
-// modalityOutputs is everything it gives back: "text", "image".
-func modalityOutputs(output []string) string { return modalitySay(output, modalityOrderOut, true) }
+// modalityOutputs is what it gives back beyond text: "image", "speech".
+func modalityOutputs(output []string) string { return modalitySay(output, modalityOrderOut) }
 
 // modalitySay is one side of a model in the catalog's own words, in the given
-// order.
+// order, with `text` left out of both by not being in either order.
 //
-// TEXT IS SAID AND NOT ASSUMED. It was left out once, on the argument that a
-// word true of five hundred rows is furniture — and the cell that argument
-// produced was a BLANK one under a head reading `inputs`, which does not read as
-// "text, like everything else here", it reads as "nothing". A column has to be
-// true of every row it is drawn for, and the cheapest way to be true is to say
-// the word.
-//
-// A ROW THAT PUBLISHED NOTHING STILL SAYS `text`, which is the one silence law
-// written where a person can see it: an unpublished modality list means
-// text-in/text-out and nothing more (docs/MULTIMODAL.md Decision 6), and that is
-// what [readsText] and [answersText] already act on. Drawing the blank instead
-// would leave the reader to guess at a rule the code is following anyway.
+// THE EMPTINESS LAW DECIDES WHAT IS SAID: a plain text chat model — text in,
+// text out, the overwhelming majority of every list — says NOTHING here, and a
+// row that published nothing says nothing either, because silence is
+// text-in/text-out by the one silence law (docs/MULTIMODAL.md Decision 6) and
+// that is exactly the case that earns no words. What a cell is for is the thing
+// the model can do BEYOND holding a conversation.
 //
 // A WORD THIS BUILD HAS NEVER HEARD OF IS STILL SAID, after the ones it knows
 // and in sorted order so two rows carrying it agree. The catalog publishes
@@ -971,33 +962,22 @@ func modalityOutputs(output []string) string { return modalitySay(output, modali
 // else tomorrow; a surface that drew only the words it was compiled with would
 // answer "text in, text out" for a whole family of models, which is the one
 // answer that cannot be told from the truth.
-//
-// withText is false for the one caller that is writing a SENTENCE about why a
-// model cannot hold a conversation ([cannotChatBecause]): there the non-text
-// half is the whole reason, and "it answers with text image" says the opposite
-// of what the refusal means.
-func modalitySay(modalities []string, order []string, withText bool) string {
+func modalitySay(modalities []string, order []string) string {
 	said := make([]string, 0, len(modalities))
 	for _, want := range order {
-		if want == "text" && !withText {
-			continue
-		}
 		if hasModality(modalities, want) {
 			said = append(said, want)
 		}
 	}
 	rest := make([]string, 0, len(modalities))
 	for _, modality := range modalities {
-		if modality == "" || hasModality(order, modality) {
+		if modality == "" || modality == "text" || hasModality(order, modality) {
 			continue
 		}
 		rest = append(rest, modality)
 	}
 	sort.Strings(rest)
 	said = append(said, slices.Compact(rest)...)
-	if len(said) == 0 && withText && len(modalities) == 0 {
-		return "text"
-	}
 	return strings.Join(said, modalityJoin)
 }
 
@@ -1016,21 +996,14 @@ const modalityJoin = " "
 // and the cell is the words alone; in a ranked tail, on a phone, and on
 // `codeaf models` there is no head, so the tail spells the side out.
 //
-// AND IT LEAVES `text` OUT, which the cell puts in. A tail carries the facts
-// that tell one row from another and drops what it cannot fit, so a clause true
-// of every model on the list is a clause spending cells the window and the price
-// are queueing for — and a plain chat model, which is most of them, comes back
-// with nothing to say here and says nothing. [modelFields] has the same rule
-// beside the same argument.
-//
 // It is exported for `codeaf models`, which draws the same tail beside the same
 // facts (cmd/codeaf's models.go). One spelling, in one place.
 func ModalityWord(input, output []string) string {
 	said := make([]string, 0, 2)
-	if inputs := modalitySay(input, modalityOrderIn, false); inputs != "" {
+	if inputs := modalityInputs(input); inputs != "" {
 		said = append(said, modalityInputsLead+" "+inputs)
 	}
-	if outputs := modalitySay(output, modalityOrderOut, false); outputs != "" {
+	if outputs := modalityOutputs(output); outputs != "" {
 		said = append(said, modalityOutputsLead+" "+outputs)
 	}
 	return strings.Join(said, rowSep)

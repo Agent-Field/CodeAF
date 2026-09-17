@@ -1921,40 +1921,29 @@ func (a *app) cycleReasoning() {
 	a.keepLevel(chosen.ID, next)
 }
 
-// pickerHint is the placeholder in the empty filter box. It is the only place
-// this overlay explains itself, and it costs no row of its own.
+// pickerHint is the placeholder in the empty filter box, and it names the box
+// and the one key that is not about walking the list.
 //
-// THE LINE IS BUDGETED. A hint cut off at "e…" is a hint that has to be guessed
-// at, so it is the same RANKED TAIL every row is (rowfit.go): the keys go from
-// the right, whole, and the box never draws a key spelled `es…`. Which is why
-// the written order is also the order they are given up in — `filter` is what
-// the box IS and survives every width, and the two universal verbs at the end
-// are the two a person already knows without being told: enter commits and esc
-// leaves, everywhere on this surface and in every other program.
+// THE KEYS MOVED TO THE FOOT, and the reason they had to is that a placeholder
+// is the one line on the screen that DISAPPEARS THE MOMENT SOMEBODY USES IT.
+// `→ providers` and `ctrl+t effort` lived here, so they were gone by the first
+// typed character — exactly when a person has found their model and wants its
+// machines — and at home they were worse than gone: they named two keys that
+// door did not answer at all (homedraft.go now arms the fold and holds the
+// rung). The foot is a line that stays, follows the cursor, and can say what
+// each key does WHERE IT DOES IT ([picker.keysHint]).
 //
-// So on a sixty-cell frame, with about fifty-eight cells in the box, the line
-// is WHOLE where the door offers no refresh, and where it does the ladder now
-// stops one key earlier: `filter · ↑↓ · → providers · ctrl+t effort`, with the
-// refresh key named from about sixty-four columns up.
-//
-// THAT IS WHAT THE WORD COST, and it is written down rather than worked around.
-// The fold's key used to read `→ lanes`; the owner's ruling on the vocabulary
-// (issue #1023) made it `→ providers`, four cells wider, and four cells is
-// exactly what `ctrl+r refresh` had bought from `enter · esc`. Spelling the
-// refresh key `ctrl+r` alone would fit it back in and break the older law in
-// this same comment — the keys go WHOLE, and a box that says `ctrl+r` with no
-// word is a box teaching nobody what the key does. A narrow frame gives up the
-// key it can no longer say properly, which is the ladder working.
-const pickerHint = "filter · ↑↓ · → providers · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
+// WHAT IS LEFT IS WHAT THE FOOT CANNOT SAY. `filter` is what the box IS, which
+// no foot can tell you about an empty box, and the refresh key belongs to the
+// LIST rather than to the row the cursor is on — the foot is cursor-shaped and
+// this key is not.
+const pickerHint = "filter · " + refreshModelsHint
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
 // test that joins them and compares against [pickerHint] is what keeps the two
 // spellings one (the one-source-of-truth law: a constant read by a person and a
 // list read by the fitter would otherwise drift).
-var pickerHintFields = []rowField{
-	rowSay("filter"), rowSay("↑↓"), rowSay("→ providers"),
-	rowSay("ctrl+t effort"), rowSay(refreshModelsHint), rowSay("enter"), rowSay("esc"),
-}
+var pickerHintFields = []rowField{rowSay("filter"), rowSay(refreshModelsHint)}
 
 // pickerHintFieldsBare is the line for a list that cannot be refreshed: the
 // same fields with the refresh key taken out, since a key that does nothing is
@@ -1975,17 +1964,26 @@ func pickerHintAt(room int, refresh bool) string {
 // list answers it and not while a fetch is already out.
 func (p *picker) hintAt(room int) string { return pickerHintAt(room, p.offersRefresh()) }
 
-// The hint slot's words while this list is open, by where the cursor is
-// ([picker.keysHint]). They are written out whole rather than assembled, so the
-// manual and the tests quote what the frame draws.
+// effortKeyWord is the chord that walks the rung of the model under the cursor,
+// named in the foot since [pickerHint] stopped naming it in the box.
+const effortKeyWord = "ctrl+t effort"
+
+// The hint slot's words while this list is open, by where the cursor is. They
+// are named constants because the manual and the tests quote them, and they are
+// built from the pieces [picker.keysParts] returns so the two cannot drift.
 const (
 	// pickerKeysModel is a model's row on a list that folds: `→` opens the
-	// providers behind it and walks in, enter switches.
-	pickerKeysModel = "→ providers · enter switch · esc"
+	// providers behind it and walks in, `ctrl+t` dials how hard it thinks, and
+	// enter switches.
+	//
+	// THE EFFORT KEY IS NAMED HERE BECAUSE THE BOX STOPPED NAMING IT
+	// ([pickerHint]), and this is the row it works on: inside a fold the cursor
+	// is on a machine and `ctrl+t` has no model to dial.
+	pickerKeysModel = "→ providers · " + effortKeyWord + " · enter switch · esc"
 	// pickerKeysModelTab is the same row with the caret somewhere inside what is
 	// typed, where `→` steps over a character instead ([picker.foldKey]) and
 	// only `tab` opens.
-	pickerKeysModelTab = "tab providers · enter switch · esc"
+	pickerKeysModelTab = "tab providers · " + effortKeyWord + " · enter switch · esc"
 	// pickerKeysFold is a row inside an open fold: enter chooses that provider,
 	// `←` walks back out to the model.
 	pickerKeysFold = "enter choose · ← back · esc"
@@ -1999,9 +1997,12 @@ const (
 	pickerKeysUnpin = "enter unpin · ← back · esc"
 	// pickerKeysUnpinTab is that row with characters before the caret.
 	pickerKeysUnpinTab = "enter unpin · tab back · esc"
-	// pickerKeysSwitch is a list with no fold at all — a task's model, an
-	// empty result — where the keys are the two every list has.
-	pickerKeysSwitch = "enter switch · esc"
+	// pickerKeysSwitch is a list with no fold at all and no cursor on anything:
+	// the two keys every list has. pickerKeysSwitchEffort is that list where the
+	// rung can still be dialled, which is every model list a door holds a level
+	// for even when no machine stands behind the row.
+	pickerKeysSwitch       = "enter switch · esc"
+	pickerKeysSwitchEffort = effortKeyWord + " · enter switch · esc"
 )
 
 // keysHint is what the hint slot says this list's keys do RIGHT NOW, read off
@@ -2013,8 +2014,25 @@ const (
 // `→ lanes` was the filter box's placeholder — which vanishes on the first
 // typed character, exactly when a person has found their model and wants its
 // machines. The owner opened /model, pressed `←` and `→`, and asked how anybody
-// changes the provider of a model (2026-09-10).
+// changes the provider of a model (2026-09-10). The placeholder has since given
+// the keys up altogether ([pickerHint]) and this line carries them.
 func (p *picker) keysHint() string {
+	before, enter, after := p.keysParts()
+	return dotted(before, "enter "+enter, after, "esc")
+}
+
+// keysParts is that same reading in its three pieces: whatever is said before
+// enter, the one word that says what enter DOES on the row the cursor is on,
+// and whatever is said after it.
+//
+// IT IS SPLIT BECAUSE THE DOORS END THE SENTENCE DIFFERENTLY. /model switches a
+// conversation and says `enter switch · esc`; home pins the NEXT one and says
+// `enter use it · esc back` around the very same keys ([app.targetPickFoot]).
+// Splicing home's ending onto the finished sentence meant cutting the other
+// ending back off it, which worked on the row it was written for and left
+// `enter choose · ← back · esc · enter use it · esc back` on every row inside a
+// fold.
+func (p *picker) keysParts() (string, string, string) {
 	row, ok := pickRow{}, p.cursor >= 0 && p.cursor < len(p.list)
 	if ok {
 		row = p.list[p.cursor]
@@ -2022,21 +2040,28 @@ func (p *picker) keysHint() string {
 	// AND A MACHINE THAT IS ALREADY THE ANSWER SAYS WHAT ENTER DOES THERE, which
 	// is the one gesture in this fold that is not the same as its neighbours'.
 	unpin := ok && row.lane >= 0 && p.marked(p.cursor)
-	switch {
-	case !ok || p.laneSlot == "":
-		return pickerKeysSwitch
-	case unpin && p.filter.cursor > 0:
-		return pickerKeysUnpinTab
-	case unpin:
-		return pickerKeysUnpin
-	case row.lane != laneNone && p.filter.cursor > 0:
-		return pickerKeysFoldTab
-	case row.lane != laneNone:
-		return pickerKeysFold
-	case p.filter.cursor < len(p.filter.value):
-		return pickerKeysModelTab
+	back := "← back"
+	if p.filter.cursor > 0 {
+		back = "tab back"
 	}
-	return pickerKeysModel
+	open := "→ providers"
+	if p.filter.cursor < len(p.filter.value) {
+		open = "tab providers"
+	}
+	switch {
+	case !ok:
+		return "", "switch", ""
+	case p.laneSlot == "":
+		// A LIST WITH NO FOLD STILL DIALS THE RUNG, because the level is the
+		// door's and not the router's: a task's model list holds one, and the
+		// foot is the only place the key is named.
+		return effortKeyWord, "switch", ""
+	case unpin:
+		return "", "unpin", back
+	case row.lane != laneNone:
+		return "", "choose", back
+	}
+	return dotted(open, effortKeyWord), "switch", ""
 }
 
 // ── the app's side of the overlay ───────────────────────────────────────────
@@ -2205,11 +2230,8 @@ func (a *app) nonChatWarning(id string) string {
 // surface where the modality nouns cannot stand alone. A column says the side
 // in its head and the cell carries `speech`; a sentence in the middle of a
 // conversation has no head over it, so the verb is written out. Both are built
-// from the same two readings ([modalityInputs] and [modalityOutputs]) with
-// `text` left off, so there is no second vocabulary to keep in step — only a
-// second grammar. Text is left off because the NON-TEXT half is the whole
-// reason: "it answers with text image" says the opposite of what a refusal
-// means ([modalitySay]'s withText).
+// from the same two readings ([modalityInputs] and [modalityOutputs]), so there
+// is no second vocabulary to keep in step — only a second grammar.
 //
 // WHICH SIDE IT NAMES IS WHICHEVER SIDE IS THE REASON. A model that answers in
 // speech is refused for what it gives back; a transcriber is refused for what it
@@ -2218,10 +2240,10 @@ func (a *app) nonChatWarning(id string) string {
 // refusal is the bare sentence, because a reason nobody published is not a
 // reason this surface may invent.
 func cannotChatBecause(model Model) string {
-	if makes := modalitySay(model.Output, modalityOrderOut, false); makes != "" {
+	if makes := modalityOutputs(model.Output); makes != "" {
 		return "it answers with " + makes
 	}
-	if reads := modalitySay(model.Input, modalityOrderIn, false); reads != "" && !readsText(model) {
+	if reads := modalityInputs(model.Input); reads != "" && !readsText(model) {
 		return "it reads " + reads + ", not text"
 	}
 	return ""

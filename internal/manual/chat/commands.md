@@ -907,12 +907,17 @@ typed confirms rather than changes. Emptying the filter with ctrl+u puts it back
 The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc
+filter · ctrl+r refresh
 ```
 
-and the hint slot above the box follows the cursor: `→ providers · enter switch · esc` on a
-model, `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc`
-on the provider you are already pinned to, where the same key takes the pin off again.
+**The keys are named on the foot and not in the box**, because a placeholder disappears the
+moment you type — which is exactly when you have found your model and want its providers.
+The foot follows the cursor: `→ providers · ctrl+t effort · enter switch · esc` on a model,
+`enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc` on the
+provider you are already pinned to, where the same key takes the pin off again. With typed
+text the arrow would step over, those read `tab providers` and `tab back`. What is left in
+the box is the name of the box and the one key that is about the LIST rather than about the
+row under the cursor.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —

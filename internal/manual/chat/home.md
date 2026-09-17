@@ -1328,8 +1328,17 @@ that is this window's own model. Two doors change it, and they are the same door
 - **`alt+o`**, or **pressing the model's name on that rule**, opens the model list in home's
   own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
   `↑↓` to walk it, `enter` to take the row, `esc` to leave it alone. The foot while it is up
-  reads `↑↓ pick · enter use it · esc back`.
+  follows the cursor and reads `↑↓ pick · → providers · ctrl+t effort · enter use it · esc back`
+  on a model, and `↑↓ pick · enter choose · ← back · esc back` inside an open provider fold.
 - **`/model <slug>`** typed into the box pins it straight away, with no list.
+
+**`→` and `ctrl+t` work here, exactly as they do under `/model`.** `→` or `tab` opens the
+providers behind the model under the cursor and `enter` on one pins it — a provider pin
+belongs to your home rather than to one conversation, so it is as writable from this draft
+as from a live chat. `ctrl+t` walks how hard that model thinks, and what it dials is held on
+the DRAFT: it is spent on the next conversation you start here and touches nothing behind
+home. Both keys named themselves in the filter box for a while and neither answered; they
+are on the foot now, and they answer.
 
 Either way home says, on the line under the box:
 `model · glm-5.3 · for the next conversation you start here`. A pinned model that differs

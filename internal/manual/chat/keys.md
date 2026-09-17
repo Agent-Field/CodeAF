@@ -1479,9 +1479,9 @@ have typed — with anything to step over, they move the caret through the filte
 instead. `tab` always opens and closes. With the providers open, `enter` on one of them pins
 it instead of switching model.
 
-Its placeholder reads exactly `filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc`;
-on a narrow terminal the keys drop from the right, `esc` first. The hint slot follows the
-cursor: `→ providers · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
+Its placeholder reads exactly `filter · ctrl+r refresh` — the keys are on the FOOT, because
+a placeholder vanishes under the first typed character and the foot does not. The hint slot
+follows the cursor: `→ providers · ctrl+t effort · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
 providers, and `enter unpin · ← back · esc` on the provider already pinned, where `enter` takes
 the pin off — with `tab providers` and `tab back` in place of the arrows while there is typed
 text the arrow would step over. Typing while a fold is open filters that model's providers;

@@ -207,8 +207,18 @@ func TestHomeSlashSmokeWalks(t *testing.T) {
 	if !a.target.pick.open {
 		t.Fatal("typing /model on home did not open the model list over the target")
 	}
-	if text := homeText(a); !strings.Contains(text, targetPickWord) {
+	// THE FOOT NAMES THE KEYS THE ROW UNDER THE CURSOR ANSWERS TO, which on a
+	// model row is the fold and the rung as well as the walk and the two ways
+	// out ([app.targetPickFoot]). It used to be one fixed sentence while the
+	// keys lived in the filter box's placeholder — where two of them named
+	// gestures this door did not answer at all.
+	if text := homeText(a); !strings.Contains(text, a.targetPickFoot()) {
 		t.Fatalf("the foot does not name the list's own keys:\n%s", text)
+	}
+	for _, want := range []string{targetPickWalkWord, "→ providers", effortKeyWord, "enter use it", targetPickLeaveWord} {
+		if !strings.Contains(a.targetPickFoot(), want) {
+			t.Fatalf("the foot on a model row does not name %q: %q", want, a.targetPickFoot())
+		}
 	}
 	runCmd(a.key(key("esc")))
 	if a.target.pick.open {

@@ -252,13 +252,7 @@ func TestARowWithNoPriceDrawsBlankCellsAndNotAZero(t *testing.T) {
 	if strings.Contains(free, "$") {
 		t.Fatalf("a row with no published price must draw no figure: %q", free)
 	}
-	if !strings.Contains(free, "262k") || !strings.Contains(free, "text image audio") {
-		t.Fatalf("the row lost the facts it does publish: %q", free)
-	}
-	// AND THE CELL SAYS `text` WHERE THE TAIL LEAVES IT OUT: under a head
-	// reading `inputs`, a blank means "nothing", and every model on this list
-	// takes text.
-	if plain := modelNote(tableCatalog[3]); strings.Contains(plain, "text") {
+	if !strings.Contains(free, "262k") || !strings.Contains(free, "image audio") {
 		t.Fatalf("the row lost the facts it does publish: %q", free)
 	}
 }
@@ -367,7 +361,7 @@ func TestTheTailAndTheTableAreTheSameReadingOfAModel(t *testing.T) {
 		facts.in + "/" + facts.out + " per M",
 		facts.window,
 		"elo " + facts.elo,
-		modalityInputsLead + " " + modalitySay(tableCatalog[0].Input, modalityOrderIn, false),
+		modalityInputsLead + " " + facts.inputs,
 	} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the tail says %q, which does not carry %q", note, want)
@@ -376,12 +370,6 @@ func TestTheTailAndTheTableAreTheSameReadingOfAModel(t *testing.T) {
 	cells := facts.cells()
 	if cells[2] != facts.in || cells[3] != facts.out || cells[6] != facts.elo || cells[7] != facts.inputs {
 		t.Fatalf("the table's cells are not the same reading: %v", cells)
-	}
-	// AND THE ONE PLACE THE TWO SHAPES DELIBERATELY DIFFER IS `text`, which the
-	// cell carries and the tail does not — same reading, asked with withText
-	// either way ([modalitySay]).
-	if cells[7] != "text "+modalitySay(tableCatalog[0].Input, modalityOrderIn, false) {
-		t.Fatalf("the cell has to be the tail's words with text in front: %q", cells[7])
 	}
 }
 

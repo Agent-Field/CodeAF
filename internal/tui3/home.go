@@ -3605,10 +3605,31 @@ func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
 // conversation's — which is what makes "pinned, and different from what this
 // would have used anyway" the honest test ([app.targetModelPinned]).
 func (a *app) applyTargetModel() {
+	a.applyTargetLevels()
 	if !a.targetModelPinned() {
 		return
 	}
 	a.switchModel(strings.TrimSpace(a.target.model), 0)
+}
+
+// applyTargetLevels spends what `ctrl+t` dialled onto the draft's model list
+// ([targetDraft.levels]) on the conversation that has just opened.
+//
+// IT RUNS BEFORE THE MODEL IS SWITCHED AND NOT AFTER, so the rung is already
+// standing when the switch draws the status line — and it runs even where no
+// MODEL was pinned, because dialling the effort of the model you were already
+// going to use is an ordinary thing to do and the pin test would throw it away.
+//
+// The draft keeps them afterwards. A rung is a standing answer about a model
+// the same way a pin is, and home is a place a person comes back to.
+func (a *app) applyTargetLevels() {
+	if a.agent == nil {
+		return
+	}
+	for id, level := range a.target.levels {
+		a.agent.SetReasoningFor(id, level)
+		a.keepLevel(id, level)
+	}
 }
 
 // homeDroppedLine is the enter net over home's own box, and it reports whether
@@ -5345,7 +5366,7 @@ func (a *app) homeHint() string {
 	// router's tail would be two keys that do nothing — which is the one state
 	// this surface may never be in.
 	if a.targetPickShowing() {
-		return targetPickWord
+		return a.targetPickFoot()
 	}
 	hint := a.homeHintWords()
 	if hint == homeFootWord {

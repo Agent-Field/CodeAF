@@ -50,7 +50,9 @@ func pressRefresh(a *app) tea.Cmd { return a.key(key(refreshModelsKey)) }
 func boxLine(t *testing.T, a *app) string {
 	t.Helper()
 	for _, line := range strings.Split(plain(frame(a)), "\n") {
-		if strings.Contains(line, "filter ·") {
+		// The placeholder leads with the box's own name and may be that word
+		// alone now, on a door with no refresh behind it ([pickerHint]).
+		if strings.Contains(line, "filter") {
 			return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "›"))
 		}
 	}
@@ -58,31 +60,31 @@ func boxLine(t *testing.T, a *app) string {
 	return ""
 }
 
-// RULE 2: the key is named on the picker's own lines. The placeholder is the
-// ranked tail — whole keys, from the right, `enter · esc` given up first — and a
-// filter that matches nothing offers the newest list.
+// RULE 2: the key is named on the picker's own lines — the placeholder, and a
+// filter that matches nothing offering the newest list.
 //
-// THE SIXTY-CELL LINE IS ONE KEY SHORTER THAN IT WAS. `→ lanes` became
-// `→ providers` when the owner ruled on the word (issue #1023), and four cells
-// is exactly what `ctrl+r refresh` had bought from `enter · esc` — so the
-// narrowest frame gives the refresh key up rather than say it as `ctrl+r`, which
-// is the ladder's own law about whole keys ([pickerHint] has the whole of it).
-// Both readings are pinned here, because a line that quietly stopped naming the
-// key at EVERY width is exactly the regression this test exists to catch.
+// THE PLACEHOLDER IS DOWN TO TWO THINGS. The walk and the fold and the rung
+// moved to the foot, which is the line that does not vanish under the first
+// typed character ([pickerHint] has the whole of it); what is left is the name
+// of the box and the one key that belongs to the LIST rather than to the row
+// the cursor is on. So it fits whole at sixty cells now, where it used to be
+// one key short.
 func TestTheRefreshKeyIsNamedInThePlaceholderAndTheEmptyList(t *testing.T) {
 	a := refreshApp(t, &fakeRefresh{})
 	typeLine(t, a, "/model")
 
-	want := "filter · ↑↓ · → providers · ctrl+t effort"
-	if got := boxLine(t, a); got != want {
-		t.Fatalf("on sixty cells the box reads %q, want %q", got, want)
+	if got := boxLine(t, a); got != pickerHint {
+		t.Fatalf("on sixty cells the box reads %q, want the whole line %q", got, pickerHint)
 	}
-	if !strings.HasPrefix(pickerHint, want) {
-		t.Fatalf("the sixty-cell line %q is not the head of %q", want, pickerHint)
+	if !strings.Contains(pickerHint, refreshModelsHint) {
+		t.Fatalf("the placeholder %q has to name the refresh key", pickerHint)
 	}
 
-	// AND THE KEY IS NAMED THE MOMENT THERE IS ROOM TO SAY IT WHOLE. Eighty
-	// cells is an ordinary terminal, and the whole line fits there.
+	// AND THE KEYS THAT LEFT ARE ON THE FOOT, where they stay while somebody
+	// types (palette.go's [picker.keysHint]).
+	if got := a.hintWord(); !strings.Contains(got, effortKeyWord) {
+		t.Fatalf("the foot does not name the rung key: %q", got)
+	}
 	a.width = 80
 	if got := boxLine(t, a); got != pickerHint {
 		t.Fatalf("on eighty cells the box reads %q, want the whole line %q", got, pickerHint)
@@ -198,11 +200,6 @@ func TestAFailedFetchKeepsTheListAndSaysWhy(t *testing.T) {
 	if after := strings.Join(pickerIDs(a), ","); after != before {
 		t.Fatalf("a failed fetch changed the list: %s → %s", before, after)
 	}
-	// The frame is widened for the reading, because on sixty cells the
-	// placeholder gives the refresh key up to fit `→ providers` whole
-	// ([pickerHint]); what this rule is about is that a FAILED fetch leaves the
-	// key on offer, not how many cells the box has.
-	a.width = 80
 	if !strings.Contains(boxLine(t, a), refreshModelsHint) {
 		t.Fatalf("the key is not offered again: %q", boxLine(t, a))
 	}
