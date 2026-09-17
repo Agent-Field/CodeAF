@@ -1420,6 +1420,16 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 	// with nothing able to continue it has said all it is going to say, and it
 	// is failed with the ending named rather than handed round again for ever.
 	//
+	// AND A RE-DISPATCH THAT BANKED NOTHING NEW IS REFUSED. More room is the
+	// only thing a re-dispatch buys — the grant moves with the attempt now (see
+	// cmd/codeaf's regrantAfterRunningOut) — so a re-dispatch that reaches no
+	// further than the attempt before it has been paid to move and did not, and
+	// it is failed with the refusal named rather than sent round to buy the
+	// same truncated ending again. The count it is measured against is the one
+	// the hand-on release journaled: that row is the record's own answer to
+	// what the attempt before banked, and reading it beats keeping a second
+	// copy on the claim.
+	//
 	// A PASSED DELIVERY GATE SETTLES THE NODE. Running out is a statement about
 	// RESOURCES — the meter reached its bound while the worker was still going —
 	// and a gate pass is a statement about the WORK, taken by reading the result
@@ -1444,6 +1454,15 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 			return
 		}
 		_, recorded := BankedRun(r.graph, node.ID)
+		// A read of the hand-on release that fails answers "nobody could say",
+		// which is the answer that leaves the claim to the rules below.
+		if node.Attempt > 0 {
+			if carried, handed, readErr := r.graph.ReleasedTurnsFor(node.ID); readErr == nil &&
+				handed && recorded > 0 && recorded <= carried {
+				_ = r.graph.Fail(claim, outOfRoomRefusedFailure(result, recorded))
+				return
+			}
+		}
 		if node.Attempt < MaxOverrunRounds && recorded > 0 {
 			_ = r.graph.ReleaseWithRecord(claim, outOfRoomClaimReason(result, recorded), recorded)
 			return

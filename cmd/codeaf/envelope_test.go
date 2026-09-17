@@ -399,4 +399,19 @@ func TestTheEnvelopeNamesItsRunAndCountsItsCallsAndRounds(t *testing.T) {
 	if fields["rounds"] != float64(8) {
 		t.Errorf("rounds = %v, want the 8 rounds of work it bought", fields["rounds"])
 	}
+	// `redispatches` carries its count the same way, and is the one key that is
+	// absent rather than zero when it never happened — a caller of it is asking
+	// whether the run had to send anything round again, and "never" is the key
+	// not being there.
+	if _, present := fields["redispatches"]; present {
+		t.Errorf("redispatches = %v on a run that re-dispatched nothing; the key belongs "+
+			"to the runs it happened to", fields["redispatches"])
+	}
+	fields = envelopeFields(t, buildResultEnvelope(runResult{
+		Run: "0123456789abcdef", Calls: 422, Rounds: 8, Redispatches: 1,
+	}))
+	if fields["redispatches"] != float64(1) {
+		t.Errorf("redispatches = %v, want the one node the run sent round again in place",
+			fields["redispatches"])
+	}
 }

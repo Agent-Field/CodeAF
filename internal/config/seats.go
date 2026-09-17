@@ -65,6 +65,26 @@ const (
 	// difference between "the row you wrote" and "the row your row was split out
 	// of".
 	SeatInherited SeatSource = "inherited"
+	// SeatComputed is a tier row that says `auto` answering from the catalog:
+	// the seat's model computed off the published figures at read time
+	// ([AutoPick]). It is a rung of the crew's own, not the build's default —
+	// the person wrote the row — and it says so because a receipt that called it
+	// `crew` would hide the one fact a reader of the run is checking: the id was
+	// derived, not named.
+	SeatComputed SeatSource = "computed"
+	// SeatTable is a tier row that says `auto` answering from the family's
+	// table row ([autoRow], [pickedModel]) because nothing could be computed —
+	// no catalog, or no pick off it. The id is the preset's own, and the rung
+	// says which kind of answer it was.
+	SeatTable SeatSource = "table"
+	// SeatLearned is a seat computed at the crew's budget under the `learn`
+	// pick ([CrewPickAt]): the catalog's own figures, plus the Model Pool's
+	// measurements and the person's own judged runs carried as a quality
+	// prior. It is a rung of its own, beside [SeatComputed], because the one
+	// fact a reader of a run is checking — was this id derived, and from
+	// what — is a different answer under the two words: the catalog alone,
+	// or the catalog plus what runs measured.
+	SeatLearned SeatSource = "learned"
 	// SeatDefault is this build's choice, for a profile that has never said
 	// anything about models at all.
 	SeatDefault SeatSource = "default"
@@ -244,6 +264,26 @@ func tierSeatUnder(profileDir, family, tier string) Seat {
 			model = defaultTierModel(family, tier)
 		}
 	}
+	// A row that says auto resolves through the one seam both ladders share
+	// ([autoRow]). Only a row somebody WROTE — directly, or through the lineage
+	// — can say it: the default rung names a model id, and a cleared row names
+	// nothing at all.
+	if IsAuto(model) {
+		var preset string
+		model, source, preset = autoRow(profileDir, family, tier)
+		return Seat{Role: tierSeatRole(tier), Model: model, Source: source, Crew: preset}
+	}
+	// AND THE PICK ROW ANSWERS FOR THE SEATS NOBODY NAMED, before the row's
+	// own rung is read: a pick of catalog or learn computes the dial seats at
+	// the crew's preset ([pickedSeat]), and leaves everything it does not
+	// answer — a hand-typed id, a cleared row, the two seats that always read
+	// the table — exactly as it was. A cleared row is a deliberate answer
+	// ("follow the conversation") and no pick unsays it on this surface.
+	if !cleared {
+		if seat, ok := pickedSeat(profileDir, family, tier, model); ok {
+			return seat
+		}
+	}
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}
 }
 
@@ -272,8 +312,12 @@ type Seat struct {
 	From string
 	// Crew is the preset word the profile's five tier rows make — `frugal`,
 	// `balanced`, `max` or `custom` ([CrewAt]) — and is empty unless Source is
-	// [SeatCrew]. It is read rather than stored, exactly as the settings sheet
-	// reads it, so a receipt and the sheet cannot disagree about which crew ran.
+	// [SeatCrew], [SeatInherited], [SeatComputed] or [SeatTable]. It is read
+	// rather than stored, exactly as the settings sheet reads it, so a receipt
+	// and the sheet cannot disagree about which crew ran. On the computed and
+	// table rungs it is the preset the auto row is computed at, read from the
+	// stored rows ([crewPresetUnder]) rather than derived through the resolver,
+	// which would be the seam asking itself.
 	Crew string
 }
 
@@ -313,6 +357,12 @@ func (s Seat) Rung() string {
 		// because a receipt that said only `crew custom` would hide exactly the
 		// substitution this rung exists to report.
 		return s.crewRung() + ", inherited"
+	case SeatComputed:
+		return s.crewRung() + ", computed from the catalog"
+	case SeatLearned:
+		return s.crewRung() + ", learned"
+	case SeatTable:
+		return s.crewRung() + ", table"
 	}
 	return "default"
 }
@@ -411,7 +461,7 @@ func (s Seat) Report() string { return withNotice(s.Line(), s.Notice()) }
 
 // Describe is one seat in a receipt's voice:
 //
-//	work deepseek/deepseek-v4-flash-0731 (crew frugal)
+//	work z-ai/glm-5.3-flash (crew frugal)
 //	plan follows the work model (default)
 //
 // THE EMPTINESS LAW, as the crew row already keeps it: an unfilled plan seat is
@@ -441,7 +491,7 @@ type Seats struct {
 // Sentence is both seats, unlabelled, for a door whose opening lines have a
 // label column of their own:
 //
-//	work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3 (crew frugal)
+//	work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 //
 // ONE SHAPE AND NOT TWO. It would read a little better to collapse a run whose
 // seats came from the same crew into one clause, and it would mean a script
@@ -453,7 +503,7 @@ func (s Seats) Sentence() string {
 
 // Line is the one line a headless run opens with:
 //
-//	models: work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3 (crew frugal)
+//	models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 func (s Seats) Line() string { return modelsLabel + s.Sentence() }
 
 // Notice is the inheritance line for whichever seat was filled by an older row,
@@ -570,9 +620,35 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 	// fallback except silence: a row cleared on purpose says "follow the
 	// conversation", which a headless run has no conversation to answer with,
 	// and it lands on the same bottom rung a profile that said nothing does.
-	model, from, source, _ := crewRow(profileDir, tier)
+	model, from, source, cleared := crewRow(profileDir, tier)
 	if source == "" {
+		// THE PICK ANSWERS BEFORE THE BOTTOM RUNG: an unwritten seat under a
+		// pick of catalog or learn is computed at the crew's preset
+		// ([pickedSeat]), the same answer the conversation reads, and a row
+		// cleared on purpose still falls through — the pick answers for seats
+		// nobody named, and a cleared row is somebody naming emptiness.
+		if !cleared {
+			if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, ""); ok {
+				return seat
+			}
+		}
 		seat.Model, seat.Source = fallback, SeatDefault
+		return seat
+	}
+	// A row that says auto resolves through the one seam both ladders share
+	// ([autoRow]) — on the rung it earned, with the preset it was computed at
+	// carried for the receipt — and never to `auto` and never to empty, which
+	// is what a headless run could do nothing with.
+	if IsAuto(model) {
+		var preset string
+		seat.Model, seat.Source, preset = autoRow(profileDir, CrewSourceAt(profileDir), tier)
+		seat.Crew = preset
+		return seat
+	}
+	// AND BETWEEN THE ROW AND ITS OWN RUNG, the pick: a written row holding
+	// the preset's own table value is the preset answering rather than a pin,
+	// and the pick computes it ([pickedSeat]); a hand-typed id keeps its rung.
+	if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, model); ok {
 		return seat
 	}
 	seat.Model, seat.Source, seat.From, seat.Crew = model, source, from, CrewAt(profileDir)

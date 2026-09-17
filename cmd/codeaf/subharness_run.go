@@ -110,6 +110,7 @@ func runSubharnessCommand(args []string) error {
 	// One seat here — a saved program executes and never plans — climbed on the
 	// same ladder every other headless door climbs, so a profile's crew reaches
 	// this one too (config.ResolveSeats).
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, "")
 	applySeats(&settings, seats)
 	fmt.Fprintln(os.Stderr, seats.Work.Report())

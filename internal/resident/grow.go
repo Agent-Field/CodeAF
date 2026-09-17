@@ -113,6 +113,14 @@ const (
 	// is not a cap and not a count: it is this job's OWN measured pace read
 	// against the clock it is actually running under.
 	CauseOutOfWall = "out-of-wall"
+
+	// CauseSpendShare is the round refused because growth has already spent more
+	// than the requested work itself cost, measured from the moment a gate first
+	// found that work done. It is a bound against the bill rather than against a
+	// count of rounds, and it exists because a count could not stop a run whose
+	// named fix landed at minute eleven from spending the rest of its wall and
+	// most of its bill on growth.
+	CauseSpendShare = "spend-share"
 )
 
 // The refusals in the words a person reads. They are constants because two of
@@ -142,7 +150,18 @@ const (
 	// it was going to end with: a judgement on what it did. So the job stops
 	// growing while there is still time to finish and be judged.
 	RefusedOutOfWall = "there is not enough time left on this run to finish another round of work, so this is handed over while there is still time to check it"
+
+	// The refusal that bounds growth against the bill. Once the requested work
+	// is done, a round that would take the total past twice what that work cost
+	// is refused and the job is handed over: the work the person asked for is
+	// finished, and what is left is growth they did not ask for.
+	RefusedSpendShare = "the requested work is done and growth has already doubled what it cost — handing over what's done"
 )
+
+// growthSpendShare bounds how much a job may spend on growth after its
+// requested work is first found done: one means growth may at most double the
+// bill that got the work done.
+const growthSpendShare = 1.0
 
 // GrowthStopped reports whether a refusal cause is one of the two the governor
 // reaches by READING THE WORLD rather than by counting — the round before this
@@ -652,6 +671,20 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		}
 	}
 
+	// 3b. Share of spend. Once the requested work is first found done, growth is
+	//     bounded against the bill: a round is refused when more than
+	//     [growthSpendShare] times the spend that got the work done has gone on
+	//     growth since. The moment is the delivery gate's own first "done" — a
+	//     pass or a coverage finding — and not this round's, so the rail holds
+	//     across every later round. A job whose gate has never found its core
+	//     work done, and a job with no session to bill, have no anchor and the
+	//     rail does not apply: it refuses nothing it cannot measure.
+	if reach, err := growthShareReached(graph, req); err != nil {
+		return GrowVerdict{Round: round}, err
+	} else if reach {
+		return refuse(CauseSpendShare, RefusedSpendShare)
+	}
+
 	// 4. The only question that can say "there is nothing left to do".
 	//
 	//    IT DOES NOT GET TO REFUSE THE FIRST ROUND AFTER A REVIEW FOUND
@@ -713,6 +746,45 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	}
 
 	return GrowVerdict{Allow: true, Round: round, CoveredDespite: covered, Spent: req.spent}, nil
+}
+
+// growthShareReached answers whether a job has already spent more on growth
+// than [growthSpendShare] times what the requested work cost, measured from the
+// moment a gate first found that work done. The read is the one the daily rail
+// uses — SpendSinceSeq over the errand's session — so the two rails bill the
+// same rows and a run cannot read cheap here and dear there. A job with no gate
+// that found its work done, or with no session to bill, has no anchor and the
+// rail does not apply; a read that fails is returned rather than guessed at.
+func growthShareReached(graph *store.Store, req GrowRequest) (bool, error) {
+	if graph == nil {
+		return false, nil
+	}
+	jobRoot := strings.TrimSpace(req.JobRoot)
+	if jobRoot == "" {
+		jobRoot = req.Node.ID
+	}
+	session := strings.TrimSpace(req.Node.Provenance.SessionID)
+	if session == "" {
+		return false, nil
+	}
+	anchor, _, ok, err := graph.DeliveryGateAnchor(jobRoot)
+	if err != nil || !ok {
+		return false, err
+	}
+	// The share is read against the spend UP TO the anchor: the total billed so
+	// far minus what has been billed since the gate. One query per window, both
+	// off the rail's own read, so the two halves cannot come from two different
+	// readings of the same journal.
+	total, err := graph.SpendSinceSeq(session, 0)
+	if err != nil {
+		return false, err
+	}
+	after, err := graph.SpendSinceSeq(session, anchor)
+	if err != nil {
+		return false, err
+	}
+	before := total.Cost() - after.Cost()
+	return after.Cost() > growthSpendShare*before, nil
 }
 
 // admitGrowth journals a round that actually landed. It is called after the

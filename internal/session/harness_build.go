@@ -1047,8 +1047,9 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 		return "", false, empty
 	}
 	// The design is spent on the person's account like every other auxiliary
-	// call (title.go, guardian.go): it is not a turn, and it is not free.
-	a.addAuxiliaryUsage(response, model, 1)
+	// call (title.go, guardian.go): it is not a turn, and it is not free. And
+	// it names itself a designer, so the row is seated by the designer's tier.
+	a.addAuxiliaryUsageAs(response, model, 1, string(roles.RoleDesigner))
 	// THE REPLY IS NOT THE ROOM'S HISTORY, and this is where it stopped being one.
 	// It used to be journaled here verbatim, which meant a design reopened tomorrow
 	// replayed the JSON envelope the designer had written — the same wall of braces

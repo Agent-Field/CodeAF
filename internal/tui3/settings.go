@@ -378,7 +378,22 @@ var settingUI = map[string]settingMeta{
 	config.KeyCrewSource: {
 		tab: tabProviders, label: "model family", widget: widgetCycle,
 		about: "which models the crew word draws from: open weights, or the whole " +
-			"catalog with closed and frontier models in it. Open is the default.",
+			"catalog with closed and frontier models in it. All is the default.",
+	},
+	// WHERE THE CREW'S MODELS COME FROM, beside the crew word itself. The crew
+	// row says how much to spend and this says where the models for that money
+	// are read from when a class row does not hold a person's own id: the rows
+	// this build measured, or the same budgets recomputed off the catalog on
+	// every read, with or without what the Model Pool and the person's own
+	// judged runs measured. The about is the registry's own hint whole, not its
+	// first sentence, because the three words are the answer and the first
+	// sentence alone would send a person hunting for what catalog means.
+	config.KeyCrewPick: {
+		tab: tabProviders, label: "picked from", widget: widgetCycle,
+		about: "where the crew's models come from. table: the rows we measured. " +
+			"catalog: recomputed from today's published prices and scores at your " +
+			"crew's budget. learn: catalog plus the Model Pool's measurements and " +
+			"your own judged runs.",
 	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
@@ -657,6 +672,24 @@ var settingUI = map[string]settingMeta{
 		about:  "Rich icons normally; plain symbols when your terminal needs them.",
 		widget: widgetCycle,
 	},
+	// The pool row sits with the models it chooses among: the word decides
+	// whether this machine reads the shared measurements and whether its own
+	// runs are sent back, and nothing about the code leaves either way.
+	config.KeyModelPool: {
+		tab: tabProviders, label: "model pool", widget: widgetCycle,
+		about: "codeaf picks your models from the public Model Pool, and your runs " +
+			"improve it. On by default: what leaves is computed, text-free numbers " +
+			"under a per-install nonce, never code, prompts or paths. read uses " +
+			"the pool and sends nothing; off does neither.",
+	},
+	// The key sits under the pool row it guards: a private relay is the same
+	// code under another keypair, and this is where the install is told whose
+	// signature to trust. Blank is the key built into this binary.
+	config.KeyModelPoolPublicKey: {
+		tab: tabProviders, label: "pool key", widget: widgetText,
+		about: "the public key a Model Pool index must be signed with. Blank " +
+			"trusts the key built into codeaf; set it to read a relay of your own.",
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",
@@ -743,7 +776,7 @@ func init() {
 	// same row, the same write, the same live seam onto [app.switchModel] — only
 	// the word above the Models section changed.
 	crew := settingUI[config.KeyCrew]
-	crew.about = crewAbout(config.CrewSourceOpen)
+	crew.about = crewAbout(config.DefaultCrewSource)
 	settingUI[config.KeyCrew] = crew
 
 	talk := settingUI[config.ModelSettingKey(talkSlot)]
@@ -757,8 +790,8 @@ func init() {
 // with its own sentence, then what makes the row read custom. The sentences are
 // [config.CrewLineFor]'s IN THE FAMILY ON SCREEN, so the panel and /crew say the
 // same words about the same thing and neither names an open model above frontier
-// ids. The init-time value is the open family; [sheet.metaFor] re-says it from the
-// profile, which is where a family that is not the default comes from.
+// ids. The init-time value is the default family; [sheet.metaFor] re-says it from
+// the profile, which is where a family that is not the default comes from.
 func crewAbout(source string) string {
 	said := make([]string, 0, len(config.CrewPresets))
 	for _, preset := range config.CrewPresets {
@@ -805,6 +838,10 @@ func modelsSectionOrder() []string {
 		config.KeyRouting,
 		config.KeyPromptProfile,
 		config.KeyCrew,
+		// THE PICK ANSWERS THE CREW WORD'S OWN QUESTION ONE LEVEL DOWN — where
+		// the models for that budget come from — so it reads directly under the
+		// crew word, before the classes it seats.
+		config.KeyCrewPick,
 	}
 	for _, tier := range roles.Tiers {
 		order = append(order, tierSettingKey(tier))
