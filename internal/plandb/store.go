@@ -734,7 +734,16 @@ func (s *Store) Prune(id string) error {
 func (s *Store) Summary() Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return summarize(s.data)
+	result := summarize(s.data)
+	if byProject, byChat, err := s.spendTotals(); err == nil {
+		if len(byProject) > 0 {
+			result.ProjectSpend = byProject
+		}
+		if len(byChat) > 0 {
+			result.ChatSpend = byChat
+		}
+	}
+	return result
 }
 
 // Tasks answers every task in admission order, copies, narrowed to the tags a
@@ -1612,6 +1621,59 @@ func summarize(value state) Summary {
 		}
 	}
 	return result
+}
+
+// AddSpend records one charge against a task: the model that spent it, the
+// role it played, the dollars and the token counts. The ledger is append-only
+// — the summary reads it back and nothing here rewrites it — so the row lives
+// outside the whole-plan rewrite every other writer performs, and its own
+// transaction is all it needs. Nothing in the runtime calls this yet; the
+// wiring that spends is a later change.
+func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outTokens int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.beginWrite()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO spend (task_id, model, role, usd, in_tokens, out_tokens, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		strings.TrimSpace(strings.TrimPrefix(taskID, "t-")), strings.TrimSpace(model), strings.TrimSpace(role),
+		usd, inTokens, outTokens, formatTime(s.now().UTC())); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// spendTotals reads the ledger grouped by the tags of the task each charge
+// was made against: one map keyed by project and one keyed by chat, each
+// carrying the dollars and the call count under that tag. A charge whose task
+// the store does not know is left out — it has no tag to be counted under.
+func (s *Store) spendTotals() (map[string]SpendTotal, map[string]SpendTotal, error) {
+	byProject := map[string]SpendTotal{}
+	byChat := map[string]SpendTotal{}
+	rows, err := s.db.Query(`SELECT t.project, t.chat, SUM(s.usd), COUNT(*)
+		FROM spend s JOIN tasks t ON t.id = s.task_id
+		GROUP BY t.project, t.chat`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var project, chat string
+		var total SpendTotal
+		if err := rows.Scan(&project, &chat, &total.USD, &total.Calls); err != nil {
+			return nil, nil, err
+		}
+		byProject[project] = addSpend(byProject[project], total)
+		byChat[chat] = addSpend(byChat[chat], total)
+	}
+	return byProject, byChat, rows.Err()
+}
+
+// addSpend folds one group's totals into a tag's running total.
+func addSpend(into, add SpendTotal) SpendTotal {
+	return SpendTotal{USD: into.USD + add.USD, Calls: into.Calls + add.Calls}
 }
 
 func cloneTask(task *Task) *Task {
