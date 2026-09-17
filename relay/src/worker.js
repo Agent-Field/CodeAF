@@ -24,9 +24,14 @@ const DOC_KEY = 'index/doc';
 const SIG_KEY = 'index/sig';
 const VERSION_KEY = 'index/version';
 
+// The lock one reader holds while it republishes; it expires by itself so a
+// reader that dies mid-publish does not wedge the rest.
+const LOCK_KEY = 'index/publishing';
+
 export default {
-  // fetch serves the four routes under /pool/.
-  async fetch(request, env) {
+  // fetch serves the four routes under /pool/. The ctx carries waitUntil
+  // when the platform passes one; reads never require it.
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const route = routeOf(url.pathname);
     switch (route) {
@@ -36,8 +41,10 @@ export default {
         }
         return notFound();
       case '/index.json':
+        await refreshInBackground(env, ctx);
         return serveStored(request, env, DOC_KEY, 'application/json');
       case '/index.json.sig':
+        await refreshInBackground(env, ctx);
         return serveStored(request, env, SIG_KEY, 'text/plain');
       case '/healthz':
         if (request.method === 'GET' || request.method === 'HEAD') {
@@ -56,6 +63,14 @@ export default {
   // replaces the published copy. A publication with no cells still publishes:
   // an empty index is a valid index.
   async scheduled(event, env) {
+    await publish(env);
+  },
+};
+
+// publish folds every install's sheets into one document, signs it, and
+// replaces the published copy. The document's version is its publish time
+// in unix seconds, which is what reads compare against PUBLISH_EVERY.
+async function publish(env) {
     const minInstalls = intVar(env, 'MIN_INSTALLS', 3);
     const entries = await loadEntries(env);
     const cells = aggregate(entries, { minInstalls });
@@ -67,8 +82,7 @@ export default {
     await env.POOL.put(DOC_KEY, doc);
     await env.POOL.put(SIG_KEY, sig);
     await env.POOL.put(VERSION_KEY, String(version));
-  },
-};
+}
 
 // routeOf answers the path under /pool/, or null when the request is not ours.
 function routeOf(pathname) {
@@ -168,6 +182,57 @@ async function handleRows(request, env) {
 // quotaKey names one install's per-day quota counter.
 function quotaKey(install, day) {
   return `quota/${install}/${day}`;
+}
+
+// refreshInBackground republishes the document behind a read when the
+// stored version is missing or older than PUBLISH_EVERY seconds. The read
+// itself still answers what is stored, so callers never wait on a publish.
+async function refreshInBackground(env, ctx) {
+  if (!ctx || typeof ctx.waitUntil !== 'function') {
+    return;
+  }
+  const every = intVar(env, 'PUBLISH_EVERY', 3600);
+  const version = await env.POOL.get(VERSION_KEY);
+  if (!isStale(version, every)) {
+    return;
+  }
+  ctx.waitUntil(guardedPublish(env));
+}
+
+// isStale answers whether a stored version needs republishing. The version
+// is the publish time in unix seconds, so staleness is its age in seconds;
+// a missing or unreadable version is always stale.
+function isStale(version, every) {
+  const published = parseInt(version, 10);
+  if (!Number.isFinite(published)) {
+    return true;
+  }
+  return Math.floor(Date.now() / 1000) - published > every;
+}
+
+// guardedPublish publishes once per stale spell: a reader that finds the
+// lock takes it and publishes, and the rest serve what is stored. The
+// in-flight promise serialises readers on this isolate, where the check and
+// the write would otherwise interleave; the KV lock covers the rest.
+let inflight = null;
+
+function guardedPublish(env) {
+  if (inflight !== null) {
+    return inflight;
+  }
+  inflight = (async () => {
+    try {
+      const held = await env.POOL.get(LOCK_KEY);
+      if (held !== null) {
+        return;
+      }
+      await env.POOL.put(LOCK_KEY, '1', { expirationTtl: 60 });
+      await publish(env);
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
 }
 
 // serveStored answers one of the published KV values with its caching headers.
