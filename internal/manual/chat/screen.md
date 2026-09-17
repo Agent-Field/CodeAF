@@ -913,11 +913,14 @@ missing, it is one of these, and each is on purpose:
   word, a retry, a tool running, or idle: no rate — the phase words, or nothing.
 - **The working line is showing.** While the line under the conversation carries the
   phase words, the right edge does not repeat them.
-- **Nothing has answered yet in this window.** The brackets name the machine writing the
-  answer as soon as it has named itself, then the one that answered last — and keep
-  naming it until another answers (until 2026-09-17 they went quiet after ten minutes).
-  A conversation reopened in a new window has no answer behind it yet, so the brackets
-  arrive with its first one.
+- **Nothing has answered yet.** The brackets name the machine writing the answer as soon
+  as it has named itself, then the one that answered last — and keep naming it until
+  another answers (until 2026-09-17 they went quiet after ten minutes). A window that
+  opens onto a conversation the engine host is already holding is told who answered
+  last as it attaches, so the brackets are there before you type. **An engine host on
+  an older build does not say**: the brackets then arrive with the next answer, and the
+  host retires as soon as it is holding nothing, or when you run `codeaf engine --stop
+  --workspace <folder>`; the next window starts one on this build.
 - **The model is on a directly connected service** (a coding plan, a local Ollama): one
   road, no machine to name. Until 2026-09-17 this check misfired: with a directly
   connected service listed first, the line above the box named no machine for ANY model,

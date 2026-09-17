@@ -430,6 +430,17 @@ type Session struct {
 	// a status line may not be able to stall the turn it is measuring.
 	newsfeeds map[*server]*newsFeed
 
+	// lastLane is the last finished answer's sighting this conversation
+	// produced — which machine answered — kept so that a window arriving
+	// AFTER the answer is told who answered (news.go's [Session.watchNews]).
+	// Without it a window attached to a conversation the host had been
+	// holding for an hour drew the model and no machine until the next
+	// answer, which the owner read as the provider having gone missing
+	// (2026-09-17). Rescues in flight and withdrawals are not kept: they are
+	// claims about a moment, and only a landed answer is a fact about the
+	// conversation.
+	lastLane *session.LaneNews
+
 	// lanes is the same arrangement for the harness subscription version 11
 	// added, keyed by lane and then by the surface holding it
 	// (standinglane.go). It is a map by lane rather than one field because

@@ -1554,14 +1554,19 @@ type PhaseWire struct {
 // which one finished it, and whether a rescue went out while somebody was
 // waiting ([session.LaneNews]).
 //
-// It carries no moment at all, for [PhaseWire]'s reason one step further: a
-// sighting is drawn for ten minutes after it was taken (internal/tui3's
-// servedWindow) and the only clock that reading can be taken against is the
-// surface's own, so the surface stamps it when the frame lands. What is lost is
-// the pipe's own latency, which on the road this exists for — a surface and an
-// engine host on one machine — is a fraction of a millisecond against ten
-// minutes.
+// It carries no moment, for [PhaseWire]'s reason one step further: the sheet's
+// `served` row draws a sighting for ten minutes after it was taken
+// (internal/tui3's servedWindow) and the only clock that reading can be taken
+// against is the surface's own, so the surface stamps it when the frame lands.
+// What it carries instead is an AGE, and only when it has one: a sighting
+// replayed to a window that arrived after the answer (news.go's
+// [Session.watchNews]) says how long ago the answer landed, so the surface
+// files it as the old sighting it is. A live sighting's age is nothing, and
+// an older peer that does not know the field reads it as nothing.
 type LaneWire struct {
+	// AgeMS is how long before this frame was sent the answer landed — zero
+	// for a sighting that is crossing as it happens.
+	AgeMS int64 `json:"ageMs,omitempty"`
 	// Model is the model the answer came back on. A news with no model belongs
 	// to nobody and is dropped on both sides of the wire.
 	Model string `json:"model"`
