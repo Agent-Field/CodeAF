@@ -613,7 +613,7 @@ as a command that broke.
 
 ## Which of these cost money, and which need no API key
 
-**These read, need no key and spend nothing**: `why`, `notebook`, `competence`, `services`
+**These read, need no key and spend nothing**: `why`, `telemetry`, `notebook`, `competence`, `services`
 (listing), `doctor`, `logs`, `cache`, `show`, `manual`, `version` and `--help`. They are
 safe in a shell prompt, a CI step or a bug report.
 
@@ -641,6 +641,16 @@ retract|restore`, `services stop` and `devices revoke`. The two that destroy som
 first — `cache clean` wants the word `now` typed out, the same word `/cache clean now`
 wants in the chat, and `rebuild` wants `y` — and `--yes` skips the question on both. The other three act at once, and all three can be undone: a
 retracted belief restores, a stopped service starts again, a revoked device pairs again.
+
+## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
+
+`codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
+they are on and why not when they are off, `show` prints exactly what is waiting to
+leave the machine, and `off` and `on` write the answer to your profile. It reads and
+sends nothing of its own — it is a command about the counts, not a session. The
+notice the first session prints names the bargain before the first byte leaves, and
+`CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
+docs/TELEMETRY.md for the whole contract.
 
 ## Reading a plan by hand — codeaf plan new, show, revise and run
 

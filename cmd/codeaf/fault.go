@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // faultMessage is what the user reads when codeaf could not keep going. It is
@@ -17,7 +19,10 @@ import (
 const faultMessage = "codeaf hit an internal fault and had to stop. Nothing is lost — the graph is durable, and restarting resumes where it left off. Details: %s\n"
 
 // reportFault writes the stack where it is useful and the sentence where it is
-// read, and answers with the process exit code.
+// read, and answers with the process exit code. The anonymous fault count is
+// the last thing it does, once the sentence is out: a flush may spend a second
+// this process no longer has, and the person should not wait on it to read
+// what happened.
 func reportFault(stderr io.Writer, detail string, stack []byte) int {
 	// A fault has no settings to read — it is what is left when the launch did
 	// not get that far — but the profile is an environment pin and is still
@@ -29,7 +34,37 @@ func reportFault(stderr io.Writer, detail string, stack []byte) int {
 	path := chatLogPath(config.ProfileDir())
 	writeFaultLog(path, detail, stack)
 	fmt.Fprintf(stderr, faultMessage, displayPath(path))
+	telemetryFault(stack)
 	return 1
+}
+
+// telemetryFault spools the contract's fault event for a dying process and
+// sends what the spool holds. It is given the stack and nothing else. The
+// library hashes the fingerprint out of the stack's own function names, and
+// `detail` — the panic's text — never crosses this line: a panic value is the
+// person's words, a path on their machine or a fragment of the file they were
+// working in, and the fault event has no property for any of it.
+//
+// SpoolSync and then Flush under a one-second context, the same budget
+// telemetryEnd gives a run's last event, because this is the last thing the
+// process does: there is no later flush to carry the line, and an append that
+// has not landed when the process exits is an event that never happened. The
+// gate is the opt-out ladder's own answer, so a person who turned the counts
+// off gets the same crash report they always got and nothing on the wire.
+func telemetryFault(stack []byte) {
+	if !telemetry.Enabled() {
+		return
+	}
+	session := currentTelemetrySession
+	event := telemetry.FaultEvent(telemetry.Fault{
+		Mode:  string(session.mode),
+		Scope: telemetry.ScopeMain,
+		Stack: stack,
+	}, session.sessionID, time.Now())
+	_ = telemetry.SpoolSync(event)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = telemetry.Flush(ctx)
 }
 
 // chatLogPath is the ONE name of the file this binary parks the standard logger
