@@ -13,6 +13,7 @@
 \usepackage{fancyhdr}
 \usepackage[hidelinks]{hyperref}
 \usepackage{caption}
+\usepackage{float}
 \captionsetup{font=small,labelfont=bf,width=.92\textwidth}
 \usepackage{abstract}
 \renewcommand{\abstractnamefont}{\normalfont\bfseries}
@@ -479,6 +480,55 @@ Figure~\ref{fig:semibandit} and Table~\ref{tab:semibandit} isolate the structure
 
 The truth in these experiments is our own fitted table from one team's tasks, so the size of the gain is the shape of the effect and not a promise for every install. The script \code{figures.py} beside this document reproduces every figure and table from the two CSV files it reads.
 
+\section{System architecture}
+\label{sec:arch}
+
+The statistics of Sections~\ref{sec:pool}--\ref{sec:decide} fix what the system computes; this section fixes where the bytes live, so that the privacy claims can be checked against the deployment rather than taken on trust. Figure~\ref{fig:arch} shows the four components. The design rule is that the relay holds nothing worth stealing and nothing that cannot be rebuilt.
+
+\paragraph{The binary.}
+Everything that touches a task runs inside the install: the catalog read, the posterior, the draw, the run, the judge call, the own sheet and the outbox. The judge is an ordinary model call through the install's own provider credentials; the record it reads never leaves the machines the install already trusts with its work. The outbox is a newline-delimited file under the profile directory; \code{codeaf pool status} prints its pending rows, and a user who wants to see exactly what would be sent can read the file. The loader reads the cached index if one is present and the embedded seed index otherwise, once at start-up; a refresh runs in the background and takes effect at the next start, so a running task's picks never move under it.
+
+\paragraph{The relay.}
+The reference relay is a single edge function with an object store behind it, deployable in minutes on a commodity edge platform (\code{wrangler deploy} from \code{relay/} in the repository; the runbook in that directory is ten steps). It exposes two routes. \code{POST /v1/rows} accepts a batch of rows, validates the schema, folds each row into the sender's triple for its cell and day, and discards the row: the store holds the sheet of Definition~2 and nothing else, one triple per (install, cell, day), so its size is bounded by installs times cells times days and not by traffic, and a row that has been folded cannot be recovered from it. \code{GET /index.json} serves the last published index and its detached signature. An hourly scheduled job merges the sheet, runs the judge-effect, robust-aggregation and drift estimates of Section~5, writes the index, signs it with an Ed25519 key held as a platform secret, and mirrors the pair of files to a public git branch so that they are browsable, diffable and forkable. The function keeps no request logs and stores no network address; the install nonce is the only identity in the store, and rate limiting is by nonce (a cap on rows per day) rather than by address.
+
+\paragraph{Keys and verification.}
+The signing key's public half is compiled into the binary as a list, so a key can be rotated by shipping a binary that carries both; the private half exists only in the platform secret store. Verification is client-side: the binary checks the signature before it reads a single cell, refuses a version lower than the one it holds (Section~5.2's join makes a rollback detectable), and on any failure keeps the cached copy beside an error. Because verification is local, the index can be served from anywhere: the mirror, a static file host, or a directory on disk, which is what the \code{file://} address is for.
+
+\paragraph{Trust and failure.}
+What a compromised relay learns is the sheet: counts, sums and sums of squares of scores per (install nonce, role, model, judge, day, size, door). It learns no task, no code, no prompt, no user, and no address. What a compromised relay can do is publish a bad index, which the signature stops unless the key is also taken; a taken key is retired by shipping the next key, and the min-installs and robust-aggregation rules bound what a flood of fabricated nonces can move in the meantime. What an unreachable relay costs is nothing at all: the cache, then the seed, answer every read, and the outbox waits. Any install can run the same function against its own store and point its \code{CODEAF\_MODEL\_POOL\_URL} and \code{\_SUBMIT\_URL} at it; two relays that receive the same publications produce the same sheet (Proposition~\ref{prop:crdt}), so a private relay and the public one can be federated later by a one-way copy of publications with no reconciliation step.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,
+  box/.style={draw,rounded corners=2pt,inner sep=4pt,font=\small,align=center,minimum height=8mm},
+  store/.style={box,fill=black!6},
+  net/.style={box,fill=blue!6},
+  arr/.style={-{Latex[length=2mm]},thick},
+  lbl/.style={font=\scriptsize,fill=white,inner sep=1.5pt}
+]
+\node[box,text width=3.2cm]   (bin)    at (2.0,0)    {binary\\posterior, draw, run, judge};
+\node[store,text width=3.2cm] (outbox) at (2.0,-1.8) {outbox\\rows, local file};
+\node[store,text width=3.2cm] (cache)  at (2.0,-3.6) {index cache\\and embedded seed};
+\node[net,text width=6.1cm]   (fn)     at (8.2,-1.8) {edge function\\\code{POST /v1/rows}: fold a row into its triple\\\code{GET /index.json}: serve the last index};
+\node[store,text width=6.1cm] (kv)     at (8.2,-4.2) {object store\\one triple per (install, cell, day)};
+\node[net,text width=3.4cm]   (cron)   at (13.7,-4.2) {hourly job\\merge, \eqref{eq:als}, Huber, \eqref{eq:drift}, sign};
+\node[store,text width=3.4cm] (mirror) at (13.7,-1.8) {public mirror\\\code{index.json} + \code{.sig}};
+\node[box,dashed,text width=3.4cm] (secret) at (13.7,-6.0) {platform secret\\Ed25519 private key};
+\draw[arr] (bin) -- (outbox);
+\draw[arr] (cache.west) -- ++(-0.4,0) |- node[lbl,pos=0.25,left]{read at start} (bin.west);
+\draw[arr] (outbox.east) -- node[lbl,above]{https, batched} (fn.west |- outbox.east);
+\draw[arr] (fn) -- node[lbl,right]{fold} (kv);
+\draw[arr] (kv) -- node[lbl,above]{sheet} (cron);
+\draw[arr] (cron) -- node[lbl,right]{signed index} (mirror);
+\draw[arr] (secret) -- (cron);
+\draw[arr] (mirror.west) -- node[lbl,below,pos=0.6]{pull, verify} (fn.east |- mirror.west);
+\draw[arr] ([xshift=-2.2cm]fn.south) |- node[lbl,pos=0.75,above]{cached index} (cache.east);
+\node[font=\scriptsize] at (8.0,0.2) {no request logs, no addresses stored, rows discarded after folding};
+\end{tikzpicture}
+\caption{Deployment. The relay is one edge function, one object store holding only the sheet, and one scheduled signing job; the install verifies every index locally and never blocks on the network. Any of the three network components can be replaced by a static file, a directory, or a self-hosted copy.}
+\label{fig:arch}
+\end{figure}
+
 \section{What the user controls}
 
 \begin{center}\small
@@ -495,7 +545,7 @@ With the pool set to \emph{read}, the own sheet still accrues and enters~\eqref{
 
 \section{Status}
 
-On the branch this document ships with: the catalog crew of Section~\ref{sec:catalog}; the shrinkage blend of the Corollary with $k=30$; the index document, its reader and signed pull; the outbox and the sheet; the judge and its deterministic choice; the settings; the seed index. Specified here and next to land: the judge fixed effects, Huber aggregation and drift estimate in the relay; the hierarchical cap~\eqref{eq:cap} and the moment estimators~\eqref{eq:sigma}--\eqref{eq:tau0}; the Thompson draw with role-level updates and the settled probability $\pi^\ast$; the relay itself. Until the relay exists the pool is the seed index plus each install's own sheet.
+On the branch this document ships with: the catalog crew of Section~\ref{sec:catalog}; the shrinkage blend of the Corollary with $k=30$; the index document, its reader and signed pull; the outbox and the sheet; the judge and its deterministic choice; the settings; the seed index. Specified here and next to land: the judge fixed effects, Huber aggregation and drift estimate in the relay; the hierarchical cap~\eqref{eq:cap} and the moment estimators~\eqref{eq:sigma}--\eqref{eq:tau0}; the Thompson draw with role-level updates and the settled probability $\pi^\ast$; the relay of Section~\ref{sec:arch}. Until the relay exists the pool is the seed index plus each install's own sheet, and nothing is uploaded.
 
 \begin{thebibliography}{9}\small
 \bibitem{thompson1933} W.~R. Thompson. On the likelihood that one unknown probability exceeds another in view of the evidence of two samples. \emph{Biometrika} 25:285--294, 1933.
