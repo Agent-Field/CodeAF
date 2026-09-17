@@ -192,8 +192,9 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model · alt+k chats · / commands ─
+─ ◎ new conversation in ~/src/parser · glm-5.3-flash · ⠿ auto · ◇ asks ──────────────────────────
 › say what you want done
+type to search or start something new · ↑↓ pick · enter open · alt+w folder · alt+o model · alt+k chats · / commands · tab next place
 ```
 
 Left to right it says four things about the conversation `enter` will open: **where** (the

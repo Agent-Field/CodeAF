@@ -201,9 +201,9 @@ func TestTheLegendsChordReadsAboveItsExplanation(t *testing.T) {
 	a.width = 80
 	a.state = stateWorking
 
-	line := a.legend(a.width)
+	line := a.hintRow(a.width)
 	if !lifted(a.pal, line, "esc") {
-		t.Fatalf("the legend draws its chord at the weight of the rule it sits in:\n%q", line)
+		t.Fatalf("the keys row draws its chord at the weight of its prose:\n%q", line)
 	}
 	if !dimmed(a.pal, line, " interrupt") {
 		t.Fatalf("the verb beside the chord was lifted with it:\n%q", line)

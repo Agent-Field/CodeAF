@@ -741,9 +741,11 @@ func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 		t.Fatal("the closed column's edge is on a fresh screen")
 	}
 	a.railAway = false
+	// The greeting has no seam, so the state word rides the keys row's right
+	// (footswap.go's [app.hintRow]).
 	status := plain(a.status(140))
 	if !strings.Contains(status, "idle") {
-		t.Fatalf("the quiet status row lost its state word: %q", status)
+		t.Fatalf("the quiet keys row lost its state word: %q", status)
 	}
 	if strings.Contains(status, "gpt-4.1-mini") {
 		t.Fatalf("the greeting's status row is still naming the model: %q", status)
@@ -820,7 +822,7 @@ func TestTheStatusLineRegainsItsSegmentsAfterTheFirstTurn(t *testing.T) {
 	a, _ := welcomeApp(t, nil)
 	a.width = 140
 	a.touch()
-	if status := plain(a.status(140)); strings.Contains(status, "$") {
+	if status := plain(a.legend(140)); strings.Contains(status, "$") {
 		t.Fatalf("a session that has sent nothing is billed: %q", status)
 	}
 	if deck := plain(strings.Join(a.statusRows(44), "\n")); strings.Contains(deck, "$") {
@@ -830,7 +832,7 @@ func TestTheStatusLineRegainsItsSegmentsAfterTheFirstTurn(t *testing.T) {
 	if a.statusQuiet() {
 		t.Fatal("a submitted line did not count as a turn")
 	}
-	if status := plain(a.status(140)); !strings.Contains(status, "$0.00") {
+	if status := plain(a.legend(140)); !strings.Contains(status, "$0.00") {
 		t.Fatalf("the running status row lost its spend segment: %q", status)
 	}
 	if deck := plain(strings.Join(a.statusRows(44), "\n")); !strings.Contains(deck, "$0.00") {
@@ -1136,7 +1138,7 @@ func TestTheWarmShareSegmentIsTheSessionsCachedInput(t *testing.T) {
 	if got := a.warmSegment(); got != "⟲ 62% cached" {
 		t.Fatalf("the warm share reads %q, want ⟲ 62%% cached", got)
 	}
-	if line := plain(a.status(90)); !strings.Contains(line, "⟲ 62% cached") {
+	if line := plain(a.legend(90)); !strings.Contains(line, "⟲ 62% cached") {
 		t.Fatalf("the status line is missing the warm share:\n%s", line)
 	}
 
@@ -1259,7 +1261,7 @@ func TestAResumedConversationDrawsWhatItsCacheSavedOnTheFirstFrame(t *testing.T)
 	if got := a.warmSegment(); got != "⟲ saved $0.2520 · 28% cached" {
 		t.Fatalf("a resumed conversation reads %q, want the cash and the rate", got)
 	}
-	if line := plain(a.status(200)); !strings.Contains(line, "⟲ saved $0.2520 · 28% cached") {
+	if line := plain(a.legend(200)); !strings.Contains(line, "⟲ saved $0.2520 · 28% cached") {
 		t.Fatalf("the first frame is missing what the cache saved:\n%s", line)
 	}
 }

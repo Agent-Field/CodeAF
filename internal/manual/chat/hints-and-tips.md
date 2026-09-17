@@ -2,8 +2,9 @@
 
 ## What was that tip above the message box — the one-line hint in the border
 
-The dim line at the right end of the rule above your message box is the hint slot. Most of
-the time it names the keys that work right now — `esc interrupt` while an answer is coming,
+The dim row under your message box — the last row of the frame — is the hint slot (until
+2026-09-17 it was the right end of the rule above the box; the numbers have that end now).
+Most of the time it names the keys that work right now — `esc interrupt` while an answer is coming,
 `y allow · n deny · a always` while codeaf is asking you something, `/ commands` when nothing
 is happening. Once you have used codeaf a little, that idle line sometimes carries a tip
 instead: one sentence naming a key or a command you have not used yet, and what it does.
@@ -13,7 +14,7 @@ message`.
 A tip only appears over an empty box while nothing else is happening. The moment you type,
 open a list, or an answer starts, the slot goes back to the keys for that state; the tip
 returns when things are quiet again. A tip never takes a row of its own and never blocks a
-keystroke — it is one line in a border that is on the screen anyway.
+keystroke — it is the keys row, which is on the screen anyway.
 
 ## Why did the hint disappear — each tip retires once you use what it teaches
 

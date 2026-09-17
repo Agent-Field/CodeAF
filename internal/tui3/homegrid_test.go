@@ -699,7 +699,7 @@ func TestTheFootNamesAChordWhereTheArrowCrossesColumns(t *testing.T) {
 	if got := a.home.columnOf(a.home.cursor); got != homeRailCol(a.home.cols) {
 		t.Fatalf("a project is in column %d, want the rail at %d", got, homeRailCol(a.home.cols))
 	}
-	if hint := a.homeHint(); hint != homeRestHint {
+	if hint := a.homeHint(); hint != restingFoot(a, "") {
 		t.Fatalf("a rail row's foot is %q, want the resting sentence", hint)
 	}
 	a.placeKeyPress(key("right"))
@@ -790,7 +790,7 @@ func TestEveryFieldRowRestsOnTheOneFootAndItsChordOpensItsFolder(t *testing.T) {
 		Workspace: "/w/alpha", Status: standing.StatusActive, When: standing.When{Kind: standing.WhenAt},
 		NextDue: lab.now.Add(2 * time.Hour)}}}}
 	a.home.build()
-	want := homeFootWord + rowSep + homeFolderChordWord + " · tab next place"
+	want := restingFoot(a, homeFolderChordWord)
 
 	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelRecent })
 	if hint := a.homeHint(); hint != want {
@@ -822,7 +822,7 @@ func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *test
 	a.home.seen = l.now.Add(-4 * time.Hour)
 	a.home.build()
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelLeft && l.cell.kind == cellRow })
-	if hint, want := a.homeHint(), homeFootWord+rowSep+homeFolderChordWord+" · tab next place"; hint != want {
+	if hint, want := a.homeHint(), restingFoot(a, homeFolderChordWord); hint != want {
 		t.Fatalf("a since you left row's foot is %q, want %q", hint, want)
 	}
 	a.placeKeyPress(key("ctrl+o"))
@@ -939,4 +939,11 @@ func TestAnOpenFoldOnAShortFrameCountsTheRestAndNamesNoPlace(t *testing.T) {
 	if strings.Contains(fold, rowSep+pageTasks.word()) {
 		t.Fatalf("the open fold names a place enter does not go to: %q", fold)
 	}
+}
+
+// restingFoot is home's resting sentence as the foot draws it since 2026-09-17
+// (footswap.go): the design's four keys, the row's cross chord when it has one,
+// the draft's chords, and the way out.
+func restingFoot(a *app, cross string) string {
+	return placeTailed(dotted(homeFootWord, cross, a.targetChordWords()))
 }

@@ -916,7 +916,7 @@ The placeholder in the empty filter box reads:
 filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
 
-and the hint slot above the box follows the cursor: `→ providers · enter switch · esc` on a
+and the keys row under the box follows the cursor: `→ providers · enter switch · esc` on a
 model, `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc`
 on the provider you are already pinned to, where the same key takes the pin off again.
 

@@ -59,14 +59,9 @@ const effortScopeRoom = "\x00room"
 
 // roomSeamIdentity is [app.seamIdentity] for a room: the same pieces, the
 // same ladder, and the way out where the name goes.
-func (a *app) roomSeamIdentity(room int) (string, hudSpan, hudSpan, hudSpan) {
+func (a *app) roomSeamIdentity(room int, tier seamTier) (string, hudSpan, hudSpan, hudSpan) {
 	pieces := a.roomSeamPieces()
-	for _, try := range seamLadder {
-		if cluster, named, dial, gate, ok := pieces.lay(try, room); ok {
-			return cluster, named, dial, gate
-		}
-	}
-	return "", hudSpan{}, hudSpan{}, hudSpan{}
+	return seamLay(&pieces, room, tier)
 }
 
 // roomSeamPieces is the room's cluster as the seam's layout takes it. There

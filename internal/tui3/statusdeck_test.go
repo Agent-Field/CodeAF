@@ -260,8 +260,8 @@ func TestTheSheetClosesWhenTheFrameLeavesThePhoneTier(t *testing.T) {
 // ── AND EVERY WIDER FRAME IS UNTOUCHED ──────────────────────────────────────
 
 // The deck is the PHONE tier's status and nothing else's. At sixty columns and
-// up the row is the one it has always been — one row, or the wrapped two — and
-// the height is still answered by the layout rather than by the tier.
+// up the foot is the shape footswap.go gives it — one row of keys under the
+// box, with the numbers on the seam above it — and the height is one.
 func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 	a, _ := deckApp(t)
 
@@ -269,30 +269,26 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 		a.width = width
 		a.touch()
 		rows := a.statusRows(width)
-		_, _, _, wrapped := a.statusLayout(width)
-		want := 1
-		if wrapped {
-			want = 2
-		}
-		if len(rows) != want {
-			t.Fatalf("at %d columns the status is %d rows, want the layout's %d",
-				width, len(rows), want)
+		if len(rows) != 1 {
+			t.Fatalf("at %d columns the status is %d rows, want one", width, len(rows))
 		}
 		if got := a.statusHeight(width); got != len(rows) {
 			t.Fatalf("at %d columns statusHeight says %d and the row builder drew %d",
 				width, got, len(rows))
 		}
-		// The wide row keeps its ledger and its right edge on one line, which is
-		// the thing the deck replaces and must not have replaced here. The
-		// identity is on the seam above the box at every one of these widths
-		// (foot.go), which is the other half of "the wide row is untouched".
-		line := plain(strings.Join(rows, "\n"))
-		if !strings.Contains(line, "$0.31") || !strings.Contains(line, "24k/200k · 12%") ||
-			!strings.Contains(line, "idle") {
-			t.Fatalf("at %d columns the wide row lost a segment:\n%q", width, line)
-		}
-		if seam := plain(a.legend(width)); !strings.Contains(seam, "Fix the nil-map crash · deepseek-v4-flash") {
+		// The seam keeps the identity AND the numbers on one line at every one
+		// of these widths, which is the thing the deck replaces and must not
+		// have replaced here; the ledger gives up rungs as the frame narrows
+		// but the state word is the last thing standing.
+		seam := plain(a.legend(width))
+		if !strings.Contains(seam, "Fix the nil-map crash · deepseek-v4-flash") {
 			t.Fatalf("at %d columns the identity cluster is not on the seam:\n%q", width, seam)
+		}
+		if !strings.Contains(seam, "idle") {
+			t.Fatalf("at %d columns the seam lost the state word:\n%q", width, seam)
+		}
+		if width >= 120 && (!strings.Contains(seam, "$0.31") || !strings.Contains(seam, "24k/200k · 12%")) {
+			t.Fatalf("at %d columns the seam lost a segment:\n%q", width, seam)
 		}
 	}
 }
@@ -301,27 +297,30 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 // exactly, cell for cell — so it is asserted against its literal self, and any
 // change to the shape of the row has to be made here on purpose.
 //
-// 2026-09-09 IS WHEN THE ROW CHANGED SHAPE. Until then it was identity left —
-// `Fix the nil-map crash · deepseek-v4-flash` — with every figure in one dotted
-// run flushed against the right edge, the crew word at the head of it (#315).
-// Now the name and the model are on the seam above the box, and what is left is
-// a LEDGER laid from the left and grouped by the question each group answers:
-// the bill, three cells of air, the meter — and the state word alone at the
-// right edge. The crew word is off the line entirely (foot.go's [groupOff]).
+// 2026-09-09 IS WHEN THE ROW CHANGED SHAPE, and 2026-09-17 is when it moved.
+// Until the first date the status row was identity left — `Fix the nil-map
+// crash · deepseek-v4-flash` — with every figure in one dotted run flushed
+// against the right edge, the crew word at the head of it (#315). Then the
+// name and the model went up onto the seam and the row became a LEDGER laid
+// from the left. Since the second date the ledger is on the seam too, after
+// the identity: the bill, three cells of air, the meter, three more, and the
+// state word — and the last row is the keys (footswap.go). The crew word is
+// off both lines entirely (foot.go's [groupOff]).
 //
 // The three cells in front of `$0.31` are the money segment's own reservation,
-// which holds one width for every spelling a turn walks through so the row does
-// not shove sideways as the figure grows a place and loses it again
+// which holds one width for every spelling a turn walks through so the line
+// does not shove sideways as the figure grows a place and loses it again
 // (render.go's [costCell]).
 func TestTheWideStatusRowIsByteForByteWhatItIs(t *testing.T) {
 	a, _ := deckApp(t)
 	a.width = 120
 	a.touch()
 
-	const want = "   $0.31   24k/200k · 12%" +
-		"                                                                                           idle"
-	if got := plain(strings.Join(a.statusRows(120), "\n")); got != want {
-		t.Fatalf("the wide status row changed:\n got %q\nwant %q", got, want)
+	head := "─ Fix the nil-map crash · deepseek-v4-flash · chat-v3-task* "
+	tail := "    $0.31   24k/200k · 12%   idle ─"
+	want := head + strings.Repeat("─", 120-ansi.StringWidth(head)-ansi.StringWidth(tail)) + tail
+	if got := plain(a.legend(120)); got != want {
+		t.Fatalf("the wide seam changed:\n got %q\nwant %q", got, want)
 	}
 }
 

@@ -56,7 +56,15 @@ func newsApp(t *testing.T, model string) (*app, time.Time) {
 func seamText(a *app) string { return plain(a.legend(160)) }
 
 // statusRowText is the status row as a reader sees it, through the frame's own door.
-func statusRowText(a *app, width int) string { return plain(strings.Join(a.statusRow(width), "\n")) }
+// statusRowText is where the numbers are drawn at one width, as a reader
+// sees it: the seam since 2026-09-17 (footswap.go), and the deck at phone
+// width.
+func statusRowText(a *app, width int) string {
+	if layoutTier(width) == tierPhone {
+		return plain(strings.Join(a.statusRow(width), "\n"))
+	}
+	return plain(a.legend(width))
+}
 
 // ── 1. a reasoning level ────────────────────────────────────────────────────
 

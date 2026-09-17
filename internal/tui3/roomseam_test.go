@@ -48,8 +48,8 @@ func TestTheRoomsSeamCarriesTheNodesModelRungAndGate(t *testing.T) {
 	if a.seamApprovalSpan.pressable() {
 		t.Fatalf("the node's gate is a reading and was recorded as a door: %+v", a.seamApprovalSpan)
 	}
-	if line := statusText(a); strings.Contains(line, "glm-5.2") || strings.Contains(line, approvalYoloWord) {
-		t.Fatalf("the status row repeats what the seam says:\n%q", line)
+	if line := plain(strings.Join(a.statusRow(a.width), "\n")); strings.Contains(line, "glm-5.2") || strings.Contains(line, approvalYoloWord) {
+		t.Fatalf("the keys row repeats what the seam says:\n%q", line)
 	}
 }
 

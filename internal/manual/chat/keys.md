@@ -1738,7 +1738,7 @@ were in before this one.** Press it again and you are back. It is `cd -`.
 
 It **does nothing at all** when there is nowhere to go: one conversation open, or none this
 terminal has been in before. A key that cannot act says so by not being advertised — and
-when it can, the legend line above the box says `space space home · tab last · / commands`.
+when it can, the keys row under the box says `space space home · tab last · / commands`.
 
 With **three or more** open, that slot says `alt+k chats` instead, and `alt+k` opens the
 card of all of them — see *Switch between open conversations*. `tab` still works and still
@@ -1857,9 +1857,9 @@ that does not move you is a door that refuses: the place stays up with the refus
 own line, so you can read it.
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
-else — and says so by not being there: no card, and the legend above the box does not name
-it. Everywhere else the legend reads `space space home · tab last · alt+k chats ·
-/ commands` — `opt+k chats` on a Mac — dropping clauses from the left as the frame narrows.
+else — and says so by not being there: no card, and the keys row under the box does not
+name it. Everywhere else that row reads `space space home · tab last · alt+k chats ·
+/ commands` — `opt+k chats` on a Mac — dropping clauses from the right as the frame narrows.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -2152,7 +2152,7 @@ wherever the foot advertises `space space home`, two spaces open it.
 It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
 back in it.
 
-When the box is empty, the legend line above the box says so:
+When the box is empty, the keys row under the box says so:
 `space space home · / commands`. Clicking those words opens home. It vanishes as soon as
 you type.
 
@@ -2224,19 +2224,24 @@ there is no hover on glass. Home's own page has the whole shape.
 
 The box row reads `› say what you want done`. **The rule above it is a legend on home and
 nowhere else**, and it says what the box is a draft *for*:
-`─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model · alt+k chats · / commands ─`
+`─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────────`
 
-— the folder the next conversation opens in, the model it will answer on, and the chords
-that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
-opens the model list in home's own body; pressing either label does the same as its chord.
-`alt+k chats` is the conversation switcher, named here for the same reason it is named on
-the conversation's own legend, and it is absent when there is nowhere to go.
-**On a Mac the right-hand side reads `opt+w folder · opt+o model · opt+k chats · / commands`** —
-the same keys, drawn with the modifier your keycaps wear.
+— the folder the next conversation opens in, the model it will answer on, how hard it will
+think and what it will run without asking. The chords that change them are on **the line
+under the box**, with home's own keys, because the lowest line is for keys on home as in a
+conversation (since 2026-09-17; until then they were the rule's right end): `alt+w`
+walks the folder round the projects on this machine and `alt+o` opens the model list in
+home's own body; pressing either cell on the rule does the same as its chord. `alt+k
+chats` is the conversation switcher, named for the same reason it is named under a
+conversation's box, and it is absent when there is nowhere to go.
+**On a Mac those clauses read `opt+w folder · opt+o model · opt+k chats`** — the same
+keys, drawn with the modifier your keycaps wear.
 The line under the box is the foot, and **at rest it is exactly**
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`. `esc`
-still closes home from anywhere; the resting foot does not spend a cell naming it, and
-`alt+.` draws the whole map when you want it.
+`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · alt+w folder · alt+o model · alt+k chats · / commands · tab next place`
+— the design's four keys, the folder chord, the draft's chords, and the way to the next
+place; on a narrow frame the clauses nearest `tab next place` go first, the draft's chords
+before the rest. `esc` still closes home from anywhere; the resting foot does not spend a
+cell naming it, and `alt+.` draws the whole map when you want it.
 
 On the grid every row under a moving heading — a conversation, a question, a running task,
 a `scheduled` order, a `since you left` line — rests on the one sentence,
@@ -2443,7 +2448,7 @@ instruction and made the page count turns nobody opened.
 interrupts the running turn; inside a room the first `esc` leaves the room and the next
 one interrupts. Ending the task itself is `x` and its card. The legend's left end always
 names what the next `esc` does: `room · esc/←← main`, and `room · esc your line back`
-while a history walk is on. The hint at the legend's right end reads `x stop` while there
+while a history walk is on. The keys row under the box reads `x stop` while there
 is work here to stop and `↑↓ history` during a walk — it never reads `esc interrupt`
 inside a room, because in here that is not what the key does.
 

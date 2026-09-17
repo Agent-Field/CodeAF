@@ -290,7 +290,7 @@ func TestTheConsentQuestionIsAmberEverywhereAtOnce(t *testing.T) {
 	}
 
 	// And the status line says so in words as well as in colour.
-	status := a.status(a.width)
+	status := a.legend(a.width)
 	if !strings.Contains(plain(status), waitingWord) {
 		t.Fatalf("the status line does not say the surface is waiting: %q", plain(status))
 	}
@@ -318,7 +318,7 @@ func TestAnsweringTheQuestionEndsTheQuestionHue(t *testing.T) {
 	if got := frame(a); strings.Contains(got, amber) {
 		t.Fatalf("the question hue outlived the question:\n%q", got)
 	}
-	if plain(a.status(a.width)) == waitingWord {
+	if plain(a.legend(a.width)) == waitingWord {
 		t.Fatal("the status line is still waiting")
 	}
 }
@@ -758,7 +758,9 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	a.touch()
 
 	lines := strings.Split(plain(frame(a)), "\n")
-	last := lines[len(lines)-1]
+	// THE NUMBERS ARE ON THE SEAM, two rows above the last (the box and the
+	// keys row are under it — footswap.go), since 2026-09-17.
+	last := lines[len(lines)-3]
 	// THE LEDGER LEFT AND THE STATE WORD LAST, on the one row a ninety-column
 	// frame keeps them on. The product name is not on this line, and since
 	// 2026-09-09 neither are the conversation's name and model: they are on the
@@ -768,10 +770,15 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 			t.Fatalf("the status line is missing %q:\n%q", want, last)
 		}
 	}
-	for _, gone := range []string{product, "porting the parser", "gpt-4.1-mini"} {
-		if strings.Contains(last, gone) {
-			t.Fatalf("the status line is still carrying %q: %q", gone, last)
+	// THE KEYS ROW UNDER THE BOX CARRIES NONE OF IT, and the seam carries no
+	// product name.
+	for _, gone := range []string{product, "porting the parser", "gpt-4.1-mini", "$0.14", "idle"} {
+		if strings.Contains(lines[len(lines)-1], gone) {
+			t.Fatalf("the keys row is carrying %q: %q", gone, lines[len(lines)-1])
 		}
+	}
+	if strings.Contains(last, product) {
+		t.Fatalf("the seam is still carrying %q: %q", product, last)
 	}
 	// AND THE SEAM CARRIES BOTH, the model as its BASENAME — the vendor is a
 	// routing address, and it stays in the picker.
@@ -795,15 +802,15 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	}
 
 	// The four states, painted where the state is.
-	if !strings.Contains(a.status(a.width), a.pal.dim("idle")) {
+	if !strings.Contains(a.legend(a.width), a.pal.dim("idle")) {
 		t.Fatal("idle is not dim")
 	}
 	a.state = stateWorking
-	if !strings.Contains(a.status(a.width), a.pal.accent("working")) {
+	if !strings.Contains(a.legend(a.width), a.pal.accent("working")) {
 		t.Fatal("working is not the accent")
 	}
 	a.state = stateInterrupted
-	if !strings.Contains(a.status(a.width), a.pal.bad("interrupted")) {
+	if !strings.Contains(a.legend(a.width), a.pal.bad("interrupted")) {
 		t.Fatal("interrupted is not the soft red")
 	}
 }

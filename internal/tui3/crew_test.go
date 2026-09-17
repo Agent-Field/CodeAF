@@ -545,7 +545,7 @@ func TestTheCrewWordIsSaidTheSameWayOnEveryPageThatSaysIt(t *testing.T) {
 	a.width = 200
 	a.slash("/crew max")
 
-	if line := plain(a.status(a.width)); strings.Contains(line, "crew") {
+	if line := plain(a.legend(a.width)); strings.Contains(line, "crew") {
 		t.Fatalf("the status line is still naming the crew:\n%q", line)
 	}
 	if segGroup(segCrew) != groupOff {
@@ -583,13 +583,20 @@ func TestTheCrewIsOffTheRowAtEveryWidth(t *testing.T) {
 	a.cost = 0.31
 
 	for _, width := range []int{200, 100} {
-		row := plain(a.status(width))
+		row := plain(a.legend(width))
 		if strings.Contains(row, "crew") {
 			t.Fatalf("the %d-column row carries the crew:\n%q", width, row)
 		}
-		for _, kept := range []string{"$0.31", "24k/200k", "idle"} {
-			if !strings.Contains(row, kept) {
-				t.Fatalf("the %d-column row lost %q:\n%q", width, kept, row)
+		// The meter and the state word outlast every width here; the bill is
+		// the last number the seam gives up before the meter ([dropOrder]),
+		// and a long name at a hundred columns costs it.
+		kept := []string{"$0.31", "24k/200k", "idle"}
+		if width < 120 {
+			kept = kept[1:]
+		}
+		for _, want := range kept {
+			if !strings.Contains(row, want) {
+				t.Fatalf("the %d-column row lost %q:\n%q", width, want, row)
 			}
 		}
 	}
@@ -606,7 +613,7 @@ func TestTheStatusLineSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.model = "m"
 	a.host = "devbox"
-	if line := plain(a.status(200)); strings.Contains(line, "crew") {
+	if line := plain(a.legend(200)); strings.Contains(line, "crew") {
 		t.Fatalf("a hosted window grew a crew segment:\n%q", line)
 	}
 	for _, part := range a.telemetry(200) {

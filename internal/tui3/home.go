@@ -3938,7 +3938,7 @@ func (a *app) homeDoorOpen() bool {
 // homeDoorShowing reports whether the foot of the conversation should advertise
 // it: the door is open, and the box is EMPTY. It vanishes on the first
 // character typed, because it is a door and not chrome — the space it takes is
-// the hint slot's, which the frame already has (render.go's [app.legendRight]).
+// the keys row's, which the frame already has (render.go's [app.footHint]).
 func (a *app) homeDoorShowing() bool {
 	return a.homeDoorOpen() && a.input.empty() && !a.copy.on && !a.rew.on
 }
@@ -3949,7 +3949,7 @@ func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeLegend {
+	if !ok || mark.kind != a.hintRowKind() {
 		return nil, false
 	}
 	return a.openHome(), true
@@ -5340,11 +5340,27 @@ func (a *app) homeHint() string {
 	if a.targetPickShowing() {
 		return targetPickWord
 	}
-	hint := a.homeHintWords()
-	if hint == homeFootWord {
-		return homeRestHint
+	// AND THE DRAFT'S CHORDS RIDE THIS LINE, before the way out (footswap.go:
+	// the lowest line is for keys, on home as in a conversation). They are the
+	// cheapest clauses on it — [hintFit] gives up the clause nearest the tail
+	// first — because the rule above says what they change, and a person who
+	// has found the rule has found the cells to press.
+	return placeTailed(withChords(a.homeHintWords(), a.targetChordWords()))
+}
+
+// withChords puts the draft's chords on a foot sentence BEFORE ITS WAY OUT:
+// every hint on this surface ends with `esc` where it has one, and [hintFit]
+// gives up the clause nearest the tail first — so the chords sit just inside
+// the tail, where they are the first thing a narrow frame drops and the way
+// out is never behind them.
+func withChords(hint, chords string) string {
+	if chords == "" {
+		return hint
 	}
-	return placeTailed(hint)
+	if at := strings.LastIndex(hint, railSep); at >= 0 && strings.HasPrefix(hint[at+len(railSep):], "esc") {
+		return hint[:at] + railSep + chords + hint[at:]
+	}
+	return dotted(hint, chords)
 }
 
 // homeVerbsWord is how the CARD advertises the strip. It names the key and the

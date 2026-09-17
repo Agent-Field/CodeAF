@@ -271,8 +271,8 @@ func TestHomesRuleSaysWhereTheNextConversationGoes(t *testing.T) {
 }
 
 // TestHomesRuleGivesUpTheModelBeforeTheFolder is the ladder. The folder is the
-// fact `enter` acts on, so it is the last thing standing — and the keys are
-// never dropped before the label is shortened.
+// fact `enter` acts on, so it is the last thing standing. The keys are not on
+// the rule at all since 2026-09-17 — they are on the foot (footswap.go).
 func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -291,22 +291,24 @@ func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
 	if !strings.Contains(ansi.Strip(wide), modelBase(a.model)) {
 		t.Fatalf("a wide rule dropped the model:\n%s", ansi.Strip(wide))
 	}
-	if !strings.Contains(ansi.Strip(wide), targetFolderKeyWord) {
-		t.Fatalf("a wide rule dropped the folder chord:\n%s", ansi.Strip(wide))
+	if strings.Contains(ansi.Strip(wide), targetFolderKeyWord) {
+		t.Fatalf("a wide rule still carries the folder chord:\n%s", ansi.Strip(wide))
+	}
+	if !strings.Contains(a.homeHint(), targetFolderKeyWord) {
+		t.Fatalf("the foot does not carry the folder chord:\n%s", a.homeHint())
 	}
 	// Narrow enough that the model cannot fit beside the folder, wide enough
-	// that the folder can. The keys survive: they are the cheapest true thing on
-	// the line and the label is what has too much to say.
+	// that the folder can.
 	//
 	// THE ROOM IS MEASURED OFF THE PIECES THE RULE ACTUALLY DRAWS — the mark,
-	// the lead, the folder at its longest spelling, and every key on the right —
-	// plus four cells, which is less than the model needs. A room counted from
+	// the lead and the folder at its longest spelling — plus four cells, which
+	// is less than the model needs. A room counted from
 	// a guess at those widths was true on macOS, where a temp path has nine
 	// components and its shortest spelling is `…/parser`, and false on Linux,
 	// where the same path has four and stays `/t/T/0/parser`: there the label
 	// could get no shorter and the rule, rightly, gave up a key instead.
 	left := a.icon(tokens.GTarget) + " " + targetLeadWord + short
-	room := ansi.StringWidth(left) + 3 + legendGap + ansi.StringWidth(a.targetLegendRight()) + 3 + 4
+	room := ansi.StringWidth(left) + 3 + legendGap + ansi.StringWidth("") + 3 + 4
 	narrow, drew := a.targetLegend(room, a.pal)
 	if !drew {
 		t.Fatalf("a %d-column rule drew nothing at all", room)
@@ -317,9 +319,6 @@ func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
 	}
 	if !strings.Contains(stripped, filepath.Base(where)) {
 		t.Fatalf("the folder went before the model did:\n%s", stripped)
-	}
-	if !strings.Contains(stripped, targetModelKeyWord) {
-		t.Fatalf("the keys were dropped before the label was shortened:\n%s", stripped)
 	}
 }
 

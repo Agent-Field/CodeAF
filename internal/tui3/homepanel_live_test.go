@@ -502,7 +502,7 @@ func TestAThreeColumnRunningRowRestsOnTheOneFootAndStillStops(t *testing.T) {
 	if verbs := a.runningVerbs(a.home.lines[mine]); len(verbs) != 1 || verbs[0].word != stopActWord {
 		t.Fatalf("the row's strip offers %+v, want the tasks place's `%s`", verbs, stopActWord)
 	}
-	if foot := a.homeHint(); foot != homeFootWord+rowSep+homeFolderChordWord+" · tab next place" {
+	if foot := a.homeHint(); foot != restingFoot(a, homeFolderChordWord) {
 		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and the folder chord", foot)
 	}
 	a.placeKeyPress(key("right"))

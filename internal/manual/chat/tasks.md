@@ -2449,7 +2449,7 @@ With the column closed, work is still visible:
 - Anything **running** draws the task strip along the top — `⠙ Fix nil-map · ◆ Auth tests
   · +2` — because the strip stands up wherever the roster stands down. Click a chip for
   that task's room, or the `+N` for the whole roster.
-- The legend above the message box carries `ctrl+g tasks` in its hint slot for as long as
+- The keys row under the message box carries `ctrl+g tasks` for as long as
   this session has any tasks at all, running or not. A session that has run nothing says
   nothing there — the column you closed was empty, and `ctrl+g` still brings it back.
 - `alt+t` still works: asking for the roster brings the column back and gives it the

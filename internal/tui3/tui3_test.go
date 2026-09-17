@@ -1799,7 +1799,7 @@ func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 	// (render.go's [stoppingWord]); `interrupted` arrives behind it at the close.
 	// Asked of the status line rather than of the frame, because the note the
 	// stop writes into the transcript is on the same frame.
-	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+	if !strings.Contains(plain(a.legend(a.width)), stoppingWord) {
 		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 

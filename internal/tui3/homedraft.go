@@ -170,19 +170,18 @@ const (
 	targetPickWord = "↑↓ pick · enter use it · esc back"
 )
 
-// targetLegendRight is the right of home's rule: the two chords that edit the
-// target, and — at rest, where there is room — the door onto the command list.
+// targetChordWords is the draft's chords as a clause on home's foot
+// (footswap.go: the lowest line is for keys): the folder chord where there is
+// somewhere to walk to, the model chord, the switcher where there is anywhere
+// to go, and `/ commands` while the box is empty. Nothing while the model list
+// is up — it has the whole keyboard (SCREEN 3a's clause: no key does anything
+// that is not drawn on screen right now), and the foot is already saying the
+// keys that do ([targetPickWord]). It is spelled for this keyboard by
+// [app.placeHint]'s one pass, with the rest of the line.
 //
-// A KEY IS DRAWN ONLY WHERE IT DOES SOMETHING (SCREEN 3a). `alt+w folder` is
-// absent on a machine with one project, because there is nowhere to move the
-// next conversation to, and a legend that named a chord nothing answered would
-// be the exact defect this line exists to end.
-func (a *app) targetLegendRight() string {
-	// AND WHILE THE MODEL LIST IS UP THE RULE NAMES NOTHING. That list has the
-	// whole keyboard (SCREEN 3a's clause: no key does anything that is not drawn
-	// on screen right now), so three chords on the border would be three chords
-	// that do nothing — and the foot under the box is already saying the keys
-	// that do ([targetPickWord]).
+// Until 2026-09-17 these were the RULE's right-hand label; the rule's right is
+// bare now, and [app.targetLegend] draws its left alone.
+func (a *app) targetChordWords() string {
 	if a.target.pick.open {
 		return ""
 	}
@@ -190,13 +189,9 @@ func (a *app) targetLegendRight() string {
 	if a.targetMovable() {
 		right = dotted(targetFolderKeyWord, targetModelKeyWord)
 	}
-	// AND THE SWITCHER AFTER THE TWO THAT EDIT THIS LINE'S OWN SUBJECT, under
-	// the same clause as everything else here: it is named where it would act
-	// and nowhere else ([app.hopAvailable] is the conversation legend's own
-	// gate, and it answers off a remembered count rather than walking the disk
-	// on the paint path). Its position IS its priority — [targetRightShorter]
-	// drops from the right — so a narrow frame keeps the folder and the model,
-	// which are the facts this rule states, and gives up the door to elsewhere.
+	// The switcher is named where it would act and nowhere else
+	// ([app.hopAvailable] answers off a remembered count rather than walking
+	// the disk on the paint path).
 	if a.hopAvailable() {
 		right = dotted(right, targetSwitcherKeyWord)
 	}
@@ -204,36 +199,20 @@ func (a *app) targetLegendRight() string {
 	// it names is already open over the box and a pointer at a list a person is
 	// looking at is furniture (render.go's [microcopy] holds the original). It
 	// is home's clause alone: on the other places a `/` is a character in the
-	// box and opens no list (homeslash.go is home's), and a door named where it
-	// does nothing is the defect SCREEN 3a forbids.
+	// box and opens no list (homeslash.go is home's).
 	if a.at(pageHome) && a.home.box.empty() {
 		right = dotted(right, microcopy)
 	}
-	// AND THE WHOLE LINE IS SPELLED FOR THIS KEYBOARD ON THE WAY OUT — ONCE,
-	// HERE, ABOVE THE MEASURING. Every chord on this rule wears a modifier with
-	// two keycaps, and this line drew them straight out of their constants: a
-	// Mac that spells `opt+s` on the memory place and `opt+1…opt+7` on the map
-	// was spelling `alt+w` on home, which is one modifier under two names on one
-	// screen. chords.go states that [chordSpelling.say] is the one door every
-	// person-facing sentence about a chord goes through, and this line was not
-	// going through it. It has to happen before the return rather than at the
-	// paint because `⌘` is one cell where `cmd+` is four, and the ladder in
-	// [app.targetLegend] measures what it is about to draw.
-	return a.chords.say(right)
+	return right
 }
 
 // targetLegend is the draft's rule as a whole line — the box seam with the
-// draft's four facts on its left and the draft's chords on its right
-// (boxseam.go) — and it reports whether it drew one: a frame with no room for
-// either label falls back to the bare rule.
+// draft's four facts on its left and nothing on its right (boxseam.go; the
+// chords are on the foot, footswap.go) — and it reports whether it drew one:
+// a frame with no room for the label falls back to the bare rule.
 //
-// THE LADDER GIVES UP THE CHEAPEST TRUE THING FIRST, and THE KEYS ARE NEVER
-// DROPPED BEFORE THE LABEL IS SHORTENED — which is the opposite of the
-// conversation's seam and is right for the opposite reason: a conversation's
-// name cannot be reconstructed from anywhere else on the frame, and a folder
-// can (the row under the cursor says it). So the left walks [draftLadder] to
-// its last rung before the right gives up a clause, and the cut is the last
-// resort of all, with the keys already gone.
+// THE LADDER GIVES UP THE CHEAPEST TRUE THING FIRST: the left walks
+// [draftLadder] to its last rung, and the cut is the last resort of all.
 //
 // WHERE THE DOORS LANDED IS WRITTEN HERE, as the line is laid out, for the
 // reason [app.legendLine] gives about the model segment: a column read from
@@ -255,26 +234,14 @@ func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	if note := a.placeNoteLegend(width); note != "" {
 		return a.draftNoteRule(width, pal, note)
 	}
-	right := a.targetLegendRight()
-	for {
-		left, folder, model, rung, gate := a.draftSeamLeft(legendRoom(width, right))
-		if left != "" {
-			if line, ok := a.legendLine(left, right, width, a.draftSeamPaint(pal, model, rung, gate)); ok {
-				a.targetFolderSpan, a.targetModelSpan = shiftIntoBorder(folder), shiftIntoBorder(model)
-				a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
-				return line, true
-			}
+	if left, folder, model, rung, gate := a.draftSeamLeft(legendRoom(width, "")); left != "" {
+		if line, ok := a.legendLine(left, "", width, a.draftSeamPaint(pal, model, rung, gate)); ok {
+			a.targetFolderSpan, a.targetModelSpan = shiftIntoBorder(folder), shiftIntoBorder(model)
+			a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
+			return line, true
 		}
-		// THE RIGHT GIVES UP ITS LAST CLAUSE AND THE LEFT IS MEASURED AGAIN FROM
-		// THE TOP, in the fixed order the legend's own ladder uses — never a
-		// second, shorter sentence invented for a narrow frame.
-		next, shorter := targetRightShorter(right)
-		if !shorter {
-			break
-		}
-		right = next
 	}
-	// AND THE CUT IS THE LAST RESORT OF ALL, with the keys already gone.
+	// AND THE CUT IS THE LAST RESORT OF ALL.
 	if left, folder := a.targetLegendCut(legendRoom(width, "")); left != "" {
 		if line, ok := a.legendLine(left, "", width, pal.dim); ok {
 			a.targetFolderSpan = shiftIntoBorder(folder)
@@ -315,9 +282,8 @@ func (a *app) clearTargetSpans() {
 	a.targetEffortSpan, a.targetApprovalSpan = hudSpan{}, hudSpan{}
 }
 
-// targetLegendCut is the rung below all of them, and it is reached only once
-// the right has given up every clause it has: the lead goes, and what is left
-// is cut to the frame.
+// targetLegendCut is the rung below all of them: the lead goes, and what is
+// left is cut to the frame.
 //
 // A CUT FOLDER IS STILL AN ANSWER. Half a path with an ellipsis on it says which
 // machine's disk and roughly where, and a rule with nothing on it says nothing
@@ -334,19 +300,6 @@ func (a *app) targetLegendCut(room int) (string, hudSpan) {
 		return "", hudSpan{}
 	}
 	return line, hudSpan{from: ansi.StringWidth(head), to: ansi.StringWidth(line)}
-}
-
-// targetRightShorter drops the last clause off the rule's right, and reports
-// whether there was one to drop. The order is the drop order: the command list
-// first (a person who has found "/" has found it), then the folder chord, and
-// `alt+o model` is the last thing standing because the model is the fact this
-// line is otherwise about to stop saying.
-func targetRightShorter(right string) (string, bool) {
-	at := strings.LastIndex(right, legendJoin)
-	if at < 0 {
-		return "", right != ""
-	}
-	return right[:at], true
 }
 
 // ── the chords ──────────────────────────────────────────────────────────────

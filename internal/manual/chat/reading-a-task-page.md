@@ -307,19 +307,16 @@ badge.
 
 ## The status line at the bottom of a task's page — no provider, no tok/s in a task room, why is the rate blank inside a task
 
-The bottom row of a task's page is about **that task**, and it says so at both ends.
+The bottom row of a task's page is the keys — `x stop`, `↑↓ history` — and nothing
+else; the numbers are on the line above the box, after the task's own cells (the section
+above), since 2026-09-17. The task's own name is on the breadcrumb bar at the top of the
+page — the room chip that used to lead the bottom row (`⠋ Ship the parser fix`) went with
+that row.
 
-On the left, in front of the ledger: the room chip — the task's own name. Its model, its
-rung and the machine answering for it are on the line above the box (the section above).
-
-```
-⠋ Ship the parser fix
-```
-
-At the right edge: the task's live rate while its model is writing — `38 tok/s` — or the
-task's own phase words while it is in a stage that is producing nothing, exactly as the
-conversation's line reads them: `running go test · 41s`, `connecting · 1.2s`, `paced ·
-retry in 6s`.
+At the right end of the line above the box: the task's live rate while its model is
+writing — `38 tok/s` — or the task's own phase words while it is in a stage that is
+producing nothing, exactly as the conversation's line reads them: `running go test · 41s`,
+`connecting · 1.2s`, `paced · retry in 6s`.
 
 **The machine is named whoever served it** — `task glm-5.2 · via z-ai` on the seam when the
 vendor serves its own model — and while the task's first answer is still being written, as
@@ -327,7 +324,7 @@ soon as the machine writing it has named itself.
 
 **It does not go quiet because your conversation is idle.** That is the ordinary state
 while a task runs: you hand the work out, your turn ends, and the task works for minutes
-with nothing happening in the conversation. The row keeps drawing the task's own reading
+with nothing happening in the conversation. The line keeps drawing the task's own reading
 throughout.
 
 **What is on that row and is still the conversation's**: the bill, the cache, the context

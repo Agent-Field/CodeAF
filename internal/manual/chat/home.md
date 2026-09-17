@@ -1204,9 +1204,9 @@ quoted back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ── alt+w folder · alt+o model ─
+ ─ ◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto · ◇ asks ─────────────────────
  › pricing
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w folder · alt+o model · tab next place · esc clear
 ```
 
 **The cursor rests on the action row by default.** So typing and pressing `enter` starts a
@@ -1349,7 +1349,7 @@ cursor.
 **`alt+w` is the same gesture for the folder** — press it, or press the path on the rule, and
 the target walks to the next project on this machine, round again from the last. Home says
 `next conversation opens in ~/work/beta`. On a machine with one project there is nowhere to
-move to, and `alt+w folder` is simply not on the rule.
+move to, and `alt+w folder` is simply not on the line under the box.
 
 **`ctrl+v` and `alt+y` are the same gesture for the two cells after the model.** `⠿ auto`
 is how hard the next conversation will think — with nothing pinned, the `thinking` row in
@@ -1405,17 +1405,18 @@ with none, and over `--host` — where what opens is the **far machine's** home.
 
 ## What does pressing space twice do — the home door at the foot of a conversation
 
-When the box is empty, the dim line between the conversation and the box reads exactly:
+When the box is empty, the keys row under the box — the last row of the frame — reads
+exactly:
 
 ```
 space space home · / commands
 ```
 
-That is the whole advertisement. It costs no extra row — it is the hint slot that line
-already carried — and it **vanishes the moment you type anything**, because it is a door
-and not decoration. It also goes while a turn is running, where the same slot has something
+That is the whole advertisement. It costs no extra row — it is the keys row the frame
+already has — and it **vanishes the moment you type anything**, because it is a door
+and not decoration. It also goes while a turn is running, where the same row has something
 more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
-advertised.
+advertised. (Until 2026-09-17 these words were the right end of the rule above the box.)
 
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.

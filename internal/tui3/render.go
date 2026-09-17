@@ -1791,18 +1791,14 @@ func (a *app) compactRow(e *entry, width int) string {
 // conversation's own name on the seam identifies a pane far better than a word
 // that is the same in every one of them.
 //
-// The two rows are drawn by [app.legend] (the input's top border) and
-// [app.statusRows] (the status row, which becomes two rows on a narrow frame).
+// The two rows are drawn by [app.legend] (the input's top border, with the
+// numbers on its right since 2026-09-17 — footswap.go) and [app.statusRows]
+// (the last row, which is the keys).
 
 const (
 	// hudWide is where the frame is comfortable: everything is on it,
 	// the session delta included.
 	hudWide = 120
-	// hudWrap is where the two clusters stop sharing a row. Below it the
-	// telemetry takes a row of its own rather than eating the identity's — the
-	// gap between the clusters is what separates them, and a gap of one cell is
-	// not a gap.
-	hudWrap = 100
 	// hudTight is the narrow floor: the legend loses its branch and hints while
 	// the status line keeps the conversation identity.
 	hudTight = 70
@@ -1934,206 +1930,42 @@ func (a *app) status(width int) string {
 	return strings.Join(a.statusRows(width), "\n")
 }
 
-// statusRows is the two-cluster row: identity left, telemetry right, and the
-// GAP BETWEEN THEM AS THE ONLY SEPARATOR. There is no pipe, no bracket and no
-// rule between the clusters — space is what the eye reads as "these are two
-// different subjects", and a glyph there would be furniture claiming to be
-// structure.
+// statusRows is the last row of the frame: THE KEYS (footswap.go's
+// [app.hintRow]) — the state's own keys, the chord diagnosis, the earned tip or
+// the four idle doors, one cell in, as a place's foot draws its own hint.
 //
-// Below [hudWrap] the clusters stop sharing a row and the telemetry takes one
-// of its own, still right-aligned. That is the only place this surface spends a
-// row on chrome, and it spends it exactly where the alternative is truncating
-// the numbers a person opened the terminal to read.
+// The numbers this row carried until 2026-09-17 are on the seam over the box
+// ([app.legend]); on a frame with no seam the right edge's aliveness rides
+// this row's right instead. At phone width the row is still the two-row deck,
+// because the seam there has no room for a number (statusdeck.go).
 func (a *app) statusRows(width int) []string {
-	// THE DOORS ARE CLEARED BEFORE THE ROW IS LAID OUT AND WRITTEN ONLY WHERE
-	// THEY LANDED, so a span is its own answer to "was it drawn on this frame"
-	// (foot.go). Every early return below is a row with no door on it.
-	a.doors = a.doors[:0]
-	a.moneySpan, a.moneyRow = hudSpan{}, 0
+	// THE DOORS ON THIS ROW ARE CLEARED BEFORE IT IS LAID OUT and written only
+	// where they landed (foot.go). The ledger's doors are the seam's now and
+	// are cleared there; the deck records its own.
+	a.modelSpan = hudSpan{}
 	if a.startingChat() {
-		a.modelSpan = hudSpan{}
 		return []string{a.pal.dim(fit("New chat · first message starts the conversation", width))}
 	}
 	if width < 1 {
-		a.modelSpan = hudSpan{}
 		return []string{""}
 	}
 	// AND AT PHONE WIDTH IT IS A DECK, deterministically two rows, because the
-	// ladder above has nothing left to give: at forty-four columns the ledger
-	// alone is wider than the frame and every number would be dropped before the
-	// first segment is drawn. The deck keeps the two facts a phone can answer at
-	// a glance and moves the rest into a sheet one tap away (statusdeck.go).
+	// seam has nothing left to give: at forty-four columns the ledger alone is
+	// wider than the frame and every number would be dropped before the first
+	// segment is drawn. The deck keeps the two facts a phone can answer at a
+	// glance and moves the rest into a sheet one tap away (statusdeck.go).
 	if layoutTier(width) == tierPhone {
+		a.doors = a.doors[:0]
+		a.moneySpan, a.moneyRow = hudSpan{}, 0
 		return a.statusDeck(width)
 	}
-	left, ledger, alive, wrapped := a.statusLayout(width)
-	// THE ROOM CHIP GOES ACCENT, and it is the one condition under which the
-	// left is painted at all: the chip is a statement about which page the
-	// keyboard is pointed at, and it wears the accent at both ends of the frame
-	// — here and in the pinned header (room.go).
-	head := ""
-	if left != "" {
-		head = paintSpan(left, a.modelSpan, a.pal.accent, a.pal.ink, a.hoveringStatusModel())
-	}
-	ledgerPainted, ledgerPlain := a.paintParts(ledger)
-	alivePainted, alivePlain := a.paintParts(alive)
-	// The ledger starts after the chip, when there is one, and its doors are
-	// recorded from where it actually starts.
-	at := 0
-	if left != "" {
-		at = ansi.StringWidth(left)
-		if ledgerPlain != "" {
-			at += hudGap
-		}
-	}
-	row := head
-	if ledgerPlain != "" {
-		if left != "" {
-			row += strings.Repeat(" ", hudGap)
-		}
-		row += ledgerPainted
-	}
-	if wrapped {
-		a.markDoors(ledger, at, 0)
-		return []string{
-			fit(row, width),
-			rightAlign(alivePainted, alivePlain, width),
-		}
-	}
-	used := at + ansi.StringWidth(ledgerPlain)
-	gap := width - used - ansi.StringWidth(alivePlain)
-	if alivePlain == "" {
-		gap = 0
-	}
-	if gap < 0 {
-		// Nothing fits, even emptied: the right edge is what survives, because
-		// what is HAPPENING outranks everything else. Nothing on the row is a
-		// door then.
-		a.modelSpan = hudSpan{}
-		return []string{fit(alivePainted, width)}
-	}
-	a.markDoors(ledger, at, 0)
-	return []string{row + strings.Repeat(" ", gap) + alivePainted}
+	return []string{a.hintRow(width)}
 }
 
 // hudGap is the smallest barrier the two clusters will stand next to each
 // other across. Below it they are not two clusters, they are one line with a
 // number in the middle of it.
 const hudGap = 3
-
-// statusLayout decides the row's shape: the identity, the segments that
-// survived the frame's width, and whether the telemetry took a row of its own.
-//
-// THE NARROW LADDER, and it is one ladder because the frame, the chrome height
-// and the hit-testing all resolve through here:
-//
-//	≥ 120   everything, the session delta included
-//	≥ 100   the delta is gone; segments drop by [dropOrder] until it fits
-//	< 100   the telemetry may take a row of its own — and it takes one only
-//	        when the clusters would otherwise collide. A frame with a short
-//	        name and a quiet session fits on one row at sixty columns, and
-//	        spending a row of the conversation on a gap nobody needed is the
-//	        cost this law exists to avoid.
-func (a *app) statusLayout(width int) (string, []hudPart, []hudPart, bool) {
-	// THE ROOM CHIP'S COLUMNS ARE RECORDED WHERE THE ROW IS LAID OUT, which is
-	// what keeps the press and the paint in step: this function is what the
-	// frame, the chrome height and the hit-testing all resolve through, so a
-	// segment drawn here and a segment pressed there cannot be at two different
-	// offsets (app.go's [app.statusPress]). Out of a room the left is empty: the
-	// conversation's name and model are on the seam ([app.seamIdentity]).
-	left, span := "", hudSpan{}
-	if a.roomOpen() {
-		left, span = a.identityParts(0)
-	}
-	a.modelSpan = span
-	parts := a.telemetry(width)
-	// The quiet row loses its bill and its meter BEFORE the clocks are stamped:
-	// this is a state and not width pressure, and a segment the row is not
-	// drawing has nothing to be fresh about ([app.statusQuiet]).
-	if a.statusQuiet() {
-		parts = quietParts(parts)
-	}
-	// The change clocks are stamped from the ASSEMBLED segments, before any
-	// width pressure is applied: a number that moved has moved whether or not
-	// this frame had room to say so.
-	a.freshen(parts)
-	ledger, alive := lineParts(parts)
-
-	// What the one-row shape needs: the chip, its gap, the ledger, the gap, and
-	// the right edge.
-	need := func() int {
-		n := ansi.StringWidth(left)
-		if l := hudWidth(ledger); l > 0 {
-			if n > 0 {
-				n += hudGap
-			}
-			n += l
-		}
-		if r := hudWidth(alive); r > 0 {
-			if n > 0 {
-				n += hudGap
-			}
-			n += r
-		}
-		return n
-	}
-	if need() <= width {
-		return left, ledger, alive, false
-	}
-	// AND UNDER REAL PRESSURE THE ROW IS SAID SHORTER, NEVER CLIPPED. Below
-	// [hudWrap] the right edge takes a row of its own rather than eating the
-	// ledger's, and each row then gives up its own rungs until it fits.
-	if width < hudWrap {
-		for ansi.StringWidth(left)+hudGap*b2i(left != "" && len(ledger) > 0)+hudWidth(ledger) > width {
-			if !a.shrink(&ledger, &alive, len(dropOrder)) {
-				break
-			}
-		}
-		if room := width - hudGap - hudWidth(ledger); left != "" && ansi.StringWidth(left) > room {
-			left, span = a.identityParts(max(room, 0))
-			a.modelSpan = span
-		}
-		for hudWidth(alive) > width && dropKind(&alive, segRate) {
-		}
-		return left, ledger, alive, true
-	}
-	// THE LADDER RUNS THROUGH THE CHIP AS WELL AS ALONG THE LEDGER ([riderRung]).
-	// Each turn of this loop gives up the cheapest thing left: the rungs under
-	// the chip's own shorter spelling, then the chip's spelling, then the rungs
-	// above it.
-	for need() > width {
-		if a.shrink(&ledger, &alive, riderRung) {
-			continue
-		}
-		if left != "" {
-			if room := width - need() + ansi.StringWidth(left); room > 0 {
-				if shorter, shorterSpan := a.identityParts(room); ansi.StringWidth(shorter) < ansi.StringWidth(left) {
-					left, span = shorter, shorterSpan
-					a.modelSpan = span
-					continue
-				}
-			}
-		}
-		if !a.shrink(&ledger, &alive, len(dropOrder)) {
-			break
-		}
-	}
-	if left != "" {
-		if room := width - need() + ansi.StringWidth(left); ansi.StringWidth(left) > room {
-			left, span = a.identityParts(max(room, 0))
-			a.modelSpan = span
-		}
-	}
-	return left, ledger, alive, false
-}
-
-// b2i is one or zero, for the width arithmetic above.
-func b2i(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
 
 // statusHeight is how many rows the HUD's status takes: the frame, the chrome
 // height and the pointer's hit-testing all have to agree about it (view.go).
@@ -2144,16 +1976,13 @@ func (a *app) statusHeight(width int) int {
 	if width < 1 {
 		return 1
 	}
-	// THE PHONE TIER ANSWERS FROM THE TIER, without laying anything out. The
-	// wide row's second row is wrap-driven — it exists only when the clusters
-	// would collide — and the deck's is not: it is two rows at every phone-width
-	// frame, in every state, which is what lets this answer be a constant
-	// (statusdeck.go).
+	// THE PHONE TIER ANSWERS FROM THE TIER, without laying anything out: the
+	// deck is two rows at every phone-width frame, in every state
+	// (statusdeck.go). Every other tier is one row — the keys — because the
+	// numbers that used to wrap onto a second row are on the seam now
+	// (footswap.go).
 	if layoutTier(width) == tierPhone {
 		return deckHeight
-	}
-	if _, _, _, wrapped := a.statusLayout(width); wrapped {
-		return 2
 	}
 	return 1
 }
@@ -2186,9 +2015,13 @@ func (a *app) identity() string {
 // session with no model yet, or a room whose node is past being moved: the press
 // always acts on WHAT THE ROW NAMES, so in a room it is the node's model and out
 // here it is the conversation's, and neither can ever be mistaken for the other.
+// roomTotalsWord labels the numbers as the conversation's while the organized
+// room's header is carrying the node's own identity.
+const roomTotalsWord = "Conversation totals"
+
 func (a *app) identityParts(width int) (string, hudSpan) {
 	if a.roomOrganized() {
-		return "Conversation totals", hudSpan{}
+		return roomTotalsWord, hudSpan{}
 	}
 	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
 	// WHERE YOU ARE, and while a room is open where you are is a task — but the
@@ -3444,36 +3277,34 @@ func (a *app) legend(width int) string {
 	// not cleared down there).
 	a.homeDoor = hudSpan{}
 	a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
-	right := a.legendRight(width)
-	// EACH RUNG IS BUILT ONCE, SPAN AND ALL. The left label and the columns its
-	// model segment occupies come out of the same call, because building the
-	// cluster twice — once to measure the attempt and once to paint it — is
-	// twice the work on a line redrawn every frame, and the scroll's allocation
-	// law counts it (inputsmooth_test.go's
-	// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
-	attempts := make([]legendAttempt, 0, 6)
-	// THE RUNNING SLOT IS A LADDER OF CLAUSES. Each pass drops its last clause
-	// and measures again, preserving the fixed order rather than inventing a
-	// second short sentence. Every other state has one rung and stops here.
-	for rung := right; rung != ""; {
-		if left, span, dial, gate, named := a.legendLeftSpan(width, legendRoom(width, rung)); named {
-			attempts = append(attempts, legendAttempt{left: left, right: rung, span: span, dial: dial, gate: gate})
+	a.doors = a.doors[:0]
+	a.moneySpan, a.moneyRow = hudSpan{}, 0
+	// THE RIGHT-HAND LADDER IS THE NUMBERS' (footswap.go): the bill, the meter
+	// and the state word, said shorter one rung of [dropOrder] at a time. At
+	// phone width it is still the keys' — the running slot's clauses, dropped
+	// from the right ([app.hintShorter]) — because the deck under the box is
+	// where a phone reads its numbers.
+	var rungs []seamRung
+	var parts []hudPart
+	telemetry := a.seamCarriesTelemetry()
+	if telemetry {
+		rungs, parts = a.seamTelemetryRungs(width)
+	} else {
+		for rung := a.footHint(width); rung != ""; rung = a.hintShorter(rung) {
+			rungs = append(rungs, seamRung{plain: rung, width: ansi.StringWidth(rung)})
 		}
-		next := a.hintShorter(rung)
-		if next == "" {
-			break
-		}
-		rung = next
 	}
-	bare, bareSpan, bareDial, bareGate, _ := a.legendLeftSpan(width, legendRoom(width, ""))
-	attempts = append(attempts, legendAttempt{left: bare, right: "", span: bareSpan, dial: bareDial, gate: bareGate})
+	// THE PIECES ARE GATHERED ONCE and every rung of every tier is laid from
+	// them: gathering them is a handful of strings, and this ladder is climbed
+	// on every frame of a scroll, which the allocation law counts
+	// (inputsmooth_test.go's
+	// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
+	pieces := a.legendPieces(width)
 	// THREE CELLS ON THIS LINE ARE DOORS. The model's columns, the thinking
 	// rung's and the approvals chip's are those the chosen attempt drew them at,
 	// offset by the border's own two cells, and each brightens under the pointer
 	// to say so (foot.go's [app.legendModelPress], [app.legendEffortPress] and
-	// [app.legendApprovalPress]). The lift closure reads the attempt being tried
-	// through these variables rather than being built again inside the loop,
-	// for the allocation law's sake.
+	// [app.legendApprovalPress]).
 	//
 	// THE LIFTS ARE PAINTED SIDE BY SIDE AND NEVER NESTED, because these hues
 	// are raw SGR with an explicit reset and a lift inside a lift would end at
@@ -3482,6 +3313,9 @@ func (a *app) legend(width int) string {
 	// a time — but the chip is lit for as long as the gate is open, so it can be
 	// lit beside a hovered model or a flashing rung. [paintSpans] walks the three
 	// disjoint spans in order and paints the plain runs between them.
+	//
+	// IN A ROOM THE THREE SPANS ARE THE NODE'S DOORS (roomseam.go), recorded
+	// on the same bargain and pressed through the same three functions.
 	seam, dial, gate := hudSpan{}, hudSpan{}, hudSpan{}
 	lift := func(text string) string {
 		return paintSpans(text, paint,
@@ -3489,17 +3323,106 @@ func (a *app) legend(width int) string {
 			spanLift{span: dial, lift: a.paintEffortChip, on: a.effortSeamLit()},
 			spanLift{span: gate, lift: a.paintApprovalChip, on: a.approvalSeamLit()})
 	}
-	// IN A ROOM THE THREE SPANS ARE THE NODE'S DOORS (roomseam.go), recorded
-	// on the same bargain and pressed through the same three functions.
-	for _, attempt := range attempts {
-		seam, dial, gate = attempt.span, attempt.dial, attempt.gate
-		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = shiftIntoBorder(attempt.span), shiftIntoBorder(attempt.dial), shiftIntoBorder(attempt.gate)
-		if line, ok := a.legendLine(attempt.left, attempt.right, width, lift); ok {
+	// seat is one attempt: FIT IS DECIDED ON THE PLAIN WIDTHS BEFORE ANYTHING
+	// IS PAINTED, so the attempts that fail cost nothing but arithmetic —
+	// painting a rung is two builders and the doors' lifts, and only the one
+	// rung drawn pays for it (footswap.go's [seamRung]). The numbers' doors are
+	// recorded where the right label landed, on the seam's own row
+	// ([legendDoorRow]), by the same walk the status row used ([app.markDoors]).
+	seat := func(left string, span, dialSpan, gateSpan hudSpan, rung seamRung) (string, bool) {
+		if !legendFits(left, rung.width, width) {
+			return "", false
+		}
+		seam, dial, gate = span, dialSpan, gateSpan
+		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = shiftIntoBorder(span), shiftIntoBorder(dialSpan), shiftIntoBorder(gateSpan)
+		right, painted := rung.plain, ""
+		var ledger []hudPart
+		if telemetry && rung.width > 0 {
+			var alive []hudPart
+			ledger, alive = a.seamRungParts(parts, rung.steps)
+			painted, right = a.seamTelemetryLabel(ledger, alive)
+		}
+		line, at, ok := a.legendLinePainted(left, right, painted, width, lift)
+		if !ok {
+			a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
+			return "", false
+		}
+		if len(ledger) > 0 {
+			a.markDoors(ledger, at, legendDoorRow)
+		}
+		return line, true
+	}
+	// THREE TIERS, AND THE NUMBERS GIVE WAY BEFORE THE NAME DOES. Each tier
+	// tries every right-hand rung, fullest first, against a left held to that
+	// tier of its own ladder ([seamTier]): first with the rider whole, then
+	// with the name and the model whole, and only when not even the state
+	// word fits beside those does the last tier let the left cut and drop
+	// against each rung in turn — and there an empty left is refused too,
+	// because a rule with numbers and no name would be a rule about nobody.
+	// The first attempt that fits is drawn. At phone width, where the right is
+	// the keys, the keys are the cheaper thing and the left's whole ladder
+	// runs at once.
+	tiers := [...]seamTier{seamTierRider, seamTierWhole, seamTierAny}
+	from := 0
+	if !telemetry {
+		from = 2
+	}
+	for _, tier := range tiers[from:] {
+		// A RIDER TIER WITH NO RIDER TO SEAT is every rung tried for nothing.
+		if tier == seamTierRider && pieces.rider == "" {
+			continue
+		}
+		for _, rung := range rungs {
+			// THE RIDER IS WORTH THE CHEAP NUMBERS AND NOT THE DEAR ONES
+			// ([seamRung.cheap]): past the last cheap rung the rider tier
+			// stands down and the whole tier, rider and all, takes over.
+			if tier == seamTierRider && !rung.cheap {
+				continue
+			}
+			left, span, dialSpan, gateSpan, named := a.legendLeftSpanFrom(&pieces, legendRoomFor(width, rung.width), tier)
+			if !named || (left == "" && telemetry && !a.roomOrganized()) {
+				continue
+			}
+			if line, ok := seat(left, span, dialSpan, gateSpan, rung); ok {
+				return line
+			}
+		}
+	}
+	// THE BARE RULE LAST: the left alone, at whatever its ladder can make of
+	// the whole width.
+	if left, span, dialSpan, gateSpan, _ := a.legendLeftSpanFrom(&pieces, legendRoomFor(width, 0), seamTierAny); left != "" {
+		if line, ok := seat(left, span, dialSpan, gateSpan, seamRung{}); ok {
 			return line
 		}
-		a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 	}
 	return a.rule(width)
+}
+
+// legendFits is [app.legendLinePainted]'s own arithmetic asked ahead of the
+// paint: whether the two labels leave a cell of rule between them.
+func legendFits(left string, rightWidth, width int) bool {
+	head := 1
+	if left != "" {
+		head = 3 + ansi.StringWidth(left)
+	}
+	tail := 0
+	if rightWidth > 0 {
+		tail = 3 + rightWidth
+	}
+	return (left != "" || rightWidth > 0) && width-head-tail >= 1
+}
+
+// legendPieces is the cluster's pieces for this frame: the node's inside a
+// room, the conversation's otherwise, and none on the organized room's page,
+// whose header carries the identity ([app.legendLeftSpanFrom]).
+func (a *app) legendPieces(width int) seamPieces {
+	if a.roomOpen() {
+		if a.roomOrganized() {
+			return seamPieces{}
+		}
+		return a.roomSeamPieces()
+	}
+	return a.seamPieces(width)
 }
 
 // shiftIntoBorder moves a span from the label's own columns to the frame's: the
@@ -3512,17 +3435,6 @@ func shiftIntoBorder(span hudSpan) hudSpan {
 	span.from += 2
 	span.to += 2
 	return span
-}
-
-// legendAttempt is one rung of the ladder above: the two labels it would draw,
-// and where the model segment, the thinking rung and the approvals chip fell
-// inside the left one.
-type legendAttempt struct {
-	left  string
-	right string
-	span  hudSpan
-	dial  hudSpan
-	gate  hudSpan
 }
 
 // legendGap is the shortest run of rule the two labels will leave between them.
@@ -3544,9 +3456,15 @@ const legendGap = 3
 // rather than merely measured against one. Two functions computing the same
 // number would drift; this is the one that computes it.
 func legendRoom(width int, right string) int {
+	return legendRoomFor(width, ansi.StringWidth(right))
+}
+
+// legendRoomFor is [legendRoom] given the right label's width alone, which is
+// all the seam's ladder keeps of a rung it has not drawn (footswap.go).
+func legendRoomFor(width, rightWidth int) int {
 	tail := 0
-	if right != "" {
-		tail = ansi.StringWidth(right) + 3
+	if rightWidth > 0 {
+		tail = rightWidth + 3
 	}
 	return width - 3 - legendGap - tail
 }
@@ -3562,6 +3480,14 @@ func legendRoom(width int, right string) int {
 // keep their place. Only an attempt with nothing at EITHER end is refused, and
 // what answers that is the plain rule.
 func (a *app) legendLine(left, right string, width int, paint func(string) string) (string, bool) {
+	line, _, ok := a.legendLinePainted(left, right, "", width, paint)
+	return line, ok
+}
+
+// legendLinePainted is [app.legendLine] with the right label optionally
+// supplied already painted (footswap.go's telemetry), and it also reports the
+// column the right label starts at, for the doors recorded along it.
+func (a *app) legendLinePainted(left, right, rightPainted string, width int, paint func(string) string) (string, int, bool) {
 	head := "─"
 	if left != "" {
 		head = "─ " + left + " "
@@ -3572,8 +3498,9 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 	}
 	fill := width - ansi.StringWidth(head) - ansi.StringWidth(tail)
 	if (left == "" && right == "") || fill < 1 {
-		return "", false
+		return "", 0, false
 	}
+	at := ansi.StringWidth(head) + fill + 1
 	// WHERE THE DOOR LANDED, for the press that may follow. It is written HERE,
 	// as the line is laid out, for the reason [app.statusPress] gives about the
 	// model segment: a column read from anywhere else is a column from the
@@ -3587,7 +3514,6 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 	// answered for. What makes the span its own answer to "was it drawn" is
 	// [app.legend] clearing it before its own ladder starts.
 	if strings.HasPrefix(right, homeDoorWord) {
-		at := ansi.StringWidth(head) + fill + 1
 		a.homeDoor = hudSpan{from: at, to: at + ansi.StringWidth(homeDoorWord)}
 	}
 	line := a.pal.dim("─")
@@ -3603,9 +3529,12 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 		// a person had to press was exactly as loud as the word explaining it. The
 		// chord steps to ink; nothing else on the line moves, and the line is the
 		// same number of cells it was.
-		line += a.pal.dim(" ") + paintHint(right, a.pal, a.pal.dim) + a.pal.dim(" ─")
+		if rightPainted == "" {
+			rightPainted = paintHint(right, a.pal, a.pal.dim)
+		}
+		line += a.pal.dim(" ") + rightPainted + a.pal.dim(" ─")
 	}
-	return line, true
+	return line, at, true
 }
 
 // legendNameFloor is the fewest cells worth spending on a cut name. Below it
@@ -3647,26 +3576,42 @@ func (a *app) branchWord() string {
 // THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
 // branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
-	left, _, _, _, named := a.legendLeftSpan(width, room)
+	left, _, _, _, named := a.legendLeftSpan(width, room, seamTierAny)
 	return left, named
 }
 
 // legendLeftSpan is that label AND the columns its three doors occupy within it
 // — the model's name, the thinking rung, then the approvals chip — which is
 // what [app.legend] needs to make all three pressable without building the
-// cluster a second time.
-func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, hudSpan, bool) {
+// cluster a second time. The tier says how much of the left's ladder may be
+// walked ([seamTier]); on the two upper tiers an empty cluster is a refusal.
+func (a *app) legendLeftSpan(width, room int, tier seamTier) (string, hudSpan, hudSpan, hudSpan, bool) {
+	pieces := a.legendPieces(width)
+	return a.legendLeftSpanFrom(&pieces, room, tier)
+}
+
+// legendLeftSpanFrom is [app.legendLeftSpan] laid from pieces already
+// gathered — [app.legend] gathers them once per frame and lays every rung of
+// every tier from the same set.
+func (a *app) legendLeftSpanFrom(pieces *seamPieces, room int, tier seamTier) (string, hudSpan, hudSpan, hudSpan, bool) {
 	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
 	// the path: none of them is a fact about the page on screen, and the one
 	// thing a person in here needs from this slot is the key that gets them out
-	// (room.go). The task's own title is on the status row two lines down, where
-	// a room renames the identity cluster ([app.identityParts]).
+	// (room.go). The task's own title is on the breadcrumb bar at the top of
+	// the page (roomcrumbs.go).
 	if a.roomOpen() {
 		if a.roomOrganized() {
+			// THE ORGANIZED ROOM'S HEADER CARRIES THE IDENTITY, so the seam's
+			// left says only whose numbers ride its right — the conversation's,
+			// never the node's (room.go's law about the telemetry). At phone
+			// width the right is the keys and the left stays empty.
+			if a.seamCarriesTelemetry() {
+				return roomTotalsWord, hudSpan{}, hudSpan{}, hudSpan{}, true
+			}
 			return "", hudSpan{}, hudSpan{}, hudSpan{}, true
 		}
 		if room < 1 {
-			return "", hudSpan{}, hudSpan{}, hudSpan{}, true
+			return "", hudSpan{}, hudSpan{}, hudSpan{}, tier == seamTierAny
 		}
 		// THE WAY OUT LEADS, AND THE NODE'S OWN CELLS FOLLOW IT — its model,
 		// its rung and its gate, on the seam's own ladder (roomseam.go). While
@@ -3674,16 +3619,22 @@ func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, hudSpan
 		// those few keystrokes is not "main" (recall.go); the slot promises the
 		// NEXT keystroke, so it moves with it. Only the doors the node still
 		// has are recorded ([app.roomSeamDoors]).
-		cluster, model, rung, gate := a.roomSeamIdentity(room)
+		cluster, model, rung, gate := seamLay(pieces, room, tier)
+		if tier != seamTierAny && cluster == "" {
+			return "", hudSpan{}, hudSpan{}, hudSpan{}, false
+		}
 		model, rung, gate = a.roomSeamDoors(model, rung)
 		return cluster, model, rung, gate, true
 	}
 	if room < 1 {
-		return "", hudSpan{}, hudSpan{}, hudSpan{}, true
+		return "", hudSpan{}, hudSpan{}, hudSpan{}, tier == seamTierAny
 	}
 	// THE NAME, THE MODEL AND ITS THINKING RUNG ARE HERE NOW, and the branch
-	// rides after them (foot.go's [app.seamIdentity] holds the ladder).
-	cluster, span, dial, gate := a.seamIdentity(width, room)
+	// rides after them (foot.go's [seamLay] holds the ladder).
+	cluster, span, dial, gate := seamLay(pieces, room, tier)
+	if tier != seamTierAny && cluster == "" {
+		return "", hudSpan{}, hudSpan{}, hudSpan{}, false
+	}
 	return cluster, span, dial, gate, true
 }
 
@@ -3722,8 +3673,9 @@ func (a *app) placePath(hard int) string {
 	return a.hostedPath(a.placeWord(shortPath(a.workspace, a.tilde, hard)))
 }
 
-// legendRight is the hint slot: the state's own keys when it has any, and the
-// input's own affordances when it does not.
+// footHint is the keys slot: the state's own keys when it has any, and the
+// input's own affordances when it does not. It is the whole of the last row
+// now (footswap.go's [app.hintRow]), and the seam's right at phone width.
 //
 // IT SPEAKS AT EVERY WIDTH, and it used to go silent under [hudTight] on the
 // reasoning that the cells were worth more to the conversation's name. That was
@@ -3733,10 +3685,15 @@ func (a *app) placePath(hard int) string {
 // the branch dropped at the other end ([app.legendLeft]), the line was refused
 // at both ends and fell back to a bare rule with nothing written on it at all.
 // The tight frame gives up THE BRANCH — which the shell prompt behind this one
-// still says — and keeps the door. Nothing here forces the slot on: the ladder
-// in [app.legend] still tries each rung and falls back to the plain rule when a
-// frame genuinely has no room for one.
-func (a *app) legendRight(width int) string {
+// still says — and keeps the door.
+func (a *app) footHint(width int) string {
+	// A QUESTION'S PAGE BRINGS ITS OWN FOOT (questionroom.go's
+	// [app.questionFootRows]) and names the keys it takes there; a second line
+	// under it naming the conversation's doors would be naming keys the page
+	// does not take.
+	if a.questionRoomOpen() {
+		return ""
+	}
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}

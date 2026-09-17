@@ -17,7 +17,9 @@ strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
 sub-harness offer, the steer guard, the follow-up row, any message waiting for the
 answer to finish, the tray row above the box, the draft box where you type,
-any open list (picker, menu, completion), and the status line last.
+any open list (picker, menu, completion), and the keys row last. The numbers — the bill,
+the meter, the state word — ride the right end of the rule over the box since 2026-09-17;
+the last row of the frame is the keys that work right now, and nothing else.
 
 **The tray row** carries what the next message takes with it besides its words —
 a picked sub-harness, an attached picture, an attached file. The **thinking rung** is not
@@ -43,8 +45,8 @@ kept, `ctrl+g` closes the column and opens it again, remembered between sessions
 column's own last line says so: `❯ ctrl+g hide`. While a command can be kept, that
 command takes the key and the column stays where it was. With the column closed the
 conversation is laid out at the full width of the terminal, running work still draws
-the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
-session has tasks to come back to and no running-turn line owns that slot.
+the strip along the top, and the keys row under the box reads `ctrl+g tasks` once the
+session has tasks to come back to and no running-turn line owns that row.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
 standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
@@ -65,15 +67,18 @@ the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** On home the rule is the same legend a conversation
 has over its message box, reading `◎ new conversation in ~/codeaf · glm-5.3-flash · ⠿ auto ·
-◇ asks` with `alt+w folder · alt+o model · alt+k chats · / commands` at its right — where
-the next conversation opens, what it will run on, how hard it will think and what it will run
-without asking, with the same doors on the cells (`alt+o`, `ctrl+v`, `alt+y`, or a press) —
-and the box `› say what you want done` sits under it. Every other place ends in its rule and
+◇ asks` — where the next conversation opens, what it will run on, how hard it will think and
+what it will run without asking, with the same doors on the cells (`alt+o`, `ctrl+v`,
+`alt+y`, or a press) — and the box `› say what you want done` sits under it. The chords
+that move those cells are on the hint line under the box, with home's own keys: `alt+w
+folder · alt+o model · alt+k chats · / commands`. Every other place ends in its rule and
 its hint, with no box: only home starts things. *Typing on a place* and *The rule above
 home's box* on the Places page have the whole of it.
 
-The status line is the last row of the frame, not the first. It sits at the bottom so
-you read it in the same glance as the box above it.
+The keys row is the last row of the frame, on home and in a conversation alike: the
+lowest line is for keys. The numbers a conversation used to draw there are on the rule
+over the box, so you read who, where, how much and what is happening in one line, and
+what to press in the line under your own words.
 
 ## Reading padding — text against the left edge
 
@@ -659,12 +664,18 @@ it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 ## The line above the message box (the legend) — the conversation name, the model and the branch
 
 The rule that separates the conversation from your own business carries **who you are
-talking to and where** on the left, and the keys that work now on the right, like the
-legend on a fieldset:
+talking to and where** on the left, and **the numbers** — the bill, the meter, the state
+word — on the right, like the legend on a fieldset:
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── space space home · / commands ─
+─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 ```
+
+Until 2026-09-17 the right end carried the keys that work now (`space space home · /
+commands`, `esc interrupt`); those are on the row under the box now — see *The keys row
+under the box* below — and the numbers came up here from the last row of the frame, so
+that home and a conversation end in the same shape: a rule of facts, the box, a line of
+keys.
 
 The left, in order: the machine on a `--host` session (`devbox · …`), the conversation's
 **name** (the one the session chose for itself, falling back to the folder's name until
@@ -728,8 +739,10 @@ at either end falls back to the plain rule. Until 2026-09-09 this line carried o
 branch, and the name and model were on the status row below; they moved up so that a
 long title could never push the numbers off the frame.
 
-The right is a hint slot. It names the keys that work right now when a state has keys of
-its own — for example `y allow · n deny · a always` while a question is up,
+**The keys row under the box** — the last row of the frame — is the hint slot. Until
+2026-09-17 it was the right end of the rule above the box; the numbers took that end and
+the keys got a row of their own. It names the keys that work right now when a state has
+keys of its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running,
 `enter steers it in · shift+enter stops and sends · esc interrupt` while a turn is
 running and you have typed words on a terminal that can deliver the secondary key,
@@ -753,10 +766,10 @@ terminals that can deliver it, but is not part of this one-line slot. See the ke
 answer".
 
 The running-turn clauses always have this order: send, `shift+enter`, background, stop.
-When the right side is tight, codeaf removes whole clauses from the right until the line
-fits. At 70 columns at least the first fitting clause remains; a running turn never loses
-the slot merely because every clause would not fit. The hint slot is never dropped to make
-room for the name: the name is cut first, because the keys are written nowhere else.
+When the row is tight, codeaf removes whole clauses from the right until the line fits;
+at least the first fitting clause remains, and a running turn never loses the row merely
+because every clause would not fit. The row is the keys' own: nothing on the frame competes
+with them for it.
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -775,8 +788,8 @@ space space home · / commands
 Pressing the space bar twice on an empty box opens the home screen, and clicking those
 words does the same; `/` opens the command list. It is there on a fresh machine from the
 first minute — an empty home is still a home — and over `--host` too, where it opens the far
-machine's home. The whole slot gives way the moment you type or a state
-above claims it. It costs no row either way — this line is on the frame regardless.
+machine's home. The whole row gives way the moment you type or a state
+above claims it. It is one row, and it is on the frame regardless.
 
 **Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
@@ -909,16 +922,23 @@ changed while a turn was running, a fallback onto another model, or a model chan
 another window. Inside a task's page the same readings are the task's own — see the task
 page's status line.
 
-## The status line at the bottom — the numbers, grouped, and the state word
+## The status line at the bottom — the numbers, grouped, and the state word, on the rule over the box
 
-One row at the bottom of the frame. **The ledger on the left**, grouped by the question
-each group answers; **aliveness on the right** — what the screen is doing, and for how
-long. The conversation's name and model are *not* on this row: they are on the legend
-line above the box (see "The line above the message box").
+**Since 2026-09-17 the numbers are the right end of the rule over the box** — the same
+line that names the conversation and its model on its left — and the last row of the
+frame is the keys (see "The line above the message box" and "The keys row under the
+box"). Everything below about the segments, their order, their doors and the narrow ladder
+still holds; only the row changed. **The ledger first**, grouped by the question each group
+answers; **aliveness last** — what the screen is doing, and for how long.
 
 ```
-$0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs   YOLO        38 tok/s · ⠹ working · 12s
+─ porting the parser · glm-5.3-flash ── $0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs   YOLO   38 tok/s · ⠹ working · 12s ─
 ```
+
+At the phone tier (under 60 columns) the numbers are still the two-row deck at the foot
+of the frame and the keys are still on the rule — see "The two-row status deck at phone
+width". On a frame with no rule at all — the greeting, or a window too short for one —
+the state word rides the right end of the keys row instead, so it is never lost.
 
 Inside a group the parts are joined by ` · `; between groups there are three cells of
 nothing. Space is the separator — no pipe, no bracket, no rule. The groups, left to right:
@@ -957,9 +977,10 @@ Jobs and watches are not a door — the column's `jobs` section is where they ar
 and the rate, the connection, the state word and the `YOLO` badge are readings, not
 controls. The control for the gate is the `◇` cell on the legend (the keys page).
 
-While a task **room** is open the row's left grows the room chip — `⠋ Ship the parser fix`
-— in front of the ledger, and the legend above the box becomes the task's: `room · esc/←←
-main · task glm-5.2 · ⠿ high · ◇ on its own · via friendli`. **Pressing the model's name
+While a task **room** is open the task's own name is on the breadcrumb bar at the top of
+the frame (the room chip that used to lead this row is gone with the row), and the legend
+above the box becomes the task's: `room · esc/←← main · task glm-5.2 · ⠿ high · ◇ on its
+own · via friendli`, with the conversation's numbers after it. **Pressing the model's name
 there moves the task**, not the conversation: the same picker opens aimed at that node, and
 the task switches from its next request onward; pressing the rung, or `ctrl+v`, walks the
 task's thinking. One `esc` restores both lines. Where the pick could not land the name is
@@ -972,16 +993,19 @@ this window is a window onto, so inside a room they are the node's — `38 tok/s
 writes, `running go test · 41s` while it is in a call — and they are drawn **whether or
 not the conversation is doing anything**, which is the usual case: handing a task out ends
 your turn, and the node goes on working for minutes with the conversation idle. The
-ledger, the meter and the job counts on the same row stay the conversation's, because
+ledger, the meter and the job counts on the same line stay the conversation's, because
 those are measurements of a session. A node that has said nothing for a while draws
 nothing rather than the conversation's clock; `esc` gives the conversation's own reading
 back. Until 2026-09-10 a room drew no rate and no machine at all and could show a stale
 line left over from the conversation — the news said which model it was about but not
 which piece of work.
 
-Below width **100** the right edge may take a row of its own, still right-aligned, and
-only when it would otherwise collide with the ledger — a quiet session still fits on one
-row at 60 columns. If even the emptied row will not fit, the state word is what survives.
+The numbers never take a second row: when the rule cannot hold the name, the model and
+every figure, the figures go first, one at a time in the order "What the status line
+drops when it is narrow" gives, and the state word is the last thing standing on the
+right. The name and the model give way only when not even the state word fits beside them
+whole; a `via` machine on the seam outlasts the cheap figures (the jobs, the forecast,
+the cache's cash half, the rate) and gives way before the cache, the bill and the meter.
 
 Until 2026-09-09 the name and the model were the left half of this row and every figure
 sat in one dotted run beside them; the crew word, the `Σ +128 −14` session delta, the
@@ -1210,13 +1234,17 @@ entirely now.) The cache segment has a shorter true spelling before it goes — 
 `⟲ 89% cached` — and the live rate goes before the cache's hit rate because the clock on
 the state word already says the turn is alive.
 
-The **state word, the `YOLO` badge and the connection are not in that list at all**. One
-is why you are looking at the line, the second is why you should be, and the third is the
-reason none of the numbers beside it are moving.
+The **state word, the `YOLO` badge and the connection are not in that list**. One is why
+you are looking at the line, the second is why you should be, and the third is the reason
+none of the numbers beside it are moving. On the rule they still have to fit beside the
+conversation's name, so once every figure above is gone they go too, in this order —
+the connection, the badge, the question chip — and the state word is the last thing
+standing. The name and the model are cut or dropped only when not even the state word fits
+beside them whole.
 
-Below 100 columns the right edge takes a row of its own before anything is dropped, so
-a narrow frame keeps its numbers and spends a row instead. The phone tier (under 60
-columns) is a different shape entirely — see "Does this work on my phone?".
+The numbers never take a second row (until 2026-09-17 they wrapped onto one below 100
+columns; the rule has no row to wrap onto). The phone tier (under 60 columns) is a
+different shape entirely — see "Does this work on my phone?".
 
 ## The context meter and its sparkline
 
@@ -1700,7 +1728,7 @@ What happens to it:
   box — the waiting messages are dropped and codeaf says so: `1 waiting message dropped`
   or `N waiting messages dropped`.
 
-While something is waiting, the hint slot in the legend ends with
+While something is waiting, the keys row under the box ends with
 `esc stops and drops` instead of `esc interrupt`.
 
 ## Long lines inside a fence — code cut off at the edge, the tail of a line missing, `↳`

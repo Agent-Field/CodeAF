@@ -237,9 +237,10 @@ func TestTheDraftsRuleGivesUpTheRungThenTheGateThenTheModel(t *testing.T) {
 		t.Fatalf("a wide rule dropped a cell:\n%s", left)
 	}
 	// ONE CELL SHORT OF EVERYTHING, measured off the label the wide rule builds
-	// and the arithmetic [legendRoom] reads backwards: the first thing the
+	// and the arithmetic [legendRoom] reads backwards — with no right label,
+	// since the chords are on the foot (footswap.go): the first thing the
 	// ladder gives up has to be the rung, and it buys more than one cell.
-	room := ansi.StringWidth(left) - 1 + 3 + legendGap + ansi.StringWidth(a.targetLegendRight()) + 3
+	room := ansi.StringWidth(left) - 1 + 3 + legendGap
 	line, drew := a.targetLegend(room, a.pal)
 	if !drew {
 		t.Fatalf("a %d-column rule drew nothing", room)

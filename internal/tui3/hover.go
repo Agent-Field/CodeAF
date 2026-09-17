@@ -643,6 +643,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if a.seamApprovalSpan.holds(x) {
 				return hoverAt{kind: hoverApproval}
 			}
+			// AND THE NUMBERS' DOORS AT THE OTHER END — the bill and the meter,
+			// recorded where the seam drew them (footswap.go's [legendDoorRow]).
+			if door, ok := a.doorAt(x, legendDoorRow); ok {
+				return hoverAt{kind: doorHover(door.kind)}
+			}
 		case chromeStatus:
 			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,
 			// because this file's law is that the set which lights is the set the
@@ -661,14 +666,9 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// The doors on this row are the ledger's table (foot.go); the node's
-			// model is on the seam now, with the conversation's (roomseam.go).
-			if door, ok := a.doorAt(x, mark.index); ok {
-				if door.kind == segKeeping && a.at(pageStanding) {
-					return hoverAt{}
-				}
-				return hoverAt{kind: doorHover(door.kind)}
-			}
+			// THE LAST ROW IS THE KEYS and lights nothing: the home door on it
+			// answers through its own reading (home.go's [app.homeDoorPress]),
+			// and the numbers' doors are on the seam (footswap.go).
 		}
 	}
 	return hoverAt{}

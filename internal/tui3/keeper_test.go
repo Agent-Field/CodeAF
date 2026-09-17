@@ -221,7 +221,7 @@ func TestTheOpenCountIsAbsentAtOneAndPresentAtTwo(t *testing.T) {
 	// transcript already draws every open conversation by name, so the count was
 	// the same fact said twice and the weaker of the two — the sheet and /status
 	// still say it (foot.go's [groupOff]).
-	if line := plain(a.status(200)); strings.Contains(line, "2 open") {
+	if line := plain(a.legend(200)); strings.Contains(line, "2 open") {
 		t.Fatalf("the open count is back on the status row:\n%s", line)
 	}
 }

@@ -793,7 +793,7 @@ func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 	// AND THE FOOT THAT IS DRAWN IS STILL WHOLE CLAUSES OF THAT SENTENCE, never a
 	// word with its end sliced off.
 	for _, clause := range strings.Split(strings.TrimSpace(rows[len(rows)-1]), railSep) {
-		if !strings.Contains(placeTailed(a.homeHintWords()), clause) {
+		if !strings.Contains(a.homeHint(), clause) {
 			t.Fatalf("the foot drew %q, which is not a clause of the hint:\n%s",
 				clause, rows[len(rows)-1])
 		}
@@ -970,8 +970,11 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	// one key that still reaches them ([app.homeCrossChord]). It was already on
 	// this row on any machine whose right column had rows; what the 2026-09-15
 	// ruling changed is that the right column now always does.
+	// AND THE DRAFT'S CHORDS RIDE THE SAME ROW, before the way out, since
+	// 2026-09-17: the lowest line is for keys on home as in a conversation
+	// (footswap.go).
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
-	want := strings.Replace(design, " · tab next place", rowSep+homeFolderChordWord+" · tab next place", 1)
+	want := hintFit(strings.Replace(design, " · tab next place", rowSep+homeFolderChordWord+rowSep+a.targetChordWords()+" · tab next place", 1), a.width-2)
 	if rest != want {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)
 	}
@@ -1868,7 +1871,7 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	// RESTING row only; [TestHomesRestingFootIsTheDesignsSentence] pins both
 	// halves of what replaced it.
 	frame, _, _ := a.frame()
-	if !strings.Contains(ansi.Strip(frame), homeRestHint) {
+	if !strings.Contains(ansi.Strip(frame), homeFootWord) || !strings.Contains(ansi.Strip(frame), placeHintTail) {
 		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
 	}
 	// AND THE CURSOR IS VISIBLY ON THE CONVERSATION THE DOOR PICKED: home opens
@@ -2438,7 +2441,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	if !a.homeDoorOpen() || !a.homeDoorShowing() {
 		t.Fatal("the door is shut on a machine whose only conversation is this one")
 	}
-	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != homeDoorWord+" · "+microcopy {
 		t.Fatalf("the hint slot reads %q on a one-conversation machine", got)
 	}
 	a.key(key(" "))
@@ -2473,7 +2476,7 @@ func TestTheDoorIsOpenOnAMachineThatHoldsNothing(t *testing.T) {
 	if !a.homeDoorOpen() || !a.homeDoorShowing() {
 		t.Fatal("the door is shut on an empty machine")
 	}
-	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != homeDoorWord+" · "+microcopy {
 		t.Fatalf("the hint slot reads %q on an empty machine", got)
 	}
 	a.key(key(" "))
@@ -2519,7 +2522,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		// the design's own foot does not name it (FIDELITY.md item 3) — so what is
 		// demanded instead is the pair of sentences the design does spell, which
 		// is a stricter claim than the two fragments this asked for before.
-		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, homeRestHint)
+		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, homeFootWord, placeHintTail)
 		for _, want := range want {
 			if !strings.Contains(text, want) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
@@ -2738,7 +2741,7 @@ func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	if !a.homeDoorShowing() {
 		t.Fatal("the door is not advertised at rest")
 	}
-	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != homeDoorWord+" · "+microcopy {
 		t.Fatalf("the hint slot reads %q", got)
 	}
 	frame, _, _ := a.frame()
@@ -2750,7 +2753,7 @@ func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	if a.homeDoorShowing() {
 		t.Fatal("the door is still advertised while something is being typed")
 	}
-	if got := a.legendRight(a.width); got != microcopy {
+	if got := a.footHint(a.width); got != microcopy {
 		t.Fatalf("the slot reads %q while typing", got)
 	}
 }
@@ -2770,14 +2773,15 @@ func TestClickingTheDoorGoesHome(t *testing.T) {
 	if !a.homeDoor.pressable() {
 		t.Fatalf("laying out the frame recorded no columns for the door:\n%s", ansi.Strip(frame))
 	}
+	// THE DOOR IS ON THE KEYS ROW — the last row of the frame (footswap.go).
 	row := -1
 	for y := 0; y < a.height; y++ {
-		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeLegend {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == a.hintRowKind() {
 			row = y
 		}
 	}
 	if row < 0 {
-		t.Fatal("no legend row on the frame")
+		t.Fatal("no keys row on the frame")
 	}
 	if _, took := a.homeDoorPress(a.homeDoor.from, row); !took {
 		t.Fatal("a click on the door did nothing")
@@ -2786,11 +2790,11 @@ func TestClickingTheDoorGoesHome(t *testing.T) {
 		t.Fatal("the click did not open home")
 	}
 
-	// A press on the rule beside it is a press on a rule.
+	// A press on the row past the door is a press on nothing.
 	a.closeHome()
 	a.frame()
-	if _, took := a.homeDoorPress(1, row); took {
-		t.Fatal("a click on the bare rule opened home")
+	if _, took := a.homeDoorPress(a.width-2, row); took {
+		t.Fatal("a click on the empty end of the keys row opened home")
 	}
 }
 

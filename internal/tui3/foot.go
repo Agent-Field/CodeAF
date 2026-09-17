@@ -9,28 +9,30 @@ import (
 
 // ── THE FOOT OF THE FRAME: TWO ROWS, EACH WITH ONE JOB ──────────────────────
 //
-//	─ porting the parser · glm-5.3-flash · ⠿ high · ◇ asks · via deepinfra ──── space space home · / commands ─
+//	─ porting the parser · glm-5.3-flash · ⠿ high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
+//	 space space home · tab last · alt+k chats · / commands
 //
-//	$0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs        38 tok/s · ⠹ working · 12s
+// THE SEAM IS WHO, WHERE AND HOW MUCH. The rule above the box carries the
+// conversation's name and the model answering it on the left, and the numbers
+// on the right (footswap.go says why they moved up on 2026-09-17). It is the
+// line a person's eye crosses on the way into the box, which is why the two
+// facts they most often want to change — which conversation, which model — are
+// written on it and pressable there. The `via <machine>` rider is ALWAYS on it
+// while a sighting is fresh, whoever served: the model is spelled there as its
+// basename, so the vendor half of the id is not on the screen for the rider to
+// repeat.
 //
-// THE SEAM IS WHO AND WHERE. The rule above the box carries the conversation's
-// name and the model answering it on the left, and the keys that work right now
-// on the right. It is the line a person's eye crosses on the way into the box,
-// which is why the two facts they most often want to change — which
-// conversation, which model — are written on it and pressable there. The `via
-// <machine>` rider is ALWAYS on it while a sighting is fresh, whoever served:
-// the model is spelled there as its basename, so the vendor half of the id is
-// not on the screen for the rider to repeat.
+// THE NUMBERS ARE GROUPED BY THE QUESTION EACH GROUP ANSWERS, three cells of
+// air between groups and a dot only inside one: the bill (what it cost, and
+// what the cache gave back), the meter (what it is carrying), what is alive
+// elsewhere (background jobs), and the posture (YOLO, drawn only when the gate
+// is open AND the seam is not carrying the approvals chip — approvalchip.go).
+// The right end is the one segment true of the whole line — the state word and
+// its clock — with the live rate beside it while a turn writes.
 //
-// THE STATUS ROW IS NUMBERS AND ALIVENESS. The ledger on the left is grouped by
-// the question each group answers, three cells of air between groups and a dot
-// only inside one: the bill (what it cost, and what the cache gave back), the
-// meter (what it is carrying), what is alive elsewhere (background jobs), and
-// the posture (YOLO, drawn only when the gate is open AND the seam above is not
-// carrying the approvals chip — approvalchip.go). The right edge is the one
-// segment true of the whole line — the state word and its clock — with the
-// live rate beside it while a turn writes.
+// THE LAST ROW IS THE KEYS that work right now, and nothing else
+// ([app.statusRows]).
 //
 // THE RATE IS THE STREAM'S OWN AND NEVER AN AVERAGE. `38 tok/s` is what the
 // wire is producing at this moment ([PhaseNews.Rate], measured on the live
@@ -41,7 +43,8 @@ import (
 // Until 2026-09-09 the name and model were on the status row's left and every
 // figure sat in one dotted run beside them, so a long title pushed the numbers
 // off the frame and nothing on the row read first. The seam had the branch on
-// it and nothing else.
+// it and nothing else. Until 2026-09-17 the numbers were the last row and the
+// keys were the seam's right.
 
 // hudGroup is which question a segment answers, and therefore which run of the
 // ledger it is drawn in. Segments in one group are joined by ` · `; groups are
@@ -329,7 +332,8 @@ func doorKind(kind hudSeg) bool {
 }
 
 // markDoors walks one run as it was drawn and records every door on it. base is
-// the column the run starts at and row which of the status row's rows it is on.
+// the column the run starts at and row which row it is on: the seam's
+// ([legendDoorRow]) on every tier but the phone's, else the deck's own.
 //
 // The legacy span ([app.moneySpan]) is written beside the table because the
 // paint and the tests of that door read it by name.
@@ -382,8 +386,9 @@ func (a *app) doorPress(door statusDoor) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// statusDoorPress resolves a click on the status row to the door under it, and
-// reports whether it took the click.
+// statusDoorPress resolves a click on the numbers to the door under it, and
+// reports whether it took the click. The numbers are on the seam
+// (footswap.go), so the row that answers is the legend's.
 //
 // THE ROW IS RESOLVED BEFORE THE COLUMN. [app.chromeAt] lays the chrome out to
 // answer, and laying it out is what writes the doors — read the other way
@@ -393,10 +398,10 @@ func (a *app) statusDoorPress(x, y int) (tea.Cmd, bool) {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeStatus {
+	if !ok || mark.kind != chromeLegend {
 		return nil, false
 	}
-	door, ok := a.doorAt(x, mark.index)
+	door, ok := a.doorAt(x, legendDoorRow)
 	if !ok {
 		return nil, false
 	}
@@ -431,14 +436,53 @@ func (a *app) runStatusNote() tea.Cmd {
 // line happens to end with (effortchip.go). A room does not come through here:
 // its legend says the way out, and its status row carries the room chip
 // ([app.identityParts]).
-func (a *app) seamIdentity(width, room int) (string, hudSpan, hudSpan, hudSpan) {
+func (a *app) seamIdentity(width, room int, tier seamTier) (string, hudSpan, hudSpan, hudSpan) {
 	pieces := a.seamPieces(width)
+	return seamLay(&pieces, room, tier)
+}
+
+// seamLay walks the ladder over one set of pieces and returns the first rung
+// that fits the room on the given tier, or nothing.
+func seamLay(pieces *seamPieces, room int, tier seamTier) (string, hudSpan, hudSpan, hudSpan) {
 	for _, try := range seamLadder {
+		if !try.on(tier) {
+			continue
+		}
 		if cluster, named, dial, gate, ok := pieces.lay(try, room); ok {
 			return cluster, named, dial, gate
 		}
 	}
 	return "", hudSpan{}, hudSpan{}, hudSpan{}
+}
+
+// seamTier is how much of the ladder the seam's left may walk on one pass of
+// [app.legend]'s search, which tries the numbers at every width against the
+// costliest tier first (footswap.go): a name cut to twelve cells, or a
+// machine gone from the seam, is a worse trade than a forecast gone from it,
+// and a ladder that cut the name before it dropped a number would make that
+// trade on every narrow frame.
+type seamTier uint8
+
+const (
+	// seamTierRider keeps the name and the model entire AND the rider whole:
+	// which machine is answering is the one fact on this line about NOW.
+	seamTierRider seamTier = iota
+	// seamTierWhole keeps the name and the model entire; the rider may be
+	// said shorter or not at all.
+	seamTierWhole
+	// seamTierAny is the whole ladder, cuts included.
+	seamTierAny
+)
+
+// on reports whether a rung is allowed on one tier.
+func (t seamTry) on(tier seamTier) bool {
+	switch tier {
+	case seamTierRider:
+		return t.name && t.model && !t.cut && t.rider == riderWhole
+	case seamTierWhole:
+		return t.name && t.model && !t.cut
+	}
+	return true
 }
 
 // seamPieces is everything the identity cluster can be made of, gathered once
