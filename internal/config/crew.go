@@ -408,7 +408,7 @@ func SetCrewSource(profileDir, source string) error {
 
 // CrewSummary is the one line a crew change confirms itself with:
 //
-//	crew → balanced · brain claude-fable-5.1 · hands glm-5.3-flash · checks claude-fable-5.1
+//	crew → balanced · brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
 //
 // The three names are the classes a person actually asked about — what thinks,
 // what works, what checks — and HANDS IS THE WORKER: the seat that does the
@@ -423,7 +423,7 @@ func CrewSummary(profileDir string) string {
 
 // CrewClasses is the three class names alone:
 //
-//	brain claude-fable-5.1 · hands glm-5.3-flash · checks claude-fable-5.1
+//	brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
 //
 // It is the tail of [CrewSummary] lifted out because a second surface prints the
 // crew now — /status, where the word already has a label of its own and "crew →"
@@ -439,7 +439,7 @@ func CrewClasses(profileDir string) string {
 // CrewClassModels is the three ids [CrewClasses] names, in that order and
 // without the role words in front of them:
 //
-//	claude-fable-5.1, glm-5.3-flash, claude-fable-5.1
+//	claude-opus-5, glm-5.3-flash, claude-fable-5.1
 //
 // It exists because a surface drawing the crew line has to be able to say which
 // runs of it are the ANSWER — the ids a person typed /crew to change — and which
