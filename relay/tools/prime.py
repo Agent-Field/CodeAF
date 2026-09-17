@@ -407,7 +407,10 @@ def post(relay, install, body):
         url,
         data=body.encode("utf-8"),
         method="POST",
-        headers={INSTALL_HEADER: install, "Content-Type": CONTENT_TYPE},
+        # The edge in front of the relay refuses the urllib default agent
+        # outright (403, before the Worker runs); name the tool instead.
+        headers={INSTALL_HEADER: install, "Content-Type": CONTENT_TYPE,
+                 "User-Agent": "codeaf-prime/1"},
     )
     try:
         with urllib.request.urlopen(request) as response:
