@@ -102,7 +102,7 @@ func (g *TaskGraph) planPath() string {
 // It takes the plan gate and nothing else, so admit's own locking underneath
 // is untouched.
 func (g *TaskGraph) planSeed(spec *taskSpec) {
-	if !bashBeltAsked() || spec.kind() != "" {
+	if !bashBeltAsked() {
 		return
 	}
 	g.planMu.Lock()
@@ -174,6 +174,13 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 			spec.brief = planBrief(store.Task(planRootID), planRootID, planIsRoot)
 			return
 		}
+	}
+	// AND EVERY LATER NODE IS THE LOOP'S OWN. A quick, design or run spec that
+	// did not ROOT the plan is not store-driven — its middle is not the loop —
+	// so it stays outside the store. Only the door's first work order may be
+	// a run spec, because `codeaf do` dispatches a subharness run AS the root.
+	if spec.kind() != "" {
+		return
 	}
 	store := g.plan.open()
 	if store == nil {
