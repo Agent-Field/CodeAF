@@ -76,25 +76,37 @@ func ActiveCustomSource(profileDir string, sources modelsource.Set) (modelsource
 	return service, true
 }
 
-// ActiveConnection reads the service this conversation answers on. THE ACTIVE
-// CONNECTION IS DERIVED, NEVER STORED: the conversation slot's model already
-// carries the answer in its Written prefix, and a second key would be a second
-// source of truth that can disagree with the model actually in use. The slot's
-// model is read from disk ([ChatModelAt]) and resolved through [Set.For], which
-// answers with the default service when no connected Written prefix matches —
-// so the switcher that hands this set around reaches the default service the
-// same way the conversation itself does. False only when there are no services
-// at all, or the conversation has settled on no model yet.
-func ActiveConnection(profileDir string, sources modelsource.Set) (modelsource.Connected, bool) {
-	if sources.Empty() {
-		return modelsource.Connected{}, false
-	}
-	model := strings.TrimSpace(ChatModelAt(profileDir))
-	if model == "" {
+// ActiveConnectionFor answers the service a conversation's live model answers on.
+// THE ACTIVE CONNECTION IS DERIVED FROM THE CONVERSATION'S MODEL, NOT THE
+// SHARED PROFILE: a caller holding the model this conversation actually runs
+// ([app.model] in the talk surface, the deferred target while a move waits
+// out a working turn) must not be routed through [ChatModelAt], which is the
+// LAST model any conversation settled on and is written asynchronously by the
+// engine host — two tabs on different connections would read each other's.
+// The blank-model and empty-set guards are the only logic here; everything
+// else is [Set.For], which answers with the default service when no connected
+// Written prefix matches — so the switcher that hands this set around reaches
+// the default service the same way the conversation itself does. False only
+// when there are no services at all, or the conversation has settled on no
+// model yet.
+func ActiveConnectionFor(model string, sources modelsource.Set) (modelsource.Connected, bool) {
+	if sources.Empty() || strings.TrimSpace(model) == "" {
 		return modelsource.Connected{}, false
 	}
 	service, _ := sources.For(model)
 	return service, true
+}
+
+// ActiveConnection reads the service this conversation answers on from the
+// profile's conversation slot. THE ACTIVE CONNECTION IS DERIVED, NEVER
+// STORED: the conversation slot's model already carries the answer in its
+// Written prefix, and a second key would be a second source of truth that can
+// disagree with the model actually in use. The slot's model is read from disk
+// ([ChatModelAt]) and resolved through [ActiveConnectionFor], which holds the
+// derivation so a caller with the conversation's LIVE model ([app.model] in
+// the talk surface) reads the same answer the profile does.
+func ActiveConnection(profileDir string, sources modelsource.Set) (modelsource.Connected, bool) {
+	return ActiveConnectionFor(ChatModelAt(profileDir), sources)
 }
 
 // RenameConnectionModels carries a connection rename across every STORED model

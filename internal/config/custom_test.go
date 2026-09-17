@@ -166,3 +166,92 @@ func TestRenameConnectionLeavesAnUnrelatedProfileUntouched(t *testing.T) {
 		t.Fatalf("a profile that held nothing under the old name was rewritten: %v -> %v", before, after)
 	}
 }
+
+// ActiveConnectionFor is the pure half of the active-connection derivation:
+// the surfaces hand it the model THIS conversation runs ([app.model] in the
+// talk surface, the deferred target while a move waits out a working turn),
+// because [ChatModelAt] is the last model ANY conversation settled on and is
+// written asynchronously. A PREFIXED ID NAMES THE CUSTOM CONNECTION IT CARRIES,
+// and everything else — bare ids, ids on other Written names, unknown
+// prefixes — resolves through [Set.For] onto the default service, which is the
+// same road the conversation itself takes. The table pins both sides: the
+// identity that comes back, not just the ok.
+func TestActiveConnectionForResolvesTheConversationModelThroughTheSet(t *testing.T) {
+	defaultService := modelsource.Connected{
+		Source: modelsource.DefaultSource("https://router.example/v1"),
+		Key:    "router-key", Address: "https://router.example/v1",
+	}
+	customService := modelsource.Connected{
+		Source: modelsource.Source{
+			ID: modelsource.CustomID, Written: "homelab",
+			Address: "http://127.0.0.1:9001/v1", KeyOptional: true,
+		},
+		Key: "homelab-key", Address: "http://127.0.0.1:9001/v1",
+	}
+	sources := modelsource.NewSet(defaultService, customService)
+	for _, row := range []struct {
+		model  string
+		want   modelsource.Connected
+		active bool
+	}{
+		// A blank model is a conversation that has settled on nothing: no
+		// service is claimed, and the default never stands in.
+		{"", modelsource.Connected{}, false},
+		{"   ", modelsource.Connected{}, false},
+		// A bare id, and a prefix no connected Written claims, answer on the
+		// default service the way the conversation itself resolves them.
+		{"deepseek-chat", defaultService, true},
+		{"someone-else/deepseek-chat", defaultService, true},
+		// The custom connection's Written prefix carries the answer.
+		{"homelab/local-model", customService, true},
+		{"HOMELAB/local-model", customService, true},
+	} {
+		got, ok := ActiveConnectionFor(row.model, sources)
+		if ok != row.active {
+			t.Fatalf("ActiveConnectionFor(%q) ok = %v, want %v", row.model, ok, row.active)
+		}
+		if got.Source.ID != row.want.Source.ID || got.Key != row.want.Key {
+			t.Fatalf("ActiveConnectionFor(%q) = %q/%q, want %q/%q",
+				row.model, got.Source.ID, got.Key, row.want.Source.ID, row.want.Key)
+		}
+	}
+	// A SET WITH NO SERVICES NAMES NO SERVICE: the default never stands in for
+	// an empty set, and a blank model on it stays false too.
+	if service, ok := ActiveConnectionFor("deepseek-chat", modelsource.NewSet()); ok || service.Source.ID != "" {
+		t.Fatalf("an empty set answered with %q, ok %v", service.Source.ID, ok)
+	}
+	if _, ok := ActiveConnectionFor("", modelsource.NewSet()); ok {
+		t.Fatal("an empty set with a blank model answered active")
+	}
+}
+
+// ActiveConnection keeps its profile-reading door on the same derivation: a
+// conversation model the profile holds comes back as the service that serves
+// it, and a profile that has settled on nothing answers false.
+func TestActiveConnectionReadsTheProfileConversationSlot(t *testing.T) {
+	dir := t.TempDir()
+	defaultService := modelsource.Connected{
+		Source: modelsource.DefaultSource("https://router.example/v1"),
+		Key:    "router-key", Address: "https://router.example/v1",
+	}
+	customService := modelsource.Connected{
+		Source: modelsource.Source{
+			ID: modelsource.CustomID, Written: "homelab",
+			Address: "http://127.0.0.1:9001/v1", KeyOptional: true,
+		},
+		Key: "homelab-key", Address: "http://127.0.0.1:9001/v1",
+	}
+	sources := modelsource.NewSet(defaultService, customService)
+	if _, ok := ActiveConnection(dir, sources); ok {
+		t.Fatal("a profile that settled on no model answered active")
+	}
+	if err := WriteChatModel(dir, "homelab/local-model"); err != nil {
+		t.Fatal(err)
+	}
+	if service, ok := ActiveConnection(dir, sources); !ok || service.Source.ID != modelsource.CustomID {
+		t.Fatalf("the profile's conversation model resolved to %q, ok %v", service.Source.ID, ok)
+	}
+	if _, ok := ActiveCustomSource(dir, sources); !ok {
+		t.Fatal("ActiveCustomSource lost the custom connection its wrapper derives")
+	}
+}
