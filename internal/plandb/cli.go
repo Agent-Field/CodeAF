@@ -114,14 +114,14 @@ func cliScan(argv []string) (*cliParsed, error) {
 	p := &cliParsed{vals: map[string]string{}, lists: map[string][]string{}, bools: map[string]bool{}}
 	boolFlags := map[string]bool{
 		"json": true, "compact": true, "full": true, "next": true,
-		"keep-done": true, "cascade": true, "version": true,
+		"keep-done": true, "cascade": true, "version": true, "archived": true,
 	}
 	valueFlags := map[string]bool{
 		"db": true, "agent": true, "project": true, "as": true, "kind": true,
 		"dep": true, "priority": true, "description": true, "parent": true, "into": true,
 		"after": true, "before": true, "title": true, "prepend": true,
 		"result": true, "subtasks": true, "task": true, "limit": true,
-		"status": true, "chat": true,
+		"status": true, "chat": true, "older-than": true,
 	}
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
@@ -221,7 +221,7 @@ func cliRefusal(p *cliParsed) (string, bool) {
 		// and the run's project is fixed at init.
 		return verb + ": Task lifecycle and scope are managed by the supervisor", true
 	case p.pos[0] == "task" && len(p.pos) >= 2 &&
-		oneOf(p.pos[1], "claim", "start", "fail", "pause", "next", "heartbeat", "progress", "approve"):
+		oneOf(p.pos[1], "claim", "start", "fail", "next", "heartbeat", "progress", "approve"):
 		return verb + ": Task lifecycle and scope are managed by the supervisor", true
 	}
 	return "", false
@@ -335,6 +335,8 @@ func cliDispatch(st *Store, p *cliParsed) error {
 		return cliDone(st, p)
 	case "list":
 		return cliList(st, p)
+	case "archive":
+		return cliArchive(st, p)
 	case "status":
 		return cliStatus(st, p)
 	case "search":
@@ -353,7 +355,7 @@ func cliDispatch(st *Store, p *cliParsed) error {
 		return cliShow(st, p)
 	case "task":
 		if len(p.pos) < 2 {
-			return errors.New("task needs a subcommand — one of add-dep, amend, cancel, get, insert, note, notes, overview, pivot")
+			return errors.New("task needs a subcommand — one of add-dep, amend, cancel, get, insert, note, notes, overview, pause, pivot, resume")
 		}
 		switch p.pos[1] {
 		case "add-dep":
@@ -372,8 +374,12 @@ func cliDispatch(st *Store, p *cliParsed) error {
 			return cliNotes(st, p.tail(1))
 		case "overview":
 			return cliOverview(st, p.tail(1))
+		case "pause":
+			return cliTaskHold(st, p.tail(1), true)
 		case "pivot":
 			return cliPivot(st, p.tail(1))
+		case "resume":
+			return cliTaskHold(st, p.tail(1), false)
 		default:
 			return fmt.Errorf("unknown task subcommand %q — run \"plandb help\" for the ported set", p.pos[1])
 		}
@@ -1119,6 +1125,9 @@ func cliFilter(p *cliParsed) Filter {
 }
 
 func cliList(st *Store, p *cliParsed) error {
+	if p.bools["archived"] {
+		return cliListArchived(st, p)
+	}
 	var rows []*Task
 	for _, task := range st.Tasks(cliFilter(p)) {
 		if task.ID == st.RootID() {
@@ -1149,6 +1158,61 @@ func cliList(st *Store, p *cliParsed) error {
 	for _, task := range rows {
 		fmt.Fprintf(cliOut, "  %s %s [%s]\n", cliID(task.ID), task.Title, task.Status)
 	}
+	return nil
+}
+
+// cliListArchived is `list --archived`: the rows the archive holds, in the
+// same shape the live list prints them.
+func cliListArchived(st *Store, p *cliParsed) error {
+	tasks, err := st.Archived()
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		out := make([]*cliTaskJSON, 0, len(tasks))
+		for _, task := range tasks {
+			out = append(out, cliTaskObject(st, task))
+		}
+		return cliPrintJSON(out)
+	}
+	if len(tasks) == 0 {
+		fmt.Fprintln(cliOut, "(no rows)")
+		return nil
+	}
+	for _, task := range tasks {
+		fmt.Fprintf(cliOut, "  %s %s [%s]\n", cliID(task.ID), task.Title, task.Status)
+	}
+	return nil
+}
+
+// cliArchive moves old finished subtrees out of the live plan and into the
+// archive. It is the runtime's and a person's verb, like pause: nothing a
+// worker needs while it works, and the window defaults to the doctrine's
+// 72h.
+func cliArchive(st *Store, p *cliParsed) error {
+	window := 72 * time.Hour
+	if raw := p.vals["older-than"]; raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("--older-than needs a duration like 72h, not %q", raw)
+		}
+		if parsed < 0 {
+			return fmt.Errorf("--older-than cannot be negative, got %q", raw)
+		}
+		window = parsed
+	}
+	moved, err := st.Archive(window)
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		out := make([]*cliTaskJSON, 0, len(moved))
+		for _, task := range moved {
+			out = append(out, cliTaskObject(st, task))
+		}
+		return cliPrintJSON(out)
+	}
+	fmt.Fprintf(cliOut, "archived %d tasks\n", len(moved))
 	return nil
 }
 
@@ -1475,6 +1539,12 @@ func cliShow(st *Store, p *cliParsed) error {
 	if task.Result != "" {
 		fmt.Fprintf(cliOut, "result: %s\n", task.Result)
 	}
+	if notes := st.Notes(task.ID, 0); len(notes) > 0 {
+		fmt.Fprintln(cliOut, "notes:")
+		for _, note := range notes {
+			fmt.Fprintln(cliOut, cliNoteLine(note))
+		}
+	}
 	return nil
 }
 
@@ -1596,12 +1666,59 @@ func cliNotes(st *Store, p *cliParsed) error {
 		return nil
 	}
 	for _, note := range notes {
-		if note.Agent != "" {
-			fmt.Fprintf(cliOut, "  %s [%s] %s\n", note.ID, note.Agent, note.Body)
-		} else {
-			fmt.Fprintf(cliOut, "  %s %s\n", note.ID, note.Body)
-		}
+		fmt.Fprintln(cliOut, cliNoteLine(note))
 	}
+	return nil
+}
+
+// cliNoteLine renders one note the one way both `task notes` and `show`
+// print it: the person's note carries its `person:` prefix, and a worker's
+// note is attributed to the agent that left it.
+func cliNoteLine(note Note) string {
+	switch {
+	case note.From == NoteFromPerson:
+		return fmt.Sprintf("  %s person: %s", note.ID, note.Body)
+	case note.Agent != "":
+		return fmt.Sprintf("  %s [%s] %s", note.ID, note.Agent, note.Body)
+	default:
+		return fmt.Sprintf("  %s %s", note.ID, note.Body)
+	}
+}
+
+// cliTaskHold runs the runtime's and a person's hold verbs: `task pause`
+// sets the status-independent flag, `task resume` clears it. They are not
+// worker verbs — the bare supervisor refusal still stands for the lifecycle —
+// so the store's own root guard and the task lookup are all the argument
+// check that is needed.
+func cliTaskHold(st *Store, p *cliParsed, pause bool) error {
+	verb := "resume"
+	if pause {
+		verb = "pause"
+	}
+	if len(p.pos) < 2 {
+		return fmt.Errorf("%s needs a task — plandb task %s <task-id>", verb, verb)
+	}
+	task, err := cliResolve(st, p.pos[1])
+	if err != nil {
+		return err
+	}
+	var held *Task
+	if pause {
+		held, err = st.Pause(task.ID)
+	} else {
+		held, err = st.Resume(task.ID)
+	}
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		return cliPrintJSON(cliTaskObject(st, held))
+	}
+	done := "resumed"
+	if pause {
+		done = "paused"
+	}
+	fmt.Fprintf(cliOut, "%s %s\n", done, cliID(held.ID))
 	return nil
 }
 
@@ -1612,6 +1729,7 @@ type cliNoteJSON struct {
 	ID        string    `json:"id"`
 	TaskID    string    `json:"task_id"`
 	AgentID   string    `json:"agent_id,omitempty"`
+	From      string    `json:"from,omitempty"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -1619,7 +1737,7 @@ type cliNoteJSON struct {
 func cliNoteObject(note Note) cliNoteJSON {
 	return cliNoteJSON{
 		ID: note.ID, TaskID: cliID(note.TaskID), AgentID: note.Agent,
-		Content: note.Body, CreatedAt: note.At,
+		From: note.From, Content: note.Body, CreatedAt: note.At,
 	}
 }
 
@@ -1767,6 +1885,7 @@ type cliTaskJSON struct {
 	ProjectID    string       `json:"project_id"`
 	ParentTaskID *string      `json:"parent_task_id"`
 	IsComposite  bool         `json:"is_composite"`
+	Paused       bool         `json:"paused,omitempty"`
 	Title        string       `json:"title"`
 	Description  string       `json:"description"`
 	Status       Status       `json:"status"`
@@ -1781,6 +1900,7 @@ type cliTaskJSON struct {
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 	CompletedAt  *time.Time   `json:"completed_at,omitempty"`
+	ArchivedAt   *time.Time   `json:"archived_at,omitempty"`
 }
 
 type cliDepJSON struct {
@@ -1793,6 +1913,7 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 		ID:          cliID(task.ID),
 		ProjectID:   cliProjectID(st.Project()),
 		IsComposite: task.Composite,
+		Paused:      task.Paused,
 		Title:       task.Title,
 		Description: task.Description,
 		Status:      task.Status,
@@ -1816,6 +1937,10 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 	if !task.CompletedAt.IsZero() {
 		completed := task.CompletedAt
 		out.CompletedAt = &completed
+	}
+	if !task.ArchivedAt.IsZero() {
+		archived := task.ArchivedAt
+		out.ArchivedAt = &archived
 	}
 	return out
 }
@@ -1938,7 +2063,8 @@ func cliVerbHelp(verb string) string {
 		"split":          `usage: plandb split TASK_ID --into SPEC   (SPEC: JSON parts, "A, B", or "A > B > C")`,
 		"go":             `usage: plandb go [--agent ID] — claim the highest-priority ready task for you`,
 		"done":           `usage: plandb done [TASK_ID] --result TEXT [--agent ID] [--next]`,
-		"list":           `usage: plandb list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C]`,
+		"archive":        `usage: plandb archive [--older-than 72h] — move old finished subtrees into the archive`,
+		"list":           `usage: plandb list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C] [--archived]`,
 		"status":         `usage: plandb status [--full] — the one-line summary, or the containment tree with it`,
 		"search":         `usage: plandb search QUERY [--limit N] [--project P] [--chat C]`,
 		"context":        `usage: plandb context TEXT [--kind K] [--task TASK_ID]`,
@@ -1948,7 +2074,7 @@ func cliVerbHelp(verb string) string {
 		"bottlenecks":    `usage: plandb bottlenecks [--limit N]`,
 		"show":           `usage: plandb show TASK_ID`,
 		"help":           `usage: plandb help`,
-		"task":           `usage: plandb task <add-dep|amend|cancel|get|insert|note|notes|overview|pivot>`,
+		"task":           `usage: plandb task <add-dep|amend|cancel|get|insert|note|notes|overview|pause|pivot|resume>`,
 		"task add-dep":   `usage: plandb task add-dep DOWNSTREAM --after UPSTREAM [--kind feeds_into|blocks|suggests]`,
 		"task amend":     `usage: plandb task amend TASK_ID --prepend TEXT`,
 		"task cancel":    `usage: plandb task cancel TASK_ID`,
@@ -1956,6 +2082,8 @@ func cliVerbHelp(verb string) string {
 		"task insert":    `usage: plandb task insert --after A [--before B] --title T [--description D]`,
 		"task note":      `usage: plandb task note TASK_ID TEXT`,
 		"task notes":     `usage: plandb task notes TASK_ID`,
+		"task pause":     `usage: plandb task pause TASK_ID — hold the task and its subtree out of the ready frontier`,
+		"task resume":    `usage: plandb task resume TASK_ID — release the hold Pause set`,
 		"task overview":  `usage: plandb task overview [--project P] [--chat C]`,
 		"task pivot":     `usage: plandb task pivot TASK_ID --subtasks JSON [--keep-done]`,
 		"what-if":        `usage: plandb what-if cancel TASK_ID`,
@@ -1987,10 +2115,12 @@ adapting the plan:
   task pivot TASK_ID --subtasks JSON [--keep-done]
   task cancel TASK_ID       |  what-if cancel TASK_ID
   task note TASK_ID TEXT    |  task notes TASK_ID
+  task pause TASK_ID        |  task resume TASK_ID
 
 reading:
   show TASK_ID | task get TASK_ID | task overview [--project P] [--chat C]
-  list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C]
+  list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C] [--archived]
+  archive [--older-than 72h]  move old finished subtrees into the archive
   status [--full] | search QUERY [--limit N] [--project P] [--chat C] | critical-path | bottlenecks [--limit N]
   context TEXT [--kind K] [--task TASK_ID] | contexts [--kind K] [--limit N] [--project P] [--chat C] | prune CONTEXT_ID
 
