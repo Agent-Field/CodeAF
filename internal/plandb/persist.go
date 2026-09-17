@@ -108,6 +108,44 @@ var schemaStatements = []string{
 		ord        INTEGER NOT NULL,
 		PRIMARY KEY (downstream, upstream)
 	)`,
+	// The archive keeps whole task rows, in the same columns as tasks, plus
+	// the moment each was archived. It is a separate table so every read of
+	// the live plan — Tasks, ReadySet, Search — stops seeing an archived
+	// subtree, while Archived still reads it back whole.
+	`CREATE TABLE IF NOT EXISTS archived_tasks (
+		id                    TEXT    PRIMARY KEY,
+		ord                   INTEGER NOT NULL,
+		title                 TEXT    NOT NULL,
+		description           TEXT    NOT NULL,
+		kind                  TEXT    NOT NULL,
+		parent_id             TEXT    NOT NULL,
+		priority              INTEGER NOT NULL,
+		effect                TEXT    NOT NULL,
+		parallel              TEXT    NOT NULL,
+		isolation             TEXT    NOT NULL,
+		role                  TEXT    NOT NULL,
+		agent                 TEXT    NOT NULL,
+		acceptance            TEXT    NOT NULL,
+		capabilities          TEXT    NOT NULL,
+		resources             TEXT    NOT NULL,
+		context_inputs        TEXT    NOT NULL,
+		deliverables          TEXT    NOT NULL,
+		evidence_requirements TEXT    NOT NULL,
+		status                TEXT    NOT NULL,
+		composite             INTEGER NOT NULL,
+		claimed_by            TEXT    NOT NULL,
+		result                TEXT    NOT NULL,
+		err                   TEXT    NOT NULL,
+		artifacts             TEXT    NOT NULL,
+		evidence              TEXT    NOT NULL,
+		created_at            TEXT    NOT NULL,
+		updated_at            TEXT    NOT NULL,
+		completed_at          TEXT    NOT NULL,
+		project               TEXT    NOT NULL DEFAULT '',
+		chat                  TEXT    NOT NULL DEFAULT '',
+		paused                INTEGER NOT NULL DEFAULT 0,
+		archived_at           TEXT    NOT NULL
+	)`,
 	`CREATE TABLE IF NOT EXISTS notes (
 		seq     INTEGER PRIMARY KEY,
 		id      TEXT NOT NULL,
@@ -316,12 +354,84 @@ func loadState(tx *sql.Tx) (state, error) {
 	return value, nil
 }
 
+// taskColumns is every column a task row carries, in the order scanTask
+// reads them. The archive keeps the same columns and adds archived_at, so the
+// list lives here and both the loader and the archive reader share it.
+const taskColumns = `id, title, description, kind, parent_id, priority, effect,
+	parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
+	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
+	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused`
+
+// rowQuerier is the read half both the database handle and a transaction
+// carry, so the archive reader can share the task scan with the loader
+// without opening a transaction of its own.
+type rowQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+// scanTask reads one row of taskColumns into a Task. Any extra columns the
+// caller's SELECT carried — the archive's archived_at — are scanned into the
+// extra destinations after the task's own.
+func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
+	task := &Task{}
+	var (
+		capabilities, resources, contextInputs, deliverables string
+		evidenceRequirements, artifacts, evidence            string
+		composite, paused                                    int
+		createdAt, updatedAt, completedAt                    string
+		effect, parallel, isolation                          string
+	)
+	dest := []any{
+		&task.ID, &task.Title, &task.Description, &task.Kind, &task.ParentID,
+		&task.Priority, &effect, &parallel, &isolation, &task.Role, &task.Agent, &task.Acceptance,
+		&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
+		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
+		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
+	}
+	dest = append(dest, extra...)
+	if err := row.Scan(dest...); err != nil {
+		return nil, err
+	}
+	task.Effect = Effect(effect)
+	task.Parallel, task.Isolation = parallel, isolation
+	task.Composite = composite != 0
+	task.Paused = paused != 0
+	if err := decodeJSON(capabilities, &task.Capabilities); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON(resources, &task.Resources); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON(contextInputs, &task.ContextInputs); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON(deliverables, &task.Deliverables); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON(evidenceRequirements, &task.EvidenceRequirements); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON(artifacts, &task.Artifacts); err != nil {
+		return nil, err
+	}
+	if err := decodeJSON(evidence, &task.Evidence); err != nil {
+		return nil, err
+	}
+	var err error
+	if task.CreatedAt, err = parseTime(createdAt); err != nil {
+		return nil, err
+	}
+	if task.UpdatedAt, err = parseTime(updatedAt); err != nil {
+		return nil, err
+	}
+	if task.CompletedAt, err = parseTime(completedAt); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
 func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
-	rows, err := tx.Query(`SELECT id, title, description, kind, parent_id, priority, effect,
-		parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
-		deliverables, evidence_requirements, status, composite, claimed_by, result, err,
-		artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused
-		FROM tasks ORDER BY ord`)
+	rows, err := tx.Query(`SELECT ` + taskColumns + ` FROM tasks ORDER BY ord`)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -329,59 +439,93 @@ func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
 	tasks := map[string]*Task{}
 	var order []string
 	for rows.Next() {
-		task := &Task{}
-		var (
-			capabilities, resources, contextInputs, deliverables string
-			evidenceRequirements, artifacts, evidence            string
-			composite, paused                                    int
-			createdAt, updatedAt, completedAt                    string
-			effect, parallel, isolation                          string
-		)
-		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.Kind, &task.ParentID,
-			&task.Priority, &effect, &parallel, &isolation, &task.Role, &task.Agent, &task.Acceptance,
-			&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
-			&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
-			&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused); err != nil {
-			return nil, nil, err
-		}
-		task.Effect = Effect(effect)
-		task.Parallel, task.Isolation = parallel, isolation
-		task.Composite = composite != 0
-		task.Paused = paused != 0
-		if err := decodeJSON(capabilities, &task.Capabilities); err != nil {
-			return nil, nil, err
-		}
-		if err := decodeJSON(resources, &task.Resources); err != nil {
-			return nil, nil, err
-		}
-		if err := decodeJSON(contextInputs, &task.ContextInputs); err != nil {
-			return nil, nil, err
-		}
-		if err := decodeJSON(deliverables, &task.Deliverables); err != nil {
-			return nil, nil, err
-		}
-		if err := decodeJSON(evidenceRequirements, &task.EvidenceRequirements); err != nil {
-			return nil, nil, err
-		}
-		if err := decodeJSON(artifacts, &task.Artifacts); err != nil {
-			return nil, nil, err
-		}
-		if err := decodeJSON(evidence, &task.Evidence); err != nil {
-			return nil, nil, err
-		}
-		if task.CreatedAt, err = parseTime(createdAt); err != nil {
-			return nil, nil, err
-		}
-		if task.UpdatedAt, err = parseTime(updatedAt); err != nil {
-			return nil, nil, err
-		}
-		if task.CompletedAt, err = parseTime(completedAt); err != nil {
+		task, err := scanTask(rows)
+		if err != nil {
 			return nil, nil, err
 		}
 		tasks[task.ID] = task
 		order = append(order, task.ID)
 	}
 	return tasks, order, rows.Err()
+}
+
+// loadArchived reads the archive back as whole tasks, in admission order,
+// each carrying the moment it was archived.
+func loadArchived(q rowQuerier) ([]*Task, error) {
+	rows, err := q.Query(`SELECT ` + taskColumns + `, archived_at FROM archived_tasks ORDER BY ord`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var archived []*Task
+	for rows.Next() {
+		var at string
+		task, err := scanTask(rows, &at)
+		if err != nil {
+			return nil, err
+		}
+		if task.ArchivedAt, err = parseTime(at); err != nil {
+			return nil, err
+		}
+		archived = append(archived, task)
+	}
+	return archived, rows.Err()
+}
+
+// insertArchived writes a task selection into the archive, stamped with the
+// moment it was archived. It runs inside the archiving transaction, so the
+// move out of the live tables and the copy into the archive commit together.
+func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
+	statement, err := tx.Prepare(`INSERT INTO archived_tasks (
+		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
+		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
+		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
+		created_at, updated_at, completed_at, project, chat, paused, archived_at) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+	for ord, task := range tasks {
+		capabilities, err := encodeJSON(task.Capabilities)
+		if err != nil {
+			return err
+		}
+		resources, err := encodeJSON(task.Resources)
+		if err != nil {
+			return err
+		}
+		contextInputs, err := encodeJSON(task.ContextInputs)
+		if err != nil {
+			return err
+		}
+		deliverables, err := encodeJSON(task.Deliverables)
+		if err != nil {
+			return err
+		}
+		evidenceRequirements, err := encodeJSON(task.EvidenceRequirements)
+		if err != nil {
+			return err
+		}
+		artifacts, err := encodeJSON(task.Artifacts)
+		if err != nil {
+			return err
+		}
+		evidence, err := encodeJSON(task.Evidence)
+		if err != nil {
+			return err
+		}
+		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Kind,
+			task.ParentID, task.Priority, string(task.Effect), task.Parallel, task.Isolation,
+			task.Role, task.Agent, task.Acceptance, capabilities, resources, contextInputs, deliverables,
+			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
+			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
+			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat,
+			boolInt(task.Paused), formatTime(now)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadDeps(tx *sql.Tx, tasks map[string]*Task) error {

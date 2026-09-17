@@ -911,6 +911,209 @@ func (s *Store) CompleteRoot(result string) error {
 	})
 }
 
+// Archive moves whole finished subtrees out of the live plan and into the
+// archive: a task and every task under it, when each one has been terminal —
+// done, cancelled or failed — for longer than the window. The moved tasks
+// leave Tasks, ReadySet and Search whole, so nothing that reads the plan sees
+// them again, and Archived reads the rows back whole. Two things are kept
+// honest: a subtree a still-live task depends on stays in the plan, because
+// an edge to a task that is gone would break the next open, and every
+// surviving parent's composite flag is recomputed, because a parent whose
+// last child left is no longer composite. The root is never archived: it is
+// the run.
+func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.beginWrite()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	fresh, err := loadState(tx)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now().UTC()
+	doomed, moved := archiveSelection(fresh, now.Add(-olderThan))
+	if len(moved) == 0 {
+		s.data = fresh
+		return nil, nil
+	}
+	for _, task := range moved {
+		task.ArchivedAt = now
+	}
+	if err := insertArchived(tx, moved, now); err != nil {
+		return nil, err
+	}
+	for id := range doomed {
+		delete(fresh.Tasks, id)
+	}
+	fresh.Order = keepIDs(fresh.Order, doomed)
+	fresh.Notes = keepNotes(fresh.Notes, doomed)
+	fresh.Contexts = keepContexts(fresh.Contexts, doomed)
+	recomputeComposite(&fresh)
+	if err := saveState(tx, fresh); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	s.data = fresh
+	return moved, nil
+}
+
+// Archived lists the tasks the archive holds, in admission order, each
+// carrying the moment it was archived. It is the read behind the CLI's
+// `list --archived`.
+func (s *Store) Archived() ([]*Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return loadArchived(s.db)
+}
+
+// archiveSelection chooses the maximal finished subtrees older than the
+// cutoff. A task is a candidate when it is terminal, its whole subtree is
+// terminal, and every task in it has been terminal since before the cutoff;
+// a candidate whose parent is itself a candidate is not a root, because the
+// parent's move already carries it. Each root's subtree is then kept only when
+// no still-live task depends on anything in it.
+func archiveSelection(value state, cutoff time.Time) (map[string]bool, []*Task) {
+	children := map[string][]string{}
+	for _, id := range value.Order {
+		children[value.Tasks[id].ParentID] = append(children[value.Tasks[id].ParentID], id)
+	}
+	allTerminal := map[string]bool{}
+	latest := map[string]time.Time{}
+	var walk func(id string)
+	walk = func(id string) {
+		if _, seen := allTerminal[id]; seen {
+			return
+		}
+		task := value.Tasks[id]
+		allTerminal[id] = terminal(task.Status)
+		// A terminal task's moment is when it completed; the fallback is the
+		// last write that touched it, which is what an older store carries.
+		latest[id] = task.CompletedAt
+		if latest[id].IsZero() {
+			latest[id] = task.UpdatedAt
+		}
+		for _, child := range children[id] {
+			walk(child)
+			if !allTerminal[child] {
+				allTerminal[id] = false
+			}
+			if latest[child].After(latest[id]) {
+				latest[id] = latest[child]
+			}
+		}
+	}
+	for _, id := range value.Order {
+		walk(id)
+	}
+	eligible := func(id string) bool {
+		return id != value.RootID && terminal(value.Tasks[id].Status) && allTerminal[id] && latest[id].Before(cutoff)
+	}
+	doomed := map[string]bool{}
+	for _, id := range value.Order {
+		if !eligible(id) {
+			continue
+		}
+		if parent := value.Tasks[id].ParentID; parent != "" && eligible(parent) {
+			continue
+		}
+		set := map[string]bool{}
+		markSubtree(children, id, set)
+		if referencedFromOutside(value, set) {
+			continue
+		}
+		for member := range set {
+			doomed[member] = true
+		}
+	}
+	if len(doomed) == 0 {
+		return nil, nil
+	}
+	var moved []*Task
+	for _, id := range value.Order {
+		if doomed[id] {
+			moved = append(moved, cloneTask(value.Tasks[id]))
+		}
+	}
+	return doomed, moved
+}
+
+// markSubtree collects a task and every task under it.
+func markSubtree(children map[string][]string, id string, into map[string]bool) {
+	if into[id] {
+		return
+	}
+	into[id] = true
+	for _, child := range children[id] {
+		markSubtree(children, child, into)
+	}
+}
+
+// referencedFromOutside reports whether any task outside the set depends on a
+// task inside it. Such a set may not be archived: its edges would dangle.
+func referencedFromOutside(value state, set map[string]bool) bool {
+	for id, task := range value.Tasks {
+		if set[id] {
+			continue
+		}
+		for _, dep := range task.Dependencies {
+			if set[dep.TaskID] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// recomputeComposite restores the one invariant the archive can break: a
+// task's composite flag is exactly whether it still has a child in the plan.
+// A parent whose last child left the plan stops being composite.
+func recomputeComposite(value *state) {
+	hasChild := map[string]bool{}
+	for _, id := range value.Order {
+		if parent := value.Tasks[id].ParentID; parent != "" {
+			hasChild[parent] = true
+		}
+	}
+	for _, id := range value.Order {
+		value.Tasks[id].Composite = hasChild[id]
+	}
+}
+
+func keepIDs(order []string, drop map[string]bool) []string {
+	kept := order[:0]
+	for _, id := range order {
+		if !drop[id] {
+			kept = append(kept, id)
+		}
+	}
+	return kept
+}
+
+func keepNotes(notes []Note, drop map[string]bool) []Note {
+	kept := notes[:0]
+	for _, note := range notes {
+		if !drop[note.TaskID] {
+			kept = append(kept, note)
+		}
+	}
+	return kept
+}
+
+func keepContexts(entries []ContextEntry, drop map[string]bool) []ContextEntry {
+	kept := entries[:0]
+	for _, entry := range entries {
+		if entry.TaskID == "" || !drop[entry.TaskID] {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
+}
+
 // Search answers the tasks, notes and context entries whose words match the
 // query, best first. The ranking is simple term overlap — the CLI contract is
 // "ranked results", and what ranks them is the store's own choice so long as

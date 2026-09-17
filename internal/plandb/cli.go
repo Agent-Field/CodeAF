@@ -114,14 +114,14 @@ func cliScan(argv []string) (*cliParsed, error) {
 	p := &cliParsed{vals: map[string]string{}, lists: map[string][]string{}, bools: map[string]bool{}}
 	boolFlags := map[string]bool{
 		"json": true, "compact": true, "full": true, "next": true,
-		"keep-done": true, "cascade": true, "version": true,
+		"keep-done": true, "cascade": true, "version": true, "archived": true,
 	}
 	valueFlags := map[string]bool{
 		"db": true, "agent": true, "project": true, "as": true, "kind": true,
 		"dep": true, "priority": true, "description": true, "parent": true, "into": true,
 		"after": true, "before": true, "title": true, "prepend": true,
 		"result": true, "subtasks": true, "task": true, "limit": true,
-		"status": true, "chat": true,
+		"status": true, "chat": true, "older-than": true,
 	}
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
@@ -335,6 +335,8 @@ func cliDispatch(st *Store, p *cliParsed) error {
 		return cliDone(st, p)
 	case "list":
 		return cliList(st, p)
+	case "archive":
+		return cliArchive(st, p)
 	case "status":
 		return cliStatus(st, p)
 	case "search":
@@ -1123,6 +1125,9 @@ func cliFilter(p *cliParsed) Filter {
 }
 
 func cliList(st *Store, p *cliParsed) error {
+	if p.bools["archived"] {
+		return cliListArchived(st, p)
+	}
 	var rows []*Task
 	for _, task := range st.Tasks(cliFilter(p)) {
 		if task.ID == st.RootID() {
@@ -1153,6 +1158,61 @@ func cliList(st *Store, p *cliParsed) error {
 	for _, task := range rows {
 		fmt.Fprintf(cliOut, "  %s %s [%s]\n", cliID(task.ID), task.Title, task.Status)
 	}
+	return nil
+}
+
+// cliListArchived is `list --archived`: the rows the archive holds, in the
+// same shape the live list prints them.
+func cliListArchived(st *Store, p *cliParsed) error {
+	tasks, err := st.Archived()
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		out := make([]*cliTaskJSON, 0, len(tasks))
+		for _, task := range tasks {
+			out = append(out, cliTaskObject(st, task))
+		}
+		return cliPrintJSON(out)
+	}
+	if len(tasks) == 0 {
+		fmt.Fprintln(cliOut, "(no rows)")
+		return nil
+	}
+	for _, task := range tasks {
+		fmt.Fprintf(cliOut, "  %s %s [%s]\n", cliID(task.ID), task.Title, task.Status)
+	}
+	return nil
+}
+
+// cliArchive moves old finished subtrees out of the live plan and into the
+// archive. It is the runtime's and a person's verb, like pause: nothing a
+// worker needs while it works, and the window defaults to the doctrine's
+// 72h.
+func cliArchive(st *Store, p *cliParsed) error {
+	window := 72 * time.Hour
+	if raw := p.vals["older-than"]; raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("--older-than needs a duration like 72h, not %q", raw)
+		}
+		if parsed < 0 {
+			return fmt.Errorf("--older-than cannot be negative, got %q", raw)
+		}
+		window = parsed
+	}
+	moved, err := st.Archive(window)
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		out := make([]*cliTaskJSON, 0, len(moved))
+		for _, task := range moved {
+			out = append(out, cliTaskObject(st, task))
+		}
+		return cliPrintJSON(out)
+	}
+	fmt.Fprintf(cliOut, "archived %d tasks\n", len(moved))
 	return nil
 }
 
@@ -1825,6 +1885,7 @@ type cliTaskJSON struct {
 	ProjectID    string       `json:"project_id"`
 	ParentTaskID *string      `json:"parent_task_id"`
 	IsComposite  bool         `json:"is_composite"`
+	Paused       bool         `json:"paused,omitempty"`
 	Title        string       `json:"title"`
 	Description  string       `json:"description"`
 	Status       Status       `json:"status"`
@@ -1839,6 +1900,7 @@ type cliTaskJSON struct {
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 	CompletedAt  *time.Time   `json:"completed_at,omitempty"`
+	ArchivedAt   *time.Time   `json:"archived_at,omitempty"`
 }
 
 type cliDepJSON struct {
@@ -1851,6 +1913,7 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 		ID:          cliID(task.ID),
 		ProjectID:   cliProjectID(st.Project()),
 		IsComposite: task.Composite,
+		Paused:      task.Paused,
 		Title:       task.Title,
 		Description: task.Description,
 		Status:      task.Status,
@@ -1874,6 +1937,10 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 	if !task.CompletedAt.IsZero() {
 		completed := task.CompletedAt
 		out.CompletedAt = &completed
+	}
+	if !task.ArchivedAt.IsZero() {
+		archived := task.ArchivedAt
+		out.ArchivedAt = &archived
 	}
 	return out
 }
@@ -1996,7 +2063,8 @@ func cliVerbHelp(verb string) string {
 		"split":          `usage: plandb split TASK_ID --into SPEC   (SPEC: JSON parts, "A, B", or "A > B > C")`,
 		"go":             `usage: plandb go [--agent ID] — claim the highest-priority ready task for you`,
 		"done":           `usage: plandb done [TASK_ID] --result TEXT [--agent ID] [--next]`,
-		"list":           `usage: plandb list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C]`,
+		"archive":        `usage: plandb archive [--older-than 72h] — move old finished subtrees into the archive`,
+		"list":           `usage: plandb list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C] [--archived]`,
 		"status":         `usage: plandb status [--full] — the one-line summary, or the containment tree with it`,
 		"search":         `usage: plandb search QUERY [--limit N] [--project P] [--chat C]`,
 		"context":        `usage: plandb context TEXT [--kind K] [--task TASK_ID]`,
@@ -2051,7 +2119,8 @@ adapting the plan:
 
 reading:
   show TASK_ID | task get TASK_ID | task overview [--project P] [--chat C]
-  list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C]
+  list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C] [--archived]
+  archive [--older-than 72h]  move old finished subtrees into the archive
   status [--full] | search QUERY [--limit N] [--project P] [--chat C] | critical-path | bottlenecks [--limit N]
   context TEXT [--kind K] [--task TASK_ID] | contexts [--kind K] [--limit N] [--project P] [--chat C] | prune CONTEXT_ID
 
