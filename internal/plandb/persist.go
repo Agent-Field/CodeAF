@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 const stateVersion = 2
@@ -31,6 +31,17 @@ type state struct {
 	Notes    []Note
 	Contexts []ContextEntry
 	NextID   uint64
+}
+
+// sqliteBusyCode is SQLITE_BUSY, the refusal SQLite gives a writer while
+// another holds the write lock.
+const sqliteBusyCode = 5
+
+// isBusy reports whether err is SQLite's "the database is locked" refusal,
+// which a writer is free to retry.
+func isBusy(err error) bool {
+	var refusal *sqlite.Error
+	return errors.As(err, &refusal) && refusal.Code() == sqliteBusyCode
 }
 
 // errNoStore says the database has no meta row yet — a file that exists (or
@@ -146,37 +157,49 @@ func openDatabase(path string) (*sql.DB, error) {
 	db.SetMaxIdleConns(1)
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
-		return nil, err
+		return nil, fmt.Errorf("open plan store database: %w", err)
 	}
-	if err := ensureWAL(db); err != nil {
+	if err := ensureSchema(db); err != nil {
 		_ = db.Close()
 		return nil, err
-	}
-	// THE SCHEMA IS IDEMPOTENT AND ALWAYS MADE HERE, so a store that exists but
-	// is empty — a file an interrupted build left behind, a database created by
-	// an earlier connection that crashed — is still a store a later open can
-	// use. CREATE TABLE IF NOT EXISTS on a table that is already there writes
-	// nothing.
-	for _, statement := range schemaStatements {
-		if _, err := db.Exec(statement); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("create plan store schema: %w", err)
-		}
 	}
 	return db, nil
 }
 
-// ensureWAL puts the store in WAL journal mode. It is a property of the FILE
-// and not of a connection, so a database already in WAL is left alone — which
-// is also what keeps a busy store openable: SQLite does NOT run the busy
-// handler for a journal-mode change, so asking for WAL on every connection
-// would fail the moment another process was writing. The switch is retried
-// briefly, because two processes can create the store at once and only one of
-// them changes the mode.
-func ensureWAL(db *sql.DB) error {
+// ensureSchema makes sure the database holds the store's tables, entering the
+// file into WAL mode as it creates them. THE CHECK IS ONE READ on a store that
+// is already built — the common case, every open of an existing plan — so a
+// process that opens the store for one verb pays for one query and not for the
+// schema, and a store that exists but is empty (a file an interrupted build
+// left behind) is built the same way a fresh one is.
+func ensureSchema(db *sql.DB) error {
+	var present int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'`).Scan(&present); err != nil {
+		return err
+	}
+	if present > 0 {
+		return nil
+	}
+	if err := enterWAL(db); err != nil {
+		return err
+	}
+	for _, statement := range schemaStatements {
+		if _, err := db.Exec(statement); err != nil {
+			return fmt.Errorf("create plan store schema: %w", err)
+		}
+	}
+	return nil
+}
+
+// enterWAL puts a new store in WAL journal mode. The mode is a property of the
+// FILE and not of a connection, so this runs once, as the schema is made, and
+// later opens inherit it. SQLite does NOT run the busy handler for a
+// journal-mode change, so the switch is retried briefly: two processes can
+// create the store at once and only one of them changes the mode.
+func enterWAL(db *sql.DB) error {
 	var mode string
 	if err := db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
-		return err
+		return fmt.Errorf("read plan store journal mode: %w", err)
 	}
 	for attempt := 0; !strings.EqualFold(mode, "wal"); attempt++ {
 		if attempt >= 40 {
