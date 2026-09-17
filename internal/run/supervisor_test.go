@@ -779,3 +779,135 @@ func cancelWhenLaunched(store *plandb.Store, seat *fakeSeat, id, reason string) 
 		}
 	}()
 }
+
+// runReopen opens a second handle on an existing plan, the way two processes
+// share one store: the path is the store's own, and an open naming no project
+// or root adopts whatever the file already holds.
+func runReopen(t *testing.T, path string) *plandb.Store {
+	t.Helper()
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("reopen plan store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+// leafRoot is the root action of the ownership tests: the run's own worker
+// adds nothing, so the leaves are the only work the frontier offers.
+func leafRoot(_ context.Context, _ plandb.Task) (run.Report, error) {
+	return run.Report{Result: "no split", Steps: 1}, nil
+}
+
+// DISPATCH IS PER PROCESS, AND TWO PROCESSES NEVER RUN ONE LEAF TWICE. Two
+// supervisors over one store — two handles on one path, each a stand-in for a
+// process — race the same ready set. The claim is the store's single writer,
+// so no leaf is handed to both: every leaf in the combined launch record ran
+// exactly once and ended done. The root is the run itself and each process
+// dispatches it, so the count that matters is the leaves'.
+func TestSupervisorTwoProcessesNeverRunOneLeafTwice(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		leafDone("l1"), leafDone("l2"), leafDone("l3"), leafDone("l4"),
+	}); err != nil {
+		t.Fatalf("seed the leaves: %v", err)
+	}
+	second := runReopen(t, store.Path())
+	seat := newFakeSeat()
+	seat.actions["root"] = leafRoot
+	first := run.NewSupervisor(store, t.TempDir(), 4, run.Limits{}, seat.workerFor)
+	other := run.NewSupervisor(second, t.TempDir(), 4, run.Limits{}, seat.workerFor)
+
+	var racers sync.WaitGroup
+	for _, supervisor := range []*run.Supervisor{first, other} {
+		racers.Add(1)
+		go func(s *run.Supervisor) {
+			defer racers.Done()
+			s.Run(ctx)
+		}(supervisor)
+	}
+	racers.Wait()
+
+	counts := map[string]int{}
+	for _, id := range seat.launches() {
+		counts[id]++
+	}
+	for _, id := range []string{"l1", "l2", "l3", "l4"} {
+		if counts[id] != 1 {
+			t.Fatalf("leaf %s ran %d times, want once: %v", id, counts[id], seat.launches())
+		}
+		if task := store.Task(id); task == nil || task.Status != plandb.StatusDone {
+			t.Fatalf("leaf %s = %#v, want done", id, task)
+		}
+	}
+}
+
+// A CLAIM ITS OWNER STOPPED TOUCHING IS TAKEN OVER. A leaf claimed by a
+// process that then died — held, running, its seen-at stamp an hour old — goes
+// stale after the window, and the next supervisor releases it and runs it to
+// done. The claim is made by hand because a dead process writes nothing more,
+// and its stamp is aged in the file because the window is wall-clock. The
+// worker that takes the released leaf opens on its trajectory's resume clause,
+// the path BashWorker already carries (TestBashWorkerOpensOnARecordedPredecessorWithTheResumeSentence):
+// the take-over only ever hands the task to a fresh worker.
+func TestSupervisorTakesOverAClaimItsOwnerStoppedTouching(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{leafDone("l1")}); err != nil {
+		t.Fatalf("seed the leaf: %v", err)
+	}
+	if _, err := store.Claim("l1", "l1", "proc-a"); err != nil {
+		t.Fatalf("claim the leaf: %v", err)
+	}
+	db := storePoke(t, store.Path())
+	if _, err := db.Exec(`UPDATE tasks SET seen_at = ? WHERE id = ?`,
+		time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano), "l1"); err != nil {
+		t.Fatalf("age the claim: %v", err)
+	}
+	seat := newFakeSeat()
+	seat.actions["root"] = leafRoot
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	supervisor.Owner = "proc-b"
+
+	if outcome := supervisor.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if !seat.launched("l1") {
+		t.Fatalf("launches = %v, want the stale leaf taken over", seat.launches())
+	}
+	if task := store.Task("l1"); task.Status != plandb.StatusDone {
+		t.Fatalf("leaf = %s, want done by the taking-over run", task.Status)
+	}
+}
+
+// A LIVE CLAIM HELD BY ANOTHER PROCESS IS NEVER TOUCHED. A leaf claimed by a
+// process whose stamp is inside the window stays with that process: a second
+// supervisor runs several passes, releases nothing, and never launches the
+// leaf.
+func TestSupervisorLeavesALiveClaimAlone(t *testing.T) {
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{leafDone("l1")}); err != nil {
+		t.Fatalf("seed the leaf: %v", err)
+	}
+	if _, err := store.Claim("l1", "l1", "proc-a"); err != nil {
+		t.Fatalf("claim the leaf: %v", err)
+	}
+	seat := newFakeSeat()
+	seat.actions["root"] = leafRoot
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	supervisor.Owner = "proc-b"
+	// A short wall: several passes run, and none of them may touch the fresh
+	// claim, so the run leaves the store open on the live worker.
+	walled, stop := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer stop()
+	if outcome := supervisor.Run(walled); outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	if seat.launched("l1") {
+		t.Fatalf("launches = %v, want the live claim left alone", seat.launches())
+	}
+	if task := store.Task("l1"); task.Status != plandb.StatusRunning || task.ClaimedBy != "l1" {
+		t.Fatalf("leaf = %s claimed by %q, want still running for its own worker", task.Status, task.ClaimedBy)
+	}
+}
