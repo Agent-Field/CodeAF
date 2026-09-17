@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: A re-dispatch after running out is granted more room, and one that banks nothing new is refused
-pr: 1095
+pr: 1098
 surface: [resident, docs]
 invalidates:
   - "A leaf that ran out of its token budget was re-dispatched with the identical budget and the identical brief, up to the round cap, and bought the same truncated ending each time. The dispatch's grant is attempt-aware now: `regrantAfterRunningOut` in `cmd/codeaf/subharness.go` grows the token grant by three halves per re-dispatch, never above `overrunGrantCeiling` (four flat leaf grants; a fan-in that measured more keeps every token it measured), and the wall the leaf is given follows the larger grant."
