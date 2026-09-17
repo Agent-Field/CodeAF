@@ -132,9 +132,20 @@ type Task struct {
 	// inherits them from its parent — so they live beside the status ladder
 	// and not on the spec. A row made before the tags existed carries the
 	// empty string.
-	Project     string    `json:"project,omitempty"`
-	Chat        string    `json:"chat,omitempty"`
-	ClaimedBy   string    `json:"claimed_by,omitempty"`
+	Project   string `json:"project,omitempty"`
+	Chat      string `json:"chat,omitempty"`
+	ClaimedBy string `json:"claimed_by,omitempty"`
+	// Owner is the process that holds the claim — "<hostname>:<pid>" — and
+	// ClaimedBy stays the worker's identity, the name its finish command
+	// answers to. Dispatch is per process, so a claim names the process
+	// answerable for it; a process that dies leaves claims nobody touches, and
+	// their Owner is how a take-over names them. It is empty on a task made
+	// before the column existed.
+	Owner string `json:"owner,omitempty"`
+	// SeenAt is when the claim's owner was last seen alive: Claim stamps it,
+	// every pass of the owning process touches it, and StaleClaims reads it. A
+	// task with no claim carries the zero time.
+	SeenAt      time.Time `json:"seen_at,omitempty"`
 	Result      string    `json:"result,omitempty"`
 	Error       string    `json:"error,omitempty"`
 	Artifacts   []string  `json:"artifacts,omitempty"`
