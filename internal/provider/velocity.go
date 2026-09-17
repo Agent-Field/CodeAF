@@ -731,7 +731,8 @@ func (p *providerPrefs) membershipNarrowing() bool {
 }
 
 // keepTheSetServable is the one place AN IGNORE LIST NEVER EMPTIES THE SET THE
-// REQUEST IS SENT TO is enforced.//
+// REQUEST IS SENT TO is enforced.
+//
 // IT READS THE FINISHED OBJECT, LAST, because the two things that can empty a
 // set arrive at different moments and neither can see the other. The ledger
 // writes its vetoes while the request is being composed
