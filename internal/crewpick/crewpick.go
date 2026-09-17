@@ -169,12 +169,86 @@ type Crew struct {
 	// and the column the index. A crew picked on measured indexes alone is
 	// all false.
 	Estimated [3][3]bool
+	// Measured marks, for the model in each seat, whether a pool's own
+	// rating for that model entered the seat's quality: the row is the seat
+	// and the value says the seat's model carried a rating with a positive
+	// observation count. A crew picked with no prior, or whose seats the
+	// prior never rated, is all false.
+	Measured [3]bool
 }
 
 // Floor is the share of a seat's best quality in the family that a candidate
 // must reach to stay in the running for that seat. A model that cannot do
 // the job is not cheap, whatever it costs.
 const Floor = 0.80
+
+// PriorWeightAt is the observation count at which a pool's own rating for a
+// model carries the same weight in a seat's quality as the catalog's
+// published indexes: at N observations the rating is worth half the seat and
+// the catalog the other half. A rating with no observations never enters.
+const PriorWeightAt = 30
+
+// A Rating is a pool's measured quality for one model on one seat, on the
+// same 0-100 scale quality is read on, with the number of observations behind
+// it.
+type Rating struct {
+	Mean float64
+	N    int
+}
+
+// A Prior is a pool's measured quality per seat, keyed by canonical model id:
+// the rating a seat's quality is blended towards, by how many observations
+// back it. A nil Prior is no prior at all, and every seat keeps the catalog
+// quality.
+type Prior map[Seat]map[string]Rating
+
+// A Cell is one measurement a caller hands PriorFromCells: a role, a model id
+// and the pool's mean quality with the observations behind it. It is the shape
+// a measurement document reads into, so crewpick need not import the reader.
+type Cell struct {
+	Role  string
+	Model string
+	Mean  float64
+	N     int
+}
+
+// seatWords names the roles a Cell's role word maps to a seat by, folded to
+// one spelling so a document's own case never matters. Any other word names
+// no seat and is ignored.
+var seatWords = map[string]Seat{
+	"worker":     Worker,
+	"high":       High,
+	"mastermind": Mastermind,
+}
+
+// PriorFromCells reads a pool's measurements into a Prior: a cell names a
+// seat by its role word, a model by an id that canonical resolves to the
+// canonical id a candidate is looked up by, and carries a mean and a count.
+// A cell whose role names no seat, or whose count is below minInstalls, is
+// ignored, and so is a count of zero or less. A nil canonical leaves the id
+// as it stands. When no cell survives the prior is nil, which is the same as
+// no prior at all.
+func PriorFromCells(cells []Cell, minInstalls int, canonical func(string) string) Prior {
+	var prior Prior
+	for _, c := range cells {
+		seat, ok := seatWords[strings.ToLower(strings.TrimSpace(c.Role))]
+		if !ok || c.N < minInstalls || c.N <= 0 {
+			continue
+		}
+		model := c.Model
+		if canonical != nil {
+			model = canonical(model)
+		}
+		if prior == nil {
+			prior = Prior{}
+		}
+		if prior[seat] == nil {
+			prior[seat] = map[string]Rating{}
+		}
+		prior[seat][model] = Rating{Mean: c.Mean, N: c.N}
+	}
+	return prior
+}
 
 // SeatCost is the seat's expected cost of a candidate, in dollars per 1M
 // input-equivalent tokens: the prompt price blended with the cache-read
@@ -197,12 +271,22 @@ func SeatCost(c Candidate, shape SeatShape) float64 {
 // and any row against a pool with no candidates to raise a scale, score
 // zero.
 func SeatQuality(c Candidate, shape SeatShape, pool []Candidate) float64 {
+	return SeatQualityWith(c, shape, pool, Worker, nil)
+}
+
+// SeatQualityWith is SeatQuality with the pool's prior blended in for the seat
+// given: a rating the prior holds for the candidate's canonical id, with a
+// positive observation count, moves the seat's quality towards the rating's
+// mean by N/(N+PriorWeightAt), and a seat the prior never rates — or rates
+// with no observations — keeps the catalog quality unchanged.
+func SeatQualityWith(c Candidate, shape SeatShape, pool []Candidate, seat Seat, prior Prior) float64 {
 	if !isCandidate(c) {
 		return 0
 	}
 	scale := maxima(pool)
 	r := fill(c, readTally(pool), scale)
-	return quality(r.idx, shape, scale)
+	q, _ := blendQuality(c.ID, quality(r.idx, shape, scale), seat, prior)
+	return q
 }
 
 // Front returns the pareto front of (bill, quality) over every crew the
@@ -218,15 +302,26 @@ func SeatQuality(c Candidate, shape SeatShape, pool []Candidate) float64 {
 // id order — worker, then high, then mastermind — which is what makes the
 // front a property of the candidates rather than of their order.
 func Front(candidates []Candidate, shapes map[Seat]SeatShape, fam Family) []Crew {
+	return FrontWith(candidates, shapes, fam, nil)
+}
+
+// FrontWith is Front with the pool's prior blended into each seat's quality: a
+// rating the prior holds for a seat's model, with a positive observation
+// count, moves that seat's quality towards the rating's mean by
+// N/(N+PriorWeightAt), the seat's measured flag says so, and the floor and the
+// crew's quality read the blended value. A nil prior leaves every seat on the
+// catalog quality, exactly as Front does. The front is a property of the
+// candidates and the prior, never of the order they arrive in.
+func FrontWith(candidates []Candidate, shapes map[Seat]SeatShape, fam Family, prior Prior) []Crew {
 	scale := maxima(candidates)
 	t := readTally(candidates)
 	readings := make([]reading, 0, len(candidates))
 	for _, c := range candidates {
 		readings = append(readings, fill(c, t, scale))
 	}
-	workers := shortlist(readings, shapes[Worker], fam, scale)
-	highs := shortlist(readings, shapes[High], fam, scale)
-	minds := shortlist(readings, shapes[Mastermind], fam, scale)
+	workers := shortlist(readings, shapes[Worker], fam, scale, Worker, prior)
+	highs := shortlist(readings, shapes[High], fam, scale, High, prior)
+	minds := shortlist(readings, shapes[Mastermind], fam, scale, Mastermind, prior)
 	vw := shapes[Worker].Volume
 	vh := shapes[High].Volume
 	vm := shapes[Mastermind].Volume
@@ -245,6 +340,7 @@ func Front(candidates []Candidate, shapes map[Seat]SeatShape, fam Family) []Crew
 					Bill:       vw*w.cost + vh*h.cost + vm*m.cost,
 					Quality:    (w.quality + h.quality + m.quality) / 3,
 					Estimated:  [3][3]bool{w.est, h.est, m.est},
+					Measured:   [3]bool{w.measured, h.measured, m.measured},
 				})
 			}
 		}
@@ -326,26 +422,30 @@ func knee(front []Crew) Crew {
 }
 
 // A seatPick is a candidate already priced and scored for one seat, on the
-// candidate's reading: measured and estimated indexes alike.
+// candidate's reading: measured and estimated indexes alike. measured says
+// whether the pool's own rating for the seat entered the quality.
 type seatPick struct {
-	c       Candidate
-	idx     [3]float64
-	est     [3]bool
-	cost    float64
-	quality float64
+	c        Candidate
+	idx      [3]float64
+	est      [3]bool
+	cost     float64
+	quality  float64
+	measured bool
 }
 
 // shortlist returns a seat's running: the candidates that pass family and the
 // seat's needs, kept when their quality reaches Floor of the family's best
-// for the seat, in id order.
-func shortlist(readings []reading, shape SeatShape, fam Family, scale [3]float64) []seatPick {
+// for the seat, in id order. The seat's quality is read with the pool's prior
+// blended in, and measured marks the picks the prior touched.
+func shortlist(readings []reading, shape SeatShape, fam Family, scale [3]float64, seat Seat, prior Prior) []seatPick {
 	var running []seatPick
 	top := 0.0
 	for _, r := range readings {
 		if !eligible(r.c, shape, fam) {
 			continue
 		}
-		pick := seatPick{c: r.c, idx: r.idx, est: r.est, cost: SeatCost(r.c, shape), quality: quality(r.idx, shape, scale)}
+		q, measured := blendQuality(r.c.ID, quality(r.idx, shape, scale), seat, prior)
+		pick := seatPick{c: r.c, idx: r.idx, est: r.est, cost: SeatCost(r.c, shape), quality: q, measured: measured}
 		running = append(running, pick)
 		top = math.Max(top, pick.quality)
 	}
@@ -368,6 +468,24 @@ func quality(idx [3]float64, shape SeatShape, scale [3]float64) float64 {
 	return 100 * (w[Intelligence]*idx[Intelligence]/scale[Intelligence] +
 		w[Coding]*idx[Coding]/scale[Coding] +
 		w[Agentic]*idx[Agentic]/scale[Agentic])
+}
+
+// blendQuality blends the pool's prior for one seat into the catalog quality:
+// a rating the prior holds for the model on the seat, with a positive
+// observation count, carries weight N/(N+PriorWeightAt) against the catalog's
+// own quality, and the second result reports whether the rating entered. A
+// seat the prior never rates, or rates with no observations, keeps the
+// catalog quality and reads measured false.
+func blendQuality(model string, catalog float64, seat Seat, prior Prior) (float64, bool) {
+	if prior == nil {
+		return catalog, false
+	}
+	rating, ok := prior[seat][model]
+	if !ok || rating.N <= 0 {
+		return catalog, false
+	}
+	w := float64(rating.N) / float64(rating.N+PriorWeightAt)
+	return (1-w)*catalog + w*rating.Mean, true
 }
 
 // maxima reads the pool's largest measured value of each index — the scale
