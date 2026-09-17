@@ -89,6 +89,14 @@ type tasksPlace struct {
 	// node made it, and the card is read rather than walked, so an offset is the
 	// only thing that moves ([clampTop], expand.go).
 	detailTop int
+	// plan is the run's plan page standing over the list — the description, the
+	// notes and the trajectory one plan task carries — and planOn says it is up.
+	// It is the SAME latch the record card uses ([tasksPlace.detailOn]) and draws
+	// in its place: enter over a plan row opens it and esc backs out one layer to
+	// the list, exactly as the card does, because a second key for one door is a
+	// second thing to learn ([app.taskSheetPlan]).
+	plan   session.PlanTaskPage
+	planOn bool
 	// tail is the last thing the node said, read off its journal once when the
 	// card opened, and tailRead says the read has happened — an empty tail with
 	// tailRead false is a read still in flight, and one with tailRead true is a
@@ -389,6 +397,13 @@ func (a *app) taskSheetMine() tasksMine {
 			row.live = &status
 		}
 		mine.rows = append(mine.rows, row)
+	}
+	// AND THE RUN'S PLAN, when this conversation seeded one. It is the store's
+	// own read, narrowed to this chat, and it is the second authority for work
+	// that has not landed: a task the run has added but not yet dispatched is on
+	// this page and nowhere in the index (taskplan.go).
+	if plan, ok := a.planReader(); ok {
+		mine.plan = plan.PlanTasks()
 	}
 	mine.away = a.taskSheetAwayRows()
 	// AND WHICH OF THOSE WINDOWS ARE THIS ONE'S OWN CONVERSATIONS. The presence
@@ -823,6 +838,9 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// which backs out one layer to the list rather than closing the page
 	// (taskrecord.go).
 	if a.taskSheet.detailOn {
+		if a.taskSheet.planOn {
+			return a.taskPlanKey(key), true
+		}
 		return a.taskCardKey(key), true
 	}
 	// THE CARET'S OWN CHORDS BEFORE THE PAGE'S KEYS (editkeys.go). `home` and
@@ -990,6 +1008,12 @@ func (p *tasksPlace) enter(a *app) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	// A PLAN ROW OPENS ITS OWN PAGE — the description, the notes and the
+	// trajectory the store carries — through the sheet's own machinery and the
+	// same key a record row opens its card with ([app.taskSheetPlan]).
+	if item.plan != nil {
+		return a.taskSheetPlan(item.plan.ID)
+	}
 	if item.away {
 		// THE LADDER IS WALKED BEFORE THE CARD IS DRAWN, which is the whole of
 		// what changed here. Work in another conversation is not one situation but
@@ -1047,6 +1071,10 @@ func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
 	// over an ordinary record row can never inherit the recovery band of the away
 	// row somebody opened before it ([app.taskSheetAwayCard] sets it back after).
 	a.taskSheet.awayOwner = tasksAwayOwner{}
+	// AND THE PLAN LATCH IS CLEARED WITH IT, so the card can never be drawn in the
+	// plan page's place ([app.taskSheetPlan] sets it for the one row that opens a
+	// plan task's page).
+	a.taskSheet.plan, a.taskSheet.planOn = session.PlanTaskPage{}, false
 	return a.readTaskTail(*entry)
 }
 
@@ -1819,6 +1847,12 @@ func (placeTasks) ownFrame(a *app, width, height int) ([]string, []placeHit, int
 	if !a.taskSheet.detailOn {
 		return nil, nil, 0, 0, false
 	}
+	// THE PLAN PAGE DRAWS IN THE CARD'S PLACE, through the same latch and the
+	// same frame slot ([app.taskPlanFrame]).
+	if a.taskSheet.planOn {
+		lines, caretX, caretY := a.taskPlanFrame(width, height)
+		return lines, nil, caretX, caretY, true
+	}
 	lines, _, caretX, caretY := a.taskCardFrame(width, height)
 	return lines, nil, caretX, caretY, true
 }
@@ -1869,6 +1903,9 @@ func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	defer a.touch()
 	if cmd, took := a.placeKey(msg); took {
 		return cmd, true
+	}
+	if a.taskSheet.planOn {
+		return a.taskPlanKey(msg.String()), true
 	}
 	return a.taskCardKey(msg.String()), true
 }
