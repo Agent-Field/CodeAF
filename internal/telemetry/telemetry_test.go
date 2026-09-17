@@ -27,8 +27,12 @@ func freshClock(t *testing.T) time.Time { return time.Now() }
 // testHome points the state root at a directory this test chose, so nothing
 // this package writes can land in the home of whoever ran `go test`, and
 // clears every variable the opt-out ladder reads, so a test that wants
-// telemetry on gets an environment that agrees. Every test in the package
-// starts here.
+// telemetry on gets an environment that agrees. It then points the endpoint
+// at a dead loopback address, so a flush a test forgot to give a relay to
+// fails locally instead of POSTing to the production relay. Tests that need
+// a working relay call newRelay after testHome, which overrides it; a test
+// that asserts the default endpoint unsets the variable itself with unsetEnv
+// and must not flush. Every test in the package starts here.
 func testHome(t *testing.T) {
 	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
@@ -41,6 +45,8 @@ func testHome(t *testing.T) {
 	} {
 		unsetEnv(t, name)
 	}
+	// Nothing listens here, and loopback dialing is refused immediately.
+	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "http://127.0.0.1:1/telemetry")
 	// A test binary trips the test and unstamped-build rungs of the ladder,
 	// which now gates Spool, SpoolSync and Flush. Spool tests exercise the
 	// write paths, so they run as if the ladder had answered on — the
@@ -468,6 +474,10 @@ func TestInstallMethodReadsOnlyTheInstallerWords(t *testing.T) {
 
 func TestEndpointOverrideAndDefault(t *testing.T) {
 	testHome(t)
+	// testHome points the endpoint at a dead loopback address so no test can
+	// reach production by default. This test is the one that must see the
+	// default answer, so it unsets the override itself — and it never flushes.
+	unsetEnv(t, "CODEAF_TELEMETRY_ENDPOINT")
 	if got := Endpoint(); got != DefaultEndpoint {
 		t.Errorf("Endpoint() = %q, want the contract relay %q", got, DefaultEndpoint)
 	}
