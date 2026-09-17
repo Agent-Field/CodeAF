@@ -37,6 +37,10 @@ func TestSourceSlugSpellsAnIPHostDashesNotDots(t *testing.T) {
 		{"2001:db8::8a2e:370:7334", "2001-db8-8a2e-370-7334"},
 		// An IPv6 literal arriving with its brackets still on is read whole.
 		{"[::1]", "ipv6-1"},
+		// A zone id names the interface, not the host, and is cut first.
+		{"fe80::1%eth0", "fe80-1"},
+		// A bare "::" reduces to no host word at all.
+		{"::", CustomID},
 		// A hostname is not an IP literal and keeps the old collapsing: last
 		// label's letters and digits, everything else one dash.
 		{"api.deepseek.com", "deepseek"},

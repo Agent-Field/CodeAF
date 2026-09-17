@@ -241,17 +241,24 @@ func DefaultSource(address string) Source {
 // WHOLE: 127.0.0.1 answers 127-0-0-1, not the 0 the old derivation read off
 // its last dot-separated label, and an IPv6 literal keeps its groups in order
 // (::1 answers ipv6-1, fe80::1 answers fe80-1) — brackets are stripped
-// defensively, :: and runs of mapped dashes collapse to one, and a colon-host
-// that reduces to digits alone carries the ipv6- prefix so ::1 does not read
-// as "1"; a hex group like fe80 keeps no prefix, because hex digits a-f are
-// letters. A host that yields nothing answers CustomID, which is what the
+// defensively, a zone id is cut first (fe80::1%eth0 answers fe80-1, because
+// the zone names the interface and not the host), :: and runs of mapped
+// dashes collapse to one, and a colon-host that reduces to digits alone
+// carries the ipv6- prefix so ::1 does not read as "1"; a hex group like
+// fe80 keeps no prefix, because hex digits a-f are letters. A host that yields nothing answers CustomID, which is what the
 // surface it moved from answered and keeps that path byte-identical.
 func SourceSlug(host string) string {
 	raw := strings.ToLower(strings.TrimSpace(host))
 	if ipLiteral(raw) {
+		raw, _, _ = strings.Cut(raw, "%")
 		word := strings.Trim(strings.Join(strings.FieldsFunc(raw, func(r rune) bool {
 			return r == '.' || r == ':'
 		}), "-"), "[]-")
+		// A literal that reduces to nothing — a bare "::" — has no host word
+		// to read and answers what a blank host answers.
+		if word == "" {
+			return CustomID
+		}
 		noLetter := true
 		for _, r := range word {
 			if (r >= 'a' && r <= 'z') || r == '-' {
