@@ -116,6 +116,13 @@ func wirePoolIndex(profileDir string) {
 	config.AutoIndex = poolIndexFor(profileDir, cfg, time.Now)
 	config.AutoOwnCells = poolOwnCellsFor(profileDir, cfg)
 	startPoolIndexRefresh(context.Background(), profileDir, cfg, poolPublicKeys)
+	// The rows a previous run judged and could not hand over leave at once,
+	// on their own goroutine behind the same guard the refresh uses: a
+	// start-up errand, bounded by its own budget, and never on the run's
+	// path.
+	if cfg.CanSend() {
+		poolRefreshGo("pool/push", func() { poolPush(context.Background(), profileDir, cfg, poolPushBudget) })
+	}
 }
 
 // poolOwnCellsFor builds this process's one reader of the install's own judged

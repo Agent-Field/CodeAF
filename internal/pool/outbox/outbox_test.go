@@ -133,6 +133,7 @@ type postRecord struct {
 	mu      sync.Mutex
 	bodies  []string
 	types   []string
+	headers []*http.Header
 	seconds int
 	status  []int
 }
@@ -142,6 +143,8 @@ func (p *postRecord) handle(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.bodies = append(p.bodies, string(b))
 	p.types = append(p.types, r.Header.Get("Content-Type"))
+	h := r.Header
+	p.headers = append(p.headers, &h)
 	// The two knobs are read under the same lock the bodies are written
 	// under: the server answers on its own goroutine, and a handler reading a
 	// field the test writes is a race whether or not the requests overlap.
@@ -1090,5 +1093,39 @@ func TestASendWhoseMarkerCannotBeWrittenKeepsTheRowsPending(t *testing.T) {
 	}
 	if got := len(o.Pending()); got != 1 {
 		t.Fatalf("pending = %d, want the row whose marker never reached the file", got)
+	}
+}
+
+// A batch sent over http carries the outbox's install nonce as
+// X-Codeaf-Install, one header per post; an outbox with none set sends no
+// header, and a file destination is never asked for one.
+func TestSendCarriesTheInstallNonceAsAHeader(t *testing.T) {
+	var rec postRecord
+	srv := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer srv.Close()
+
+	o, _ := openOutbox(t)
+	o.Rand = &stepRand{step: 11}
+	o.Install = "0123456789abcdef0123456789abcdef"
+	appendRow(t, o, `{"k":1}`)
+	n, err := o.Send(context.Background(), srv.URL)
+	if n != 1 || err != nil {
+		t.Fatalf("Send answered (%d, %v), want (1, nil)", n, err)
+	}
+	if got := rec.headers[0].Get("X-Codeaf-Install"); got != o.Install {
+		t.Fatalf("the batch rode with X-Codeaf-Install %q, want the outbox's nonce %q", got, o.Install)
+	}
+
+	rec = postRecord{}
+	srv2 := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer srv2.Close()
+	o2, _ := openOutbox(t)
+	o2.Rand = &stepRand{step: 12}
+	appendRow(t, o2, `{"k":1}`)
+	if _, err := o2.Send(context.Background(), srv2.URL); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if got := rec.headers[0].Get("X-Codeaf-Install"); got != "" {
+		t.Fatalf("an outbox with no nonce sent the header anyway: %q", got)
 	}
 }

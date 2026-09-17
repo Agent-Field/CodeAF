@@ -479,6 +479,42 @@ func TestPoolRefreshStartsNoGoroutineWithoutAKey(t *testing.T) {
 	}
 }
 
+// stubPoolRefresh stands the goroutine guard in for the length of one test
+// and answers the counter it increments, so a test of what wirePoolIndex
+// seats runs no fetch and no push. The tests that call it read seats, not
+// errands; the errands have their own tests.
+func stubPoolRefresh(t *testing.T) *int {
+	t.Helper()
+	started := 0
+	prev := poolRefreshGo
+	poolRefreshGo = func(scope string, fn func()) { started++ }
+	t.Cleanup(func() { poolRefreshGo = prev })
+	return &started
+}
+
+// The start-up push is an errand behind the same guard as the refresh: a
+// mode that sends starts it once, a mode that only reads starts nothing.
+// (The refresh's own errand waits for the build's key — its test is
+// TestPoolRefreshStartsNoGoroutineWithoutAKey.)
+func TestWirePoolIndexStartsThePushWhenTheModeSends(t *testing.T) {
+	started := stubPoolRefresh(t)
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
+
+	// The default mode is on: the push starts.
+	wirePoolIndex(t.TempDir())
+	if *started != 1 {
+		t.Fatalf("a sending pool started %d errand(s) at start-up, want the one push", *started)
+	}
+
+	// A mode that does not send starts none.
+	*started = 0
+	t.Setenv("CODEAF_MODEL_POOL", "read")
+	wirePoolIndex(t.TempDir())
+	if *started != 0 {
+		t.Fatalf("a read-only pool started %d push(es)", *started)
+	}
+}
+
 // With no cache, the --json shape reports the seed the build carries and says
 // so under source, so a script sees the index a pick would read.
 func TestPoolShowJSONWithNoCacheReportsTheSeed(t *testing.T) {
@@ -582,6 +618,7 @@ func TestPoolShowReadsAnUnparsableOwnSheetAsNone(t *testing.T) {
 func TestWirePoolIndexSeatsTheOwnSheetsCells(t *testing.T) {
 	prevIndex, prevOwn := config.AutoIndex, config.AutoOwnCells
 	t.Cleanup(func() { config.AutoIndex, config.AutoOwnCells = prevIndex, prevOwn })
+	stubPoolRefresh(t)
 
 	dir := t.TempDir()
 	seedOwnSheet(t, dir)
@@ -613,6 +650,7 @@ func TestWirePoolIndexSeatsNothingWhenThePoolIsOff(t *testing.T) {
 	prevIndex, prevOwn := config.AutoIndex, config.AutoOwnCells
 	t.Cleanup(func() { config.AutoIndex, config.AutoOwnCells = prevIndex, prevOwn })
 	t.Setenv("CODEAF_MODEL_POOL", "off")
+	stubPoolRefresh(t)
 
 	dir := t.TempDir()
 	seedOwnSheet(t, dir)
@@ -630,6 +668,7 @@ func TestWirePoolIndexSeatsNothingWhenThePoolIsOff(t *testing.T) {
 func TestWirePoolIndexSeatsNothingForAnUnparsableOwnSheet(t *testing.T) {
 	prevOwn := config.AutoOwnCells
 	t.Cleanup(func() { config.AutoOwnCells = prevOwn })
+	stubPoolRefresh(t)
 
 	dir := t.TempDir()
 	poolDir := filepath.Join(dir, "pool")
