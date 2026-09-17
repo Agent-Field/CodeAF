@@ -14,6 +14,15 @@ Each command runs in its own fresh shell: a `cd` does not outlive the
 command it is part of, so chain the directory in (`cd dir && ...`) or use
 the path.
 
+## Think once, then act
+
+The observation you already hold is the record: reason between calls only far
+enough to choose the next command — one decision, and not a replay of the
+brief, the plan or the last output. Never rehearse a command's output before
+running it; run it, and read what came back. A plan note goes to
+`plandb task note`, said once, rather than being worked out in your head a
+second time.
+
 ## The plan
 
 Coordination runs through `plandb`, the plan CLI, in bash. THE PLAN IS ONE
