@@ -1,8 +1,13 @@
 package judge
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -204,5 +209,99 @@ func TestPickIsDeterministicUnderShuffledInput(t *testing.T) {
 	}
 	if forward != "a/one" {
 		t.Errorf("a tie picked %q, want the lower id a/one", forward)
+	}
+}
+
+func TestCandidatesNeverNamesAFreeRowWhileAPaidRowQualifies(t *testing.T) {
+	models := []catalog.Model{
+		{ID: "free/vendor:free", PromptPrice: 0, CompletionPrice: 0, CodingIndex: 90, Parameters: []string{"tools"}},
+		{ID: "zero-priced/vendor", PromptPrice: 0, CompletionPrice: 0, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "paid/vendor", PromptPrice: 0.5, CompletionPrice: 0.5, CodingIndex: 65, Parameters: []string{"tools"}},
+	}
+	got := Candidates(models, nil, DefaultFloor)
+	if len(got) != 1 || got[0] != "paid/vendor" {
+		t.Fatalf("Candidates named %v, want only the paid row", got)
+	}
+}
+
+func TestCandidatesIsOrderedByCostThenIdAndExcludesWhatPickExcludes(t *testing.T) {
+	models := []catalog.Model{
+		{ID: "b/dear", PromptPrice: 1, CompletionPrice: 1, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "crew-held/cheap", PromptPrice: 0.1, CompletionPrice: 0.1, CodingIndex: 99, Parameters: []string{"tools"}},
+		{ID: "worker-vendor/cheap", PromptPrice: 0.1, CompletionPrice: 0.1, CodingIndex: 90, Parameters: []string{"tools"}},
+		{ID: "a/cheap", PromptPrice: 0.5, CompletionPrice: 0.5, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "c/tie", PromptPrice: 0.5, CompletionPrice: 0.5, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "d/below-floor", PromptPrice: 0.01, CompletionPrice: 0.01, CodingIndex: 40, Parameters: []string{"tools"}},
+	}
+	crew := map[Role]string{RoleWorker: "worker-vendor/w", RoleHigh: "crew-held/cheap"}
+	got := Candidates(models, crew, DefaultFloor)
+	want := []string{"a/cheap", "c/tie", "b/dear"}
+	if len(got) != len(want) {
+		t.Fatalf("Candidates named %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Candidates named %v, want %v", got, want)
+		}
+	}
+}
+
+// roundTripFunc is the fake transport the snapshot catalog is read through: it
+// answers every request with the captured bytes, the way internal/catalog's own
+// captured-response tests do.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
+
+// snapshotCatalog loads the captured OpenRouter listing internal/catalog's own
+// tests read, through a transport that answers with the bytes on disk.
+func snapshotCatalog(t *testing.T) *catalog.Catalog {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "catalog", "testdata", "openrouter-models.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     http.StatusText(http.StatusOK),
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(raw)),
+			Request:    request,
+		}, nil
+	})}
+	return catalog.Load(context.Background(), catalog.Options{
+		BaseURL:    catalog.DefaultBaseURL,
+		Dir:        t.TempDir(),
+		HTTPClient: client,
+	})
+}
+
+func TestCandidatesFromTheCapturedListingAreAllPaidAndNoneFree(t *testing.T) {
+	c := snapshotCatalog(t)
+	models := c.ModelsNow()
+	if len(models) == 0 {
+		t.Fatal("the captured listing read back no rows")
+	}
+	crew := map[Role]string{RoleWorker: "z-ai/glm-5.3-flash", RoleHigh: "anthropic/claude-fable-5.1"}
+	got := Candidates(models, crew, DefaultFloor)
+	if len(got) == 0 {
+		t.Fatal("the captured listing yielded no judge candidates")
+	}
+	byID := make(map[string]catalog.Model, len(models))
+	for _, model := range models {
+		byID[model.ID] = model
+	}
+	for _, id := range got {
+		if strings.HasSuffix(strings.ToLower(id), ":free") {
+			t.Errorf("the candidate %q is a free row", id)
+		}
+		model, ok := byID[id]
+		if !ok {
+			t.Fatalf("the candidate %q is not a row of the listing", id)
+		}
+		if model.PromptPrice+model.CompletionPrice <= 0 {
+			t.Errorf("the candidate %q carries no price", id)
+		}
 	}
 }

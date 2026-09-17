@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -150,13 +151,22 @@ func Judge(ctx context.Context, ask Ask, rec Record) ([]Score, error) {
 	return scores, nil
 }
 
-// Pick returns the cheapest catalog row that can judge a crew: its published
-// coding index reaches floor, it carries "tools", no crew seat holds it, and
-// its vendor differs from the worker's. Rows the provider published no price
-// for are out of the running, and so is a crew with nothing left to draw from —
-// in which case ok is false. Ties in cost break to the lower id, so the answer
-// is a property of the catalog and never of its order.
-func Pick(models []catalog.Model, crew map[Role]string, floor float64) (judgeID string, ok bool) {
+// Candidates returns every catalog row that can judge a crew, cheapest first.
+//
+// A row qualifies exactly as the judge a crew would otherwise be handed does:
+// its published coding index reaches floor, it carries "tools", no crew seat
+// holds it, and its vendor differs from the worker's. Rows the provider
+// published no price for are out of the running. TWO MORE ROWS ARE NEVER
+// CANDIDATES: one whose prompt and completion prices sum to zero, and one
+// whose id ends in ":free" whatever the case. A free row is a rate-limited
+// row and not a price — the provider answers it with a 429 at the moment a
+// judge most needs an answer — so it is asked for nothing, whatever its index
+// says.
+//
+// The list is ordered by cost and then by id, so the cheapest stands first and
+// the answer is a property of the catalog rather than of its order. A crew
+// with nothing left to draw from yields no candidates.
+func Candidates(models []catalog.Model, crew map[Role]string, floor float64) []string {
 	workerVendor := ""
 	if worker, held := crew[RoleWorker]; held && worker != "" {
 		workerVendor = vendor(worker)
@@ -167,7 +177,11 @@ func Pick(models []catalog.Model, crew map[Role]string, floor float64) (judgeID 
 			held[model] = true
 		}
 	}
-	bestCost := math.Inf(1)
+	type candidate struct {
+		id   string
+		cost float64
+	}
+	var found []candidate
 	for _, model := range models {
 		if model.PriceUnknown || model.CodingIndex < floor || !hasTools(model.Parameters) || held[model.ID] {
 			continue
@@ -175,12 +189,37 @@ func Pick(models []catalog.Model, crew map[Role]string, floor float64) (judgeID 
 		if workerVendor != "" && vendor(model.ID) == workerVendor {
 			continue
 		}
-		cost := model.PromptPrice + model.CompletionPrice
-		if judgeID == "" || cost < bestCost || (cost == bestCost && model.ID < judgeID) {
-			judgeID, bestCost = model.ID, cost
+		if model.PromptPrice+model.CompletionPrice == 0 {
+			continue
 		}
+		if strings.HasSuffix(strings.ToLower(model.ID), ":free") {
+			continue
+		}
+		found = append(found, candidate{model.ID, model.PromptPrice + model.CompletionPrice})
 	}
-	return judgeID, judgeID != ""
+	sort.Slice(found, func(i, j int) bool {
+		if found[i].cost != found[j].cost {
+			return found[i].cost < found[j].cost
+		}
+		return found[i].id < found[j].id
+	})
+	ids := make([]string, 0, len(found))
+	for _, c := range found {
+		ids = append(ids, c.id)
+	}
+	return ids
+}
+
+// Pick returns the cheapest judge [Candidates] names, and ok is false when it
+// names none. It is Candidates' head-or-nothing, so the properties its callers
+// rely on hold here too: the cheaper of two rows wins, and a tie breaks to the
+// lower id.
+func Pick(models []catalog.Model, crew map[Role]string, floor float64) (judgeID string, ok bool) {
+	candidates := Candidates(models, crew, floor)
+	if len(candidates) == 0 {
+		return "", false
+	}
+	return candidates[0], true
 }
 
 // seatJobs is what each seat is responsible for, and therefore what its work is
