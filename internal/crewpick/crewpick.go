@@ -14,20 +14,42 @@
 // refused outright when its high seat comes from the worker's own vendor.
 // The crews that no other crew beats on both bill and quality survive as the
 // front, sorted by bill; Presets and AtKnob read picks off that front.
+//
+// A candidate that publishes some but not all of its three indexes is scored
+// on the ones it publishes: each missing index is estimated from the call's
+// candidates that publish both it and one of its measured ones — the donors —
+// never above the call's largest measured value of that index, and the
+// result says which of a pick's indexes were estimated. A candidate that
+// publishes none of its indexes, or no price at all, is out of the running.
 package crewpick
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strings"
 )
 
+// An Index is one of the three capability indexes quality is read from —
+// intelligence, coding, agentic — in the order the seat weights and a
+// candidate's reading carry them.
+type Index int
+
+const (
+	Intelligence Index = iota
+	Coding
+	Agentic
+)
+
 // A Candidate is one model up for a seat. Prices are dollars per 1M tokens.
 //
-// A candidate missing any of the three indexes — the zero value, which is how
-// an unpublished index reads — or carrying a zero prompt price is not a
+// A candidate carrying none of the three indexes — zero values, which is how
+// unpublished indexes read — or carrying a zero prompt price is not a
 // candidate at all: it never occupies a seat, never clears a floor, and
-// raises no ceiling. A model that publishes no cache-read price says so with
+// raises no ceiling. A candidate carrying some but not all of its indexes is
+// scored on the ones it publishes, each missing one estimated from the
+// donors among its fellow candidates, and the result says which of a pick's
+// indexes those were. A model that publishes no cache-read price says so with
 // HasCacheRead false and pays the prompt price on the cache share too.
 type Candidate struct {
 	// ID names the candidate; the text before its first slash is the vendor.
@@ -142,6 +164,11 @@ type Crew struct {
 	Mastermind string
 	Bill       float64
 	Quality    float64
+	// Estimated marks, for the model in each seat, which of its indexes
+	// were scored by estimate rather than measurement: the row is the seat
+	// and the column the index. A crew picked on measured indexes alone is
+	// all false.
+	Estimated [3][3]bool
 }
 
 // Floor is the share of a seat's best quality in the family that a candidate
@@ -165,15 +192,17 @@ func SeatCost(c Candidate, shape SeatShape) float64 {
 // SeatQuality is the candidate's quality for the seat on a 0-100 scale: each
 // index counted against the pool's best for that index and weighted by the
 // seat's weights. The pool sets the scale, so the same candidate scores
-// differently in a stronger pool. A row that is not a candidate at all, and
-// any row against a pool that has no candidates to raise a scale, score
+// differently in a stronger pool. A missing index is estimated from the
+// pool's donors exactly as in Front. A row that is not a candidate at all,
+// and any row against a pool with no candidates to raise a scale, score
 // zero.
 func SeatQuality(c Candidate, shape SeatShape, pool []Candidate) float64 {
 	if !isCandidate(c) {
 		return 0
 	}
-	maxI, maxC, maxA := maxima(pool)
-	return quality(c, shape, maxI, maxC, maxA)
+	scale := maxima(pool)
+	r := fill(c, readTally(pool), scale)
+	return quality(r.idx, shape, scale)
 }
 
 // Front returns the pareto front of (bill, quality) over every crew the
@@ -185,13 +214,19 @@ func SeatQuality(c Candidate, shape SeatShape, pool []Candidate) float64 {
 // first, then Floor against that seat's best in the family — and a crew is
 // refused while its high seat comes from the worker's own vendor, so the two
 // seats that see the same work never share one shop. Ties in (bill, quality)
-// break by id order — worker, then high, then mastermind — which is what
-// makes the front a property of the candidates rather than of their order.
+// break to the crew scored on fewer estimated indexes, and ties past that by
+// id order — worker, then high, then mastermind — which is what makes the
+// front a property of the candidates rather than of their order.
 func Front(candidates []Candidate, shapes map[Seat]SeatShape, fam Family) []Crew {
-	maxI, maxC, maxA := maxima(candidates)
-	workers := shortlist(candidates, shapes[Worker], fam, maxI, maxC, maxA)
-	highs := shortlist(candidates, shapes[High], fam, maxI, maxC, maxA)
-	minds := shortlist(candidates, shapes[Mastermind], fam, maxI, maxC, maxA)
+	scale := maxima(candidates)
+	t := readTally(candidates)
+	readings := make([]reading, 0, len(candidates))
+	for _, c := range candidates {
+		readings = append(readings, fill(c, t, scale))
+	}
+	workers := shortlist(readings, shapes[Worker], fam, scale)
+	highs := shortlist(readings, shapes[High], fam, scale)
+	minds := shortlist(readings, shapes[Mastermind], fam, scale)
 	vw := shapes[Worker].Volume
 	vh := shapes[High].Volume
 	vm := shapes[Mastermind].Volume
@@ -209,6 +244,7 @@ func Front(candidates []Candidate, shapes map[Seat]SeatShape, fam Family) []Crew
 					Mastermind: m.c.ID,
 					Bill:       vw*w.cost + vh*h.cost + vm*m.cost,
 					Quality:    (w.quality + h.quality + m.quality) / 3,
+					Estimated:  [3][3]bool{w.est, h.est, m.est},
 				})
 			}
 		}
@@ -220,7 +256,10 @@ func Front(candidates []Candidate, shapes map[Seat]SeatShape, fam Family) []Crew
 		if crews[i].Bill != crews[j].Bill {
 			return crews[i].Bill < crews[j].Bill
 		}
-		return crews[i].Quality > crews[j].Quality
+		if crews[i].Quality != crews[j].Quality {
+			return crews[i].Quality > crews[j].Quality
+		}
+		return estimateCount(crews[i]) < estimateCount(crews[j])
 	})
 	var front []Crew
 	best := math.Inf(-1)
@@ -286,9 +325,12 @@ func knee(front []Crew) Crew {
 	return pick
 }
 
-// A seatPick is a candidate already priced and scored for one seat.
+// A seatPick is a candidate already priced and scored for one seat, on the
+// candidate's reading: measured and estimated indexes alike.
 type seatPick struct {
 	c       Candidate
+	idx     [3]float64
+	est     [3]bool
 	cost    float64
 	quality float64
 }
@@ -296,14 +338,14 @@ type seatPick struct {
 // shortlist returns a seat's running: the candidates that pass family and the
 // seat's needs, kept when their quality reaches Floor of the family's best
 // for the seat, in id order.
-func shortlist(candidates []Candidate, shape SeatShape, fam Family, maxI, maxC, maxA float64) []seatPick {
+func shortlist(readings []reading, shape SeatShape, fam Family, scale [3]float64) []seatPick {
 	var running []seatPick
 	top := 0.0
-	for _, c := range candidates {
-		if !eligible(c, shape, fam) {
+	for _, r := range readings {
+		if !eligible(r.c, shape, fam) {
 			continue
 		}
-		pick := seatPick{c: c, cost: SeatCost(c, shape), quality: quality(c, shape, maxI, maxC, maxA)}
+		pick := seatPick{c: r.c, idx: r.idx, est: r.est, cost: SeatCost(r.c, shape), quality: quality(r.idx, shape, scale)}
 		running = append(running, pick)
 		top = math.Max(top, pick.quality)
 	}
@@ -317,34 +359,160 @@ func shortlist(candidates []Candidate, shape SeatShape, fam Family, maxI, maxC, 
 	return kept
 }
 
-// quality is SeatQuality against pre-read maxima.
-func quality(c Candidate, shape SeatShape, maxI, maxC, maxA float64) float64 {
-	if maxI <= 0 || maxC <= 0 || maxA <= 0 {
+// quality is SeatQuality against pre-read maxima, on a candidate's reading.
+func quality(idx [3]float64, shape SeatShape, scale [3]float64) float64 {
+	if scale[Intelligence] <= 0 || scale[Coding] <= 0 || scale[Agentic] <= 0 {
 		return 0
 	}
 	w := shape.Weights
-	return 100 * (w[0]*c.Intelligence/maxI + w[1]*c.Coding/maxC + w[2]*c.Agentic/maxA)
+	return 100 * (w[Intelligence]*idx[Intelligence]/scale[Intelligence] +
+		w[Coding]*idx[Coding]/scale[Coding] +
+		w[Agentic]*idx[Agentic]/scale[Agentic])
 }
 
-// maxima reads the pool's best value of each index — the scale quality is
-// measured against. Only real candidates raise a ceiling.
-func maxima(pool []Candidate) (maxI, maxC, maxA float64) {
+// maxima reads the pool's largest measured value of each index — the scale
+// quality is measured against and the ceiling an estimate never crosses.
+// Only real candidates raise a ceiling, and a row that publishes only some
+// of its indexes raises only those.
+func maxima(pool []Candidate) (scale [3]float64) {
 	for _, c := range pool {
 		if !isCandidate(c) {
 			continue
 		}
-		maxI = math.Max(maxI, c.Intelligence)
-		maxC = math.Max(maxC, c.Coding)
-		maxA = math.Max(maxA, c.Agentic)
+		v := measured(c)
+		for i, val := range v {
+			scale[i] = math.Max(scale[i], val)
+		}
 	}
-	return maxI, maxC, maxA
+	return scale
 }
 
-// isCandidate reports whether a row is a candidate at all: all three indexes
-// present and a prompt price above zero. Everything downstream —
-// eligibility, the floor, the maxima — starts from this.
+// measured is the candidate's three indexes as it published them: an
+// unpublished index reads as zero.
+func measured(c Candidate) [3]float64 {
+	return [3]float64{c.Intelligence, c.Coding, c.Agentic}
+}
+
+// A tally is one call's donor statistics: for every ordered pair of indexes,
+// how many candidates — the donors — carry both measured, and the median of
+// the first over the second among them. A missing index is estimated from
+// these.
+type tally struct {
+	count  [3][3]int
+	median [3][3]float64
+}
+
+// readTally reads the pool's tally; the donors of a pair of indexes are the
+// candidates carrying both measured.
+func readTally(pool []Candidate) tally {
+	var ratios [3][3][]float64
+	for _, c := range pool {
+		if !isCandidate(c) {
+			continue
+		}
+		v := measured(c)
+		for _, x := range [3]Index{Intelligence, Coding, Agentic} {
+			for _, y := range [3]Index{Intelligence, Coding, Agentic} {
+				if x != y && v[x] > 0 && v[y] > 0 {
+					ratios[x][y] = append(ratios[x][y], v[x]/v[y])
+				}
+			}
+		}
+	}
+	var t tally
+	for _, x := range [3]Index{Intelligence, Coding, Agentic} {
+		for _, y := range [3]Index{Intelligence, Coding, Agentic} {
+			t.count[x][y] = len(ratios[x][y])
+			if len(ratios[x][y]) >= 3 {
+				t.median[x][y] = medianOf(ratios[x][y])
+			}
+		}
+	}
+	return t
+}
+
+// medianOf is the middle of the values in order, or the mean of the two
+// middles when there is no single middle.
+func medianOf(values []float64) float64 {
+	slices.Sort(values)
+	n := len(values)
+	if n%2 == 1 {
+		return values[n/2]
+	}
+	return (values[n/2-1] + values[n/2]) / 2
+}
+
+// A reading is a candidate's three indexes ready for scoring — the measured
+// ones as published, the missing ones estimated from the call's donors —
+// with est remembering which of the three were estimated rather than
+// measured.
+type reading struct {
+	c   Candidate
+	idx [3]float64
+	est [3]bool
+}
+
+// fill reads the candidate's three indexes for scoring. A measured index is
+// taken as published; a missing one is estimated from the ones present: each
+// present index Y offers Y times the tally's median of the missing index over
+// Y among the donors carrying both — or, when fewer than three donors carry
+// the pair, equal standing, the missing index read where its present one
+// stands, X over the pool's largest X equal to Y over the pool's largest Y —
+// and the mean of the offers is kept, never above the pool's largest measured
+// value of the missing index. A row that is no candidate at all fills to
+// zeros.
+func fill(c Candidate, t tally, scale [3]float64) reading {
+	var r reading
+	if !isCandidate(c) {
+		return r
+	}
+	r.c = c
+	v := measured(c)
+	r.idx = v
+	for _, x := range [3]Index{Intelligence, Coding, Agentic} {
+		if v[x] > 0 {
+			continue
+		}
+		var offers []float64
+		for _, y := range [3]Index{Intelligence, Coding, Agentic} {
+			if y == x || v[y] <= 0 {
+				continue
+			}
+			if t.count[x][y] >= 3 {
+				offers = append(offers, v[y]*t.median[x][y])
+			} else {
+				offers = append(offers, v[y]/scale[y]*scale[x])
+			}
+		}
+		sum := 0.0
+		for _, offer := range offers {
+			sum += offer
+		}
+		r.idx[x] = math.Min(sum/float64(len(offers)), scale[x])
+		r.est[x] = true
+	}
+	return r
+}
+
+// estimateCount reads how many of a crew's picks were scored on estimated
+// indexes — the tiebreak between crews that tie on bill and quality.
+func estimateCount(c Crew) int {
+	n := 0
+	for _, seat := range c.Estimated {
+		for _, est := range seat {
+			if est {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// isCandidate reports whether a row is a candidate at all: at least one of
+// the three indexes present and a prompt price above zero. Everything
+// downstream — eligibility, the floor, the maxima — starts from this.
 func isCandidate(c Candidate) bool {
-	return c.Intelligence > 0 && c.Coding > 0 && c.Agentic > 0 && c.PromptPrice > 0
+	return (c.Intelligence > 0 || c.Coding > 0 || c.Agentic > 0) && c.PromptPrice > 0
 }
 
 // eligible reports whether a candidate may sit the seat: family first, then

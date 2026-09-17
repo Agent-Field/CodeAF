@@ -2,6 +2,7 @@ package crewpick
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"slices"
@@ -10,9 +11,9 @@ import (
 
 // A fixture row in its own field names: a null index reads as zero —
 // missing, the way the package reads it — and a null cache-read price reads
-// as unpublished. The rows with unpublished indexes and unpublished cache
-// prices stay in the fixture, so the exclusion rules have something to bite
-// on.
+// as unpublished. The partially published row and the rows with unpublished
+// cache prices stay in the fixture, so the estimate and exclusion rules
+// have something to bite on.
 type row struct {
 	ID    string   `json:"id"`
 	Open  bool     `json:"open"`
@@ -78,6 +79,19 @@ func model(id string) Candidate {
 		Images:          true,
 		Tools:           true,
 	}
+}
+
+// donors builds n fully measured candidates that can sit no seat — a window
+// too small for any of them — so they feed the estimates and the ceilings
+// and nothing else.
+func donors(prefix string, n int) []Candidate {
+	rows := make([]Candidate, 0, n)
+	for i := range n {
+		d := model(fmt.Sprintf("%s/d%d", prefix, i))
+		d.Context = 1000
+		rows = append(rows, d)
+	}
+	return rows
 }
 
 // wantCrew checks a pick against its worker|high|mastermind line.
@@ -185,27 +199,29 @@ func TestTheFloorDropsAModelThatCannotDoTheJob(t *testing.T) {
 	}
 }
 
-// A row missing an index or priced at zero is not a candidate at all: it
-// never reaches a seat and it raises no ceiling. Both rules bite where the
-// floor cannot — the missing coding index leaves the mastermind seat its
-// full quality, and a free model clears any floor.
-func TestARowMissingAnIndexOrPricedAtZeroIsNoCandidate(t *testing.T) {
+// A row carrying none of its three indexes, or priced at zero, is not a
+// candidate at all: it never reaches a seat and it raises no ceiling. Both
+// rules bite where the floor cannot — a free model would clear any floor,
+// and a bare row carries no index to estimate from.
+func TestARowWithNoIndexesAtAllOrNoPriceIsNoCandidate(t *testing.T) {
 	good := []Candidate{model("a/m"), model("c/h")}
 	good[1].Intelligence = 90
 	good[1].PromptPrice = 2
 	good[1].CompletionPrice = 8
 	good[1].CacheReadPrice = 0.2
 
-	broken := model("d/x")
-	broken.Coding = 0
-	broken.PromptPrice = 0.01
-	broken.CompletionPrice = 0.02
-	broken.HasCacheRead = false
+	bare := model("d/x")
+	bare.Intelligence = 0
+	bare.Coding = 0
+	bare.Agentic = 0
+	bare.PromptPrice = 0.01
+	bare.CompletionPrice = 0.02
+	bare.HasCacheRead = false
 
 	free := model("e/y")
 	free.PromptPrice = 0
 
-	pool := append(slices.Clone(good), broken, free)
+	pool := append(slices.Clone(good), bare, free)
 	front := Front(pool, DefaultShapes(), All)
 	for _, crew := range front {
 		for _, id := range []string{crew.Worker, crew.High, crew.Mastermind} {
@@ -218,6 +234,287 @@ func TestARowMissingAnIndexOrPricedAtZeroIsNoCandidate(t *testing.T) {
 	// it was without them.
 	if want := Front(good, DefaultShapes(), All); !slices.Equal(front, want) {
 		t.Fatalf("the non-candidate rows moved the front:\n got %+v\nwant %+v", front, want)
+	}
+}
+
+// A model publishing only its intelligence index — a release scored in
+// stages — is scored on it, with the coding and agentic indexes estimated
+// from the donors, and at a hundredth of the price it takes the worker seat.
+func TestAModelWithOnlyAnIntelligenceIndexIsChosen(t *testing.T) {
+	pool := []Candidate{model("a/w"), model("c/h")}
+	newRelease := model("b/x")
+	newRelease.Coding = 0
+	newRelease.Agentic = 0
+	newRelease.PromptPrice = 0.01
+	newRelease.CompletionPrice = 0.02
+	newRelease.HasCacheRead = false
+	pool = append(pool, newRelease)
+	pool = append(pool, donors("v", 3)...)
+
+	front := Front(pool, DefaultShapes(), All)
+	if len(front) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	frugal, _, _ := Presets(front)
+	if frugal.Worker != "b/x" {
+		t.Fatalf("frugal worker = %s, want the partially scored b/x", frugal.Worker)
+	}
+	want := [3][3]bool{{false, true, true}, {}, {false, true, true}}
+	if frugal.Estimated != want {
+		t.Fatalf("the b/x crew's Estimated = %v, want %v", frugal.Estimated, want)
+	}
+}
+
+// A model publishing only its coding index — many an older model — is
+// scored on it, with the intelligence and agentic indexes estimated, and at
+// a hundredth of the price it takes the worker seat too.
+func TestAModelWithOnlyACodingIndexIsChosen(t *testing.T) {
+	pool := []Candidate{model("a/w"), model("c/h")}
+	older := model("b/x")
+	older.Intelligence = 0
+	older.Agentic = 0
+	older.PromptPrice = 0.01
+	older.CompletionPrice = 0.02
+	older.HasCacheRead = false
+	pool = append(pool, older)
+	pool = append(pool, donors("v", 3)...)
+
+	front := Front(pool, DefaultShapes(), All)
+	if len(front) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	frugal, _, _ := Presets(front)
+	if frugal.Worker != "b/x" {
+		t.Fatalf("frugal worker = %s, want the partially scored b/x", frugal.Worker)
+	}
+	want := [3][3]bool{{true, false, true}, {}, {true, false, true}}
+	if frugal.Estimated != want {
+		t.Fatalf("the b/x crew's Estimated = %v, want %v", frugal.Estimated, want)
+	}
+}
+
+// The donor estimate is the median of the missing index over the present
+// one among the donors carrying both — not the mean, which the far-out
+// fourth donor drags away — and the rows missing either index of the pair
+// never donate. The row missing its intelligence index still raises the
+// coding ceiling with its own 400.
+func TestTheDonorEstimateIsTheMedianRatio(t *testing.T) {
+	shape := SeatShape{Weights: [3]float64{0, 1, 0}}
+	pool := []Candidate{
+		{ID: "a/d1", Intelligence: 10, Coding: 10, Agentic: 10, PromptPrice: 1},
+		{ID: "a/d2", Intelligence: 10, Coding: 20, Agentic: 10, PromptPrice: 1},
+		{ID: "a/d3", Intelligence: 10, Coding: 30, Agentic: 10, PromptPrice: 1},
+		{ID: "a/d4", Intelligence: 10, Coding: 300, Agentic: 10, PromptPrice: 1},
+		{ID: "b/noc", Intelligence: 10, Agentic: 10, PromptPrice: 1},
+		{ID: "b/noi", Coding: 400, Agentic: 10, PromptPrice: 1},
+	}
+	x := Candidate{ID: "c/x", Intelligence: 10, PromptPrice: 1}
+
+	// The donors' coding over intelligence ratios run 1, 2, 3, 30: the
+	// median reads 2.5 and the estimate 25 of a 400 ceiling, where the mean
+	// would read 9 and the estimate 90.
+	if got := SeatQuality(x, shape, pool); got != 6.25 {
+		t.Fatalf("SeatQuality on the median estimate = %v, want 6.25", got)
+	}
+}
+
+// With fewer than three donors carrying a pair, the estimate falls back to
+// equal standing — the missing index read at the present one's share of
+// the pool's ceilings — not to the median of two donors, and not to
+// exclusion.
+func TestFewerThanThreeDonorsEstimatesByEqualStanding(t *testing.T) {
+	shape := SeatShape{Weights: [3]float64{0, 1, 0}}
+	pool := []Candidate{
+		{ID: "a/d1", Intelligence: 100, Coding: 50, Agentic: 10, PromptPrice: 1},
+		{ID: "a/d2", Intelligence: 50, Coding: 100, Agentic: 10, PromptPrice: 1},
+	}
+	x := Candidate{ID: "b/x", Intelligence: 80, PromptPrice: 1}
+
+	// Equal standing reads x's coding at x's share of the intelligence
+	// ceiling, 80 of 100; the two donors' median would read 100.
+	if got := SeatQuality(x, shape, pool); got != 80 {
+		t.Fatalf("SeatQuality on equal standing = %v, want 80", got)
+	}
+}
+
+// An estimate never crosses the pool's largest measured value of its
+// index: the donors' coding over intelligence median runs 20, and 50 times
+// that would read 1000 of a 300 ceiling.
+func TestAnEstimateIsCappedAtTheLargestMeasuredIndex(t *testing.T) {
+	shape := SeatShape{Weights: [3]float64{0, 1, 0}}
+	pool := []Candidate{
+		{ID: "a/d1", Intelligence: 10, Coding: 100, Agentic: 10, PromptPrice: 1},
+		{ID: "a/d2", Intelligence: 10, Coding: 200, Agentic: 10, PromptPrice: 1},
+		{ID: "a/d3", Intelligence: 10, Coding: 300, Agentic: 10, PromptPrice: 1},
+	}
+	x := Candidate{ID: "b/x", Intelligence: 50, PromptPrice: 1}
+
+	if got := SeatQuality(x, shape, pool); got != 100 {
+		t.Fatalf("SeatQuality on the capped estimate = %v, want 100", got)
+	}
+}
+
+// The estimate is never silent: the crew says, for the model in each seat,
+// which of its three indexes were scored by estimate and which measured.
+// The worker publishes only its intelligence index and the mastermind only
+// its coding one; the high seat is measured throughout.
+func TestTheResultMarksEstimatedIndexes(t *testing.T) {
+	pool := []Candidate{model("a/w"), model("c/h")}
+	worker := model("b/x")
+	worker.Coding = 0
+	worker.Agentic = 0
+	worker.Images = false
+	worker.PromptPrice = 0.01
+	worker.CompletionPrice = 0.02
+	worker.HasCacheRead = false
+	mind := model("d/m")
+	mind.Intelligence = 0
+	mind.Agentic = 0
+	mind.Tools = false
+	mind.PromptPrice = 0.005
+	mind.CompletionPrice = 0.01
+	mind.HasCacheRead = false
+	pool = append(pool, worker, mind)
+	pool = append(pool, donors("v", 3)...)
+
+	front := Front(pool, DefaultShapes(), All)
+	if len(front) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	frugal, _, _ := Presets(front)
+	if frugal.Worker != "b/x" || frugal.Mastermind != "d/m" {
+		t.Fatalf("frugal = %s|%s|%s, want b/x on the worker seat and d/m on the mastermind's", frugal.Worker, frugal.High, frugal.Mastermind)
+	}
+	want := [3][3]bool{{false, true, true}, {}, {true, false, true}}
+	if frugal.Estimated != want {
+		t.Fatalf("the crew's Estimated = %v, want %v", frugal.Estimated, want)
+	}
+}
+
+// Two candidates for a seat otherwise tied on quality and cost run to the
+// one with fewer estimated indexes — even when its id reads later, and
+// whichever way round the pool arrives.
+func TestATieOnQualityAndCostRunsToFewerEstimatedIndexes(t *testing.T) {
+	pool := []Candidate{model("a/w"), model("c/h")}
+	// Twins for the mastermind seat, identical in every number the picker
+	// reads, but aaa runs on two estimated indexes and zzz on none.
+	aaa := model("aaa/two")
+	aaa.Intelligence = 0
+	aaa.Coding = 80
+	aaa.Agentic = 0
+	aaa.Tools = false
+	aaa.Images = false
+	aaa.PromptPrice = 0.1
+	aaa.CompletionPrice = 0.2
+	aaa.HasCacheRead = false
+	zzz := aaa
+	zzz.ID = "zzz/one"
+	zzz.Intelligence = 80
+	zzz.Agentic = 80
+	pool = append(pool, aaa, zzz)
+	pool = append(pool, donors("v", 3)...)
+
+	front := Front(pool, DefaultShapes(), All)
+	if len(front) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	if front[0].Mastermind != "zzz/one" {
+		t.Fatalf("a tie went to the estimated twin: %+v", front[0])
+	}
+	for _, crew := range front {
+		if crew.Mastermind == "aaa/two" {
+			t.Fatalf("the estimated twin survived its tie: %+v", crew)
+		}
+	}
+
+	reversed := slices.Clone(pool)
+	slices.Reverse(reversed)
+	if two := Front(reversed, DefaultShapes(), All); !slices.Equal(front, two) {
+		t.Fatal("the tie broke differently when the pool arrived reversed")
+	}
+}
+
+// Estimates, caps and ties read the same whatever order the candidates
+// arrive in: a pool of partially published models gives the same front
+// shuffled as it does in hand order.
+func TestPartialCandidatesGiveTheSameFrontInAnyOrder(t *testing.T) {
+	newRelease := model("b/new")
+	newRelease.Coding = 0
+	newRelease.Agentic = 0
+	newRelease.PromptPrice = 0.01
+	newRelease.CompletionPrice = 0.02
+	newRelease.HasCacheRead = false
+	older := model("d/old")
+	older.Intelligence = 0
+	older.Agentic = 0
+	older.Tools = false
+	staged := model("e/staged")
+	staged.Agentic = 0
+	pool := []Candidate{model("a/w"), model("c/h"), newRelease, older, staged}
+	pool = append(pool, donors("v", 3)...)
+
+	one := Front(pool, DefaultShapes(), All)
+	if len(one) == 0 {
+		t.Fatal("the pool must field crews")
+	}
+	if one[0].Estimated == ([3][3]bool{}) {
+		t.Fatal("the cheapest crew carries no estimated index; the partial candidates never reached it")
+	}
+	reversed := slices.Clone(pool)
+	slices.Reverse(reversed)
+	if two := Front(reversed, DefaultShapes(), All); !slices.Equal(one, two) {
+		t.Fatal("the front changed when the partial candidates arrived reversed")
+	}
+	rotated := append(slices.Clone(pool[3:]), pool[:3]...)
+	if three := Front(rotated, DefaultShapes(), All); !slices.Equal(one, three) {
+		t.Fatal("the front changed when the pool arrived rotated")
+	}
+}
+
+// An input with no index missing picks on measurements alone: the fixture's
+// partially published row left out, both fronts hold the same sizes and
+// the same frugal, balanced and max picks the whole fixture holds, and no
+// estimated flag is set anywhere — the partial row never raised a ceiling,
+// so leaving it out moves nothing measured.
+func TestNothingMissingLeavesEveryPickUnchanged(t *testing.T) {
+	cands := loadCandidates(t)
+	var full []Candidate
+	for _, c := range cands {
+		if c.Intelligence > 0 && c.Coding > 0 && c.Agentic > 0 {
+			full = append(full, c)
+		}
+	}
+	shapes := DefaultShapes()
+
+	open := Front(full, shapes, Open)
+	if len(open) != 7 {
+		t.Fatalf("the full open front holds %d crews, want 7", len(open))
+	}
+	frugal, balanced, max := Presets(open)
+	wantCrew(t, "open frugal", frugal, "deepseek/deepseek-v4-flash-0731|z-ai/glm-5.3-flash|z-ai/glm-5.3-flash")
+	wantCrew(t, "open balanced", balanced, "z-ai/glm-5.3-flash|moonshotai/kimi-k3|z-ai/glm-5.3")
+	wantCrew(t, "open max", max, "z-ai/glm-5.3|moonshotai/kimi-k3|z-ai/glm-5.3")
+
+	all := Front(full, shapes, All)
+	if len(all) != 18 {
+		t.Fatalf("the full all front holds %d crews, want 18", len(all))
+	}
+	frugal, balanced, max = Presets(all)
+	wantCrew(t, "all frugal", frugal, "z-ai/glm-5.3-flash|google/gemini-3.8-flash|z-ai/glm-5.3-flash")
+	wantCrew(t, "all balanced", balanced, "z-ai/glm-5.3-flash|anthropic/claude-fable-5.1|anthropic/claude-fable-5.1")
+	wantCrew(t, "all max", max, "anthropic/claude-fable-5.1|openai/gpt-6-astra|anthropic/claude-fable-5.1")
+	if math.Abs(balanced.Bill-0.590) > 0.005 {
+		t.Fatalf("all balanced bill = %f, want about 0.590", balanced.Bill)
+	}
+	if math.Abs(balanced.Quality-95.4) > 0.05 {
+		t.Fatalf("all balanced quality = %f, want about 95.4", balanced.Quality)
+	}
+	for _, front := range [][]Crew{open, all} {
+		for _, crew := range front {
+			if crew.Estimated != ([3][3]bool{}) {
+				t.Fatalf("a fully measured pool raised an estimated flag: %+v", crew)
+			}
+		}
 	}
 }
 
