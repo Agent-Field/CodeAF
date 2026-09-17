@@ -577,8 +577,9 @@ carries a seed index of our own scored runs, read until a fresher signed
 one is cached. Your install also keeps the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
 the crew reads them beside the index. `status` adds what is waiting to be sent
-and whether the mode allows sending and reading. `--json` prints the same
-answer as one object. Neither form touches the network.
+and whether the mode allows sending and reading. `codeaf pool status` also
+says whether the relay answered, and whether the mirror did. `--json` prints
+the same answer as one object; `show` reads nothing off the network.
 
 **The scores start here.** In a conversation, after a task lands, a model
 outside the crew is asked to score each seat the work ran on — the worker that
@@ -610,6 +611,10 @@ one built into the build. The build carries the index signer's key, so
 other key instead — a mirror's, for instance. A fetch or a signature that
 fails is exit 1; a `verify` on a machine whose setting is `off` is refused
 with exit 2 and fetches nothing.
+
+A private relay is a copy of `relay/` deployed to your own account with your
+own keypair, and `CODEAF_MODEL_POOL_RELAY_URL` with `models.pool.public_key`
+(or `CODEAF_MODEL_POOL_PUBLIC_KEY`) point an install at it.
 
 ## What is still running in the background — codeaf services, and stopping one
 
