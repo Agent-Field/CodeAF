@@ -160,6 +160,35 @@ func (s *Sheet) Cell(metric, role, model string, dims map[string]string) (Cell, 
 	return e.cell, ok
 }
 
+// Each hands every cell recorded under metric to fn, one call per cell, in a
+// deterministic order: role, then model, then the dim labels. Cells recorded
+// under other metrics are not handed over, and the sheet is only read — fn
+// sees the dim labels as the sheet stores them, nil when the observations
+// carried none, and it does not run while the sheet is locked, so it may read
+// the sheet again.
+func (s *Sheet) Each(metric string, fn func(role, model string, dims map[string]string, c Cell)) {
+	s.mu.Lock()
+	seen := make([]cellEntry, 0, len(s.cells))
+	for _, e := range s.cells {
+		if e.addr.metric == metric {
+			seen = append(seen, e)
+		}
+	}
+	s.mu.Unlock()
+	slices.SortFunc(seen, func(a, b cellEntry) int {
+		if c := strings.Compare(a.addr.role, b.addr.role); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.addr.model, b.addr.model); c != 0 {
+			return c
+		}
+		return strings.Compare(dimsKey(a.addr.dims), dimsKey(b.addr.dims))
+	})
+	for _, e := range seen {
+		fn(e.addr.role, e.addr.model, e.addr.dims, e.cell)
+	}
+}
+
 // Win records one paired comparison in which winner beat loser for role.
 // The call is ignored when a name is empty, when winner and loser are
 // equal, or when a name is longer than 128 bytes or contains a newline or

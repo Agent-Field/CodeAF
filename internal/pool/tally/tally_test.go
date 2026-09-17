@@ -517,3 +517,55 @@ func TestConcurrentUse(t *testing.T) {
 		t.Fatalf("Wins = %d, %d, want %d, 0", x, y, goroutines*each)
 	}
 }
+
+// Each hands a metric's cells over one call apiece, in a settled order, and
+// nothing under another metric and nothing the call does can move the sheet.
+func TestEachHandsAMetricsCellsOverInASettledOrder(t *testing.T) {
+	s := New()
+	// Inserted deliberately out of order: the order Each answers must not
+	// carry the order the cells were observed in.
+	s.Observe("m", "worker", "b/late", nil, 2)
+	s.Observe("m", "high", "a/early", map[string]string{"quant": "fp8"}, 9)
+	s.Observe("m", "worker", "a/first", nil, 1)
+	s.Observe("other", "worker", "a/first", nil, 5)
+	s.Observe("m", "worker", "a/first", map[string]string{"quant": "fp8"}, 3)
+
+	var seen []string
+	s.Each("m", func(role, model string, dims map[string]string, c Cell) {
+		word := role + " " + model
+		if dims == nil {
+			word += " nil"
+		} else {
+			word += " " + dims["quant"]
+		}
+		seen = append(seen, word)
+		switch {
+		case role == "high":
+			if c.N != 1 || c.Sum != 9 {
+				t.Errorf("the high cell is %+v, want one observation of 9", c)
+			}
+		case model == "a/first" && dims == nil:
+			if c.N != 1 || c.Sum != 1 {
+				t.Errorf("the first cell is %+v, want one observation of 1", c)
+			}
+		case model == "b/late":
+			if c.N != 1 || c.Sum != 2 {
+				t.Errorf("the late cell is %+v, want one observation of 2", c)
+			}
+		}
+	})
+	want := []string{"high a/early fp8", "worker a/first nil", "worker a/first fp8", "worker b/late nil"}
+	if len(seen) != len(want) {
+		t.Fatalf("Each handed over %d cells (%v), want %d", len(seen), seen, len(want))
+	}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("the %d cell handed over is %q, want %q — role, then model, then the dim labels", i, seen[i], want[i])
+		}
+	}
+
+	// Nil dims and an empty map are the same address, so a second observation
+	// under an empty map lands in the cell Each already handed over.
+	s.Observe("m", "worker", "a/first", map[string]string{}, 4)
+	checkCell(t, s, "m", "worker", "a/first", nil, Cell{N: 2, Sum: 5, SumSq: 17})
+}
