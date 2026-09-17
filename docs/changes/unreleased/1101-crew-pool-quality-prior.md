@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: The crew picker blends a measured pool rating into a seat's quality by its observation count
-pr: 1095
+pr: 1101
 surface: [engine]
 invalidates:
   - "`crewpick.SeatQuality` and `crewpick.Front` read a seat's quality from the catalog's published indexes alone. They now have `SeatQualityWith` and `FrontWith`, which blend a `crewpick.Prior` — a pool's measured quality per seat, per canonical model id — into each seat by N/(N+PriorWeightAt): a rating the prior holds with a positive count moves the seat towards the rating's mean, and `Crew.Measured` says which seats a rating entered. `SeatQuality` and `Front` keep their signatures and read no prior."
