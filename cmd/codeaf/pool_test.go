@@ -323,7 +323,7 @@ func TestPoolVerifyFetchesAndChecksASignedIndex(t *testing.T) {
 		&out, dir, poolClock(t), lookup); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "verified 7 generated 2026-09-10, 1 metric") {
+	if !strings.Contains(out.String(), "signature good: version 7, generated 2026-09-10, 1 metric") {
 		t.Fatalf("verify did not read the fetched document:\n%s", out.String())
 	}
 	out.Reset()

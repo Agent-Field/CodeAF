@@ -533,10 +533,10 @@ and whether the mode allows sending and reading. `--json` prints the same
 answer as one object. Neither form touches the network.
 
 `verify` fetches a fresh index and checks its detached ed25519 signature,
-then prints the version it verified:
+then prints the version whose signature checked out:
 
 ```
-verified 7 generated 2026-09-10, 3 metrics
+signature good: version 7, generated 2026-09-10, 3 metrics
 ```
 
 It wants a public key: `--key <base64 ed25519 public key>`, repeatable, or

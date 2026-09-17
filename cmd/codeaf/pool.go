@@ -300,7 +300,7 @@ func verifyPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 		_, err = fmt.Fprintf(output, "%s\n", encoded)
 		return err
 	}
-	_, err = fmt.Fprintf(output, "verified %d generated %s, %d metrics\n",
+	_, err = fmt.Fprintf(output, "signature good: version %d, generated %s, %d metrics\n",
 		result.Version, generated, len(held.Metrics()))
 	return err
 }
