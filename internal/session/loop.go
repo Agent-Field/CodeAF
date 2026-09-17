@@ -95,10 +95,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
-// ── retry constants (pi spec §4, verbatim from internal/exec/bare) ──────────
+// ── retry constants (verbatim from internal/exec/bare) ───────────────────────
 
 // retryBaseDelay is the first wait of the retry ladder; each attempt doubles it,
-// so 2s, 4s, 8s — pi's schedule, which is what this loop has always walked.
+// so 2s, 4s, 8s — the ladder this loop has always walked.
 //
 // IT IS INTERPOLATED AND NOT TYPED OUT, and so is the attempt count that used to
 // sit beside it as `maxRetries = 3`. The ladder a request actually walks is now
@@ -138,10 +138,10 @@ const truncationContinuationNote = "Your last reply was cut off at the output li
 	"when writing is in scope — a long file is written in parts, a first write and then " +
 	"write calls with append:true — and keep the final report short."
 
-// ── retry classification (pi-ai compat, verbatim from internal/exec/bare) ───
+// ── retry classification (verbatim from internal/exec/bare) ──────────────────
 
 // nonRetryablePattern matches provider errors that are permanent (quota,
-// billing, account limits). pi's NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.
+// billing, account limits).
 var nonRetryablePattern = regexp.MustCompile(
 	`(?i)` + strings.Join([]string{
 		"GoUsageLimitError",
@@ -154,9 +154,8 @@ var nonRetryablePattern = regexp.MustCompile(
 		"billing",
 	}, "|"))
 
-// retryablePattern matches transient provider errors. pi's
-// RETRYABLE_PROVIDER_ERROR_PATTERN. A message is retryable when it matches
-// this AND does not match nonRetryablePattern.
+// retryablePattern matches transient provider errors. A message is retryable
+// when it matches this AND does not match nonRetryablePattern.
 var retryablePattern = regexp.MustCompile(
 	`(?i)` + strings.Join([]string{
 		"overloaded",
@@ -204,9 +203,8 @@ var retryablePattern = regexp.MustCompile(
 		`websocket.?error`,
 	}, "|"))
 
-// isRetryable reports whether a provider error is retryable per pi's
-// isRetryableAssistantError: it must match the retryable pattern and NOT match
-// the non-retryable (quota/billing) pattern.
+// isRetryable reports whether a provider error is retryable: it must match the
+// retryable pattern and NOT match the non-retryable (quota/billing) pattern.
 //
 // IT IS EVIDENCE AND NEVER A DECISION, which is what this pattern lost on
 // 2026-09-10 and has back. It sets one fact on one struct — the socket shape
@@ -998,8 +996,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 
 		calls := response.ToolCalls()
 
-		// Stop condition (pi spec §2): the loop ends when the assistant
-		// response has NO tool call.
+		// Stop condition: the loop ends when the assistant response has NO tool
+		// call.
 		if len(calls) == 0 {
 			// A CALL THAT ANSWERED NOTHING IS A FAILED CALL, AND IT IS WRITTEN
 			// DOWN AS ONE. No words, no tool call, nothing the provider counted:
@@ -1238,6 +1236,24 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				return a.stopForProcessRule(ctx, hub, calls, hold, &turn, started, model)
 			}
 			a.withholdSubmission(hub, calls, hold)
+			// The reads this response started early are dropped exactly as a
+			// provider retry drops them, and for the same reason the early-start
+			// law admits read-only calls only: a discarded read costs the work and
+			// nothing else, and the model must not be handed the answer to a call
+			// the harness has just refused to run.
+			warm.reset()
+			continue
+		}
+
+		// THE ENVELOPE RIDES THE ONE SEAM EVERY EXECUTION PASSES THROUGH. A bash-belt
+		// worker's submission is validated HERE, before anything runs — the branch
+		// bash never starts early (earlyTools admits read-only calls and the branch
+		// belt carries none of them), so nothing can have reached the world before
+		// this check, and a rejected batch is answered with nothing run at all.
+		// See bashbelt_envelope.go for the envelope and its reject roads.
+		if skip, ended := a.enforceBashEnvelope(ctx, hub, calls, &turn, started, model); ended {
+			return true
+		} else if skip {
 			// The reads this response started early are dropped exactly as a
 			// provider retry drops them, and for the same reason the early-start
 			// law admits read-only calls only: a discarded read costs the work and
@@ -1646,8 +1662,8 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 // name — 2s, 4s, 8s, max 3 retries — describes budgets that were deleted before
 // the recovery wave; there is one deadline now and it is stated on the loop
 // below. The transcript is append-only and the failing response was never
-// appended, so asking again re-sends exactly the same messages (pi's
-// _prepareRetry pop is a no-op in this shape — see internal/exec/bare/loop.go).
+// appended, so asking again re-sends exactly the same messages (the pop a
+// retry would need is a no-op in this shape — see internal/exec/bare/loop.go).
 // The model is the person's, latched by runTurn and re-read at the request
 // boundary (steer.go's THE PERSON'S WORD WINS).
 //
@@ -3295,7 +3311,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		}
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
-			// result, matching pi's thrown-Error semantics.
+			// result, the same shape a thrown error takes on the wire.
 			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true})
 		}
 		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR

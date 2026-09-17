@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2550,6 +2551,22 @@ const volatileNoteOpening = "A note from the session, not from the person: where
 // message[0], and it is stated here rather than left to be discovered.
 const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had codeaf keep. Facts, not requests — and the last such note is the one that holds."
 
+// bashBeltFrameOpening is the first line of the note the bash belt's per-step
+// frame rides in (docs/design/bash-task-loop/DESIGN.md, "The per-step frame").
+//
+// It is a third opening rather than a paragraph of [volatileNoteOpening]
+// because the two move on different beats, for the same reason
+// [memoryNoteOpening] is its own note: the card moves when work lands, and the
+// frame moves at every step boundary. Riding both in one note would re-send the
+// card every step, and a card that moved a hundred times a run is a hundred
+// notes whatever file renders it.
+//
+// It says the same last-one-holds sentence the other two openings say, for the
+// same reason: a frame that moved leaves the note that carried the older
+// numbers standing in the transcript exactly where it was said, and the model
+// has to be told which of them is current.
+const bashBeltFrameOpening = "A note from the session, not from the person: where this work stands, step by step. Facts, not requests — and the last such note is the one that holds."
+
 // volatileBlockLocked renders the two blocks that MOVE WITH THE WORK: the state
 // card, rewritten by the post-turn pass whenever a delta lands (card.go), and
 // what the other windows on this project have landed and have running, re-read
@@ -2660,13 +2677,168 @@ func (a *Agent) lastNoteLocked(opening string) string {
 // turn is working on. It is recognized by the opening it is built with and never
 // by guessing at wording.
 //
-// BOTH OPENINGS ANSWER YES. There are two of these notes now — the card and the
-// other windows in one, the routed memory block in the other
-// ([memoryNoteOpening]) — and every caller of this asks the same question about
-// both: is this user-role message something a person typed. Neither is.
+// BOTH OPENINGS ANSWER YES. There are three of these notes now — the card and
+// the other windows in one, the routed memory block in the second
+// ([memoryNoteOpening]), and the bash belt's per-step frame in the third
+// ([bashBeltFrameOpening]) — and every caller of this asks the same question
+// about all of them: is this user-role message something a person typed. None
+// of them is.
 func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
-		strings.HasPrefix(text, memoryNoteOpening)
+		strings.HasPrefix(text, memoryNoteOpening) ||
+		strings.HasPrefix(text, bashBeltFrameOpening)
+}
+
+// mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the
+// runner-side roads and the drain read the same predicate the belt was built
+// from, under the same lock — the shape [Agent.signsGitWork] established for
+// exactly this reason. The one-reading law every belt verb follows means the
+// flag is asked here and nowhere else on a built agent.
+func (a *Agent) mayBashBelt() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config.mayBashBelt()
+}
+
+// bashBeltFrame renders the per-step frame a bash-belt worker reads at each
+// step boundary — the step count against the node's step cap and the steps it
+// has left, the node's spend so far, the fan-out slots still free, one line of
+// family news and one line of child news — or "" when there is nothing to say.
+// docs/design/bash-task-loop/DESIGN.md, "The per-step frame", is the shape's
+// authority and this is its whole mechanism: a rendering at the drain, and
+// nothing else.
+//
+// EVERY NUMBER IN IT IS ALREADY COUNTED. The steps are the node room's own
+// recorder count (task_live.go's [taskLive.steps]), which is the same unit the
+// runner's thresholds are counted in (task_child_run.go), and the steps it has
+// left are that count subtracted from the cap the node named ([TaskNode.limits]
+// reads the same record the runner's checkpoint seam does); the spend is
+// [TaskNode.spend], the figure the runner already publishes at every step's
+// end ([childRun.tellSpend]); the free slots are the fan cap [TaskGraph.claimChild]
+// enforces, counted the way that cap counts it; the family news is the
+// owed-and-outstanding pair the runner reads at [childRun.step]; and the child
+// news is this node's own children and where each stands, the graph's own
+// nodes. The frame composes from those and invents no counter, no diff and no
+// state of its own: a worker that is not on the bash belt composes nothing, and
+// a worker that is still gets nothing when the facts behind it are zero,
+// because [Agent.landNoteLocked] lands an empty block as nothing at all.
+//
+// THE LOCKS ARE TAKEN IN THE ORDER THE PACKAGE ALREADY USES, and this method
+// is built to be called OUTSIDE the agent's own lock. The spend is read before
+// the graph's lock for the reason [TaskNode.notice] states — it asks the room
+// for this agent and this agent for its own usage, and taking those under the
+// graph's lock would be a second lock order in a package that has one — and
+// the family pair is read through [Agent.taskNewsStanding] because owed and
+// outstanding are one fact, and reading them as two is exactly what its law
+// refuses. The fan cap and the children are read under the graph's lock, the
+// same lock the cap is taken under and the same lock the children's own state
+// is kept under, and for the same reason the caller composes this before taking
+// a.mu: nothing under the graph's lock may run inside it.
+func (a *Agent) bashBeltFrame() string {
+	a.mu.Lock()
+	belt, graph, id := a.config.mayBashBelt(), a.config.tasker, a.config.taskID
+	a.mu.Unlock()
+	if !belt || graph == nil || id == 0 {
+		return ""
+	}
+	node := graph.node(id)
+	if node == nil {
+		return ""
+	}
+	spend := node.spend()
+	node.graph.mu.Lock()
+	recorder := node.room.recorder()
+	maxSteps := thresholdOr(node.spec.maxSteps, taskMaxSteps)
+	// THE FAN CAP IS THE ONE [TaskGraph.claimChild] HOLDS TO, counted exactly the
+	// way that cap counts it: the slots this node is holding for proposals in
+	// flight, plus the admitted children that have taken their own. The count is
+	// taken here rather than through the cap because the cap answers the model a
+	// refusal and this only renders the room.
+	held := node.graph.claims[id]
+	kidsNew, kidsSettled := 0, 0
+	for _, kid := range node.graph.order {
+		child := node.graph.nodes[kid]
+		if child == nil || child.parent != id {
+			continue
+		}
+		held++
+		if child.state == TaskRunning || child.state == TaskQueued {
+			kidsNew++
+		} else {
+			kidsSettled++
+		}
+	}
+	node.graph.mu.Unlock()
+	// The tail is asked for as zero because the frame wants the count and not
+	// the narrative: the steps are the same number the room already shows
+	// everybody but the model, and a copy of two hundred quoted lines would buy
+	// a rendering that reads none of them.
+	steps := recorder.state(0).Steps
+	owed, working := a.taskNewsStanding()
+
+	var lines []string
+	// ZERO RENDERS AS NOTHING, and the line is the room's own shape: the step
+	// count against the cap the node named ([TaskNode.limits] reads the same
+	// record the runner's checkpoint seam does), the steps left in that cap, and
+	// the money in the same two decimals [taskRowText] draws, and never a $0.00
+	// made up for a model that has published no price ([TaskNode.spend] says why
+	// that is a lie rather than a figure). A node that has finished no call has
+	// no step to be on and draws nothing.
+	if steps > 0 {
+		stepLine := fmt.Sprintf("step %d/%d", steps, maxSteps)
+		if spend > 0 {
+			stepLine += " · $" + strconv.FormatFloat(spend, 'f', 2, 64) + " so far"
+		}
+		// AND THE STEPS LEFT ARE THE CAP MINUS THE COUNT, drawn only when there
+		// are any: a node at its last step has no step left to be told about.
+		if left := maxSteps - steps; left > 0 {
+			stepLine += fmt.Sprintf(" · %d steps left", left)
+		}
+		lines = append(lines, stepLine)
+	}
+	// AND THE FREE SLOTS ARE THE CAP MINUS WHAT IT HOLDS, drawn only for a node
+	// that has fanned out at all — the slots a node that never divided still
+	// holds are not news it has to be told — and drawn as nothing when none are
+	// left, the point at which [TaskGraph.claimChild] is the door that answers.
+	if free := taskFanLimit - held; held > 0 && free > 0 {
+		lines = append(lines, fmt.Sprintf("free slots: %d", free))
+	}
+	// AND THE FAMILY'S NEWS IS THE PAIR THE RUNNER'S OWN DRAIN READS
+	// (task_child_run.go). A report is in hand until the request about to go
+	// out carries it, and parts still working are the reason this step may be
+	// one about waiting. A node that never divided draws no family line at all.
+	if owed > 0 || working {
+		reports := fmt.Sprintf("%d reports", owed)
+		if owed == 1 {
+			reports = "1 report"
+		}
+		family := "family: "
+		if owed > 0 {
+			family += reports + " in hand"
+			if working {
+				family += "; "
+			}
+		}
+		if working {
+			family += "parts still working"
+		}
+		lines = append(lines, family)
+	}
+	// AND THE CHILD NEWS IS THIS NODE'S OWN CHILDREN AND WHERE EACH STANDS, read
+	// off the graph's nodes and nothing else: a child still running or queued is
+	// new, an ending of any kind has settled it. Each half is drawn only when it
+	// is not zero, and a node with no children draws no line at all.
+	if kidsNew > 0 || kidsSettled > 0 {
+		var parts []string
+		if kidsNew > 0 {
+			parts = append(parts, fmt.Sprintf("%d new", kidsNew))
+		}
+		if kidsSettled > 0 {
+			parts = append(parts, fmt.Sprintf("%d settled", kidsSettled))
+		}
+		lines = append(lines, "parts: "+strings.Join(parts, ", "))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // drainSteering moves queued messages into the transcript at a step boundary
@@ -2685,9 +2857,15 @@ func isVolatileNote(text string) bool {
 // interval into an owed note now and an ambient note later would be two accounts
 // where one batch is the honest shape.
 func (a *Agent) drainSteering(hub *eventHub) int {
-	// The senders of anything recorded below are told once this returns, which is
 	// the first moment there is no lock to write a checkpoint under.
 	defer a.settleDeliveries()
+	// THE FRAME IS COMPOSED BEFORE THIS AGENT'S OWN LOCK IS TAKEN, because it
+	// reads the graph and the family pair and neither of those may be taken
+	// under a.mu ([Agent.bashBeltFrame] states the order these locks have). The
+	// composition is cheap on every belt but the bash belt's: the predicate is
+	// the first thing it reads, and an agent that is not on the experiment
+	// composes nothing and lands nothing.
+	frame := a.bashBeltFrame()
 	a.mu.Lock()
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
@@ -2696,6 +2874,15 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// which is the one shape a user message may legally follow. Ahead rather than
 	// behind because the note is the ground the person's line is said against.
 	a.landVolatileLocked()
+	// AND THE BASH BELT'S FRAME LANDS BESIDE THE CARD, at the same drain point
+	// and ahead of the steering, because this seam is the one that runs
+	// immediately before the next request (loop.go) and the frame is the one
+	// note whose whole job is to say where the work stands at that instant. It
+	// rides its own note rather than the card's because the two move on
+	// different beats ([bashBeltFrameOpening]), and [landNoteLocked] lands an
+	// empty frame as nothing at all, which is the flag-off road and the zero
+	// road alike.
+	a.landNoteLocked(bashBeltFrameOpening, frame)
 	// WHICH DIRECTIONS THIS REQUEST WILL CARRY, read before the drain empties the
 	// queue and acted on after the lock is released. This is the only place a
 	// direction becomes READ (assignment.go): the turn's END drain reaches the

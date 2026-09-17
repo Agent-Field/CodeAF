@@ -242,6 +242,7 @@ INNER
     -e "HOME=/root" \
     -e "BENCH_MODEL=$MODEL" \
     -e "BENCH_TIMEOUT=$TASK_SECS" \
+    -e "CODEAF_TASK_BELT=${CODEAF_TASK_BELT:-}" \
     -w /app "$NAME" /bench/drive.sh > "$OUT/do.json" 2> "$OUT/run.log"
   CODE=$?
   WALL=$(( $(date +%s) - t0 ))

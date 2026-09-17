@@ -91,6 +91,7 @@ furrow:
 # then to PATH — which is what it does here.
 build: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
+	go build -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o bin/plandb ./cmd/plandb
 
 debug: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf

@@ -1,4 +1,4 @@
-// Package session is the v3 conversational agent: a pi-shaped working loop
+// Package session is the v3 conversational agent: a working loop
 // you talk to, not a dispatcher. It owns one conversation against one
 // workspace: the person submits messages, the agent works (read, bash, edit,
 // write, grep, find, ls, todo) and streams what it does as events.
@@ -10,7 +10,7 @@
 // ones, and nothing in this file changes.
 //
 // The loop's wire behavior — message assembly, stop condition, retry
-// schedule, tool parallelism — follows internal/exec/bare (pi 0.82.1), with
+// schedule, tool parallelism — follows internal/exec/bare, with
 // three deliberate differences: it is interactive (Submit between turns, not
 // one task to the end), interruptible (Interrupt cancels the in-flight turn
 // and keeps the partial), and its compaction follows docs/CHAT-V3.md
@@ -1844,6 +1844,17 @@ type Config struct {
 	//
 	// It is private for InTask's reason: no surface sets it, the executor does.
 	roomThread bool
+
+	// bashBelt is THE EXPERIMENT'S ONE SWITCH, and it is unexported for
+	// pacing's reason: it is not a caller's choice but a fact about the task
+	// worker this package built. It is set only by the executor, at
+	// newTaskAgentOn, from CODEAF_TASK_BELT, and read only through
+	// [Config.mayBashBelt], so no road can hand the bash belt to a
+	// conversation — the conversation and every subharness leaf keep the
+	// seven file tools whatever the variable says, which is what lets both
+	// arms of the comparison run from one binary
+	// (docs/design/bash-task-loop/DESIGN.md).
+	bashBelt bool
 
 	// reviseDesign is the one extra hand a design thread has, and the whole of
 	// what puts revise_design on its belt (tools_harness.go). It carries the
