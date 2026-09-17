@@ -489,5 +489,11 @@ else
   CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/codeaf${extension}" version
 fi
 
-write_install_marker "$STATE_ROOT"
+# The install marker lives under the state root, and a custom install outside
+# it must not create the login's state folders: the marker is written when the
+# install is inside the state root or the root already exists, and skipped
+# otherwise (the binary then reports install_method "unknown").
+if [[ "$RUN_BOOT_ADOPTION" == "1" || -d "$STATE_ROOT" ]]; then
+  write_install_marker "$STATE_ROOT"
+fi
 print_telemetry_notice
