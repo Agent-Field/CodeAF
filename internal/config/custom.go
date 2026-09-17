@@ -64,24 +64,37 @@ func PrepareCustomSource(profileDir, address, written string) PersistedSource {
 	}
 }
 
-// ActiveCustomSource reads which custom connection the conversation is on, so
-// the Providers tab can show it and switch away from it. THE ACTIVE
-// CONNECTION IS DERIVED, NEVER STORED: the conversation slot's model already
-// carries the answer in its Written prefix, and a second key would be a
-// second source of truth that can disagree with the model actually in use.
-// Empty when the conversation is on the default service, on a vendored
-// service, or on no service at all.
+// ActiveCustomSource is the custom connection the conversation answers on: the
+// thin wrapper over [ActiveConnection] that keeps a false for the default
+// service, for a vendored service, and for no service at all, so the Providers
+// tab can show the active connection and switch away from it.
 func ActiveCustomSource(profileDir string, sources modelsource.Set) (modelsource.Connected, bool) {
-	segment, _ := modelsource.Split(ChatModelAt(profileDir), sources.Written())
-	if segment == "" {
+	service, ok := ActiveConnection(profileDir, sources)
+	if !ok || !modelsource.IsCustomID(service.Source.ID) {
 		return modelsource.Connected{}, false
 	}
-	for _, service := range sources.All() {
-		if modelsource.IsCustomID(service.Source.ID) && strings.EqualFold(strings.TrimSpace(service.Source.Written), segment) {
-			return service, true
-		}
+	return service, true
+}
+
+// ActiveConnection reads the service this conversation answers on. THE ACTIVE
+// CONNECTION IS DERIVED, NEVER STORED: the conversation slot's model already
+// carries the answer in its Written prefix, and a second key would be a second
+// source of truth that can disagree with the model actually in use. The slot's
+// model is read from disk ([ChatModelAt]) and resolved through [Set.For], which
+// answers with the default service when no connected Written prefix matches —
+// so the switcher that hands this set around reaches the default service the
+// same way the conversation itself does. False only when there are no services
+// at all, or the conversation has settled on no model yet.
+func ActiveConnection(profileDir string, sources modelsource.Set) (modelsource.Connected, bool) {
+	if sources.Empty() {
+		return modelsource.Connected{}, false
 	}
-	return modelsource.Connected{}, false
+	model := strings.TrimSpace(ChatModelAt(profileDir))
+	if model == "" {
+		return modelsource.Connected{}, false
+	}
+	service, _ := sources.For(model)
+	return service, true
 }
 
 // RenameConnectionModels carries a connection rename across every STORED model

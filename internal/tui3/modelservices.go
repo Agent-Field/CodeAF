@@ -176,11 +176,23 @@ func (a *app) modelConnectionRows() []connect.Status {
 	// instance would be unreachable from here without a row that always mints
 	// (startCustomAdd). An empty profile needs no row: the catalog row is
 	// still the unconnected door onto the first connection.
-	if len(customInstances(a.sources)) > 0 {
+	if len(switchableConnections(a.sources)) > 0 {
 		rows = append(rows, connect.Status{Service: connect.Service{
 			ID: modelConnectionID(customAddRowID), Name: "add custom connection",
 			Blurb: "address · key", Auth: connect.AuthKey, Category: "models",
 		}})
+		// THE PANEL CARRIES THE SWITCHER TOO: the Providers tab's active-connection
+		// row and this one read the same ring and answer to the same enter
+		// (switchActiveConnection), so neither door is the only door. One row per
+		// reading; the sentence is the tab's own (switchSentence).
+		if ring := switchableConnections(a.sources); len(ring) >= 2 {
+			active, hasActive := config.ActiveConnection(a.profileDir, a.sources)
+			rows = append(rows, connect.Status{Service: connect.Service{
+				ID: modelConnectionID(connectionSwitchRowID), Name: "active connection",
+				Blurb: switchSentence(hasActive, active, nextConnection(ring, active, hasActive)),
+				Auth:  connect.AuthKey, Category: "models",
+			}})
+		}
 	}
 	return rows
 }
@@ -221,6 +233,10 @@ func modelServiceTag(row connect.Status) string {
 	}
 	switch {
 	case id == "ollama":
+		return ""
+	case id == connectionSwitchRowID:
+		// The switch row's sentence is its own Blurb, drawn as the row's
+		// value; a tag would say it twice.
 		return ""
 	case modelsource.IsCustomID(id):
 		return "address · key"
@@ -877,6 +893,14 @@ func serviceMovedWord(was, next string) string {
 	return "this conversation was on " + was + " · it is now on " + next
 }
 
+// deferredMoveWord is what a move that has to wait says: the answering turn
+// freezes the model until it settles (app.applyDeferredModelServiceMove
+// spends the move), and a person pressing enter deserves to know the press
+// landed rather than vanished.
+func deferredMoveWord(written string) string {
+	return "the move to " + written + " waits for this turn to finish"
+}
+
 func serviceStrandedWord(was string) string {
 	return "this conversation was on " + was + " and nothing else here can take it · connect a service or pick a model"
 }
@@ -1078,9 +1102,9 @@ type modelServiceRow struct {
 	// ordinary service row is that row's EDIT; this row is the only one that
 	// mints.
 	addCustom bool
-	// switcher marks the active-connection row: one reading of which custom
-	// connection this conversation answers on, and the one enter that moves
-	// it to the next (switchActiveCustomConnection).
+	// switcher marks the active-connection row: one reading of which service
+	// this conversation answers on, and the one enter that moves it to the
+	// next (switchActiveConnection).
 	switcher bool
 }
 
@@ -1091,6 +1115,12 @@ type modelServiceRow struct {
 // also be a connection named `add` would make one row answer for two
 // (customAddRow, modelConnectionRows, connectAct).
 const customAddRowID = "new-custom-connection"
+
+// connectionSwitchRowID is the /connect panel's active-connection row. A
+// SENTINEL ID BY THE SHARED CONTRACT: it does not start with `custom` and it
+// equals no vendored id, so modelsource.IsCustomID is false for it and
+// config.PrepareCustomSource can never mint it.
+const connectionSwitchRowID = "switch-connection"
 
 // customAddRow is the Providers tab's add row. It stands whether or not any
 // connection exists, because a profile with no custom connection yet is the
@@ -1106,69 +1136,124 @@ func customAddRow() *modelServiceRow {
 // connectionSwitcherRow is the Providers tab's active-connection row, nil
 // when no custom connection is connected, because a row that could never do
 // anything is a row that only says there is nothing here. THE ACTIVE
-// CONNECTION IS DERIVED, NEVER STORED (config.ActiveCustomSource): the
+// CONNECTION IS DERIVED, NEVER STORED (config.ActiveConnection): the
 // conversation slot's model already carries the answer in its Written
 // prefix, and a stored key would be a second source of truth that can
 // disagree with the model actually in use.
 func (s *sheet) connectionSwitcherRow() *modelServiceRow {
-	instances := customInstances(s.sources)
-	if len(instances) == 0 {
+	ring := switchableConnections(s.sources)
+	if len(ring) < 2 {
 		return nil
 	}
-	active, hasActive := config.ActiveCustomSource(s.profileDir, s.sources)
-	next := nextCustomInstance(instances, active, hasActive)
-	value := "enter moves this conversation onto " + strings.ToLower(strings.TrimSpace(next.Source.Written))
-	if hasActive {
-		value = "answering on " + strings.ToLower(strings.TrimSpace(active.Source.Written)) +
-			" · enter moves it to " + strings.ToLower(strings.TrimSpace(next.Source.Written))
-	}
+	active, hasActive := config.ActiveConnection(s.profileDir, s.sources)
+	next := nextConnection(ring, active, hasActive)
+	value := switchSentence(hasActive, active, next)
 	return &modelServiceRow{name: "active connection", value: value, switcher: true}
 }
 
-// customInstances is the connected custom connections in persisted order.
-func customInstances(sources modelsource.Set) []modelsource.Connected {
-	instances := make([]modelsource.Connected, 0, 2)
+// serviceWrittenWord is the name a person calls a service in the switcher's
+// sentence: its Written spelling, and the service's own display name when the
+// Written word is empty. It is lowercased because the sentence reads as
+// speech, the way every word below a service row does.
+func serviceWrittenWord(service modelsource.Connected) string {
+	word := strings.TrimSpace(service.Source.Written)
+	if word == "" {
+		word = strings.TrimSpace(service.Source.Name)
+	}
+	return strings.ToLower(word)
+}
+
+// switchSentence is what the active-connection row says: where the
+// conversation is answering and where enter takes it.
+func switchSentence(hasActive bool, active, next modelsource.Connected) string {
+	to := serviceWrittenWord(next)
+	if !hasActive {
+		return "enter moves this conversation onto " + to
+	}
+	return "answering on " + serviceWrittenWord(active) + " · enter moves it to " + to
+}
+
+// switchableConnections is the ring the switcher walks: the default service
+// first, then every custom connection in persisted order. THE SWITCHER IS THE
+// CUSTOM-CONNECTION FEATURE'S DOOR, so its ring is the default service and
+// the connections a person added; vendored non-custom services (deepseek,
+// ollama and the rest) are not in it — they are reached by connecting them
+// and then picking a model, which /model is the door for, and a switcher that
+// wrapped through every vendored service would turn one enter into a walk
+// across doors /model already owns.
+func switchableConnections(sources modelsource.Set) []modelsource.Connected {
+	if sources.Empty() {
+		return nil
+	}
+	ring := make([]modelsource.Connected, 0, 2)
+	ring = append(ring, sources.Default())
 	for _, service := range sources.All() {
 		if modelsource.IsCustomID(service.Source.ID) {
-			instances = append(instances, service)
+			ring = append(ring, service)
 		}
 	}
-	return instances
+	return ring
 }
 
-// nextCustomInstance is the instance a switcher enter lands on: the one after
-// the active connection, wrapping; the first when nothing custom is active.
-func nextCustomInstance(instances []modelsource.Connected, active modelsource.Connected, hasActive bool) modelsource.Connected {
-	if hasActive {
-		for at, instance := range instances {
-			if strings.EqualFold(strings.TrimSpace(instance.Source.ID), strings.TrimSpace(active.Source.ID)) {
-				return instances[(at+1)%len(instances)]
-			}
+// nextConnection is the service a switcher enter lands on: the one after the
+// active one by id, wrapping; the first ring entry that is not the active
+// service when the conversation is on nothing, or on something that is not in
+// the ring. With a ring holding one service the entry is that service itself,
+// which is why the row is offered only when the ring holds two or more
+// (connectionSwitcherRow, modelConnectionRows).
+func nextConnection(ring []modelsource.Connected, active modelsource.Connected, hasActive bool) modelsource.Connected {
+	for at, service := range ring {
+		if hasActive && strings.EqualFold(strings.TrimSpace(service.Source.ID), strings.TrimSpace(active.Source.ID)) {
+			return ring[(at+1)%len(ring)]
 		}
 	}
-	return instances[0]
+	for _, service := range ring {
+		if !hasActive || !strings.EqualFold(strings.TrimSpace(service.Source.ID), strings.TrimSpace(active.Source.ID)) {
+			return service
+		}
+	}
+	return ring[0]
 }
 
-// switchActiveCustomConnection is the switcher row's answer: move this
-// conversation onto the next custom connection's preferred model, through
-// a.switchModel — the ONE road a model change takes and the same write the
-// /model picker makes. The active connection is derived from the slot's
-// model, so rewriting the slot IS the switch; there is nothing else to store.
-func (a *app) switchActiveCustomConnection() {
-	instances := customInstances(a.sources)
-	if len(instances) == 0 {
+// switchActiveConnection is the switcher row's answer: move this conversation
+// onto the next service in the ring's preferred model, through a.switchModel
+// — the ONE road a model change takes and the same write the /model picker
+// makes. The active connection is derived from the slot's model, so rewriting
+// the slot IS the switch; there is nothing else to store.
+func (a *app) switchActiveConnection() {
+	ring := switchableConnections(a.sources)
+	if len(ring) < 2 {
 		return
 	}
-	active, hasActive := config.ActiveCustomSource(a.profileDir, a.sources)
-	next := nextCustomInstance(instances, active, hasActive)
-	written := strings.ToLower(strings.TrimSpace(next.Source.Written))
-	preferred := next.Source.PreferredModel(next.Door, listedModelIDs(a.modelsForConnectedService(next)))
+	active, hasActive := config.ActiveConnection(a.profileDir, a.sources)
+	next := nextConnection(ring, active, hasActive)
+	written := serviceWrittenWord(next)
+	var preferred string
+	if modelsource.IsCustomID(next.Source.ID) {
+		preferred = next.Source.PreferredModel(next.Door, listedModelIDs(a.modelsForConnectedService(next)))
+	} else {
+		preferred = next.Source.PreferredModel(next.Door, listedModelIDs(a.defaultServiceModels()))
+	}
 	if strings.TrimSpace(preferred) == "" {
 		a.modelServiceMessage("no model list for " + written + " yet · reconnect it (ctrl+r on its row) or type a model id in /model")
 		return
 	}
-	if id := next.Qualify(preferred); !strings.EqualFold(strings.TrimSpace(id), strings.TrimSpace(a.model)) {
-		a.switchModel(id, 0)
+	id := preferred
+	if modelsource.IsCustomID(next.Source.ID) {
+		id = next.Qualify(preferred)
+	}
+	// THE DEFAULT SERVICE'S OWN IDS ARE ALREADY BARE: [Connected.Qualify] says
+	// so, and it is spelled out here because the two roads below look like
+	// they might differ. The id is rewritten only when it IS a change; a
+	// conversation that answers on the ring's next service already keeps the
+	// pick it has.
+	if a.state == stateWorking {
+		if !strings.EqualFold(strings.TrimSpace(id), strings.TrimSpace(a.deferredModelServiceModel)) {
+			a.deferredModelServiceModel = id
+		}
+		a.modelServiceFollowup(deferredMoveWord(written))
+	} else if !strings.EqualFold(strings.TrimSpace(id), strings.TrimSpace(a.model)) {
+		a.moveConversationToConnectedModel(id)
 	}
 	if a.at(pageSettings) {
 		a.sheet.build()

@@ -692,6 +692,15 @@ func (a *app) connectAct(at int) tea.Cmd {
 			if id == customAddRowID {
 				return a.startCustomAdd(false)
 			}
+			// THE SWITCH ROW MOVES: enter here is the Providers tab's switcher
+			// enter (switchActiveConnection), and the panel re-adopts its rows
+			// for the same reason the connect result re-adopts them — the
+			// active-connection sentence names the next service now.
+			if id == connectionSwitchRowID {
+				a.switchActiveConnection()
+				a.connPanel.adopt(a.connectionRows())
+				return nil
+			}
 			return a.startModelConnect(row, false)
 		}
 		name := a.serviceName(row.ID, row.Name)

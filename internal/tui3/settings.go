@@ -2035,7 +2035,7 @@ func (a *app) activate() tea.Cmd {
 			return a.startCustomAdd(true)
 		}
 		if item.service.switcher {
-			a.switchActiveCustomConnection()
+			a.switchActiveConnection()
 			return nil
 		}
 		// ENTER ON A CONNECTED SERVICE IS ITS EDIT: the id is kept, the
