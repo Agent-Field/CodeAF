@@ -42,6 +42,7 @@ func TestPrepareCustomSourceNeverMintsASentinelRowId(t *testing.T) {
 		}
 	}
 }
+
 // EVERY ADD MINTS AN ID THE PROFILE DOES NOT ALREADY HOLD, which is the whole
 // reason two custom connections can coexist: persistConnectedSource matches a
 // row BY ID, so a mint that answered the taken id a second time would replace
