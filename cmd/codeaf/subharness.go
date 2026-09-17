@@ -385,6 +385,18 @@ var sharedCatalog = func() func(config.Config) *catalog.Catalog {
 	}
 }()
 
+// useAutoSeats seats this process's catalog under the seat ladder, and is what
+// a headless door calls BEFORE it resolves its seats.
+//
+// The order is the whole of it. A tier row that says `auto` is answered from
+// the rows already in hand ([config.AutoModels]), and every headless door
+// climbed the ladder before it asked for a catalog at all — so the word read
+// against nothing and landed on the family's table row on every run, on a
+// machine whose catalog was sitting in its own cache file. It is the same lazy,
+// memoised catalog every one of those doors goes on to use; asking for it a few
+// lines earlier waits for nothing.
+func useAutoSeats(settings config.Config) { sharedCatalog(settings) }
+
 // promisedWorker is the node's own answer to "who runs this", read in the order
 // admission settled it: the row's worker where there is one, the subtree's
 // otherwise. It is a pure read — every surface that only wants to *know* asks

@@ -620,6 +620,7 @@ func runPlanNew(name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
@@ -799,6 +800,7 @@ func runRevise(name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()

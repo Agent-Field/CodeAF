@@ -390,6 +390,15 @@ func doErrand(request doRequest) error {
 	// The two seats, resolved before anything is opened or built, so the run
 	// says which models it is about to use and on whose authority — and says it
 	// even on a run that dies before it reaches a provider.
+	//
+	// The catalog is seated under the ladder first, because a tier row may say
+	// `auto` and that word is answered from the rows this process already holds
+	// (useAutoSeats). It is read keyless: a run with no key fails further down
+	// with a sentence about the key, and a seat that fell to the table row on
+	// the way there would report a model this run never meant to use.
+	if settings, err := config.LoadKeyless(); err == nil {
+		useAutoSeats(settings)
+	}
 	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
 	fmt.Fprintln(request.stderr, seats.Report())
 	outcome, err := errandRun(request, seats, started)

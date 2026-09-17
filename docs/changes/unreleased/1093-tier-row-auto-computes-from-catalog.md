@@ -1,7 +1,7 @@
 ---
 kind: added
 title: A tier row that says `auto` computes its model from the catalog
-pr: 1
+pr: 1093
 surface: [chat, engine]
 invalidates: []
 ---
