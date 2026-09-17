@@ -113,6 +113,15 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	for event := range events {
 		switch event.Kind {
 		case session.EventToolEnd, session.EventToolFailed:
+			// THE CAP IS THE LAST STEP COUNTED. stop() cancels the turn, but
+			// the agent's loop notices on its next round, and a round it had
+			// already started still ends its tool — under the race detector
+			// several do. Those late ends are drained here so the agent can
+			// close, and they are neither counted nor recorded: the report
+			// says the cap, and the trajectory ends where the cap fell.
+			if capped {
+				continue
+			}
 			steps++
 			if err := rec.record(steps, event); err != nil {
 				// A step that could not be recorded left the record shorter
