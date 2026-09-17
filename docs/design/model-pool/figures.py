@@ -133,7 +133,7 @@ def simulate(strategy, N, seed, rows, oracle):
 
 
 def fig_regret():
-    rows = [r for r in crews() if r["door"] == "task"][:12]
+    rows = [r for r in crews() if r["door"] == "task"]
     oracle = min(allin(r) for r in rows)
     Ns = [10, 20, 40, 70, 100, 150, 200, 300, 400]
     fig, (ax, ax2) = plt.subplots(1, 2, figsize=(6.2, 2.8))

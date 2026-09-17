@@ -61,7 +61,7 @@
 
 \begin{abstract}
 \noindent
-An agent harness runs a task through a \emph{crew}: an assignment of one language model to each of $n$ roles (in our instance a worker that does the work, a checker that reads it and a planner that cuts it). The crew that pays best is neither the cheapest nor the strongest on paper; it is the one that minimises the expected cost of one clean delivery once failed runs, wall time and shipped defects are priced. We give that objective in closed form, show how a crew is computed from a published catalog of prices and benchmark indexes alone (a pareto front in bill and quality, with a scale-free knee), and then how measurements from real runs replace the catalog's proxy. Runs are scored role by role by a model outside the crew. Each score becomes a row that carries no text, no file name and no identity beyond a per-install nonce, so nothing an install sends can be read back into what it was working on; rows reduce to sufficient statistics that form a join-semilattice, so any number of installs and a relay can merge them in any order and reach the same state, the relay is a convenience rather than an authority, and the published index is signed so that every reader can check what it is blending in. Participation is a setting: an install can contribute, read only, or stay out, and still learns from its own runs. Judge severity is removed by a two-way fixed-effects fit on those statistics, drift by a local-level model whose forgetting rate is estimated rather than set, and heterogeneity between installs by a hierarchical prior whose variance is estimated by moments; every constant except the user's price of a defect is an empirical-Bayes estimate. The crew is chosen by Thompson sampling with semi-bandit feedback: because the objective is linear in role qualities and every role is scored separately, a run on one crew informs every crew that shares a model with it, and the sample complexity scales with the number of models rather than the number of crews. On our own 120 scored runs the learner beats a fixed table by a third of the remaining regret within a few hundred runs, and role-level feedback cuts the regret of a crew-level learner by a further factor of three at four hundred runs.
+An agent harness runs a task through a \emph{crew}: an assignment of one language model to each of $n$ roles (in our instance a worker that does the work, a checker that reads it and a planner that cuts it). The crew that pays best is neither the cheapest nor the strongest on paper; it is the one that minimises the expected cost of one clean delivery once failed runs, wall time and shipped defects are priced. We give that objective in closed form, show how a crew is computed from a published catalog of prices and benchmark indexes alone (a pareto front in bill and quality, with a scale-free knee), and then how measurements from real runs replace the catalog's proxy. Runs are scored role by role by a model outside the crew. Each score becomes a row that carries no text, no file name, no price and no identity beyond a per-install nonce, so what an install sends is a handful of coarse fields about a model, not about the work; rows reduce to sufficient statistics that form a join-semilattice, so any number of installs and a relay can merge them in any order and reach the same state, the relay is a convenience rather than an authority, and the published index is signed so that every reader can check what it is blending in. Participation is a setting: an install can contribute, read and learn from its own runs without sending, or stay out. Judge severity is removed by a two-way fixed-effects fit on those statistics, drift by a local-level model whose forgetting rate is estimated rather than set, and heterogeneity between installs by a hierarchical prior whose variance is estimated by moments; every statistical constant is an empirical-Bayes estimate, and what remains for the user to set is the price of a defect and the price of time. The crew is chosen by Thompson sampling with semi-bandit feedback: because the objective is linear in role qualities and every role is scored separately, a run on one crew informs every crew that shares a model with it, and the sample complexity scales with the number of models rather than the number of crews. On a ground truth fitted to our own runs the learner beats a fixed table by a third of the remaining regret within a few hundred runs, and role-level feedback halves the regret of a crew-level learner fed the same scores at four hundred runs.
 \end{abstract}
 
 \vspace{4pt}
@@ -107,7 +107,7 @@ and its catalog quality is the weighted, pool-normalised index
 \hat q_r(m) = 100 \sum_{i=1}^{3} w_{r,i}\,\frac{I_{m,i}}{\max_{m'\in\mods} I_{m',i}} .
 \label{eq:catq}
 \end{equation}
-A missing index is imputed from the median ratio, over models publishing both, of the missing index to a present one; an imputed quality is flagged and loses ties.
+A missing index is imputed from the models that publish it: for each index the model does publish, the median over at least three donor models of the ratio between the missing and the present index gives an offer, the offers are averaged, and the estimate is capped at the largest measured value of the missing index in the pool; with fewer than three donors the model takes the standing its present indexes give it on the pool's scale. An imputed quality is flagged and loses ties.
 
 \paragraph{Shortlists.}
 Role $r$'s shortlist is
@@ -173,7 +173,7 @@ $H$ is the one quantity that belongs to the user, and the budget word sets it: f
 E(\kappa)=c(\kappa)+\lambda\,t(\kappa)+H\,\big(1-\pclean(\kappa)\big).
 \label{eq:E}
 \end{equation}
-Figure~\ref{fig:front} draws our measured crews with the iso-lines of~\eqref{eq:E}. The knob $k$ and the price $H$ parametrise the same trade-off; $k$ is what a catalog admits, $H$ is what measurements admit.
+Equation~\eqref{eq:E} is~\eqref{eq:EH} with $r$ set to one: a run that fails to deliver is priced as a shipped defect rather than rerun. The surrogate ranks crews as $E_H$ does when $H$ is large next to a run's cost and $r$ is not far below one, which is the regime of every crew on the front of Figure~\ref{fig:front}; when a role's delivered rate is measured, as the worker's is, the picker can use~\eqref{eq:EH} directly and nothing below changes. Figure~\ref{fig:front} draws our measured crews with the iso-lines of~\eqref{eq:E}. The knob $k$ and the price $H$ parametrise the same trade-off; $k$ is what a catalog admits, $H$ is what measurements admit.
 
 \begin{assumption}[Linearity in roles]
 \label{ass:linear}
@@ -183,7 +183,7 @@ The assumption is what makes~\eqref{eq:E} linear in the role qualities, which Se
 
 \begin{figure}[t]
 \centering\includegraphics{fig-front.pdf}
-\caption{Our measured crews (56 combinations fitted from 120 scored runs): cost of one run against the probability that it delivers clean. Solid: the pareto front. Dashed: iso-cost lines of~\eqref{eq:E}; a larger $H$ tilts them so that quality buys more.}
+\caption{Our measured crews: 56 (worker, checker or planner) combinations, each fitted by a ridge model on 72 scored runs over nine tasks; cost of one run against the probability that it delivers clean. Solid: the pareto front. Dashed: iso-cost lines of~\eqref{eq:E}; a larger $H$ tilts them so that quality buys more.}
 \label{fig:front}
 \end{figure}
 
@@ -192,36 +192,36 @@ The assumption is what makes~\eqref{eq:E} linear in the role qualities, which Se
 
 \subsection{Judged runs and rows}
 
-After a run finishes, one model outside the crew reads the record (brief, deliverable, the checker's report and claim, the files touched) and answers one question per role with a score in $[0,100]$ and one sentence. The judge is chosen deterministically: the cheapest catalog model with coding index at least $60$ that can call tools, holds no role in the crew, and is not from the worker's vendor; a role the judge's own model holds is skipped. The floor exists because a judge below the worker's class rubber-stamps. The judge's calls are billed to a role of their own, so learning is never free by accident; at present prices it is cents per run.
+After a run finishes, one model outside the crew reads the record (brief, deliverable, the checker's report and claim, the files touched) and answers one question per role with a score in $[0,100]$ and one sentence. The judge is chosen deterministically: the cheapest catalog model with coding index at least $60$ that can call tools, holds no role in the crew, and is not from the worker's vendor; a role the judge's own model holds is skipped. The floor is absolute, not relative to the worker; its reason is that a judge well below the class of the work it reads rubber-stamps. The judge's calls are billed to a role of their own, so learning is never free by accident; the cost is one short completion per role.
 
 One judged role of one run is one \emph{row}
 \[
-x=(\text{role},\ \text{model},\ \text{score},\ \text{dollars},\ \text{minutes},\ \text{size}\in\{S,M,L\},\ \text{door},\ \text{judge},\ \text{day},\ \text{install}),
+x=(\text{role},\ \text{model},\ \text{score},\ \text{judge},\ \text{door},\ \text{size}\in\{S,M,L\},\ \text{day}),
 \]
-where \emph{install} is a nonce drawn once per profile. No text of any kind is in a row. Rows wait in a local outbox, which can be inspected, until they are sent.
+sent under an \emph{install} nonce drawn once per profile and carried on the batch, not in the row. No text, no price and no duration is in a row; dollars and minutes stay in the install's own ledger. Rows wait in a local outbox, which can be inspected, until they are sent.
 
 \subsection{Sufficient statistics and order-free merging}
 
 \begin{definition}[Cell, sheet]
-A \emph{cell} is a tuple $\theta=(\text{role},\text{model},\text{judge},\text{day},\text{size},\text{door})$. A \emph{sheet} is a map from (install, cell) to a triple $T=(n,S,S^2)\in\N\times\R_{\ge0}\times\R_{\ge0}$, the count, sum and sum of squares of the scores an install has produced in that cell.
+A \emph{cell} is a tuple $\theta=(\text{role},\text{model},\text{judge},\text{door},\text{size})$. A \emph{sheet} is a map from (install, day, cell) to a triple $T=(n,S,S^2)\in\N\times\R_{\ge0}\times\R_{\ge0}$, the count, sum and sum of squares of the scores an install has produced in that cell.
 \end{definition}
 
 Every quantity computed below is a function of the sheet. Sheets are merged by the join
 \begin{equation}
-(A\sqcup B)(u,\theta)=\big(\max(n_A,n_B),\ \max(S_A,S_B),\ \max(S^2_A,S^2_B)\big)\quad\text{taken componentwise on the triples } A(u,\theta),\,B(u,\theta),
+(A\sqcup B)(u,d,\theta)=\big(\max(n_A,n_B),\ \max(S_A,S_B),\ \max(S^2_A,S^2_B)\big)\quad\text{componentwise on } A(u,d,\theta),\,B(u,d,\theta),
 \label{eq:join}
 \end{equation}
 with a missing entry read as $(0,0,0)$.
 
 \begin{proposition}[The sheet is a state-based CRDT]
 \label{prop:crdt}
-Let each install $u$ only ever publish its own entries $(u,\theta)$ and let every published triple be the running total of $u$'s rows in $\theta$. Then (i) $\sqcup$ is commutative, associative and idempotent; (ii) an install's triples are monotone non-decreasing in time, so a later publication dominates an earlier one under $\sqcup$; (iii) any two nodes that have received the same set of publications, in any order and with any duplication, hold the same sheet.
+Let each install $u$ only ever publish its own entries $(u,d,\theta)$ and let every published triple be the running total of $u$'s rows in $\theta$ on day $d$. Then (i) $\sqcup$ is commutative, associative and idempotent; (ii) an install's triples are monotone non-decreasing in time, so a later publication dominates an earlier one under $\sqcup$; (iii) any two nodes that have received the same set of publications, in any order and with any duplication, hold the same sheet.
 \end{proposition}
 \begin{proof}
 (i) is the componentwise max on a product of totally ordered sets. (ii) Scores lie in $[0,100]$, so $n$, $S$ and $S^2$ each grow by a non-negative amount per row. (iii) follows from (i) and (ii): the join of a set of publications is their least upper bound, which does not depend on order or multiplicity, and by (ii) the least upper bound of an install's publications is its latest.
 \end{proof}
 
-The cell means and pooled variances are functions of $\sum_u T(u,\theta)$, so by Proposition~\ref{prop:crdt} a relay and every install compute the same estimates from the same publications; there is no coordinator whose order of arrival matters, and a relay that is lost is rebuilt from any node that kept the publications. This is the sense in which the measure is decentralised: the relay is a convenience for bandwidth and signing, not a source of truth.
+The cell means and pooled variances are functions of $\sum_u T(u,\theta)$, so by Proposition~\ref{prop:crdt} a relay and every install compute the same estimates from the same publications; there is no coordinator whose order of arrival matters, and a relay that is lost is rebuilt from any node that kept the publications. This is the sense in which the measure is decentralised: the relay is a convenience for bandwidth and signing, not a source of truth. Two stores exist. The relay's store is the sheet of Definition~2, keyed by install and day and merged by~\eqref{eq:join}. The install's own sheet (\code{internal/pool/tally}) is keyed by cell alone and merges by addition, which is safe there because an install folds each of its own rows in exactly once, as it is judged; it is the relay, which receives publications from many senders with retries, that needs the join.
 
 \subsection{Judges are not the same ruler}
 
@@ -240,13 +240,13 @@ re-centring $\beta$ after each sweep. Each half-step minimises a convex quadrati
 
 \begin{proposition}[Identifiability]
 \label{prop:ident}
-Let $G$ be the bipartite graph with the judges on one side, the pairs $(r,m)$ on the other, and an edge where $n_{rmj}>0$. The parameters of~\eqref{eq:twoway} under the centring constraint are identified on a connected component of $G$; across components only the within-component contrasts are.
+Let $G$ be the bipartite graph with the judges on one side, the pairs $(r,m)$ on the other, and an edge where $n_{rmj}>0$. The parameters of~\eqref{eq:twoway} are identified up to one additive constant per connected component of $G$: within a component every contrast is identified, and one centring constraint per component fixes its levels. When $G$ is connected the single constraint identifies everything.
 \end{proposition}
 \begin{proof}
-The design matrix of a two-way additive model has rank equal to (number of vertices of $G$) minus (number of connected components); one linear constraint per component fixes the remaining freedom. With the single centring constraint, exactly one component is fully identified.
+The design matrix of a two-way additive model has rank equal to (number of vertices of $G$) minus (number of connected components), and its kernel is spanned by the vectors that shift $\mu$ up and $\beta$ down by one constant on one component; one linear constraint per component removes them. With the single centring constraint, exactly one component is fully identified.
 \end{proof}
 
-The judge rule of Section~5.1 makes $G$ connected quickly in practice: it sends most installs to the same few cheap judges. A model scored by a single judge so far has $\mu_{rm}$ equal to its own mean and the index says so.
+The relay centres $\beta$ within each component. The judge rule of Section~5.1 makes $G$ connected quickly in practice: it sends most installs to the same few cheap judges. A model scored by a single judge so far has $\mu_{rm}$ equal to its own mean and the index says so.
 
 \subsection{Installs are not independent, and some are wrong}
 
@@ -261,7 +261,7 @@ Models change under the same name. Let $\bar y_d$ be a cell's day-$d$ mean over 
 \end{equation}
 The Kalman filter for this local-level model is, in steady state with constant $n_d=\bar n$, an exponentially weighted average whose forgetting factor $1-\alpha$ solves $\alpha^2/(1-\alpha)=\bar n\omega^2/\sigma^2$; the effective memory is about $1/\alpha$ days. The drift variance is estimated by moments from the day-to-day differences,
 \begin{equation}
-\hat\omega^2=\tfrac12\Big[\widehat{\operatorname{Var}}(\bar y_d-\bar y_{d-1})-\sigma^2\big(\tfrac1{n_d}+\tfrac1{n_{d-1}}\big)\Big]_+,
+\hat\omega^2=\Big[\widehat{\operatorname{Var}}(\bar y_d-\bar y_{d-1})-\sigma^2\big(\tfrac1{n_d}+\tfrac1{n_{d-1}}\big)\Big]_+,
 \label{eq:drift}
 \end{equation}
 pooled across cells. A cell with no evidence of drift ($\hat\omega^2=0$) keeps everything; a cell that drifts forgets at the rate the data show. The day is a cell dimension for exactly this reason.
@@ -311,47 +311,48 @@ We now combine the three sources for one install $u$. Write $\hat q_r(m)$ for th
 
 \begin{assumption}[Hierarchy]
 \begin{equation}
-\mu_{rm}\sim\mathcal N\big(\hat q_r(m),\,\tau_0^2\big),\qquad
+\mu_{rm}\sim\mathcal N\big(\hat q_r(m)+b,\,\tau_0^2\big),\qquad
 \mu^{u}_{rm}\mid\mu_{rm}\sim\mathcal N\big(\mu_{rm},\,\tau_1^2\big),\qquad
 y\mid\mu^{u}_{rm}\sim\mathcal N\big(\mu^{u}_{rm},\,\sigma^2\big).
 \label{eq:hier}
 \end{equation}
 \end{assumption}
-The first line says the catalog is an unbiased but noisy predictor of the population quality; the second that install $u$'s own quality for the model scatters around the population's; the third is judge noise after Section~5.3. The install cares about $\mu^u_{rm}$.
+The first line says the catalog predicts the population quality up to one offset $b$ shared by every model (the catalog's scale is not the judge's) and a noise $\tau_0$; the second that install $u$'s own quality for the model scatters around the population's; the third is judge noise after Section~5.3. The install cares about $\mu^u_{rm}$.
 
 \begin{proposition}[Posterior for the install]
 \label{prop:post}
-Under~\eqref{eq:hier}, with $k=\sigma^2/\tau_0^2$ and $\ell=\sigma^2/\tau_1^2$, the posterior of $\mu^u_{rm}$ is normal with
+Under~\eqref{eq:hier}, with $k=\sigma^2/\tau_0^2$, $\ell=\sigma^2/\tau_1^2$ and $\tilde n=n^{\mathrm{pool}}\,\ell/(\ell+1)$ (pool rows are other installs' rows, so each carries variance $\sigma^2+\tau_1^2$ about $\mu_{rm}$), the posterior of $\mu^u_{rm}$ is normal with
 \begin{equation}
-\E[\mu^u_{rm}\mid\cdot]=\frac{k^{\ast}\,\hat q_r(m) + n^{\ast}\,\bar y^{\mathrm{pool}}_{rm} + n^u\,\bar y^u_{rm}}{k^{\ast}+n^{\ast}+n^u},\qquad
+\E[\mu^u_{rm}\mid\cdot]=\frac{k^{\ast}\,(\hat q_r(m)+b) + n^{\ast}\,\bar y^{\mathrm{pool}}_{rm} + n^u\,\bar y^u_{rm}}{k^{\ast}+n^{\ast}+n^u},\qquad
 \operatorname{Var}[\mu^u_{rm}\mid\cdot]=\frac{\sigma^2}{k^{\ast}+n^{\ast}+n^u},
 \label{eq:three}
 \end{equation}
-where the pool and the catalog enter with the \emph{capped} effective counts
+where the catalog and the pool share one \emph{capped} external count $W$ in proportion to what each contributed,
 \begin{equation}
-n^{\ast}=\frac{n^{\mathrm{pool}}\,\ell}{n^{\mathrm{pool}}+\ell}\ \le\ \ell,\qquad
-k^{\ast}=\frac{k\,\ell}{k+\ell}\ \le\ \ell .
+W=\frac{K\,\ell}{K+\ell}\ \le\ \ell,\qquad K=k+\tilde n,\qquad
+k^{\ast}=\frac{k}{K}\,W,\qquad n^{\ast}=\frac{\tilde n}{K}\,W .
 \label{eq:cap}
 \end{equation}
 \end{proposition}
 \begin{proof}
-Integrate out $\mu_{rm}$. The catalog and the pool inform $\mu^u_{rm}$ only through $\mu_{rm}$, whose posterior given them is normal with precision $(k+n^{\mathrm{pool}})/\sigma^2$; adding the between-install variance $\tau_1^2$ gives, for $\mu^u_{rm}$, a precision $1/(\sigma^2/(k+n^{\mathrm{pool}})+\tau_1^2)$. Writing that as an effective count over $\sigma^2$ gives $(k+n^{\mathrm{pool}})\ell/(k+n^{\mathrm{pool}}+\ell)$, which splits into the two terms of~\eqref{eq:cap} in proportion to $k$ and $n^{\mathrm{pool}}$; the own rows add precision $n^u/\sigma^2$ directly. Precision-weighting the three means gives~\eqref{eq:three}.
+Integrate out $\mu_{rm}$. The catalog and the pool inform $\mu^u_{rm}$ only through $\mu_{rm}$, whose posterior given them is normal with precision $K/\sigma^2$, $K=k+\tilde n$, and mean the $k:\tilde n$ precision-weighted average of $\hat q_r(m)+b$ and $\bar y^{\mathrm{pool}}_{rm}$; adding the between-install variance $\tau_1^2$ gives, for $\mu^u_{rm}$, a precision $1/(\sigma^2/K+\tau_1^2)=W/\sigma^2$ with the same mean. The own rows add precision $n^u/\sigma^2$ directly. Precision-weighting the two gives~\eqref{eq:three}, with the external count $W$ split as $k^{\ast}+n^{\ast}=W$ in the ratio $k:\tilde n$.
 \end{proof}
 
 \begin{corollary}
 With $\tau_1=0$ ($\ell=\infty$) the posterior mean is $(1-w)\hat q_r(m)+w\bar y$ with $w=n/(n+k)$, $n=n^{\mathrm{pool}}+n^u$: the plain shrinkage blend, which is what the picker applies today with $k=30$.
 \end{corollary}
 
-The cap~\eqref{eq:cap} is the point of the hierarchy. However many rows the pool holds, its evidence about \emph{this} install's quality is worth at most $\ell=\sigma^2/\tau_1^2$ own rows, because other installs' tasks are not this install's tasks; and the own rows are never capped. This replaces an ad hoc "own rows count triple" by a quantity with a meaning and an estimator.
+The cap~\eqref{eq:cap} is the point of the hierarchy. However many rows the pool holds, everything external to this install, catalog and pool together, is worth at most $\ell=\sigma^2/\tau_1^2$ own rows, because other installs' tasks are not this install's tasks; and the own rows are never capped. This replaces an ad hoc "own rows count triple" by a quantity with a meaning and an estimator. The pick shipped today is the Corollary's form: the pool's and the install's cells are folded together by observation count against the catalog at $k=30$, which is~\eqref{eq:three} at $\ell=\infty$ and $b=0$.
 
 \paragraph{Estimating the constants.}
 Every constant in~\eqref{eq:three} is estimated from the sheet by moments; none is set by hand.
 \begin{align}
 \hat\sigma^2 &= \frac{\sum_{u,\theta}\big(S^2_{u\theta}-S_{u\theta}^2/n_{u\theta}\big)}{\sum_{u,\theta}(n_{u\theta}-1)} &&\text{pooled within-cell variance,}\label{eq:sigma}\\
 \hat\tau_1^2 &= \Big[\,\widehat{\operatorname{Var}}_u\big(\bar y_{u\theta}\big)-\hat\sigma^2\,\overline{(1/n_{u\theta})}\,\Big]_+ &&\text{between-install variance, pooled over cells,}\label{eq:tau1}\\
-\hat\tau_0^2 &= \Big[\,\widehat{\operatorname{Var}}_{(r,m)}\big(\bar y^{\mathrm{pool}}_{rm}-\hat q_r(m)\big)-\overline{\hat\sigma^2/n^{\mathrm{pool}}_{rm}}\,\Big]_+ &&\text{how far the catalog misses,}\label{eq:tau0}
+\hat b &= \overline{\bar y^{\mathrm{pool}}_{rm}-\hat q_r(m)} &&\text{the catalog's offset,}\label{eq:bias}\\
+\hat\tau_0^2 &= \Big[\,\widehat{\operatorname{Var}}_{(r,m)}\big(\bar y^{\mathrm{pool}}_{rm}-\hat q_r(m)\big)-\overline{(\hat\sigma^2+\hat\tau_1^2)/n^{\mathrm{pool}}_{rm}}\,\Big]_+ &&\text{how far the catalog misses,}\label{eq:tau0}
 \end{align}
-each a within-minus-noise moment estimator of the kind used by Efron and Morris~\cite{efron1975}. Then $k=\hat\sigma^2/\hat\tau_0^2$ and $\ell=\hat\sigma^2/\hat\tau_1^2$, and $\hat\omega^2$ of~\eqref{eq:drift} sets the forgetting. These are published in the index beside the cells so that every install blends with the same constants, and re-estimated at every relay cycle. The relay withholds an estimate until its denominator has at least ten degrees of freedom and publishes the day-one values of Table~\ref{tab:const} until then.
+each a within-minus-noise moment estimator of the kind used by Efron and Morris~\cite{efron1975}. Then $k=\hat\sigma^2/\hat\tau_0^2$ and $\ell=\hat\sigma^2/\hat\tau_1^2$, and $\hat\omega^2$ of~\eqref{eq:drift} sets the forgetting. On the seed index alone the estimator already says something: its thirteen cells with a published intelligence index give $\hat b=-15.7$ (the catalog's scale sits sixteen points above the judged one) and a variance of the residuals, 75, below the noise they carry, 231, so $\hat\tau_0^2$ clips to zero: thirteen cells of bit-valued scores ($\hat\sigma\approx44$) cannot resolve a catalog error under about nine points, and the day-one $k=30$ stands until judged scores, with their smaller $\sigma$, replace the bits. These are published in the index beside the cells so that every install blends with the same constants, and re-estimated at every relay cycle. The relay withholds an estimate until its denominator has at least ten degrees of freedom and publishes the day-one values of Table~\ref{tab:const} until then.
 
 \subsection{Covariates, and why no row is ever wasted}
 \label{sec:covariates}
@@ -417,10 +418,10 @@ Given a posterior $\mathcal N(\mu'_{rm},\sigma'^2_{rm})$ per role and model from
 \end{algorithm}
 
 \begin{proposition}[Role draws are crew draws]
-Under Assumption~\ref{ass:linear}, drawing $\tilde q_{rm}$ independently per (role, model) and minimising $\tilde E$ over $\crews$ is exactly Thompson sampling over the crews' posterior costs.
+Under Assumption~\ref{ass:linear}, drawing $\tilde q_{rm}$ independently per (role, model) and minimising $\tilde E$ over $\crews$ is Thompson sampling over the crews' posterior costs under the product posterior on role qualities.
 \end{proposition}
 \begin{proof}
-$\tilde E(\kappa)$ is an affine function of the vector $(\tilde q_{rm})$, so its joint law over $\crews$ is the push-forward of the posterior on role qualities; a sample of the latter is a sample of the former.
+$\tilde E(\kappa)$ is an affine function of the vector $(\tilde q_{rm})$, so its joint law over $\crews$ is the push-forward of the posterior on role qualities; a sample of the latter is a sample of the former. The judge-effect fit of Section~5.3 and the drift model of Section~5.5 induce dependence between cells that the independent draw ignores; the draw is exact for the product approximation the index publishes.
 \end{proof}
 
 The structure that matters is the feedback. A run of crew $\kappa$ is judged role by role, so it yields one observation for each of its $n$ (role, model) pairs, and the posterior of every crew that shares a pair with $\kappa$ moves. This is a combinatorial bandit with semi-bandit feedback~\cite{chen2013,wen2015}: the unknowns are the $\sum_r|S_r|$ role qualities, not the $|\crews|$ crew values, and the regret of Thompson sampling scales with the former~\cite{wen2015}. Section~\ref{sec:exp} measures the difference on our runs. For Gaussian posteriors the Bayesian regret of Thompson sampling is $O(\sqrt{dT\log T})$ in the dimension $d$ of the unknowns over $T$ runs~\cite{russo2014}.
@@ -438,10 +439,10 @@ A model with no rows has $n=0$ and sits at its catalog prior with the prior vari
 \section{Experiments on our measured runs}
 \label{sec:exp}
 
-Ground truth is the table of Figure~\ref{fig:front}: 56 crews with $\pclean$, dollars and minutes fitted from 120 scored runs of our own. Each replicate draws a catalog prior per arm as the truth plus $\mathcal N(0,0.15^2)$ noise, roughly the disagreement between indexes and measurements in Figure~\ref{fig:cells}, holds it with $k=30$, and runs $N$ tasks; a strategy picks, observes the outcome and pays~\eqref{eq:E} with $H=\$10$. Regret is the excess over the oracle crew, averaged over 200 replicates.
+Ground truth is the table of Figure~\ref{fig:front}: 56 crews with $\pclean$, dollars and minutes fitted by a ridge model on 72 scored runs of our own over nine tasks. Each replicate draws a catalog prior per arm as the truth plus $\mathcal N(0,0.15^2)$ noise, roughly the disagreement between indexes and measurements in Figure~\ref{fig:cells}, holds it with $k=30$, and runs $N$ tasks; a strategy picks, observes the outcome and pays~\eqref{eq:E} with $H=\$10$. Regret is the excess over the oracle crew, averaged over 200 replicates.
 
 \paragraph{Crew-level learners.}
-Table~\ref{tab:regret} and Figure~\ref{fig:regret} compare, on the twelve chat-door crews, a fixed table row, the catalog prior alone, $\varepsilon$-greedy and Thompson, all with one arm per crew. After 300 runs both learners are about \$0.30 per task under the fixed table, a third of the table's regret, and still falling. Thompson pays a small exploration tax in the first twenty runs; $k=30$ is what keeps it small. $\varepsilon$-greedy matches it here only because $\varepsilon=0.1$ happens to suit a dozen arms; it neither grows when a new model appears nor shrinks when the ranking is settled.
+Table~\ref{tab:regret} and Figure~\ref{fig:regret} compare, on all 23 chat-door crews of the table, a fixed table row (the shipped balanced crew), the catalog prior alone, $\varepsilon$-greedy and Thompson, all with one arm per crew. After 400 runs Thompson is \$0.33 per task under the fixed table, a third of the table's regret, and still falling; $\varepsilon$-greedy is \$0.12 behind it. Thompson pays an exploration tax in its first forty runs, when it is no better than the table; $k=30$ is what bounds it. $\varepsilon$-greedy pays more, because a tenth of its runs go to a random crew among 23, and its rate neither grows when a new model appears nor shrinks when the ranking is settled.
 
 \begin{table}[h]
 \centering\small
@@ -452,12 +453,12 @@ Table~\ref{tab:regret} and Figure~\ref{fig:regret} compare, on the twelve chat-d
 
 \begin{figure}[h]
 \centering\includegraphics{fig-regret.pdf}
-\caption{Left: regret per task. Right: share of runs on a crew other than the current posterior-mean best. Thompson explores heavily while a dozen crews sit within cents of each other and less as the posteriors separate; $\varepsilon$-greedy explores at its fixed rate.}
+\caption{Left: regret per task. Right: share of runs on a crew other than the current posterior-mean best. Thompson explores heavily while many crews sit within cents of each other and less as the posteriors separate; $\varepsilon$-greedy explores at its fixed rate.}
 \label{fig:regret}
 \end{figure}
 
 \paragraph{Role-level feedback.}
-Figure~\ref{fig:semibandit} and Table~\ref{tab:semibandit} isolate the structure of Section~\ref{sec:decide}. The ground truth is three-role: a role quality per (role, model) read off the measured rows (a worker's delivered rate, a checker's and a planner's clean rate), combined by the linear rule of Assumption~\ref{ass:linear} over every crew the vendor rule admits, with dollars additive over roles. Three learners run Thompson sampling with the same prior noise and the same $H$ and differ only in what they see after a run: one arm per crew fed the run's clean-or-defect bit; one arm per crew fed the mean of the judge's role scores; one posterior per (role, model) fed each role's own score, which is what the judge of Section~5.1 provides. The last is the semi-bandit. Richer feedback per run helps (the second learner over the first), but the structure helps more: at four hundred runs the role-level learner's regret is about a third of the crew-level learner's on the same scores, because every run updates the crews that share a model with the one that ran, and there are sixteen unknowns behind 138 crews.
+Figure~\ref{fig:semibandit} and Table~\ref{tab:semibandit} isolate the structure of Section~\ref{sec:decide}. The ground truth is three-role: a role quality per (role, model) read off the measured rows (a worker's delivered rate, a checker's and a planner's clean rate), combined by the linear rule of Assumption~\ref{ass:linear} over every crew the vendor rule admits, with dollars additive over roles. Three learners run Thompson sampling with the same prior noise and the same $H$ and differ only in what they see after a run: one arm per crew fed the run's clean-or-defect bit; one arm per crew fed the mean of the judge's role scores; one posterior per (role, model) fed each role's own score, which is what the judge of Section~5.1 provides. The last is the semi-bandit. Richer feedback per run helps: the crew-level learner fed the mean score sits at \$0.31 after four hundred runs against \$0.54 for the one fed only the clean bit. The structure helps again as much: the role-level learner, fed the same scores as the second, sits at \$0.15, half of it and a third of the first, because every run updates the crews that share a model with the one that ran, and there are sixteen unknowns behind 138 crews.
 
 \begin{table}[h]
 \centering\small
@@ -478,7 +479,7 @@ Figure~\ref{fig:semibandit} and Table~\ref{tab:semibandit} isolate the structure
 \label{fig:cells}
 \end{figure}
 
-The truth in these experiments is our own fitted table from one team's tasks, so the size of the gain is the shape of the effect and not a promise for every install. The script \code{figures.py} beside this document reproduces every figure and table from the two CSV files it reads.
+The truth in these experiments is our own fitted table from one team's tasks, so the size of the gain is the shape of the effect and not a promise for every install; the regret scale is set by how close the crews sit, which the front of Figure~\ref{fig:front} shows and no bound here uses. The script \code{figures.py} beside this document reproduces every figure and table from the two CSV files it reads and the constants written at its head.
 
 \section{System architecture}
 \label{sec:arch}
@@ -486,19 +487,20 @@ The truth in these experiments is our own fitted table from one team's tasks, so
 The statistics of Sections~\ref{sec:pool}--\ref{sec:decide} fix what the system computes; this section fixes where the bytes live, so that the privacy claims can be checked against the deployment rather than taken on trust. Figure~\ref{fig:arch} shows the four components. The design rule is that the relay holds nothing worth stealing and nothing that cannot be rebuilt.
 
 \paragraph{The binary.}
-Everything that touches a task runs inside the install: the catalog read, the posterior, the draw, the run, the judge call, the own sheet and the outbox. The judge is an ordinary model call through the install's own provider credentials; the record it reads never leaves the machines the install already trusts with its work. The outbox is a newline-delimited file under the profile directory; \code{codeaf pool status} prints its pending rows, and a user who wants to see exactly what would be sent can read the file. The loader reads the cached index if one is present and the embedded seed index otherwise, once at start-up; a refresh runs in the background and takes effect at the next start, so a running task's picks never move under it.
+Everything that touches a task runs inside the install: the catalog read, the posterior, the draw, the run, the judge call, the own sheet and the outbox. The judge is an ordinary model call through the install's own provider credentials; the record it reads never leaves the machines the install already trusts with its work. The outbox is a newline-delimited file under the profile directory; \code{codeaf pool status} prints its pending rows, and a user who wants to see exactly what would be sent can read the file. The loader reads the fresher of the cached index and the embedded seed index, by generated day, once at start-up; a refresh runs in the background and takes effect at the next start, so a running task's picks never move under it.
 
 \paragraph{The relay.}
 The reference relay is a single edge function with an object store behind it, deployable in minutes on a commodity edge platform (\code{wrangler deploy} from \code{relay/} in the repository; the runbook in that directory is ten steps). It exposes two routes. \code{POST /v1/rows} accepts a batch of rows, validates the schema, folds each row into the sender's triple for its cell and day, and discards the row: the store holds the sheet of Definition~2 and nothing else, one triple per (install, cell, day), so its size is bounded by installs times cells times days and not by traffic, and a row that has been folded cannot be recovered from it. \code{GET /index.json} serves the last published index and its detached signature. An hourly scheduled job merges the sheet, runs the judge-effect, robust-aggregation and drift estimates of Section~5, writes the index, signs it with an Ed25519 key held as a platform secret, and mirrors the pair of files to a public git branch so that they are browsable, diffable and forkable. The function keeps no request logs and stores no network address; the install nonce is the only identity in the store, and rate limiting is by nonce (a cap on rows per day) rather than by address.
 
 \paragraph{Keys and verification.}
-The signing key's public half is compiled into the binary as a list, so a key can be rotated by shipping a binary that carries both; the private half exists only in the platform secret store. Verification is client-side: the binary checks the signature before it reads a single cell, refuses a version lower than the one it holds (Section~5.2's join makes a rollback detectable), and on any failure keeps the cached copy beside an error. Because verification is local, the index can be served from anywhere: the mirror, a static file host, or a directory on disk, which is what the \code{file://} address is for.
+The signing key's public half is compiled into the binary as a list, so a key can be rotated by shipping a binary that carries both; the private half exists only in the platform secret store. Verification is client-side: the binary checks the signature before it reads a single cell, refuses a version lower than the one it holds (a rollback is caught by the version; the join of Section~5.2 makes a replayed old publication harmless), and on any failure keeps the cached copy beside an error. Because verification is local, the index can be served from anywhere: the mirror, a static file host, or a directory on disk, which is what the \code{file://} address is for.
 
 \paragraph{Trust and failure.}
 What a compromised relay learns is the sheet: counts, sums and sums of squares of scores per (install nonce, role, model, judge, day, size, door). It learns no task, no code, no prompt, no user, and no address. What a compromised relay can do is publish a bad index, which the signature stops unless the key is also taken; a taken key is retired by shipping the next key, and the min-installs and robust-aggregation rules bound what a flood of fabricated nonces can move in the meantime. What an unreachable relay costs is nothing at all: the cache, then the seed, answer every read, and the outbox waits. Any install can run the same function against its own store and point its \code{CODEAF\_MODEL\_POOL\_URL} and \code{\_SUBMIT\_URL} at it; two relays that receive the same publications produce the same sheet (Proposition~\ref{prop:crdt}), so a private relay and the public one can be federated later by a one-way copy of publications with no reconciliation step.
 
 \begin{figure}[H]
 \centering
+\resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[x=1cm,y=1cm,
   box/.style={draw,rounded corners=2pt,inner sep=4pt,font=\small,align=center,minimum height=8mm},
   store/.style={box,fill=black!6},
@@ -524,7 +526,7 @@ What a compromised relay learns is the sheet: counts, sums and sums of squares o
 \draw[arr] (mirror.west) -- node[lbl,below,pos=0.6]{pull, verify} (fn.east |- mirror.west);
 \draw[arr] ([xshift=-2.2cm]fn.south) |- node[lbl,pos=0.75,above]{cached index} (cache.east);
 \node[font=\scriptsize] at (8.0,0.2) {no request logs, no addresses stored, rows discarded after folding};
-\end{tikzpicture}
+\end{tikzpicture}}
 \caption{Deployment. The relay is one edge function, one object store holding only the sheet, and one scheduled signing job; the install verifies every index locally and never blocks on the network. Any of the three network components can be replaced by a static file, a directory, or a self-hosted copy.}
 \label{fig:arch}
 \end{figure}
@@ -537,15 +539,15 @@ setting & values & meaning\\\midrule
 \code{crew} & frugal $\mid$ balanced $\mid$ max $\mid$ custom & how much to spend: $H$ and the knob $k$\\
 \code{picked from} & table $\mid$ catalog $\mid$ learn & the rows we measured; recomputed from today's catalog; catalog plus pool plus own sheet\\
 \code{model\_pool} & on $\mid$ read $\mid$ off & read the index and send rows (default); read only; neither\\
-\code{explore} & on $\mid$ off & Thompson draw (default) or the posterior mean; \emph{learn} only\\
+\code{explore} & on $\mid$ off & Thompson draw (default) or the posterior mean; \emph{learn} only; specified, not on this head\\
 \bottomrule\end{tabular}
 \end{center}
 
-With the pool set to \emph{read}, the own sheet still accrues and enters~\eqref{eq:three}; with it \emph{off}, only the catalog prior remains and the pick is the catalog's. The index is a JSON document signed with an Ed25519 key whose public half is in the binary; \code{codeaf pool verify} checks it, \code{pool show} prints it, \code{pool status} lists the rows waiting in the outbox. The binary carries a seed index of our own measured runs (Figure~\ref{fig:cells}) so that \emph{learn} has numbers on day one. The relay's code is in this repository; its addresses are settings, so an install can read from and send to a relay of its own, or to none.
+With the pool set to \emph{read}, the own sheet still accrues and enters~\eqref{eq:three}; with it \emph{off}, only the catalog prior remains and the pick is the catalog's. The index is a JSON document signed with an Ed25519 key whose public half is in the binary; \code{codeaf pool verify} checks it, \code{pool show} prints its summary and each address with its source, \code{pool status} counts the rows waiting in the outbox and says whether the relay answered. The binary carries a seed index of our own scored runs (Figure~\ref{fig:cells}) so that \emph{learn} has numbers on day one. The relay's code is in this repository; its addresses are settings, so an install can read from and send to a relay of its own, or to none.
 
 \section{Status}
 
-On the branch this document ships with: the catalog crew of Section~\ref{sec:catalog}; the shrinkage blend of the Corollary with $k=30$; the index document, its reader and signed pull; the outbox and the sheet; the judge and its deterministic choice; the own sheet, whose cells enter the prior beside the index's by observation count (the Corollary's form, $\ell=\infty$); the settings, including \code{picked from}; the seed index. Specified here and next to land: the engine hook that calls the judge when a task lands; the judge fixed effects, Huber aggregation and drift estimate in the relay; the hierarchical cap~\eqref{eq:cap} and the moment estimators~\eqref{eq:sigma}--\eqref{eq:tau0}; the Thompson draw with role-level updates and the settled probability $\pi^\ast$; the relay of Section~\ref{sec:arch}. Until the relay exists the pool is the seed index plus each install's own sheet, and nothing is uploaded.
+On the head this document ships with: the catalog crew of Section~\ref{sec:catalog}; the shrinkage blend of the Corollary with $k=30$; the \code{picked from} row and its ladder; the index document, its reader and signed pull with the built-in key; the outbox, the install nonce and the push; the judge, its deterministic choice, and the hook that calls it when a chat task lands; the own sheet, whose cells enter the prior beside the index's by observation count; the settings; the seed index; the relay of Section~\ref{sec:arch} with its store keyed by install and day, the join, the judge-effect fit and the Huber aggregation; the mirror workflow. Specified here and next to land: the drift estimate~\eqref{eq:drift}; the hierarchical cap~\eqref{eq:cap} with the moment estimators~\eqref{eq:sigma}--\eqref{eq:tau0} in place of the count fold; the Thompson draw with role-level updates, the \code{explore} setting and the settled probability $\pi^\ast$; the pair term of Section~6.1; the headless doors' hook. The referee's report on an earlier draft, and what changed in answer to it, are beside this file.
 
 \begin{thebibliography}{9}\small
 \bibitem{thompson1933} W.~R. Thompson. On the likelihood that one unknown probability exceeds another in view of the evidence of two samples. \emph{Biometrika} 25:285--294, 1933.
