@@ -531,3 +531,82 @@ func TestPlandbCliWriterWaitsOutTheWriteLock(t *testing.T) {
 		t.Fatalf("a write was lost across the wait: %q", description)
 	}
 }
+
+// TestPlandbCliReadsAnswerBesideAnOpenWrite holds a write transaction open on
+// one handle while another reads. The reading verbs — the list Tasks renders,
+// the show card, the overview Summary counts — must answer at once, on the
+// last committed plan, and never queue behind the open write: the reader runs
+// its own DEFERRED snapshot beside the writer under WAL rather than waiting
+// for a lock the writer is holding.
+func TestPlandbCliReadsAnswerBesideAnOpenWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("a", "A"), planSpec("b", "B"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	writer := planReopen(t, path)
+	defer writer.Close()
+	reader := planReopen(t, path)
+	defer reader.Close()
+
+	// The writer opens its transaction and holds it: the commit is gated on a
+	// channel, so the write lock stays held while the reader reads.
+	const heldText = "written while the reader reads"
+	held := make(chan struct{})
+	release := make(chan struct{})
+	writer.now = func() time.Time {
+		select {
+		case <-held:
+		default:
+			close(held)
+		}
+		<-release
+		return time.Now().UTC()
+	}
+	writeDone := make(chan error, 1)
+	go func() {
+		_, err := writer.Amend("a", heldText)
+		writeDone <- err
+	}()
+	<-held
+
+	// list, show and overview, each rendering the plan as the reader sees it.
+	readings := []struct {
+		name string
+		read func() string
+	}{
+		{"list", func() string {
+			ids := make([]string, 0)
+			for _, task := range reader.Tasks() {
+				ids = append(ids, task.ID)
+			}
+			return strings.Join(ids, ",")
+		}},
+		{"show", func() string { return reader.Task("a").Description }},
+		{"overview", func() string { return fmt.Sprintf("%+v", reader.Summary()) }},
+	}
+	for _, reading := range readings {
+		reading := reading
+		done := make(chan string, 1)
+		go func() { done <- reading.read() }()
+		select {
+		case got := <-done:
+			if strings.Contains(got, heldText) {
+				t.Fatalf("%s answered a write that has not committed: %q", reading.name, got)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s blocked behind the open write", reading.name)
+		}
+	}
+
+	// Once the write commits, the reader answers it — the same handle that
+	// answered beside the write now sees it.
+	close(release)
+	if err := <-writeDone; err != nil {
+		t.Fatalf("writer: %v", err)
+	}
+	if got := reader.Task("a").Description; !strings.Contains(got, heldText) {
+		t.Fatalf("the reader never saw the committed write: %q", got)
+	}
+}
