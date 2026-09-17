@@ -87,7 +87,7 @@ func TestAnIgnoredPathTheWorkerWroteDoesNotCostItTheRest(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 	writeFile(t, filepath.Join(tree.dir, "run.log"), "noise\n")
 
-	saved, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"}, false)
+	saved, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"}, false, false)
 	if problem != "" {
 		// THE REST OF THE LEDGER WENT IN, so the one path git refused is not a
 		// failure of the landing (task_land_unsaved.go's [unstagedWork]).

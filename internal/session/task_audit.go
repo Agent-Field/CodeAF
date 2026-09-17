@@ -1065,7 +1065,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// tree went home behind them (task_claims.go's [landingFiles]).
 	files := landingFilesFor(node, changed)
 	if tree.root != "" {
-		stageTaskWork(tree.dir, files.all())
+		stageTaskWork(tree.dir, files.all(), false)
 	}
 
 	// AND THE VERDICT IS REACHED SOMEWHERE ELSE. The staged tree above is what the
@@ -2129,7 +2129,7 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote, false); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
@@ -2202,7 +2202,7 @@ func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote, false); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
