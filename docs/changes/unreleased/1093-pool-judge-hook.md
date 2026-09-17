@@ -1,6 +1,6 @@
 ---
 kind: added
-title: a landed task is scored by a model outside the crew, into the own sheet, the outbox and the judge seat
+title: a landed task is scored by a model outside the crew into the own sheet, the outbox and the judge seat
 pr: 1093
 surface: [chat, engine]
 invalidates:
