@@ -91,6 +91,12 @@ type Supervisor struct {
 	limitHit       bool
 	dispatchedRoot bool
 	cancels        map[string]context.CancelFunc
+	// checkOf maps a check task's id to the leaf it reads, for the review
+	// round: a check whose result does not hold leaves its sentence as a note
+	// on the leaf it names here. It is written when the check is added and read
+	// when the check's own ending lands, both on the loop goroutine, so it
+	// belongs to the loop's memory like the counters beside it.
+	checkOf map[string]string
 }
 
 // NewSupervisor builds a run over store. The workspace is the run's own
@@ -111,6 +117,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		factory:   factory,
 		finished:  make(chan workerReturn, slots+1),
 		cancels:   make(map[string]context.CancelFunc),
+		checkOf:   make(map[string]string),
 	}
 }
 
@@ -143,6 +150,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.dispatchedRoot = false
 	s.inFlight = 0
 	s.cancels = make(map[string]context.CancelFunc)
+	s.checkOf = make(map[string]string)
 	s.staleAfter = s.limits.StaleAfter
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
@@ -294,8 +302,14 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	} else {
 		switch {
 		case ret.err == nil:
+			// THE REVIEW ROUND: a work-seat leaf that lands done is checked
+			// once. The check is added BEFORE the completion is written, so the
+			// leaf's parent cannot auto-complete past it in the same write and
+			// the run's root waits on the open check like on any other child.
+			s.addReviewCheck(ret.task, ret.report.Result)
 			_, err := s.store.Done(ret.task.ID, ret.task.ID, ret.report.Result, nil, nil)
 			if err == nil {
+				s.recordCheckFinding(ret.task, ret.report.Result)
 				break
 			}
 			ret.err = fmt.Errorf("write the completion: %w", err)
@@ -315,6 +329,69 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		}
 	}
 	s.completeTree()
+}
+
+// addReviewCheck spawns the review round's one check task for a work-seat leaf
+// that is about to land done. It is a no-op unless the run's limits turn the
+// review round on, unless the leaf is a check itself — a check is never itself
+// checked — and unless the leaf is a leaf at all: a task with children answers
+// plan and its end is the store's own bookkeeping, which nothing reads.
+//
+// THE CHECK IS ADDED BEFORE THE COMPLETION IS WRITTEN. A parent whose children
+// are all terminal auto-completes in the same write the completion lands in, so
+// a check added afterwards would find its parent already done and could not be
+// put under it. Added first, the parent counts the open check among its children
+// and the run's root waits on it like on any other child (the store's own
+// CanFinish says so, and completeTree reads the same shape).
+//
+// THE CHECK CARRIES THE LEAF'S OWN WORDS: the acceptance its description holds
+// and the result it just reported, so the check worker reads what to prove the
+// claim against and what the claim was. It carries no dependency at all, so it
+// is ready the moment it exists. Its id is minted here and mapped back to the
+// leaf, because that is what a "does not hold" finding names when it lands.
+func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
+	if !s.limits.ReviewRound || leaf.Role == plandb.RoleCheck || leaf.Composite {
+		return
+	}
+	id := s.store.NextID()
+	_, err := s.store.AddMany([]plandb.TaskSpec{{
+		ID:          id,
+		Title:       "check: " + leaf.Title,
+		Description: "Acceptance: " + leaf.Description + "\n\nResult: " + result,
+		ParentID:    leaf.ParentID,
+		Role:        plandb.RoleCheck,
+	}})
+	if err != nil {
+		// A check the store would not admit is one the run does without: the
+		// leaf has already earned its ending and an unwritable review round is
+		// not an ending to fail it on.
+		return
+	}
+	s.checkOf[id] = leaf.ID
+}
+
+// recordCheckFinding turns a check's "does not hold" into a note on the leaf it
+// read. A check's result begins "holds:" or "does not hold:" and closes with one
+// sentence; the second is the finding the coordinator reads, so it is left on
+// the checked leaf in the check's own voice — author "check" — and the leaf
+// keeps the done ending it earned. NOTHING IS REOPENED: the note is evidence for
+// the coordinator's next wait, not a refusal of the leaf's completion, and no
+// automatic step revisits the work because of it.
+func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
+	if check.Role != plandb.RoleCheck {
+		return
+	}
+	const doesNotHold = "does not hold:"
+	text := strings.TrimSpace(result)
+	if !strings.HasPrefix(text, doesNotHold) {
+		return
+	}
+	leaf := s.checkOf[check.ID]
+	sentence := strings.TrimSpace(strings.TrimPrefix(text, doesNotHold))
+	if leaf == "" || sentence == "" {
+		return
+	}
+	_, _ = s.store.AddNote(leaf, "check", sentence)
 }
 
 // completeTree finishes the run once every task but the root has ended: the
