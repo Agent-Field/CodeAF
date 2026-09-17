@@ -5535,6 +5535,12 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			return TaskFailed
 		}
 		child = worker
+		// AND THE TREE LEARNS WHICH BELT ITS WORKER IS ON, at the one moment the
+		// fact exists. The landing roads carry the tree and not the worker — the
+		// worker is retired before its node lands — so the tree is what carries
+		// the belt fact to [stageTaskWork], and a node whose worker was never
+		// built carries a tree that says nothing and lands as it always did.
+		tree.bashBelt = worker.config.mayBashBelt()
 		// THE ROOM OPENS HERE, because this is the first moment there is anybody
 		// in it: from now until the node lands, its events reach whoever is
 		// watching and the person's words reach this child's steering lane
@@ -6127,7 +6133,7 @@ func keptWork(tree taskTree, title string, changed []string, sign bool) (string,
 	case problem != "":
 		return mergeAborted, changed
 	}
-	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -7886,6 +7892,14 @@ type taskTree struct {
 	// be told so while it can still act on it (task_tree_mirror.go). The job log
 	// prints it and the worker's own brief carries it.
 	note string
+	// bashBelt is whether THIS node's worker was built on the experiment's bash
+	// belt, stamped from the worker's own config the moment the worker exists.
+	// It decides how the landing reads the tree: a belt worker spells its work
+	// in shell commands and fills no ledger, so the tree's own git status is
+	// the only account of what it wrote, and the landing stages from that
+	// ([stageTaskWork]). Every other worker's ledger is complete by
+	// construction, and its landing reads the ledger alone, exactly as before.
+	bashBelt bool
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -8392,7 +8406,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign); problem != "" {
+	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt); problem != "" {
 		return mergeAborted, unsavedSentence(t.dir, problem), nil, why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
@@ -8782,8 +8796,8 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign bool) ([]string, string, landingRefusal) {
-	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign)
+func commitTaskWork(dir, title string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
 	}
@@ -8815,8 +8829,8 @@ func commitTaskWork(dir, title string, wrote []string, sign bool) ([]string, str
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign bool) ([]string, string, landingRefusal, error) {
-	if problem, why := stageTaskWork(dir, wrote); problem != "" {
+func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal, error) {
+	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
 	saved, problem := stagedPaths(dir)
@@ -8987,7 +9001,7 @@ func stagedDiffStat(dir string) string {
 // when there is nothing to report. A directory that is not a worktree, an add
 // nothing survived and a refused reset were all silent, and a landing that
 // cannot see them merges an empty branch over the work (task_land_unsaved.go).
-func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
+func stageTaskWork(dir string, wrote []string, bashBelt bool) (string, landingRefusal) {
 	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
 		// AND THIS IS THE SEAM THAT KNOWS THE PLACE IS NOT A REPOSITORY. It is a
 		// question asked and answered here, so the refusal it produces is typed
@@ -8996,6 +9010,15 @@ func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
 		return firstLine(out), refusedByTheTree
 	}
 	paths := stageableWork(dir, wrote)
+	if bashBelt {
+		// A BELT WORKER'S WORK IS WHAT THE TREE SAYS, not what the ledger names:
+		// the shell worker fills no ledger, and every edit it made through bash
+		// is visible only to git. The tree's own status is staged beside the
+		// ledger's paths — the same index, the same commit — minus the paths the
+		// harness itself writes ([beltTreeWork]), which are machinery and never
+		// the work.
+		paths = mergePaths(paths, beltTreeWork(dir))
+	}
 	if len(paths) == 0 {
 		return "", refusedNothing
 	}
@@ -9048,6 +9071,62 @@ func stageableWork(dir string, wrote []string) []string {
 		}
 		seen[clean] = true
 		paths = append(paths, literalPathspec+clean)
+	}
+	return paths
+}
+
+// beltTreeWork reads every change git sees in the working copy that the
+// ledger did not name — modified, added and untracked alike, one path per
+// line — and takes out the paths the harness itself writes, which are
+// machinery and never the work. A belt worker's landing stages this whole
+// answer ([stageTaskWork]), so what a person gets on the branch is what the
+// shell did, and nothing else.
+//
+// THE NODE'S OWN LOG DIRECTORY NEEDS NO EXCLUSION HERE, and that is a fact
+// about the layout rather than a pathspec: a node's journal lives beside the
+// session ([taskJournalDir]), which makes it a SIBLING of this tree's own
+// folder or an ancestor of it — never a path inside the working copy git
+// could name.
+func beltTreeWork(dir string) []string {
+	out, err := git(dir, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, path := range porcelainPaths(out) {
+		switch {
+		case isTaskDropping(path):
+		case path == "bench-results" || strings.HasPrefix(path, "bench-results/"):
+		case path == planStoreFilename || strings.HasPrefix(path, planStoreFilename+"."):
+		case path == "bin/plandb":
+		case strings.HasSuffix(path, ".lock"):
+		default:
+			paths = append(paths, literalPathspec+path)
+		}
+	}
+	return paths
+}
+
+// porcelainPaths reads the paths out of one `git status --porcelain` answer,
+// taken from the fixed columns rather than trimmed off the front: a porcelain
+// line is two status letters, a space, then the path, and a line that was
+// trimmed first has lost the status columns' own padding — the staged ' M
+// a/b.go' reads as 'M a/b.go', and the slice past the third column then cuts
+// the first character of the path. A rename carries both names and the one
+// that exists now is the second.
+func porcelainPaths(out string) []string {
+	var paths []string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" || len(line) < 4 {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if _, renamed, found := strings.Cut(path, " -> "); found {
+			path = renamed
+		}
+		if path = strings.Trim(path, `"`); path != "" {
+			paths = append(paths, path)
+		}
 	}
 	return paths
 }
