@@ -74,17 +74,40 @@ per request, nothing older than 7 days, at most 1000 lines kept, and nothing
 sent before the notice has been shown. `codeaf telemetry show` prints exactly
 what has not left yet.
 
-## How to turn it off
+## Turning it off
 
-Any one of these, before codeaf starts:
+Any one of these turns the counts off. They are checked in this order:
 
-- `CODEAF_TELEMETRY=off` (also `0` or `false`)
-- `DO_NOT_TRACK=1` (also `true`)
-- the config key `telemetry = off`
-- an empty `CODEAF_TELEMETRY_ENDPOINT`
+1. `CODEAF_TELEMETRY=off` — also `0` or `false`.
+2. `DO_NOT_TRACK=1` — also `true`, the ecosystem's own word for it.
+3. `telemetry = off` in the project's settings file, `.codeaf/config.json`. A
+   project may only turn the counts off, never on.
+4. `codeaf telemetry off`, which writes the profile setting; `codeaf telemetry
+   on` is the way back.
+5. an empty `CODEAF_TELEMETRY_ENDPOINT`.
 
 A build that cannot name its own source — dirty or unstamped — never reports,
 and neither does a test binary.
+
+## The command
+
+`codeaf telemetry` reads the counts and never sends anything of its own.
+
+- `codeaf telemetry status` says whether the counts are on, and why not when
+  they are off.
+- `codeaf telemetry show` prints exactly what is waiting to leave the machine.
+- `codeaf telemetry off` and `codeaf telemetry on` write the profile setting.
+
+```
+telemetry on
+  endpoint: https://agentfield.ai/api/oss/codeaf/telemetry
+  notice: shown
+  spooled events: 3
+  install: 4f2a9c1b7e08…
+```
+
+When the counts are off, a `reason:` line follows `telemetry off` and names the
+switch that turned them off.
 
 ## Download counts
 
