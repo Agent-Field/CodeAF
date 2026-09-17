@@ -418,7 +418,15 @@ func (s *Store) Resolve(word string) (*Task, error) {
 // that later finishes "as" the task can only be the worker the task was
 // handed to. Ownership in Done and Fail is enforced against exactly this
 // name.
-func (s *Store) Claim(id, agent string) (*Task, error) {
+//
+// THE OWNER IS THE PROCESS, AND IT IS OPTIONAL. Dispatch is per process, so
+// the run supervisor names the process that holds the claim —
+// "<hostname>:<pid>" — in an argument beside the agent, and every pass
+// touches that claim's seen-at stamp. A claim made without an owner (the
+// CLI's own `go`, the session graph's dispatch) has no process behind it, and
+// the claim's agent stands in for one so the seen-at stamp is never left
+// empty.
+func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if task.Status != StatusReady || task.Composite {
 			return fmt.Errorf("task %q is not a runnable ready leaf", id)
@@ -426,7 +434,12 @@ func (s *Store) Claim(id, agent string) (*Task, error) {
 		if strings.TrimSpace(agent) == "" {
 			return errors.New("agent is required for claim")
 		}
+		who := strings.TrimSpace(agent)
+		if len(owner) > 0 && strings.TrimSpace(owner[0]) != "" {
+			who = strings.TrimSpace(owner[0])
+		}
 		task.Status, task.ClaimedBy, task.UpdatedAt = StatusRunning, strings.TrimSpace(agent), now
+		task.Owner, task.SeenAt = who, now
 		return nil
 	})
 }
@@ -510,9 +523,89 @@ func (s *Store) Release(id, agent string) (*Task, error) {
 			return err
 		}
 		task.Status, task.ClaimedBy, task.UpdatedAt = StatusPending, "", now
+		task.Owner, task.SeenAt = "", time.Time{}
 		promote(next, now)
 		return nil
 	})
+}
+
+// heldStatus reports whether a task's status is one an owner holds: claimed
+// or running. Every read of a live claim — the stale scan, the take-over's
+// release — asks it rather than spelling the two words out.
+func heldStatus(status Status) bool {
+	return status == StatusClaimed || status == StatusRunning
+}
+
+// TouchClaims refreshes the seen-at stamp of every task an owner holds, so a
+// live process's claims never read as stale. It is the supervisor's heartbeat
+// — called once per pass — and it touches the seen-at column alone: the
+// UpdatedAt moment every other write moves is what a waiting reader's Changed
+// reads, and a heartbeat is not work the plan did, so refreshing a live claim
+// must not wake anybody. An owner holding nothing writes nothing.
+func (s *Store) TouchClaims(owner string) (int, error) {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	if !s.ownsHeld(owner) {
+		return 0, nil
+	}
+	touched := 0
+	err := s.transact(func(next *state, now time.Time) error {
+		touched = 0
+		for _, id := range next.Order {
+			task := next.Tasks[id]
+			if task.Owner != owner || !heldStatus(task.Status) {
+				continue
+			}
+			task.SeenAt = now
+			touched++
+		}
+		if touched == 0 {
+			return errNoChange
+		}
+		return nil
+	})
+	return touched, err
+}
+
+// ownsHeld reports whether owner holds any claim in the loaded plan, so the
+// heartbeat skips its write when it has nothing to refresh.
+func (s *Store) ownsHeld(owner string) bool {
+	for _, id := range s.data.Order {
+		task := s.data.Tasks[id]
+		if task.Owner == owner && heldStatus(task.Status) {
+			return true
+		}
+	}
+	return false
+}
+
+// StaleClaims answers the tasks a process holds without touching them: a
+// claimed or running task whose owner was last seen longer ago than the
+// window, so a take-over knows which claims a dead process left behind. THE
+// ROOT IS NOT ONE OF THEM — it is the run itself, claimed by the runtime and
+// never a process's to take over — and a task that is not currently held is
+// not stale either, however long ago it was last touched.
+func (s *Store) StaleClaims(olderThan time.Duration) []Task {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	cutoff := s.now().UTC().Add(-olderThan)
+	var stale []Task
+	for _, id := range s.data.Order {
+		task := s.data.Tasks[id]
+		if task.ID == s.data.RootID || !heldStatus(task.Status) {
+			continue
+		}
+		if task.SeenAt.Before(cutoff) {
+			stale = append(stale, *cloneTask(task))
+		}
+	}
+	return stale
 }
 
 // Pause holds a task, and by inheritance everything under it, out of the
@@ -558,6 +651,7 @@ func (s *Store) Retry(id string) (*Task, error) {
 			return fmt.Errorf("task %q is not failed", id)
 		}
 		task.Status, task.Error, task.ClaimedBy = StatusPending, "", ""
+		task.Owner, task.SeenAt = "", time.Time{}
 		task.CompletedAt, task.UpdatedAt = time.Time{}, now
 		promote(next, now)
 		return nil
@@ -577,6 +671,7 @@ func (s *Store) Cancel(id, reason string) (*Task, error) {
 			return fmt.Errorf("task %q is already terminal", id)
 		}
 		task.Status, task.Error, task.ClaimedBy = StatusCancelled, strings.TrimSpace(reason), ""
+		task.Owner, task.SeenAt = "", time.Time{}
 		task.UpdatedAt, task.CompletedAt = now, now
 		cancelDescendants(next, id, "ancestor "+id+" was cancelled", now)
 		cancelBlockedDependents(next, id, "dependency "+id+" was cancelled", now)
@@ -1420,6 +1515,7 @@ func (s *Store) ClaimNext(agent string) (*Task, error) {
 		}
 		best = pick.ID
 		pick.Status, pick.ClaimedBy, pick.UpdatedAt = StatusRunning, strings.TrimSpace(agent), now
+		pick.Owner, pick.SeenAt = strings.TrimSpace(agent), now
 		return nil
 	})
 	if err != nil {

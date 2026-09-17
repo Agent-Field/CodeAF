@@ -1652,3 +1652,91 @@ func TestPlandbCliSpendBySinceExcludesOlderRows(t *testing.T) {
 		t.Fatalf("an unknown axis answered %#v, want nothing", wrong)
 	}
 }
+
+// A store made before a claim named its process still opens: the owner and
+// seen-at columns are added on open, and its old claims read back with no
+// owner and a zero stamp — a claim no process can be shown to be touching.
+func TestPlandbCliAnOlderStoreGainsTheClaimColumnsOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store := planOpen(t, path)
+	planAdd(t, store, planSpec("a", "A"))
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	// Strip the two columns a store made before per-process claims never had,
+	// from the live table and the archive that mirrors it.
+	db, err := openDatabase(path)
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	for _, table := range []string{"tasks", "archived_tasks"} {
+		for _, column := range []string{"owner", "seen_at"} {
+			if _, err := db.Exec("ALTER TABLE " + table + " DROP COLUMN " + column); err != nil {
+				t.Fatalf("drop %s.%s: %v", table, column, err)
+			}
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+	// Opening again migrates, and the old task reads back with no claim.
+	store, err = Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer store.Close()
+	if got := store.Task("a"); got == nil || got.Owner != "" || !got.SeenAt.IsZero() {
+		t.Fatalf("old task claim = %#v, want no owner and a zero stamp", got)
+	}
+	// The migrated columns carry a claim made after the migration: the claim
+	// stamps the process and the moment, and a stale scan reads them back.
+	planAdd(t, store, planSpec("b", "B"))
+	if _, err := store.Claim("b", "b", "host:1"); err != nil {
+		t.Fatalf("claim after migration: %v", err)
+	}
+	if got := store.Task("b"); got.Owner != "host:1" || got.SeenAt.IsZero() {
+		t.Fatalf("claimed task = %#v, want owner host:1 and a stamp", got)
+	}
+}
+
+// StaleClaims answers the claims a process stopped touching and leaves the
+// rest alone: a claim whose seen-at stamp is older than the window reads
+// stale, one stamped inside the window does not, a task nobody holds is never
+// stale, and the root — the run itself — is never answered. Touching the
+// owner refreshes its claim out of the stale set.
+func TestPlandbCliStaleClaimsReadsTheUntouched(t *testing.T) {
+	store := planOpen(t, "")
+	clock := time.Now().UTC()
+	store.now = func() time.Time { return clock }
+	planAdd(t, store, planSpec("old", "Old"), planSpec("fresh", "Fresh"), planSpec("idle", "Idle"))
+	if _, err := store.Claim("old", "old", "host:1"); err != nil {
+		t.Fatalf("claim old: %v", err)
+	}
+	// A full window passes before the second claim is made, so the first
+	// claim's stamp is now behind the cutoff and the second is not.
+	clock = clock.Add(10 * time.Minute)
+	if _, err := store.Claim("fresh", "fresh", "host:2"); err != nil {
+		t.Fatalf("claim fresh: %v", err)
+	}
+	stale := map[string]bool{}
+	for _, task := range store.StaleClaims(5 * time.Minute) {
+		stale[task.ID] = true
+	}
+	if !stale["old"] || stale["fresh"] || stale["idle"] || stale[store.RootID()] {
+		t.Fatalf("stale set = %v, want the untouched claim alone", stale)
+	}
+	// Touching the stale claim's owner refreshes every claim it holds, and the
+	// refreshed claim leaves the stale set.
+	if touched, err := store.TouchClaims("host:1"); err != nil || touched != 1 {
+		t.Fatalf("touch = %d, %v, want one refreshed claim", touched, err)
+	}
+	for _, task := range store.StaleClaims(5 * time.Minute) {
+		if task.ID == "old" {
+			t.Fatalf("a touched claim still read stale: %v", task.ID)
+		}
+	}
+	// An owner holding nothing writes nothing.
+	if touched, err := store.TouchClaims("host:9"); err != nil || touched != 0 {
+		t.Fatalf("touch of an idle owner = %d, %v, want nothing", touched, err)
+	}
+}
