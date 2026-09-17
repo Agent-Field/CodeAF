@@ -231,6 +231,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// just pressed a model while something was running and wants to know
 		// whether they have to wait; they ask about "now", about "in the middle",
 		// and about the room's own two sentences.
+		// THE COLUMNS ON THE MODEL LIST, asked in the words somebody uses with
+		// the list open in front of them. The capability words are asked as
+		// words rather than as a feature, because that is how they are met: a
+		// person reads `sees · hears · watches` off a row and wants to know
+		// which of the two sides it is talking about.
+		{"what does sees mean on the model list", "models-and-cost"},
+		{"what do sees hears and watches mean", "models-and-cost"},
+		{"why is the can column empty for this model", "models-and-cost"},
+		{"why do no models say draws in the model picker", "models-and-cost"},
+		{"what are the columns in the model picker", "models-and-cost"},
+		{"what does in/M and out/M mean on the model list", "models-and-cost"},
 		{"can I change the model while it is replying", "models-and-cost"},
 		{"does switching the model take effect now or later", "models-and-cost"},
 		{"I changed the model in the middle of an answer", "models-and-cost"},
@@ -2501,6 +2512,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does latest mean in the model name", "lanes"},
 		{"why does via say 0731 when I picked latest", "lanes"},
 		{"the model name has a tilde in it", "lanes"},
+		{"why are some model names prefixed with a squiggle", "lanes"},
+		{"why does this model start with ~", "lanes"},
 		// AUTO, asked from a terminal rather than from a conversation. The
 		// first two are somebody deciding whether the headless doors get any of
 		// this at all, and the third is the one people ask on day one, before

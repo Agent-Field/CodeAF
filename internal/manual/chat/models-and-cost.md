@@ -211,6 +211,12 @@ table drew, so a gap is never "it did not fit" — that is the one thing the old
 could not tell you. A price shows only when both halves are known; a zero means "nobody
 said", never "free".
 
+A name that begins with `~` — `~deepseek/deepseek-v4-flash-latest` — is not a typo and not
+a home folder: `~` is the router's own marker for a *floating* name, one that points at
+whichever build of a model is current rather than at a fixed one. The *lanes* page, "A model
+name that ends in latest, and the tilde in front of it", says what that costs and where the
+speeds behind it are filed.
+
 **The names are measured first and the columns take what is left**, so the id is never
 shortened to make room for an arena score — a column goes instead. A name is shortened only
 when the window cannot hold the longest one on the list, and then it loses its author first
@@ -256,16 +262,35 @@ The `can` column of a picker row says what the model can do besides hold a conve
 in one word each — last in the row's order, so it is the first column a narrow window
 drops:
 
-| Word | What the catalog published |
-|---|---|
-| `sees` | it reads images |
-| `hears` | it reads sound |
-| `watches` | it reads video |
-| `draws` | it answers with images |
-| `speaks` | it answers with speech, audio or music |
-| `films` | it answers with video |
+| Word | What the catalog published | Which side |
+|---|---|---|
+| `sees` | it reads images — `image` among its input modalities | in |
+| `hears` | it reads sound — `audio` in | in |
+| `watches` | it reads video — `video` in | in |
+| `draws` | it answers with images — `image` out | out |
+| `speaks` | it answers with speech, audio or music — any of the three, out | out |
+| `films` | it answers with video — `video` out | out |
 
 Input words come first, so a model that reads and paints pictures reads `sees · draws`.
+
+**In the `/model` list only the three input words can ever turn up.** `/model` lists models
+you can hold a conversation with, and that means answering in text **and nothing else** — a
+model publishing `["text","image"]` out is a drawing model that also captions, and it is
+left off the list entirely. So `draws`, `speaks` and `films` belong to the media slots on
+the Providers tab (**drawing**, **speaking**, **composing**, **filming**), which open the
+same list over their own models. A conversation model's `can` column reads `sees`, or
+`sees · hears · watches`, or nothing.
+
+**The column reports only what was published — it never reads the id.** A model whose name
+says `vl` or `vision` but whose catalog row lists no modalities draws a blank `can` cell,
+because the cell is a fact about the catalog and not a guess about the name. The **looking**
+slot on the Providers tab does fall back to those two words in a name when a row published
+nothing, so a silent `…-vl` row can be offered there while showing nothing under `can`
+here. The two are asking different questions: the cell says what is known, the slot has to
+decide whether to offer the row at all.
+
+A model that reads PDFs or other attachments publishes `file` among its inputs, and there
+is no word for that one — the column says nothing about it either way.
 
 **A plain text chat model shows nothing here at all**, and neither does a model that
 published no modalities — silence means text in, text out, and nothing more. The same words
