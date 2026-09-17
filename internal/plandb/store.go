@@ -421,10 +421,11 @@ func (s *Store) Resolve(word string) (*Task, error) {
 //
 // THE OWNER IS THE PROCESS, AND IT IS OPTIONAL. Dispatch is per process, so
 // the run supervisor names the process that holds the claim —
-// "<hostname>:<pid>" — as a second argument, and every pass touches that
-// claim's seen-at stamp. A claim made without an owner (the CLI's own `go`,
-// the session graph's dispatch) has no process behind it, and the claim's
-// agent stands in for one so the seen-at stamp is never left empty.
+// "<hostname>:<pid>" — in an argument beside the agent, and every pass
+// touches that claim's seen-at stamp. A claim made without an owner (the
+// CLI's own `go`, the session graph's dispatch) has no process behind it, and
+// the claim's agent stands in for one so the seen-at stamp is never left
+// empty.
 func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if task.Status != StatusReady || task.Composite {
