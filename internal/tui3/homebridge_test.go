@@ -340,7 +340,7 @@ func TestExactlyOneRowIsGivenTheSpinnerHoweverManyAreMoving(t *testing.T) {
 			moving++
 		}
 	}
-	// AT LEAST THREE: a conversation mid-turn stands on `where you were` as
+	// AT LEAST THREE: a conversation mid-turn stands on `threads` as
 	// well as having its work on `running`, and the law is about the spinner.
 	if moving < 3 {
 		t.Fatalf("the machine is not busy enough to prove anything: %d moving rows\n%s", moving, homeText(a))

@@ -46,7 +46,7 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 	a := newSwitchLab(t).open(80, 24)
 	frame := homeText(a)
 	last := -1
-	for _, word := range []string{"needs you", "where you were", "projects", "running · "} {
+	for _, word := range []string{"needs you", "threads", "projects", "tasks · "} {
 		row, col := homeRowOf(frame, word)
 		if row < 0 {
 			t.Fatalf("%q is not on an eighty-cell home:\n%s", word, frame)
@@ -87,9 +87,9 @@ func TestAtOneTwentyWhatHasRowsTakesTheFieldAndTheQuietGatherInTheRail(t *testin
 	// WHERE YOU WERE HAS ROWS, SO IT IS IN THE FIELD under the panel that
 	// outranks it — the rank inside a column is the order table's as it always
 	// was, and only the column is the content's to say.
-	recent, recentCol := homeRowOf(frame, "where you were")
+	recent, recentCol := homeRowOf(frame, "threads")
 	if recent <= needs || recentCol != needsCol {
-		t.Fatalf("where you were has rows and is not under needs you in the field:\n%s", frame)
+		t.Fatalf("threads has rows and is not under needs you in the field:\n%s", frame)
 	}
 	// AND SPEND IS PINNED UNDER PROJECTS AT THE TOP OF THE RAIL, with the quiet
 	// panels under the pair rather than mixed through it.
@@ -139,13 +139,13 @@ func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	a := newSwitchLab(t).open(180, 45)
 	frame := homeText(a)
 	needs, needsCol := homeRowOf(frame, "needs you")
-	recent, recentCol := homeRowOf(frame, "where you were")
+	recent, recentCol := homeRowOf(frame, "threads")
 	projects, railCol := homeRowOf(frame, "projects")
 	if needs != projects || needsCol >= railCol {
 		t.Fatalf("needs you and projects do not head the field and the rail:\n%s", frame)
 	}
 	if recent <= needs || recentCol != needsCol {
-		t.Fatalf("where you were is not under needs you in the first field column:\n%s", frame)
+		t.Fatalf("threads is not under needs you in the first field column:\n%s", frame)
 	}
 	if needsCol != homeGridMargin {
 		t.Fatalf("the field does not start at the left margin (cell %d):\n%s", needsCol, frame)
@@ -181,7 +181,8 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 
 	// THE SENTENCE IS IN THE MIDDLE COLUMN and not under its row. It is looked
 	// for THERE — at a cell past the field — because a short sentence can be a
-	// substring of a heading (`here` is inside `where you were`), and the
+	// substring of a heading (`here` was inside `where you were`, the panel's
+	// old word), and the
 	// first place the letters happen to appear is not the place the column
 	// draws them.
 	_, rail := homeRowOf(frame, "projects · ")
@@ -446,7 +447,7 @@ func TestAShortColumnShrinksTheLowestPriorityPanelFirst(t *testing.T) {
 }
 
 // A TALL COLUMN HANDS ITS SPARE ROWS OUT IN THE SQUEEZE'S ORDER REVERSED, one
-// at a time: needs you first, then where you were, round again — and never a
+// at a time: needs you first, then threads, round again — and never a
 // row past a panel's budget, never a row the room cannot hold.
 func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
 	rows := func(n int) homePanelRows {
@@ -488,7 +489,7 @@ func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
 	a.openHome()
 	frame := homeText(a)
 	if got := len(panelRows(a, panelRecent)); got != homeSlotOf(panelRecent).most {
-		t.Fatalf("where you were drew %d rows at 120×55, want %d:\n%s", got, homeSlotOf(panelRecent).most, frame)
+		t.Fatalf("threads drew %d rows at 120×55, want %d:\n%s", got, homeSlotOf(panelRecent).most, frame)
 	}
 	if row, _ := homeRowOf(frame, "66 more"); row < 0 {
 		t.Fatalf("the fold does not count the other sixty-six:\n%s", frame)
@@ -498,8 +499,8 @@ func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
 	if len(strings.Split(frame, "\n")) != 24 {
 		t.Fatalf("at 120×24 the frame is not twenty-four rows:\n%s", frame)
 	}
-	if row, _ := homeRowOf(frame, "where you were"); row < 0 {
-		t.Fatalf("where you were was squeezed off a 120×24 home:\n%s", frame)
+	if row, _ := homeRowOf(frame, "threads"); row < 0 {
+		t.Fatalf("threads was squeezed off a 120×24 home:\n%s", frame)
 	}
 	// AND A SHORT FRAME SPENDS THE RAIL BEFORE THE FIELD. Where you were is the
 	// only panel with rows, so it has the whole field and keeps every row it
@@ -507,7 +508,7 @@ func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
 	// is the trade law 2 was rewritten to make (ruled 2026-09-15). Before that
 	// this frame cut the recent list to share a column with two quiet panels.
 	if got := len(panelRows(a, panelRecent)); got != homeSlotOf(panelRecent).most {
-		t.Fatalf("where you were drew %d rows at 120×24, want the %d it holds alone in the field:\n%s", got, homeSlotOf(panelRecent).most, frame)
+		t.Fatalf("threads drew %d rows at 120×24, want the %d it holds alone in the field:\n%s", got, homeSlotOf(panelRecent).most, frame)
 	}
 }
 
@@ -516,7 +517,7 @@ func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
 func TestTheSqueezeAtOneTwentyByTwentyFourKeepsNeedsAndRecent(t *testing.T) {
 	a := newSwitchLab(t).open(120, 24)
 	frame := homeText(a)
-	for _, word := range []string{"needs you", "where you were"} {
+	for _, word := range []string{"needs you", "threads"} {
 		if row, _ := homeRowOf(frame, word); row < 0 {
 			t.Fatalf("%q was squeezed off a 120×24 home:\n%s", word, frame)
 		}
@@ -580,7 +581,7 @@ func TestAShortFrameDropsWhisperingPanelsBeforeAnyPanelWithRows(t *testing.T) {
 	a.width, a.height = 120, 14
 	a.openHome()
 	frame := homeText(a)
-	if row, _ := homeRowOf(frame, "where you were"); row < 0 {
+	if row, _ := homeRowOf(frame, "threads"); row < 0 {
 		t.Fatalf("a 120×14 home kept a whisper and dropped every conversation:\n%s", frame)
 	}
 	if row, _ := homeRowOf(frame, homeWhisper[panelNeeds]); row >= 0 {
@@ -718,7 +719,7 @@ func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
 	}
 	a.placeKeyPress(key("down"))
 	if got := focusedTitle(a); got != "Bounty Reward Companies" {
-		t.Fatalf("↓ went to %q, want the next row of where you were", got)
+		t.Fatalf("↓ went to %q, want the next row of threads", got)
 	}
 	a.placeKeyPress(key("right"))
 	if got, want := a.home.columnOf(a.home.cursor), 1; got != want || a.strip.open {
@@ -851,7 +852,7 @@ func TestEnterOnAFoldOpensThePanelAndAgainShutsIt(t *testing.T) {
 	frame := homeText(a)
 	shown := len(panelRows(a, panelRecent))
 	if shown != homeSlotOf(panelRecent).most {
-		t.Fatalf("where you were drew %d rows at rest, want its budget of %d:\n%s", shown, homeSlotOf(panelRecent).most, frame)
+		t.Fatalf("threads drew %d rows at rest, want its budget of %d:\n%s", shown, homeSlotOf(panelRecent).most, frame)
 	}
 	a.home.cursor = homeFoldDoor(t, a, panelRecent)
 	if !strings.HasSuffix(a.home.lines[a.home.cursor].cell.title, " more") {

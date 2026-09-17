@@ -168,14 +168,17 @@ type homePanelSlot struct {
 // hands them out in, and rest and most are each panel's natural height and its
 // growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
-// The head column is where a press on each heading goes; `projects` names no
-// place but itself, so its heading opens nothing. The explainer is the dim
-// clause a heading may carry after its word — see [homePanelSlot.explainer].
+// The head column is where a press on each heading goes; `projects` and
+// `threads` name no place but themselves, so their headings open nothing (the
+// search place used to be `threads`'s head, until the owner ruled on 2026-09-17
+// that the box under home already searches and a second door to it was one
+// door too many). The explainer is the dim clause a heading may carry after its
+// word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10, head: pageSearch},
+	{panel: recentPanel{homePanelBase{panelRecent}}, word: "threads", explainer: "enter reopens one", keep: 5, least: 4, rest: 5, most: 10},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", explainer: "work you sent off", keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
@@ -727,7 +730,7 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 // ANY PANEL WITH ROWS, each group lowest keep first. A whisper says what would
 // be here; a row is something a person can stand on and open. At 120×14 with
 // no question waiting, the old order kept `needs you`'s whisper and dropped
-// `where you were` whole, so the page had no row at all — a home with nothing
+// `threads` whole, so the page had no row at all — a home with nothing
 // to press is not a home, whatever its priorities say.
 func byDrop(order []*homeGridPanel) []*homeGridPanel {
 	drop := make([]*homeGridPanel, 0, len(order))
@@ -747,7 +750,7 @@ func byDrop(order []*homeGridPanel) []*homeGridPanel {
 // regrowColumn hands back what the squeeze did not need, a row at a time, to
 // the panels it cut, the most important first. A floor is a whole step, and a
 // drop frees a whole panel, so the squeeze can overshoot — and air under a
-// column while `where you were` is folded is the squeeze spending the wrong
+// column while `threads` is folded is the squeeze spending the wrong
 // panel's rows.
 //
 // IT GIVES BACK ONLY UP TO A PANEL'S NATURAL HEIGHT. A squeezed column is a
@@ -1031,12 +1034,14 @@ func (p homeGridPanel) lines() []homeLine {
 // and a line that named a place `enter` did not go to would be a door drawn on
 // a wall (review of #1046). The way to the rest is the panel's HEADING, which
 // opens the place that owns the panel (law 10): tasks for `needs you`,
-// `running` and `since you left`, standing for `scheduled`, the search for
-// `where you were`. It used to be the other way round: law 9 said the fold IS
-// the door, `N more · tasks` opened the tasks place, and `where you were`'s `N
-// more · type to find one` was not a stop at all because typing was its door;
-// the owner found one line that opened somewhere and another that could not be
-// stood on and asked for one thing that expands.
+// `tasks` and `since you left`, standing for `scheduled`. `threads` has no
+// place of its own to open (the search place was its door until 2026-09-17;
+// the box under home is the search now), so its heading names only the panel.
+// It used to be the other way round: law 9 said the fold IS the door, `N more
+// · tasks` opened the tasks place, and `threads`'s `N more · type to find one`
+// was not a stop at all because typing was its door; the owner found one line
+// that opened somewhere and another that could not be stood on and asked for
+// one thing that expands.
 func (p homeGridPanel) fold() homeLine {
 	words := ""
 	rest := p.hidden() + p.read.older

@@ -768,7 +768,7 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 	// reach. That reading was repealed for conversations and the word itself
 	// says so ([homeElsewhereWord]: "IT NO LONGER MARKS A ROW THIS WINDOW CANNOT
 	// OPEN, because there is no such row: enter opens any project on this
-	// screen"), and a `where you were` row in another project has opened from
+	// screen"), and a `threads` row in another project has opened from
 	// here ever since. Only this path kept the old guard, so a watch asked for in
 	// one project answered nothing at all from a window standing in another —
 	// which is every window that did not happen to be launched inside that

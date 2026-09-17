@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
@@ -57,7 +59,7 @@ func TestADigitAnswersTheTopQuestionWithTheCursorElsewhere(t *testing.T) {
 func TestRunningDrawsTheWorkAndWhatItIsDoing(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	frame := homeText(a)
-	if !strings.Contains(frame, "running · 1") || !strings.Contains(frame, "read 40 filings") {
+	if !strings.Contains(frame, "tasks · 1") || !strings.Contains(frame, "read 40 filings") {
 		t.Fatalf("running does not draw the work that is out:\n%s", frame)
 	}
 	if under := homeLineAfter(frame, "read 40 filings"); !strings.Contains(under, tabSignalWord(tabWorking)) {
@@ -114,10 +116,10 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	a.home.last[lab.mine] = session.Summary{LastUser: "explain open addressing vs chaining"}
 	a.home.build()
 	frame := homeText(a)
-	head, _ := homeRowOf(frame, "where you were")
+	head, _ := homeRowOf(frame, "threads")
 	own, _ := homeRowOf(frame, "Porting the Resume Picker")
 	if head < 0 || own != head+1 {
-		t.Fatalf("this window's own conversation is not the first row of where you were:\n%s", frame)
+		t.Fatalf("this window's own conversation is not the first row of threads:\n%s", frame)
 	}
 	lines := strings.Split(frame, "\n")
 	// (The rail beside it may say `here` in a whisper of its own, so the row is
@@ -439,11 +441,41 @@ func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
 			t.Fatalf("at 40 cells the panel draws %q", row)
 		}
 	}
-	// AND ENTER ON ANY OF ITS ROWS OPENS THE SPEND PLACE.
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.kind == cellFacts })
-	a.homeKey(key("enter"))
+	// AND NOTHING UNDER THE HEADING IS A STOP OR A DOOR (owner, 2026-09-17):
+	// the cursor steps over every one of the panel's lines, and a press on one
+	// leaves home up. The heading is still the door into the spend place.
+	for at, line := range a.home.lines {
+		if line.cell == nil || line.cell.panel != panelSpend || line.cell.kind == cellHead {
+			continue
+		}
+		if line.stop() {
+			t.Fatalf("line %d of the spend panel (%q) is a cursor stop", at, line.cell.title)
+		}
+		if line.kind != homeReadout {
+			t.Fatalf("line %d of the spend panel is a %v line, want a readout", at, line.kind)
+		}
+	}
+	// The rows are found under the painted heading, because a press resolves
+	// against the frame that was drawn and never against the list: the three
+	// lines under `spend` are the meter, the fortnight and the models.
+	placeFrameText(a)
+	x, y, ok := homeHeadingAt(a, "spend")
+	if !ok {
+		t.Fatalf("the spend heading is not on the frame:\n%s", homeText(a))
+	}
+	frame := strings.Split(homeText(a), "\n")
+	for dy := 1; dy <= 3; dy++ {
+		drive(t, a, tea.MouseClickMsg{X: x + homeGridLead, Y: y + dy, Button: tea.MouseLeft})
+		if a.page != pageHome {
+			t.Fatalf("a press on the spend row %q opened %q", strings.TrimSpace(frame[y+dy]), a.page.word())
+		}
+		if line, ok := a.home.focusedLine(); ok && line.cell != nil && line.cell.panel == panelSpend {
+			t.Fatalf("a press on the spend row %q put the cursor on it", strings.TrimSpace(frame[y+dy]))
+		}
+	}
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if !a.at(pageSpend) {
-		t.Fatal("enter on the spend panel's last line did not open the spend place")
+		t.Fatal("a press on the spend heading did not open the spend place")
 	}
 }
 

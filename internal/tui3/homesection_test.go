@@ -183,7 +183,7 @@ func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 		}
 	}
 	if head == homeNoLine {
-		t.Fatalf("standing in where you were marks no heading:\n%s", homeText(a))
+		t.Fatalf("standing in threads marks no heading:\n%s", homeText(a))
 	}
 	cell := a.home.lines[head].cell
 	marked := homeCellHead(cell, 40, a.pal, true)

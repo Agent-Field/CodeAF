@@ -35,7 +35,7 @@ package e2e
 // stands beside a SEARCH, from a hundred and thirty-six cells (homebridge.go).
 // So a subtest that reads that card types first and runs at [tuiWide], and a
 // subtest about the panels runs at [tuiPlain], where the left column holds
-// `needs you`, `where you were` and `projects` and nothing is cut at [tuiCardAt].
+// `needs you`, `threads` and `projects` and nothing is cut at [tuiCardAt].
 
 import (
 	"encoding/json"
@@ -321,7 +321,7 @@ func testRefusedLanding(t *testing.T) {
 
 // testHomeShape opens the product with five projects on the machine and reads
 // the shape home has TODAY (docs/design/home-mission-control/DESIGN.md): seven
-// panels under a four-word bar, every seeded conversation on `where you were`,
+// panels under a four-word bar, every seeded conversation on `threads`,
 // an empty panel keeping its heading and its whisper, the foot's three verbs, and
 // the two doors in and out of the screen.
 //
@@ -363,7 +363,7 @@ func testHomeShape(t *testing.T) {
 		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
 	}
 
-	// EVERY SEEDED CONVERSATION IS ON `where you were`, whichever project it
+	// EVERY SEEDED CONVERSATION IS ON `threads`, whichever project it
 	// belongs to — five of them and this launch's own is inside the panel's
 	// growth budget on a forty-row frame.
 	for _, want := range []string{"Seed Alpha", "Seed Beta", "Seed Gamma", "Seed Delta", "Seed Epsilon"} {
@@ -488,18 +488,18 @@ func testRealConversation(t *testing.T) {
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	// THE PANELS, AT REST. This window's conversation is the `here` row of
-	// `where you were` with the person's own last words under it, and its
+	// `threads` with the person's own last words under it, and its
 	// folder is the first row of `projects` with the repository clause beside
 	// it. The reading of `git status` arrives a beat after the first frame.
 	panels := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homePanelRecent"), want)
 	t.Logf("home at rest, with this conversation on the panels:\n%s", panels)
 	// THE `here` ROW AND THE WORDS UNDER IT. At [tuiWide] the panels are three
-	// columns of a third each, and `where you were` is the left one: its first
+	// columns of a third each, and `threads` is the left one: its first
 	// row is this window's conversation wearing the word `here`, and the row
 	// under it is what the person last said in it (DESIGN.md §3 G3).
 	recent := strings.Split(strings.TrimRight(panelColumn(panels, say(t, "homePanelRecent"), tuiWide/3), "\n"), "\n")
 	if len(recent) < 3 || !strings.HasSuffix(recent[1], " "+say(t, "homeHereWord")) {
-		t.Errorf("`where you were` does not lead with this window's own `%s` row:\n%s",
+		t.Errorf("`threads` does not lead with this window's own `%s` row:\n%s",
 			say(t, "homeHereWord"), strings.Join(recent, "\n"))
 	} else if !strings.Contains(recent[2], "what is 2+2?") {
 		t.Errorf("the line under the `here` row is not the person's own last words:\n%s", strings.Join(recent, "\n"))
@@ -555,7 +555,7 @@ func testRealConversation(t *testing.T) {
 // THE EXCHANGE IS THE SCREEN WHILE IT HOLDS THE KEYBOARD, AT EVERY WIDTH. It
 // sat beside the list at [tuiWide] once; the grid has no pane column at any
 // width, so an errand stacks over the panels exactly as it always did on a
-// narrow frame (internal/tui3's homeStacked), and its row on `where you were` —
+// narrow frame (internal/tui3's homeStacked), and its row on `threads` —
 // with the `waiting on you` / `stood` tails this subtest is really about — is
 // what `esc` puts back. So every tail is read on the list after the keyboard
 // has left the pane, and every word of the pane is read while it holds it.
@@ -612,7 +612,7 @@ func testAskHere(t *testing.T) {
 
 	// THE TAILS ARE THE LIST'S, so the keyboard goes back to it: one esc over an
 	// empty follow-up box hands it over, and the errand stays as the first row of
-	// `where you were`. Its tail says `working` while the turn is in flight and
+	// `threads`. Its tail says `working` while the turn is in flight and
 	// `waiting on you` once the card is up — and a model that reaches for the
 	// card inside a second or two can beat the first read, which is a fast reply
 	// and not a missing tail.
@@ -1227,7 +1227,7 @@ func testHover(t *testing.T) {
 
 // ── 7 ───────────────────────────────────────────────────────────────────────
 
-// testFold seeds more conversations than `where you were` draws and reads the
+// testFold seeds more conversations than `threads` draws and reads the
 // fold at the foot of that panel.
 //
 // THE FOLD IS NOT A DOOR ANY MORE, AND THAT IS WHAT IS TESTED. The old list had
@@ -1239,7 +1239,7 @@ func testHover(t *testing.T) {
 func testFold(t *testing.T) {
 	home := newHome(t, nil)
 	// MORE CONVERSATIONS THAN THE PANEL'S BUDGET, WHICH IS WHAT MAKES A FOLD.
-	// `where you were` grows to ten rows in a tall frame and no further; twenty
+	// `threads` grows to ten rows in a tall frame and no further; twenty
 	// seeds on a twenty-row terminal is a panel squeezed to what fits, with most
 	// of them behind the fold.
 	for i, name := range []string{
@@ -1252,7 +1252,7 @@ func testFold(t *testing.T) {
 	r := start(t, "afe2e_fold", home, ws, tuiWide, 20)
 
 	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "foldMoreWord"))
-	t.Logf("`where you were` with a fold at its foot:\n%s", screen)
+	t.Logf("`threads` with a fold at its foot:\n%s", screen)
 	// THE FOLD IS A COUNT AND THE WORD, AND NOTHING AFTER: a place word after it
 	// would be a door `enter` does not take.
 	if fold := firstMatch(screen, say(t, "foldMoreWord")); !foldCounts.MatchString(fold) {

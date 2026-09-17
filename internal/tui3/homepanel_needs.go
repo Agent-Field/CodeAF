@@ -27,7 +27,7 @@ import (
 // THE DIFFERENCE BETWEEN THE TWO GROUPS IS SAID ONCE, ON THE GROUP'S OWN LINE,
 // and it is one word: `unread` (placeprose.go's [needsCheckWord]). It used to be
 // said under every landing row, which was the same nine words nine times and
-// pushed `where you were` off a forty-row frame (owner, 2026-09-11); then as a
+// pushed `threads` off a forty-row frame (owner, 2026-09-11); then as a
 // clause at the group line's right, which the owner cut on 2026-09-15.
 //
 // A LANDING IS ONE LINE AT REST AND TWO UNDER THE CURSOR. The second line is the

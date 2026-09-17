@@ -2023,8 +2023,10 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.project != "" && l.project == other.project
 	case homeCommand:
 		return l.cmd != nil && l.cmd == other.cmd
-	// the switcher's and the phone's own rows (place_home.go, homephone.go).
-	case homeLedger, homePhoneNews, homePhoneMore:
+	// the switcher's and the phone's own rows (place_home.go, homephone.go),
+	// and spend's readouts, which are told apart the same way though the
+	// cursor never rests on one (homepanel_spend.go).
+	case homeLedger, homeReadout, homePhoneNews, homePhoneMore:
 		return l.project != "" && l.project == other.project && l.dir == other.dir
 	case homeAction, homeAskHere:
 		return true
@@ -2345,7 +2347,8 @@ func (l homeLine) stop() bool {
 	case homePhoneNews, homePhoneMore:
 		return true
 	// the switcher's own: a `since you left` line is a door into the place that
-	// owns it. Its headings are not, for [homeHeading]'s reason (place_home.go).
+	// owns it. Its headings are not, for [homeHeading]'s reason (place_home.go),
+	// and neither is a [homeReadout] — spend's lines are read, not stood on.
 	case homeLedger:
 		return true
 	}

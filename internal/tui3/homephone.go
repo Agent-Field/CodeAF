@@ -104,7 +104,7 @@ const (
 // and each is quoted in the manual exactly as it is spelled here.
 const (
 	homePhoneWaitingWord = "waiting on you"
-	homePhoneRunningWord = "running"
+	homePhoneRunningWord = "tasks"
 	homePhoneNewsWord    = "since you left"
 )
 

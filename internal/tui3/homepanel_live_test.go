@@ -347,7 +347,7 @@ func consentQuestionAt(id uint64, text string, asked time.Time) session.Presence
 	return q
 }
 
-// ── where you were ──────────────────────────────────────────────────────────
+// ── threads ──────────────────────────────────────────────────────────
 
 // A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` in bold, no age
 // and nothing under it — whatever the journal's tail has on hand — until
@@ -418,7 +418,7 @@ func TestRunningDrawsEachTaskAndJobWithWhatItIsDoing(t *testing.T) {
 		job.right != "up 3h" || job.mark != cellMarkNone {
 		t.Fatalf("the job row is not `<title> · a background job` up its age: %+v", job)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "running · 2") {
+	if frame := homeText(a); !strings.Contains(frame, "tasks · 2") {
 		t.Fatalf("the heading does not count the work:\n%s", frame)
 	}
 }
@@ -536,7 +536,7 @@ func TestRunningGrowsToItsBudgetAndFoldsTheRestIntoTasks(t *testing.T) {
 	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most {
 		t.Fatalf("running drew %d rows, want its budget of %d", len(rows), most)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "running · 10") {
+	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "tasks · 10") {
 		t.Fatalf("the fold does not name what it holds:\n%s", frame)
 	}
 }
