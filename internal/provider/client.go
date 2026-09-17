@@ -445,6 +445,19 @@ type callKnobs struct {
 	// multipart form rather than a completion, so there is nothing for the
 	// encoder to write again and its body is kept exactly as it was handed over.
 	refused *refusedHere
+	// retryAvoid is the lanes a RETRY of this call must not re-ask, named by the
+	// layer that owns the retry (retryavoid.go). It is read off the context once
+	// here, beside intent and the cache key, because it is a fact about the CALL
+	// and cannot change between the top of the call and an encode.
+	//
+	// IT IS NOT [refusedHere] AND IT IS NOT THE LEDGER. The refused set is this
+	// call's own memory of who said no to it, gathered on the way; the ledger is
+	// what the process believes about a machine, on its own cooldown. This list
+	// is the CALLER'S instruction — the lanes an earlier attempt of the same
+	// retry loop failed on, which this fresh call would otherwise walk straight
+	// back into. It is empty on every first call, which is what keeps a healthy
+	// request byte-for-byte what it always was.
+	retryAvoid []string
 	// trace is what ONE CALL accumulates on its way to an answer — how many
 	// times it went out, what its refusals taught, the body it last carried —
 	// for the model-call log (calllog.go). It is a pointer because the knobs
@@ -467,16 +480,17 @@ func (k callKnobs) carriesTheDemand() bool {
 
 func knobsFrom(ctx context.Context) callKnobs {
 	knobs := callKnobs{
-		cacheKey:  CacheKeyFrom(ctx),
-		effort:    effortFrom(ctx),
-		role:      RoleFrom(ctx),
-		intent:    routingIntentFrom(ctx),
-		lambda:    valueOfTimeFrom(ctx),
-		horizon:   callHorizonFrom(ctx),
-		hedgeLane: hedgeLaneFrom(ctx),
-		reasoning: MessageReasoningFrom(ctx),
-		refused:   &refusedHere{},
-		trace:     newCallTrace(),
+		cacheKey:   CacheKeyFrom(ctx),
+		effort:     effortFrom(ctx),
+		role:       RoleFrom(ctx),
+		intent:     routingIntentFrom(ctx),
+		lambda:     valueOfTimeFrom(ctx),
+		horizon:    callHorizonFrom(ctx),
+		hedgeLane:  hedgeLaneFrom(ctx),
+		reasoning:  MessageReasoningFrom(ctx),
+		refused:    &refusedHere{},
+		retryAvoid: retryAvoidFrom(ctx),
+		trace:      newCallTrace(),
 	}
 	// The choice this call was already made on, if it was. See
 	// [Client.withLaneChoice]: it is carried rather than recomputed because it
