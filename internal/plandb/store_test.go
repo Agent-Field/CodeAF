@@ -289,6 +289,100 @@ func TestPlandbCliLineageRuleGatesHardEdgesOnly(t *testing.T) {
 	}
 }
 
+// A hard edge may join two tasks in different branches of the containment
+// tree — the doctrine's cross-branch dependency — and it gates the frontier
+// exactly as a sibling edge does: the downstream task is ready the moment the
+// upstream finishes, and not before.
+func TestPlandbCliCrossBranchHardEdgesGateReadiness(t *testing.T) {
+	store := planOpen(t, "")
+	left := planSpec("left", "Left")
+	right := planSpec("right", "Right")
+	planAdd(t, store, left, right)
+	leaf := planSpec("leaf", "Leaf")
+	leaf.ParentID = "left"
+	far := planSpec("far", "Far")
+	far.ParentID = "right"
+	planAdd(t, store, leaf, far)
+
+	// leaf (a child of left) waits on far (a child of right) — two branches,
+	// neither task an ancestor of the other.
+	if _, err := store.AddDep("leaf", "far", ""); err != nil {
+		t.Fatalf("cross-branch hard edge refused: %v", err)
+	}
+	if got := store.Task("leaf"); got.Status != StatusPending {
+		t.Fatalf("leaf status = %s, want pending while its cross-branch upstream is open", got.Status)
+	}
+	if got := store.Task("far"); got.Status != StatusReady {
+		t.Fatalf("far status = %s, want ready", got.Status)
+	}
+
+	planFinish(t, store, "far", "w-far", "far delivered")
+	if got := store.Task("leaf"); got.Status != StatusReady {
+		t.Fatalf("leaf status = %s, want ready the moment its cross-branch upstream finished", got.Status)
+	}
+	// The same relation tried the other way would close a hard loop, and the
+	// law sees it across the branches.
+	if _, err := store.AddDep("far", "leaf", ""); err == nil || !strings.Contains(err.Error(), "dependency graph") {
+		t.Fatalf("cross-branch edge closing a loop accepted: %v", err)
+	}
+}
+
+// The one hard edge across a lineage that stays refused is between a task and
+// its own ancestor or descendant: such an edge would have a task wait on the
+// lineage that schedules it. And readiness is recomputed for the whole branch
+// when an ancestor gains a dependency, so a descendant that was ready falls
+// back to pending with its ancestor.
+func TestPlandbCliAncestorHardEdgesStayRefusedAndDemoteDescendants(t *testing.T) {
+	store := planOpen(t, "")
+	parent := planSpec("p", "P")
+	child := planSpec("c", "C")
+	child.ParentID = "p"
+	child.Dependencies = []Dependency{{TaskID: "p"}}
+	if _, err := store.AddMany([]TaskSpec{parent, child}); err == nil || !strings.Contains(err.Error(), "lineage") {
+		t.Fatalf("child hard dependency on its own ancestor accepted: %v", err)
+	}
+
+	store = planOpen(t, "")
+	parent = planSpec("p", "P")
+	parent.Dependencies = []Dependency{{TaskID: "c"}}
+	child = planSpec("c", "C")
+	child.ParentID = "p"
+	if _, err := store.AddMany([]TaskSpec{parent, child}); err == nil || !strings.Contains(err.Error(), "lineage") {
+		t.Fatalf("a hard dependency on a task's own descendant accepted: %v", err)
+	}
+
+	// A ready branch whose ancestor gains a hard dependency is not runnable
+	// any more: the gate the ancestor now waits on holds the child too.
+	store = planOpen(t, "")
+	planAdd(t, store, planSpec("g", "G"))
+	planAdd(t, store, planSpec("p", "P"))
+	kid := planSpec("c", "C")
+	kid.ParentID = "p"
+	planAdd(t, store, kid)
+	if got := store.Task("c"); got.Status != StatusReady {
+		t.Fatalf("child status = %s, want ready before its ancestor gains a gate", got.Status)
+	}
+	if _, err := store.AddDep("p", "g", ""); err != nil {
+		t.Fatalf("ancestor hard dependency refused: %v", err)
+	}
+	if got := store.Task("p"); got.Status != StatusPending {
+		t.Fatalf("parent status = %s, want pending behind its new gate", got.Status)
+	}
+	if got := store.Task("c"); got.Status != StatusPending {
+		t.Fatalf("child status = %s, want pending: readiness walks the parent chain and the ancestor's gate is open", got.Status)
+	}
+	for _, ready := range store.ReadyLeaves() {
+		if ready.ID == "c" {
+			t.Fatal("a child was handed out while its ancestor's gate was open")
+		}
+	}
+
+	planFinish(t, store, "g", "w-g", "gate cleared")
+	if got := store.Task("c"); got.Status != StatusReady {
+		t.Fatalf("child status = %s, want ready once the ancestor's gate cleared", got.Status)
+	}
+}
+
 func TestPlandbCliCyclesAreRefusedOnBothGraphs(t *testing.T) {
 	store := planOpen(t, "")
 	a := planSpec("a", "A")
@@ -768,28 +862,28 @@ func TestPlandbCliBottlenecksCountTheDownstreamWork(t *testing.T) {
 	side := planSpec("side", "Side")
 	planAdd(t, store, a, b, c, side)
 
+	// The count is the work that hard-depends on the task DIRECTLY: a is held
+	// up by b, b by c, and c and side hold up nothing — so a and b answer one
+	// each and c and side are left out, equal counts ordering by descending id.
 	counts := store.Bottlenecks(0)
-	if len(counts) != 4 || counts[0].Task.ID != "a" || counts[0].Downstream != 2 || counts[1].Task.ID != "b" || counts[1].Downstream != 1 {
-		t.Fatalf("bottlenecks = %#v", counts)
+	if len(counts) != 2 || counts[0].Task.ID != "b" || counts[0].Downstream != 1 || counts[1].Task.ID != "a" || counts[1].Downstream != 1 {
+		t.Fatalf("bottlenecks = %#v, want the direct-dependency holders b and a", counts)
 	}
 
 	planFinish(t, store, "a", "worker", "a delivered")
 	counts = store.Bottlenecks(0)
-	if len(counts) != 3 || counts[0].Task.ID != "b" || counts[0].Downstream != 1 {
-		t.Fatalf("bottlenecks after a completed = %#v, want b first with one downstream", counts)
+	if len(counts) != 1 || counts[0].Task.ID != "b" || counts[0].Downstream != 1 {
+		t.Fatalf("bottlenecks after a completed = %#v, want only b", counts)
 	}
 	if one := store.Bottlenecks(1); len(one) != 1 || one[0].Task.ID != "b" {
 		t.Fatalf("bounded bottlenecks = %#v, want only b", one)
 	}
 }
 
-// KNOWN FAILURE AGAINST THE STORE AS IT STANDS — a deliberate failing-shape
-// test, not a wrong expectation. The store's own contract says CriticalPath
-// answers the longest chain of hard dependencies, upstream first. Its walk
-// seeds only at the root, and no task may hold a hard dependency on the root
-// (the lineage rule refuses one), so children[root] is always empty and every
-// plan answers empty. This test is the shape that proves it; it goes green
-// when the walk seeds from tasks that actually have no hard upstream.
+// CriticalPath answers the longest chain of hard dependencies, upstream
+// first: the walk seeds from every task with no hard upstream and follows the
+// hard edges, so this plan's chain is a → b → c and `side`, which nothing
+// waits on, is not on it.
 func TestPlandbCliCriticalPathAnswersTheLongestChain(t *testing.T) {
 	store := planOpen(t, "")
 	a := planSpec("a", "A")
@@ -996,16 +1090,12 @@ func TestPlandbCliParallelSafeDefaultAndTheConflictsThatRemain(t *testing.T) {
 	}
 }
 
-// KNOWN FAILURES AGAINST THE STORE AS IT STANDS — deliberate failing-shape
-// tests, not wrong expectations. DESIGN.md promises that every
-// read-modify-write transaction takes the advisory flock and reloads the
-// file under it; changeTask and ClaimNext do exactly that, but AddMany,
-// AddNote, AddContext and Prune clone the handle's own memory and rename it
-// over the file with no lock and no reload. A second handle (or a second
-// process — this is the CLI's own road for add, split, note and context)
-// that wrote between this handle's load and its write is silently erased.
-// Each subtest proves one loss deterministically in process; they go green
-// when the writers take the same two locks changeTask takes.
+// Every read-modify-write transaction takes the advisory flock and reloads
+// the file under it — AddMany, AddNote, AddContext and Prune included, not
+// just changeTask and ClaimNext — so a second handle that wrote between this
+// handle's load and its write cannot be erased. The CLI's own road for add,
+// split, note and context is a separate process, so the writers lean on
+// exactly this; each subtest proves one road keeps the concurrent write.
 func TestPlandbCliWritesSurviveAnotherHandle(t *testing.T) {
 	t.Run("addmany", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "plan.json")

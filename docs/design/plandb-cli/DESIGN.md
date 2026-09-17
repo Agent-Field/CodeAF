@@ -97,13 +97,17 @@ What the adaptation changes, and why:
   a `<db>.lock` sidecar around load, change and atomic rename. The runtime's
   own writes go through the same lock, so the two roads cannot lose each
   other's updates.
-- **The lineage rule stays, and is a written divergence.** The rust concept
-  blurb says dependencies cross containment boundaries freely; the port
-  refuses a hard (non-`suggests`) dependency across a containment lineage,
-  because its readiness rule walks the parent chain and a cross-lineage hard
-  edge makes promotion and readiness disagree. `suggests` edges cross freely.
-  The doctrine's own commands never need a cross-lineage hard edge
-  (`deps_on` names siblings). Documented here as deliberate.
+- **Hard edges cross containment branches, and are a written divergence.**
+  Dependencies cross containment boundaries freely: a hard (non-`suggests`)
+  edge may join two tasks in different branches of the containment tree, which
+  is what the doctrine's "Use existing task IDs for cross-branch edges" line
+  teaches. The one hard edge still refused is between a task and its own
+  ancestor or descendant, because that edge would have a task wait on the
+  lineage that schedules it, and cycle detection runs over both graphs. The
+  readiness rule walks the parent chain: a task is ready when its own hard
+  dependencies are done **and** every ancestor's hard dependencies are done,
+  and promotion demotes a ready task back to pending whenever that stops
+  holding, so the two never disagree. `suggests` edges cross freely.
 
 ## The store's home
 

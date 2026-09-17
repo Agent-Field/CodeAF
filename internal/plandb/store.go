@@ -472,8 +472,10 @@ func (s *Store) Revise(id string, patch TaskPatch) (*Task, error) {
 }
 
 // AddDep adds one edge between two tasks. It is the CLI's `task add-dep`, and
-// the graph laws are asked of the whole result: a cross-lineage hard edge or
-// a cycle refuses the edge rather than corrupting the plan.
+// the graph laws are asked of the whole result: a hard edge between a task and
+// its own ancestor or descendant, or an edge that closes a cycle, refuses the
+// edge rather than corrupting the plan. A hard edge between two branches of
+// the containment tree is allowed.
 func (s *Store) AddDep(downstream, upstream string, kind DepKind) (*Task, error) {
 	if kind == "" {
 		kind = DepFeedsInto
@@ -492,12 +494,35 @@ func (s *Store) AddDep(downstream, upstream string, kind DepKind) (*Task, error)
 			return err
 		}
 		// A ready task that has just gained a hard dependency is not runnable
-		// now, and "ready" must mean runnable now — so it falls back to pending
-		// and promote() re-raises it when the new upstream finishes. Claimed and
-		// running work stays where it is: a task mid-flight cannot be re-scoped
-		// out from under its worker by a later edge.
-		if task.Status == StatusReady && !depsDone(*next, task) {
-			task.Status = StatusPending
+		// now, and the same is true for every descendant whose ancestor gained
+		// one. promote() owns that demotion — readiness is its law, both halves
+		// of it — so a new edge only has to state itself and then promote.
+		// Claimed and running work stays where it is: a task mid-flight cannot
+		// be re-scoped out from under its worker by a later edge.
+		task.UpdatedAt = now
+		promote(next, now)
+		return nil
+	})
+}
+
+// RemoveDep removes one hard edge between two tasks — the insert verb's
+// rewire, which replaces a direct edge with a path through a new task. It is
+// a graph law like AddDep: the whole plan is asked after the edge is gone,
+// and readiness is recomputed, because lifting an edge can make the downstream
+// task runnable. Removing an edge that is not there is not an error: a rewire
+// asked twice is the same plan.
+func (s *Store) RemoveDep(downstream, upstream string) (*Task, error) {
+	return s.changeTask(downstream, func(next *state, task *Task, now time.Time) error {
+		kept := make([]Dependency, 0, len(task.Dependencies))
+		for _, dep := range task.Dependencies {
+			if dep.TaskID == upstream {
+				continue
+			}
+			kept = append(kept, dep)
+		}
+		task.Dependencies = kept
+		if err := validateGraphs(*next); err != nil {
+			return err
 		}
 		task.UpdatedAt = now
 		promote(next, now)
@@ -844,28 +869,40 @@ func (s *Store) CriticalPath() []*Task {
 	return path
 }
 
-// Bottlenecks answers the unfinished tasks whose completion unlocks the most
-// downstream work, most first, bounded by the caller's limit.
+// Bottlenecks answers the unfinished tasks that hold up the most work right
+// now, most first, bounded by the caller's limit. The count is the tasks that
+// hard-depend on it DIRECTLY — the work one completion unblocks at once — not
+// the transitive reach: a task three removes downstream is not waiting on this
+// one, it is waiting on the task in between. A task nothing hard-depends on
+// holds up nothing and is left out, and equal counts order by descending id.
 func (s *Store) Bottlenecks(limit int) []BlockedCount {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if limit <= 0 || limit > 50 {
 		limit = 5
 	}
+	direct := map[string]int{}
+	for _, task := range s.data.Tasks {
+		for _, dep := range task.Dependencies {
+			if dep.Kind == DepSuggests {
+				continue
+			}
+			direct[dep.TaskID]++
+		}
+	}
 	var counts []BlockedCount
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
-		if task.ID == s.data.RootID || terminal(task.Status) {
+		if task.ID == s.data.RootID || terminal(task.Status) || direct[task.ID] == 0 {
 			continue
 		}
-		downstream := reachable(s.data, task.ID, false)
-		counts = append(counts, BlockedCount{Task: cloneTask(task), Downstream: len(downstream)})
+		counts = append(counts, BlockedCount{Task: cloneTask(task), Downstream: direct[task.ID]})
 	}
 	sort.SliceStable(counts, func(i, j int) bool {
 		if counts[i].Downstream != counts[j].Downstream {
 			return counts[i].Downstream > counts[j].Downstream
 		}
-		return counts[i].Task.ID < counts[j].Task.ID
+		return counts[i].Task.ID > counts[j].Task.ID
 	})
 	if len(counts) > limit {
 		counts = counts[:limit]
@@ -1099,13 +1136,15 @@ func validateGraphs(value state) error {
 	}); err != nil {
 		return fmt.Errorf("containment graph: %w", err)
 	}
-	// THE LINEAGE RULE IS A WRITTEN DIVERGENCE. The rust CLI's concept blurb
-	// says dependencies cross containment boundaries freely; this store refuses
-	// a HARD edge across a lineage because its readiness walks the parent
-	// chain and a cross-lineage hard edge makes promotion and readiness two
-	// different words for the same question. `suggests` crosses freely, and
-	// the doctrine's split grammar (deps_on names siblings) never needs the
-	// hard form across lineages.
+	// THE LINEAGE RULE IS A WRITTEN DIVERGENCE, AND IT IS NARROW. A hard
+	// (non-`suggests`) edge may join two tasks in different branches of the
+	// containment tree: the readiness walk climbs the parent chain, so a
+	// cross-branch edge gates the frontier like any other and promotion and
+	// readiness still agree. The one hard edge refused is between a task and
+	// its own ancestor or descendant, because that edge would have a task wait
+	// on the lineage that schedules it. `suggests` crosses freely, and cycle
+	// detection above runs over both graphs, so a cross-branch edge that would
+	// close a loop is refused too.
 	for _, task := range value.Tasks {
 		for _, dep := range task.Dependencies {
 			if dep.Kind == DepSuggests {
@@ -1147,10 +1186,24 @@ func detectCycle(value state, edges func(*Task) []string) error {
 	return nil
 }
 
+// promote brings the ready frontier up to the truth of the graph after any
+// change. It is the ONE definition of who is ready, in both directions: a
+// pending task whose dependencies are all done becomes ready, and — the half
+// the ancestor rule needs — a ready task that no longer satisfies that rule
+// falls back to pending. Readiness and promotion cannot disagree, because
+// both are asked of depsDone here: `ready` always means "this task's own hard
+// dependencies and every ancestor's hard dependencies are done", and never
+// the memory of a moment when that was last true.
 func promote(value *state, now time.Time) {
 	changed := true
 	for changed {
 		changed = false
+		for _, id := range value.Order {
+			task := value.Tasks[id]
+			if task.Status == StatusReady && !depsDone(*value, task) {
+				task.Status, task.UpdatedAt, changed = StatusPending, now, true
+			}
+		}
 		for _, id := range value.Order {
 			task := value.Tasks[id]
 			if task.Status == StatusPending && depsDone(*value, task) {
@@ -1484,34 +1537,6 @@ func oneOf(value string, allowed ...string) bool {
 		}
 	}
 	return false
-}
-
-// reachable answers the tasks that (hard-)depend on id, directly or through
-// others. blocked=true follows the dependents of a cancelled task; false
-// follows what becomes ready when it completes.
-func reachable(value state, id string, _ bool) []string {
-	var out []string
-	seen := map[string]bool{id: true}
-	queue := []string{id}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		for _, task := range value.Tasks {
-			if seen[task.ID] {
-				continue
-			}
-			for _, dep := range task.Dependencies {
-				if dep.Kind == DepSuggests || dep.TaskID != current {
-					continue
-				}
-				seen[task.ID] = true
-				out = append(out, task.ID)
-				queue = append(queue, task.ID)
-				break
-			}
-		}
-	}
-	return out
 }
 
 // searchTerms splits a query into lowercase words worth matching. Punctuation
