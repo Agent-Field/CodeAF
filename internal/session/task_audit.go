@@ -2774,7 +2774,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	if err := node.claimSettle(claimAccept); err != nil {
 		return err
 	}
-	defer node.releaseSettle()
+	defer node.releaseSettle(claimAccept)
 	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
 		return err
@@ -2838,7 +2838,7 @@ func (a *Agent) refuteTask(node *TaskNode, why string, by TaskAskOwner) error {
 	if err := node.claimSettle(claimRefute); err != nil {
 		return err
 	}
-	defer node.releaseSettle()
+	defer node.releaseSettle(claimRefute)
 	// The same fact in the negative, and it is evidence of exactly the same
 	// weight: a person doing the check's job and finding the work does not hold.
 	node.checkSaid(provider.ReadingSemanticFailure, 0)
@@ -2886,13 +2886,13 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	listed, err := a.jobs.startTask(node.id, "re-audit · "+node.title(), cancel)
 	if err != nil {
 		cancel()
-		node.releaseSettle()
+		node.releaseSettle(claimReaudit)
 		return fmt.Errorf("the re-audit could not be started: %w — accept it or refute it instead", err)
 	}
 	_, changed, _, _ := node.leavings()
 	go func() {
 		defer cancel()
-		defer node.releaseSettle()
+		defer node.releaseSettle(claimReaudit)
 		defer listed.settle(0)
 		// The node supplies its worker's kept conclusion at the common check
 		// boundary. No earlier checker's decision is passed as a claim.
@@ -2905,10 +2905,11 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 			// AND THE QUESTION IS HANDED BACK, not held down: a notice built
 			// while the claim stands carries it and would suppress the raise
 			// (task_landing_question.go's [Agent.publishLandingQuestion]), so
-			// the release comes first and the deferred one below is the no-op.
-			// The re-raised card carries the answer's fate — `asked for a
-			// re-check 18:20 · nobody could check it` (#1077).
-			node.releaseSettle()
+			// the release comes first and the deferred one below finds nothing
+			// of its own left to release. The re-raised card carries the
+			// answer's fate — `asked for a re-check 18:20 · nobody could check
+			// it` (#1077).
+			node.releaseSettle(claimReaudit)
 			a.emitTaskUpdate(node.notice())
 			return
 		}

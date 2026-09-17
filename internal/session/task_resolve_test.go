@@ -201,7 +201,7 @@ func TestAResolutionRefusesWhileAnotherIsInFlight(t *testing.T) {
 		}
 	}
 	// And once it is handed back, the same answer goes through.
-	node.releaseSettle()
+	node.releaseSettle(claimReaudit)
 	if err := agent.ResolveUnverified(node.id, TaskRefute, "not finished"); err != nil {
 		t.Fatalf("refuting a node nobody holds failed: %v", err)
 	}

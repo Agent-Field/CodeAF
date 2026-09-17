@@ -2079,14 +2079,15 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	// [TaskNotice.Settling], which is what lets the terminal notice of an
 	// accept or a re-audit still raise the node's question with the answer's
 	// fate on it. Every caller also defers its own release, and that release
-	// is an idempotent no-op.
+	// hands back only its own claim's words ([TaskNode.releaseSettle]) — a
+	// settle another window started in the gap after this clear keeps its
+	// claim, and the deferred release is not that claim's to wipe.
 	//
 	// THE ROUND'S CLAIM IS NOT THIS CLAIM'S TO CLEAR. A merge round's flag
 	// survives the resettle ([TaskNode.claimResolving] clears it only when the
 	// round itself hands it back): the round may still be running under this
 	// settle, and wiping its guard would un-guard its door mid-flight. The
-	// settle's own release is the no-op above; the round's own defer is what
-	// lets it go.
+	// round's own defer is what lets it go.
 	node.settling = ""
 	g.mu.Unlock()
 
@@ -3225,9 +3226,15 @@ func (n *TaskNode) claimSettle(what string) error {
 	return nil
 }
 
-func (n *TaskNode) releaseSettle() {
+func (n *TaskNode) releaseSettle(what string) {
+	// ONLY ITS OWN CLAIM. The claim may already have been handed back by the
+	// resettle ([TaskGraph.resettle]), and a settle another window started in
+	// the gap owns the field now — wiping it would un-guard that window's
+	// working copy mid-flight, exactly what the claim exists to prevent.
 	n.graph.mu.Lock()
-	n.settling = ""
+	if n.settling == what {
+		n.settling = ""
+	}
 	n.graph.mu.Unlock()
 }
 
