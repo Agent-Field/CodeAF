@@ -269,7 +269,9 @@ func (r *runner) runDoDoor(iv invocation, cellDef cell, fixtureDir, homeDir stri
 		Model: iv.Model, ModelsUsed: reading.modelsUsedLine(),
 		Graded: g.Pass, GradeDetail: g.Detail,
 		Ending: reading.Ending, Report: firstLine(env.Answer),
-		Steps: reading.Steps, CostUSD: reading.CostUSD, Unbilled: reading.Unbilled,
+		Steps: reading.Steps, Calls: reading.Calls,
+		InputTokens: reading.InputTokens, OutputTokens: reading.OutputTokens,
+		CostUSD: reading.CostUSD, Unbilled: reading.Unbilled,
 		WallSeconds: wallRead, WallSource: wallFrom,
 		ChangedFiles: reading.ChangedFiles,
 		ChildrenDone: reading.ChildrenDone, ChildrenTotal: reading.ChildrenTotal,
@@ -346,15 +348,21 @@ func applyStoreReadings(reading *readings, dbPath string) error {
 	}
 	defer db.Close()
 
-	// The ledger: every priced row of the run's own home.
-	var cost float64
+	// The ledger: every priced row of the run's own home, with the calls and
+	// tokens behind the cost — the same per-call figures the task door's
+	// v3/usage.jsonl sums, read from the store's own usage table.
+	var cost, input, output float64
 	var unbilled, calls int
 	err = db.QueryRow(`select coalesce(sum(cost), 0),`+
 		` sum(case when cost = 0 and prompt_tokens + completion_tokens > 0 then 1 else 0 end),`+
-		` count(*) from usage`).Scan(&cost, &unbilled, &calls)
+		` count(*), coalesce(sum(prompt_tokens), 0), coalesce(sum(completion_tokens), 0) from usage`).
+		Scan(&cost, &unbilled, &calls, &input, &output)
 	if err == nil {
 		reading.CostUSD = cost
 		reading.Unbilled = unbilled
+		reading.Calls = calls
+		reading.InputTokens = int(input)
+		reading.OutputTokens = int(output)
 		models, mErr := readStoreModels(db)
 		if mErr == nil {
 			reading.ModelsUsed = models
