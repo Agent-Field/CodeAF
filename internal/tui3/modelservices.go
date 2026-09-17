@@ -868,10 +868,12 @@ func (a *app) moveConversationOrDefer(id, written string) {
 		a.modelServiceFollowup(deferredMoveWord(written))
 		return
 	}
-	if id == "" || id == strings.TrimSpace(a.model) {
-		return
+	// Routing folds case, so an id differing from the running model only in
+	// case is the same pick — the deferred guard above already compares with
+	// EqualFold, and the idle road does too.
+	if !strings.EqualFold(id, strings.TrimSpace(a.model)) {
+		a.moveConversationToConnectedModel(id)
 	}
-	a.moveConversationToConnectedModel(id)
 }
 
 func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
