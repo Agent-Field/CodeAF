@@ -7182,7 +7182,7 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // has come back ([nodeMemory]). No store, no reflex, or a router that answered
 // nothing: the node opens with exactly the prompt it always did.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
-	return a.newTaskAgentOn(ctx, dir, node, suffix, "")
+	return a.newTaskAgentOn(ctx, dir, node, suffix, "", false)
 }
 
 // newTaskAgentOn is [Agent.newTaskAgent] with the model said outright, and it
@@ -7195,7 +7195,13 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 // is recorded as a bill rather than as a retarget — a repair round is one worker
 // among several a node takes, and a node whose row started naming the repair's
 // model would be telling a person their work moved when it did not.
-func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string) (*Agent, error) {
+// AND `repair` IS THE CALLER SAYING WHICH KIND OF WORKER THIS IS, not something
+// read off the model. It seats the round's usage rows high ([Agent.agentKind]),
+// and it is stated rather than inferred from a named model because the two come
+// apart: the cascade may floor to the model the work is already on, and a node
+// that was admitted without an id has nothing to name at all — both of which
+// would leave a round the ladder really did lift billing as ordinary work.
+func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string, repair bool) (*Agent, error) {
 	// The model it is ACTUALLY on rather than the id it was admitted with, so a
 	// second worker built for a node that was moved is built for where the node
 	// now is ([TaskNode.runOn]). They are the same string for every node nothing
@@ -7389,13 +7395,12 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// node hears about it while it happens: a card that would otherwise show
 		// a task working says it is waiting instead.
 		pacing: node.pacing,
-		// AND A NAMED MODEL IS THE REPAIR ROUND, which is the one thing this
-		// builder's only caller with a model says (task_audit.go's
-		// [Agent.repairNode]). The marker is what seats the round's rows high
-		// ([Agent.agentKind]); the crew role is deliberately left unset, because
-		// a round is a leaf's turns of work and erranding its lane role would
-		// re-price every call in it.
-		repairRound: on != "",
+		// AND THE REPAIR ROUND SAYS SO, from the caller that knows it is one
+		// (task_audit.go's [Agent.repairNode]). The marker is what seats the
+		// round's rows high ([Agent.agentKind]); the crew role is deliberately
+		// left unset, because a round is a leaf's turns of work and erranding
+		// its lane role would re-price every call in it.
+		repairRound: repair,
 		// AND THE NODE'S PULSE TRAVELS THE SAME WAY, for the same reason: the
 		// checker and each repair round are the same NODE working, so a reader
 		// outside the process must see one heartbeat across all of them rather

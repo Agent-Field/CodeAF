@@ -1572,7 +1572,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// through the rounds this is, and what the check said that sent it back.
 	defer a.enterPhase(node, taskBeatRepairing, round, a.config.TaskRepairRounds, taskFindingLine(verdict.evidence))()
 
-	child, err := a.newTaskAgentOn(ctx, taskGroundDir(node, tree), node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
+	child, err := a.newTaskAgentOn(ctx, taskGroundDir(node, tree), node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift), true)
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""
