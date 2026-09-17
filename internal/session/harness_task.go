@@ -521,6 +521,24 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 		_ = child.Close()
 		a.foldTaskUsage(node, child)
 	}()
+	// ── THE NURSERY LAW, ON THE ROAD workTaskNode DOES NOT COVER ──
+	//
+	// REGISTERED AFTER THE CLOSE ABOVE SO THE STOP RUNS BEFORE IT (defers unwind
+	// in reverse), and the order is the whole point. This thread is not a leaf: it
+	// is built by [Agent.newTaskAgent] with the family's graph and its depth, so it
+	// carries propose_task and tasks on its belt and can own parts. A part's job row
+	// lives in its OWNER'S registry, and [child.Close] reaches every part still
+	// running through [jobRegistry.shutdown], which cuts a task job's context
+	// without marking it stopped ([job.signal] takes the `stop` handle and never the
+	// explicit one only [jobRegistry.kill] calls). A part cut that way reads its own
+	// cancel as A PROCESS QUITTING and lands on the "paused — it resumes" road with
+	// no ending and no recovery coming — exactly the shape [Agent.workTaskNode]'s
+	// guard exists to forbid, which is why it too stops its children while the
+	// worker they belong to is still open. So the parts are stopped HERE, on every
+	// road out of this function, before the thread is closed: [TaskGraph.stopChildren]
+	// marks each one before it cuts it, and the ordinary road, where every part
+	// already settled, finds nothing to do.
+	defer node.graph.stopChildren(node.id)
 	room := node.openRoom()
 	// THE LANE IS TAKEN BEFORE ANYBODY CAN BE IN THE ROOM, and only the draining
 	// of it is handed to a goroutine. Subscribing inside the pump would leave a
