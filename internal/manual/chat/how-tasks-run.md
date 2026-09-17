@@ -1043,7 +1043,7 @@ carries the whole of that final message — read back off the task's own journal
 When a task's work does come home, the paths it wrote are staged by name — never
 `git add -A`, and never `.codeaf` or its former `.aforge-v3` spelling — then committed on its own branch as <!-- legacy-name -->
 `task: <first line of title, at most 72 chars>` with the identity
-`codeaf <codeaf@localhost>`, then merged into an ordinary branch with `git merge --no-edit`.
+`codeaf <agentfield-bot@users.noreply.github.com>`, then merged into an ordinary branch with `git merge --no-edit`.
 A checkout on a protected branch, on a different branch than when the work was cut, on the
 same branch at a commit the person moved after the cut, or detached, is left alone and the
 task branch is kept instead. Commits written by codeaf's own landings do not count as the

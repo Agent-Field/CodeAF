@@ -172,7 +172,7 @@ func newOwnedPlace(t *testing.T) (Place, string) {
 		t.Fatal(err)
 	}
 	mustGit(t, work, "init")
-	mustGit(t, work, "-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost",
+	mustGit(t, work, "-c", "user.name=codeaf", "-c", "user.email=agentfield-bot@users.noreply.github.com",
 		"commit", "--allow-empty", "-m", "session opened")
 	return Place{Dir: dir, Workspace: work, Owned: true}, work
 }

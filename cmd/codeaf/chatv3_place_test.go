@@ -65,7 +65,7 @@ func TestAnOwnedWorkspaceOpensAsARepositoryWithACommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git log: %v", err)
 	}
-	if got, want := strings.TrimSpace(subject), "session opened|codeaf|codeaf@localhost"; got != want {
+	if got, want := strings.TrimSpace(subject), "session opened|codeaf|agentfield-bot@users.noreply.github.com"; got != want {
 		t.Fatalf("first commit = %q, want %q", got, want)
 	}
 }

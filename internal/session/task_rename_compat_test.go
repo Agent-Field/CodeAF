@@ -11,10 +11,26 @@ import (
 // H5: task commits are authored with the current product name and address.
 func TestH5TaskCommitIdentityUsesTheCurrentName(t *testing.T) {
 	got := strings.Join(codeafGitIdentity(), " ")
-	for _, want := range []string{"user.name=codeaf", "user.email=codeaf@localhost"} {
+	for _, want := range []string{"user.name=codeaf", "user.email=agentfield-bot@users.noreply.github.com"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("identity %q does not contain %q", got, want)
 		}
+	}
+	// The author is the bot account — the same identity the Co-Authored-By
+	// trailer names — and BOTH addresses codeaf once committed with stay
+	// recognised as its own: a landing that forgot one would read old task work
+	// as a person's intervening movement and refuse to land.
+	for _, pair := range [][2]string{
+		{codeafGitName, codeafGitEmail},
+		{legacyBotGitName, legacyBotGitEmail},
+		{legacyCodeafGitName, legacyCodeafGitEmail},
+	} {
+		if !taskCommitIdentity(pair[0], pair[1]) {
+			t.Fatalf("taskCommitIdentity(%q, %q) = false, want true", pair[0], pair[1])
+		}
+	}
+	if taskCommitIdentity("person", "person@example.invalid") {
+		t.Fatal("taskCommitIdentity accepted a person's identity")
 	}
 }
 
@@ -149,6 +165,11 @@ func TestH5LegacyTaskCommitIsStillOurs(t *testing.T) {
 		"commit", "-m", "task work")
 	if branchMovedByPerson(repo, branch, recorded) {
 		t.Fatal("legacy-authored task commit was treated as a person's movement")
+	}
+	mustGit(t, repo, "-c", "user.name="+legacyBotGitName, "-c", "user.email="+legacyBotGitEmail,
+		"commit", "--allow-empty", "-m", "pre-bot task work")
+	if branchMovedByPerson(repo, branch, recorded) {
+		t.Fatal("pre-bot task commit was treated as a person's movement")
 	}
 	mustGit(t, repo, "-c", "user.name=person", "-c", "user.email=person@example.invalid",
 		"commit", "--allow-empty", "-m", "person moved it")

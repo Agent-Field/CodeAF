@@ -99,7 +99,7 @@ func initOwnedRepository(work string) error {
 		return err
 	}
 	if _, err := gitIn(work,
-		"-c", "user.name=codeaf", "-c", "user.email=codeaf@localhost",
+		"-c", "user.name=codeaf", "-c", "user.email=agentfield-bot@users.noreply.github.com",
 		"commit", "--allow-empty", "--no-verify", "--quiet", "-m", "session opened",
 	); err != nil {
 		return err

@@ -90,6 +90,12 @@ func TestALandedCommitCarriesTheTrailer(t *testing.T) {
 	if subject := strings.SplitN(body, "\n", 2)[0]; strings.Contains(subject, "codeaf <") {
 		t.Fatalf("the subject carries the signature: %q", subject)
 	}
+	// AND THE AUTHOR IS THE BOT ACCOUNT. The trailer is provenance on top; the
+	// author line is the identity sibling landings read (task_branch_protection.go),
+	// so it must be the current task identity, not the person at the machine.
+	if got := strings.TrimSpace(gitOut(t, tree.dir, "log", "-1", "--format=%an|%ae")); got != codeafGitName+"|"+codeafGitEmail {
+		t.Fatalf("the landed commit is authored %q, want %q|%q", got, codeafGitName, codeafGitEmail)
+	}
 }
 
 // AND A COMMIT MADE FOR SOMEBODY WHO SAID NO CARRIES NOTHING. The row off is not
@@ -107,6 +113,11 @@ func TestALandedCommitIsUnsignedWhenTheRowIsOff(t *testing.T) {
 	}
 	if body := gitOut(t, tree.dir, "log", "-1", "--format=%B"); strings.Contains(body, "agentfield-bot") {
 		t.Fatalf("attribution is off and the commit is signed anyway:\n%s", body)
+	}
+	// The row off removes the trailer, not the author: the landing is still the
+	// task system's own work, so it still carries the task identity.
+	if got := strings.TrimSpace(gitOut(t, tree.dir, "log", "-1", "--format=%an|%ae")); got != codeafGitName+"|"+codeafGitEmail {
+		t.Fatalf("the unsigned commit is authored %q, want %q|%q", got, codeafGitName, codeafGitEmail)
 	}
 }
 
