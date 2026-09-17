@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -858,5 +858,77 @@ func TestPlandbCliTheBeltAndPageFollowTheSwitch(t *testing.T) {
 	waitDoneNode(t, ground.graph().node(id))
 	if _, err := os.Stat(filepath.Join(dir, planStoreFilename)); !os.IsNotExist(err) {
 		t.Fatalf("a session outside the experiment seeded a store: %v", err)
+	}
+}
+
+// THE SHIM RIDES THE COMMAND, NOT THE PROCESS. Arming writes the shim and
+// leaves the process environment exactly where it was — the process PATH is
+// shared by every session in this process, and one that grew by a directory
+// per plan would never shrink and would leak into conversations that never
+// asked for a plan. What carries the directory instead is a PATH assignment
+// prefixed to each bash command the belt runs ([Agent.planCommandArgs]), and
+// the belt's own hand resolves the shim through it. The override wins unprobed
+// (resolvePlanCLI), so a stub is all the CLI the arming needs here.
+func TestPlandbShimRidesTheCommandNotTheProcessPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	stub := filepath.Join(t.TempDir(), "stub-codeaf")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(planCLIBinEnv, stub)
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, bashBeltWorkerConfig(t))
+	g := agent.graph()
+	dir := t.TempDir()
+	plan := &planState{path: filepath.Join(dir, planStoreFilename)}
+	before := os.Getenv("PATH")
+	g.planMu.Lock()
+	err := plan.armShim()
+	g.planMu.Unlock()
+	if err != nil {
+		t.Fatalf("the shim did not arm: %v", err)
+	}
+	g.planMu.Lock()
+	g.plan = plan
+	g.planMu.Unlock()
+	if after := os.Getenv("PATH"); after != before {
+		t.Fatalf("arming moved the process PATH: %q became %q", before, after)
+	}
+
+	// THE BELT'S OWN BASH RESOLVES THE SHIM. The command the model named is
+	// prefixed with the assignment at the wrapper, and `command -v` performs
+	// its lookup under the PATH the command itself was given.
+	var bash bare.Tool
+	for _, tool := range agent.beltTools() {
+		if tool.Name == "bash" {
+			bash = tool
+			break
+		}
+	}
+	if bash.Name != "bash" {
+		t.Fatal("the belt carries no bash hand")
+	}
+	text, failed, err := bash.Execute(context.Background(), json.RawMessage(`{"command":"command -v plandb"}`))
+	if err != nil || failed {
+		t.Fatalf("the belt's bash failed: %q failed=%v err=%v", text, failed, err)
+	}
+	want := filepath.Join(dir, "bin", "plandb")
+	if !strings.Contains(text, want) {
+		t.Fatalf("command -v plandb answered %q, want the armed shim %q", text, want)
+	}
+
+	// AND THE CONVERSATION'S BASH CARRIES NO PREFIX. The graph is the
+	// conversation's, shared with every node it admits, so an armed plan is
+	// visible from a belt the experiment never composed — and the belt gate,
+	// not the armed plan, is what keeps the person's own shell free of it.
+	if got := agent.planCommand("plandb status"); !strings.HasPrefix(got, "PATH=") {
+		t.Fatalf("the belt worker's command carries no shim prefix: %q", got)
+	}
+	plain, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.tasker = g
+	})
+	if got := plain.planCommand("plandb status"); got != "plandb status" {
+		t.Fatalf("the conversation's command was rewritten to %q, want it unchanged", got)
 	}
 }

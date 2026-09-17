@@ -509,15 +509,17 @@ func planBrief(task *plandb.Task, agent string, role planRole) string {
 	return b.String()
 }
 
-// armShim writes the session's `plandb` shim and puts its directory first on
-// the PATH, once. THE SHIM IS WHY THE PAGE CAN SAY `plandb` PLAINLY: the
-// plandb that lives on this machine's PATH is a different store, and a worker
-// that reached it would write a plan the runtime could not read. The shim
-// execs the CLI the resolver reached (resolvePlanCLI), so the page's one word
-// always names the CLI this run shares. Prepending the PATH is safe where
-// pointing an environment variable at one store would not be: every shim is
-// the same CLI, and the store a call binds to is found by walking up from the
-// caller's own working directory.
+// armShim writes the session's `plandb` shim, once. THE SHIM IS WHY THE PAGE
+// CAN SAY `plandb` PLAINLY: the plandb that lives on this machine's PATH is a
+// different store, and a worker that reached it would write a plan the runtime
+// could not read. The shim execs the CLI the resolver reached
+// (resolvePlanCLI), so the page's one word always names the CLI this run
+// shares. It does NOT touch the process environment: the shim's directory
+// travels to the commands that need it as a prefix on each command string
+// ([planBashPrefix]), because a process PATH is shared by every session in
+// this process — one that grew by a directory per session would never shrink,
+// would leak into conversations that never asked for a plan, and would keep
+// pointing at a directory a sweep could take away.
 //
 // IT ANSWERS WHY IT COULD NOT, and the seed records that in the session's own
 // log (planNote): a plan whose shim never landed is a plan whose workers miss
@@ -548,14 +550,40 @@ func (p *planState) armShim() error {
 		}
 	}
 	p.shimmed = true
-	path := os.Getenv("PATH")
-	for _, part := range strings.Split(path, string(os.PathListSeparator)) {
-		if part == bin {
-			return nil
-		}
-	}
-	_ = os.Setenv("PATH", bin+string(os.PathListSeparator)+path)
 	return nil
+}
+
+// shimDir is the directory the armed shim lives in — beside the store, the
+// one place both the walk-up and the belt's prefix agree on. Empty while the
+// shim never armed: a prefix into a directory that does not exist would
+// silently lose every plandb call instead of the one the arming already
+// recorded.
+func (p *planState) shimDir() string {
+	if !p.shimmed {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(p.path), "bin")
+}
+
+// planBashPrefix is the exported assignment that puts the shim's directory
+// FIRST on the PATH of ONE command — the assignment a bash-belt worker's
+// command is prefixed with, and the whole of the mechanism: the process
+// environment is never touched, and the shell expands $PATH inside the
+// assignment, so the command sees the shim first and everything else exactly
+// where the worker's own environment put it. The prefix is empty when this
+// run has no armed plan, which is every worker outside the experiment.
+func (g *TaskGraph) planBashPrefix() string {
+	plan := g.planIfArmed()
+	if plan == nil {
+		return ""
+	}
+	plan.mu.Lock()
+	defer plan.mu.Unlock()
+	bin := plan.shimDir()
+	if bin == "" {
+		return ""
+	}
+	return "PATH=" + quoteShWord(bin) + ":$PATH "
 }
 
 // planCLIBinEnv is the resolver's one override: it names a binary that
