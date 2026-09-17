@@ -89,13 +89,16 @@ const DefaultCrewSource = CrewSourceAll
 
 // crewModels is the open-weight table: one row per preset, one model per class.
 //
-// THE WORKER COLUMN IS THE DIAL. It climbs one step per preset —
-// glm-5.3-flash, glm-5.3-flash, glm-5.3 — because it is the seat that pays
+// THE WORKER COLUMN IS THE DIAL. It holds glm-5.3-flash through balanced, and
+// max is the preset that takes it to glm-5.3, because it is the seat that pays
 // most of a task's bill, and a preset that moved every other seat while leaving
 // it alone would change everything about a task except its cost. The careful
-// column always sees images (the vision role rides it). The reflex and low
-// columns never vary: they are the same near-free models in all three presets,
-// and a column that never varies is not a dial.
+// column always sees images (the vision role rides it) and is a second vendor
+// from balanced upward; frugal keeps worker and careful on the same
+// glm-5.3-flash, because at that bill the open-weight front has no second
+// vendor to take the careful seat. The reflex and low columns never vary: they
+// are the same near-free models in all three presets, and a column that never
+// varies is not a dial.
 //
 // HOW THE IDS WERE READ OFF, on 2026-09-16 and seat by seat. Every open-weight
 // row of the catalog was placed on two axes: the expected bill that seat's own
@@ -145,9 +148,10 @@ var crewModels = map[string]map[string]string{
 // crewAllModels is the same three presets answered from the whole catalog
 // rather than its open-weight shelf, which is what the `all` family of
 // [KeyCrewSource] draws from AND WHAT A PROFILE THAT HAS ANSWERED NOTHING
-// RESOLVES ([DefaultCrewSource]). The careful column is the same law here as
-// there: a DIFFERENT VENDOR from the worker in every preset, and the reflex
-// and low columns still never vary. Closed models live here and only here.
+// RESOLVES ([DefaultCrewSource]). The careful column is a DIFFERENT VENDOR
+// from the worker in every preset here — the open family's frugal row is the
+// one standing exception — and the reflex and low columns still never vary.
+// Closed models live here and only here.
 //
 // The ids come off the same plot [crewModels] describes, run on 2026-09-16 over
 // every row of the catalog rather than the open-weight ones: expected task bill

@@ -242,6 +242,25 @@ func TestThePresetAnAutoSeatRunsAtIsReadFromTheStoredRows(t *testing.T) {
 	if seat.Rung() != "crew "+CrewMax+", computed" {
 		t.Errorf("the rung reads %q, want crew max, computed", seat.Rung())
 	}
+	// And the tie itself, pinned: max's four other rows are balanced's, so the
+	// auto row on the worker reads the default preset — balanced wins it — and
+	// the worker runs at balanced's budget.
+	rows = map[string]string{KeyTierWorkerModel: AutoValue}
+	for _, tier := range ModelTiers {
+		if tier != ModelTierWorker {
+			rows[tierKeyFor(tier)] = models[tier]
+		}
+	}
+	dir = writeProfileRows(t, rows)
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	seat = TierSeatAt(dir, ModelTierWorker)
+	AutoModels = restore
+	if seat.Crew != CrewBalanced {
+		t.Errorf("max's rows with an auto worker read as %q, want balanced, the default preset", seat.Crew)
+	}
+	if seat.Rung() != "crew "+CrewBalanced+", computed" {
+		t.Errorf("the rung reads %q, want crew balanced, computed", seat.Rung())
+	}
 	// A profile with no auto row anywhere reads as it always read — the
 	// default rung, no crew word — which is the unchanged-behaviour law: the
 	// seam fires only on a row that says the word.
