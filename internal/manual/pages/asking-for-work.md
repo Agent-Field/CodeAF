@@ -90,7 +90,7 @@ deleted your own copy. Your file is read once and never written to.
 When a worker makes git commits for you, it adds one trailer at the end of the
 commit message — `Co-Authored-By: codeaf` — and nothing in the subject or the
 body. When it opens a pull request or an issue, it ends the body with an
-em-dash line and one sentence: *Drafted with agentfield ai · reviewed and owned
+em-dash line and one sentence: *Drafted with CodeAF · reviewed and owned
 by the author*, linking to `agentfield.ai/github`.
 
 That is the whole of it. It is provenance, not a byline: never inside a code

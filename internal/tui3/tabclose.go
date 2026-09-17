@@ -12,7 +12,7 @@ import (
 //
 // Taking a tab off the row has never ended work and does not now: the ✕ closes a
 // VIEW, the agent behind it goes on running, and the conversation is still on the
-// switcher `ctrl+k` opens (chattabs.go states that law and is the only place it is
+// switcher `alt+k` opens (chattabs.go states that law and is the only place it is
 // decided). What was missing was that a person could not SEE that this was what
 // happened, and could not ask for the other thing without leaving the tab row.
 //
@@ -22,7 +22,7 @@ import (
 //
 //	 ?  Close this tab? the tree walk is working · 2 tasks running
 //	      nothing here is deleted
-//	      1  keep running  it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+//	      1  keep running  it keeps going here; find it with alt+k, and ctrl+shift+t brings the tab back
 //	      2  stop work     the reply, tasks and jobs stop; nothing is deleted
 //	      3  cancel        nothing changes
 //	    [enter] take the pick · [esc] cancel · [←→] pick
@@ -180,7 +180,7 @@ const tabCloseReason = "nothing here is deleted"
 // one place the cursor's home is decided.
 func (a *app) tabCloseOptions(card *tabCloseCard) []session.AnswerOption {
 	return []session.AnswerOption{
-		{Key: "1", Label: tabCloseAnswers[tabCloseKeepAt], Safe: true, Consequence: tabCloseKeepSays},
+		{Key: "1", Label: tabCloseAnswers[tabCloseKeepAt], Safe: true, Consequence: a.chords.say(tabCloseKeepSays)},
 		{Key: "2", Label: tabCloseAnswers[tabCloseStopAt], Consequence: a.tabCloseStopSays(card)},
 		{Key: "3", Label: tabCloseAnswers[tabCloseCancelAt], Consequence: tabCloseCancelSays},
 	}
@@ -338,10 +338,38 @@ func (c *tabCloseCard) question() string {
 	return said
 }
 
-// tabCloseWork is what is running in this conversation, counted the way the quit
-// warning counts it so the two cannot disagree (quitarm.go).
-func (a *app) tabCloseWork(tab chatTab, here bool) quitWorkCount {
-	count := quitWorkCount{}
+// workCount is running work in one conversation: its nodes, and the background
+// jobs this surface can see for it.
+type workCount struct{ tasks, jobs int }
+
+// workCountWord spells one of those counts — "a task", "2 tasks and a job" —
+// and "" when there is nothing on it, which is the emptiness law said about a
+// clause.
+func workCountWord(count workCount) string {
+	var parts []string
+	if count.tasks > 0 {
+		parts = append(parts, workUnitWord(count.tasks, "task"))
+	}
+	if count.jobs > 0 {
+		parts = append(parts, workUnitWord(count.jobs, "job"))
+	}
+	return strings.Join(parts, " and ")
+}
+
+// workUnitWord spells one count the way a person would say it out loud: "a
+// task", "2 tasks". One is an ARTICLE rather than the digit, because "1 task
+// running" is a sentence written by a machine and this one is a warning
+// somebody reads on the way out of a conversation.
+func workUnitWord(n int, unit string) string {
+	if n == 1 {
+		return "a " + unit
+	}
+	return itoa(n) + " " + plural(unit, n)
+}
+
+// tabCloseWork is what is running in this conversation.
+func (a *app) tabCloseWork(tab chatTab, here bool) workCount {
+	count := workCount{}
 	if here {
 		for _, id := range a.taskOrder {
 			if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
@@ -360,8 +388,8 @@ func (a *app) tabCloseWork(tab chatTab, here bool) quitWorkCount {
 
 // tabCloseClauses spells that count for the card's first line, or "" when there
 // is nothing to spell — the emptiness law, said about a clause.
-func tabCloseClauses(count quitWorkCount) string {
-	if word := quitWorkWord(count); word != "" {
+func tabCloseClauses(count workCount) string {
+	if word := workCountWord(count); word != "" {
 		return word + " running"
 	}
 	return ""
@@ -381,7 +409,13 @@ func (a *app) tabCloseStopSays(card *tabCloseCard) string {
 const (
 	// tabCloseKeepSays names both ways back to a conversation whose tab has gone,
 	// because "where did it go" is the one question this answer raises.
-	tabCloseKeepSays   = "it keeps going here; find it under Chats, and " + reopenTabChord + " brings the tab back"
+	//
+	// IT NAMED `Chats` — the labelled control at the tab row's right end — until
+	// that control was deleted (chattabs.go), and a sentence pointing at furniture
+	// that is not on the screen any more is worse than no sentence at all. It
+	// names the KEY now, which is the door that actually opens the card, and it
+	// goes through [chordSpelling.say] at the point of use so a Mac reads `opt+k`.
+	tabCloseKeepSays   = "it keeps going here; find it with " + hopOpenKey + ", and " + reopenTabChord + " brings the tab back"
 	tabCloseCancelSays = "nothing changes"
 	// tabCloseStopSaysFloor is what `stop work` says on a conversation with
 	// nothing but a reply in flight. It is the floor [app.tabCloseStopSays]
@@ -400,7 +434,7 @@ func (a *app) tabCloseKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if msg.String() == "ctrl+c" {
-		// Leaving is never modal (quitarm.go), and the card goes on its way past.
+		// Leaving is never modal (leaving.go), and the card goes on its way past.
 		a.dropTabClose()
 		return nil, false
 	}

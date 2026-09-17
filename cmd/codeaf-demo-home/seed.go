@@ -115,7 +115,7 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	}
 	built.Nodes, built.Jobs = nodes, jobs
 
-	orders, err := writeStanding(filepath.Join(root, "v3", "standing"), projects, now)
+	orders, err := writeStanding(filepath.Join(root, "v3", "standing"), projects, ids, now)
 	if err != nil {
 		return built, err
 	}
@@ -134,8 +134,27 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	built.UsageLines = lines
 
 	built.Artifacts = writeArtifacts(filepath.Join(root, "v3", session.ArtifactsIndexName), projects, ids, now)
+
+	// AND THE MACHINE HAS BEEN LOOKED AT BEFORE, half a day ago.
+	//
+	// Without this stamp `since you left` draws its whisper on a fixture full of
+	// landed work, and correctly: the look stamp is the ORIGIN news is measured
+	// from, and a machine that has never had home closed on it has no origin —
+	// "the first look marks NOTHING as news, rather than everything"
+	// (internal/session's look.go). A demo home with no stamp is therefore a
+	// demo home where one of the seven panels can never have a row, which is the
+	// one thing this fixture exists to prevent.
+	//
+	// TWELVE HOURS IS THE FIGURE THE DESIGN DRAWS (`since you left · 12h`,
+	// docs/design/home-mission-control/DESIGN.md §1) and it is far enough back
+	// that the landed work and the made files above it are all inside the
+	// window.
+	session.NoteLook(filepath.Join(root, "v3", "projects"), now.Add(-demoLastLook))
 	return built, nil
 }
+
+// demoLastLook is how long ago this fixture's person last closed home.
+const demoLastLook = 12 * time.Hour
 
 // ── the projects ────────────────────────────────────────────────────────────
 

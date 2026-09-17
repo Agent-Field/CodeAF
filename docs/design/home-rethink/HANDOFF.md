@@ -44,6 +44,7 @@ comes back to the same home. It writes inside that directory and nowhere else �
 | memory | 12 memories over all three shelves in `graph.db`, with varied use and miss counts and one let go |
 | spend | ~57 lines over 14 days across three models, bound to conversations, work and standing orders — every id joins to a row that is really there |
 | search | every turn of every conversation in the message index |
+| home's `since you left` | a `.last-look` stamp twelve hours old under `v3/projects`, which is the ORIGIN news is measured from — without it that panel whispers on a fixture full of landed work, because a machine home has never been closed on has no origin and "the first look marks NOTHING as news" (`internal/session/look.go`) |
 | made for you | 3 deliverables, with the files behind them on the disk |
 
 ### The work one conversation still has out — the room, the jobs, the hostile names
@@ -110,6 +111,14 @@ disappear on the first launch.
 three heartbeats. So `--launch` runs a heartbeat beside the surface that restamps the rows
 the seeding wrote, for exactly as long as the demo is open (`beat.go`). Without it the two
 clauses vanish before anybody has finished reading the screen.
+
+**AND SO DOES HOME'S `running` PANEL, which is the reason this matters more than two
+clauses.** That panel is `Presence.Fresh(now)` and nothing else (`homepanel_running.go`),
+so a demo opened with a bare `HOME=<dir> bin/codeaf` shows it whispering however much work
+the fixture seeded — the rows are on disk and every reader has given up on them. Open the
+fixture through the seeder (`make demo-home DEMO_HOME=<dir> KEEP=1`, which is `--launch`)
+and the panel fills. A screenshot of the demo with an empty `running` is a screenshot of
+the missing heartbeat, not of the panel.
 
 `TestTheDemoHomeFillsEveryPlace` reads all of it back through `session.ReadWorld`,
 `session.Peek`, `session.ReadTaskIndex`, the standing store, `store.MemorySnapshot`,

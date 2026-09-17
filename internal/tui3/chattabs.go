@@ -20,10 +20,10 @@ import (
 // So the top of the frame is a HEADER PANEL, and the number of rows in it is
 // what page you are standing on:
 //
-//	 │ main ×│ the tree walk  │ chat three  │            Chats ▾    ← the tabs
+//	 │ main ×│ the tree walk  │ chat three  │ +                +2   ← the tabs
 //	 ────────────────────────────────────────────────────────────   ← the rule
 //
-//	 │ main ×│ the tree walk  │ chat three  │            Chats ▾    ← the tabs
+//	 │ main ×│ the tree walk  │ chat three  │ +                +2   ← the tabs
 //	 ─ main ▸ Ship the port ▸ Cut the goldens ──────── esc/← main ─  ← the trail
 //	 ─ ⠿ working · 2m 12s · $0.04 · 6 tool calls ───────── Stop ───  ← the facts
 //
@@ -55,7 +55,7 @@ import (
 // what the strip used to say. Dismissing a tab TAKES THE TAB OFF THE ROW and
 // does nothing else: the agent behind it goes on running, its draft, its caret
 // and its attachments are kept exactly where the person left them, and the
-// conversation is still on the switcher `ctrl+k` opens — which is where
+// conversation is still on the switcher `alt+k` opens — which is where
 // reopening it brings the tab, and the draft, back. Nothing on this row calls
 // [app.closeFront] or [app.closeKept], and nothing on it interrupts an agent.
 //
@@ -103,17 +103,23 @@ const (
 	// order it falls back on when it overflows, so the tab that goes is the one
 	// nobody has been in for longest.
 	tabsCap = 32
-	// tabsWord is the LABELLED control after the visible tabs, and the label is
-	// the whole point of it: a bare `▾` floating at the end of a row of words is
-	// a mark nobody can read as a door. It opens the switcher `ctrl+k` opens,
-	// showing every conversation on this machine rather than only the ones this
-	// window holds.
-	tabsWord = "Chats"
-	// tabMoreWord is the mark after that label, and tabHiddenLead leads the count
-	// of tabs the row could not spell. Both are decoration in front of the word:
-	// a narrow frame drops them in that order and keeps `Chats`, because the word
-	// is what says the control is a door.
-	tabMoreWord   = "▾"
+	// tabHiddenLead leads the count of tabs the row could not spell: `+3`.
+	//
+	// THERE USED TO BE A LABELLED CONTROL AROUND IT — `Chats ▾`, a door onto the
+	// switcher — AND IT IS DELETED. It was written when the switcher's chord was
+	// something a person had to already know about, and the row had nowhere on it
+	// that said the other conversations existed at all. Neither is true now: the
+	// legend under the box says `alt+k chats` wherever the card would open
+	// (render.go's [hopDoorWord]), in the person's own keyboard's spelling, which
+	// is a door that teaches the key rather than replacing it.
+	//
+	// WHAT SURVIVES IS THE COUNT, BECAUSE THE COUNT IS A FACT AND NOT A DOOR.
+	// `+3` says this row could not spell three of the tabs it has; deleting it
+	// with the button would put the strip back to claiming the window holds
+	// exactly what fits, which is the defect this whole header was built to fix.
+	// It is inert and drawn dim, exactly as it already was on a frame where the
+	// switcher could not open ([tabFold]) — a labelled control that opened
+	// nothing would be a door painted on a wall, and so would an unlabelled one.
 	tabHiddenLead = "+"
 )
 
@@ -166,14 +172,11 @@ const (
 	// press aimed at it can never be read as a press aimed at the label beside
 	// it (hover.go's law: what lights is exactly what the press acts on).
 	tabClose
-	// tabMore is the labelled control after the tabs — the switcher, and the
-	// count of what the row could not spell.
-	tabMore
-	// tabFold is that same count on a frame where the switcher cannot open. It
-	// is drawn WITHOUT the `Chats` word and does nothing, exactly as the trail's
-	// own `…` is inert when everything it hides is (roomcrumbs.go's law 4): a
-	// count is a fact and stays true, while a labelled control that opened
-	// nothing would be a door painted on a wall.
+	// tabFold is the count of what the row could not spell, and it is the ONLY
+	// thing after the tabs now. It does nothing, exactly as the trail's own `…`
+	// is inert when everything it hides is (roomcrumbs.go's law 4): a count is a
+	// fact and stays true, while a control that opened something would be a
+	// second door onto a card the legend already names a key for.
 	tabFold
 	tabNew
 	tabHome
@@ -198,7 +201,7 @@ func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
 		return a.roomOpen() || a.startingChat()
-	case tabOther, tabClose, tabMore, tabNew, tabHome, tabScrollLeft, tabScrollRight:
+	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight:
 		return true
 	}
 	return false
@@ -604,12 +607,13 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 		}
 	}
 	sepW := ansi.StringWidth(a.tabSepWord())
-	// The controls are reserved BEFORE the fitting, because a control squeezed in
-	// afterwards would be a control drawn over the last tab's own cells. What it
-	// asks for is the widest spelling it could want; what it gets is decided
-	// again once the tabs have taken their share ([app.tabsMoreWord]).
+	// The count is reserved BEFORE the fitting, because a figure squeezed in
+	// afterwards would be a figure drawn over the last tab's own cells. What it
+	// asks for is the widest it could want — every tab but the one in front
+	// hidden — and a row that spells every tab gives the reservation back
+	// ([app.tabsFoldWord] answers "" and the layout draws nothing there).
 	reserve := 0
-	if wide := ansi.StringWidth(a.tabsMoreWord(len(tabs)-1, true)); wide > 0 {
+	if wide := ansi.StringWidth(a.tabsFoldWord(len(tabs) - 1)); wide > 0 {
 		reserve = wide + tabsMoreGap
 	}
 	budget := room - reserve
@@ -701,64 +705,34 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + 3}, kind: tabNew})
 		at += 3
 	}
+	// AND THE COUNT OF WHAT DID NOT FIT, WHICH IS THE WHOLE OF THE ROW'S RIGHT
+	// END NOW. It has no ladder to walk down any more: `+3` is three cells that
+	// are all fact, so it is drawn whole or it is not drawn — which is the same
+	// answer the old control's ladder arrived at one rung later, having first
+	// spent its mark and its count to keep a word that no longer exists.
 	hidden := len(tabs) - (to - from)
-	word, kind := a.tabsMoreWord(hidden, false), tabMore
-	if !a.hopAvailable() {
-		word, kind = a.tabsFoldWord(hidden), tabFold
-	}
-	for width := ansi.StringWidth(word); width > 0; width = ansi.StringWidth(word) {
-		if at+tabsMoreGap+width <= fullRoom {
+	if word := a.tabsFoldWord(hidden); word != "" {
+		if width := ansi.StringWidth(word); at+tabsMoreGap+width <= fullRoom {
 			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabsMoreGap), quiet: true})
 			at += tabsMoreGap
-			pieces = append(pieces, tabPiece{word: word, kind: kind})
-			hits = append(hits, tabHit{span: hudSpan{from: at, to: at + width}, kind: kind})
-			break
+			pieces = append(pieces, tabPiece{word: word, kind: tabFold})
+			hits = append(hits, tabHit{span: hudSpan{from: at, to: at + width}, kind: tabFold})
 		}
-		word = a.tabsShorter(word, hidden)
 	}
 	return pieces, hits
 }
 
-// tabsMoreGap is the least space between the last tab and the switcher, so the
-// control never reads as the next tab along.
+// tabsMoreGap is the least space between the last tab and the count, so the
+// figure never reads as the next tab along.
 const tabsMoreGap = 2
 
-// tabsMoreWord is the switcher's label at its widest that still says everything
-// true: the word, the count of tabs this row could not spell, and the mark.
-func (a *app) tabsMoreWord(hidden int, widest bool) string {
-	if !a.hopAvailable() {
-		return a.tabsFoldWord(hidden)
-	}
-	word := tabsWord
-	if hidden > 0 {
-		word += " " + tabHiddenLead + itoa(hidden)
-	}
-	return word + " " + tabMoreWord
-}
-
-// tabsFoldWord is the count alone, for a frame where the switcher cannot open
-// (hop.go's [app.hopMayOpen]). The count is still true; the word is not drawn,
-// because a labelled control that opens nothing is a door painted on a wall.
+// tabsFoldWord is the count of tabs this row could not spell, and "" where it
+// spelled all of them. It is the only thing drawn after the tabs.
 func (a *app) tabsFoldWord(hidden int) string {
 	if hidden <= 0 {
 		return ""
 	}
 	return tabHiddenLead + itoa(hidden)
-}
-
-// tabsShorter is the switcher's degradation ladder, one rung per call: the mark
-// goes first, then the count, and THE WORD IS WHAT SURVIVES. Both of the things
-// dropped are decoration in front of it — a person reading a narrow row needs to
-// know the control is there far more than they need to know how many rows it is
-// standing for.
-func (a *app) tabsShorter(word string, hidden int) string {
-	switch {
-	case strings.HasSuffix(word, " "+tabMoreWord):
-		return strings.TrimSuffix(word, " "+tabMoreWord)
-	case hidden > 0 && strings.HasSuffix(word, " "+tabHiddenLead+itoa(hidden)):
-		return strings.TrimSuffix(word, " "+tabHiddenLead+itoa(hidden))
-	}
-	return ""
 }
 
 // tabLabel gives each tab a padded target. Brackets identify the selected
@@ -801,7 +775,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
 	line := ""
 	for _, piece := range pieces {
-		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabMore && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight
 		switch {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
@@ -813,7 +787,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 				word = a.pal.underline(word)
 			}
 			line += word
-		case piece.kind == tabMore || piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabHome || piece.kind == tabScrollLeft || piece.kind == tabScrollRight:
+		case piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabHome || piece.kind == tabScrollLeft || piece.kind == tabScrollRight:
 			if lit && hot.kind == piece.kind {
 				word := piece.word
 				if a.pal.profile < tokens.ANSI256 {
@@ -822,8 +796,6 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 						word = a.linearMark("·", ".") + "Home "
 					case tabNew:
 						word = a.linearMark("·", ".") + "+ "
-					case tabMore:
-						word = strings.ToUpper(word)
 					case tabScrollLeft, tabScrollRight:
 						word = a.linearMark("·", ".") + strings.TrimSpace(word) + " "
 					}
@@ -997,16 +969,6 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 		return a.openHome(), true
 	case tabNew:
 		return a.openChatStart(), true
-	case tabMore:
-		// THE SWITCHER AND NOT A MENU OF ITS OWN. `ctrl+k` already draws every
-		// conversation this machine has, ranked, with what each of them wants from
-		// you on it (hop.go); a second list built here would be a second answer to
-		// the same question, kept in step with the first by nothing. It opens on
-		// ALL of them rather than on the ones this window holds, because the label
-		// says `Chats` and a list that showed three of somebody's twelve would be
-		// the control lying about what it opens.
-		a.hopOpenAll()
-		return nil, true
 	case tabClose:
 		return a.tabDismiss(hit.tab), true
 	case tabHere:

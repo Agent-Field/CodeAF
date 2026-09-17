@@ -805,7 +805,7 @@ func newTestApp(agent Agent) *app {
 	a.railAway = false
 	// AND IT PINS THE CHORD SPELLING, for the fifth time for the same reason.
 	// [newApp] reads GOOS and the environment to decide whether a chord is CALLED
-	// `alt+1` or `⌥1` (chords.go), so every hint assertion in this suite would
+	// `alt+1` or `opt+1` (chords.go), so every hint assertion in this suite would
 	// read one way on a Mac and another way on Linux. The spelling has a table
 	// test of its own that states both, and [TestEveryPlaceSpellsItsChordsTheWayThisTerminalDoes]
 	// asserts the Mac reading against every place on purpose.
@@ -943,11 +943,14 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl}
 	case "ctrl+shift+tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModCtrl | tea.ModShift}
-	case "ctrl+shift+k":
+	case "alt+shift+k":
 		// The switcher's reverse (hop.go), spelled out for the reason above it:
-		// the ctrl fall-through builds single-rune chords with one modifier, and
-		// this one carries two.
-		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl | tea.ModShift}
+		// the alt fall-through builds single-rune chords with one modifier, and
+		// this one carries two. THE LOWERED RUNE IS THE POINT — a terminal sends
+		// this chord as escape-then-`K` and ultraviolet's decoder hands it back
+		// as shift+alt over `k`, which is what makes the reverse arrive without
+		// the keyboard query its `ctrl+shift+k` spelling needed.
+		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModAlt | tea.ModShift}
 	case "alt+shift+s":
 		// The tasks place's `sort the other way round` (taskstable.go). It is
 		// spelled out because the alt fall-through above builds single-rune
@@ -1781,7 +1784,7 @@ func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	}
 }
 
-func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
+func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
 	}}}
@@ -1800,26 +1803,14 @@ func TestEscInterruptsAndCtrlCTwiceCloses(t *testing.T) {
 		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
-	// AND THE DOOR TAKES TWO PRESSES (quitarm.go). The first one arms and closes
-	// nothing; the second one inside the window leaves.
-	// The first press returns the frame clock rather than nothing — the window
-	// it opened has an end to reach — so what is asserted is that it is not the
-	// door and that nothing was closed.
+	// AND THE DOOR ANSWERS ON THE PRESS THAT LANDS (leaving.go). The turn was
+	// stopped by the esc above, so this key is read at rest and it leaves.
 	_, cmd := a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	if cmd != nil {
-		if _, quit := cmd().(tea.QuitMsg); quit {
-			t.Fatal("the first ctrl+c quit")
-		}
-	}
-	if agent.closes != 0 {
-		t.Fatalf("the first ctrl+c closed the agent (%d)", agent.closes)
-	}
-	_, cmd = a.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("the second ctrl+c returned no command")
+		t.Fatal("ctrl+c returned no command")
 	}
 	if _, quit := cmd().(tea.QuitMsg); !quit {
-		t.Fatal("the second ctrl+c has to quit")
+		t.Fatal("ctrl+c has to quit")
 	}
 	if agent.closes != 1 {
 		t.Fatalf("ctrl+c closed the agent %d times", agent.closes)

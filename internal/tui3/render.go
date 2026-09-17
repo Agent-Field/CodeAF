@@ -3802,6 +3802,17 @@ func (a *app) legendRight(width int) string {
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
+	// AND UNDER THE STATES, BUT OVER EVERY TIP AND DOOR: THE CHORD THAT DID NOT
+	// ARRIVE. A Mac whose Option key is composing accents answers the switcher's
+	// chord with the character `˚`, and the legend's own door would go on naming
+	// a key that is not reaching this program — which is the phantom this
+	// surface's whole key law exists to forbid. It outranks the earned tips
+	// because it is a diagnosis and they are suggestions, and it says nothing at
+	// all on every other terminal (chords.go's [app.chordWatch] arms it only on a
+	// Mac, and only after a chord was actually aimed and missed).
+	if a.chordLost && a.chords.meta == chordMetaWord {
+		return a.chords.chordShortWords()
+	}
 	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
 	// lowest rung there is — a tip about a gesture the person has not used yet,
 	// drawn only over an idle box — and it takes the slot from the rest state
@@ -3845,7 +3856,18 @@ func (a *app) legendRight(width int) string {
 		doors = append(doors, lastDoorWord)
 	}
 	if a.hopAvailable() {
-		doors = append(doors, hopDoorWord)
+		// AND IT IS SPELLED THE WAY THIS KEYBOARD SPELLS IT. The switcher took an
+		// `alt+` chord when it gave `ctrl+k` back to the draft (hop.go), so this
+		// clause is the one door on the line with a modifier that has two
+		// keycaps, and it goes through the same substitution every other sentence
+		// about a chord goes through (chords.go's [chordSpelling.say]). It is
+		// said HERE rather than on the way to the paint because the ladder below
+		// measures what it is about to draw, and a line measured in one spelling
+		// and painted in another is a line that can overrun the frame. It costs
+		// nothing on THIS chord — `opt+k` and `alt+k` are both five cells — and
+		// the discipline is the door's, not this clause's: `cmd+` becomes the one
+		// cell `⌘` through the same call.
+		doors = append(doors, a.chords.say(hopDoorWord))
 	}
 	return strings.Join(append(doors, microcopy), " · ")
 }
@@ -3856,11 +3878,21 @@ func (a *app) legendRight(width int) string {
 // `cd -` makes.
 const lastDoorWord = "tab last"
 
-// hopDoorWord advertises the switcher, and it names `ctrl+k` rather than the
+// hopDoorWord advertises the switcher, and it names the binding rather than the
 // `ctrl+tab` alias because this line is drawn on every terminal and the alias is
 // only real on some of them (hop.go states the whole argument). A hint may only
 // name a key that works.
-const hopDoorWord = hopOpenKey + " switch"
+//
+// THE NOUN IS `chats` AND IT USED TO BE THE VERB `switch`. One word for one door
+// is the rule the audit-words pass was written to keep (docs/design/polish/
+// audit-words.md found `esc` spelled three ways across two panels), and this
+// door had picked up two: the tab row's own control said `Chats`, home's rule
+// says `alt+k chats`, and this line said `switch`. The noun is the one that
+// survives — it is what the thing IS rather than what pressing it does, it is
+// the word on the page the card draws, and it is the word a person who has used
+// any other program already has for a list of conversations. The control that
+// was the third spelling is deleted (chattabs.go).
+const hopDoorWord = hopOpenKey + " chats"
 
 // ── CONTEXTUAL KEY HINTS ────────────────────────────────────────────────────
 //
@@ -3873,7 +3905,6 @@ const hopDoorWord = hopOpenKey + " switch"
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
 //	the pointer is theirs drag to select · any key ends it
-//	the door is armed     ctrl+c again to quit · a task will stop  (quitarm.go)
 //	the picker is open    → lanes · enter switch · esc · crew max
 //	  inside a fold       enter choose · ← back · esc · crew max
 //	the sessions are up   enter open · esc
@@ -3897,13 +3928,13 @@ const hopDoorWord = hopOpenKey + " switch"
 // AND THE ORDER IS input.go's OWN ROUTING ORDER, top to bottom, because that is
 // the only thing that makes the slot true: what a key does is decided by which
 // handler reads it first, so a hint ranked any other way is a hint that names
-// the keys of a state the keyboard has already been taken away from. THE ARMED
-// DOOR LEADS, under only the pointer handover, because ctrl+c is read above
-// every modal on this surface — leaving is never modal — so while it is warm the
-// next keystroke's meaning is settled before any picker or panel gets a say.
-// Copy mode is the rung under those; the typed lists come last of the modal
-// ones, since they take only the four keys that move and commit a list and give
-// every other one back to the draft.
+// the keys of a state the keyboard has already been taken away from. The
+// pointer handover leads, because it is read first; copy mode is the rung under
+// the modals; the typed lists come last of those, since they take only the four
+// keys that move and commit a list and give every other one back to the draft.
+// ctrl+c is on none of these rungs and never was a state this slot could name —
+// it is the door, read above every modal, and it acts on the press that lands
+// (leaving.go).
 //
 // COPY MODE IS THE ONE THIS SLOT WAS MOST WRONG ABOUT. While the viewport is
 // frozen every key on this surface means something else, and the slot was
@@ -3918,19 +3949,6 @@ func (a *app) hintWord() string {
 		// that a person cannot see any other way: the pointer being somewhere else
 		// looks exactly like the pointer being broken until a line says otherwise.
 		return "drag to select · any key ends it"
-	case a.quitArmed():
-		// AND THE ARMED DOOR RANKS DIRECTLY UNDER IT, above every modal on this
-		// slot, because that is where ctrl+c is READ: the routing order is this
-		// slot's ordering law, and ctrl+c is excepted from every picker, panel,
-		// room and paste bracket in input.go — leaving is never modal. So while
-		// the door is warm, the next keystroke's meaning is settled before any
-		// of the states below get a say in it, and a slot that named their keys
-		// instead would be promising the wrong thing about the one key the
-		// person has already pressed once.
-		//
-		// The sentence names what leaving would STOP when anything is running
-		// (quitarm.go's [app.quitHint]), and nothing at all when nothing is.
-		return a.quitHint()
 	case a.pick.open:
 		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
 		// person lands when the crew they just set did not change anything they

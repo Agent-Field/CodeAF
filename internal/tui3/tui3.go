@@ -209,8 +209,8 @@ type detachable interface {
 	// WorkOutlivesExit says whether this conversation keeps working after the
 	// view goes. It is a separate question from Detach because the same type
 	// answers both ways: a conversation on a session host outlives the window,
-	// and a one-shot engine on a pipe does not, and the warning a person reads
-	// before they quit has to say which ([app.quitHint]).
+	// and a one-shot engine on a pipe does not, and the switcher's rows and the
+	// close-a-tab card both have to say which (keeper.go's [workOutlivesExit]).
 	WorkOutlivesExit() bool
 	// Detach lets go of the view. Where the work outlives it the conversation is
 	// left running; where it does not, this is the ordinary ending. It must be
@@ -1396,17 +1396,12 @@ func listenForNews(door *doorbell) (restore func()) {
 // a perfectly ordinary way to leave.
 //
 // SO THE SIGNAL BECOMES A MESSAGE INSTEAD OF A RETURN. sigQuitMsg is routed in
-// [app.Update] to the same [app.quit] the second ctrl+c calls, which writes the
+// [app.Update] to the same [app.quit] ctrl+c calls, which writes the
 // draft, closes the session and returns tea.Quit — the ordinary exit, with a nil
 // error and status 0. Sending InterruptMsg ourselves would have reproduced
 // exactly the bug; tea.QuitMsg would exit cleanly but skip [app.quit] and take
 // the draft with it. This is the one path of the three that both runs and exits
 // zero.
-//
-// A REAL SIGNAL NEEDS NO SECOND PRESS. The two-press rule is about a keystroke
-// that can be struck by accident (quitarm.go); a signal is somebody naming this
-// process and asking it to stop, and asking twice is not something a person can
-// do from the other end of a `kill`.
 //
 // SIGHUP IS ON THE SET TOO. It is what arrives when a terminal window closes or
 // an ssh connection drops, and it must reach the same draft-writing, session-

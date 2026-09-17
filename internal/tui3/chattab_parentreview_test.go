@@ -17,22 +17,23 @@ func TestChatHeaderCacheTracksDestinationIdentity(t *testing.T) {
 	}
 }
 
-// The first asynchronous history count can make the picker available without
-// changing a single label. The cached strip must gain its working overflow door.
-func TestChatHeaderCacheTracksPickerAvailability(t *testing.T) {
+// AND THE STRIP NO LONGER DEPENDS ON THE HISTORY COUNT AT ALL, which is what
+// deleting the `Chats ▾` control bought here. This test used to assert that the
+// cached row gained a working door when the first asynchronous count made the
+// switcher available; the row draws nothing that reads [app.hopAvailable] now —
+// only the tabs and the count of the ones it could not spell — so the cache
+// cannot go stale against that number. What is asserted instead is the absence:
+// a count landing must not change the row, or there is a dependency back.
+func TestChatHeaderDoesNotDependOnTheHistoryCount(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file, a.title, a.workspace = "/tmp/test-chat.jsonl", "Current chat", "/tmp"
 	a.width, a.height = 80, 32
 	a.hopKnown = 1
-	a.tabsRow(80)
-	a.hopKnown = 2
-	a.tabsRow(80)
-	for _, hit := range a.chatTabHits {
-		if hit.kind == tabMore {
-			return
-		}
+	alone := plain(a.tabsRow(80))
+	a.hopKnown = 9
+	if withMore := plain(a.tabsRow(80)); withMore != alone {
+		t.Fatalf("the strip changed when the history count landed:\n  %q\n  %q", alone, withMore)
 	}
-	t.Fatal("newly available history did not add the picker to the cached header")
 }
 
 // Selection remains explicit when the user's environment disables every SGR.

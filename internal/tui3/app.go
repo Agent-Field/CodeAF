@@ -2170,7 +2170,7 @@ type app struct {
 	// exactly one keystroke.
 	mapShowing bool
 	// chords is HOW THIS TERMINAL SPELLS THE CHORD CLASSES and what its option
-	// key is called — `alt+` everywhere, `⌥` on a Mac (chords.go). It is decided
+	// key is called — `alt+` everywhere, `opt+` on a Mac (chords.go). It is decided
 	// once at boot from the platform and the environment, because neither of
 	// those changes while a process runs, and every sentence a person reads about
 	// a chord is drawn through it.
@@ -2238,7 +2238,7 @@ type app struct {
 	// and not on a place's state — the three facts it settles are the same three
 	// wherever a person typed the sentence.
 	composer composerLayer
-	// hop is the conversation switcher — `ctrl+k`, the card over everything
+	// hop is the conversation switcher — `alt+k`, the card over everything
 	// (hop.go). It is a field of the app rather than of a place because it
 	// belongs to no place: it is drawn over the conversation and over all seven.
 	hop hopCard
@@ -2398,13 +2398,6 @@ type app struct {
 	escArm   time.Time
 	rewSay   string
 	rewSayAt time.Time
-	// quitArm is when the first ctrl+c landed, or zero — the door's own arm,
-	// and the reason one press no longer ends the session (quitarm.go). It sits
-	// beside escArm because it is the same shape of fact for the same kind of
-	// reason: a key whose meaning is different for a moment, held out here
-	// rather than inside any mode, and run down on the frame clock
-	// ([app.quitSweep]) because this surface has one clock.
-	quitArm time.Time
 	// tmux says this surface is inside a multiplexer, so a clipboard write has
 	// to be wrapped in its passthrough (copymode.go). It is read once, from
 	// TERM, because a terminal does not change what it is mid-session.
@@ -2633,7 +2626,7 @@ func (a *app) noteKilled() {
 // opens with, which is already about the keys nothing else names, is where it is
 // written down. It is the third and last clause because the two in front of it
 // are about the session a person is in and this one is about the program.
-const landingKeysWord = "esc interrupts · ctrl+c twice quits · ? for help"
+const landingKeysWord = "esc interrupts · ctrl+c quits · ? for help"
 
 func newApp(ctx context.Context, opts Options) *app {
 	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
@@ -2742,7 +2735,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		remote:              remoteLink(env),
 		wsl:                 bootWSLPaths(env),
 		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
-		// whether the modifier is called `alt+` or `⌥`, and the environment names
+		// whether the modifier is called `alt+` or `opt+`, and the environment names
 		// which emulator is running so the one option-as-meta line can name the
 		// setting instead of waving at "your terminal".
 		chords: detectChords(runtime.GOOS, env),
@@ -2920,7 +2913,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// promised an interrupt on the first frame of a session where nothing was
 	// running, and at that moment ctrl+c was the door rather than a stop. The
 	// two clauses here are each true whatever is happening — esc stops the turn
-	// when there is one, and two presses of ctrl+c always leave (quitarm.go).
+	// when there is one, and ctrl+c at rest always leaves (leaving.go).
 	//
 	// AND IT WAITS FOR THE GREETING TO GO. On an empty session the line lands
 	// when the conversation begins rather than above a screen that is asking for
@@ -3271,26 +3264,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// [forwardSignals]) because Bubble Tea answers an interrupt by returning
 		// an error without ever calling this function. It takes the ordinary
 		// door: the draft and anything parked go to disk, the session closes, and
-		// the program exits zero. NO SECOND PRESS IS ASKED FOR — the two-press
-		// rule is about a keystroke that can be struck by accident, and a signal
-		// is somebody naming this process on purpose.
+		// the program exits zero — the same road ctrl+c takes, because a signal
+		// is somebody naming this process on purpose and is owed the same care
+		// on the way out.
 		return a, a.quit()
 
 	case tea.KeyPressMsg:
 		a.sawAPerson()
-		// THE DOOR DISARMS ON ANY KEY BUT ITS OWN, and it is done HERE rather
-		// than at the top of [app.key] — where the pointer handover is — because
-		// this is the only line every keypress passes through. The stop
-		// confirmation, the roster and the room are all read below and above
-		// [app.key], and a person who armed the door and then pressed `x` at a
-		// running node would otherwise have had the arm still warm underneath
-		// them. The first ctrl+c puts a sentence in the hint slot promising what
-		// the NEXT keystroke does (quitarm.go); reaching for any other key is
-		// that promise being answered. ctrl+c itself is excepted, because it is
-		// the key the state is about.
-		if msg.String() != "ctrl+c" {
-			a.disarmQuit()
-		}
 		// AND THE HAND IS STAMPED HERE, for the same reason the line above is:
 		// this is the only line every keypress passes through, and what the
 		// question block needs to know is whether somebody is at the keyboard
@@ -4798,10 +4778,6 @@ func (a *app) paint() tea.Cmd {
 	// are windows with an end, and neither is worth a goroutine.
 	a.tickQuestion()
 	a.rewindSweep()
-	// AND THE DOOR'S OWN ARM RUNS DOWN HERE ON THE SAME TERMS (quitarm.go): the
-	// second and a half the first ctrl+c buys, and the sentence in the hint slot
-	// that has to leave the screen when it lapses.
-	a.quitSweep()
 	// AND A STOP'S OWN DEADLINE RUNS DOWN HERE, on the same terms as the two
 	// above and for the same reason: it is a window with an end, the countdown
 	// beside `stopping` has to be redrawn while it runs, and something has to be
@@ -4837,11 +4813,6 @@ func (a *app) paint() tea.Cmd {
 		// rewind" for half a second, and something has to be drawing the frame
 		// that takes it away again (rewind.go).
 		a.rewindTicking() ||
-		// AND THE ARMED DOOR IS THE NINTH, and it is the second one that turns
-		// with nothing on screen moving at all: the hint slot says "ctrl+c again
-		// to quit" for a second and a half, and something has to be drawing the
-		// frame that takes it away again (quitarm.go).
-		a.quitArmed() ||
 		// AND A STOP BEING LET GO OF IS THE TENTH, and it is the third that turns
 		// with nothing on screen moving at all — a stopped turn draws nothing new
 		// by design (a.apply's own guard). The countdown beside `stopping` has to
@@ -6014,11 +5985,6 @@ func (a *app) submittingShown(text, shown string, start func() (<-chan session.E
 	if a.stream == nil {
 		a.turn++
 	}
-	// AND A TURN STARTING DISARMS THE DOOR (quitarm.go). The arm is a promise
-	// about what the NEXT ctrl+c does, and from here that key is the interrupt
-	// again — a hint slot still offering to quit would be naming the wrong verb
-	// for the key on top of a turn somebody just started.
-	a.disarmQuit()
 	// A new turn drops the selection: the calls it was pointing into belong to
 	// the turn before this one, and a cursor left on them would answer enter
 	// with somebody else's history.
@@ -7347,7 +7313,7 @@ func (a *app) freshAndEmpty() bool {
 		return false
 	}
 	// A NOTE IS NOT A CONVERSATION. Every surface opens with the surface's own
-	// lines on it — `esc interrupts · ctrl+c twice quits`, a door's notice, a
+	// lines on it — `esc interrupts · ctrl+c quits`, a door's notice, a
 	// refusal somebody read — and counting those would make "fresh and empty"
 	// false on the very first frame of every session, which is the one state
 	// this test exists to recognise.
@@ -7463,7 +7429,7 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// and the sentence in the box is the person's NEXT one. The messages that
 	// were parked behind a turn come with it, in the order they would have been
 	// sent — nobody is left to send them, and they are still what somebody typed
-	// (park.go, quitarm.go's [app.leavingDraft]).
+	// (park.go, leaving.go's [app.leavingDraft]).
 	if side.draft != "" {
 		a.input.setText(side.draft)
 	}
@@ -7602,7 +7568,7 @@ func (a *app) quit() tea.Cmd {
 	// be most surprised to lose (draft.go).
 	//
 	// AND WHAT IS WRITTEN IS THE DRAFT PLUS WHATEVER IS STILL PARKED
-	// (quitarm.go's [app.leavingDraft]): a message waiting for an answer that is
+	// (leaving.go's [app.leavingDraft]): a message waiting for an answer that is
 	// never now going to land is a message the person typed and pressed enter
 	// on, and it comes back next launch rather than going quietly.
 	// AND THE WHOLE COMPOSER GOES, not only the conversation's sentence: the
@@ -7739,7 +7705,7 @@ func (a *app) interruptTurn() {
 // a second later — one keypress with two readings, which is the one thing this
 // keyboard cannot have. ctrl+c is spoken for on both sides of the same moment:
 // mid-turn it is the interrupt, and at rest — which is what winding down IS —
-// it is the quit arm (quitarm.go).
+// it is the door (leaving.go).
 //
 // THAT REMAINS TRUE, SO THE SECOND STAGE TAKES NO KEY AT ALL. It is a CLOCK,
 // started by the esc the person already pressed, and it needs no grammar because
@@ -7966,7 +7932,7 @@ func stopDetachedNote(spend session.Usage) string {
 	if spend.CostUSD <= 0 {
 		return stopDetachedWord
 	}
-	return stopDetachedWord + " — it spent " + spendMoneyWord(spend.CostUSD)
+	return stopDetachedWord + " — it spent " + spendSliverWord(spend.CostUSD)
 }
 
 // stopDetachedWord is what a detached turn is called, once, wherever it is
@@ -8787,9 +8753,9 @@ func (a *app) computeStats() hudStats {
 	// AND WHAT THE SESSION'S NODES STARTED, which is the other half of the same
 	// sentence (docs/design/lens/DESIGN.md, Decision 4). A node runs `bash` with
 	// background:true exactly as the conversation does, on this machine, out of
-	// this session — and until this landed the Σ segment said nothing about it
-	// and the quit guard let a person walk away from three servers a task had
-	// started ([app.quitArmed]).
+	// this session — and until this landed the Σ segment said nothing about it at
+	// all, and a person could walk away from three servers a task had started
+	// with no sign of them anywhere on the screen.
 	//
 	// IT IS A TALLY AND NOT A SECOND WALK, and that is the whole of why the
 	// numbers do not flicker. A room's entries live only while its page is open
@@ -9088,8 +9054,29 @@ func dollars(usd float64) string {
 	case usd < 0.01:
 		return subCent(usd)
 	default:
-		return fmt.Sprintf("$%.2f", usd)
+		return groupedDollars(usd)
 	}
+}
+
+// groupedDollars is an amount of a cent or more, with its thousands marked.
+//
+// A FIGURE IN THE THOUSANDS IS READ BY ITS GROUPS AND NOT BY COUNTING DIGITS.
+// `$12491.05` takes a second look to tell from `$1249.10`, and the second look
+// is the whole cost: these figures are met in passing, on a status line and
+// down a column. The spend place made the case plainest by drawing `128,400
+// calls` and `$4210.55` on one row — the count grouped and the money not — so
+// the two halves of one row disagreed about how a number is written.
+//
+// IT GROUPS THE ALREADY-ROUNDED SPELLING ([groupDigits], placeprose.go), which
+// is the same mark [groupedInt] puts in a count. Rounding is done once, by the
+// format below, and the comma goes into the digits it produced.
+func groupedDollars(usd float64) string {
+	plain := fmt.Sprintf("%.2f", usd)
+	point := strings.IndexByte(plain, '.')
+	if point < 0 {
+		return "$" + groupDigits(plain)
+	}
+	return "$" + groupDigits(plain[:point]) + plain[point:]
 }
 
 // savedWord formats what a cache read was worth, and it is deliberately NOT
@@ -9107,12 +9094,19 @@ func savedWord(usd float64) string {
 	return fmt.Sprintf("$%.4f", usd)
 }
 
-// tokenWord is a token count at a glance: "842", "12.4k", "1.2M". One
+// tokenWord is a token count at a glance: "842", "12.4k", "1.2M", "3.2B". One
 // significant decimal and no more — the meter is read in passing, and a figure
 // that changes in its fourth digit every step is a figure nobody can read.
 //
 // The trailing ".0" is dropped so a round number is round: a 128k window is
 // "128k" and never "128.0k".
+//
+// THE LADDER GOES UP TO THE BILLION BECAUSE THE COUNTS DO. It stopped at the
+// million, so a fortnight of agent work came out of the spend place as
+// `7062.1M tokens` and one model's row as `3210M` — which is not a unit anybody
+// reads, it is a number with the wrong unit left on it, and it is exactly the
+// reading `1000.0k` was avoided for one rung lower. A person running a swarm
+// meets these figures on their first look at the page.
 func tokenWord(tokens int) string {
 	switch {
 	case tokens <= 0:
@@ -9120,11 +9114,14 @@ func tokenWord(tokens int) string {
 	case tokens < 1000:
 		return strconv.Itoa(tokens)
 	// 999_950 and not 1_000_000: one decimal rounds anything above it to
-	// "1000.0k", which is a figure with the wrong unit on it.
+	// "1000.0k", which is a figure with the wrong unit on it. Each rung above
+	// stops the same distance short of the next for the same reason.
 	case tokens < 999_950:
 		return trimUnit(float64(tokens)/1000, "k")
-	default:
+	case tokens < 999_950_000:
 		return trimUnit(float64(tokens)/1_000_000, "M")
+	default:
+		return trimUnit(float64(tokens)/1_000_000_000, "B")
 	}
 }
 

@@ -92,8 +92,9 @@ func panelRows(a *app, panel homePanelID) []*homeCell {
 // ── needs you ───────────────────────────────────────────────────────────────
 
 // TWO QUESTIONS, THE LONGEST WAIT FIRST, AND THE ANSWERS ON THE TOP ONE ONLY: the
-// consent line is the gate's own sentence, and the row below says `enter`
-// because a second `1` on screen would be a guess.
+// consent line is the gate's own sentence, and the row below draws no second
+// `1` because it would be a guess — and no `enter` either, because the door
+// word is said under the cursor alone ([app.homeRowAnswers]).
 func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
@@ -112,15 +113,17 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	if under := homeLineAfter(frame, "Pricing Site"); !strings.Contains(under, "1 allow once  2 always  3 deny") {
 		t.Fatalf("the top row does not draw its answers:\n%s", frame)
 	}
-	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || !strings.Contains(under, "enter") {
-		t.Fatalf("the second row drew a second set of answers:\n%s", frame)
+	if under := homeLineAfter(frame, "Prime Sieve"); strings.Contains(under, "allow once") || strings.Contains(under, "enter") {
+		t.Fatalf("the second row drew answers or a door word the cursor is not on:\n%s", frame)
 	}
-	if !strings.Contains(frame, "needs you · 2") {
-		t.Fatalf("the heading does not count what waits:\n%s", frame)
+	// AND THE HEADING IS THE WORD ALONE. It used to count the questions
+	// (`needs you · 2`); the rows are under it (owner, 2026-09-15).
+	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
+		t.Fatalf("the heading counts its rows:\n%s", frame)
 	}
 }
 
-// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF THE `to check` GROUP, one
+// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF THE `unread` GROUP, one
 // line of its own, under a group line that says what the group is. enter aims at
 // the task rather than at the conversation's live edge.
 func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
@@ -130,15 +133,22 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		FilesChanged: 3})
 	a := l.open()
 	rows := panelRows(a, panelNeeds)
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "3 files · 30m" {
-		t.Fatalf("the task's call is not a one-line row of needs you: %+v", rows)
+	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; the files it wrote open its
+	// description (owner, 2026-09-15: the right margin of every field row is a
+	// time). It used to read `3 files · 30m`.
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || !strings.HasPrefix(rows[0].sub, "3 files · ") {
+		t.Fatalf("the task's call is not a one-line row of needs you with its files in its description: %+v", rows)
 	}
 	if rows[0].mark != cellMarkNone {
 		t.Fatalf("a landing wears a mark: %+v", rows[0])
 	}
 	frame := homeText(a)
-	if !strings.Contains(frame, needsCheckWord+" · 1") || !strings.Contains(frame, needsCheckClause) {
-		t.Fatalf("the group line does not name the group and say what it is:\n%s", frame)
+	// THE GROUP LINE IS THE WORD ALONE — no count after it and no clause at its
+	// right (owner, 2026-09-15; it used to say `to check · 1` and `finished,
+	// nobody has checked it`).
+	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") ||
+		strings.Contains(frame, "nobody has checked") {
+		t.Fatalf("the group line does not name the group, or says more than its name:\n%s", frame)
 	}
 	if strings.Contains(frame, "landed unchecked") {
 		t.Fatalf("the retired sub-line is still drawn:\n%s", frame)
@@ -157,7 +167,7 @@ func TestToCheckDrawsNoGroupLineWithoutLandings(t *testing.T) {
 	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
 		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-2*time.Hour))})
 	a := l.open()
-	if frame := homeText(a); strings.Contains(frame, needsCheckClause) {
+	if frame := homeText(a); strings.Contains(frame, needsCheckWord) {
 		t.Fatalf("a group with no rows drew its line:\n%s", frame)
 	}
 	for _, line := range panelLines(a, panelNeeds) {
@@ -203,7 +213,7 @@ func TestToCheckDrawsTheNewestLandingFirst(t *testing.T) {
 	}
 	a := l.open()
 	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
-		t.Fatalf("to check is not newest first: %+v", rows)
+		t.Fatalf("unread is not newest first: %+v", rows)
 	}
 }
 
@@ -284,14 +294,25 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 		t.Fatalf("needs you is not the two fresh calls: %+v", rows)
 	}
 	frame := homeText(a)
-	// AND THE HEADING COUNTS THE QUESTIONS, NOT THE LANDINGS. With nothing
-	// stopped it draws its word alone (the emptiness law); the landings are
-	// counted on the group's own line and the aged ones on the fold.
+	// AND NEITHER THE HEADING NOR THE GROUP LINE COUNTS ANYTHING: the rows are
+	// under them. The one count is the fold's, which counts the aged landings
+	// with everything else it hides — `3 more`, no longer `3 older · tasks`.
 	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
 		t.Fatalf("the heading counted the landings:\n%s", frame)
 	}
-	if !strings.Contains(frame, needsCheckWord+" · 2") || !strings.Contains(frame, "3 older · tasks") {
-		t.Fatalf("the group does not count what is listed, or the fold what aged:\n%s", frame)
+	if !strings.Contains(frame, needsCheckWord) || strings.Contains(frame, needsCheckWord+" · ") {
+		t.Fatalf("the group line says more than its name:\n%s", frame)
+	}
+	fold := a.home.lines[homeFoldDoor(t, a, panelNeeds)].cell.title
+	if fold != "3 more" {
+		t.Fatalf("the fold reads %q, want the three aged landings counted as `3 more`", fold)
+	}
+	// AND OPENING THE FOLD BRINGS THEM BACK: a fold that opened to show nothing
+	// of what it counted would have lied about its own number.
+	a.home.cursor = homeFoldDoor(t, a, panelNeeds)
+	drive(t, a, key("enter"))
+	if rows := panelRows(a, panelNeeds); len(rows) != 5 {
+		t.Fatalf("opening needs you drew %d rows, want all five landings:\n%s", len(rows), homeText(a))
 	}
 }
 
@@ -328,8 +349,8 @@ func consentQuestionAt(id uint64, text string, asked time.Time) session.Presence
 
 // ── where you were ──────────────────────────────────────────────────────────
 
-// A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` and `here`, no
-// age and nothing under it — whatever the journal's tail has on hand — until
+// A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` in bold, no age
+// and nothing under it — whatever the journal's tail has on hand — until
 // its person says something, and then the line under it is what they said.
 func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 	l := newLiveLab(t)
@@ -355,8 +376,8 @@ func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
 	}
 	a := openOn()
 	own := panelRows(a, panelRecent)[0]
-	if own.title != unnamedConversationWord || own.right != homeHereWord || own.sub != "" {
-		t.Fatalf("the fresh launch's row is not one line saying here: %+v", own)
+	if own.title != unnamedConversationWord || own.right != "" || own.sub != "" || !own.bold {
+		t.Fatalf("the fresh launch's row is not one bold line with nothing at its right: %+v", own)
 	}
 	if next := homeLineAfter(homeText(a), unnamedConversationWord); !strings.Contains(next, "Porting the Resume Picker") {
 		t.Fatalf("the fresh launch's row carries a line under it:\n%s", homeText(a))
@@ -395,7 +416,7 @@ func TestRunningDrawsEachTaskAndJobWithWhatItIsDoing(t *testing.T) {
 	}
 	if !strings.HasSuffix(job.title, rowSep+runningJobWord) || !strings.HasPrefix(job.title, "npm run dev · ") ||
 		job.right != "up 3h" || job.mark != cellMarkNone {
-		t.Fatalf("the job row is not `<title> · <project> · a background job` up its age: %+v", job)
+		t.Fatalf("the job row is not `<title> · a background job` up its age: %+v", job)
 	}
 	if frame := homeText(a); !strings.Contains(frame, "running · 2") {
 		t.Fatalf("the heading does not count the work:\n%s", frame)
@@ -451,12 +472,19 @@ func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
 	}
 }
 
-// ON A THREE-COLUMN HOME `running` IS THE MIDDLE COLUMN, so `→` on one of its
-// rows crosses to `projects` and `spend` rather than opening the strip — and the
-// stop the strip offers keeps a door (DESIGN §6 ruling 6). At 180×45 the foot on
-// a task this window holds names `ctrl+x stop it`, in the tasks place's own
-// spelling of the verb ([stopActWord]), and the chord raises the stop card.
-func TestAThreeColumnRunningRowNamesItsStopOnTheFoot(t *testing.T) {
+// ON A THREE-COLUMN HOME A `running` ROW IS IN THE FIELD — it has rows, and
+// that is what the field is (law 2, ruled 2026-09-15) — so `→` on it crosses to
+// the rail rather than opening the strip, and the stop the strip offers keeps a
+// door: `ctrl+x` raises the stop card from the row. THE FOOT DOES NOT NAME IT.
+// It used to say `ctrl+x stop it` on this row and something else on every
+// other, and the owner ruled the same day that every row of the field rests on
+// the one sentence — the four keys and `ctrl+o open folder`, which is as true
+// of a task's conversation as of any other row ([app.homeCrossChord]).
+//
+// THE CROSSING SKIPS THE EMPTY MIDDLE. A field that fits in one column leaves
+// the next one white, and `→` reaches the rail over it rather than stopping on
+// air — a key that lands nowhere is the one state this surface may not be in.
+func TestAThreeColumnRunningRowRestsOnTheOneFootAndStillStops(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
 		{ID: "5", Title: "mine", State: "running", StartedAt: l.now.Add(-time.Minute)},
@@ -468,19 +496,19 @@ func TestAThreeColumnRunningRowNamesItsStopOnTheFoot(t *testing.T) {
 	a.tasks = map[uint64]*taskNode{5: {id: 5, state: session.TaskRunning}}
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelRunning && l.cell.title == "mine" })
 	mine := a.home.cursor
-	if got := a.home.columnOf(mine); got != 1 {
-		t.Fatalf("running stands in column %d of a three-column home, want the middle one", got)
+	if got := a.home.columnOf(mine); got != 0 {
+		t.Fatalf("running has rows and stands in column %d of a three-column home, want the field at 0", got)
 	}
 	if verbs := a.runningVerbs(a.home.lines[mine]); len(verbs) != 1 || verbs[0].word != stopActWord {
 		t.Fatalf("the row's strip offers %+v, want the tasks place's `%s`", verbs, stopActWord)
 	}
-	lines := strings.Split(homeText(a), "\n")
-	if foot := lines[len(lines)-1]; !strings.Contains(foot, "ctrl+x "+stopActWord) {
-		t.Fatalf("the foot on a running row this window holds is %q, want it to name `ctrl+x %s`", foot, stopActWord)
+	if foot := a.homeHint(); foot != homeFootWord+rowSep+homeFolderChordWord+" · tab next place" {
+		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and the folder chord", foot)
 	}
 	a.placeKeyPress(key("right"))
-	if a.strip.open || a.home.columnOf(a.home.cursor) != 2 {
-		t.Fatal("→ on the middle column's row did not cross to the right column")
+	if a.strip.open || a.home.columnOf(a.home.cursor) != homeRailCol(a.home.cols) {
+		t.Fatalf("→ on a field row landed in column %d (strip %v), want the rail at %d",
+			a.home.columnOf(a.home.cursor), a.strip.open, homeRailCol(a.home.cols))
 	}
 	a.home.cursor = mine
 	drive(t, a, key("ctrl+x"))
@@ -508,7 +536,7 @@ func TestRunningGrowsToItsBudgetAndFoldsTheRestIntoTasks(t *testing.T) {
 	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most {
 		t.Fatalf("running drew %d rows, want its budget of %d", len(rows), most)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more · tasks") || !strings.Contains(frame, "running · 10") {
+	if frame := homeText(a); !strings.Contains(frame, "2 more") || strings.Contains(frame, "more · tasks") || !strings.Contains(frame, "running · 10") {
 		t.Fatalf("the fold does not name what it holds:\n%s", frame)
 	}
 }
@@ -574,8 +602,14 @@ func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 			t.Fatalf("line %d is %q, want %q", i, rows[i].title, title)
 		}
 	}
-	if rows[0].right != "Pricing Site" || rows[2].right != "$0.42" || rows[1].right != "" {
-		t.Fatalf("the right margins are not the conversation and the cost: %+v", rows)
+	// THE MARGIN IS WHEN EACH HAPPENED, and the conversation a file was made in
+	// and what a task cost are the rows' descriptions (owner, 2026-09-15). They
+	// used to be the margins — a name on one row, money on the next.
+	if rows[0].right != "1h" || rows[1].right != "2h" || rows[2].right != "3h" {
+		t.Fatalf("the right margins are not when each happened: %+v", rows)
+	}
+	if rows[0].sub != "Pricing Site" || rows[2].sub != "$0.42" || rows[1].sub != "" || !rows[0].grows || !rows[2].grows {
+		t.Fatalf("the descriptions are not the conversation and the cost, under the cursor: %+v", rows)
 	}
 	if frame := homeText(a); !strings.Contains(frame, "since you left · 12h") {
 		t.Fatalf("the heading does not say how long you were away:\n%s", frame)

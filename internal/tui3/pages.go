@@ -1386,10 +1386,22 @@ func placeFrameWithBar(a *app, width, height int,
 		for row := 1; row < boxFloor(height); row++ {
 			add("", nil)
 		}
-		// AT REST THERE IS NOTHING TO TYPE INTO, so the caret is hidden rather
-		// than left blinking at the frame's origin. The moment a character lands
-		// the box stops being empty and the caret comes back, in the box.
-		a.caret = false
+		// AND THE CARET STANDS IN IT, on the first cell the first character will
+		// land on — which is the dim sentence's own first letter, exactly as a
+		// placeholder sits behind the caret in any other text field. It is the
+		// same caret the conversation's box has ([app.View] draws one
+		// [tea.CursorBar], blinking, wherever this lands it).
+		//
+		// IT USED TO BE HIDDEN HERE, on the reading that home at rest is a
+		// dashboard somebody reads rather than a thing they type at. The owner's
+		// reading (2026-09-15) is the other one: the box is the screen's one
+		// primary action (DESIGN §1 law 1), and a box with no caret in it does
+		// not look like somewhere to type — which is the same complaint that
+		// made the box three rows tall in #1000. The hazard the old comment
+		// names is real and is answered by placing the caret rather than by
+		// hiding it: unplaced, it blinks at the frame's origin over the `home`
+		// heading.
+		caretX, caretY = 1+ansi.StringWidth(prompt), boxTop
 	} else {
 		for i, row := range draftRows {
 			if i == 0 {
@@ -1732,7 +1744,7 @@ func (a *app) placeRestWord() string {
 // other place says the router's own line.
 //
 // WHAT THIS TERMINAL ACTUALLY DRAWS IS [app.placeHint], one call above it: on a
-// Mac the modifier is called `⌥` rather than `alt+`, and chords.go is the single
+// Mac the modifier is called `opt+` rather than `alt+`, and chords.go is the single
 // door that substitutes it, so a sentence built here is the same sentence the
 // manual quotes wherever a lane greps for it.
 func (a *app) placeHintSaid() string {
@@ -2076,6 +2088,16 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	msg, path := a.pageMsg, ""
 	if msg == "" && a.at(pageHome) {
 		msg, path = a.home.msg, a.home.msgPath
+	}
+	// AND A QUESTION WITH NOWHERE ELSE TO GO IS ASKED HERE, AT DRAW TIME. The
+	// grid draws a raised question as a card in its description column and the
+	// foot stays quiet ([app.homeAskFitsColumn]); a frame too short or too narrow
+	// for that card has to say it, and it cannot wait for the next keystroke to
+	// find out — [app.sayHomeAsk] runs on a key, and a person who made the window
+	// smaller has pressed none. That left the decision on no part of the screen
+	// at all, which is the one state a question may never be in.
+	if msg == "" && a.at(pageHome) && !a.homeAskFitsColumn() {
+		msg = a.homeAskFoot()
 	}
 	if msg == "" {
 		return "", false

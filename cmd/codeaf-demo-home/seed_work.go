@@ -183,7 +183,7 @@ var demoTasks = []demoTask{
 		},
 	},
 	// AND A GROUP OF LANDINGS NOBODY HAS CHECKED, ACROSS THREE PROJECTS. Home's
-	// `needs you` panel holds them as its `to check` group (homepanel_needs.go),
+	// `needs you` panel holds them as its `unread` group (homepanel_needs.go),
 	// and a fixture with ONE of them draws a group of one — which is the shape a
 	// group line, a count, a clause and a fold all fail to be tested by. These
 	// are deliberately unlike each other: one wrote seventeen files, one wrote

@@ -48,9 +48,8 @@ comparing two harnesses rather than two prompts.
 
 ## Running it
 
-Everything runs on the Spark. `~/.local/bin/go`, the key in
-`~/.config/fleet/secrets.env`, and `tmux` are all there; the laptop has the
-first two and the owner's standing order says the suites do not run on it.
+Everything runs on a bench host. `~/.local/bin/go`, the key in a sourced
+`secrets.env`, and `tmux` are all there.
 
 ```sh
 bench/prompt-diet/run.sh 6aa6a946e dev --layers a         # free, seconds

@@ -281,6 +281,14 @@ var leanPageSections = []leanSection{{
 	// promptprofile_test.go refuses — and it is the right outcome: a law the lean
 	// arm did not need turned out to be a law nobody needed on the page.
 }, {
+	heading: "Messages from codeaf",
+	keeps:   true,
+	why: "THE ONE PLACE THE PAGE IDENTIFIES SESSION-AUTHORED BRACKETED MESSAGES, and it is not the " +
+		"section below. Each live nudge carries its own instruction, but none of them can " +
+		"say that the person never sees it: a model that answered `[carry on]` as though the " +
+		"person had typed it left an argument with the completion check standing as the " +
+		"answer (#1065), and a small model is the likeliest to do it.",
+}, {
 	heading: "Interrupts and steering",
 	keeps:   false,
 	why: "Every message it explains already carries its own instruction inline — " +

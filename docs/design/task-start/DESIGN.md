@@ -142,7 +142,7 @@ existing, with no model call in it, and the snapshot that followed took 0.8 seco
 Nothing said so anywhere, and nothing stopped the next node paying again. `Fork` was
 also the one furrow call on that road with no bound at all.
 
-The laptop's own cause is not reproducible on Linux: on the Spark the same furrow
+The work machine's own cause is not reproducible on Linux: on the bench host the same furrow
 0.1.0 forks the same shapes of repository and the rung succeeds (eight of eight
 recorded nodes). One cause shape was proven there, though. The fork sealed its world
 with `git checkout -b` and `git commit`, which run the repository's commit hooks and
@@ -185,7 +185,7 @@ without the ignored files, and every such task's log says so. Retrying on every 
 the fifteen seconds this section was written to end, and retrying on a timer is a knob
 with no measured value behind it.
 
-Measured on the Spark (real furrow, four nodes per shape, per-node ground time):
+Measured on the bench host (real furrow, four nodes per shape, per-node ground time):
 
 | ground | before | after |
 | --- | --- | --- |
