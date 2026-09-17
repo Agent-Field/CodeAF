@@ -145,6 +145,16 @@ type Engine struct {
 	// shape: the existing consent answer is the notification that a local
 	// surface has already written the rule.
 	RefreshApprovals func()
+	// Closed is called once for each conversation this engine shut down, with
+	// the agent that was closed, so the door that built it can forget it.
+	//
+	// IT IS THE PAIR OF WHATEVER REGISTERED THE AGENT, and it exists because
+	// [Engine.RefreshModelSources] reaches the conversations its door is
+	// holding: a door that registers and never forgets grows that list for as
+	// long as the process lives, and an engine process outlives every
+	// conversation in it. Nil for a door that retains nothing. It changes no
+	// wire shape — a conversation ending is already the end of its stream.
+	Closed func(agent WrappedAgent)
 	// ProfileDir is the profile directory this engine process resolved. It is
 	// carried in Welcome so a linked-local surface writes every local row back
 	// to the profile the running conversation actually reads. A remote surface
@@ -771,7 +781,25 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 	} else {
 		agent.InterruptFor(door)
 	}
-	return agent.Close()
+	err := agent.Close()
+	sess.noteClosed(agent)
+	return err
+}
+
+// noteClosed tells the door that built this agent that its conversation is
+// over, so whatever that door registered the agent in lets go of it.
+//
+// IT RUNS ON THE CLOSE THAT ACTUALLY HAPPENED and after the agent's own Close:
+// a door told first would be forgetting a conversation still flushing its
+// journal, and the `already` return in [Session.shutDown] never reaches here.
+// It is read off the engine rather than captured at construction for the reason
+// [Session.folder] gives about its own reading — the engine behind a session
+// can be swapped under it.
+func (sess *Session) noteClosed(agent WrappedAgent) {
+	if agent == nil || sess.engine == nil || sess.engine.Closed == nil {
+		return
+	}
+	sess.engine.Closed(agent)
 }
 
 // folder is where a picture arriving on this wire gets written down: the
@@ -1481,6 +1509,11 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	if previous != nil {
 		previous.InterruptFor(session.StopByLeaving)
 		_ = previous.Close()
+		// THE SWAP IS A CLOSE LIKE ANY OTHER as far as the door is concerned.
+		// /new and /resume retire a conversation without ever reaching
+		// [Session.shutDown], so a door told only there would keep every
+		// conversation a person opened and left, for the life of the process.
+		sess.noteClosed(previous)
 	}
 	// AND EVERY RAIL IN THE ROOM IS RE-POINTED AT THE CONVERSATION THAT IS
 	// ACTUALLY OPEN. The subscriptions above belonged to the agent just closed;
