@@ -268,10 +268,12 @@ func renderSystemAt(config Config, now time.Time) string {
 	// families of tools were being promised to workers that do not carry them.
 	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
 	// AND THE BASH WORKER'S PAGE IS THE BRANCH'S OWN, swapped in where the
-	// embedded page teaches the pi tools and with the few sentences outside
-	// that section that name one of them rewritten to the shell idiom
-	// ([bashPageSubstitutions]). Nothing here touches any other shape's page:
-	// the swap happens exactly where [Config.mayBashBelt] holds.
+	// embedded page teaches the pi tools. Nothing here touches any other
+	// shape's page: the swap happens exactly where [Config.mayBashBelt]
+	// holds, and it runs before the profile's own cut below so a lean
+	// profile never eats the bash doctrine; the sentence rewrites run at
+	// the end of this function, where they can see the worker and shape
+	// pages too.
 	if config.mayBashBelt() {
 		page = bashWorkerPageFor(page)
 	}
@@ -367,7 +369,17 @@ func renderSystemAt(config Config, now time.Time) string {
 			break
 		}
 	}
-	return out.String()
+	// AND THE SENTENCE REWRITES LAST, because the pages above compose after
+	// the swap: the worker and shape pages carry pi-tool names in their own
+	// sentences, and a rewrite that cannot see them is a promise the belt
+	// does not honor ([bashPageSubstitutions]).
+	composed := out.String()
+	if config.mayBashBelt() {
+		for _, substitution := range bashPageSubstitutions {
+			composed = strings.Replace(composed, substitution.pi, substitution.bash, 1)
+		}
+	}
+	return composed
 }
 
 // ── the bash worker's page ──────────────────────────────────────────────────
@@ -410,7 +422,7 @@ var bashPageSubstitutions = []struct{ pi, bash string }{
 	},
 	{
 		// prompts/system.md, the interrupted-turn rule.
-		pi:   "when it is thin, `read` the deliverable it names, by its full path, and answer out of that",
+		pi:   "when it is thin, `read` the\ndeliverable it names, by its full path, and answer out of that",
 		bash: "when it is thin, read the deliverable it names by its full path — cat it — and answer out of that",
 	},
 	{
@@ -422,14 +434,29 @@ var bashPageSubstitutions = []struct{ pi, bash string }{
 	{
 		// prompts/worker.md, the write-scope rule: the tools it names are gone
 		// from this belt, and the refusal it describes is the ground guard's.
-		pi:   "Read whatever you like, anywhere — other repositories included, with `read`, `grep` and `git log`, `show`, `diff`, `status` — but a `write`, an `edit`, a `cd` and then a change, a `git -C` or a `GIT_DIR=` aimed at another directory is refused before it runs",
+		pi:   "Read whatever you\nlike, anywhere — other repositories included, with `read`, `grep` and `git log`,\n`show`, `diff`, `status` — but a `write`, an `edit`, a `cd` and then a change, a\n`git -C` or a `GIT_DIR=` aimed at another directory is refused before it runs",
 		bash: "Read whatever you like, anywhere — other repositories included, with cat, sed -n, git log, git show and git diff — but a command that writes, edits or cds outside your own copy, a git -C or a GIT_DIR= aimed at another directory is refused before it runs",
+	},
+	{
+		// prompts/worker.md, what comes home: the landing is the diff of the
+		// copy, and a shell worker's writes are its commands.
+		pi:   "every path you passed to\n`write` or `edit`, and nothing else",
+		bash: "every path your commands changed, and nothing else",
+	},
+	{
+		// prompts/system.md, the already-read stub: the marker is the thing a
+		// worker of any belt can see, and no belt is named in it.
+		pi:   "`read` answering `[already read] …` means the bytes are in the conversation above: answer from them rather than fetching the file a second time.",
+		bash: "An answer beginning `[already read] …` means the bytes are in the conversation above: answer from them rather than fetching the file a second time.",
 	},
 }
 
 // bashWorkerPageFor is one bash-belt worker's page out of the composed one:
-// the branch doctrine where the pi-tool guidance was, and the shell idiom
-// where a stray sentence still named a tool the belt does not carry.
+// the branch doctrine where the pi-tool guidance was. It runs EARLY, before
+// the profile's own cut, so a lean profile never eats the bash doctrine the
+// way it eats the pi sections it knows by name. The sentence rewrites live
+// at the end of [renderSystemAt] instead of here, because they must reach
+// the worker and shape pages composed after this point.
 func bashWorkerPageFor(page string) string {
 	start := strings.Index(page, specializedToolsHeading)
 	if start >= 0 {
@@ -440,9 +467,6 @@ func bashWorkerPageFor(page string) string {
 		if swapped := strings.TrimRight(bashworkerPrompt, "\n"); swapped != "" {
 			page = page[:start] + swapped + page[end:]
 		}
-	}
-	for _, substitution := range bashPageSubstitutions {
-		page = strings.Replace(page, substitution.pi, substitution.bash, 1)
 	}
 	return page
 }
