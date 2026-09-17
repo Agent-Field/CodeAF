@@ -3,11 +3,13 @@
 // `codeaf pool` answers what the pool is on this machine: the mode and the
 // addresses in force with the word saying where each came from, the index
 // cached from the last good read, and — under status — what is waiting to be
-// sent. It spends nothing and reaches the network only under `verify`, which
-// fetches a fresh index and checks its signature. THE KEY STANDS IN FRONT OF
-// THE FETCH: a signature nobody can check is a fetch nobody should make, so
-// a build left with no key in hand refuses verify at the door rather than
-// downloading bytes it cannot vouch for.
+// sent and whether the relay and the mirror answered. It spends nothing, and
+// reaches the network only under `status` and `verify`, each of which fetches
+// the index: `status` to say whether an address answers, `verify` to check a
+// fresh one's signature. THE KEY STANDS IN FRONT OF THE FETCH: a signature
+// nobody can check is a fetch nobody should make, so a build left with no key
+// in hand refuses verify at the door rather than downloading bytes it cannot
+// vouch for.
 package main
 
 import (
@@ -123,33 +125,40 @@ func runPoolWith(args []string, output io.Writer, profileDir string, now func() 
 	}
 }
 
-// showPool is the reading form. statusPool is the same answer with the outbox
-// and the two doors the mode opens added to it.
+// showPool is the reading form. statusPool is the same answer with the outbox,
+// the two doors the mode opens, and the relay's own answer added to it — the
+// last is why status, alone among the reading forms, asks the network.
 func showPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Config, now func() time.Time) error {
-	return poolReading("pool show", args, output, poolDir, cfg, now, false)
-}
-
-func statusPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Config, now func() time.Time) error {
-	return poolReading("pool status", args, output, poolDir, cfg, now, true)
-}
-
-func poolReading(name string, args []string, output io.Writer, poolDir string, cfg poolcfg.Config, now func() time.Time, withStatus bool) error {
-	flags := commandFlags(name)
+	flags := commandFlags("pool show")
 	asJSON := flags.Bool("json", false, "print the answer as one JSON object")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: codeaf %s [--json]", name)
+		return fmt.Errorf("usage: codeaf pool show [--json]")
 	}
-	return printPool(output, poolDir, cfg, now(), *asJSON, withStatus)
+	return printPool(output, poolDir, cfg, now(), *asJSON, false, nil)
+}
+
+func statusPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Config, now func() time.Time) error {
+	flags := commandFlags("pool status")
+	asJSON := flags.Bool("json", false, "print the answer as one JSON object")
+	var keys poolKeys
+	flags.Var(&keys, "key", "an ed25519 public key, base64; repeatable")
+	if err := parseCommandFlags(flags, args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("usage: codeaf pool status [--json] [--key key]")
+	}
+	return printPool(output, poolDir, cfg, now(), *asJSON, true, keys)
 }
 
 // printPool is the reading form's whole answer. The config first — every value
 // beside the word saying where it came from, one of default, setting, env or
 // ci — then the cached index with its age, then the install's own sheet,
 // then, for status, the outbox and the two doors the mode opens.
-func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withStatus bool) error {
+func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withStatus bool, keys []ed25519.PublicKey) error {
 	var cached *index.Index
 	// The cache is read the way show reads everything else, as an answer and
 	// not as an argument: a document that does not parse is not there yet,
@@ -161,7 +170,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		}
 	}
 	if asJSON {
-		return printPoolJSON(output, poolDir, cfg, cached, now, withStatus)
+		return printPoolJSON(output, poolDir, cfg, cached, now, withStatus, keys)
 	}
 	for _, line := range []string{
 		fmt.Sprintf("mode %s · %s", cfg.Mode, cfg.Source.Mode),
@@ -211,11 +220,103 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		return err
 	}
 	if withStatus {
+		relay, mirror := probePool(poolDir, cfg, now, keys)
+		if _, err := fmt.Fprintln(output, relayStatusLine(cfg, relay, mirror, cached)); err != nil {
+			return err
+		}
 		_, err := fmt.Fprintf(output, "pending %d · can send %s · can read %s\n",
 			pendingRows(poolDir), yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
 		return err
 	}
 	return nil
+}
+
+// poolProbeBudget is what status spends asking one address. It is short on
+// purpose: the line is a reading a person waits for, and an address that takes
+// longer than this to answer has not answered.
+const poolProbeBudget = 3 * time.Second
+
+// probeSummary is one address's answer under status: whether it answered, the
+// index version it served when it did, and — when it did not — the one-line
+// reason. fromCache says the document was the copy already on disk, which the
+// relay line words differently; it is not part of the JSON shape.
+type probeSummary struct {
+	Reachable bool   `json:"reachable"`
+	Version   int64  `json:"version"`
+	Reason    string `json:"reason"`
+	fromCache bool
+}
+
+// probePool asks the relay for the index, and the mirror when the relay does
+// not answer, under a pull that always goes to the network — TTL 0 — inside a
+// three-second budget. It never fails a reading form: an address that does not
+// answer is what the line is for, and status exits 0 either way. A mode that
+// forbids reading asks nothing at all.
+func probePool(poolDir string, cfg poolcfg.Config, now time.Time, keys []ed25519.PublicKey) (probeSummary, probeSummary) {
+	if !cfg.CanRead() {
+		off := probeSummary{Reason: "not read (model_pool off)"}
+		return off, off
+	}
+	trusted := append([]ed25519.PublicKey{}, keys...)
+	trusted = append(trusted, poolTrustedKeys(cfg)...)
+	clock := func() time.Time { return now }
+	relay := probeAddress(cfg.IndexURL, poolDir, trusted, clock)
+	if relay.Reachable {
+		return relay, probeSummary{}
+	}
+	if cfg.MirrorURL == "" {
+		return relay, probeSummary{Reason: "not configured"}
+	}
+	return relay, probeAddress(cfg.MirrorURL, poolDir, trusted, clock)
+}
+
+// probeAddress pulls one address the way status asks it: a fresh fetch — TTL 0
+// so a young cache is not what answers — inside the probe budget, its failure
+// turned into the one-line reason.
+func probeAddress(url, poolDir string, keys []ed25519.PublicKey, now func() time.Time) probeSummary {
+	puller := &pull.Puller{
+		URL:      url,
+		Keys:     keys,
+		CacheDir: poolDir,
+		TTL:      0,
+		Budget:   poolProbeBudget,
+		Now:      now,
+	}
+	result, err := puller.Pull(context.Background())
+	if err != nil {
+		return probeSummary{Reason: oneLine(err.Error())}
+	}
+	return probeSummary{Reachable: true, Version: result.Version, fromCache: result.FromCache}
+}
+
+// relayStatusLine is the one line status says about the addresses: whether the
+// relay answered, the mirror beside it when the relay did not, and — when
+// neither did — what the reading fell back to. A mode that forbids reading
+// asks nothing and says that instead.
+func relayStatusLine(cfg poolcfg.Config, relay, mirror probeSummary, cached *index.Index) string {
+	if !cfg.CanRead() {
+		return "relay: not read (model_pool off)"
+	}
+	if relay.Reachable {
+		if relay.fromCache {
+			return fmt.Sprintf("relay: reachable · index unchanged, version %d", relay.Version)
+		}
+		return fmt.Sprintf("relay: reachable · index version %d", relay.Version)
+	}
+	if mirror.Reachable {
+		return fmt.Sprintf("relay: unreachable (%s) · mirror: reachable · index version %d", relay.Reason, mirror.Version)
+	}
+	where := "built-in seed"
+	if cached != nil {
+		where = "cache"
+	}
+	return fmt.Sprintf("relay: unreachable (%s) · mirror: unreachable (%s) · reading %s", relay.Reason, mirror.Reason, where)
+}
+
+// oneLine is a reason said on one line: any newline becomes a space, because
+// the relay line holds the reason in parentheses beside the next word.
+func oneLine(reason string) string {
+	return strings.ReplaceAll(strings.TrimSpace(reason), "\n", " ")
 }
 
 // ownSummary is the install's own sheet as the reading forms carry it: the
@@ -257,6 +358,8 @@ type poolAnswer struct {
 	Pending    *int          `json:"pending,omitempty"`
 	CanSend    *bool         `json:"can_send,omitempty"`
 	CanRead    *bool         `json:"can_read,omitempty"`
+	Relay      *probeSummary `json:"relay,omitempty"`
+	Mirror     *probeSummary `json:"mirror,omitempty"`
 	Index      *indexSummary `json:"index"`
 	Own        ownSummary    `json:"own"`
 }
@@ -276,7 +379,7 @@ type indexSummary struct {
 	Source      string `json:"source"`
 }
 
-func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached *index.Index, now time.Time, withStatus bool) error {
+func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached *index.Index, now time.Time, withStatus bool, keys []ed25519.PublicKey) error {
 	answer := poolAnswer{
 		Mode:       cfg.Mode.String(),
 		ModeSource: cfg.Source.Mode,
@@ -313,6 +416,9 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		answer.Pending = &pending
 		answer.CanSend = &send
 		answer.CanRead = &read
+		relay, mirror := probePool(poolDir, cfg, now, keys)
+		answer.Relay = &relay
+		answer.Mirror = &mirror
 	}
 	answer.Own = ownSheetSummary(poolDir)
 	encoded, err := json.Marshal(answer)
