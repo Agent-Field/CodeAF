@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/crewpick"
+	"github.com/Agent-Field/codeaf/internal/pool/index"
 )
 
 // THE WORD, AND WHAT IS NOT THE WORD. `auto` is a bare word a tier row holds,
@@ -370,5 +371,58 @@ func TestTheTableRungAnswersThePresetTheRowsName(t *testing.T) {
 	if seat.Model != models[ModelTierMastermind] || seat.Source != SeatTable {
 		t.Errorf("with no catalog the seat reads %q (%s), want max's own mastermind id on the table rung",
 			seat.Model, seat.Rung())
+	}
+}
+
+// mustIndex parses a measurement document or fails the test.
+func mustIndex(t *testing.T, doc string) *index.Index {
+	t.Helper()
+	x, err := index.Parse([]byte(doc))
+	if err != nil {
+		t.Fatalf("parse index: %v", err)
+	}
+	return x
+}
+
+// priorDocument is the smallest index document that rates one catalog row on
+// the worker seat: a gaussian role_quality metric and a cell well above the
+// document's min_installs.
+const priorDocument = `{
+	"schema": 1,
+	"generated": "2026-09-17",
+	"min_installs": 5,
+	"metrics": {"role_quality": {"kind": "gaussian", "dims": ["role", "model"]}},
+	"cells": [
+		{"metric": "role_quality", "role": "worker", "model": "a/cheap", "mean": 95, "sd": 5, "n": 1000}
+	]
+}`
+
+// THE INDEX REACHES THE PICK THROUGH THE PRIOR. An index whose role_quality
+// metric rates one catalog row well above its published worker quality moves
+// AutoPick's worker answer to that row, and with no index the pick answers
+// exactly what the front answers, as before.
+func TestAutoPickReadsAMeasuredQualityPrior(t *testing.T) {
+	restore := AutoIndex
+	defer func() { AutoIndex = restore }()
+
+	rows := autoTestRows()
+
+	AutoIndex = nil
+	frugal, _, _ := crewpick.Presets(crewpick.Front(autoCandidates(rows), crewpick.DefaultShapes(), crewpick.All))
+	before, ok := AutoPick(ModelTierWorker, CrewSourceAll, CrewFrugal, rows)
+	if !ok || before != frugal.Worker {
+		t.Fatalf("with no index the worker pick reads %q, want the front's own %q", before, frugal.Worker)
+	}
+
+	AutoIndex = func() *index.Index { return mustIndex(t, priorDocument) }
+	after, ok := AutoPick(ModelTierWorker, CrewSourceAll, CrewFrugal, rows)
+	if !ok {
+		t.Fatal("the pick answers nothing with the index in hand")
+	}
+	if after == before {
+		t.Fatalf("the rated row left the worker pick at %q; the index never reached the quality", after)
+	}
+	if after != "a/cheap" {
+		t.Fatalf("the rated row did not take the worker seat: got %q", after)
 	}
 }
