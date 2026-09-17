@@ -727,3 +727,215 @@ func TestPlandbCliFlagOffTouchesNothing(t *testing.T) {
 		t.Error("the flag-off worker was handed the bash belt's doctrine page")
 	}
 }
+
+// ── the belt's landing: what a shell writes reaches the branch ──────────────────
+
+// TestPlandbBashWritesReachTheBranch is the belt's own landing proof. A
+// bash-belt worker makes its one edit through bash — the only hand the belt
+// gives it — and ends its turn, so its ledger stays empty and the tree's own
+// git status is the only account of what it wrote. The landing stages from
+// that status ([stageTaskWork]'s belt arm), and what must come back: the
+// change is ON the branch the landing merges home, and the report carries no
+// left-behind sentence — before the arm, a shell worker's file sat unstaged
+// in its task folder and was reported exactly as that.
+func TestPlandbBashWritesReachTheBranch(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	place := Place{Dir: t.TempDir()}
+	repo := newTestRepo(t)
+	planE2EArmCLI(t, place)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := newPlanE2ECompleter(map[string][]step{
+		"chat": {
+			planE2EProposeStep("The whole run",
+				"Write one file with bash — the belt's own hand — and end the turn."),
+			finalText("handed off"), finalText("handed off"), finalText("handed off"),
+		},
+		"t-root": {
+			planE2EBashStep("belt-write", `printf 'written through bash\n' > note.txt`),
+			// THE TURN ENDS WITHOUT A DONE VERB: the run's own task is the
+			// runtime's to complete, and the landing is what carries the file.
+			finalText("the file is written; the run is the runtime's to complete."),
+			finalText("handed off"), finalText("handed off"), finalText("handed off"),
+		},
+	})
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Place = place
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	collect(t, mustSubmit(t, agent, "write the file through bash"))
+
+	g := agent.graph()
+	root := g.node(1)
+	planE2EWaitSettled(t, root)
+
+	// THE LANDED BRANCH CARRIES THE CHANGE. The merge home is the proof:
+	// note.txt was written by a shell command in the worktree, named by no
+	// ledger, and it reads in the person's own checkout only if the landing
+	// staged the tree's status.
+	written, err := os.ReadFile(filepath.Join(repo, "note.txt"))
+	if err != nil {
+		t.Fatalf("the branch does not carry the file the shell wrote: %v", err)
+	}
+	if !strings.Contains(string(written), "written through bash") {
+		t.Fatalf("the landed file reads %q, want the shell's own line", written)
+	}
+	// AND NOTHING IS REPORTED LEFT BEHIND. The report a person reads is the
+	// landing's own word: the shell's file went onto the branch, so the
+	// sentence about files it did not write is empty.
+	g.mu.Lock()
+	report := root.report
+	g.mu.Unlock()
+	if strings.Contains(report, "left files it did not write") {
+		t.Fatalf("the landing reported work as left behind:\n%s", report)
+	}
+}
+
+// ── the dispatch stall: a turn that ends with parts nobody handed out ─────────
+
+// TestPlandbCliASplitEndingItsTurnStillDispatches is the dispatch proof for a
+// coordinator whose LAST bash call is the split itself. The pulse that runs
+// after a bash call is behind it by then, and the turn that follows ends
+// without another one — so the parts are handed out by the pass the turn's end
+// takes, or they are handed out never: the coordinator sees no child of its own
+// to wait on, lands, and the root completion that follows cancels the three
+// ready tasks as work nothing will deliver. What must come back instead: all
+// three parts are nodes under the coordinator, the coordinator stays open and
+// parked on them while they work, and it lands only after they have — with the
+// store reading every part done and none of them cancelled.
+func TestPlandbCliASplitEndingItsTurnStillDispatches(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	place := Place{Dir: t.TempDir()}
+	repo := newTestRepo(t)
+	planE2EArmCLI(t, place)
+	t.Setenv("HOME", t.TempDir())
+
+	// THE THREE PARTS ARE HELD OPEN by their own lane's step, so the ordering
+	// below is caused rather than hoped for: no part lands until the test says
+	// so, and a coordinator that landed on top of them is a failure this can
+	// see rather than a race it sometimes wins.
+	var once sync.Once
+	hold := make(chan struct{})
+	free := func() { once.Do(func() { close(hold) }) }
+	defer free()
+	t.Cleanup(free)
+	held := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		select {
+		case <-hold:
+		case <-ctx.Done():
+		}
+		return textResponse("the part is finished"), nil
+	}
+	// The parts' ids are the store's own minting, which no script can know in
+	// advance, so the three share the lane the mark routes them to — the same
+	// mark the flag-off arm uses, carried in the description the split writes
+	// and therefore in the brief the runtime composes back from that store read.
+	share := `the share of the work this part owns ` + taskBriefMark
+
+	completer := newPlanE2ECompleter(map[string][]step{
+		"chat": {
+			planE2EProposeStep("Three-part plan",
+				"Split the work three ways through the CLI, then end the turn and let the parts run."),
+			finalText("handed off"), finalText("handed off"), finalText("handed off"),
+		},
+		"t-root": {
+			// ONE CALL, THREE PARTS, AND NO CALL AFTER IT that could carry a
+			// pulse: the turn ends on the prose below.
+			planE2EBashStep("plan-e2e-split",
+				`plandb split t-root --into '[{"title":"Part A","description":"`+share+`"},`+
+					`{"title":"Part B","description":"`+share+`"},`+
+					`{"title":"Part C","description":"`+share+`"}]'`),
+			finalText("the three parts are in the plan; I wait for them."),
+			finalText("handed off"), finalText("handed off"), finalText("handed off"),
+		},
+		"child": {held, held, held},
+	})
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Place = place
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	collect(t, mustSubmit(t, agent, "split the work three ways through the plan CLI"))
+
+	g := agent.graph()
+	// ALL THREE PARTS ARE NODES, AND THE COORDINATOR IS PARKED ON THEM. Parked
+	// is the observable that its turn has ENDED and that it is waiting on work
+	// it created ([TaskNode.waitingOnItsPieces]) — the two halves of the
+	// scenario this test is about, read as one condition.
+	var root *TaskNode
+	waitFor(t, "the coordinator to end its turn parked on the three parts it split into", func() bool {
+		root = g.node(1)
+		return root != nil && len(g.children(root.id)) == 3 && root.waitingOnItsPieces()
+	})
+	if state := root.stateNow(); state != TaskRunning {
+		t.Fatalf("the coordinator stands %q while its three parts are still held open, want it running and waiting on them", state)
+	}
+
+	// AND NOTHING WAS CANCELLED WHILE IT WAITED. A part the dispatch refused is
+	// a part no worker will ever report on, and the run's ending used to read
+	// exactly that as work nothing would deliver.
+	for _, part := range planE2EParts(t, place) {
+		if part.Status == plandb.StatusCancelled {
+			t.Fatalf("part %s was cancelled while its coordinator still waited on it: %s", part.ID, part.Error)
+		}
+	}
+
+	// THE PARTS LAND, AND ONLY THEN DOES THE COORDINATOR.
+	free()
+	for _, part := range g.children(root.id) {
+		planE2EWaitSettled(t, part)
+	}
+	planE2EWaitSettled(t, root)
+	planE2EWaitStoreRoot(t, place)
+
+	// THE STORE'S END STATE: three parts done under their own claims, the root
+	// completed by the runtime, and not one task left cancelled — the sentence
+	// the stall used to end the run on.
+	store := planE2EOpenStore(t, place)
+	parts := planE2EParts(t, place)
+	if len(parts) != 3 {
+		t.Fatalf("the store holds %d parts, want the three the split wrote", len(parts))
+	}
+	for _, part := range parts {
+		if part.Status != plandb.StatusDone {
+			t.Errorf("part %s reads %q (%s), want done", part.ID, part.Status, part.Error)
+		}
+		if part.ClaimedBy != part.ID {
+			t.Errorf("part %s is claimed by %q, want its own id", part.ID, part.ClaimedBy)
+		}
+	}
+	for _, task := range store.Tasks() {
+		if task.Status == plandb.StatusCancelled {
+			t.Errorf("task %s was cancelled: %s", task.ID, task.Error)
+		}
+	}
+	// THE TREE IT GREW: the coordinator and its three parts, every one of them
+	// landed, and no fourth node — a part dispatched twice would be a store
+	// task with two workers on it.
+	shapes := planE2EShapes(t, g)
+	if len(shapes) != 4 {
+		t.Fatalf("the graph holds %d nodes, want the coordinator and its three parts: %+v", len(shapes), shapes)
+	}
+	for _, shape := range shapes {
+		if shape.state != TaskDone {
+			t.Errorf("node %s landed %q, want done", shape.planID, shape.state)
+		}
+	}
+}
+
+// planE2EParts is every task in the run's store below the root, in the store's
+// own order — the parts a coordinator created, whatever ids the store minted
+// for them.
+func planE2EParts(t *testing.T, place Place) []*plandb.Task {
+	t.Helper()
+	var parts []*plandb.Task
+	for _, task := range planE2EOpenStore(t, place).Tasks() {
+		if task.ID != planRootID {
+			parts = append(parts, task)
+		}
+	}
+	return parts
+}

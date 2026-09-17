@@ -187,7 +187,7 @@ func TestAWorkspaceThatWasNeverARepositoryIsNotAReleasedCopy(t *testing.T) {
 	if _, released := rememberedRelease(plain); released {
 		t.Fatal("a folder nobody released reads as a copy the runtime gave back")
 	}
-	problem, why := stageTaskWork(plain, []string{"notes.md"})
+	problem, why := stageTaskWork(plain, []string{"notes.md"}, false)
 	if problem == "" || why != refusedByTheTree {
 		t.Fatalf("staging in a folder that is no repository answered %q/%v, want the place refusing", problem, why)
 	}
