@@ -32,6 +32,9 @@ func telemetryLifecycleHome(t *testing.T) {
 	// Nothing listens here, and loopback dialing is refused immediately.
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "http://127.0.0.1:1/telemetry")
 	telemetry.EnableForTest(t, true)
+	// A test binary is unstamped and the send path drops an event with no
+	// version, so the lifecycle under test carries a stamped one.
+	telemetry.VersionForTest(t, "v0.0.0-test")
 }
 
 // telemetrySpoolRows is what the spool holds, parsed. An absent spool is an
