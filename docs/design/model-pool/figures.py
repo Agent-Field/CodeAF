@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the figures in learn.tex from data/*.csv. Standard library, numpy and matplotlib only.
+"""Draws the figures in pareto-crewing.tex from data/*.csv. Standard library, numpy and matplotlib only.
 
     python3 figures.py            # writes fig-*.pdf and tab-*.tex beside this file
 

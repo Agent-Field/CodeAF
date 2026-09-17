@@ -375,8 +375,7 @@ Look at what happened — read-only, no key, nothing spent
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what
-      came back; --json prints the rows as on disk, --body one call's bodies.
-      The filters are exact and combine; CODEAF_CALL_LOG=off is off
+      came back; --json rows as on disk, --body one call; CODEAF_CALL_LOG=off is off
   codeaf models [--refresh]
       the models this machine will use, and what each has been measured at
   codeaf pool [show|status|verify] [--json] [--key key]

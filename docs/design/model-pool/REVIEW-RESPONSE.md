@@ -1,6 +1,6 @@
 # Response to the referee
 
-The report in `REVIEW.md` was written against the draft at the head before this one. Each numbered defect is answered below with what changed in `learn.tex`; the section numbers are the revised document's.
+The report in `REVIEW.md` was written against the draft at the head before this one. The paper was `learn.tex` then and is `pareto-crewing.tex` now; each numbered defect is answered below with what changed; the section numbers are the revised document's.
 
 ## Defects
 

@@ -23,7 +23,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small\textsc{Preprint}}
-\fancyhead[R]{\small Crews from Evidence}
+\fancyhead[R]{\small Pareto Crewing}
 \fancyfoot[C]{\small\thepage}
 \renewcommand{\headrulewidth}{0.2pt}
 
@@ -49,8 +49,8 @@
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
-\title{\textbf{Crews from Evidence}\\[6pt]
-\large Privacy-preserving, decentralised measurement of language-model teams,\\ and a cost-aware learner that picks them}
+\title{\textbf{Pareto Crewing}\\[6pt]
+\large Decentralised, privacy-preserving measurement of language-model teams,\\ and a learner that picks them on the cost-quality front, per role and per task}
 \author{Santosh Kumar Radha}
 \affil{AgentField AI}
 \date{September 2026}
@@ -61,17 +61,17 @@
 
 \begin{abstract}
 \noindent
-An agent harness runs a task through a \emph{crew}: an assignment of one language model to each of $n$ roles (in our instance a worker that does the work, a checker that reads it and a planner that cuts it). The crew that pays best is neither the cheapest nor the strongest on paper; it is the one that minimises the expected cost of one clean delivery once failed runs, wall time and shipped defects are priced. We give that objective in closed form, show how a crew is computed from a published catalog of prices and benchmark indexes alone (a pareto front in bill and quality, with a scale-free knee), and then how measurements from real runs replace the catalog's proxy. Runs are scored role by role by a model outside the crew. Each score becomes a row that carries no text, no file name, no price and no identity beyond a per-install nonce, so what an install sends is a handful of coarse fields about a model, not about the work; rows reduce to sufficient statistics that form a join-semilattice, so any number of installs and a relay can merge them in any order and reach the same state, the relay is a convenience rather than an authority, and the published index is signed so that every reader can check what it is blending in. Participation is a setting: an install can contribute, read and learn from its own runs without sending, or stay out. Judge severity is removed by a two-way fixed-effects fit on those statistics, drift by a local-level model whose forgetting rate is estimated rather than set, and heterogeneity between installs by a hierarchical prior whose variance is estimated by moments; every statistical constant is an empirical-Bayes estimate, and what remains for the user to set is the price of a defect and the price of time. The crew is chosen by Thompson sampling with semi-bandit feedback: because the objective is linear in role qualities and every role is scored separately, a run on one crew informs every crew that shares a model with it, and the sample complexity scales with the number of models rather than the number of crews. On a ground truth fitted to our own runs the learner beats a fixed table by a third of the remaining regret within a few hundred runs, and role-level feedback halves the regret of a crew-level learner fed the same scores at four hundred runs.
+\emph{Pareto crewing} is the practice of picking the language-model team for a task on the cost-quality front, one model per role, from evidence about how models have performed in that role rather than from a fixed table. An agent harness runs a task through a \emph{crew}: an assignment of one language model to each of $n$ roles (in our instance a worker that does the work, a checker that reads it and a planner that cuts it). The crew that pays best is neither the cheapest nor the strongest on paper; it is the one that minimises the expected cost of one clean delivery once failed runs, wall time and shipped defects are priced. We give that objective in closed form, show how a crew is computed from a published catalog of prices and benchmark indexes alone (a pareto front in bill and quality, with a scale-free knee), and then how measurements from real runs replace the catalog's proxy. Runs are scored role by role by a model outside the crew. Each score becomes a row that carries no text, no file name, no price and no identity beyond a per-install nonce, so what an install sends is a handful of coarse fields about a model, not about the work; rows reduce to sufficient statistics that form a join-semilattice, so any number of installs and a relay can merge them in any order and reach the same state, the relay is a convenience rather than an authority, and the published index is signed so that every reader can check what it is blending in. Participation is a setting: an install can contribute, read and learn from its own runs without sending, or stay out. Judge severity is removed by a two-way fixed-effects fit on those statistics, drift by a local-level model whose forgetting rate is estimated rather than set, and heterogeneity between installs by a hierarchical prior whose variance is estimated by moments; every statistical constant is an empirical-Bayes estimate, and what remains for the user to set is the price of a defect and the price of time. The crew is chosen by Thompson sampling with semi-bandit feedback: because the objective is linear in role qualities and every role is scored separately, a run on one crew informs every crew that shares a model with it, and the sample complexity scales with the number of models rather than the number of crews. On a ground truth fitted to our own runs the learner beats a fixed table by a third of the remaining regret within a few hundred runs, and role-level feedback halves the regret of a crew-level learner fed the same scores at four hundred runs.
 \end{abstract}
 
 \vspace{4pt}
-\noindent\textbf{Keywords:} model selection, pareto front, empirical Bayes, Thompson sampling, combinatorial semi-bandits, CRDT, judge calibration, privacy, decentralised measurement.
+\noindent\textbf{Keywords:} Pareto crewing, model selection, pareto front, empirical Bayes, Thompson sampling, combinatorial semi-bandits, CRDT, judge calibration, privacy, decentralised measurement.
 
 \section{Introduction}
 
 A harness that drives language models through software tasks has to decide, before every task, which model sits in which role. The decision is made under three kinds of information that arrive at different times and in different units: published prices and benchmark indexes, available for every model on the day it appears; the harness's own past runs, few but on the right distribution; and the runs of everyone else using the same harness, many but on other people's tasks and scored by other people's judges. This note is about turning the three into one decision.
 
-Our contributions are the following.
+We call the resulting discipline \emph{Pareto crewing}: the crew is picked on the cost-quality front, per role and per task, from whatever evidence exists on the day, and the evidence is pooled across installs without any install giving up what it worked on. Our contributions are the following.
 \begin{enumerate}
 \item A closed-form objective for a crew, the expected cost of one clean delivery under reruns and a priced defect (Section~\ref{sec:objective}), and the observation that on a catalog alone the objective cannot be evaluated, which is why the catalog picker is a pareto front with a scale-free knee (Section~\ref{sec:catalog}).
 \item A decentralised measurement of role quality (Section~\ref{sec:pool}): text-free rows, sufficient statistics that form a state-based CRDT (Proposition~\ref{prop:crdt}), judge fixed effects identified from the connectivity of the judge-cell graph (Proposition~\ref{prop:ident}), robust aggregation across installs, and drift handled by a local-level model.
