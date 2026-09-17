@@ -8,7 +8,9 @@ package plandb
 // belongs to somebody else.
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -321,5 +323,211 @@ func TestPlandbCliForeignProjectRefusedOnAWrittenStore(t *testing.T) {
 	}
 	if reopened.Task("job") == nil {
 		t.Fatalf("the refused open damaged the store: %#v", reopened.Tasks())
+	}
+}
+
+// The crash helper's two modes, named in the child's environment: it runs only
+// when the path is set, so the parent's ordinary `go test` never enters it.
+const (
+	plandbCrashPathEnv = "PLANDB_CRASH_TEST_PATH"
+	plandbCrashModeEnv = "PLANDB_CRASH_TEST_MODE"
+)
+
+// TestPlandbCliCrashMidWriteLeavesTheLastCommit kills a write half-way. A
+// child process opens the store, begins the one write transaction every writer
+// takes, lands the first statement of the whole-plan rewrite, and dies with no
+// commit — the crash an interrupted process leaves. The next open must read
+// the state BEFORE the write, not the half-written one, and it must still be
+// resumable: the log replays what committed and discards what did not.
+func TestPlandbCliCrashMidWriteLeavesTheLastCommit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("kept", "Kept"), planSpec("other", "Other"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	planRunCrashChild(t, path, "half", 17)
+
+	// Open validates every invariant of the loaded plan, so a crash that left
+	// the file inconsistent would refuse here rather than answer.
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	for id, title := range map[string]string{"kept": "Kept", "other": "Other"} {
+		if got := reopened.Task(id); got == nil || got.Title != title {
+			t.Fatalf("after the crash task %q = %#v, want the committed %q", id, got, title)
+		}
+	}
+	// Consistent also means resumable: the next write applies cleanly.
+	if _, err := reopened.AddNote("kept", "w", "after the crash"); err != nil {
+		t.Fatalf("write after the crash: %v", err)
+	}
+}
+
+// TestPlandbCliCrashedCommitIsReplayedFromTheWAL commits a write in a child
+// and crashes it with the store open, so the commit sits in the write-ahead
+// log and the database file has not been checkpointed yet. The next open must
+// replay the log and answer the committed plan: the WAL is replayed, not
+// discarded.
+func TestPlandbCliCrashedCommitIsReplayedFromTheWAL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("kept", "Kept"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	planRunCrashChild(t, path, "commit", 23)
+
+	// The commit is still waiting in the log rather than folded into the file:
+	// that is what makes the next open a replay and not a plain read.
+	wal, err := os.Stat(path + "-wal")
+	if err != nil {
+		t.Fatalf("the crashed commit left no write-ahead log: %v", err)
+	}
+	if wal.Size() == 0 {
+		t.Fatal("the write-ahead log is empty — the commit was not waiting in it")
+	}
+
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	if got := reopened.Task("survivor"); got == nil || got.Title != "Survivor" {
+		t.Fatalf("the crashed commit was not replayed: %#v", got)
+	}
+	// The mode is a property of the file, and the reader recovers from the same
+	// log the next writer will append to.
+	var mode string
+	if err := reopened.db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil || !strings.EqualFold(mode, "wal") {
+		t.Fatalf("journal mode after recovery = %q, %v, want wal", mode, err)
+	}
+}
+
+// planRunCrashChild runs this test binary as a separate process in one of the
+// crash helper's modes and fails unless it exits with wantCode. A separate
+// process is the only way to die with a transaction open: an in-process close
+// rolls it back cleanly, which is not the crash under test.
+func planRunCrashChild(t *testing.T, path, mode string, wantCode int) {
+	t.Helper()
+	command := exec.Command(os.Args[0], "-test.run=^TestPlandbCliCrashHelper$", "-test.count=1")
+	command.Env = append(os.Environ(), plandbCrashPathEnv+"="+path, plandbCrashModeEnv+"="+mode)
+	out, err := command.CombinedOutput()
+	var exit *exec.ExitError
+	if err == nil || !errors.As(err, &exit) || exit.ExitCode() != wantCode {
+		t.Fatalf("crash child (mode %s) exited %v, want code %d:\n%s", mode, err, wantCode, out)
+	}
+}
+
+// TestPlandbCliCrashHelper is the child half of the two crash tests. It runs
+// only when the parent named a path and a mode, and it leaves by os.Exit so no
+// deferred rollback or close can tidy up after it — the transaction stays
+// exactly as the crash found it.
+func TestPlandbCliCrashHelper(t *testing.T) {
+	path := os.Getenv(plandbCrashPathEnv)
+	mode := os.Getenv(plandbCrashModeEnv)
+	if path == "" || mode == "" {
+		t.Skip("the crash helper runs only as a child process")
+	}
+	store, err := Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("child open: %v", err)
+	}
+	switch mode {
+	case "half":
+		// BEGIN IMMEDIATE, the first statement of the whole-plan rewrite, and
+		// no commit: the process dies holding an unfinished transaction.
+		tx, err := store.beginWrite()
+		if err != nil {
+			t.Fatalf("child begin: %v", err)
+		}
+		if _, err := tx.Exec("DELETE FROM tasks"); err != nil {
+			t.Fatalf("child first statement: %v", err)
+		}
+		os.Exit(17)
+	case "commit":
+		// A committed write, then a crash with the log holding it and no
+		// checkpoint: the frames the next open must replay.
+		if _, err := store.AddMany([]TaskSpec{planSpec("survivor", "Survivor")}); err != nil {
+			t.Fatalf("child commit: %v", err)
+		}
+		os.Exit(23)
+	default:
+		t.Fatalf("unknown crash mode %q", mode)
+	}
+}
+
+// TestPlandbCliWriterWaitsOutTheWriteLock proves the busy handling. The first
+// handle holds a write transaction open while the second writes: the second
+// meets SQLITE_BUSY, the busy timeout set once at open holds it, and the write
+// lands once the first commits instead of failing at once.
+func TestPlandbCliWriterWaitsOutTheWriteLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("a", "A"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	first := planReopen(t, path)
+	defer first.Close()
+	second := planReopen(t, path)
+	defer second.Close()
+
+	// The pragma that makes a writer wait rather than fail is set once, on the
+	// write handle, and both handles carry it.
+	for _, st := range []*Store{first, second} {
+		var timeout int
+		if err := st.db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil || timeout != 5000 {
+			t.Fatalf("busy_timeout = %d, %v, want the 5000 set at open", timeout, err)
+		}
+	}
+
+	// first opens its write transaction and holds it: the commit is gated on a
+	// channel, so the write lock stays held while second tries to write.
+	held := make(chan struct{})
+	release := make(chan struct{})
+	first.now = func() time.Time {
+		select {
+		case <-held:
+		default:
+			close(held)
+		}
+		<-release
+		return time.Now().UTC()
+	}
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := first.Amend("a", "held open")
+		firstDone <- err
+	}()
+	<-held
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := second.Amend("a", "waited its turn")
+		secondDone <- err
+	}()
+	select {
+	case err := <-secondDone:
+		t.Fatalf("the second writer did not wait for the held lock: %v", err)
+	case <-time.After(300 * time.Millisecond):
+		// Still waiting behind the busy timeout — the handling is doing its job.
+	}
+
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first writer: %v", err)
+	}
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second writer once the lock cleared: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the second writer never landed once the lock cleared")
+	}
+
+	// Both writes are in the plan: the wait lost nothing.
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	description := reopened.Task("a").Description
+	if !strings.Contains(description, "held open") || !strings.Contains(description, "waited its turn") {
+		t.Fatalf("a write was lost across the wait: %q", description)
 	}
 }
