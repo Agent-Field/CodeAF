@@ -1,0 +1,24 @@
+name = "codeaf-pool"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# A route on the path prefix, not a custom domain: the Worker owns only
+# codeaf.agentfield.ai/pool/* and the host can carry other services.
+routes = [
+  { pattern = "codeaf.agentfield.ai/pool/*", zone_name = "agentfield.ai" }
+]
+
+[[kv_namespaces]]
+binding = "POOL"
+# The runbook fills this id: `cd relay && wrangler kv namespace create POOL`.
+id = "REPLACE_WITH_POOL_KV_NAMESPACE_ID"
+
+[triggers]
+crons = ["17 * * * *"]
+
+[vars]
+# The public half of the index signing key built into the binary. The private
+# half is the POOL_SIGNING_KEY secret, set by the runbook and never stored here.
+POOL_PUBLIC_KEY = "WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0="
+MIN_INSTALLS = "3"
+ROWS_PER_INSTALL_PER_DAY = "500"
