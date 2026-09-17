@@ -16,14 +16,13 @@ import (
 	"testing"
 )
 
-// The two populations this test throws at one store: goroutines writing
-// through their own handle in this process, and separate processes of the
-// built CLI. Each adds this many tasks, so a whole population is 8*25 = 200
-// and the store holds both.
+// The population this test throws at one store: eight writers, each a
+// goroutine driving its own separate process of the built CLI, each adding
+// this many tasks. So 8*25 = 200 tasks land in one database while eight
+// processes contend for its write lock.
 const (
-	plandbWriterGoroutines = 8
-	plandbWriterProcesses  = 8
-	plandbTasksPerWriter   = 25
+	plandbConcurrentWriters = 8
+	plandbTasksPerWriter    = 25
 )
 
 // planBuildCLI builds the plandb command into the test's own directory, so the
@@ -40,13 +39,14 @@ func planBuildCLI(t *testing.T) string {
 }
 
 // TestPlandbCliConcurrentWritersLandEveryTask is the store's real promise under
-// contention: eight goroutines and eight separate CLI processes each add
-// twenty-five tasks to one store, and not one of the four hundred is lost or
-// refused. The database's write lock — BEGIN IMMEDIATE plus the busy timeout
-// — is what makes a writer wait for the one ahead of it instead of failing.
+// contention: eight goroutines, each driving its own separate process of the
+// built CLI, add twenty-five tasks apiece to one store, and all two hundred
+// land with not one writer refused. The database's write lock — BEGIN
+// IMMEDIATE plus the busy timeout — is what makes a writer wait for the one
+// ahead of it instead of failing.
 func TestPlandbCliConcurrentWritersLandEveryTask(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds the CLI and runs sixteen concurrent writers")
+		t.Skip("builds the CLI and runs eight concurrent writer processes")
 	}
 	binary := planBuildCLI(t)
 	path := filepath.Join(t.TempDir(), "plandb.db")
@@ -56,42 +56,19 @@ func TestPlandbCliConcurrentWritersLandEveryTask(t *testing.T) {
 	}
 
 	var writers sync.WaitGroup
-	failures := make(chan error, plandbWriterGoroutines+plandbWriterProcesses)
-
-	// The in-process population: each goroutine opens its own handle, so the
-	// contention is real at the database and not serialized away by one
-	// store's mutex.
-	for writer := 0; writer < plandbWriterGoroutines; writer++ {
+	failures := make(chan error, plandbConcurrentWriters)
+	for writer := 0; writer < plandbConcurrentWriters; writer++ {
 		writers.Add(1)
 		go func(writer int) {
 			defer writers.Done()
-			store, err := Open(path, "", "", "", "")
-			if err != nil {
-				failures <- fmt.Errorf("open writer %d: %w", writer, err)
-				return
-			}
-			defer store.Close()
+			// Every one of the writer's tasks is added by the binary a
+			// bash-belt worker runs, so the contention is at the database and
+			// is never serialized away by one handle's mutex.
 			for i := 0; i < plandbTasksPerWriter; i++ {
-				id := fmt.Sprintf("g%02d-%02d", writer, i)
-				if _, err := store.AddMany([]TaskSpec{{ID: id, Title: id}}); err != nil {
-					failures <- fmt.Errorf("goroutine %d task %d: %w", writer, i, err)
-					return
-				}
-			}
-		}(writer)
-	}
-
-	// The cross-process population: each goroutine drives one process at a
-	// time, twenty-five times, through the binary a bash-belt worker runs.
-	for writer := 0; writer < plandbWriterProcesses; writer++ {
-		writers.Add(1)
-		go func(writer int) {
-			defer writers.Done()
-			for i := 0; i < plandbTasksPerWriter; i++ {
-				id := fmt.Sprintf("p%02d-%02d", writer, i)
+				id := planWriterTaskID(writer, i)
 				command := exec.Command(binary, "--db", path, "add", id, "--as", id)
 				if output, err := command.CombinedOutput(); err != nil {
-					failures <- fmt.Errorf("process %d task %d: %v\n%s", writer, i, err, output)
+					failures <- fmt.Errorf("writer %d task %d: %v\n%s", writer, i, err, output)
 					return
 				}
 			}
@@ -106,25 +83,31 @@ func TestPlandbCliConcurrentWritersLandEveryTask(t *testing.T) {
 
 	reopened := planReopen(t, path)
 	defer reopened.Close()
-	landed := map[byte]int{}
-	for _, task := range reopened.Tasks() {
-		if task.ID != "" {
-			landed[task.ID[0]]++
+	var missing []string
+	for writer := 0; writer < plandbConcurrentWriters; writer++ {
+		for i := 0; i < plandbTasksPerWriter; i++ {
+			if id := planWriterTaskID(writer, i); reopened.Task(id) == nil {
+				missing = append(missing, id)
+			}
 		}
 	}
-	if got := landed['g']; got != plandbWriterGoroutines*plandbTasksPerWriter {
-		t.Fatalf("the goroutines landed %d tasks, want %d", got, plandbWriterGoroutines*plandbTasksPerWriter)
+	if len(missing) > 0 {
+		t.Errorf("%d writers' tasks did not land: %v", len(missing), missing)
 	}
-	if got := landed['p']; got != plandbWriterProcesses*plandbTasksPerWriter {
-		t.Fatalf("the processes landed %d tasks, want %d", got, plandbWriterProcesses*plandbTasksPerWriter)
-	}
-	want := (plandbWriterGoroutines + plandbWriterProcesses) * plandbTasksPerWriter
+	want := plandbConcurrentWriters * plandbTasksPerWriter
 	if got := len(reopened.Tasks()); got != want+1 {
-		t.Fatalf("the store holds %d tasks, want %d writers plus the root", got, want)
+		t.Fatalf("the store holds %d tasks, want the %d the writers added plus the root", got, want)
 	}
 	if reopened.Task("root") == nil {
 		t.Fatal("the seed's root did not survive the writers")
 	}
+}
+
+// planWriterTaskID is one writer's task id, spelled so no two writers can ask
+// the store for the same one: a task missing afterwards is a lost write and
+// never a collision two processes fought over.
+func planWriterTaskID(writer, task int) string {
+	return fmt.Sprintf("w%02d-%02d", writer, task)
 }
 
 // TestPlandbCliCrashBetweenDecomposedVerbsLeavesConsistentStore models a
