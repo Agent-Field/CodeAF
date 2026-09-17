@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -23,6 +25,40 @@ func okAnswerHandler() http.Handler {
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"model":"vendor/fast-model","provider":"Alpha","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`))
 	})
+}
+
+// ── THE LANE A FAILURE NAMES ───────────────────────────────────────────────
+//
+// FailedLane reads the wire fact a retry's veto is built from: who the
+// failure implicates, nobody when the failure names nobody. What counts as a
+// name is an upstream fault (a 5xx relayed from a named upstream) or a cut
+// stream; what does not is a 4xx, a plain error, and — a name is not lost —
+// a wrapped one.
+func TestFailedLaneNamesWhoTheFailureImplicated(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"a 5xx relayed from a named upstream names it",
+			&APIError{Status: 502, Message: "upstream broke", Provider: "Alpha"}, "Alpha"},
+		{"the name arrives trimmed",
+			&APIError{Status: 500, Message: "upstream broke", Provider: "  Alpha  "}, "Alpha"},
+		{"a 4xx names nobody",
+			&APIError{Status: 400, Message: "bad ask", Provider: "Alpha"}, ""},
+		{"a cut stream names the provider it named",
+			&StreamCut{Reason: CutOverrun, Provider: "Alpha"}, "Alpha"},
+		{"a plain error names nobody",
+			errors.New("connection reset by peer"), ""},
+		{"a wrapped 5xx still names its provider",
+			fmt.Errorf("after node call attempts: %w",
+				&APIError{Status: 503, Message: "upstream broke", Provider: "Beta"}), "Beta"},
+	}
+	for _, test := range tests {
+		if got := FailedLane(test.err); got != test.want {
+			t.Errorf("%s: FailedLane = %q, want %q", test.name, got, test.want)
+		}
+	}
 }
 
 func TestARetryAvoidListGoesOutOnTheNextBody(t *testing.T) {

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -70,4 +71,22 @@ func RetryAvoidFrom(ctx context.Context) []string {
 	}
 	lanes, _ := ctx.Value(retryAvoidKey{}).([]string)
 	return lanes
+}
+
+// FailedLane is the upstream lane a failed call names, "" when the failure
+// implicates nobody — the wire fact a retry turns into a lane to avoid. A
+// 5xx relayed from a named upstream names that provider, a cut stream names
+// the provider the stream named; a router's own refusal carries no provider
+// name, a transport fault names no machine, and an empty name is a fact the
+// retry keeps: the retry goes where it always went.
+func FailedLane(err error) string {
+	var relayed *APIError
+	if errors.As(err, &relayed) && relayed.Status >= 500 {
+		return strings.TrimSpace(relayed.Provider)
+	}
+	var cut *StreamCut
+	if errors.As(err, &cut) {
+		return strings.TrimSpace(cut.Provider)
+	}
+	return ""
 }
