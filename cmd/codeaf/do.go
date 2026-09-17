@@ -116,14 +116,16 @@ type headlessOutcome struct {
 	// unexported because the sentence leaves through Deliverable, while Settled
 	// is already the machine signal and the JSON contract needs no second key.
 	unfinishedTree string
-	// Run, Calls and Rounds are what a person went to `calls.jsonl` to
-	// reconstruct: which run this was, how many model calls it made, and how
-	// many times it bought more work after looking at what it had. They are
-	// unexported spellings of the envelope's own keys — the receipt reaches a
-	// caller through [errandEnvelope] and nowhere else.
-	run    string
-	calls  int
-	rounds int
+	// Run, Calls, Rounds and Redispatches are what a person went to
+	// `calls.jsonl` to reconstruct: which run this was, how many model calls it
+	// made, how many times it bought more work after looking at what it had,
+	// and how many times it sent a node round again in place after the node ran
+	// out of its room. They are unexported spellings of the envelope's own keys
+	// — the receipt reaches a caller through [errandEnvelope] and nowhere else.
+	run          string
+	calls        int
+	rounds       int
+	redispatches int
 	// tokensIn and tokensOut are the token half of the bill, summed out of the
 	// same journal read that priced the run. They are unexported because they
 	// reach a caller only through the envelope's `tokens` field, which is the
@@ -656,6 +658,11 @@ func priceErrand(graph *store.Store, session string, openedAt int64, outcome *he
 	// work is read from what was written down, for the reason the bill is: a
 	// counter in this process could not see a round a resident spliced.
 	outcome.rounds = errandRounds(graph, session)
+	// AND THE RE-DISPATCHES OFF IT TOO. How many times this run sent a node
+	// round again in place is read from the releases that handed work on, for
+	// the same reason: the release is the record of a re-dispatch, and a
+	// counter in this process could not see one a resident made.
+	outcome.redispatches = errandRedispatches(graph, session)
 }
 
 // errandRounds is how many times this errand bought MORE WORK: every growth
@@ -683,6 +690,31 @@ func errandRounds(graph *store.Store, session string) int {
 		rounds += len(grown)
 	}
 	return rounds
+}
+
+// errandRedispatches is how many times one of this errand's nodes was sent
+// round again in place after running out of the room it was granted: every
+// hand-on release its nodes journaled (store.NodeRedispatches).
+//
+// It asks per node rather than across the store because a release is journaled
+// against the node that was re-dispatched, and the rule is the bill's and the
+// rounds': a run sharing a durable store with another session must not count
+// that session's re-dispatches as its own. A read that fails leaves the count
+// at zero rather than at a guess.
+func errandRedispatches(graph *store.Store, session string) int {
+	nodes, err := graph.SessionMemberNodes(session)
+	if err != nil {
+		return 0
+	}
+	redispatches := 0
+	for _, node := range nodes {
+		counted, err := graph.NodeRedispatches(node.ID)
+		if err != nil {
+			continue
+		}
+		redispatches += counted
+	}
+	return redispatches
 }
 
 // headlessBrain builds and returns the brain this process will run, or nothing
@@ -2970,20 +3002,21 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 // `exec` and `run` from publishing three different objects again.
 func errandEnvelope(outcome headlessOutcome) resultEnvelope {
 	return buildResultEnvelope(runResult{
-		Stop:      outcome.resolvedStop(),
-		Answer:    outcome.Deliverable,
-		Files:     outcome.Artifacts,
-		Error:     outcome.Error,
-		SpendUSD:  outcome.Spend,
-		TokensIn:  outcome.tokensIn,
-		TokensOut: outcome.tokensOut,
-		Seconds:   outcome.Seconds,
-		Model:     outcome.Model,
-		Steps:     outcome.Nodes,
-		Run:       outcome.run,
-		Calls:     outcome.calls,
-		Rounds:    outcome.rounds,
-		Extra:     legacyErrandFields(outcome),
+		Stop:         outcome.resolvedStop(),
+		Answer:       outcome.Deliverable,
+		Files:        outcome.Artifacts,
+		Error:        outcome.Error,
+		SpendUSD:     outcome.Spend,
+		TokensIn:     outcome.tokensIn,
+		TokensOut:    outcome.tokensOut,
+		Seconds:      outcome.Seconds,
+		Model:        outcome.Model,
+		Steps:        outcome.Nodes,
+		Run:          outcome.run,
+		Calls:        outcome.calls,
+		Rounds:       outcome.rounds,
+		Redispatches: outcome.redispatches,
+		Extra:        legacyErrandFields(outcome),
 	})
 }
 

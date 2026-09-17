@@ -172,7 +172,8 @@ stdout, always parseable, printed even when the run failed**:
   "steps": 3,
   "run": "0123456789abcdef",
   "calls": 47,
-  "rounds": 2
+  "rounds": 2,
+  "redispatches": 1
 }
 ```
 
@@ -191,6 +192,7 @@ stdout, always parseable, printed even when the run failed**:
 | `run` | this invocation's id. It names the folder `--debug` writes into, and every row this run wrote into `~/.codeaf/logs/calls.jsonl` carries it too — so `codeaf logs --run <that id>` is how you get from this object to the calls behind it. Empty on a verb that opened no run of its own |
 | `calls` | how many model calls the run made, counted whether or not the call log is switched on. It is the figure you would otherwise count by hand in `calls.jsonl` |
 | `rounds` | how many times the run went back for **more work** after looking at what it had. One is the ordinary shape; eight is a run that kept finding more to do, and it is the number that explains a bill nothing else here accounts for. `exec` does not plan and a saved program does not grow, so both hold `0` — a measurement nobody took, the way `steps` does |
+| `redispatches` | how many times one of the run's nodes was sent round again **in place** after running out of the room it was granted — back on the queue to carry on from what it had already banked, rather than grown around. Present only when it happened: a run that never re-dispatched a node carries no key at all, and neither does a verb with no plan nodes |
 
 **Within a release a field is never removed and never changes meaning; new fields may
 appear.** `stop` is the field to read for *why*; the exit code only says how much is wrong.
