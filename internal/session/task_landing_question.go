@@ -236,10 +236,14 @@ func landingAnsweredStamp(record DecisionRecord) string {
 	word := landingAnsweredWord(record)
 	// A STAMP FROM ANOTHER DAY SAYS ITS DAY. `accepted 18:20` on a card drawn
 	// the next morning reads as an hour ago, and the stamp is the one place
-	// the card says when — so the day leads when the day is not this one.
-	when := record.At.Format("15:04")
-	if record.At.Format("2006-01-02") != time.Now().Format("2006-01-02") {
-		when = record.At.Format("Jan 2 15:04")
+	// the card says when — so the day leads when the day is not this one. The
+	// day is judged in THIS machine's local zone, the zone the person reading
+	// the card is in: a record written under another offset keeps its words
+	// from drifting across midnight.
+	at := record.At.Local()
+	when := at.Format("15:04")
+	if at.Format("2006-01-02") != time.Now().Format("2006-01-02") {
+		when = at.Format("Jan 2 15:04")
 	}
 	stamp := word + " " + when
 	return landingAnsweredBy(record, stamp)

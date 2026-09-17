@@ -1771,4 +1771,13 @@ func TestTheDecidingClauseAloneIsNotNews(t *testing.T) {
 	if out := lab.plain(); strings.Contains(out, "codeaf is deciding") {
 		t.Fatalf("the deciding clause alone is drawn beside the card that already says it:\n%s", out)
 	}
+
+	// AND THE CARD IS THE PLACE THAT SAYS IT: a `your call` with no ask reason
+	// still draws who is deciding on its own row, so the suppression above
+	// hides a duplication, never the fact.
+	done := lab.a.entries[1].done
+	done.status.Tier = session.TaskTierYourCall
+	if row := lab.a.doneUnder(done, 140); !strings.Contains(row, "codeaf is deciding") {
+		t.Fatalf("the done card does not say who is deciding:\n%q", row)
+	}
 }

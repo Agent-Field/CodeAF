@@ -3044,7 +3044,7 @@ func landingReason(ask TaskAsk) string {
 	return reason + " · " + LandingDecidingWord
 }
 
-// landingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
+// LandingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
 // word: a row reading `nobody could check it · auto` would have told a person
 // the name of a setting instead of who is deciding. It is exported for the one
 // surface that must recognize it (internal/tui3's

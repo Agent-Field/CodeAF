@@ -17,11 +17,19 @@ func TestTheClaimDoorsRefuseEachOther(t *testing.T) {
 	}
 	node.releaseSettle(settle)
 
-	if _, ok := node.claimResolving(); !ok {
+	round, ok := node.claimResolving()
+	if !ok {
 		t.Fatal("a round could not claim a free node")
 	}
 	if _, err := node.claimSettle("a re-audit"); err == nil {
 		t.Fatal("a settle started over a round in flight")
+	}
+	node.releaseResolving(round)
+	// AND THE SETTLE CAN CLAIM ONCE THE ROUND HANDS BACK — the refusal is the
+	// other claim's, not a mark the node carries: two doors that refused
+	// forever would strand a landed node nobody could answer.
+	if _, err := node.claimSettle("a re-audit"); err != nil {
+		t.Fatalf("a settle could not claim after the round handed back: %v", err)
 	}
 }
 
