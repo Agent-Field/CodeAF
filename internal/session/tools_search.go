@@ -81,19 +81,8 @@ func (a *Agent) webSearchTool(provider search.Provider) bare.Tool {
 			if query == "" {
 				return "Invalid arguments: query is required", true, nil
 			}
-			count := searchCount(parsed.Count)
-			results, name, err := search.SearchWithName(ctx, provider, query, count)
-			if err != nil {
-				// A failed search is a TOOL ERROR and never a Go error: the
-				// network is down, the key expired, the back end rate-limited
-				// us — all of them things the model can act on (try again,
-				// narrow the query, say it could not look it up) and none of
-				// them a reason to fail the turn. The plug's name is in the
-				// message because "search failed" without it leaves a person
-				// reading the transcript no way to tell which back end broke.
-				return search.Failure(name, err), true, nil
-			}
-			return search.RenderResults(results, count, name), false, nil
+			text, failed := WebSearch(ctx, provider, query, searchCount(parsed.Count))
+			return text, failed, nil
 		},
 	}
 }
@@ -114,13 +103,39 @@ func (a *Agent) webFetchTool(fetcher search.Fetcher) bare.Tool {
 			if url == "" {
 				return "Invalid arguments: url is required", true, nil
 			}
-			text, name, err := search.FetchWithName(ctx, fetcher, url)
-			if err != nil {
-				return "Fetch failed (" + name + "): " + err.Error(), true, nil
-			}
-			return search.RenderFetch(text), false, nil
+			text, failed := WebFetch(ctx, fetcher, url)
+			return text, failed, nil
 		},
 	}
+}
+
+// WebSearch is the search road the belt's web_search runs, as a plain function
+// the command line's web door runs too: one call, one failure sentence or one
+// rendered list, in exactly the tool's own words.
+func WebSearch(ctx context.Context, provider search.Provider, query string, count int) (string, bool) {
+	results, name, err := search.SearchWithName(ctx, provider, query, count)
+	if err != nil {
+		// A failed search is a TOOL ERROR and never a Go error: the network is
+		// down, the key expired, the back end rate-limited us — all of them
+		// things the model can act on (try again, narrow the query, say it
+		// could not look it up) and none of them a reason to fail the turn. The
+		// plug's name is in the message because "search failed" without it
+		// leaves a person reading the transcript no way to tell which back end
+		// broke.
+		return search.Failure(name, err), true
+	}
+	return search.RenderResults(results, count, name), false
+}
+
+// WebFetch is the belt's web_fetch road, shared with the command line's web
+// door for the same reason: one call, markup stripped, bounded, the same words
+// whichever door asked.
+func WebFetch(ctx context.Context, fetcher search.Fetcher, url string) (string, bool) {
+	text, name, err := search.FetchWithName(ctx, fetcher, url)
+	if err != nil {
+		return "Fetch failed (" + name + "): " + err.Error(), true
+	}
+	return search.RenderFetch(text), false
 }
 
 // searchCount clamps the model's ask. An absent count is the default; a zero,
