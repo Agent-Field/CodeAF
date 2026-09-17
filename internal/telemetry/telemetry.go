@@ -50,6 +50,11 @@ func resetConfiguredForTest() {
 // can exercise the write paths. Production never touches it.
 var forcedOn bool
 
+// forcedVersion is the version commonProps reports under VersionForTest, and
+// empty otherwise. A test binary is unstamped, and the send path drops an
+// event that cannot name its version, so a test of the lifecycle stamps one.
+var forcedVersion string
+
 // forceLadderForTest sets the override and removes it at the test's end.
 func forceLadderForTest(t *testing.T, on bool) {
 	t.Helper()
@@ -335,6 +340,9 @@ func isChannelTag(revision, prefix string) bool {
 // characters because the contract caps it and a truncated tag still sorts.
 func commonProps() map[string]any {
 	version := buildinfo.Revision()
+	if forcedVersion != "" {
+		version = forcedVersion
+	}
 	if version == "" {
 		version = "unknown"
 	}
