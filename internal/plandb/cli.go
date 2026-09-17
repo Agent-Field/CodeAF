@@ -705,8 +705,8 @@ func cliAgent(p *cliParsed) string {
 }
 
 // cliAddDep adds one edge. The graph laws are asked of the whole result — a
-// cycle or a cross-lineage hard edge refuses the edge rather than bending
-// the plan.
+// hard edge between a task and its own ancestor or descendant, or one that
+// closes a cycle, refuses the edge rather than bending the plan.
 func cliAddDep(st *Store, p *cliParsed) error {
 	if len(p.pos) < 2 {
 		return errors.New(`add-dep needs the downstream task — plandb task add-dep <downstream> --after <upstream>`)

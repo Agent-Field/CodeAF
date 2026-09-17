@@ -472,8 +472,10 @@ func (s *Store) Revise(id string, patch TaskPatch) (*Task, error) {
 }
 
 // AddDep adds one edge between two tasks. It is the CLI's `task add-dep`, and
-// the graph laws are asked of the whole result: a cross-lineage hard edge or
-// a cycle refuses the edge rather than corrupting the plan.
+// the graph laws are asked of the whole result: a hard edge between a task and
+// its own ancestor or descendant, or an edge that closes a cycle, refuses the
+// edge rather than corrupting the plan. A hard edge between two branches of
+// the containment tree is allowed.
 func (s *Store) AddDep(downstream, upstream string, kind DepKind) (*Task, error) {
 	if kind == "" {
 		kind = DepFeedsInto
@@ -1134,13 +1136,15 @@ func validateGraphs(value state) error {
 	}); err != nil {
 		return fmt.Errorf("containment graph: %w", err)
 	}
-	// THE LINEAGE RULE IS A WRITTEN DIVERGENCE. The rust CLI's concept blurb
-	// says dependencies cross containment boundaries freely; this store refuses
-	// a HARD edge across a lineage because its readiness walks the parent
-	// chain and a cross-lineage hard edge makes promotion and readiness two
-	// different words for the same question. `suggests` crosses freely, and
-	// the doctrine's split grammar (deps_on names siblings) never needs the
-	// hard form across lineages.
+	// THE LINEAGE RULE IS A WRITTEN DIVERGENCE, AND IT IS NARROW. A hard
+	// (non-`suggests`) edge may join two tasks in different branches of the
+	// containment tree: the readiness walk climbs the parent chain, so a
+	// cross-branch edge gates the frontier like any other and promotion and
+	// readiness still agree. The one hard edge refused is between a task and
+	// its own ancestor or descendant, because that edge would have a task wait
+	// on the lineage that schedules it. `suggests` crosses freely, and cycle
+	// detection above runs over both graphs, so a cross-branch edge that would
+	// close a loop is refused too.
 	for _, task := range value.Tasks {
 		for _, dep := range task.Dependencies {
 			if dep.Kind == DepSuggests {
