@@ -320,6 +320,17 @@ func adoptStaleSendingFiles() {
 // sendBatch POSTs one batch. It answers true only when the relay answered
 // 2xx within the deadline; any error, any other status, and the batch stays.
 func sendBatch(ctx context.Context, deadline time.Time, batch []spoolEntry) bool {
+	// A test binary never reaches the production relay. The only state in
+	// which a send under `go test` could land on DefaultEndpoint is an unset
+	// CODEAF_TELEMETRY_ENDPOINT — a test that forgot its relay — so refuse
+	// before any request is built, and refuse the way a failed send is
+	// refused: the batch stays in the spool and Flush says nothing. This
+	// check sits below forceLadderForTest, which reaches sendBatch only
+	// through the enabledFor gate and cannot reopen it; on a production
+	// binary it costs the one bool underGoTest answers.
+	if underGoTest() && Endpoint() == DefaultEndpoint {
+		return false
+	}
 	remaining := time.Until(deadline)
 	if remaining <= 0 {
 		return false
@@ -374,8 +385,11 @@ var allowlistedEvents = map[string]bool{
 	"first_run": true, "session_started": true, "session_ended": true, "fault": true,
 }
 
-// httpClient is the one client. No timeout of its own: the deadline lives in
-// the request context, where the caller's hard budget is.
+// httpClient is the one client, and the package's one send seam: production
+// declares it here and never reassigns it, and a test may swap it for a
+// recording client or transport and restore it with t.Cleanup. No timeout of
+// its own: the deadline lives in the request context, where the caller's hard
+// budget is.
 var httpClient = &http.Client{}
 
 // readSpoolLines reads the spool as entries, skipping and reporting lines it
