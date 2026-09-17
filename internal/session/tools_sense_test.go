@@ -403,7 +403,7 @@ func TestSenseMemoMakesPagingFree(t *testing.T) {
 
 	first, _ := readTool(t, agent, map[string]any{"path": name, "limit": 2})
 	if !strings.Contains(first, "more lines in file. Use offset=3 to continue.]") {
-		t.Fatalf("the transcript should page by the read law: %q", first)
+		t.Fatalf("the transcript should page by pi's law: %q", first)
 	}
 	second, _ := readTool(t, agent, map[string]any{"path": name, "offset": 3})
 	if !strings.HasPrefix(second, "[transcript: ears/model]\n") {
@@ -416,9 +416,8 @@ func TestSenseMemoMakesPagingFree(t *testing.T) {
 
 // ── pass-through, unchanged ─────────────────────────────────────────────────
 
-// The overwhelmingly common case: an ordinary file reaches bare's read
-// untouched. The senses cost one stat and a map lookup, and change nothing
-// about the bytes.
+// The overwhelmingly common case: an ordinary file reaches pi's read untouched.
+// The senses cost one stat and a map lookup, and change nothing about the bytes.
 func TestSensesLeaveOrdinaryFilesAlone(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.MediaModel = senseResolver(map[string]string{"vision": "see/model", "listen": "hear/model"})

@@ -174,10 +174,10 @@ func TestReadMarksPageBoundaries(t *testing.T) {
 
 // ── pass-through ────────────────────────────────────────────────────────────
 
-// Every other file reaches bare's read untouched. The assertion is byte
-// equality with the file, because "untouched" is the whole promise: a wrapper
-// that reformats ordinary reads would have changed the tool for every call to
-// buy one file type.
+// Every other file reaches pi's read untouched. The assertion is byte equality
+// with the file, because "untouched" is the whole promise: a wrapper that
+// reformats ordinary reads would have changed the tool for every call to buy
+// one file type.
 func TestReadPassesNonPDFThrough(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
 	body := "package main\n\nfunc main() {}\n"
@@ -193,7 +193,7 @@ func TestReadPassesNonPDFThrough(t *testing.T) {
 }
 
 // A missing file is bare's sentence, not a second one about PDFs — the wrapper
-// declines the call and the tool reports it exactly as it always has.
+// declines the call and pi reports it exactly as it always has.
 func TestReadMissingPDFKeepsBareWording(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 
@@ -248,19 +248,18 @@ func TestReadReportsScannedPDF(t *testing.T) {
 	}
 }
 
-// ── the read law ────────────────────────────────────────────────────────────
+// ── pi's law ────────────────────────────────────────────────────────────────
 
-// The description the model reads is the shipped one, plus the two sentences
-// the senses add. All three halves matter: the shipped half is why the model
-// keeps its read habits, the PDF clause is why it recognizes the scanned
-// result as a known limit, and the senses clause is why it never writes a
-// decoder script.
+// The description the model reads is pi's, plus the two sentences the senses
+// add. All three halves matter: pi's is why the model keeps its read habits,
+// the PDF clause is why it recognizes the scanned result as a known limit, and
+// the senses clause is why it never writes a decoder script.
 func TestReadDescriptionGainsOneSentence(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	tool := beltTool(t, agent, "read")
 
 	if !strings.HasPrefix(tool.Description, "Read a file.") {
-		t.Fatalf("the shipped description should lead: %q", tool.Description)
+		t.Fatalf("pi's description should lead: %q", tool.Description)
 	}
 	if !strings.Contains(tool.Description, pdfSentence) {
 		t.Fatalf("the pdf sentence should survive the senses: %q", tool.Description)
@@ -273,17 +272,17 @@ func TestReadDescriptionGainsOneSentence(t *testing.T) {
 	// the digits would be pinning the 128k case forever.
 	caps := agent.resultCaps()
 	if !strings.Contains(tool.Description, fmt.Sprintf("cut at %d lines or ", caps.MaxLines)) {
-		t.Fatalf("the truncation law should survive the wrap: %q", tool.Description)
+		t.Fatalf("pi's truncation law should survive the wrap: %q", tool.Description)
 	}
 	if caps != bare.DefaultCaps() {
-		t.Fatalf("a test agent should carry the default caps, got %+v", caps)
+		t.Fatalf("a test agent should carry pi's own caps, got %+v", caps)
 	}
 }
 
 // offset/limit work on extracted text the way they work on a file, and the
-// footer says so in the tool's own words — a continuation pointer the model
-// is told to use has to actually be usable, and it is: the next call
-// re-extracts and pages from the same text.
+// footer says so in pi's words — a continuation pointer the model is told to
+// use has to actually be usable, and it is: the next call re-extracts and pages
+// from the same text.
 func TestPDFReadHonoursOffsetAndLimit(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
 	// Four lines on one page: four text-showing operators, each moved down.
@@ -307,7 +306,7 @@ func TestPDFReadHonoursOffsetAndLimit(t *testing.T) {
 		t.Fatalf("limit=1 should start at the first line: %q", first)
 	}
 	if !strings.Contains(first, "more lines in file. Use offset=2 to continue.]") {
-		t.Fatalf("limit should carry the continuation footer: %q", first)
+		t.Fatalf("limit should carry pi's continuation footer: %q", first)
 	}
 
 	second, _ := readTool(t, agent, map[string]any{"path": name, "offset": 2})
@@ -320,19 +319,19 @@ func TestPDFReadHonoursOffsetAndLimit(t *testing.T) {
 
 	beyond, _ := readTool(t, agent, map[string]any{"path": name, "offset": len(lines) + 5})
 	if !strings.HasPrefix(beyond, "Offset ") || !strings.Contains(beyond, "beyond end of file") {
-		t.Fatalf("an offset past the end should keep the tool's wording: %q", beyond)
+		t.Fatalf("an offset past the end should keep pi's wording: %q", beyond)
 	}
 }
 
 // The truncation law is mirrored from bare, so it is pinned here directly: a
-// long text truncates at 2000 lines and says so in the shipped sentence, and
-// a single enormous line — which extracted PDF text really can be — returns
-// its first 50KB rather than bare's sed hint, which would print binary.
-func TestPDFReadTruncationMirrorsBare(t *testing.T) {
+// long text truncates at 2000 lines and says so in pi's sentence, and a single
+// enormous line — which extracted PDF text really can be — returns its first
+// 50KB rather than pi's sed hint, which would print binary.
+func TestPDFReadTruncationMirrorsPi(t *testing.T) {
 	many := strings.Repeat("a line of extracted text\n", 2500)
 	truncated := piReadLaw(bare.DefaultCaps(), many, nil, nil)
 	if !strings.Contains(truncated, "[Showing lines 1-2000 of 2501. Use offset=2001 to continue.]") {
-		t.Fatalf("line truncation should carry the shipped footer: %q", truncated[max(0, len(truncated)-120):])
+		t.Fatalf("line truncation should carry pi's footer: %q", truncated[max(0, len(truncated)-120):])
 	}
 
 	huge := strings.Repeat("x", 60*1024)

@@ -1,7 +1,7 @@
 # The prompt diet — strategy
 
 2026-09-10. Read-only audit of everything the v3 conversation sends a model per request,
-three Opus passes (page, tool block, per-turn dynamic context), the shipped belt as the lean baseline.
+three Opus passes (page, tool block, per-turn dynamic context), Pi as the lean baseline.
 Numbers are measured on the rendered widest page and the marshalled belt, not guessed.
 Coordinated with the quick-task lane (codeaf-38, PR #811 + quick/choice), which owns
 `task_quick.go`, `taskDescription`'s tail, `handoffFacts`, the routing lines of
@@ -30,12 +30,12 @@ Where we stand (conversation shape, this repo):
 | tool block, 18 tools | 24,044 | 6,000 |
 | CLAUDE.md quoted (8 KiB cap) + footer | 8,600 | 2,150 |
 | **before the person types** | **~56,000** | **~14,000** |
-| lean core, prompt + 4–7 tools | ~14,000 | ~3,500 |
+| Pi, prompt + 4–7 tools | ~14,000 | ~3,500 |
 
-A lean core is small because it has seven verbs and no tasks, standing, memory, accounts, steering,
-or media. The honest comparison is not "codeaf vs a lean agent" but "codeaf's lean core vs
-a lean agent" — and that core should be small, with everything else paid for only when it is used.
-**That is the whole strategy in one line: a lean core, pay-per-use for the rest.**
+Pi is small because it has seven verbs and no tasks, standing, memory, accounts, steering,
+or media. The honest comparison is not "codeaf vs Pi" but "codeaf's Pi-equivalent core vs
+Pi" — and that core should be Pi-sized, with everything else paid for only when it is used.
+**That is the whole strategy in one line: a Pi-sized core, pay-per-use for the rest.**
 
 ## 1. Where the bytes go, by kind
 
@@ -46,7 +46,7 @@ shouting, metaphor).
 
 Tool block (24 KB): 7.7 KB tool prose, 14.9 KB schema, of which 8.1 KB is *parameter*
 prose; 62% of that sits on `propose_task` (14 fields) and `tasks` (10 optional,
-mutually-exclusive verbs). The seven file tools grew 44%; four are byte-identical to the shipped belt.
+mutually-exclusive verbs). The seven Pi tools grew 44%; four are byte-identical to Pi.
 
 Per turn on top (a 6-round bug fix, one job out): ~10 KB dynamic, of which the job footer
 is re-sent on every round (150 B × 21 = 3.2 KB per turn; three fork hands out ≈ 19 KB of
@@ -151,10 +151,10 @@ as its first customer.
 
 **A lean profile keyed off what we already know.** No new dial: the model's window
 (`ContextWindowFor`) and the crew's open-weight `worker` tier are the two facts. Under a
-threshold: CORE only, the seven file tools plus `quick_task`, `questions` pre-armed (no
+threshold: CORE only, the seven Pi tools plus `quick_task`, `questions` pre-armed (no
 load-then-ask two-step, which a one-call-per-message model cannot do), `propose_task`/
 `tasks`/`watch`/`track`/`commit`/`recall`/`read_document` on the shelf, result caps scaled
-via `ctxbudget`, memory reflex off, instruction file at 2 KiB. ≈ 9.5 KB, lean parity.
+via `ctxbudget`, memory reflex off, instruction file at 2 KiB. ≈ 9.5 KB, Pi parity.
 Critique: a profile is a second product to test; without a bench cell it will rot. Verdict:
 adopt, and it exists only if `prefixbudget_test` weighs it and a local-model bench cell
 runs it.
@@ -173,7 +173,7 @@ the top ten only, and never cut a pinned law on bytes alone.
 - **Parameter prose is one clause.** A schema law test (the `iconlaw` shape): no
   ALL-CAPS runs, no en/em dashes, description ≤ ~160 chars unless it is a judge paragraph
   registered by name. `propose_task` 5,720 → ~2,900 with no field losing its rule.
-- **The seven file tools stay lean-shaped.** `edit`/`grep`/`find`/`ls` are byte-identical; keep them
+- **The Pi seven stay Pi-shaped.** `edit`/`grep`/`find`/`ls` are byte-identical; keep them
   so. `read`/`bash`/`write` keep their genuine contract additions (append, salvage,
   background, described media) in half the words.
 - **`quick_task` is the template**: the judge once, in the verb; the belt bullet names the

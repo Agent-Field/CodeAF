@@ -113,7 +113,7 @@ const (
 	// verb in the tool block. It is what a frontier window gets and what every
 	// shape got before this file existed.
 	profileFull promptProfile = config.PromptProfileFull
-	// profileLean is the prefix a small window gets.
+	// profileLean is the Pi-sized prefix.
 	profileLean promptProfile = config.PromptProfileLean
 )
 

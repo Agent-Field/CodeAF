@@ -58,7 +58,7 @@ func runBash(t *testing.T, ctx context.Context, agent *Agent, arguments map[stri
 	return got.text, got.isError
 }
 
-// bareBashTool is the shipped bash, unwrapped. It is the only way to have a
+// bareBashTool is pi's own bash, unwrapped. It is the only way to have a
 // foreground call with nobody behind it to take the process, which is exactly
 // what a subharness leaf runs.
 func bareBashTool(t *testing.T, agent *Agent) bare.Tool {

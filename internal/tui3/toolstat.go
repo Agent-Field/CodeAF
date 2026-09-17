@@ -20,8 +20,7 @@ import (
 // tool call, and a session that shipped presentation would have to ship a
 // second one the day this column changes.
 //
-// The schemas are the shipped tool schemas, from internal/exec/bare/tools.go,
-// and stable:
+// The schemas are pi's, from internal/exec/bare/tools.go, and stable:
 //
 //	read   {path, offset?, limit?}            → the file's text, with an
 //	                                            optional "[Showing lines a-b of
@@ -522,7 +521,7 @@ func nonEmptyLines(text string) int {
 	return n
 }
 
-// exitRe matches bare's bash status footer. The bash tool appends it — and
+// exitRe matches bare's bash status footer. pi's bash tool appends it — and
 // only it — when the command exits non-zero, so its presence IS the failure and
 // its absence is a clean exit.
 var exitRe = regexp.MustCompile(`Command exited with code (\d+)`)

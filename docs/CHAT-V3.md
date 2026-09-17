@@ -22,7 +22,7 @@ a stamped pin). Nothing else in `internal/store`, `internal/resident`,
 
 ## The one-sentence design
 
-A v3 session is an omp-style working session — one agent you iterate and
+A v3 session is a pi/omp-style working session — one agent you iterate and
 discuss with, holding real tools — whose finalized work is commissioned into
 the unchanged tasker through the same journal seam the head has always used,
 rendered by a surface with v1's visual language (conversation left, DAG rail
@@ -37,7 +37,7 @@ layering, Bubble Tea v2).
 |---|---|---|
 | **v1** (`internal/tui`, `cmd/codeaf/chat.go`) | the UX concept and visual language: thread with living cards, DAG rail on the right, node drill-in with flight recorder, palettes, top bar | the 330-field god-model, Bubble Tea v1, render-mutates-model |
 | **v2** (`internal/tui2`, `cmd/codeaf/chatv2.go`) | the wiring: narrow `Backend` interface (engine.go:36), `Commander` seam, shell/app/blocks/tokens layering, watermark polling (300ms), session switcher, stream-event bridge, parity-gate entry pattern | the card-grammar philosophy (1 thread : N detached jobs) |
-| **the normal-chat lineage** | the session model (open a project, work, resume), the normal-chat system prompt, settings/model patterns (layered config, roles, `/settings`, model picker) | JSONL session files — our journal is the store's thread |
+| **omp/pi** (local install; prompts at `packages/coding-agent/src/prompts/system/`) | the session model (open a project, work, resume), the exact normal-chat system prompt adapted, settings/model patterns (layered config, roles, `/settings`, model picker) | JSONL session files — our journal is the store's thread |
 | **head v1** (`internal/head`) | the seam positions: mail-loop shape (`Head.Serve`), `RequestCommand` commissioning (task.go), turn-cancel handle, receipt wakes | the orchestrator philosophy (no tools, commission everything) |
 
 The furniture v3 does not expose: triggers, `origin: self`, services, standing
@@ -47,15 +47,15 @@ mentions them. Removal from the experience, not from the code.
 
 ## Decision 1 — The session agent is a worker, not a dispatcher
 
-**Decision.** v3's conversational loop is an agent loop with tools —
+**Decision.** v3's conversational loop is a pi-exact agent loop with tools —
 read, bash, edit, write, grep, glob, todo — plus the commissioning verbs. It
 does small, immediate, reversible work itself in the workspace and hands
 anything with a deliverable, real time, or a consequence to the tasker. This
 is the omp normal-chat shape, and it is a deliberate break from the v1 head's
 "I do none of that work myself" orchestrator doctrine.
 
-**Basis in existing code.** `internal/exec/bare` is already an agent loop:
-same wire behavior, turn/stop/retry/compaction semantics, four tools,
+**Basis in existing code.** `internal/exec/bare` is already a pi-0.82.1-exact
+loop: same wire behavior, turn/stop/retry/compaction semantics, four tools,
 message assembly and usage accounting in `loop.go`. The session agent reuses
 that loop machinery with three changes: the prompt (Decision 2), an extended
 belt (the four tools + grep/glob/todo + commissioning + graph reads), and an
@@ -96,7 +96,7 @@ The substitution table:
 | Delegation gates (subagents) | commissioning doctrine: substantial/durable/consequential work goes to the tasker verbatim in the user's words; one ask one task; iterate on live work through `change`, never a duplicate commission |
 | Internal URLs (skill://, agent://, omp://…) | dropped; graph reads are tools, not URL schemes |
 | Skills & rules, memory (retain/recall) | routed durable memories, reflex extraction, and `/memory` inspection over the store |
-| Workflow 1–6, Delivery contract, Critical | kept near-verbatim — this is the quality bar the user wants in the session |
+| Workflow 1–6, Delivery contract, Critical | kept near-verbatim — this is the pi quality bar the user wants in the session |
 | project-prompt footer (workstation, context files, cwd, date) | kept; context files = AGENTS.md discovery as in omp |
 
 The prompt names the workforce and its verbs precisely, so the model can
@@ -228,7 +228,7 @@ cancellation and firing journal as typed message parts. Deterministic timing,
 a setting for the duration, and a complete audit trail — none of it entrusted
 to model behavior.
 
-**Module shape.** `internal/session` (the agent: Serve loop, the turn
+**Module shape.** `internal/session` (the agent: Serve loop, pi-exact turn
 machinery from `exec/bare`, embedded prompt templates as data, one file per
 tool family), and `internal/tui3` (the surface: app/shell/panes plus independent
 rail, room, gate, palette widgets over the v2-style
@@ -540,7 +540,7 @@ turn's calls; a click on one line expands that call's detail; click again
 collapses.
 
 **Every tool has an inline stat and a tool-specific expansion** — derived in
-the surface from the event's `Args`/`Output` payload (the tool schemas are stable;
+the surface from the event's `Args`/`Output` payload (pi schemas are stable;
 presentation derivation is surface business):
 
 | tool | inline stat | expansion |
@@ -1010,8 +1010,8 @@ person who is having a different conversation.
 **A PDF is a file, so `read` reads it.** The local rung is in-binary text
 extraction (`internal/pdfx`, over `github.com/AOShei/go-fast-pdf` — pure Go,
 zero dependencies, MIT, compiled into the static binary, so the rung works on a
-machine where nobody ran `apt-get`), and it is wired in by WRAPPING the `read` tool
-(`internal/session/tools_pdf.go`, exactly as `backgroundBash` wraps `bash`)
+machine where nobody ran `apt-get`), and it is wired in by WRAPPING pi's `read`
+(`internal/session/tools_pdf.go`, exactly as `backgroundBash` wraps pi's `bash`)
 rather than by adding an `extract_pdf` tool — a belt with two hands for one
 intention makes the model choose, and what it chooses is a Python script for a
 library that is not installed. A scanned PDF is reported as itself — "no text
@@ -1057,8 +1057,8 @@ LAST rung is the answer, because a photographed receipt really does extract to
 four words and a refusal invented by a threshold is worse than a short truth.
 Every failure is a RESULT NAMING THE RUNG (`mistral-ocr: 402 insufficient
 credits`), never a Go error: the model can act on it, and the person reading the
-transcript learns which row of settings to change. The answer obeys the read
-tool's truncation law through the same `piReadLaw` the local rung uses — same 2000
+transcript learns which row of settings to change. The answer obeys pi's
+truncation law through the same `piReadLaw` the local rung uses — same 2000
 lines, same 50KB, same offset to continue — and the extraction is MEMOIZED per
 session by content digest, because paying a per-page OCR bill twice to show line
 three would be the one place this ladder robs somebody.

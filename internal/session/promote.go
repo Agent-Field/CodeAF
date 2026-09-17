@@ -105,7 +105,7 @@ import (
 //
 // It is bounded by [bare.TailForResult], which is the SAME truncation this
 // command's own result would have been cut by had it finished: last whole lines
-// inside the line and byte caps. A promoted call and a finished one are the
+// inside pi's line and byte caps. A promoted call and a finished one are the
 // same command, so the amount of it the model may read is the same number.
 //
 // THE ID LEADS. Everything downstream reads this sentence from the front — the

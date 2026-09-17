@@ -73,11 +73,10 @@ func (a *Agent) Why() string {
 //
 // The verdicts are read from the tool's own wire text (bare/tools.go) rather
 // than from an error flag, because the transcript keeps the text and not the
-// flag. Only the three tools whose success sentence is fixed by their own
-// source get one — bash, edit, write — and every other call is reported
-// without a claim about how it went. An unearned "(ok)" beside a read is
-// worse than nothing: it is the fluent reconstruction this whole call exists
-// to avoid.
+// flag. Only the three tools whose success sentence is fixed by pi's source get
+// one — bash, edit, write — and every other call is reported without a claim
+// about how it went. An unearned "(ok)" beside a read is worse than nothing:
+// it is the fluent reconstruction this whole call exists to avoid.
 func whyPhrase(call ai.ToolCall, result string) string {
 	arguments := whyArgumentsOf(call)
 	switch call.Function.Name {
@@ -100,7 +99,7 @@ func whyPhrase(call ai.ToolCall, result string) string {
 		if path == "" {
 			return "wrote a file"
 		}
-		// Three successes wear three sentences: the tool's own, the append
+		// Three successes wear three sentences: pi's own, the append
 		// wrapper's (tools_write.go), and the salvage of a cut-off write
 		// (salvage.go), which lands part of the file and says so.
 		if !strings.HasPrefix(result, "Successfully wrote") &&
@@ -167,14 +166,14 @@ func plural(n int) string {
 // disk has moved on, and re-reading it would answer a different question. Every
 // line of an oldText is a line that went and every line of a newText is a line
 // that came, which is the same arithmetic a diffstat does for a replacement
-// block and is exact for the edits the tool actually applies.
+// block and is exact for the edits pi's tool actually applies.
 func editDiffstat(call ai.ToolCall) (added, removed, replacements int) {
 	var parsed struct {
 		Edits []struct {
 			OldText string `json:"oldText"`
 			NewText string `json:"newText"`
 		} `json:"edits"`
-		// The legacy single-replacement shape the tool still accepts (bare/tools.go).
+		// The legacy single-replacement shape pi still accepts (bare/tools.go).
 		OldText string `json:"oldText"`
 		NewText string `json:"newText"`
 	}
@@ -208,8 +207,8 @@ func lineCount(text string) int {
 	return count
 }
 
-// bashFailed reads the tool's own status footer: the one line bash appends
-// when a command did not succeed (bare/tools.go:appendStatus), after any
+// bashFailed reads pi's own status footer. bash appends exactly one of these
+// lines when a command did not succeed (bare/tools.go:appendStatus), after any
 // truncation footer, so the last non-empty line is where the verdict is.
 func bashFailed(result string) bool {
 	lines := strings.Split(strings.TrimRight(result, "\n"), "\n")
