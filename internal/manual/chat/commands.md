@@ -876,6 +876,9 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
+Models from connected services sit under their service's name as a dim heading, default
+service first; a custom connection's heading is the name you gave it.
+
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
 left alone.
@@ -1491,7 +1494,11 @@ status sheet. Change that machine's profile there.
 
 `/connect` (or `/connections`) opens the connection panel. Its pinned `models` group
 holds the five built-in model services plus every one already connected; the account
-catalog groups follow it. Pick a row and connect it. There is no argument form. The
+catalog groups follow it. Pick a row and connect it. There is no argument form. **Something else** connects a custom service: it asks for a
+base URL, then a name of your own with the host's own spelling pre-filled (`127.0.0.1`
+becomes `127-0-0-1`), then a key. Several custom connections sit beside each other,
+each under its name; once one is connected an `add custom connection` row appears and
+the **Something else** row becomes that connection's edit door. The
 [services page](services.md) covers model keys, and the accounts page covers what each
 account can do once it is connected.
 
@@ -1766,6 +1773,14 @@ registry: drawing, speaking, composing, filming, voice.
 The first four of the five classes are **select** rows and open the model picker. The
 **mastermind** row is a **text** box instead, because its value may carry a thinking level
 (`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
+
+The connected model services have their own section on the tab, each with its billing
+door, the safe spelling of its key, its region and its order. The section ends with an
+`add custom connection` row, and once a custom connection is connected an `active
+connection` row follows it: it reads
+`answering on localhost · enter moves it to homelab`, and enter moves this conversation
+onto the next connection, wrapping past the last back to the first. The
+[services page](services.md) has the whole of it.
 
 **Connections** — the accounts this profile has connected and what each may do. Its rows
 come from the engine rather than the settings registry.
