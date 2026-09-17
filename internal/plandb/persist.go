@@ -212,6 +212,27 @@ func openDatabase(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// openReadDatabase opens the handle the store's reads run on: the same file,
+// one connection, the busy timeout set. What it does NOT ask for is
+// BEGIN IMMEDIATE. That is the whole point of a second handle — a read
+// transaction stays DEFERRED, so under WAL it takes a snapshot of the last
+// commit and runs BESIDE a writer holding the write lock instead of queueing
+// for it. The write handle is always opened first, so the schema this one
+// reads already exists.
+func openReadDatabase(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open plan store read handle: %w", err)
+	}
+	return db, nil
+}
+
 // ensureSchema makes sure the database holds the store's tables, entering the
 // file into WAL mode as it creates them. THE CHECK IS ONE READ on a store that
 // is already built — the common case, every open of an existing plan — so a
