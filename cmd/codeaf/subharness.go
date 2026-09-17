@@ -412,7 +412,13 @@ func installMeasuredRulers(settings config.Config, model string) *profile.Profil
 // it would hold the terminal behind a network round trip. Memoising it means the
 // identity seam and the surface that shows the model list are looking at the
 // same catalog rather than racing two fetches over one cache file.
-var sharedCatalog = func() func(config.Config) *catalog.Catalog {
+var sharedCatalog = newSharedCatalog()
+
+// newSharedCatalog builds the memoised accessor [sharedCatalog] is. It is a
+// function rather than the value alone so a test can seat its own instance:
+// the once is inside, and two runs in one process must not share a catalog
+// pointed at whichever of them called first.
+func newSharedCatalog() func(config.Config) *catalog.Catalog {
 	var once sync.Once
 	var resolved *catalog.Catalog
 	return func(settings config.Config) *catalog.Catalog {
@@ -432,7 +438,13 @@ var sharedCatalog = func() func(config.Config) *catalog.Catalog {
 		})
 		return resolved
 	}
-}()
+}
+
+// autoSeatRowsBound is how long a headless door waits for the catalog's rows
+// when the profile's pick or a tier row needs them. It is sized to cover the
+// disk read of a cached catalog and nothing more. It is a variable because the
+// test of the bound must not spend three seconds proving the bound is honoured.
+var autoSeatRowsBound = 3 * time.Second
 
 // useAutoSeats seats this process's catalog under the seat ladder, and is what
 // a headless door calls BEFORE it resolves its seats.
@@ -444,7 +456,26 @@ var sharedCatalog = func() func(config.Config) *catalog.Catalog {
 // machine whose catalog was sitting in its own cache file. It is the same lazy,
 // memoised catalog every one of those doors goes on to use; asking for it a few
 // lines earlier waits for nothing.
-func useAutoSeats(settings config.Config) { sharedCatalog(settings) }
+//
+// AND WHEN THE ANSWER NEEDS THE ROWS, THE DOOR WAITS FOR THEM, within
+// [autoSeatRowsBound]: a pick taken off the table ([config.CrewPickAt]) and a
+// tier row that says auto ([config.AnyTierAutoAt]) are both computed from those
+// rows, and the chat surface never met the defect because its picks happen after
+// the warm has landed. The bound is a bound on the wait, not on the fetch — when
+// it runs out the warm carries on in the background, the resolver falls to the
+// family's table row exactly as it did before, and the seat's receipt names the
+// rung that answered (`table`), so a run that fell says it fell. A profile with
+// neither a pick nor an auto row reads no rows at all, and waits for nothing,
+// the way it always has.
+func useAutoSeats(settings config.Config) {
+	resolved := sharedCatalog(settings)
+	if config.CrewPickAt(settings.ProfileDir) == config.CrewPickTable && !config.AnyTierAutoAt(settings.ProfileDir) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), autoSeatRowsBound)
+	defer cancel()
+	resolved.Warmed(ctx)
+}
 
 // promisedWorker is the node's own answer to "who runs this", read in the order
 // admission settled it: the row's worker where there is one, the subtree's
