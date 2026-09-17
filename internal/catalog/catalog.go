@@ -262,6 +262,11 @@ type Catalog struct {
 	// exists. [Catalog.rows] blocks on the future; [Catalog.rowsNow] reads this
 	// and takes "not yet" for an answer.
 	warm atomic.Pointer[rows]
+	// warmed is closed the moment that publish happens, and is the door
+	// [Catalog.Warmed] waits at. Nil on a catalog that resolved eagerly —
+	// there was never a warm to wait for — and on a zero catalog, where nothing
+	// is in flight and nothing will land.
+	warmed chan struct{}
 	// blocking counts the questions asked through [Catalog.rows] — the door that
 	// can wait. See [Catalog.BlockingReads].
 	blocking atomic.Int64
@@ -361,10 +366,14 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 // the surface is up, so the goroutine warms the value while the caller carries
 // on, and only a question that genuinely arrives first ever blocks.
 func LoadLazy(ctx context.Context, options Options) *Catalog {
-	resolved := &Catalog{}
+	resolved := &Catalog{warmed: make(chan struct{})}
 	resolve := sync.OnceValue(func() *rows {
 		loaded, _ := loadOrFallback(ctx, options)
 		resolved.warm.Store(loaded)
+		// The wait door ([Catalog.Warmed]) reads the close, not the value, and
+		// the two land together so a caller that arrived between them would
+		// see the rows and still wait.
+		close(resolved.warmed)
 		return loaded
 	})
 	resolved.resolve = resolve
@@ -476,6 +485,41 @@ func (c *Catalog) rowsNow() *rows {
 		return c.ready
 	}
 	return c.warm.Load()
+}
+
+// Warmed answers whether this catalog's rows have landed, waiting within the
+// bound ctx carries for a lazily loaded one — from the disk cache or from the
+// fetch, whichever wins — and answering false when the bound ends first. A
+// catalog that resolved eagerly ([Load], [Refresh]) answers true at once, and
+// a nil catalog answers false.
+//
+// It exists for a caller whose next step reads the rows through a seam that
+// must not wait ([Catalog.ModelsNow], and the binaries that set config's
+// AutoModels from it): a bounded wait turns "not yet" into "the rows" when the
+// rows are a disk read away, without ever turning the caller into a fetch. The
+// caller owns the bound; this only honors it.
+func (c *Catalog) Warmed(ctx context.Context) bool {
+	if c == nil {
+		return false
+	}
+	if c.ready != nil {
+		return true
+	}
+	if c.warm.Load() != nil {
+		return true
+	}
+	if c.warmed == nil {
+		// Not a lazily loaded catalog: nothing is in flight and nothing will
+		// land, so a wait would only spend the caller's bound. What is in hand
+		// is the whole answer, and it is nothing.
+		return false
+	}
+	select {
+	case <-c.warmed:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // ModelsNow is the whole model list for a caller that MUST NOT WAIT, and nil
