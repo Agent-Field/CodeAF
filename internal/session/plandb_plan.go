@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -661,7 +662,7 @@ const planCLIBinEnv = "CODEAF_PLANDB_BIN"
 // would probe again — the .test suffix refuses it before that recursion can
 // start.
 func resolvePlanCLI(storeDir string) []string {
-	if override := strings.TrimSpace(os.Getenv(planCLIBinEnv)); override != "" {
+	if override := strings.TrimSpace(env.Get(planCLIBinEnv)); override != "" {
 		return []string{override, "plandb"}
 	}
 	if self, err := os.Executable(); err == nil && !looksLikeTestBinary(self) {
