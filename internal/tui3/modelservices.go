@@ -175,24 +175,28 @@ func (a *app) modelConnectionRows() []connect.Status {
 	// catalog's own row has become that instance's edit door, and a second
 	// instance would be unreachable from here without a row that always mints
 	// (startCustomAdd). An empty profile needs no row: the catalog row is
-	// still the unconnected door onto the first connection.
-	if len(switchableConnections(a.sources)) > 0 {
+	// still the unconnected door onto the first connection. The gate is the
+	// CUSTOM count and not the switcher's ring, which always holds the default
+	// service and would put a second door onto the first connection here.
+	if len(customInstances(a.sources)) > 0 {
 		rows = append(rows, connect.Status{Service: connect.Service{
 			ID: modelConnectionID(customAddRowID), Name: "add custom connection",
 			Blurb: "address · key", Auth: connect.AuthKey, Category: "models",
 		}})
-		// THE PANEL CARRIES THE SWITCHER TOO: the Providers tab's active-connection
-		// row and this one read the same ring and answer to the same enter
-		// (switchActiveConnection), so neither door is the only door. One row per
-		// reading; the sentence is the tab's own (switchSentence).
-		if ring := switchableConnections(a.sources); len(ring) >= 2 {
-			active, hasActive := config.ActiveConnection(a.profileDir, a.sources)
-			rows = append(rows, connect.Status{Service: connect.Service{
-				ID: modelConnectionID(connectionSwitchRowID), Name: "active connection",
-				Blurb: switchSentence(hasActive, active, nextConnection(ring, active, hasActive)),
-				Auth:  connect.AuthKey, Category: "models",
-			}})
-		}
+	}
+	// THE PANEL CARRIES THE SWITCHER TOO: the Providers tab's active-connection
+	// row and this one read the same ring and answer to the same enter
+	// (switchActiveConnection), so neither door is the only door. One row per
+	// reading; the sentence is the tab's own (switchSentence). The gate is the
+	// ring alone and not the add row's: the row is offered when there is
+	// somewhere to move to, whatever the panel's other doors are.
+	if ring := switchableConnections(a.sources); len(ring) >= 2 {
+		active, hasActive := config.ActiveConnectionFor(a.conversationModel(), a.sources)
+		rows = append(rows, connect.Status{Service: connect.Service{
+			ID: modelConnectionID(connectionSwitchRowID), Name: "active connection",
+			Blurb: switchSentence(hasActive, active, nextConnection(ring, active, hasActive)),
+			Auth:  connect.AuthKey, Category: "models",
+		}})
 	}
 	return rows
 }
@@ -770,12 +774,29 @@ func (a *app) reprefixStoredModels(oldWritten, newWritten string) {
 		a.modelServiceMessage("could not move every model to " + newWritten + " · " + err.Error())
 		return
 	}
-	for _, key := range changed {
-		if key == config.KeyTierHighModel || key == config.KeyTierWorkerModel || key == config.KeyTierReflexModel || key == config.KeyTierMastermindModel || key == config.KeyTierLowModel {
-			a.refreshSettings()
-			return
-		}
+	// THE REASONING TABLE MOVES WITH THE RENAME, and so does everything else
+	// the rename moved: the fallback chain, the role pins and the capability
+	// slots are drawn on the same sheet as the tier rows, so a refresh that
+	// waited for a TIER key would leave the panel naming yesterday's rows
+	// while the profile holds today's.
+	if len(changed) > 0 {
+		a.refreshSettings()
 	}
+}
+
+// conversationModel is the model THIS conversation runs — the one the
+// switcher rows read the active connection from. IT IS THE LIVE MODEL AND NOT
+// THE PROFILE SLOT: [config.ChatModelAt] is the LAST model any conversation
+// settled on, written asynchronously by the engine host, so two tabs on
+// different connections would read each other's; and while a turn is working,
+// the move this conversation is waiting on ([app.deferredModelServiceModel])
+// is where it is going, which is the answer the row owes (switchActiveConnection,
+// modelConnectionRows).
+func (a *app) conversationModel() string {
+	if strings.TrimSpace(a.deferredModelServiceModel) != "" {
+		return a.deferredModelServiceModel
+	}
+	return a.model
 }
 
 // listedModelIDs keeps the ids in the service's own order for modelsource's
@@ -1133,19 +1154,35 @@ func customAddRow() *modelServiceRow {
 	}
 }
 
+// conversationModel is the sheet's reading of this conversation's model,
+// through the door raiseSettings handed it. A sheet with no door is a sheet
+// nobody is drawing — [sheet.liveModel] is set on the way up and the drop
+// clears the whole sheet — so the empty answer is the never-drawn case
+// rather than a fallback.
+func (s *sheet) conversationModel() string {
+	if s.liveModel == nil {
+		return ""
+	}
+	return s.liveModel()
+}
+
 // connectionSwitcherRow is the Providers tab's active-connection row, nil
 // when no custom connection is connected, because a row that could never do
 // anything is a row that only says there is nothing here. THE ACTIVE
-// CONNECTION IS DERIVED, NEVER STORED (config.ActiveConnection): the
-// conversation slot's model already carries the answer in its Written
-// prefix, and a stored key would be a second source of truth that can
-// disagree with the model actually in use.
+// CONNECTION IS DERIVED FROM THIS CONVERSATION'S MODEL, NEVER STORED
+// (config.ActiveConnectionFor): the model this conversation runs — or the
+// move it is waiting out a working turn on — already carries the answer in
+// its Written prefix, and a stored key would be a second source of truth that
+// can disagree with the model actually in use. The sheet has no app, so the
+// model reaches it the way `sources` does, as a door handed over on the way
+// up ([sheet.conversationModel], raiseSettings): a snapshot taken when the
+// panel opened would go on naming the model the conversation left behind.
 func (s *sheet) connectionSwitcherRow() *modelServiceRow {
 	ring := switchableConnections(s.sources)
 	if len(ring) < 2 {
 		return nil
 	}
-	active, hasActive := config.ActiveConnection(s.profileDir, s.sources)
+	active, hasActive := config.ActiveConnectionFor(s.conversationModel(), s.sources)
 	next := nextConnection(ring, active, hasActive)
 	value := switchSentence(hasActive, active, next)
 	return &modelServiceRow{name: "active connection", value: value, switcher: true}
@@ -1215,6 +1252,21 @@ func nextConnection(ring []modelsource.Connected, active modelsource.Connected, 
 	return ring[0]
 }
 
+// customInstances is the custom connections a person has added, in the set's
+// own order. It is the add row's gate and NOT the switcher's ring
+// (switchableConnections), which always holds the default service too and
+// would show a second door onto the first connection on a profile that has
+// only the catalog's unconnected row (modelConnectionRows).
+func customInstances(sources modelsource.Set) []modelsource.Connected {
+	out := make([]modelsource.Connected, 0, 2)
+	for _, service := range sources.All() {
+		if modelsource.IsCustomID(service.Source.ID) {
+			out = append(out, service)
+		}
+	}
+	return out
+}
+
 // switchActiveConnection is the switcher row's answer: move this conversation
 // onto the next service in the ring's preferred model, through a.switchModel
 // — the ONE road a model change takes and the same write the /model picker
@@ -1225,7 +1277,7 @@ func (a *app) switchActiveConnection() {
 	if len(ring) < 2 {
 		return
 	}
-	active, hasActive := config.ActiveConnection(a.profileDir, a.sources)
+	active, hasActive := config.ActiveConnectionFor(a.conversationModel(), a.sources)
 	next := nextConnection(ring, active, hasActive)
 	written := serviceWrittenWord(next)
 	var preferred string

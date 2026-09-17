@@ -920,6 +920,15 @@ type sheet struct {
 	// in the same keystroke — so a value copied when the panel opened would be
 	// the tail describing the pin before the one a person had just set.
 	force func() laneForce
+	// liveModel is this conversation's LIVE model, asked of the surface rather
+	// than copied, for the switcher's active-connection row
+	// (connectionSwitcherRow). IT IS A DOOR FOR THE SAME REASON `force` IS: a
+	// snapshot taken here would name the model the conversation had when the
+	// panel opened, and the switcher is exactly the row whose answer changes
+	// from underneath a panel — a move made from the tab itself, or the one
+	// waiting out a working turn ([app.deferredModelServiceModel]).
+	liveModel func() string
+
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
@@ -1225,6 +1234,7 @@ func (a *app) raiseSettings() {
 		autonomyDoor: a.hasAutonomyDoor(),
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
+		liveModel:    a.conversationModel,
 		sources:      a.sources,
 		force:        a.laneForceNow,
 		defaults:     settingDefaults(),
