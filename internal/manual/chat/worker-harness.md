@@ -130,9 +130,10 @@ carrying both would teach two ways to say one thing.
   allows — `/settings` → Spending → **per conversation** — which is off by default.
   The run's width and its dollar ceiling are the conversation's own numbers, so a
   run costs what the conversation costs and runs as wide as the conversation may.
-- **The step cap.** A worker stops at **200** finished tool calls per checkpoint,
-  the same figure a node worker carries, backstopped at 1000 (200 × 5). At a
-  checkpoint a second look runs: progress buys another 200 steps.
+- **The step cap.** A worker stops at **200** finished tool calls — the same
+  figure a node worker carries. The cap is a bound on spend and not a finding about
+  the work: the turn is stopped there rather than judged, and a worker stopped this
+  way did not finish.
 - **Spend rows by seat.** Every call a run makes lands one row in the plan store's
   ledger, tagged with the task, the model, and the role — the **seat** — it ran on.
   Read it back with `plandb spend`, by role and by model, or rolled up under one
