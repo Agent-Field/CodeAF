@@ -26,6 +26,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -120,7 +121,7 @@ func cliScan(argv []string) (*cliParsed, error) {
 		"dep": true, "priority": true, "description": true, "parent": true, "into": true,
 		"after": true, "before": true, "title": true, "prepend": true,
 		"result": true, "subtasks": true, "task": true, "limit": true,
-		"status": true,
+		"status": true, "chat": true,
 	}
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
@@ -1111,9 +1112,15 @@ func cliHardDependents(st *Store, id string) []*Task {
 
 // cliList answers the tasks in admission order, filtered the way the
 // doctrine filters. The root is the run, not a row.
+// cliFilter is the project/chat narrowing the reading verbs accept. An empty
+// flag narrows nothing, which is the answer a caller that names neither gets.
+func cliFilter(p *cliParsed) Filter {
+	return Filter{Project: p.vals["project"], Chat: p.vals["chat"]}
+}
+
 func cliList(st *Store, p *cliParsed) error {
 	var rows []*Task
-	for _, task := range st.Tasks() {
+	for _, task := range st.Tasks(cliFilter(p)) {
 		if task.ID == st.RootID() {
 			continue
 		}
@@ -1145,6 +1152,31 @@ func cliList(st *Store, p *cliParsed) error {
 	return nil
 }
 
+// cliSpend prints the ledger's per-project and per-chat totals under the
+// --full tree, and nothing at all when the run has never been charged. The
+// tags are sorted so the same ledger prints the same lines twice.
+func cliSpend(st *Store) {
+	summary := st.Summary()
+	for _, project := range sortedSpendTags(summary.ProjectSpend) {
+		total := summary.ProjectSpend[project]
+		fmt.Fprintf(cliOut, "spend project %s: $%.4f (%d calls)\n", project, total.USD, total.Calls)
+	}
+	for _, chat := range sortedSpendTags(summary.ChatSpend) {
+		total := summary.ChatSpend[chat]
+		fmt.Fprintf(cliOut, "spend chat %s: $%.4f (%d calls)\n", chat, total.USD, total.Calls)
+	}
+}
+
+// sortedSpendTags answers a spend map's keys in order, so a render is stable.
+func sortedSpendTags(totals map[string]SpendTotal) []string {
+	tags := make([]string, 0, len(totals))
+	for tag := range totals {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags
+}
+
 // cliStatus renders the one-line summary, and with --full the containment
 // tree and every dependency edge under it.
 func cliStatus(st *Store, p *cliParsed) error {
@@ -1170,6 +1202,7 @@ func cliStatus(st *Store, p *cliParsed) error {
 	}
 	fmt.Fprintln(cliOut)
 	cliTree(st)
+	cliSpend(st)
 	return nil
 }
 
@@ -1233,7 +1266,7 @@ func cliSearchVerb(st *Store, p *cliParsed) error {
 		}
 		limit = parsed
 	}
-	results := st.Search(p.pos[1], limit)
+	results := st.Search(p.pos[1], limit, cliFilter(p))
 	if p.bools["json"] {
 		out := make([]map[string]any, 0, len(results))
 		for _, r := range results {
@@ -1307,7 +1340,7 @@ func cliContexts(st *Store, p *cliParsed) error {
 		}
 		limit = parsed
 	}
-	entries := st.Contexts("", p.vals["kind"], limit)
+	entries := st.Contexts("", p.vals["kind"], limit, cliFilter(p))
 	if p.bools["json"] {
 		return cliPrintJSON(entries)
 	}
@@ -1449,7 +1482,7 @@ func cliShow(st *Store, p *cliParsed) error {
 // widest answer. The --json shape pairs the task rows with the dependency
 // edges between them, so a reader sees the plan's whole picture in one parse.
 func cliOverview(st *Store, p *cliParsed) error {
-	all := st.Tasks()
+	all := st.Tasks(cliFilter(p))
 	if p.bools["json"] {
 		tasks := make([]*cliTaskJSON, 0, len(all))
 		for _, task := range all {
@@ -1478,6 +1511,9 @@ func cliOverview(st *Store, p *cliParsed) error {
 		fmt.Fprintf(cliOut, "  %s %s %s [%s]", cliIcon(task.Status), cliID(task.ID), task.Title, task.Status)
 		if task.ClaimedBy != "" {
 			fmt.Fprintf(cliOut, " %s", task.ClaimedBy)
+		}
+		if task.Chat != "" {
+			fmt.Fprintf(cliOut, " [chat:%s]", task.Chat)
 		}
 		fmt.Fprintln(cliOut)
 	}
@@ -1902,11 +1938,11 @@ func cliVerbHelp(verb string) string {
 		"split":          `usage: plandb split TASK_ID --into SPEC   (SPEC: JSON parts, "A, B", or "A > B > C")`,
 		"go":             `usage: plandb go [--agent ID] — claim the highest-priority ready task for you`,
 		"done":           `usage: plandb done [TASK_ID] --result TEXT [--agent ID] [--next]`,
-		"list":           `usage: plandb list [--status STATUS] [--kind K] [--agent ID]`,
+		"list":           `usage: plandb list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C]`,
 		"status":         `usage: plandb status [--full] — the one-line summary, or the containment tree with it`,
-		"search":         `usage: plandb search QUERY [--limit N]`,
+		"search":         `usage: plandb search QUERY [--limit N] [--project P] [--chat C]`,
 		"context":        `usage: plandb context TEXT [--kind K] [--task TASK_ID]`,
-		"contexts":       `usage: plandb contexts [--kind K] [--limit N]`,
+		"contexts":       `usage: plandb contexts [--kind K] [--limit N] [--project P] [--chat C]`,
 		"prune":          `usage: plandb prune CONTEXT_ID`,
 		"critical-path":  `usage: plandb critical-path`,
 		"bottlenecks":    `usage: plandb bottlenecks [--limit N]`,
@@ -1920,7 +1956,7 @@ func cliVerbHelp(verb string) string {
 		"task insert":    `usage: plandb task insert --after A [--before B] --title T [--description D]`,
 		"task note":      `usage: plandb task note TASK_ID TEXT`,
 		"task notes":     `usage: plandb task notes TASK_ID`,
-		"task overview":  `usage: plandb task overview`,
+		"task overview":  `usage: plandb task overview [--project P] [--chat C]`,
 		"task pivot":     `usage: plandb task pivot TASK_ID --subtasks JSON [--keep-done]`,
 		"what-if":        `usage: plandb what-if cancel TASK_ID`,
 		"what-if cancel": `usage: plandb what-if cancel TASK_ID — the task, its descendants, its hard dependents`,
@@ -1953,10 +1989,10 @@ adapting the plan:
   task note TASK_ID TEXT    |  task notes TASK_ID
 
 reading:
-  show TASK_ID | task get TASK_ID | task overview
-  list [--status STATUS] [--kind K] [--agent ID]
-  status [--full] | search QUERY [--limit N] | critical-path | bottlenecks [--limit N]
-  context TEXT [--kind K] [--task TASK_ID] | contexts [--kind K] [--limit N] | prune CONTEXT_ID
+  show TASK_ID | task get TASK_ID | task overview [--project P] [--chat C]
+  list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C]
+  status [--full] | search QUERY [--limit N] [--project P] [--chat C] | critical-path | bottlenecks [--limit N]
+  context TEXT [--kind K] [--task TASK_ID] | contexts [--kind K] [--limit N] [--project P] [--chat C] | prune CONTEXT_ID
 
 global flags:
   --db PATH      the store file (found by walking up when not given)

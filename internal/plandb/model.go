@@ -101,8 +101,15 @@ type TaskPatch struct {
 
 type Task struct {
 	TaskSpec
-	Status      Status    `json:"status"`
-	Composite   bool      `json:"composite"`
+	Status    Status `json:"status"`
+	Composite bool   `json:"composite"`
+	// Project and Chat are the row's tags: the run it belongs to and the
+	// conversation it was made in. They are not the caller's to set — a task
+	// inherits them from its parent — so they live beside the status ladder
+	// and not on the spec. A row made before the tags existed carries the
+	// empty string.
+	Project     string    `json:"project,omitempty"`
+	Chat        string    `json:"chat,omitempty"`
 	ClaimedBy   string    `json:"claimed_by,omitempty"`
 	Result      string    `json:"result,omitempty"`
 	Error       string    `json:"error,omitempty"`
@@ -119,11 +126,13 @@ type Task struct {
 // the two stay separate because a note is about one task and a context entry
 // is about the run.
 type Note struct {
-	ID     string    `json:"id"`
-	TaskID string    `json:"task_id"`
-	Agent  string    `json:"agent,omitempty"`
-	Body   string    `json:"body"`
-	At     time.Time `json:"at"`
+	ID      string    `json:"id"`
+	TaskID  string    `json:"task_id"`
+	Agent   string    `json:"agent,omitempty"`
+	Body    string    `json:"body"`
+	Project string    `json:"project,omitempty"`
+	Chat    string    `json:"chat,omitempty"`
+	At      time.Time `json:"at"`
 }
 
 type ContextEntry struct {
@@ -131,7 +140,34 @@ type ContextEntry struct {
 	TaskID    string    `json:"task_id,omitempty"`
 	Kind      string    `json:"kind"`
 	Content   string    `json:"content"`
+	Project   string    `json:"project,omitempty"`
+	Chat      string    `json:"chat,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// Filter narrows a reading verb to the rows carrying one project tag and one
+// chat tag. THE ZERO VALUE FILTERS NOTHING: an empty field is a wildcard, so
+// a caller that names neither gets every row — the answer the store gave
+// before the tags existed.
+type Filter struct {
+	Project string
+	Chat    string
+}
+
+// admits reports whether a row's tags pass the filter. An empty filter field
+// is a wildcard, which is what makes the zero Filter keep everything.
+func (f Filter) admits(project, chat string) bool {
+	return (f.Project == "" || f.Project == project) && (f.Chat == "" || f.Chat == chat)
+}
+
+// firstFilter answers the filter a reading verb was handed. The verbs take it
+// variadically so every call site that names no filter keeps its argument
+// list; no filter is the zero Filter, which keeps everything.
+func firstFilter(filters []Filter) Filter {
+	if len(filters) == 0 {
+		return Filter{}
+	}
+	return filters[0]
 }
 
 type Summary struct {
@@ -144,6 +180,19 @@ type Summary struct {
 	Done      int    `json:"done"`
 	Failed    int    `json:"failed"`
 	Cancelled int    `json:"cancelled"`
+	// ProjectSpend and ChatSpend are the ledger's per-project and per-chat
+	// totals, read from the spend table — the dollars spent and the calls
+	// that spent them. A store that has never been charged carries neither,
+	// and --json omits both.
+	ProjectSpend map[string]SpendTotal `json:"project_spend,omitempty"`
+	ChatSpend    map[string]SpendTotal `json:"chat_spend,omitempty"`
+}
+
+// SpendTotal is one project's or one chat's share of the ledger: the dollars
+// spent under that tag and the number of calls that spent them.
+type SpendTotal struct {
+	USD   float64 `json:"usd"`
+	Calls int     `json:"calls"`
 }
 
 type BlockedTask struct {
