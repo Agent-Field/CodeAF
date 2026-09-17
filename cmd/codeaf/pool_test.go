@@ -292,26 +292,28 @@ func TestPoolPublicKeysCarryTheIndexSignersKey(t *testing.T) {
 // The stored key, when one is set, is the only key the puller is handed: a
 // word that does not decode is a key nobody can vouch for, so the answer is
 // no keys rather than the build's own — and nothing stored hands back the
-// build's.
+// build's. poolTrustedKeysErr says which: a word set but not decodable is a
+// reason, not an emptiness.
 func TestPoolTrustedKeysFollowTheStoredKey(t *testing.T) {
 	good := base64.StdEncoding.EncodeToString(make(ed25519.PublicKey, ed25519.PublicKeySize))
-	got := poolTrustedKeys(poolcfg.Resolve("", good, noEnv))
-	if len(got) != 1 || len(got[0]) != ed25519.PublicKeySize {
-		t.Fatalf("a stored key gave %d key(s), want its one", len(got))
+	got, err := poolTrustedKeysErr(poolcfg.Resolve("", good, noEnv))
+	if err != nil || len(got) != 1 || len(got[0]) != ed25519.PublicKeySize {
+		t.Fatalf("a stored key gave %d key(s) with err %v, want its one and no error", len(got), err)
 	}
 
 	for name, bad := range map[string]string{
 		"not base64": "not a key at all",
 		"too short":  base64.StdEncoding.EncodeToString([]byte("short")),
 	} {
-		if keys := poolTrustedKeys(poolcfg.Resolve("", bad, noEnv)); len(keys) != 0 {
-			t.Fatalf("%s: a key that does not decode left %d key(s) in hand", name, len(keys))
+		keys, keyErr := poolTrustedKeysErr(poolcfg.Resolve("", bad, noEnv))
+		if keyErr == nil || len(keys) != 0 {
+			t.Fatalf("%s: a key that does not decode left %d key(s) in hand and no reason", name, len(keys))
 		}
 	}
 
-	built := poolTrustedKeys(poolcfg.Resolve("", "", noEnv))
-	if len(built) != 1 || !bytes.Equal(built[0], poolPublicKeys[0]) {
-		t.Fatal("with nothing stored, the build's own key is the key")
+	built, err := poolTrustedKeysErr(poolcfg.Resolve("", "", noEnv))
+	if err != nil || len(built) != 1 || !bytes.Equal(built[0], poolPublicKeys[0]) {
+		t.Fatalf("with nothing stored, the build's own key is the key (err %v)", err)
 	}
 }
 
@@ -363,6 +365,86 @@ func TestPoolVerifyRefusesAKeyItCannotRead(t *testing.T) {
 		if !errors.Is(err, exitCannotRun) {
 			t.Fatalf("a key %q is a door refusal, not a fetch: %v", bad, err)
 		}
+	}
+}
+
+// --key replaces the keys the build resolves, it does not add to them: the
+// document below is signed under the stored key, which is the key the verb
+// would trust with no flag at all — the stand-in for the build's own, whose
+// private half no test holds. A fresh unrelated key must be able to prove a
+// document does not verify under it, which is the whole reason the flag
+// exists; were the flag's keys only added to the resolved ones, the stored
+// key would still be in the list and the document would verify. The control
+// run without the flag verifies, so the refusal is the flag's doing and not
+// the signature's.
+func TestPoolVerifyChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := poolServer(t, priv, signedPoolDoc(7))
+	other, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "",
+	})
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"models.pool.public_key": "`+base64.StdEncoding.EncodeToString(pub)+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	err = runPoolWith([]string{"verify", "--key", base64.StdEncoding.EncodeToString(other)},
+		&out, dir, poolClock(t), lookup)
+	if err == nil || !strings.Contains(err.Error(), "pull: signature does not verify") {
+		t.Fatalf("a document the --key does not trust verified: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "pool", "doc.json")); !os.IsNotExist(statErr) {
+		t.Fatal("a refused document was cached")
+	}
+
+	// The control: no flag, the stored key answers for the same document.
+	out.Reset()
+	if err := runPoolWith([]string{"verify"}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("the stored key did not verify its own document: %v", err)
+	}
+	if !strings.Contains(out.String(), "signature good") {
+		t.Fatalf("the control run did not verify:\n%s", out.String())
+	}
+}
+
+// A stored key that does not decode is not the ordinary nothing: verify
+// refuses at the door with the row's name on it, and nothing is fetched.
+func TestPoolVerifyNamesAStoredKeyThatDoesNotDecode(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"models.pool.public_key": "not-a-key"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	err := runPoolWith([]string{"verify"}, &out, dir, poolClock(t), deadEnv())
+	if !errors.Is(err, exitIncomplete) {
+		t.Fatalf("a stored key that does not decode is a door refusal, not a fetch: %v", err)
+	}
+	if !strings.Contains(out.String(), "models.pool.public_key does not decode") {
+		t.Fatalf("the refusal did not name the row:\n%s", out.String())
+	}
+}
+
+// The same refusal names the environment pin when the broken word came in as
+// one — the remedy belongs to whichever word is in force.
+func TestPoolVerifyNamesTheEnvPinWhenItsKeyDoesNotDecode(t *testing.T) {
+	var out strings.Builder
+	err := runPoolWith([]string{"verify"}, &out, t.TempDir(), poolClock(t),
+		oneEnv("CODEAF_MODEL_POOL_PUBLIC_KEY", "not-a-key"))
+	if !errors.Is(err, exitIncomplete) {
+		t.Fatalf("a pin that does not decode is a door refusal, not a fetch: %v", err)
+	}
+	if !strings.Contains(out.String(), "CODEAF_MODEL_POOL_PUBLIC_KEY does not decode") {
+		t.Fatalf("the refusal did not name the pin:\n%s", out.String())
 	}
 }
 
@@ -921,6 +1003,89 @@ func TestPoolStatusFallsToTheMirrorWhenTheRelayIsDown(t *testing.T) {
 	body := out.String()
 	if !strings.Contains(body, "relay: unreachable (") || !strings.Contains(body, "mirror: reachable · index version 7") {
 		t.Fatalf("status did not fall to the mirror:\n%s", body)
+	}
+}
+
+// status checks under --key alone too: the relay's document is signed under
+// the stored key — the one the probe would trust with no flag at all — and a
+// fresh unrelated key must be able to prove it does not answer. Were the
+// flag's keys only added to the resolved ones, the stored key would still be
+// in the list and the relay would answer; the control run without the flag
+// does answer, so the refusal is the flag's doing.
+func TestPoolStatusChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := poolServer(t, priv, signedPoolDoc(7))
+	other, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "",
+	})
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"models.pool.public_key": "`+base64.StdEncoding.EncodeToString(pub)+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--json", "--key", base64.StdEncoding.EncodeToString(other)}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("a reading form failed over a signature that did not check: %v", err)
+	}
+	var answer struct {
+		Relay *probeSummary `json:"relay"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Relay == nil || answer.Relay.Reachable || !strings.Contains(answer.Relay.Reason, "signature does not verify") {
+		t.Fatalf("the relay was not checked under the flag's key alone: %+v", answer.Relay)
+	}
+
+	// The control: no flag, the same relay answers under the stored key.
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("the stored key did not answer for its own document: %v", err)
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Relay == nil || !answer.Relay.Reachable {
+		t.Fatalf("the control run did not reach the relay under the stored key: %+v", answer.Relay)
+	}
+}
+
+// A stored key that does not decode does not fail a reading: status says why
+// the relay was not asked, in the line and in the JSON reason, and exits 0.
+func TestPoolStatusSaysWhyAStoredKeyDoesNotDecode(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"models.pool.public_key": "not-a-key"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatalf("a broken stored key failed status: %v", err)
+	}
+	if !strings.Contains(out.String(), "relay: unreachable (models.pool.public_key does not decode") {
+		t.Fatalf("status did not name the broken row:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Relay *probeSummary `json:"relay"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Relay == nil || !strings.Contains(answer.Relay.Reason, "models.pool.public_key does not decode") {
+		t.Fatalf("the reason did not name the broken row: %+v", answer.Relay)
 	}
 }
 
