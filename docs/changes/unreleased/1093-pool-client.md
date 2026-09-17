@@ -15,3 +15,15 @@ wave gives the client both, so an install with `model_pool` on reads the
 signed index and sends its rows the day the relay answers. Until it answers,
 every path falls back the way it did: the cache, the seed, and the install's
 own sheet, with nothing said at a person.
+The relay's index has a second address — the same signed document copied to
+GitHub — held as `DefaultMirrorURL` (env `CODEAF_MODEL_POOL_MIRROR_URL`, a
+value set and empty to turn the fallback off) and printed by `pool show` beside
+the other addresses. A refresh that fails for any reason other than a signature
+failure falls through to the mirror, which shares the cache directory, so the
+document with the higher version is the one kept; a signature failure is a
+statement about the primary's bytes and does not fall through at all. `pool
+status` now asks the relay, and the mirror when the relay does not answer, under
+a three-second budget and TTL 0, and prints one line: whether each answered,
+the index version it served, or the reason it did not — with `--key` to check a
+document signed under a key other than the one built in. Status still exits 0
+whether or not anything answered.
