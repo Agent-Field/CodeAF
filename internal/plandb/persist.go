@@ -98,7 +98,8 @@ var schemaStatements = []string{
 		updated_at            TEXT    NOT NULL,
 		completed_at          TEXT    NOT NULL,
 		project               TEXT    NOT NULL DEFAULT '',
-		chat                  TEXT    NOT NULL DEFAULT ''
+		chat                  TEXT    NOT NULL DEFAULT '',
+		paused                INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS deps (
 		downstream TEXT    NOT NULL,
@@ -193,31 +194,36 @@ func ensureSchema(db *sql.DB) error {
 			}
 		}
 	}
-	// THE TAGS ARRIVED AFTER THE FIRST STORES. A store built before the
-	// project and chat columns existed still opens: the columns are added,
-	// and its old rows read back with the empty tag an honest "made before
-	// this change" carries.
-	return migrateTags(db)
+	// THE TAGS ARRIVED AFTER THE FIRST STORES, and the paused and from
+	// columns arrived after them. A store built before a column existed still
+	// opens: the column is added, and its old rows read back with an honest
+	// "made before this change" value — the empty tag, an unpaused task, a
+	// worker's note.
+	return migrateColumns(db)
 }
 
-// migrateTags adds the project and chat columns to every table that carries
-// them when the store predates them. It runs on a fresh store too, where the
+// migrateColumns adds every column that arrived after the store's first
+// schema to the tables that carry it. It runs on a fresh store too, where the
 // columns are already there and every step is a no-op.
-func migrateTags(db *sql.DB) error {
+func migrateColumns(db *sql.DB) error {
 	for _, table := range []string{"tasks", "notes", "contexts"} {
 		for _, column := range []string{"project", "chat"} {
-			if err := ensureColumn(db, table, column); err != nil {
+			if err := ensureColumn(db, table, column, "TEXT", "''"); err != nil {
 				return err
 			}
 		}
+	}
+	if err := ensureColumn(db, "tasks", "paused", "INTEGER", "0"); err != nil {
+		return err
 	}
 	return nil
 }
 
 // ensureColumn adds one column when its table predates it and does nothing
 // when it is already there. SQLite has no ADD COLUMN IF NOT EXISTS, so the
-// check is a read of the table's own description.
-func ensureColumn(db *sql.DB, table, column string) error {
+// check is a read of the table's own description. The column name is quoted,
+// because one of them is a SQL keyword.
+func ensureColumn(db *sql.DB, table, column, columnType, dflt string) error {
 	rows, err := db.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
 		return err
@@ -243,7 +249,7 @@ func ensureColumn(db *sql.DB, table, column string) error {
 	if found {
 		return nil
 	}
-	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " TEXT NOT NULL DEFAULT ''")
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN "` + column + `" ` + columnType + ` NOT NULL DEFAULT ` + dflt)
 	return err
 }
 
@@ -313,7 +319,7 @@ func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
 	rows, err := tx.Query(`SELECT id, title, description, kind, parent_id, priority, effect,
 		parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
 		deliverables, evidence_requirements, status, composite, claimed_by, result, err,
-		artifacts, evidence, created_at, updated_at, completed_at, project, chat
+		artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused
 		FROM tasks ORDER BY ord`)
 	if err != nil {
 		return nil, nil, err
@@ -326,7 +332,7 @@ func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
 		var (
 			capabilities, resources, contextInputs, deliverables string
 			evidenceRequirements, artifacts, evidence            string
-			composite                                            int
+			composite, paused                                    int
 			createdAt, updatedAt, completedAt                    string
 			effect, parallel, isolation                          string
 		)
@@ -334,12 +340,13 @@ func loadTasks(tx *sql.Tx) (map[string]*Task, []string, error) {
 			&task.Priority, &effect, &parallel, &isolation, &task.Role, &task.Agent, &task.Acceptance,
 			&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 			&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
-			&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat); err != nil {
+			&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused); err != nil {
 			return nil, nil, err
 		}
 		task.Effect = Effect(effect)
 		task.Parallel, task.Isolation = parallel, isolation
 		task.Composite = composite != 0
+		task.Paused = paused != 0
 		if err := decodeJSON(capabilities, &task.Capabilities); err != nil {
 			return nil, nil, err
 		}
@@ -472,8 +479,8 @@ func saveTasks(tx *sql.Tx, value state) error {
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -513,7 +520,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 			task.Role, task.Agent, task.Acceptance, columns, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
-			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat); err != nil {
+			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused)); err != nil {
 			return err
 		}
 	}

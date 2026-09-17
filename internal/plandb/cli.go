@@ -221,7 +221,7 @@ func cliRefusal(p *cliParsed) (string, bool) {
 		// and the run's project is fixed at init.
 		return verb + ": Task lifecycle and scope are managed by the supervisor", true
 	case p.pos[0] == "task" && len(p.pos) >= 2 &&
-		oneOf(p.pos[1], "claim", "start", "fail", "pause", "next", "heartbeat", "progress", "approve"):
+		oneOf(p.pos[1], "claim", "start", "fail", "next", "heartbeat", "progress", "approve"):
 		return verb + ": Task lifecycle and scope are managed by the supervisor", true
 	}
 	return "", false
@@ -353,7 +353,7 @@ func cliDispatch(st *Store, p *cliParsed) error {
 		return cliShow(st, p)
 	case "task":
 		if len(p.pos) < 2 {
-			return errors.New("task needs a subcommand — one of add-dep, amend, cancel, get, insert, note, notes, overview, pivot")
+			return errors.New("task needs a subcommand — one of add-dep, amend, cancel, get, insert, note, notes, overview, pause, pivot, resume")
 		}
 		switch p.pos[1] {
 		case "add-dep":
@@ -372,8 +372,12 @@ func cliDispatch(st *Store, p *cliParsed) error {
 			return cliNotes(st, p.tail(1))
 		case "overview":
 			return cliOverview(st, p.tail(1))
+		case "pause":
+			return cliTaskHold(st, p.tail(1), true)
 		case "pivot":
 			return cliPivot(st, p.tail(1))
+		case "resume":
+			return cliTaskHold(st, p.tail(1), false)
 		default:
 			return fmt.Errorf("unknown task subcommand %q — run \"plandb help\" for the ported set", p.pos[1])
 		}
@@ -1605,6 +1609,43 @@ func cliNotes(st *Store, p *cliParsed) error {
 	return nil
 }
 
+// cliTaskHold runs the runtime's and a person's hold verbs: `task pause`
+// sets the status-independent flag, `task resume` clears it. They are not
+// worker verbs — the bare supervisor refusal still stands for the lifecycle —
+// so the store's own root guard and the task lookup are all the argument
+// check that is needed.
+func cliTaskHold(st *Store, p *cliParsed, pause bool) error {
+	verb := "resume"
+	if pause {
+		verb = "pause"
+	}
+	if len(p.pos) < 2 {
+		return fmt.Errorf("%s needs a task — plandb task %s <task-id>", verb, verb)
+	}
+	task, err := cliResolve(st, p.pos[1])
+	if err != nil {
+		return err
+	}
+	var held *Task
+	if pause {
+		held, err = st.Pause(task.ID)
+	} else {
+		held, err = st.Resume(task.ID)
+	}
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		return cliPrintJSON(cliTaskObject(st, held))
+	}
+	done := "resumed"
+	if pause {
+		done = "paused"
+	}
+	fmt.Fprintf(cliOut, "%s %s\n", done, cliID(held.ID))
+	return nil
+}
+
 // cliNoteJSON is one note as --json prints it: the note's own id, the task it
 // hangs on spelled with its t- prefix, the agent that left it, its words and
 // when it was left.
@@ -1948,7 +1989,7 @@ func cliVerbHelp(verb string) string {
 		"bottlenecks":    `usage: plandb bottlenecks [--limit N]`,
 		"show":           `usage: plandb show TASK_ID`,
 		"help":           `usage: plandb help`,
-		"task":           `usage: plandb task <add-dep|amend|cancel|get|insert|note|notes|overview|pivot>`,
+		"task":           `usage: plandb task <add-dep|amend|cancel|get|insert|note|notes|overview|pause|pivot|resume>`,
 		"task add-dep":   `usage: plandb task add-dep DOWNSTREAM --after UPSTREAM [--kind feeds_into|blocks|suggests]`,
 		"task amend":     `usage: plandb task amend TASK_ID --prepend TEXT`,
 		"task cancel":    `usage: plandb task cancel TASK_ID`,
@@ -1956,6 +1997,8 @@ func cliVerbHelp(verb string) string {
 		"task insert":    `usage: plandb task insert --after A [--before B] --title T [--description D]`,
 		"task note":      `usage: plandb task note TASK_ID TEXT`,
 		"task notes":     `usage: plandb task notes TASK_ID`,
+		"task pause":     `usage: plandb task pause TASK_ID — hold the task and its subtree out of the ready frontier`,
+		"task resume":    `usage: plandb task resume TASK_ID — release the hold Pause set`,
 		"task overview":  `usage: plandb task overview [--project P] [--chat C]`,
 		"task pivot":     `usage: plandb task pivot TASK_ID --subtasks JSON [--keep-done]`,
 		"what-if":        `usage: plandb what-if cancel TASK_ID`,
@@ -1987,6 +2030,7 @@ adapting the plan:
   task pivot TASK_ID --subtasks JSON [--keep-done]
   task cancel TASK_ID       |  what-if cancel TASK_ID
   task note TASK_ID TEXT    |  task notes TASK_ID
+  task pause TASK_ID        |  task resume TASK_ID
 
 reading:
   show TASK_ID | task get TASK_ID | task overview [--project P] [--chat C]

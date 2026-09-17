@@ -103,6 +103,12 @@ type Task struct {
 	TaskSpec
 	Status    Status `json:"status"`
 	Composite bool   `json:"composite"`
+	// Paused is the status-independent hold on a task and everything under it.
+	// A paused task keeps the status it had — ready stays ready — and leaves
+	// the ready frontier whole while the flag is set; Resume clears it. It is
+	// not a rung of the status ladder, which is why it lives here beside the
+	// containment flag and not among the statuses.
+	Paused bool `json:"paused,omitempty"`
 	// Project and Chat are the row's tags: the run it belongs to and the
 	// conversation it was made in. They are not the caller's to set — a task
 	// inherits them from its parent — so they live beside the status ladder
