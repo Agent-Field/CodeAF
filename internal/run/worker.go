@@ -7,6 +7,7 @@ package run
 
 import (
 	"context"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
@@ -48,6 +49,13 @@ type Limits struct {
 	// StepsPerTask is handed to every worker through its context, so the loop
 	// a worker hosts can cap itself without the supervisor counting its steps.
 	StepsPerTask int
+	// StaleAfter is how long a claim may go untouched before a pass takes it
+	// over: a claimed task whose owning process has not been seen for this
+	// long is released so the ready set offers it again. It is a field here
+	// rather than an environment variable because it bounds how long a run
+	// waits on a process that may have died, and zero takes the default
+	// (defaultStaleAfter) rather than meaning "no stale claim ever".
+	StaleAfter time.Duration
 }
 
 // stepsPerTaskKey is the type behind the context value, so a worker reads its
