@@ -139,7 +139,7 @@ func (a *Agent) truncatingBash(inner bare.Tool) bare.Tool {
 		Description: inner.Description,
 		Schema:      inner.Schema,
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			text, isError, err := inner.Execute(ctx, args)
+			text, isError, err := inner.Execute(ctx, a.planCommandArgs(args))
 			if err != nil {
 				return text, isError, err
 			}
@@ -155,6 +155,79 @@ func (a *Agent) truncatingBash(inner bare.Tool) bare.Tool {
 			return a.cutBashResult(text), isError, nil
 		},
 	}
+}
+
+// planCommandArgs returns a bash call's arguments with the plan shim's
+// directory first on the PATH the COMMAND sees, or the arguments unchanged
+// when this worker has no armed shim to reach. bare's hand takes no
+// environment of its own — the schema carries a command and a timeout and
+// nothing else — so the directory travels as an exported assignment on the
+// command string, the one spelling that reaches the one shell process this
+// call runs while leaving the process environment (plandb_plan.go's
+// [planBashPrefix]) alone.
+//
+// THE GATE IS THE WORKER'S OWN BELT, not the run's switch: the graph is the
+// conversation's, shared with every node it admits, so a plan armed for a
+// bash-belt worker is visible from the conversation's own bash hand — and a
+// conversation that never asked for the experiment must not have its PATH
+// rewritten by one. [Config.mayBashBelt] is the belt fact this file's belt was
+// composed by, and it is the gate here for the same reason.
+func (a *Agent) planCommandArgs(args json.RawMessage) json.RawMessage {
+	var parsed struct {
+		Command string `json:"command"`
+	}
+	if err := decodeToolArguments(args, &parsed); err != nil || strings.TrimSpace(parsed.Command) == "" {
+		return args
+	}
+	prefixed := a.planCommand(parsed.Command)
+	if prefixed == parsed.Command {
+		return args
+	}
+	if out, ok := withBashCommand(args, prefixed); ok {
+		return out
+	}
+	return args
+}
+
+// planCommand prefixes one bash command string with the plan shim's PATH
+// assignment, or answers it unchanged when there is no prefix to carry. The
+// background road ([Agent.backgroundBash]) starts its job outside the inner
+// tool and reaches the same helper here, so both roads a bash-belt worker's
+// command can take agree about where `plandb` resolves.
+func (a *Agent) planCommand(command string) string {
+	if strings.TrimSpace(command) == "" || !a.config.mayBashBelt() {
+		return command
+	}
+	g := a.graph()
+	if g == nil {
+		return command
+	}
+	prefix := g.planBashPrefix()
+	if prefix == "" {
+		return command
+	}
+	return prefix + command
+}
+
+// withBashCommand replaces one bash call's command and keeps every other
+// argument byte for byte — the background flag and the timeout are the
+// model's words and this rewrite has no opinion about them. An argument
+// object that will not round-trip comes back unchanged.
+func withBashCommand(args json.RawMessage, command string) (json.RawMessage, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(args, &fields); err != nil {
+		return args, false
+	}
+	encoded, err := json.Marshal(command)
+	if err != nil {
+		return args, false
+	}
+	fields["command"] = encoded
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return args, false
+	}
+	return out, true
 }
 
 // branchBashDescription renders the branch bash hand's description from the
