@@ -156,6 +156,32 @@ var dividePrompt string
 //go:embed prompts/bashworker.md
 var bashworkerPrompt string
 
+// bashPolicyPrompt is the loop policy a bash-belt worker opens on: the FRAME →
+// PLAN → DISPATCH → WAIT → INTEGRATE shape it works by, carried ahead of every
+// other page so it is the thing the worker reads first and the thing its reading
+// is measured against. It is a whole page rather than a paragraph inside one
+// because the composition it leads REPLACES the chat colleague page for this
+// belt (bashtask.md's own words are the authority; this is only where it rides).
+//
+// THE ONLY TRANSLATIONS ARE THE TWO COMMANDS THE LOOP NAMES, and they are named
+// here rather than in the page so a drifted source is a red test and never a
+// stale sentence: the wait is this session's own — end the turn, every landing
+// wakes you — and the finish is the plan CLI's own `plandb done --agent`.
+//
+//go:embed prompts/bashtask.md
+var bashPolicyPrompt string
+
+// bashRulesPrompt is the few codeaf constraints that still bind a bash-belt
+// worker once the loop policy and the belt's doctrine are in front of it: where
+// it may write, what it may not do with the repository, the report it owes, the
+// one revise lane, and the settings refusal. It is the kept half of the task
+// worker's own page (prompts/worker.md), carried whole for this belt rather than
+// appended, because the pages the ordinary composition appends teach a shape the
+// bash loop does not have.
+//
+//go:embed prompts/bashrules.md
+var bashRulesPrompt string
+
 // fanLimitToken is the one thing the page above cannot spell for itself. THE
 // NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
 // that typed it would be the second place it lives (task.go's schema states the
@@ -260,23 +286,27 @@ func renderSystem(config Config) string { return renderSystemAt(config, time.Now
 // rendered more than once in a long conversation and a caller that can say when
 // is a caller a test can hold still.
 func renderSystemAt(config Config, now time.Time) string {
-	workspace := config.Workspace
+	// THE BASH BELT'S WORKER OPENS ON THE LOOP POLICY. A task on the experiment's
+	// belt is handed a page of its own rather than the composed one: the policy
+	// leads, the belt's doctrine follows (the shell idioms and the plan CLI),
+	// then the few codeaf constraints that still bind a task worker, and the
+	// project footer closes it. It is a whole page rather than a swap inside the
+	// composed one because the page it replaces teaches a shape — the chat
+	// colleague, the batch of calls, the visible plan before every step — that
+	// the bash loop does not have, and a page that argues with its own head is
+	// worse than a page that says less. Nothing here touches any other shape.
+	if config.mayBashBelt() {
+		var out strings.Builder
+		out.WriteString(bashWorkerPage())
+		out.WriteString(workerFooter(config, now))
+		return out.String()
+	}
 	var out strings.Builder
 	// THE PAGE, WITH ITS TOOL-NAMING FACTS COMPOSED FROM THIS BELT'S OWN
 	// PREDICATES (beltfacts.go). Everything below conditions a whole page on
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
 	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
-	// AND THE BASH WORKER'S PAGE IS THE BRANCH'S OWN, swapped in where the
-	// embedded page teaches the pi tools. Nothing here touches any other
-	// shape's page: the swap happens exactly where [Config.mayBashBelt]
-	// holds, and it runs before the profile's own cut below so a lean
-	// profile never eats the bash doctrine; the sentence rewrites run at
-	// the end of this function, where they can see the worker and shape
-	// pages too.
-	if config.mayBashBelt() {
-		page = bashWorkerPageFor(page)
-	}
 	// AND THE PROFILE'S OWN CUT, WHICH IS THE ONE DOOR INTO IT. A lean prefix
 	// drops the sections [leanPageSections] names, by their `# ` heading, and
 	// gains the one line a shelved verb owes (promptprofile.go). A full prefix
@@ -328,6 +358,40 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
 	}
 
+	out.WriteString(workerFooter(config, now))
+	return out.String()
+}
+
+// ── the bash worker's page ──────────────────────────────────────────────────
+
+// bashWorkerPage composes the page a bash-belt worker opens message[0] on: the
+// loop policy it works by, the belt's doctrine (the plan CLI and the shell
+// idioms), and the kept codeaf constraints. [renderSystemAt] appends the project
+// footer after it, so this is everything above the footer.
+//
+// THE ORDER IS THE POINT. A task on this belt is a planner first — it frames,
+// plans, dispatches and integrates — and a page opening on the chat colleague or
+// the batch of calls would teach a shape the envelope refuses. So the policy
+// leads, the doctrine follows in the policy's own terms, and only the constraints
+// that still bind a task worker close it.
+func bashWorkerPage() string {
+	var out strings.Builder
+	out.WriteString(strings.TrimRight(bashPolicyPrompt, "\n"))
+	out.WriteString("\n\n")
+	out.WriteString(strings.TrimRight(bashworkerPrompt, "\n"))
+	out.WriteString("\n\n")
+	out.WriteString(strings.TrimRight(bashRulesPrompt, "\n"))
+	return out.String()
+}
+
+// workerFooter is the closing footer every page ends on: the facts true of this
+// machine, this workspace and this minute, and the project's own instruction
+// files under this profile's bound. It is one function because two pages render
+// it now — the composed page and the bash belt's own — and a footer written
+// twice is a footer that will one day disagree with itself.
+func workerFooter(config Config, now time.Time) string {
+	workspace := config.Workspace
+	var out strings.Builder
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", workspace)
@@ -373,117 +437,7 @@ func renderSystemAt(config Config, now time.Time) string {
 			break
 		}
 	}
-	// AND THE SENTENCE REWRITES LAST, because the pages above compose after
-	// the swap: the worker and shape pages carry pi-tool names in their own
-	// sentences, and a rewrite that cannot see them is a promise the belt
-	// does not honor ([bashPageSubstitutions]).
-	composed := out.String()
-	if config.mayBashBelt() {
-		for _, substitution := range bashPageSubstitutions {
-			composed = strings.Replace(composed, substitution.pi, substitution.bash, 1)
-		}
-	}
-	return composed
-}
-
-// ── the bash worker's page ──────────────────────────────────────────────────
-
-// specializedToolsHeading is the section of the embedded page that teaches the
-// pi tools — read, bash, edit, write, grep, find, ls — and the anchor the
-// branch belt's page replaces. It is a heading and not a token because the
-// section is static prose every belt carries today; the heading is the one
-// boundary a second composition can be keyed to.
-const specializedToolsHeading = "## Specialized Tools"
-
-// bashPageSubstitutions is the rest of the pi-tool guidance outside that
-// section, keyed on the exact bytes of the sentence each one replaces.
-//
-// IT IS KEYED, NOT REWRITTEN FROM MEMORY: a substitution that no longer finds
-// its source sentence substitutes nothing, and the belt test fails the next
-// time the page names a tool the branch belt does not carry — so a drifted
-// source is a red test, never a silently stale swap.
-var bashPageSubstitutions = []struct{ pi, bash string }{
-	{
-		// beltfacts.go's citation fact, composed for a node that may read its
-		// family's journals: the verbs change, the law does not. The first key
-		// is the fan-out case's present wording, the second the floor case's
-		// absent wording; whichever the shape renders, the bash worker reads the
-		// shell idiom.
-		pi:   "and `read` takes a row's URIs exactly as printed, `file://` and all. `grep` a journal or `read` it with `offset`/`limit`, never expand an outcome line into work you did not read",
-		bash: "and the journal is a file on disk: take a row's URIs exactly as printed, file:// and all, read a range of it with sed -n or search it with git grep — and never expand an outcome line into work you did not read",
-	},
-	{
-		pi:   "A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
-		bash: "A `[Task reference: ...]` block you were handed carries transcript URIs; a journal is a file on disk: take a URI exactly as printed, file:// and all, read a range of it with sed -n or search it with git grep — and never expand an outcome line into work you did not read.",
-	},
-	{
-		// The settings fact's absent case, which tells a node it cannot change a
-		// preference and names the two hands that must not be used instead: this
-		// belt has neither hand, and the shell is where a config write would
-		// happen.
-		pi:   "YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
-		bash: "YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never redirect a command onto a config file instead.",
-	},
-	{
-		// prompts/system.md, the interrupted-turn rule.
-		pi:   "when it is thin, `read` the\ndeliverable it names, by its full path, and answer out of that",
-		bash: "when it is thin, read the deliverable it names by its full path — cat it — and answer out of that",
-	},
-	{
-		// prompts/system.md, the stub-marker rule: the marker names a file, and
-		// the shell is how its bytes are read.
-		pi:   "lost nothing: `read` that path when its bytes are not already here",
-		bash: "lost nothing: the marker names a file on disk — read the range you need from it with sed -n, or cat it whole, when its bytes are not already here",
-	},
-	{
-		// prompts/worker.md, the write-scope rule: the tools it names are gone
-		// from this belt, and the refusal it describes is the ground guard's.
-		pi:   "Read whatever you\nlike, anywhere — other repositories included, with `read`, `grep` and `git log`,\n`show`, `diff`, `status` — but a `write`, an `edit`, a `cd` and then a change, a\n`git -C` or a `GIT_DIR=` aimed at another directory is refused before it runs",
-		bash: "Read whatever you like, anywhere — other repositories included, with cat, sed -n, git log, git show and git diff — but a command that writes, edits or cds outside your own copy, a git -C or a GIT_DIR= aimed at another directory is refused before it runs",
-	},
-	{
-		// prompts/worker.md, what comes home: the landing is the diff of the
-		// copy, and a shell worker's writes are its commands.
-		pi:   "every path you passed to\n`write` or `edit`, and nothing else",
-		bash: "every path your commands changed, and nothing else",
-	},
-	{
-		// prompts/system.md, the already-read stub: the marker is the thing a
-		// worker of any belt can see, and no belt is named in it.
-		pi:   "`read` answering `[already read] …` means the bytes are in the conversation above: answer from them rather than fetching the file a second time.",
-		bash: "An answer beginning `[already read] …` means the bytes are in the conversation above: answer from them rather than fetching the file a second time.",
-	},
-	{
-		// prompts/system.md, the batching law. The conversation batches because
-		// its belts take many calls at once; the bash belt runs EXACTLY ONE
-		// action per response and REFUSES a batch. A model told to batch obeys
-		// the louder law, its call is refused, and four refusals in a row end
-		// its run — that is every bash row of the grid
-		// (docs/design/bash-task-loop/INVESTIGATION.md). So this belt teaches
-		// the one law its envelope enforces.
-		pi:   "- ASK FOR EVERYTHING YOU NEED IN ONE BREATH. Reads, searches and checks that do not depend on each other go out as ONE batch of calls, never one per turn: every round trip is a wait the person sits through, and a batch runs concurrently.",
-		bash: "- ONE ACTION PER RESPONSE. A response carries exactly one bash call; a batch is refused and nothing runs, so read one thing, act on it, and read the observation before the next. When nothing independent of what you handed out is left, end your turn rather than batching.",
-	},
-}
-
-// bashWorkerPageFor is one bash-belt worker's page out of the composed one:
-// the branch doctrine where the pi-tool guidance was. It runs EARLY, before
-// the profile's own cut, so a lean profile never eats the bash doctrine the
-// way it eats the pi sections it knows by name. The sentence rewrites live
-// at the end of [renderSystemAt] instead of here, because they must reach
-// the worker and shape pages composed after this point.
-func bashWorkerPageFor(page string) string {
-	start := strings.Index(page, specializedToolsHeading)
-	if start >= 0 {
-		end := len(page)
-		if next := strings.Index(page[start:], "\n## "); next >= 0 {
-			end = start + next
-		}
-		if swapped := strings.TrimRight(bashworkerPrompt, "\n"); swapped != "" {
-			page = page[:start] + swapped + page[end:]
-		}
-	}
-	return page
+	return out.String()
 }
 
 // nowLine is the one thing in the footer that a model used to have to SHELL OUT

@@ -766,8 +766,8 @@ func TestPlandbCliRootCompletionCancelsTheUndelivered(t *testing.T) {
 }
 
 // planPageSection is one `## `-headed section of a rendered page, whole. It
-// bounds the assertions that read a section's own words, the same bound
-// [bashWorkerPageFor] splices by.
+// bounds the assertions that read a section's own words, the same bound the
+// composed page splices by.
 func planPageSection(page, heading string) string {
 	start := strings.Index(page, heading)
 	if start < 0 {
@@ -807,7 +807,7 @@ func TestPlandbCliTheBeltAndPageFollowTheSwitch(t *testing.T) {
 	page := renderSystemAt(belt.config, now)
 	// THE DOCTRINE THE WORKER COORDINATES BY: the automatic dispatch is the
 	// page's own promise, and the plan section carries the CLI's grammar.
-	if !strings.Contains(page, "DISPATCH IS AUTOMATIC") {
+	if !strings.Contains(page, "DISPATCH is automatic") {
 		t.Error("the bash worker's page does not promise automatic dispatch")
 	}
 	section := planPageSection(page, "## The plan")
