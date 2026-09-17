@@ -1410,14 +1410,14 @@ type Config struct {
 	// the node's ordinary read-only checker; a test may answer deterministically.
 	TaskProgressCheck func(brief string, evidence []string) (working bool, reason string)
 
-	// TaskLanded is called ONCE per landed node, on its own goroutine, after the
+	// TaskLanded is called once per landed node, on its own goroutine, after the
 	// node's row is in the project's index (task_run.go's [Agent.reportTaskNode]).
 	// It carries [TaskLanding]: the node's record as the landing left it, the
 	// worker's model and the model the checking pass ran on (empty when there was
 	// none). A final state only — running and queued nodes land nothing — and a
 	// call that never blocks the reporting path: the reporting goroutine hands the
 	// landing over and moves on, and a caller that is slow holds up nothing but
-	// its own goroutine. NIL IS OFF, which is what every caller that does not
+	// its own goroutine. Nil is off, which is what every caller that does not
 	// want the news hands in, and what this package then spends nothing on.
 	TaskLanded func(TaskLanding)
 

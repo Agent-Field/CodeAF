@@ -3818,7 +3818,7 @@ func (n *TaskNode) burned() int {
 // crew takes as long as it takes — holds up nothing on the reporting path,
 // which is already answering to the note delivery beside it.
 //
-// THE SNAPSHOT IS TAKEN HERE, on the reporting goroutine, under the node's own
+// The snapshot is taken here, on the reporting goroutine, under the node's own
 // lock discipline (graph.mu, the room's spend read outside it as notice does):
 // a landing built later on the reader's goroutine could read a node already
 // re-armed, and the record the reader judged would not be the one that landed.
@@ -3827,7 +3827,7 @@ func (a *Agent) tellTaskLanded(node *TaskNode) {
 	if hook == nil {
 		return
 	}
-	// A landing is a FINAL state only — work that ended on an answer: done,
+	// A landing is a final state only — work that ended on an answer: done,
 	// failed, or ended where nobody could check it. A node still queued or
 	// running has no record to judge yet, and its own updates already travelled
 	// the reporting path above.

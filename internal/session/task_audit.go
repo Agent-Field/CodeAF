@@ -1245,7 +1245,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		// the same pocket's reason: a landing that later reports who checked the
 		// work names the model that actually answered, failover included, and
 		// not the one that was asked for. The auditor's model is read from the
-		// agent itself rather than from `on`, which is the ASKED-FOR id.
+		// agent itself rather than from `on`, which is the asked-for id.
 		node.graph.mu.Lock()
 		node.checkedOn = auditor.Model()
 		node.graph.mu.Unlock()

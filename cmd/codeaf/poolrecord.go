@@ -9,7 +9,7 @@
 // TaskLanded) and the one provider call the judge's questions ride, billed to
 // the judge's own seat.
 //
-// QUIET BY DESIGN, for poolindex.go's reason: a landing that nobody could
+// Quiet by design, for poolindex.go's reason: a landing that nobody could
 // score is an ordinary state — a pool switched off, a catalog with nothing
 // left to pick, a model that did not answer — and nothing the person is
 // reading should move for it. Every error here is said only under the debug
@@ -44,7 +44,7 @@ import (
 // for, and it is generous on purpose — the questions are one call each.
 const judgeTimeout = 90 * time.Second
 
-// poolJudgeHook builds the session's landing reader. NIL IS OFF, for the pool
+// poolJudgeHook builds the session's landing reader. Nil is off, for the pool
 // index's reason: a mode that forbids reading runs no judge and writes
 // nothing, and the door then hands the engine no hook at all.
 func poolJudgeHook(settings config.Config, profileDir, workspace string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) func(session.TaskLanding) {
@@ -96,7 +96,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	ctx, cancel := context.WithTimeout(context.Background(), judgeTimeout)
 	defer cancel()
 	scores, err := judge.Judge(ctx, ask(judgeID), rec)
-	// THE SCORES OBTAINED ARE RECORDED EVEN WHEN THE ERROR NAMES A SEAT: a
+	// The scores obtained are recorded even when the error names a seat: a
 	// judge that scored the worker but not the high seat scored the worker,
 	// and a seat the call failed on is the judge's evidence of that model too.
 	if err != nil && trace.Enabled() {
@@ -134,7 +134,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		}
 		return
 	}
-	// THE NEXT PICK IN THIS PROCESS READS THE NEW CELLS AT ONCE, the same way
+	// The next pick in this process reads the new cells at once, the same way
 	// the picker reads them at start-up (poolindex.go's poolOwnCellsFor): a
 	// closing one is the install's own evidence and is never held to the
 	// index's min_installs.
