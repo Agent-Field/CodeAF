@@ -95,6 +95,54 @@ func (role briefRole) askRule() string {
 	return briefAskRule
 }
 
+// briefPlanRule is the sentence that opens a plan-born worker's document. It
+// says outright that the tasks above this one in the plan are context rather
+// than more work. A child whose document carried the whole run's objective as
+// its opening read the run as its own assignment, and this sentence closes
+// that reading.
+const briefPlanRule = "ancestor tasks are background, not extra assignments"
+
+// briefBackgroundRule is [briefAskRule] and [briefPieceRule] both, for a
+// plan-born worker on the bash belt. The person's words below are the run's
+// background rather than this node's assignment: what this worker owes was
+// fixed from the plan when the node was born, and reading the whole objective
+// as its own job would widen it past the one task it owns.
+const briefBackgroundRule = "This is the message the run came out of. It is background for this task, not your assignment: what you owe was fixed from the plan when this task was born and is the work above. Read the person's words for context, and do not take any part of the run you were not given."
+
+// briefScope is the one fact that can REORDER a worker's document: the plan
+// task a bash-belt node was born from. It is empty for every other worker, and
+// an empty scope composes byte for byte what [composeBrief] has always
+// composed — which is why the flag-off and non-plan-born roads cannot move.
+type briefScope struct {
+	// planID is the plan task's bare id (internal/plandb stores ids without
+	// the `t-` prefix [planStoreID] prints), non-empty only on a node that is
+	// both born from the plan and running the bash belt.
+	planID string
+}
+
+// planBorn says whether this scope asks for the plan-born ordering.
+func (s briefScope) planBorn() bool { return s.planID != "" }
+
+// briefScopeFor is [TaskNode.briefScopeLocked]'s rule as a plain function, so
+// that the both-facts test needs no live node. The plan-born ordering applies
+// only where the node is born from the plan AND the session is on the bash
+// belt: a plan id with the belt off is the document every such node composed
+// before this ordering existed.
+func briefScopeFor(planID string, bashBelt bool) briefScope {
+	if planID == "" || !bashBelt {
+		return briefScope{}
+	}
+	return briefScope{planID: planID}
+}
+
+// briefPart is one section of a worker's document before
+// [composeBriefScoped] lays it out: the heading, the rule under it, and the
+// body. The order of the parts is the order of the document, which is the
+// whole of what a plan-born worker's document changes.
+type briefPart struct {
+	heading, rule, body string
+}
+
 // briefOriginRule is the one line that says what the pointer is FOR. The
 // restatement above is bounded; this is where the uncut words live, and the
 // brief still governs what ships.
@@ -115,7 +163,10 @@ const briefCopyRule = "Read anywhere on the machine; write only inside your copy
 const briefAskLimit = 6000
 
 // composeBrief lays out one worker's opening message: the person's request in
-// their own words, then the contract the conversation groomed out of it.
+// their own words, then the contract the conversation groomed out of it. It is
+// [composeBriefScoped] with no scope, which is every worker whose document does
+// not reorder; the bash-belt, plan-born road reaches the scoped form directly
+// from the node ([TaskNode.briefScopeLocked]).
 //
 // AN EMPTY SECTION IS ABSENT, not an empty heading — the emptiness law, applied
 // to a document. A node restored from a checkpoint written before requests were
@@ -135,6 +186,23 @@ const briefAskLimit = 6000
 // the same document — the person's quoted path and the copy's — the mapping is
 // said outright in a section of its own rather than smuggled into the quotation.
 func composeBrief(role briefRole, request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
+	return composeBriefScoped(briefScope{}, role, request, work, deliverable, acceptance, expects, heard, origin, own)
+}
+
+// composeBriefScoped is [composeBrief] with the one fact that can REORDER the
+// document: the plan task a bash-belt node was born from.
+//
+// THE ORDER IS THE WHOLE OF WHAT A WORKER READS FIRST, and it is decided once,
+// here, by [briefScope.planBorn]. Every ordinary worker opens on the person's
+// words, because they are the thing that wins and the contract below was groomed
+// out of them. A PLAN-BORN WORKER ON THE BASH BELT OPENS ON ITS OWN ASSIGNMENT
+// INSTEAD: the node owns one task in the run's plan, its assignment was fixed
+// from the plan when it was born, and the whole objective above it is not more
+// of its job. So its document names the plan task and says the tasks above it
+// are background, lays out the assignment, and only then quotes the person's
+// message under a rule that labels it as background rather than as the thing
+// that wins.
+func composeBriefScoped(scope briefScope, role briefRole, request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
 	request = briefAskText(request)
 	work = briefWorkText(request, work)
 	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
@@ -171,40 +239,71 @@ func composeBrief(role briefRole, request, work, deliverable, acceptance, expect
 		}
 		out.WriteString("\n\n" + body)
 	}
+	// AND A PLAN-BORN WORKER OPENS ON THE TASK IT OWNS, not on the run it came
+	// out of. The first line names the plan task — the same `t-<id>` the CLI
+	// prints and the finish command takes — and the line under it is the
+	// sentence saying the tasks above it are context rather than more work. It
+	// is written here, ahead of every section, because the whole point is that
+	// this document OPENS on the id: a worker that read the run's objective
+	// first was invited to take all of it.
+	if scope.planBorn() {
+		out.WriteString(planStoreID(scope.planID) + " is your task in the plan.\n" + briefPlanRule)
+	}
 	// AND WHOSE JOB THE MESSAGE IS, in the rule over it rather than in a section
 	// of its own: their words are printed once and unedited either way, and what
 	// changes is what this worker is being told they are FOR.
-	section(briefAskHeading, role.askRule(), request)
-	// AND WHICH FOLDER EVERY ADDRESS UNDER IT MEANS, second, because it is what
-	// the reader needs BEFORE the first path rather than after the last one.
-	section(briefCopyHeading, briefCopyRule, stated)
-	section(briefWorkHeading, "", work)
-	section(briefMakeHeading, "", deliverable)
-	section(briefDoneHeading, "", acceptance)
+	ask := briefPart{briefAskHeading, role.askRule(), request}
+	// THE ASSIGNMENT, in the order the contract reads: the folder every address
+	// means first, because it is what the reader needs BEFORE the first path
+	// rather than after the last one, then the work, then what must exist, then
+	// what done means.
+	assignment := []briefPart{
+		{briefCopyHeading, briefCopyRule, stated},
+		{briefWorkHeading, "", work},
+		{briefMakeHeading, "", deliverable},
+		{briefDoneHeading, "", acceptance},
+	}
 	// AND WHAT WAS SAID AROUND THE WORK, after the contract and never before it
 	// (admission.go). The order is the whole of the distinction the two rules
 	// draw: what this worker OWES is above, settled and binding; what was SAID is
 	// below, quoted, attributed, and true only of the saying. A document that put
 	// the conversation first would read as instruction with a contract appended.
-	section(admissionQuotesHeading, admissionQuotesRule, quoted)
-	// NEITHER SECTION IS BOUND TO THE COPY, and that is a decision rather than an
-	// oversight. Both are RECORDS OF WHAT HAPPENED SOMEWHERE ELSE: a quote is
-	// somebody's sentence, and a handle names the journal it can be fetched from,
-	// which lives under the ground and has no counterpart inside the worker's
-	// tree — a rewrite would aim it at a file that is not there. The copy is
-	// stated instead, in the section above, which is what [namesGround] is asked
-	// about these two.
-	section(admissionEvidenceHeading, admissionEvidenceRule, evidence)
-	// AND WHAT THE HANDOFF PROMISED ABOUT THE WORLD, last, because it is the
-	// only section that is about the folder rather than about the job
-	// (handoffcontract.go). A handoff that promised nothing has no section, like
-	// every other empty one here.
-	section(briefExpectsHeading, briefExpectsRule, expects)
-	// AND WHERE THE UNCUT WORDS LIVE, last, because it is an address rather
-	// than an instruction. THE POINTER IS NOT THE SESSION: an empty origin
-	// draws nothing, and a worker that never follows the path is still
-	// governed by the brief above.
-	section(briefOriginHeading, briefOriginRule, originPointer(origin))
+	//
+	// NEITHER ADMISSION SECTION IS BOUND TO THE COPY, and that is a decision
+	// rather than an oversight. Both are RECORDS OF WHAT HAPPENED SOMEWHERE ELSE:
+	// a quote is somebody's sentence, and a handle names the journal it can be
+	// fetched from, which lives under the ground and has no counterpart inside
+	// the worker's tree — a rewrite would aim it at a file that is not there.
+	// The copy is stated instead, in the section above, which is what
+	// [namesGround] is asked about these two.
+	record := []briefPart{
+		{admissionQuotesHeading, admissionQuotesRule, quoted},
+		{admissionEvidenceHeading, admissionEvidenceRule, evidence},
+		// AND WHAT THE HANDOFF PROMISED ABOUT THE WORLD, last but one, because
+		// it is the only section about the folder rather than about the job
+		// (handoffcontract.go). A handoff that promised nothing has no section,
+		// like every other empty one here.
+		{briefExpectsHeading, briefExpectsRule, expects},
+		// AND WHERE THE UNCUT WORDS LIVE, last, because it is an address rather
+		// than an instruction. THE POINTER IS NOT THE SESSION: an empty origin
+		// draws nothing, and a worker that never follows the path is still
+		// governed by the brief above.
+		{briefOriginHeading, briefOriginRule, originPointer(origin)},
+	}
+	// THE ORDER ITSELF. An ordinary worker opens on the person's words and
+	// reads the assignment under them. A plan-born worker reads the assignment
+	// first and the person's words after it, relabelled: what it owes was fixed
+	// from the plan, and the run's objective is context rather than a second
+	// assignment.
+	order := append([]briefPart{ask}, assignment...)
+	if scope.planBorn() {
+		ask.rule = briefBackgroundRule
+		order = append(append([]briefPart{}, assignment...), ask)
+	}
+	order = append(order, record...)
+	for _, part := range order {
+		section(part.heading, part.rule, part.body)
+	}
 	return out.String()
 }
 
@@ -563,6 +662,22 @@ func (a *Agent) checkCopy(node *TaskNode, dir string) taskCopy {
 	}
 	ground, mode := node.standsOn()
 	return copyOnto(ground, mode, dir, a.config.Place)
+}
+
+// briefScopeLocked is the extra fact [composeBriefScoped] needs about THIS
+// node: the plan task it was born from, and nothing unless the node is both
+// plan-born and running the bash belt. Both halves are read here rather than
+// inside the composer, which is engine-side and holds no config: the plan id
+// is on the spec, and the belt is the experiment's switch, which
+// [bashBeltAsked] — the one reader of it in this package — answers. A node that
+// is either not plan-born (every node outside the experiment, and every quick,
+// design or run node under it) or not on the belt composes the document it has
+// always composed.
+//
+// It is read under the graph's lock, as [TaskNode.briefRoleLocked] is, because
+// its one caller [TaskNode.instructionLocked] already holds it.
+func (n *TaskNode) briefScopeLocked() briefScope {
+	return briefScopeFor(n.spec.planID, bashBeltAsked())
 }
 
 // standsOn is the node's own record of the folder its work is about and of how
