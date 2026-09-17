@@ -825,6 +825,28 @@ func (r *childRun) drainLanding(events <-chan Event) bool {
 // arrived.
 func (r *childRun) foldParts() {
 	for r.stopped == "" && r.runCtx.Err() == nil {
+		// ── THE PLAN'S TURN-END PULSE ──
+		//
+		// The worker's turn has ended and the node is still running, which is
+		// the last moment it can adopt a store task as a child of its own: a
+		// pass taken after the landing hands the task a parent that has already
+		// settled and already cut its subtree, so nobody waits on the work and
+		// nobody folds its report. A task can be ready and unadopted here
+		// because the store grows outside this worker's own calls — a sibling's
+		// CLI write whose pass ran before the task became ready, a command this
+		// worker backgrounded, the person's own shell — and the pass after its
+		// last bash call is behind it by then.
+		//
+		// IT RUNS BEFORE THE TWO FACTS BELOW ARE READ, and that order is the
+		// point: a task this pass hands out is a child the read has to see, so
+		// the worker parks on it instead of leaving its loop and landing. The
+		// belt predicate keeps every other worker off this road, and the pulse
+		// itself is nil-safe outside the experiment (plandb_plan.go).
+		if r.child.config.mayBashBelt() {
+			if g := r.child.graph(); g != nil {
+				g.planPulse()
+			}
+		}
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := r.child.taskNewsWait()
