@@ -589,6 +589,10 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// nothing deletes the store either.
 	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
+	// The person's own ending of the run is the one fact the usage counts
+	// keep about how it ended: the interrupt word, not a failure word.
+	telemetryInterrupted = signalled.Err() != nil
+	defer func() { telemetryInterrupted = signalled.Err() != nil }()
 	// A PERSON TYPED THIS, so its calls are made for somebody who is reading
 	// them (exec.go's [typedDoorContext]): the talk pin rides them and a
 	// refused pin is said to the one who is waiting.

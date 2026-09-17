@@ -31,6 +31,7 @@ import (
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -70,6 +71,21 @@ func execute() (code int) {
 		if recovered := recover(); recovered != nil {
 			code = reportFault(os.Stderr, fmt.Sprint(recovered), debug.Stack())
 		}
+	}()
+	// The anonymous usage counts get their one configured answer before any
+	// command is dispatched, and their one session event at the exit every
+	// command shares. Both are here, in execute, because nothing else in this
+	// file is reached by all of chat, do, exec, run and `plan run` — and a
+	// counter that missed a door would miscount the runs it was built to count.
+	//
+	// The CONFIG read must never become a failure of its own: a machine with
+	// no profile yet, or a broken project file, is a machine `codeaf version`
+	// still owes an answer to. Any error reads as "on" — the default — and
+	// the run carries on.
+	telemetry.Configure(telemetryConfiguredOff())
+	telemetrySession := telemetryBegin()
+	defer func() {
+		telemetryEnd(telemetrySession, code)
 	}()
 	// The model-call log's file descriptor goes back at the one exit every
 	// command shares (internal/calllog). Nothing depends on it — every record is
