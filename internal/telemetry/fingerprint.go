@@ -31,6 +31,38 @@ func Fingerprint(stack []byte) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// cutArguments drops the trailing argument group from a printed frame line:
+// scanning back from the final ')', the group is the argument list only when
+// what precedes it ends in a name character — a receiver group like
+// (*Runner) sits inside the name and is kept.
+func cutArguments(line string) string {
+	if !strings.HasSuffix(line, ")") || len(line) < 2 {
+		return line
+	}
+	depth := 0
+	for i := len(line) - 1; i >= 0; i-- {
+		switch line[i] {
+		case ')':
+			depth++
+		case '(':
+			depth--
+			if depth == 0 {
+				prefix := line[:i]
+				if prefix == "" {
+					return line
+				}
+				last := prefix[len(prefix)-1]
+				if last == '_' || (last >= '0' && last <= '9') ||
+					(last >= 'a' && last <= 'z') || (last >= 'A' && last <= 'Z') {
+					return prefix
+				}
+				return line
+			}
+		}
+	}
+	return line
+}
+
 // FingerprintHere fingerprints the calling goroutine's own stack, the shape a
 // deferred recover has on hand.
 func FingerprintHere() string {
@@ -51,11 +83,9 @@ func codeafFrames(stack []byte) []string {
 		}
 		// "pkg.Func" or "pkg.Func.Shape.Method" or "pkg.Func-fm" — never the
 		// tab-indented file:line half, which never starts with the module.
-		name := line
-		if idx := strings.IndexAny(name, " \t"); idx >= 0 {
-			name = name[:idx]
-		}
-		names = append(names, name)
+		// The argument list is dropped by balanced matching so a wide argument
+		// list cannot leave half an argument behind.
+		names = append(names, cutArguments(line))
 		if len(names) == fingerprintFrames {
 			break
 		}

@@ -76,7 +76,7 @@ func BucketCost(costUSD float64) string {
 // itself, and it answers as the empty band.
 func BucketDuration(d time.Duration) string {
 	switch {
-	case d <= 0:
+	case d <= 0, d < time.Minute:
 		return DurationUnder1m
 	case d < 5*time.Minute:
 		return Duration1To5m
@@ -156,14 +156,29 @@ type jsonEvent struct {
 // MarshalJSON renders the event under its wire names. The struct carries the
 // typed fields; this decides the bytes.
 func (e Event) MarshalJSON() ([]byte, error) {
-	return jsonMarshal(jsonEvent{
+	// MarshalJSON carries only the contract's keys and the allowlisted props;
+	// an unknown prop key in the map (a hand-written or older-build spool line)
+	// is dropped here rather than sent.
+	clean := make(map[string]any, len(e.Props))
+	if allowed := allowedProps[e.Name]; len(allowed) > 0 {
+		for key, value := range e.Props {
+			if allowed[key] {
+				clean[key] = value
+			}
+		}
+	}
+	row := jsonEvent{
 		EventName:     e.Name,
 		EventID:       e.ID,
 		InstallIDHash: e.InstallHash,
 		SessionIDHash: e.SessionHash,
 		EventTime:     e.Time,
-		Props:         e.Props,
-	})
+		Props:         clean,
+	}
+	if e.Name == "first_run" {
+		row.SessionIDHash = ""
+	}
+	return jsonMarshal(row)
 }
 
 // base is what every constructor starts from: a fresh id, the install hash,

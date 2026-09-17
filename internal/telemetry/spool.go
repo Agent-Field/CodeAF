@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // Spool limits, from the contract: a thousand lines of history, seven days of
@@ -57,16 +59,16 @@ func oneWarning(message string) {
 	})
 }
 
-// Spool appends one event to the spool file and returns immediately. It never
-// blocks the caller for more than a few milliseconds: it does no network work,
-// and the one file append it does is a single WriteFile on a line that was
-// already marshalled. A failure here is silent.
+// Spool appends one event to the spool file and returns immediately. It
+// never blocks the caller for more than a few milliseconds: it does no network
+// work, and its one append runs on its own goroutine through guard.Go, the
+// repo's one door for fire-and-forget work. A failure here is silent.
 func Spool(event Event) {
 	line, err := jsonMarshal(event)
 	if err != nil {
 		return
 	}
-	go persist([]byte(line))
+	guard.Go("telemetry.spool", func() { _ = persist(line) })
 }
 
 // SpoolSync appends one event and waits for the append, for tests and for a
@@ -145,6 +147,12 @@ func Flush(ctx context.Context) error {
 	dropped := false
 	for _, entry := range lines {
 		if entry.ageKnown && ageOf(entry.event.EventTime) > MaxEventAge {
+			dropped = true
+			continue
+		}
+		if !allowlistedEvents[entry.event.EventName] {
+			// An event name the contract does not define can never be sent
+			// validly, so it is discarded rather than posted or kept forever.
 			dropped = true
 			continue
 		}
@@ -227,13 +235,31 @@ func sendBatch(ctx context.Context, deadline time.Time, batch []spoolEntry) bool
 	return ok
 }
 
-// batchEvents returns the wire rows of one batch, in order.
+// batchEvents returns the wire rows of one batch, in order, with the prop
+// allowlist re-applied: a line spooled by an older build must not send a prop
+// key the contract dropped since.
 func batchEvents(batch []spoolEntry) []jsonEvent {
 	out := make([]jsonEvent, len(batch))
 	for i, entry := range batch {
-		out[i] = entry.event
+		row := entry.event
+		if allowed := allowedProps[row.EventName]; len(allowed) > 0 {
+			clean := make(map[string]any, len(row.Props))
+			for key, value := range row.Props {
+				if allowed[key] {
+					clean[key] = value
+				}
+			}
+			row.Props = clean
+		}
+		out[i] = row
 	}
 	return out
+}
+
+// allowlistedEvents is the event-name half of the contract's allowlist, for
+// the flush loop's one look per line.
+var allowlistedEvents = map[string]bool{
+	"first_run": true, "session_started": true, "session_ended": true, "fault": true,
 }
 
 // httpClient is the one client. No timeout of its own: the deadline lives in

@@ -189,7 +189,8 @@ func installMethod() string {
 func channelFor(revision string) string {
 	switch {
 	case strings.Contains(revision, "-rc."):
-		if isNumericDotted(strings.TrimPrefix(strings.TrimSuffix(revision, revision[strings.LastIndex(revision, "-rc."):]), "v")) {
+		suffix := revision[strings.LastIndex(revision, "-rc.")+len("-rc."):]
+		if isRcSuffix(suffix) {
 			return "rc"
 		}
 		return "unknown"
@@ -201,6 +202,22 @@ func channelFor(revision string) string {
 		return "staging"
 	}
 	return "unknown"
+}
+
+// isRcSuffix matches the rc suffix the contract's tags carry: rc.N with N an
+// integer, and nothing wider.
+func isRcSuffix(suffix string) bool { return allDigits(suffix) }
+
+func allDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // isStableTag matches vX.Y.Z with three numeric parts and nothing else.
