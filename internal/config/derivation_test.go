@@ -152,6 +152,12 @@ var settingReaders = map[string]string{
 	// is the one thing this table exists to prevent.
 	KeyHistoryEnabled: "KeyHistoryEnabled",
 	KeyDraftPersist:   "KeyDraftPersist",
+	// The telemetry row is answered by the package the events come from:
+	// internal/telemetry reads the CODEAF_TELEMETRY pin itself (its off
+	// state), so the row names the pin the far side touches — the same
+	// spelling [KeyTenureAfter] uses for its pin. cmd/codeaf's door will
+	// tighten this to its own accessor when it wires the package in.
+	KeyTelemetry: "CODEAF_TELEMETRY",
 	// The v3 session's rows name what READS the value on the far side, which
 	// for these six is not a function in this package: the two approval rows
 	// become the policy hung off session.Config.ApprovalPolicy, the ceiling is

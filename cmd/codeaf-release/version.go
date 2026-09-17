@@ -4,129 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"regexp"
-	"strconv"
 	"strings"
+
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
-
-var (
-	stableTagPattern  = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
-	rcTagPattern      = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$`)
-	devTagPattern     = regexp.MustCompile(`^dev-[0-9]{8}-[0-9a-f]{12}$`)
-	stagingTagPattern = regexp.MustCompile(`^staging-[0-9]{8}-[0-9a-f]{12}$`)
-	shaPattern        = regexp.MustCompile(`^[0-9a-fA-F]{12,40}$`)
-	datePattern       = regexp.MustCompile(`^[0-9]{8}$`)
-)
-
-type version struct {
-	major int
-	minor int
-	patch int
-}
-
-func (v version) String() string {
-	return fmt.Sprintf("v%d.%d.%d", v.major, v.minor, v.patch)
-}
-
-func (v version) compare(other version) int {
-	switch {
-	case v.major != other.major:
-		return compareInt(v.major, other.major)
-	case v.minor != other.minor:
-		return compareInt(v.minor, other.minor)
-	default:
-		return compareInt(v.patch, other.patch)
-	}
-}
-
-func compareInt(left, right int) int {
-	switch {
-	case left < right:
-		return -1
-	case left > right:
-		return 1
-	default:
-		return 0
-	}
-}
-
-func (v version) bump(component string) (version, error) {
-	switch component {
-	case "patch":
-		v.patch++
-	case "minor":
-		v.minor++
-		v.patch = 0
-	case "major":
-		v.major++
-		v.minor = 0
-		v.patch = 0
-	default:
-		return version{}, usageErr("component %q must be patch, minor, or major", component)
-	}
-	return v, nil
-}
-
-type rcTag struct {
-	base    version
-	counter int
-}
-
-func parseComponent(raw string) (int, bool) {
-	value, err := strconv.Atoi(raw)
-	// Every accepted component must leave room for the resolver's next bump.
-	// A number that this process cannot represent or increment is a junk tag,
-	// just like a tag that does not match the grammar at all.
-	if err != nil || value == int(^uint(0)>>1) {
-		return 0, false
-	}
-	return value, true
-}
-
-func parseVersion(match []string) (version, bool) {
-	major, majorOK := parseComponent(match[1])
-	minor, minorOK := parseComponent(match[2])
-	patch, patchOK := parseComponent(match[3])
-	if !majorOK || !minorOK || !patchOK {
-		return version{}, false
-	}
-	return version{major: major, minor: minor, patch: patch}, true
-}
-
-func parseStable(tag string) (version, bool) {
-	match := stableTagPattern.FindStringSubmatch(tag)
-	if match == nil {
-		return version{}, false
-	}
-	return parseVersion(match)
-}
-
-func parseRC(tag string) (rcTag, bool) {
-	match := rcTagPattern.FindStringSubmatch(tag)
-	if match == nil {
-		return rcTag{}, false
-	}
-	base, baseOK := parseVersion(match)
-	counter, counterOK := parseComponent(match[4])
-	if !baseOK || !counterOK {
-		return rcTag{}, false
-	}
-	return rcTag{base: base, counter: counter}, true
-}
 
 func tagKind(tag string) string {
-	switch {
-	case stableTagPattern.MatchString(tag):
-		return "stable"
-	case rcTagPattern.MatchString(tag):
-		return "rc"
-	case devTagPattern.MatchString(tag):
-		return "dev"
-	case stagingTagPattern.MatchString(tag):
-		return "staging"
-	default:
-		return "other"
-	}
+	return codeupdate.Kind(tag)
 }
 
 type nextOptions struct {
@@ -142,7 +26,10 @@ func runNext(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	if options.channel == "dev" || options.channel == "staging" {
-		tag := fmt.Sprintf("%s-%s-%s", options.channel, options.date, strings.ToLower(options.sha[:12]))
+		tag, err := codeupdate.ChannelTag(options.channel, options.date, options.sha)
+		if err != nil {
+			return err
+		}
 		fmt.Fprintln(stdout, tag)
 		return nil
 	}
@@ -186,14 +73,14 @@ func parseNextOptions(args []string) (nextOptions, error) {
 		if options.sha != "" || options.date != "" {
 			return options, usageErr("--sha and --date are only for dev and staging")
 		}
-		if _, err := (version{}).bump(options.component); err != nil {
-			return options, err
+		if _, err := (codeupdate.Version{}).Bump(options.component); err != nil {
+			return options, usageErr("%s", err)
 		}
 	case "dev", "staging":
-		if !shaPattern.MatchString(options.sha) {
+		if !codeupdate.ValidSHA(options.sha) {
 			return options, usageErr("--sha must be 12 to 40 hexadecimal characters")
 		}
-		if !datePattern.MatchString(options.date) {
+		if !codeupdate.ValidDate(options.date) {
 			return options, usageErr("--date must be YYYYMMDD")
 		}
 		if options.component != "patch" {
@@ -218,58 +105,11 @@ func readTags(reader io.Reader) ([]string, error) {
 }
 
 func nextSemverTag(tags []string, channel, component string) (string, error) {
-	stableLatest := version{}
-	for _, tag := range tags {
-		if candidate, ok := parseStable(tag); ok && candidate.compare(stableLatest) > 0 {
-			stableLatest = candidate
-		}
+	answer, err := codeupdate.NextSemverTag(tags, channel, component)
+	if err != nil && (strings.Contains(err.Error(), "component") || strings.Contains(err.Error(), "channel")) {
+		return "", usageErr("--%s", err)
 	}
-
-	var (
-		openLine   version
-		haveOpen   bool
-		maxCounter int
-	)
-	for _, tag := range tags {
-		candidate, ok := parseRC(tag)
-		if !ok || candidate.base.compare(stableLatest) <= 0 {
-			continue
-		}
-		switch comparison := candidate.base.compare(openLine); {
-		case !haveOpen || comparison > 0:
-			openLine, haveOpen, maxCounter = candidate.base, true, candidate.counter
-		case comparison == 0 && candidate.counter > maxCounter:
-			maxCounter = candidate.counter
-		}
-	}
-
-	var answer string
-	switch channel {
-	case "rc":
-		if haveOpen {
-			answer = fmt.Sprintf("%s-rc.%d", openLine, maxCounter+1)
-		} else {
-			next, err := stableLatest.bump(component)
-			if err != nil {
-				return "", err
-			}
-			answer = next.String() + "-rc.1"
-		}
-	case "stable":
-		if component == "patch" && haveOpen {
-			answer = openLine.String()
-		} else {
-			next, err := stableLatest.bump(component)
-			if err != nil {
-				return "", err
-			}
-			answer = next.String()
-		}
-	default:
-		return "", usageErr("--channel must be stable, rc, dev, or staging")
-	}
-
-	return answer, requireUnused(answer, tags)
+	return answer, err
 }
 
 // requireUnused is a final collision guard kept separate from version choice.

@@ -140,3 +140,19 @@ func TestBuildIdentityDistinguishesUnstampedRebuilds(t *testing.T) {
 		t.Fatal("an unstamped rebuild retained the prior engine identity")
 	}
 }
+
+// Dirty answers from the build settings, not from parsing Identity's display
+// string: a dirty build and a clean one can spell the same Identity prefix,
+// so the flag must be read where it is stored.
+func TestDirtyReadsTheStoredFlag(t *testing.T) {
+	previous := current
+	t.Cleanup(func() { current = previous })
+	current = Info{Revision: "dirty-revision", Dirty: true, BuiltAt: time.Date(2026, 9, 8, 20, 0, 1, 0, time.UTC)}
+	if !Dirty() {
+		t.Fatal("a dirty build answered Dirty() false")
+	}
+	current = Info{Revision: "clean-revision", Dirty: false, BuiltAt: time.Date(2026, 9, 8, 20, 0, 1, 0, time.UTC)}
+	if Dirty() {
+		t.Fatal("a clean build answered Dirty() true")
+	}
+}

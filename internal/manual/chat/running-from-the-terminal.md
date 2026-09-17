@@ -1,38 +1,79 @@
 # Commands you type in a terminal
 
-## How do I install or update codeaf to the latest version — the curl line, dev, staging, rc and stable
+## Is there a newer version — how do I update codeaf — /update — codeaf update — why does it say this every time I start
 
-Build from source needs nothing published: clone the repository, run `make build`,
-then run `bin/codeaf` from the checkout. While the repository is private, both the
-clone and the raw installer need repository access and the raw address answers 404
-to anyone who is not signed in. Once it is public and `scripts/install.sh` is on
-`main`, this road works:
+At launch, a stable release behind the newest stable gets one dim line naming both
+versions and offering `/update`. That command downloads the release, checks its
+sha256, replaces this executable and restarts the same conversation; `/upgrade` is
+its alias. Finish a running turn or task first. A matching release says `you are on
+the newest codeaf, <tag>` and does not restart.
+
+Release candidates get the launch line once their stable line is published. A
+stable build already newest or ahead gets no launch line. That silence does not
+authorize a downgrade: if this build is `v0.3.0` and stable is `v0.2.0`, `/update`
+refuses with `this codeaf is v0.3.0, ahead of the newest stable v0.2.0 — /update
+v0.2.0 installs it anyway`. Naming the tag is the deliberate road and installs it.
+Dev, staging, source and unstamped builds make no launch request. Set
+`CODEAF_NO_UPDATE_CHECK=1` to skip only this check. Its answer is cached in
+`update-check.json` beside `config.json` for 24 hours for the same running build;
+a cached newer release is still shown at every launch.
+
+From a shell, `codeaf update --check` exits 3 for a newer selected stable or rc,
+or a different selected dev or staging tag; 0 when a stable or rc build is equal
+or ahead, or a channel tag is equal; and 1 when it could not check. `--version
+<tag>` exits 0 only on that tag and 3 otherwise. Every answer names the selected
+tag. `codeaf update` installs stable by default;
+`--rc`, `--dev`, and `--staging` select another channel. On `v0.3.0` with stable
+at `v0.2.0`, it exits 2 with `this codeaf is v0.3.0, ahead of the newest stable
+v0.2.0 — pass --version v0.2.0 to install it anyway`. `--version v0.2.0` installs
+what was named. A source build refuses and names its path: rebuild with `make
+build`, or install a release with `curl -fsSL https://agentfield.ai/get/codeaf | bash`.
+An unwritable target, failed download or bad checksum leaves the original in
+place and offers that same line; codeaf never tries sudo.
+
+## How do I install codeaf — the curl line, agentfield.ai/get/codeaf, dev, staging, rc and stable channels
+
+The install line is one curl, the same one the README prints:
+
+```sh
+curl -fsSL https://agentfield.ai/get/codeaf | bash
+```
+
+`https://agentfield.ai/get/codeaf` serves `scripts/install.sh` from the `main` branch of
+the public repository, byte for byte. The script under it can be run directly:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | bash
 ```
 
+Pipe it to `bash`, not `sh`: the script uses `set -o pipefail` and `[[ ]]`, and `sh` is
+dash on Debian and Ubuntu, which rejects both.
+
 A push to `dev` publishes a `dev-*` build, a push to `staging` publishes a
 `staging-*` build, and a push to `main` publishes an rc. Each is marked as a
 prerelease. Stable is published only when a person dispatches `Release` on `main`.
-A channel with nothing published stops with `no <channel> build has been published
-yet`.
-
-Once the script can be read, `--stable` is the default and reads GitHub's
-`releases/latest`, which excludes prereleases. The bare curl line therefore stops
-with `no stable build has been published yet` until a person dispatches `Release`
-on `main` for stable. Pass `--dev`, `--staging`, or `--rc` after `bash -s --` for
-another channel. To pin one complete tag, replace the final pipe with
-`| VERSION=<tag> bash`; for example:
+`--stable` is the default and reads GitHub's `releases/latest`, which excludes
+prereleases. To take another channel, put it on the path —
+`https://agentfield.ai/get/codeaf/dev`, `/staging` or `/rc` — or pass `--dev`,
+`--staging` or `--rc` after `bash -s --`. A channel with nothing published stops with
+`no <channel> build has been published yet`. To pin one complete tag, replace the
+final pipe with `| VERSION=<tag> bash`; for example:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Agent-Field/codeaf/main/scripts/install.sh | VERSION=v0.3.0 bash
+curl -fsSL https://agentfield.ai/get/codeaf | VERSION=v0.2.0 bash
 ```
 
-`https://agentfield.ai/get/codeaf` is not serving yet. Once it serves, it is the
-supported proxy for the same script, with `/dev`, `/staging`, or `/rc` selecting
-another channel. The installer writes `~/.codeaf/bin/codeaf`; its last line is
-`codeaf version`. Nothing self-updates: run it again when you want a newer build.
+For the bare address the proxy hands the script out unchanged; for a channel path it
+rewrites the one line that sets the default channel. If it cannot find that line exactly
+once, or what it fetched is not a shell script, it answers 502 rather than serve the
+wrong thing.
+
+Building from source needs nothing published: clone the repository, run `make build`,
+then run `bin/codeaf` from the checkout.
+
+The installer writes `~/.codeaf/bin/codeaf`; its last line is `codeaf version`. For a
+newer build later, `/update` in the chat or `codeaf update` in a terminal replaces the
+binary in place (the section above); running the line again works too.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 
@@ -656,7 +697,7 @@ as a command that broke.
 
 ## Which of these cost money, and which need no API key
 
-**These read, need no key and spend nothing**: `why`, `notebook`, `competence`, `services`
+**These read, need no key and spend nothing**: `why`, `telemetry`, `notebook`, `competence`, `services`
 (listing), `doctor`, `logs`, `cache`, `show`, `manual`, `version` and `--help`. They are
 safe in a shell prompt, a CI step or a bug report.
 
@@ -684,6 +725,16 @@ retract|restore`, `services stop` and `devices revoke`. The two that destroy som
 first — `cache clean` wants the word `now` typed out, the same word `/cache clean now`
 wants in the chat, and `rebuild` wants `y` — and `--yes` skips the question on both. The other three act at once, and all three can be undone: a
 retracted belief restores, a stopped service starts again, a revoked device pairs again.
+
+## What does it count about a run — the anonymous usage counts, and `codeaf telemetry`
+
+`codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
+they are on and why not when they are off, `show` prints exactly what is waiting to
+leave the machine, and `off` and `on` write the answer to your profile. It reads and
+sends nothing of its own — it is a command about the counts, not a session. The
+notice the first session prints names the bargain before the first byte leaves, and
+`CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
+docs/TELEMETRY.md for the whole contract.
 
 ## Reading a plan by hand — codeaf plan new, show, revise and run
 

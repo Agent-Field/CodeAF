@@ -46,7 +46,7 @@ func TestAWriteFreeTurnWithPartsIsTakenByAQuickTask(t *testing.T) {
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestAQuickNodeFromADrawingTicksItsListRatherThanFaulting(t *testing.T) {
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), asked)
+	events, err := agent.Submit(watchedContext(agent), asked)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes(t *testing.T) {
 		completer.mu.Unlock()
 		ran := make(ranNodes, 2)
 		stubbedGraph(agent, func(node *TaskNode) { ran <- node })
-		events, err := agent.Submit(context.Background(), asked)
+		events, err := agent.Submit(watchedContext(agent), asked)
 		if err != nil {
 			t.Fatalf("Submit: %v", err)
 		}

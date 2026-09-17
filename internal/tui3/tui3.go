@@ -55,6 +55,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/subharness"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
 // Agent is the slice of *session.Agent this surface uses. It is an interface
@@ -415,6 +416,22 @@ type Options struct {
 	// it in because a hosted surface and its conversation run on different
 	// machines, where this process's own build would be the wrong answer.
 	Build string
+
+	// UpdateCheck is the silent launch look at the newest stable release. It is
+	// a command rather than an opening read so the first frame never waits for
+	// the network. Nil leaves the capability absent.
+	UpdateCheck func(context.Context) (codeupdate.Available, bool)
+	// ResolveUpdate and InstallUpdate are the two off-frame halves of /update.
+	// Keeping selection separate lets the surface name the tag before the
+	// download begins. Nil leaves the command with an honest refusal.
+	ResolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
+	InstallUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
+	// UpdateRunning is the exact revision of this process, without build-time
+	// decoration. UpdateArgs are its original arguments. Restart is the slot the
+	// surface fills before quitting and the door reads after the terminal is back.
+	UpdateRunning string
+	UpdateArgs    []string
+	Restart       *codeupdate.Plan
 
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
