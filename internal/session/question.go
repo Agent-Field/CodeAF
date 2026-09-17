@@ -1997,11 +1997,22 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	}
 	// THE RECORD IS WRITTEN FROM THE QUESTION AND THE ANSWER TOGETHER, and it is
 	// written after the lane took it: a decision recorded for work that was never
-	// resolved is a record that refuses the next question for no reason. A lane
-	// that banked no words leaves no record — there is no head to keep, and a
-	// record whose question cannot be read back is a line nobody can act on.
-	if said {
+	// resolved is a record that refuses the next question for no reason.
+	//
+	// A LANDING ANSWERED WITH NOTHING BANKED IS RECORDED TOO, when the record
+	// can be read back. Its words are synthesized
+	// ([Agent.questionForLandingAnswer]) with the head and subject the next
+	// raise consults ([decidedAlready] in [Agent.landingQuestion]); the one
+	// road that synthesizes no head — the pending decision already gone, the
+	// restore race — writes nothing, because a record whose question cannot
+	// be read back is a line nobody can act on and a gate that never matches.
+	// The answered event still goes out: the window holding the card closes on
+	// the event, not on the record. Other lanes banked nothing and leave no
+	// record for the same law.
+	if said || (landingSaid && strings.TrimSpace(q.Head) != "") {
 		a.recordDecision(decisionRecordOf(q, answer))
+	}
+	if said {
 		a.rememberOverride(q, answer)
 	}
 	if said || landingSaid {
@@ -2932,7 +2943,7 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		kind = QuestionConflict
 	}
 	token := strconv.FormatUint(notice.ID, 10)
-	return a.said(kind, token, Question{
+	q := Question{
 		ID:      notice.ID,
 		Kind:    kind,
 		Ask:     AskLanding,
@@ -2956,7 +2967,35 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		// one fact as the policy this object spells it in rather than minting a
 		// second holder to disagree with it.
 		Policy: landingPolicy(status.Ask.Owner),
-	})
+	}
+	// AND A QUESTION SOMEBODY ANSWERED CARRIES THAT ANSWER'S FATE. The raise
+	// owes the record the same consultation the replay owes it (this file's
+	// [questionAsked]): an answered landing re-asked with the same words reads
+	// as though the earlier answers were ignored (#1077). The stamp leads
+	// because it is the new information; the ask's own reason stays after it
+	// because what became of the answer IS why it is asking again. A
+	// resolution still in flight says so instead — the person is not being
+	// asked twice, they are being told their answer is still working. The
+	// consultation is the gate's own helper on the gate's terms
+	// ([decidedAlready] over [Agent.Decisions]), and it costs what the gate's
+	// own check costs: one record read per derived landing question, no cache
+	// and so no second source of truth. Banked words are an unanswered
+	// question and carry no fate — [Agent.said] returns them untouched.
+	if record, found := decidedAlready(a.Decisions(), q); found {
+		stamp := landingAnsweredStamp(record)
+		switch {
+		case strings.TrimSpace(notice.Settling) != "":
+			q.Reason = stamp + " · still working on it"
+		case strings.TrimSpace(q.Reason) == "":
+			// A LANDING WITH NOTHING TO EXPLAIN CARRIES THE STAMP ALONE — a
+			// plain `your call` has no ask reason, and a separator after it
+			// would dangle.
+			q.Reason = stamp
+		default:
+			q.Reason = stamp + " · " + q.Reason
+		}
+	}
+	return a.said(kind, token, q)
 }
 
 // landingForm is which shape a landing asks to be drawn in, and it is decided
@@ -3000,15 +3039,19 @@ func landingReason(ask TaskAsk) string {
 		return reason
 	}
 	if reason == "" {
-		return landingDecidingWord
+		return LandingDecidingWord
 	}
-	return reason + " · " + landingDecidingWord
+	return reason + " · " + LandingDecidingWord
 }
 
-// landingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
+// LandingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
 // word: a row reading `nobody could check it · auto` would have told a person
-// the name of a setting instead of who is deciding.
-const landingDecidingWord = "codeaf is deciding"
+// the name of a setting instead of who is deciding. It is exported for the one
+// surface that must recognize it (internal/tui3's
+// [app.questionReasonIsNews]): the done card already says who is deciding, so
+// the question repeating the clause alone beside it is a duplication, not
+// news.
+const LandingDecidingWord = "codeaf is deciding"
 
 // landingPolicy is [TaskAsk.Owner] as a [Policy], and it is the whole of this
 // wave's composition with the auto-settle floor.

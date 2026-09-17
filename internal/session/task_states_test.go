@@ -831,10 +831,11 @@ func TestARecoveredMergeRoundSaysItWasCutAndTheCardStillAsks(t *testing.T) {
 	if node == nil {
 		t.Fatal("the node did not come back at all")
 	}
-	if !node.claimResolving() {
+	round, ok := node.claimResolving()
+	if !ok {
 		t.Fatal("a round nothing is running still holds the node's claim")
 	}
-	node.releaseResolving()
+	node.releaseResolving(round)
 	// AND THE CARD IS ASKING THE SAME QUESTION IT ASKED BEFORE THE PRESS: the
 	// node is exactly where it was, so the three answers are exactly the three.
 	status := ProjectTask(node.notice().StatusFacts())
@@ -882,7 +883,8 @@ func TestTakingAMergeRoundsClaimIsWrittenToTheCheckpoint(t *testing.T) {
 		}},
 	}, t.TempDir(), TaskSettleAsk)
 	node := graph.node(1)
-	if !node.claimResolving() {
+	round, ok := node.claimResolving()
+	if !ok {
 		t.Fatal("the claim was refused on a node with no round in flight")
 	}
 	graph.mu.Lock()
@@ -891,7 +893,7 @@ func TestTakingAMergeRoundsClaimIsWrittenToTheCheckpoint(t *testing.T) {
 	if !record.Resolving {
 		t.Fatal("the checkpoint does not say a round was in flight, so a resume cannot say it was cut")
 	}
-	node.releaseResolving()
+	node.releaseResolving(round)
 	graph.mu.Lock()
 	record = node.recordLocked()
 	graph.mu.Unlock()
