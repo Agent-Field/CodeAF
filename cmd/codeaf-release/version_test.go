@@ -115,3 +115,19 @@ func TestUsageErrorsUseExitTwoAndKeepStdoutEmpty(t *testing.T) {
 		}
 	}
 }
+
+// TestC12ReleaseCommandsKeepTheirPublicBehaviour proves C12.
+func TestC12ReleaseCommandsKeepTheirPublicBehaviour(t *testing.T) {
+	code, stdout, stderr := invoke([]string{"next", "--channel", "stable"}, "v0.1.0\n")
+	if code != 0 || stdout != "v0.1.1\n" || stderr != "" {
+		t.Fatalf("next: code %d stdout %q stderr %q", code, stdout, stderr)
+	}
+	code, stdout, stderr = invoke([]string{"kind", "v0.1.1-rc.1"}, "")
+	if code != 0 || stdout != "rc\n" || stderr != "" {
+		t.Fatalf("kind: code %d stdout %q stderr %q", code, stdout, stderr)
+	}
+	code, stdout, stderr = invoke([]string{"prune", "--channel", "dev"}, "v0.1.0\t2026-09-15T00:00:00Z\n")
+	if code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("prune: code %d stdout %q stderr %q", code, stdout, stderr)
+	}
+}

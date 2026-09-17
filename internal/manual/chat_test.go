@@ -2570,6 +2570,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
 		{"how do I update codeaf to the latest version", "running-from-the-terminal"},
+		// C13: These are the words a person brings to the update section.
+		{"is there a newer version", "running-from-the-terminal"},
+		{"how do I update codeaf", "running-from-the-terminal"},
+		{"update codeaf", "running-from-the-terminal"},
+		{"it says a new version is out every time I start", "running-from-the-terminal"},
 		// The ending #593 added, in the words somebody meets it in: on the
 		// stderr line they have just read, on the word in `--json`, and on the
 		// exit code they are staring at with a perfectly good answer above it.
@@ -2653,6 +2658,27 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+// TestC13UpdateQuestionsReachTheNewManualSection proves C13.
+func TestC13UpdateQuestionsReachTheNewManualSection(t *testing.T) {
+	for _, asked := range []string{
+		"is there a newer version",
+		"how do I update codeaf",
+		"update codeaf",
+		"it says a new version is out every time I start",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.Contains(section.Title, "newer version") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the update section", asked)
 		}
 	}
 }

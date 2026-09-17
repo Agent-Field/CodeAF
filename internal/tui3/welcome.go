@@ -626,25 +626,49 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
-// The wordmark, three rows of it, and it MUST HOLD A LETTERFORM FOR EVERY LETTER
+// The wordmark, four rows of it, and it MUST HOLD A LETTERFORM FOR EVERY LETTER
 // OF [product] — [wordmarkRows] skips a letter it has never heard of, so a
 // missing glyph is not a build error, it is a word with a hole in it on the
 // first screen of a fresh install (TestTheWordmarkCanSpellTheProductsWholeName
 // is what holds the two together).
+//
+// THE WORD IS SPELLED `codeaf` AND DRAWN `CodeAF`. The table is keyed by the
+// letters of [product], which is the one spelling every sentence uses, but the
+// forms under `a` and `f` are capitals: the owner wants the two letters at the
+// end to stand up out of the word (2026-09-17), and a letterform table is the
+// one place a drawing may differ from the text without the text changing. The
+// terminal that gets the word instead of the drawing still gets `codeaf`.
+//
+// THE TOP ROW IS THE CAP LINE AND THE BASELINE IS ONE LINE, and both come from
+// one fact about box-drawing: a bar sits at the MIDDLE of its cell and only a
+// vertical reaches a cell's edge. So a letter whose top is a bar (`c`, `o`,
+// `e`, the capitals) tops out half a row below a letter whose top is a stem,
+// and a letter whose foot is a stem hangs half a row under one whose foot is
+// a bowl. With three rows that put the `d`'s ascender half a row over the
+// capitals' tops, which is the one thing a capital is not allowed to be. Now
+// the x-height letters live in the lower three rows and leave the top row
+// blank; the capitals and the ascender start in the top row, the ascender as
+// the half-stroke `╷` so its top is the capitals' bar and not the edge above
+// it; and every stem that ends on the baseline ends as the half-stroke `╵`,
+// which stops where a bowl's `└─┘` does. A `│` in the bottom row is a
+// DESCENDER and nothing else.
 //
 // It is drawn from box-drawing characters rather than from a figlet font because
 // a figlet wordmark is nine rows of hash marks and this surface owns two: the
 // letterform here is the same vocabulary the rail and the rules are drawn in,
 // which is the whole reason it reads as part of the surface rather than as
 // something pasted onto it.
-var wordmarkGlyphs = map[rune][3]string{
-	// The bowl open on the right, on the stem `f` and `r` are drawn with.
-	'c': {"┌─ ", "│  ", "└─ "},
-	'o': {"┌─┐", "│ │", "└─┘"},
-	// The bowl of an `o` with the ascender on its right, which is the one
-	// letter of this name that rises above the others.
-	'd': {"  │", "┌─┤", "└─┘"},
-	'p': {"┌─┐", "├─┘", "│  "},
+var wordmarkGlyphs = map[rune][4]string{
+	// The bowl open on the right, on the stem `r` is drawn with.
+	'c': {"   ", "┌─ ", "│  ", "└─ "},
+	'o': {"   ", "┌─┐", "│ │", "└─┘"},
+	// The bowl of an `o` with the ascender on its right: the one lowercase
+	// letter of this name that rises to the cap line, and it rises to it and
+	// not past it, because `╷` starts at the middle of its cell where the
+	// capitals' top bars are, and `│` would start at the edge half a row over
+	// them — which is the discrepancy the fourth row exists to remove.
+	'd': {"  ╷", "┌─┤", "│ │", "└─┘"},
+	'p': {"   ", "┌─┐", "├─┘", "│  "},
 	// THE CROSSBAR ENDS IN A TERMINAL AND NOT IN A BLANK. `e` sits between two
 	// closed letterforms, and its right column used to be `├─ `, a blank cell
 	// with the bowl's `┐` directly above it and its `┘` directly below. A hole
@@ -652,35 +676,51 @@ var wordmarkGlyphs = map[rune][3]string{
 	// as an open letterform; it reads as a word the terminal cut off, which is
 	// what the wave that found this filed it as. The half-stroke closes that
 	// cell while keeping the aperture a lowercase `e` has and `a` (`├─┤`) has
-	// not — the one cell that tells those two letters apart here. `c` and `f`
-	// need no such closing: their right column is blank on all three rows, so
-	// the eye reads a letter that ends rather than a stroke that is missing.
-	'e': {"┌─┐", "├─╴", "└─┘"},
-	'n': {"┌─┐", "│ │", "│ │"},
-	'a': {"┌─┐", "├─┤", "└─┘"},
-	'f': {"┌─ ", "├─ ", "│  "},
-	// The shoulder alone, on the stem every other ascender here is drawn with.
-	'r': {"┌─┐", "│  ", "│  "},
-	// The bowl of an `a` with the tail under it, which is the one letter of this
-	// name that hangs below the line.
-	'g': {"┌─┐", "└─┤", "└─┘"},
+	// not — the one cell that tells those two letters apart here. `c` needs no
+	// such closing: its right column is blank on all three rows, so the eye
+	// reads a letter that ends rather than a stroke that is missing, and `f`
+	// has ink in that column on its top row alone, with nothing under it to
+	// make a hole of the two blanks below.
+	'e': {"   ", "┌─┐", "├─╴", "└─┘"},
+	'n': {"   ", "┌─┐", "│ │", "╵ ╵"},
+	// A CAPITAL: the apex on the cap line, the crossbar a third of the way up,
+	// and two legs that reach the baseline apart. It used to be `┌─┐ / ├─┤ /
+	// └─┘`, which is not an `a` but two closed bowls of equal size stacked on
+	// each other, and two equal closed bowls are an `8` — which is what the
+	// owner read on the first screen. Opening the bottom is what makes it a
+	// letter, and the crossbar is what keeps it from being the `n` above.
+	'a': {"┌─┐", "│ │", "├─┤", "╵ ╵"},
+	// A CAPITAL, AND THE TOP ARM IS THE LONGER ONE. Both arms of the old `f`
+	// were two cells, which is a lowercase `f` drawn without its hook and reads
+	// as neither case in particular; a capital `F` is the one letter of the Latin
+	// alphabet whose case is told by its arms alone, the upper reaching past the
+	// lower, and its middle arm sits above the centre as the letter's does. That
+	// third cell is the only ink in the word's right-hand column, so the edge
+	// below it is a letter stopping and not a hole between strokes
+	// (TestTheWordmarksRightEdgeIsNeverAHoleBetweenTwoStrokes is the line).
+	'f': {"┌──", "├─ ", "│  ", "╵  "},
+	// The shoulder alone, on a stem that stops at the baseline.
+	'r': {"   ", "┌─┐", "│  ", "╵  "},
+	// The bowl of an `o` with the tail under it, which is the one letter of this
+	// table that hangs below the line.
+	'g': {"   ", "┌─┐", "└─┤", "└─┘"},
 }
 
-// wordmarkRows is the wordmark as three unpainted rows, and the column each
+// wordmarkRows is the wordmark as four unpainted rows, and the column each
 // letter starts on. A terminal that cannot draw the box characters gets the
-// word itself — the same information, one row instead of three, and no
+// word itself — the same information, one row instead of four, and no
 // mojibake (styles.go's [detectASCII] is the same veto the rail obeys).
 func wordmarkRows(ascii bool) []string {
 	if ascii {
 		return []string{product}
 	}
-	rows := [3]string{}
+	rows := [4]string{}
 	for i, letter := range product {
 		glyph, ok := wordmarkGlyphs[letter]
 		if !ok {
 			continue
 		}
-		for r := 0; r < 3; r++ {
+		for r := range rows {
 			if i > 0 {
 				rows[r] += " "
 			}
