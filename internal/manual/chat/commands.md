@@ -228,6 +228,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
+| `/update` | `/upgrade` | — | installs the newest stable release and restarts this conversation on it |
+| `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag, then restarts this conversation on it |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |

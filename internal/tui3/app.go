@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -851,11 +852,18 @@ type app struct {
 	// workspace is the directory this conversation is about, whole; place is
 	// its base name, which is what the status line has room for. The whole path
 	// is what history is keyed by and what the @ completion walks.
-	workspace string
-	place     string
-	file      string
-	build     string
-	resumed   bool
+	workspace     string
+	place         string
+	file          string
+	build         string
+	resumed       bool
+	updateCheck   func(context.Context) (codeupdate.Available, bool)
+	resolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
+	installUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
+	updateRunning string
+	updateArgs    []string
+	updateActive  bool
+	restart       *codeupdate.Plan
 	// errandHome is the person's own home directory, resolved ONCE at `open` and
 	// held: the `~` project an item that belongs to no repository runs in
 	// ([app.errandPlace], [app.readBareBands], and homeexchange.go's
@@ -2669,6 +2677,12 @@ func newApp(ctx context.Context, opts Options) *app {
 		file:                opts.SessionFile,
 		build:               strings.TrimSpace(opts.Build),
 		resumed:             opts.Resumed,
+		updateCheck:         opts.UpdateCheck,
+		resolveUpdate:       opts.ResolveUpdate,
+		installUpdate:       opts.InstallUpdate,
+		updateRunning:       strings.TrimSpace(opts.UpdateRunning),
+		updateArgs:          append([]string(nil), opts.UpdateArgs...),
+		restart:             opts.Restart,
 		models:              opts.Models,
 		modelsForService:    opts.ModelsForService,
 		sources:             opts.Sources,
@@ -3103,7 +3117,7 @@ func (a *app) Init() tea.Cmd {
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
-		a.setupDemoCmd(), titleSend(a.titleSent),
+		a.setupDemoCmd(), a.checkForUpdate(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
 		a.news.waitRing(), a.leaving.waitRing()}
@@ -4645,6 +4659,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The quiet window closing on a fetch that is still out — the emptiness
 		// law's own clock, and the only line this surface draws about a wait.
 		return a, a.remoteOpenSlow(msg)
+
+	case updateCheckMsg:
+		return a, a.tookUpdateCheck(msg)
+
+	case updateResolveMsg:
+		return a, a.tookUpdateResolve(msg)
+
+	case updateInstallMsg:
+		return a, a.tookUpdateInstall(msg)
+
+	case updateRestartMsg:
+		return a, a.quit()
 
 	case frameMsg:
 		return a, a.paint()
@@ -6653,6 +6679,9 @@ func (a *app) slash(line string) tea.Cmd {
 	// The unknown-command hint below says back what was typed and not what it
 	// resolved to, so the name as written is kept.
 	switch canonicalCommand(name) {
+	case "update":
+		return a.runUpdateCommand(rest)
+
 	case "autonomy":
 		if rest != "" {
 			return a.changeAutonomy(rest)
