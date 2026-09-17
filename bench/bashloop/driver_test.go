@@ -242,7 +242,7 @@ func TestTheReadingsComeFromTheJournalsAndTheLedger(t *testing.T) {
 		`{"type":"tasks","version":1,"seq":3,"nodes":[{"id":1,"parent":0,"state":"done"},`+
 			`{"id":2,"parent":1,"state":"done"},{"id":2,"parent":1,"state":"done"},{"id":3,"parent":1,"state":"failed"}]}`)
 
-	got := collectReadings(homeDir, placeDir, journals, t.TempDir(), "")
+	got := collectReadings(homeDir, placeDir, journals, t.TempDir(), nil)
 	if got.Steps != 2 {
 		t.Fatalf("steps = %d, want 2 — the journal's own took lines", got.Steps)
 	}
