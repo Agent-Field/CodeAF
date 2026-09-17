@@ -2,7 +2,6 @@ package exec
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -1692,7 +1691,7 @@ func (l *Linear) complete(ctx context.Context, messages []ai.Message, definition
 		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
 			return nil, err
 		}
-		if lane := failedLane(err); lane != "" {
+		if lane := provider.FailedLane(err); lane != "" {
 			avoid = noteFailedLane(avoid, lane)
 		}
 		if attempt == nodeCallAttempts-1 {
@@ -1710,22 +1709,6 @@ func (l *Linear) complete(ctx context.Context, messages []ai.Message, definition
 	// underneath, whole, as it always did.
 	return nil, fmt.Errorf("after %d node call attempts (providers tried: %s): %w",
 		nodeCallAttempts, strings.Join(avoid, " and "), lastErr)
-}
-
-// failedLane reads the upstream lane a failed call names, "" when the failure
-// implicates nobody. A router's own refusal carries no provider name, a
-// transport fault names no machine, and an empty name is a fact the retry law
-// keeps (provider's retryavoid.go): the retry goes where it always went.
-func failedLane(err error) string {
-	var relayed *provider.APIError
-	if errors.As(err, &relayed) && relayed.Status >= 500 {
-		return strings.TrimSpace(relayed.Provider)
-	}
-	var cut *provider.StreamCut
-	if errors.As(err, &cut) {
-		return strings.TrimSpace(cut.Provider)
-	}
-	return ""
 }
 
 // noteFailedLane records one more lane this call failed on, once. The wire's
