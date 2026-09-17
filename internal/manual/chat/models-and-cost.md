@@ -334,26 +334,55 @@ preset:
 | reflex | `mistralai/mistral-nemo` |
 | small work | `deepseek/deepseek-v4-flash-0731` |
 | worker | `z-ai/glm-5.3-flash` |
-| careful work | `qwen/qwen3.8-27b` |
-| mastermind | `z-ai/glm-5.3` |
+| careful work | `moonshotai/kimi-k3` |
+| mastermind | `moonshotai/kimi-k3` |
 
 They are all open-weight models, and none of them is the model you are talking to. A crew
 that followed your conversation would put the most expensive model in the build on the
 cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
 agreed to. Closed models that are cheaper on their own vendor's platform than through the
-router are deliberately not in any preset; you can still pin one on any row.
+router are not in any open-family preset; the `all` family is where they are, and you
+can still pin one on any row.
 You can also connect that vendor yourself as a direct service; the
 [services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
-**Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
-OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
-— against blended price, open weights only. The worker seat is the dial: `glm-5.3-flash`
+**The `model family` row** (`models.crew.source`, just under the crew row) decides which family
+the three preset words draw from. `open` is the default and is the table above: open weights only,
+so a crew nobody chose is never a bet on one vendor's pricing. `all` reads the same three words,
+`frugal`, `balanced` and `max`, off the whole catalog instead, closed and frontier models included,
+and costs what those models cost. Flip the row and the seats nobody pinned move with it at once,
+because an unwritten seat is the default crew resolved in the family you are on; the rows already
+on disk keep their ids until you pick the crew again, and the crew word reads `custom` while they
+match no preset in the family you flipped to.
+
+Under `all`, the same three words resolve to these:
+
+| class | frugal | balanced | max |
+| --- | --- | --- | --- |
+| reflex | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` |
+| small work | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` |
+| worker | `openai/gpt-5.6-sol` | `openai/gpt-5.6-sol` | `anthropic/claude-fable-5.1` |
+| careful work | `google/gemini-3.8-flash` | `anthropic/claude-opus-5` | `openai/gpt-6-astra` |
+| mastermind | `anthropic/claude-opus-5` | `anthropic/claude-fable-5.1` | `anthropic/claude-fable-5.1` |
+
+Two of the columns spend differently here. The worker is the same model in `frugal` and
+`balanced`, and only `max` buys the frontier coder, because on the catalog the coding ceiling is
+the one expensive step. What `frugal` to `balanced` buys instead is the careful seat and a
+smarter mastermind. The `max` mastermind sits on the worker's own model on purpose: it is the
+catalog's ceiling, so there is no bigger planner to buy above it.
+
+**Why the open ids.** They were picked off the catalog's own published scores (OpenRouter
+republishes Artificial Analysis's coding and agentic indexes on every model row) against
+blended price, open weights only, and the `frugal` mastermind and the `balanced` careful and mastermind seats were
+picked on 2026-09-16, the rest on 2026-09-01. The worker seat is the dial: `glm-5.3-flash`
 scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
 one point under `glm-5.3` at a twentieth of its price, and it can see images. The
-mastermind buys the thinking rung rather than a bigger model, because its calls are few.
+mastermind is the one seat whose price may be the model rather than the rung: it answers a
+few times a task, so `frugal` pays for `glm-5.3` while the work below it stays on
+`glm-5.3-flash` and DeepSeek.
 The careful class is always a different vendor from the worker and always sees images:
-`qwen/qwen3.8-27b` scores 68 on coding at $0.42/M input and $2.55/M output with a 1M-token
-window. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose —
+`moonshotai/kimi-k3` scores 76 on coding and is the open field's strongest checker, so
+`balanced` and `max` put it on both the careful and the mastermind seat. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose:
 the bare `deepseek/deepseek-v4-flash` id resolves to the April build, and the July build at
 the same price scores thirteen coding points higher.
 
@@ -369,12 +398,12 @@ say rather than the default.
 | reflex | `mistral-nemo` | `mistral-nemo` | `mistral-nemo` |
 | small work | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` |
 | worker | `deepseek-v4-flash-0731` | `glm-5.3-flash` | `glm-5.3` |
-| careful work | `glm-5.3-flash` | `qwen3.8-27b` | `kimi-k3` |
-| mastermind | `glm-5.3-flash` | `glm-5.3` | `kimi-k3` |
+| careful work | `glm-5.3-flash` | `kimi-k3` | `kimi-k3` |
+| mastermind | `glm-5.3` | `kimi-k3` | `kimi-k3` |
 
-- **frugal** — deepseek works, glm-flash thinks · pennies a day
-- **balanced** — glm-flash works, glm-5.3 thinks, qwen checks
-- **max** — glm-5.3 works, kimi-k3 thinks and checks
+- **frugal**: deepseek works, glm-5.3 thinks · pennies a day
+- **balanced**: glm-flash works, kimi-k3 checks and thinks
+- **max**: glm-5.3 works, kimi-k3 thinks and checks
 
 The worker column climbs the open-weight front one step per preset, because it is the seat
 that pays most of a task's bill. The reflex and small-work columns never vary — they are the

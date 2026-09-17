@@ -24,9 +24,10 @@ import (
 // class models underneath — and the seat above them is the one thing on the
 // list no key can move ([crewPicker.rows] says why it is there anyway).
 //
-// EVERY WRITE GOES THROUGH [config.ApplyCrew], the same function the panel's row
-// writes through. A second writer here is how a command and a panel end up
-// disagreeing about which crew is on.
+// EVERY CREW WRITE GOES THROUGH config's own writers: a preset through
+// [config.ApplyCrew], and the chooser's family-and-preset decision through
+// [config.ApplyCrewUnder] in one file write. A second writer anywhere else is how
+// a command and a panel end up disagreeing about which crew is on.
 
 // runCrew is /crew: the three presets with the current one marked, or one applied.
 func (a *app) runCrew(arg string) {
@@ -37,7 +38,7 @@ func (a *app) runCrew(arg string) {
 	arg = strings.ToLower(strings.TrimSpace(arg))
 	if arg == "" {
 		a.closeLists()
-		a.crewPick.start(config.CrewAt(a.profileDir), a.crewInheritedLine())
+		a.crewPick.start(config.CrewAt(a.profileDir), config.CrewSourceAt(a.profileDir), a.crewInheritedLine())
 		a.touch()
 		return
 	}
@@ -64,6 +65,12 @@ func (a *app) applyCrew(preset string) {
 		a.note("could not set the crew · " + err.Error())
 		return
 	}
+	a.crewApplied()
+}
+
+// crewApplied is the tail both crew writes share: the panel rebuild and the
+// person-facing confirmation.
+func (a *app) crewApplied() {
 	// The panel may be holding rows read before this write, so it is rebuilt if
 	// it is open. Everything else is live: the crew source the session resolves
 	// through re-reads on its next call (cmd/codeaf's v3RolesSource).
@@ -93,6 +100,19 @@ func (a *app) applyCrew(preset string) {
 		facts = append(facts, id)
 	}
 	a.noteFacts(config.CrewSummary(a.profileDir)+" · "+a.crewUnchangedClause(), facts...)
+}
+
+// applyCrewUnder is the chooser's enter: the family and the preset are ONE
+// decision, and [config.ApplyCrewUnder] lands them as one file write. Landing
+// them apart would leave a window in which a reader sees the family set to `all`
+// while the five rows still hold open ids, which is the half-written crew the
+// chooser is the one place to promise against.
+func (a *app) applyCrewUnder(source, preset string) {
+	if err := config.ApplyCrewUnder(a.profileDir, source, preset); err != nil {
+		a.note("could not set the crew · " + err.Error())
+		return
+	}
+	a.crewApplied()
 }
 
 // crewUnchangedClause is the tail of every crew confirmation: the model the
@@ -377,6 +397,24 @@ func (a *app) sayWorkSeat() {
 	}
 }
 
+// ── the family row: which pool the presets draw from ──────────────────────────
+//
+// models.crew.source says whether the three presets pick their five ids from
+// open models or from all models. THE CONFIG PACKAGE OWNS THE ROW:
+// [config.CrewSourceAt] reads it. [config.SetCrewSource] writes it alone for the
+// settings row, and [config.ApplyCrewUnder] commits it with a preset as one write
+// for this chooser. The two tables behind them answer it.
+//
+// THE SEGMENT DOES NOT NAME THE FAMILY. The chooser reads the row at its open
+// ([app.runCrew]) and enter writes it through [config.ApplyCrewUnder], and the
+// crew word the status segment shows resolves through the same row: it is read
+// there, and it is not printed above the presets.
+
+// crewSourceLead is this row's one word in the chooser. The settings panel labels
+// the same row `model family`; here it is abbreviated to fit one line, and both
+// name the family the presets draw from.
+const crewSourceLead = "family"
+
 // crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
 // zero value is closed, like [picker], and its cursor is an index into
 // [config.CrewPresets].
@@ -384,6 +422,18 @@ type crewPicker struct {
 	open    bool
 	cursor  int
 	current string
+	// source is the family the presets below draw from: open models or all
+	// models. IT IS STAGED AND NOT WRITTEN: ←→ moves the word, and enter
+	// writes it beside the preset as one decision ([app.applyCrewUnder]): flip the family, watch the
+	// preset rows take it, then commit. esc leaves the row exactly as it
+	// was.
+	source string
+	// persistedSource is the family the SAVED crew is in, read at the door beside
+	// current. The row in force is the one the profile holds IN THE FAMILY THE
+	// PROFILE HOLDS: once ←→ moves the staged family, no preset on screen is in
+	// force any more, and a row that kept the mark would name models the profile
+	// does not run.
+	persistedSource string
 	// inherited is the line naming the seat this profile has no row for, or
 	// empty when every row was written. IT IS READ AT THE DOOR AND NOT AT THE
 	// DRAW: the rows are built every frame and the answer is three lines of a
@@ -392,8 +442,11 @@ type crewPicker struct {
 	inherited string
 }
 
-func (p *crewPicker) start(current, inherited string) {
-	*p = crewPicker{open: true, current: current, inherited: inherited}
+func (p *crewPicker) start(current, source, inherited string) {
+	// source is already a word this build knows: every caller hands it
+	// [config.CrewSourceAt]'s answer, which folds blank, unknown and retired words
+	// back to open. The fold lives there and nowhere else.
+	*p = crewPicker{open: true, current: current, persistedSource: source, inherited: inherited, source: source}
 	for i, preset := range config.CrewPresets {
 		if preset == current {
 			p.cursor = i
@@ -406,6 +459,19 @@ func (p *crewPicker) close() { *p = crewPicker{} }
 
 func (p *crewPicker) move(delta int) {
 	p.cursor = (p.cursor + delta + len(config.CrewPresets)) % len(config.CrewPresets)
+}
+
+// moveSource walks the two families, ←→ in [crewPickerKey]. It wraps rather
+// than clamps for [move]'s own reason: with two options a clamp would leave
+// one of the two keys a dead key on the word it started at.
+func (p *crewPicker) moveSource(delta int) {
+	at := 0
+	for i, source := range config.CrewSources {
+		if source == p.source {
+			at = i
+		}
+	}
+	p.source = config.CrewSources[(at+delta+len(config.CrewSources))%len(config.CrewSources)]
 }
 
 // The chooser's fixed lines around the three presets, spelled once so the
@@ -437,8 +503,8 @@ const (
 	crewInheritedMid  = " seat is inherited from "
 	crewInheritedTail = " — picking one writes it"
 	// crewFrameRows is how many of the chooser's rows are not preset rows: the
-	// scope line, seat one, and the closing note.
-	crewFrameRows = 3
+	// scope line, seat one, the family selector and the closing note.
+	crewFrameRows = 4
 )
 
 func (p *crewPicker) height() int {
@@ -489,8 +555,30 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		// so the chooser's height stays what [crewPicker.height] promised.
 		out = append(out, "")
 	}
+	// THE FAMILY IS A HEADER THE ←→ KEYS WALK, not a fourth row on the ↑↓
+	// list: the presets are one axis and the family is a second one steering
+	// them, and a list that made ↑↓ pass through the family on the way from
+	// frugal to max would be moving an axis the person never aimed at. So the
+	// row sits directly above the presets it steers, it answers to ←→, and the
+	// two options are drawn beside each other so the move it offers is visible
+	// before it is taken.
+	//
+	// THE WORD THE NEXT ENTER WRITES IS THE WORD LIFTED, and the lifted word is
+	// the accent: it is the fact this row answers and the only fact on it. This
+	// row takes no `›` lead and no ground of its own, for a reason of its own
+	// rather than seat one's: it is not on the ↑↓ axis, so no cursor sits on it
+	// for a lead to mark, and the lifted word is its whole mark.
+	words := make([]string, 0, len(config.CrewSources))
+	for _, source := range config.CrewSources {
+		if source == p.source {
+			words = append(words, pal.accent(source+" models"))
+			continue
+		}
+		words = append(words, pal.dim(source+" models"))
+	}
+	out = append(out, fit("  "+pal.dim(crewSourceLead+" ‹ ")+strings.Join(words, pal.dim(" · "))+pal.dim(" ›"), width))
 	for i, preset := range config.CrewPresets {
-		models, _ := config.CrewModels(preset)
+		models, _ := config.CrewModelsForSource(p.source, preset)
 		parts := make([]string, 0, len(roles.Tiers))
 		for _, tier := range roles.Tiers {
 			parts = append(parts, strings.TrimSpace(a.crewClassWord(tier))+" "+models[string(tier)])
@@ -505,7 +593,7 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		// first, the cursor's `›` disappeared the moment the cursor landed on the
 		// preset already in force — which is the one row a person is most likely
 		// to arrow onto, and the one moment they most need to know enter is aimed.
-		oncursor, current := i == p.cursor, preset == p.current
+		oncursor, current := i == p.cursor, preset == p.current && p.source == p.persistedSource
 		hovered := hover == len(out) || hover == len(out)+1
 		lead := "  "
 		switch {
@@ -514,7 +602,7 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		case hovered:
 			lead = pal.accent("· ")
 		}
-		label := preset + " — " + config.CrewLine(preset)
+		label := preset + " — " + config.CrewLineFor(p.source, preset)
 		switch {
 		case current:
 			label = pal.accent(label)
@@ -541,6 +629,8 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 		}
 		out = append(out, head, tail)
 	}
+	// The custom line is about the SAVED crew, so it shows whichever family is
+	// staged: hiding it would drop a row [crewPicker.height] still counts.
 	if p.current == config.CrewCustom {
 		out = append(out, pal.dim(fit(crewCustomLine, width)))
 	}
@@ -579,12 +669,17 @@ func (a *app) crewPickerKey(msg tea.KeyPressMsg) {
 		a.crewPick.close()
 	case "enter":
 		preset := config.CrewPresets[a.crewPick.cursor]
+		source := a.crewPick.source
 		a.crewPick.close()
-		a.applyCrew(preset)
+		a.applyCrewUnder(source, preset)
 	case "up", "ctrl+p":
 		a.crewPick.move(-1)
 	case "down", "ctrl+n":
 		a.crewPick.move(1)
+	case "left":
+		a.crewPick.moveSource(-1)
+	case "right":
+		a.crewPick.moveSource(1)
 	}
 	a.touch()
 }
@@ -599,7 +694,14 @@ func (a *app) crewPickerKey(msg tea.KeyPressMsg) {
 // surface.
 func (a *app) crewListing() string {
 	current := config.CrewAt(a.profileDir)
+	source := config.CrewSourceAt(a.profileDir)
 	var out strings.Builder
+	// THE WORDS ARE THE SAME IN EITHER FAMILY, so the listing names the pool
+	// whenever it is not the shipped one: an all listing that looked exactly like
+	// an open one is the ambiguity this whole feature is about.
+	if source != config.CrewSourceOpen {
+		out.WriteString(crewSourceLead + " · " + source + " models\n")
+	}
 	for at, preset := range config.CrewPresets {
 		if at > 0 {
 			out.WriteString("\n")
@@ -608,8 +710,8 @@ func (a *app) crewListing() string {
 		if preset == current {
 			lead = "· "
 		}
-		out.WriteString(lead + preset + " — " + config.CrewLine(preset) + "\n")
-		models, _ := config.CrewModels(preset)
+		out.WriteString(lead + preset + " — " + config.CrewLineFor(source, preset) + "\n")
+		models, _ := config.CrewModelsForSource(source, preset)
 		for _, tier := range roles.Tiers {
 			out.WriteString("    " + a.crewClassWord(tier) + "  " + models[string(tier)] + "\n")
 		}

@@ -495,9 +495,10 @@ func (a *app) commitSetupLimit() bool {
 // commitSetupCrew writes a crew, and MOSTLY DOES NOT.
 //
 // THE SETUP MAY NOT PAPER OVER AN OPINION. internal/config says why in its own
-// words: [config.CrewConfigured] is true when ANY of the five tier rows is in the
-// profile, "because a person who pinned one tier by hand has an opinion the setup
-// must not paper over with a preset". So a preset is written on exactly two
+// words: [config.CrewConfigured] is true when ANY of the tier rows, or the
+// family row above them, is in the profile, "because a person who pinned one tier
+// by hand, or chose a family, has an opinion the setup must not paper over with a
+// preset". So a preset is written on exactly two
 // roads — the person chose one in the chooser on this screen, or the profile had
 // no crew of its own at all and the row they were shown is the shipped default,
 // which is the case the first-run flow exists for.
@@ -695,6 +696,9 @@ func (a *app) startSetupControls() {
 	s.closeChoosers()
 	s.reviewOpen, s.detail = false, false
 	s.crewPick = ""
+	// The family is read HERE, arriving on the screen, and not in the draw: this
+	// screen's rows are drawn every frame and a profile read belongs at a door.
+	s.crewSource = config.CrewSourceAt(a.profileDir)
 	s.crewAt = a.setupCrewCursor()
 	s.example = exampleForControl(controlLimit)
 	// ARRIVING ON THE SCREEN IS THE FIRST OF THE TWO DELIBERATE ACTS, so the
@@ -1331,7 +1335,7 @@ func (a *app) setupCrewDetail() string {
 		// The three roles are spelled the way internal/config spells them for the
 		// live reading below, because a person opening this twice must not be
 		// shown one sentence in two shapes.
-		seats = crewPickSeats(a.setup.crewPick)
+		seats = crewPickSeats(a.setup.crewSource, a.setup.crewPick)
 	}
 	if seats == "" {
 		seats = strings.TrimSpace(config.CrewClasses(a.profileDir))
@@ -1347,8 +1351,8 @@ func (a *app) setupCrewDetail() string {
 // itself rather than the profile it has not been written to yet. It answers ""
 // for a word that is not a preset, which is the emptiness law: there is no crew
 // to describe and no placeholder that would be true.
-func crewPickSeats(preset string) string {
-	models, ok := config.CrewModels(preset)
+func crewPickSeats(source, preset string) string {
+	models, ok := config.CrewModelsForSource(source, preset)
 	if !ok {
 		return ""
 	}
@@ -1490,6 +1494,10 @@ func crewChoiceWord(preset string) string {
 	if word := crewChoiceWords[strings.ToLower(strings.TrimSpace(preset))]; word != "" {
 		return word
 	}
+	// The fallback is for a preset this screen has not been taught, and it is the
+	// open family's line: setupCrewRows runs inside the draw, so reading the profile
+	// here would put a profile read on the frame clock, and the seats this screen
+	// shows already take the family from a value read at the door.
 	return config.CrewLine(preset)
 }
 

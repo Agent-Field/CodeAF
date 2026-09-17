@@ -229,11 +229,19 @@ func crewRow(profileDir, tier string) (model, from string, source SeatSource, cl
 // from the ladder — five extra file reads per row, and a cycle. A surface that
 // wants both facts asks for both.
 func TierSeatAt(profileDir, tier string) Seat {
+	return tierSeatUnder(profileDir, CrewSourceAt(profileDir), tier)
+}
+
+// tierSeatUnder is [TierSeatAt] with the family already read, so a caller that
+// walks every tier ([CrewAt]) reads the profile ONCE for the family instead of
+// once per unwritten seat, and the five seats cannot be resolved under one
+// family while the preset table is resolved under another.
+func tierSeatUnder(profileDir, family, tier string) Seat {
 	model, from, source, cleared := crewRow(profileDir, tier)
 	if source == "" {
 		source = SeatDefault
 		if !cleared {
-			model = defaultTierModel(tier)
+			model = defaultTierModel(family, tier)
 		}
 	}
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}
@@ -403,7 +411,7 @@ func (s Seat) Report() string { return withNotice(s.Line(), s.Notice()) }
 
 // Describe is one seat in a receipt's voice:
 //
-//	work qwen/qwen3.8-27b (crew frugal)
+//	work deepseek/deepseek-v4-flash-0731 (crew frugal)
 //	plan follows the work model (default)
 //
 // THE EMPTINESS LAW, as the crew row already keeps it: an unfilled plan seat is
@@ -433,7 +441,7 @@ type Seats struct {
 // Sentence is both seats, unlabelled, for a door whose opening lines have a
 // label column of their own:
 //
-//	work qwen/qwen3.8-27b (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+//	work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3 (crew frugal)
 //
 // ONE SHAPE AND NOT TWO. It would read a little better to collapse a run whose
 // seats came from the same crew into one clause, and it would mean a script
@@ -445,7 +453,7 @@ func (s Seats) Sentence() string {
 
 // Line is the one line a headless run opens with:
 //
-//	models: work qwen/qwen3.8-27b (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+//	models: work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3 (crew frugal)
 func (s Seats) Line() string { return modelsLabel + s.Sentence() }
 
 // Notice is the inheritance line for whichever seat was filled by an older row,
