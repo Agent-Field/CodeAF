@@ -696,6 +696,65 @@ func TestSupervisorHoldsAPausedLeafBackUntilItIsResumed(t *testing.T) {
 	}
 }
 
+func TestSupervisorHoldsAChildOfAPausedTaskBackUntilTheResume(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	// A parent with a child under it: the add makes the parent composite, so
+	// the child is the only row the frontier could offer, and the hold on its
+	// parent is the only thing keeping it off.
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "p1", Title: "the parent"},
+		{ID: "c1", Title: "the child of p1", ParentID: "p1"},
+	}); err != nil {
+		t.Fatalf("add the subtree: %v", err)
+	}
+	if _, err := store.Pause("p1"); err != nil {
+		t.Fatalf("pause the parent: %v", err)
+	}
+	// THE HOLD IS THE STORE'S OWN LAW AND IT IS INHERITED: readiness reads the
+	// pause flag down the containment chain, so a child of a paused task is off
+	// the frontier with it and the supervisor needs no code of its own. The
+	// proof is that the child never launches and that the flag never moved onto
+	// its row.
+	if runnable := store.ReadySet().Runnable; len(runnable) != 0 {
+		t.Fatalf("ready set holds %v, want nothing while the parent is paused", runnable)
+	}
+	seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		return run.Report{Result: "split", Steps: 1}, nil
+	}
+	walled, stop := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer stop()
+	first := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	if outcome := first.Run(walled); outcome != run.OutcomeIncomplete {
+		t.Fatalf("first outcome = %q, want %q", outcome, run.OutcomeIncomplete)
+	}
+	if seat.launched("c1") || seat.launched("p1") {
+		t.Fatalf("launches = %v, want the paused subtree never launched", seat.launches())
+	}
+	if child := store.Task("c1"); child.Status != plandb.StatusReady || child.Paused {
+		t.Fatalf("child c1 = %s paused=%v, want still ready with the hold on its parent alone", child.Status, child.Paused)
+	}
+	if root := store.Task(store.RootID()); root.Status != plandb.StatusRunning {
+		t.Fatalf("root status = %s, want the run left open for another pass", root.Status)
+	}
+	// Resuming the parent returns the child to the frontier, and the next run's
+	// first pass takes it.
+	if _, err := store.Resume("p1"); err != nil {
+		t.Fatalf("resume the parent: %v", err)
+	}
+	second := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	if outcome := second.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("second outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if !seat.launched("c1") {
+		t.Fatalf("launches = %v, want the child of the resumed parent launched", seat.launches())
+	}
+	if child := store.Task("c1"); child.Status != plandb.StatusDone {
+		t.Fatalf("child c1 status = %s, want done once its parent was resumed", child.Status)
+	}
+}
+
 // holdSeat is a leaf action that keeps its worker seat for a while, so a
 // supervisor that launches too eagerly meets a seat that is still taken.
 func holdSeat(d time.Duration) func(context.Context, plandb.Task) (run.Report, error) {
