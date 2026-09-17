@@ -219,9 +219,9 @@ func TestEnvOverrides(t *testing.T) {
 }
 
 // One result may be a tenth of the window and no more than the caller's own
-// default. The default is what pi's caps were measured against, so a frontier
-// model is sized exactly as it was before the share existed and only a smaller
-// one moves — the same additive shape the working-set clamp has.
+// default. The default is what the fixed caps were measured against, so a
+// frontier model is sized exactly as it was before the share existed and only a
+// smaller one moves — the same additive shape the working-set clamp has.
 func TestToolResultBytesIsAShareOfTheWindowUnderTheCallersDefault(t *testing.T) {
 	const pi = 50 << 10
 	for _, window := range []int{128_000, 200_000, 1 << 20} {

@@ -1034,7 +1034,7 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 	if request == nil {
 		return nil
 	}
-	// NAMES AND NEVER VALUES. The pi-derived retry taxonomies above this adapter
+	// NAMES AND NEVER VALUES. The retry taxonomies above this adapter
 	// (internal/session's loop.go, internal/exec/bare's) classify an error by
 	// grepping its TEXT for "429", "500", "503" — so an honest "max_tokens(500)"
 	// in this sentence would make a permanent, already-exhausted refusal look
