@@ -65,8 +65,9 @@ func beltEnvFor(arm Arm) string {
 	return "" // unset: the belt as shipped
 }
 
-// invocation is one task start: one arm, one cell, one replicate.
+// invocation is one task start: one door, one arm, one cell, one replicate.
 type invocation struct {
+	Door      door
 	Arm       Arm
 	Cell      string // the cell id, c1..c6
 	Replicate int    // 1-based
@@ -104,6 +105,7 @@ func (iv invocation) specFingerprint() string {
 // plan is the whole run, in execution order.
 type plan struct {
 	Mode        string       // "grid" or "pair"
+	Door        door
 	Invocations []invocation // ordered: replicates outer, cells inner, arms innermost
 	Cells       []cell
 	Out         string // the run's output root
@@ -114,12 +116,12 @@ type plan struct {
 // replicates, interleaved — replicate r takes every cell before replicate
 // r+1 starts, and within a cell the two arms run back to back so the pair
 // shares the day, the machine and the provider's mood.
-func composeGrid(cells []cell, replicates int, out string, wall time.Duration) plan {
-	p := plan{Mode: "grid", Cells: cells, Out: out, Replicates: replicates}
+func composeGrid(cells []cell, replicates int, out string, wall time.Duration, d door) plan {
+	p := plan{Mode: "grid", Door: d, Cells: cells, Out: out, Replicates: replicates}
 	for r := 1; r <= replicates; r++ {
 		for _, c := range cells {
 			for _, arm := range []Arm{ArmShipped, ArmBash} {
-				p.Invocations = append(p.Invocations, newInvocation("grid", arm, c, r, out, wall))
+				p.Invocations = append(p.Invocations, newInvocation("grid", arm, c, r, out, wall, d))
 			}
 		}
 	}
@@ -129,10 +131,10 @@ func composeGrid(cells []cell, replicates int, out string, wall time.Duration) p
 // composePair builds the same-question pair: one brief, both arms, n=1. It is
 // the first smoke — the cheapest way to see the same question answered on
 // both belts before paying for the grid.
-func composePair(c cell, out string, wall time.Duration) plan {
-	p := plan{Mode: "pair", Cells: []cell{c}, Out: out, Replicates: 1}
+func composePair(c cell, out string, wall time.Duration, d door) plan {
+	p := plan{Mode: "pair", Door: d, Cells: []cell{c}, Out: out, Replicates: 1}
 	for _, arm := range []Arm{ArmShipped, ArmBash} {
-		p.Invocations = append(p.Invocations, newInvocation("pair", arm, c, 1, out, wall))
+		p.Invocations = append(p.Invocations, newInvocation("pair", arm, c, 1, out, wall, d))
 	}
 	return p
 }
@@ -140,9 +142,9 @@ func composePair(c cell, out string, wall time.Duration) plan {
 // newInvocation fills in what every door of the plan shares. The brief is the
 // cell's own, verbatim; the run directory is derived from the label so the
 // dry run and the live runner name the same place.
-func newInvocation(mode string, arm Arm, c cell, replicate int, out string, wall time.Duration) invocation {
+func newInvocation(mode string, arm Arm, c cell, replicate int, out string, wall time.Duration, d door) invocation {
 	iv := invocation{
-		Arm: arm, Cell: c.id, Replicate: replicate,
+		Door: d, Arm: arm, Cell: c.id, Replicate: replicate,
 		Model: pinModel, Brief: c.brief, Wall: wall,
 	}
 	iv.RunDir = filepath.Join(out, iv.label())
@@ -154,8 +156,8 @@ func newInvocation(mode string, arm Arm, c cell, replicate int, out string, wall
 // nothing else. It is the dry run's whole body: composed, printed, executed
 // never.
 func printPlan(p plan, w io.Writer) {
-	fmt.Fprintf(w, "bashloop %s: %d invocations · model %s · out %s\n",
-		p.Mode, len(p.Invocations), pinModel, p.Out)
+	fmt.Fprintf(w, "bashloop %s: %d invocations · door %s · model %s · out %s\n",
+		p.Mode, len(p.Invocations), p.Door, pinModel, p.Out)
 	if p.Mode == "grid" {
 		fmt.Fprintf(w, "cells: %s · replicates: %d · order: replicate, then cell, then arm (A before B)\n",
 			strings.Join(cellIDs(p.Cells), " "), p.Replicates)
@@ -166,11 +168,15 @@ func printPlan(p plan, w io.Writer) {
 	for i, iv := range p.Invocations {
 		fmt.Fprintf(w, "[%02d/%02d] arm=%s cell=%s replicate=%d\n",
 			i+1, len(p.Invocations), iv.Arm, iv.Cell, iv.Replicate)
+		fmt.Fprintf(w, "  door: %s\n", iv.Door)
 		fmt.Fprintf(w, "  model: %s\n", iv.Model)
 		fmt.Fprintf(w, "  env: %s\n", iv.envLine())
 		fmt.Fprintf(w, "  wall: %s\n", iv.Wall)
 		fmt.Fprintf(w, "  home: %s\n", filepath.Join(iv.RunDir, "home"))
 		fmt.Fprintf(w, "  fixture: %s\n", filepath.Join(iv.RunDir, "fixture"))
+		if iv.Door == doorDo {
+			fmt.Fprintf(w, "  invocation: %s\n", doDoorLine(iv, filepath.Join(iv.RunDir, "fixture"), filepath.Join(iv.RunDir, "home")))
+		}
 		fmt.Fprintf(w, "  brief: |\n")
 		for _, line := range strings.Split(strings.TrimRight(iv.Brief, "\n"), "\n") {
 			fmt.Fprintf(w, "    %s\n", line)
