@@ -32,7 +32,16 @@ func runPatch(args []string) error {
 		return err
 	}
 
-	var positionals []string
+	// THE FILE IS NAMED FIRST. `codeaf patch` with nothing after it used to be
+	// answered with a sentence about --old, which is one of three things the
+	// line was short of and not the one a person typing the command alone was
+	// asking about; the file is what the grammar opens with.
+	positionals := flags.Args()
+	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
+		return wrongCall("name one file to patch")
+	}
+	name := positionals[0]
+
 	seen := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { seen[f.Name] = true })
 	if seen["old"] == seen["old-file"] {
@@ -41,12 +50,6 @@ func runPatch(args []string) error {
 	if !seen["new"] && !seen["new-file"] {
 		return errors.New("name the replacement with --new TEXT or --new-file PATH")
 	}
-
-	positionals = flags.Args()
-	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
-		return errors.New("name one file to patch")
-	}
-	name := positionals[0]
 
 	asked, err := patchArgument(*oldText, *oldFile)
 	if err != nil {
