@@ -47,6 +47,13 @@ import (
 // and it is generous on purpose — the questions are one call each.
 const judgeTimeout = 90 * time.Second
 
+// judgeTries bounds how many candidates one landing is put through. A judge
+// that answers no seat at all — every question 429ed, refused or timed out — is
+// the judge's own failure rather than a verdict on the run, so the next
+// candidate is asked; the cap is what keeps a landing no judge will answer from
+// holding the pool's goroutine past a few candidates' worth of the bound above.
+const judgeTries = 3
+
 // poolJudgeHook builds the session's landing reader. Nil is off, for the pool
 // index's reason: a mode that forbids reading runs no judge and writes
 // nothing, and the door then hands the engine no hook at all.
@@ -73,12 +80,15 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	if landing.High != "" {
 		seats[judge.RoleHigh] = landing.High
 	}
-	judgeID, ok := judge.Pick(models(), seats, judge.DefaultFloor)
-	if !ok {
+	candidates := judge.Candidates(models(), seats, judge.DefaultFloor)
+	if len(candidates) == 0 {
 		if trace.Enabled() {
 			log.Printf("model pool: no judge to ask about task %d", landing.ID)
 		}
 		return
+	}
+	if len(candidates) > judgeTries {
+		candidates = candidates[:judgeTries]
 	}
 	rec := judge.Record{
 		Brief:       landing.Brief,
@@ -90,29 +100,49 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		Changed:     landing.Changed,
 		Checks:      landing.Checks,
 		Seats:       seats,
-		Judge:       judgeID,
 		CostUSD:     landing.CostUSD,
 	}
 	// A landing is news, not a turn: nobody is waiting on the answer, and the
 	// one thing this context owes anybody is a bound on how long it holds the
-	// pool's own goroutine.
-	ctx, cancel := context.WithTimeout(context.Background(), judgeTimeout*time.Duration(len(seats)+1))
-	defer cancel()
-	one := ask(judgeID)
-	perSeat := func(ctx context.Context, system, user string) (string, error) {
-		qctx, cancel := context.WithTimeout(ctx, judgeTimeout)
-		defer cancel()
-		return one(qctx, system, user)
+	// pool's own goroutine. Each candidate gets that whole bound afresh, so the
+	// first judge's share is spent by the first judge and the next starts with a
+	// full one rather than the first's leftovers.
+	var judgeID string
+	var scores []judge.Score
+	var err error
+	for _, candidate := range candidates {
+		rec.Judge = candidate
+		ctx, cancel := context.WithTimeout(context.Background(), judgeTimeout*time.Duration(len(seats)+1))
+		one := ask(candidate)
+		perSeat := func(ctx context.Context, system, user string) (string, error) {
+			qctx, cancel := context.WithTimeout(ctx, judgeTimeout)
+			defer cancel()
+			return one(qctx, system, user)
+		}
+		scores, err = judge.Judge(ctx, perSeat, rec)
+		cancel()
+		if len(scores) > 0 {
+			judgeID = candidate
+			break
+		}
+		// No seat at all came back: that is the judge's own failure — a 429, a
+		// timeout, a refusal — and not a verdict on the run, so its reason is
+		// said here and the next candidate is asked.
+		if trace.Enabled() {
+			log.Printf("model pool: judge %s scored no seat of task %d: %v", candidate, landing.ID, err)
+		}
 	}
-	scores, err := judge.Judge(ctx, perSeat, rec)
+	if len(scores) == 0 {
+		if trace.Enabled() {
+			log.Printf("model pool: no judge scored task %d", landing.ID)
+		}
+		return
+	}
 	// The scores obtained are recorded even when the error names a seat: a
 	// judge that scored the worker but not the high seat scored the worker,
 	// and a seat the call failed on is the judge's evidence of that model too.
 	if err != nil && trace.Enabled() {
 		log.Printf("model pool: judging task %d: %v", landing.ID, err)
-	}
-	if len(scores) == 0 {
-		return
 	}
 	sheet, err := record.LoadSheet(record.OwnSheetPath(poolDir))
 	if err != nil {
@@ -153,7 +183,9 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	// evidence now; the copies waiting in the outbox leave for the relay
 	// here, on this hook's own goroutine (the session runs TaskLanded on
 	// one), under the push's own bound.
-	poolPush(ctx, profileDir, pool, poolPushBudget)
+	pushCtx, cancelPush := context.WithTimeout(context.Background(), poolPushBudget)
+	defer cancelPush()
+	poolPush(pushCtx, profileDir, pool, poolPushBudget)
 }
 
 // poolSize is the day-row bucket a landing's token count answers: S under

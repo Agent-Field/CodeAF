@@ -11,8 +11,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -402,4 +405,179 @@ func countLines(data []byte) int {
 		}
 	}
 	return lines
+}
+
+// poolTwoJudgeCatalog is poolTestCatalog plus a second judge dearer than the
+// first, so a landing has a candidate to move to when the cheapest answers
+// nothing at all.
+func poolTwoJudgeCatalog() []catalog.Model {
+	return []catalog.Model{
+		{ID: "crew/worker", PromptPrice: 1, CompletionPrice: 2, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "crew/high", PromptPrice: 1, CompletionPrice: 2, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "other/flaky", PromptPrice: 0.4, CompletionPrice: 0.4, CodingIndex: 90, Parameters: []string{"tools"}},
+		{ID: "other/steady", PromptPrice: 0.6, CompletionPrice: 0.6, CodingIndex: 90, Parameters: []string{"tools"}},
+	}
+}
+
+// poolTwoJudgeAsk answers as poolTestAsk does, except for the cheapest judge,
+// which answers every question with an error and no score — the rate-limited
+// row's own failure, and the one a landing must move past.
+func poolTwoJudgeAsk(settings config.Config, asked *[]string) func(model string) judge.Ask {
+	receipt := 0.0002
+	return func(model string) judge.Ask {
+		return func(context.Context, string, string) (string, error) {
+			*asked = append(*asked, model)
+			if model == "other/flaky" {
+				return "", errors.New("the model answered with a 429")
+			}
+			recordPoolUsage(settings, model, &ai.Usage{PromptTokens: 10, CompletionTokens: 20, Cost: &receipt})
+			return `{"score": 88, "reason": "the delivered work does what the brief asked"}`, nil
+		}
+	}
+}
+
+// decodeOutboxRows reads a row-per-line outbox back into the payloads it
+// carries, skipping the marker lines that retire rows.
+func decodeOutboxRows(t *testing.T, data []byte) []record.Row {
+	t.Helper()
+	var rows []record.Row
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var envelope struct {
+			Payload json.RawMessage `json:"payload"`
+		}
+		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+			t.Fatalf("an outbox envelope: %v", err)
+		}
+		if len(envelope.Payload) == 0 {
+			continue
+		}
+		var row record.Row
+		if err := json.Unmarshal(envelope.Payload, &row); err != nil {
+			t.Fatalf("an outbox payload: %v", err)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// TestPoolJudgeHookMovesToTheNextCandidateWhenTheCheapestAnswersNothing is the
+// brief's rule: a judge that answers no seat at all — a 429, a timeout, a
+// refusal — is replaced by the next candidate, and the scores that land are
+// recorded under the judge that actually answered, not the first one asked.
+func TestPoolJudgeHookMovesToTheNextCandidateWhenTheCheapestAnswersNothing(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	var asked []string
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, poolTwoJudgeAsk(settings, &asked), time.Now)
+	if hook == nil {
+		t.Fatal("a pool whose mode allows reading built no hook")
+	}
+	hook(poolTestLanding())
+
+	if len(asked) == 0 || asked[0] != "other/flaky" {
+		t.Fatalf("the judge asked %v, want the cheapest candidate asked first", asked)
+	}
+	steady := 0
+	for _, model := range asked {
+		if model == "other/steady" {
+			steady++
+		}
+	}
+	if steady != 2 {
+		t.Fatalf("the second judge was asked %d questions, want one per held seat", steady)
+	}
+
+	poolsheet, err := record.LoadSheet(record.OwnSheetPath(config.ProfilePath(profileDir, "pool")))
+	if err != nil {
+		t.Fatalf("the own sheet: %v", err)
+	}
+	cells := record.Cells(poolsheet)
+	if len(cells) != 2 {
+		t.Fatalf("the sheet holds %d cells, want one per held seat: %+v", len(cells), cells)
+	}
+	seen := map[string]bool{}
+	for _, cell := range cells {
+		seen[cell.Role+"/"+cell.Model] = true
+	}
+	for _, seat := range []string{"worker/crew/worker", "high/crew/high"} {
+		if !seen[seat] {
+			t.Fatalf("the sheet holds no cell for %s: %+v", seat, cells)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ProfilePath(profileDir, "pool"), "outbox.jsonl"))
+	if err != nil {
+		t.Fatalf("the outbox: %v", err)
+	}
+	rows := decodeOutboxRows(t, data)
+	if len(rows) != 2 {
+		t.Fatalf("the outbox holds %d rows, want one per held seat", len(rows))
+	}
+	for _, row := range rows {
+		if row.Judge != "other/steady" {
+			t.Fatalf("a row names judge %q, want other/steady — never the candidate that answered nothing", row.Judge)
+		}
+	}
+
+	session.FlushUsage()
+	usage, err := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
+	if err != nil {
+		t.Fatalf("the usage ledger: %v", err)
+	}
+	if len(usage) != 2 {
+		t.Fatalf("the ledger holds %d rows, want one per seat question the answering judge took", len(usage))
+	}
+	for _, row := range usage {
+		if row.Seat != session.SeatJudge || row.Model != "other/steady" {
+			t.Fatalf("a call names seat %q model %q, want the answering judge's own seat", row.Seat, row.Model)
+		}
+	}
+}
+
+// TestPoolJudgeHookWritesNothingWhenEveryCandidateAnswersNothing is the other
+// end: when no candidate returns a single score, the landing is left unrecorded
+// and the hook returns without a panic.
+func TestPoolJudgeHookWritesNothingWhenEveryCandidateAnswersNothing(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	var asked []string
+	ask := func(model string) judge.Ask {
+		return func(context.Context, string, string) (string, error) {
+			asked = append(asked, model)
+			return "", errors.New("the model answered with a 429")
+		}
+	}
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, ask, time.Now)
+	if hook == nil {
+		t.Fatal("a pool whose mode allows reading built no hook")
+	}
+	hook(poolTestLanding())
+
+	if len(asked) != 4 {
+		t.Fatalf("the judge asked %d questions, want both candidates asked for both seats", len(asked))
+	}
+	if _, err := os.Stat(record.OwnSheetPath(config.ProfilePath(profileDir, "pool"))); !os.IsNotExist(err) {
+		t.Fatal("a landing no judge could score wrote an own sheet")
+	}
+	if _, err := os.Stat(filepath.Join(config.ProfilePath(profileDir, "pool"), "outbox.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("a landing no judge could score wrote an outbox")
+	}
+	session.FlushUsage()
+	usage, err := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
+	if err != nil {
+		t.Fatalf("the usage ledger: %v", err)
+	}
+	if len(usage) != 0 {
+		t.Fatalf("a landing no judge could score billed %d rows", len(usage))
+	}
 }
