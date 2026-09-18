@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the do door seats its worker from the settings the run will use
-pr: 0
+pr: 1122
 surface: [engine]
 invalidates:
   - "`doErrand` resolved the process's one catalog from a separate keyless settings read (`config.LoadKeyless`) while the run loaded its own keyed settings later, so a `codeaf do` launch read its settings twice and seated its worker from the first read. Its seats are now resolved from the same settings the run uses, the way `codeaf exec` and the chat surface seat theirs, with the keyless read kept as the second rung for a profile that has no key anywhere."
