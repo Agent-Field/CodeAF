@@ -18,6 +18,7 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -56,6 +57,52 @@ type planAgent interface {
 func (a *app) planReader() (planAgent, bool) {
 	agent, ok := a.agent.(planAgent)
 	return agent, ok
+}
+
+const runSummaryRefreshEvery = time.Minute
+
+type runSummaryAgent interface {
+	PlanRunSummary(string) (session.RunPlanSummary, bool)
+	RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
+}
+
+type runSummaryRefreshedMsg struct {
+	summary session.RunPlanSummary
+	ok      bool
+}
+
+func (a *app) refreshRunSummary() tea.Cmd {
+	agent, ok := a.agent.(runSummaryAgent)
+	if !ok || a.runSummaryRefreshing {
+		return nil
+	}
+	rows, ok := a.planReader()
+	if !ok {
+		return nil
+	}
+	plan := rows.PlanTasks()
+	root := ""
+	for _, row := range plan {
+		if row.Parent == "" {
+			root = row.ID
+			break
+		}
+	}
+	if root == "" {
+		return nil
+	}
+	stored, stale := agent.PlanRunSummary(root)
+	a.runSummaryNow = strings.TrimSpace(stored.Now)
+	now := a.now()
+	if !stale || (!a.runSummaryRefreshedAt.IsZero() && now.Sub(a.runSummaryRefreshedAt) < runSummaryRefreshEvery) {
+		return nil
+	}
+	a.runSummaryRefreshing = true
+	a.runSummaryRefreshedAt = now
+	return func() tea.Msg {
+		summary, kept := agent.RefreshRunSummary(a.ctx, root, now)
+		return runSummaryRefreshedMsg{summary: summary, ok: kept}
+	}
 }
 
 // planStateWord maps one store status onto the ONE state word a row wears
@@ -1406,4 +1453,32 @@ func planPageTelemetryLine(page session.PlanTaskPage) string {
 		segs = append(segs, itoa(queued)+" queued")
 	}
 	return strings.Join(segs, railSep)
+}
+
+// planRailNow draws the stored now sentence beneath the root's dot row. It is
+// pure frame work: wrapping plain data already carried by the reading.
+func planRailNow(line tasksLine, width int, pal palette, sentence string) []string {
+	sentence = strings.TrimSpace(sentence)
+	if sentence == "" || width >= planRailDotsUnder {
+		return nil
+	}
+	pad := line.underKin
+	if pad == "" {
+		pad = strings.Repeat(" ", ansi.StringWidth(line.kin))
+	}
+	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
+	room := width - ansi.StringWidth(planRailLead+pad) - taskSheetPhoneIndent
+	if room < 4 {
+		return nil
+	}
+	lines := wrap(sentence, room)
+	if len(lines) > 2 {
+		lines[1] = fit(strings.Join(lines[1:], " "), room)
+		lines = lines[:2]
+	}
+	out := make([]string, 0, len(lines))
+	for _, text := range lines {
+		out = append(out, lead+pal.dim(text))
+	}
+	return out
 }
