@@ -139,8 +139,7 @@ func TestPlanPageWaitsOwnFirstThenTasksWaitingOnItAndOmitsEmptySection(t *testin
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a plan")
 	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyDown})
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	a.taskSheetPlan(tests.ID)
 	text := taskSheetText(a)
 	own := "write the tests · waits: write the handler"
 	behind := "write the fixtures · waits: write the tests"
