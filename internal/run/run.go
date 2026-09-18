@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -81,7 +82,13 @@ type Supervisor struct {
 	// touched by no one else. cancels maps a running task to the context
 	// cancel that ends its worker, so a pass can end one worker's context
 	// without touching the rest.
-	finished       chan workerReturn
+	finished chan workerReturn
+	// workers counts the goroutines launch has started and not yet seen end.
+	// It is the run's one promise to its caller — NO WORKER OUTLIVES ITS RUN —
+	// and drain is its only reader: every road out of Run waits on it before
+	// answering, so the store, the working copy and the process are the
+	// caller's alone the moment the run is over.
+	workers        sync.WaitGroup
 	inFlight       int
 	spent          float64
 	nodes          int
@@ -127,6 +134,15 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 // when a worker returns and on the idle timer, so a task added through the
 // store while the loop waits is launched without waiting for anything else.
 //
+// NO WORKER OUTLIVES ITS RUN. The word this answers is the caller's licence to
+// close the store, land the working copy or drop the process, so every road
+// out of the loop ends the workers still in flight through their contexts and
+// waits for each of them before answering — [Supervisor.drain], on all four
+// roads. The road that needs it most is the tree's completion: the run's own
+// row is written the moment its last descendant lands, and a coordinator still
+// in its turn is a worker the completed tree left behind, with a spend row and
+// a trajectory ending still to write.
+//
 // The run is over when the root task is terminal, when the cost limit has
 // been crossed and every worker already launched has come home, or when the
 // context ends. A run that ends on anything but the root's own completion
@@ -164,6 +180,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	defer timer.Stop()
 	for {
 		if outcome := s.pass(ctx, rootID); outcome != "" {
+			s.drain()
 			return outcome
 		}
 		select {
@@ -175,12 +192,16 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		case <-ctx.Done():
 			// The caller's wall: workers still out there were handed this
 			// context and end with it. Their endings are absorbed so their
-			// writes land before the word is returned.
+			// writes land before the word is returned, and the drain below is
+			// what makes the word true — the wall is the one road that reads
+			// the endings rather than dropping them, because the run it stops
+			// is one a later pass picks up from the store.
 			for s.inFlight > 0 {
 				ret := <-s.finished
 				s.inFlight--
 				s.absorb(ret)
 			}
+			s.drain()
 			return OutcomeIncomplete
 		}
 	}
@@ -255,7 +276,11 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
 	s.cancels[task.ID] = cancel
 	s.inFlight++
 	s.nodes++
+	// THE GOROUTINE IS COUNTED BEFORE IT STARTS, so a drain that begins the
+	// moment after this launch cannot miss it and answer before it ends.
+	s.workers.Add(1)
 	go func() {
+		defer s.workers.Done()
 		report, err := Report{}, error(nil)
 		if worker == nil {
 			err = errors.New("no worker for task " + task.ID)
@@ -264,6 +289,31 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
 		}
 		s.finished <- workerReturn{task: task, report: report, err: err}
 	}()
+}
+
+// drain ends every worker still in flight and waits for each of them to
+// return: NO WORKER OUTLIVES ITS RUN. The run's word is the caller's licence
+// to close its store and take its working copy away, and a worker goroutine
+// still running at that moment writes its spend row, its trajectory ending or
+// even a completion through a handle that is gone — the nil-database panic a
+// run that answered while a worker was alive died on. Every road out of Run
+// calls this, so the moment the outcome is answered is a moment at which the
+// run holds nothing alive.
+//
+// THE CONTEXT GOES FIRST. A worker in the middle of a step ends at its next
+// one, which is what bounds the wait however long the step was going to take;
+// a worker whose context a pass already ended — a cancelled task, the caller's
+// wall — is in the map no more and has only to be waited for. The endings are
+// dropped rather than absorbed: the run is over, the store already carries the
+// ending that stands, and the return of a worker the run outlived has no
+// reader — the same reading absorb makes of a worker whose task the store
+// cancelled under it.
+func (s *Supervisor) drain() {
+	for id, cancel := range s.cancels {
+		cancel()
+		delete(s.cancels, id)
+	}
+	s.workers.Wait()
 }
 
 // absorb writes one worker's ending into the store and keeps the run's
@@ -560,6 +610,11 @@ type Summary struct {
 // outcome word, and answers what came of it. The context is the run's wall —
 // workers end with it — and nothing here needs a worker of its own: every
 // seat, the root's included, comes from the spec's factory.
+//
+// IT DOES NOT ANSWER WHILE A WORKER IT STARTED IS ALIVE: the supervisor drains
+// every goroutine it launched before its outcome comes back here, so a caller
+// may close its store — or the process — on the line after this returns and
+// nothing of the run is left to write into it.
 func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	started := time.Now()
 	if spec.Store == nil || spec.Factory == nil {
