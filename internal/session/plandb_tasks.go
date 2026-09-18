@@ -93,6 +93,10 @@ type PlanTaskPage struct {
 	// [plandb.LiveStep.Empty] is the one question a surface asks before it draws
 	// the line (the emptiness law, as the live step's own file states it).
 	Live plandb.LiveStep
+	// Children is the task's own children — the rows whose Parent is this task —
+	// in store order, so a page can draw the tree under the task the way the
+	// plan list draws it. Empty for a leaf, which is the ordinary case.
+	Children []PlanTaskRow
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -155,11 +159,22 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
 	live := store.LiveSteps()
+	// THE CHILDREN ARE THE TASK'S OWN SUBTREE, ONE LEVEL DEEP: every row the store
+	// holds under this task, in store order, built the same way the top row is so
+	// a page can draw them with the same words ([PlanTaskRow]).
+	var children []PlanTaskRow
+	for _, child := range store.Tasks(plandb.Filter{Chat: plan.chat}) {
+		if child.ParentID != task.ID {
+			continue
+		}
+		children = append(children, planTaskRow(store, dir, child, spend, live))
+	}
 	return PlanTaskPage{
 		Row:         planTaskRow(store, dir, task, spend, live),
 		Description: task.Description,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
+		Children:    children,
 	}, true
 }
 
