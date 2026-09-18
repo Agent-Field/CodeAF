@@ -178,17 +178,11 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	// the teaching prose is gone.
 	railRun(a)
 	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over this window's own work")
+		t.Fatal("the place refused to open over this window")
 	}
-	// TWO OF THE FOUR ARE RUNNING AND TWO ARE PARKED, and the note counts them
-	// apart: [railRun] starts two nodes and admits two behind them, and a foot
-	// that called all four `running` was the tasks place saying two workers were
-	// burning tokens on a machine where nothing was executing.
 	note := plain(strings.Join(a.placeNote(a.width), "\n"))
-	for _, want := range []string{"2 " + taskSheetNowHead, "2 " + tasksSectionWord(tasksParked)} {
-		if !strings.Contains(note, want) {
-			t.Fatalf("the note reads %q and does not count the rows the body drew (%q)", note, want)
-		}
+	if note != "" {
+		t.Fatalf("the foot still carries counts: %q", note)
 	}
 	if text := taskSheetText(a); strings.Contains(text, whisperOf(pageTasks)) {
 		t.Fatalf("a place with rows on it kept its whisper:\n%s", text)

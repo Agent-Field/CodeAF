@@ -622,15 +622,12 @@ func (r tasksReading) lay(width int) []tasksLine {
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
-	add(tasksLineWord, r.headLine(width))
+	add(tasksLineWord, r.tally())
 	phone := layoutTier(width) == tierPhone
 	// THE CONTROL ROW IS THE FIRST ROW OF THE LIST AND NOT A SECOND HEAD. It
 	// stands where the rows stand, because its labels are the rows' own columns
 	// named — and it is absent on a phone, where there are no columns to label
 	// and the box at the foot is the way in to the filter (taskphone.go).
-	if !phone {
-		add(tasksLineControl, "")
-	}
 
 	// work draws one piece of work and, while its fold is open, everything under
 	// it — to whatever depth the record goes.
@@ -773,7 +770,11 @@ func (r tasksReading) lay(width int) []tasksLine {
 			add(tasksLineFold, workOlderFold(tree.held(section)))
 			continue
 		}
-		add(tasksLineWord, tasksSectionHead(section, tree.held(section), tree.shown(r, section)))
+		runs := 0
+		for _, group := range groups {
+			runs += len(group.roots)
+		}
+		add(tasksLineWord, tasksSectionHead(section, runs))
 		// THE PAGE'S UNIT IS A RUN, not the conversation it came from. Gather
 		// every root before ordering so activity interleaves runs from different
 		// conversations. The rail retains its established grouped projection.
@@ -830,7 +831,7 @@ func (r tasksReading) headLine(width int) string {
 // way — the head carries the window control and a second painter would be a
 // second chance for the control to be drawn where it is not bound.
 func (r tasksReading) headRow(width int, pal palette) string {
-	return r.paint([]tasksLine{{kind: tasksLineWord, text: r.headLine(width), owner: -1}}, 0, width, pal, false)
+	return r.paint([]tasksLine{{kind: tasksLineWord, text: r.tally(), owner: -1}}, 0, width, pal, false)
 }
 
 // tasksKin is the family column in front of one row: one step of indent for
@@ -1581,7 +1582,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 			// →`, the control and the reading at once. Before it, this place bound
 			// all four arrow keys and drew nothing that named them, which is the
 			// exact defect verbstrip.go's law was written against.
-			return placeHeadRow(width, line.text, placeHeading(line.text, pal), r.win, pal)
+			return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 		}
 		return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 	case tasksLineChat:
@@ -1846,12 +1847,8 @@ func (r tasksReading) shown(items []tasksItem) int {
 //
 // NOTHING IS SAID WHERE NOTHING IS HELD BACK. Open the fold and the clause goes:
 // the emptiness law applied to a fact that has stopped being one.
-func tasksSectionHead(section tasksSection, held, shown int) string {
-	word := tasksSectionWord(section)
-	if held-shown <= 0 {
-		return word
-	}
-	return word + railSep + itoa(held-shown) + " folded away"
+func tasksSectionHead(section tasksSection, runs int) string {
+	return tasksSectionWord(section) + railSep + itoa(runs)
 }
 
 func tasksSectionWord(section tasksSection) string {
