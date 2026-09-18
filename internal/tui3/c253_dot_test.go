@@ -59,7 +59,10 @@ func TestPlanProgressWidthTiersAndWording(t *testing.T) {
 		t.Fatalf("finished progress = %q", done)
 	}
 	failed := planProgress(session.PlanTaskRow{Done: 8, Failed: 2, Total: 10}, 100, pal)
-	if failed != "8 of 10 · 2 failed" {
+	// A FAILURE IS SAID IN WORDS AND DRAWN IN ITS CELL, both: the words used to
+	// replace the dot row, so the run a person most needs to see at a glance was
+	// the one drawn with no picture.
+	if failed != "●●●●●●●●✘✘  8 of 10 · 2 failed" {
 		t.Fatalf("failed progress = %q", failed)
 	}
 }
