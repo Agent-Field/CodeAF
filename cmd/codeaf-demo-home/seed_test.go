@@ -13,12 +13,15 @@ package main
 // somebody improved a sentence.
 
 import (
+	"bufio"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -454,5 +457,123 @@ func TestTheDemoHomesLedgersStayInsideTheirOwnDays(t *testing.T) {
 				t.Fatalf("the spend page's day axis has %d days on it, want %d", len(days), usageDays)
 			}
 		})
+	}
+}
+
+// The demo plan is read through PlanDB itself, not through a fixture-only reader.
+func TestTheDemoHomeSeedsTheBeltRuns(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := seedDemoHome(dir, time.Now()); err != nil {
+		t.Fatalf("seed the demo home: %v", err)
+	}
+	world := session.ReadWorld(filepath.Join(dir, ".codeaf", "v3", "projects"))
+	var chat session.SessionRow
+	for _, row := range world.Sessions() {
+		if row.Title == roomTalkTitle {
+			chat = row
+			break
+		}
+	}
+	if chat.ID == "" {
+		t.Fatalf("no seeded conversation called %q", roomTalkTitle)
+	}
+	storeDir := filepath.Join(chat.ProjectDir, ".codeaf")
+	plan, err := plandb.Open(filepath.Join(storeDir, "plandb.db"), "", "", "", "")
+	if err != nil {
+		t.Fatalf("open the demo plan: %v", err)
+	}
+	defer plan.Close()
+	rows := plan.Tasks(plandb.Filter{Chat: chat.ID})
+	byTitle := make(map[string]*plandb.Task, len(rows))
+	for _, row := range rows {
+		byTitle[row.Title] = row
+		if row.Chat != chat.ID {
+			t.Errorf("task %q has chat %q, want %q", row.Title, row.Chat, chat.ID)
+		}
+	}
+	type wantRow struct {
+		status                           plandb.Status
+		parent, dependency, role, result string
+		steps                            int
+	}
+	want := map[string]wantRow{
+		"rewrite the auth flow":        {status: plandb.StatusRunning},
+		"read the current flow":        {status: plandb.StatusDone, parent: "rewrite the auth flow", steps: 6},
+		"write the handler":            {status: plandb.StatusRunning, parent: "rewrite the auth flow", steps: 12},
+		"write the middleware":         {status: plandb.StatusRunning, parent: "rewrite the auth flow", steps: 4},
+		"write the tests":              {status: plandb.StatusPending, parent: "rewrite the auth flow", dependency: "write the handler"},
+		"write the fixtures":           {status: plandb.StatusPending, parent: "write the tests", dependency: "write the tests"},
+		"update the manual":            {status: plandb.StatusPending, parent: "rewrite the auth flow", dependency: "write the tests"},
+		"check: read the current flow": {status: plandb.StatusDone, parent: "rewrite the auth flow", role: plandb.RoleCheck, result: "holds: the flow is read and summarised"},
+		"five chapter poem":            {status: plandb.StatusDone}, "index the poems": {status: plandb.StatusDone},
+	}
+	for title, expected := range want {
+		row := byTitle[title]
+		if row == nil {
+			t.Errorf("missing task %q", title)
+			continue
+		}
+		if row.Status != expected.status || row.Role != expected.role || row.Result != expected.result {
+			t.Errorf("task %q = status %q role %q result %q; want %q %q %q", title, row.Status, row.Role, row.Result, expected.status, expected.role, expected.result)
+		}
+		if expected.parent != "" && (byTitle[expected.parent] == nil || row.ParentID != byTitle[expected.parent].ID) {
+			t.Errorf("task %q parent = %q, want %q", title, row.ParentID, expected.parent)
+		}
+		if expected.dependency != "" {
+			dep := byTitle[expected.dependency]
+			if dep == nil || len(row.Dependencies) != 1 || row.Dependencies[0].TaskID != dep.ID {
+				t.Errorf("task %q dependencies = %+v, want %q", title, row.Dependencies, expected.dependency)
+			}
+		}
+		if expected.steps > 0 {
+			assertDemoTrajectorySteps(t, storeDir, row.ID, expected.steps)
+		}
+	}
+	poem, index := byTitle["five chapter poem"], byTitle["index the poems"]
+	if poem != nil && countPlanChildren(rows, poem.ID, plandb.StatusDone) != 4 {
+		t.Errorf("five chapter poem has the wrong completed family")
+	}
+	if index != nil && countPlanChildren(rows, index.ID, plandb.StatusFailed) != 1 {
+		t.Errorf("index the poems has no failed child")
+	}
+	live := plan.LiveSteps()
+	for title, command := range map[string]string{"write the handler": "$ go test ./internal/auth/...", "write the middleware": "$ cat > internal/auth/mw.go <<'EOF'"} {
+		row := byTitle[title]
+		if row == nil || live[row.ID].Command != command {
+			t.Errorf("live step for %q = %+v, want %q", title, live[row.ID], command)
+		}
+	}
+}
+
+func countPlanChildren(rows []*plandb.Task, parent string, status plandb.Status) int {
+	n := 0
+	for _, row := range rows {
+		if row.ParentID == parent && row.Status == status {
+			n++
+		}
+	}
+	return n
+}
+
+func assertDemoTrajectorySteps(t *testing.T, storeDir, id string, want int) {
+	t.Helper()
+	file, err := os.Open(filepath.Join(plandb.TaskDir(storeDir, id), "trajectory.jsonl"))
+	if err != nil {
+		t.Errorf("open trajectory for %s: %v", id, err)
+		return
+	}
+	defer file.Close()
+	got := 0
+	for scan := bufio.NewScanner(file); scan.Scan(); {
+		var line struct {
+			Kind string `json:"kind"`
+			Step int    `json:"step"`
+		}
+		if json.Unmarshal(scan.Bytes(), &line) == nil && line.Kind == "step" {
+			got++
+		}
+	}
+	if got != want {
+		t.Errorf("trajectory for %s has %d steps, want %d", id, got, want)
 	}
 }
