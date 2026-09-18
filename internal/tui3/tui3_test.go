@@ -767,9 +767,55 @@ func resolveThroughLanes(agent any, answer session.Answer) error {
 // the engine's own refusal said in one word (session's errAnswerUnknownLane).
 var errNoSuchLane = errors.New("no such lane on this fake")
 
+// mintProfileDir is a profile directory nothing else in the run reads: a fresh
+// subdirectory of this run's own state root ([runTests]'s CODEAF_HOME), so the
+// whole run is removed together and no per-test cleanup hook is needed. A
+// helper with a *testing.T uses t.TempDir() instead; this is for the two
+// builders that have none ([newTestApp], [benchApp]).
+func mintProfileDir() string {
+	dir, err := os.MkdirTemp(stateRootForTests(), "profile-")
+	if err != nil {
+		panic("tui3 tests: no profile directory of their own: " + err.Error())
+	}
+	return dir
+}
+
+// stateRootForTests is the temporary state root the whole run shares — the one
+// [runTests] pinned into CODEAF_HOME, and a throwaway of the process's own if a
+// test has cleared it. It is the root a minted profile directory is made under.
+func stateRootForTests() string {
+	if root := strings.TrimSpace(os.Getenv(home.EnvVar)); root != "" {
+		return root
+	}
+	return os.TempDir()
+}
+
+// newTestApp builds a surface over a profile of its own.
+//
+// A TEST MAY NOT READ A PROFILE IT DID NOT CREATE. Before this pair existed the
+// helper named no profile at all, and [runTests] moves CODEAF_HOME to ONE temp
+// root for the whole run — so every bare app in the package read and wrote the
+// same directory, and a setup_seen_at written by an earlier test decided what
+// the next one saw. That is contamination by construction, and it had already
+// cost a week-long invisible red: TestTheOpeningHintNamesBothDoors was green in
+// the package run and red alone from #680 until #1153. So the default is now a
+// directory of this app's own, minted under the run's root and thrown away with
+// it — the same isolation `t.TempDir()` gives sheetApp and setupApp, without a
+// *testing.T to call it through.
 func newTestApp(agent Agent) *app {
+	return newTestAppWithProfile(mintProfileDir(), agent)
+}
+
+// newTestAppWithProfile is [newTestApp] with the profile directory named by the
+// caller. It exists for the test that means two surfaces to share ONE profile —
+// a setting written through the first and read back through the second — which
+// is honest use and never the default: a helper that quietly shared a root is
+// the defect the pair closes, so a caller that shares says so by passing the
+// same directory deliberately.
+func newTestAppWithProfile(profileDir string, agent Agent) *app {
 	a := newApp(context.Background(), Options{
 		Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger(),
+		ProfileDir: profileDir,
 		BashBackgroundAfterSeconds: config.DefaultBashBackgroundAfter,
 		// AND IT PINS THE TERMINAL, which is the second and third pin in one
 		// table, for exactly the reason the palette is pinned below: [newApp]

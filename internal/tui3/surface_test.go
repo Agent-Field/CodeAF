@@ -464,7 +464,7 @@ func recallApp(t *testing.T, entries ...history.Entry) (*app, *history.Store) {
 		store.Append(entry.Text, entry.Cwd)
 	}
 	a := newApp(t.Context(), Options{
-		Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab", History: store,
+		Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab", History: store, ProfileDir: t.TempDir(),
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
@@ -569,7 +569,7 @@ func completionApp(t *testing.T, files ...string) *app {
 			t.Fatal(err)
 		}
 	}
-	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: root})
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: root, ProfileDir: t.TempDir()})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.entries = nil
@@ -729,9 +729,10 @@ func TestSlashOpensTheCommandListFiltersItAndRunsIt(t *testing.T) {
 func aliasApp(t *testing.T, first Agent, next Agent) *app {
 	t.Helper()
 	a := newApp(t.Context(), Options{
-		Agent:     first,
-		Workspace: "/tmp/lab",
-		Fresh:     func() (Agent, string, error) { return next, "/tmp/next.jsonl", nil },
+		Agent:      first,
+		Workspace:  "/tmp/lab",
+		ProfileDir: t.TempDir(),
+		Fresh:      func() (Agent, string, error) { return next, "/tmp/next.jsonl", nil },
 	})
 	a.width, a.height = 100, 24
 	a.pal = newPalette(tokens.ANSI256, false)

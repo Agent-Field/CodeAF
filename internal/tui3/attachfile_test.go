@@ -48,7 +48,7 @@ func fileLab(t *testing.T, host string, files map[string]int) (*app, *fileAgent,
 		}
 	}
 	agent := &fileAgent{imageAgent: &imageAgent{fakeAgent: &fakeAgent{model: "vendor/sees"}}}
-	a := newApp(context.Background(), Options{Agent: agent, Workspace: dir, Host: host})
+	a := newApp(context.Background(), Options{Agent: agent, Workspace: dir, Host: host, ProfileDir: t.TempDir()})
 	// Over a connection a relative path is anchored to THIS machine and not to
 	// the remote workspace ([app.pathRoot]), so the lab's directory has to be
 	// this machine's for the test to be typing what a person would type.
