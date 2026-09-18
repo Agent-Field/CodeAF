@@ -121,3 +121,48 @@ func TestSpendSeatBlockSitsAfterTheCrewBlock(t *testing.T) {
 		t.Fatalf("the seat block stands at line %d, not after the crew block at %d:\n%s", seats, crew, text)
 	}
 }
+
+// THE BLOCK IS READ OVER THE WINDOW THE PAGE DRAWS, and the window arrows move
+// it. Every other figure on this page is cut from lines already in memory, so
+// an arrow is arithmetic; the seat rollup arrives already summed over a window
+// and a sum cannot be cut down to a narrower one, so the arrow asks again —
+// over the window's own `since` and never over a fresh clock. A page that kept
+// the old sum would draw a fortnight's seat dollars under a month's heading,
+// which is a wrong figure on the one page a person reads to find one.
+func TestSpendSeatBlockFollowsTheWindowArrows(t *testing.T) {
+	a := seatLab(t, []session.PlanSpendLine{
+		{Seat: "work", Model: "vendor/work-seat", USD: 0.40, Calls: 1},
+	})
+	fake := a.agent.(*seatFake)
+	asked := func() time.Time {
+		t.Helper()
+		if len(fake.asked) == 0 {
+			t.Fatal("the seat block was never read")
+		}
+		return fake.asked[len(fake.asked)-1]
+	}
+	if got := asked(); got != a.spend.win.From {
+		t.Fatalf("walking in read over %s, want the window's own %s", got, a.spend.win.From)
+	}
+	reads, was := len(fake.asked), a.spend.win
+	drive(t, a, key("shift+left"))
+	if a.spend.win == was {
+		t.Fatal("shift+← did not move the window")
+	}
+	if got := asked(); got != a.spend.win.From {
+		t.Errorf("the arrow left the seat block read over %s, want the window it now draws %s", got, a.spend.win.From)
+	}
+	if len(fake.asked) == reads {
+		t.Error("the arrow re-cut the seat rollup from the old window's sum rather than asking again")
+	}
+	// AND THE LEDGER'S OWN LAW STILL HOLDS: the lines in memory are not read
+	// again, because the arrow's arithmetic over them is what lets a person hold
+	// the key down.
+	drive(t, a, key("shift+right"))
+	if a.spend.win != was {
+		t.Fatalf("shift+→ did not come back to %v", was)
+	}
+	if got := asked(); got != was.From {
+		t.Errorf("coming back read over %s, want the window's own %s", got, was.From)
+	}
+}
