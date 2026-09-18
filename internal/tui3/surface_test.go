@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/history"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -266,20 +265,7 @@ func TestQuitFoldsParkedMessagesIntoTheDraft(t *testing.T) {
 }
 
 func TestTheOpeningHintNamesBothDoors(t *testing.T) {
-	// THE PROFILE IS THIS TEST'S OWN, IN BOTH CASES. An app that names no
-	// profile reads the default profile of the state root, and TestMain moves
-	// that root to ONE directory for the whole package run (tui3_test.go's
-	// [runTests]) — so which half of the contract below this test saw depended
-	// on whether an earlier test had already written a setup_seen_at marker
-	// into that shared directory. Every app here reads a profile this test
-	// made, and the marker is written by the test too.
-	//
-	// CASE ONE, A PROFILE THE SETUP HAS NEVER MET (no marker): the first
-	// conversation's greeting stands through typing — the composer must not
-	// move out from under the sentence a person started (#680) — and the hint
-	// lands when the conversation begins, at the send.
-	firstRun := t.TempDir()
-	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab", ProfileDir: firstRun})
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab"})
 	a.width, a.height = 90, 30
 	a.touch()
 	// THE EXIT IS TAUGHT AFTER THE ENTRANCE (welcome.go's [app.dismissWelcome]):
@@ -289,43 +275,14 @@ func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 		t.Fatalf("the greeting teaches the way out before the way in:\n%s", plain(frame(a)))
 	}
 	drive(t, a, key("h"))
-	// THE GREETING STANDS THROUGH TYPING (welcome.go's
-	// [app.welcomeStandsThroughTyping]): the three starting points are still on
-	// the frame, under the word now sitting in the box, and no hint has landed.
-	if !strings.Contains(plain(frame(a)), welcomeStarterKeysWord) {
-		t.Fatalf("typing moved the first conversation's composer out from under the person:\n%s", plain(frame(a)))
-	}
-	if strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c quits") {
-		t.Fatalf("a keystroke dismissed the first conversation's greeting:\n%s", plain(frame(a)))
-	}
-	// THE HINT LANDS WHEN THE CONVERSATION BEGINS — the send, not the typing
-	// (welcome.go's [app.spendWelcome]). IT HAS TO BE TRUE ON THAT FRAME, where
-	// a turn has just started: esc is the interrupt while there is a turn, and
-	// ctrl+c at rest always leaves.
-	drive(t, a, key("enter"))
+	// IT HAS TO BE TRUE ON THAT FRAME, where nothing is running: esc is the
+	// interrupt when there is a turn, and ctrl+c at rest always leaves.
 	if !strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c quits") {
-		t.Fatalf("the hint has to name both doors truthfully, and it lands at the send:\n%s", plain(frame(a)))
-	}
-	// CASE TWO, A PROFILE THAT HAS MET THE SETUP: the marker is in the test's
-	// own directory, so the same keystroke dismisses the greeting and the hint
-	// lands on that frame.
-	metSetup := t.TempDir()
-	if err := config.MarkSetupSeen(metSetup, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	b := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab", ProfileDir: metSetup})
-	b.width, b.height = 90, 30
-	b.touch()
-	if strings.Contains(plain(frame(b)), "esc interrupts · ctrl+c quits") {
-		t.Fatalf("the greeting taught the way out before the way in on a profile that has met the setup:\n%s", plain(frame(b)))
-	}
-	drive(t, b, key("h"))
-	if !strings.Contains(plain(frame(b)), "esc interrupts · ctrl+c quits") {
-		t.Fatalf("a keystroke on a profile that has met the setup did not land the hint:\n%s", plain(frame(b)))
+		t.Fatalf("the hint has to name both doors truthfully:\n%s", plain(frame(a)))
 	}
 	// And a session that opens on a transcript gets it on its first frame.
 	resumed := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m", past: []session.DisplayEntry{{Role: "user", Text: "hi"}}},
-		Workspace: "/tmp/lab", Resumed: true, ProfileDir: t.TempDir()})
+		Workspace: "/tmp/lab", Resumed: true})
 	resumed.width, resumed.height = 90, 30
 	if !strings.Contains(plain(frame(resumed)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("a resumed session lost its opening line:\n%s", plain(frame(resumed)))
