@@ -38,6 +38,11 @@ type PlanTaskRow struct {
 	Status string
 	Seat   string
 	Parent string
+	// Waits is the tasks this row is held behind that are not its parent: the ids
+	// of its hard dependencies (feeds_into/blocks), in store order, and empty
+	// when it waits on nothing but its own parent. A row still `pending` because
+	// of one of these hangs under it and names it ([planWaits]).
+	Waits []string
 	// Steps is the count of the task's own trajectory lines — the steps its
 	// worker recorded, which is what the row's "14 steps" counts.
 	Steps int

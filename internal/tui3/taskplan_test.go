@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -697,5 +698,166 @@ func TestTheLiveStepLeavesThePlanPageWhenTheTaskEnds(t *testing.T) {
 	text = taskSheetText(a)
 	if strings.Contains(text, "go test ./...") {
 		t.Fatalf("the live step outlived the task that was running it:\n%s", text)
+	}
+}
+
+// planDrawnKin is the connector cell the place draws each plan row with, in draw
+// order and keyed by the row's own id — the layout the place actually paints, so
+// a test reads the same string the person does.
+func planDrawnKin(a *app) map[string]string {
+	out := map[string]string{}
+	r := a.tasksFiltered()
+	for _, line := range r.lay(a.taskSheetListWidth()) {
+		if line.kind == tasksLineTask && line.item.plan != nil {
+			out[line.item.entry.ID] = line.kin
+		}
+	}
+	return out
+}
+
+// planUnderKins is the connector cell each live-step under-block rides, in draw
+// order.
+func planUnderKins(a *app) []string {
+	out := make([]string, 0, 1)
+	r := a.tasksFiltered()
+	for _, line := range r.lay(a.taskSheetListWidth()) {
+		if line.kind == tasksLinePlanUnder {
+			out = append(out, line.kin)
+		}
+	}
+	return out
+}
+
+// A TASK HANGS UNDER THE TASK THAT REQUESTED IT. The plan is a graph: the store
+// records every child under its parent (PlanTaskRow.Parent), and the place used
+// to build every row at depth 0, so a person saw a flat list and the only
+// relation drawn was the word `waits:` on a held row.
+func TestThePlanTreeDrawsAChildIndentedUnderItsParent(t *testing.T) {
+	rows := []session.PlanTaskRow{
+		{ID: "t-root", Title: "Root", Status: "claimed"},
+		{ID: "t-alpha", Title: "Alpha", Parent: "t-root", Status: "claimed"},
+	}
+	a, _ := planAppWith(t, rows, nil)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	kin := planDrawnKin(a)
+	root, child := kin["t-root"], kin["t-alpha"]
+	if root == "" || child == "" {
+		t.Fatalf("both rows must be drawn (root %q, child %q)", root, child)
+	}
+	if !strings.HasSuffix(child, tasksKinCont) && !strings.HasSuffix(child, tasksKinLast) {
+		t.Fatalf("the child was not drawn under its parent with a connector: %q", child)
+	}
+	if ansi.StringWidth(child) <= ansi.StringWidth(root) {
+		t.Fatalf("the child sits at its parent's own column (parent %q, child %q)", root, child)
+	}
+	text := taskSheetText(a)
+	ri, ci := strings.Index(text, "Root"), strings.Index(text, "Alpha")
+	if ri < 0 || ci < 0 || ri > ci {
+		t.Fatalf("the child is not drawn below its parent:\n%s", text)
+	}
+}
+
+// A HELD ROW SITS UNDER WHAT IT WAITS ON even when that is not its parent. The
+// store records a hard dependency between two tasks; a row kept `pending`
+// because of one is drawn under the task it waits on, one level in, still
+// wearing `queued · waits: <that task>`.
+func TestAQueuedPlanRowSitsUnderTheTaskItWaitsOn(t *testing.T) {
+	rows := []session.PlanTaskRow{
+		{ID: "t-dep", Title: "Dep", Status: "running"},
+		{ID: "t-alpha", Title: "Alpha", Status: "pending", Waits: []string{"t-dep"}},
+	}
+	a, _ := planAppWith(t, rows, nil)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	kin := planDrawnKin(a)
+	dep, child := kin["t-dep"], kin["t-alpha"]
+	if dep == "" || child == "" {
+		t.Fatalf("both rows must be drawn (dep %q, child %q)", dep, child)
+	}
+	if !strings.HasSuffix(child, tasksKinCont) && !strings.HasSuffix(child, tasksKinLast) {
+		t.Fatalf("the held row was not drawn under the task it waits on: %q", child)
+	}
+	if ansi.StringWidth(child) <= ansi.StringWidth(dep) {
+		t.Fatalf("the held row sits at the waiting-on task's own column (dep %q, child %q)", dep, child)
+	}
+	line, ok := planLine(taskSheetText(a), "Alpha")
+	if !ok {
+		t.Fatal("the held row was not drawn")
+	}
+	if !strings.Contains(line, "queued · waits: Dep") {
+		t.Fatalf("the held row reads %q, want `queued · waits: Dep`", line)
+	}
+}
+
+// THE LIVE STEP RIDES THE NODE'S OWN COLUMN. A running row's under-block — the
+// `$ <command>` step line and the `N steps · $` figures under it — is drawn at
+// the depth the row itself sits at, never at column zero.
+func TestThePlanTreeDrawsTheLiveStepAtTheNodesIndentation(t *testing.T) {
+	child := livePlanRow()
+	child.Parent = "t-root"
+	rows := []session.PlanTaskRow{
+		{ID: "t-root", Title: "Root", Status: "running"},
+		child,
+	}
+	a, _ := planAppWith(t, rows, nil)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	kin := planDrawnKin(a)
+	root, kid := kin["t-root"], kin["t-alpha"]
+	if root == "" || kid == "" {
+		t.Fatalf("both rows must be drawn (root %q, kid %q)", root, kid)
+	}
+	under := planUnderKins(a)
+	if len(under) == 0 {
+		t.Fatal("the running node's live step was not drawn")
+	}
+	for _, kin := range under {
+		if ansi.StringWidth(kin) != ansi.StringWidth(kid) {
+			t.Fatalf("the live step sits at %q, want the node's own column %q", kin, kid)
+		}
+		if ansi.StringWidth(kin) <= ansi.StringWidth(root) {
+			t.Fatalf("the live step is not indented under the node: %q", kin)
+		}
+	}
+	if text := taskSheetText(a); !strings.Contains(text, "$ git grep -n RateLimit internal/api") {
+		t.Fatalf("the live step's command is not drawn:\n%s", text)
+	}
+}
+
+// STEERING IS UNCHANGED BY THE TREE: a note left on a CHILD from its page still
+// lands through PlanNote, on the child's own id.
+func TestANoteOnAPlanChildStillLandsThroughPlanNote(t *testing.T) {
+	alpha := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Parent: "t-root", Status: "claimed"}
+	rows := []session.PlanTaskRow{{ID: "t-root", Title: "Root", Status: "claimed"}, alpha}
+	pages := map[string]session.PlanTaskPage{"t-alpha": {Row: alpha, Description: "the work order"}}
+	a, fake := planAppWith(t, rows, pages)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	var want session.TaskIndexEntry
+	for _, item := range a.tasksFiltered().items {
+		if item.plan != nil && item.entry.ID == "t-alpha" {
+			want = item.entry
+		}
+	}
+	if want.ID == "" {
+		t.Fatal("the child row was not on the page to point at")
+	}
+	a.taskSheetPointAt(want)
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !a.taskSheet.planOn {
+		t.Fatal("enter over the child row did not open its page")
+	}
+	for _, r := range "a longer sleep" {
+		drive(t, a, key(string(r)))
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	wantNote := planCall{id: "t-alpha", text: "a longer sleep"}
+	if len(fake.noted) != 1 || fake.noted[0] != wantNote {
+		t.Fatalf("enter wrote %v, want one note %+v", fake.noted, wantNote)
 	}
 }
