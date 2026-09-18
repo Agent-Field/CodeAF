@@ -16,6 +16,7 @@
 # Output is key=value lines, grouped by phase=:
 #
 #   phase=meta      what was run, where, on what — the run's reproducibility.
+#                   load1/load5/load15 say what the machine was doing at launch.
 #   phase=startup   best-of-N wall clock for `--version`: hyperfine when it is on
 #                   PATH, a `date +%s%3N` loop when it is not. tool= says which.
 #   phase=frame     milliseconds from launch until the pane first paints a
@@ -153,6 +154,14 @@ fi
 # ── small helpers ────────────────────────────────────────────────────────────
 
 now_ms() { date +%s%3N; }
+
+# loadavg reads the machine's one-, five- and fifteen-minute load averages with a
+# builtin read, no fork. A millisecond figure taken under contention is worthless
+# and nothing else in the run says what the box was doing, so every timing phase
+# is bracketed by a reading: meta, the startup window, the idle window.
+loadavg() {
+  read -r LOAD1 LOAD5 LOAD15 _ < /proc/loadavg 2>/dev/null || { LOAD1=-1; LOAD5=-1; LOAD15=-1; }
+}
 
 # kv prints one key=value pair on the current phase's line format.
 kv() { printf 'name=%s phase=%s %s\n' "$NAME" "$PHASE" "$*"; }
@@ -511,6 +520,8 @@ kv "startup_warmup=$STARTUP_WARMUP"
 kv "clk_tck=$CLK_TCK"
 kvq kernel "$(uname -sr)"
 kv cpus="$(nproc 2>/dev/null || echo 0)"
+loadavg
+kv "load1=$LOAD1" "load5=$LOAD5" "load15=$LOAD15"
 kvq tmux_version "$("${TMUX[@]}" -V 2>/dev/null | head -1)"
 kv perf_event_paranoid="$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo unknown)"
 kv "trust_mode=$TRUST"
@@ -534,6 +545,8 @@ STARTUP_MEAN=-1
 STARTUP_STDDEV=-1
 STARTUP_EXIT=-1
 STARTUP_LINE="$(version_line)"
+loadavg
+kv "startup_load1_before=$LOAD1"
 
 if command -v hyperfine >/dev/null 2>&1; then
   STARTUP_TOOL=hyperfine
@@ -582,6 +595,8 @@ else
   rm -f "$tmp_samples"
 fi
 
+loadavg
+kv "startup_load1_after=$LOAD1"
 kv "tool=$STARTUP_TOOL"
 kv "runs=$STARTUP_RUNS"
 kv "warmup=$STARTUP_WARMUP"
@@ -792,6 +807,8 @@ kv procs_at_frame="$(tree_pids "$(pane_pid)" | wc -l)"
 
 # ── phase 3: idle cost over the window ───────────────────────────────────────
 PHASE=idle
+loadavg
+kv "idle_load1_before=$LOAD1"
 sleep "$SETTLE_SECONDS"
 [ -n "$(pane_pid)" ] || fail no-pane-pid
 
@@ -904,6 +921,8 @@ done
 
 WINDOW_T1="$(now_ms)"
 WINDOW_MS=$(( WINDOW_T1 - WINDOW_T0 ))
+loadavg
+kv "idle_load1_after=$LOAD1"
 
 refresh_tree
 sum_live
