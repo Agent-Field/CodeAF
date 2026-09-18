@@ -246,6 +246,107 @@ func TestADoorOnAColdCacheFallsToTheTableRowAndSaysSo(t *testing.T) {
 	}
 }
 
+// A KEY FROM THE ENVIRONMENT IS THE KEY THE SEAT IS RESOLVED WITH. The
+// provider key is supplied through the environment, never written into the
+// profile, and the seat must still be computed off the cached rows: the run's
+// catalog is the same one every door shares, and a key the environment holds
+// is a key [config.LoadKeyless] holds too. The seat names the `learned` rung
+// under the learn pick, and it is the id the run actually sits somebody in.
+func TestAnErrandWhoseKeyComesFromTheEnvironmentNamesTheLearnedRung(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	t.Setenv(config.ModelEnv, "")
+	t.Setenv(config.PlanModelEnv, "")
+	// The key is in the ENVIRONMENT and nowhere in the profile — which is the
+	// one arrangement the seat has to survive.
+	t.Setenv(config.APIKeyEnv, "sk-env-only")
+	if err := config.SetCrewPick(script.dir, config.CrewPickLearn); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Remember(catalog.Options{Dir: script.dir, BaseURL: script.server.URL}, seatPickRows()); err != nil {
+		t.Fatal(err)
+	}
+	seatTheTestCatalog(t)
+
+	var mu sync.Mutex
+	var built []string
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:    "write the release note and include the migration steps",
+		timeout: 60 * time.Second,
+		asJSON:  true,
+		stdout:  &stdout,
+		stderr:  &stderr,
+		newClient: func(settings config.Config, model string) (*liveClient, error) {
+			mu.Lock()
+			built = append(built, model)
+			mu.Unlock()
+			return script.client(settings, model)
+		},
+	})
+	if err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	if !strings.Contains(stderr.String(), "(crew balanced, learned)") {
+		t.Fatalf("the opening lines never named the learned rung:\n%s", stderr.String())
+	}
+	var outcome headlessOutcome
+	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
+		t.Fatalf("--json did not print one object: %v\n%s", err, stdout.String())
+	}
+	if outcome.ModelSource != "crew balanced, learned" {
+		t.Fatalf("--json named the rung %q, want the learned rung", outcome.ModelSource)
+	}
+	cachedRowHeld(t, outcome.Model)
+
+	mu.Lock()
+	models := append([]string(nil), built...)
+	mu.Unlock()
+	for _, model := range models {
+		if model == outcome.Model {
+			return
+		}
+	}
+	t.Fatalf("no client was built on the learned seat %q; the run used %v", outcome.Model, models)
+}
+
+// AND WITH NO KEY ANYWHERE. The seat line is part of the door's promise: it is
+// printed before the run reaches a provider, so a profile with no key still
+// says which models it meant to use — and the seats still come off the cached
+// rows, which need no key to read. The keyless read is the second rung here,
+// under the run's own settings, so the ordering this pins is exactly the one
+// the seating picked.
+func TestAnErrandWithNoKeySeatsTheCachedRowsThenSaysTheKeyIsMissing(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	t.Setenv(config.ModelEnv, "")
+	t.Setenv(config.PlanModelEnv, "")
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv("OPENAI_API_KEY", "")
+	if err := config.SetCrewPick(script.dir, config.CrewPickLearn); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Remember(catalog.Options{Dir: script.dir, BaseURL: script.server.URL}, seatPickRows()); err != nil {
+		t.Fatal(err)
+	}
+	seatTheTestCatalog(t)
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:    "write the release note and include the migration steps",
+		timeout: 60 * time.Second,
+		stdout:  &stdout,
+		stderr:  &stderr,
+	})
+	if err == nil || !strings.Contains(err.Error(), config.APIKeyEnv) {
+		t.Fatalf("a keyless errand must end on the missing-key sentence, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "(crew balanced, learned)") {
+		t.Fatalf("the seat line must be printed before the key is missed:\n%s", stderr.String())
+	}
+}
+
 // THE ERRAND'S RECEIPT IS THE PART A HARNESS READS. A profile with the pick
 // off the table and a catalog cached beside it runs on the computed ids, and
 // both places the run names its rungs — the opening stderr lines and the
