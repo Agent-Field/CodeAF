@@ -5573,3 +5573,14 @@ several tasks at once. Small work it simply does itself.
 
 With the variable unset nothing changes: quick tasks work as *What a quick task is*
 describes.
+
+## what are the what, since, now and next lines?
+
+These four lines are a short account of a run. **what** is your goal in your
+own words. **since** says what changed since you last looked, and is left out
+when nothing changed. **now** says what is happening now, or how the run ended.
+**next** says what comes after and whether anything needs you.
+
+The worker model writes these lines. It refreshes them only when the shape of
+the run has moved, rather than every time you look. Without a model key the
+lines are absent; the task facts remain available on their own.

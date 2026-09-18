@@ -319,7 +319,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		}
 		landing = RunLanding{}
 	}
-	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(summary, landing)); err != nil {
+	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing)); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's outcome note failed: " + err.Error())
 		}
@@ -338,7 +338,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 // deliverBeltRunLanding writes the run's digest into the conversation record.
 // A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED.
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
-	line := beltRunOutcomeNote(summary, landing)
+	line := beltRunOutcomeNote(run.store, run.root, summary, landing)
 	if task := run.store.Task(run.root); landingOwesAnswer(task) {
 		document := owedLandingDocument(task, line)
 		note := wakeNote(document.text())
@@ -416,14 +416,20 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 
 // beltRunOutcomeNote is the one line a run's own page carries about how it
 // ended: the engine's outcome word and where the work went, or the sentence that
-// says why it did not.
-func beltRunOutcomeNote(summary RunSummary, landing RunLanding) string {
+// says why it did not. The last stored run reading supplies its Now sentence;
+// without one this remains the landing digest that predates run summaries.
+func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding) string {
 	parts := []string{summary.Outcome}
 	if result := strings.TrimSpace(summary.Result); result != "" {
 		parts = append(parts, result)
 	}
 	if line := beltLandingLine(landing); line != "" {
 		parts = append(parts, line)
+	}
+	if stored, ok := readRunSummary(store, rootID); ok {
+		if now := strings.TrimSpace(stored.Summary.Now); now != "" {
+			parts = append(parts, now)
+		}
 	}
 	return strings.Join(parts, " · ")
 }
