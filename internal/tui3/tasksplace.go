@@ -1487,6 +1487,12 @@ func (r tasksReading) planRows(width int, pal palette) []string {
 	plan := r
 	plan.items, plan.held, plan.whole = items, len(items), len(items)
 	plan.chats, plan.shape = nil, nil
+	// THE RAIL HAS NO FOLDS OF ITS OWN TO OPEN. On the page everything opens shut
+	// ([tasksReading.opens]) and a person opens the conversation they want; the
+	// rail is already inside that conversation, so its run is drawn open. A
+	// family's finished rows still fold to their one line, which is the tree's
+	// own rule and not a fold a person sets.
+	plan.unfolded = true
 	lines := plan.lay(width)
 	out := make([]string, 0, len(lines))
 	for i := range lines {

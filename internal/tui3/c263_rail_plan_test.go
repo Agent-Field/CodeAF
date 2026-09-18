@@ -63,3 +63,21 @@ func TestRailPlanProjectionLeavesNoPlanReadingUnchanged(t *testing.T) {
 		t.Fatalf("asking for a plan projection changed the legacy reading\nbefore=%q\nafter=%q", before, after)
 	}
 }
+
+// THE RAIL DRAWS THE TREE IN A CONVERSATION NOBODY HAS OPENED THE TASKS PLACE
+// IN. The person sits in the chat; the tasks place is a room they may never walk
+// into, and a rail that waited for that walk would show no tree in the one
+// place the owner asked for it.
+func TestRailPlanDrawsWithoutTheTasksPlaceEverOpening(t *testing.T) {
+	a, _ := planAppWith(t, c263PlanRows(), nil)
+	a.width, a.height, a.railWide = 120, 30, true
+	// The paint clock's own beat, which is what moves the stamp the reading's
+	// freshness hangs on ([app.refreshElsewhere], [tasksPlace.regroup]).
+	a.refreshElsewhere()
+	got := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
+	for _, word := range []string{"rewrite the auth", "implement handler", "schema migration", "2/4"} {
+		if !strings.Contains(got, word) {
+			t.Fatalf("the rail of a conversation that never opened the tasks place lacks %q:\n%s", word, got)
+		}
+	}
+}
