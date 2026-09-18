@@ -439,10 +439,20 @@ func doErrand(request doRequest) error {
 	//
 	// The catalog is seated under the ladder first, because a tier row may say
 	// `auto` and that word is answered from the rows this process already holds
-	// (useAutoSeats). It is read keyless: a run with no key fails further down
-	// with a sentence about the key, and a seat that fell to the table row on
-	// the way there would report a model this run never meant to use.
-	if settings, err := config.LoadKeyless(); err == nil {
+	// (useAutoSeats). The seating read is the one the RUN will use — the key
+	// included, since the environment outranks the profile file — because
+	// [newSharedCatalog] is built once: a catalog seated from a KEYLESS read
+	// would stay keyless for the whole process, and a run that meant to call
+	// with a key would resolve its seats against a catalog that never fetched
+	// its rows. A run with no key anywhere still seats keyless here — the
+	// keyless load is the second rung, kept so a profile with no key prints its
+	// seat line before the missing-key sentence — and a warm cache is read with
+	// or without a key.
+	settings, err := config.Load()
+	if err != nil {
+		settings, err = config.LoadKeyless()
+	}
+	if err == nil {
 		useAutoSeats(settings)
 	}
 	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
