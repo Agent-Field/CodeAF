@@ -513,12 +513,21 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		round = growthRound(rounds, lineage)
 	}
 	// How near the wall is, read ONCE, because two rules below turn on it and a
-	// pair of reads taken a model call apart could disagree. Zero pace is a job
-	// that has not shown one, and no deadline is a run with no wall at all;
-	// both answer "not near", which refuses nothing.
+	// pair of reads taken a model call apart could disagree. A job that has
+	// shown its pace is judged by it. A job that has not is read against the
+	// leaf that just overran: it has been running for its elapsed life, and a
+	// round replanning the same remainder on the same machine can hardly cost
+	// less. A job with nothing run and nothing measured has no such estimate
+	// ([roundFloor] answers zero), so its first round is admitted — refusing a
+	// round that cannot be costed produces nothing. No deadline is a run with no
+	// wall at all, which refuses nothing.
 	wallNear := false
 	if deadline, ok := ctx.Deadline(); ok {
-		if pace := jobPace(graph, rounds, journal); pace > 0 && time.Until(deadline) < pace {
+		pace := jobPace(graph, rounds, journal)
+		if pace == 0 {
+			pace = roundFloor(req.Node)
+		}
+		if pace > 0 && time.Until(deadline) < pace {
 			wallNear = true
 		}
 	}
@@ -628,9 +637,14 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	//
 	//     The bound is DERIVED and not typed: how long a round of this job
 	//     takes is the job's own journal read against the clock it is actually
-	//     running under. A job with no measured round yet is never refused
-	//     here, which is the fail-safe direction — see SETTLEMENT.md §3 for
-	//     what stopping early costs. PERF.md carries the derivation.
+	//     running under. A job with no measured round yet is read against the
+	//     elapsed life of the leaf that just overran, so a round the wall cannot
+	//     hold is handed over rather than killed mid-flight. A job with nothing
+	//     run and nothing measured has no estimate at all, and its first round
+	//     is admitted rather than refused — a round that cannot be costed buys
+	//     nothing by being refused, and refusing it took the do door's own first
+	//     round with it. See PERF.md for the derivation and SETTLEMENT.md §3 for
+	//     what stopping early costs.
 	if wallNear {
 		return refuse(CauseOutOfWall, RefusedOutOfWall)
 	}
@@ -1280,6 +1294,37 @@ func readingPace(graph *store.Store, jobRoot string) time.Duration {
 		}
 	}
 	return longest
+}
+
+// roundFloor is how long a round of a job that has not shown its pace takes —
+// the conservative estimate the wall is read against when [jobPace] answers
+// zero. It answers zero itself when there is nothing to estimate from, and a
+// round with no estimate is never refused (see below).
+//
+// ds1 bought a first replan round at 40m22s of a 45m wall and awilix bought one
+// the same way. Both ran long, both were killed by the clock mid-round, and
+// both were released with their root unlanded and no gate ever cut, so broken
+// work shipped. Zero pace used to mean "never refuse", which is right about a
+// job nobody has measured and wrong about one this near its wall.
+//
+// The estimate is the leaf that just overran and its elapsed runtime: it has
+// been working for that long and has not finished, and the round that replaces
+// it replans the same remainder on the same machine, so it can hardly cost
+// less. Where the leaf carries no start — a job's genuine FIRST round, with
+// nothing run and nothing measured — there is no evidence a round would
+// overrun, and a round that cannot be costed is admitted rather than refused:
+// refusing a first round buys nothing and produces nothing, and it took the do
+// door's own first round with it (every do and headless run is under a wall
+// shorter than any fixed floor). The wall still refuses the moment there IS
+// evidence — a measured pace, or an overrun leaf whose elapsed life the wall
+// cannot hold.
+func roundFloor(node store.Node) time.Duration {
+	if !node.StartedAt.IsZero() {
+		if elapsed := time.Since(node.StartedAt); elapsed > 0 {
+			return elapsed
+		}
+	}
+	return 0
 }
 
 // growthRound is the next round number for a lineage, counted from the

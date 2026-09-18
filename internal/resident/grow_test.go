@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -497,5 +498,103 @@ func TestAGroundedRoundStillObeysTheCaps(t *testing.T) {
 	}
 	if verdict.Allow || verdict.Cause != CauseCeiling {
 		t.Fatalf("a grounded round walked through the ceiling: %+v", verdict)
+	}
+}
+
+// A FIRST REPLAN ROUND WITH NO MEASURED PACE STILL HAS A FLOOR.
+//
+// ds1's round was admitted at 40m22s of a 45m wall and awilix ended the same
+// way, because jobPace answers zero for a job that has not shown one and the
+// wall rule read zero as "never refuse". The round then ran long, the clock
+// killed it mid-flight, the job was released having never landed its root and
+// NO gate was ever cut — so broken work shipped. A job with no measured pace
+// now falls back to the elapsed life of the leaf that just overran: a round
+// replanning the same remainder on the same machine can hardly be shorter.
+// Where that start was never stamped there is no elapsed to read, and the
+// floor is the one documented number. The bias is kept — the round is refused
+// only when the wall cannot hold even the floor — and a job that HAS shown its
+// pace is judged by it, unchanged.
+func TestAFirstRoundWithNoPaceIsRefusedWhenTheWallCannotHoldIt(t *testing.T) {
+	root := inkWorkspace(t)
+	graph := inkJob(t, root)
+	node, _, _ := graph.Node("task-2")
+
+	var closedJob, keptNode, reason string
+	SetJobCloser(func(jobRoot, keep, words string) int {
+		closedJob, keptNode, reason = jobRoot, keep, words
+		return 1
+	})
+	t.Cleanup(func() { SetJobCloser(nil) })
+
+	// The leaf that just overran has been running for an hour, and the wall has
+	// five milliseconds left to fit another round of that length into.
+	overrun := node
+	overrun.StartedAt = time.Now().Add(-time.Hour)
+	tight, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	verdict, err := growJob(tight, graph, nil, GrowRequest{
+		JobRoot: "task-2", Node: overrun, Lineage: "task-2", Reason: GrowOverrun,
+		Round: 1, Measured: true, Artifacts: scratchRun(t, root, "src/index.ts")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verdict.Allow || verdict.Cause != CauseOutOfWall {
+		t.Fatalf("a first round with no pace was bought against five milliseconds: %+v", verdict)
+	}
+	if closedJob != "task-2" || keptNode != "task-2" || reason == "" {
+		t.Fatalf("the refusal left the job's queued work running: job=%q keep=%q reason=%q",
+			closedJob, keptNode, reason)
+	}
+
+	// The same leaf against a wall with an hour left buys the round — a floor
+	// shorter than the wall refuses nothing.
+	roomy, cancelRoomy := context.WithTimeout(context.Background(), time.Hour)
+	defer cancelRoomy()
+	waited := node
+	waited.StartedAt = time.Now().Add(-10 * time.Minute)
+	verdict, err = growJob(roomy, graph, nil, GrowRequest{
+		JobRoot: "task-2", Node: waited, Lineage: "task-2", Reason: GrowOverrun,
+		Round: 1, Measured: true, Artifacts: scratchRun(t, root, "src/index.ts")})
+	if err != nil || !verdict.Allow {
+		t.Fatalf("a first round was refused with an hour left to run it: %+v %v", verdict, err)
+	}
+
+	// A leaf whose start was never stamped — a genuine first round, nothing run
+	// and nothing measured — has no estimate to read, so the wall refuses it
+	// nothing: a round that cannot be costed is admitted rather than handed
+	// over, because refusing a first round buys nothing and produces nothing.
+	// This is the do door's own first round; refusing it here regressed every
+	// do and headless run under a short wall.
+	unstamped := node
+	unstamped.StartedAt = time.Time{}
+	tightAgain, cancelAgain := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancelAgain()
+	verdict, err = growJob(tightAgain, graph, nil, GrowRequest{
+		JobRoot: "task-2", Node: unstamped, Lineage: "task-2", Reason: GrowOverrun,
+		Round: 1, Measured: true, Artifacts: scratchRun(t, root, "src/index.ts")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !verdict.Allow {
+		t.Fatalf("an unstamped first round with no measured pace was refused: %+v", verdict)
+	}
+
+	// And a job that has shown its pace is judged by it, not by the floor: two
+	// rounds journaled a minute apart leave a pace of a minute, and an hour of
+	// wall easily holds it.
+	measured := inkJob(t, root)
+	measuredNode, _, _ := measured.Node("task-2")
+	for _, name := range []string{"src/grid.ts", "src/box.ts"} {
+		request := GrowRequest{JobRoot: "task-2", Node: measuredNode, Lineage: "task-2",
+			Reason: GrowOverrun, Round: 1, Measured: true,
+			Artifacts: scratchRun(t, root, name)}
+		admitGrowth(measured, request, GrowVerdict{Allow: true, Round: 1}, 2)
+		time.Sleep(60 * time.Millisecond)
+	}
+	verdict, err = growJob(roomy, measured, nil, GrowRequest{
+		JobRoot: "task-2", Node: measuredNode, Lineage: "task-2", Reason: GrowOverrun,
+		Round: 3, Measured: true, Artifacts: scratchRun(t, root, "src/index.ts")})
+	if err != nil || !verdict.Allow {
+		t.Fatalf("a job with a measured pace and an hour left was refused: %+v %v", verdict, err)
 	}
 }
