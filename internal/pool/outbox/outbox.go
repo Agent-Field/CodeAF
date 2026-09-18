@@ -11,6 +11,13 @@
 // is what keeps the file append-only while a cap on pending rows still drops
 // from the old end and a mark outlives closing the outbox and opening the same
 // path again.
+//
+// Append-only also means the file grows a line for every row ever judged, and
+// a long-lived run would read the whole of that back on every Send and every
+// Pending. So a Send whose file has grown mostly into rows it can no longer
+// need rewrites it to the pending rows alone — through a temporary file in the
+// same directory, never in place — and the markers for rows that are gone go
+// with the rows.
 package outbox
 
 import (
@@ -34,6 +41,12 @@ import (
 // DefaultMaxPending is the cap on pending rows when Outbox.MaxPending is zero
 // or below.
 const DefaultMaxPending = 5000
+
+// compactFloor is the number of lines below which a Send does not bother to
+// rewrite the file: a handful of lines costs less to read than to copy, and
+// the markers of a run that has judged a few thousand rows are what a rewrite
+// is worth. See [Outbox.compactLocked] for what a rewrite does and when.
+const compactFloor = 1024
 
 const (
 	rowSchema  = 1
@@ -116,7 +129,7 @@ func Open(path string) (*Outbox, error) {
 	o := &Outbox{path: path, f: f}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	rows := o.load()
+	rows, _ := o.load()
 	o.pend = make([]string, 0, len(rows))
 	for _, r := range rows {
 		o.pend = append(o.pend, r.Nonce)
@@ -184,7 +197,8 @@ func (o *Outbox) Append(payload json.RawMessage) error {
 func (o *Outbox) Pending() []Row {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.load()
+	rows, _ := o.load()
+	return rows
 }
 
 // Send hands the pending rows to dest and answers with how many rows it
@@ -218,12 +232,24 @@ func (o *Outbox) Send(ctx context.Context, dest string) (int, error) {
 		o.mu.Unlock()
 		return 0, errors.New("outbox: outbox is closed")
 	}
-	rows := o.load()
+	rows, lines := o.load()
 	pend := make([]string, len(rows))
 	for i, r := range rows {
 		pend[i] = r.Nonce
 	}
 	o.pend = pend
+	// The file carried every row the outbox ever judged, so a run that sends
+	// often grows it without bound and every Send reads the whole of it. Send is
+	// where that is worth undoing: it is the read that would pay for the whole
+	// file, sendMu holds every other Send out while this one runs its first
+	// POST, and the file is rewritten only once it is mostly dead — more lines
+	// than twice the rows still pending — so each rewrite is paid for by the
+	// rows it drops and a run's own path meets one at most once per floor's
+	// worth of rows. A rewrite that fails is not a failed Send: the rows stay
+	// pending and the next Send tries again.
+	if lines > compactFloor && lines > 2*len(pend) {
+		_ = o.compactLocked(rows)
+	}
 	o.mu.Unlock()
 
 	if len(rows) == 0 {
@@ -372,22 +398,26 @@ func (o *Outbox) dropPendingLocked(marks []mark) {
 }
 
 // load reads the outbox file and answers the rows still pending, in file
-// order. A line that does not parse, or that is not a row, is skipped, and a
-// file that cannot be read answers as no rows at all. The caller holds mu.
+// order, and the number of lines the file held — rows, markers and lines that
+// parsed as neither. A line that does not parse, or that is not a row, is
+// skipped, and a file that cannot be read answers as no rows and no lines at
+// all. The caller holds mu.
 //
 // EACH MARKER RETIRES ONE ROW, oldest first, wherever the marker sits — see
 // [Outbox.dropPendingLocked] for why the count rather than the name: a nonce
 // is what the caller's own [Outbox.Rand] made of sixteen bytes, and a reader
 // that took a marker as a name would answer that a file holding two rows under
 // one nonce and one marker holds nothing at all.
-func (o *Outbox) load() []Row {
+func (o *Outbox) load() ([]Row, int) {
 	b, err := os.ReadFile(o.path)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 	var rows []Row
 	retired := make(map[string]int)
+	lines := 0
 	for len(b) > 0 {
+		lines++
 		line := b
 		if i := bytes.IndexByte(b, '\n'); i >= 0 {
 			line, b = b[:i], b[i+1:]
@@ -422,7 +452,68 @@ func (o *Outbox) load() []Row {
 		}
 		kept = append(kept, r)
 	}
-	return kept
+	return kept, lines
+}
+
+// compactLocked rewrites the outbox file to hold exactly the pending rows,
+// dropping every marker and every row a marker retired with them — a marker
+// means nothing once its row is gone. It writes a temporary file in the same
+// directory, fsyncs it, and renames it over the original before reopening the
+// handle, never truncating in place: a crash before the rename leaves the old
+// file whole, and a crash after it leaves a file holding the same pending
+// rows, so a row is never lost and a retired row never comes back to be sent
+// twice. The caller holds mu, and Send calls it before its first POST, so no
+// Send of this process is between a POST and its markers. Its error is Send's
+// to ignore — the file is either untouched or already compacted.
+//
+// A codeaf that already holds the old file keeps writing to the inode the
+// rename unlinked, and those appends are lost. The profile is one writer's to
+// hold across processes, which is the assumption the append-only file already
+// rests on; nothing here reaches past it.
+func (o *Outbox) compactLocked(rows []Row) error {
+	tmp, err := os.CreateTemp(filepath.Dir(o.path), filepath.Base(o.path)+".compact-")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			tmp.Close()
+			os.Remove(tmpName)
+		}
+	}()
+	for _, r := range rows {
+		line, err := rowLine(r)
+		if err != nil {
+			return err
+		}
+		if _, err := tmp.Write(line); err != nil {
+			return err
+		}
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, o.path); err != nil {
+		return err
+	}
+	renamed = true
+	nf, err := os.OpenFile(o.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, fileMode)
+	if err != nil {
+		// The file on disk is the compacted one and holds every pending row, so
+		// the work is done; only the handle cannot be had. Refuse writes rather
+		// than write to the inode the rename unlinked.
+		o.f.Close()
+		o.f = nil
+		return err
+	}
+	o.f.Close()
+	o.f = nf
+	return nil
 }
 
 // sendHTTP posts the rows to dest, at most maxBatch per POST, and marks each
