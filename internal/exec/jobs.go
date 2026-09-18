@@ -81,6 +81,9 @@ type backgroundJob struct {
 	command  string
 	dir      string
 	timeout  *time.Timer
+	// group is the process group recorded at launch, so every teardown signal
+	// can be checked against the identity the leader had then.
+	group processgroup.Group
 
 	state            jobState
 	exitCode         int
@@ -197,7 +200,8 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 		id: id, cmd: cmd, ctx: jobCtx, cancel: cancel,
 		logPath: relative, fullPath: full, started: started,
 		command: command, dir: r.workspace.Root(),
-		done: make(chan struct{}), state: jobRunning,
+		group: processgroup.CaptureGroup(cmd.Process.Pid),
+		done:  make(chan struct{}), state: jobRunning,
 	}
 	r.jobs[id] = job
 	job.timeout = time.AfterFunc(duration, func() {
@@ -256,13 +260,7 @@ func (r *jobRegistry) wait(job *backgroundJob) {
 			r.settleFaulted(job)
 		}
 	}()
-	_ = job.cmd.Wait()
-	// A shell can exit after detaching a child into its process group. File
-	// output means Wait rightly does not block on that child, so the sole waiter
-	// also cleans the remaining group before publishing the terminal state.
-	if !r.markWaited(job) {
-		terminateDetachedGroup(job.cmd.Process.Pid)
-	}
+	r.reapShell(job)
 	job.cancel()
 	if job.timeout != nil {
 		job.timeout.Stop()
@@ -435,8 +433,8 @@ func (request *ServiceRequest) Stop() {
 	if request == nil || !request.settle() {
 		return
 	}
-	if pid, done, running := request.registry.releaseKeep(request.job); running {
-		terminateProcessGroup(pid, done)
+	if group, done, running := request.registry.releaseKeep(request.job); running {
+		terminateProcessGroup(group, done)
 	}
 }
 
@@ -464,15 +462,15 @@ func (r *jobRegistry) promote(job *backgroundJob, id int) {
 
 // releaseKeep drops the keep and, when the shell is still running, records the
 // stop and hands back what terminating its group needs.
-func (r *jobRegistry) releaseKeep(job *backgroundJob) (pid int, done <-chan struct{}, running bool) {
+func (r *jobRegistry) releaseKeep(job *backgroundJob) (group processgroup.Group, done <-chan struct{}, running bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	job.keepRequested = false
 	if job.state != jobRunning {
-		return 0, nil, false
+		return processgroup.Group{}, nil, false
 	}
 	job.stopRequested = true
-	return job.cmd.Process.Pid, job.done, true
+	return job.group, job.done, true
 }
 
 func (r *jobRegistry) waitFor(id int, duration time.Duration) error {
@@ -505,35 +503,35 @@ func (r *jobRegistry) waitHandle(id int) (done <-chan struct{}, running bool, er
 }
 
 func (r *jobRegistry) kill(id int) error {
-	pid, done, running, err := r.markStopped(id)
+	group, done, running, err := r.markStopped(id)
 	if err != nil {
 		return err
 	}
 	if !running {
 		return nil
 	}
-	terminateProcessGroup(pid, done)
+	terminateProcessGroup(group, done)
 	return nil
 }
 
 // markStopped records the stop request and hands back what terminating the
 // group needs. running is false when the job has already landed.
-func (r *jobRegistry) markStopped(id int) (pid int, done <-chan struct{}, running bool, err error) {
+func (r *jobRegistry) markStopped(id int) (group processgroup.Group, done <-chan struct{}, running bool, err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	job := r.jobs[id]
 	if job == nil {
-		return 0, nil, false, fmt.Errorf("no background job %d", id)
+		return processgroup.Group{}, nil, false, fmt.Errorf("no background job %d", id)
 	}
 	if job.state != jobRunning {
-		return 0, nil, false, nil
+		return processgroup.Group{}, nil, false, nil
 	}
 	job.stopRequested = true
-	return job.cmd.Process.Pid, job.done, true, nil
+	return job.group, job.done, true, nil
 }
 
-func terminateProcessGroup(pid int, done <-chan struct{}) {
-	_ = processgroup.Terminate(pid)
+func terminateProcessGroup(group processgroup.Group, done <-chan struct{}) {
+	_ = group.Terminate()
 	timer := time.NewTimer(jobTerminateGrace)
 	select {
 	case <-done:
@@ -541,26 +539,27 @@ func terminateProcessGroup(pid int, done <-chan struct{}) {
 		return
 	case <-timer.C:
 	}
-	_ = processgroup.Kill(pid)
+	_ = group.Kill()
 	<-done
 }
 
-func terminateDetachedGroup(pid int) {
-	if !processGroupAlive(pid) {
+// terminateDetachedGroup cleans up whatever a job left in its process group
+// after its shell exited. Every signal is checked against the group's recorded
+// identity, and the leader is still a zombie while this runs (see reapShell), so
+// the check is authoritative: a pid the kernel has since handed to somebody else
+// is never signalled.
+func terminateDetachedGroup(group processgroup.Group) {
+	if !group.Alive() {
 		return
 	}
-	_ = processgroup.Terminate(pid)
+	_ = group.Terminate()
 	deadline := time.Now().Add(jobTerminateGrace)
-	for processGroupAlive(pid) && time.Now().Before(deadline) {
+	for group.Alive() && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if processGroupAlive(pid) {
-		_ = processgroup.Kill(pid)
+	if group.Alive() {
+		_ = group.Kill()
 	}
-}
-
-func processGroupAlive(pid int) bool {
-	return processgroup.Alive(pid)
 }
 
 func (r *jobRegistry) read(id int) Result {
@@ -824,7 +823,7 @@ func (r *jobRegistry) sweptCount() int {
 // survivor unaccounted for.
 func reap(jobs []*backgroundJob) {
 	for _, job := range jobs {
-		_ = processgroup.Terminate(job.cmd.Process.Pid)
+		_ = job.group.Terminate()
 	}
 	deadline := time.NewTimer(jobTerminateGrace)
 	for _, job := range jobs {
@@ -835,7 +834,7 @@ func reap(jobs []*backgroundJob) {
 				select {
 				case <-survivor.done:
 				default:
-					_ = processgroup.Kill(survivor.cmd.Process.Pid)
+					_ = survivor.group.Kill()
 				}
 			}
 			for _, survivor := range jobs {

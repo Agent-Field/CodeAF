@@ -59,6 +59,9 @@ func TestTheDocumentReadsBack(t *testing.T) {
 	if kind, ok := x.Kind("role_rating"); !ok || kind != "gaussian" {
 		t.Errorf("kind is %q, %v", kind, ok)
 	}
+	if got := x.Unit("role_rating"); got != "elo" {
+		t.Errorf("unit is %q, want elo", got)
+	}
 	c, ok := x.Cell("role_rating", "planner", "z-ai/glm-5.3", nil)
 	if !ok {
 		t.Fatal("the example cell was not found")
@@ -188,6 +191,41 @@ func TestMetricsAreSortedAndCellsOfUndeclaredMetricsAreSkipped(t *testing.T) {
 	}
 	if _, ok := x.Kind("undeclared"); ok {
 		t.Error("an undeclared metric answered a kind")
+	}
+}
+
+func TestMetricUnitAndDeclaredDimsReadBack(t *testing.T) {
+	x := mustParse(t, `{
+		"metrics": {
+			"role_quality": {"kind": "gaussian", "unit": "score", "dims": ["role", "model"]},
+			"acceptable": {"kind": "bernoulli", "unit": "share", "dims": ["source", "role", "model"]},
+			"tiered": {"kind": "a", "dims": ["tier", "region"]},
+			"bare": {"kind": "a"}
+		}
+	}`)
+	if got := x.Unit("role_quality"); got != "score" {
+		t.Errorf("role_quality's unit is %q, want score", got)
+	}
+	if got := x.Unit(" ACCEPTABLE "); got != "share" {
+		t.Errorf("a unit lookup did not fold the metric name: %q", got)
+	}
+	if got := x.Unit("bare"); got != "" {
+		t.Errorf("a metric with no unit answered %q", got)
+	}
+	if got := x.Unit("undeclared"); got != "" {
+		t.Errorf("an undeclared metric's unit is %q, want empty", got)
+	}
+	if got := strings.Join(x.Dims("acceptable"), ","); got != "source" {
+		t.Errorf("acceptable's dims are %q, want source alone", got)
+	}
+	if got := strings.Join(x.Dims("tiered"), ","); got != "region,tier" {
+		t.Errorf("tiered's dims are %q, want region,tier sorted", got)
+	}
+	if got := x.Dims("role_quality"); len(got) != 0 {
+		t.Errorf("role_quality answered dims %v, want none beyond role and model", got)
+	}
+	if got := x.Dims("undeclared"); len(got) != 0 {
+		t.Errorf("an undeclared metric answered dims %v", got)
 	}
 }
 
@@ -327,6 +365,57 @@ func TestMinInstallsHoldsBackThinCells(t *testing.T) {
 	}
 	if names != "held" {
 		t.Errorf("Cells answered %q, want only the cell that met min_installs", names)
+	}
+}
+
+// THE FLOOR COUNTS INSTALLS, NOT ROWS, because a cell one contributor
+// filled alone is thin however many rows it holds, and a cell three
+// contributors share meets the floor however few rows each added. A cell
+// that carries no installs at all — the shape the seed carries — keeps
+// meeting the floor on rows, the only count it has.
+func TestTheFloorCountsInstallsNotRows(t *testing.T) {
+	x := mustParse(t, `{
+		"min_installs": 3,
+		"metrics": {"m": {"kind": "a"}},
+		"cells": [
+			{"metric": "m", "role": "r", "model": "lone", "mean": 1, "sd": 1, "n": 9, "installs": 1},
+			{"metric": "m", "role": "r", "model": "shared", "mean": 2, "sd": 1, "n": 3, "installs": 3},
+			{"metric": "m", "role": "r", "model": "seed", "mean": 3, "sd": 1, "n": 3}
+		]
+	}`)
+	if _, ok := x.Cell("m", "r", "lone", nil); ok {
+		t.Error("a cell one install filled alone passed the floor on its rows")
+	}
+	if _, ok := x.Cell("m", "r", "shared", nil); !ok {
+		t.Error("a cell three installs share was held below the floor")
+	}
+	if _, ok := x.Cell("m", "r", "seed", nil); !ok {
+		t.Error("a cell carrying no installs did not meet the floor on its rows")
+	}
+}
+
+// A cell keeps the installs it spells: the floor reads them, and a reader
+// that says what stood behind a measurement reads them off the cell. A cell
+// that spells none — the shape the seed carries — reads zero, its rows
+// being the only count the document gives.
+func TestACellCarriesTheInstallsItSpells(t *testing.T) {
+	x := mustParse(t, `{
+		"min_installs": 1,
+		"metrics": {"m": {"kind": "a"}},
+		"cells": [
+			{"metric": "m", "role": "r", "model": "one", "mean": 1, "sd": 1, "n": 9, "installs": 4},
+			{"metric": "m", "role": "r", "model": "two", "mean": 2, "sd": 1, "n": 9}
+		]
+	}`)
+	cells := x.Cells("m")
+	if len(cells) != 2 {
+		t.Fatalf("Cells answered %d cell(s), want both", len(cells))
+	}
+	if cells[0].Model != "one" || cells[0].Installs != 4 {
+		t.Errorf("the cell that spells installs read %+v, want installs 4", cells[0])
+	}
+	if cells[1].Model != "two" || cells[1].Installs != 0 {
+		t.Errorf("a cell that spells no installs read %d, want zero", cells[1].Installs)
 	}
 }
 

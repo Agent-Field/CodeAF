@@ -648,16 +648,203 @@ func isGroundStash(subject string) bool {
 	return strings.HasPrefix(subject, groundStashMessage(""))
 }
 
-// reconciliation is what the sweep found: what belongs to the answer, and what
-// was left lying beside it.
+// ── WHAT A BUILD LEFT BEHIND, WHICH NOBODY'S LEDGER SAW ─────────────────
+
+// ignoredList names the gitignored files a tree holds, whole, and WHETHER IT
+// WAS READ AT ALL — [stashList]'s two answers, for the same reason: a failed
+// reading and a tree with no ignored files in it are the same empty list and
+// mean opposite things, and a before-reading that failed read as an empty one
+// would have every ignored file the run later found counting as its own.
 //
-// Both lists name files as a person reads them, sorted, because the only reader
-// of either is a person or a model reading over their shoulder.
+// THE REPOSITORY'S OWN ANSWER IS THE ONE THAT COUNTS, because the person has
+// already written it down: `.gitignore` says what the project considers not
+// its own, and `git status --porcelain --ignored` is the one reading that
+// lists what the project does not claim AND THE DISK HOLDS — the gap between
+// [treeRecordFromGit] and the tree. Its paths are spelled relative to the
+// REPOSITORY ROOT whatever directory the command stood in (measured), so each
+// is joined to the root and only the ones inside the deliverable tree are
+// kept, spelled as a person in the tree reads them ([treeRelative]). A
+// gitignored file a sibling directory of the workspace holds is not the
+// landing's surroundings, and naming it would be a sentence about a tree
+// nobody delivered.
+//
+// THE ROOT COMES FROM [repositoryRoot], THE ONE ASKER OF THE GROUND QUESTION,
+// and its refusal is this reading's own law with it: a deliverable tree that
+// is a scratch directory inside somebody's checkout is asked nothing, because
+// discovering the checkout is the one thing this package must never do
+// ([climbsOutOfScratch]). A tree that is not itself a repository gets silence,
+// the same answer a tree with no git gets.
+//
+// WITH -z THE PATHS NEED NO QUOTING, which is the one form a comparison can
+// be built on: a file name may hold any byte a quoted spelling would mangle.
+//
+// The entries are individual files where the project's own patterns cover
+// files (`*.log` names each one) and one entry per covered DIRECTORY where
+// they cover trees (`target/`) — which is what keeps a node_modules/ from
+// being reported as ten thousand names.
+func ignoredList(tree string) ([]string, bool) {
+	if strings.TrimSpace(tree) == "" {
+		return nil, false
+	}
+	root, ours := repositoryRoot(tree)
+	if !ours {
+		return nil, false
+	}
+	out, err := git(tree, "status", "--porcelain", "--ignored", "-z")
+	if err != nil {
+		return nil, false
+	}
+	var names []string
+	for _, entry := range strings.Split(out, "\x00") {
+		// Each record opens with two status letters and a space; ignored files
+		// are the ones marked `!!`. An untracked file the .gitignore does NOT
+		// cover is already visible to the created ledger and the tree reading,
+		// and it is not what this reading exists for.
+		if !strings.HasPrefix(entry, "!! ") {
+			continue
+		}
+		name := strings.TrimSpace(entry[len("!! "):])
+		if name == "" {
+			continue
+		}
+		relative, under := treeRelative(tree, filepath.Join(root, name))
+		if !under {
+			continue
+		}
+		names = append(names, relative)
+	}
+	return names, true
+}
+
+// treeRelative spells a path as a person inside the tree reads it, and answers
+// false when the path is not inside the tree at all — [underTree]'s
+// containment, with the relative form as its answer instead of a yes.
+func treeRelative(tree, path string) (string, bool) {
+	relative, err := filepath.Rel(canonicalPath(tree), canonicalPath(path))
+	if err != nil {
+		return "", false
+	}
+	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return relative, true
+}
+
+// readIgnoredBefore photographs the gitignored files the deliverable tree
+// ALREADY HELD, at the same moment the stash is photographed
+// ([Agent.readStashBefore]): one listing, and the whole of what it is worth is
+// being certainly BEFORE the work, which is why it is taken here and not at
+// the first write the turn makes.
+//
+// A READING THAT COULD NOT HAPPEN IS NOT AN EMPTY LIST, for
+// [Agent.readStashBefore]'s reason: with the flag down the terminal reading
+// says nothing at all, rather than name every ignored file the tree held
+// before anybody arrived as this run's own doing.
+func (a *Agent) readIgnoredBefore() {
+	names, read := ignoredList(a.deliverableTree())
+	if !read {
+		return
+	}
+	held := make(map[string]bool, len(names))
+	for _, name := range names {
+		held[name] = true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ignoredBefore, a.ignoredBeforeRead = held, true
+}
+
+// ignoredBuildProducts names the gitignored files the deliverable tree holds
+// that THIS RUN left there: files a SUBPROCESS wrote — pdflatex's .log,
+// make's .o, a test runner's cache — which no ledger saw, because the
+// created-file ledger is fed only by the session's own tools, and which
+// [treeRecordFromGit] deliberately reads past, because the project's own
+// .gitignore says they are not the project's own. Both blind spots together
+// are why a reviewer could not prove a latex landing's tree was clean and
+// refused it while the audit stood silent.
+//
+// IT IS A REPORT AND NEVER A SWEEP. The names go on the reconciliation's
+// ignored list and nowhere else: never scratch, removed or failed, and never
+// through os.Remove. Deleting an ignored target/ or node_modules/ a build
+// made is a separate decision with its own risks, and a tidy quietly taking
+// it is the exact failure the created-file law exists to prevent.
+//
+// ONLY WHAT APPEARED DURING THE RUN IS NAMED. The before-photograph is
+// subtracted by path — a gitignored file the repository already held, from a
+// build of somebody's last week, is not this run's news
+// ([Agent.readIgnoredBefore]) — and so is everything the session's own tools
+// created: those are the ledger's files, kept or scratch by [reconcile], and
+// naming them again would call a deliverable “not in the landing”.
+//
+// WITH NO BEFORE-READING, NOTHING IS NAMED — [Agent.stashedWork]'s law again:
+// nobody then knows which ignored files appeared since, and the honest answer
+// about the tree is silence rather than a guess. A tree with no repository,
+// a tree with no git, and a run that left nothing new gitignored all answer
+// empty, and nothing else about the reading changes.
+func (a *Agent) ignoredBuildProducts(tree string, created []fileChange) []string {
+	a.mu.Lock()
+	before, read := a.ignoredBefore, a.ignoredBeforeRead
+	a.mu.Unlock()
+	if !read || strings.TrimSpace(tree) == "" {
+		return nil
+	}
+	names, read := ignoredList(tree)
+	if !read {
+		return nil
+	}
+	own := make(map[string]bool, len(created))
+	for _, change := range created {
+		// THE LEDGER'S OWN FILES ARE NOT BUILD PRODUCTS. One is inside the
+		// deliverable and kept by [reconcile]; one is outside it and scratch.
+		// Either way its ledger is the account that counts, and the path is
+		// spelled here as git spells the tree's own, so the subtraction is a
+		// comparison of like with like.
+		if relative, under := treeRelative(tree, change.path); under {
+			own[relative] = true
+		}
+	}
+	var out []string
+	for _, name := range names {
+		if before[name] || own[name] {
+			continue
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// reconcileNow is the reading every tidy is offered: the created ledger sorted
+// against the deliverable tree, with the gitignored build products the run
+// left in it named beside them. The terminal audit takes it
+// ([Agent.terminalAudit]), and so does every stopped-turn road out of the run
+// ([Agent.decideRemains] and its fellows in checkpoint.go), so whatever road
+// ends the session, the tree's report is the same one.
+func (a *Agent) reconcileNow() reconciliation {
+	created := a.createdList()
+	tree := a.deliverableTree()
+	found := reconcile(created, tree)
+	found.ignored = a.ignoredBuildProducts(tree, created)
+	return found
+}
+
+// reconciliation is what the audit found: what belongs to the answer, and
+// what was left lying beside it.
+//
+// Every list names files as a person reads them, sorted, because the only
+// reader of any of them is a person or a model reading over their shoulder.
+// ignored is a report and never work for the sweep ([Agent.ignoredBuildProducts]):
+// the tidy acts on scratch alone.
 type reconciliation struct {
 	kept    []string
 	scratch []string
 	removed []string
 	failed  []string
+	// ignored is the gitignored build products that appeared in the
+	// deliverable tree during the run — files a subprocess wrote that no
+	// ledger saw. They gate nothing and are deleted by nothing
+	// ([Agent.ignoredBuildProducts]).
+	ignored []string
 }
 
 // reconcile sorts everything the session created into the deliverable and the
@@ -812,6 +999,11 @@ func (a *Agent) openBaseline(ctx context.Context) {
 	// is being certainly before the work ([Agent.readStashBefore]). The checks
 	// below cannot be taken in front of the turn, and are not.
 	a.readStashBefore()
+	// AND THE GITIGNORED FILES THE TREE ALREADY HELD ARE PHOTOGRAPHED HERE
+	// TOO, for the same reason the stash is: one listing in front of the work,
+	// so that at the terminal reading only what appeared during the run can be
+	// named a build product ([Agent.ignoredBuildProducts]).
+	a.readIgnoredBefore()
 	checks := a.sessionChecks()
 	if len(checks) == 0 {
 		// NOTHING TO READ IS A FINISHED READING. A session whose ask declares no
@@ -1106,8 +1298,7 @@ func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation, 
 		}
 	}
 	a.rememberTerminalUnread(unread)
-	tree := a.deliverableTree()
-	found := reconcile(a.createdList(), tree)
+	found := a.reconcileNow()
 	stashed := a.stashedWork()
 	a.journalChecks(ran, stashed)
 	return ran, found, stashed
@@ -1159,8 +1350,15 @@ func (a *Agent) journalChecks(ran []CheckRun, stashed int) {
 // became of it, because a run that ended clean and a run that ended after
 // deleting eleven files read identically in the journal before this line
 // existed.
+// AND WHAT NO LEDGER EXPLAINS IS WRITTEN DOWN TOO. The ignored list rides the
+// row — build products, ignored by git, not in the landing
+// ([Agent.ignoredBuildProducts]) — because this row is the one a reviewer
+// reads to learn what the tree holds, and a landing whose ledgers were empty
+// used to write no row at all while a build's gitignored output sat there for
+// everybody's eyes but the audit's. The row is the report; nothing is removed
+// for being on it.
 func (a *Agent) journalReconciliation(found reconciliation) {
-	if len(found.kept) == 0 && len(found.scratch) == 0 {
+	if len(found.kept) == 0 && len(found.scratch) == 0 && len(found.ignored) == 0 {
 		return
 	}
 	a.journalFile().appendPrincipal(journalPrincipal{
@@ -1169,6 +1367,7 @@ func (a *Agent) journalReconciliation(found reconciliation) {
 		Kept:    found.kept,
 		Removed: found.removed,
 		Failed:  found.failed,
+		Ignored: found.ignored,
 	})
 }
 

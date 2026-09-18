@@ -58,7 +58,7 @@ type ServiceRuntime interface {
 	IdentityMatches(pid int, startedAt time.Time) (bool, error)
 	Healthy(context.Context, store.Service) error
 	Start(store.Service) (pid int, startedAt time.Time, err error)
-	Stop(pid int) error
+	Stop(pid int, startedAt time.Time) error
 }
 
 type platformServiceRuntime struct{ reap map[int]bool }
@@ -131,8 +131,8 @@ func (runtime *platformServiceRuntime) Start(service store.Service) (int, time.T
 	return pid, startedAt, err
 }
 
-func (runtime *platformServiceRuntime) Stop(pid int) error {
-	if err := executor.StopServiceProcess(pid); err != nil {
+func (runtime *platformServiceRuntime) Stop(pid int, startedAt time.Time) error {
+	if err := executor.StopServiceProcess(pid, startedAt); err != nil {
 		return err
 	}
 	if runtime.reap[pid] {
@@ -287,7 +287,7 @@ func (supervisor *ServiceSupervisor) restartFailed(ctx context.Context, service 
 	if service.RestartCount >= serviceRestartLimit {
 		return supervisor.rest(service)
 	}
-	if err := supervisor.runtime.Stop(service.PID); err != nil {
+	if err := supervisor.runtime.Stop(service.PID, service.StartedAt); err != nil {
 		return err
 	}
 	backoff := serviceRestartBackoff * time.Duration(1<<service.RestartCount)
@@ -337,7 +337,7 @@ func (supervisor *ServiceSupervisor) Stop(id, reason string) error {
 	if !found || service.Status == store.ServiceStopped {
 		return fmt.Errorf("stop service: %w: %q", store.ErrNotFound, id)
 	}
-	if err := supervisor.runtime.Stop(service.PID); err != nil {
+	if err := supervisor.runtime.Stop(service.PID, service.StartedAt); err != nil {
 		return err
 	}
 	return supervisor.store.StopService(id, reason)
@@ -352,7 +352,7 @@ func (supervisor *ServiceSupervisor) Restart(id string) error {
 		return fmt.Errorf("restart service: %w: %q", store.ErrNotFound, id)
 	}
 	if service.Status != store.ServiceStopped {
-		if err := supervisor.runtime.Stop(service.PID); err != nil {
+		if err := supervisor.runtime.Stop(service.PID, service.StartedAt); err != nil {
 			return err
 		}
 	}

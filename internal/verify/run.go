@@ -14,7 +14,6 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -258,7 +257,7 @@ func runnerTrouble(output string) string {
 		// nothing about what went wrong. It is the one line before the trouble
 		// that is always there, and it is skipped by the shape every runner
 		// prints it in: a word, a version, and a path.
-		if bannerLine.MatchString(trimmed) {
+		if bannerLine().MatchString(trimmed) {
 			continue
 		}
 		if len(trimmed) > uncollectedTail {
@@ -270,4 +269,4 @@ func runnerTrouble(output string) string {
 }
 
 // bannerLine is a runner announcing itself: `RUN v0.34.6 /app`, `DEV v1.2.3`.
-var bannerLine = regexp.MustCompile(`^[A-Z]{2,}\s+v?\d+\.\d`)
+var bannerLine = lazyRegexp(`^[A-Z]{2,}\s+v?\d+\.\d`)

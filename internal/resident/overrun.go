@@ -281,6 +281,29 @@ func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	return spliced, sink, err
 }
 
+// growthReasonKey carries why a remainder is being planned into the planning
+// call, so the planner can tell a round that continues work it already has
+// from one that buys work a reviewer named.
+type growthReasonKey struct{}
+
+func withGrowthReason(ctx context.Context, reason string) context.Context {
+	if strings.TrimSpace(reason) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, growthReasonKey{}, reason)
+}
+
+// GrowthReasonFrom returns the reason the round being planned was bought for —
+// Growth.GrowOverrun for an exhausted leaf, GrowGap for a reviewer's finding,
+// GrowCooperative for a worker's own split — or empty where nobody said.
+func GrowthReasonFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	reason, _ := ctx.Value(growthReasonKey{}).(string)
+	return reason
+}
+
 // ReplanOverrunAs is the same splice with the growth named for what asked, and
 // it hands back WHICH GOVERNOR SPOKE when one refused the round.
 //
@@ -373,6 +396,13 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	anchor := PlanAnchor{NodeID: request.JobRoot, SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
 	planCtx = withPlanRecords(planCtx, growth.Records)
+	// WHY THIS REMAINDER IS BEING PLANNED travels to the planner, because the
+	// distinction decides whether there is anything to continue: an overrun
+	// round continues the work it already has, while the gate's gap round buys
+	// the work a reviewer named. It is a property of the round, so it is read
+	// here at the one seam every growing job passes, not wired by hand into
+	// whichever caller somebody remembered. See GrowthReasonFrom.
+	planCtx = withGrowthReason(planCtx, growth.Reason)
 	// The caller's own phrasing when it has one; see Growth.Goal for why an
 	// exhaustion's words are not a template.
 	// WHAT THE JOB HAS ALREADY DONE IS READ HERE, AT THE SPLICE, AND NOT PASSED

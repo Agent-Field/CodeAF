@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -159,6 +161,36 @@ func runExec(args []string) error {
 		// a caller reading stderr and a caller reading --json must not be told
 		// two different things about one failure (plainwords.go).
 		fmt.Fprintln(os.Stderr, "error:", execFailureWords(runErr))
+	}
+
+	// THE RUN LEAVES A PENDING JUDGE RECORD AT ITS TAIL. A headless run builds
+	// no session graph and so has no live landing hook; the pool's restart-time
+	// sweep is what scores it, and this one line is the only thing that survives
+	// the process to reach that sweep. NOTHING WAITS ON A JUDGE: the write is one
+	// O_APPEND of one line and the process exits at once, exactly as a chat
+	// task's landing is judged off the turn's own road. A pool that forbids
+	// reading is asked for nothing, and a run that never ran — or broke with
+	// nothing to show — leaves no record, because a landing with no report is a
+	// question with nothing to score.
+	if outcome != nil && (runErr == nil || strings.TrimSpace(outcome.Text) != "" || len(outcome.Artifacts) > 0) &&
+		config.ModelPoolAt(settings.ProfileDir).CanRead() {
+		landing := session.TaskLanding{
+			// The restart sweep dedups on the id (pool/judged/<id>-<attempt>), so
+			// it has to be unique per run: the wall clock in nanoseconds is the
+			// one thing two runs of this process cannot share.
+			ID:      uint64(time.Now().UnixNano()),
+			State:   session.TaskUnverified,
+			Brief:   prompt,
+			Report:  outcome.Text,
+			Wrote:   outcome.Artifacts,
+			Changed: len(outcome.Artifacts),
+			Worker:  settings.Model,
+			CostUSD: outcome.Usage.Cost,
+			Tokens:  outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens,
+		}
+		if err := writePendingLanding(settings.ProfileDir, "exec", landing); err != nil && trace.Enabled() {
+			log.Printf("exec: pending landing: %v", err)
+		}
 	}
 
 	envelope := buildExecEnvelope(outcome, runErr, settings.Model, trace.RunFrom(traced))

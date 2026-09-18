@@ -228,6 +228,14 @@ var seatWords = map[string]Seat{
 // ignored, and so is a count of zero or less. A nil canonical leaves the id
 // as it stands. When no cell survives the prior is nil, which is the same as
 // no prior at all.
+//
+// The floor here keeps counting rows rather than the installs a measurement
+// document carries beside them: the reader applies the document's floor
+// before these cells arrive — on installs where a cell spells them — and
+// rows cannot be fewer than the installs that produced them, so a cell that
+// floor kept meets this one too. The cells built outside a document carry
+// rows alone, so an installs field on Cell would sit unset on every caller,
+// and there is none.
 func PriorFromCells(cells []Cell, minInstalls int, canonical func(string) string) Prior {
 	var prior Prior
 	for _, c := range cells {

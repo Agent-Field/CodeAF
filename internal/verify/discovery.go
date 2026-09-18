@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -56,15 +55,15 @@ type Plan struct {
 }
 
 var (
-	testCommandPattern       = regexp.MustCompile(`(?i)(?:^|(?:&&|\|\||[;&|])[[:space:]]*)(?:env[[:space:]]+)?(?:[A-Z_][A-Z0-9_]*=[^[:space:]]+[[:space:]]+)*(?:go[[:space:]]+test|cargo[[:space:]]+test|bun[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|npm[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|pnpm[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|yarn[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|python(?:3)?[[:space:]]+-m[[:space:]]+(?:pytest|unittest)|pytest|tox|nox|make[[:space:]]+(?:test|check|verify)|just[[:space:]]+(?:test|check|verify)|(?:\./)?mvnw?[[:space:]].*(?:test|verify)|\./gradlew[[:space:]].*(?:test|check)|dotnet[[:space:]]+test|ctest(?:[[:space:]]|$))`)
-	buildCommandPattern      = regexp.MustCompile(`(?i)(?:^|(?:&&|\|\||[;&|])[[:space:]]*)(?:env[[:space:]]+)?(?:[A-Z_][A-Z0-9_]*=[^[:space:]]+[[:space:]]+)*(?:go[[:space:]]+build|cargo[[:space:]]+build|npm[[:space:]]+run[[:space:]]+(?:build|compile|typecheck)|pnpm[[:space:]]+(?:run[[:space:]]+)?(?:build|compile|typecheck)|yarn[[:space:]]+(?:run[[:space:]]+)?(?:build|compile|typecheck)|bun[[:space:]]+run[[:space:]]+(?:build|compile|typecheck)|make[[:space:]]+(?:build|all)|just[[:space:]]+(?:build|all)|(?:\./)?mvnw?[[:space:]].*(?:package|compile)|\./gradlew[[:space:]].*(?:build|assemble)|dotnet[[:space:]]+build|cmake[[:space:]]+--build|python(?:3)?[[:space:]]+-m[[:space:]]+(?:build|compileall|mypy|pyright|ruff[[:space:]]+check)|(?:\./)?(?:mypy|pyright)(?:[[:space:]]|$)|(?:\./)?ruff[[:space:]]+check|tsc(?:[[:space:]]|$))`)
-	makeTargetPattern        = regexp.MustCompile(`(?m)^([A-Za-z0-9_.-]+)[[:space:]]*:(?:[^=]|$)`)
-	inlineCodePattern        = regexp.MustCompile("`([^`\n]+)`")
-	leadingCDPattern         = regexp.MustCompile(`^cd[[:space:]]+((?:'[^']*'|"[^"]*"|[^;&|[:space:]]+))[[:space:]]*&&[[:space:]]*(.+)$`)
-	standaloneCDPattern      = regexp.MustCompile(`^cd[[:space:]]+((?:'[^']*'|"[^"]*"|[^;&|[:space:]]+))[[:space:]]*$`)
-	interactiveRunnerPattern = regexp.MustCompile(`(?i)(?:^|(?:&&|\|\||[;&|])[[:space:]]*)cypress[[:space:]]+open(?:[[:space:]]|$)`)
-	heredocPattern           = regexp.MustCompile(`<<-?[[:space:]]*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?`)
-	numericFlagPattern       = regexp.MustCompile(`^[0-9]+$`)
+	testCommandPattern       = lazyRegexp(`(?i)(?:^|(?:&&|\|\||[;&|])[[:space:]]*)(?:env[[:space:]]+)?(?:[A-Z_][A-Z0-9_]*=[^[:space:]]+[[:space:]]+)*(?:go[[:space:]]+test|cargo[[:space:]]+test|bun[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|npm[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|pnpm[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|yarn[[:space:]]+(?:run[[:space:]]+)?(?:test(?::unit)?|unit|verify|check)|python(?:3)?[[:space:]]+-m[[:space:]]+(?:pytest|unittest)|pytest|tox|nox|make[[:space:]]+(?:test|check|verify)|just[[:space:]]+(?:test|check|verify)|(?:\./)?mvnw?[[:space:]].*(?:test|verify)|\./gradlew[[:space:]].*(?:test|check)|dotnet[[:space:]]+test|ctest(?:[[:space:]]|$))`)
+	buildCommandPattern      = lazyRegexp(`(?i)(?:^|(?:&&|\|\||[;&|])[[:space:]]*)(?:env[[:space:]]+)?(?:[A-Z_][A-Z0-9_]*=[^[:space:]]+[[:space:]]+)*(?:go[[:space:]]+build|cargo[[:space:]]+build|npm[[:space:]]+run[[:space:]]+(?:build|compile|typecheck)|pnpm[[:space:]]+(?:run[[:space:]]+)?(?:build|compile|typecheck)|yarn[[:space:]]+(?:run[[:space:]]+)?(?:build|compile|typecheck)|bun[[:space:]]+run[[:space:]]+(?:build|compile|typecheck)|make[[:space:]]+(?:build|all)|just[[:space:]]+(?:build|all)|(?:\./)?mvnw?[[:space:]].*(?:package|compile)|\./gradlew[[:space:]].*(?:build|assemble)|dotnet[[:space:]]+build|cmake[[:space:]]+--build|python(?:3)?[[:space:]]+-m[[:space:]]+(?:build|compileall|mypy|pyright|ruff[[:space:]]+check)|(?:\./)?(?:mypy|pyright)(?:[[:space:]]|$)|(?:\./)?ruff[[:space:]]+check|tsc(?:[[:space:]]|$))`)
+	makeTargetPattern        = lazyRegexp(`(?m)^([A-Za-z0-9_.-]+)[[:space:]]*:(?:[^=]|$)`)
+	inlineCodePattern        = lazyRegexp("`([^`\n]+)`")
+	leadingCDPattern         = lazyRegexp(`^cd[[:space:]]+((?:'[^']*'|"[^"]*"|[^;&|[:space:]]+))[[:space:]]*&&[[:space:]]*(.+)$`)
+	standaloneCDPattern      = lazyRegexp(`^cd[[:space:]]+((?:'[^']*'|"[^"]*"|[^;&|[:space:]]+))[[:space:]]*$`)
+	interactiveRunnerPattern = lazyRegexp(`(?i)(?:^|(?:&&|\|\||[;&|])[[:space:]]*)cypress[[:space:]]+open(?:[[:space:]]|$)`)
+	heredocPattern           = lazyRegexp(`<<-?[[:space:]]*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?`)
+	numericFlagPattern       = lazyRegexp(`^[0-9]+$`)
 
 	// Any package-manager invocation disqualifies a script from being chosen
 	// as the build entrypoint. `npm run x` hides another script's effects, and
@@ -74,7 +73,7 @@ var (
 	// negative here costs a discovered entrypoint; a false positive publishes a
 	// package. npx is excluded from the ban: it is a runner, not a lifecycle
 	// manager, so `npx tsc` stays selectable.
-	packageScriptDelegationPattern = regexp.MustCompile(
+	packageScriptDelegationPattern = lazyRegexp(
 		`(?i)(?:^|[^[:alnum:]_./-])(?:npm|pnpm|yarn|bun)(?:[[:space:]]|$)`)
 )
 
@@ -259,12 +258,12 @@ func appendCIShellCandidates(out []commandCandidate, raw, workdir, source string
 		if command == "" {
 			continue
 		}
-		if match := standaloneCDPattern.FindStringSubmatch(command); match != nil {
+		if match := standaloneCDPattern().FindStringSubmatch(command); match != nil {
 			activeWorkdir = combineWorkingDirectories(activeWorkdir, strings.Trim(match[1], "\"'"))
 			continue
 		}
 		out = appendShellCandidatesFrom(out, command, activeWorkdir, source)
-		if match := heredocPattern.FindStringSubmatch(logical); match != nil {
+		if match := heredocPattern().FindStringSubmatch(logical); match != nil {
 			heredocEnd = match[1]
 		}
 	}
@@ -294,7 +293,7 @@ func documentCandidates(workspace string, names []string) []commandCandidate {
 				inFence = !inFence
 				continue
 			}
-			for _, match := range inlineCodePattern.FindAllStringSubmatch(line, -1) {
+			for _, match := range inlineCodePattern().FindAllStringSubmatch(line, -1) {
 				candidates = appendShellCandidates(candidates, match[1], relative)
 			}
 			if inFence || strings.HasPrefix(trimmed, "$") {
@@ -377,7 +376,7 @@ func scriptCandidates(workspace string) []commandCandidate {
 			continue
 		}
 		targets := map[string]bool{}
-		for _, match := range makeTargetPattern.FindAllStringSubmatch(body, -1) {
+		for _, match := range makeTargetPattern().FindAllStringSubmatch(body, -1) {
 			targets[strings.ToLower(match[1])] = true
 		}
 		command := "make "
@@ -528,7 +527,7 @@ func sortedScriptNames(scripts map[string]string) []string {
 // scriptRunsOtherScripts reports whether a package script delegates to other
 // package scripts, which makes its full effect unknowable from its own body.
 func scriptRunsOtherScripts(body string) bool {
-	return packageScriptDelegationPattern.MatchString(body)
+	return packageScriptDelegationPattern().MatchString(body)
 }
 
 func ecosystemDefaults(workspace string) []Entrypoint {
@@ -585,7 +584,7 @@ func appendShellCandidatesFrom(out []commandCandidate, raw, baseWorkdir, source 
 
 func preserveLeadingWorkingDirectory(raw string) (string, string) {
 	command := normalizeCommand(raw)
-	match := leadingCDPattern.FindStringSubmatch(command)
+	match := leadingCDPattern().FindStringSubmatch(command)
 	if match == nil {
 		return command, ""
 	}
@@ -670,11 +669,11 @@ func shellCommentBoundary(command string, index int) bool {
 }
 
 func isBuildCommand(command string) bool {
-	return safeShellControlFlow(command) && buildCommandPattern.MatchString(classifiableShellText(command))
+	return safeShellControlFlow(command) && buildCommandPattern().MatchString(classifiableShellText(command))
 }
 
 func isTestCommand(command string) bool {
-	return safeShellControlFlow(command) && testCommandPattern.MatchString(classifiableShellText(command))
+	return safeShellControlFlow(command) && testCommandPattern().MatchString(classifiableShellText(command))
 }
 
 // safeShellControlFlow admits only structures whose status the verification
@@ -755,7 +754,7 @@ func classifiableShellText(command string) string {
 
 func isInteractiveTestCommand(command string) bool {
 	command = normalizeCommand(command)
-	if interactiveRunnerPattern.MatchString(classifiableShellText(command)) {
+	if interactiveRunnerPattern().MatchString(classifiableShellText(command)) {
 		return true
 	}
 	words := strings.Fields(command)
@@ -765,12 +764,12 @@ func isInteractiveTestCommand(command string) bool {
 		switch name {
 		case "-w":
 			if assigned {
-				if !numericFlagPattern.MatchString(value) {
+				if !numericFlagPattern().MatchString(value) {
 					return true
 				}
 				continue
 			}
-			if index+1 < len(words) && numericFlagPattern.MatchString(strings.Trim(words[index+1], ";&|")) {
+			if index+1 < len(words) && numericFlagPattern().MatchString(strings.Trim(words[index+1], ";&|")) {
 				index++
 				continue
 			}

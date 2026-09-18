@@ -3612,7 +3612,7 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 	// and neither of those goes anywhere near the reading above. The tidy is owed
 	// to whoever comes to look at the tree afterwards, however the run ended.
 	if decision.Verb == DecideStop {
-		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+		a.sweepSession(a.reconcileNow())
 	}
 	a.journalDecision(decision)
 	return decision
@@ -4698,7 +4698,7 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 		// A DONE THAT SEALED IS FINISHED WITH WHAT IT MADE, so the tidy the
 		// stopped-turn road takes with its second reading is taken here, now that
 		// the turn is known to end ([Agent.decideHandover]).
-		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+		a.sweepSession(a.reconcileNow())
 	}
 	hub.send(Event{Kind: EventNotice, Text: note})
 	a.record(textMessage("assistant", note))
@@ -4883,7 +4883,7 @@ func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said stri
 		decision, _ = a.decideOverTheChecks(ctx, remains)
 	}
 	if decision.Verb == DecideStop {
-		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+		a.sweepSession(a.reconcileNow())
 	}
 	return decision
 }
