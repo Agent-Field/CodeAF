@@ -128,3 +128,46 @@ func TestFaultWithoutScopeStillReads(t *testing.T) {
 		t.Fatalf("unexpected text: %s", err.Error())
 	}
 }
+
+// TestGoCallsTheFaultHookOnceWithTheGoroutineStack holds the hook's whole
+// contract: a guarded goroutine that panics calls the fault hook exactly once, with
+// the scope Recover was given and the stack of the goroutine that faulted —
+// the same bytes the log line carries, because a reporter above this package
+// has nothing else to group the fault by.
+func TestGoCallsTheFaultHookOnceWithTheGoroutineStack(t *testing.T) {
+	captureLog(t)
+	t.Cleanup(func() { SetOnFault(nil) })
+
+	type hookCall struct {
+		scope string
+		stack []byte
+	}
+	// Buffered for two so a second call is a readable failure rather than a
+	// goroutine blocked on a send nobody drains.
+	calls := make(chan hookCall, 2)
+	SetOnFault(func(scope string, stack []byte) { calls <- hookCall{scope: scope, stack: stack} })
+
+	Go("narrator", func() { panic("narration blew up") })
+
+	var got hookCall
+	select {
+	case got = <-calls:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the fault hook was never called")
+	}
+	if got.scope != "narrator" {
+		t.Fatalf("hook scope = %q, want narrator", got.scope)
+	}
+	if len(got.stack) == 0 {
+		t.Fatal("the hook was called with an empty stack")
+	}
+	if !strings.Contains(string(got.stack), "guard_test.go") {
+		t.Fatalf("the stack is not the recovered goroutine's: %q", got.stack)
+	}
+
+	select {
+	case second := <-calls:
+		t.Fatalf("the hook was called twice, second scope %q", second.scope)
+	case <-time.After(50 * time.Millisecond):
+	}
+}

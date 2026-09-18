@@ -8,14 +8,22 @@ import (
 )
 
 const (
-	codeafGitName        = "codeaf"
-	codeafGitEmail       = "codeaf@localhost"
+	codeafGitName  = "codeaf"
+	codeafGitEmail = "agentfield-bot@users.noreply.github.com"
+
+	// Legacy identities codeaf's task commits were once authored with. Both stay
+	// recognised by taskCommitIdentity so older work still lands as the task
+	// system's own.
 	legacyCodeafGitName  = "aforge"           // legacy-name
 	legacyCodeafGitEmail = "aforge@localhost" // legacy-name
+	legacyBotGitName     = "codeaf"           // legacy-identity: the pre-bot address
+	legacyBotGitEmail    = "codeaf@localhost" // legacy-identity: the pre-bot address
 )
 
 // codeafGitIdentity marks commits the task system creates so sibling landings
 // can distinguish its own forward progress from a person's intervening work.
+// The author is the bot account — the same identity the Co-Authored-By trailer
+// names — and the two older local addresses are recognised as legacy.
 func codeafGitIdentity() []string {
 	return []string{"-c", "user.name=" + codeafGitName, "-c", "user.email=" + codeafGitEmail}
 }
@@ -220,5 +228,6 @@ func branchMovedByPerson(root, branch, recorded string) bool {
 
 func taskCommitIdentity(name, email string) bool {
 	return (name == codeafGitName && email == codeafGitEmail) ||
-		(name == legacyCodeafGitName && email == legacyCodeafGitEmail)
+		(name == legacyCodeafGitName && email == legacyCodeafGitEmail) ||
+		(name == legacyBotGitName && email == legacyBotGitEmail)
 }

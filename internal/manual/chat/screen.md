@@ -1317,7 +1317,7 @@ Under 60 columns, eight things change shape:
    is used instead of the sheet.
 7. **Home becomes an inbox, a sheet and an action bar.** The column stops being a
    directory of projects and becomes triage across all of them — `waiting on you`,
-   `running`, `since you left`, three rows each and then `▸ …N more` — with this
+   `tasks`, `since you left`, three rows each and then `▸ …N more` — with this
    window's project open under them and every other project folded to one line.
    `enter`, or a **tap**, opens that row's card as a full-frame sheet whose top row
    reads `‹ back`; the card's answer chips become full-width answer bands, one per

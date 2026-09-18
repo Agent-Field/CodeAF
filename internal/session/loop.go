@@ -92,6 +92,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // ── retry constants (pi spec §4, verbatim from internal/exec/bare) ──────────
@@ -1143,7 +1144,19 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// [Agent.applyRouteJudge] below is the only thing with an effect in it
 			// (route_judge.go). A reading that starts work from inside its own
 			// goroutine is this mechanism used in name and broken in fact.
-			judge := a.judgeAhead(ctx, user, usedTools, response.Text())
+			// A REPLY THAT ANSWERS THE READER'S NOTE WITH [NoChangeReply] IS NO ANSWER
+			// TO JUDGE OR LEARN FROM. The transcript decides whether the token really
+			// answered that note; elsewhere it is an ordinary reply, even though every
+			// surface still leaves a reply containing only the token undrawn.
+			answer := response.Text()
+			withdrawn := IsNoChangeReply(answer) && answeredNoteUnchanged(a.snapshot())
+			if withdrawn {
+				answer = checkpointLastSaid(a.snapshot())
+			}
+			var judge *judgeRace
+			if !withdrawn {
+				judge = a.judgeAhead(ctx, user, usedTools, answer)
+			}
 			a.tellPhase(provider.PhaseChecking, "whether the work is finished", time.Now())
 			again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response, marked)
 			a.endPhase()
@@ -1184,7 +1197,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// goroutine entirely and on the session's own lifetime rather than
 			// the turn's (memory.go). Nobody is waiting for it, nothing it finds
 			// reaches this turn, and it says nothing whatever happens to it.
-			a.learnFromTurn(user.text(), response.Text())
+			a.learnFromTurn(user.text(), answer)
 			return true
 		}
 
@@ -1609,6 +1622,9 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 // (see [sessionFile.writeLine]) — and a turn that spent nothing writes no line
 // at all (see [sessionFile.appendUsage]).
 func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
+	// The tally sits at the seal because the seal is the shape of a turn: every
+	// turn that seals counts one, whether or not telemetry is sent later.
+	telemetry.CountTurn()
 	turn.Duration = time.Since(started)
 	a.mu.Lock()
 	a.usage.Duration += turn.Duration
@@ -3207,6 +3223,13 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	started := time.Now()
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	// Only a call that RAN counts: a door that refused it before it ran, or a
+	// hand withdrawn off the belt, is the harness's own answer and rides on
+	// [toolResult.harness] for this reason — every counter that judges the
+	// model by its steps skips it. The error flag is the verdict.
+	if !result.harness {
+		telemetry.CountToolCall(!result.isError)
+	}
 	recordToolCall(ctx, call, result, started, time.Since(started))
 	return result
 }

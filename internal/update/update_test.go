@@ -1,0 +1,622 @@
+package update
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func releaseClient(server *httptest.Server, revision string) *Client {
+	return &Client{
+		HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL, Revision: revision,
+	}
+}
+
+// TestC1StableLaunchComparisonAndNotice proves C1.
+func TestC1StableLaunchComparisonAndNotice(t *testing.T) {
+	for _, row := range []struct {
+		running string
+		show    bool
+	}{{"v0.1.1", true}, {"v0.2.0", false}, {"v0.3.0", false}} {
+		t.Run(row.running, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+			}))
+			defer server.Close()
+			answer, show := CheckLaunch(context.Background(), CheckOptions{
+				Running: row.running, ProfileDir: t.TempDir(), Client: releaseClient(server, row.running),
+			})
+			if show != row.show {
+				t.Fatalf("show = %t, want %t", show, row.show)
+			}
+			if row.show {
+				line := answer.Notice()
+				for _, want := range []string{"v0.2.0", "v0.1.1", "/update", CurlCommand} {
+					if strings.Count(line, want) != 1 {
+						t.Fatalf("notice %q does not contain %q exactly once", line, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestC2ReleaseCandidateIsPromptedOnlyWhenItsLineIsStable proves C2.
+func TestC2ReleaseCandidateIsPromptedOnlyWhenItsLineIsStable(t *testing.T) {
+	for _, row := range []struct {
+		latest string
+		show   bool
+	}{{"v0.2.0", true}, {"v0.1.9", false}} {
+		answer := Available{Latest: row.latest, Running: "v0.2.0-rc.3"}
+		if got := answer.Newer(); got != row.show {
+			t.Fatalf("latest %s: newer = %t, want %t", row.latest, got, row.show)
+		}
+	}
+}
+
+// TestC3SourceAndChannelLaunchesNeverReachTheNetwork proves C3.
+func TestC3SourceAndChannelLaunchesNeverReachTheNetwork(t *testing.T) {
+	var hits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer server.Close()
+	for _, running := range []string{"dev-20260915-abcdefabcdef", "staging-20260915-abcdefabcdef", "deadbeef", ""} {
+		answer, show := CheckLaunch(context.Background(), CheckOptions{
+			Running: running, ProfileDir: t.TempDir(), Client: releaseClient(server, running),
+		})
+		if show || answer != (Available{}) {
+			t.Fatalf("%q returned %+v, %t", running, answer, show)
+		}
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("server saw %d requests", hits.Load())
+	}
+}
+
+// TestC4OptOutAndFreshCacheAvoidRequestsWhileStaleFactsRefresh proves C4.
+func TestC4OptOutAndFreshCacheAvoidRequestsWhileStaleFactsRefresh(t *testing.T) {
+	base := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+	var hits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+	}))
+	defer server.Close()
+	client := releaseClient(server, "v0.1.1")
+
+	t.Setenv(NoUpdateCheckEnv, "1")
+	CheckLaunch(context.Background(), CheckOptions{Running: "v0.1.1", ProfileDir: t.TempDir(), Client: client})
+	if hits.Load() != 0 {
+		t.Fatal("the opt-out reached the server")
+	}
+	t.Setenv(NoUpdateCheckEnv, "")
+
+	fresh := t.TempDir()
+	path := filepath.Join(fresh, "update-check.json")
+	if err := saveCheckCache(path, checkCache{CheckedAt: base.Add(-23 * time.Hour), Latest: "v0.2.0", Running: "v0.1.1"}); err != nil {
+		t.Fatal(err)
+	}
+	answer, show := CheckLaunch(context.Background(), CheckOptions{Running: "v0.1.1", ProfileDir: fresh, Client: client, Now: func() time.Time { return base }})
+	if !show || answer.Latest != "v0.2.0" || hits.Load() != 0 {
+		t.Fatalf("fresh cache = %+v, %t, hits %d", answer, show, hits.Load())
+	}
+
+	for _, cached := range []checkCache{
+		{CheckedAt: base.Add(-25 * time.Hour), Latest: "v0.2.0", Running: "v0.1.1"},
+		{CheckedAt: base.Add(-time.Hour), Latest: "v0.2.0", Running: "v0.1.0"},
+	} {
+		dir := t.TempDir()
+		if err := saveCheckCache(filepath.Join(dir, "update-check.json"), cached); err != nil {
+			t.Fatal(err)
+		}
+		CheckLaunch(context.Background(), CheckOptions{Running: "v0.1.1", ProfileDir: dir, Client: client, Now: func() time.Time { return base }})
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("stale facts made %d requests, want 2", hits.Load())
+	}
+}
+
+// TestC5LaunchFailuresAreSilent proves C5.
+func TestC5LaunchFailuresAreSilent(t *testing.T) {
+	tests := map[string]http.Handler{
+		"403":       http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "no", http.StatusForbidden) }),
+		"404":       http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.NotFound(w, nil) }),
+		"500":       http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "no", http.StatusInternalServerError) }),
+		"malformed": http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "{") }),
+		"timeout":   http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { time.Sleep(50 * time.Millisecond) }),
+	}
+	for name, handler := range tests {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(handler)
+			defer server.Close()
+			client := releaseClient(server, "v0.1.1")
+			if name == "timeout" {
+				client.HTTP.Timeout = time.Millisecond
+			}
+			answer, show := CheckLaunch(context.Background(), CheckOptions{Running: "v0.1.1", ProfileDir: t.TempDir(), Client: client})
+			if show || answer != (Available{}) {
+				t.Fatalf("failure drew %+v, %t", answer, show)
+			}
+		})
+	}
+	client := &Client{HTTP: &http.Client{Timeout: 10 * time.Millisecond}, APIBase: "http://127.0.0.1:1", Revision: "v0.1.1"}
+	if answer, show := CheckLaunch(context.Background(), CheckOptions{Running: "v0.1.1", ProfileDir: t.TempDir(), Client: client}); show || answer != (Available{}) {
+		t.Fatalf("unreachable server drew %+v, %t", answer, show)
+	}
+}
+
+func servedRelease(t *testing.T, asset []byte, checksum string) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	requests := &atomic.Int64{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/codeaf-"+runtime.GOOS+"-"+runtime.GOARCH):
+			_, _ = w.Write(asset)
+		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%s  codeaf-%s-%s\n", checksum, runtime.GOOS, runtime.GOARCH)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	return server, requests
+}
+
+// TestTimeoutContractC1SlowAssetOutlivesTheCheckClock proves C1: the check
+// clock cannot cut off an asset that continues to deliver bytes.
+func TestTimeoutContractC1SlowAssetOutlivesTheCheckClock(t *testing.T) {
+	asset := make([]byte, 1<<20)
+	for index := range asset {
+		asset[index] = byte(index)
+	}
+	digest := sha256.Sum256(asset)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		case strings.HasSuffix(request.URL.Path, "/codeaf-"+runtime.GOOS+"-"+runtime.GOARCH):
+			flusher := w.(http.Flusher)
+			const chunks = 13
+			for chunk := 0; chunk < chunks; chunk++ {
+				select {
+				case <-request.Context().Done():
+					return
+				case <-time.After(500 * time.Millisecond):
+				}
+				start := len(asset) * chunk / chunks
+				end := len(asset) * (chunk + 1) / chunks
+				if _, err := w.Write(asset[start:end]); err != nil {
+					return
+				}
+				flusher.Flush()
+			}
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "codeaf")
+	if err := os.WriteFile(target, []byte("old codeaf"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	client := releaseClient(server, "v0.1.0")
+	client.HTTP.Timeout = CheckTimeout
+	result, err := Install(context.Background(), InstallOptions{
+		Client: client, Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.ReadFile(target)
+	if err != nil || string(installed) != string(asset) {
+		t.Fatalf("installed bytes = %d, error %v; want %d matching bytes", len(installed), err, len(asset))
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 || result.Path != target {
+		t.Fatalf("result = %+v mode = %v", result, info.Mode().Perm())
+	}
+	if matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*")); len(matches) != 0 {
+		t.Fatalf("temporary files remain: %v", matches)
+	}
+}
+
+// TestTimeoutContractC2HangingLaunchCheckEndsInsideItsBudget proves C2 for the
+// silent launch door with a server that accepts the request and never answers.
+func TestTimeoutContractC2HangingLaunchCheckEndsInsideItsBudget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	started := time.Now()
+	answer, show := CheckLaunch(context.Background(), CheckOptions{
+		Running: "v0.1.0", ProfileDir: t.TempDir(), Client: releaseClient(server, "v0.1.0"),
+	})
+	if elapsed := time.Since(started); elapsed > 6*time.Second {
+		t.Fatalf("hanging launch check took %s, want at most 6s", elapsed)
+	}
+	if show || answer != (Available{}) {
+		t.Fatalf("hanging launch check returned %+v, show %t", answer, show)
+	}
+}
+
+// TestTimeoutContractC3StallAndCeilingPreserveTheOriginal proves C3 with two
+// real response bodies: one sends no bytes and one never stops trickling them.
+func TestTimeoutContractC3StallAndCeilingPreserveTheOriginal(t *testing.T) {
+	assetName := "codeaf-" + runtime.GOOS + "-" + runtime.GOARCH
+	if got, want := downloadStallError(assetName, downloadStallWindow).Error(), "downloading "+assetName+" stalled — no bytes for 30 s"; got != want {
+		t.Fatalf("default stall sentence = %q, want %q", got, want)
+	}
+	if got, want := downloadCeilingError(assetName, downloadCeiling).Error(), "downloading "+assetName+" took longer than 15 minutes"; got != want {
+		t.Fatalf("default ceiling sentence = %q, want %q", got, want)
+	}
+
+	for _, row := range []struct {
+		name        string
+		stall       time.Duration
+		ceiling     time.Duration
+		serve       func(http.ResponseWriter, *http.Request)
+		want        string
+		upperMargin time.Duration
+	}{
+		{
+			name: "stalled body", stall: 60 * time.Millisecond, ceiling: 2 * time.Second,
+			serve: func(w http.ResponseWriter, request *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.(http.Flusher).Flush()
+				<-request.Context().Done()
+			},
+			want: downloadStallError(assetName, 60*time.Millisecond).Error(), upperMargin: time.Second,
+		},
+		{
+			name: "endless trickle", stall: 100 * time.Millisecond, ceiling: 140 * time.Millisecond,
+			serve: func(w http.ResponseWriter, request *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				flusher := w.(http.Flusher)
+				flusher.Flush()
+				ticker := time.NewTicker(15 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-request.Context().Done():
+						return
+					case <-ticker.C:
+						if _, err := w.Write([]byte("x")); err != nil {
+							return
+						}
+						flusher.Flush()
+					}
+				}
+			},
+			want: downloadCeilingError(assetName, 140*time.Millisecond).Error(), upperMargin: time.Second,
+		},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if strings.HasSuffix(request.URL.Path, "/"+assetName) {
+					row.serve(w, request)
+					return
+				}
+				http.NotFound(w, request)
+			}))
+			defer server.Close()
+			dir := t.TempDir()
+			target := filepath.Join(dir, "codeaf")
+			original := []byte("original codeaf")
+			if err := os.WriteFile(target, original, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			client := releaseClient(server, "v0.1.0")
+			client.StallWindow = row.stall
+			client.DownloadCeiling = row.ceiling
+			started := time.Now()
+			_, err := Install(context.Background(), InstallOptions{
+				Client: client, Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
+			})
+			if err == nil || err.Error() != row.want {
+				t.Fatalf("error = %v, want %q", err, row.want)
+			}
+			if elapsed := time.Since(started); elapsed > row.upperMargin {
+				t.Fatalf("failure took %s, want at most %s", elapsed, row.upperMargin)
+			}
+			installed, readErr := os.ReadFile(target)
+			if readErr != nil || string(installed) != string(original) {
+				t.Fatalf("target = %q, error %v; want untouched original", installed, readErr)
+			}
+			info, statErr := os.Stat(target)
+			if statErr != nil {
+				t.Fatal(statErr)
+			}
+			if info.Mode().Perm() != 0o700 {
+				t.Fatalf("original mode = %v, want 0700", info.Mode().Perm())
+			}
+			if matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*")); len(matches) != 0 {
+				t.Fatalf("temporary files remain: %v", matches)
+			}
+		})
+	}
+}
+
+// TestTimeoutContractC4HangingReleaseAPINamesTheAPI proves C4 with an injected
+// API window, so the test exercises the real deadline without waiting ten seconds.
+func TestTimeoutContractC4HangingReleaseAPINamesTheAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	client := releaseClient(server, "v0.1.0")
+	client.APIWindow = 60 * time.Millisecond
+	started := time.Now()
+	_, err := client.Select(context.Background(), Choice{Channel: "stable"})
+	if err == nil || err.Error() != "release API did not answer within 60 ms" {
+		t.Fatalf("error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("hanging API took %s, want at most 1s", elapsed)
+	}
+	if strings.Contains(err.Error(), "codeaf-") || strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("API failure named an asset or Go's deadline: %q", err)
+	}
+}
+
+// TestTimeoutContractD1AndD3DefaultTransportHasNoWholeBodyClock proves the
+// default client's transport clocks and the exact delayed-header sentence.
+func TestTimeoutContractD1AndD3DefaultTransportHasNoWholeBodyClock(t *testing.T) {
+	client := NewClient("v0.1.0", CheckTimeout)
+	if client.HTTP.Timeout != 0 {
+		t.Fatalf("Client.Timeout = %s, want zero", client.HTTP.Timeout)
+	}
+	transport, ok := client.HTTP.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %T, want *http.Transport", client.HTTP.Transport)
+	}
+	if transport.TLSHandshakeTimeout != networkSetupTimeout || transport.ResponseHeaderTimeout != apiRequestTimeout {
+		t.Fatalf("transport TLS %s header %s", transport.TLSHandshakeTimeout, transport.ResponseHeaderTimeout)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	testTransport := server.Client().Transport.(*http.Transport).Clone()
+	testTransport.ResponseHeaderTimeout = 50 * time.Millisecond
+	client.HTTP = &http.Client{Transport: testTransport}
+	client.DownloadBase = server.URL
+	client.DownloadCeiling = time.Second
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Install(context.Background(), InstallOptions{
+		Client: client, Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
+	})
+	want := assetHeaderTimeoutSentence(runtime.GOOS, runtime.GOARCH)
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+}
+
+func assetHeaderTimeoutSentence(goos, goarch string) string {
+	return fmt.Sprintf("codeaf-%s-%s did not start arriving within 10 s", goos, goarch)
+}
+
+// TestC7CheckedInstallReplacesAtomicallyAndMismatchPreservesTheOriginal proves C7.
+func TestC7CheckedInstallReplacesAtomicallyAndMismatchPreservesTheOriginal(t *testing.T) {
+	asset := []byte("new codeaf")
+	digest := sha256.Sum256(asset)
+	for _, row := range []struct {
+		name     string
+		checksum string
+		ok       bool
+	}{{"matching", hex.EncodeToString(digest[:]), true}, {"wrong", strings.Repeat("0", 64), false}} {
+		t.Run(row.name, func(t *testing.T) {
+			server, _ := servedRelease(t, asset, row.checksum)
+			defer server.Close()
+			dir := t.TempDir()
+			target := filepath.Join(dir, "codeaf")
+			if err := os.WriteFile(target, []byte("old codeaf"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			result, err := Install(context.Background(), InstallOptions{
+				Client: releaseClient(server, "v0.1.1"), Release: Release{Tag: "v0.2.0", Repository: primaryRepository}, Target: target,
+			})
+			if (err == nil) != row.ok {
+				t.Fatalf("error = %v, want success %t", err, row.ok)
+			}
+			got, readErr := os.ReadFile(target)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			want := []byte("old codeaf")
+			if row.ok {
+				want = asset
+				info, _ := os.Stat(target)
+				if info.Mode().Perm() != 0o755 || result.Path != target || result.Release.Tag != "v0.2.0" {
+					t.Fatalf("result = %+v mode %o", result, info.Mode().Perm())
+				}
+			} else if !strings.Contains(err.Error(), "checksum") {
+				t.Fatalf("mismatch error = %v", err)
+			}
+			if string(got) != string(want) {
+				t.Fatalf("target = %q, want %q", got, want)
+			}
+			matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*"))
+			if len(matches) != 0 {
+				t.Fatalf("temporary files remain: %v", matches)
+			}
+		})
+	}
+}
+
+// TestC10TokenReachesOnlyTheAPIHost proves C10.
+func TestC10TokenReachesOnlyTheAPIHost(t *testing.T) {
+	var apiAuthorization, apiAccept, apiAgent string
+	var downloadAuthorization, downloadAccept, downloadAgent string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiAuthorization = r.Header.Get("Authorization")
+		apiAccept = r.Header.Get("Accept")
+		apiAgent = r.Header.Get("User-Agent")
+		fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+	}))
+	defer api.Close()
+	asset := []byte("release")
+	digest := sha256.Sum256(asset)
+	download := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		downloadAuthorization = r.Header.Get("Authorization")
+		downloadAccept = r.Header.Get("Accept")
+		downloadAgent = r.Header.Get("User-Agent")
+		if strings.HasSuffix(r.URL.Path, "checksums.txt") {
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+			return
+		}
+		_, _ = w.Write(asset)
+	}))
+	defer download.Close()
+	client := &Client{HTTP: api.Client(), APIBase: api.URL, DownloadBase: download.URL, Token: "secret", Revision: "v0.1.1"}
+	release, err := client.Select(context.Background(), Choice{Channel: "stable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(context.Background(), InstallOptions{Client: client, Release: release, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if apiAuthorization != "Bearer secret" || downloadAuthorization != "" {
+		t.Fatalf("authorization: api %q download %q", apiAuthorization, downloadAuthorization)
+	}
+	if apiAccept != "application/vnd.github+json" || downloadAccept != "application/octet-stream" {
+		t.Fatalf("accept: api %q download %q", apiAccept, downloadAccept)
+	}
+	if apiAgent != "codeaf/v0.1.1" || downloadAgent != "codeaf/v0.1.1" {
+		t.Fatalf("user agent: api %q download %q", apiAgent, downloadAgent)
+	}
+}
+
+// TestC10RedirectsNeverCarryTheAPITokenToAnotherHost proves the redirect case
+// with two real servers that share a hostname and differ only by port.
+func TestC10RedirectsNeverCarryTheAPITokenToAnotherHost(t *testing.T) {
+	var redirectedAuthorization string
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		redirectedAuthorization = request.Header.Get("Authorization")
+		fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+	}))
+	defer destination.Close()
+	var apiAuthorization string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		apiAuthorization = request.Header.Get("Authorization")
+		http.Redirect(w, request, destination.URL+request.URL.Path, http.StatusFound)
+	}))
+	defer api.Close()
+	client := &Client{HTTP: api.Client(), APIBase: api.URL, Token: "secret", Revision: "v0.1.1"}
+	if _, err := client.Select(context.Background(), Choice{Channel: "stable"}); err != nil {
+		t.Fatal(err)
+	}
+	if apiAuthorization != "Bearer secret" || redirectedAuthorization != "" {
+		t.Fatalf("authorization: original host %q redirected host %q", apiAuthorization, redirectedAuthorization)
+	}
+}
+
+// TestC11RepositoryAndAssetFallbacksKeepOldReleasesInstallable proves C11.
+func TestC11RepositoryAndAssetFallbacksKeepOldReleasesInstallable(t *testing.T) {
+	asset := []byte("old named release")
+	digest := sha256.Sum256(asset)
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch {
+		case strings.Contains(r.URL.Path, "/repos/"+primaryRepository+"/"):
+			http.NotFound(w, r)
+		case strings.Contains(r.URL.Path, "/repos/"+legacyRepository+"/"):
+			fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+		case strings.HasSuffix(r.URL.Path, "/aforge-"+runtime.GOOS+"-"+runtime.GOARCH): // legacy-name
+			_, _ = w.Write(asset)
+		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x *aforge-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH) // legacy-name
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := releaseClient(server, "v0.1.1")
+	release, err := client.Select(context.Background(), Choice{Channel: "stable"})
+	if err != nil || release.Repository != legacyRepository {
+		t.Fatalf("release = %+v, error %v", release, err)
+	}
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(context.Background(), InstallOptions{Client: client, Release: release, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(paths, "\n")
+	for _, want := range []string{"/repos/" + primaryRepository, "/repos/" + legacyRepository, "/codeaf-", "/aforge-"} { // legacy-name
+		if !strings.Contains(joined, want) {
+			t.Fatalf("requests do not contain %q:\n%s", want, joined)
+		}
+	}
+}
+
+// TestAssetFailureNamesTheCurrentAssetAndStatusWithoutExposingFallbacks proves D9.
+func TestAssetFailureNamesTheCurrentAssetAndStatusWithoutExposingFallbacks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Install(context.Background(), InstallOptions{
+		Client:  releaseClient(server, "v0.1.0"),
+		Release: Release{Tag: "v0.2.0", Repository: primaryRepository},
+		Target:  target,
+	})
+	if err == nil {
+		t.Fatal("missing asset returned no error")
+	}
+	want := fmt.Sprintf("codeaf-%s-%s answered HTTP 404", runtime.GOOS, runtime.GOARCH)
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
+	}
+	if strings.Contains(err.Error(), server.URL) || strings.Contains(err.Error(), "aforge") { // legacy-name
+		t.Fatalf("person-facing error exposes a fallback: %q", err)
+	}
+}
+
+// TestC14RestartArgumentsReopenTheSameConversation proves C14.
+func TestC14RestartArgumentsReopenTheSameConversation(t *testing.T) {
+	file := "/tmp/conversation.jsonl"
+	for _, row := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"bare", nil, []string{"chat", "--session", file}},
+		{"chat", []string{"chat", "--model", "x"}, []string{"chat", "--model", "x", "--session", file}},
+		{"resume", []string{"resume", "--session", file}, []string{"resume", "--session", file}},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			got := RestartArgs(row.args, file)
+			if strings.Join(got, "\x00") != strings.Join(row.want, "\x00") {
+				t.Fatalf("args = %q, want %q", got, row.want)
+			}
+		})
+	}
+}

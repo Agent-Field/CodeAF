@@ -464,6 +464,38 @@ func TestInstallerSelectsTheNewestBuildOfEachChannel(t *testing.T) {
 // Contract: the newest published_at wins regardless of list order, created_at
 // replaces a null published_at, and the same ordering applies to staging.
 func TestInstallerPicksTheNewestChannelBuildWhateverTheListOrder(t *testing.T) {
+	t.Run("a newer malformed tag is ignored", func(t *testing.T) {
+		const (
+			valid     = "dev-20260915-abcdefabcdef"
+			malformed = "dev-backfill"
+		)
+		github := newInstallGitHub(t, valid, malformed)
+		github.timings = map[string]fakeTiming{
+			valid:     {published: "2026-09-15T15:00:00Z"},
+			malformed: {published: "2026-09-15T16:00:00Z"},
+		}
+		run := runInstaller(t, github, []string{"--dev"}, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 0 || !strings.Contains(run.output, "dev "+valid) || strings.Contains(run.output, malformed) {
+			t.Fatalf("exit %d, want valid tag %s:\n%s", run.code, valid, run.output)
+		}
+	})
+
+	t.Run("a release candidate with leading zeroes is ignored", func(t *testing.T) {
+		const (
+			valid     = "v2.1.0-rc.1"
+			malformed = "v02.1.0-rc.2"
+		)
+		github := newInstallGitHub(t, valid, malformed)
+		github.timings = map[string]fakeTiming{
+			valid:     {published: "2026-09-15T15:00:00Z"},
+			malformed: {published: "2026-09-15T16:00:00Z"},
+		}
+		run := runInstaller(t, github, []string{"--rc"}, "CODEAF_NO_MODIFY_PATH=1")
+		if run.code != 0 || !strings.Contains(run.output, "rc "+valid) || strings.Contains(run.output, malformed) {
+			t.Fatalf("exit %d, want valid tag %s:\n%s", run.code, valid, run.output)
+		}
+	})
+
 	t.Run("newest published_at", func(t *testing.T) {
 		const (
 			oldest = "dev-20260915-e2ae913b7d0c"

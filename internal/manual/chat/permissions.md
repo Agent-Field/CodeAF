@@ -933,7 +933,7 @@ then one sentence:
 
 ```
 —
-Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author
+Drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author
 ```
 
 On an issue that link reads `utm_medium=issue` instead.
@@ -942,7 +942,7 @@ On an issue that link reads `utm_medium=issue` instead.
 with one small muted line, no em dash above it:
 
 ```
-<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
+<sub>drafted with [CodeAF](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
 ```
 
 `agentfield-bot` is codeaf's own GitHub account and the address is the one GitHub
@@ -973,9 +973,12 @@ cannot change this row for you — ask it to and it says so and points you at
 piece of work handed off, and on the next codeaf you start.
 
 The commit a task writes when its work lands carries the same trailer. Those
-commits are authored as `codeaf <codeaf@localhost>` and always have been: codeaf
-reads that name to tell its own commits from yours when it lands a branch. Your
-own commits are authored by you and are never touched.
+commits are authored as `codeaf <agentfield-bot@users.noreply.github.com>`: codeaf
+reads that identity to tell its own commits from yours when it lands a branch.
+Older task commits authored as `codeaf <codeaf@localhost>` are still recognised
+as codeaf's own work, as are those under its earlier local address
+`aforge <aforge@localhost>` <!-- legacy-name -->. Your own commits are authored
+by you and are never touched.
 
 ## A timeout is not a deny — why it said "denied by the person" when nobody said no
 

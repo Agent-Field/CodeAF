@@ -1,9 +1,13 @@
 ---
 kind: added
-title: The approvals chip — what a conversation runs without asking is a control on the seam
+title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "A needs-you description with a thread-title line could lose its answer buttons when the home field had few rows. The selected description now uses the available body height, so its answers remain visible on a quiet home."
+  - "Home's recent-conversation and running-work panels are now named `threads` and `tasks`, with bare headings. Tasks combine live work and root tasks begun or finished in the last 24 hours, ordered newest first; selecting a task opens that task's page."
+  - "Home's arrows used to cross into projects and spend, and Up could leave the field for the tab bar. Arrows now stay in the field, Right opens the selected row's actions, and Left closes them. Projects and spend rows are read-only; the project control above the message box remains interactive."
+  - "A home heading that opens a place underlines its word under the pointer; headings with no destination stay dim. Needs-you descriptions appear under the pointer and lead with their thread title. The home footer retains the shared draft controls without restoring pick, Enter, folder-opening or Tab hints."
   - "Home's resting message-box footer no longer advertises arrow-key picking or Enter opening; it starts with the available project, effort, approvals and chats controls, then commands. The navigation keys still work."
   - "The conversation task panel put `ctrl+g hide` at its bottom, after the totals. The hide control is now immediately above `+ /task`, after the visible task rows, with the same click target, hover styling and foreground-command ownership of ctrl+g. Task rooms keep their own footer exit."
   - "The conversation footer advertised home first and included `tab last`. It now shares home's control order: `ctrl+v effort · alt+y approvals · alt+k chats · / commands`, followed by `space space home` over an empty box. Tab still works. Unsupported controls are absent, and narrow frames keep commands after giving up whole clauses. The home hint remains clickable in its new position."

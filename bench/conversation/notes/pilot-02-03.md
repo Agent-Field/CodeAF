@@ -3,9 +3,9 @@
 Three live runs the owner made against codeaf `4d9d91fb0`, pinned to
 `deepseek/deepseek-v4-flash-0731` throughout:
 
-    /private/tmp/af-conversation-ops/live-pilot-02             print door, 4 scenarios × 3 arms
-    /private/tmp/af-conversation-ops/live-pilot-03             the same, repeated
-    /private/tmp/af-conversation-ops/live-interactive-peers-01 interactive door, pi and omp
+    scratch bench-ops dir: live-pilot-02                print door, 4 scenarios × 3 arms
+    scratch bench-ops dir: live-pilot-03                the same, repeated
+    scratch bench-ops dir: live-interactive-peers-01    interactive door, pi and omp
 
 This file adjudicates the non-pass cells in those runs. **Nothing in the raw
 evidence has been touched**: no receipt is rewritten, no verdict is edited in

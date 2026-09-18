@@ -7,6 +7,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -482,10 +484,11 @@ func placeFootText(frame string) string {
 // ── home's own doors, under the one grammar ─────────────────────────────────
 
 // A PANEL'S HEADING IS A DOOR INTO THE PLACE IT NAMES, on the grid at two
-// columns and at three: `needs you`, `running` and `since you left` open tasks,
-// `spend` opens spend, `next up` standing and `where you were` the typed search
-// — and `projects`, which names nothing but its own panel, opens nothing and
-// leaves home up. The heading is found by its WORDS on the painted frame and
+// columns and at three: `needs you`, `tasks` and `since you left` open tasks,
+// `spend` opens spend and `scheduled` standing — and `projects` and `threads`,
+// which name nothing but their own panels, open nothing and leave home up
+// (`threads` opened the typed search until 2026-09-17; the box under home is
+// the search now). The heading is found by its WORDS on the painted frame and
 // never by the map the press reads, so a map that drifted from the paint fails
 // here rather than agreeing with itself.
 func TestAClickOnAHomeHeadingOpensThePlaceItNames(t *testing.T) {
@@ -508,6 +511,67 @@ func TestAClickOnAHomeHeadingOpensThePlaceItNames(t *testing.T) {
 			})
 		}
 	}
+}
+
+// A HEADING THAT IS A DOOR SAYS SO UNDER THE POINTER: its word underlines while
+// the mouse is over it, and only the word — the explainer and the clause keep
+// their ink. A heading that opens nothing (`projects`, `threads`) never
+// underlines, because an affordance on a wall is a lie, and moving the pointer
+// off a heading takes the underline with it. The underline is the pointer's
+// only mark on a heading: the cursor's ground still follows the keyboard alone
+// (docs/DESIGN-LANGUAGE.md, "the section holding the cursor marks its own
+// heading").
+func TestAHomeHeadingThatOpensAPlaceUnderlinesUnderThePointer(t *testing.T) {
+	for _, width := range []int{120, 180} {
+		for _, slot := range homePanelOrder {
+			t.Run(itoa(width)+"/"+slot.word, func(t *testing.T) {
+				a := newSwitchLab(t).open(width, 45)
+				if a.pal.profile == tokens.NoColor {
+					t.Skip("this lab draws no SGR, so it cannot show an underline")
+				}
+				placeFrameText(a)
+				x, y, ok := homeHeadingAt(a, slot.word)
+				if !ok {
+					t.Fatalf("the %q heading is not on the %d-column frame:\n%s", slot.word, width, homeText(a))
+				}
+				drive(t, a, tea.MouseMotionMsg{X: x + 2, Y: y})
+				row := homeFrameRow(a, y)
+				under := a.pal.underline(slot.word)
+				if placeFor(slot.head) != nil {
+					if !strings.Contains(row, under) {
+						t.Fatalf("the pointer is on the %q heading, which opens %s, and the word is not underlined:\n%q",
+							slot.word, slot.head.word(), row)
+					}
+					if strings.Contains(ansi.Strip(row), slot.explainer) && slot.explainer != "" &&
+						strings.Contains(row, a.pal.underline(slot.word+rowSep+slot.explainer)) {
+						t.Fatalf("the explainer underlined with the word:\n%q", row)
+					}
+				} else if strings.Contains(row, "\x1b[4m") {
+					t.Fatalf("the %q heading opens nothing and underlines under the pointer:\n%q", slot.word, row)
+				}
+				if line, ok := a.home.focusedLine(); ok && line.cell != nil && line.cell.kind == cellHead {
+					t.Fatalf("the pointer on a heading moved the cursor onto it")
+				}
+				// AND OFF THE HEADING THE UNDERLINE GOES: one row down is a row or
+				// a whisper, never a heading.
+				drive(t, a, tea.MouseMotionMsg{X: x + 2, Y: y + 1})
+				if row := homeFrameRow(a, y); strings.Contains(row, "\x1b[4m") {
+					t.Fatalf("the pointer left the %q heading and it is still underlined:\n%q", slot.word, row)
+				}
+			})
+		}
+	}
+}
+
+// homeFrameRow is one screen row of home exactly as it is painted, colour and
+// attributes and all.
+func homeFrameRow(a *app, y int) string {
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	if y < 0 || y >= len(lines) {
+		return ""
+	}
+	return lines[y]
 }
 
 // homeHeadingAt is where a panel's heading word is painted: the row whose text
@@ -566,9 +630,12 @@ func homeFoldDoor(t *testing.T, a *app, panel homePanelID) int {
 // HOME AND THE PLACES PAINT A SECTION WORD IN ONE INK. Screen 2a paints section
 // headings dim and the accent budget paints them muted, and home and the places
 // had each spelled their choice; the ink is one line now (placeprose.go's
-// [placeHeadingInk]), so every heading on home opens with exactly the ink
-// [placeHeading] opens a place's section word with. The panel holding the
-// cursor wears the cursor's ground over its heading and is left out.
+// [placeHeadingInk]), so every heading on home THAT IS A DOOR opens with
+// exactly the ink [placeHeading] opens a place's section word with. A heading
+// that opens nothing — `projects`, `threads` — is dim instead, word and
+// explainer in one ink, so it cannot be mistaken for a door (owner,
+// 2026-09-17). The panel holding the cursor wears the cursor's ground over its
+// heading and is left out.
 func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	a.pal = newTestPalette()
@@ -582,6 +649,19 @@ func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 	marked, _ := a.home.cursorPanel()
 	for _, slot := range homePanelOrder {
 		if slot.panel.id() == marked {
+			continue
+		}
+		if placeFor(slot.head) == nil {
+			want := a.pal.dim(slot.word)
+			if slot.explainer != "" {
+				want = a.pal.dim(slot.word + rowSep + slot.explainer)
+			}
+			if !strings.Contains(frame, want) {
+				t.Fatalf("the %q heading opens nothing and is not painted dim", slot.word)
+			}
+			if strings.Contains(frame, open+slot.word) {
+				t.Fatalf("the %q heading opens nothing and wears the door headings' ink", slot.word)
+			}
 			continue
 		}
 		if !strings.Contains(frame, open+slot.word) {

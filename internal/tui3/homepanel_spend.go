@@ -15,8 +15,12 @@ import (
 // the day has spent enough of it to see — one thin meter says how much of it is
 // gone. Then the fortnight, one block cell a day with today at the right, its
 // total and its loudest day. Then who it went to and what for: the two models
-// most of it bought, and how many chats and tasks today has seen. Every row is
-// a door into the spend place.
+// most of it bought, and how many chats and tasks today has seen. NO ROW OF IT
+// IS A DOOR: the lines under the heading are a reading and not things to do
+// anything to, so the cursor steps over them and a press on one does nothing
+// (owner, 2026-09-17: "nothing under the spend title should be selectable or
+// clickable"). The heading itself still opens the spend place, as every
+// heading that names a place does ([app.homeHeadPress]).
 //
 // IT WAS TWO CHARTS (owner, 2026-09-10). A gauge-cell bar under the heading
 // read as a second sparkline, the braille fortnight beside it was noise at a
@@ -141,11 +145,21 @@ func (spendPanel) rows(in *homeGridInput) homePanelRows {
 	return out
 }
 
-// spendLine is one of the panel's rows: a door into the spend place, told apart
-// from its neighbours by key ([homeLine.sameRow]).
+// homeReadout is a line that is read and never acted on: one of `spend`'s
+// three. It is not a cursor stop and answers no press ([homeLine.stop]), which
+// is what keeps every other row of the grid a door — a row the cursor can rest
+// on is a row `enter` does something with, and these have nothing for it to do.
+// Its value sits with the other kinds declared away from home.go's iota block
+// (place_home.go), for the same reason.
+const homeReadout homeRowKind = 246
+
+// spendLine is one of the panel's rows, told apart from its neighbours by key
+// ([homeLine.sameRow]). It wears the spend place's word as its project so the
+// row keeps its identity across rebuilds the way a ledger line does, and it
+// leads nowhere.
 func spendLine(key string, cell *homeCell) homeLine {
 	cell.panel = panelSpend
-	return homeLine{kind: homeLedger, project: pageSpend.word(), dir: key, cell: cell}
+	return homeLine{kind: homeReadout, project: pageSpend.word(), dir: key, cell: cell}
 }
 
 // used is how much of the day's allowance is gone, and nothing for a machine

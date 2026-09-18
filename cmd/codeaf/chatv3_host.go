@@ -26,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/tui3"
+	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
 
 // ── `codeaf chat --host devbox` ─────────────────────────────────────────────
@@ -80,6 +81,9 @@ type hostLaunch struct {
 	// (internal/session's principal.go), and the session is on the far machine.
 	// A ceiling accepted here would bound nothing at all.
 	budget bool
+	// restart is filled by the surface and read after this door has closed the
+	// ssh child and all conversation connections.
+	restart *codeupdate.Plan
 }
 
 // check refuses the flags this door cannot honour.
@@ -517,6 +521,7 @@ func openChatV3Host(launch hostLaunch) error {
 	})
 	defer fleet.closeAll()
 	options, _ := hostOptions(fleet, welcome, launch.pick)
+	options.Restart = launch.restart
 	// THE SAME WAY THE SURFACE IS RUN AT EVERY OTHER DOOR (chatv3_surface.go):
 	// the byte meter and the logger redirect are the terminal's business rather
 	// than this connection's, and a door does not state them for itself.

@@ -1040,7 +1040,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 // a killed terminal leaves without saying so, and this runs whenever its socket
 // gets around to reporting the end, which may be after the window that replaced
 // it has already been welcomed (held.go states the whole rule).
-func (sess *Session) detach(s *server) {
+func (sess *Session) detach(s *server, deliberate bool) {
 	// THE RAIL'S SUBSCRIPTION GOES WITH THE WINDOW. It is left before anything
 	// else because leaving it is what ends the goroutine pumping frames at a
 	// pipe that is closing (tasklane.go).
@@ -1062,6 +1062,13 @@ func (sess *Session) detach(s *server) {
 	}
 	if len(sess.surfaces) == 0 {
 		sess.empty = time.Now()
+		// A deliberate detach is the window saying it has gone, so its last
+		// action needs no torn-link grace. Keeping that grace made a cleanly
+		// closed window look attached for another two call deadlines, which in
+		// turn kept an in-place update on the old engine it had just left.
+		if deliberate {
+			sess.acted = time.Time{}
+		}
 	}
 	sess.mu.Unlock()
 	if moved {
@@ -1712,7 +1719,7 @@ func (s *server) leave() {
 	if sess == nil {
 		return
 	}
-	sess.detach(s)
+	sess.detach(s, s.detached.Load())
 	if s.goodbye.Load() {
 		_ = sess.closeLeaving()
 		return

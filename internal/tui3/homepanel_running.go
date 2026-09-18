@@ -11,78 +11,125 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// runningPanel is `running` (docs/design/home-mission-control/DESIGN.md §1, §3
-// P2): every piece of work out on the machine — each conversation's tasks and
-// its background jobs, whatever project it is in — the most recently started
-// first.
+// runningPanel is `tasks` (docs/design/home-mission-control/DESIGN.md §1, §3
+// P2): THE DAY'S TASKS, FLATTENED, AS A PREVIEW OF THE TASKS PLACE. Every task
+// and adaptive run the machine ran or is running — whatever conversation or
+// project it belongs to — that started or landed inside the last day
+// ([homeTasksWindow]), plus every task still running however old, the most
+// recent first. A row is a title and a time, like a row of `threads`, and
+// enter on it opens the task itself — the same door the tasks place's own list
+// takes for the same row ([app.openTaskDoor]).
+//
+// IT WAS THE RUNNING PANEL: only what was moving right now, with a conversation's
+// background jobs and a firing watch beside its tasks. The owner ruled
+// (2026-09-17) that the panel should be the tasks place in miniature — a
+// flattened list of the last twenty-four hours, up to ten rows and then `N
+// more` — so the jobs and the firing watches are gone from it (a watch keeps
+// its row on `scheduled`), and what landed today stands beside what is still
+// going.
 //
 // A ROW IS A PIECE OF WORK AND NOT A CONVERSATION. A chat with three tasks out
-// is three rows, each with its own title, its own clock and its own line saying
-// what it is doing, because the question this panel answers is "what is the
-// machine doing for me", and a conversation's name does not answer it.
+// is three rows, each with its own title and its own clock, because the question
+// this panel answers is "what has the machine done for me today", and a
+// conversation's name does not answer it.
 //
-// EVERY FACT IS THE PRESENCE FILE'S, fresh within its window
-// ([session.SessionPresence.Fresh]): the work a session says it has out, what
-// its worker is doing (up to one heartbeat old), how far an adaptive run has got,
-// and the jobs it has running. A session nobody has refreshed says nothing here.
+// TWO AUTHORITIES, THE LIVE ONE FIRST. The presence file says what a session
+// has out right now — its running tasks, what the worker is doing, how far a
+// run has got — and is fresh within its window ([session.SessionPresence.Fresh]);
+// the task index says what landed, and when. A task on both is one row, drawn
+// from presence, and it carries the index's own entry so the door knows what to
+// open.
 //
-// THE FIRST ROW WEARS THE ONE MOVING CELL (law 8, homespinner.go's
+// THE FIRST RUNNING ROW WEARS THE ONE MOVING CELL (law 8, homespinner.go's
 // [homeView.spinAt]) and no other row wears a mark at all.
 type runningPanel struct{ homePanelBase }
 
-// The words a running row is drawn with.
+// homeTasksWindow is how far back the panel looks: a day. A task that landed
+// before it is the tasks place's to show; one still running is drawn whatever
+// its age, because it is happening now.
+const homeTasksWindow = 24 * time.Hour
+
+// The words a task row is drawn with.
 const (
-	// runningJobWord names what a job row is, after its project.
-	runningJobWord = "a background job"
-	// runningUpWord leads a job's age: a dev server has been UP for three hours,
-	// where a task has been working for four minutes.
-	runningUpWord = "up "
-	// runningTaskKey and runningJobKey prefix a row's [homeCell.key], so a
-	// conversation's task 3 and its job 3 are two rows.
+	// runningTaskKey prefixes a row's [homeCell.key], so a conversation's task 3
+	// is told apart from every other row that names a 3.
 	runningTaskKey = "task:"
-	runningJobKey  = "job:"
-	// runningItemKey prefixes a firing standing item's key, by its id.
-	runningItemKey = "item:"
 )
 
-// runningItem is one row before the panel orders it.
+// runningItem is one row before the panel orders it: when it last did
+// something, whether it is still going, and the line.
 type runningItem struct {
-	started time.Time
+	at      time.Time
+	running bool
 	line    homeLine
 }
 
 func (runningPanel) rows(in *homeGridInput) homePanelRows {
-	var items []runningItem
+	// The switcher's row for each conversation, for the facts a row of the
+	// field wears — `here`, `another window`, its project's word.
+	bySession := map[string]switcherRow{}
 	for _, row := range in.rows {
-		if row.kind == switcherStanding && row.moving {
-			items = append(items, runningItem{row.at, runningStandingLine(row)})
-			continue
+		if row.kind == switcherConversation && row.session.ID != "" {
+			bySession[row.session.ID] = row
 		}
+	}
+	seen := map[string]bool{}
+	var items []runningItem
+	// WHAT IS RUNNING, off presence: fresh, and whatever its age.
+	for _, row := range in.rows {
 		if row.kind != switcherConversation || !row.session.Presence.Fresh(in.now) {
 			continue
 		}
 		for _, task := range row.session.Presence.RunningTasks {
-			items = append(items, runningItem{task.StartedAt, runningTaskLine(row, task, in.now)})
-		}
-		for _, job := range row.session.Presence.Jobs {
-			items = append(items, runningItem{job.StartedAt, runningJobLine(row, job, chatProjectTag(row, in.tilde), in.now)})
+			entry := runningEntry(row, task)
+			seen[taskLedgerKey(entry)] = true
+			items = append(items, runningItem{at: task.StartedAt, running: true,
+				line: runningTaskLine(row, task, entry, in)})
 		}
 	}
-	sort.SliceStable(items, func(i, j int) bool { return runningNewer(items[i].started, items[j].started) })
+	// WHAT LANDED OR BEGAN INSIDE THE DAY, off the record: every root task the
+	// presence pass has not already drawn.
+	since := in.now.Add(-homeTasksWindow)
+	for _, project := range in.world.Projects {
+		for _, session := range project.Sessions {
+			row, known := bySession[session.ID]
+			if !known {
+				row = switcherRow{kind: switcherConversation, session: session, title: homeName(session), project: project.Name}
+			}
+			for _, entry := range session.Tasks.Rows {
+				if entry.Parent != "" {
+					continue
+				}
+				if strings.TrimSpace(entry.SessionID) == "" {
+					entry.SessionID = session.ID
+				}
+				at := runningLastAt(entry)
+				if seen[taskLedgerKey(entry)] || at.IsZero() || at.Before(since) {
+					continue
+				}
+				seen[taskLedgerKey(entry)] = true
+				items = append(items, runningItem{at: at, line: runningRecordLine(row, entry, in)})
+			}
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool { return runningNewer(items[i].at, items[j].at) })
 	lines := make([]homeLine, 0, len(items))
+	spun := false
 	for _, item := range items {
+		if item.running && !spun {
+			item.line.cell.mark = cellMarkSpin
+			spun = true
+		}
 		lines = append(lines, item.line)
 	}
-	if len(lines) > 0 {
-		lines[0].cell.mark = cellMarkSpin
-	}
-	out := homePanelCut(in, panelRunning, lines)
-	out.said = countWord(len(lines))
-	return out
+	// THE HEADING IS THE BARE WORD (owner, 2026-09-17): no count and no
+	// explainer after it, like `threads`; the rows under it are the count.
+	return homePanelCut(in, panelRunning, lines)
 }
 
-// runningNewer is the panel's order: the work that started last first, and a
-// start nobody recorded — a queued node — after everything that has one.
+// runningNewer is the panel's order: what happened last first, and a moment
+// nobody recorded — a queued node with no start — after everything that has
+// one.
 func runningNewer(a, b time.Time) bool {
 	if a.IsZero() != b.IsZero() {
 		return b.IsZero()
@@ -90,13 +137,81 @@ func runningNewer(a, b time.Time) bool {
 	return a.After(b)
 }
 
-// runningTaskLine is one task or adaptive run: its title and how long it has
-// been going, and under it what it is doing.
-func runningTaskLine(row switcherRow, task session.PresenceTask, now time.Time) homeLine {
-	cell := &homeCell{panel: panelRunning, title: runningTitle(row, task), sub: runningDoing(task),
-		key: runningTaskKey + task.ID}
-	homeLiveMargin(cell, row, sinceAt(task.StartedAt, now))
-	return switcherRowLine(row, cell)
+// runningLastAt is when a task on the record last did something: when it
+// landed, else when it began. A row with neither is a row the panel cannot
+// place in the day, and it is left to the tasks place.
+func runningLastAt(entry session.TaskIndexEntry) time.Time {
+	if !entry.EndedAt.IsZero() {
+		return entry.EndedAt
+	}
+	return entry.StartedAt
+}
+
+// runningEntry is the record's own row for a task presence says is running,
+// joined on the pair that identifies one piece of work ([taskLedgerKey]) — or,
+// for a node the record has not written yet, an entry made from what presence
+// says, so the door has something to open ([app.openTaskDoor] and the tasks
+// place's [readTasks] make the same one for another window's task).
+func runningEntry(row switcherRow, task session.PresenceTask) session.TaskIndexEntry {
+	for _, entry := range row.session.Tasks.Rows {
+		if entry.ID == task.ID {
+			if strings.TrimSpace(entry.SessionID) == "" {
+				entry.SessionID = row.session.ID
+			}
+			if strings.TrimSpace(entry.Title) == "" {
+				entry.Title = strings.TrimSpace(task.Title)
+			}
+			if strings.TrimSpace(entry.Label) == "" {
+				entry.Label = runningTitle(row, task)
+			}
+			return entry
+		}
+	}
+	title := runningTitle(row, task)
+	return session.TaskIndexEntry{ID: task.ID, SessionID: row.session.ID, Label: title, Title: title,
+		Status: task.State, StartedAt: task.StartedAt}
+}
+
+// runningTaskLine is one task or adaptive run still going: its title and how
+// long it has been going, and under it what it is doing.
+func runningTaskLine(row switcherRow, task session.PresenceTask, entry session.TaskIndexEntry, in *homeGridInput) homeLine {
+	return runningLine(row, entry, runningTitle(row, task), runningDoing(task), sinceAt(task.StartedAt, in.now))
+}
+
+// runningRecordLine is one task off the record — landed inside the day, or
+// begun and not yet on presence: its title, when it last did something, and
+// under the cursor its project's word and the state it is in, in the words the
+// tasks place uses for the same row ([taskStateWord]).
+func runningRecordLine(row switcherRow, entry session.TaskIndexEntry, in *homeGridInput) homeLine {
+	title := strings.TrimSpace(entry.Label)
+	if title == "" {
+		title = strings.TrimSpace(entry.Title)
+	}
+	if title == "" {
+		title = row.title
+	}
+	project := ""
+	if homeBucketOf(row.session.Transcript) != in.bucket {
+		project = chatProjectTag(row, in.tilde)
+	}
+	sub := rowClauses(project, taskStateWord(entry, row.session.Runs(entry)))
+	return runningLine(row, entry, title, sub, sinceAt(runningLastAt(entry), in.now))
+}
+
+// runningLine is one row of the panel: a ledger line whose door is its own
+// row — the task — exactly as a landed task's line on `since you left` is
+// ([leftLine], [app.leftEnter]), so enter, the pointer and the row's identity
+// across rebuilds ([homeLine.sameRow]) are the ones that panel already has.
+// The switcher's row rides the cell so the margin can say `here` or `another
+// window` ([homeLiveMargin]) and the stop verb can ask whose the work is
+// ([app.runningStopTarget]).
+func runningLine(row switcherRow, entry session.TaskIndexEntry, title, sub, clock string) homeLine {
+	own := row
+	own.task = &entry
+	cell := &homeCell{panel: panelRunning, title: title, sub: sub, grows: strings.TrimSpace(sub) != "",
+		key: runningTaskKey + entry.ID, row: &own}
+	homeLiveMargin(cell, own, clock)
+	return homeLine{kind: homeLedger, project: pageTasks.word(), dir: taskLedgerKey(entry), cell: cell}
 }
 
 // runningTitle is a task's own title, and — for a presence row that carries
@@ -140,36 +255,27 @@ func runningDoing(task session.PresenceTask) string {
 	return doing
 }
 
-// runningJobLine is one background job: `<command> · a background job`, how
-// long it has been up at the margin, and — under the cursor — where it is
-// ([chatProjectTag]'s word for its folder), because a dev server has no
-// activity to report. The project used to ride inside the title; it is a fact
-// like every other row's project and stands where theirs do (owner,
-// 2026-09-15: the right margin is a time, the rest is description).
-func runningJobLine(row switcherRow, job session.PresenceJob, project string, now time.Time) homeLine {
-	clock := ""
-	if age := sinceAt(job.StartedAt, now); age != "" {
-		clock = runningUpWord + age
-	}
-	cell := &homeCell{panel: panelRunning, title: strings.TrimSpace(job.Title) + rowSep + runningJobWord,
-		key: runningJobKey + job.ID, sub: project, grows: project != ""}
-	homeLiveMargin(cell, row, clock)
-	return switcherRowLine(row, cell)
-}
+// ── the door ────────────────────────────────────────────────────────────────
 
-// runningStandingLine is a watch or a reminder IN THE MIDDLE OF FIRING: work the
-// machine started on its own, which is exactly what this panel is about. It
-// carries the words the item was set up with, what its pass is doing, and how
-// long ago the pass began ([switcherItemAt] reads the running mark).
-//
-// IT STAYS AN ITEM'S LINE ([switcherRowLine] makes it a [homeItem]), so every
-// door an item has — enter to the conversation that asked for it, `→` for its
-// pause verb, `ctrl+v` for its own rung — is the door it had on the retired list.
-func runningStandingLine(row switcherRow) homeLine {
-	cell := &homeCell{panel: panelRunning, title: row.title, sub: row.note,
-		key: runningItemKey + row.item.Item.ID}
-	homeLiveMargin(cell, row, row.age)
-	return switcherRowLine(row, cell)
+// openTaskDoor is enter on a row of home named after one piece of work: THE
+// DOOR THE TASKS PLACE'S OWN LIST TAKES FOR THE SAME ROW ([tasksPlace.enter]),
+// so a task pressed on home arrives where it would have arrived one `tab`
+// away. Work this window is running opens its live room; everything else
+// opens the record inside the tasks place, parked on that row.
+func (a *app) openTaskDoor(entry *session.TaskIndexEntry) tea.Cmd {
+	if entry == nil {
+		return nil
+	}
+	if node := a.taskSheetNodeFor(entry); node != nil {
+		a.closeHome()
+		if node.run != "" {
+			a.openOrchRoom(node.run, node.node)
+		} else {
+			a.openRoomFor(node.id, node.title)
+		}
+		return a.takeRoomPump()
+	}
+	return a.openTaskRecord(entry)
 }
 
 // ── stopping one ────────────────────────────────────────────────────────────
@@ -188,9 +294,7 @@ func runningStandingLine(row switcherRow) homeLine {
 // THE VERB IS SPELLED AS THE TASKS PLACE SPELLS IT ([stopActWord]), because it
 // is the same act on the same work and reaches the same card; a row that said
 // `stop` on home and `stop it` one `tab` away would be two verbs to a person.
-// `ctrl+x` reaches it without the strip, which is what a three-column home
-// needs: there `running` is the middle column and `→` crosses rather than
-// opening the strip. The map names the chord.
+// `ctrl+x` reaches it without the strip too, from any column.
 func (a *app) runningVerbs(line homeLine) []verb {
 	target := a.runningStopTarget(line)
 	if target.empty() {

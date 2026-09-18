@@ -303,7 +303,7 @@ duration bound.
 
 Five waves, each landing green on `dev` and each reducing a number in §1. The
 first is measurement, because two of the twelve problems are that we cannot see.
-Every wave runs its suites on the Spark, never on the laptop.
+Every wave runs its suites on the bench host, never on a work machine.
 
 | wave | state | lands | number it moves |
 | --- | --- | --- | --- |

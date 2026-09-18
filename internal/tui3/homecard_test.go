@@ -152,10 +152,12 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	}
 	// THE WORK SAYS WHAT IT IS DOING, before any card is asked for — this is the
 	// reading the old `state` band was for, on the surface that carries it now:
-	// the running panel's row for the task, with its line under it
+	// the tasks panel's row for the task, whose description (drawn under the
+	// cursor, like a row of `threads`) is what its worker is doing
 	// (homepanel_running.go).
-	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(homeLineAfter(text, "Port the picker"), tabSignalWord(tabWorking)) {
-		t.Fatalf("the row does not say what the conversation is doing:\n%s", text)
+	rows := panelRows(a, panelRunning)
+	if len(rows) == 0 || rows[0].title != "Port the picker" || rows[0].sub != tabSignalWord(tabWorking) {
+		t.Fatalf("the row does not say what the conversation is doing: %+v\n%s", rows, homeText(a))
 	}
 	card := homeCardFor(t, a, other)
 	work := cardLine(card, "Port the picker")

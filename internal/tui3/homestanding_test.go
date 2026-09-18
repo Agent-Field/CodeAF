@@ -582,7 +582,7 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 // A WATCH ASKED FOR IN ANOTHER PROJECT STILL OPENS FROM HERE. It used to refuse
 // any origin outside the window's own bucket — `elsewhere · <path>` on the foot
 // — which meant a watch answered nothing at all from every window not launched
-// inside the folder that made it. A `where you were` row in another project has
+// inside the folder that made it. A `threads` row in another project has
 // opened from here for as long as the grid has existed; this path was the last
 // one holding the repealed rule (owner, 2026-09-15).
 func TestAWatchAskedForInAnotherProjectStillOpensFromHere(t *testing.T) {

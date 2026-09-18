@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// recentPanel is `where you were`: this window's own conversation first, in
+// recentPanel is `threads`: this window's own conversation first, in
 // bold, with the last thing said in it on the line under it; then the most
 // recently active of the rest; then `N more · type to find one`.
 //
@@ -15,7 +15,7 @@ import (
 // mid-turn or coming here stays: `running` lists the work a conversation sent
 // out (tasks and jobs), never the conversation itself, so a chat dropped from
 // here for moving would be on no panel at all. And this window's own
-// conversation is always the first row, because `where you were` without the
+// conversation is always the first row, because `threads` without the
 // place you were is not an answer.
 //
 // AND THE ERRANDS STAND OVER IT. An `ask here` exchange is a conversation this

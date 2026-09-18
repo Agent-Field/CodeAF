@@ -565,15 +565,13 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	if !strings.Contains(text, tokens.GlyphNeedsHuman+" Pricing Research") {
 		t.Fatalf("the row does not wear the needs-you mark:\n%s", text)
 	}
-	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF, not one keystroke away in
-	// a pane: the `needs you` panel draws the question on the line under the
-	// title (homepanel_needs.go), with the cursor nowhere near it.
-	lines := strings.Split(text, "\n")
-	for y, line := range lines {
-		if strings.Contains(line, tokens.GlyphNeedsHuman+" Pricing Research") &&
-			(y+1 >= len(lines) || !strings.Contains(lines[y+1], "can I run: rm -rf build/")) {
-			t.Fatalf("the row does not show what it is stopped on:\n%s", text)
-		}
+	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF while the row is being
+	// read — under the pointer or the cursor (owner, 2026-09-17) — not one
+	// keystroke away in a pane: the `needs you` panel draws the question on the
+	// line under the title (homepanel_needs.go).
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Pricing Research" })
+	if under := homeLineBelow(homeText(a), tokens.GlyphNeedsHuman+" Pricing Research", 3); !strings.Contains(under, "can I run: rm -rf build/") {
+		t.Fatalf("the row does not show what it is stopped on under its thread title:\n%s", homeText(a))
 	}
 	// And it really is the first row of home — asserted on the lines the grid
 	// is built from rather than on where the words land in the frame. ONE ROW
@@ -1478,9 +1476,9 @@ func TestHomeOpensAnotherProjectAndTheOneYouLeaveGoesOnRunning(t *testing.T) {
 	}
 }
 
-// A row this terminal is holding says `open`, never `another window` — the flock
-// it would meet is our own.
-func TestARowThisTerminalHoldsSaysOpenAndNeverAnotherWindow(t *testing.T) {
+// A row this terminal is holding keeps its age, never `another window`: the
+// lock it would meet is our own, and Enter returns to that held conversation.
+func TestARowThisTerminalHoldsKeepsItsAgeAndNeverAnotherWindow(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
@@ -1497,11 +1495,14 @@ func TestARowThisTerminalHoldsSaysOpenAndNeverAnotherWindow(t *testing.T) {
 	if strings.Contains(text, homeHeldShort) {
 		t.Fatalf("a conversation this terminal holds was called another window:\n%s", text)
 	}
-	if !strings.Contains(text, " "+homeOpenWord) {
-		t.Fatalf("the row this terminal holds does not say open:\n%s", text)
+	if !a.holding(mine) {
+		t.Fatal("the previous conversation is no longer held")
 	}
 	for at, line := range a.home.lines {
 		if line.kind == homeSession && line.row.Transcript == mine {
+			if line.cell == nil || line.cell.right != line.cell.row.age {
+				t.Fatalf("the held row does not keep its age: %+v", line.cell)
+			}
 			a.home.cursor = at
 		}
 	}
@@ -2513,14 +2514,12 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
 			}
 		}
-		// AND THE ONE ROW AN EMPTY HOME HAS TO STAND ON IS THE FOLDER IT WAS
-		// OPENED IN: `projects` is never empty (DESIGN.md §4), and enter there
-		// starts the first conversation. Every other panel whispers, and a
-		// whisper names what arrives rather than a thing to open.
-		for _, at := range (placeHome{}).stops(a) {
-			if kind := a.home.lines[at].kind; kind != homeProjectRow {
-				t.Fatalf("at %d columns an empty home offered a row of kind %v to stand on", tc.width, kind)
-			}
+		// AND AN EMPTY HOME HAS NO ROW TO STAND ON AT ALL: `projects` is never
+		// empty (DESIGN.md §4) but its rows are read and not stood on (owner,
+		// 2026-09-17), and every other panel whispers — a whisper names what
+		// arrives rather than a thing to open.
+		if stops := (placeHome{}).stops(a); len(stops) != 0 {
+			t.Fatalf("at %d columns an empty home offered rows of kind %v to stand on", tc.width, a.home.lines[stops[0]].kind)
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))

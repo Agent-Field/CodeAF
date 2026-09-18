@@ -939,6 +939,13 @@ func (a *app) barReach() bool {
 	if pl == nil || a.bar.on || a.tabRow < 1 {
 		return false
 	}
+	// HOME'S COLUMN HAS NO WAY UP ONTO THE BAR (owner, 2026-09-17: "don't let
+	// users scroll up out of the left column onto the tabs"). `↑` at the top of
+	// the field stays where it is; the bar is reached by a press on it, `tab`,
+	// or a place's own chord. Every other place keeps the walk.
+	if pl.id() == pageHome {
+		return false
+	}
 	stops := pl.stops(a)
 	if len(stops) == 0 {
 		// A ROOM WITH NOTHING IN IT STILL HAS A BAR OVER IT. An almost-empty page

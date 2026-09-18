@@ -170,16 +170,18 @@ var tuiWords = map[string]tuiWord{
 		why:    "the top of the left column: every question on the machine lands in it, and every resting home draws it",
 	},
 	"homePanelRecent": {
-		screen: "where you were",
-		why:    "the panel of conversations, this window's own first — the panel every resting home draws",
+		screen: "threads",
+		why: "the panel of conversations, this window's own first — the panel every resting home draws. " +
+			"It was `where you were` until 2026-09-17",
 	},
 	"homePanelProjects": {
 		screen: "projects",
-		why:    "the panel of folders, never empty, whose enter starts a chat there — the view by project alt+g used to be",
+		why:    "the panel of folders, never empty, read and never stood on since 2026-09-17 — the view by project alt+g used to be",
 	},
 	"homePanelRunning": {
-		screen: "running",
-		why:    "the top of the right column: every task, job and firing watch out on the machine",
+		screen: "tasks",
+		why: "the top of the right column: the last day's tasks, running or landed, newest first. It was " +
+			"`running` until 2026-09-17, and now shares its word with the bar's second tab, which it folds into",
 	},
 	"switcherSinceLeft": {
 		screen: "since you left",
@@ -194,8 +196,8 @@ var tuiWords = map[string]tuiWord{
 		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
-		screen: "work you send off with /task runs here on its own",
-		why: "what `running` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
+		screen: "the last day's tasks land here · /task starts one",
+		why: "what `tasks` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
 	},
@@ -210,7 +212,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"barTasksWord": {
 		screen: "tasks",
-		why:    "the second word on the bar, and the place `running` and `needs you` fold into",
+		why:    "the second word on the bar, and the place `tasks` and `needs you` fold into",
 	},
 	"barSettingsWord": {
 		screen: "settings",
@@ -228,7 +230,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homeHereWord": {
 		screen: "here",
-		why:    "this window's own row on `where you were`, the row the person's last words sit under",
+		why:    "this window's own row on `threads`, the row the person's last words sit under",
 	},
 	"homeFactsActive": {
 		screen: "last active ",

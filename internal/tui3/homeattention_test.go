@@ -513,7 +513,7 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 	a := lab.open(120, 40)
 	a.home.seen = lab.now.Add(-30 * time.Minute)
 	a.home.build()
-	if !strings.Contains(homeText(a), "where you were") {
+	if !strings.Contains(homeText(a), "threads") {
 		t.Fatalf("the panels were not there to begin with:\n%s", homeText(a))
 	}
 	typeHome(a, "quiet")
@@ -521,7 +521,7 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 		t.Fatal("typing into the box did not put home into a search")
 	}
 	text := homeText(a)
-	for _, gone := range []string{"where you were", "since you left", " " + homeFoldMoreWord} {
+	for _, gone := range []string{"threads", "since you left", " " + homeFoldMoreWord} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("a search kept the switcher's %q:\n%s", gone, text)
 		}

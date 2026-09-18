@@ -230,6 +230,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
+| `/update` | `/upgrade` | — | installs the newest stable release and restarts this conversation on it |
+| `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag, then restarts this conversation on it |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |
@@ -1073,9 +1075,9 @@ other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
 always in one order: `needs you` (every question waiting on you, a digit answers the top one
-from anywhere), `where you were` (this window's conversation, then the most recent, then a
+from anywhere), `threads` (this window's conversation, then the most recent, then a
 `N more` fold that opens the rest), `projects` (every folder, `enter` starts a chat there),
-`running` (every task, job and firing watch), `since you left` (what landed while you were
+`tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
 away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
 at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
@@ -1118,7 +1120,7 @@ fresh-session seam exists. The last is `enter` on a row whose folder has been de
 moved since its last conversation: home stays up and nothing is opened. **How many
 conversations this terminal already holds is never a refusal.** Past twelve, a quiet
 one left alone may be let go of; that is not a refusal of the one you asked for.
-A task another window is running cannot be stopped from home: its `running` row says
+A task another window is running cannot be stopped from home: its `tasks` row says
 `another window` and offers no stop.
 
 ## /approvals and /yolo — what this conversation runs without asking, YOLO from inside a chat
