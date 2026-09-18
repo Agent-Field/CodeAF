@@ -705,7 +705,7 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 	}
 	rows, err := json.Marshal(map[string]string{
 		config.KeyTierWorkerModel:     "vendor/profile-worker",
-		config.KeyTierHighModel:      "vendor/profile-careful",
+		config.KeyTierHighModel:       "vendor/profile-careful",
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
 	if err != nil {
