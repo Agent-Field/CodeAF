@@ -386,9 +386,9 @@ func (placeSearch) close(a *app) {
 	a.search = searchPage{}
 }
 
-func (placeSearch) tick(a *app, now time.Time) bool {
+func (placeSearch) tick(a *app, now time.Time) (bool, tea.Cmd) {
 	a.refreshSearch()
-	return true
+	return true, nil
 }
 
 // body is the results, or — while the box is empty — this place's heading and

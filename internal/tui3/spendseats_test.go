@@ -33,11 +33,20 @@ func (f *seatFake) PlanSpend(since time.Time) []session.PlanSpendLine {
 // seatLab is [spendLab] with the page's agent widened by the seat seam: the
 // agent is swapped BEFORE the place is opened, so the one read the open makes
 // is the one the fake answers.
+//
+// THE OPEN'S OWN COMMAND IS RUN AND FOLDED, unlike the ledger-only labs, because
+// the seat read is a DOOR now: it is asked off the update loop and its answer
+// comes home on the next pass ([app.askSpendSeats], offloop.go). A lab that
+// dropped the open's command would leave the block whispering, which is what the
+// other spend labs do — and all they ask of it. This one wants the lines.
 func seatLab(t *testing.T, seats []session.PlanSpendLine) *app {
 	t.Helper()
 	a := placeApp(t)
 	a.agent = &seatFake{fakeAgent: a.agent.(*fakeAgent), seats: seats}
-	return spendLabOn(t, a, writeSpendLedger(t, spendFixture()))
+	a.clock = func() time.Time { return spendTestNow }
+	a.usageLedger = writeSpendLedger(t, spendFixture())
+	spend(t, a, a.showPage(pageSpend))
+	return a
 }
 
 // TWO SEATS DRAW TWO LINES, each with its own dollars and no nought: the money
