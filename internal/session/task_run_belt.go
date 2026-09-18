@@ -295,7 +295,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		}
 		landing = RunLanding{}
 	}
-	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(summary, landing)); err != nil {
+	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing)); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's outcome note failed: " + err.Error())
 		}
@@ -361,13 +361,21 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 
 // beltRunOutcomeNote is the one line a run's own page carries about how it
 // ended: the engine's outcome word and where the work went, or the sentence that
-// says why it did not.
-func beltRunOutcomeNote(summary RunSummary, landing RunLanding) string {
+// says why it did not. The last stored run reading supplies its Now sentence;
+// without one this remains the landing digest that predates run summaries.
+func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding) string {
 	line := beltLandingLine(landing)
 	if line == "" {
-		return summary.Outcome
+		line = summary.Outcome
+	} else {
+		line = summary.Outcome + " · " + line
 	}
-	return summary.Outcome + " · " + line
+	if stored, ok := readRunSummary(store, rootID); ok {
+		if now := strings.TrimSpace(stored.Summary.Now); now != "" {
+			line += " · " + now
+		}
+	}
+	return line
 }
 
 // beltLandingLine is what a landing is in one line: where the work went and how
