@@ -1200,3 +1200,14 @@ func TestPlandbCliAddSetChecksAndShow(t *testing.T) {
 		t.Fatalf("replacement checks:\n%s", got)
 	}
 }
+
+func TestPlandbCliNextClaimPrintsChecks(t *testing.T) {
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	h.cliAdd("Checked", "checked", "--check", "go test ./x", "--check", "go vet ./x")
+	code := h.run("--db", h.db, "go", "--agent", "worker")
+	cliWantCode(t, code, 0)
+	if got := h.out.String(); !strings.Contains(got, "checks:\n  go test ./x\n  go vet ./x") {
+		t.Fatalf("next claim misses checks:\n%s", got)
+	}
+}
