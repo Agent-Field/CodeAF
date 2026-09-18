@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: an exhausted leaf continues the plan it has instead of a second full planning pass
-pr: 1143
+pr: 1156
 surface: [resident, chat]
 invalidates:
   - "Every remainder of an exhausted leaf was planned from scratch: the overrun splice called plan.Build again on each round, paying a fresh planning call and re-emitting the planner's phases over a job that already had a plan. It now continues the plan it drew, whenever the lineage has recorded turns and the job still holds a plan, and falls back to the full re-plan only when either is missing."

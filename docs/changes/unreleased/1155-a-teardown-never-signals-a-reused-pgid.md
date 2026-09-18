@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a job teardown never signals a process group whose pid was reused
-pr: 1148
+pr: 1155
 surface: [chat, engine, resident]
 invalidates:
   - "A job was torn down by signalling its recorded process-GROUP id with no check that the pgid still belonged to the job: `internal/processgroup`'s `Kill`/`Terminate`/`Alive` all act on `kill(-pid, …)`, which reaches whatever process group currently holds that pgid. Under pid pressure a finished job's number is handed out again, so a settle/close sweeping several job groups could SIGKILL an unrelated, live group — observed twice taking down a tmux server and ~12 running jobs. A group is now recorded at launch with the leader's identity, and every group signal is sent only while that identity still matches the live process; on a mismatch, a reaped child or a free pid nothing is signalled."
