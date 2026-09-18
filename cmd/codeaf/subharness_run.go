@@ -33,7 +33,7 @@ import (
 // REACHES internal/session FOR is the landing the pool's judge reads
 // ([session.TaskLanding]): a run with nobody watching records what it made
 // where the restart sweep will score it. It reaches no task surface — no
-// roster, no room, no node — and subharness_env.go beside it touches
+// roster, no room, no node — and subharness_env.go beside it never touches
 // internal/session at all.
 //
 // A subharness is a FUNCTION (PRD §4), so this command is shaped like one: typed
