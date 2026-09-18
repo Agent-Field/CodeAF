@@ -436,6 +436,13 @@ const (
 	// planRailKeepTitle is the least a title keeps beside a whole tail before
 	// the title is laid first instead: enough cells to tell two tasks apart.
 	planRailKeepTitle = 10
+	// planRailLevels is how deep the rail's tree is drawn before deeper work
+	// shares an indent: a task, the task under it, and no further.
+	planRailLevels = 2
+	// planRailLead is the one cell between the rail's seam and a plan row, the
+	// same edge the rail's own rows keep. The page's lead is four cells, a
+	// seventh of a rail this narrow.
+	planRailLead = " "
 )
 
 // planRailRow is one plan task on the rail: the connector, the state mark from
@@ -459,8 +466,8 @@ const (
 func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
 	item := line.item
 	glyph, ink := tasksGlyph(item, pal)
-	lead := tasksBareLead + pal.dim(line.kin) + ink(glyph) + " "
-	room := width - ansi.StringWidth(tasksBareLead+line.kin) - ansi.StringWidth(glyph) - 1
+	lead := planRailLead + pal.dim(line.kin) + ink(glyph) + " "
+	room := width - ansi.StringWidth(planRailLead+line.kin) - ansi.StringWidth(glyph) - 1
 	if room < 1 {
 		room = 1
 	}
@@ -514,8 +521,8 @@ func planRailLive(line tasksLine, width int, pal palette) string {
 	// choice the page's own under-block made ([tasksReading.lay]): a connector
 	// says another row of the tree, and this line belongs to the one above it.
 	pad := strings.Repeat(" ", ansi.StringWidth(line.kin))
-	lead := tasksBareLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
-	room := width - ansi.StringWidth(tasksBareLead+line.kin) - taskSheetPhoneIndent
+	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
+	room := width - ansi.StringWidth(planRailLead+line.kin) - taskSheetPhoneIndent
 	if room < 1 {
 		return ""
 	}

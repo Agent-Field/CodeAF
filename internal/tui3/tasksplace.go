@@ -217,6 +217,13 @@ type tasksReading struct {
 	// it on: a query. A row that matched and is behind a fold is a row the query
 	// appears not to have found ([tasksPlace.filtered]).
 	unfolded bool
+	// kinFloor is the least number of indent levels the layout draws whatever
+	// the width says ([tasksKinRoom]). The page leaves it zero. The chat's rail
+	// sets it ([tasksReading.planRows]): a run's tree is what the rail is for,
+	// and at the rail's width the page's budget is one level, which drew a task
+	// and the task under it at one indent, two siblings to the eye. One more
+	// level costs a grandchild's row two cells and no other row anything.
+	kinFloor int
 	// folder is the project THIS WINDOW is standing in and tilde this machine's
 	// home directory. They are the two facts [chatProjectWord] needs to decide
 	// whether a conversation root also names its folder — a tag on every row of
@@ -603,6 +610,10 @@ func (r tasksReading) lay(width int) []tasksLine {
 	tree := r.tree()
 	column := tree.column()
 	levels := tasksKinRoom(width)
+	// THE RAIL ALWAYS AFFORDS A GRANDCHILD ITS STEP ([tasksReading.kinFloor]).
+	if r.kinFloor > levels {
+		levels = r.kinFloor
+	}
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
@@ -747,7 +758,11 @@ func (r tasksReading) lay(width int) []tasksLine {
 		// each fold shut or open by its own default ([tasksReading.opens]).
 		for _, g := range groups {
 			depth := 0
-			if g.named {
+			// THE RAIL IS ALREADY INSIDE THE CONVERSATION, so its projection draws
+			// no conversation row and spends no indent on one: the run's root
+			// stands at the rail's own edge ([tasksReading.kinFloor]).
+			named := g.named && r.kinFloor == 0
+			if named {
 				line := tasksLine{
 					kind: tasksLineChat, chat: g.chat, owner: len(lines),
 					folds: len(g.roots) > 0, family: g.chat.key, kids: g.chat.kids,
@@ -768,7 +783,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 				depth = 1
 			}
 			for at, root := range g.roots {
-				work(root, depth, at == len(g.roots)-1, g.named, false)
+				work(root, depth, at == len(g.roots)-1, named, false)
 			}
 		}
 	}
@@ -1497,6 +1512,7 @@ func (r tasksReading) planRows(width int, pal palette) []string {
 	// family's finished rows still fold to their one line, which is the tree's
 	// own rule and not a fold a person sets.
 	plan.unfolded = true
+	plan.kinFloor = planRailLevels
 	lines := plan.lay(width)
 	out := make([]string, 0, len(lines))
 	for i := range lines {

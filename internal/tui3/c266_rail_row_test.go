@@ -163,3 +163,17 @@ func TestANarrowRailsHeldRowKeepsItsTitle(t *testing.T) {
 		t.Fatalf("the held row's title is one letter:\n%s", held)
 	}
 }
+
+// ON THE RAIL A TASK UNDER A TASK IS DRAWN UNDER IT. The page's indent budget at
+// the rail's width is one level, which drew a grandchild at its parent's indent:
+// two siblings to the eye, in the one place the run's tree is read.
+func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
+	rows := c266PlanRows()
+	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
+	_, rail := c266Rail(t, rows, 150, false)
+	_, parent := c266RowWith(t, rail, "write the tests")
+	_, child := c266RowWith(t, rail, "write the fixtures")
+	if strings.Index(child, "write") <= strings.Index(parent, "write") {
+		t.Fatalf("the task under a task is not indented under it:\n%s\n%s", parent, child)
+	}
+}
