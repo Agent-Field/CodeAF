@@ -265,6 +265,10 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 			s.launch(ctx, task, "")
 		}
 	}
+	// WAKING A PARKED TASK COMES BEFORE WAKING A PARENT, so a task this sweep
+	// starts is registered as running and the composite sweep below leaves it
+	// alone.
+	s.launchWaits(ctx, rootID)
 	// WAKING A PARENT IS THE PASS'S LAST LAUNCH: with the ready leaves out of
 	// the way, every composite task whose children have landed and whose worker
 	// has not been woken with them is started again to integrate them.
@@ -312,10 +316,29 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// hands back no account this run counts. The completion check below still
 	// runs, because the cancellation may be the write that finished the tree.
 	delete(s.cancels, ret.task.ID)
+	if ret.report.Waiting {
+		// A PARKED RETURN IS NOT AN ENDING. The worker called `plandb wait`; the
+		// store already released the claim and flagged the task waiting, and the
+		// task stays open until the run wakes it ([launchWaits]). Nothing is
+		// written over the store's own park, and the spend the worker made is
+		// still the run's.
+		s.spent += ret.report.USD
+		s.steps += ret.report.Steps
+		if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
+			s.limitHit = true
+		}
+		s.completeTree()
+		return
+	}
 	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
 		s.completeTree()
 		return
 	}
+	// A WORKER THAT FINISHED ITS OWN TASK IN THE STORE needs no ending written
+	// for it: the store carries the completion and its result. The run still
+	// counts what the worker spent, and the root's own report is still the
+	// run's result.
+	endedByStore := ret.err == nil && s.store.Task(ret.task.ID).Status == plandb.StatusDone
 	s.spent += ret.report.USD
 	s.steps += ret.report.Steps
 	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
@@ -332,6 +355,11 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		}
 	} else {
 		switch {
+		case endedByStore:
+			// THE WORKER WROTE ITS OWN ENDING, so the store's word stands and
+			// nothing here speaks over it. The run counts the spend above and the
+			// tree is checked below.
+			delete(s.lastReport, ret.task.ID)
 		case ret.err == nil && s.waitsForWake(ret.task.ID):
 			// A PARENT'S RESULT IS WRITTEN AFTER ITS CHILDREN LAND, NOT BEFORE.
 			// The worker dispatched and ended its turn to wait on what it handed
@@ -544,6 +572,111 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		s.reported[task.ID] = childIDs(tasks, task.ID)
 		s.launch(ctx, task, wakeClause(tasks, task))
 	}
+}
+
+// launchWaits starts the worker of a task that parked itself with `plandb
+// wait`, once something it waited on has moved. The task called `plandb wait`;
+// the store released its claim and left it open with the moment it parked
+// ([Task.WaitedAt]), and the park flag ([Task.Waiting]) keeps it off the
+// ordinary ready frontier — so this is the one road that brings it back. When a
+// dependency or a child of it has changed since that moment ([Store.Changed]),
+// its worker is started again with a clause naming what changed, because the
+// change is the whole reason it is running again. A task whose dependency moved
+// without landing is left parked: a hard dependency that is not done is still a
+// block, and its own landing will move it. THE PARK FLAG IS CLEARED IN THE STORE
+// FIRST, so the task comes back to life through the store's own write and a
+// launch this pass cannot make — no slot, another writer took it — is made on a
+// later one.
+func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
+	if s.limitHit {
+		return
+	}
+	tasks := s.store.Tasks()
+	for _, taskp := range tasks {
+		task := *taskp
+		if !task.Waiting {
+			continue
+		}
+		if _, running := s.cancels[task.ID]; running {
+			continue
+		}
+		moved := waitMoved(tasks, &task, s.store)
+		if len(moved) == 0 {
+			continue
+		}
+		if s.inFlight >= s.slots {
+			return
+		}
+		// A READY LEAF IS CLAIMED, the same claim every dispatch makes, so its
+		// finish command still answers the ownership check. A composite is not
+		// claimable and needs none — the root among them, which the run holds
+		// without claiming like any other coordinator.
+		if !task.Composite {
+			if _, err := s.store.Claim(task.ID, task.ID, s.Owner); err != nil {
+				continue
+			}
+		}
+		woken, err := s.store.Wake(task.ID)
+		if err != nil {
+			continue
+		}
+		if task.Composite {
+			s.reported[task.ID] = childIDs(tasks, task.ID)
+		}
+		s.launch(ctx, *woken, waitClause(moved))
+	}
+}
+
+// waitMoved answers the tasks a parked task waited on that have changed since
+// it parked: its dependencies and its children, filtered to what Store.Changed
+// names from the moment it parked. The order is the store's own admission
+// order, so the clause reads the same way twice.
+func waitMoved(tasks []*plandb.Task, task *plandb.Task, store *plandb.Store) []*plandb.Task {
+	waited := map[string]bool{}
+	for _, dep := range task.Dependencies {
+		waited[dep.TaskID] = true
+	}
+	for _, candidate := range tasks {
+		if candidate.ParentID == task.ID {
+			waited[candidate.ID] = true
+		}
+	}
+	if len(waited) == 0 {
+		return nil
+	}
+	all := map[string]*plandb.Task{}
+	for _, candidate := range tasks {
+		all[candidate.ID] = candidate
+	}
+	var moved []*plandb.Task
+	for _, id := range store.Changed(task.WaitedAt) {
+		if !waited[id] {
+			continue
+		}
+		if candidate, ok := all[id]; ok {
+			moved = append(moved, candidate)
+		}
+	}
+	return moved
+}
+
+// waitClause is the sentence a woken parked task opens on: what it waited on,
+// and what each of those has done since. It is the wait's other half — a worker
+// parked because it could not go on, and this is the fact that lets it.
+func waitClause(moved []*plandb.Task) string {
+	var b strings.Builder
+	b.WriteString("something you waited on has moved, so your parked task is running again: ")
+	for i, task := range moved {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		fmt.Fprintf(&b, "%s %q is now %s", task.ID, task.Title, task.Status)
+		if result := strings.TrimSpace(task.Result); result != "" {
+			b.WriteString(": ")
+			b.WriteString(resultOrNoResult(result))
+		}
+	}
+	return b.String()
 }
 
 // needsWake answers whether a composite task owes a wake: its children have all

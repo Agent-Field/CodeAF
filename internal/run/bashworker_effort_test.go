@@ -25,7 +25,7 @@ import (
 // conversation rung and no dialled level — and the work seat's floor is low.
 func TestBashWorkerAsksTheProviderAtTheWorkSeat(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)
 
 	var (
@@ -37,7 +37,7 @@ func TestBashWorkerAsksTheProviderAtTheWorkSeat(t *testing.T) {
 			mu.Lock()
 			efforts = append(efforts, provider.ReasoningEffortFrom(ctx))
 			mu.Unlock()
-			return textReply("the work is done"), nil
+			return toolReply(finishCommand("root", "the work is done")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)

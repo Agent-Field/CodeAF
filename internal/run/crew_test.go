@@ -205,11 +205,13 @@ func readSpendRows(t *testing.T, storePath string) []spendRow {
 // the completer was asked for.
 func TestBashWorkerChargesTheSeatModelToTheTaskSpendRow(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)
 	dir := crewProfile(t, map[string]string{config.KeyTierWorkerModel: "vendor/seat-model"})
 	recorder := &recordingCompleter{script: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textReply("the work is done"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolReply(finishCommand("root", "the work is done")), nil
+		},
 	}}
 	factory := run.CrewFactory(store, t.TempDir(), dir, recorder.forModel)
 
