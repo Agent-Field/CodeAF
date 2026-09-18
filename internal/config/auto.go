@@ -263,8 +263,14 @@ func listHolds(words []string, word string) bool {
 // never empty.
 func autoRow(profileDir, family, tier string) (model string, source SeatSource, preset string) {
 	preset = crewPresetUnder(profileDir, family)
+	// THE RUNG ANSWERS TO THE PICK WORD exactly as a pick-computed seat's does
+	// ([pickedModel]): the bare word carries the pool's measurements through
+	// [AutoPick]'s own prior, so a row computed under `learn` is a learned seat
+	// and says so, while one computed under `catalog` keeps the catalog's rung.
+	// The decision is shared ([computedRung]) so the two seams cannot name one
+	// computation two ways.
 	if id, ok := AutoPick(tier, family, preset, autoCatalogRows()); ok {
-		return id, SeatComputed, preset
+		return id, computedRung(CrewPickAt(profileDir)), preset
 	}
 	if row, ok := CrewModelsForSource(family, preset); ok {
 		if id := strings.TrimSpace(row[tier]); id != "" {
@@ -332,10 +338,7 @@ func pickedModel(tier, family, preset, pick string) (modelID string, source Seat
 		prior = autoPrior(autoIndex())
 	}
 	if id, ok := AutoPickWith(tier, family, preset, autoCatalogRows(), prior); ok {
-		if pick == CrewPickLearn {
-			return id, SeatLearned
-		}
-		return id, SeatComputed
+		return id, computedRung(pick)
 	}
 	if row, ok := CrewModelsForSource(family, preset); ok {
 		if id := strings.TrimSpace(row[tier]); id != "" {
@@ -346,6 +349,22 @@ func pickedModel(tier, family, preset, pick string) (modelID string, source Seat
 	// five — but the never-empty law is carried rather than assumed, the same
 	// last word [autoRow] keeps.
 	return defaultTierModel(family, tier), SeatTable
+}
+
+// computedRung is the rung a seat computed at the crew's preset answers on,
+// read from the pick word alone: [SeatLearned] under `learn`, whose pick
+// carries the Model Pool's measurements and this install's own judged runs
+// ([autoPrior]), and [SeatComputed] under `catalog` — and under the table word,
+// which computes nothing of its own. IT ASKS WHICH PICK RAN, never whether the
+// prior moved the id: [SeatLearned]'s own comment says the rung names the
+// computation, and a rung that reported an actual move would be a second rule.
+// The pick's own seat ([pickedModel]) and a bare `auto` row ([autoRow]) both
+// answer through it, so the two seams cannot name one computation two ways.
+func computedRung(pick string) SeatSource {
+	if normalCrewPick(pick) == CrewPickLearn {
+		return SeatLearned
+	}
+	return SeatComputed
 }
 
 // autoCatalogRows is [AutoModels] read with its two ordinary absences folded
