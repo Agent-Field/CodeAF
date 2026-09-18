@@ -72,7 +72,7 @@ func rewindPast() []session.DisplayEntry {
 func newRewindApp(t *testing.T, past []session.DisplayEntry) (*app, *rewindFake) {
 	t.Helper()
 	agent := &rewindFake{fakeAgent: &fakeAgent{model: "m", past: past}}
-	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab"})
+	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab", ProfileDir: t.TempDir()})
 	a.width, a.height = 100, 24
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.welcome = welcome{spent: true}

@@ -40,7 +40,7 @@ func browseLab(t *testing.T) (*app, *fakeAgent, string) {
 		}
 	}
 	agent := &fakeAgent{model: "m"}
-	a := newApp(t.Context(), Options{Agent: agent, Workspace: filepath.Join(root, "here")})
+	a := newApp(t.Context(), Options{Agent: agent, Workspace: filepath.Join(root, "here"), ProfileDir: t.TempDir()})
 	a.width, a.height = 120, 32
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.entries = nil

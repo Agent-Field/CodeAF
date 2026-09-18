@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // recordClip is how many runes of the brief and of the deliverable the user
@@ -335,8 +336,13 @@ func hasTools(parameters []string) bool {
 }
 
 // vendor is the part of a model id before the first slash — "z-ai" in
-// "z-ai/glm-5.3" — and the whole id when there is no slash.
+// "z-ai/glm-5.3" — and the whole id when there is no slash. A seat arrives
+// spelled however its caller wrote it, so the leading `~` alias marker and a
+// thinking level come off first: the same-vendor exclusion reads the model,
+// not the spelling it arrived in.
 func vendor(id string) string {
+	model, _ := roles.SplitEffort(id)
+	id = strings.TrimPrefix(model, "~")
 	if slash := strings.IndexByte(id, '/'); slash > 0 {
 		return id[:slash]
 	}

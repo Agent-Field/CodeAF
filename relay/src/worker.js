@@ -132,9 +132,10 @@ async function handleRows(request, env) {
     return json({ error: 'no rows' }, 400);
   }
   const now = new Date();
+  const vendors = listVar(env, 'ALLOWED_VENDORS');
   const rows = [];
   for (const { line, number } of lines) {
-    const { row, error } = validateRow(line, now);
+    const { row, error } = validateRow(line, now, vendors);
     if (error !== null) {
       return json({ error: `line ${number}: ${error}` }, 400);
     }
@@ -394,4 +395,19 @@ async function loadEntries(env) {
 function intVar(env, name, fallback) {
   const value = parseInt(env[name], 10);
   return Number.isFinite(value) ? value : fallback;
+}
+
+// listVar reads a comma- or space-separated variable as a lowercased set of
+// names, or null when it is unset or blank. A null answer turns the rule that
+// reads it off: with no allowed set configured, every vendor passes.
+function listVar(env, name) {
+  const value = env[name];
+  if (typeof value !== 'string' || value.trim() === '') {
+    return null;
+  }
+  const names = value
+    .split(/[\s,]+/)
+    .filter((item) => item !== '')
+    .map((item) => item.toLowerCase());
+  return names.length === 0 ? null : new Set(names);
 }

@@ -176,7 +176,7 @@ func exportLab(t *testing.T) (*app, *fakeAgent, string) {
 	t.Helper()
 	dir := t.TempDir()
 	agent := &fakeAgent{model: "vendor/model", past: exportSample()}
-	a := newApp(context.Background(), Options{Agent: agent, Workspace: dir})
+	a := newApp(context.Background(), Options{Agent: agent, Workspace: dir, ProfileDir: t.TempDir()})
 	// WIDER THAN THE OTHER LABS, because what these tests read back is a note
 	// with a FILE PATH in it: at sixty cells the name wraps mid-word, and an
 	// assertion that had to know where it wrapped would be a test of the

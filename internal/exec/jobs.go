@@ -146,6 +146,11 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 			command = "export PATH=\"${CODEAF_SKILLS_BIN:?}:$PATH\"\n" + command
 		}
 	}
+	// A BACKGROUND JOB IS STILL A MODEL'S COMMAND, and its shell must not reach
+	// the tmux server hosting this chat any more than a foreground bash call
+	// does (tools.go, JobShellEnv). Here the nil case is the bare path that used
+	// to inherit the parent's whole environment.
+	environment = JobShellEnv(environment)
 
 	r := t.jobs
 	r.mutex.Lock()
@@ -170,9 +175,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	jobCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(jobCtx, "bash", "-lc", command)
 	configureDetachedCommand(cmd, r.workspace.Root(), logFile)
-	if environment != nil {
-		cmd.Env = environment
-	}
+	cmd.Env = environment
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return os.ErrProcessDone
