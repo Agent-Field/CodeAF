@@ -147,7 +147,7 @@ func TestOwedLandingCompletionReaderSeesQuestionAsAskAndOutcomeAsEvidence(t *tes
 	question := "What is the test's name once it lands?"
 	summary := RunSummary{Outcome: beltRunOutcomeDone, Result: "Test function name: TestDouble."}
 	landing := RunLanding{Branch: "main", Changed: []string{"double.go", "double_test.go"}}
-	line := beltRunOutcomeNote(summary, landing)
+	line := beltRunOutcomeNote(nil, "", summary, landing)
 
 	completer := &scriptedCompleter{steps: []step{finalText("The test is TestDouble."), finalText(checkpointNothingLeft)}}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
