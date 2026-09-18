@@ -9,6 +9,7 @@ package session
 // did, and what they are not asked next.
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -218,6 +219,69 @@ func TestTwoReferredPlacesAreStillAQuestion(t *testing.T) {
 // project a while ago and has spent every call since in another; it is about the
 // other one now, and a cache that outranked what the person is visibly doing
 // would be this design's own chore wearing the opposite face.
+func TestBriefPlainlyNamesGroundBeforeConversationPlaces(t *testing.T) {
+	ground := newTestRepo(t)
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	artifactDir := filepath.Join(ground, "artifacts")
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+
+	for i, brief := range []string{
+		"Work in " + ground + "; leave the report at " + filepath.Join(artifactDir, "one.txt"),
+		"The project folder is " + ground + "; update " + filepath.Join(ground, "shared.txt"),
+		"Make the change under " + ground + "; evidence belongs in " + filepath.Join(artifactDir, "three.txt"),
+	} {
+		stand := agent.resolveTaskGround(taskSpec{brief: brief, deliverable: "the named artifact", acceptance: "the artifact exists"})
+		if stand.ask != "" || stand.refusal != "" || stand.dir != canonicalPath(ground) || stand.rung != taskGroundBrief {
+			t.Fatalf("proposal %d stand = %+v, want plainly named brief ground", i+1, stand)
+		}
+	}
+}
+
+func TestBriefGroundRequiresOneContainmentAnswer(t *testing.T) {
+	ground := newTestRepo(t)
+	passing := newTestRepo(t)
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	stand := agent.resolveTaskGround(taskSpec{
+		brief:       "Work in " + ground + "; compare in passing with " + passing,
+		deliverable: "the fix", acceptance: "the tests pass",
+	})
+	if stand.rung == taskGroundBrief || stand.ask == "" {
+		t.Fatalf("unrelated passing path decided the brief ground: %+v", stand)
+	}
+}
+
+func TestAnExplicitThirdGroundIsAcceptedAndVisibleAsSaid(t *testing.T) {
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	third := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	stand := agent.resolveTaskGround(taskSpec{ground: third, brief: "the fix", deliverable: "shared.txt", acceptance: "it changed"})
+	if stand.ask != "" || stand.refusal != "" || stand.dir != canonicalPath(third) || stand.rung != taskGroundSaid {
+		t.Fatalf("explicit third ground = %+v, want accepted with said provenance", stand)
+	}
+}
+
 func TestAStaleKeptPlaceDoesNotOutrankFreshTouchedEvidence(t *testing.T) {
 	stale := newTestRepo(t)
 	busy := newTestRepo(t)

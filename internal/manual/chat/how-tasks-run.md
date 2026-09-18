@@ -55,11 +55,20 @@ both roads in: a ground the conversation worked out from what it had been readin
 one you settled yourself when it asked which of two projects the work was for. The set
 lives in the conversation's own folder, so closing the terminal does not lose it.
 
-A folder **you named** stays until you say otherwise. One the conversation merely worked
-out **decays**: if every call since has been in another repository, the fresh evidence wins
-and the old answer stops being offered — the record stays, it just stops deciding. And two
-folders the conversation is about, with nothing in the work to choose between them, are
-the same one-keypress question rung 2 asks, in the two names you already know.
+A folder **you named** stays until you say otherwise. Before conversation evidence is
+weighed, the task's own brief gets a rung: when all the existing places its contract writes
+down have exactly one containing folder, that folder is where the task stands. This is a
+rule of properties — existence, containment, and uniqueness — not of a particular tool,
+kind of artifact, or spelling. Several descendants of one folder are one answer; an aside
+that introduces an unrelated folder makes the brief ambiguous instead of silently winning.
+
+One folder the conversation merely worked out **decays**: if every call since has been in
+another repository, the fresh evidence wins and the old answer stops being offered — the
+record stays, it just stops deciding. And two folders the conversation is about, with
+nothing in the work to choose between them, are the same one-keypress question the next
+rung asks, in the two names you already know. An explicit existing `ground` still outranks
+every other rung, even when it is a third folder not offered by that question; the receipt
+shows that folder with `said` provenance so the choice is visible immediately.
 
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets a working copy of its own, on a branch cut **from that
