@@ -598,7 +598,14 @@ func (s *Store) ranDeclaredCheck(task *Task) bool {
 			Command string `json:"command"`
 		}
 		if json.Unmarshal([]byte(line), &step) == nil && step.Kind == "step" {
-			if _, ok := declared[strings.TrimSpace(step.Command)]; ok {
+			command := strings.TrimSpace(step.Command)
+			if prefix, inner, ok := strings.Cut(command, " && "); ok {
+				fields := strings.Fields(prefix)
+				if len(fields) == 2 && fields[0] == "cd" {
+					command = strings.TrimSpace(inner)
+				}
+			}
+			if _, ok := declared[command]; ok {
 				return true
 			}
 		}
