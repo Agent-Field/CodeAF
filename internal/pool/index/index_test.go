@@ -394,6 +394,31 @@ func TestTheFloorCountsInstallsNotRows(t *testing.T) {
 	}
 }
 
+// A cell keeps the installs it spells: the floor reads them, and a reader
+// that says what stood behind a measurement reads them off the cell. A cell
+// that spells none — the shape the seed carries — reads zero, its rows
+// being the only count the document gives.
+func TestACellCarriesTheInstallsItSpells(t *testing.T) {
+	x := mustParse(t, `{
+		"min_installs": 1,
+		"metrics": {"m": {"kind": "a"}},
+		"cells": [
+			{"metric": "m", "role": "r", "model": "one", "mean": 1, "sd": 1, "n": 9, "installs": 4},
+			{"metric": "m", "role": "r", "model": "two", "mean": 2, "sd": 1, "n": 9}
+		]
+	}`)
+	cells := x.Cells("m")
+	if len(cells) != 2 {
+		t.Fatalf("Cells answered %d cell(s), want both", len(cells))
+	}
+	if cells[0].Model != "one" || cells[0].Installs != 4 {
+		t.Errorf("the cell that spells installs read %+v, want installs 4", cells[0])
+	}
+	if cells[1].Model != "two" || cells[1].Installs != 0 {
+		t.Errorf("a cell that spells no installs read %d, want zero", cells[1].Installs)
+	}
+}
+
 func TestCellsAreSortedByRoleThenModelThenDims(t *testing.T) {
 	x := mustParse(t, `{
 		"metrics": {"m": {"kind": "a", "dims": ["region", "tier"]}},

@@ -32,15 +32,18 @@ var ErrSchema = errors.New("document schema is newer than this reader")
 
 // Cell is one measurement from the document. Dims carries the declared dims
 // beyond role and model that the cell spelled, and is nil for a cell that
-// carried none.
+// carried none. Installs is the contributor count the cell spells — the one
+// the floor reads it on; a cell that spells none, the shape the seed
+// carries, reads zero, its rows being the only count the document gives.
 type Cell struct {
-	Metric string
-	Role   string
-	Model  string
-	Mean   float64
-	SD     float64
-	N      int
-	Dims   map[string]string
+	Metric   string
+	Role     string
+	Model    string
+	Mean     float64
+	SD       float64
+	N        int
+	Installs int
+	Dims     map[string]string
 }
 
 // Want is one row of the document's wanted list, with the role normalised and
@@ -272,9 +275,12 @@ func (x *Index) addCell(raw map[string]any) {
 	n := int(number(raw["n"]))
 	// The floor means the same thing on both sides of the wire: the relay
 	// counts installs, so the cell's installs are counted where it carries
-	// them and its rows where it does not.
+	// them and its rows where it does not. The count is kept on the cell
+	// either way, so a reader says what stood behind the measurement.
+	installs := 0
 	if _, carries := raw["installs"]; carries {
-		if int(number(raw["installs"])) < x.minInstalls {
+		installs = int(number(raw["installs"]))
+		if installs < x.minInstalls {
 			return
 		}
 	} else if n < x.minInstalls {
@@ -294,12 +300,13 @@ func (x *Index) addCell(raw map[string]any) {
 	}
 	canon := x.resolve(model)
 	c := Cell{
-		Metric: metricName,
-		Role:   role,
-		Model:  canon,
-		Mean:   number(raw["mean"]),
-		SD:     number(raw["sd"]),
-		N:      n,
+		Metric:   metricName,
+		Role:     role,
+		Model:    canon,
+		Mean:     number(raw["mean"]),
+		SD:       number(raw["sd"]),
+		N:        n,
+		Installs: installs,
 	}
 	if len(dims) > 0 {
 		c.Dims = dims
