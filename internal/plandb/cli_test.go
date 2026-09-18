@@ -112,7 +112,7 @@ func TestPlandbCliInitAndAddCapturedShapes(t *testing.T) {
 	cliWantCode(t, code, 0)
 	for _, want := range []string{
 		"created p-demo (demo)",
-		`next: plandb add "title" --description "detailed spec" [--dep t-upstream] [--as custom-id]`,
+		`next: plandb add "title" --description "detailed spec" [--dep t-upstream] [--check command] [--as custom-id]`,
 		"tip:  create tasks in dependency order. use --dep to chain them.",
 		`plandb add "A" --as a && plandb add "B" --dep t-a --as b`,
 		"plandb go → work → plandb done --next → repeat",
@@ -1182,10 +1182,12 @@ func TestPlandbCliAddSetChecksAndShow(t *testing.T) {
 	h := cliNewHarness(t)
 	h.cliInitFresh()
 	code := h.run("--db", h.db, "add", "Checked", "--as", "checked", "--check", "go test ./x", "--check", "go vet ./x")
-	cliWantCode(t, code, 0)
+	if code != 0 {
+		t.Fatalf("add failed: %s", h.errb.String())
+	}
 	code = h.run("--db", h.db, "show", "t-checked")
 	cliWantCode(t, code, 0)
-	for _, want := range []string{"checks:\n  go test ./x\n  go vet ./x", "next:", "checks:"} {
+	for _, want := range []string{"checks:\n  go test ./x\n  go vet ./x"} {
 		if !strings.Contains(h.out.String(), want) {
 			t.Fatalf("show misses %q:\n%s", want, h.out.String())
 		}

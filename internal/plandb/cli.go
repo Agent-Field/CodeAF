@@ -118,7 +118,7 @@ func cliScan(argv []string) (*cliParsed, error) {
 	}
 	valueFlags := map[string]bool{
 		"db": true, "agent": true, "project": true, "as": true, "kind": true,
-		"dep": true, "priority": true, "description": true, "parent": true, "into": true,
+		"dep": true, "check": true, "priority": true, "description": true, "parent": true, "into": true,
 		"after": true, "before": true, "title": true, "prepend": true,
 		"result": true, "subtasks": true, "task": true, "limit": true,
 		"status": true, "chat": true, "older-than": true, "role": true,
@@ -149,8 +149,8 @@ func cliScan(argv []string) (*cliParsed, error) {
 					i++
 					value = argv[i]
 				}
-				if name == "dep" {
-					p.lists["dep"] = append(p.lists["dep"], value)
+				if name == "dep" || name == "check" {
+					p.lists[name] = append(p.lists[name], value)
 				} else {
 					p.vals[name] = value
 				}
@@ -314,7 +314,7 @@ func cliInit(p *cliParsed) error {
 	}
 	fmt.Fprintf(cliOut, "created %s (%s)\n", cliProjectID(name), name)
 	fmt.Fprintln(cliOut)
-	fmt.Fprintln(cliOut, `next: plandb add "title" --description "detailed spec" [--dep t-upstream] [--as custom-id]`)
+	fmt.Fprintln(cliOut, `next: plandb add "title" --description "detailed spec" [--dep t-upstream] [--check command] [--as custom-id]`)
 	fmt.Fprintln(cliOut, "tip:  create tasks in dependency order. use --dep to chain them.")
 	fmt.Fprintln(cliOut, `      plandb add "A" --as a && plandb add "B" --dep t-a --as b`)
 	fmt.Fprintln(cliOut, "      plandb go → work → plandb done --next → repeat")
@@ -385,6 +385,8 @@ func cliDispatch(st *Store, p *cliParsed) error {
 			return cliPivot(st, p.tail(1))
 		case "resume":
 			return cliTaskHold(st, p.tail(1), false)
+		case "set-checks":
+			return cliSetChecks(st, p.tail(1))
 		default:
 			return fmt.Errorf("unknown task subcommand %q — run \"plandb help\" for the ported set", p.pos[1])
 		}
@@ -413,6 +415,7 @@ func cliAdd(st *Store, p *cliParsed) error {
 		Title:       p.pos[1],
 		Description: p.vals["description"],
 		Kind:        p.vals["kind"],
+		Checks:      append([]string(nil), p.lists["check"]...),
 	}
 	if as := p.vals["as"]; as != "" {
 		spec.ID = as
@@ -783,6 +786,27 @@ func cliAddDep(st *Store, p *cliParsed) error {
 		return cliPrintJSON(cliTaskObject(st, task))
 	}
 	fmt.Fprintf(cliOut, "added %s ← %s (%s)\n", cliID(down.ID), cliID(up.ID), kind)
+	return nil
+}
+
+// cliSetChecks replaces a task's declared proof commands.
+func cliSetChecks(st *Store, p *cliParsed) error {
+	if len(p.pos) < 2 {
+		return errors.New("set-checks needs a task")
+	}
+	task, err := cliResolve(st, p.pos[1])
+	if err != nil {
+		return err
+	}
+	checks := append([]string(nil), p.lists["check"]...)
+	updated, err := st.Revise(task.ID, TaskPatch{Checks: &checks})
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		return cliPrintJSON(cliTaskObject(st, updated))
+	}
+	fmt.Fprintf(cliOut, "set checks on %s\n", cliID(updated.ID))
 	return nil
 }
 
@@ -1648,6 +1672,12 @@ func cliShow(st *Store, p *cliParsed) error {
 		fmt.Fprintf(cliOut, "agent: %s\n", task.ClaimedBy)
 	}
 	fmt.Fprintf(cliOut, "description: %s\n", task.Description)
+	if len(task.Checks) > 0 {
+		fmt.Fprintln(cliOut, "checks:")
+		for _, check := range task.Checks {
+			fmt.Fprintf(cliOut, "  %s\n", check)
+		}
+	}
 	if task.ParentID != "" && task.ParentID != st.RootID() {
 		fmt.Fprintf(cliOut, "parent: %s\n", cliID(task.ParentID))
 	}
@@ -2017,6 +2047,7 @@ type cliTaskJSON struct {
 	Parallel     string       `json:"parallel,omitempty"`
 	Isolation    string       `json:"isolation,omitempty"`
 	Dependencies []cliDepJSON `json:"dependencies,omitempty"`
+	Checks       []string     `json:"checks,omitempty"`
 	ClaimedBy    string       `json:"claimed_by,omitempty"`
 	Result       string       `json:"result,omitempty"`
 	Error        string       `json:"error,omitempty"`
@@ -2045,6 +2076,7 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 		Priority:    task.Priority,
 		Parallel:    task.Parallel,
 		Isolation:   task.Isolation,
+		Checks:      append([]string(nil), task.Checks...),
 		ClaimedBy:   task.ClaimedBy,
 		Result:      task.Result,
 		Error:       task.Error,

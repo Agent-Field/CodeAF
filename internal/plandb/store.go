@@ -2265,6 +2265,9 @@ func applyPatch(spec *TaskSpec, patch TaskPatch) {
 	if patch.Deliverables != nil {
 		spec.Deliverables = append([]string(nil), (*patch.Deliverables)...)
 	}
+	if patch.Checks != nil {
+		spec.Checks = append([]string(nil), (*patch.Checks)...)
+	}
 	if patch.EvidenceRequirements != nil {
 		spec.EvidenceRequirements = append([]string(nil), (*patch.EvidenceRequirements)...)
 	}
