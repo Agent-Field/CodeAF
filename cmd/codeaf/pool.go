@@ -285,8 +285,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		if _, err := fmt.Fprintln(output, relayStatusLine(cfg, relay, mirror, cached)); err != nil {
 			return err
 		}
-		_, err := fmt.Fprintf(output, "pending %d · can send %s · can read %s\n",
-			pendingRows(poolDir), yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
+		_, err := fmt.Fprintln(output, pendingRowsLine(poolDir, cfg))
 		return err
 	}
 	return nil
@@ -500,6 +499,8 @@ type poolAnswer struct {
 	SubmitURL    string               `json:"submit_url"`
 	TTLSeconds   int                  `json:"ttl_seconds"`
 	Pending      *int                 `json:"pending,omitempty"`
+	Dropped      *int                 `json:"dropped,omitempty"`
+	DroppedLast  *string              `json:"dropped_last,omitempty"`
 	PendingJudge *pendingJudgeSummary `json:"pending_judge,omitempty"`
 	CanSend      *bool                `json:"can_send,omitempty"`
 	CanRead      *bool                `json:"can_read,omitempty"`
@@ -604,6 +605,11 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		answer.Pending = &pending
 		answer.CanSend = &send
 		answer.CanRead = &read
+		dropped, last := droppedRows(poolDir)
+		answer.Dropped = &dropped
+		if last != "" {
+			answer.DroppedLast = &last
+		}
 		judged := readPendingJudge(poolDir)
 		answer.PendingJudge = &judged
 		relay, mirror := probePool(poolDir, cfg, now, keys)
@@ -822,6 +828,44 @@ func pendingRows(poolDir string) int {
 	}
 	defer box.Close()
 	return len(box.Pending())
+}
+
+// droppedRows reads the outbox's dropped markers: how many rows nothing will
+// send again, and the reason on the most recent of them — empty for a row a
+// build that kept no reason dropped. It reads the file by path like
+// [pendingRows], because [outbox.Open] creates an absent outbox and a reading
+// form must not write.
+func droppedRows(poolDir string) (int, string) {
+	path := filepath.Join(poolDir, "outbox.jsonl")
+	if _, err := os.Stat(path); err != nil {
+		return 0, ""
+	}
+	box, err := outbox.Open(path)
+	if err != nil {
+		return 0, ""
+	}
+	defer box.Close()
+	drops := box.Dropped()
+	if len(drops) == 0 {
+		return 0, ""
+	}
+	return len(drops), drops[len(drops)-1].Reason
+}
+
+// pendingRowsLine is the one line status says about the outbox: how many rows
+// wait to be sent, how many the relay or the cap dropped and the most recent
+// reason, and the two doors the mode opens. The dropped segment is left out
+// entirely when nothing was dropped, so a working install reads the way it
+// always did, and a file that kept no reason says the count alone.
+func pendingRowsLine(poolDir string, cfg poolcfg.Config) string {
+	line := fmt.Sprintf("pending %d", pendingRows(poolDir))
+	if dropped, last := droppedRows(poolDir); dropped > 0 {
+		line += fmt.Sprintf(" · dropped %d", dropped)
+		if last != "" {
+			line += fmt.Sprintf(" (last: %s)", oneLine(last))
+		}
+	}
+	return line + fmt.Sprintf(" · can send %s · can read %s", yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
 }
 
 // orNowhere is an empty submit address said rather than printed empty: the

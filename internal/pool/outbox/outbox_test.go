@@ -741,7 +741,7 @@ func TestARefusedRowLeavesTheOutboxAndTheRestOfItsBatchSends(t *testing.T) {
 	if cn := countMarks(t, path, "dropped"); cn != 1 {
 		t.Fatalf("file holds %d dropped markers, want 1", cn)
 	}
-	want := `{"dropped":"` + bad + `"}`
+	want := `{"dropped":"` + bad + `","reason":"role must be worker, high or mastermind"}`
 	found := false
 	for _, line := range fileLines(t, path) {
 		if line == want {
@@ -749,7 +749,7 @@ func TestARefusedRowLeavesTheOutboxAndTheRestOfItsBatchSends(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("no dropped marker names the refused row, want %s", want)
+		t.Fatalf("no dropped marker carries the refused row and its reason, want %s", want)
 	}
 	if got := o.Pending(); len(got) != 0 {
 		t.Fatalf("%d rows stayed pending after the refused row was retired, want 0", len(got))
@@ -764,6 +764,75 @@ func TestARefusedRowLeavesTheOutboxAndTheRestOfItsBatchSends(t *testing.T) {
 	defer o2.Close()
 	if got := pendingNonces(t, o2); len(got) != 0 {
 		t.Fatalf("the dropped mark did not survive a reopen: %d rows pending", len(got))
+	}
+	drops := o2.Dropped()
+	if len(drops) != 1 || drops[0].Nonce != bad || drops[0].Reason != "role must be worker, high or mastermind" {
+		t.Fatalf("the dropped row's reason did not survive a reopen: %+v", drops)
+	}
+}
+
+// The reason a dropped marker carries is the relay's own text after `line N:`,
+// trimmed of the space around it and capped so one refusal cannot grow a
+// marker past a short line.
+func TestADroppedMarkersReasonIsTrimmedAndCapped(t *testing.T) {
+	long := strings.Repeat("x", 260)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(400)
+		w.Write([]byte(`{"error":"line 1:   ` + long + `   "}`))
+	}))
+	defer srv.Close()
+	o, _ := openOutbox(t)
+	o.Rand = &stepRand{step: 22}
+	appendRow(t, o, `{"k":1}`)
+	if n, err := o.Send(context.Background(), srv.URL); n != 0 || err != nil {
+		t.Fatalf("Send answered (%d, %v), want (0, nil)", n, err)
+	}
+	drops := o.Dropped()
+	if len(drops) != 1 {
+		t.Fatalf("Dropped answers %d rows, want 1", len(drops))
+	}
+	if drops[0].Reason != strings.Repeat("x", 200) {
+		t.Fatalf("the reason is %d bytes, want the first 200 trimmed: %q", len(drops[0].Reason), drops[0].Reason)
+	}
+}
+
+// A cap drop is not a refusal, so its reason is the cap's own word rather
+// than any destination's.
+func TestACapDropCarriesTheCapsOwnReason(t *testing.T) {
+	o, _ := openOutbox(t)
+	o.MaxPending = 2
+	o.Rand = &stepRand{step: 23}
+	for i := 0; i < 4; i++ {
+		appendRow(t, o, fmt.Sprintf(`{"k":%d}`, i))
+	}
+	drops := o.Dropped()
+	if len(drops) != 2 {
+		t.Fatalf("Dropped answers %d rows, want the 2 the cap dropped", len(drops))
+	}
+	for i, d := range drops {
+		if d.Reason != "over cap" {
+			t.Fatalf("cap drop %d reason is %q, want %q", i, d.Reason, "over cap")
+		}
+	}
+}
+
+// A file written by a build that kept no reason still parses: its dropped
+// markers read back with the reason empty, the way the reading form says them.
+func TestADroppedMarkerWithNoReasonParses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outbox.jsonl")
+	nonce := fmt.Sprintf("%032x", 1)
+	file := "{\"dropped\":\"" + nonce + "\"}\n"
+	if err := os.WriteFile(path, []byte(file), 0600); err != nil {
+		t.Fatal(err)
+	}
+	o, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer o.Close()
+	drops := o.Dropped()
+	if len(drops) != 1 || drops[0].Nonce != nonce || drops[0].Reason != "" {
+		t.Fatalf("a reasonless dropped marker did not parse: %+v", drops)
 	}
 }
 
