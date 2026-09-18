@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -355,17 +354,7 @@ const (
 	// under a dim rule — and everything under that rule is as reachable as
 	// everything above it.
 	homeElsewhereWord = "elsewhere"
-	// homeStartWord is the action row's label, with what was typed quoted after
-	// it. "conversation" and not "chat" because that is what this surface calls
-	// one everywhere else it names one — /new closes a session and starts a
-	// fresh one, and the manual has said "conversation" since before home
-	// existed.
-	homeStartWord = "start a new conversation"
-	// homeRunWord is what that same row says instead when the box holds a
-	// COMMAND rather than a sentence. Enter dispatches a "/" line and never
-	// sends it ([app.homeEnter]), so a row still offering to start a
-	// conversation with it would be the one row on this screen that names the
-	// wrong key's meaning — see [homeView.runLabel].
+	// homeRunWord identifies command drafts for the dispatcher.
 	homeRunWord = "run"
 	// homeStartGlyph marks it. A plain `+` on purpose: it is the one row on the
 	// column that is not a thing that exists yet, and every other glyph here is
@@ -425,27 +414,6 @@ const (
 	// the same. A line that says work is being hidden and cannot be asked to
 	// stop hiding it is a dead end somebody hits and gives up at.
 	homeQuiet
-	// homeAction is "start a new conversation", drawn only while something is
-	// typed and always at the very BOTTOM of the list. It is a cursor stop and
-	// it is where the cursor RESTS by default, which is what keeps type-and-enter
-	// meaning exactly what it meant before the box could also search.
-	//
-	// IT USED TO LEAD THE LIST, AND THAT SPLIT A PERSON'S ATTENTION IN TWO. The
-	// characters appear in the box at the FOOT of the frame, and the row that
-	// says what enter will do with them stood at the TOP — so typing made the eye
-	// jump between the two far ends of the screen, and the cursor was up at one
-	// end while the caret blinked at the other. Everything about typing now
-	// clusters at the foot: the box, the row directly above it, and the hint line
-	// under it, with the matches growing UPWARD above them. It is the drop-up the
-	// command list and the "@" list already are (render.go's overlay), which is
-	// what this screen should have been from the start — a list that rises out of
-	// the thing you are typing into.
-	//
-	// IT IS ALSO THE ONLY THING THAT MOVES THE LIST. With nothing typed home is
-	// a dashboard hanging from the top of its region and this row does not exist;
-	// the first character brings it into being at the foot and lifts the list to
-	// meet it (the block above [homeView.buildWorld] states both halves).
-	homeAction
 	// homeBlank is the empty line between projects.
 	homeBlank
 	// homeItem is ONE STANDING ITEM — a reminder, a watch, a rule, an overnight
@@ -1458,7 +1426,7 @@ func (h *homeView) build() {
 	// number ([homeLine.sameRow]).
 	previousLine, hadLine := h.focusedLine()
 	// An empty box is not a choice anybody has made yet, so the next character
-	// typed starts on the action row again.
+	// typed belongs to the composer again.
 	if !h.searching() {
 		h.picked = false
 	}
@@ -1472,28 +1440,14 @@ func (h *homeView) build() {
 	// goes to the top of the new list, and comes back to the row it was on if
 	// that row is still in it.
 	//
-	// THE ACTION ROW IS THE EXCEPTION AND IT IS THE WHOLE POINT. While something
-	// is typed, the cursor rests on "start a new conversation" unless the person
-	// walked off it — so type-and-enter still starts a chat, exactly as it did
-	// before this box could also search (see [homeAction]).
+	// COMPOSING HAS NO SELECTED RESULT. Enter submits the draft until the
+	// person explicitly selects a match with the keyboard or pointer.
 	h.cursor, h.top = h.clamp(0), 0
 	if h.searching() {
-		// THE ROW A PERSON WALKED ONTO IS THE ROW THEY ARE STILL ON, and it does
-		// not have to be a conversation. `picked` is the decision to stop writing
-		// and start choosing ([homeView.move] states it), and the question asked
-		// here used to be the narrower "is that CONVERSATION still on the list" —
-		// which is false for every other row the drop-up offers, so a cursor
-		// resting on a place or a command was forgotten by every rebuild. The slow
-		// tick rebuilds three seconds at a time ([app.refreshHome]), so a person
-		// who had stopped typing and touched nothing watched the selection walk
-		// back down to the action row on its own, over and over.
+		// Keep an explicitly chosen result through filtering and idle refreshes.
 		h.picked = h.picked && hadLine && h.pointSame(previousLine)
 		if !h.picked {
-			// AND THE ACTION ROW IS AT THE BOTTOM NOW, so resting on it is no
-			// longer the same thing as resting at the top of the list ([homeAction]
-			// says why it moved). It is found rather than counted to: how many rows
-			// a query left above it is not a number this function knows.
-			h.pointAction()
+			h.pointComposer()
 		}
 		// Either way the cursor is where it belongs: [homeView.pointSame] put it
 		// back on the row that was chosen, and the followers below are about a
@@ -1573,23 +1527,15 @@ func (h *homeView) pointItem(id string) {
 	})
 }
 
-// pointAction puts the cursor on "start a new conversation", which is the last
-// line of the list whenever there is one at all.
-func (h *homeView) pointAction() {
-	for at, line := range h.lines {
-		if line.kind == homeAction {
-			h.cursor = at
-			return
-		}
-	}
-}
+// pointComposer leaves the results unselected while the composer owns Enter.
+// The position below the last result lets one up-arrow select that result.
+func (h *homeView) pointComposer() { h.cursor = len(h.lines) }
 
 // dropUp reports whether the list is drawn as a DROP-UP: its bottom row against
 // the box at the foot, and the matches rising above it.
 //
-// It is exactly "something is typed", because that is exactly when the action
-// row exists ([homeView.buildWorld]) and exactly when a person is looking at the
-// box rather than reading down a roster. With nothing typed home is a dashboard
+// It is exactly "something is typed", because a person is then looking at
+// the box rather than reading down a roster. With nothing typed home is a dashboard
 // somebody is reading, and it hangs from the top like every other list here.
 func (h *homeView) dropUp() bool { return h.searching() }
 
@@ -1617,10 +1563,8 @@ func (h *homeView) dropUp() bool { return h.searching() }
 //   - Nothing is lifted, so the frame reads top-down as a page of everything
 //     this machine holds, which is the one thing this surface is for.
 //
-// WHILE SOMETHING IS TYPED it becomes a drop-up: the action row is appended as
-// the list's last line, [homeLift] pushes the whole column down so that row
-// lands against the box, and the matches rise above it ([homeAction] carries
-// the defect that bought that). Clearing the box puts the dashboard back.
+// WHILE SOMETHING IS TYPED the matches rise out of the box, with the best
+// result nearest the seam. Clearing the box puts the dashboard back.
 //
 // AND IN THAT SHAPE THE RANKING IS DRAWN UPSIDE-DOWN, which is the one thing
 // about the drop-up that is not simply the dashboard moved. A ranked list read
@@ -1634,28 +1578,9 @@ func (h *homeView) dropUp() bool { return h.searching() }
 //
 //	THE FIRST MATCH THE WALK REACHES IS THE TOP-RANKED ONE.
 //
-// It is the SECOND ↑ and not the first, because `ask here` sits between the
-// action row and the matches (homeexchange.go): the two rows that do something
-// with the SENTENCE are one cluster against the box, and the rows that are other
-// conversations begin above them. Further ↑ walks into progressively weaker ones
-// and ↓ comes back toward the box, which is the same grammar the action row
-// already had. A project's heading still sits ABOVE its own rows: sections stack
-// by rank and the rows inside one do too, but a name drawn under the things it
-// names reads upside-down.
-//
-// AND THE CONVERSATION THIS WINDOW IS IN MAY NOT BE ON THE LIST AT ALL. A
-// session folder nobody has spoken in yet is not a row the world reports
-// (session's readSessionRow drops one whose meta names it but records no
-// message), and a launch that home GREETS is exactly that folder — so
-// [homeView.point] finds nothing to point at and the cursor stays where
-// [homeView.clamp] left it, on the first conversation of the first project.
-// That is the honest place for it, and the thing that matters is that it is a
-// CONVERSATION: the card beside it is drawn from the row under the cursor and
-// draws nothing for a heading, a fold line or the action row, so a cursor
-// resting anywhere but a conversation is a resting home with half its screen
-// empty. That is precisely what shipped, and
-// [TestAFreshLaunchStillRestsOnAConversationWithItsCard] is the pin that keeps
-// it from shipping twice.
+// One up-arrow selects the best match. Further up-arrows reach weaker ones;
+// down past the last result returns to composing. Project headings remain
+// above their own rows.
 func (h *homeView) buildWorld() {
 	query := h.query()
 	var found []homeHit
@@ -1739,32 +1664,10 @@ func (h *homeView) buildWorld() {
 		})
 		h.projectBlock(hit, query)
 	}
-	// THE ACTION ROW CLOSES THE LIST, directly above the box the words were
-	// typed into ([homeAction] says why it is not at the top any more). It is
-	// separated from the matches by the same blank line that separates two
-	// projects, because it is not one of them: everything above it exists, and
-	// it is the one row that is a thing that does not.
-	h.blank()
-	// AND `ask here` SITS DIRECTLY ON TOP OF IT, with no blank between them,
-	// because the two rows are one cluster: they are the two things enter can
-	// do with the same characters, and a gap would read as two unrelated
-	// offers. The cursor still RESTS on `start a new conversation` — typing and
-	// pressing enter means today what it meant yesterday — and this row is the
-	// one ↑ that asks the sentence instead of opening a conversation for it
-	// (homeexchange.go).
-	// AND THE PLACES THE WORDS MATCH SIT DIRECTLY OVER THAT CLUSTER, which
-	// in a drop-up is the top of the results: a place ranks first when the
-	// words match it, so it is the row nearest what somebody is reading
-	// upward from (homeplaces.go).
+	// Only matches belong above the seam. Submission is the composer's own
+	// action, so it does not compete with the results for a row or a cursor.
 	h.lines = append(h.lines, h.placeLines(query)...)
-	// THE COMMAND OFFERS SIT BETWEEN THE PLACES AND THE ERRAND ROWS, best match
-	// last of all (homeslash.go's [homeView.commandLines]). A slash query leaves
-	// the places empty (homeplaces.go's [placeMatches]), so the two never compete
-	// for the column; and a command is what the fingers are reaching for when a
-	// "/" was typed, so it is the first thing read out of the box.
 	h.lines = append(h.lines, h.commandLines()...)
-	h.lines = append(h.lines, homeLine{kind: homeAskHere})
-	h.lines = append(h.lines, homeLine{kind: homeAction})
 }
 
 // homeHit is one project and the conversations of it that survived the box.
@@ -2032,8 +1935,6 @@ func (l homeLine) sameRow(other homeLine) bool {
 	// cursor never rests on one (homepanel_spend.go).
 	case homeLedger, homeReadout, homePhoneNews, homePhoneMore:
 		return l.project != "" && l.project == other.project && l.dir == other.dir
-	case homeAction, homeAskHere:
-		return true
 	}
 	return false
 }
@@ -2318,7 +2219,7 @@ func (l homeLine) stop() bool {
 	switch l.kind {
 	// A PROJECT'S ROW IS READ AND NOT STOOD ON (owner, 2026-09-17), like spend's
 	// lines: the rail holds nothing a cursor may rest on (homepanel_projects.go).
-	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
+	case homeSession, homeQuiet, homeItem, homeItemFold,
 		homeProject, homeExchangeRow, homeFold:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
@@ -2373,17 +2274,15 @@ func (h *homeView) move(delta int) {
 			break
 		}
 		if next >= len(h.lines) {
+			if h.searching() {
+				at = len(h.lines)
+			}
 			break
 		}
 		at = next
 	}
 	h.cursor = at
-	// WALKING OFF THE ACTION ROW IS THE DECISION. Until it is made the box is a
-	// message being written; after it, the person is picking from the list and
-	// the cursor stays where they put it through every further keystroke.
-	if h.cursor >= 0 && h.cursor < len(h.lines) && h.lines[h.cursor].kind != homeAction {
-		h.picked = true
-	}
+	h.picked = h.cursor >= 0 && h.cursor < len(h.lines)
 }
 
 // ── the keyboard ────────────────────────────────────────────────────────────
@@ -3005,7 +2904,11 @@ func (h *homeView) rebuild() {
 	h.lines = h.lines[:0]
 	// phone lane: at [tierPhone] the column is an inbox (homephone.go).
 	h.buildFor()
-	h.cursor = h.clamp(h.cursor)
+	if h.searching() && !h.picked {
+		h.pointComposer()
+	} else {
+		h.cursor = h.clamp(h.cursor)
+	}
 }
 
 // buildFor is which SHAPE the column takes, and it is asked in the two places
@@ -3029,13 +2932,47 @@ func (h *homeView) buildFor() {
 	// THE SWITCHER IS THE RESTING SHAPE AND THE DROP-UP IS THE TYPED ONE
 	// (place_home.go). With nothing in the box this screen is one flat ranked
 	// list of everything on the machine; the first character makes it the
-	// ranked-by-[homeRank] drop-up it has always been, with `ask here` and the
-	// action row against the box.
+	// ranked-by-[homeRank] drop-up, with the best match against the box.
 	if h.searching() {
 		h.buildWorld()
 		return
 	}
 	h.buildGrid()
+}
+
+// homeSubmit chooses the submission door without introducing a selectable
+// action row among the search results.
+func (a *app) homeSubmit() tea.Cmd {
+	h := &a.home
+	typed := strings.TrimSpace(h.box.String())
+	if h.runLabel(typed) != "" {
+		return a.homeSlash(typed)
+	}
+	// AND A DROP THAT GOT ALL THE WAY TO ENTER IS STILL A DROP. Some
+	// terminals type a dragged file in character by character rather than
+	// bracketing it (dropkeys.go), and what lands here is a line of path with
+	// a leading slash — which this row read as a command and the dispatcher
+	// then answered `unknown command: /var/folders/…`, the screen telling
+	// somebody their screenshot does not exist. It is the same net chat's
+	// dispatcher falls into ([app.droppedLineInto]), over home's own box.
+	//
+	// A dismissed folder paste stays text even if further editing leaves a
+	// different path. It must not be reinterpreted as another attachment.
+	if !h.projectPaste.literal && h.typedPlace(typed) == "" && a.homeDroppedLine(typed) {
+		return nil
+	}
+	tags := h.box.liveTags()
+	if len(tags) > 1 {
+		h.say(slashTagRefusal, "")
+		return nil
+	}
+	if len(tags) == 1 {
+		tag := tags[0]
+		if commandDoor(string(h.box.value[tag.from+1:tag.to])) == sendDoorAsk {
+			return a.runAskCommand(removeSlashTag(h.box.value, tag))
+		}
+	}
+	return a.homeStart(typed)
 }
 
 // homeEnter is the one decision this surface makes, and it makes a different
@@ -3053,6 +2990,9 @@ func (a *app) homeEnter() tea.Cmd {
 		h.projectPaste.path = ""
 		h.build()
 		return a.homeStartInProject(project)
+	}
+	if _, selected := h.focusedLine(); h.searching() && !selected {
+		return a.homeSubmit()
 	}
 	// phone lane: enter opens the row's card as a sheet (homesheet.go).
 	if cmd, took := a.homePhoneEnter(); took {
@@ -3072,38 +3012,6 @@ func (a *app) homeEnter() tea.Cmd {
 		return nil
 	}
 	switch line.kind {
-	case homeAction:
-		// The row the cursor rests on while something is typed, which is what
-		// makes type-and-enter mean today what it meant yesterday.
-		//
-		// A SLASH LINE IS DISPATCHED AND NEVER SENT. Chat's composer answers a
-		// line that starts with "/" by running it (input.go's [app.enterLine]);
-		// home's used to start a conversation with it, which is the one screen
-		// where a command typed in full did nothing it promised. The same
-		// dispatcher runs it here, so every command does on home what it does in
-		// chat — and the conversation-scoped ones act on the conversation this
-		// window holds behind the screen, which is parity rather than a
-		// limitation: the window always holds one.
-		// A pasted folder remains message text after its one-use offer ends.
-		// Only known slash commands may override that literal draft.
-		typed := strings.TrimSpace(h.box.String())
-		if h.runLabel(typed) != "" {
-			return a.homeSlash(typed)
-		}
-		// AND A DROP THAT GOT ALL THE WAY TO ENTER IS STILL A DROP. Some
-		// terminals type a dragged file in character by character rather than
-		// bracketing it (dropkeys.go), and what lands here is a line of path with
-		// a leading slash — which this row read as a command and the dispatcher
-		// then answered `unknown command: /var/folders/…`, the screen telling
-		// somebody their screenshot does not exist. It is the same net chat's
-		// dispatcher falls into ([app.droppedLineInto]), over home's own box.
-		//
-		// A dismissed folder paste stays text even if further editing leaves a
-		// different path. It must not be reinterpreted as another attachment.
-		if !h.projectPaste.literal && h.typedPlace(typed) == "" && a.homeDroppedLine(typed) {
-			return nil
-		}
-		return a.homeStart(typed)
 	case homePlace:
 		// ENTER GOES THERE, AND GOING TO A PLACE LEAVES YOU THERE (SCREEN 1g).
 		// The box is not cleared on the way — the sentence is the person's, and
@@ -3120,9 +3028,6 @@ func (a *app) homeEnter() tea.Cmd {
 		// says — run it bare, or hold the box for the words it takes
 		// (homeslash.go's [app.homeRunCommand]).
 		return a.homeRunCommand(line)
-	case homeAskHere:
-		// The same sentence, asked rather than opened (homeexchange.go).
-		return a.askHere(strings.TrimSpace(h.box.String()))
 	case homeExchangeRow:
 		// ENTER ON AN ERRAND HANDS IT THE KEYBOARD. There is nothing to open —
 		// the exchange is already drawn beside the row, or on a narrow frame is
@@ -3676,32 +3581,8 @@ func (h *homeView) typedPlace(text string) string {
 	return ""
 }
 
-// startLabel is what the action row says enter will do, which on a screen where
-// enter has two possible meanings must be legible without looking away from the
-// list.
-func (h *homeView) startLabel() string {
-	text := strings.TrimSpace(h.box.String())
-	if text == "" {
-		return homeStartWord
-	}
-	if place := h.pastedProject(); place != "" {
-		return homeStartWord + " in " + place
-	}
-	// THE SAME QUESTION IN THE SAME ORDER [app.homeEnter] ASKS IT, which is the
-	// whole reason this label exists: a row that ranked the two readings of a
-	// leading slash differently from the key would be wrong about the one line
-	// it is there to be right about.
-	if word := h.runLabel(text); word != "" {
-		return word
-	}
-	return homeStartWord + ": " + strconv.Quote(text)
-}
-
-// runLabel is the action row's label when what is typed is a COMMAND, and "" for
-// everything else — which makes it the one question `is this line a command`,
-// asked by the label, by the foot and by enter itself so that the three cannot
-// come to disagree ([app.homeEnter], [app.homeHintWords], homephone.go's narrow
-// column).
+// runLabel reports whether the draft is a command, keeping pasted paths
+// literal while preserving the existing slash dispatcher.
 //
 // A LEADING SLASH IS NOT ENOUGH, because `/tmp/alpha` is a place. The two are
 // separated in THE ORDER THE DISPATCHER ITSELF SEPARATES THEM (app.go's
@@ -4029,9 +3910,7 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	// and a plain selection all leave the hand in the same place.
 	a.homeTakeList()
 	a.home.cursor = at
-	if a.home.lines[at].kind != homeAction {
-		a.home.picked = true
-	}
+	a.home.picked = true
 	a.touch()
 	// A CLICK ON A ROW IS `enter` ON IT, the one grammar every place keeps
 	// (pages.go's [place.press]): the pointer resting is the preview, and the
@@ -4057,7 +3936,7 @@ func (a *app) homePress(x, y int) tea.Cmd {
 // gesture nobody can take back.
 func homeClickSpends(line homeLine) bool {
 	switch line.kind {
-	case homeAction, homeAskHere, homeCommand:
+	case homeCommand:
 		return true
 	}
 	return false
@@ -4407,8 +4286,7 @@ func (a *app) homeBody(left, right, room int, pal palette) []homeDrawn {
 	}
 	// THE DROP-UP LIFTS THE LIST AND LEAVES THE CARD WHERE IT IS. While something
 	// is typed the left column hangs from the BOTTOM of the region so that its
-	// last row — the action row — lands against the box at the foot
-	// ([homeAction]). At rest it hangs from the top, because at rest this is a
+	// best match lands nearest the box at the foot. At rest it hangs from the top, because at rest this is a
 	// page somebody is reading rather than a thing they are typing at (the block
 	// above [homeView.buildWorld]).
 	//
@@ -4625,22 +4503,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		// A COMMAND, OFFERED BECAUSE THE WORDS MATCH ITS NAME OR AN ALIAS
 		// (homeslash.go).
 		return a.homeCommandRow(line, at, width, pal)
-	case homeAskHere:
-		// The same shape as the action row under it and the same words quoted
-		// back, because they are the two readings of one sentence
-		// (homeexchange.go).
-		label := homeAskHereWord
-		if text := strings.TrimSpace(h.box.String()); text != "" {
-			label += ": " + strconv.Quote(text)
-		}
-		return overlayRow(homeAskHereGlyph+" "+label, "", at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
-	case homeAction:
-		// It carries the words back at the person, cut to fit. The box at the
-		// foot holds them too, but the box is where you are typing and this is
-		// what enter will DO with it — and on a screen where enter has two
-		// possible meanings, the one it currently has must be legible without
-		// looking away from the list.
-		return overlayRow(homeStartGlyph+" "+h.startLabel(), "", at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
+
 	}
 	// OUR OWN ROWS ARE READ FROM THE AGENT AND NOT FROM THE PRESENCE FILE. The
 	// file is written on a five-second heartbeat and believed for fifteen, which
@@ -5388,45 +5251,6 @@ func (a *app) homeHintWords() string {
 	}
 	line, _ := a.home.focusedLine()
 	switch {
-	case line.kind == homeAskHere:
-		// The row that asks rather than opens, and the chord that reaches it
-		// without walking up to it (homeexchange.go).
-		return "enter asks this here and keeps the record · ↓ start a conversation instead · esc clear"
-	case line.kind == homeAction:
-		// The THREE readings of the box, all said, because all three are true of
-		// what is on screen right now: enter opens a conversation for it,
-		// ctrl+enter asks it here (homeexchange.go), and ↑ walks into what it
-		// found.
-		//
-		// THE ARROW IS ↑ BECAUSE THE MATCHES ARE ABOVE. The action row is the last
-		// line of the list, against the box ([homeAction]), so walking into the
-		// results is walking up the screen — and a hint naming the other arrow
-		// would be this line lying about the next keystroke. It names the arrow
-		// and not a count, because the row it passes through on the way is the
-		// one named two clauses earlier.
-		// AND A COMMAND IS THE THIRD READING, so the foot says so rather than
-		// promising a conversation the key will not start. `ask here` is still
-		// true of a "/" line — the words can be asked about as words — so the
-		// clause that changes is the one that stopped being true.
-		//
-		// `ask here` IS ↑ AND NOT A CHORD ANY MORE. `ctrl+enter` is still bound
-		// (above) and is no longer advertised: most terminals cannot send it at
-		// all, and `alt+enter` — the spelling that survives everywhere — belongs
-		// to the task layer on every place (placekeys.go). What every terminal
-		// CAN do is press the arrow key, and the row is already there: `? ask
-		// here: "…"` sits directly above `+ start a new conversation: "…"` with
-		// the cursor resting on the latter (homeexchange.go), so one ↑ is the ask
-		// and two is the first match. A foot that went on naming a chord a hand
-		// cannot send was the screen advertising a key that does not exist.
-		//
-		// AND THE ORDER IS THE DROP ORDER. [hintFit] drops the clause nearest the
-		// way out — `↑↑ pick a match` — first, which is the right one to lose:
-		// ↑↓ walking a list is the key the resting foot already names (`↑↓ pick`)
-		// and the map names again. A wide frame still says all three.
-		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
-			return "enter runs this command · ↑ ask here · ↑↑ pick a match · esc clear"
-		}
-		return "enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear"
 	case a.home.gridOn() && (line.kind == homeSession || line.kind == homeItem || line.kind == homeLedger):
 		// ONE SENTENCE ON EVERY ROW OF THE GRID. A conversation, a standing
 		// order, a landing, a line of news: each used to say its own thing here

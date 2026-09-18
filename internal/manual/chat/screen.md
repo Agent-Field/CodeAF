@@ -1327,7 +1327,7 @@ Under 60 columns, eight things change shape:
    `enter`, or a **tap**, opens that row's card as a full-frame sheet whose top row
    reads `‹ back`; the card's answer chips become full-width answer bands, one per
    row, that a digit or a tap answers. The hint line under the box becomes one row of
-   at most three wide targets: `open · new · ask here` on the inbox, `‹ back · open ·
+   at most three wide targets: `open` on the inbox, `‹ back · open ·
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
    hint line is drawn instead of the bar. The rule over the box still says where the next

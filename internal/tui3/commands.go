@@ -282,6 +282,7 @@ var commands = []command{
 	{name: "approvals", desc: "what this conversation runs without asking · asks, guardian or YOLO · " + approvalKey + " walks it",
 		alias: []string{"yolo"}},
 	{name: "approvals", args: "<posture>", desc: "…set it outright: ask · guardian · yolo · deny · auto"},
+	{name: "ask", args: "<question>", desc: "ask here on home", door: sendDoorAsk},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed

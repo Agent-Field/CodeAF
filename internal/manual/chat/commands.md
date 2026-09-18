@@ -1087,8 +1087,8 @@ arrives there.
 `↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
 conversation you came from. **Typing does two things at once**: what you type is a new
 conversation waiting to be sent AND a live search over every project on the machine — the
-panels give way to the matches, with `start a new conversation: "…"` directly above the box
-holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
+panels give way to the matches, with none selected until you navigate into them.
+Type-and-enter starts a chat. `/ask <question>` asks in a home pane instead. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The box says `› type to search or start something new` and the foot
 names the available draft controls:
@@ -1114,8 +1114,8 @@ no conversation matches
 that folder is gone · <path>
 ```
 
-`no conversation matches` is a search that found nothing — the `start a new conversation`
-row is still there. `/new is unavailable here` is what the typing-to-start box says where no
+`no conversation matches` is a search that found nothing; Enter still starts a new
+conversation with your words. `/new is unavailable here` is what the typing-to-start box says where no
 fresh-session seam exists. The last is `enter` on a row whose folder has been deleted or
 moved since its last conversation: home stays up and nothing is opened. **How many
 conversations this terminal already holds is never a refusal.** Past twelve, a quiet
@@ -2055,3 +2055,16 @@ you closed*, including what a terminal that cannot send the key does instead.
 
 `alt+k` is the other way back: it lists every conversation on this machine, closed
 tabs included, and opening a row brings the tab and its draft back too.
+
+## /ask — ask from home without opening a regular conversation
+
+Type `/ask <question>` and press Enter to ask in a home pane. Choosing `/ask` from the
+command menu inserts `/ask ` and leaves the question for you to write, like `/task`.
+Bare `/ask` waits for your question. An inline `/ask` tag in a sentence works too, and
+is removed before sending. Multiple active submission tags keep the draft for correction.
+From a conversation, `/ask` opens Home and uses the same ask pane.
+
+Plain text on Home starts a new conversation by default. Only search results appear
+above the seam: one Up selects the best match, Enter opens a selected result, and Down
+past the last result returns to composing. The old ask/new action rows and their
+footer hints are absent.

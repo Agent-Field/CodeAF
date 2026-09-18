@@ -151,8 +151,7 @@ const (
 
 // homeExchangeRow is the row kind an exchange wears in the left column.
 //
-// IT IS DECLARED HERE FOR [homeAskHere]'S REASON and given the next value above
-// it, so neither can collide with the iota block another lane is editing. The
+// It is numbered outside the homeRowKind block to keep its identity separate. The
 // name carries `Row` because [homeExchange] is the thing itself and this is its
 // line on the screen — two names for two objects that must not be confused.
 const homeExchangeRow homeRowKind = 201
@@ -166,15 +165,6 @@ const homeExchangeRow homeRowKind = 201
 // because one shows a tool call and hides the reply growing under it, and three
 // starts to be a second transcript in a pane forty cells wide.
 const exchangeStripRows = 2
-
-// homeAskHere is the row kind of that second action row.
-//
-// IT IS DECLARED HERE AND NOT IN [homeRowKind]'s OWN BLOCK, on purpose: the
-// iota block in home.go is being edited by another lane in the same wave, and a
-// constant appended to it would be a conflict over a line that says nothing.
-// The value is far above the block's last member so the two can never collide,
-// and [homeLine.stop] and [app.homeEnter] name it the way they name the rest.
-const homeAskHere homeRowKind = 200
 
 // exchangeKind is what one drawn line of the exchange is.
 type exchangeKind uint8

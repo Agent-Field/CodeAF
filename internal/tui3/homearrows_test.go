@@ -190,7 +190,9 @@ func TestAHeldRosterDoesNotTakeTheFollowUpEnterOnANarrowHome(t *testing.T) {
 	a.railTake(true)
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	ex := theExchange(a)
 	if ex == nil {

@@ -236,17 +236,11 @@ var tuiWords = map[string]tuiWord{
 		screen: "last active ",
 		why:    "the facts line on the card beside a search — the one card left once the resting card went",
 	},
-	"homeStartWord": {
-		screen: "start a new conversation",
-		why:    "the action row under anything typed at home",
-	},
 
 	// ── asking from home ─────────────────────────────────────────────────────
 	"homeAskHereWord": {
 		screen: "ask here",
-		why: "what one ↑ off the action row starts, drawn as the row's own heading over the pane. " +
-			"`ctrl+enter` is still bound and is no longer advertised — most terminals cannot send it " +
-			"and `alt+enter` belongs to the task layer (home.go's [app.homeHintWords])",
+		why:    "the heading of the home pane opened by /ask",
 	},
 	"notifyAskWord": {
 		screen: "waiting on you",

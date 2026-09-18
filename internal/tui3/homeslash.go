@@ -197,6 +197,8 @@ const (
 func homeFate(word, rest string) string {
 	rest = strings.TrimSpace(rest)
 	switch canonicalCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
+	case "ask":
+		return fateAnswers
 	case "model":
 		return fateTargetModel
 	case "folder":
@@ -293,6 +295,9 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
 	word := canonicalCommand(strings.ToLower(name))
+	if word == "ask" {
+		return a.runAskCommand(rest)
+	}
 	h.box.reset()
 	h.build()
 	switch homeFate(word, rest) {

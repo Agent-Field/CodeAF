@@ -579,8 +579,8 @@ A quiet morning on a busy machine is the same screen with fewer rows: `needs you
 `tasks` whispering, `threads` full, `since you left` holding what fired overnight.
 There is no accent anywhere when nothing is waiting on you.
 
-Typing works exactly as it does anywhere: `? ask here: "…"` and `+ start a new
-conversation: "…"` rise out of the box, and `enter` starts the conversation.
+Typing works exactly as it does anywhere: Enter starts a conversation and `/ask` asks
+in a home pane. Only search results appear above the seam.
 
 Over `--host`, in the fraction of a second before the far machine answers, home draws no
 panels at all — a whisper over a server full of work would be untrue.
@@ -756,19 +756,16 @@ Home has **two shapes**.
 on the chat you were in before this one.
 
 **The moment you type a character it becomes one list, a drop-up.** It lifts so that its
-last row — the action row, `start a new conversation: "…"` — lands directly above the box
-you are typing into, with `ask here: "…"` between it and the matches, and the matches rise
-above the pair **best one first**: the strongest match is two `↑` away, and each `↑` past it
-walks into a weaker one. Everything to do with typing is then one cluster at the foot: your
-words, the row saying what `enter` will do with them, and the hint under it. Clearing the
-box puts the panels back.
+best match lands nearest the message box. Only search results appear above the seam;
+there are no submission action rows. One `↑` selects the strongest match, and each `↑`
+past it walks into a weaker one. Clearing the box puts the panels back.
 
 **So the cursor does move between the two**, from up in the panels to the foot and back.
 One keystroke of re-anchoring is cheaper than a page of panels pinned against the box.
 
 **On a frame 136 columns or wider, a card stands beside the matches** — about the match
 under the cursor (*The card beside a search*). It never moves while the list lifts, and it
-goes empty on the `start a new conversation` row, which is a chat that does not exist yet.
+stays empty until you select a result.
 
 ## Switch between sessions — enter on home
 
@@ -781,8 +778,7 @@ standing, and `threads` and `projects` open nothing. **A heading that opens some
 underlines its word while the mouse pointer is over it**; `threads` and `projects` never
 underline, are drawn dim (grey) rather than in the heading ink so they do not read as
 doors, and the pointer on a heading moves neither the cursor nor the marked heading.
-A click never starts a paid turn, so on the row of what you typed, on `ask here` and on a
-`/` command it only puts the cursor there, and `enter` does the rest.
+A click on a `/` command only selects it; `enter` runs it.
 
 `enter` opens the session under the cursor — **any row on the screen, in any project.**
 The chosen journal is opened and replayed, and **the conversation you were in stays open
@@ -805,7 +801,7 @@ alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
 promise moved on 2026-09-17: the lowest line is for keys)
 
 and it says what THAT row's keys do on a row that has its own — a `since you left` line,
-a fold door or the action row — with the available draft controls before `esc`.
+a fold door — with the available draft controls before `esc`.
 The foot omits the `ctrl+o` and `tab` hints; both keys still work.
 
 ## Typing a long question on home — does the box wrap, and where does a paste go
@@ -834,11 +830,9 @@ opens the **composer layer**, where the three facts a task needs are settled —
 what, how much (the places page, *the composer layer*) — and a second `alt+enter` sends it
 off.
 
-**`ask here` is one `↑` and then `enter`.** The row is already on the screen while you
-type: `? ask here: "…"` sits directly above `+ start a new conversation: "…"`, and the
-cursor rests on the lower of the two, so the ask is one keystroke up. `ctrl+enter` is still
-bound to it and is no longer named on the foot, because only a terminal that can tell
-`ctrl+enter` from a plain `enter` ever sends it.
+**`/ask <question>` asks here.** Enter sends the question to its own home pane.
+Plain text plus Enter starts a new conversation. `ctrl+enter` remains an unadvertised
+shortcut for asking here on terminals that can send it.
 
 **A paste lands in home's box.** Paste while home is open and the text goes into the foot
 box — searching, exactly as typing does — or into the ask-here exchange's own box when that
@@ -1190,8 +1184,7 @@ either.
 
 ## Why is the best search result at the bottom — the order of the matches
 
-**The strongest match is the first conversation above the two typing rows — `ask here` and
-`start a new conversation` — so two `↑` get you to it.** Each `↑` past that walks into a
+**The strongest match is directly above the seam, so one `↑` selects it.** Each `↑` past that walks into a
 weaker match, and `↓` comes back down toward the box.
 
 That is upside-down next to an ordinary ranked list, and deliberately so. A list you read
@@ -1216,10 +1209,8 @@ keystroke with nothing loaded and no model called.
 
 Two things cover what a meaning-search would have been for:
 
-- **The row that offers to start a conversation never goes away.** A query that matches
-  nothing still reads `start a new conversation: "…"` above the box, so the worst case of a
-  search that missed is that your words become the first message of a new chat — which is
-  very often what you wanted.
+- **Enter starts a new conversation by default.** Even when the search finds nothing,
+  your words can become the first message of a new chat.
 - **Ask the chat instead.** It has a `tasks` tool over the whole project record and you can
   ask it in sentences: *"what was that thing where we fixed the flaky auth test?"* Home is
   the fast layer; the conversation is the thoughtful one.
@@ -1230,25 +1221,18 @@ Whatever you type is **three things at the same moment**: a new conversation wai
 sent, a live query over the machine, and — if it starts with `/` — a command. You do not
 choose between them before you start typing.
 
-**Everything about typing sits together at the bottom of the screen.** The moment you type
-a character the panels give way to a drop-up: the matches rise from the foot, and the
-**last** row of the list is the action row — `start a new conversation: "…"` with your words
-quoted back — sitting directly above the box you are typing into.
+**Only search results appear above the seam.** The best result is nearest the box.
+No result is selected while you compose, so Enter starts a new conversation and sends
+your words. Use `/ask <question>` to ask in a home pane instead.
 
 ```
  alpha
  ○ Pricing Sheet Import                                                 2h
- ○ Pricing                                                             12m   ← two ↑
-
- ? ask here: "pricing"
- + start a new conversation: "pricing"
+ ○ Pricing                                                             12m   ← one ↑
  ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
  › pricing
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · ctrl+v effort · alt+a approvals · esc clear
+ alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
 ```
-
-**The cursor rests on the action row by default.** So typing and pressing `enter` starts a
-fresh conversation and sends what you typed, however many matches are on screen.
 
 **Where it opens is on the rule above the box, and `enter` honours it.** That line reads
 `glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`: the model, effort and approvals
@@ -1259,11 +1243,8 @@ project's row and the rule re-points — and with nothing under the cursor it is
 own project. `alt+p` pins it, `/model` pins the model, `ctrl+v` walks the rung and `alt+a`
 walks the gate; *Change the model before starting* has the whole of all four.
 
-One `↑` steps off that row **up** onto `ask here: "…"`, which answers the same sentence in
-the pane on the right instead of opening a conversation for it — see *Asking from home*. A
-second `↑` reaches the best match. The hint under the box tracks which of the two `enter`
-means: the line in the example above on the action row, and `enter open · ↓ back to
-starting a new conversation · esc clear` once you are on a match.
+One `↑` selects the best result; Enter then opens that result. Walking `↓` past
+the last result returns to composing. Neither submission mode adds a footer hint.
 
 A line beginning with `/` is the third thing typing can be — a command, run rather than
 sent. See *Running a slash command from home*, directly below.
@@ -1275,8 +1256,7 @@ anywhere**: on `new session failed: <error>` home closes and your words are put 
 message box unsent — never delivered to the conversation this window was already holding.
 
 **Pasting a folder path into an empty home box offers one Enter to start there.**
-The complete paste must name one existing local directory. The action row reads
-`start a new conversation in <that folder>`. If the next key is Enter, it opens a
+The complete paste must name one existing local directory. If the next key is Enter, it opens a
 conversation there without sending the path as a message. Any other key — including
 space, an arrow, Backspace, a shortcut or Shift+Enter — cancels the offer and keeps normal
 editing behavior. A second paste also cancels it. The remaining text is an ordinary
@@ -1294,10 +1274,7 @@ as commands. The folder notice may remain, but the path stays in the box.
 it.** Typing `/settings` on home and pressing `enter` opens the settings panel; it does not
 start a conversation whose first message is the word `/settings`.
 
-**The screen says which `enter` you are about to press, before you press it.** With a command
-in the box the action row reads `+ run /settings` in place of `+ start a new conversation:
-"…"`, and the foot under the box reads `enter runs this command · ↑ ask here ·
-↑↑ pick a match · esc clear`.
+A fully typed command runs on Enter without an extra action row or footer hint.
 
 **Every command has a FATE here, and the list says which before you press `enter`.** Each row
 of the `/` drop-up reads `<command>   <fate> · <what the command does>` — so `/compact` says
@@ -1307,17 +1284,16 @@ table is in *What each command does on home*, one section down.
 **The command list opens over home's box too.** Typing `/` raises the same ranked drop-up a
 chat shows — best match nearest the box — and `↑` walks up into it, `enter` runs the row
 you land on, and `esc` puts the list away. A command that TAKES words leaves `/model ` in the
-box with the caret after it rather than running on the spot. A slash word in the middle of a
-sentence is a mention and never a dispatch. *Typing a slash to see the command list* has the
+box with the caret after it rather than running on the spot. An inline `/ask` tag also asks the sentence here, just as `/task` marks work to send off.
+Other ordinary slash-command mentions remain prose. *Typing a slash to see the command list* has the
 whole of that behaviour.
 
 **A pasted path is not a command.** A folder pasted into an empty home box offers
 `start a new conversation in <folder>` only until the next key. Enter accepts; any other
 key returns it to ordinary message text. See *Start something new from home*.
 
-**You can ask about a command instead of running it.** Type it and press `↑` then `enter`
-— the `ask here` row — and the answer comes back in the pane on the right without the
-command being run (see *Asking from home*).
+**You can ask about a command instead of running it.** Type `/ask what does /settings do?`
+and press Enter. The question goes to the pane; `/settings` is not executed.
 
 ## What each command does on home — the fate on every row of the / list
 
@@ -1850,11 +1826,18 @@ you go to confirm it really did look.
 
 ## Ask here — a reminder or a watch without opening a conversation
 
-While you are typing, the row directly above `start a new conversation` is
-`ask here: "…"`. It answers the sentence **in a pane of its own** — a real conversation
-with a real transcript, kept outside `~/.codeaf/v3/projects` so home never grows a session
-row for a one-off errand. One `↑` reaches it, and `ctrl+enter` does it without leaving the
-box.
+Type `/ask <question>` and press Enter to answer the sentence **in a pane of its own**.
+The `/` menu offers `/ask <question>`; choosing it writes `/ask ` and leaves the caret
+ready for your question, like choosing `/task`. A bare `/ask` also waits for your words.
+You can put `/ask` inside your sentence as an active command tag; it is removed before
+the question is sent. More than one active submission tag keeps the draft and asks you
+to choose one. Removing the tag restores ordinary submission.
+
+An ask is a real conversation with a transcript kept outside `~/.codeaf/v3/projects`, so
+a one-off errand does not become an ordinary chat row. `/ask` from a conversation opens
+Home and asks there too. If asking is unavailable, the draft remains editable. The
+existing `ctrl+enter` shortcut still works on Home. No ask/new action rows or mode hints
+appear above or below the message box.
 
 **Every exchange is a row at the very top of `threads`**, marked `?`, because it is
 the thing you asked for a minute ago — with what it is doing in the tail:
@@ -1922,8 +1905,8 @@ drawn only when it has something to say:
 9. one dim line naming the strip: `→ verbs: close, new in project, open folder,
    copy project`.
 
-It never moves while the list lifts under your typing, and it goes empty on the
-`start a new conversation` row, because that chat does not exist yet. A frame too short for
+It never moves while the list lifts under your typing, and it stays empty until a
+search result is selected. A frame too short for
 all of it drops bands from the bottom and never touches the name. Nothing that is zero is
 drawn.
 
@@ -2246,8 +2229,8 @@ project.
 
 Every row is **two lines** — the label, and its dim tail indented under it.
 
-**Typing still searches**, exactly as at every other width, with `? ask here` and
-`+ start a new conversation` against the box at the foot.
+**Typing still searches**, exactly as at every other width. Enter starts a conversation
+by default; `/ask <question>` asks in a home pane. Only results appear above the seam.
 
 A tap on a section's heading folds that section away. Mouse motion does nothing at this
 width — there is no hover on glass — and every key still works.
@@ -2295,8 +2278,7 @@ session offered**, a window this one cannot reach is not answered, and once a ke
 the band reads `answered · waiting for it to pick that up` until the other session takes
 it. A window with no way to leave an answer draws no bands at all.
 
-The bar under the box is the phone's legend: at most three wide targets — `open · new · ask
-here` on the inbox, `‹ back · open · more` on a sheet, `‹ back · send · more` on an errand.
+The bar under the box is the phone's legend: `open` on the inbox, `‹ back · open · more` on a sheet, `‹ back · send · more` on an errand.
 Tap one, or press the key it names. Below width **24** the plain hint line is drawn instead.
 
 ## Main chat versus subtasks — why is the work nested on Home?

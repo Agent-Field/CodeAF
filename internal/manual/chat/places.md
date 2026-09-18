@@ -54,8 +54,7 @@ Four ways, and they all reach the same seven rooms:
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin. Home's list is a **drop-up** — it is read upward, out of the box you typed
   into — so ranking first means the offered place sits **below every conversation the same
-  words matched**, one row above `ask here` and `start a new conversation`, which is the
-  nearest row to your hand.
+  words matched**, nearest the message box. One `↑` selects it.
   Where the place can say what is behind it without going to the disk for it, the margin
   says that too: `a place · 6 orders, 1 fired today` on standing. A place that has nothing
   to count, or nothing in it, says `a place` alone.

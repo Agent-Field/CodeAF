@@ -189,67 +189,33 @@ func typeHome(a *app, text string) {
 // which is the cheapest keystroke on the screen after enter itself — and
 // `start a new conversation` keeps the rest, so nothing a person already knew
 // how to do changed meaning.
-func TestTypingAtHomeOffersAskHereDirectlyAboveStartingAConversation(t *testing.T) {
+func TestHomeSubmissionRowsAndHintsAreAbsent(t *testing.T) {
 	lab := newErrandLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
-
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
 	a.openHome()
 	typeHome(a, "remind me at 6")
-
-	ask, start := -1, -1
-	for at, line := range a.home.lines {
-		switch line.kind {
-		case homeAskHere:
-			ask = at
-		case homeAction:
-			start = at
-		}
+	if _, ok := a.home.focusedLine(); ok {
+		t.Fatal("composer selected a result")
 	}
-	if ask < 0 || start < 0 {
-		t.Fatalf("both rows should be on the list, got ask=%d start=%d", ask, start)
+	if frame := homeText(a); strings.Contains(frame, "? ask here:") || strings.Contains(frame, homeStartWord) {
+		t.Fatalf("action row remains: %s", frame)
 	}
-	if start != ask+1 {
-		t.Fatalf("`ask here` should sit directly above the action row, got ask=%d start=%d", ask, start)
-	}
-	if a.home.cursor != start {
-		t.Fatalf("the cursor should still rest on the action row, it is on line %d", a.home.cursor)
-	}
-	frame := homeText(a)
-	if !strings.Contains(frame, homeAskHereWord+`: "remind me at 6"`) {
-		t.Fatalf("the ask row does not quote the sentence:\n%s", frame)
-	}
-	if !strings.Contains(frame, homeStartWord+`: "remind me at 6"`) {
-		t.Fatalf("the action row is gone:\n%s", frame)
-	}
-	// The hint under the box names both readings of the same characters, and it
-	// names the ask by the ARROW that reaches it rather than by a chord most
-	// terminals cannot send (home.go's [app.homeHintWords] holds the argument).
-	if hint := errandRows(a)[len(errandRows(a))-1]; !strings.Contains(hint, "↑ ask here") ||
-		!strings.Contains(hint, "enter starts a new conversation") {
-		t.Fatalf("the hint does not say both things enter can do:\n%s", hint)
-	}
-	if hint := errandRows(a)[len(errandRows(a))-1]; strings.Contains(hint, "ctrl+enter") {
-		t.Fatalf("the foot still advertises a chord most terminals cannot send:\n%s", hint)
+	if hint := a.homeHintWords(); strings.Contains(hint, "ask here") || strings.Contains(hint, "starts a new conversation") {
+		t.Fatalf("mode hints remain: %s", hint)
 	}
 }
 
-// TestOneUpFromTheRestRowLandsOnAskHere pins the keystroke the row was placed
-// for. A row that has to be walked to past a heading and a blank is a row
-// nobody reaches.
-func TestOneUpFromTheRestRowLandsOnAskHere(t *testing.T) {
+// With no matches, up cannot select a submission mode or a nonexistent result.
+func TestUpWithNoMatchesKeepsTheComposer(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
-
 	a := lab.app(mine)
 	a.openHome()
 	typeHome(a, "remind me at 6")
 	a.homeKey(key("up"))
-
-	line, ok := a.home.focusedLine()
-	if !ok || line.kind != homeAskHere {
-		t.Fatalf("↑ from the rest row should land on `ask here`, it landed on kind %d", line.kind)
+	if _, ok := a.home.focusedLine(); ok {
+		t.Fatal("up selected a nonexistent result")
 	}
 }
 
@@ -266,7 +232,9 @@ func TestAskHereMakesItsFolderOutsideTheProjectsAndSendsTheSentence(t *testing.T
 	})
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	if len(lab.agent.sent) != 1 || lab.agent.sent[0] != "remind me at 6" {
 		t.Fatalf("the sentence should have gone to the errand agent, it sent %v", lab.agent.sent)
@@ -377,7 +345,9 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	frame := homeText(a)
 	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 yes, set it up"} {
@@ -467,7 +437,9 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 		besideTheList(a)
 		a.openHome()
 		typeHome(a, c.item.Words)
-		drive(t, a, key("up"), key("enter"))
+		a.home.box.setText("/ask " + a.home.box.String())
+		a.home.build()
+		drive(t, a, key("enter"))
 
 		ex := theExchange(a)
 		if ex == nil || ex.view == nil {
@@ -531,7 +503,9 @@ func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	// THE HINT NAMES IT, because this is the only way out of the question that
 	// answers it.
@@ -580,7 +554,9 @@ func TestContinueAsAConversationMovesTheFolderIntoTheBucket(t *testing.T) {
 	})
 	a.openHome()
 	typeHome(a, "what did we decide about pricing")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	made := lab.dirs[0]
 	id := filepath.Base(made)
@@ -649,7 +625,9 @@ func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
 	})
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	made := lab.dirs[0]
 	store, err := standing.Open(lab.standing)
@@ -726,7 +704,9 @@ func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	ex := theExchange(a)
 	if ex == nil || ex.view == nil {
@@ -770,7 +750,9 @@ func TestEscLeavesTheExchangeAliveAndTheListMoving(t *testing.T) {
 	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	drive(t, a, key("esc"))
 	if theExchange(a) == nil {
@@ -826,7 +808,9 @@ func exchangeLab(t *testing.T) (*errandLab, *app) {
 	besideTheList(a)
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 	return lab, a
 }
 
@@ -953,7 +937,9 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 	// THE TWO DRIVES ARE THE POINT. [drive] queues what a command produced
 	// behind the keys already in hand, so a `1` sent in the same call would be
 	// pressed before the card it answers had arrived.
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 	drive(t, a, key("1"))
 
 	ex := theExchange(a)
@@ -1077,7 +1063,9 @@ func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	a := lab.app(mine, []session.Event{standingProposal(7, "remind me at 6 to leave"), {Kind: session.EventTurnDone}})
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 	drive(t, a, key(questionCommentKey))
 
 	ex := theExchange(a)
@@ -1133,8 +1121,7 @@ func askedHere(t *testing.T, lab *errandLab, a *app, said string) *homeExchange 
 	// into HOME's box, and after the first one the pane has the hand — which is
 	// exactly what a person does with tab or esc before typing again.
 	a.homeTakeList()
-	typeHome(a, said)
-	a.homeKey(key("up"))
+	typeHome(a, "/ask "+said)
 	a.homeKey(key("enter"))
 	ex := theExchange(a)
 	if ex == nil {
@@ -1480,7 +1467,9 @@ func TestAFollowUpGetsTheSameSignalAsTheFirstTurn(t *testing.T) {
 	a.clock = func() time.Time { return at }
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	drive(t, a, key("up"), key("enter"))
+	a.home.box.setText("/ask " + a.home.box.String())
+	a.home.build()
+	drive(t, a, key("enter"))
 
 	ex := theExchange(a)
 	if !ex.over() {

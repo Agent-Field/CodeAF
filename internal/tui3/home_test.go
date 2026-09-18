@@ -38,6 +38,8 @@ type homeLab struct {
 	pinned time.Time
 }
 
+const homeStartWord = "start a new conversation"
+
 func newHomeLab(t *testing.T) *homeLab {
 	t.Helper()
 	return &homeLab{t: t, root: t.TempDir(), work: t.TempDir()}
@@ -612,10 +614,8 @@ func TestHomeStopsSayingNeedsYouWhenTheWindowIsGone(t *testing.T) {
 
 // ── the omnibox ─────────────────────────────────────────────────────────────
 
-// TYPING DOES BOTH JOBS AT ONCE. The characters are a new conversation waiting
-// to be sent AND a live query over the machine, and the cursor stays on the
-// action row so that type-and-enter means exactly what it always meant.
-func TestTypingFiltersLiveWhileTheActionRowStaysTheDefault(t *testing.T) {
+// Typing filters the world without selecting a result or adding an action row.
+func TestTypingFiltersLiveWhileTheComposerStaysTheDefault(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", now)
@@ -634,11 +634,11 @@ func TestTypingFiltersLiveWhileTheActionRowStaysTheDefault(t *testing.T) {
 		t.Fatalf("the query kept a conversation that does not match:\n%s", text)
 	}
 	line, ok := a.home.focusedLine()
-	if !ok || line.kind != homeAction {
-		t.Fatalf("the cursor left the action row while typing (kind %v)", line.kind)
+	if ok {
+		t.Fatalf("typing unexpectedly selected a result (kind %v)", line.kind)
 	}
-	if !strings.Contains(text, homeStartWord+`: "pricing"`) {
-		t.Fatalf("the action row does not say what enter will do:\n%s", text)
+	if strings.Contains(text, homeStartWord+`: "pricing"`) {
+		t.Fatalf("a removed action row was rendered:\n%s", text)
 	}
 }
 
@@ -661,27 +661,15 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 	}
 	runCmd(a.homeEnter())
 	if a.at(pageHome) {
-		t.Fatal("enter on the action row left home open")
+		t.Fatal("Enter while composing left home open")
 	}
 	if len(next.sent) != 1 || next.sent[0] != "pricing" {
 		t.Fatalf("the new conversation was sent %v", next.sent)
 	}
 }
 
-// Walking UP off the action row is the decision to pick from the list instead,
-// and it sticks.
-//
-// IT USED TO BE ↓, and the arrow turned round with the action row. The row sits
-// at the BOTTOM of the list now, against the box a person is typing into
-// ([homeAction]), so the matches are above it and walking into them is walking
-// up the screen. WHICH match the walk reaches is
-// [TestTheBestMatchSitsNextToTheActionRow].
-//
-// IT IS TWO ↑ AND NOT ONE, because `ask here` sits between the action row and
-// the matches (homeexchange.go): the two rows that do something with the
-// SENTENCE are one cluster against the box, and the rows that are other
-// conversations begin above them.
-func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
+// One up-arrow selects the best match; down returns to composing.
+func TestWalkingUpFromTheComposerPicksFromTheList(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
@@ -691,110 +679,47 @@ func TestWalkingOffTheActionRowPicksFromTheList(t *testing.T) {
 		a.homeKey(key(string(r)))
 	}
 	a.homeKey(key("up"))
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAskHere {
-		t.Fatalf("the first ↑ should reach `ask here` (kind %v)", line.kind)
-	}
-	a.homeKey(key("up"))
 	if row := a.home.focused(); row.Transcript != mine {
 		t.Fatal("↑ did not land on the match")
 	}
 	a.homeKey(key("i"))
 	if row := a.home.focused(); row.Transcript != mine {
-		t.Fatal("typing after ↑ threw the cursor back to the action row")
+		t.Fatal("typing after ↑ lost the selected match")
 	}
-	// And ↓ walks back down through the same two rows to the action row, which
-	// is where the sentence is.
+	// One down-arrow from the nearest result returns to composing.
 	a.homeKey(key("down"))
-	a.homeKey(key("down"))
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
-		t.Fatalf("↓ did not come back to the action row (kind %v)", line.kind)
+	if line, ok := a.home.focusedLine(); ok {
+		t.Fatalf("↓ did not return to composing (kind %v)", line.kind)
 	}
 }
 
-// TYPING IS ONE CLUSTER AT THE FOOT, and this pins the geometry that makes it
-// one.
-//
-// The defect it answers: the characters landed in the box at the very bottom of
-// the frame while the row saying what enter would do with them stood at the very
-// top, so the eye had to jump between the two ends of the screen and the cursor
-// was at one end while the caret blinked at the other. The action row now sits
-// on the LAST body row — directly above the rule and the box — with the matches
-// rising above it.
-//
-// THE RESTING SCREEN IS THE OTHER SHAPE, and [TestHomeWithNothingTypedHangsFromTheTop]
-// pins it: a dashboard from the top with the preview card beside it. The lift is
-// what typing does, and only what typing does.
+// Results stay next to the message box without submission rows between them.
 func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
-	lab.session("-tmp-beta", "bbbb000000000001", "pricing sheet import", "/tmp/beta", now.Add(-time.Hour))
-
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
 	a.openHome()
-	for _, r := range "pricing" {
-		a.homeKey(key(string(r)))
-	}
-
+	typeHome(a, "pricing")
 	width, height := a.size()
-	lines, _, _, caretY := a.homeFrame(width, height)
-	rows := make([]string, len(lines))
-	for i, line := range lines {
-		rows[i] = strings.TrimRight(ansi.Strip(line), " ")
-	}
-	action := -1
-	for i, row := range rows {
-		if strings.Contains(row, homeStartWord+`: "pricing"`) {
-			action = i
-		}
-	}
-	if action < 0 {
-		t.Fatalf("the action row is not on the frame:\n%s", strings.Join(rows, "\n"))
-	}
-	// THE BOX IS THE ROW THE CARET IS ON, and the action row is three rows above
-	// it: the list's padding row, then the frame's own foot rule (home.go's
-	// [app.homeFrame] states why the list never touches that rule). Anything more
-	// than that is the split this test exists to stop coming back.
-	if caretY-action != 3 {
-		t.Fatalf("the action row is %d rows above the box, want 3:\n%s", caretY-action, strings.Join(rows, "\n"))
-	}
-	if !strings.Contains(rows[caretY], "pricing") {
-		t.Fatalf("row %d is not the box:\n%s", caretY, strings.Join(rows, "\n"))
-	}
-	// AND THE MATCHES ARE ABOVE IT, not below — the list grew upward out of the
-	// box rather than downward from the title.
+	rows, _, _, caretY := a.homeFrame(width, height)
 	match := -1
 	for i, row := range rows {
-		if strings.Contains(row, "Pricing Research") {
+		plain := ansi.Strip(row)
+		if strings.Contains(plain, "Pricing Research") {
 			match = i
 		}
-	}
-	if match < 0 || match > action {
-		t.Fatalf("the matches are not above the action row (match %d, action %d):\n%s",
-			match, action, strings.Join(rows, "\n"))
-	}
-	// The hint under the box names the arrow that is actually true of the screen —
-	// ↑, because the matches rise ABOVE the action row the caret sits against.
-	//
-	// IT IS ASKED OF THE SENTENCE AND NOT OF THE DRAWN ROW, and that is not a
-	// weaker question. The foot is a hundred and fourteen cells with the router's
-	// keys on it and this frame is a hundred wide, so [hintFit] drops the clause
-	// nearest the way out to make it fit — by design, and the ladder it drops down
-	// is pinned by [TestAHintDropsWholeClausesAndKeepsTheWayOut]. Asked of the
-	// drawn row this assertion was really asking how wide the lab happens to be,
-	// and it passed for a year only because the old fitter sliced the tail off
-	// mid-word instead — the foot on this very screen read `… · tab next …`. The
-	// law it was written for is about the arrow, so the arrow is where it looks.
-	if hint := a.homeHintWords(); !strings.Contains(hint, "↑ pick a match") {
-		t.Fatalf("the hint names the wrong arrow: %s", hint)
-	}
-	// AND THE FOOT THAT IS DRAWN IS STILL WHOLE CLAUSES OF THAT SENTENCE, never a
-	// word with its end sliced off.
-	for _, clause := range strings.Split(strings.TrimSpace(rows[len(rows)-1]), railSep) {
-		if !strings.Contains(a.homeHint(), clause) {
-			t.Fatalf("the foot drew %q, which is not a clause of the hint:\n%s",
-				clause, rows[len(rows)-1])
+		if strings.Contains(plain, homeStartWord) || strings.Contains(plain, "? ask here:") {
+			t.Fatalf("action row remains: %s", plain)
 		}
+	}
+	if match < 0 || caretY-match != 3 {
+		t.Fatalf("nearest result at %d, caret at %d; want a three-row gap", match, caretY)
+	}
+	if _, ok := a.home.focusedLine(); ok {
+		t.Fatal("typing selected a search result")
+	}
+	if hint := a.homeHintWords(); strings.Contains(hint, "ask here") || strings.Contains(hint, "starts a new") {
+		t.Fatalf("submission hint remains: %s", hint)
 	}
 }
 
@@ -1013,10 +938,7 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	}
 }
 
-// THE CURSOR MOVES BETWEEN THE TWO STATES, and that is the accepted price of
-// keeping the dashboard. Each state's geometry is pinned on its own: at rest the
-// cursor is up in the list, and the first character takes it to the foot with the
-// action row. Clearing the box brings it back.
+// Typing clears result selection; clearing the box restores the resting list.
 func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -1041,14 +963,13 @@ func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 		t.Fatalf("the resting cursor is on %q, want this window's conversation", homeName(row))
 	}
 
-	// TYPING: the action row, on the last body row — FIVE up from the bottom of
-	// the frame, because the body now ends one row short of the rule: the padding
-	// row, then the rule, the box and the hint.
+	// The composer stays unselected until the person chooses a result.
 	a.homeKey(key("p"))
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
-		t.Fatalf("the first character did not put the cursor on the action row (kind %v)", line.kind)
+	if line, ok := a.home.focusedLine(); ok {
+		t.Fatalf("the first character kept a result selected (kind %v)", line.kind)
 	}
-	if at := homeCursorY(t, a); at != height-5 {
+	if _, ok := a.home.focusedLine(); ok {
+		at := homeCursorY(t, a)
 		t.Fatalf("the typing cursor is on row %d of %d, want the last body row %d:\n%s",
 			at, height, height-5, homeText(a))
 	}
@@ -1071,11 +992,8 @@ func TestTheCursorGoesToTheFootWhileTypingAndBackAtRest(t *testing.T) {
 // took three keystrokes, which is the ranking being drawn at the wrong end of the
 // column. The scoring was never wrong; the drawing was.
 
-// ONE ↑ FROM THE ACTION ROW IS THE TOP-RANKED MATCH. That is the whole law, and
-// it is asserted against the scores themselves rather than against a list of
-// names, so a change to [homeRank] cannot quietly make this test agree with a
-// column it no longer describes.
-func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
+// The nearest result is the best match, and further up-arrows reach weaker matches.
+func TestTheBestMatchSitsNextToTheComposer(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	// Three hits of DIFFERENT quality on "pricing": the bare name is the strongest,
@@ -1129,14 +1047,10 @@ func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
 		t.Fatalf("every match tied, so the order proves nothing: %+v", drawn)
 	}
 
-	// AND THE ACTION ROW IS STILL BELOW THEM ALL, so the best match is the FIRST
-	// conversation the walk reaches rather than the row furthest from the key.
-	// The row between them is `ask here` (homeexchange.go), which is the other
-	// thing enter can do with the sentence and not a match.
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
-		t.Fatalf("the cursor did not rest on the action row (kind %v)", line.kind)
+	// The composer stays unselected until the person chooses a result.
+	if line, ok := a.home.focusedLine(); ok {
+		t.Fatalf("the composer unexpectedly selected a result (kind %v)", line.kind)
 	}
-	a.homeKey(key("up"))
 	a.homeKey(key("up"))
 	if got := homeName(a.home.focused()); got != best.name {
 		t.Fatalf("walking up landed on %q, want the top-ranked %q (%+v)", got, best.name, drawn)
@@ -1148,18 +1062,12 @@ func TestTheBestMatchSitsNextToTheActionRow(t *testing.T) {
 			t.Fatalf("walking up reached %q, want %q (%+v)", got, drawn[i].name, drawn)
 		}
 	}
-	// And ↓ comes back down toward the box, through `ask here` and onto the
-	// action row — one step per match, plus the one for the row between them
-	// (homeexchange.go).
+	// The composer stays unselected until the person chooses a result.
 	for range drawn {
 		a.homeKey(key("down"))
 	}
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAskHere {
-		t.Fatalf("↓ did not walk back to `ask here` (kind %v)", line.kind)
-	}
-	a.homeKey(key("down"))
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
-		t.Fatalf("↓ did not walk back to the action row (kind %v)", line.kind)
+	if line, ok := a.home.focusedLine(); ok {
+		t.Fatalf("↓ did not return to composing (kind %v)", line.kind)
 	}
 }
 
@@ -1207,7 +1115,7 @@ func TestTheInvertedDropUpKeepsHeadingsAboveTheirRows(t *testing.T) {
 // card exists to stop.
 //
 // The first ↑ here lands on the TOP-RANKED match, which is
-// [TestTheBestMatchSitsNextToTheActionRow]'s law; what this one is about is that
+// [TestTheBestMatchSitsNextToTheComposer]'s law; what this one is about is that
 // the card changes with the cursor whichever row that turns out to be.
 func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 	lab := newHomeLab(t)
@@ -1230,23 +1138,15 @@ func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 		t.Fatalf("a %d-column frame lent the detail pane nothing", width)
 	}
 
-	// ON THE ACTION ROW THE PANE IS EMPTY, and that is the emptiness law rather
-	// than an omission: "start a new conversation" is a chat that does not exist
-	// yet, so there is nothing true to preview about it.
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
-		t.Fatalf("typing did not rest the cursor on the action row (kind %v)", line.kind)
+	// The composer stays unselected until the person chooses a result.
+	if line, ok := a.home.focusedLine(); ok {
+		t.Fatalf("typing unexpectedly selected a result (kind %v)", line.kind)
 	}
 	if card := a.homeDetail(right, 12, a.pal); len(card) != 0 {
 		t.Fatalf("the pane previewed a conversation that does not exist yet:\n%s", strings.Join(card, "\n"))
 	}
 
-	// ↑ ONTO A MATCH DRAWS THAT MATCH'S CARD. Two of them: `ask here` is the row
-	// in between, and it is a thing that does not exist yet exactly as the action
-	// row is, so its pane is empty for the same reason (homeexchange.go).
-	a.homeKey(key("up"))
-	if card := a.homeDetail(right, 12, a.pal); len(card) != 0 {
-		t.Fatalf("the pane previewed the `ask here` row:\n%s", strings.Join(card, "\n"))
-	}
+	// The composer stays unselected until the person chooses a result.
 	a.homeKey(key("up"))
 	first := a.home.focused()
 	if first.Transcript == "" {
@@ -1275,13 +1175,11 @@ func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 		t.Fatalf("the card kept the row the cursor left:\n%s", card)
 	}
 
-	// …AND ↓ BACK ONTO THE ACTION ROW EMPTIES IT AGAIN. Three steps: two matches
-	// and the `ask here` row between them and the box (homeexchange.go).
+	// The composer stays unselected until the person chooses a result.
 	a.homeKey(key("down"))
 	a.homeKey(key("down"))
-	a.homeKey(key("down"))
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeAction {
-		t.Fatalf("↓ did not come back to the action row (kind %v)", line.kind)
+	if line, ok := a.home.focusedLine(); ok {
+		t.Fatalf("↓ did not return to composing (kind %v)", line.kind)
 	}
 	if card := a.homeDetail(right, 12, a.pal); len(card) != 0 {
 		t.Fatalf("the pane kept a card after the cursor left the match:\n%s", strings.Join(card, "\n"))
@@ -1358,9 +1256,7 @@ func TestAQueryMatchesWhatATaskCameTo(t *testing.T) {
 	if strings.Contains(text, "Tuesday") {
 		t.Fatalf("it matched a conversation with no such outcome:\n%s", text)
 	}
-	// ↑ walks off the action row, past `ask here` (homeexchange.go), and up into
-	// the match — which is where the matches are now ([homeAction]).
-	a.homeKey(key("up"))
+	// The composer stays unselected until the person chooses a result.
 	a.homeKey(key("up"))
 	if !strings.Contains(homeText(a), "Rewrote the postgres") {
 		t.Fatalf("the pane does not show what the work came to:\n%s", homeText(a))
@@ -1393,7 +1289,7 @@ func TestNeedsYouOutranksAColdRowItTiesWith(t *testing.T) {
 		t.Fatalf("expected two matches, got %d", len(order))
 	}
 	// THE TOP-RANKED ROW IS THE LAST ONE DRAWN, because the drop-up is read
-	// upward out of the box ([TestTheBestMatchSitsNextToTheActionRow] states the
+	// upward out of the box ([TestTheBestMatchSitsNextToTheComposer] states the
 	// law). The RANKING is what this test is about and it has not moved; only
 	// which end of the column it is written at.
 	if !order[len(order)-1].NeedsPerson() {
@@ -1576,7 +1472,6 @@ func TestHomeMarksARowWhoseFolderIsGoneWhereverItsAddressIsDrawn(t *testing.T) {
 		t.Fatalf("no %q on the drop-up's row:\n%s", homeGoneShort, homeText(a))
 	}
 	a.homeKey(key("up"))
-	a.homeKey(key("up"))
 	if got := a.home.focused().Transcript; got != gone {
 		t.Fatalf("↑ landed on %q, want the row whose folder is gone", got)
 	}
@@ -1633,7 +1528,6 @@ func TestHomeLeavesARowWhoseFolderIsThereAlone(t *testing.T) {
 	for _, r := range "porting" {
 		a.homeKey(key(string(r)))
 	}
-	a.homeKey(key("up"))
 	a.homeKey(key("up"))
 	card := strings.Join(homeCardNow(t, a), "\n")
 	for _, clause := range []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder"} {
@@ -2532,7 +2426,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		for _, r := range "pricing" {
 			drive(t, a, key(string(r)))
 		}
-		if !strings.Contains(homeText(a), homeStartWord+`: "pricing"`) {
+		if a.home.box.String() != "pricing" || a.home.picked {
 			t.Fatalf("at %d columns typing on an empty home does not offer a new conversation:\n%s", tc.width, homeText(a))
 		}
 	}

@@ -2268,18 +2268,15 @@ The project and approvals hints are absent where those controls cannot act. `ctr
 still opens the selected row's folder and `tab` still moves to the next place, but neither
 has a hint in home's bottom row. `esc` still closes home; `alt+.` draws the whole map.
 
-Every ordinary grid row keeps the same list keys as the cursor walks. A fold or action
-row names its own keys, with the available draft controls before `esc`. For example:
-`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · ctrl+v effort · alt+a approvals · esc clear`.
-Typing a slash command changes the first clause to `enter runs this command`.
+Every ordinary grid row keeps the same list keys as the cursor walks. A fold names
+its own keys, with the available draft controls before `esc`. Submission modes add no
+footer hints. Plain text followed by Enter starts a new conversation; `/ask <question>`
+asks in a home pane.
 
-**With nothing typed home is the panels**, hanging from the top. **While anything is typed
-it is one list, a drop-up**: the action row — `start a new conversation: "…"` — is the LAST
-row of the list, with `ask here: "…"` directly above it, both directly above the box, and
-the matches rise above the pair **best one first**; the cursor starts on the action row, so
-one `↑` reaches `ask here` and a second lands on the strongest match. Clearing the box puts
-the panels back. On a frame 136 columns or wider a card about the match under the cursor
-stands to the right of the list while you type; at rest there is no card.
+**With nothing typed home is the panels. While typing, only search results appear above
+the seam.** The best match is nearest the box. One `↑` selects it; `↓` past the last
+result returns to composing. Clearing the box restores the panels. On wider frames,
+the card beside the results follows the selected match.
 
 **On an `ask here` row** — the `?` rows an errand leaves at the top of `threads` —
 the line under the box reads

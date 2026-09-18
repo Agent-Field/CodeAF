@@ -2,16 +2,21 @@
 
 ## Can I set a reminder from home
 
-Yes. Type it on the home screen, press `↑` once — which lands on the row spelled
-`ask here: "…"` — and press `enter`.
+Yes. Type `/ask remind me at 6 to leave` on Home and press Enter. Choosing `/ask`
+from the command menu writes `/ask `, ready for your question, like `/task`. A bare
+`/ask` waits for your words. An inline `/ask` tag works too.
 
 ```
- ? ask here: "remind me at 6 to leave"
- + start a new conversation: "remind me at 6 to leave"
  ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
- › remind me at 6 to leave
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · ctrl+v effort · alt+a approvals · esc clear
+ › /ask remind me at 6 to leave
+ alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
 ```
+
+Plain text followed by Enter starts a new conversation by default. Only search results
+appear above the seam; the old ask/new action rows and their footer hints are gone.
+One Up selects the best result. Down past the last result returns to composing.
+Removing `/ask` returns to ordinary submission. From a conversation, `/ask` opens
+Home and asks there. A refusal leaves the question editable.
 
 What you get is **a row at the top of home's `threads` panel and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is

@@ -1477,6 +1477,8 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 			return a.openStanding()
 		}
 		return a.standingSayShown(tagWords, tagShown)
+	case sendDoorAsk:
+		return a.runAskCommand(tagWords)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}

@@ -582,19 +582,13 @@ func testAskHere(t *testing.T) {
 	r.keys("Enter")
 	r.waitFor(20*time.Second, say(t, "placeRestWord"))
 
-	r.lit("remind me in 1 minute to drink water")
+	r.lit("/ask remind me in 1 minute to drink water")
 	time.Sleep(700 * time.Millisecond)
 	typed := r.capture()
-	if !strings.Contains(typed, say(t, "homeAskHereWord")+": ") ||
-		!strings.Contains(typed, say(t, "homeStartWord")+": ") {
-		t.Errorf("the two action rows are not both drawn while something is typed:\n%s", typed)
+	if strings.Contains(typed, "? ask here:") || strings.Contains(typed, "+ start a new conversation:") {
+		t.Errorf("submission action rows remain above the composer:\n%s", typed)
 	}
-	t.Logf("the action rows while typing:\n%s", typed)
-
-	// ctrl+enter, sent as the CSI 13;5u a kitty-protocol terminal sends. It
-	// hands the keyboard straight to the pane, and a pane holding the keyboard
-	// always names both ways back out of it.
-	r.ctrlEnter()
+	r.keys("Enter")
 	pane := r.waitFor(25*time.Second, say(t, "homeAskHereWord"), say(t, "exchangeBack"))
 	t.Logf("the exchange took the screen:\n%s", pane)
 
@@ -1190,7 +1184,7 @@ func testHover(t *testing.T) {
 	// The seeds share a word, so typing it lists all three; the cursor rests on
 	// the action row, whose card is empty because that chat does not exist yet.
 	r.lit("Seed")
-	screen := r.waitFor(15*time.Second, say(t, "homeStartWord"), "Seed Beta")
+	screen := r.waitFor(15*time.Second, "› Seed", "Seed Beta")
 	rows := r.lines()
 	target := -1
 	for i, line := range rows {
@@ -1267,7 +1261,7 @@ func testFold(t *testing.T) {
 	// AND TYPING SEES STRAIGHT THROUGH IT: a search matches every conversation on
 	// the machine, including the ones no panel is drawing.
 	r.lit("Seed T")
-	found := r.waitFor(15*time.Second, say(t, "homeStartWord"))
+	found := r.waitFor(15*time.Second, "› Seed T")
 	deadline := time.Now().Add(15 * time.Second)
 	for matchRow(found, "Seed T") == "" && time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)

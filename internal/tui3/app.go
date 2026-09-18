@@ -7055,6 +7055,9 @@ func (a *app) slash(line string) tea.Cmd {
 		// posture outright, through the path the chord and the press share.
 		return a.runApprovals(rest)
 
+	case "ask":
+		return a.runAskCommand(rest)
+
 	case "task":
 		return a.runTaskCommand(rest)
 
