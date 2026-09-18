@@ -145,42 +145,72 @@ async function handleRows(request, env) {
   // identity, and the client re-sends every row that did not get a 202, so an
   // install's retry is the ordinary case rather than an error. A nonce
   // repeated inside one batch is collapsed here too, by the set, before the
-  // store is consulted.
-  const fresh = [];
-  const batchNonces = new Set();
-  for (const row of rows) {
-    if (batchNonces.has(row.nonce)) {
-      continue;
-    }
-    batchNonces.add(row.nonce);
-    if (await env.POOL.get(seenKey(install, row.nonce)) !== null) {
-      continue;
-    }
-    fresh.push(row);
-  }
-
-  // The per-install per-day quota is charged for the rows this batch actually
-  // folds, so a retried row is not charged a second time.
-  const limit = intVar(env, 'ROWS_PER_INSTALL_PER_DAY', 500);
+  // store is consulted, and the rows are grouped by day because a day's nonces
+  // live together under one key.
+  //
+  // Per batch this costs a KV read and a KV write for each distinct (day,
+  // cell) key it folds into, one read for every day the batch carries (that
+  // day's seen set) and one read and one write for every day it has fresh rows
+  // on (that day's seen set and its quota counter). A batch of 200 rows over
+  // ten cells on one day is 12 writes and 12 reads, not 200 of each.
+  const seenInBatch = new Set();
   const byDay = new Map();
-  for (const row of fresh) {
+  for (const row of rows) {
+    if (seenInBatch.has(row.nonce)) {
+      continue;
+    }
+    seenInBatch.add(row.nonce);
     const list = byDay.get(row.day) || [];
     list.push(row);
     byDay.set(row.day, list);
   }
-  const used = new Map();
+
+  // A day's seen set is one KV value, so a quota raised past what one value
+  // holds would silently drop nonces: refuse rather than lose them.
+  const limit = intVar(env, 'ROWS_PER_INSTALL_PER_DAY', 500);
+  if (limit * SEEN_BYTES_PER_NONCE > MAX_VALUE_BYTES) {
+    return json({ error: 'ROWS_PER_INSTALL_PER_DAY is larger than one seen key holds' }, 500);
+  }
+
+  // One get per day names the nonces already folded, so freshness costs one
+  // read per day rather than one per row.
+  const storedSeen = new Map();
+  const freshByDay = new Map();
   for (const [day, list] of byDay) {
+    const seen = parseSeen(await env.POOL.get(seenKey(install, day)));
+    storedSeen.set(day, seen);
+    const fresh = list.filter((row) => !seen.has(row.nonce));
+    if (fresh.length > 0) {
+      freshByDay.set(day, fresh);
+    }
+  }
+
+  // The per-install per-day quota is charged for the rows this batch actually
+  // folds, so a retried row is not charged a second time.
+  const charged = new Map();
+  for (const [day, list] of freshByDay) {
     const current = parseInt(await env.POOL.get(quotaKey(install, day)), 10) || 0;
     if (current + list.length > limit) {
       return json({ error: 'daily quota exceeded' }, 429);
     }
-    used.set(day, current);
+    charged.set(day, current + list.length);
   }
 
-  // Fold each score into its install's running total for the cell and day, and
-  // record the row's nonce so its retry is not folded again.
-  for (const row of fresh) {
-    const key = `sheet/${install}/${row.day}/${cellKey(row.payload)}`;
+  // Fold every fresh row into its install's running total for the cell and day,
+  // grouping the rows that share a sheet key so each key is read once and
+  // written once and the rows on it are folded in memory rather than by
+  // read-after-write, one row at a time.
+  let accepted = 0;
+  const byKey = new Map();
+  for (const list of freshByDay.values()) {
+    for (const row of list) {
+      const key = `sheet/${install}/${row.day}/${cellKey(row.payload)}`;
+      const group = byKey.get(key) || [];
+      group.push(row);
+      byKey.set(key, group);
+    }
+  }
+  for (const [key, group] of byKey) {
     const previous = await env.POOL.get(key);
     let triple = null;
     if (previous !== null) {
@@ -190,17 +220,28 @@ async function handleRows(request, env) {
         triple = null;
       }
     }
-    await env.POOL.put(key, JSON.stringify(fold(triple, row.payload.score)));
-    await env.POOL.put(seenKey(install, row.nonce), '1', { expirationTtl: SEEN_TTL });
+    for (const row of group) {
+      triple = fold(triple, row.payload.score);
+    }
+    await env.POOL.put(key, JSON.stringify(triple));
+    accepted += group.length;
   }
-  for (const [day, list] of byDay) {
-    await env.POOL.put(quotaKey(install, day), String(used.get(day) + list.length));
+
+  // Record the nonces just folded and charge the days they were folded on: one
+  // put of the day's seen set and one of its quota counter, per day.
+  for (const [day, list] of freshByDay) {
+    const seen = storedSeen.get(day);
+    for (const row of list) {
+      seen.add(row.nonce);
+    }
+    await env.POOL.put(seenKey(install, day), joinSeen(seen), { expirationTtl: SEEN_TTL });
+    await env.POOL.put(quotaKey(install, day), String(charged.get(day)));
   }
   // A batch that was entirely already stored still answers 202: the client
   // needs only the 202 to mark its rows sent, and giving it anything else
   // would leave the outbox retrying rows the relay already holds. `accepted`
   // counts the rows folded now, so it is 0 for such a batch.
-  return json({ accepted: fresh.length }, 202);
+  return json({ accepted }, 202);
 }
 
 // quotaKey names one install's per-day quota counter.
@@ -208,18 +249,39 @@ function quotaKey(install, day) {
   return `quota/${install}/${day}`;
 }
 
-// A folded row's identity lives under seen/<install>/<nonce>. It is per row,
-// not per batch: the client re-sends its outbox row by row, and a retry may
-// carry fewer rows than the batch that first sent them, so only the nonce each
-// row carries survives re-grouping. Idempotence is only as strong as KV — reads
-// and writes are eventually consistent, so two concurrent copies of a batch can
-// both see a nonce unread and fold it twice; within what KV answers, a nonce
-// already stored is not folded again or charged again. The TTL is a week: the
-// outbox retries within days, so a week outlasts any retry still in flight and
-// the store does not grow without bound.
+// A day's seen set lives under seen/<install>/<day>: the nonces already folded
+// for that install and day, joined by newlines, with a one-week TTL. It is per
+// day and not per batch because the client re-groups its rows on retry — a
+// retry carries the rows that did not get a 202, which may be fewer than the
+// batch that first sent them — so only the nonce each row carries survives,
+// and the day's set of them is what a retry is checked against: one get and
+// one put per day rather than one per row. At 32 hex characters per nonce plus
+// a separator that is 33 bytes, the relay's own ROWS_PER_INSTALL_PER_DAY (500
+// by default) bounds the value at 16,500 bytes, under KV's 25 MiB value limit.
+// Idempotence is only as strong as KV — reads and writes are eventually
+// consistent, so two concurrent copies of a batch can still both see a nonce
+// absent and fold it twice — and two batches from one install on one day now
+// race on this single key, where the last put wins and a retry may re-fold;
+// within what KV answers, a nonce already stored is neither folded again nor
+// charged again. The TTL is a week: the outbox retries within days, so a week
+// outlasts any retry still in flight and the store does not grow without
+// bound.
 const SEEN_TTL = 7 * 24 * 60 * 60;
-function seenKey(install, nonce) {
-  return `seen/${install}/${nonce}`;
+const SEEN_BYTES_PER_NONCE = 33; // 32 hex characters plus a separator
+const MAX_VALUE_BYTES = 25 << 20; // KV's per-value limit
+function seenKey(install, day) {
+  return `seen/${install}/${day}`;
+}
+
+// parseSeen reads one day's seen set; a key the store has not written yet is
+// an empty set.
+function parseSeen(value) {
+  return value === null ? new Set() : new Set(value.split('\n').filter((nonce) => nonce !== ''));
+}
+
+// joinSeen writes one day's seen set back as the value its key holds.
+function joinSeen(seen) {
+  return [...seen].join('\n');
 }
 
 // refreshInBackground republishes the document behind a read when the
