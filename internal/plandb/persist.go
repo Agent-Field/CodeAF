@@ -180,6 +180,17 @@ var schemaStatements = []string{
 		out_tokens INTEGER NOT NULL,
 		at         TEXT    NOT NULL
 	)`,
+	// The live table is the present tense: one row per task whose worker has a
+	// command running right now, and no row for a task that is not. It is
+	// written and cleared by the run's worker (internal/run's SetLive/ClearLive),
+	// read by a pane through LiveSteps, and it holds one row per task rather than
+	// a history — the trajectory is where the finished steps live.
+	`CREATE TABLE IF NOT EXISTS live (
+		task_id TEXT    PRIMARY KEY,
+		step    INTEGER NOT NULL,
+		command TEXT    NOT NULL,
+		since   TEXT    NOT NULL
+	)`,
 }
 
 // openDatabase opens (creating when absent) the SQLite database at path, making
