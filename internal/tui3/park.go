@@ -30,7 +30,7 @@ import (
 //	↑        with an empty box, pull the parked message back in to edit it.
 //	click    the same, on the block itself.
 //
-// AND THE FIRST TWO OF THOSE AS ONE ACT: `shift+enter` parks the draft and
+// AND THE FIRST TWO OF THOSE AS ONE ACT: `ctrl+shift+enter` parks the draft and
 // stops the answer in one gesture, which is the way somebody actually
 // interrupts — by speaking (bargein.go). It is built ON this queue rather than
 // beside it, so everything below is what happens to the message afterwards.

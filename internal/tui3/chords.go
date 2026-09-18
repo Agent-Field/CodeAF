@@ -38,7 +38,7 @@ import (
 // WHY THE CAPABILITY QUESTION IS NOT AN ENVIRONMENT TABLE. tui2's
 // [tokens.DetectGlyphSet] may only VETO, because no terminal reports its font;
 // here a terminal DOES report whether it disambiguates, Bubble Tea asks on
-// every frame, and bargein.go already spends that answer on `shift+enter` for
+// every frame, and bargein.go already spends that answer on `ctrl+shift+enter` for
 // this exact reason. A veto table over TERM_PROGRAM would be this file guessing
 // at a fact it can simply be told, and it would guess wrong in both directions:
 // kitty behind an unlisted TERM would lose an alias it can send, and a terminal
@@ -252,7 +252,7 @@ const chordMapAlias = chordCtrlWord + "."
 // legacy encoding as CSI-u, and it REPORTS having taken it. Bubble Tea asks on
 // every frame and hands the reply back as a tea.KeyboardEnhancementsMsg; that
 // reply is [app.keysDisambiguated], and bargein.go already spends it on
-// `shift+enter` under the same law.
+// `ctrl+shift+enter` under the same law.
 //
 // THE ONE DIRECTION IT ERRS IN IS THE SAFE ONE, as it is there: a terminal that
 // speaks modifyOtherKeys and not the kitty protocol never replies, so the alias

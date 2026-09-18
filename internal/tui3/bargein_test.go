@@ -245,7 +245,7 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 	}
 }
 
-// THE TWO STOP GESTURES NAME THEIR DIFFERENT QUEUE DECISIONS. shift+enter
+// THE TWO STOP GESTURES NAME THEIR DIFFERENT QUEUE DECISIONS. ctrl+shift+enter
 // preserves the sentence it just parked; esc clears everything waiting.
 func TestTheChordSendsWhileEscDrops(t *testing.T) {
 	if strings.HasSuffix(parkedHint[1], bargeSendWord) {

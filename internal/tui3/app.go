@@ -1770,7 +1770,7 @@ type app struct {
 	pasteAt time.Time
 	// keysDisambiguated says THIS TERMINAL ANSWERED THE KEYBOARD-ENHANCEMENT
 	// QUERY, which is the one honest way to know whether a chord like
-	// `shift+enter` can reach this program at all rather than arriving as a bare
+	// `ctrl+shift+enter` can reach this program at all rather than arriving as a bare
 	// `enter` (bargein.go). Bubble Tea asks on every frame and hands the answer
 	// back as a tea.KeyboardEnhancementsMsg; a terminal that cannot speak the
 	// protocol simply never replies, and false is what that silence means.
@@ -3393,7 +3393,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// THE TERMINAL SAID WHICH CHORDS IT CAN SPELL. Bubble Tea enables basic
 		// key disambiguation on every frame and asks the terminal to report what
 		// it took; this is that report, and a non-zero set of flags is the whole
-		// of what [app.keysDisambiguated] means — `shift+enter` arrives here as
+		// of what [app.keysDisambiguated] means — `ctrl+shift+enter` arrives here as
 		// itself rather than as a bare `enter` (bargein.go).
 		//
 		// IT IS RECORDED AND NOTHING IS REQUESTED. Nothing on this surface is
@@ -7636,7 +7636,7 @@ func (a *app) interrupt() {
 }
 
 // interruptForBarge stops the current turn but preserves the draft
-// [app.bargeIn] just parked. shift+enter promises stop-and-send; it shares the
+// [app.bargeIn] just parked. ctrl+shift+enter promises stop-and-send; it shares the
 // stop machinery with esc without sharing esc's queue-clearing decision.
 func (a *app) interruptForBarge() {
 	a.interruptTurn()

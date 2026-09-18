@@ -4,12 +4,18 @@
 
 `enter` sends the message you have typed.
 
-`alt+enter` opens a new line inside the message without sending. `ctrl+j` does the
-same thing — it is a second spelling for terminals that swallow `alt+enter`.
+`shift+enter` opens a new line without sending in home's message box, its ask-here
+pane, and conversations, including task rooms and while an answer is running.
+In conversations, `alt+enter` and `ctrl+j` also open a line. On home, `alt+enter`
+keeps its task-composer action.
 
-`shift+enter` does **not** open a line. While a turn is running it **stops the answer
-and sends what you have typed** — see "Interrupt and say something new in one key"
-below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a line.
+Shift+enter requires a terminal that distinguishes it from plain enter. If your
+terminal sends plain enter instead, it has the ordinary send behavior; use
+`alt+enter` or `ctrl+j` in a conversation as a fallback.
+
+`ctrl+shift+enter` while a turn is running **stops the answer and sends what you
+have typed** — see "Interrupt and say something new in one key" below. At rest it
+does nothing.
 
 `cmd+enter` while a turn is running **holds** what you have typed for the answer
 after this one. It is the secondary choice for when you do not want to change the
@@ -67,7 +73,7 @@ have just said you do not want. If you then type something else, the model reads
 lines in the order you sent them; the stopped command is not restarted by the second
 one.
 
-## Enter, cmd+enter, shift+enter, and the waiting-message keys
+## Enter, cmd+enter, ctrl+shift+enter, and the waiting-message keys
 
 | What you do | What happens |
 |---|---|
@@ -76,7 +82,7 @@ one.
 | `esc` | stops the answer and clears both waiting-message queues |
 | `→` over an empty box | steers the oldest waiting words into the running answer |
 | click `→ steers it in` | the same, with the pointer |
-| `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
+| `ctrl+shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
 | `↑` over an empty box | takes the newest waiting message back into the box to edit |
 | click the block | takes **that** message back into the box to edit |
 | `cmd+enter` again | holds the edited sentence again |
@@ -134,7 +140,7 @@ want to pay for stopping it. The three keys, side by side:
 |---|---|---|
 | `enter` | current generation stops; partial kept | goes into the same turn now |
 | `cmd+enter` | keeps going | waits above the box until the answer finishes |
-| `shift+enter` | stopped, and what it said is kept | opens the next turn |
+| `ctrl+shift+enter` | stopped, and what it said is kept | opens the next turn |
 
 **Over an empty box `enter` does nothing**, unless a waiting message offers the `→`
 shortcut. At rest, `enter` sends an ordinary new turn.
@@ -155,12 +161,12 @@ line does not offer `→ steers it in`.
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · shift+enter stops and sends · esc interrupt
+enter steers it in · ctrl+shift+enter stops and sends · esc interrupt
 ```
 
 That is the terminal-capable form when no command can be kept. A running foreground
 command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
-cannot deliver `shift+enter` leaves that clause out. `cmd+enter` still waits, but the
+cannot deliver `ctrl+shift+enter` leaves that clause out. `cmd+enter` still waits, but the
 one-line slot no longer advertises it.
 
 ## My message went in too late — the answer finished first, so it became the next message
@@ -243,7 +249,7 @@ before this binding is read, so a `?` typed into one of those reaches it and not
 
 ## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
-`shift+enter` while a turn is running **stops the answer and sends what is in the box**,
+`ctrl+shift+enter` while a turn is running **stops the answer and sends what is in the box**,
 as one gesture. Unlike a steer, it ends the whole turn and starts your sentence as a
 new one after the stop finishes.
 
@@ -276,7 +282,7 @@ means "instead of that". One key does not do both.
 `enter` in a room steers the node there and then, with no queue to jump, and a room's way
 of ending work is `x` and a card that asks first. The chord is ignored there.
 
-**Terminals that cannot send it.** `shift+enter` reaches a program only where the terminal
+**Terminals that cannot send it.** `ctrl+shift+enter` reaches a program only where the terminal
 can tell it apart from a plain `enter` — the kitty keyboard protocol, xterm's
 modifyOtherKeys, or win32-input. Where it cannot, the key arrives as an ordinary `enter`
 and your message **steers** instead. On those terminals codeaf never advertises the
@@ -290,12 +296,12 @@ enter steers it in · esc interrupt
 ```
 
 On a terminal that can spell the secondary chords, the line reads
-`enter steers it in · shift+enter stops and sends · esc interrupt`. A foreground
+`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt`. A foreground
 command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
 
 **A picture on the tray is a message even when the box has no words.** It cannot steer, so
 that form reads `enter waits · esc interrupt`, or
-`enter waits · shift+enter stops and sends · esc interrupt` on a terminal that can
+`enter waits · ctrl+shift+enter stops and sends · esc interrupt` on a terminal that can
 spell the secondary chord. With neither words nor a picture, the line is simply
 `esc interrupt`, unless a command can be kept, when it is
 `ctrl+g backgrounds · esc interrupt`.
@@ -354,14 +360,14 @@ is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
 message box ends with `esc interrupt` — for example
-`enter steers it in · shift+enter stops and sends · esc interrupt` while you have
-typed something and this terminal can deliver `shift+enter`. A foreground command that
+`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while you have
+typed something and this terminal can deliver `ctrl+shift+enter`. A foreground command that
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
 `esc interrupts · ctrl+c quits · ? for help`.
 
-**Stopping it and saying something new at once.** `shift+enter` does both in one key —
+**Stopping it and saying something new at once.** `ctrl+shift+enter` does both in one key —
 see "Interrupt and say something new in one key" above. `esc` on its own stops without
 sending anything you have not already committed with `enter`.
 
@@ -541,7 +547,8 @@ These apply with no overlay up, no room open, and no mode on.
 |---|---|
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
 | `ctrl+enter` | Send it as something to **keep true** — codeaf shapes it into a standing order's card instead of doing it once. See the standing orders page |
-| `alt+enter` | Open a new line in the message |
+| `shift+enter` | Open a new line without sending, on home and in conversations |
+| `alt+enter` | Open a new line in a conversation |
 | `ctrl+j` | Same as `alt+enter` |
 | `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
 | `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
@@ -550,15 +557,15 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+g` | A foreground command that can be kept: send that command to the background. Otherwise: close the task column, or bring it back. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `enter` while a turn runs | Stop the current generation, keep its partial reply, and steer the words into the same turn |
 | `cmd+enter` while a turn runs | Hold the message above the box until the answer finishes. Empty box: nothing. Nothing running: nothing |
-| `shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
+| `ctrl+shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
 | `→` over an empty box, a message waiting | Send that waiting message into the running answer. With text in the box it is the caret key |
 | `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
 The enter family, shortest first: `enter` sends or steers, `cmd+enter` holds it for the
-next answer, `ctrl+enter` marks it as something to keep true, `shift+enter` stops the
-whole turn and sends, and `alt+enter` or `ctrl+j` opens a line.
+next answer, `ctrl+enter` marks it as something to keep true, `ctrl+shift+enter` stops the
+whole turn and sends, and `shift+enter`, `alt+enter` or `ctrl+j` opens a line.
 
-Neither `shift+enter` nor `cmd+enter` opens a line — use `alt+enter` or `ctrl+j` for that.
+Neither `ctrl+shift+enter` nor `cmd+enter` opens a line — use `shift+enter` for that.
 Both need a terminal that can tell them apart from plain `enter`; where it cannot, the
 key arrives as ordinary `enter` and the message steers instead.
 
@@ -3027,7 +3034,8 @@ answer:
 
 | Chord | Status |
 |---|---|
-| `shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `alt+enter` or `ctrl+j`. Over an empty box, or with nothing running, it does nothing |
+| `shift+enter` | **Bound**: opens a new line in the home and conversation message boxes, even while an answer runs |
+| `ctrl+shift+enter` | **Bound**, in one state: while a turn is running with something typed, it stops the answer and sends that message. It does **not** open a new line — use `shift+enter`. Over an empty box, or with nothing running, it does nothing |
 | `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
 | `ctrl+k` | **Bound, in every box**: delete from the caret to the end of the line, the pair to `ctrl+u`. It does not eat the newline. It was the conversation switcher until that moved to `alt+k` (`opt+k` on a Mac) to give this letter back to the message box |

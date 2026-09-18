@@ -26,7 +26,7 @@ const draftRows = 6
 // typed a sentence at a time. That is true of what people TYPE and false of
 // what they PASTE — a stack trace, a diff, a paragraph out of a file — and a
 // box that silently flattened a paste into one run-on line was answering the
-// commonest input on this surface by destroying it. So: alt+enter and ctrl+j
+// commonest input on this surface by destroying it. So: shift+enter, alt+enter and ctrl+j
 // open a line, a bracketed paste arrives whole, and enter still submits. The
 // value is a rune slice with '\n' in it and nothing else is special about it.
 type editor struct {
@@ -862,10 +862,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// stop an answer.
 		return a.bargeIn()
 
-	case "alt+enter", "ctrl+j":
-		// Open a line. Two spellings because terminals disagree about which one
-		// they can even send: alt+enter is the one people reach for, ctrl+j is
-		// the one that survives every terminal that swallows it.
+	case "shift+enter", "alt+enter", "ctrl+j":
+		// Shift+enter opens a line on every message box. The older spellings
+		// remain available for terminals that cannot distinguish that chord.
+		a.dropDraftPick()
 		at := a.input.cursor
 		a.input.insert("\n")
 		a.editTags(at, at, 1)

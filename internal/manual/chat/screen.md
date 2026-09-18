@@ -755,11 +755,11 @@ long title could never push the numbers off the frame, and the name moved off ag
 the keys got a row of their own. It names the keys that work right now when a state has
 keys of its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running,
-`enter steers it in · shift+enter stops and sends · esc interrupt` while a turn is
+`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while a turn is
 running and you have typed words on a terminal that can deliver the secondary key,
-`enter waits · shift+enter stops and sends · esc interrupt` while an otherwise empty
+`enter waits · ctrl+shift+enter stops and sends · esc interrupt` while an otherwise empty
 box has a picture on its tray on that terminal,
-`enter steers it in · shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
 when that turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
 while a list is open. A waiting message changes the final clause to
 `esc stops and drops`; with neither words nor a picture the send clauses are absent.
@@ -769,14 +769,14 @@ on the offer above it: a stuck turn is asked about with a scope codeaf cannot sa
 key would do nothing and neither line names it. The slot reads `y allow · n deny` there.
 
 It only ever names a key that **works right now**, and that includes the terminal: the
-`shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
+`ctrl+shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
 plain `enter`, because a hint for a key that could never arrive would be the surface lying
 to you — there the send half keeps only `enter steers it in`. `cmd+enter` still waits on
 terminals that can deliver it, but is not part of this one-line slot. See the keys page,
 "Interrupt and say something new in one key" and "Send a message into the running
 answer".
 
-The running-turn clauses always have this order: send, `shift+enter`, background, stop.
+The running-turn clauses always have this order: send, `ctrl+shift+enter`, background, stop.
 When the row is tight, codeaf removes whole clauses from the right until the line fits;
 at least the first fitting clause remains, and a running turn never loses the row merely
 because every clause would not fit. The row is the keys' own: nothing on the frame competes

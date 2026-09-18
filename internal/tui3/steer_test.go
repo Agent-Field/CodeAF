@@ -17,7 +17,7 @@ import (
 //
 // What is pinned here is a pair of doors onto one act and, above all, the two
 // keys BESIDE them that must not have changed. Plain enter still only waits and
-// `shift+enter` still stops — a chord that quietly became a second way to do
+// `ctrl+shift+enter` still stops — a chord that quietly became a second way to do
 // either would be worse than the gesture not existing, because both of those are
 // keys people have already learned.
 //
@@ -147,7 +147,7 @@ func TestBothWireSpellingsOfCmdEnterParkTheDraft(t *testing.T) {
 
 // ── at rest, and with nothing to say ────────────────────────────────────────
 
-// AT REST THE CHORD DOES NOTHING AT ALL, which is `shift+enter`'s own answer to
+// AT REST THE CHORD DOES NOTHING AT ALL, which is `ctrl+shift+enter`'s own answer to
 // the same question (bargein.go): plain enter already sends, so a second chord
 // meaning the same thing would teach a gesture nobody needs — and one that meant
 // something else would be a key with two readings a hand cannot tell apart.
@@ -209,8 +209,8 @@ func TestASessionThatCannotSteerNeitherTakesTheChordNorNamesIt(t *testing.T) {
 
 // ── the primary gesture acts now ───────────────────────────────────────────
 
-// PLAIN ENTER STEERS AND shift+enter STILL STOPS.
-func TestEnterSteersAndShiftEnterStillStops(t *testing.T) {
+// PLAIN ENTER STEERS AND ctrl+shift+enter STILL STOPS.
+func TestEnterSteersAndCtrlShiftEnterStillStops(t *testing.T) {
 	a, agent := steerableTurn(t, "reading the tree. ")
 	typeLine(t, a, "no, the other file")
 	if len(agent.steered) != 1 || agent.steered[0] != "no, the other file" {

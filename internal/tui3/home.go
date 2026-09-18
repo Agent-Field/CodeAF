@@ -2608,6 +2608,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		h.move(homeShown)
 		return nil
 
+	case "shift+enter":
+		h.box.insert("\n")
+		h.build()
+		return nil
+
 	case "enter":
 		return a.homeEnter()
 

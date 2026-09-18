@@ -1327,6 +1327,11 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 
+	case "shift+enter":
+		ex.box.insert("\n")
+		ex.onOffer = false
+		return nil
+
 	case "enter":
 		return a.exchangeEnter(ex)
 
