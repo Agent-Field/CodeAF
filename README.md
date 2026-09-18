@@ -34,28 +34,24 @@ Written in Go as one small binary, with nothing else to install or run. Apache
 
 ## What one binary costs
 
-Measured against the other agent CLIs on one machine, in the same repository, on
-the same day; memory is PSS, not RSS, because this binary runs two processes that
-share one binary's text, which RSS would count twice.
+Measured against six other agent CLIs on one machine, in the same repository, on the
+same day. Memory is PSS rather than RSS, because CodeAF runs two processes that share
+one binary's text and RSS would count it twice.
 
-<!-- REFRESH: re-run docs/benchmarks/ after the init-laziness changes land -->
+<!-- REFRESH: re-run docs/benchmarks/measure-cli.sh after any change to package init -->
 
-| cost | codeaf | the CLIs compared |
+| cost | CodeAF | the CLIs compared |
 | --- | --- | --- |
-| on disk | 53 MB | smallest of the seven; 2.8x under the next smallest |
-| cold start (`--version`) | 14-23 ms | one is faster, by 2.6x; codeaf is 14-23x faster than the four that boot an interpreter |
-| idle memory (PSS) | 66 MB | one is lighter, by 1.36x; codeaf is 2.4x-10.7x lighter than the rest |
+| on disk | 53 MB | smallest of the seven; 2.8x under the next smallest, 21x under the largest |
+| first interactive frame | 208 ms | 1.9x–11.6x faster than five of six; one is faster, by 1.6x |
+| memory during a turn (PSS) | 79 MB | lightest of the four that completed one; 4.1x–9.5x lighter |
+| cold start (`--version`) | 12.5 ms | 25x–38x faster than the four that boot an interpreter; one is faster, by 2x |
+| idle memory (PSS) | 66 MB | 2.4x–10.7x lighter than five of six; one is lighter, by 1.4x |
 
-The full comparison, the method, and how to re-run it: [the benchmark write-up](docs/benchmarks/).
-
-> **Early preview.** CodeAF is young and moving fast. Expect rough edges, and tell
-> us where you hit them on [Discord](https://discord.gg/aBHaXMkpqh) or in an [issue](https://github.com/Agent-Field/codeaf/issues).
-
-<img src="assets/readme/screens/overview.webp" alt="From one chat to a factory: a chat, the tasks it fanned out into (14 chats, 35 subtasks), home showing every project on the machine, and a question waiting on your answer" width="100%">
-
-https://github.com/user-attachments/assets/bc87e460-17b1-4d7a-8c69-284b524ea194
-
-<sub>Real speed, with sound. The three tasks run live on DeepSeek V4.1 Flash; the other projects and the large task tree are a seeded demo machine.</sub>
+One of the seven — a single static binary like this one — is faster to start and
+lighter at rest. It is named, with every figure, in
+[the benchmark method and full table](docs/benchmarks/results-2026-09-17.md), which also says how to
+re-run all of it.
 
 ## Install
 
