@@ -77,6 +77,13 @@ func TestSupervisorAddsOneCheckForAFinishedLeafUnderTheReviewRound(t *testing.T)
 	if !strings.Contains(check.Description, "did l1") {
 		t.Fatalf("check description = %q, want the leaf's own result", check.Description)
 	}
+	wantDescription := "Acceptance: acceptance: the handler returns 200\n\nResult: did l1"
+	if check.Description != wantDescription {
+		t.Fatalf("check description = %q, want unchanged no-check description %q", check.Description, wantDescription)
+	}
+	if len(check.Checks) != 0 {
+		t.Fatalf("check checks = %v, want none copied from a leaf with none", check.Checks)
+	}
 	// The check ran, and the leaf's own completion did not carry the root with
 	// it: the root completed no earlier than the check.
 	if !seat.launched(check.ID) {
@@ -88,6 +95,35 @@ func TestSupervisorAddsOneCheckForAFinishedLeafUnderTheReviewRound(t *testing.T)
 	root := store.Task(store.RootID())
 	if root.CompletedAt.Before(check.CompletedAt) {
 		t.Fatalf("root completed at %v, before the check at %s", root.CompletedAt, check.CompletedAt)
+	}
+}
+
+// TestSupervisorCopiesDeclaredChecksOntoTheReviewTask proves declared proof stays
+// machine-readable on the review node and is also appended to its worker brief.
+func TestSupervisorCopiesDeclaredChecksOntoTheReviewTask(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	leafChecks := []string{"go test ./internal/widget", "go vet ./internal/widget"}
+	seat.actions["root"] = splitRoot(t, store, plandb.TaskSpec{
+		ID: "l1", Title: "the leaf", Description: "the handler returns 200", Checks: leafChecks,
+	})
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+
+	if outcome := supervisor.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 {
+		t.Fatalf("check tasks = %d, want one", len(checks))
+	}
+	check := checks[0]
+	if strings.Join(check.Checks, "\n") != strings.Join(leafChecks, "\n") {
+		t.Fatalf("check node checks = %v, want %v", check.Checks, leafChecks)
+	}
+	wantDescription := "Acceptance: the handler returns 200\n\nResult: did l1\n\nChecks:\ngo test ./internal/widget\ngo vet ./internal/widget"
+	if check.Description != wantDescription {
+		t.Fatalf("check description = %q, want %q", check.Description, wantDescription)
 	}
 }
 
@@ -246,7 +282,7 @@ func TestSupervisorTurnsADoesNotHoldFindingIntoAFixTask(t *testing.T) {
 	ctx := runContext(t)
 	seat := newFakeSeat()
 	seat.actions["root"] = splitRoot(t, store,
-		plandb.TaskSpec{ID: "l1", Title: "the leaf", Description: "acceptance: the handler returns 200"})
+		plandb.TaskSpec{ID: "l1", Title: "the leaf", Description: "acceptance: the handler returns 200", Checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}})
 	finding := "does not hold: the handler still returns 500 under load."
 	factory := func(task plandb.Task) run.Worker {
 		if task.Role == plandb.RoleCheck {
@@ -274,6 +310,10 @@ func TestSupervisorTurnsADoesNotHoldFindingIntoAFixTask(t *testing.T) {
 	}
 	if len(fix.Dependencies) != 0 {
 		t.Fatalf("fix dependencies = %v, want none so it is ready at once", fix.Dependencies)
+	}
+	wantChecks := []string{"go test ./internal/widget", "go vet ./internal/widget"}
+	if strings.Join(fix.Checks, "\n") != strings.Join(wantChecks, "\n") {
+		t.Fatalf("fix checks = %v, want inherited %v", fix.Checks, wantChecks)
 	}
 	for _, want := range []string{"acceptance: the handler returns 200", "the handler still returns 500 under load.", "did l1"} {
 		if !strings.Contains(fix.Description, want) {
