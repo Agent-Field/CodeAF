@@ -8,12 +8,15 @@ package plandb
 // belongs to somebody else.
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // The population this test throws at one store: eight writers, each a
@@ -167,6 +170,138 @@ func TestPlandbCliCrashBetweenDecomposedVerbsLeavesConsistentStore(t *testing.T)
 	}
 }
 
+// The population two claiming handles race over: this many ready leaves are
+// seeded, and the two handles claim from that one set until it is empty.
+const plandbClaimLeaves = 12
+
+// TestPlandbCliTwoHandlesClaimOneReadySet drives two Store values — the two
+// processes two codeaf workers would be — against one plandb.db. Both claim
+// from the same ready set at once, so three things must hold afterwards: no
+// leaf is claimed twice, no claim is lost, and each handle's Changed names
+// the leaves the OTHER handle claimed. The last one is the cross-process
+// promise the store owes a waiting worker: a handle's reads answer the last
+// committed plan, not the plan it last wrote itself.
+func TestPlandbCliTwoHandlesClaimOneReadySet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("two handles claim the same ready set in parallel")
+	}
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	leaves := make([]TaskSpec, 0, plandbClaimLeaves)
+	for i := 0; i < plandbClaimLeaves; i++ {
+		leaves = append(leaves, TaskSpec{ID: fmt.Sprintf("leaf-%02d", i), Title: fmt.Sprintf("Leaf %d", i)})
+	}
+	planAdd(t, seed, leaves...)
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	since := time.Now().UTC().Add(-time.Second)
+
+	first := planReopen(t, path)
+	defer first.Close()
+	second := planReopen(t, path)
+	defer second.Close()
+
+	var mu sync.Mutex
+	var claimedTasks []*Task
+	var claimErrs []error
+	var claimers sync.WaitGroup
+	for i, st := range []*Store{first, second} {
+		claimers.Add(1)
+		go func(st *Store, agent string) {
+			defer claimers.Done()
+			// Each handle claims until the ready set is empty, so every leaf
+			// must be claimed exactly once between the two of them, and neither
+			// may be handed a leaf the other already took.
+			for {
+				task, err := st.ClaimNext(agent)
+				if err != nil {
+					mu.Lock()
+					claimErrs = append(claimErrs, err)
+					mu.Unlock()
+					return
+				}
+				if task == nil {
+					return
+				}
+				mu.Lock()
+				claimedTasks = append(claimedTasks, task)
+				mu.Unlock()
+			}
+		}(st, fmt.Sprintf("agent-%d", i))
+	}
+	claimers.Wait()
+	for _, err := range claimErrs {
+		t.Fatalf("a claim failed: %v", err)
+	}
+
+	owners := map[string]string{}
+	for _, task := range claimedTasks {
+		if prev, dup := owners[task.ID]; dup {
+			t.Fatalf("leaf %q was claimed twice: by %q and %q", task.ID, prev, task.ClaimedBy)
+		}
+		owners[task.ID] = task.ClaimedBy
+	}
+	for i := 0; i < plandbClaimLeaves; i++ {
+		if id := fmt.Sprintf("leaf-%02d", i); owners[id] == "" {
+			t.Fatalf("leaf %q was never claimed — a claim was lost", id)
+		}
+	}
+
+	// Every leaf is running on disk, owned by the one agent that took it.
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	for id, agent := range owners {
+		if task := reopened.Task(id); task == nil || task.Status != StatusRunning || task.ClaimedBy != agent {
+			t.Fatalf("leaf %q on disk = %#v, want running for %q", id, task, agent)
+		}
+	}
+
+	// A fresh reader sees every claim the race committed: a wake that reads
+	// the store after the fact must name all the leaves that moved.
+	reader := planReopen(t, path)
+	defer reader.Close()
+	quiet := map[string]bool{}
+	for _, id := range reader.Changed(since) {
+		quiet[id] = true
+	}
+	for id := range owners {
+		if !quiet[id] {
+			t.Fatalf("a fresh reader's Changed missed leaf %q the race committed: %v", id, reader.Changed(since))
+		}
+	}
+
+	// And a handle's own Changed names what the OTHER handle wrote: first
+	// leaves a note, second must see that leaf move, and then the mirror —
+	// the cross-process promise a waiting worker reads, hold as long as the
+	// read answers the last committed plan and not the plan this handle last
+	// wrote itself.
+	moment := time.Now().UTC()
+	if _, err := first.AddNote("leaf-01", "agent-0", "handoff for the next worker"); err != nil {
+		t.Fatalf("first note: %v", err)
+	}
+	if !named(second.Changed(moment), "leaf-01") {
+		t.Fatalf("second handle missed the leaf first noted: %v", second.Changed(moment))
+	}
+	moment = time.Now().UTC()
+	if _, err := second.AddNote("leaf-02", "agent-1", "handoff for the next worker"); err != nil {
+		t.Fatalf("second note: %v", err)
+	}
+	if !named(first.Changed(moment), "leaf-02") {
+		t.Fatalf("first handle missed the leaf second noted: %v", first.Changed(moment))
+	}
+}
+
+// named reports whether ids carries id.
+func named(ids []string, id string) bool {
+	for _, got := range ids {
+		if got == id {
+			return true
+		}
+	}
+	return false
+}
+
 // TestPlandbCliForeignProjectRefusedOnAWrittenStore proves the refusal across
 // a real database: a plandb.db this code wrote belongs to the run that created
 // it, and an open naming another project is refused rather than merged, while
@@ -188,5 +323,290 @@ func TestPlandbCliForeignProjectRefusedOnAWrittenStore(t *testing.T) {
 	}
 	if reopened.Task("job") == nil {
 		t.Fatalf("the refused open damaged the store: %#v", reopened.Tasks())
+	}
+}
+
+// The crash helper's two modes, named in the child's environment: it runs only
+// when the path is set, so the parent's ordinary `go test` never enters it.
+const (
+	plandbCrashPathEnv = "PLANDB_CRASH_TEST_PATH"
+	plandbCrashModeEnv = "PLANDB_CRASH_TEST_MODE"
+)
+
+// TestPlandbCliCrashMidWriteLeavesTheLastCommit kills a write half-way. A
+// child process opens the store, begins the one write transaction every writer
+// takes, lands the first statement of the whole-plan rewrite, and dies with no
+// commit — the crash an interrupted process leaves. The next open must read
+// the state BEFORE the write, not the half-written one, and it must still be
+// resumable: the log replays what committed and discards what did not.
+func TestPlandbCliCrashMidWriteLeavesTheLastCommit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("kept", "Kept"), planSpec("other", "Other"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	planRunCrashChild(t, path, "half", 17)
+
+	// Open validates every invariant of the loaded plan, so a crash that left
+	// the file inconsistent would refuse here rather than answer.
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	for id, title := range map[string]string{"kept": "Kept", "other": "Other"} {
+		if got := reopened.Task(id); got == nil || got.Title != title {
+			t.Fatalf("after the crash task %q = %#v, want the committed %q", id, got, title)
+		}
+	}
+	// Consistent also means resumable: the next write applies cleanly.
+	if _, err := reopened.AddNote("kept", "w", "after the crash"); err != nil {
+		t.Fatalf("write after the crash: %v", err)
+	}
+}
+
+// TestPlandbCliCrashedCommitIsReplayedFromTheWAL commits a write in a child
+// and crashes it with the store open, so the commit sits in the write-ahead
+// log and the database file has not been checkpointed yet. The next open must
+// replay the log and answer the committed plan: the WAL is replayed, not
+// discarded.
+func TestPlandbCliCrashedCommitIsReplayedFromTheWAL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("kept", "Kept"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	planRunCrashChild(t, path, "commit", 23)
+
+	// The commit is still waiting in the log rather than folded into the file:
+	// that is what makes the next open a replay and not a plain read.
+	wal, err := os.Stat(path + "-wal")
+	if err != nil {
+		t.Fatalf("the crashed commit left no write-ahead log: %v", err)
+	}
+	if wal.Size() == 0 {
+		t.Fatal("the write-ahead log is empty — the commit was not waiting in it")
+	}
+
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	if got := reopened.Task("survivor"); got == nil || got.Title != "Survivor" {
+		t.Fatalf("the crashed commit was not replayed: %#v", got)
+	}
+	// The mode is a property of the file, and the reader recovers from the same
+	// log the next writer will append to.
+	var mode string
+	if err := reopened.db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil || !strings.EqualFold(mode, "wal") {
+		t.Fatalf("journal mode after recovery = %q, %v, want wal", mode, err)
+	}
+}
+
+// planRunCrashChild runs this test binary as a separate process in one of the
+// crash helper's modes and fails unless it exits with wantCode. A separate
+// process is the only way to die with a transaction open: an in-process close
+// rolls it back cleanly, which is not the crash under test.
+func planRunCrashChild(t *testing.T, path, mode string, wantCode int) {
+	t.Helper()
+	command := exec.Command(os.Args[0], "-test.run=^TestPlandbCliCrashHelper$", "-test.count=1")
+	command.Env = append(os.Environ(), plandbCrashPathEnv+"="+path, plandbCrashModeEnv+"="+mode)
+	out, err := command.CombinedOutput()
+	var exit *exec.ExitError
+	if err == nil || !errors.As(err, &exit) || exit.ExitCode() != wantCode {
+		t.Fatalf("crash child (mode %s) exited %v, want code %d:\n%s", mode, err, wantCode, out)
+	}
+}
+
+// TestPlandbCliCrashHelper is the child half of the two crash tests. It runs
+// only when the parent named a path and a mode, and it leaves by os.Exit so no
+// deferred rollback or close can tidy up after it — the transaction stays
+// exactly as the crash found it.
+func TestPlandbCliCrashHelper(t *testing.T) {
+	path := os.Getenv(plandbCrashPathEnv)
+	mode := os.Getenv(plandbCrashModeEnv)
+	if path == "" || mode == "" {
+		t.Skip("the crash helper runs only as a child process")
+	}
+	store, err := Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("child open: %v", err)
+	}
+	switch mode {
+	case "half":
+		// BEGIN IMMEDIATE, the first statement of the whole-plan rewrite, and
+		// no commit: the process dies holding an unfinished transaction.
+		tx, err := store.beginWrite()
+		if err != nil {
+			t.Fatalf("child begin: %v", err)
+		}
+		if _, err := tx.Exec("DELETE FROM tasks"); err != nil {
+			t.Fatalf("child first statement: %v", err)
+		}
+		os.Exit(17)
+	case "commit":
+		// A committed write, then a crash with the log holding it and no
+		// checkpoint: the frames the next open must replay.
+		if _, err := store.AddMany([]TaskSpec{planSpec("survivor", "Survivor")}); err != nil {
+			t.Fatalf("child commit: %v", err)
+		}
+		os.Exit(23)
+	default:
+		t.Fatalf("unknown crash mode %q", mode)
+	}
+}
+
+// TestPlandbCliWriterWaitsOutTheWriteLock proves the busy handling. The first
+// handle holds a write transaction open while the second writes: the second
+// meets SQLITE_BUSY, the busy timeout set once at open holds it, and the write
+// lands once the first commits instead of failing at once.
+func TestPlandbCliWriterWaitsOutTheWriteLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("a", "A"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	first := planReopen(t, path)
+	defer first.Close()
+	second := planReopen(t, path)
+	defer second.Close()
+
+	// The pragma that makes a writer wait rather than fail is set once, on the
+	// write handle, and both handles carry it.
+	for _, st := range []*Store{first, second} {
+		var timeout int
+		if err := st.db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil || timeout != 5000 {
+			t.Fatalf("busy_timeout = %d, %v, want the 5000 set at open", timeout, err)
+		}
+	}
+
+	// first opens its write transaction and holds it: the commit is gated on a
+	// channel, so the write lock stays held while second tries to write.
+	held := make(chan struct{})
+	release := make(chan struct{})
+	first.now = func() time.Time {
+		select {
+		case <-held:
+		default:
+			close(held)
+		}
+		<-release
+		return time.Now().UTC()
+	}
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := first.Amend("a", "held open")
+		firstDone <- err
+	}()
+	<-held
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := second.Amend("a", "waited its turn")
+		secondDone <- err
+	}()
+	select {
+	case err := <-secondDone:
+		t.Fatalf("the second writer did not wait for the held lock: %v", err)
+	case <-time.After(300 * time.Millisecond):
+		// Still waiting behind the busy timeout — the handling is doing its job.
+	}
+
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first writer: %v", err)
+	}
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second writer once the lock cleared: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the second writer never landed once the lock cleared")
+	}
+
+	// Both writes are in the plan: the wait lost nothing.
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	description := reopened.Task("a").Description
+	if !strings.Contains(description, "held open") || !strings.Contains(description, "waited its turn") {
+		t.Fatalf("a write was lost across the wait: %q", description)
+	}
+}
+
+// TestPlandbCliReadsAnswerBesideAnOpenWrite holds a write transaction open on
+// one handle while another reads. The reading verbs — the list Tasks renders,
+// the show card, the overview Summary counts — must answer at once, on the
+// last committed plan, and never queue behind the open write: the reader runs
+// its own DEFERRED snapshot beside the writer under WAL rather than waiting
+// for a lock the writer is holding.
+func TestPlandbCliReadsAnswerBesideAnOpenWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("a", "A"), planSpec("b", "B"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+	writer := planReopen(t, path)
+	defer writer.Close()
+	reader := planReopen(t, path)
+	defer reader.Close()
+
+	// The writer opens its transaction and holds it: the commit is gated on a
+	// channel, so the write lock stays held while the reader reads.
+	const heldText = "written while the reader reads"
+	held := make(chan struct{})
+	release := make(chan struct{})
+	writer.now = func() time.Time {
+		select {
+		case <-held:
+		default:
+			close(held)
+		}
+		<-release
+		return time.Now().UTC()
+	}
+	writeDone := make(chan error, 1)
+	go func() {
+		_, err := writer.Amend("a", heldText)
+		writeDone <- err
+	}()
+	<-held
+
+	// list, show and overview, each rendering the plan as the reader sees it.
+	readings := []struct {
+		name string
+		read func() string
+	}{
+		{"list", func() string {
+			ids := make([]string, 0)
+			for _, task := range reader.Tasks() {
+				ids = append(ids, task.ID)
+			}
+			return strings.Join(ids, ",")
+		}},
+		{"show", func() string { return reader.Task("a").Description }},
+		{"overview", func() string { return fmt.Sprintf("%+v", reader.Summary()) }},
+	}
+	for _, reading := range readings {
+		reading := reading
+		done := make(chan string, 1)
+		go func() { done <- reading.read() }()
+		select {
+		case got := <-done:
+			if strings.Contains(got, heldText) {
+				t.Fatalf("%s answered a write that has not committed: %q", reading.name, got)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s blocked behind the open write", reading.name)
+		}
+	}
+
+	// Once the write commits, the reader answers it — the same handle that
+	// answered beside the write now sees it.
+	close(release)
+	if err := <-writeDone; err != nil {
+		t.Fatalf("writer: %v", err)
+	}
+	if got := reader.Task("a").Description; !strings.Contains(got, heldText) {
+		t.Fatalf("the reader never saw the committed write: %q", got)
 	}
 }

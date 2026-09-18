@@ -323,6 +323,64 @@ func TestTheReadingsComeFromTheJournalsAndTheLedger(t *testing.T) {
 	}
 }
 
+// ── the ledger's calls and tokens sum, and the CSV carries the columns ──────
+
+// A ledger of two priced rows sums its calls and tokens across both, so a row
+// that covered more than one call is counted for what it covered rather than
+// for its line count.
+func TestTheLedgerSumsCallsAndTokensAcrossRows(t *testing.T) {
+	homeDir := t.TempDir()
+	write(t, filepath.Join(homeDir, "v3", "usage.jsonl"),
+		`{"model":"m/one","usd":0.01,"calls":1,"in":900,"out":300}`+"\n"+
+			`{"model":"m/one","usd":0.02,"calls":2,"in":200,"out":100}`+"\n")
+	got := collectReadings(homeDir, t.TempDir(), t.TempDir(), t.TempDir(), nil)
+	if got.Calls != 3 || got.InputTokens != 1100 || got.OutputTokens != 400 {
+		t.Fatalf("the ledger summed calls=%d in=%d out=%d, want 3/1100/400 across both rows",
+			got.Calls, got.InputTokens, got.OutputTokens)
+	}
+	if got.outPerCall() != 400.0/3.0 || got.inPerCall() != 1100.0/3.0 {
+		t.Fatalf("the per-call readings are %v/%v, want the tokens over the calls", got.outPerCall(), got.inPerCall())
+	}
+}
+
+// The CSV carries the per-call token columns, appended after the readings it
+// already had so no existing column moved, and in the order a row writes them.
+func TestTheCSVHeaderCarriesThePerCallColumnsInOrder(t *testing.T) {
+	index := func(name string) int {
+		for i, column := range csvHeader {
+			if column == name {
+				return i
+			}
+		}
+		return -1
+	}
+	columns := []string{"calls", "in_tokens", "out_tokens", "out_per_call", "in_per_call"}
+	at := -1
+	for _, name := range columns {
+		i := index(name)
+		if i < 0 {
+			t.Fatalf("the CSV header has no %q column: %v", name, csvHeader)
+		}
+		if i <= at {
+			t.Fatalf("the CSV header lists %q out of order: %v", name, csvHeader)
+		}
+		at = i
+	}
+	if len(csvHeader) != len(row{}.csvValues()) {
+		t.Fatalf("the header names %d columns and a row writes %d", len(csvHeader), len(row{}.csvValues()))
+	}
+	r := row{Calls: 3, InputTokens: 1100, OutputTokens: 400}
+	values := r.csvValues()
+	for _, want := range []struct{ column, value string }{
+		{"calls", "3"}, {"in_tokens", "1100"}, {"out_tokens", "400"},
+		{"out_per_call", "133.3"}, {"in_per_call", "366.7"},
+	} {
+		if got := values[index(want.column)]; got != want.value {
+			t.Fatalf("the %s column reads %q, want %q", want.column, got, want.value)
+		}
+	}
+}
+
 // ── the table quotes medians over the graded passes only ────────────────────
 
 func TestTheTableQuotesMediansOverGradedPassesOnly(t *testing.T) {

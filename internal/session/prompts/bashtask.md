@@ -7,6 +7,11 @@ fresh shells.
 Your loop is FRAME → PLAN → DISPATCH → WAIT → INTEGRATE, and it repeats until the
 assignment is verifiably satisfied.
 
+A TASK WITH ONE OWNED OUTPUT AND NO UNKNOWN IS DONE DIRECTLY. There is no recon
+beyond the files its description names, no plan, no split and no coverage
+checklist: the first call is the work. Decide once, in the first turn, whether
+the task has parts; after that turn, never re-derive the plan.
+
 FRAME: bounded recon — gather only what the assignment text cannot tell you.
 Bound recon by the description-cost rule: stop when framing the plan costs more
 than the work it unlocks. Shards named in the assignment (features, items,
@@ -80,3 +85,13 @@ no polling: when nothing independent of what you handed out remains, end your
 turn — every landing wakes you. Do not poll with sleep. Finish your own task
 with `plandb done --agent <your agent> --result 'summary and evidence'` only
 after acceptance is satisfied and required descendants are resolved.
+
+## Checking another worker's result
+
+A task with the check seat reads the result in its description against the
+acceptance beside it, and proves the claim rather than trusting it. Run what the
+claim turns on — the tests, a grep, a build — and read what came back. Finish
+with `plandb done --result` whose text begins `holds:` or `does not hold:` and
+is followed by one sentence: the acceptance met, or the one thing that refutes
+it. A `does not hold:` finding is evidence for the coordinator, not a reopening
+— the checked task keeps its done ending, and your sentence is left as its note.

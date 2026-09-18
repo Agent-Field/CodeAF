@@ -99,7 +99,9 @@ var schemaStatements = []string{
 		completed_at          TEXT    NOT NULL,
 		project               TEXT    NOT NULL DEFAULT '',
 		chat                  TEXT    NOT NULL DEFAULT '',
-		paused                INTEGER NOT NULL DEFAULT 0
+		paused                INTEGER NOT NULL DEFAULT 0,
+		owner                 TEXT    NOT NULL DEFAULT '',
+		seen_at               TEXT    NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS deps (
 		downstream TEXT    NOT NULL,
@@ -144,6 +146,8 @@ var schemaStatements = []string{
 		project               TEXT    NOT NULL DEFAULT '',
 		chat                  TEXT    NOT NULL DEFAULT '',
 		paused                INTEGER NOT NULL DEFAULT 0,
+		owner                 TEXT    NOT NULL DEFAULT '',
+		seen_at               TEXT    NOT NULL DEFAULT '',
 		archived_at           TEXT    NOT NULL
 	)`,
 	`CREATE TABLE IF NOT EXISTS notes (
@@ -212,6 +216,27 @@ func openDatabase(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// openReadDatabase opens the handle the store's reads run on: the same file,
+// one connection, the busy timeout set. What it does NOT ask for is
+// BEGIN IMMEDIATE. That is the whole point of a second handle — a read
+// transaction stays DEFERRED, so under WAL it takes a snapshot of the last
+// commit and runs BESIDE a writer holding the write lock instead of queueing
+// for it. The write handle is always opened first, so the schema this one
+// reads already exists.
+func openReadDatabase(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open plan store read handle: %w", err)
+	}
+	return db, nil
+}
+
 // ensureSchema makes sure the database holds the store's tables, entering the
 // file into WAL mode as it creates them. THE CHECK IS ONE READ on a store that
 // is already built — the common case, every open of an existing plan — so a
@@ -233,11 +258,11 @@ func ensureSchema(db *sql.DB) error {
 			}
 		}
 	}
-	// THE TAGS ARRIVED AFTER THE FIRST STORES, and the paused and from
+	// THE TAGS ARRIVED AFTER THE FIRST STORES, and the paused, from and seat
 	// columns arrived after them. A store built before a column existed still
 	// opens: the column is added, and its old rows read back with an honest
 	// "made before this change" value — the empty tag, an unpaused task, a
-	// worker's note.
+	// worker's note, the default seat.
 	return migrateColumns(db)
 }
 
@@ -252,8 +277,25 @@ func migrateColumns(db *sql.DB) error {
 			}
 		}
 	}
+	// THE SEAT COLUMN is asked for like the rest: every store built from the
+	// first schema carries it, and a file written before it existed still
+	// opens, each old task reading back as the default seat. THE OWNER AND THE
+	// SEEN-AT STAMP arrived with per-process dispatch: a file written before
+	// them still opens, its old claims reading back with no owner and a zero
+	// stamp, and the archive carries the same two columns.
+	if err := ensureColumn(db, "tasks", "role", "TEXT", "'work'"); err != nil {
+		return err
+	}
 	if err := ensureColumn(db, "tasks", "paused", "INTEGER", "0"); err != nil {
 		return err
+	}
+	for _, table := range []string{"tasks", "archived_tasks"} {
+		if err := ensureColumn(db, table, "owner", "TEXT", "''"); err != nil {
+			return err
+		}
+		if err := ensureColumn(db, table, "seen_at", "TEXT", "''"); err != nil {
+			return err
+		}
 	}
 	return ensureColumn(db, "notes", "from", "TEXT", "'worker'")
 }
@@ -360,7 +402,7 @@ func loadState(tx *sql.Tx) (state, error) {
 const taskColumns = `id, title, description, kind, parent_id, priority, effect,
 	parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
-	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused`
+	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at`
 
 // rowQuerier is the read half both the database handle and a transaction
 // carry, so the archive reader can share the task scan with the loader
@@ -380,6 +422,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		composite, paused                                    int
 		createdAt, updatedAt, completedAt                    string
 		effect, parallel, isolation                          string
+		seenAt                                               string
 	)
 	dest := []any{
 		&task.ID, &task.Title, &task.Description, &task.Kind, &task.ParentID,
@@ -387,6 +430,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
 		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
+		&task.Owner, &seenAt,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -425,6 +469,9 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		return nil, err
 	}
 	if task.CompletedAt, err = parseTime(completedAt); err != nil {
+		return nil, err
+	}
+	if task.SeenAt, err = parseTime(seenAt); err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -480,8 +527,8 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, archived_at) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, archived_at) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -521,7 +568,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat,
-			boolInt(task.Paused), formatTime(now)); err != nil {
+			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), formatTime(now)); err != nil {
 			return err
 		}
 	}
@@ -628,8 +675,8 @@ func saveTasks(tx *sql.Tx, value state) error {
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -669,7 +716,8 @@ func saveTasks(tx *sql.Tx, value state) error {
 			task.Role, task.Agent, task.Acceptance, columns, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
-			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused)); err != nil {
+			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused),
+			task.Owner, formatTime(task.SeenAt)); err != nil {
 			return err
 		}
 	}

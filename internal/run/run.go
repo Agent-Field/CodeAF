@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -29,6 +31,12 @@ const (
 // anything in this process having to come back first.
 const passInterval = 300 * time.Millisecond
 
+// defaultStaleAfter is how long a claim may go untouched before a pass takes
+// it over, when the caller named no window on Limits. Five minutes is long
+// enough that a slow step never looks like a dead process and short enough
+// that a run whose owner died is picked up within a working session.
+const defaultStaleAfter = 5 * time.Minute
+
 // workerReturn is one finished worker, on its way from its goroutine back to
 // the loop.
 type workerReturn struct {
@@ -38,27 +46,57 @@ type workerReturn struct {
 }
 
 // Supervisor is the launch loop over one plan store. It claims ready leaves
-// as the task's own agent, starts a worker for each under a slot bound, and
+// as the task's own agent — the name its finish command answers to — and
+// records the process that holds the claim beside it, so a run is owned per
+// process: a claim a dead process left behind is released and taken over by
+// the next one. It starts a worker for each claim under a slot bound and
 // writes every worker's ending back into the store. The root task is the
 // supervisor's own: no worker completes it, and it is completed once every
 // other task in the store is terminal.
 type Supervisor struct {
+	// Owner is the process that holds this run's claims: "<hostname>:<pid>",
+	// so each claim names the process answerable for it and a claim nobody
+	// touches reads stale. It is set from the running process when the
+	// supervisor is built; a test sets it to stand in for a second process
+	// sharing one store.
+	Owner string
+
 	store     *plandb.Store
 	workspace string
 	slots     int
 	limits    Limits
 	factory   WorkerFactory
 
-	// finished carries worker endings back to the loop. inFlight is the count
-	// of workers running, and the counters beside it are the run's memory; all
-	// of them belong to the loop goroutine and are touched by no one else.
+	// staleAfter is how long a claim may go untouched before this pass takes
+	// it over, resolved from Limits (or its default) at the top of Run, so
+	// every pass reads the same window.
+	staleAfter time.Duration
+
+	// finished carries worker endings back to the loop, buffered at the slot
+	// bound plus the root's seat: a worker whose run has already ended deposits
+	// its return and exits rather than blocking on a reader that is gone.
+	// inFlight is the count of workers running, and the counters beside it are
+	// the run's memory — nodes counts every worker launched, steps sums what
+	// those workers reported; all of them belong to the loop goroutine and are
+	// touched by no one else. cancels maps a running task to the context
+	// cancel that ends its worker, so a pass can end one worker's context
+	// without touching the rest.
 	finished       chan workerReturn
 	inFlight       int
 	spent          float64
+	nodes          int
+	steps          int
 	rootResult     string
 	rootFailed     bool
 	limitHit       bool
 	dispatchedRoot bool
+	cancels        map[string]context.CancelFunc
+	// checkOf maps a check task's id to the leaf it reads, for the review
+	// round: a check whose result does not hold leaves its sentence as a note
+	// on the leaf it names here. It is written when the check is added and read
+	// when the check's own ending lands, both on the loop goroutine, so it
+	// belongs to the loop's memory like the counters beside it.
+	checkOf map[string]string
 }
 
 // NewSupervisor builds a run over store. The workspace is the run's own
@@ -71,12 +109,15 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		slots = 1
 	}
 	return &Supervisor{
+		Owner:     ownerName(),
 		store:     store,
 		workspace: workspace,
 		slots:     slots,
 		limits:    limits,
 		factory:   factory,
-		finished:  make(chan workerReturn),
+		finished:  make(chan workerReturn, slots+1),
+		cancels:   make(map[string]context.CancelFunc),
+		checkOf:   make(map[string]string),
 	}
 }
 
@@ -101,11 +142,23 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		return OutcomeCannotRun
 	}
 	s.spent = 0
+	s.nodes = 0
+	s.steps = 0
 	s.rootResult = ""
 	s.rootFailed = false
 	s.limitHit = false
 	s.dispatchedRoot = false
 	s.inFlight = 0
+	s.cancels = make(map[string]context.CancelFunc)
+	s.checkOf = make(map[string]string)
+	s.staleAfter = s.limits.StaleAfter
+	if s.staleAfter <= 0 {
+		s.staleAfter = defaultStaleAfter
+	}
+	// TAKE-OVER BEFORE THE FIRST PASS: a claim a dead process left behind is
+	// released here, so the ready set the first pass reads can offer it again
+	// with no pass of waiting.
+	s.releaseStale()
 
 	timer := time.NewTimer(passInterval)
 	defer timer.Stop()
@@ -140,8 +193,16 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	if root == nil {
 		return OutcomeCannotRun
 	}
+	s.endCancelledWorkers()
+	// TAKE-OVER, EVERY PASS: refresh this process's own claims so they never
+	// read stale, then hand back any claim whose process has stopped touching
+	// it, so the ready read below offers it again. Our own claims are fresh
+	// from the touch; a live claim held by another process is fresh from that
+	// process's own touch and is left alone.
+	s.touchClaims()
+	s.releaseStale()
 	if terminalStatus(root.Status) {
-		return outcomeForRoot(root.Status)
+		return s.outcomeForRoot(root.Status)
 	}
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit) {
 		// Nothing of ours is running and the run cannot complete itself: the
@@ -170,8 +231,9 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 			// THE AGENT NAME IS THE TASK'S OWN ID, the store's naming trick:
 			// the ending written for this task can only come from the worker
 			// it was handed to, because ownership is checked against this
-			// exact name.
-			if _, err := s.store.Claim(task.ID, task.ID); err != nil {
+			// exact name. The process that holds the claim is named beside it,
+			// so a claim this run abandons reads stale for another process.
+			if _, err := s.store.Claim(task.ID, task.ID, s.Owner); err != nil {
 				// Not ours anymore — another writer claimed, cancelled or
 				// finished it between the read and the claim. The next pass
 				// sees the store as it now stands.
@@ -183,17 +245,22 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	return ""
 }
 
-// launch starts one worker in its own goroutine. The task's context carries
-// the step cap; the goroutine reports back on the channel and ends.
+// launch starts one worker in its own goroutine. The task's context is the
+// run's with a cancel of its own, recorded so a pass can end this one worker
+// — a task the store has cancelled — without ending the run; it carries the
+// step cap. The goroutine reports back on the channel and ends.
 func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
 	worker := s.factory(task)
+	taskCtx, cancel := context.WithCancel(ctx)
+	s.cancels[task.ID] = cancel
 	s.inFlight++
+	s.nodes++
 	go func() {
 		report, err := Report{}, error(nil)
 		if worker == nil {
 			err = errors.New("no worker for task " + task.ID)
 		} else {
-			report, err = worker.Run(WithStepsPerTask(ctx, s.limits.StepsPerTask), task)
+			report, err = worker.Run(WithStepsPerTask(taskCtx, s.limits.StepsPerTask), task)
 		}
 		s.finished <- workerReturn{task: task, report: report, err: err}
 	}()
@@ -206,7 +273,20 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
 // that stays open would stall the whole run: nothing else can make it
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
+	// A RETURN FOR A TASK THE STORE ALREADY ENDED is written as nothing. The
+	// ending the store carries — a cancellation that landed while the worker
+	// ran, which the same write cleared the claim and cascaded down — is the
+	// one that stands, and no Done or Fail of this run may speak over it. The
+	// report is dropped whole, spend included: a worker stopped mid-flight
+	// hands back no account this run counts. The completion check below still
+	// runs, because the cancellation may be the write that finished the tree.
+	delete(s.cancels, ret.task.ID)
+	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
+		s.completeTree()
+		return
+	}
 	s.spent += ret.report.USD
+	s.steps += ret.report.Steps
 	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
 		s.limitHit = true
 	}
@@ -222,8 +302,14 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	} else {
 		switch {
 		case ret.err == nil:
+			// THE REVIEW ROUND: a work-seat leaf that lands done is checked
+			// once. The check is added BEFORE the completion is written, so the
+			// leaf's parent cannot auto-complete past it in the same write and
+			// the run's root waits on the open check like on any other child.
+			s.addReviewCheck(ret.task, ret.report.Result)
 			_, err := s.store.Done(ret.task.ID, ret.task.ID, ret.report.Result, nil, nil)
 			if err == nil {
+				s.recordCheckFinding(ret.task, ret.report.Result)
 				break
 			}
 			ret.err = fmt.Errorf("write the completion: %w", err)
@@ -242,14 +328,83 @@ func (s *Supervisor) absorb(ret workerReturn) {
 			}
 		}
 	}
+	s.completeTree()
+}
+
+// addReviewCheck spawns the review round's one check task for a work-seat leaf
+// that is about to land done. It is a no-op unless the run's limits turn the
+// review round on, unless the leaf is a check itself — a check is never itself
+// checked — and unless the leaf is a leaf at all: a task with children answers
+// plan and its end is the store's own bookkeeping, which nothing reads.
+//
+// THE CHECK IS ADDED BEFORE THE COMPLETION IS WRITTEN. A parent whose children
+// are all terminal auto-completes in the same write the completion lands in, so
+// a check added afterwards would find its parent already done and could not be
+// put under it. Added first, the parent counts the open check among its children
+// and the run's root waits on it like on any other child (the store's own
+// CanFinish says so, and completeTree reads the same shape).
+//
+// THE CHECK CARRIES THE LEAF'S OWN WORDS: the acceptance its description holds
+// and the result it just reported, so the check worker reads what to prove the
+// claim against and what the claim was. It carries no dependency at all, so it
+// is ready the moment it exists. Its id is minted here and mapped back to the
+// leaf, because that is what a "does not hold" finding names when it lands.
+func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
+	if !s.limits.ReviewRound || leaf.Role == plandb.RoleCheck || leaf.Composite {
+		return
+	}
+	id := s.store.NextID()
+	_, err := s.store.AddMany([]plandb.TaskSpec{{
+		ID:          id,
+		Title:       "check: " + leaf.Title,
+		Description: "Acceptance: " + leaf.Description + "\n\nResult: " + result,
+		ParentID:    leaf.ParentID,
+		Role:        plandb.RoleCheck,
+	}})
+	if err != nil {
+		// A check the store would not admit is one the run does without: the
+		// leaf has already earned its ending and an unwritable review round is
+		// not an ending to fail it on.
+		return
+	}
+	s.checkOf[id] = leaf.ID
+}
+
+// recordCheckFinding turns a check's "does not hold" into a note on the leaf it
+// read. A check's result begins "holds:" or "does not hold:" and closes with one
+// sentence; the second is the finding the coordinator reads, so it is left on
+// the checked leaf in the check's own voice — author "check" — and the leaf
+// keeps the done ending it earned. NOTHING IS REOPENED: the note is evidence for
+// the coordinator's next wait, not a refusal of the leaf's completion, and no
+// automatic step revisits the work because of it.
+func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
+	if check.Role != plandb.RoleCheck {
+		return
+	}
+	const doesNotHold = "does not hold:"
+	text := strings.TrimSpace(result)
+	if !strings.HasPrefix(text, doesNotHold) {
+		return
+	}
+	leaf := s.checkOf[check.ID]
+	sentence := strings.TrimSpace(strings.TrimPrefix(text, doesNotHold))
+	if leaf == "" || sentence == "" {
+		return
+	}
+	_, _ = s.store.AddNote(leaf, "check", sentence)
+}
+
+// completeTree finishes the run once every task but the root has ended: the
+// one write the loop makes on a tree that finished under it, whole or not.
+// CompleteRoot marks the root done when the whole tree did and failed when
+// any part of it did not, with the root's own result the one its worker
+// reported. A root whose own worker failed stays open — the run cannot
+// complete itself, and a later pass may pick it up.
+func (s *Supervisor) completeTree() {
 	if s.rootFailed {
 		return
 	}
 	if s.treeTerminal() {
-		// Every non-root task is terminal, so the run is over whether its
-		// last worker came home well or not: CompleteRoot marks the root done
-		// when the whole tree did, and failed when any part of it did not.
-		// The root's own result is the one its worker reported.
 		_ = s.store.CompleteRoot(s.rootResult)
 	}
 }
@@ -265,6 +420,60 @@ func (s *Supervisor) treeTerminal() bool {
 		}
 	}
 	return true
+}
+
+// ownerName is the identity a run's claims are held under: "<hostname>:<pid>",
+// so a claim names the process answerable for it and a claim nobody touches
+// reads stale. A machine that cannot say its own name still claims — the pid
+// alone tells two processes apart.
+func ownerName() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "unknown"
+	}
+	return fmt.Sprintf("%s:%d", host, os.Getpid())
+}
+
+// touchClaims refreshes the seen-at stamp of every task this process holds,
+// so a live claim never reads as stale however long its worker runs. The
+// store writes only when something is held and moves the seen-at stamp alone,
+// so a heartbeat is never mistaken for work the plan did.
+func (s *Supervisor) touchClaims() {
+	_, _ = s.store.TouchClaims(s.Owner)
+}
+
+// releaseStale hands back every claim whose owner has stopped touching it, so
+// the ready set offers those tasks again. The stale scan leaves the root out
+// — the run itself is nobody's take-over — and a claim this process is
+// actively working is left alone: the touch above just refreshed it, and a
+// worker in flight must not lose its task under it. A live claim held by
+// another process is left alone for the same reason — that process keeps
+// touching it.
+func (s *Supervisor) releaseStale() {
+	for _, task := range s.store.StaleClaims(s.staleAfter) {
+		if _, running := s.cancels[task.ID]; running {
+			continue
+		}
+		_, _ = s.store.Release(task.ID, task.ClaimedBy)
+	}
+}
+
+// endCancelledWorkers ends the context of every running worker whose task
+// the store has ended out from under it. The store's cancel writes the
+// ending under the task and everything under it and releases the claim in
+// the same write — ClaimedBy goes with the cancelled row, and a Release
+// against a cancelled task is refused — so the part left to the loop is the
+// context: cancelled here, the worker stops at its next step, and the return
+// it makes afterwards is dropped whole in absorb. The ancestor walk is the
+// belt over a row this handle read before the ending landed.
+func (s *Supervisor) endCancelledWorkers() {
+	for id, cancel := range s.cancels {
+		task := s.store.Task(id)
+		if task == nil || task.Status == plandb.StatusCancelled || s.hasCancelledAncestor(*task) {
+			cancel()
+			delete(s.cancels, id)
+		}
+	}
 }
 
 // hasCancelledAncestor walks the containment chain and answers whether any
@@ -288,11 +497,97 @@ func terminalStatus(status plandb.Status) bool {
 }
 
 // outcomeForRoot reads the run's word off the root's own ending: done when
-// the run completed whole, and the incomplete word when it ended any other
-// way — failed leaves, a cancelled run.
-func outcomeForRoot(status plandb.Status) Outcome {
+// the run completed whole; the cannot-run word when the run itself was
+// cancelled before anything of it started — no worker dispatched, none
+// running, so nothing was spent and there is nothing to read; and the
+// incomplete word every other way — failed leaves, or a cancelled run that
+// had already begun.
+func (s *Supervisor) outcomeForRoot(status plandb.Status) Outcome {
 	if status == plandb.StatusDone {
 		return OutcomeDone
 	}
+	if status == plandb.StatusCancelled && !s.dispatchedRoot && s.inFlight == 0 {
+		return OutcomeCannotRun
+	}
 	return OutcomeIncomplete
+}
+
+// Spec is what a caller hands Start: the plan store the run lives in, the
+// working copy its workers share, the run's own words, and the factory that
+// resolves every task — the root's included — into the seat that runs it.
+type Spec struct {
+	// Store is the run's plan, opened by the caller and shared with the run's
+	// other writers. The root task it was seeded with is the run itself.
+	Store *plandb.Store
+	// Workspace is the run's own working copy, carried for the worker seat
+	// and the landing that follow this loop.
+	Workspace string
+	// Title and Brief are the run's own words. The store writes a root task's
+	// title nowhere but its own open, so the title is the caller's to seed
+	// there; the brief is Start's to put down — on a root opened without a
+	// description it becomes the root task's description, which is the
+	// assignment the root worker reads.
+	Title string
+	Brief string
+	// Slots bounds how many workers run at once, and Limits bound the run's
+	// cost and its per-task steps. Both pass through to the supervisor as
+	// given.
+	Slots  int
+	Limits Limits
+	// Factory makes the worker for every task the run dispatches. Start holds
+	// no seat of its own: the root's worker comes from here like the rest.
+	Factory WorkerFactory
+}
+
+// Summary is what a run came to, in the figures a headless caller prints
+// beside its exit code: the outcome word off the same ladder the envelope
+// speaks, the root's result where a deliverable goes, the run's size — every
+// worker launched, every step its workers reported — what they cost, and the
+// wall the run took.
+type Summary struct {
+	Outcome Outcome
+	// Result is the root's own result: what the run's last worker reported
+	// when the tree finished whole, and empty whenever it did not.
+	Result  string
+	Nodes   int
+	Steps   int
+	USD     float64
+	Seconds float64
+}
+
+// Start is the one door a caller runs a plan through: it puts the run's
+// words on the store's root task, runs the supervisor over the store to one
+// outcome word, and answers what came of it. The context is the run's wall —
+// workers end with it — and nothing here needs a worker of its own: every
+// seat, the root's included, comes from the spec's factory.
+func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
+	started := time.Now()
+	if spec.Store == nil || spec.Factory == nil {
+		// A door with no store to run over, or no seat to run a task in, is a
+		// run that could not begin: the first rung of the ladder, nothing
+		// attempted and nothing spent.
+		return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
+	}
+	store := spec.Store
+	// THE RUN'S WORDS GO ON ITS ROOT TASK before anything launches, so the
+	// root worker reads its assignment from the store the way every other
+	// worker does. A store opened with a description on the root keeps it; a
+	// root opened bare takes the brief here — the store's one write onto a
+	// running task's description — and a resume of the same run finds the
+	// words already there and writes nothing.
+	if root := store.Task(store.RootID()); root != nil && strings.TrimSpace(root.Description) == "" && strings.TrimSpace(spec.Brief) != "" {
+		if _, err := store.Amend(root.ID, spec.Brief); err != nil {
+			return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
+		}
+	}
+	supervisor := NewSupervisor(store, spec.Workspace, spec.Slots, spec.Limits, spec.Factory)
+	outcome := supervisor.Run(ctx)
+	return outcome, Summary{
+		Outcome: outcome,
+		Result:  supervisor.rootResult,
+		Nodes:   supervisor.nodes,
+		Steps:   supervisor.steps,
+		USD:     supervisor.spent,
+		Seconds: time.Since(started).Seconds(),
+	}
 }

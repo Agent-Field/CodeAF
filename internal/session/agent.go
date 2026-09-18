@@ -2702,7 +2702,8 @@ func (a *Agent) mayBashBelt() bool {
 
 // bashBeltFrame renders the per-step frame a bash-belt worker reads at each
 // step boundary — the step count against the node's step cap and the steps it
-// has left, the node's spend so far, the fan-out slots still free, one line of
+// has left, the run's spend against the conversation's spend rail (or, with no
+// rail set, the node's spend so far), the fan-out slots still free, one line of
 // family news and one line of child news — or "" when there is nothing to say.
 // docs/design/bash-task-loop/DESIGN.md, "The per-step frame", is the shape's
 // authority and this is its whole mechanism: a rendering at the drain, and
@@ -2712,16 +2713,19 @@ func (a *Agent) mayBashBelt() bool {
 // recorder count (task_live.go's [taskLive.steps]), which is the same unit the
 // runner's thresholds are counted in (task_child_run.go), and the steps it has
 // left are that count subtracted from the cap the node named ([TaskNode.limits]
-// reads the same record the runner's checkpoint seam does); the spend is
-// [TaskNode.spend], the figure the runner already publishes at every step's
-// end ([childRun.tellSpend]); the free slots are the fan cap [TaskGraph.claimChild]
-// enforces, counted the way that cap counts it; the family news is the
-// owed-and-outstanding pair the runner reads at [childRun.step]; and the child
-// news is this node's own children and where each stands, the graph's own
-// nodes. The frame composes from those and invents no counter, no diff and no
-// state of its own: a worker that is not on the bash belt composes nothing, and
-// a worker that is still gets nothing when the facts behind it are zero,
-// because [Agent.landNoteLocked] lands an empty block as nothing at all.
+// reads the same record the runner's checkpoint seam does); the spend with a
+// limit set is the plan store's per-project rollup for the run
+// ([TaskGraph.planRunSpend]), the figure every worker's calls feed, and without
+// one it is [TaskNode.spend], the figure the runner already publishes at every
+// step's end ([childRun.tellSpend]); the free slots are the fan cap
+// [TaskGraph.claimChild] enforces, counted the way that cap counts it; the
+// family news is the owed-and-outstanding pair the runner reads at
+// [childRun.step]; and the child news is this node's own children and where
+// each stands, the graph's own nodes. The frame composes from those and invents
+// no counter, no diff and no state of its own: a worker that is not on the bash
+// belt composes nothing, and a worker that is still gets nothing when the facts
+// behind it are zero, because [Agent.landNoteLocked] lands an empty block as
+// nothing at all.
 //
 // THE LOCKS ARE TAKEN IN THE ORDER THE PACKAGE ALREADY USES, and this method
 // is built to be called OUTSIDE the agent's own lock. The spend is read before
@@ -2745,6 +2749,22 @@ func (a *Agent) bashBeltFrame() string {
 	if node == nil {
 		return ""
 	}
+	// THE RUN'S LIMIT AND ITS ROLLUP, read before the graph's lock — the plan's
+	// gate may be taken before the graph's mu, never after it, and this is the
+	// one road in the frame that takes the gate. The limit is the conversation's
+	// own spend rail: a worker's config carries none ([newTaskAgentOn] builds
+	// its literal field by field), and the conversation that owns the run is
+	// where a person set one, read under the home agent's lock the way
+	// [childRun.tellSpend] reaches home. The rollup is the plan store's
+	// per-project total for the run, opened and read fresh the way every pulse
+	// reads the store.
+	rail := 0.0
+	if home := graph.home; home != nil {
+		home.mu.Lock()
+		rail = home.config.SpendRailUSD
+		home.mu.Unlock()
+	}
+	runSpend := graph.planRunSpend()
 	spend := node.spend()
 	node.graph.mu.Lock()
 	recorder := node.room.recorder()
@@ -2786,7 +2806,23 @@ func (a *Agent) bashBeltFrame() string {
 	// no step to be on and draws nothing.
 	if steps > 0 {
 		stepLine := fmt.Sprintf("step %d/%d", steps, maxSteps)
-		if spend > 0 {
+		// THE MONEY HAS TWO RENDERINGS. With a limit set, the figure is the
+		// run's — the store's rollup for the whole plan against the limit the
+		// conversation was given, in place of the session-only figure this
+		// clause used to draw, which was one worker's share of a run the other
+		// workers are also billing. A run whose rollup is still nothing — no
+		// plan, no charged row, or the best-effort write not landed yet — falls
+		// back to the session-only figure, so a limit never renders without a
+		// number behind it. With no limit set the clause is the one it has
+		// always been: this node's own spend so far. Either road keeps the zero
+		// law: no $0.00 invented for a model that has published no price
+		// ([TaskNode.spend] says why that is a lie).
+		switch {
+		case rail > 0 && runSpend > 0:
+			stepLine += fmt.Sprintf(" · spent $%.2f of $%.2f", runSpend, rail)
+		case rail > 0 && spend > 0:
+			stepLine += fmt.Sprintf(" · spent $%.2f of $%.2f", spend, rail)
+		case rail <= 0 && spend > 0:
 			stepLine += " · $" + strconv.FormatFloat(spend, 'f', 2, 64) + " so far"
 		}
 		// AND THE STEPS LEFT ARE THE CAP MINUS THE COUNT, drawn only when there

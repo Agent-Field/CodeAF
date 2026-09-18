@@ -19,26 +19,28 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// runWeb reads the verb and hands the REST of the line to the door that owns
+// it, so each verb parses its own flags and answers its own `--help`.
+//
+// IT USED TO PARSE FIRST. `web` has no flags of its own, so it built an empty
+// set and read the whole line through it — which refused every verb's flags and
+// answered `codeaf web search --help` with the GROUP's line, where --count is
+// not written. A person asking the search verb what it takes was told about
+// fetch instead. Nothing but the verb belongs to this door.
 func runWeb(args []string) error {
-	flags := commandFlags("web")
-	if len(args) > 0 && (args[0] == "-h" || args[0] == "-help" || args[0] == "--help") {
-		writeCommandUsage(usageOut, flags)
-		return exitHelped
+	if len(args) == 0 {
+		return wrongCall("codeaf web search QUERY or codeaf web fetch URL")
 	}
-	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
-		return err
-	}
-
-	positionals := flags.Args()
-	if len(positionals) == 0 {
-		return errors.New("codeaf web search QUERY or codeaf web fetch URL")
-	}
-	verb, rest := positionals[0], positionals[1:]
-	switch verb {
-	case "search":
+	verb, rest := args[0], args[1:]
+	switch {
+	case verb == "-h" || verb == "-help" || verb == "--help":
+		return commandHelp("web")
+	case verb == "search":
 		return runWebSearch(rest)
-	case "fetch":
+	case verb == "fetch":
 		return runWebFetch(rest)
+	case strings.HasPrefix(verb, "-"):
+		return fmt.Errorf("codeaf web search QUERY or codeaf web fetch URL — %q is not a flag here", verb)
 	default:
 		return fmt.Errorf("codeaf web search QUERY or codeaf web fetch URL — %q is neither", verb)
 	}
