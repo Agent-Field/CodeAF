@@ -212,3 +212,56 @@ func TestStartAnswersTheRootsDoneResult(t *testing.T) {
 		t.Fatalf("root = %s with %q, want done with the result its worker wrote", root.Status, root.Result)
 	}
 }
+
+// lateWorker comes home after the supervisor has had time to look at the store:
+// its task is written, and its return is still on the way.
+type lateWorker struct {
+	inner run.Worker
+	late  time.Duration
+}
+
+func (w lateWorker) Run(ctx context.Context, task plandb.Task) (run.Report, error) {
+	report, err := w.inner.Run(ctx, task)
+	time.Sleep(w.late)
+	return report, err
+}
+
+// TestStartAnswersTheRootsDoneResultWhenItsWorkerReturnsLate: THE STORE IS THE
+// RECORD OF A RUN'S RESULT, AND THE WORKER'S RETURN IS ONLY ITS ECHO. The root's
+// worker writes `plandb done root` and the store reads done at once; a pass on
+// the supervisor's clock sees a finished run and ends it, and the worker's own
+// return (the only place the result used to be read from) has not arrived. On
+// a loaded box that lost the result about once in fifteen runs of the test
+// above. The return is held back here for longer than a pass, so the late
+// return is every run and not an unlucky one.
+func TestStartAnswersTheRootsDoneResultWhenItsWorkerReturnsLate(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	const answer = "the run is done, and this is its result"
+	seat := &seat{script: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolReply(finishCommand("root", answer)), nil
+		},
+	}}
+	factory := func(task plandb.Task) run.Worker {
+		return lateWorker{inner: run.NewBashWorker(store, t.TempDir(), "test/model", seat), late: 750 * time.Millisecond}
+	}
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "finish yourself through the plan CLI",
+		Slots:     1,
+		Factory:   factory,
+	})
+
+	if outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if summary.Result != answer {
+		t.Fatalf("summary result = %q, want the result the store holds %q", summary.Result, answer)
+	}
+}
