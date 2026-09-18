@@ -33,6 +33,21 @@
 // IT SKIPS RATHER THAN FAILS WHEN IT CANNOT BE HONEST: no provider key on any
 // road the product reads ([liveKey]), or no built binary (`make build` is the
 // door, and a suite that rebuilt would be testing a binary nobody ran).
+//
+// THE CEILING OF NOTHING HAS NO DOOR, SO IT IS NOT DRIVEN HERE. The run road
+// refuses a cost cap of zero before it opens the store or builds a worker — a
+// refusal whose whole promise is exit 3 and a `blocked_on` naming the price, the
+// one ending on this road a caller raises and reruns (do.go's `runErrand`). But
+// the cap it reads is `doRequest.costCap`, an in-process field the door has no
+// flag for ON PURPOSE: zero dollars is this product's word for NO ceiling
+// (`internal/manual/pages/money-and-limits.md`), the same reading the chat
+// door's `--max-cost` keeps (`chatv3.go`'s `chatBudget`, which ignores a zero),
+// and a flag that read zero as "may spend nothing" would be a second reading of
+// one number beside every settings row's. So a `codeaf do` a person starts
+// cannot express a ceiling of nothing, and no untagged test can make it — the
+// refusal is proven where it lives instead, by the do package's own
+// `TestDoOnTheRunEngineStopsAtACostCapOfZero`, which hands the request a cap of
+// zero and reads back the same exit 3 and `blocked_on` this lane would assert.
 
 package e2e
 
