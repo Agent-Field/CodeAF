@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: An unattended run cannot push or move a branch it did not create
-pr: 1162
+pr: 1168
 surface: [engine]
 invalidates:
   - "An unattended `codeaf chat --yolo` run could push any branch from its own bash: `--yolo` made the consent default allow, so no card was drawn, and the git guard left the run's `[Person]` unguarded. A run standing on a branch it did not create is now refused `git push`, `git merge` and `git rebase`."
