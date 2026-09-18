@@ -2,10 +2,12 @@
 
 `measure-cli.sh` measures one command-line agent and prints `key=value` lines. It takes a
 name, a HOME to run under and the command to run, so it measures any CLI rather than this
-one. The table in `results-2026-09-17.md` is its output.
+one. The startup, first-frame and idle tables in `results-2026-09-17.md` are its output;
+the on-disk and one-turn tables there came from other means, and `METHOD-REVIEW.md`
+records what is and is not documented about them.
 
 ```bash
-docs/benchmarks/measure-cli.sh --name codeaf --home /tmp/bench-home -- ./bin/codeaf chat
+WORKDIR=$PWD docs/benchmarks/measure-cli.sh codeaf /tmp/bench-home/codeaf ./bin/codeaf chat
 ```
 
 Run it once per CLI, on the same machine, in the same working directory, within the same
@@ -13,8 +15,13 @@ session. Numbers from different machines or different days do not belong in one 
 
 ## What it measures
 
-- **Cold start** — wall clock for `--version`, best of N. It uses `hyperfine` when that is
-  installed and a `date +%s%3N` loop when it is not, and says which in its output.
+- **Startup** — wall clock for `--version`, the best of `STARTUP_RUNS` measured runs
+  (default 7) after `STARTUP_WARMUP` (default 2) discarded warm-ups: a warm page-cache
+  figure, not a cold one. Every CLI in one comparison needs the same `STARTUP_RUNS`,
+  `STARTUP_WARMUP` and tool. It uses `hyperfine` when that is installed and a
+  `date +%s%3N` loop when it is not, and says which in its output (`tool=`). Archive the
+  run's `phase=meta` lines with any table built from them: that is the only record of
+  what was actually run.
 - **First interactive frame** — time from launch until the terminal first paints a
   non-blank character, measured in a tmux pane on a private socket.
 - **Idle cost** over a 30 s window, sampling the whole process tree: RSS, PSS, peak RSS
@@ -43,7 +50,12 @@ cannot reach anything else. It contains no `pkill`, `killall` or other kill-by-p
 neither should anything added to it: `pkill -f` matches the whole command line of every
 process the user owns, so a pattern as ordinary as `sleep 60` will take down any unrelated
 job whose arguments happen to contain it. If other work is running on the machine, the
-idle and CPU figures are measuring that work too — wait, do not clear.
+idle and CPU figures are measuring that work too — wait, do not clear. Every run records
+the machine's load average — one-, five- and fifteen-minute — in `phase=meta`, and again
+immediately before and after the startup and idle windows (`startup_load1_before` /
+`startup_load1_after` / `idle_load1_before` / `idle_load1_after`). A millisecond figure
+taken under contention is worthless: compare runs taken at similar load, and say so when
+a figure was taken outside the quiet bar you set.
 
 ## What these numbers are not
 
