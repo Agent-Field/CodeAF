@@ -60,6 +60,8 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -119,12 +121,81 @@ func (g taskGitGuard) whoseCopy() (gitVoice, bool) {
 		return gitVoice{}, false
 	}
 	if g.agent.config.InTask {
+		// THE GUARD PROTECTS THE PERSON'S COPY, AND A WORKSPACE THAT IS NOT A
+		// REPOSITORY HAS NONE.
+		//
+		// The rule above is written about refs because a task normally works in
+		// a worktree cut from the person's own repository, and the thing being
+		// protected is whose work a command would take. When the workspace is
+		// not inside any git work tree — a run worker on the bash belt whose
+		// `-w` folder is an empty directory, or a task aimed at "clone
+		// repository X, check out commit Y, then implement Z" — there is no
+		// copy of the person's work to protect and nothing for the refusal to
+		// be true about. An objective whose first step is `git clone` is not a
+		// reach for somebody else's commits; it is the work.
+		//
+		// SO EVERY GIT VERB PASSES HERE, clone, checkout, fetch and pull among
+		// them. Where the workspace IS a repository — the ordinary case this
+		// file exists for — every refusal above stands, and every sentence it
+		// reads is true about the copy it names.
+		//
+		// THE DECISION IS TAKEN PER CALL AND ON THE WORKSPACE ROOT, so a
+		// repository the task clones into a SUBFOLDER does not switch the guard
+		// back on for the rest of the run: the ground the answer is read from is
+		// the root the task was handed, not wherever a later command left it.
+		if !taskWorkspaceHasARepository(g.agent) {
+			return gitVoice{}, false
+		}
 		return taskGitVoice, true
 	}
 	if g.agent.steward() != nil {
 		return sessionGitVoice, true
 	}
 	return gitVoice{}, false
+}
+
+// taskWorkspaceHasARepository answers whether the ground a task's git is about
+// sits inside a git work tree.
+//
+// IT ASKS THE SAME QUESTION THE PATH LAW ASKS, in the same place: [Agent.taskGround]
+// is where a task's workspace root is written down (taskoutside.go), and the
+// fallback is the agent's own working directory for the seat that has no ground
+// spelled — nothing in production builds one, but a guard that answered "not a
+// repository" about a path it could not read would be a guard that refused the
+// ordinary case for want of a directory.
+func taskWorkspaceHasARepository(a *Agent) bool {
+	root := strings.TrimSpace(a.taskGround())
+	if root == "" {
+		if wd, err := os.Getwd(); err == nil {
+			root = wd
+		}
+	}
+	return rootInsideGitWorkTree(root)
+}
+
+// rootInsideGitWorkTree reports whether a directory, or any ancestor of it,
+// holds a `.git` — which is the whole of "is this inside a repository".
+//
+// `.git` IS A DIRECTORY IN AN ORDINARY WORK TREE AND A FILE in a linked worktree
+// or a submodule, and both answer here, because the question is whether git
+// considers the directory part of a repository and not what kind of repository
+// it is. Walking stops at the filesystem root, which is the one directory with
+// no parent.
+func rootInsideGitWorkTree(root string) bool {
+	if strings.TrimSpace(root) == "" {
+		return false
+	}
+	dir := filepath.Clean(root)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
 }
 
 // gitVoice is the half of a refusal that says WHOSE COPY THIS IS. There is one

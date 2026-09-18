@@ -245,6 +245,75 @@ func TestBashWorkerOpensOnARecordedPredecessorWithTheResumeSentence(t *testing.T
 	}
 }
 
+// A RUN WORKER WHOSE WORKSPACE IS NOT A REPOSITORY RUNS `git clone`.
+//
+// The run's `-w` folder can be an empty directory — a person pointing a run at
+// a fresh place — and then there is no copy of the person's work for the git
+// guard to protect. An objective whose first step is `git clone` is the work,
+// not a reach for somebody else's commits, so the guard stands down and the
+// clone reaches bash. (The command's own failure is beside the point —
+// /does/not/exist is not a repository — and what is asserted is that the
+// REFUSAL never came back.)
+func TestBashWorkerInANonRepositoryWorkspaceRunsGitClone(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	storeDir := filepath.Dir(store.Path())
+	workspace := t.TempDir()
+	// THE PREMISE IS THE TEST: a t.TempDir() sits inside a checkout whenever
+	// GOTMPDIR or TMPDIR names one, and then this workspace IS in a repository.
+	if workspaceInsideGitWorkTree(workspace) {
+		t.Skipf("the temp workspace %s sits inside a git work tree, so it is not the empty folder this test is about", workspace)
+	}
+	seat := &seat{script: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolReply(`{"command":"git clone /does/not/exist vendored"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textReply("the clone was the first step"), nil
+		},
+	}}
+	worker := run.NewBashWorker(store, workspace, "test/model", seat)
+
+	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
+		t.Fatalf("the worker's run failed: %v", err)
+	}
+
+	steps, err := run.Trajectory(storeDir, store.RootID())
+	if err != nil {
+		t.Fatalf("read the trajectory: %v", err)
+	}
+	if len(steps) != 1 || steps[0].Command != "git clone /does/not/exist vendored" {
+		t.Fatalf("the trajectory reads %d steps, want the one command the script ran", len(steps))
+	}
+	if strings.Contains(steps[0].Observation, "not yours to run") {
+		t.Fatalf("git clone was refused in a workspace that is not a repository: %q", steps[0].Observation)
+	}
+	// AND IT REACHED GIT, whose own complaint about a source that is not there
+	// is the proof the command ran rather than being answered by the guard.
+	if !strings.Contains(steps[0].Observation, "does not exist") {
+		t.Fatalf("the observation = %q, want git's own complaint about a missing source", steps[0].Observation)
+	}
+}
+
+// workspaceInsideGitWorkTree is a local reading of the question the session's
+// guard asks, so this run test can prove its own premise and skip rather than
+// assert wrongly wherever a developer's GOTMPDIR or TMPDIR sits inside a
+// checkout.
+func workspaceInsideGitWorkTree(root string) bool {
+	dir := filepath.Clean(root)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+}
+
 func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
