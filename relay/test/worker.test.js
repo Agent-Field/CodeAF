@@ -46,6 +46,10 @@ class KV {
 
 const INSTALL = '0123456789abcdef0123456789abcdef';
 
+// Two distinct 32-hex nonces, one per row when a test folds more than one.
+const NONCE_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const NONCE_B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
 function payload(overrides = {}) {
   return {
     schema: 1, metric: 'role_quality', role: 'worker',
@@ -55,9 +59,9 @@ function payload(overrides = {}) {
   };
 }
 
-function line(overrides = {}) {
+function line({ nonce = '0123456789abcdef0123456789abcdef', ...overrides } = {}) {
   return JSON.stringify({
-    schema: 1, day: '2026-09-17', nonce: '0123456789abcdef0123456789abcdef',
+    schema: 1, day: '2026-09-17', nonce,
     payload: payload(overrides),
   });
 }
@@ -138,7 +142,7 @@ test('submit refuses an oversized body and too many lines', async () => {
 
 test('submit folds a batch into sheets and answers 202', async () => {
   const e = env();
-  const body = line({ score: 50 }) + '\n' + line({ score: 60 }) + '\n';
+  const body = line({ nonce: NONCE_A, score: 50 }) + '\n' + line({ nonce: NONCE_B, score: 60 }) + '\n';
   const res = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
   assert.equal(res.status, 202);
   assert.deepEqual(await res.json(), { accepted: 2 });
@@ -149,9 +153,63 @@ test('submit folds a batch into sheets and answers 202', async () => {
   assert.equal(e.POOL.map.get(`quota/${INSTALL}/2026-09-17`), '2');
 });
 
+test('a retried batch is folded once, charged once, and still answers 202', async () => {
+  const e = env();
+  const body = line({ nonce: NONCE_A, score: 50 }) + '\n' + line({ nonce: NONCE_B, score: 60 }) + '\n';
+  const first = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
+  assert.equal(first.status, 202);
+  assert.deepEqual(await first.json(), { accepted: 2 });
+
+  const second = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
+  assert.equal(second.status, 202);
+  assert.deepEqual(await second.json(), { accepted: 0 });
+
+  const stored = JSON.parse(e.POOL.map.get(
+    `sheet/${INSTALL}/2026-09-17/worker|z-ai/glm-5.3-flash|anthropic/claude-opus-5|task|M`,
+  ));
+  assert.deepEqual(stored, { n: 2, s: 110, s2: 6100 });
+  assert.equal(e.POOL.map.get(`quota/${INSTALL}/2026-09-17`), '2');
+  // The identity survives the retry only as long as its TTL; a week is stored.
+  assert.equal(typeof e.POOL.expiry.get(`seen/${INSTALL}/${NONCE_A}`), 'number');
+});
+
+test('a batch that repeats a nonce already stored and adds one new row folds only the new row', async () => {
+  const e = env();
+  const first = await worker.fetch(
+    post(line({ nonce: NONCE_A, score: 50 }), { 'X-Codeaf-Install': INSTALL }), e,
+  );
+  assert.equal(first.status, 202);
+
+  const body = line({ nonce: NONCE_A, score: 90 }) + '\n' + line({ nonce: NONCE_B, score: 60 }) + '\n';
+  const res = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
+  assert.equal(res.status, 202);
+  assert.deepEqual(await res.json(), { accepted: 1 });
+
+  const stored = JSON.parse(e.POOL.map.get(
+    `sheet/${INSTALL}/2026-09-17/worker|z-ai/glm-5.3-flash|anthropic/claude-opus-5|task|M`,
+  ));
+  assert.deepEqual(stored, { n: 2, s: 110, s2: 6100 });
+  assert.equal(e.POOL.map.get(`quota/${INSTALL}/2026-09-17`), '2');
+});
+
+test('a nonce repeated inside one batch folds once', async () => {
+  const e = env();
+  const body = line({ nonce: NONCE_A, score: 50 }) + '\n' + line({ nonce: NONCE_A, score: 90 })
+    + '\n' + line({ nonce: NONCE_B, score: 60 }) + '\n';
+  const res = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
+  assert.equal(res.status, 202);
+  assert.deepEqual(await res.json(), { accepted: 2 });
+
+  const stored = JSON.parse(e.POOL.map.get(
+    `sheet/${INSTALL}/2026-09-17/worker|z-ai/glm-5.3-flash|anthropic/claude-opus-5|task|M`,
+  ));
+  assert.deepEqual(stored, { n: 2, s: 110, s2: 6100 });
+  assert.equal(e.POOL.map.get(`quota/${INSTALL}/2026-09-17`), '2');
+});
+
 test('a row on the exec or run door is accepted and folded, and a row on a door outside the four is refused naming them', async () => {
   const e = env();
-  const body = line({ door: 'exec' }) + '\n' + line({ door: 'run' }) + '\n';
+  const body = line({ nonce: NONCE_A, door: 'exec' }) + '\n' + line({ nonce: NONCE_B, door: 'run' }) + '\n';
   const res = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
   assert.equal(res.status, 202);
   assert.deepEqual(await res.json(), { accepted: 2 });
@@ -166,7 +224,7 @@ test('a row on the exec or run door is accepted and folded, and a row on a door 
 
 test('submit refuses a batch past the daily quota and stores nothing', async () => {
   const e = env({ ROWS_PER_INSTALL_PER_DAY: '1' });
-  const body = line() + '\n' + line() + '\n';
+  const body = line({ nonce: NONCE_A }) + '\n' + line({ nonce: NONCE_B }) + '\n';
   const res = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
   assert.equal(res.status, 429);
   assert.equal(e.POOL.map.size, 0);
