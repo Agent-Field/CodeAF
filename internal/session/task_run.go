@@ -868,6 +868,14 @@ type TaskNode struct {
 	// the repair rounds the gate spent (task_audit.go's [Agent.auditWithRepair]).
 	checked provider.Reading
 	repairs int
+	// noDeclaredCheck and cleanGround are WHAT THE NODE'S OWN CHECK SAW, carried
+	// onto the node because that pair is known only inside the check and dies with
+	// it ([auditDoor.window]'s predicate, [groundManifestClean]). They are written
+	// when the check runs (task_audit.go) and read when the landing note is
+	// minted, where a node that has both needs one call and no more to settle
+	// ([TaskNode.settleCeiling], agent.go's [settleCallCeiling]).
+	noDeclaredCheck bool
+	cleanGround     bool
 	// blockedBy names the task whose working copy refused this node's writes
 	// (treehold.go's treeClaimGuard), in the words the refusal used, and "" when
 	// nothing ever refused it. It is what turns a "going in circles" ending into
@@ -3945,6 +3953,29 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	}
 }
 
+// settleMark is WHETHER ONE LANDING NOTE HANDS THE MODEL THE DECISION, and the
+// ceiling the settle turn it wakes runs under. It is zero for every landing that
+// does not, which is every landing under `ask`, every conflict, and every ground
+// that moved — none of which is the model's to settle ([Agent.handToModelOnAuto]).
+type settleMark struct {
+	wake    bool
+	ceiling int
+}
+
+// settleMarkOf is whether THIS landing wakes a settle turn, read off the same
+// mark the card reads rather than off a second copy of the policy: the node is
+// the model's to decide only after [Agent.handToModelOnAuto] has said so, and
+// that is the whole of the condition.
+func (a *Agent) settleMarkOf(node *TaskNode) settleMark {
+	if node == nil || a.settlePolicy() != TaskSettleAuto {
+		return settleMark{}
+	}
+	if node.decidedBy() != TaskAskOwnerModel {
+		return settleMark{}
+	}
+	return settleMark{wake: true, ceiling: node.settleCeiling()}
+}
+
 // deliverTaskNote hands one landed node's news to WHOEVER ASKED FOR THE WORK:
 // the conversation for a task it proposed itself, and the PARENT NODE'S OWN
 // AGENT for a sub-task, whose model is the one that has to fold the piece back
@@ -3973,7 +4004,7 @@ func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, n
 	// the acknowledgement, and until then this landing stays owed, so a session
 	// that closed with the note unread re-tells it on resume rather than losing
 	// it (task_store.go).
-	got := a.postTaskMessage(node, tag, note, record, []durableDelivery{node.settlesNote(claim)},
+	got := a.postTaskMessage(node, tag, note, record, []durableDelivery{node.settlesNote(claim)}, a.settleMarkOf(node),
 		func() { node.noteQueued(claim) })
 	if !got.accepted() {
 		// Nobody is left to read it, so the claim goes back and no mark is made.
@@ -4018,8 +4049,12 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // under one lock ([Agent.handOverTaskNews]) because the waiter reads them as one
 // fact ([Agent.taskNewsStanding]). The checkpoint the mark owes the disk is
 // written by the caller, after the seam.
-func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, mark func()) deliveryReceipt {
+func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record string, durable []durableDelivery, settle settleMark, mark func()) deliveryReceipt {
 	message := wakeNote(note)
+	// AND A LANDING THAT HANDS THE MODEL THE DECISION MARKS ITS WAKE A SETTLE ONE,
+	// so the turn it starts runs under the checker's own bound rather than the
+	// run's wall ([settleWake], agent.go's [Agent.wakeLocked]).
+	message.settle, message.settleCeiling = settle.wake, settle.ceiling
 	// THE TAG IS THE CALLER'S SNAPSHOT AND IS NOT RE-READ FROM THE NODE HERE.
 	// This delivery happens after a claim is won and a reader is found, and a
 	// node can be re-armed and revised in that gap: composing the tag here would
@@ -4578,6 +4613,86 @@ func (a *Agent) handBackUnsettled() {
 	}
 }
 
+// markSettleBound writes the bound and the count onto every node THIS TURN was
+// asked to settle, so that a bound that ended the settle turn hands the question
+// back WITH A SENTENCE rather than as a silent stop. It runs before
+// [Agent.handBackUnsettled] emits, which is what puts the sentence on the card.
+//
+// IT IS THE SAME SET OF NODES THE FLOOR TAKES BACK (the model holds the decision
+// and this turn is its reader) and for the floor's own reason: a node nobody here
+// was asked about is not this turn's to describe.
+func (a *Agent) markSettleBound(count string) {
+	graph := a.tasker()
+	if graph == nil {
+		return
+	}
+	lead := taskAskSettleReason + yourCallDash + count
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	for _, id := range graph.order {
+		node := graph.nodes[id]
+		if node == nil || node.decider != TaskAskOwnerModel || node.state != TaskUnverified || !a.readsTheDecisionLocked(node) {
+			continue
+		}
+		node.setSettleBoundLeadLocked(lead)
+	}
+}
+
+// setSettleBoundLeadLocked puts the settle bound's sentence in front of the
+// landing's own report. The lock is the caller's.
+//
+// IT IS SAID ONCE. A turn can cross its bound at one boundary and be read at the
+// next, and a report carrying the sentence twice would be the machinery
+// stuttering about one ending.
+func (n *TaskNode) setSettleBoundLeadLocked(lead string) {
+	if strings.HasPrefix(strings.TrimSpace(n.report), taskAskSettleReason) {
+		return
+	}
+	n.landed = withReport(lead, n.landed)
+	n.composeReportLocked()
+}
+
+// sawNoDeclaredCheck records that this node's check found nothing re-runnable to
+// run, which is [auditDoor.window]'s own predicate — the first half of what makes
+// settling the landing one call's work.
+func (n *TaskNode) sawNoDeclaredCheck() {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.noDeclaredCheck = true
+}
+
+// sawCleanGround records that the tree this node's check stood in held nothing —
+// nothing staged, nothing modified, nothing untracked ([groundManifestClean]) —
+// the second half of the same pair.
+func (n *TaskNode) sawCleanGround() {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.cleanGround = true
+}
+
+// settleCeiling is how many provider calls the turn that reads this node's
+// landing may spend before it is handed back: ONE for a node whose check saw a
+// clean tree with no repeatable check on it — the whole of what settling it takes
+// is reading a report about a tree nothing moved — and the ordinary ceiling
+// otherwise.
+func (n *TaskNode) settleCeiling() int {
+	if n == nil || n.graph == nil {
+		return settleCallCeiling
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.noDeclaredCheck && n.cleanGround {
+		return 1
+	}
+	return settleCallCeiling
+}
+
 // handBackOnLoad is THE SAME FLOOR APPLIED TO A GRAPH COMING OFF THE DISK, and
 // it is the half [Agent.handBackUnsettled] cannot reach.
 //
@@ -5064,7 +5179,7 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 	// ([Agent.deliverTaskNote]) — so nothing is claimed or marked here.
 	// The sentence says only what happened and whose decision it now is, so it
 	// is its own record ([delivery.record]).
-	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), "", nil, nil)
+	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), "", nil, settleMark{}, nil)
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed
