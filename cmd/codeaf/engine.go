@@ -54,7 +54,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
-	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -706,7 +705,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		transcript, resumed = cfg.SessionFile, false
 	}
 
-	guard.Go("engine/models", func() { warmV3Models(launch.Models, agent, launch.Model) })
+	proc.warmModels("engine/models", launch.Models, agent, launch.Model)
 
 	return &remote.Engine{
 		Agent: agent,

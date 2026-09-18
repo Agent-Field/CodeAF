@@ -153,14 +153,23 @@ func takePoolErrands(profileDir string) *poolErrands {
 // starts through. A profile wired without a tracker — a bare
 // [startPoolIndexRefresh] in a test — is the plain seam with nothing to join.
 func poolErrandGo(profileDir, scope string, fn func()) {
+	poolErrandGoCtx(profileDir, scope, func(context.Context) { fn() })
+}
+
+// poolErrandGoCtx is [poolErrandGo] for an errand that must be able to OBSERVE
+// the tracker's cancellation rather than only be waited for: the one argument
+// is the context [stopPoolErrands] cancels, so a long wait of the errand's own
+// (the model warm's catalog resolve) ends at the close instead of running past
+// it. An errand that ignores the context is still joined by the wait.
+func poolErrandGoCtx(profileDir, scope string, fn func(context.Context)) {
 	held := joinPoolErrands(profileDir)
 	if held == nil {
-		poolRefreshGo(scope, fn)
+		poolRefreshGo(scope, func() { fn(context.Background()) })
 		return
 	}
 	poolRefreshGo(scope, func() {
 		defer held.wg.Done()
-		fn()
+		fn(held.ctx)
 	})
 }
 
