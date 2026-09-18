@@ -69,6 +69,27 @@ type Limits struct {
 // collide with.
 type stepsPerTaskKey struct{}
 
+// wakeClauseKey is the type behind the context value that carries a woken
+// parent's resume clause, for the same reason as the step cap beside it: a
+// typed lookup no other package can collide with.
+type wakeClauseKey struct{}
+
+// WithWakeClause returns a context carrying the resume clause a woken parent's
+// worker opens with — the clause naming every child that landed and what to do
+// with them (internal/run's supervisor composes it). A worker that ignores it
+// is one no wake reached, the way an empty clause is no wake at all.
+func WithWakeClause(ctx context.Context, clause string) context.Context {
+	return context.WithValue(ctx, wakeClauseKey{}, clause)
+}
+
+// WakeClause answers the resume clause carried by a context the supervisor
+// built for a wake, and "" for every other worker — the ordinary launch, whose
+// opening carries the trajectory's own resume sentence instead.
+func WakeClause(ctx context.Context) string {
+	clause, _ := ctx.Value(wakeClauseKey{}).(string)
+	return clause
+}
+
 // WithStepsPerTask returns a context that carries the cap a worker should
 // hold itself to. The supervisor wraps every worker's context with it; a
 // worker that ignores it is uncapped, not broken.

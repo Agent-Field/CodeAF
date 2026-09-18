@@ -89,7 +89,8 @@ plandb done --agent <your agent> --result 'what you did and what it changed'
 Your agent name and your task's id are in your brief, above. `plandb done`
 refuses a task that is not yours — the ownership check is what keeps one
 worker from finishing another's work. When nothing independent of what you
-handed out remains, end your turn; every landing wakes you.
+handed out remains, end your turn; you are run again once every child you
+dispatched has landed, with their reports.
 
 Parallelism lives in the shell, not in the batch:
 
