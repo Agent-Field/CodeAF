@@ -543,6 +543,8 @@ func governorPhrase(cause string) string {
 		return "no more room"
 	case CauseCovered:
 		return "already covered"
+	case CauseSpendShare:
+		return "the bill has doubled"
 	}
 	return "handing over"
 }

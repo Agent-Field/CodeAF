@@ -147,7 +147,15 @@ func TestCrewAppliesAPresetAndConfirmsInOneLine(t *testing.T) {
 	if strings.Count(text, "\n") != 0 {
 		t.Fatalf("the confirmation is more than one line:\n%s", text)
 	}
-	for _, part := range []string{"crew → max", "brain kimi-k3", "hands glm-5.3", "checks kimi-k3"} {
+	// The three class names come from the table rather than being spelled here:
+	// a preset that moves onto better models must not leave this test asserting
+	// the ids it used to name.
+	for _, part := range []string{
+		"crew → max",
+		"brain " + modelBase(want[config.ModelTierMastermind]),
+		"hands " + modelBase(want[config.ModelTierWorker]),
+		"checks " + modelBase(want[config.ModelTierHigh]),
+	} {
 		if !strings.Contains(text, part) {
 			t.Errorf("the confirmation is missing %q: %q", part, text)
 		}
@@ -161,7 +169,10 @@ func TestCrewAppliesAPresetAndConfirmsInOneLine(t *testing.T) {
 	}
 }
 
-// AN UNKNOWN WORD CHANGES NOTHING AND SHOWS THE THREE.
+// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE SIX — the three presets and the
+// three pick words — the shape every choice this surface refuses takes
+// (effortchip.go's [app.runEffort]): a refusal that only said "no" would leave
+// a person guessing at a word they were one letter away from.
 func TestCrewRefusesAWordThatIsNotOneOfTheThree(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.slash("/crew cheap")
@@ -170,13 +181,19 @@ func TestCrewRefusesAWordThatIsNotOneOfTheThree(t *testing.T) {
 		t.Fatalf("an unknown word changed the crew to %q", got)
 	}
 	text := lastNote(t, a)
-	if !strings.Contains(text, "not one of the three") {
+	if !strings.Contains(text, "not a crew word") {
 		t.Fatalf("the refusal reads %q", text)
 	}
-	for _, preset := range config.CrewPresets {
-		if !strings.Contains(text, preset) {
-			t.Errorf("the refusal does not offer %q:\n%s", preset, text)
+	words := make([]string, 0, len(config.CrewPresets)+len(config.CrewPicks))
+	words = append(words, config.CrewPresets...)
+	words = append(words, config.CrewPicks...)
+	for _, word := range words {
+		if !strings.Contains(text, word) {
+			t.Errorf("the refusal does not offer %q:\n%s", word, text)
 		}
+	}
+	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
+		t.Fatalf("an unknown word changed the pick to %q", got)
 	}
 }
 
@@ -328,32 +345,32 @@ func TestTheCrewChooserNamesTheTwoFamiliesAboveThePresets(t *testing.T) {
 	// THE SHIPPED FAMILY IS THE WORD LIFTED, and it is the only one: the word
 	// the next enter writes is the fact the row answers, and a second lifted
 	// word would be a second answer on a row with one question.
-	if !strings.Contains(rows[2], a.pal.accent("open models")) {
-		t.Fatalf("the open family is not the word in force:\n%q", rows[2])
+	if !strings.Contains(rows[2], a.pal.accent("all models")) {
+		t.Fatalf("the all family is not the word in force:\n%q", rows[2])
 	}
-	if strings.Contains(rows[2], a.pal.accent("all models")) {
+	if strings.Contains(rows[2], a.pal.accent("open models")) {
 		t.Fatalf("both families are lifted at once:\n%q", rows[2])
 	}
 	// AND ←→ MOVES THE WORD while the preset cursor keeps its place and its
 	// mark: the family is a second axis, not a row the ↑↓ list gained.
 	a.crewPickerKey(key("left"))
 	rows = a.overlayRows(a.width, a.overlayHeight())
-	if !strings.Contains(rows[2], a.pal.accent("all models")) {
-		t.Fatalf("← did not walk the family to all:\n%q", rows[2])
+	if !strings.Contains(rows[2], a.pal.accent("open models")) {
+		t.Fatalf("← did not walk the family to open:\n%q", rows[2])
 	}
-	// AND THE PRESETS BELOW IT ANSWER IN THAT FAMILY: a header saying all above
-	// rows still naming open models is the contradiction this chooser exists to
-	// prevent, and it is the one regression a header-only check would pass.
+	// AND THE PRESETS BELOW IT ANSWER IN THAT FAMILY: a header saying open above
+	// rows still naming frontier models is the contradiction this chooser exists
+	// to prevent, and it is the one regression a header-only check would pass.
 	for i, preset := range config.CrewPresets {
-		if row := plain(rows[3+2*i]); !strings.Contains(row, config.CrewLineFor(config.CrewSourceAll, preset)) {
-			t.Errorf("row %d under the all family is not %s's all line:\n%q", 3+2*i, preset, row)
+		if row := plain(rows[3+2*i]); !strings.Contains(row, config.CrewLineFor(config.CrewSourceOpen, preset)) {
+			t.Errorf("row %d under the open family is not %s's open line:\n%q", 3+2*i, preset, row)
 		}
 	}
 	// AND THE IN-FORCE MARK DOES NOT MOVE WITH THE FAMILY. The row that wears the
 	// selected ground is the preset the profile holds IN THE FAMILY IT HOLDS, so
 	// once ←→ lifts the family no row on screen is in force: one that kept the
 	// mark would name models the profile does not run.
-	if strings.Contains(rows[3+2*1], a.pal.accent("balanced — "+config.CrewLineFor(config.CrewSourceAll, config.CrewBalanced))) {
+	if strings.Contains(rows[3+2*1], a.pal.accent("balanced — "+config.CrewLineFor(config.CrewSourceOpen, config.CrewBalanced))) {
 		t.Errorf("the balanced row is still marked in force after ←:\n%q", rows[3+2*1])
 	}
 	if a.crewPick.cursor != 1 {
@@ -420,11 +437,20 @@ func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
 	if a.crewPick.open {
 		t.Fatal("enter left the chooser open")
 	}
-	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
-		t.Fatalf("enter wrote the family %q, want all", got)
+	// ← walked the family OFF the default, so the row is written: this is the
+	// case the family row exists for, and the one a write that skipped an
+	// unchanged family would still have to land.
+	if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
+		t.Fatalf("enter wrote the family %q, want open", got)
 	}
 	if got := config.CrewAt(dir); got != config.CrewBalanced {
 		t.Fatalf("enter applied %q, want balanced", got)
+	}
+	open, _ := config.CrewModelsForSource(config.CrewSourceOpen, config.CrewBalanced)
+	for _, tier := range config.ModelTiers {
+		if got := config.TierModelAt(dir, tier); got != open[tier] {
+			t.Errorf("enter wrote %s as %q, want the open family's %q", tier, got, open[tier])
+		}
 	}
 	// The neighbour survived the one write.
 	data, err := os.ReadFile(config.BudgetConfigPath(dir))
@@ -448,9 +474,9 @@ func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
 // A ROW NOBODY WROTE READS AS THE SHIPPED FAMILY, and so does a word this build
 // does not know: the chooser offers two options and a stray string off the disk
 // is not a third.
-func TestTheCrewSourceRowDefaultsToOpen(t *testing.T) {
+func TestTheCrewSourceRowDefaultsToAll(t *testing.T) {
 	dir := t.TempDir()
-	if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
+	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
 		t.Fatalf("a profile with no row read %q", got)
 	}
 	for _, row := range []string{
@@ -461,15 +487,15 @@ func TestTheCrewSourceRowDefaultsToOpen(t *testing.T) {
 		if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(row), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
-			t.Fatalf("the row %s read %q, want open", row, got)
+		if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
+			t.Fatalf("the row %s read %q, want all", row, got)
 		}
 	}
-	if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(`{"models.crew.source": "all"}`), 0o600); err != nil {
+	if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(`{"models.crew.source": "open"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
-		t.Fatalf("the all row read %q", got)
+	if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
+		t.Fatalf("the open row read %q", got)
 	}
 }
 
@@ -500,9 +526,14 @@ func TestStatusNamesTheCrewUnderTheModel(t *testing.T) {
 		t.Fatalf("/status says nothing about the crew:\n%s", text)
 	}
 	// The preset word first, then the same three class names the confirmation
-	// prints — base names, in [config.CrewClasses]'s own order.
+	// prints — base names, in [config.CrewClasses]'s own order, read off the
+	// table rather than spelled here.
+	max, _ := config.CrewModels(config.CrewMax)
 	for _, want := range []string{
-		config.CrewMax, "brain kimi-k3", "hands glm-5.3", "checks kimi-k3",
+		config.CrewMax,
+		"brain " + modelBase(max[config.ModelTierMastermind]),
+		"hands " + modelBase(max[config.ModelTierWorker]),
+		"checks " + modelBase(max[config.ModelTierHigh]),
 	} {
 		if !strings.Contains(lines[at], want) {
 			t.Errorf("the crew line lost %q: %q", want, lines[at])
@@ -860,4 +891,104 @@ func TestTheStatusSheetCarriesTheCrewUnderTheModel(t *testing.T) {
 		return
 	}
 	t.Fatalf("the sheet has no crew line: %+v", items)
+}
+
+// ── the pick row ────────────────────────────────────────────────────────────
+
+// THE THREE PICK WORDS ARE DOOR WORDS, beside the presets: `/crew learn` says
+// where the seats come from and moves no model id, and the confirmation, the
+// crew word and the segment all carry it. `/crew table` is the way back.
+func TestCrewTakesThePickWords(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.slash("/crew learn")
+
+	if got := config.CrewPickAt(dir); got != config.CrewPickLearn {
+		t.Fatalf("/crew learn left the pick reading %q", got)
+	}
+	if got := config.CrewAt(dir); got != config.DefaultCrew {
+		t.Fatalf("a pick word moved the crew to %q", got)
+	}
+	// THE CREW WORD AND THE SEGMENT SAY IT: `balanced · learn` on the page,
+	// `crew balanced · learn` on the status line — the word a person reads in
+	// /status is the word the frame carries.
+	if word := a.crewWord(); !strings.Contains(word, "· learn") {
+		t.Fatalf("the crew word reads %q, want the pick beside the preset", word)
+	}
+	if seg := a.crewSegment(); seg != "crew balanced · learn" {
+		t.Fatalf("the segment reads %q, want crew balanced · learn", seg)
+	}
+	if text := lastNote(t, a); !strings.Contains(text, "crew → "+config.DefaultCrew+" · learn") {
+		t.Fatalf("the confirmation reads %q, want the pick named", text)
+	}
+
+	a.slash("/crew table")
+	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
+		t.Fatalf("/crew table left the pick reading %q", got)
+	}
+	if seg := a.crewSegment(); seg != "crew "+config.DefaultCrew {
+		t.Fatalf("the segment reads %q after the way back, want the plain crew word", seg)
+	}
+}
+
+// THE CHOOSER NAMES THE PICK when it is off the table, and says nothing about
+// the default: the table is where the seats have always come from, and a line
+// naming it would say something nobody chose.
+func TestTheCrewChooserNamesThePickWhenItIsOffTheTable(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.slash("/crew learn")
+	a.slash("/crew")
+	text := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
+	if !strings.Contains(text, "picked from learn") {
+		t.Fatalf("the chooser does not name the pick:\n%s", text)
+	}
+	a.crewPick.close()
+	a.slash("/crew table")
+	a.slash("/crew")
+	text = plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
+	if strings.Contains(text, "picked from") {
+		t.Fatalf("the chooser names the default pick:\n%s", text)
+	}
+}
+
+// THE PICK ROW SITS UNDER THE CREW ROW AND CYCLES, like every other enum row
+// on the sheet: the crew word above it says how much to spend, and this says
+// where the models for that money come from.
+func TestThePickRowSitsUnderTheCrewRowAndCycles(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.openSettings()
+	toProviders(t, a)
+
+	// THE PLACE: directly under the crew row, before the classes it seats. A
+	// pick row a tab away from the crew word would be two errands on two
+	// screens for one decision.
+	crew, pick := -1, -1
+	for i, item := range a.sheet.items {
+		switch item.row.Key {
+		case config.KeyCrew:
+			crew = i
+		case config.KeyCrewPick:
+			pick = i
+		}
+	}
+	if crew < 0 || pick < 0 {
+		t.Fatalf("the Providers tab holds no crew/pick pair (crew %d, pick %d)", crew, pick)
+	}
+	if pick != crew+1 {
+		t.Fatalf("the pick row sits at %d with the crew at %d, want it directly under", pick, crew)
+
+	}
+
+	cursorTo(t, a, config.KeyCrewPick)
+	drive(t, a, key("enter"))
+	if got := config.CrewPickAt(dir); got != config.CrewPickCatalog {
+		t.Fatalf("enter on table landed on %q, want %q", got, config.CrewPickCatalog)
+	}
+	drive(t, a, key("enter"))
+	if got := config.CrewPickAt(dir); got != config.CrewPickLearn {
+		t.Fatalf("enter on catalog landed on %q, want %q", got, config.CrewPickLearn)
+	}
+	drive(t, a, key("enter"))
+	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
+		t.Fatalf("enter on learn landed on %q, want %q", got, config.CrewPickTable)
+	}
 }

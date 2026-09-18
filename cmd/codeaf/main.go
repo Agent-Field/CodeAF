@@ -223,6 +223,8 @@ func run() error {
 			os.Args[2:], func(args []string) error { return runShow("plan show", args) })
 	case "models":
 		return runModels(os.Args[2:])
+	case "pool":
+		return runPool(os.Args[2:])
 	case "notebook":
 		return runNotebook(os.Args[2:])
 	case "collections":
@@ -394,10 +396,11 @@ Look at what happened — read-only, no key, nothing spent
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what
-      came back; --json prints the rows as on disk, --body one call's bodies.
-      The filters are exact and combine; CODEAF_CALL_LOG=off is off
+      came back; --json as on disk, --body one call, CODEAF_CALL_LOG=off is off
   codeaf models [--refresh]
       the models this machine will use, and what each has been measured at
+  codeaf pool [show|status|verify] [--json] [--key key]
+      the Model Pool: what is resolved and cached; verify fetches with a key
   codeaf doctor [--db path]
       is this install healthy, and where does it keep things
   codeaf manual
@@ -440,8 +443,7 @@ Housekeeping — changes state on disk or on the network
 
 Plan work by hand — a plan you can read, edit and diff
   codeaf plan new "<goal>" [--out plan.json] [--dir dir] [--json]
-              [--instructions] [--passes auto|off|N] [--model slug]
-              [--plan-model slug]
+              [--instructions] [--passes auto|off|N] [--plan-model slug]
   codeaf plan show <plan.json>
   codeaf plan revise <plan.json> "<what happened>" [--done 1,2,3]
               [--out plan.json] [--model slug] [--plan-model slug]
@@ -679,6 +681,7 @@ func runPlanNew(name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
@@ -858,6 +861,7 @@ func runRevise(name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()

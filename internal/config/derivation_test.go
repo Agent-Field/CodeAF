@@ -126,6 +126,15 @@ var settingReaders = map[string]string{
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
+	KeyModelPool:      "ModelPoolSettingAt",
+	// The pool key row names the resolver that reads it: [ModelPoolAt] carries
+	// the word into poolcfg beside the mode, and the puller's keys resolve
+	// from there (cmd/codeaf's poolTrustedKeys).
+	KeyModelPoolPublicKey: "ModelPoolAt",
+	// The crew's pick row names its resolver: the surfaces read the pick to
+	// say it beside the crew word, and the ladder turns it into computed seats
+	// ([pickedSeat]) — the identifier proves the word reaches a surface.
+	KeyCrewPick: "CrewPickAt",
 	// The prompt-profile row names the session field the word lands in, which
 	// is what the far side actually reads: cmd/codeaf's applyV3Governance puts
 	// PromptProfileAt's answer there and internal/session's promptprofile.go

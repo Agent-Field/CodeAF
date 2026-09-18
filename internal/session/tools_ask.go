@@ -204,6 +204,21 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		}
 		q.Policy = Policy{Kind: PolicyDecide}
 	}
+	// AND A CARD UNDER --yolo TAKES ITS OWN DEFAULT. yolo says nobody is
+	// watching, so a card that carries a default and would otherwise wait is a
+	// run that hangs until something times it out. The posture is
+	// [Config.Unattended] — yolo is approvals AND that flag, and
+	// [Config.Interactive] is still true for it because a surface exists — so
+	// this is deliberately not the headless branch above, which answers a card
+	// with NO default by handing it back as `your call`.
+	//
+	// A CARD WITH NO DEFAULT IS UNTOUCHED: it has nothing to take, so it parks
+	// exactly as it did before. An assumption card is not this road either — its
+	// default is its options standing and it already carries the away-policy
+	// clock, so it never reaches here as [PolicyAsk].
+	if a.config.Unattended && q.Policy.Kind == PolicyAsk && q.Pick != nil {
+		q.Policy = Policy{Kind: PolicyDecide}
+	}
 	if q.Policy.Kind == PolicyDecide {
 		answer := defaultAnswer(q, "")
 		answer.From = headlessAnswerLine(q, answer)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -59,6 +60,74 @@ func TestLoadLazyDoesNotWaitForTheFetchAndAnswersTheSame(t *testing.T) {
 	}
 	if lazy.Supports("vendor/seer", "sideways", "image") {
 		t.Fatal("an unknown direction must answer false")
+	}
+}
+
+// A warm from a disk cache is a local read, and a caller that waits for it
+// within a bound gets the rows rather than an empty answer.
+func TestWarmedWaitsForACachedCatalogWithinTheBound(t *testing.T) {
+	dir := t.TempDir()
+	if err := Remember(Options{Dir: dir}, []Model{
+		{ID: "vendor/seer", Name: "Seer",
+			InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	lazy := LoadLazy(context.Background(), Options{Dir: dir})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if !lazy.Warmed(ctx) {
+		t.Fatal("the warm from a fresh disk cache did not land within the bound")
+	}
+	if got := lazy.ModelsNow(); len(got) != 1 || got[0].ID != "vendor/seer" {
+		t.Fatalf("the warmed catalog answers %v, want the cached row", got)
+	}
+}
+
+// A fetch that never returns never lands, and Warmed says so at the bound —
+// the caller's cue to fall back — and then says the opposite once the warm
+// finally lands. The bound is the caller's, honoured here and nowhere else.
+func TestWarmedAnswersFalseAtTheBoundAndTrueWhenTheWarmLands(t *testing.T) {
+	release := make(chan struct{})
+	var once sync.Once
+	letGo := func() { once.Do(func() { close(release) }) }
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"vendor/seer","name":"Seer",
+			 "pricing":{"prompt":"0.001","completion":"0.002"}}]}`))
+	}))
+	defer server.Close()
+	defer letGo()
+
+	lazy := LoadLazy(context.Background(), Options{BaseURL: server.URL, Dir: t.TempDir()})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if lazy.Warmed(ctx) {
+		t.Fatal("a fetch that never returned answered warmed")
+	}
+	letGo()
+	landed, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if !lazy.Warmed(landed) {
+		t.Fatal("the warm landed and Warmed still said no")
+	}
+	if got := lazy.ModelsNow(); len(got) != 1 || got[0].ID != "vendor/seer" {
+		t.Fatalf("the warmed catalog answers %v, want the fetched row", got)
+	}
+}
+
+// A catalog that resolved eagerly has nothing to wait for, and no catalog at
+// all has nothing to say: both answer at once, in that order.
+func TestWarmedAnswersAtOnceForAnEagerCatalogAndNeverForNil(t *testing.T) {
+	eager := &Catalog{ready: newRows([]Model{{ID: "vendor/seer", OutputModalities: []string{"text"}}})}
+	if !eager.Warmed(context.Background()) {
+		t.Fatal("an already resolved catalog answered not warmed")
+	}
+	var absent *Catalog
+	if absent.Warmed(context.Background()) {
+		t.Fatal("a nil catalog answered warmed")
 	}
 }
 

@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/router"
 )
 
@@ -43,8 +45,8 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 		{
 			name: "the crew answers when it is the only thing said",
 			crew: CrewFrugal,
-			work: "deepseek/deepseek-v4-flash-0731", workRung: "crew frugal",
-			plan: "z-ai/glm-5.3", planRung: "crew frugal",
+			work: "z-ai/glm-5.3-flash", workRung: "crew frugal",
+			plan: "z-ai/glm-5.3-flash", planRung: "crew frugal",
 		},
 		{
 			name:    "the environment outranks the crew",
@@ -79,7 +81,7 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			name: "the crew leaves generation behavior to the model",
 			crew: CrewMax,
 			work: "z-ai/glm-5.3", workRung: "crew max",
-			plan: "moonshotai/kimi-k3", planRung: "crew max",
+			plan: "anthropic/claude-opus-5", planRung: "crew max",
 		},
 		{
 			// And a flag carrying one is not shortened either, so the two rungs
@@ -98,7 +100,7 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			// it: the same row a task handed off in conversation rides.
 			hand: map[string]string{ModelTierWorker: "vendor/my-own-worker"},
 			work: "vendor/my-own-worker", workRung: "crew custom",
-			plan: "z-ai/glm-5.3", planRung: "crew custom",
+			plan: "z-ai/glm-5.3-flash", planRung: "crew custom",
 		},
 		{
 			// A row cleared on purpose means "follow the conversation", and a
@@ -839,5 +841,123 @@ func TestTheReceiptNamesTheSpellingOfTheVariableThatAnswered(t *testing.T) {
 	seats = ResolveSeats(dir, "", "")
 	if got := seats.Work.Rung(); got != ModelEnv || seats.Work.Model != "vendor/current" {
 		t.Fatalf("rung = %q model = %q, want %q and its value", got, seats.Work.Model, ModelEnv)
+	}
+}
+
+// ── the pick row's half of the ladder ───────────────────────────────────────
+
+// A PICK OFF THE TABLE COMPUTES THE DIAL SEATS AND LEAVES THE OTHER TWO ALONE.
+// The three seats that the presets dial — worker, careful work, mastermind —
+// are computed at the crew's preset, `learned` under the learn word and
+// `computed from the catalog` under the catalog word; reflex and small work
+// always read the table, which is what makes a pick a dial over three seats
+// and not a second crew. The ids are asserted against crewpick's own front,
+// the way the shipped tables are (auto_test.go owns the method).
+func TestAPickOffTheTableComputesTheDialSeats(t *testing.T) {
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	defer func() { AutoModels = restore }()
+
+	_, balanced, _ := crewpick.Presets(crewpick.Front(autoCandidates(autoTestRows()), crewpick.DefaultShapes(), crewpick.All))
+	table, _ := CrewModelsForSource(CrewSourceAt(""), DefaultCrew)
+
+	for _, pick := range []struct {
+		word   string
+		source SeatSource
+	}{
+		{CrewPickLearn, SeatLearned},
+		{CrewPickCatalog, SeatComputed},
+	} {
+		dir := writeProfileRows(t, map[string]string{KeyCrewPick: pick.word})
+		for _, c := range []struct {
+			tier string
+			want string
+		}{
+			{ModelTierWorker, balanced.Worker},
+			{ModelTierHigh, balanced.High},
+			{ModelTierMastermind, balanced.Mastermind},
+		} {
+			seat := TierSeatAt(dir, c.tier)
+			if seat.Model != c.want || seat.Source != pick.source {
+				t.Errorf("%s: the %s seat reads %q (%s), want %q (%s)", pick.word, c.tier,
+					seat.Model, seat.Source, c.want, pick.source)
+			}
+			if seat.Crew != DefaultCrew {
+				t.Errorf("%s: the %s seat ran at %q, want the untouched profile's %q", pick.word, c.tier, seat.Crew, DefaultCrew)
+			}
+		}
+		// THE PICK COMPUTES RATHER THAN READS: the front's ids are not the
+		// preset table's own, so a seat carrying the front's id is a seat the
+		// catalog answered and not the table in disguise.
+		if balanced.Worker == table[ModelTierWorker] {
+			t.Fatal("the test rows field a front identical to the shipped table; the pick would be asserting nothing")
+		}
+		// REFLEX AND SMALL WORK ALWAYS READ THE TABLE, and a pick does not
+		// touch them: the same rung an untouched profile has always read, with
+		// the table's own id.
+		for _, tier := range []string{ModelTierReflex, ModelTierLow} {
+			seat := TierSeatAt(dir, tier)
+			if seat.Model != table[tier] {
+				t.Errorf("%s: the %s seat reads %q, want the table's %q", pick.word, tier, seat.Model, table[tier])
+			}
+			if seat.Source != SeatDefault {
+				t.Errorf("%s: the %s seat reads rung %q, want the table's own default", pick.word, tier, seat.Source)
+			}
+		}
+	}
+}
+
+// A HAND-TYPED MODEL SURVIVES THE PICK. The pick answers for the seats nobody
+// named, not over the names they typed — and the headless ladder says the same
+// thing the conversation says, because a pick that meant one thing in chat and
+// another under `codeaf do` would be the divergence the ladder exists to
+// prevent.
+func TestAHandTypedSeatSurvivesThePick(t *testing.T) {
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	defer func() { AutoModels = restore }()
+
+	dir := writeProfileRows(t, map[string]string{
+		KeyCrewPick:                 CrewPickLearn,
+		tierKeyFor(ModelTierWorker): "someone/else",
+	})
+
+	seat := TierSeatAt(dir, ModelTierWorker)
+	if seat.Model != "someone/else" || seat.Source != SeatCrew {
+		t.Fatalf("a hand-typed worker reads %q (%s), want someone/else (crew)", seat.Model, seat.Source)
+	}
+	// The seats the pick does answer are computed at the preset the stored
+	// rows still make — the hand-typed row costs them their preset match, so
+	// the budget falls back to the default preset, which is what an undecided
+	// profile runs at.
+	_, balanced, _ := crewpick.Presets(crewpick.Front(autoCandidates(autoTestRows()), crewpick.DefaultShapes(), crewpick.All))
+	high := TierSeatAt(dir, ModelTierHigh)
+	if high.Model != balanced.High || high.Source != SeatLearned {
+		t.Fatalf("the careful seat reads %q (%s), want %q (learned)", high.Model, high.Source, balanced.High)
+	}
+
+	// AND THE HEADLESS LADDER SAYS THE SAME. The work seat is the worker tier
+	// and the plan seat is the mastermind tier, and both must answer exactly
+	// what the conversation's rows answer — the receipt's own claim.
+	seats := ResolveSeats(dir, "", "")
+	if seats.Work.Model != "someone/else" || seats.Work.Source != SeatCrew {
+		t.Fatalf("headless, the work seat reads %q (%s), want someone/else (crew)", seats.Work.Model, seats.Work.Source)
+	}
+	if seats.Plan.Model != balanced.Mastermind || seats.Plan.Source != SeatLearned {
+		t.Fatalf("headless, the plan seat reads %q (%s), want %q (learned)", seats.Plan.Model, seats.Plan.Source, balanced.Mastermind)
+	}
+}
+
+// THE PICK'S RUNGS SAY THEIR WORDS, so a receipt never has to be guessed at:
+// the catalog word computes, the learn word learned, and the table's own
+// fallback keeps its one word.
+func TestThePickRungsSayTheirWords(t *testing.T) {
+	seat := Seat{Crew: CrewBalanced, Source: SeatComputed}
+	if got := seat.Rung(); got != "crew "+CrewBalanced+", computed from the catalog" {
+		t.Errorf("the computed rung reads %q, want crew %s, computed from the catalog", got, CrewBalanced)
+	}
+	seat.Source = SeatLearned
+	if got := seat.Rung(); got != "crew "+CrewBalanced+", learned" {
+		t.Errorf("the learned rung reads %q, want crew %s, learned", got, CrewBalanced)
 	}
 }

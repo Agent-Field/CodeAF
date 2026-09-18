@@ -77,6 +77,68 @@ func TestC9UpdateCheckUsesTheRealDoorAndItsThreeExitCodes(t *testing.T) {
 	}
 }
 
+// TestTimeoutContractC2HangingTerminalCheckExitsInsideItsBudget proves C2 for
+// the real `codeaf update --check` door and its exit-1 failure road.
+func TestTimeoutContractC2HangingTerminalCheckExitsInsideItsBudget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+	stdout, stderr := withUpdateDoor(t, "v0.1.0", client, filepath.Join(t.TempDir(), "codeaf"))
+	started := time.Now()
+	if got := updateExit(runUpdate([]string{"--check"})); got != 1 {
+		t.Fatalf("exit = %d, want 1; stdout %q stderr %q", got, stdout.String(), stderr.String())
+	}
+	if elapsed := time.Since(started); elapsed > 6*time.Second {
+		t.Fatalf("hanging terminal check took %s, want at most 6s", elapsed)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "codeaf: could not check for an update: release API did not answer within 3 s") {
+		t.Fatalf("stdout %q stderr %q", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "context deadline exceeded") || strings.Contains(stderr.String(), "Client.Timeout") {
+		t.Fatalf("terminal check exposed Go's timeout: %q", stderr.String())
+	}
+}
+
+// TestTimeoutContractC4HangingInstallSelectionNamesTheAPI proves C4 through
+// the terminal install door with a short injected API window.
+func TestTimeoutContractC4HangingInstallSelectionNamesTheAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	target := filepath.Join(dir, "codeaf")
+	original := []byte("original codeaf")
+	if err := os.WriteFile(target, original, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	client := &codeupdate.Client{
+		HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL,
+		APIWindow: 60 * time.Millisecond,
+	}
+	_, _ = withUpdateDoor(t, "v0.1.0", client, target)
+	started := time.Now()
+	err := runUpdate(nil)
+	if err == nil || !strings.Contains(err.Error(), "could not select a release: release API did not answer within 60 ms") {
+		t.Fatalf("error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("hanging install selection took %s, want at most 1s", elapsed)
+	}
+	if strings.Contains(err.Error(), "codeaf-") || strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("API failure named an asset or Go's deadline: %q", err)
+	}
+	installed, readErr := os.ReadFile(target)
+	if readErr != nil || string(installed) != string(original) {
+		t.Fatalf("target = %q, error %v; want untouched original", installed, readErr)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(dir, ".codeaf.tmp.*")); len(matches) != 0 {
+		t.Fatalf("temporary files remain: %v", matches)
+	}
+}
+
 // TestC9bUpdateCheckNamesTheSelectedTagAndUsesItsChannelRules proves C9b.
 func TestC9bUpdateCheckNamesTheSelectedTagAndUsesItsChannelRules(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

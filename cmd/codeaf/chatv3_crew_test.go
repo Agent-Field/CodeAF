@@ -122,7 +122,7 @@ func TestABrokenRowLeavesTheLastGoodCrewInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	want, _ := config.CrewModels(config.CrewMax)
-	if model, _ := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation"); model != "moonshotai/kimi-k3" {
+	if model, _ := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation"); model != want[config.ModelTierMastermind] {
 		t.Fatalf("after the row parsed again the planner resolves to %q, want the max crew's %q",
 			model, want[config.ModelTierMastermind])
 	}

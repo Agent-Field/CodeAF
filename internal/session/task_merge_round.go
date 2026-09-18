@@ -345,7 +345,7 @@ func (a *Agent) undoMergeRound(node *TaskNode, tree taskTree, log io.Writer) {
 // the instruction — this one is not being told what is missing from the work, it
 // is being told that two people wrote the same lines.
 func (a *Agent) runResolver(ctx context.Context, node *TaskNode, tree taskTree, home string, files, changed []string, log io.Writer) []string {
-	child, err := a.newTaskAgentOn(ctx, tree.dir, node, "-resolve", "")
+	child, err := a.newTaskAgentOn(ctx, tree.dir, node, "-resolve", "", false)
 	if err != nil {
 		fmt.Fprintf(log, "merge round: could not start a worker — %v\n", err)
 		return nil
