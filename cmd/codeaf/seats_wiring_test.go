@@ -107,6 +107,11 @@ func TestTheModelFlagsNameTheWholeLadder(t *testing.T) {
 	if !strings.Contains(planModelFlagHelp, "CODEAF_PLAN_MODEL") || !strings.Contains(planModelFlagHelp, "crew") {
 		t.Errorf("--plan-model's help does not name its own ladder: %q", planModelFlagHelp)
 	}
+	for _, want := range []string{"CODEAF_CHECK_MODEL", "plan", "crew"} {
+		if !strings.Contains(checkModelFlagHelp, want) {
+			t.Errorf("--check-model's help does not mention %q: %q", want, checkModelFlagHelp)
+		}
+	}
 }
 
 // THE ACCEPTANCE CASE, END TO END: a profile that says `frugal` and a command
