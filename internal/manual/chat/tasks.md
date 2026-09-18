@@ -5497,6 +5497,6 @@ and breadcrumbs remain available.
 
 ## will the chat do it itself or start a task?
 
-- **hand off:** launch a task.
+- **hand off:** under `CODEAF_TASK_BELT=bash`, approving the card launches the task through the run engine.
 - **add to:** a second `/task` while one runs joins the live root.
 - **ask about:** read the store’s rows and the task’s own steps and answer from them, never redo the work.
