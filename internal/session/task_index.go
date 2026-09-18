@@ -288,6 +288,22 @@ type TaskIndexEntry struct {
 	// SessionID is the conversation that ran it — the id in the journal's
 	// header, which is also the directory a node's own transcript sits under.
 	SessionID string `json:"sessionId"`
+	// Branch is the node's own task branch when its work was KEPT there — a node
+	// that settled without merging home (a failure, a stop, a check nobody could
+	// pass) or whose landing was deliberately left on a protected, moved or
+	// detached checkout. It is the branch string VERBATIM, and it is empty for
+	// work that came home or was laid in place.
+	//
+	// IT IS THE SAME FACT [TaskIndexEntry.ArtifactURI] HAS ALWAYS CARRIED INSIDE
+	// ITS `git:` SPELLING, given a field of its own so a reader can name the
+	// branch without parsing a URI — and so the chat side says the same three
+	// words #1182 put on the headless envelope (`kept_branch` and its `verdict`,
+	// read off this row's [TaskIndexEntry.Status]).
+	//
+	// IT IS ADDITIVE AND ABSENCE IS UNKNOWN, like Files and Ground beside it: a row
+	// written before it existed says nothing about its branch, and a reader draws
+	// nothing rather than assuming one was kept.
+	Branch string `json:"branch,omitempty"`
 	// ArtifactURI is where the WORK is: the node's worktree while one is on
 	// disk, else the branch it was kept on, else empty for a node whose changes
 	// went straight into the person's tree.
@@ -780,11 +796,16 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// AND WHERE THE ESCALATION WENT, straight off the node, written only when
 		// a correction round really did move ([TaskNode.repairedOn] holds that
 		// rule so no reader has to).
-		RepairedOn:    n.repaired,
-		Tokens:        n.input + n.output,
-		DurationMS:    elapsed.Milliseconds(),
-		StartedAt:     n.started,
-		SessionID:     session,
+		RepairedOn: n.repaired,
+		Tokens:     n.input + n.output,
+		DurationMS: elapsed.Milliseconds(),
+		StartedAt:  n.started,
+		SessionID:  session,
+		// THE KEPT BRANCH, from the record's own word: non-empty only for work that
+		// was left on its own branch rather than merged or laid in place
+		// ([keptBranchOf]). A node whose work came home, or that never had a
+		// repository, names none.
+		Branch:        keptBranchOf(n.branch, n.merge),
 		ArtifactURI:   taskArtifactURI(n.worktree, n.branch, n.merge),
 		TranscriptURI: taskURI(n.journal),
 	}
