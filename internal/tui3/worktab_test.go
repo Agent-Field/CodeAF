@@ -82,6 +82,7 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 
 func TestWorkTabKeepsTheStripSwitchKey(t *testing.T) {
 	a, _ := workTabFixture(t)
+	keepThree(t, a)
 	a.openWorkTab()
 	drive(t, a, key(hopOpenKey))
 	if !a.hopShowing() {

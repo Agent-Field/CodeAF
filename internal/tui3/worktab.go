@@ -74,6 +74,9 @@ func (a *app) openWorkTab() {
 }
 
 func (a *app) workTabKey(msg tea.KeyPressMsg) tea.Cmd {
+	if cmd, taken := a.hopKey(msg); taken {
+		return cmd
+	}
 	if msg.String() == "esc" {
 		a.workTabOn = false
 		a.closeTaskPlan()
