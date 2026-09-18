@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -99,30 +97,20 @@ func TestPlanRowsDrawStoredNowUnderDotsAndRespectAbsenceAndWidth(t *testing.T) {
 		t.Fatalf("plan rows lack the stored now sentence:\n%s", text)
 	}
 
-	// The summary belongs beneath the root's dot row, wearing that row's pad
-	// kin rather than a fresh tree connector, exactly as planRailLive does.
-	plan := reading
-	plan.items = nil
-	for _, row := range rows {
-		plan.items = append(plan.items, planItem(row, "", planKinOf(rows)))
-	}
-	plan.held, plan.whole, plan.unfolded, plan.kinFloor = len(plan.items), len(plan.items), true, planRailLevels
-	laid := plan.lay(width)
-	var root tasksLine
-	for _, line := range laid {
-		if line.item.plan != nil && line.item.plan.Parent == "" {
-			root = line
-			break
-		}
-	}
-	pad := root.underKin
-	if pad == "" {
-		pad = strings.Repeat(" ", ansi.StringWidth(root.kin))
-	}
-	wantLead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
+	// The summary belongs beneath the root's dot row, wearing that row's exact
+	// ANSI-preserving pad kin rather than a fresh tree connector.
 	var nowRows []string
-	for _, row := range got {
-		if strings.Contains(plain(row), "reviewing") || len(nowRows) == 1 {
+	var dotLead string
+	for i, row := range got {
+		if strings.Contains(plain(row), "reviewing") {
+			if i == 0 {
+				t.Fatal("now row has no dot row above it")
+			}
+			dots := got[i-1]
+			dotBody := strings.TrimSpace(plain(dots))
+			dotLead = strings.TrimSuffix(dots, pal.dim(dotBody))
+			nowRows = append(nowRows, row)
+		} else if len(nowRows) == 1 {
 			nowRows = append(nowRows, row)
 		}
 	}
@@ -130,10 +118,10 @@ func TestPlanRowsDrawStoredNowUnderDotsAndRespectAbsenceAndWidth(t *testing.T) {
 		t.Fatalf("now rows = %d, want exactly two\n%s", len(nowRows), text)
 	}
 	for _, row := range nowRows {
-		if !strings.HasPrefix(row, wantLead) {
-			t.Fatalf("now row does not sit under root kin: %q, want prefix %q", row, wantLead)
+		if dotLead == "" || !strings.HasPrefix(row, dotLead) {
+			t.Fatalf("now row does not sit under the dot row's kin: %q, want prefix %q", row, dotLead)
 		}
-		body := strings.TrimPrefix(row, wantLead)
+		body := strings.TrimPrefix(row, dotLead)
 		if body == plain(body) || body != pal.dim(plain(body)) {
 			t.Fatalf("now body is not wholly dim: %q", row)
 		}
