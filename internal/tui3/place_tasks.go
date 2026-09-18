@@ -1138,28 +1138,7 @@ func (a *app) taskSheetAwayCard(item tasksItem) tea.Cmd {
 // window is the four time keys, and it re-groups the CACHED world rather than
 // starting a second walk of the disk — which is the law this place is built on
 // (tasksplace.go's header) restated where it would be easiest to break.
-func (p *tasksPlace) window(a *app, key string) bool {
-	// A KEY IS BOUND ONLY WHERE THE HALF OF THE CONTROL NAMING IT IS DRAWN, which
-	// is the one predicate standing and spend ask as well (placeprose.go's
-	// [placeWindowFits]).
-	width, _ := a.size()
-	arrows, grain := placeWindowFits(width, p.reading.head(width, false), p.reading.win)
-	if !arrows {
-		return false
-	}
-	if (key == "shift+up" || key == "shift+down") && !grain {
-		return false
-	}
-	before := p.reading.win
-	next := p.reading.step(before, key)
-	if next == before {
-		return false
-	}
-	p.reading = readTasks(p.world, p.mine, next, p.order, p.reading.seen, a.now())
-	p.top = 0
-	p.cursor = a.tasksSettle(0)
-	return true
-}
+func (p *tasksPlace) window(a *app, key string) bool { return false }
 
 // ── the pointer ─────────────────────────────────────────────────────────────
 
@@ -1492,9 +1471,6 @@ func (p *tasksPlace) note(a *app, width int) []string {
 	}
 	r := a.tasksFiltered()
 	var note []string
-	if tally := r.tally(); tally != "" {
-		note = append(note, " "+a.pal.dim(fit(tally, width-2)))
-	}
 	// THE FILTER IS NO LONGER SAID BACK HERE. This line used to carry `filter ·
 	// zzz` because the box a person was typing into was invisible, so the only
 	// place their own words could appear was UNDER the rows those words had just
@@ -1605,7 +1581,6 @@ func (p *tasksPlace) hint(a *app) string {
 // show — and inviting somebody to type a filter they have already typed would be
 // the frame naming one thing twice on one screen.
 func (a *app) tasksPageKeys(parts []string) []string {
-	parts = append(parts, tasksSortHint(a.taskSheet.order))
 	if a.taskSheetFiltering() {
 		return append(parts, tasksClearFilterWord)
 	}
@@ -1626,7 +1601,6 @@ func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
 //     and the engine door behind it is [app.stopDoors]. Work another conversation
 //     ran has no such node — the id in a cancel address is this session's — and
 //     work that has settled has nothing left to stop, so neither is offered one.
-//   - `run it again` has NO SEAM. Nothing on this machine re-runs a finished
 //     task: a record row is an account of work that happened, and starting the
 //     same brief again is `/task <brief>`, which is a new piece of work with a
 //     new id rather than a repeat of an old one. A capability that cannot work is
@@ -1853,13 +1827,7 @@ func (placeTasks) boxOnBody() bool { return true }
 // memory place already walks its shelves with the same chord, and the ruling of
 // 2026-09-11 settled that it cannot be a bare `s` because the filter here owns
 // every printable key.
-func (placeTasks) alt(a *app, letter rune) bool {
-	if letter != 's' {
-		return false
-	}
-	a.taskSheetSortBy(a.taskSheet.order.key.next())
-	return true
-}
+func (placeTasks) alt(a *app, letter rune) bool { return false }
 
 func (placeTasks) resting(a *app) string { return tasksTypeWord }
 

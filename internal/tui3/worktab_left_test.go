@@ -60,3 +60,35 @@ func TestWorkOlderDoneFold(t *testing.T) {
 		t.Fatalf("zero fold = %q", got)
 	}
 }
+
+func TestWorkPageHeadGroupsAndFootFollowTheCountsStrip(t *testing.T) {
+	world, win, now := tasksFixture()
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	lines := reading.lay(120)
+	if len(lines) == 0 || lines[0].text != reading.tally() {
+		t.Fatalf("head = %q, want counts strip %q", lines[0].text, reading.tally())
+	}
+	for _, line := range lines {
+		if line.kind == tasksLineControl {
+			t.Fatal("work page still draws its column header")
+		}
+	}
+	tree := reading.tree()
+	for _, section := range tasksSectionOrder {
+		runs := 0
+		for _, group := range tree.in(section) {
+			runs += len(group.roots)
+		}
+		if runs == 0 || section == tasksEarlier {
+			continue
+		}
+		want := tasksSectionWord(section) + railSep + itoa(runs)
+		if got := tasksHeadingRow(lines, tasksSectionWord(section)); got != want {
+			t.Fatalf("%s heading = %q, want %q", tasksSectionWord(section), got, want)
+		}
+	}
+	p := tasksPlace{reading: reading}
+	if notes := p.note(&app{}, 120); len(notes) != 0 {
+		t.Fatalf("foot still carries counts: %q", notes)
+	}
+}

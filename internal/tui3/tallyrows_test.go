@@ -65,7 +65,7 @@ func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 	}
 	// The heading over those rows says only what the fold withholds.
 	head := tasksHeadingRow(lines, tasksSectionWord(tasksToday))
-	if want := tasksSectionWord(tasksToday) + railSep + itoa(held-drawn) + " folded away"; head != want {
+	if want := tasksSectionWord(tasksToday) + railSep + "2"; head != want {
 		t.Fatalf("the foot says %q over a section drawing %d rows of %d, and its heading reads\n  %s\nwant\n  %s\n%s",
 			reading.tally(), drawn, held, head, want, frame)
 	}
@@ -78,7 +78,7 @@ func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 	if drawn := tasksWorkRows(lines); drawn != held {
 		t.Fatalf("an opened family draws %d rows of %d pieces of work:\n%s", drawn, held, frame)
 	}
-	if head := tasksHeadingRow(lines, tasksSectionWord(tasksToday)); head != tasksSectionWord(tasksToday) {
+	if head := tasksHeadingRow(lines, tasksSectionWord(tasksToday)); head != tasksSectionWord(tasksToday)+railSep+"2" {
 		t.Fatalf("with the fold open the heading still reads %q, and every row is on the page:\n%s", head, frame)
 	}
 }
@@ -97,10 +97,7 @@ func TestTheSectionHeadCountsTheRowsItActuallyWithholds(t *testing.T) {
 		lines := reading.lay(120)
 		held := len(reading.section(tasksToday))
 		withheld := held - tasksWorkRows(lines)
-		want := tasksSectionWord(tasksToday)
-		if withheld > 0 {
-			want += railSep + itoa(withheld) + " folded away"
-		}
+		want := tasksSectionWord(tasksToday) + railSep + "2"
 		if got := tasksHeadingRow(lines, tasksSectionWord(tasksToday)); got != want {
 			t.Fatalf("with the family %s, %d laid-out rows are withheld but the heading is %q, want %q:\n%s",
 				map[bool]string{true: "open", false: "shut"}[open], withheld, got, want,
@@ -136,14 +133,13 @@ func TestAMixedPageHeadsSectionsOnlyWithTheirFoldedRows(t *testing.T) {
 				drawn++
 			}
 		}
-		withheld := tree.held(section) - drawn
-		want := word
-		if withheld > 0 {
-			want += railSep + itoa(withheld) + " folded away"
+		runs := 0
+		for _, group := range tree.in(section) {
+			runs += len(group.roots)
 		}
+		want := word + railSep + itoa(runs)
 		if head != want {
-			t.Fatalf("the %q section draws %d of %d filed rows but is headed %q, want %q:\n%s",
-				word, drawn, tree.held(section), head, want, frame)
+			t.Fatalf("the %q section draws %d filed rows but is headed %q, want %q:\n%s", word, drawn, head, want, frame)
 		}
 	}
 }

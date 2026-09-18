@@ -61,7 +61,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now))
 	rows := reading.rows(120, newPalette(tokens.NoColor, false))
 	page := strings.Join(rows, "\n")
-	wants := []string{tierYourCallWord, "queued"}
+	wants := []string{"\n " + tierYourCallWord + railSep, "\n queued" + railSep}
 	last := -1
 	for _, want := range wants {
 		at := strings.Index(page, want)
@@ -73,18 +73,15 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	// THE HEADING NAMES THE PLACE AND COUNTS IT, and the spend is a quiet last
 	// clause rather than the sentence it used to end. It read `work codeaf ran on
 	// its own. 14 pieces of work since aug 2, $34.10 between them.` — a paragraph
-	// teaching the machinery's own idea of itself, ahead of every row on the page.
-	if !strings.Contains(page, "work · 14 pieces of work · $34.10") {
-		t.Fatalf("header did not count the window and its known spend:\n%s", page)
+	if !strings.Contains(page, reading.tally()) {
+		t.Fatalf("header did not draw the counts strip:\n%s", page)
 	}
 	if strings.Contains(page, "ran on its own") {
 		t.Fatalf("the heading still teaches autonomy ahead of the work:\n%s", page)
 	}
 	// AND THE HEAD LINE IS THE WINDOW'S CONTROL TOO (SCREEN 3d), exactly as
-	// standing and spend draw it. This place bound all four arrow keys and drew
-	// nothing naming them for three waves.
-	if !strings.Contains(page, "shift+← aug 2 – aug 25 →") {
-		t.Fatalf("the tasks head line draws no window control:\n%s", page)
+	if strings.Contains(page, "shift+←") {
+		t.Fatalf("the work page still draws a window control:\n%s", page)
 	}
 	if !strings.Contains(page, tokens.GlyphNeedsHuman+" verify the pro model's pricing") {
 		t.Fatalf("the row needing a look did not wear %q:\n%s", tokens.GlyphNeedsHuman, page)
@@ -117,8 +114,8 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	// THE WINDOW'S EDGE IS SAID ONCE, in the sentence the page opens on. It used
 	// to be repeated on a fold at the foot of every section, which is one number
 	// in four places and exactly the drift the one-source-of-truth law forbids.
-	if n := strings.Count(page, "aug 2 "); n != 1 {
-		t.Fatalf("the window's edge is spelled %d times, want once:\n%s", n, page)
+	if n := strings.Count(page, "aug 2 "); n != 0 {
+		t.Fatalf("the window's edge is spelled %d times, want none:\n%s", n, page)
 	}
 }
 
