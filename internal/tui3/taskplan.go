@@ -252,14 +252,24 @@ func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 	if row.Total <= 10 && cells > row.Total {
 		cells = row.Total
 	}
+	// THE FAILURES STAND AT THE ROW'S END, their share of the cells rounded up so
+	// that one failure in a hundred is still one cell, and never at the frontier:
+	// laid after the finished work they took the cell where the running mark
+	// belongs, and one failure in fourteen tasks straddled two cells.
+	failedCells := 0
+	if row.Failed > 0 && cells > 0 {
+		failedCells = (row.Failed*cells + row.Total - 1) / row.Total
+		if failedCells >= cells {
+			failedCells = cells - 1
+		}
+	}
 	var dots strings.Builder
 	for cell := 0; cell < cells; cell++ {
 		lo, hi := cell*row.Total, (cell+1)*row.Total
 		doneAt := row.Done * cells
-		failedLo, failedHi := row.Done*cells, (row.Done+row.Failed)*cells
 		id := tokens.GEmptyCell
 		switch {
-		case row.Failed > 0 && lo < failedHi && hi > failedLo:
+		case cell >= cells-failedCells:
 			id = tokens.GFailedCell
 		case hi <= doneAt:
 			id = tokens.GDoneCell
