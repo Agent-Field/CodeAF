@@ -1856,3 +1856,31 @@ func TestPlandbCliChecksRoundTripAndMigrate(t *testing.T) {
 		t.Fatalf("migrated checks = %#v, want []", got)
 	}
 }
+
+func TestPlandbCliCheckConclusionRequiresExecutedDeclaredCheck(t *testing.T) {
+	store := planOpen(t, filepath.Join(t.TempDir(), "plan.json"))
+	_, err := store.AddMany([]TaskSpec{{
+		ID: "review", Title: "check: leaf", Role: RoleCheck,
+		Checks: []string{"go test ./internal/widget"},
+	}})
+	if err != nil {
+		t.Fatalf("add check task: %v", err)
+	}
+	if _, err := store.Claim("review", "review"); err != nil {
+		t.Fatalf("claim check task: %v", err)
+	}
+	if _, err := store.Done("review", "review", "holds: it works", nil, nil); err == nil {
+		t.Fatal("empty command trajectory accepted a holds: conclusion")
+	}
+	dir := TaskDir(filepath.Dir(store.Path()), "review")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("make task directory: %v", err)
+	}
+	step := []byte(`{"kind":"step","step":1,"command":"go test ./internal/widget"}` + "\n")
+	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), step, 0o600); err != nil {
+		t.Fatalf("write trajectory: %v", err)
+	}
+	if _, err := store.Done("review", "review", "holds: it works", nil, nil); err != nil {
+		t.Fatalf("executed declared check refused: %v", err)
+	}
+}

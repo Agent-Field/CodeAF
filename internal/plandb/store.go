@@ -3,11 +3,13 @@ package plandb
 import (
 	cryptorand "crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -522,6 +524,9 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 // and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if task.Role == RoleCheck && isReviewConclusion(result) && !s.ranDeclaredCheck(task) {
+			return errors.New("check conclusion requires an executed Checks: command")
+		}
 		if len(result) > 64<<10 {
 			return errors.New("completion result exceeds 65536 bytes")
 		}
@@ -568,6 +573,37 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		promote(next, now)
 		return nil
 	})
+}
+
+func isReviewConclusion(result string) bool {
+	result = strings.TrimSpace(result)
+	return strings.HasPrefix(result, "holds:") || strings.HasPrefix(result, "does not hold:")
+}
+
+func (s *Store) ranDeclaredCheck(task *Task) bool {
+	if len(task.Checks) == 0 {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(TaskDir(filepath.Dir(s.path), task.ID), "trajectory.jsonl"))
+	if err != nil {
+		return false
+	}
+	declared := make(map[string]struct{}, len(task.Checks))
+	for _, check := range task.Checks {
+		declared[strings.TrimSpace(check)] = struct{}{}
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		var step struct {
+			Kind    string `json:"kind"`
+			Command string `json:"command"`
+		}
+		if json.Unmarshal([]byte(line), &step) == nil && step.Kind == "step" {
+			if _, ok := declared[strings.TrimSpace(step.Command)]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Fail marks a task failed by its owner, with a reason the next reader sees.

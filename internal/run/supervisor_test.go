@@ -64,6 +64,9 @@ func (w *fakeWorker) Run(ctx context.Context, task plandb.Task) (run.Report, err
 	}()
 	action := w.seat.actions[task.ID]
 	if action == nil {
+		action = w.seat.actions[task.Role]
+	}
+	if action == nil {
 		return run.Report{Result: "did " + task.ID, Steps: 1}, nil
 	}
 	return action(ctx, task)
@@ -172,7 +175,7 @@ func splitRoot(t *testing.T, store *plandb.Store, leaves ...plandb.TaskSpec) fun
 
 // leafDone is the ordinary leaf ending, with its own steps and cost.
 func leafDone(id string) plandb.TaskSpec {
-	return plandb.TaskSpec{ID: id, Title: "leaf " + id}
+	return plandb.TaskSpec{ID: id, Title: "leaf " + id, Checks: []string{"true"}}
 }
 
 func TestSupervisorSplitsARootAndCompletesItAfterItsLeaves(t *testing.T) {

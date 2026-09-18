@@ -56,8 +56,7 @@ plandb task cancel t-<id>            # plandb what-if cancel t-<id> previews the
 
 ALWAYS use `--description`. It is the work order: the worker that gets the
 task reads it instead of your whole brief. Repeat `--check` for every command
-that proves the task. A task that declares no check is checked by reading its
-result and by the acceptance alone. `split --into` takes a JSON array
+that proves the task. Every delegated task has at least one `--check`. `split --into` takes a JSON array
 (`deps_on` names sibling titles), comma titles, or an `A > B > C` chain, and
 answers the created ids; use them, not the titles, for everything that
 follows.
