@@ -25,6 +25,7 @@ var liveLandingEndedAtWriters = map[string]string{
 	"recordNode":                 "an adaptive run's node has just landed",
 	"recordRoot":                 "an adaptive run's root has just landed",
 	"interrupt":                  "a design or run that settles on interruption is ending here",
+	"settleBeltRun":              "a run has just landed and the row it was published under is settling",
 }
 
 // C8 — Every session writer that stamps a TaskIndexEntry with time.Now is a
