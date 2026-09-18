@@ -25,8 +25,8 @@
 #   phase=idle      the whole process tree over the idle window: RSS, PSS, peak
 #                   RSS, threads, open fds, CPU from utime+stime deltas, and
 #                   voluntary context switches per second.
-#   phase=proc      one line per process in the tree at the end of the window, so
-#                   a multi-process design shows its split instead of only a sum.
+#   phase=proc      one line per launched-tree process retained alive through the
+#                   end of the window, so a detached helper remains in the sum.
 #   phase=summary   every headline figure on one line.
 #   phase=done      ok=1 with teardown_survivors=0, or ok=0 with reason= set.
 #
@@ -279,7 +279,9 @@ tree_pids() {
       for t in /proc/"$p"/task/*; do
         [ -r "$t/children" ] || continue
         kids=()
-        read -r -a kids < "$t/children" 2>/dev/null || continue
+        # proc children files have no trailing newline. read returns nonzero at EOF
+        # after filling kids, so the populated array, not read status, is truth.
+        read -r -a kids < "$t/children" 2>/dev/null || [ "${#kids[@]}" -gt 0 ] || continue
         for child in "${kids[@]}"; do
           case "$child" in ('' | *[!0-9]*) continue ;; esac
           [ -d "/proc/$child" ] || continue
@@ -690,6 +692,47 @@ SESSION_LIVE=1
 
 capture_pane() { "${TMUX[@]}" capture-pane -p -t "$PANE_T" 2>/dev/null; }
 
+# DISCOVERED_PIDS is the launched instance tree. It is seeded only from the pane
+# process and grows while descendants remain attached. A discovered pid stays in
+# the set while alive even if it later reparents, which counts helpers launched
+# during frame, settle or idle without adopting pre-existing machine processes.
+declare -A DISCOVERED=()
+declare -a DISCOVERED_PIDS=() LIVE_PIDS=() ALL_PIDS=()
+EMPTY_TICKS=0
+refresh_tree() {
+  local -a t=() alive=()
+  local p
+  mapfile -t t < <(tree_pids "$(pane_pid)")
+  if [ "${#t[@]}" -eq 0 ]; then
+    EMPTY_TICKS=$(( EMPTY_TICKS + 1 ))
+  fi
+  for p in "${t[@]}"; do
+    [ -n "${DISCOVERED[$p]:-}" ] && continue
+    DISCOVERED[$p]=1
+    DISCOVERED_PIDS+=("$p")
+  done
+  for p in "${DISCOVERED_PIDS[@]}"; do
+    [ -d "/proc/$p" ] && alive+=("$p")
+  done
+  LIVE_PIDS=("${alive[@]}")
+  ALL_PIDS=("${DISCOVERED_PIDS[@]}")
+  return 0
+}
+
+# sampled_sleep keeps discovery active during pauses outside the measured idle
+# window. The final refresh covers a duration shorter than one sampling tick.
+sampled_sleep() {
+  local seconds="$1" deadline
+  deadline=$(( $(now_ms) + seconds * 1000 ))
+  while [ "$(now_ms)" -lt "$deadline" ]; do
+    refresh_tree
+    sleep "$SAMPLE_SLEEP"
+  done
+  refresh_tree
+}
+
+refresh_tree
+
 # wait_paint blocks until the pane holds a non-blank character, or the pane's
 # process exits, or WAIT_TIMEOUT_MS passes. It reads WAIT_EPOCH as the moment the
 # clock started and sets WAIT_MS and WAIT_PAINTED. A pane that never paints
@@ -705,6 +748,7 @@ wait_paint() {
   WAIT_PAINTED=no
   WAIT_MS=-1
   while :; do
+    refresh_tree
     PANE_TEXT="$(capture_pane)"
     if [ -n "${PANE_TEXT//[[:space:]]/}" ]; then
       WAIT_PAINTED=yes
@@ -877,12 +921,11 @@ kv procs_at_frame="$(tree_pids "$(pane_pid)" | wc -l)"
 PHASE=idle
 loadavg
 kv "idle_load1_before=$LOAD1"
-sleep "$SETTLE_SECONDS"
+sampled_sleep "$SETTLE_SECONDS"
 [ -n "$(pane_pid)" ] || fail no-pane-pid
 
-declare -A JIF_BASE=() JIF_LAST=() CTX_BASE=() CTX_LAST=() EVER_SEEN=()
-declare -a LIVE_PIDS=() ALL_PIDS=() SAMPLE_RSS=()
-EMPTY_TICKS=0
+declare -A JIF_BASE=() JIF_LAST=() CTX_BASE=() CTX_LAST=()
+declare -a SAMPLE_RSS=()
 RSS_TOTAL=0
 PSS_TOTAL=0
 HWM_TOTAL=0
@@ -891,27 +934,9 @@ FD_TOTAL=0
 ALIVE_NOW=0
 TICK_RSS=0
 
-# refresh_tree re-reads the tree and keeps the set being accounted for. A single
-# tick whose read comes back empty — a pid mid-exec, a race in the children walk —
-# must not zero the sample, so an empty read is treated as no new information and
-# the previous set stands. empty_tree_ticks= counts how often that happened, so a
-# run where it happened constantly is visibly a run to discard.
-refresh_tree() {
-  local -a t=()
-  local p
-  mapfile -t t < <(tree_pids "$(pane_pid)")
-  if [ "${#t[@]}" -gt 0 ]; then
-    LIVE_PIDS=("${t[@]}")
-  else
-    EMPTY_TICKS=$(( EMPTY_TICKS + 1 ))
-  fi
-  for p in "${LIVE_PIDS[@]}"; do
-    [ -n "${EVER_SEEN[$p]:-}" ] && continue
-    EVER_SEEN[$p]=1
-    ALL_PIDS+=("$p")
-  done
-  return 0
-}
+# refresh_tree was started at launch and continues to retain the launched tree.
+# Detached descendants remain in LIVE_PIDS while alive; unrelated prior processes
+# can never enter because discovery has no machine-wide or workspace-wide seed.
 
 # sample_tree takes one reading per live pid: the cumulative counters, kept as the
 # last good value per pid, and this tick's summed RSS. Both counters are monotonic
