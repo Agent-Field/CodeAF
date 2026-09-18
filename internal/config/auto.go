@@ -60,10 +60,28 @@ var AutoIndex func() *index.Index
 // own evidence, one observation of which is worth having.
 var AutoOwnCells func() []crewpick.Cell
 
+// AutoShapes is how what real tasks spent on each seat reaches the bill a
+// pick is read on: the binary sets it ONCE AT START-UP from the usage ledger
+// (crewpick.ShapesFrom over the tasks that carried a seat word), the same
+// posture AutoOwnCells keeps. Nil is an ordinary state, not an error: the
+// front is then priced on crewpick.DefaultShapes, which is what it was priced
+// on before this seam existed.
+var AutoShapes func() map[crewpick.Seat]crewpick.SeatShape
+
 // PoolQualityMetric names the index metric the picker reads a measured seat
-// quality from: a gaussian metric whose mean is on the same 0-100 scale
-// crewpick scores a seat on, with one cell per role and model.
-const PoolQualityMetric = "role_quality"
+// quality from: `acceptable`, a bernoulli metric whose mean is the share of
+// graded tasks the seat's model was accepted on, times 100 — the same 0-100
+// scale crewpick scores a seat on — with one cell per role, model and source.
+// A cell's source is the grader that said so (the harness's own build-and-
+// test grade, or the seeded reviewer), and the cells of one seat and model
+// fold across sources when the prior is read. The judge's 0-100 opinion is
+// recorded under its own metric and is not what a pick learns from.
+const PoolQualityMetric = "acceptable"
+
+// PoolQualityKind is the kind word the index must declare PoolQualityMetric
+// with for its cells to be read: a mean on any other scale would be blended
+// against figures it does not share units with.
+const PoolQualityKind = "bernoulli"
 
 // AutoPick is the pick with the measured quality the Model Pool holds ALWAYS
 // carried as a prior: [AutoPickWith] with [autoPrior], whatever a profile's
@@ -111,7 +129,7 @@ func AutoPickWith(tier, family, preset string, models []catalog.Model, prior cre
 	if len(candidates) == 0 {
 		return "", false
 	}
-	frugal, balanced, max := crewpick.Presets(crewpick.FrontWith(candidates, crewpick.DefaultShapes(), fam, prior))
+	frugal, balanced, max := crewpick.Presets(crewpick.FrontWith(candidates, autoShapes(), fam, prior))
 	var pick crewpick.Crew
 	switch strings.ToLower(strings.TrimSpace(preset)) {
 	case CrewFrugal:
@@ -146,22 +164,22 @@ func autoIndex() *index.Index {
 
 // autoPrior reads the measured quality of the index AND of this install's own
 // sheet into a crewpick prior. The index's cells of PoolQualityMetric are kept
-// only when the metric is declared gaussian — a mean on any other scale would
-// be blended against figures it does not share units with — and dropped by
+// only when the metric is declared PoolQualityKind — a mean on any other scale
+// would be blended against figures it does not share units with — and dropped by
 // PriorFromCells below the index's own min_installs, resolved through the
 // index's canonical ids so an alias meets its candidate. The own sheet's cells
 // are this install's own evidence: they are read through a second
 // PriorFromCells at a floor of one and folded into the index's prior seat by
 // seat, the means combined by observation count. Their scores are on the
-// 0-100 scale a judge answers on whatever the index's metric says, so they
-// are read even beside an index whose role_quality is not gaussian. A nil
+// 0-100 acceptance scale whatever the index's metric says, so they are read
+// even beside an index whose acceptable metric is not bernoulli. A nil
 // index and a nil seam answer no prior, which leaves every seat on the
 // catalog quality.
 func autoPrior(idx *index.Index) crewpick.Prior {
 	canonical := autoCanonical(idx)
 	var indexPrior crewpick.Prior
 	if idx != nil {
-		if kind, ok := idx.Kind(PoolQualityMetric); ok && kind == "gaussian" {
+		if kind, ok := idx.Kind(PoolQualityMetric); ok && kind == PoolQualityKind {
 			cells := idx.Cells(PoolQualityMetric)
 			measured := make([]crewpick.Cell, 0, len(cells))
 			for _, c := range cells {
@@ -185,6 +203,19 @@ func autoCanonical(idx *index.Index) func(string) string {
 		return nil
 	}
 	return idx.Canonical
+}
+
+// autoShapes is [AutoShapes] read with its ordinary absence folded into one
+// answer: the defaults, which is what every pick was priced on before a
+// ledger taught the seats their shape.
+func autoShapes() map[crewpick.Seat]crewpick.SeatShape {
+	if AutoShapes == nil {
+		return crewpick.DefaultShapes()
+	}
+	if shapes := AutoShapes(); len(shapes) > 0 {
+		return shapes
+	}
+	return crewpick.DefaultShapes()
 }
 
 // autoOwnCells is [AutoOwnCells] read with its ordinary absence folded into
@@ -211,9 +242,17 @@ func autoSeat(tier string) (crewpick.Seat, bool) {
 	return 0, false
 }
 
-// autoCandidates reads every published row as a candidate. Rows with no
-// published price are dropped here, where the reason is nameable, rather than
-// being carried into the picker to fall out of its own candidacy law.
+// perMillion turns the catalog's tariff, which is dollars per token as the
+// provider publishes it, into the dollars per 1M tokens a crewpick candidate
+// carries. THE SCALE IS NOT OPTIONAL ANY MORE: a pick used to be read off the
+// order of bills alone, which any uniform scale leaves as it is, but a stake is
+// in dollars and a bill it is weighed against has to be in dollars too.
+const perMillion = 1e6
+
+// autoCandidates reads every published row as a candidate, its tariff scaled
+// to dollars per 1M tokens. Rows with no published price are dropped here,
+// where the reason is nameable, rather than being carried into the picker to
+// fall out of its own candidacy law.
 func autoCandidates(models []catalog.Model) []crewpick.Candidate {
 	candidates := make([]crewpick.Candidate, 0, len(models))
 	for _, model := range models {
@@ -226,9 +265,9 @@ func autoCandidates(models []catalog.Model) []crewpick.Candidate {
 			Intelligence:    model.IntelligenceIndex,
 			Coding:          model.CodingIndex,
 			Agentic:         model.AgenticIndex,
-			PromptPrice:     model.PromptPrice,
-			CompletionPrice: model.CompletionPrice,
-			CacheReadPrice:  model.CacheReadPrice,
+			PromptPrice:     model.PromptPrice * perMillion,
+			CompletionPrice: model.CompletionPrice * perMillion,
+			CacheReadPrice:  model.CacheReadPrice * perMillion,
 			HasCacheRead:    model.CacheReadPrice > 0,
 			Context:         model.ContextLength,
 			Images:          listHolds(model.InputModalities, "image"),
