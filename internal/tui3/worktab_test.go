@@ -79,3 +79,12 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 		t.Fatalf("self-closing work tab removed the landing card:\n%s", got)
 	}
 }
+
+func TestWorkTabKeepsTheStripSwitchKey(t *testing.T) {
+	a, _ := workTabFixture(t)
+	a.openWorkTab()
+	drive(t, a, key(hopOpenKey))
+	if !a.hopShowing() {
+		t.Fatal("the strip switch key did not open its conversation card from the work tab")
+	}
+}
