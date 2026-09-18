@@ -33,11 +33,19 @@ import (
 // the span it covered, the last thing anybody said on it, and where its record
 // lives.
 type PlanTaskRow struct {
-	ID     string
-	Title  string
-	Status string
-	Seat   string
-	Parent string
+	// Done, Running, Queued, Failed and Total summarize every task below a run root.
+	// They stay zero on ordinary task rows. Claimed work is running; pending and
+	// ready work is queued. Total includes every descendant store row.
+	Done    int
+	Running int
+	Queued  int
+	Failed  int
+	Total   int
+	ID      string
+	Title   string
+	Status  string
+	Seat    string
+	Parent  string
 	// Depth is the row's level below the page task; direct children are zero.
 	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
@@ -143,6 +151,9 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	rows := make([]PlanTaskRow, 0, len(tasks))
 	for _, task := range tasks {
 		rows = append(rows, planTaskRow(store, dir, task, spend, live))
+		if task.ID == planRootID {
+			applyPlanRootProgress(&rows[len(rows)-1], tasks)
+		}
 	}
 	return rows
 }
@@ -384,6 +395,27 @@ func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
 // not on the task: the dollars its spend rows carry, already summed, and its
 // steps, already read. The live step is the third: the store's live rows, read
 // whole in one pass by the caller, keyed by the task's own bare id.
+// applyPlanRootProgress puts the run-wide subtree figures on its root row. The
+// caller supplies the store read it already made, so progress costs no second read.
+func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task) {
+	for _, task := range tasks {
+		if task.ID == planRootID {
+			continue
+		}
+		row.Total++
+		switch task.Status {
+		case plandb.StatusDone:
+			row.Done++
+		case plandb.StatusClaimed, plandb.StatusRunning:
+			row.Running++
+		case plandb.StatusPending, plandb.StatusReady:
+			row.Queued++
+		case plandb.StatusFailed:
+			row.Failed++
+		}
+	}
+}
+
 func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64, live map[string]plandb.LiveStep) PlanTaskRow {
 	seat, _ := store.RoleOf(task.ID)
 	// A HELD TASK WEARS THE HOLD'S OWN WORD. Pause is status-independent in the
