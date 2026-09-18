@@ -719,7 +719,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 			continue
 		}
 		add(tasksLineAir, "")
-		if section == tasksEarlier && r.query == "" {
+		if section == tasksEarlier && r.query == "" && workAllOlderDone(groups) {
 			add(tasksLineFold, workOlderFold(tree.held(section)))
 			continue
 		}
@@ -1804,6 +1804,9 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 		state, second = planStateField(item), planSpendField(item)
 	}
 	name := tasksLabel(item.entry)
+	if progress := workRunProgress(item.plan); progress != "" {
+		name += " " + progress
+	}
 	if tail := workConversationTail(item); tail != "" {
 		name += " " + pal.dim(tail)
 	}
@@ -2044,6 +2047,9 @@ func workGrouped(items []tasksItem, now time.Time) []string {
 }
 
 func workConversationTail(item tasksItem) string {
+	if strings.TrimSpace(item.entry.Parent) != "" {
+		return ""
+	}
 	if strings.TrimSpace(item.row.ID) != strings.TrimSpace(item.entry.SessionID) {
 		return ""
 	}
@@ -2059,3 +2065,21 @@ func workOlderFold(n int) string {
 	}
 	return itoa(n) + " more" + rowSep + "type to find one"
 }
+
+func workAllOlderDone(groups []tasksGroup) bool {
+	if len(groups) == 0 {
+		return false
+	}
+	for _, group := range groups {
+		for _, root := range group.roots {
+			status := strings.TrimSpace(root.entry.Status)
+			if status != string(session.TaskDone) && status != string(session.TaskFailed) && status != "cancelled" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// workRunProgress is the c253 seam. c253 is absent on origin/wave1.
+func workRunProgress(*session.PlanTaskRow) string { return "" }
