@@ -1313,7 +1313,7 @@ reply handed *this* request's work to a task and that task is queued or running,
 stops there and is not read: the outcome is the task's to deliver. When it lands, one dim
 line is written in the conversation and no turn starts. Anything you say after the handoff,
 including a correction typed into the running reply, puts the reading back.
-;337a
+
 
 ## Why does it say carry on — what carry on means, carried on, why does it say "carried on 3 times", the reply was pushed on, it argued with itself about something it had already answered, why does it say "saying it again would not change it"
 
