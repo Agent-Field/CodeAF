@@ -1,7 +1,7 @@
 ---
 kind: added
 title: pool show --cells lists the held index's cells with their installs and dims
-pr: 0000
+pr: 1149
 surface: [engine]
 invalidates:
   - "`codeaf pool show` answered what the held index holds as counts and one line per metric, and a person who wanted what a single cell is — which model, which role, what stood behind the measurement — had to parse `doc.json`. show now takes `--cells`: a `cells:` header after the metric lines, one line per cell — `role_quality · worker · vendor/model · mean 71.2 · sd 9.4 · n 42 · installs 5`, and for a metric whose cells are split by a dim, the dims between the model and the measurement, `acceptable · worker · vendor/model · source grader · share 0.83 · n 20 · installs 4`, the share word picked by the kind the document spells. The order is the index's own — metric, then role, model, dims — never a sort by a number, and a metric with no cells says `none`."
