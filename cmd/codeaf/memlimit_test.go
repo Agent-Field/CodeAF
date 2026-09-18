@@ -34,15 +34,76 @@ func TestSurfaceMemoryLimitHalvesAMachineAndRefusesOneUnderTheFloor(t *testing.T
 	}
 }
 
+// The smallest bound wins: inside a container the cgroup bound is tighter than
+// the host's physical memory, and it is the one the limit must follow. An unread
+// bound (a zero) does not participate at all, and one too small to bound still
+// refuses rather than setting a thrashing limit.
+func TestSurfaceMemoryLimitTakesTheSmallestBound(t *testing.T) {
+	cases := []struct {
+		name   string
+		bounds []int64
+		want   int64
+	}{
+		{"cgroup tighter than physical memory", []int64{16 << 30, 2 << 30}, 1 << 30},
+		{"physical tighter than cgroup", []int64{2 << 30, 16 << 30}, 1 << 30},
+		{"an unread bound does not participate", []int64{0, 16 << 30}, 8 << 30},
+		{"physical unread, the cgroup binds", []int64{0, 4 << 30}, 2 << 30},
+		{"no bound readable at all", []int64{0, 0}, 0},
+		{"no bounds passed", nil, 0},
+		{"a negative bound does not participate", []int64{-1, 8 << 30}, 4 << 30},
+		{"tighter cgroup under the floor refuses", []int64{16 << 30, 512 << 20}, 0},
+	}
+	for _, c := range cases {
+		if got := surfaceMemoryLimit(c.bounds...); got != c.want {
+			t.Errorf("surfaceMemoryLimit(%v) = %d, want %d (%s)", c.bounds, got, c.want, c.name)
+		}
+	}
+}
+
+// Inside a container the cgroup bound is tighter than the host's physical
+// memory, and the limit must follow it — this is the whole reason the cgroup is
+// read, and the failure it prevents is a limit that never binds and lets the
+// kernel OOM-kill. The limit is half the cgroup bound, and it is carried to the
+// engine host the same way the physical-memory limit is.
+func TestTuneForTheSurfaceFollowsTheTighterCgroupBound(t *testing.T) {
+	restoreMemoryLimit(t)
+	standInForMachineWithCgroup(t, 64<<30, 2<<30)
+	t.Setenv("GOMEMLIMIT", "")
+
+	want := int64(1 << 30)
+	tuneForTheSurface()
+
+	if got := debug.SetMemoryLimit(-1); got != want {
+		t.Fatalf("the runtime memory limit = %d, want half the cgroup bound %d", got, want)
+	}
+	if got := os.Getenv("GOMEMLIMIT"); got != strconv.FormatInt(want, 10) {
+		t.Fatalf("GOMEMLIMIT in the environment = %q, want %q", got, strconv.FormatInt(want, 10))
+	}
+}
+
 // standInForMachine puts a machine of totalBytes in front of the tuner for the
 // length of one test, and hands back the scheduler and heap readouts untouched:
 // the memory tests are not the scheduler's and not the heap target's, so the
-// tuner is given a silent GOMAXPROCS and GOGC=off and this restores the reader.
+// tuner is given a silent GOMAXPROCS and GOGC=off and this restores the readers.
+// The cgroup reader is stood in as well and bounds nothing, so the machine's own
+// physical memory is the only bound — a test that wants a cgroup bound uses
+// [standInForMachineWithCgroup].
 func standInForMachine(t *testing.T, totalBytes int64) {
 	t.Helper()
-	old := hostTotalMemory
+	standInForMachineWithCgroup(t, totalBytes, 0)
+}
+
+// standInForMachineWithCgroup is [standInForMachine] with a cgroup bound too:
+// totalBytes is physical memory and cgroupBytes is the tightest finite bound the
+// process's cgroup places on it (zero for a cgroup that bounds nothing, which is
+// what `max` and the cgroup v1 sentinel reduce to). BOTH readers are stood in,
+// so no test here ever reads the real /sys/fs/cgroup.
+func standInForMachineWithCgroup(t *testing.T, totalBytes, cgroupBytes int64) {
+	t.Helper()
+	oldMem, oldCgroup := hostTotalMemory, hostCgroupMemoryLimit
 	hostTotalMemory = func() int64 { return totalBytes }
-	t.Cleanup(func() { hostTotalMemory = old })
+	hostCgroupMemoryLimit = func() int64 { return cgroupBytes }
+	t.Cleanup(func() { hostTotalMemory, hostCgroupMemoryLimit = oldMem, oldCgroup })
 	t.Setenv("GOMAXPROCS", strconv.Itoa(runtime.NumCPU()))
 	t.Setenv("GOGC", "off")
 }
