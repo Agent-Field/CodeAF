@@ -11,9 +11,10 @@ The review round keeps declared Checks: as its first choice. When a worker did
 not declare one, it removes one leading `cd` wrapper, splits recorded commands
 on `&&` and `;`, applies the shipped runnable, invocable, and audit law to each
 segment, and retains only test, build, and vet style runners. The committed c249
-fixture produces 11 checks and 495 characters, rather than 37 commands and
-26,312 characters: nine `go test` segments, one `go build`, and one `go vet`.
-Reads, writes, status commands, and `plandb done` are excluded.
+fixture produces this exact 11 check, 495 character contract rather than 37
+commands and 26,312 characters: `go test ./internal/tui3 -run 'TestWorkTab'
+-count=1` nine times, `go build ./...`, then `go vet ./internal/tui3`. Reads,
+writes, status commands, and `plandb done` are excluded.
 
 A `holds:` conclusion requires every declared check in the trajectory. A
 `does not hold:` conclusion requires no command evidence, so a reading checker
