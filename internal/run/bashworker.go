@@ -128,7 +128,6 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			roundSteps int
 			turnErr    error
 			capped     bool
-			stopping   bool
 			ending     storeEnding
 		)
 		for event := range events {
@@ -150,7 +149,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// several do. Those late ends are drained here so the agent can
 				// close, and they are neither counted nor recorded: the report
 				// says the cap, and the trajectory ends where the cap fell.
-				if stopping {
+				if capped {
 					continue
 				}
 				steps++
@@ -171,7 +170,6 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 					// the turn is stopped here rather than judged, and the ending
 					// below says where it stopped.
 					capped = true
-					stopping = true
 					stop()
 					continue
 				}
@@ -182,9 +180,20 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// happened — done with its result, or parked with its claim
 				// released. A task ends no other way but these, the cap, the
 				// wall, or an errored turn.
+				//
+				// THE STORE IS READ ONCE THE ENDING IS FOUND, AND EVERY STEP THAT
+				// RAN IS STILL COUNTED. The agent runs ahead of this reader: it can
+				// call the model again and run the finish command while the step
+				// before it is still being recorded here, so the ending is often
+				// seen at an earlier step's end than the one that made it. The
+				// stop() only asks the turn to end; the ends that still arrive are
+				// commands that ran, and a task's record says what ran — unlike the
+				// cap, which is a bound and stops counting where it fell.
+				if ending.kind != endingNone {
+					continue
+				}
 				if end, ok := w.storeEnding(task.ID); ok {
 					ending = end
-					stopping = true
 					stop()
 				}
 			case session.EventTurnDone:
