@@ -1868,7 +1868,11 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if item.plan != nil {
 		state, second = planStateField(item), planSpendField(item)
 	}
-	return tasksTableRow(lead, cells, tasksLabel(item.entry),
+	label := tasksLabel(item.entry)
+	if item.plan != nil && item.plan.Total > 0 {
+		label += "  " + planProgress(*item.plan, width, pal)
+	}
+	return tasksTableRow(lead, cells, label,
 		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
