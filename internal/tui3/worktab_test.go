@@ -10,9 +10,9 @@ import (
 
 func workTabFixture(t *testing.T) (*app, *planFake) {
 	t.Helper()
-	root := session.PlanTaskRow{ID: "t-root", Title: "Widen the importer", Status: "running", Steps: 3}
+	root := session.PlanTaskRow{ID: "t-root", Title: "Root", Status: "running", Steps: 3}
 	root.Live.Step, root.Live.Command = 4, "go test ./internal/tui3"
-	child := session.PlanTaskRow{ID: "t-child", Title: "Fix the flake", Status: "pending", Parent: "t-root"}
+	child := session.PlanTaskRow{ID: "t-child", Title: "Fix the flake", Status: "pending", Parent: "t-root", Waits: []string{"t-root"}}
 	a, fake := planAppWith(t, []session.PlanTaskRow{root, child}, map[string]session.PlanTaskPage{
 		"t-root": {Row: root},
 	})
@@ -23,7 +23,7 @@ func workTabFixture(t *testing.T) (*app, *planFake) {
 func TestWorkTabAppearsAfterConversationOnlyForALiveRun(t *testing.T) {
 	a, fake := workTabFixture(t)
 	tabs := a.tabList()
-	if len(tabs) != 2 || !tabs[0].here || !tabs[1].work || tabs[1].word != "Widen the importer" {
+	if len(tabs) != 2 || !tabs[0].here || !tabs[1].work || tabs[1].word != "Root" {
 		t.Fatalf("live run tabs = %+v, want conversation then titled work tab", tabs)
 	}
 	fake.plan[0].Status, fake.plan[1].Status = "done", "done"
@@ -42,7 +42,7 @@ func TestWorkTabDrawsTheTasksPlacesOwnRows(t *testing.T) {
 	a, _ := workTabFixture(t)
 	a.openWorkTab()
 	text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n"))
-	for _, want := range []string{"Widen the importer", "Fix the flake", "$ go test ./internal/tui3", "queued · waits: Widen the importer"} {
+	for _, want := range []string{"Root", "Fix the flake", "$ go test ./internal/tui3", "queued · waits: Root"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("work tab missing %q:\n%s", want, text)
 		}
@@ -71,11 +71,11 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 	if a.workTabOn {
 		t.Fatal("esc left the work tab open")
 	}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Widen the importer", session.TaskDone, session.TaskNotice{Answer: "the importer landed"})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Root", session.TaskDone, session.TaskNotice{Report: "the importer landed"})})
 	fake.plan[0].Status, fake.plan[1].Status = "done", "done"
 	a.workTabStable()
 	a.workTabStable()
-	if got := plain(a.view()); !strings.Contains(got, "Widen the importer") || !strings.Contains(got, "the importer landed") {
+	if got := plain(func() string { s, _, _ := a.frame(); return s }()); !strings.Contains(got, "Root") || !strings.Contains(got, "the importer landed") {
 		t.Fatalf("self-closing work tab removed the landing card:\n%s", got)
 	}
 }
