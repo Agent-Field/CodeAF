@@ -12,8 +12,10 @@ package main
 // the checkout under test. An offline suite that spends tokens is not one
 // anybody can run before a landing.
 //
-// IT IS A FLOOR AND NOT A CEILING: t.Setenv still wins for a test that means it,
-// and a variable this process was deliberately started with is left alone.
+// IT IS A FLOOR AND NOT A CEILING: t.Setenv still wins for a test that means
+// it, and a variable this process was deliberately started with is left alone
+// — except the profile, which is cleared unconditionally, because its
+// deliberate set is the hazard rather than a courtesy.
 
 import (
 	"os"
@@ -25,8 +27,9 @@ import (
 )
 
 // isolateTestEnvironment puts this test binary on a machine of its own: no
-// provider credentials, and a state root under a directory that is thrown away
-// with the run. It answers a cleanup the caller runs last.
+// provider credentials, no inherited profile, and a state root under a
+// directory that is thrown away with the run. It answers a cleanup the caller
+// runs last.
 func isolateTestEnvironment() func() {
 	clearTestCredentials()
 	root, err := os.MkdirTemp("", "codeaf-cmd-tests-")
@@ -46,11 +49,31 @@ func isolateTestEnvironment() func() {
 		home.EnvVar: filepath.Join(root, "state"),
 		"HOME":      filepath.Join(root, "home"),
 	})
+	// AND THE PROFILE IS CLEARED, NOT PINNED — whatever this process was
+	// started with. pinTestEnv leaves a variable the caller pinned alone, which
+	// is right for the two above (a run that says CODEAF_HOME means it), but an
+	// exported CODEAF_PROFILE_DIR is precisely the case the floor exists for:
+	// config.ProfilePath answers it before it falls back to the state root, so
+	// a harness that exports it at a live profile hands every write the package
+	// makes — the fault fixture, the pool's start-up errands — to somebody's
+	// real chat.log however far HOME and CODEAF_HOME were moved (#1145).
+	// Clearing it here, the way internal/tui3's TestMain already does, is what
+	// covers the whole package at once; empty reads as unset everywhere in
+	// internal/config. The four per-test pins from #1145 sit under this and
+	// stay, belt and braces, until a separate decision says otherwise
+	// (testfloor_test.go holds the floor itself down).
+	wasProfile, hadProfile := os.LookupEnv(config.ProfileDirEnv)
+	os.Setenv(config.ProfileDirEnv, "")
 	for _, dir := range []string{filepath.Join(root, "state"), filepath.Join(root, "home")} {
 		_ = os.MkdirAll(dir, 0o755)
 	}
 	return func() {
 		restore()
+		if hadProfile {
+			os.Setenv(config.ProfileDirEnv, wasProfile)
+		} else {
+			os.Unsetenv(config.ProfileDirEnv)
+		}
 		_ = os.RemoveAll(root)
 	}
 }
