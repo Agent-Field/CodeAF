@@ -3,11 +3,13 @@ package session
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -138,5 +140,65 @@ func TestModelHandoffCarriesThePersonsQuestionAndNothingElse(t *testing.T) {
 	}
 	if got := questionAtTaskHandoff(nil); got != "" {
 		t.Fatalf("handoff without an ask question = %q, want empty", got)
+	}
+}
+
+func TestOwedLandingCompletionReaderSeesQuestionAsAskAndOutcomeAsEvidence(t *testing.T) {
+	question := "What is the test's name once it lands?"
+	summary := RunSummary{Outcome: beltRunOutcomeDone, Result: "Test function name: TestDouble."}
+	landing := RunLanding{Branch: "main", Changed: []string{"double.go", "double_test.go"}}
+	line := beltRunOutcomeNote(summary, landing)
+
+	completer := &scriptedCompleter{steps: []step{finalText("The test is TestDouble."), finalText(checkpointNothingLeft)}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = false
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierLow):        "test/cheap-model",
+			roles.TierKey(roles.TierMastermind): "test/reader-model",
+		})
+	})
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the run", "1", "Double", "add Double")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{store: store, root: store.RootID()}
+	agent.deliverBeltRunLanding(run, summary, landing)
+	beltRunWaitFor(t, "landing answer turn", func() bool {
+		agent.mu.Lock()
+		defer agent.mu.Unlock()
+		return !agent.running && completer.requests() >= 1
+	})
+	var request []ai.Message
+	for index := 0; index < completer.requests(); index++ {
+		candidate := completer.request(index)
+		if strings.Contains(messageText(candidate[len(candidate)-1]), checkpointRemainsAsk) {
+			request = candidate
+			break
+		}
+	}
+	if request == nil {
+		_ = agent.readRemains(context.Background())
+		request = completer.request(completer.requests() - 1)
+	}
+	page := messageText(request[len(request)-1])
+	if !strings.HasPrefix(page, checkpointDigestAsked+"\n"+question+"\n\n") {
+		t.Fatalf("completion request ask = %q, want the person's question alone", page)
+	}
+	found := strings.Index(page, checkpointDigestFound+"\n")
+	if found < 0 || !strings.Contains(page[found:], line) {
+		t.Fatalf("completion request omitted landing outcome under %q: %q", checkpointDigestFound, page)
+	}
+}
+
+func TestCompletionSnapshotWithoutLandingIsExactlyUnchanged(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(*Config) {})
+	before := agent.snapshot()
+	after := agent.completionSnapshot()
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("ordinary completion snapshot changed:\n got %#v\nwant %#v", after, before)
 	}
 }
