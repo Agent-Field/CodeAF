@@ -53,7 +53,8 @@ func (a *Agent) PlanRunSummary(rootID string) (RunPlanSummary, bool) {
 	if !ok {
 		return RunPlanSummary{}, false
 	}
-	return stored.Summary, stored.Stamp != runSummaryStamp(store, rootID)
+	family := runSummaryFamily(store, rootID)
+	return stored.Summary, stored.Stamp != runSummaryStamp(family, a.runSummaryQuestions(family))
 }
 
 // RefreshRunSummary pays for one worker-tier call only when the run moved.
@@ -64,12 +65,14 @@ func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook t
 		return RunPlanSummary{}, false
 	}
 	stored, had := readRunSummary(store, rootID)
-	stamp := runSummaryStamp(store, rootID)
+	family := runSummaryFamily(store, rootID)
+	questions := a.runSummaryQuestions(family)
+	stamp := runSummaryStamp(family, questions)
 	if had && stored.Stamp == stamp {
 		closeStore()
 		return stored.Summary, true
 	}
-	input := runSummaryInput(store, rootID, lastLook, a.summaryNow(), stored.Summary)
+	input := runSummaryInput(family, questions, rootID, lastLook, a.summaryNow(), stored.Summary)
 	closeStore()
 	response, _, err := a.callRole(ctx, roles.RoleWorker, a.model, []ai.Message{
 		textMessage("system", runSummaryPrompt), textMessage("user", input),
@@ -91,7 +94,8 @@ func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook t
 	}
 	defer closeStore()
 	// Do not stamp over movement that occurred while the model was answering.
-	stamp = runSummaryStamp(store, rootID)
+	family = runSummaryFamily(store, rootID)
+	stamp = runSummaryStamp(family, a.runSummaryQuestions(family))
 	payload, err := json.Marshal(storedRunSummary{Summary: parsed, Stamp: stamp})
 	if err != nil {
 		return stored.Summary, had
@@ -124,40 +128,90 @@ func readRunSummary(store *plandb.Store, rootID string) (storedRunSummary, bool)
 	return got, true
 }
 
-func runSummaryStamp(store *plandb.Store, rootID string) string {
-	shape := currentRunSummaryShape(store, rootID)
-	body, _ := json.Marshal(shape)
+func runSummaryStamp(tasks []*plandb.Task, questions []string) string {
+	body, _ := json.Marshal(currentRunSummaryShape(tasks, questions))
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
 }
 
-func currentRunSummaryShape(store *plandb.Store, rootID string) runSummaryShape {
-	root := store.Task(rootID)
-	filter := plandb.Filter{}
-	if root != nil {
-		filter = plandb.Filter{Project: root.Project, Chat: root.Chat}
-	}
-	shape := runSummaryShape{}
-	for _, task := range store.Tasks(filter) {
+func currentRunSummaryShape(tasks []*plandb.Task, questions []string) runSummaryShape {
+	shape := runSummaryShape{Questions: questions}
+	for _, task := range tasks {
 		shape.Tasks = append(shape.Tasks, runSummaryTask{task.ID, string(task.Status)})
-	}
-	for _, q := range store.Contexts("", "question", 200, filter) {
-		shape.Questions = append(shape.Questions, summaryFirstLine(q.Content, 120))
 	}
 	return shape
 }
 
-func runSummaryInput(store *plandb.Store, rootID string, lastLook, now time.Time, previous RunPlanSummary) string {
+// runSummaryFamily is the run a summary is about: the root and every task that
+// reaches it through its parents, in the store's own order. A CONVERSATION
+// HOLDS MORE THAN ONE RUN OVER ITS LIFE, and the page tells the model that
+// every statement is about a task in the list, so a row out of an earlier run
+// is a sentence about the wrong work, and its movement would make this run's
+// lines stale for nothing.
+func runSummaryFamily(store *plandb.Store, rootID string) []*plandb.Task {
 	root := store.Task(rootID)
-	taskFilter := plandb.Filter{}
+	if root == nil {
+		return nil
+	}
+	all := store.Tasks(plandb.Filter{Project: root.Project, Chat: root.Chat})
+	parent := make(map[string]string, len(all))
+	for _, task := range all {
+		parent[task.ID] = task.ParentID
+	}
+	var family []*plandb.Task
+	for _, task := range all {
+		id := task.ID
+		for hops := 0; id != "" && hops <= len(all); hops++ {
+			if id == rootID {
+				family = append(family, task)
+				break
+			}
+			id = parent[id]
+		}
+	}
+	return family
+}
+
+// runSummaryQuestions is what the run is holding for the person: the session's
+// own open questions whose subject is a live node working one of the family's
+// tasks, each by its head. The session's questions are the one source of a
+// question's words; the store keeps none, and a kind invented here would read
+// empty forever.
+func (a *Agent) runSummaryQuestions(family []*plandb.Task) []string {
+	g := a.graph()
+	if g == nil || len(family) == 0 {
+		return nil
+	}
+	inFamily := make(map[string]bool, len(family))
+	for _, task := range family {
+		inFamily[task.ID] = true
+	}
+	holds := make(map[uint64]bool)
+	g.mu.Lock()
+	for _, node := range g.nodes {
+		if node.spec.planID != "" && inFamily[planStoreID(node.spec.planID)] {
+			holds[node.id] = true
+		}
+	}
+	g.mu.Unlock()
+	var out []string
+	for _, question := range a.OpenQuestions() {
+		if question.Subject.Kind == SubjectNode && holds[question.Subject.ID] {
+			out = append(out, summaryFirstLine(question.Head, 120))
+		}
+	}
+	return out
+}
+
+func runSummaryInput(tasks []*plandb.Task, questions []string, rootID string, lastLook, now time.Time, previous RunPlanSummary) string {
 	taskAsk := ""
-	if root != nil {
-		taskAsk = cutChars(root.Description, 1500)
-		taskFilter = plandb.Filter{Project: root.Project, Chat: root.Chat}
+	for _, task := range tasks {
+		if task.ID == rootID {
+			taskAsk = cutChars(task.Description, 1500)
+		}
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "PERSON'S ASK\n%s\n\nRUN ROWS\n", taskAsk)
-	tasks := store.Tasks(taskFilter)
 	if len(tasks) > 40 {
 		tasks = tasks[:40]
 	}
@@ -165,8 +219,8 @@ func runSummaryInput(store *plandb.Store, rootID string, lastLook, now time.Time
 		fmt.Fprintf(&b, "%s · %s · %s\n", cutChars(task.Title, 120), task.Status, summaryFirstLine(task.Result, 120))
 	}
 	b.WriteString("\nOPEN QUESTIONS\n")
-	for _, q := range store.Contexts("", "question", 200, taskFilter) {
-		b.WriteString(summaryFirstLine(q.Content, 120) + "\n")
+	for _, q := range questions {
+		b.WriteString(q + "\n")
 	}
 	age := "never"
 	if !lastLook.IsZero() {

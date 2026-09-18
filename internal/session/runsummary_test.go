@@ -116,3 +116,48 @@ func TestRunSummaryAbsentNeverBroken(t *testing.T) {
 		}
 	})
 }
+
+// A summary is about ONE run: the task it is asked for and everything under
+// it. A sibling's rows are another piece of work, and a sentence about them
+// under this run's name would be a sentence about the wrong work.
+func TestRunSummaryReadsOnlyTheFamilyUnderItsRoot(t *testing.T) {
+	_, store, _ := runSummaryFixture(t, &scriptedCompleter{})
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "other", Title: "Rotate the key", Description: "work", ParentID: planRootID},
+		{ID: "under", Title: "Test the handler", Description: "work", ParentID: "leaf"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, task := range runSummaryFamily(store, "leaf") {
+		ids = append(ids, task.ID)
+	}
+	if got := strings.Join(ids, ","); got != "leaf,under" {
+		t.Fatalf("family of leaf = %q, want leaf,under", got)
+	}
+	if whole := runSummaryFamily(store, planRootID); len(whole) != 4 {
+		t.Fatalf("family of the root holds %d tasks, want all 4", len(whole))
+	}
+	if runSummaryFamily(store, "nobody") != nil {
+		t.Fatal("a root the store does not hold has a family")
+	}
+}
+
+// THE QUESTIONS A RUN HOLDS ARE THE SESSION'S OWN OPEN QUESTIONS, handed in by
+// their heads: a question raised or answered makes the lines stale, and the
+// model is shown the question in its own words so `next` can lead with it.
+func TestRunSummaryStampAndInputCarryTheHeldQuestions(t *testing.T) {
+	_, store, now := runSummaryFixture(t, &scriptedCompleter{})
+	family := runSummaryFamily(store, planRootID)
+	held := []string{"keep the old table for a week?"}
+	if runSummaryStamp(family, nil) == runSummaryStamp(family, held) {
+		t.Fatal("a held question did not move the stamp")
+	}
+	input := runSummaryInput(family, held, planRootID, time.Time{}, now, RunPlanSummary{})
+	if !strings.Contains(input, "OPEN QUESTIONS\nkeep the old table for a week?\n") {
+		t.Fatalf("the held question is missing from the input:\n%s", input)
+	}
+	if !strings.Contains(input, "LAST LOOK\nnever\n") {
+		t.Fatalf("a run never looked at must say so:\n%s", input)
+	}
+}
