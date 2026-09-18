@@ -713,3 +713,11 @@ Select any row there and press `enter` to open that task's page. Press `esc` to
 return to the page you came from; the breadcrumb says `esc/← <parent title>` so
 you can see where it returns. This opens a page rather than changing the rail's
 fold.
+
+## which model did this task?
+
+The task page shows the run's work and plan models in its header. Each task row also ends with the model for that task's seat. When a task is paused, failed, or held, that state word appears there instead.
+
+## how do I see only what is running?
+
+Press `tab` on the task page to switch the tree to the by-state reading. Read the `running` group for only the tasks that are running; press `tab` again to return to the tree.

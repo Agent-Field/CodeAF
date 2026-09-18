@@ -18,6 +18,7 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -192,6 +193,7 @@ func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 			ID:        row.ID,
 			Title:     row.Title,
 			Label:     row.Title,
+			Outcome:   row.Note,
 			Status:    planEntryStatus(row.Status),
 			SessionID: chat,
 			// THE PARENT IS WHERE THE ROW IS DRAWN. The store's own parent puts a
@@ -799,12 +801,31 @@ func (a *app) taskPlanNoteSend() tea.Cmd {
 	return nil
 }
 
+// taskPlanReadingKey gives tab to the open run page before the place router
+// walks to another tab. The page owns that key because it changes the reading
+// of its one tree; no second renderer or place is involved.
+func (a *app) taskPlanReadingKey(key string) bool {
+	if key != "tab" || !a.taskSheet.planOn {
+		return false
+	}
+	if a.taskSheet.planAt == -2 {
+		a.taskSheet.planAt = -1
+	} else {
+		a.taskSheet.planAt = -2
+	}
+	a.touch()
+	return true
+}
+
 // taskSheetPlanKey is a plan row's own keys in the LIST, over an empty box the
 // way the roster takes its bare letters (stop.go's `x IS TAKEN OVER AN EMPTY
 // BOX`): `x` ends the task through the store's cancel — the key that cancels a
 // node — and `p` holds it or lets it go again. A letter is a letter the moment
 // there is a filter to type, so neither is taken once something is in the box.
 func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
+	if a.taskPlanReadingKey(key) {
+		return nil, true
+	}
 	if a.taskSheetFilter() != "" {
 		return nil, false
 	}
@@ -854,6 +875,9 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	// law, [app.taskSheetPlanKey]).
 	if a.taskSheet.planNote.empty() {
 		switch key {
+		case "tab":
+			a.taskPlanReadingKey(key)
+			return nil
 		case stopRaiseKey:
 			return a.taskPlanCancel(a.taskSheet.plan.Row.ID)
 		case "p":
@@ -1112,6 +1136,37 @@ func (a *app) taskPlanBody(width int) []string {
 	if row := planPageTelemetryLine(page); row != "" {
 		add(pal.dim(row))
 	}
+	if page.WorkModel != "" || page.PlanModel != "" {
+		seats := []string{}
+		if page.WorkModel != "" {
+			seats = append(seats, "work "+page.WorkModel)
+		}
+		if page.PlanModel != "" {
+			seats = append(seats, "plan "+page.PlanModel)
+		}
+		add(pal.dim(strings.Join(seats, railSep)))
+	}
+	// When the list moved this pane to its top fuzzy match, quote the exact
+	// durable line that answered. The transcript half is supplied by the home
+	// search index before selection; a task page only owns its plan facts.
+	if query := a.taskSheetFilter(); query != "" {
+		if hits := filterPlanRuns([]session.PlanTaskPage{page}, nil, query); len(hits) > 0 && hits[0].line != "" {
+			add(pal.dim(hits[0].line))
+		}
+	}
+	if len(page.Questions) > 0 {
+		section("your call")
+		for _, question := range page.Questions {
+			add(pal.ink("? " + strings.TrimSpace(question.Head)))
+			options := make([]string, 0, len(question.Options))
+			for _, option := range question.Options {
+				options = append(options, strings.TrimSpace(option.Key)+" "+strings.TrimSpace(option.Label))
+			}
+			if len(options) > 0 {
+				add(pal.dim("  " + strings.Join(options, "  ")))
+			}
+		}
+	}
 	if waits := page.WaitRows; len(waits) > 0 {
 		section("waits")
 		own := map[string]bool{}
@@ -1189,7 +1244,12 @@ func (a *app) taskPlanBody(width int) []string {
 	// no new word: a child's line is its state word and its title. The note
 	// composer and its receipt below are untouched by the tree.
 	if kids := page.Children; len(kids) > 0 {
-		section("under it")
+		byState := a.taskSheet.planAt == -2
+		if byState {
+			section("under it · by state")
+		} else {
+			section("under it · by tree")
+		}
 		kin := planKinOf(kids)
 		reverse := map[string]int{}
 		for _, kid := range kids {
@@ -1199,19 +1259,52 @@ func (a *app) taskPlanBody(width int) []string {
 				}
 			}
 		}
-		for at, kid := range kids {
-			mark := tasksKinCont
-			if at == len(kids)-1 || kids[at+1].Depth <= kid.Depth {
-				mark = tasksKinLast
-			}
-			lead := tasksKin(kid.Depth, tasksKinRoom(width), mark)
+		draw := func(kid session.PlanTaskRow, lead string) {
 			word := planChildWordWithKin(kid, kin)
 			if n := reverse[kid.ID]; n > 0 {
 				word += railSep + itoa(n) + " queued behind it"
 			}
+			suffix := strings.TrimSpace(kid.Seat)
+			switch strings.TrimSpace(kid.Status) {
+			case "paused", "failed", "held":
+				suffix = strings.TrimSpace(kid.Status)
+			}
+			if suffix != "" {
+				word += railSep + suffix
+			}
 			add(pal.ink(lead + word))
 			if line := planLiveRow(kid.Live.Command, width-ansi.StringWidth(lead)-2, pal); line != "" {
 				add(lead + "  " + line)
+			}
+		}
+		if byState {
+			groups := []struct {
+				word string
+				rows []session.PlanTaskRow
+			}{{word: "running"}, {word: "queued"}, {word: "done"}}
+			for _, kid := range kids {
+				word := planStateWord(kid.Status)
+				for i := range groups {
+					if groups[i].word == word {
+						groups[i].rows = append(groups[i].rows, kid)
+					}
+				}
+			}
+			for _, group := range groups {
+				if len(group.rows) > 0 {
+					add(pal.dim(group.word + railSep + itoa(len(group.rows))))
+					for _, kid := range group.rows {
+						draw(kid, "")
+					}
+				}
+			}
+		} else {
+			for at, kid := range kids {
+				mark := tasksKinCont
+				if at == len(kids)-1 || kids[at+1].Depth <= kid.Depth {
+					mark = tasksKinLast
+				}
+				draw(kid, tasksKin(kid.Depth, tasksKinRoom(width), mark))
 			}
 		}
 	}
@@ -1348,4 +1441,83 @@ func planPageTelemetryLine(page session.PlanTaskPage) string {
 		segs = append(segs, itoa(queued)+" queued")
 	}
 	return strings.Join(segs, railSep)
+}
+
+// planRunHit is one run retained by the work-tab filter and the one physical
+// line that answered the query. Keeping the line with the rank lets the pane
+// explain why its top run moved without building another transcript index.
+type planRunHit struct {
+	page session.PlanTaskPage
+	line string
+	rank int
+	at   int
+}
+
+// filterPlanRuns ranks run pages with home's shared fuzzy matcher. Conversation
+// title and body lines arrive only as hits from the search place's durable
+// index; this function never opens or indexes a transcript.
+func filterPlanRuns(pages []session.PlanTaskPage, indexed []searchHit, query string) []planRunHit {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		out := make([]planRunHit, 0, len(pages))
+		for at, page := range pages {
+			out = append(out, planRunHit{page: page, at: at})
+		}
+		return out
+	}
+	byRun := make(map[string][]string)
+	for _, hit := range indexed {
+		id := strings.TrimSpace(hit.sessionID)
+		if id == "" {
+			continue
+		}
+		byRun[id] = append(byRun[id], hit.title, hit.snippet)
+	}
+	var out []planRunHit
+	for at, page := range pages {
+		lines := []string{page.Row.Title, page.Description}
+		for _, child := range page.Children {
+			lines = append(lines, child.Title, child.Note)
+		}
+		for _, note := range page.Notes {
+			lines = append(lines, note.Body)
+		}
+		for _, step := range page.Steps {
+			lines = append(lines, step.Observation)
+		}
+		lines = append(lines, byRun[strings.TrimSpace(page.Row.ID)]...)
+		best, bestLine, ok := 0, "", false
+		for _, line := range lines {
+			line = searchOneLine(line)
+			if line == "" {
+				continue
+			}
+			rank, matches := planRunLineRank(line, query)
+			if matches && (!ok || rank < best) {
+				best, bestLine, ok = rank, line, true
+			}
+		}
+		if ok {
+			out = append(out, planRunHit{page: page, line: bestLine, rank: best, at: at})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].rank != out[j].rank {
+			return out[i].rank < out[j].rank
+		}
+		return out[i].at < out[j].at
+	})
+	return out
+}
+
+func planRunLineRank(line, query string) (int, bool) {
+	total := 0
+	for _, word := range strings.Fields(query) {
+		quality, ok := session.MatchQuality(line, word)
+		if !ok {
+			return 0, false
+		}
+		total += quality
+	}
+	return total, true
 }
