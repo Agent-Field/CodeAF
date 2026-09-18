@@ -965,8 +965,11 @@ of it under "Changing the model for one task while it is running".
 this window is a window onto, so inside a room they are the node's — `38 tok/s` while it
 writes, `running go test · 41s` while it is in a call — and they are drawn **whether or
 not the conversation is doing anything**, which is the usual case: handing a task out ends
-your turn, and the node goes on working for minutes with the conversation idle. The
-meter and the job counts on the same row stay the conversation's, because those are
+your turn, and the node goes on working for minutes with nothing happening in the
+conversation. The row's own state word is `working` through all of it — the same word the
+tab beside it wears, and without the spinner or the clock, which belong to a turn that is
+not running (the state word's own table says which is which) — and the meter and the
+job counts on the same row stay the conversation's, because those are
 measurements of a session; the ledger is not, and has not been since 2026-08-31 — the
 bill is the whole tree's, the larger of the subtree's receipt and this conversation's own
 books, so a running node's spend is in it whether or not its room is open (the bill's own
@@ -1155,6 +1158,7 @@ words:
 | --- | --- | --- |
 | `idle` | nothing is running | dim |
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
+| `working` | your own turn is over but work it handed out is still running — a task node in this conversation, or a background job; no spinner and no clock, which belong to a turn that is not running | accent |
 | `starting task` | a task proposal has a countdown and will start automatically | accent |
 | `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
 | `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
@@ -1164,6 +1168,11 @@ words:
 `stopping` outranks `waiting · your call`, and `waiting · your call` outranks `working`.
 Copy mode outranks everything, because it is the only state about the keyboard rather
 than about the turn.
+
+**A door at rest whose work outlived its turn is not `idle`.** Handing a task out ends
+your turn, and the node it started works on for minutes with nothing happening in the
+conversation — so the row says `working`, the same word the tab strip beside it wears for
+the same door, and the two can never disagree about one conversation.
 
 The spinner turns on the same 4-tick grid the tool rows use, so nothing on screen beats
 against anything else. In the screen-reader tier the spinner is a still `*`.

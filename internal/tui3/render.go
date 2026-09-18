@@ -3378,6 +3378,24 @@ func (a *app) stateWord() (string, string) {
 	if a.awaitingTask() {
 		return taskStartingWord, a.pal.accent(taskStartingWord)
 	}
+	// A DOOR AT REST WHOSE WORK OUTLIVED ITS TURN IS NOT IDLE. Handing a task out
+	// ends the turn — `a.state` goes back to [stateIdle] — and the node it started
+	// works on for minutes with nothing happening in the conversation, which the
+	// tab strip already draws as `working` ([tabWorkingWord], via
+	// [app.frontSignal]). The row said `idle` under a tab wearing `◐`: one
+	// conversation described two ways on one screen. The word is the tab's own,
+	// and the reading is the surface's frame-safe one — [app.tasksInFlight] walks
+	// a map this surface keeps and [app.jobsRunning] walks the job list, so
+	// nothing here opens [session.Agent.TaskIndex], which reads a file
+	// (tabsignal.go's header states the law). It says `working` and the word is
+	// NOT set on `a.state`: that field is a behavioural predicate (the spinner,
+	// the clock, ticking, barge-in and the background-work question all read it)
+	// and the door is genuinely at rest. There is no spinner and no clock here
+	// either — both belong to a turn, and [app.stateSegment] draws them only in
+	// [stateWorking].
+	if a.state == stateIdle && a.frontSignal() == tabWorking {
+		return tabWorkingWord, a.pal.accent(tabWorkingWord)
+	}
 	word := a.state.String()
 	switch a.state {
 	case stateWorking:
