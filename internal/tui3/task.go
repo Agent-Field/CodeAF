@@ -3586,7 +3586,7 @@ func (a *app) railRows(height int) []string {
 				}
 				inserted = true
 			}
-			if line.entry >= 0 && line.entry < len(entries) && entries[line.entry].node != nil && titles[strings.TrimSpace(entries[line.entry].node.title)] {
+			if line.entry >= 0 && line.entry < len(entries) && entries[line.entry].node != nil && titles[strings.TrimSpace(entries[line.entry].node.label)] {
 				continue
 			}
 			next = append(next, line)
