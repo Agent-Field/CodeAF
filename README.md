@@ -26,8 +26,11 @@
 **Frontier-grade coding on open models, at a fraction of the cost.**
 
 CodeAF is a coding harness built for open models, to get the most out of every
-dollar. A factory, on your own machine, and the more you hand it the more it
-does.
+dollar. It is also a different way to work once more than one thing is going on:
+instead of three terminals of agents with you in the middle, one window where you
+hand work off, see what is moving across every project, and step in only where
+your judgment is needed. A factory, on your own machine, and the more you hand it
+the more it does.
 
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
@@ -40,27 +43,6 @@ Written in Go as one small binary, with nothing else to install or run. Apache
 https://github.com/user-attachments/assets/bc87e460-17b1-4d7a-8c69-284b524ea194
 
 <sub>Real speed, with sound. The three tasks run live on DeepSeek V4.1 Flash; the other projects and the large task tree are a seeded demo machine.</sub>
-
-## What one binary costs
-
-Measured against six other agent CLIs on one machine, in the same repository, on the
-same day. Memory is PSS rather than RSS, because CodeAF runs two processes that share
-one binary's text and RSS would count it twice.
-
-<!-- REFRESH: re-run docs/benchmarks/measure-cli.sh after any change to package init -->
-
-| cost | CodeAF | the CLIs compared |
-| --- | --- | --- |
-| on disk | 53 MB | smallest of the seven; 2.8x under the next smallest, 21x under the largest |
-| first interactive frame | 208 ms | 1.9x to 11.6x faster than five of six; one is faster, by 1.6x |
-| memory during a turn (PSS) | 79 MB | lightest of the four that completed one; 4.1x to 9.5x lighter |
-| cold start (`--version`) | 12.5 ms | 25x to 38x faster than the four that boot an interpreter; one is faster, by 2x |
-| idle memory (PSS) | 66 MB | 2.4x to 10.7x lighter than five of six; one is lighter, by 1.4x |
-
-One of the seven is faster to start and lighter at rest. It is a single static binary
-too, and it is named with every figure in
-[the benchmark method and full table](docs/benchmarks/results-2026-09-17.md), which also
-says how to re-run all of it.
 
 ## Install
 
@@ -203,6 +185,8 @@ publishes a signed index the crew picker reads under `picked from = learn`. The 
 `pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
 the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
 that includes running your own.
+
+[![pool updated](https://img.shields.io/github/last-commit/Agent-Field/CodeAF/model-pool?label=pool%20updated)](https://github.com/Agent-Field/CodeAF/tree/model-pool)
 
 ## Standing orders
 
