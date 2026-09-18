@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // passingTestPatterns is the other half of the vocabulary failingTestPatterns
@@ -29,34 +30,36 @@ import (
 // read out of the BEFORE roster alone is scored as a check that disappeared,
 // which raises a finding and buys a repair round rather than passing anything.
 // Nothing here can make a missing check look present.
-var passingTestPatterns = []*regexp.Regexp{
-	// go test
-	regexp.MustCompile(`(?m)^\s*--- PASS:\s+([^\s(]+)`),
-	regexp.MustCompile(`(?m)^ok\s+(\S+)\s`),
-	// pytest, in both orders its reporters print
-	regexp.MustCompile(`(?m)^PASSED\s+(\S+::\S+)`),
-	regexp.MustCompile(`(?m)^(\S+::\S+)\s+PASSED`),
-	// python unittest
-	regexp.MustCompile(`(?m)^ok:\s+([\w.]+\s*\([\w.]+\))`),
-	// jest / vitest / mocha
-	regexp.MustCompile(`(?m)^\s*[✓√]\s+(.+?)\s*$`),
-	// cargo test
-	regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+ok\s*$`),
-	// gradle, whose line is `com.example.ApiTest > testHeaders PASSED`. BOTH
-	// halves are captured and CheckIdentity keeps the second: the class is
-	// where the check lives, and the method is the check — capturing the class
-	// alone named the same identity once per check in it, and never named an
-	// identity a source reader could recognise.
-	regexp.MustCompile(`(?m)^\s*(\S+\s+>\s+\S+)\s+PASSED\s*$`),
-	// dotnet test / xunit, whose names are fully qualified. Required rather than
-	// assumed, for the reason failingTestPatterns states at its own copy of this
-	// line: after an English word, `\S+` matches an English word.
-	regexp.MustCompile(`(?m)^\s*Passed\s+([\w+]+(?:\.[\w+]+)+(?:\([^)]*\))?)(?:\s|$)`),
-	// ctest
-	regexp.MustCompile(`(?m)^\s*\d+\s+-\s+(\S+)\s+\(Passed\)`),
-	// TAP
-	regexp.MustCompile(`(?m)^ok\s+\d+\s+-?\s*(.+?)\s*$`),
-}
+var passingTestPatterns = sync.OnceValue(func() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		// go test
+		regexp.MustCompile(`(?m)^\s*--- PASS:\s+([^\s(]+)`),
+		regexp.MustCompile(`(?m)^ok\s+(\S+)\s`),
+		// pytest, in both orders its reporters print
+		regexp.MustCompile(`(?m)^PASSED\s+(\S+::\S+)`),
+		regexp.MustCompile(`(?m)^(\S+::\S+)\s+PASSED`),
+		// python unittest
+		regexp.MustCompile(`(?m)^ok:\s+([\w.]+\s*\([\w.]+\))`),
+		// jest / vitest / mocha
+		regexp.MustCompile(`(?m)^\s*[✓√]\s+(.+?)\s*$`),
+		// cargo test
+		regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+ok\s*$`),
+		// gradle, whose line is `com.example.ApiTest > testHeaders PASSED`. BOTH
+		// halves are captured and CheckIdentity keeps the second: the class is
+		// where the check lives, and the method is the check — capturing the class
+		// alone named the same identity once per check in it, and never named an
+		// identity a source reader could recognise.
+		regexp.MustCompile(`(?m)^\s*(\S+\s+>\s+\S+)\s+PASSED\s*$`),
+		// dotnet test / xunit, whose names are fully qualified. Required rather than
+		// assumed, for the reason failingTestPatterns states at its own copy of this
+		// line: after an English word, `\S+` matches an English word.
+		regexp.MustCompile(`(?m)^\s*Passed\s+([\w+]+(?:\.[\w+]+)+(?:\([^)]*\))?)(?:\s|$)`),
+		// ctest
+		regexp.MustCompile(`(?m)^\s*\d+\s+-\s+(\S+)\s+\(Passed\)`),
+		// TAP
+		regexp.MustCompile(`(?m)^ok\s+\d+\s+-?\s*(.+?)\s*$`),
+	}
+})
 
 // ReportedTests is every check identity a runner named, red or green, sorted and
 // deduplicated so two runs of one suite compare as sets.
@@ -72,7 +75,7 @@ var passingTestPatterns = []*regexp.Regexp{
 // same check as is CheckIdentity's question, and it is asked where a roster
 // meets a reading of source rather than here.
 func ReportedTests(output string) []string {
-	clean := ansiEscape.ReplaceAllString(output, "")
+	clean := ansiEscape().ReplaceAllString(output, "")
 	seen := map[string]bool{}
 	var names []string
 	collect := func(patterns []*regexp.Regexp) {
@@ -87,8 +90,8 @@ func ReportedTests(output string) []string {
 			}
 		}
 	}
-	collect(passingTestPatterns)
-	collect(failingTestPatterns)
+	collect(passingTestPatterns())
+	collect(failingTestPatterns())
 	sort.Strings(names)
 	return names
 }
@@ -101,25 +104,27 @@ func ReportedTests(output string) []string {
 // into existence and which it took out. A line that calls a helper, imports a
 // fixture or renames a variable is not a check, and counting it as one would let
 // a diff that touched a test file look like a diff that wrote tests.
-var checkDeclarationPatterns = []*regexp.Regexp{
-	// jest / vitest / mocha / jasmine / bun, including the .each, .only and
-	// .skip suffixes — a skipped check is a check that has stopped running,
-	// which is exactly the case the removal half exists to catch.
-	regexp.MustCompile(`(?:^|\W)(?:it|test|bench)(?:\.\w+)*\s*(?:\(|` + "`" + `)\s*(?:'([^']{2,200})'|"([^"]{2,200})"|` + "`" + `([^` + "`" + `]{2,200})` + "`" + `)`),
-	// xit / xtest / fit — the same, spelled as a prefix
-	regexp.MustCompile(`(?:^|\W)[xf](?:it|test)\s*\(\s*(?:'([^']{2,200})'|"([^"]{2,200})")`),
-	// pytest / unittest / nose
-	regexp.MustCompile(`(?:^|\W)(?:async\s+)?def\s+(test_\w+)\s*\(`),
-	// go test
-	regexp.MustCompile(`(?:^|\W)func\s+((?:Test|Benchmark|Fuzz|Example)\w*)\s*\(`),
-	// rust
-	regexp.MustCompile(`(?:^|\W)fn\s+(\w*test\w*)\s*\(`),
-	// junit / testng — the annotation names the method on the following line,
-	// so the method is what is captured wherever the two share one.
-	regexp.MustCompile(`(?:^|\W)(?:public|private|protected)?\s*void\s+(test\w+)\s*\(`),
-	// rspec / minitest
-	regexp.MustCompile(`(?:^|\W)(?:it|specify)\s+(?:'([^']{2,200})'|"([^"]{2,200})")\s+do`),
-}
+var checkDeclarationPatterns = sync.OnceValue(func() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		// jest / vitest / mocha / jasmine / bun, including the .each, .only and
+		// .skip suffixes — a skipped check is a check that has stopped running,
+		// which is exactly the case the removal half exists to catch.
+		regexp.MustCompile(`(?:^|\W)(?:it|test|bench)(?:\.\w+)*\s*(?:\(|` + "`" + `)\s*(?:'([^']{2,200})'|"([^"]{2,200})"|` + "`" + `([^` + "`" + `]{2,200})` + "`" + `)`),
+		// xit / xtest / fit — the same, spelled as a prefix
+		regexp.MustCompile(`(?:^|\W)[xf](?:it|test)\s*\(\s*(?:'([^']{2,200})'|"([^"]{2,200})")`),
+		// pytest / unittest / nose
+		regexp.MustCompile(`(?:^|\W)(?:async\s+)?def\s+(test_\w+)\s*\(`),
+		// go test
+		regexp.MustCompile(`(?:^|\W)func\s+((?:Test|Benchmark|Fuzz|Example)\w*)\s*\(`),
+		// rust
+		regexp.MustCompile(`(?:^|\W)fn\s+(\w*test\w*)\s*\(`),
+		// junit / testng — the annotation names the method on the following line,
+		// so the method is what is captured wherever the two share one.
+		regexp.MustCompile(`(?:^|\W)(?:public|private|protected)?\s*void\s+(test\w+)\s*\(`),
+		// rspec / minitest
+		regexp.MustCompile(`(?:^|\W)(?:it|specify)\s+(?:'([^']{2,200})'|"([^"]{2,200})")\s+do`),
+	}
+})
 
 // DeclaredChecks names every check a body of text declares, in the order it
 // declares them, without repeats.
@@ -155,7 +160,7 @@ func DeclaredChecks(source string) []string {
 		name string
 	}
 	var found []declaration
-	for _, pattern := range checkDeclarationPatterns {
+	for _, pattern := range checkDeclarationPatterns() {
 		for _, match := range pattern.FindAllStringSubmatchIndex(source, -1) {
 			// One pattern, several alternative capture groups: the quoted name
 			// in whichever quotation mark the author used. Exactly one of them

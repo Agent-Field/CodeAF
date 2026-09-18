@@ -386,6 +386,14 @@ func (p *v3Process) closeAll() {
 		return
 	}
 
+	// The start-up errands this process seated on its profile — the pool index
+	// refresh and the outbox push — were started fire-and-forget.
+	// [stopPoolErrands] cancels them and waits, so nothing this process started
+	// is still writing under its profile once it closes (poolindex.go states
+	// the seam). It runs first, before the conversations and the stores, because
+	// it is the process's own errand and not a conversation's.
+	stopPoolErrands(p.ProfileDir)
+
 	var waiting sync.WaitGroup
 	for _, agent := range agents {
 		waiting.Add(1)

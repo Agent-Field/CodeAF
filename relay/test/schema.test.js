@@ -90,3 +90,15 @@ test('validateInstall takes 32 lowercase hex and nothing else', () => {
   assert.equal(validateInstall(undefined), false);
   assert.equal(validateInstall('0123456789abcdef0123456789abcde'), false);
 });
+
+test('accepts a graded row: the acceptable metric with the grader in the judge column', () => {
+  const { row, error } = validateRow(goodLine({ payload: { metric: 'acceptable', score: 100, judge: 'codeaf/grader' } }), NOW);
+  assert.equal(error, null);
+  assert.equal(row.payload.metric, 'acceptable');
+  assert.equal(row.payload.judge, 'codeaf/grader');
+});
+
+test('refuses a metric that is neither the judge\'s nor the grader\'s', () => {
+  const { error } = validateRow(goodLine({ payload: { metric: 'role_rating' } }), NOW);
+  assert.match(error, /metric must be role_quality or acceptable/);
+});

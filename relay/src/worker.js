@@ -141,11 +141,29 @@ async function handleRows(request, env) {
     rows.push(row);
   }
 
-  // The per-install per-day quota is checked for the whole batch before
-  // anything is stored: a batch that would exceed it stores nothing.
+  // Keep only the rows the relay has not stored: a row's nonce is its
+  // identity, and the client re-sends every row that did not get a 202, so an
+  // install's retry is the ordinary case rather than an error. A nonce
+  // repeated inside one batch is collapsed here too, by the set, before the
+  // store is consulted.
+  const fresh = [];
+  const batchNonces = new Set();
+  for (const row of rows) {
+    if (batchNonces.has(row.nonce)) {
+      continue;
+    }
+    batchNonces.add(row.nonce);
+    if (await env.POOL.get(seenKey(install, row.nonce)) !== null) {
+      continue;
+    }
+    fresh.push(row);
+  }
+
+  // The per-install per-day quota is charged for the rows this batch actually
+  // folds, so a retried row is not charged a second time.
   const limit = intVar(env, 'ROWS_PER_INSTALL_PER_DAY', 500);
   const byDay = new Map();
-  for (const row of rows) {
+  for (const row of fresh) {
     const list = byDay.get(row.day) || [];
     list.push(row);
     byDay.set(row.day, list);
@@ -159,8 +177,9 @@ async function handleRows(request, env) {
     used.set(day, current);
   }
 
-  // Fold each score into its install's running total for the cell and day.
-  for (const row of rows) {
+  // Fold each score into its install's running total for the cell and day, and
+  // record the row's nonce so its retry is not folded again.
+  for (const row of fresh) {
     const key = `sheet/${install}/${row.day}/${cellKey(row.payload)}`;
     const previous = await env.POOL.get(key);
     let triple = null;
@@ -172,16 +191,35 @@ async function handleRows(request, env) {
       }
     }
     await env.POOL.put(key, JSON.stringify(fold(triple, row.payload.score)));
+    await env.POOL.put(seenKey(install, row.nonce), '1', { expirationTtl: SEEN_TTL });
   }
   for (const [day, list] of byDay) {
     await env.POOL.put(quotaKey(install, day), String(used.get(day) + list.length));
   }
-  return json({ accepted: rows.length }, 202);
+  // A batch that was entirely already stored still answers 202: the client
+  // needs only the 202 to mark its rows sent, and giving it anything else
+  // would leave the outbox retrying rows the relay already holds. `accepted`
+  // counts the rows folded now, so it is 0 for such a batch.
+  return json({ accepted: fresh.length }, 202);
 }
 
 // quotaKey names one install's per-day quota counter.
 function quotaKey(install, day) {
   return `quota/${install}/${day}`;
+}
+
+// A folded row's identity lives under seen/<install>/<nonce>. It is per row,
+// not per batch: the client re-sends its outbox row by row, and a retry may
+// carry fewer rows than the batch that first sent them, so only the nonce each
+// row carries survives re-grouping. Idempotence is only as strong as KV — reads
+// and writes are eventually consistent, so two concurrent copies of a batch can
+// both see a nonce unread and fold it twice; within what KV answers, a nonce
+// already stored is not folded again or charged again. The TTL is a week: the
+// outbox retries within days, so a week outlasts any retry still in flight and
+// the store does not grow without bound.
+const SEEN_TTL = 7 * 24 * 60 * 60;
+function seenKey(install, nonce) {
+  return `seen/${install}/${nonce}`;
 }
 
 // refreshInBackground republishes the document behind a read when the

@@ -5,16 +5,18 @@
 // One NDJSON line is an outer envelope plus the payload it carries:
 //   {"schema":1,"day":"YYYY-MM-DD","nonce":"<32 lowercase hex>","payload":{...}}
 // The payload is the record.Row fields:
-//   {"schema":1,"metric":"role_quality","role":...,"model":...,"score":...,
-//    "judge":...,"door":...,"size":...,"day":"YYYY-MM-DD"}
+//   {"schema":1,"metric":"role_quality"|"acceptable","role":...,"model":...,"score":...,
+//    "judge":...,"door":"task"|"do"|"exec"|"run","size":...,"day":"YYYY-MM-DD"}
 //
 // Everything here is pure: no KV, no fetch, no clock of its own.
 
-// The one metric the client records.
-const METRIC = 'role_quality';
+// The metrics the client records: a judge's 0-100 opinion of a seat's work
+// (role_quality), and the harness's own model-free grade of a task, 100 or 0
+// per seat the crew held (acceptable), whose judge column names the grader.
+export const METRICS = new Set(['role_quality', 'acceptable']);
 
 const ROLES = new Set(['worker', 'high', 'mastermind']);
-const DOORS = new Set(['task', 'do']);
+const DOORS = new Set(['task', 'do', 'exec', 'run']);
 const SIZES = new Set(['S', 'M', 'L']);
 
 // A model id is "<vendor>/<id>". The Go side draws both halves from a closed
@@ -80,8 +82,8 @@ export function validateRow(line, now = new Date()) {
   if (payload.schema !== 1) {
     return fail('payload schema must be 1');
   }
-  if (payload.metric !== METRIC) {
-    return fail(`metric must be ${METRIC}`);
+  if (!METRICS.has(payload.metric)) {
+    return fail('metric must be role_quality or acceptable');
   }
   if (!ROLES.has(payload.role)) {
     return fail('role must be worker, high or mastermind');
@@ -97,7 +99,7 @@ export function validateRow(line, now = new Date()) {
     return fail('judge must be <vendor>/<id>');
   }
   if (!DOORS.has(payload.door)) {
-    return fail('door must be task or do');
+    return fail('door must be task, do, exec or run');
   }
   if (!SIZES.has(payload.size)) {
     return fail('size must be S, M or L');
