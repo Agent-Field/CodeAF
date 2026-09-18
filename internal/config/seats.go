@@ -306,12 +306,12 @@ func tierSeatUnder(profileDir, family, tier string) Seat {
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from, Crew: byWord}
 }
 
-// ModelEnv and PlanModelEnv are the two variables the seats read. They are
-// spelled here once because three places need them by name: the ladder, [Load],
-// and the receipt that says one of them answered.
+// ModelEnv, PlanModelEnv, and CheckModelEnv are the variables the seats read.
+// They are spelled here once because the ladder, [Load], and receipts name them.
 const (
-	ModelEnv     = "CODEAF_MODEL"
-	PlanModelEnv = "CODEAF_PLAN_MODEL"
+	ModelEnv      = "CODEAF_MODEL"
+	PlanModelEnv  = "CODEAF_PLAN_MODEL"
+	CheckModelEnv = "CODEAF_CHECK_MODEL"
 )
 
 // Seat is one seat's answer: the model, and where it came from.
@@ -599,32 +599,22 @@ func ResolveSeats(profileDir, flagModel, flagPlanModel string) Seats {
 	}
 }
 
-// CheckSeat is the check seat's own ladder, resolved at the door, in the order
-// the two model run depends on:
-//
-//  1. `--check-model`, which is what this invocation said;
-//  2. the plan flag, when the person typed only that: a pinned run runs on
-//     exactly its two models, and the check rides the plan seat rather than a
-//     third model the profile happens to hold;
-//  3. empty, which is not a rung resolved here at all. An empty check seat
-//     travels to the run's crew factory, which reads the profile's careful row,
-//     so a door that named nothing gets the crew's checker, the same row the
-//     manual promises a check rides.
-//
-// The plan flag is read here and not the resolved plan seat on purpose: the
-// second rung is "the person typed it", and a plan seat the environment or the
-// profile filled is a seat the campaign or the crew already owns. The check
-// seat reads no variable of its own; it is the newest seat and the only one a
-// flag alone fills.
-func CheckSeat(flagCheck, flagPlan string) Seat {
+// CheckSeat is the check seat's own ladder, resolved at the door.
+// The flag wins, then the check environment. A plan seat pinned by either its
+// flag or its environment answers next. Any other plan source leaves the seat
+// empty for the run's crew factory to fill from the careful row.
+func CheckSeat(flagCheck string, plan Seat) Seat {
 	seat := Seat{Role: SeatCheck}
 	if value := strings.TrimSpace(flagCheck); value != "" {
 		seat.Model, seat.Source = value, SeatFlag
 		return seat
 	}
-	if value := strings.TrimSpace(flagPlan); value != "" {
-		seat.Model, seat.Source = value, SeatFlag
+	if value := strings.TrimSpace(env.Get(CheckModelEnv)); value != "" {
+		seat.Model, seat.Source = value, SeatEnv
 		return seat
+	}
+	if plan.Source == SeatFlag || plan.Source == SeatEnv {
+		seat.Model, seat.Source = plan.Model, plan.Source
 	}
 	return seat
 }

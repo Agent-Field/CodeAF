@@ -1001,25 +1001,45 @@ func TestAnAutoRowUnderLearnReadsTheLearnRung(t *testing.T) {
 // appears from the profile; and empty when they typed neither, which seats a
 // check on the profile's careful row at the crew factory rather than here,
 // because an empty seat is the profile's to answer.
-func TestCheckSeatRidesTheFlagThenThePlanFlagThenNothing(t *testing.T) {
-	// The check flag wins, even beside a plan flag.
-	seat := CheckSeat("vendor/named-check", "vendor/named-plan")
-	if seat.Model != "vendor/named-check" || seat.Source != SeatFlag {
-		t.Fatalf("check seat = %q (%s), want the flag's model", seat.Model, seat.Rung())
-	}
-	// A plan flag alone pins the check to the plan seat: a two flag run runs
-	// on exactly its two models.
-	seat = CheckSeat("", "vendor/named-plan")
-	if seat.Model != "vendor/named-plan" || seat.Source != SeatFlag {
-		t.Fatalf("check seat = %q (%s), want the plan flag's model", seat.Model, seat.Rung())
-	}
-	// Neither flag typed answers empty, and empty is the crew's checker.
-	seat = CheckSeat("", "")
-	if seat.Model != "" {
-		t.Fatalf("check seat = %q, want an empty seat the crew answers", seat.Model)
-	}
-	// Whitespace is not a model, on this seat as on the other two.
-	if seat := CheckSeat("  ", "  "); seat.Model != "" {
-		t.Fatalf("check seat = %q, want blank flags to read as empty", seat.Model)
-	}
+func TestCheckSeatClimbsItsOwnLadder(t *testing.T) {
+	planFlag := Seat{Role: SeatPlan, Model: "vendor/named-plan-flag", Source: SeatFlag}
+	planEnv := Seat{Role: SeatPlan, Model: "vendor/named-plan-env", Source: SeatEnv}
+	planCrew := Seat{Role: SeatPlan, Model: "vendor/crew-plan", Source: SeatCrew}
+
+	t.Run("check flag", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "vendor/named-check-env")
+		seat := CheckSeat("vendor/named-check-flag", planFlag)
+		if seat.Model != "vendor/named-check-flag" || seat.Source != SeatFlag {
+			t.Fatalf("check seat = %q (%s), want the check flag", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("check environment", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "vendor/named-check-env")
+		seat := CheckSeat("", planFlag)
+		if seat.Model != "vendor/named-check-env" || seat.Source != SeatEnv {
+			t.Fatalf("check seat = %q (%s), want the check environment", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("plan flag", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "")
+		seat := CheckSeat("", planFlag)
+		if seat.Model != planFlag.Model || seat.Source != SeatFlag {
+			t.Fatalf("check seat = %q (%s), want the flagged plan", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("plan environment", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "")
+		seat := CheckSeat("", planEnv)
+		if seat.Model != planEnv.Model || seat.Source != SeatEnv {
+			t.Fatalf("check seat = %q (%s), want the environment plan", seat.Model, seat.Rung())
+		}
+	})
+	t.Run("crew careful", func(t *testing.T) {
+		t.Setenv(CheckModelEnv, "")
+		for _, plan := range []Seat{{Role: SeatPlan}, planCrew} {
+			if seat := CheckSeat("", plan); seat.Model != "" {
+				t.Fatalf("check seat = %q, want empty for the crew's careful row", seat.Model)
+			}
+		}
+	})
 }
