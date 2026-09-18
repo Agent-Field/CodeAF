@@ -320,3 +320,27 @@ func TestPlanTaskRootCarriesSubtreeProgress(t *testing.T) {
 		t.Fatalf("root progress = done %d, running %d, queued %d, failed %d, total %d; want 1, 1, 2, 1, 5", root.Done, root.Running, root.Queued, root.Failed, root.Total)
 	}
 }
+
+// A REOPENED CONVERSATION FINDS THE RUN IT LEFT. The plan was armed only by the
+// `/task` that seeded it, in the process that seeded it, so closing the terminal
+// and reopening the conversation drew a rail with no run on it while the store
+// sat in the session folder with every row. The store is the memory: a
+// conversation under the belt whose folder holds a plan store reads it, with no
+// `/task` typed in this process.
+func TestPlanTasksFindsTheStoreAReopenedConversationLeft(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("make the session folder: %v", err)
+	}
+	seedPlanStore(t, filepath.Join(dir, planStoreFilename), filepath.Base(dir),
+		plandb.TaskSpec{ID: "alpha", Title: "Alpha"},
+	)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Place = Place{Dir: dir, Workspace: c.Workspace}
+	})
+	rows := agent.PlanTasks()
+	if len(rows) != 2 || rows[1].ID != "t-alpha" {
+		t.Fatalf("PlanTasks in a reopened conversation = %v, want the root and t-alpha", rowIDs(rows))
+	}
+}

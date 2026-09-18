@@ -79,6 +79,21 @@ func (g *TaskGraph) planIfArmed() *planState {
 	}
 	g.planMu.Lock()
 	defer g.planMu.Unlock()
+	if g.plan == nil {
+		// A REOPENED CONVERSATION FINDS THE RUN IT LEFT. The plan was armed only
+		// by the `/task` that seeded it, in the process that seeded it, so a
+		// conversation closed and reopened drew no run while its store sat in the
+		// session folder holding every row. The store is the memory: where the
+		// folder already holds one, this conversation's plan is that file. No
+		// store is ever MADE here — a conversation that never ran a task still
+		// answers nil — and the shim is armed by the road that next runs a
+		// worker, which is the only reader of it.
+		if path := g.planPath(); path != "" {
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				g.plan = &planState{path: path, chat: g.planChat()}
+			}
+		}
+	}
 	return g.plan
 }
 
