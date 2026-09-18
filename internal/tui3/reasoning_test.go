@@ -172,8 +172,19 @@ func TestTheRowsTailIsDimAndTheIDIsNot(t *testing.T) {
 	// the band read as a selection rather than as the list's ordinary paint.
 	drive(t, a, key("ctrl+u"))
 	rows = a.pick.rows(a.width, len(a.pick.hits)+head, a.pal, -1, a.reasoningFor)[head:]
-	if !strings.Contains(rows[1], a.pal.dim("$0.08  $0.15    128k  ")) {
-		t.Fatalf("an unselected row's tail has to be dim:\n%q", rows[1])
+	// THE ROW IS FOUND BY NAME AND NOT BY INDEX, because what order the list is in
+	// is the sort's business (pickersort.go) and this assertion is about the paint.
+	tail := ""
+	for at, id := range pickerIDs(a) {
+		if id == "openai/gpt-4.1-mini" && at < len(rows) {
+			tail = rows[at]
+		}
+	}
+	if tail == "" {
+		t.Fatal("openai/gpt-4.1-mini is not drawn, so this test cannot read its tail")
+	}
+	if !strings.Contains(tail, a.pal.dim("$0.08  $0.15    128k  ")) {
+		t.Fatalf("an unselected row's tail has to be dim:\n%q", tail)
 	}
 }
 

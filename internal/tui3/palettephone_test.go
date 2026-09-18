@@ -232,8 +232,13 @@ func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 	if at+1 >= len(lines) || !banded(a.pal, lines[at+1]) {
 		t.Fatalf("the cursor's row is cut by the window's edge: %q", plain(lines[at]))
 	}
-	if got := plain(lines[at]); !strings.Contains(got, "gpt-5-classic") {
-		t.Fatalf("the cursor is on %q, want the last model", got)
+	// THE LAST MODEL IS WHICHEVER THE LIST'S OWN SORT PUTS THERE — the name column,
+	// ascending (pickersort.go) — and this test is about the window's edge rather
+	// than about which model that is, so it asks the list.
+	ids := pickerIDs(a)
+	last := ids[len(ids)-1]
+	if got := plain(lines[at]); !strings.Contains(got, last) {
+		t.Fatalf("the cursor is on %q, want the last model %q", got, last)
 	}
 }
 

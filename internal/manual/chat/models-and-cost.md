@@ -2931,10 +2931,10 @@ to; naming one is a narrower answer inside that row rather than a third thing be
 ```
    auto          auto-route based on /settings
    openrouter    default routing
-     provider    first  t/s    $/M  note        up   last 8
-     cloudflare   0.8s   58   $1.3  no tools   100%  ▁▂▁▃▁▂
-     coreweave    0.4s   24  $0.28  tail 12s    99%  ▁▁▇▁▂▁
-     deepinfra    0.8s   27  $0.18  out ≤ 65k   99%
+     provider ↓  first  t/s    $/M    up  note       last 8
+     cloudflare   0.8s   58   $1.3  100%  no tools   ▁▂▁▃▁▂
+     coreweave    0.4s   24  $0.28   99%  tail 12s   ▁▁▇▁▂▁
+     deepinfra    0.8s   27  $0.18   99%  out ≤ 65k
 ```
 
 **The providers are a table**, drawn by the same engine as the model list above and read the
@@ -2946,10 +2946,17 @@ drawn at all.
 the terminal can draw one — so a line of labels is never mistaken for a row whose figures
 have gone missing.
 
-**They are in alphabetical order.** codeaf's own ranking — fastest-feeling first — is still
-what `auto` and the model row's `via` read; it is the wrong order for a list a person reads,
-because it moves a provider every time the ledger learns something and the eye has to start
-over on each visit.
+**They open in alphabetical order, and `alt+s` reorders them** — the same key that orders the
+model list, applied to whichever table the cursor is in. codeaf's own ranking —
+fastest-feeling first — is still what `auto` and the model row's `via` read; it is the wrong
+order for a list a person reads, because it moves a provider every time the ledger learns
+something and the eye has to start over on each visit.
+
+Inside the providers the cycle is `provider → first → t/s → $/M → up` and back, each column
+forwards then reversed. `note` and `last 8` do not sort: a note is whichever one thing is
+worth saying about a provider, so ordering by its text would rank "bad replies" against
+"tail 3s" alphabetically, and the sparkline is a picture rather than a value. The two tables
+keep their own orders, so sorting the providers leaves the model list where it was.
 
 **Neither answer wears a mark.** They carried a filled and a hollow bullet for a while, meant
 to say which of them chooses for you — but under the shipped routing row neither of them
@@ -2957,11 +2964,15 @@ does, so the mark was making a distinction the wire does not. The indent says th
 machines and the sentence beside each says what it is.
 
 Each provider row reads, in order: its name, the wait before the first word, how fast it
-writes, what a million output tokens cost there, one short note about what is wrong with
-it, how much of the last five minutes it was answering, and a sparkline of **your own**
-last eight first-token waits on it (taller is slower). That is also the order a narrow
-window gives them up in — the sparkline goes first, and the note about capability outranks
-the uptime because `no tools` changes the answer you get. `←` or `tab` closes the providers
+writes, what a million output tokens cost there, how much of the last five minutes it was
+answering, one short note about what is wrong with it, and a sparkline of **your own** last
+eight first-token waits on it (taller is slower).
+
+**`up` stands with the figures and the note after them.** Uptime is a number and is read down
+its last digit with the three numbers before it; a note is prose, and prose in the middle of
+a run of figures breaks the run the eye is following. That is also the order a narrow window
+gives them up in — the sparkline first, then the note — so a narrow fold keeps `100%`, which
+can be compared between rows, over one row's own caveat. `←` or `tab` closes the providers
 again.
 
 `enter` on a provider **pins** it in your home: chat, `codeaf do`, `codeaf exec`, `codeaf
@@ -3050,40 +3061,49 @@ of the cursor.
 
 ## Sorting the model list by a column — alt+s, cheapest first, biggest window, highest score
 
-**`alt+s` orders the list by the next column. `alt+shift+s` turns that column round.**
+**`alt+s` walks the sort. `alt+shift+s` walks it backwards.**
 
-The cycle starts and ends at the list's own order, so one more press always gets you
-back:
+**The list is always sorted, and it opens on its first column — the name, A to Z.** There is
+no unsorted state, and the heading always carries an arrow saying which order you are in.
+
+**Every column is two presses: its own direction, then reversed.** So the cycle is
 
 ```
-list → model → first → in/M → out/M → window → t/s → elo → list
+model ↓  model ↑  via ↓  via ↑  first ↓  first ↑  in/M ↓  in/M ↑
+window ↓  window ↑  t/s ↓  t/s ↑  elo ↓  elo ↑   → back to model ↓
 ```
 
-**The first press of a column is the way that column is asked about.** Cheapest first for
-`in/M` and `out/M`, quickest first for `first`, biggest first for `window`, fastest for
-`t/s`, highest for `elo`, A to Z for `model`. Nobody opens a price column to find the most
-expensive model, so the useful order is never two presses away. `alt+shift+s` is there for
-the other half.
+and one key reaches every order the table has. **The first of each pair is the way that
+column is asked about** — cheapest for `in/M` and `out/M`, quickest for `first`, biggest for
+`window`, fastest for `t/s`, highest for `elo`, A to Z for `model` and `via`. Nobody opens a
+price column to find the most expensive model, so the useful order is never two presses away.
 
-**The sorted column wears an arrow in the heading** — `out/M ↓`, and `↑` when it is turned
-round. The foot names the key (`alt+s sort`) and not the column, because the heading is
-already saying which column it is.
+**The sorted column wears the arrow** — `out/M ↓`, and `↑` reversed. The foot names the key
+(`alt+s sort`) and not the column, because the heading is already saying which column it is.
 
-Three things worth knowing:
+Four things worth knowing:
 
 - **A column this list published nothing in is skipped.** With no providers measured yet
-  there is no `first` and no `t/s` column, so the cycle steps over them rather than
+  there is no `via`, `first` or `t/s` column, so the cycle steps over them rather than
   stopping on a press that changes nothing you can see.
 - **Rows that published nothing sort to the bottom, both ways round.** A model with no
-  price is not the cheapest one, and turning the column round does not make it the dearest:
-  it is not in the comparison at all.
-- **A sorted list drops the service headings** and the cursor goes to the top row, because
-  the top row is the answer to the question you just asked. It sorts whatever the filter
-  kept, so `deep` then `alt+s` is the deepseek rows in that column's order.
+  price is not the cheapest one, and reversing the column does not make it the dearest: it
+  is not in the comparison at all.
+- **With something typed, the name column is best match first.** `gpt` puts `gpt-5-classic`
+  above `anthropic/claude-gpt-echo`, because that is what you asked for; the arrow then
+  decides the order inside a tier. With an empty box every row matches equally and the
+  column is plainly alphabetical.
+- **A sorted list drops the service headings**, and pressing the key puts the cursor on the
+  top row, because the top row is the answer to the question you just asked. Opening the
+  list still lands on the model in use. It sorts whatever the filter kept, so `deep` then
+  `alt+s` is the deepseek rows in that column's order.
+
+**Inside the providers it sorts the providers** — whichever table the cursor is in. The two
+keep their own orders.
 
 This is where the filter box's `fast` and `cheap` went. They sorted the list too, and the
 problem with them was never sorting — it was that a word typed into a name box is an
-undiscoverable way to ask for it, and that two words were two opinions about six columns.
+undiscoverable way to ask for it, and that two words were two opinions about seven columns.
 
 ## You cannot filter the picker by speed, price or capability — @cloudflare, <1s, >50t/s, $<0.3, fast, cheap
 

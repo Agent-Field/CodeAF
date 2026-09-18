@@ -925,12 +925,15 @@ func laneCells(view laneView) []string {
 	if view.Uptime > 0 {
 		uptime = strconv.Itoa(int(math.Round(view.Uptime))) + "%"
 	}
+	// THE ORDER IS [laneColumns]' ORDER and there is no second spelling of it:
+	// this slice is indexed by column, so `up` before `note` here is the same
+	// decision as `up` before `note` there, and the two cannot drift.
 	return []string{
 		laneSecondsWord(view.TTFT),
 		laneRateBare(view.Rate),
 		price,
-		laneNote(view),
 		uptime,
+		laneNote(view),
 		barSpark(view.Sightings, 0, laneSightings),
 	}
 }

@@ -246,8 +246,8 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"esc interrupt", []string{"esc"}},
 		{pickerKeysSwitch, []string{"enter", "esc"}},
 		// The picker's slot follows its cursor (palette.go's [picker.keysHint]).
-		{pickerKeysModel, []string{"→", "ctrl+t", "enter", "esc"}},
-		{pickerKeysModelTab, []string{"tab", "ctrl+t", "enter", "esc"}},
+		{pickerKeysModel, []string{"→", "ctrl+t", "alt+s", "enter", "esc"}},
+		{pickerKeysModelTab, []string{"tab", "ctrl+t", "alt+s", "enter", "esc"}},
 		{pickerKeysSwitchEffort, []string{"ctrl+t", "enter", "esc"}},
 		{pickerKeysFold, []string{"enter", "←", "esc"}},
 		{pickerKeysFoldTab, []string{"enter", "tab", "esc"}},

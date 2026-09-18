@@ -89,9 +89,11 @@ type picker struct {
 	// lanes is what was believed about that model's lanes at the moment it was
 	// opened, in the order they are drawn in.
 	lanes []laneView
-	// sort is which column the list is ordered by, and the zero value is the
-	// list's own order ([pickerSortKey] and pickersort.go's laws).
-	sort pickerSort
+	// sort is which column the model list is ordered by and laneSort the same for
+	// the providers inside an open fold. The zero value of each is its table's
+	// first column — the name — ascending (pickersort.go's laws).
+	sort     tableSort
+	laneSort tableSort
 	// typed is when the filter box last changed under somebody's hands, and it is
 	// what tells EDITING from NAVIGATING ([picker.editing]). Zero is "nothing has
 	// been typed into this list", which is navigating: there is no text to put a
@@ -400,7 +402,7 @@ func (p *picker) rank() {
 	// AND THE SORT COMES LAST, over whatever the name ranking left — so `deep`
 	// then a press of the sort key is the deepseek rows by price, rather than the
 	// cheapest rows that happen to say deep (pickersort.go).
-	p.sortHits()
+	p.sortHits(len(tokens) > 0)
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose.
 	p.cursor, p.top = 0, 0
@@ -410,13 +412,10 @@ func (p *picker) rank() {
 	// box with ctrl+u used to leave it on row zero, which made the enter that
 	// followed a switch to whatever sorted first.
 	//
-	// UNLESS THE LIST HAS BEEN SORTED, WHERE THE TOP IS THE ANSWER. Somebody who
-	// ordered by price asked which model is cheapest, and that is row one — going
-	// to the model in use instead shows them their own row's neighbourhood, which
-	// is the one part of a sorted list that has nothing to do with what they
-	// asked. It made reversing a column look like it had done nothing at all: the
-	// order changed underneath and the window stayed around the same cursor.
-	if len(tokens) == 0 && p.sort.key == pickerByList {
+	// THE SORT KEY MOVES IT TO THE TOP ITSELF ([picker.sortNext]) rather than this
+	// being asked to tell the two cases apart: opening the list and pressing the
+	// sort key both end here, and only the second of them wants row one.
+	if len(tokens) == 0 {
 		p.cursorToCurrent()
 	}
 }
@@ -653,10 +652,13 @@ func (p *picker) unfoldAt(at int, now time.Time) bool {
 	// prediction is taken from `views` before the copy is sorted, so nothing
 	// downstream is looking at this order.
 	p.auto = laneAuto(p.routing, model.ID, views, now)
-	views = slices.SortedFunc(slices.Values(views), func(a, b laneView) int {
-		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
-	})
 	p.unfold, p.lanes = model.ID, views
+	// AND THE FOLD OPENS IN ITS OWN SORT, whose zero value is the name column
+	// ascending — the alphabetical order these rows have always been drawn in, now
+	// said once as a sort rather than twice as a sort and a special case. The
+	// prediction above is taken from `views` BEFORE this, so nothing downstream is
+	// looking at the order.
+	p.sortLanes()
 	return true
 }
 
@@ -971,12 +973,14 @@ func (p *picker) foldKey(name string) bool {
 	// (taskstable.go argues it for the tasks page's filter, and the argument is
 	// the same one here).
 	case tasksSortKeyChord:
-		p.sortBy(p.nextSort())
+		p.sortNext(false)
 		return true
 	case tasksSortBackChord:
-		// THE SAME COLUMN AGAIN TURNS IT ROUND ([pickerSort.on]), which is what
-		// this chord means on the tasks page and therefore what it means here.
-		p.sortBy(p.sort.key)
+		// AND SHIFT WALKS THE CYCLE BACKWARDS. Every column is two rungs now — its
+		// own direction and the other one ([tableSort.step]) — so "the previous
+		// rung" is what this chord can mean, and it retraces exactly what the
+		// unshifted key visited rather than being a second way to say "reverse".
+		p.sortNext(true)
 		return true
 	case "tab":
 		if !p.unfoldHere() {
@@ -1811,13 +1815,6 @@ func (p *picker) groupBefore(at int) string {
 	if at < 0 || at >= len(p.list) || p.list[at].lane != laneNone {
 		return ""
 	}
-	// A SORTED LIST IS NOT GROUPED. The rows are in a column's order now, so a
-	// service's name over a run of them would be a claim about the structure that
-	// stopped being true — and with the services interleaved it would be drawn
-	// again on nearly every row, which is a heading per row and a wall.
-	if p.sort.key != pickerByList {
-		return ""
-	}
 	model := p.all[p.hits[p.list[at].hit]]
 	if model.Group == "" {
 		return ""
@@ -2176,12 +2173,7 @@ func (p *picker) laneFit(width int) colTableFit {
 		for _, view := range p.lanes {
 			table.add(laneCells(view), ansi.StringWidth(strings.ToLower(view.Name)))
 		}
-		// THE PROVIDERS' TABLE CARRIES NO ARROW. `alt+s` orders the MODELS; the
-		// machines inside a fold are already in one order nobody chose
-		// (alphabetical, [picker.unfoldAt]) and there are never more of them than
-		// fit on a screen, which is the whole reason the model list needed a sort
-		// and this one does not.
-		p.lanesFitted = table.fit(width, colTableNoMark, "")
+		p.lanesFitted = table.fit(width, p.laneSort.column(), p.laneSort.arrow())
 		p.lanesFitted.name0 = laneHead
 		p.lanesFitAt, p.lanesFor = width, p.unfold
 	}
@@ -2330,6 +2322,11 @@ func pickerHintAt(room int, refresh bool) string {
 // list answers it and not while a fetch is already out.
 func (p *picker) hintAt(room int) string { return pickerHintAt(room, p.offersRefresh()) }
 
+// sortKeyWord is how the foot names the sort, and it is one constant because the
+// spelled-out rows above and the cursor-shaped foot below have to say it the same
+// way (the one-source-of-truth rule; [pickerHint]'s own test compares the two).
+const sortKeyWord = tasksSortKeyChord + " sort"
+
 // effortKeyWord is the chord that walks the rung of the model under the cursor,
 // named in the foot since [pickerHint] stopped naming it in the box.
 const effortKeyWord = "ctrl+t effort"
@@ -2345,11 +2342,11 @@ const (
 	// THE EFFORT KEY IS NAMED HERE BECAUSE THE BOX STOPPED NAMING IT
 	// ([pickerHint]), and this is the row it works on: inside a fold the cursor
 	// is on a machine and `ctrl+t` has no model to dial.
-	pickerKeysModel = "→ providers · " + effortKeyWord + " · enter switch · esc"
+	pickerKeysModel = "→ providers · " + effortKeyWord + " · " + sortKeyWord + " · enter switch · esc"
 	// pickerKeysModelTab is the same row with the caret somewhere inside what is
 	// typed, where `→` steps over a character instead ([picker.foldKey]) and
 	// only `tab` opens.
-	pickerKeysModelTab = "tab providers · " + effortKeyWord + " · enter switch · esc"
+	pickerKeysModelTab = "tab providers · " + effortKeyWord + " · " + sortKeyWord + " · enter switch · esc"
 	// pickerKeysFold is a row inside an open fold: enter chooses that provider,
 	// `←` walks back out to the model.
 	pickerKeysFold = "enter choose · ← back · esc"
@@ -2426,7 +2423,7 @@ func (p *picker) keysParts() (string, string, string) {
 	// five cells that made the foot drop this clause and the one beside it at a
 	// hundred columns, and which column the list is on is already drawn, on the
 	// heading, wearing the arrow.
-	sorts := tasksSortKeyChord + " sort"
+	sorts := sortKeyWord
 	switch {
 	case !ok:
 		return "", "switch", ""

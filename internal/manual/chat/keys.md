@@ -1475,9 +1475,11 @@ cursor into them, `tab` and `←` close them and put it back on the model ·
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
 column and **`alt+shift+s`** turns that column round · anything else types into it.
 
-`alt+s` walks `list → model → first → in/M → out/M → window → t/s → elo` and back to
-`list`, skipping any column this list published nothing in. The sorted column wears `↓` or
-`↑` in the heading. It is a chord and not a bare `s` for the reason the tasks place gives:
+Every column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
+`model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
+published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
+column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the tasks place gives:
 `s` is one of the commonest letters a filter starts with, and the list a person was
 narrowing would re-sort instead.
 

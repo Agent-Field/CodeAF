@@ -989,7 +989,9 @@ func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
 
 	cursorTo(t, a, config.KeyTierHighModel)
 	drive(t, a, key("enter"))
-	chat := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	// Alphabetical, which is what a table opens in on this surface
+	// (pickersort.go). What this test is about is WHICH models are on offer.
+	chat := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3", "vendor/blind-chat"}
 	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(chat, ",") {
 		t.Fatalf("a class row offers %v, want the models you can talk to %v", got, chat)
 	}
@@ -1080,7 +1082,7 @@ func TestTheModalityPredicates(t *testing.T) {
 func TestTheModelOverlayAsksTheChatQuestion(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: "vendor/blind-chat"}, modalityCatalog)
 	typeLine(t, a, "/model")
-	want := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	want := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3", "vendor/blind-chat"}
 	if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("/model offers %v, want %v", got, want)
 	}

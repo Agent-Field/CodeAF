@@ -464,7 +464,21 @@ func TestASettingsSelectSubmenuSwitchesTheModel(t *testing.T) {
 	if chosen, _ := a.sheet.sel.choice(); chosen != "openai/gpt-4.1-mini" {
 		t.Fatalf("the submenu opened on %q", chosen)
 	}
-	drive(t, a, key("down"), key("enter"))
+	// THE OTHER MODEL IS UP AND NOT DOWN, because the list is alphabetical — every
+	// table on this surface opens sorted by its first column (pickersort.go) — and
+	// `openai/…` sorts after `anthropic/…`. The walk is written as "onto the other
+	// row" rather than as one key, so the order is the sort's business and not this
+	// test's.
+	for at := 0; at < len(a.sheet.sel.pick.list); at++ {
+		if chosen, _ := a.sheet.sel.choice(); chosen == "anthropic/claude-sonnet-4.5" {
+			break
+		}
+		drive(t, a, key("up"))
+	}
+	if chosen, _ := a.sheet.sel.choice(); chosen != "anthropic/claude-sonnet-4.5" {
+		t.Fatalf("the walk did not reach the other model, it is on %q", chosen)
+	}
+	drive(t, a, key("enter"))
 	// ENTER WRITES AND LEAVES THE LIST UP ([app.pickerKey] argues it).
 	if a.sheet.sel == nil {
 		t.Fatal("enter closed the submenu; esc is the way out now")

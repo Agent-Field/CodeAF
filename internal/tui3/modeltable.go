@@ -77,6 +77,16 @@ type tableColumn struct {
 	// thing that lets a constant value be read as furniture rather than as a
 	// coincidence ([colTable.varies] holds the argument).
 	selects bool
+	// sorts says this column can ORDER the list, and up says which way it is read
+	// the first time the sort key lands on it — smallest first for a wait, a price
+	// and a name, biggest first for a window, a rate, a score and an uptime.
+	//
+	// THEY ARE ON THE COLUMN AND NOT IN A LIST BESIDE IT, which is the
+	// one-source-of-truth rule: a second table naming the sortable heads would
+	// have to be kept in step with this one, and the day it was not, a renamed
+	// column would keep an arrow it could no longer earn (pickersort.go).
+	sorts bool
+	up    bool
 }
 
 // modelColumns are the table's columns IN RANK ORDER — the order they are drawn
@@ -100,13 +110,18 @@ type tableColumn struct {
 // has none to give. `in/M` is the half the figures cannot say: per million, and
 // which million.
 var modelColumns = []tableColumn{
-	{head: "via"},
-	{head: "first", right: true},
-	{head: "in/M", right: true},
-	{head: "out/M", right: true},
-	{head: "window", right: true},
-	{head: "t/s", right: true},
-	{head: "elo", right: true},
+	{head: "via", sorts: true, up: true},
+	{head: "first", right: true, sorts: true, up: true},
+	{head: "in/M", right: true, sorts: true, up: true},
+	{head: "out/M", right: true, sorts: true, up: true},
+	{head: "window", right: true, sorts: true},
+	{head: "t/s", right: true, sorts: true},
+	{head: "elo", right: true, sorts: true},
+	// THE TWO MODALITY COLUMNS DO NOT SORT. A cell there is a SET of words
+	// (`image audio video file`) and ordering rows by the text of a set is an
+	// order about spelling: `audio` would come before `image video` for no reason
+	// a person could act on. What somebody wants of these columns is to see which
+	// rows have a word in them, and the column already shows that.
 	{head: modalityInputsLead, selects: true},
 	{head: modalityOutputsLead, selects: true},
 }
@@ -126,11 +141,18 @@ const modelHead = "model"
 const laneHead = "provider"
 
 var laneColumns = []tableColumn{
-	{head: "first", right: true},
-	{head: "t/s", right: true},
-	{head: "$/M", right: true},
+	{head: "first", right: true, sorts: true, up: true},
+	{head: "t/s", right: true, sorts: true},
+	{head: "$/M", right: true, sorts: true, up: true},
+	// `up` STANDS BEFORE `note`, and the order is the drop order as well as the
+	// reading order (law 3: a narrow frame gives up columns from this end). Uptime
+	// is a figure that belongs with the three figures before it and is read down
+	// its last digit with them; the note is prose, and prose beside numbers breaks
+	// the run a person is scanning. It also decides which of the two a narrow fold
+	// keeps, and it should keep the figure: `100%` is comparable between rows,
+	// while a note is one row's own caveat.
+	{head: "up", right: true, sorts: true},
 	{head: "note"},
-	{head: "up", right: true},
 	{head: "last 8"},
 }
 
@@ -322,8 +344,9 @@ type colTableFit struct {
 	// provider list's own word inside a fold.
 	name0 string
 	// mark is the column whose head wears the sort arrow — an index into cols, or
-	// [colTableNameMark] for the name column, or [colTableNoMark] for a list
-	// nobody has sorted. arrow is the character it wears.
+	// [tableSortName] for the name column, which every table's zero sort orders by.
+	// arrow is the character it wears, and it is never empty: a table on this
+	// surface is always in some order (pickersort.go).
 	//
 	// IT IS IN THE FIT AND NOT IN THE HEADER because the arrow takes CELLS, and
 	// cells are what a fit is. A head that grew two cells wide after the columns
@@ -335,14 +358,6 @@ type colTableFit struct {
 	mark  int
 	arrow string
 }
-
-// colTableNoMark and colTableNameMark are the two mark values that are not a
-// column index: no arrow anywhere, and the arrow on the name column, which is
-// drawn from [colTableFit.name0] rather than out of cols.
-const (
-	colTableNoMark   = -1
-	colTableNameMark = -2
-)
 
 // varies reports whether a column said two different things anywhere on this
 // list.
@@ -449,7 +464,7 @@ func (f colTableFit) headAt(at int) string {
 
 // nameHead is the same for the NAME column, whose head is not in cols.
 func (f colTableFit) nameHead() string {
-	if f.mark != colTableNameMark || f.arrow == "" {
+	if f.mark != tableSortName || f.arrow == "" {
 		return f.name0
 	}
 	return f.name0 + " " + f.arrow

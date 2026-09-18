@@ -949,10 +949,11 @@ each rung used only when the one above it came back empty after filtering:
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
-**`alt+s` orders the list by the next column** and `alt+shift+s` turns that column round —
-`list → model → first → in/M → out/M → window → t/s → elo`, skipping the columns this list
-published nothing in, with the arrow on the sorted column's heading (the *models and cost*
-page, "Sorting the model list by a column").
+**`alt+s` walks the sort and `alt+shift+s` walks it back.** The list is always sorted — it
+opens on the name, A to Z — and every column is two presses, its own direction then reversed.
+Columns this list published nothing in are skipped, the sorted one wears the arrow, and inside
+an open provider fold the same key sorts the providers instead (the *models and cost* page,
+"Sorting the model list by a column").
 
 Filtering is over the model's **name** and nothing else. It splits your text on whitespace
 and every token must match, each in one of three tiers: prefix, then substring, then

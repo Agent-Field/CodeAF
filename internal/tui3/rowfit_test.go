@@ -95,13 +95,13 @@ func TestThePickerRowKeepsItsNameAndSpendsFactsInRankOrder(t *testing.T) {
 		{
 			width: 60,
 			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18",
-			head:  "  model                       via        first   in/M  out/M",
+			head:  "  model \u2193                     via        first   in/M  out/M",
 		},
 		// AND AT EIGHTY EVERY FACT THE ROW KNOWS IS ON IT.
 		{
 			width: 80,
 			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
-			head:  "  model                       via        first   in/M  out/M  window  t/s   elo",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
 		},
 		// AND FROM HERE UP THE ROW STOPS GROWING. Every fact is already said and
 		// the columns sit against the names rather than against the frame, so a
@@ -110,17 +110,17 @@ func TestThePickerRowKeepsItsNameAndSpendsFactsInRankOrder(t *testing.T) {
 		{
 			width: 100,
 			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
-			head:  "  model                       via        first   in/M  out/M  window  t/s   elo",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
 		},
 		{
 			width: 120,
 			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
-			head:  "  model                       via        first   in/M  out/M  window  t/s   elo",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
 		},
 		{
 			width: 160,
 			want:  "› deepseek/deepseek-v4-flash  coreweave   0.4s  $0.09  $0.18      1M   24  1290",
-			head:  "  model                       via        first   in/M  out/M  window  t/s   elo",
+			head:  "  model ↓                     via        first   in/M  out/M  window  t/s   elo",
 		},
 	} {
 		if got := rowfitRow(a, c.width); got != c.want {
