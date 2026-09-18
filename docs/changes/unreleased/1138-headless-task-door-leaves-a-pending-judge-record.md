@@ -1,7 +1,7 @@
 ---
 kind: added
 title: the headless task door leaves a pending judge record at its tail
-pr: 0000
+pr: 1138
 surface: [engine]
 invalidates:
   - "`codeaf run` — the headless door that runs one saved program with nobody watching and owns no session graph — left nothing behind for the Model Pool, so a program run outside a conversation was never scored: the chat door judged a task through a live landing hook, and this door had none. Its one ending (`reportSubharnessRun`) now appends the run's landing to `<profile>/pool/pending.jsonl` under the door `run`, where the restart-time sweep scores it on the next chat start."
