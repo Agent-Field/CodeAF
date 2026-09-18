@@ -366,8 +366,7 @@ Talk to it — a surface you sit in front of
       --no-host runs the conversation in this process rather than on this
       workspace's session host; --debug keeps the whole record of the run
   codeaf resume
-      pick an earlier conversation by name and open it — the same list is
-      /resume inside the chat
+      pick an earlier conversation by name and open it — /resume inside the chat
 
 Hand it work — nobody is watching, the answer is on stdout
   codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
@@ -435,6 +434,7 @@ Housekeeping — changes state on disk or on the network
       run one full background pass by hand and exit
   codeaf patch FILE --old TEXT --new TEXT | codeaf doc PATH [--pages A-B]
   codeaf web fetch URL | web search QUERY | codeaf image "PROMPT" --out PATH
+  codeaf plandb <verb> [--db path] [--json]
   codeaf help env
       the environment table: every variable and its default
 

@@ -37,8 +37,12 @@ import (
 // lives on the nodes themselves (taskSpec.planID, checkpointed), because a
 // map on the side that disagreed with its nodes would be a second truth.
 type planState struct {
-	mu      sync.Mutex
-	path    string
+	mu   sync.Mutex
+	path string
+	// chat is the conversation's tag: the session folder's own name, stamped on
+	// every row the seed makes so the plan can be read back as this chat's
+	// (PlanTasks). It is settled with the path at the seed and never moves.
+	chat    string
 	shimmed bool
 }
 
@@ -92,9 +96,76 @@ func (g *TaskGraph) planPath() string {
 		return filepath.Join(place.Dir, planStoreFilename)
 	}
 	if g.home.config.Workspace != "" {
-		return filepath.Join(g.home.config.Workspace, ".codeaf", planStoreFilename)
+		return PlanStorePath(g.home.config.Workspace)
 	}
 	return ""
+}
+
+// PlanStorePath is where a run's plan store lives under a working copy that has
+// no session folder of its own: <dir>/.codeaf/plandb.db. It is the same name and
+// the same folder [planPath] falls to for a session with no Place, so a run
+// dispatched by a headless door and a session that seeds one of its own find one
+// file — two spellings of the path would be two stores with half a run in each.
+func PlanStorePath(dir string) string {
+	return filepath.Join(dir, ".codeaf", planStoreFilename)
+}
+
+// OpenRunPlan opens the plan store a headless door outside a session runs over:
+// the working copy's own .codeaf/plandb.db, seeded with the run's words when it
+// is not there, adopted when it holds a live run, and replaced by a fresh one
+// when the run it holds has finished — the same three roads [planSeed] takes,
+// because a finished plan is not a live one and a door that ran on a done root
+// would report the previous run's result as its own. The store is the caller's
+// to close.
+func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
+	path := PlanStorePath(dir)
+	if _, err := os.Stat(path); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, err
+		}
+		return plandb.Open(path, title, planRootID, title, brief)
+	}
+	// ADOPT: the store under this name is the run's, and its own root says
+	// whether there is still work in it. The title and the brief are the store's
+	// own on this road — a resumed run reads the words it was seeded with — which
+	// is why the adopt demands the root id and nothing else.
+	adopted, err := plandb.Open(path, "", planRootID, "", "")
+	if err != nil {
+		return nil, err
+	}
+	if root := adopted.Task(planRootID); root != nil && !terminalStoreStatus(root.Status) {
+		return adopted, nil
+	}
+	_ = adopted.Close()
+	// A FINISHED PLAN IS NOT A LIVE ONE. The finished store is archived beside
+	// the run with its own number and a fresh one is seeded, the way planSeed
+	// archives it, so a second errand in one project is a second run rather than
+	// a reader of the first one's ending.
+	for suffix := 1; ; suffix++ {
+		archived := fmt.Sprintf("%s.%d", path, suffix)
+		if _, err := os.Stat(archived); os.IsNotExist(err) {
+			if err := os.Rename(path, archived); err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+	return plandb.Open(path, title, planRootID, title, brief)
+}
+
+// planChat is the conversation's tag — the id every row the seed makes carries,
+// and the one the reading verbs narrow the plan by (planTaskRow). It is the
+// session folder's own name, read off the same Place planPath reads and with no
+// lock, the way every other config read in the seed is; a session with no
+// folder tags nothing, and its plan is read whole.
+func (g *TaskGraph) planChat() string {
+	if g.home == nil {
+		return ""
+	}
+	return g.home.config.Place.ID()
 }
 
 // planSeed is the wiring point the design names: the one door every task
@@ -124,7 +195,7 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 				if !os.IsNotExist(err) {
 					return
 				}
-				store, err = plandb.Open(path, spec.title, planRootID, spec.title, spec.brief)
+				store, err = plandb.Open(path, spec.title, planRootID, spec.title, spec.brief, g.planChat())
 				if err != nil {
 					// A store that will not open is a run without a plan, and a
 					// run without a plan is the belt it was before this
@@ -172,7 +243,7 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 		// store opened per pass must be closed, or every pass would leave a
 		// database connection behind.
 		defer store.Close()
-		g.plan = &planState{path: path}
+		g.plan = &planState{path: path, chat: g.planChat()}
 		if err := g.plan.armShim(); err != nil {
 			// A plan whose shim never landed is still the run's plan — the
 			// store is seeded and the runtime dispatches from it — but every
@@ -233,7 +304,12 @@ func (g *TaskGraph) planSeed(spec *taskSpec) {
 // the store, never a cached copy. A nil answer is a pass with no plan; when
 // the answer is a store the caller closes it, because every pass opens one.
 func (p *planState) open() *plandb.Store {
-	store, err := plandb.Open(p.path, "", planRootID, "", "")
+	// THE STORE IS ADOPTED BY ITS PATH AND NOT BY ITS ROOT, because a run seeded
+	// through the chat's task door names its root with the id the door answered
+	// the person (task_run_belt.go), while the legacy seed's root is [planRootID]
+	// — and this reading must serve both. Demanding the legacy root here would
+	// make [Agent.PlanTasks] blind to a run's own store.
+	store, err := plandb.Open(p.path, "", "", "", "")
 	if err != nil {
 		return nil
 	}
@@ -740,3 +816,100 @@ func (g *TaskGraph) planReviseThrough(planID, brief string) {
 }
 
 var errPlanNoStore = errors.New("plan store is not open")
+
+// planRecordSpend writes one spend row into the run's store: the model call a
+// plan-driven worker just made, charged to the plan task it carries. It is
+// called on its own goroutine (recordPlanSpend) and is best-effort whole — a
+// store that will not open, a row the store refuses, is silence, because the
+// money is already in the session's ledger row and a plan that misses one row
+// under-reports by less than a turn held up for the write would.
+func (g *TaskGraph) planRecordSpend(planID, model, role string, usd float64, inTokens, outTokens int) {
+	plan := g.planIfArmed()
+	if plan == nil {
+		return
+	}
+	plan.mu.Lock()
+	defer plan.mu.Unlock()
+	store := plan.open()
+	if store == nil {
+		return
+	}
+	defer store.Close()
+	_ = store.AddSpend(planID, model, role, usd, inTokens, outTokens)
+}
+
+// recordPlanSpend charges one banked model call to the worker's plan task —
+// the write beside the usage ledger row (recordUsageLine, its only caller).
+// The figures are the call's own; the task is the node's plan task; the role
+// is what the node was doing at that instant: 'plan' while it has plan
+// children of its own, 'work' while it is a leaf.
+//
+// THE GATE IS TWOFOLD and cheap: the worker is on the bash belt
+// (Config.mayBashBelt, checked by the caller) and its node carries a plan id —
+// a worker without a plan task has nothing to charge, and every agent outside
+// the experiment stops here. The graph's lock is taken once, briefly, to read
+// both facts; nothing else is taken while it is held, so the caller — bank,
+// already outside a.mu — waits on nothing.
+func (a *Agent) recordPlanSpend(used Usage, model string) {
+	taskID := a.config.taskID
+	if taskID == 0 {
+		return
+	}
+	g := a.graph()
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	node := g.nodes[taskID]
+	if node == nil {
+		g.mu.Unlock()
+		return
+	}
+	planID := node.spec.planID
+	children := false
+	for _, kid := range g.order {
+		child := g.nodes[kid]
+		if child != nil && child.parent == taskID && child.spec.planID != "" {
+			children = true
+			break
+		}
+	}
+	g.mu.Unlock()
+	if planID == "" {
+		return
+	}
+	role := "work"
+	if children {
+		role = "plan"
+	}
+	go g.planRecordSpend(planID, model, role, used.CostUSD, used.Input, used.Output)
+}
+
+// planRunSpend answers the dollars the run's ledger holds in the store — the
+// per-project rollup under the root task's tag, which is every task's tag, so
+// the number is the run's whole bill and not one worker's share of it. Zero
+// says the run has never been charged: no plan, a store that will not open, or
+// no row joined to the project — the caller renders nothing rather than a zero
+// somebody reads as a figure.
+//
+// The read takes the plan's gate and nothing else, the same order every pulse
+// takes, and opens the store fresh the way every pass does — the worker's CLI
+// has been writing since any cached copy was made.
+func (g *TaskGraph) planRunSpend() float64 {
+	plan := g.planIfArmed()
+	if plan == nil {
+		return 0
+	}
+	plan.mu.Lock()
+	defer plan.mu.Unlock()
+	store := plan.open()
+	if store == nil {
+		return 0
+	}
+	defer store.Close()
+	root := store.Task(planRootID)
+	if root == nil {
+		return 0
+	}
+	return store.Summary().ProjectSpend[root.Project].USD
+}

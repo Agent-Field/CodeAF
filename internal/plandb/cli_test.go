@@ -994,3 +994,186 @@ func TestPlandbCliStatusFullPrintsSpendWhenCharged(t *testing.T) {
 		t.Fatalf("an uncharged run printed spend:\n%s", h2.out.String())
 	}
 }
+
+// The seat a task carries is set at add and read beside its status: --role
+// declares check or probe, a word outside the four is refused naming them, and
+// show and task overview print the seat each task's shape gives it.
+func TestPlandbCliRoleFlagAndPrinting(t *testing.T) {
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	h.cliAdd("Work", "w")
+	h.cliAdd("Review", "r", "--role", "check")
+
+	code := h.run("--db", h.db, "show", "t-r")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "status: ○ ready [role check]") {
+		t.Fatalf("show missed the declared seat:\n%s", h.out.String())
+	}
+	code = h.run("--db", h.db, "show", "t-w")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "status: ○ ready [role work]") {
+		t.Fatalf("show missed the default seat:\n%s", h.out.String())
+	}
+	code = h.run("--db", h.db, "task", "overview")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "[role check]") || !strings.Contains(h.out.String(), "[role work]") {
+		t.Fatalf("overview missed the seats:\n%s", h.out.String())
+	}
+	// A word outside the four is refused, and the refusal names them.
+	code = h.run("--db", h.db, "add", "Bad", "--role", "auditor")
+	cliWantError(t, h, code, "role must be one of plan, work, check, probe")
+}
+
+// The spend verb reads the ledger back by role and by model, printing both
+// groupings, and says so plainly when the run has never been charged.
+func TestPlandbCliSpendPrintsBothGroupings(t *testing.T) {
+	h := cliNewHarness(t)
+	st, err := Open(h.db, "demo", "root", "demo", "", "chat-one")
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	ret, err := st.AddMany([]TaskSpec{planSpec("a", "Alpha")})
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := st.AddSpend(ret[0].ID, "model-x", RoleWork, 1.50, 100, 20); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := st.AddSpend(ret[0].ID, "model-y", RoleCheck, 0.25, 10, 5); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	code := h.run("--db", h.db, "spend")
+	cliWantCode(t, code, 0)
+	for _, want := range []string{
+		"spend role check: $0.2500 (1 calls)",
+		"spend role work: $1.5000 (1 calls)",
+		"spend model model-x: $1.5000 (1 calls)",
+		"spend model model-y: $0.2500 (1 calls)",
+	} {
+		if !strings.Contains(h.out.String(), want) {
+			t.Fatalf("spend missed %q:\n%s", want, h.out.String())
+		}
+	}
+
+	// A run nobody charged says so rather than printing nothing.
+	h2 := cliNewHarness(t)
+	h2.cliInitFresh()
+	code = h2.run("--db", h2.db, "spend")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h2.out.String(), "(no spend)") {
+		t.Fatalf("uncharged spend:\n%s", h2.out.String())
+	}
+}
+
+// The spend verb's --by axis rolls the ledger up under one key, heaviest
+// first, says so plainly when nothing has been charged, and carries the axis
+// through --json.
+func TestPlandbCliSpendByAxisPrintsRollup(t *testing.T) {
+	h := cliNewHarness(t)
+	st, err := Open(h.db, "demo", "root", "demo", "", "chat-one")
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	ret, err := st.AddMany([]TaskSpec{planSpec("a", "Alpha")})
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := st.AddSpend(ret[0].ID, "model-x", RoleWork, 1.50, 100, 20); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := st.AddSpend(ret[0].ID, "model-y", RoleCheck, 0.25, 10, 5); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	code := h.run("--db", h.db, "spend", "--by", "model")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "spend model model-x: $1.5000 (in 100 out 20, 1 calls)") {
+		t.Fatalf("--by model missed the line:\n%s", h.out.String())
+	}
+	if x, y := strings.Index(h.out.String(), "spend model model-x"), strings.Index(h.out.String(), "spend model model-y"); x < 0 || y < 0 || x > y {
+		t.Fatalf("--by model did not print the heaviest key first:\n%s", h.out.String())
+	}
+
+	code = h.run("--db", h.db, "spend", "--by", "seat")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "spend seat work:") || !strings.Contains(h.out.String(), "spend seat check:") {
+		t.Fatalf("--by seat missed a seat:\n%s", h.out.String())
+	}
+
+	// --json carries the axis: one object per key with the sums on it.
+	code = h.run("--db", h.db, "spend", "--by", "chat", "--json")
+	cliWantCode(t, code, 0)
+	var lines []map[string]any
+	if err := json.Unmarshal(h.out.Bytes(), &lines); err != nil {
+		t.Fatalf("--json output is not an array: %v\n%s", err, h.out.String())
+	}
+	if len(lines) != 1 || lines[0]["key"] != "chat-one" || lines[0]["calls"].(float64) != 2 {
+		t.Fatalf("--json chat rollup = %#v", lines)
+	}
+
+	// A word outside the axes is refused, naming them.
+	code = h.run("--db", h.db, "spend", "--by", "team")
+	cliWantError(t, h, code, "--by team is not one of chat, project, seat, model, task")
+
+	// The default (no --by) keeps the two groupings the seats care about.
+	code = h.run("--db", h.db, "spend")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "spend role work:") || !strings.Contains(h.out.String(), "spend model model-x:") {
+		t.Fatalf("the default spend print changed:\n%s", h.out.String())
+	}
+
+	// A store nobody charged prints one line saying what arrives there, never
+	// a zero.
+	h2 := cliNewHarness(t)
+	h2.cliInitFresh()
+	code = h2.run("--db", h2.db, "spend", "--by", "chat")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h2.out.String(), "no spend by chat yet") {
+		t.Fatalf("uncharged --by chat:\n%s", h2.out.String())
+	}
+	if strings.Contains(h2.out.String(), "$0") {
+		t.Fatalf("uncharged --by chat printed a zero:\n%s", h2.out.String())
+	}
+}
+
+// --since bounds the spend verb's rollup: a bound after the charges excludes
+// them and leaves the one emptiness line, a bound before them keeps every row,
+// and a word that is neither is refused.
+func TestPlandbCliSpendSinceBoundsTheWindow(t *testing.T) {
+	h := cliNewHarness(t)
+	st, err := Open(h.db, "demo", "root", "demo", "", "chat-one")
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	ret, err := st.AddMany([]TaskSpec{planSpec("a", "Alpha")})
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := st.AddSpend(ret[0].ID, "model-x", RoleWork, 1.50, 100, 20); err != nil {
+		t.Fatalf("add spend: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	code := h.run("--db", h.db, "spend", "--by", "model", "--since", "2999-01-01")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "no spend by model yet") {
+		t.Fatalf("a future --since did not exclude the row:\n%s", h.out.String())
+	}
+
+	code = h.run("--db", h.db, "spend", "--by", "model", "--since", "2000-01-01")
+	cliWantCode(t, code, 0)
+	if !strings.Contains(h.out.String(), "spend model model-x: $1.5000") {
+		t.Fatalf("a past --since dropped the row:\n%s", h.out.String())
+	}
+
+	code = h.run("--db", h.db, "spend", "--by", "model", "--since", "yesterday")
+	cliWantError(t, h, code, `--since "yesterday"`)
+}

@@ -612,6 +612,12 @@ where it stands.
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
 
+**On the worker harness road its belt is not the conversation's.** With
+`CODEAF_TASK_BELT=bash` set, a worker carries one shell and the plan CLI rather than
+these tools, and the verbs for handing work out come off it; the *worker harness* page
+names what that belt carries. Everything below is the belt the older road composes,
+which is what a build without the switch gives every task.
+
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
 document engine. **The transcript it inherits only when it was promoted** — a quick task
@@ -641,7 +647,9 @@ piece it was given, and where its brief cannot be done without going against you
 in its report instead of quietly widening the job. A top-level task, with nobody between it
 and you, still reads your message as the whole of what was asked for.
 
-**It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
+**It keeps `propose_task` and `tasks`, as a pair.** On the worker harness road it does
+not — that belt coordinates through the plan CLI, and the handing-out verbs are off it
+(*worker harness*, under *What a worker can do*). On this road a task may hand pieces of its own work
 out when its brief holds parts that do not need each other, at most **20** of them, and
 `tasks` is how it then watches them. Tasks nest at most **3** deep, so a piece it hands out
 may split its own share once more and a piece of that piece cannot. Inside a task

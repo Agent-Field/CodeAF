@@ -252,3 +252,12 @@ func branchBashDescription(caps bare.Caps) string {
 func bashBeltAsked() bool {
 	return strings.TrimSpace(env.Get("CODEAF_TASK_BELT")) == "bash"
 }
+
+// BashBeltAsked is [bashBeltAsked] as a door outside this package reads it: a
+// headless errand that dispatches through the run engine needs the same switch
+// the belt and every landing read, and a second reader of CODEAF_TASK_BELT
+// outside this package would be a switch two doors could disagree about. It
+// goes through [internal/env], the one door onto the environment, so the
+// compatibility spelling of the variable and the export seam both keep
+// working.
+func BashBeltAsked() bool { return bashBeltAsked() }

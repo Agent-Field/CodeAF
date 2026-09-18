@@ -40,22 +40,25 @@ import (
 // row is one invocation's line: the plan's identity and the readings and
 // grade that came of it.
 type row struct {
-	Date        string
-	Arm         Arm
-	Seats       Seats
-	Cell        string
-	Replicate   int
-	Model       string
-	ModelsUsed  string
-	Graded      bool
-	GradeDetail string
-	Ending      string
-	Report      string
-	Steps       int
-	CostUSD     float64
-	Unbilled    int
-	WallSeconds float64
-	WallSource  string
+	Date         string
+	Arm          Arm
+	Seats        Seats
+	Cell         string
+	Replicate    int
+	Model        string
+	ModelsUsed   string
+	Graded       bool
+	GradeDetail  string
+	Ending       string
+	Report       string
+	Steps        int
+	Calls        int
+	InputTokens  int
+	OutputTokens int
+	CostUSD      float64
+	Unbilled     int
+	WallSeconds  float64
+	WallSource   string
 
 	ChangedFiles  int
 	ChildrenDone  int
@@ -77,6 +80,7 @@ var csvHeader = []string{
 	"wall_seconds", "wall_source", "changed_files",
 	"children_done", "children_total", "nodes_failed",
 	"invalid_actions", "truncations", "edit_idiom_flags", "run_dir",
+	"calls", "in_tokens", "out_tokens", "out_per_call", "in_per_call",
 }
 
 func (r row) csvValues() []string {
@@ -89,8 +93,15 @@ func (r row) csvValues() []string {
 		strconv.Itoa(r.ChildrenDone), strconv.Itoa(r.ChildrenTotal), strconv.Itoa(r.NodesFailed),
 		strconv.Itoa(r.InvalidActions), strconv.Itoa(r.Truncations), strconv.Itoa(r.EditIdiomFlags),
 		r.RunDir,
+		strconv.Itoa(r.Calls), strconv.Itoa(r.InputTokens), strconv.Itoa(r.OutputTokens),
+		ratio(r.outPerCall()), ratio(r.inPerCall()),
 	}
 }
+
+// outPerCall and inPerCall are the row's derived token-to-call readings, the
+// same ratios the ledger's own fields answer.
+func (r row) outPerCall() float64 { return perCall(r.OutputTokens, r.Calls) }
+func (r row) inPerCall() float64  { return perCall(r.InputTokens, r.Calls) }
 
 // gradeWord is the graded column's own word: yes or no, the grader's answer
 // and nothing more. The verdict words stay in the design document.
@@ -104,6 +115,10 @@ func gradeWord(pass bool) string {
 func money(usd float64) string { return strconv.FormatFloat(usd, 'f', 6, 64) }
 
 func seconds(s float64) string { return strconv.FormatFloat(s, 'f', 1, 64) }
+
+// ratio is a per-call token reading's own column: one decimal is enough to
+// compare two arms' verbosity without inventing precision.
+func ratio(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 
 // oneLine is the progress line the driver prints as an invocation lands.
 func (r row) oneLine() string {
@@ -282,7 +297,9 @@ func (r *runner) runOne(iv invocation) row {
 		Model: iv.Model, ModelsUsed: reading.modelsUsedLine(),
 		Graded: g.Pass, GradeDetail: g.Detail,
 		Ending: reading.Ending, Report: reading.Report,
-		Steps: reading.Steps, CostUSD: reading.CostUSD, Unbilled: reading.Unbilled,
+		Steps: reading.Steps, Calls: reading.Calls,
+		InputTokens: reading.InputTokens, OutputTokens: reading.OutputTokens,
+		CostUSD: reading.CostUSD, Unbilled: reading.Unbilled,
 		WallSeconds: wall, WallSource: wallSource,
 		ChangedFiles: reading.ChangedFiles,
 		ChildrenDone: reading.ChildrenDone, ChildrenTotal: reading.ChildrenTotal,
@@ -736,18 +753,20 @@ func (r *runner) appendRow(row row) error {
 // cellSummary is one arm-and-cell line of the printed table. Arm is the belt
 // letter and Seats the seat word, together the arm's own name.
 type cellSummary struct {
-	Arm       Arm
-	Seats     Seats
-	Cell      string
-	N         int
-	Passes    int
-	Models    string
-	MedSteps  float64
-	MedCost   float64
-	MedWall   float64
-	Invalid   int
-	Truncs    int
-	IdiomFlag int
+	Arm           Arm
+	Seats         Seats
+	Cell          string
+	N             int
+	Passes        int
+	Models        string
+	MedCalls      float64
+	MedSteps      float64
+	MedOutPerCall float64
+	MedCost       float64
+	MedWall       float64
+	Invalid       int
+	Truncs        int
+	IdiomFlag     int
 }
 
 // summarize folds one arm-and-cell's rows into the doc's quoted readings:
@@ -765,19 +784,23 @@ func summarize(rows []row, arm Arm, seats Seats, cellID string) (cellSummary, bo
 	}
 	s := cellSummary{Arm: arm, Seats: seats, Cell: cellID, N: len(mine)}
 	s.Models = modelsAcross(mine)
-	var steps, costs, walls []float64
+	var steps, costs, walls, calls, outPerCalls []float64
 	for _, r := range mine {
 		if r.Graded {
 			s.Passes++
 			steps = append(steps, float64(r.Steps))
 			costs = append(costs, r.CostUSD)
 			walls = append(walls, r.WallSeconds)
+			calls = append(calls, float64(r.Calls))
+			outPerCalls = append(outPerCalls, r.outPerCall())
 		}
 		s.Invalid += r.InvalidActions
 		s.Truncs += r.Truncations
 		s.IdiomFlag += r.EditIdiomFlags
 	}
 	s.MedSteps = median(steps)
+	s.MedCalls = median(calls)
+	s.MedOutPerCall = median(outPerCalls)
 	s.MedCost = median(costs)
 	s.MedWall = median(walls)
 	return s, true
@@ -815,21 +838,22 @@ func printTable(p plan, rows []row, out io.Writer) {
 	if len(dates) > 1 {
 		fmt.Fprintf(out, "  note: rows span more than one day (%v); quote medians per day only\n", sortedKeys(dates))
 	}
-	fmt.Fprintf(out, "%-4s %-7s %3s %5s %6s %10s %10s %10s %8s %7s %7s %s\n",
-		"cell", "arm", "n", "pass", "rate", "med steps", "med $", "med wall", "invalid", "trunc", "idiom", "models")
+	fmt.Fprintf(out, "%-4s %-7s %3s %5s %6s %10s %10s %12s %10s %10s %8s %7s %7s %s\n",
+		"cell", "arm", "n", "pass", "rate", "med calls", "med steps", "med out/call", "med $", "med wall", "invalid", "trunc", "idiom", "models")
 	for _, c := range p.Cells {
 		for _, arm := range p.Arms {
 			s, ok := summarize(rows, arm.Belt, arm.Seats, c.id)
 			if !ok {
 				continue
 			}
-			fmt.Fprintf(out, "%-4s %-7s %3d %5d %6.2f %10.1f %10.4f %10.1f %8d %7d %7d %s\n",
-				s.Cell, arm.name(), s.N, s.Passes, rate(s), s.MedSteps, s.MedCost, s.MedWall,
+			fmt.Fprintf(out, "%-4s %-7s %3d %5d %6.2f %10.1f %10.1f %12.1f %10.4f %10.1f %8d %7d %7d %s\n",
+				s.Cell, arm.name(), s.N, s.Passes, rate(s), s.MedCalls, s.MedSteps, s.MedOutPerCall, s.MedCost, s.MedWall,
 				s.Invalid, s.Truncs, s.IdiomFlag, s.Models)
 		}
 	}
 	for _, arm := range p.Arms {
 		passed, total := 0, 0
+		var armOutPerCalls []float64
 		for _, r := range rows {
 			if r.Arm != arm.Belt || r.Seats != arm.Seats {
 				continue
@@ -837,13 +861,14 @@ func printTable(p plan, rows []row, out io.Writer) {
 			total++
 			if r.Graded {
 				passed++
+				armOutPerCalls = append(armOutPerCalls, r.outPerCall())
 			}
 		}
 		if total == 0 {
 			continue
 		}
-		fmt.Fprintf(out, "arm %s: %d of %d cells graded pass (%.0f%%)\n", arm.name(), passed, total,
-			100.0*float64(passed)/float64(total))
+		fmt.Fprintf(out, "arm %s: %d of %d cells graded pass (%.0f%%), median out/call %.1f\n", arm.name(), passed, total,
+			100.0*float64(passed)/float64(total), median(armOutPerCalls))
 	}
 }
 
@@ -895,7 +920,7 @@ func printPair(p plan, rows []row, out io.Writer) {
 		fmt.Fprintf(out, "%s\n", labelOf(r.Arm, r.Seats, r.Cell, r.Replicate))
 		fmt.Fprintf(out, "  graded: %s (%s)\n", gradeWord(r.Graded), r.GradeDetail)
 		fmt.Fprintf(out, "  ending: %s — %s\n", r.Ending, firstLine(r.Report))
-		fmt.Fprintf(out, "  steps=%d  $%.4f  wall=%.0fs(%s)  models=%s\n",
-			r.Steps, r.CostUSD, r.WallSeconds, r.WallSource, r.ModelsUsed)
+		fmt.Fprintf(out, "  steps=%d  calls=%d  out/call=%.1f  $%.4f  wall=%.0fs(%s)  models=%s\n",
+			r.Steps, r.Calls, r.outPerCall(), r.CostUSD, r.WallSeconds, r.WallSource, r.ModelsUsed)
 	}
 }

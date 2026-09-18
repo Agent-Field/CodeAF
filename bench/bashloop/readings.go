@@ -52,6 +52,14 @@ type readings struct {
 	// paid for.
 	ModelsUsed []string
 
+	// Calls is the ledger's own count of provider calls — one row per call,
+	// each carrying the calls it covered — and InputTokens and OutputTokens the
+	// tokens those calls read and wrote. They are the raw figures the per-call
+	// readings derive from, summed over the same priced rows CostUSD sums.
+	Calls        int
+	InputTokens  int
+	OutputTokens int
+
 	// ChangedFiles is the fixture's own count of files the work touched.
 	ChangedFiles int
 
@@ -104,6 +112,13 @@ type usageLine struct {
 	Model    string  `json:"model,omitempty"`
 	USD      float64 `json:"usd,omitempty"`
 	Unbilled bool    `json:"unbilled,omitempty"`
+	// Calls, Input and Output are the row's own count of provider requests and
+	// the tokens they read and wrote. Calls is one on every row this build
+	// writes and larger only on a row that predates the one-call grain, which
+	// is why it is summed rather than counted.
+	Calls  int `json:"calls,omitempty"`
+	Input  int `json:"in,omitempty"`
+	Output int `json:"out,omitempty"`
 }
 
 // checkpointDocument is the graph's own checkpoint: the family as the engine
@@ -143,20 +158,35 @@ var invalidActionMarkers = []string{
 // produced one — the same honesty bench/e2e's own autopsy keeps.
 func collectReadings(home, placeDir, journalDir, workDir string, pristine fixtureFiles) readings {
 	var r readings
-	r.CostUSD, r.Unbilled, r.ModelsUsed = readLedger(filepath.Join(home, "v3", "usage.jsonl"))
+	totals := readLedger(filepath.Join(home, "v3", "usage.jsonl"))
+	r.CostUSD, r.Unbilled, r.ModelsUsed = totals.USD, totals.Unbilled, totals.Models
+	r.Calls, r.InputTokens, r.OutputTokens = totals.Calls, totals.Input, totals.Output
 	r.Steps, r.InvalidActions, r.Truncations, r.EditIdiomFlags = readJournals(journalDir)
 	r.ChildrenDone, r.ChildrenTotal, r.NodesFailed = readCheckpoint(filepath.Join(placeDir, "tasks.json"))
 	r.ChangedFiles = countChangedFiles(workDir, pristine)
 	return r
 }
 
-// readLedger sums the home's ledger: what the invocation spent, by whose
-// accounting. A missing ledger is a run that never made a call — a zero, and
-// an honest one.
-func readLedger(path string) (usd float64, unbilled int, models []string) {
+// ledgerTotals is what one home's ledger summed to: the money, the rows the
+// provider never priced, the slugs that were billed, and the calls and tokens
+// behind them — the raw figures every per-call reading derives from.
+type ledgerTotals struct {
+	USD      float64
+	Unbilled int
+	Models   []string
+	Calls    int
+	Input    int
+	Output   int
+}
+
+// readLedger sums the home's ledger: what the invocation spent and how much of
+// it was asked, by whose accounting. A missing ledger is a run that never made
+// a call — a zero, and an honest one.
+func readLedger(path string) ledgerTotals {
+	var totals ledgerTotals
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, 0, nil
+		return totals
 	}
 	defer f.Close()
 	seen := map[string]bool{}
@@ -171,17 +201,20 @@ func readLedger(path string) (usd float64, unbilled int, models []string) {
 		if err := json.Unmarshal([]byte(line), &row); err != nil {
 			continue
 		}
-		usd += row.USD
+		totals.USD += row.USD
+		totals.Calls += row.Calls
+		totals.Input += row.Input
+		totals.Output += row.Output
 		if row.Unbilled {
-			unbilled++
+			totals.Unbilled++
 		}
 		if row.Model != "" && !seen[row.Model] {
 			seen[row.Model] = true
-			models = append(models, row.Model)
+			totals.Models = append(totals.Models, row.Model)
 		}
 	}
-	sort.Strings(models)
-	return usd, unbilled, models
+	sort.Strings(totals.Models)
+	return totals
 }
 
 // readJournals walks the family's journals: steps from the `took` lines, the
@@ -408,6 +441,21 @@ func (r readings) wallSeconds() (float64, string) {
 // modelsUsedLine is the honesty column: what was billed, not what was asked.
 func (r readings) modelsUsedLine() string {
 	return strings.Join(r.ModelsUsed, "+")
+}
+
+// outPerCall and inPerCall are the ledger's own per-call ratios: the output one
+// call wrote and the input it read, averaged over the calls the same rows
+// counted.
+func (r readings) outPerCall() float64 { return perCall(r.OutputTokens, r.Calls) }
+func (r readings) inPerCall() float64  { return perCall(r.InputTokens, r.Calls) }
+
+// perCall answers one token-to-call ratio, and zero where no call was counted:
+// there is no per-call reading to quote, not a zero result.
+func perCall(tokens, calls int) float64 {
+	if calls == 0 {
+		return 0
+	}
+	return float64(tokens) / float64(calls)
 }
 
 // describe is the one line the driver prints as an invocation lands.

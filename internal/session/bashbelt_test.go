@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
@@ -189,6 +190,69 @@ func plainConversationBelt(t *testing.T) []bare.Tool {
 	t.Helper()
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	return agent.beltTools()
+}
+
+// beltWorkerAgent is one task worker built the way the runner builds it —
+// [Agent.newTaskAgent] on a node the graph has admitted, with the belt asked
+// through CODEAF_TASK_BELT as the runner asks it — and it answers that worker.
+// The parent's dial and the spec's rung are handed in, because they are the two
+// rungs the spawn places around the seat the worker thinks from.
+func beltWorkerAgent(t *testing.T, dial, specRung effort.Rung) *Agent {
+	t.Helper()
+	session, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	// The graph's runner is stubbed off before anything is admitted, so the
+	// node stays where the spawn left it and this test reads the spawn alone.
+	stubbedGraph(session, func(*TaskNode) {})
+	if dial.Valid() && !session.SetConversationEffort(dial.String()) {
+		t.Fatalf("%q is not a rung the parent can be dialled to", dial)
+	}
+	id := session.graph().reserve()
+	spec := taskSpec{title: "the job", brief: "b", acceptance: "a", depth: 1}
+	if specRung.Valid() {
+		spec.effort = specRung
+	}
+	session.graph().admit(id, spec)
+	worker, err := session.newTaskAgent(context.Background(), t.TempDir(), session.graph().node(id), "")
+	if err != nil {
+		t.Fatalf("newTaskAgent: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	return worker
+}
+
+// TestBashBeltWorkerThinksFromTheWorkSeat pins the effort half of the belt, at
+// the spawn: a bash-belt worker's agent answers low when nothing more specific
+// spoke, and a shipped-belt worker's agent answers what it always did — the
+// parent's own resolved answer, which is absence on a session configured no
+// further. The parent's dial rides in as the worker's default either way, so it
+// reaches the shipped worker and does not lift the belt's seat; a rung set on
+// the spec outranks the seat on both belts, which is what keeps
+// [Agent.SetTaskEffort] worth having here.
+func TestBashBeltWorkerThinksFromTheWorkSeat(t *testing.T) {
+	t.Run("on the bash belt", func(t *testing.T) {
+		t.Setenv("CODEAF_TASK_BELT", "bash")
+		if got := beltWorkerAgent(t, effort.None, effort.None).ResolvedEffort(); got != "low" {
+			t.Fatalf("the bash-belt worker resolves to %q, want low", got)
+		}
+		if got := beltWorkerAgent(t, effort.High, effort.None).ResolvedEffort(); got != "low" {
+			t.Fatalf("a bash-belt worker under a parent dialled to high resolves to %q, want low", got)
+		}
+		if got := beltWorkerAgent(t, effort.None, effort.High).ResolvedEffort(); got != "high" {
+			t.Fatalf("a bash-belt worker with a rung on its spec resolves to %q, want high", got)
+		}
+	})
+	t.Run("on the shipped belt", func(t *testing.T) {
+		t.Setenv("CODEAF_TASK_BELT", "")
+		if got := beltWorkerAgent(t, effort.None, effort.None).ResolvedEffort(); got != "" {
+			t.Fatalf("the shipped-belt worker resolves to %q, want absence", got)
+		}
+		if got := beltWorkerAgent(t, effort.High, effort.None).ResolvedEffort(); got != "high" {
+			t.Fatalf("a shipped-belt worker under a parent dialled to high resolves to %q, want high", got)
+		}
+		if got := beltWorkerAgent(t, effort.None, effort.High).ResolvedEffort(); got != "high" {
+			t.Fatalf("a shipped-belt worker with a rung on its spec resolves to %q, want high", got)
+		}
+	})
 }
 
 // TestBashBeltTruncationWritesHeadTailAndPath pins Decision 3's shape: over
@@ -651,6 +715,20 @@ func TestBashBeltWorkerPromptOpensOnTheLoopPolicy(t *testing.T) {
 	if !strings.Contains(bashPage, "Your FIRST action is the FRAME/PLAN") {
 		t.Error("the bash worker's page lost the first-action law")
 	}
+	// AND THE DIRECT LAW LEADS THE LOOP: a task with one owned output and no
+	// unknown is done directly, and the plan is decided once in the first turn.
+	if !strings.Contains(bashPage, "DONE DIRECTLY") {
+		t.Error("the bash worker's page lost the done-directly law")
+	}
+	// AND THE REASONING ECONOMY IS TAUGHT: the observation is the record, and
+	// what comes back is one decision rather than a replay.
+	if !strings.Contains(bashPage, "Think once") {
+		t.Error("the bash worker's page lost the think-once section")
+	}
+	// AND THE EDIT IDIOM NAMES THE DOOR THE BELT ACTUALLY CARRIES.
+	if !strings.Contains(bashPage, "codeaf patch") {
+		t.Error("the bash worker's page lost the codeaf patch idiom")
+	}
 	// AND THE PAGE'S OLD WEIGHT IS GONE: no there-is-no-planner, no batch law
 	// the envelope refuses, no clean-restore check (this belt has no auditor),
 	// and none of the hedges the page used to gate its own rules with.
@@ -709,6 +787,13 @@ func TestBashBeltWorkerPromptOpensOnTheLoopPolicy(t *testing.T) {
 	}
 	if strings.Contains(plainPage, "You own one task within a shared objective.") {
 		t.Error("a worker without the branch belt was handed the loop policy")
+	}
+	// AND THE BYTES THIS WAVE ADDED NEVER REACH THE FLAG-OFF PAGE: the law,
+	// the reasoning economy and the patch idiom are the bash belt's own.
+	for _, bashOnly := range []string{"DONE DIRECTLY", "Think once", "codeaf patch"} {
+		if strings.Contains(plainPage, bashOnly) {
+			t.Errorf("a worker without the branch belt was handed %q", bashOnly)
+		}
 	}
 }
 

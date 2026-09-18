@@ -39,6 +39,11 @@ type Store struct {
 	// connection per store (openDatabase), so the pragmas are set once and a
 	// transaction never races its own store for the write lock.
 	db *sql.DB
+	// rdb is the handle every read runs on, a second connection in DEFERRED
+	// transactions (openReadDatabase). It is what lets a read answer the last
+	// committed plan — another process's write included — and run beside a
+	// writer holding the write lock rather than behind it.
+	rdb *sql.DB
 }
 
 // Open loads the plan at path, or creates one when the database does not exist.
@@ -87,6 +92,13 @@ func Open(path, project, rootID, rootTitle, rootDescription string, chat ...stri
 		store.db = nil
 		return nil, err
 	}
+	rdb, err := openReadDatabase(path)
+	if err != nil {
+		_ = db.Close()
+		store.db = nil
+		return nil, err
+	}
+	store.rdb = rdb
 	store.data = loaded
 	return store, nil
 }
@@ -143,6 +155,17 @@ func (s *Store) Path() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.path
+}
+
+// TaskDir is the folder one task's record lives in beside the store: the
+// trajectory the run's worker appends its steps to and the transcript and
+// spill files the session seat leaves both land there, so one task's page is
+// one folder a person can open. The store's own path is the one root both
+// roads derive it from — the session seat reads it off the store path it was
+// given, the run off the store it drives — and a second spelling of the
+// layout would be two answers to where a task's record is.
+func TaskDir(storeDir, id string) string {
+	return path.Join(storeDir, "tasks", id)
 }
 
 func (s *Store) Project() string {
@@ -262,6 +285,7 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 func (s *Store) ReadyLeaves() []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	var tasks []*Task
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
@@ -280,6 +304,7 @@ func (s *Store) ReadyLeaves() []*Task {
 func (s *Store) ReadySet(filters ...Filter) ReadySet {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	filter := firstFilter(filters)
 	result := ReadySet{}
 	for _, id := range s.data.Order {
@@ -305,11 +330,43 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 func (s *Store) Show(id string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	task := s.data.Tasks[id]
 	if task == nil {
 		return nil, fmt.Errorf("task %q not found", id)
 	}
 	return cloneTask(task), nil
+}
+
+// RoleOf answers the seat a task's shape gives it at the moment it is asked,
+// never the seat it was born with: a task with children is a coordinator and
+// answers plan, and a leaf answers the role it was declared with, which is
+// work unless add or split was told otherwise. Reading the shape rather than a
+// stored guess is what lets a leaf that splits move up to the plan seat
+// without anyone configuring it, and fall back to its own role once the
+// archive has taken its children away.
+func (s *Store) RoleOf(id string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
+	task := s.data.Tasks[id]
+	if task == nil {
+		return "", fmt.Errorf("task %q not found", id)
+	}
+	return roleOf(task), nil
+}
+
+// roleOf is the one rule RoleOf and the CLI's renders share, as a free
+// function so a caller that already holds a task can ask it without the lock.
+func roleOf(task *Task) string {
+	if task.Composite {
+		return RolePlan
+	}
+	if task.Role != "" {
+		return task.Role
+	}
+	return RoleWork
 }
 
 // Task returns a copy of one task by exact id, for callers that already know
@@ -329,6 +386,7 @@ func (s *Store) Task(id string) *Task {
 func (s *Store) Resolve(word string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	if task := s.data.Tasks[strings.TrimPrefix(word, "t-")]; task != nil {
 		return cloneTask(task), nil
 	}
@@ -360,7 +418,15 @@ func (s *Store) Resolve(word string) (*Task, error) {
 // that later finishes "as" the task can only be the worker the task was
 // handed to. Ownership in Done and Fail is enforced against exactly this
 // name.
-func (s *Store) Claim(id, agent string) (*Task, error) {
+//
+// THE OWNER IS THE PROCESS, AND IT IS OPTIONAL. Dispatch is per process, so
+// the run supervisor names the process that holds the claim —
+// "<hostname>:<pid>" — in an argument beside the agent, and every pass
+// touches that claim's seen-at stamp. A claim made without an owner (the
+// CLI's own `go`, the session graph's dispatch) has no process behind it, and
+// the claim's agent stands in for one so the seen-at stamp is never left
+// empty.
+func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if task.Status != StatusReady || task.Composite {
 			return fmt.Errorf("task %q is not a runnable ready leaf", id)
@@ -368,7 +434,12 @@ func (s *Store) Claim(id, agent string) (*Task, error) {
 		if strings.TrimSpace(agent) == "" {
 			return errors.New("agent is required for claim")
 		}
+		who := strings.TrimSpace(agent)
+		if len(owner) > 0 && strings.TrimSpace(owner[0]) != "" {
+			who = strings.TrimSpace(owner[0])
+		}
 		task.Status, task.ClaimedBy, task.UpdatedAt = StatusRunning, strings.TrimSpace(agent), now
+		task.Owner, task.SeenAt = who, now
 		return nil
 	})
 }
@@ -452,9 +523,89 @@ func (s *Store) Release(id, agent string) (*Task, error) {
 			return err
 		}
 		task.Status, task.ClaimedBy, task.UpdatedAt = StatusPending, "", now
+		task.Owner, task.SeenAt = "", time.Time{}
 		promote(next, now)
 		return nil
 	})
+}
+
+// heldStatus reports whether a task's status is one an owner holds: claimed
+// or running. Every read of a live claim — the stale scan, the take-over's
+// release — asks it rather than spelling the two words out.
+func heldStatus(status Status) bool {
+	return status == StatusClaimed || status == StatusRunning
+}
+
+// TouchClaims refreshes the seen-at stamp of every task an owner holds, so a
+// live process's claims never read as stale. It is the supervisor's heartbeat
+// — called once per pass — and it touches the seen-at column alone: the
+// UpdatedAt moment every other write moves is what a waiting reader's Changed
+// reads, and a heartbeat is not work the plan did, so refreshing a live claim
+// must not wake anybody. An owner holding nothing writes nothing.
+func (s *Store) TouchClaims(owner string) (int, error) {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	if !s.ownsHeld(owner) {
+		return 0, nil
+	}
+	touched := 0
+	err := s.transact(func(next *state, now time.Time) error {
+		touched = 0
+		for _, id := range next.Order {
+			task := next.Tasks[id]
+			if task.Owner != owner || !heldStatus(task.Status) {
+				continue
+			}
+			task.SeenAt = now
+			touched++
+		}
+		if touched == 0 {
+			return errNoChange
+		}
+		return nil
+	})
+	return touched, err
+}
+
+// ownsHeld reports whether owner holds any claim in the loaded plan, so the
+// heartbeat skips its write when it has nothing to refresh.
+func (s *Store) ownsHeld(owner string) bool {
+	for _, id := range s.data.Order {
+		task := s.data.Tasks[id]
+		if task.Owner == owner && heldStatus(task.Status) {
+			return true
+		}
+	}
+	return false
+}
+
+// StaleClaims answers the tasks a process holds without touching them: a
+// claimed or running task whose owner was last seen longer ago than the
+// window, so a take-over knows which claims a dead process left behind. THE
+// ROOT IS NOT ONE OF THEM — it is the run itself, claimed by the runtime and
+// never a process's to take over — and a task that is not currently held is
+// not stale either, however long ago it was last touched.
+func (s *Store) StaleClaims(olderThan time.Duration) []Task {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	cutoff := s.now().UTC().Add(-olderThan)
+	var stale []Task
+	for _, id := range s.data.Order {
+		task := s.data.Tasks[id]
+		if task.ID == s.data.RootID || !heldStatus(task.Status) {
+			continue
+		}
+		if task.SeenAt.Before(cutoff) {
+			stale = append(stale, *cloneTask(task))
+		}
+	}
+	return stale
 }
 
 // Pause holds a task, and by inheritance everything under it, out of the
@@ -500,6 +651,7 @@ func (s *Store) Retry(id string) (*Task, error) {
 			return fmt.Errorf("task %q is not failed", id)
 		}
 		task.Status, task.Error, task.ClaimedBy = StatusPending, "", ""
+		task.Owner, task.SeenAt = "", time.Time{}
 		task.CompletedAt, task.UpdatedAt = time.Time{}, now
 		promote(next, now)
 		return nil
@@ -519,6 +671,7 @@ func (s *Store) Cancel(id, reason string) (*Task, error) {
 			return fmt.Errorf("task %q is already terminal", id)
 		}
 		task.Status, task.Error, task.ClaimedBy = StatusCancelled, strings.TrimSpace(reason), ""
+		task.Owner, task.SeenAt = "", time.Time{}
 		task.UpdatedAt, task.CompletedAt = now, now
 		cancelDescendants(next, id, "ancestor "+id+" was cancelled", now)
 		cancelBlockedDependents(next, id, "dependency "+id+" was cancelled", now)
@@ -684,6 +837,7 @@ func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
 func (s *Store) Notes(taskID string, limit int) []Note {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -710,6 +864,7 @@ func (s *Store) Notes(taskID string, limit int) []Note {
 func (s *Store) Changed(since time.Time) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	moved := map[string]bool{}
 	for _, note := range s.data.Notes {
 		if note.At.After(since) {
@@ -786,6 +941,7 @@ func (s *Store) AddContext(taskID, kind, content string) (ContextEntry, error) {
 func (s *Store) Contexts(taskID, kind string, limit int, filters ...Filter) []ContextEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	filter := firstFilter(filters)
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -827,6 +983,7 @@ func (s *Store) Prune(id string) error {
 func (s *Store) Summary() Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	result := summarize(s.data)
 	if byProject, byChat, err := s.spendTotals(); err == nil {
 		if len(byProject) > 0 {
@@ -844,6 +1001,7 @@ func (s *Store) Summary() Summary {
 func (s *Store) Tasks(filters ...Filter) []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	filter := firstFilter(filters)
 	tasks := make([]*Task, 0, len(s.data.Order))
 	for _, id := range s.data.Order {
@@ -861,6 +1019,7 @@ func (s *Store) Tasks(filters ...Filter) []*Task {
 func (s *Store) CanFinalize() (bool, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	root := s.data.Tasks[s.data.RootID]
 	if root == nil {
 		return false, "plan root is missing"
@@ -968,7 +1127,7 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 func (s *Store) Archived() ([]*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return loadArchived(s.db)
+	return loadArchived(s.rdb)
 }
 
 // archiveSelection chooses the maximal finished subtrees older than the
@@ -1121,6 +1280,7 @@ func keepContexts(entries []ContextEntry, drop map[string]bool) []ContextEntry {
 func (s *Store) Search(query string, limit int, filters ...Filter) []SearchResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	terms := searchTerms(query)
 	if len(terms) == 0 {
 		return nil
@@ -1190,6 +1350,7 @@ type SearchResult struct {
 func (s *Store) CriticalPath() []*Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	children := map[string][]string{}
 	hasUpstream := map[string]bool{}
 	for _, task := range s.data.Tasks {
@@ -1244,6 +1405,7 @@ func (s *Store) CriticalPath() []*Task {
 func (s *Store) Bottlenecks(limit int) []BlockedCount {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	if limit <= 0 || limit > 50 {
 		limit = 5
 	}
@@ -1289,6 +1451,7 @@ type BlockedCount struct {
 func (s *Store) NextID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	return s.nextIDLocked()
 }
 
@@ -1352,6 +1515,7 @@ func (s *Store) ClaimNext(agent string) (*Task, error) {
 		}
 		best = pick.ID
 		pick.Status, pick.ClaimedBy, pick.UpdatedAt = StatusRunning, strings.TrimSpace(agent), now
+		pick.Owner, pick.SeenAt = strings.TrimSpace(agent), now
 		return nil
 	})
 	if err != nil {
@@ -1427,17 +1591,49 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 	return nil
 }
 
-// Close releases the store's database handle. A store opened for one pass —
+// refresh adopts the last committed plan from the database into the handle's
+// memory, through the read handle in a DEFERRED transaction. Every read calls
+// it before answering, so a handle's answer is the plan the database holds and
+// not the plan this handle last wrote itself — which is what makes two
+// processes on one file agree, and is the reason Changed on one handle names a
+// task the other just moved. WAL lets the snapshot run while a writer holds
+// the write lock, so a read never waits behind an open write; and because the
+// read is one transaction, it answers a whole committed plan and never a plan
+// half-written. A refresh that cannot read keeps the memory it has: the store
+// would rather answer its last good plan than fail a read it cannot report.
+func (s *Store) refresh() {
+	if s.rdb == nil {
+		return
+	}
+	tx, err := s.rdb.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	fresh, err := loadState(tx)
+	if err != nil {
+		return
+	}
+	s.data = fresh
+}
+
+// Close releases the store's database handles. A store opened for one pass —
 // the runtime opens one per pulse — must be closed when the pass is done, or
 // every pass would leave a connection and a file descriptor behind.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.db == nil {
-		return nil
+	err := error(nil)
+	if s.rdb != nil {
+		err = s.rdb.Close()
+		s.rdb = nil
 	}
-	err := s.db.Close()
-	s.db = nil
+	if s.db != nil {
+		if closeErr := s.db.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+		s.db = nil
+	}
 	return err
 }
 
@@ -1475,6 +1671,9 @@ func normalizeSpec(spec TaskSpec, rootID string) TaskSpec {
 	}
 	if spec.Isolation == "" {
 		spec.Isolation = "shared"
+	}
+	if spec.Role == "" {
+		spec.Role = RoleWork
 	}
 	spec.Capabilities = cleanStrings(spec.Capabilities)
 	spec.Resources = cleanResourceClaims(spec.Resources)
@@ -1517,6 +1716,12 @@ func validateSpec(spec TaskSpec) error {
 	if !oneOf(spec.Isolation, "shared", "snapshot", "exclusive") {
 		return fmt.Errorf("invalid isolation policy %q", spec.Isolation)
 	}
+	// An empty role is not a fifth seat: normalizeSpec defaults it to work
+	// before validation, and a row a store made before the seat was read
+	// carries the empty word, so it is let through and answered as work.
+	if spec.Role != "" && !validRole(spec.Role) {
+		return roleRefusal()
+	}
 	for _, resource := range spec.Resources {
 		if resource.URI == "" || !oneOf(resource.Mode, "read", "write", "exclusive") {
 			return fmt.Errorf("invalid resource claim %#v", resource)
@@ -1528,6 +1733,22 @@ func validateSpec(spec TaskSpec) error {
 		}
 	}
 	return nil
+}
+
+// roleWords names the four seats in the order every refusal lists them.
+var roleWords = []string{RolePlan, RoleWork, RoleCheck, RoleProbe}
+
+// validRole reports whether word is one of the four the store may carry as a
+// seat. The empty word is not one of them: the default is applied before
+// validation, so an empty word is a row made before the seat was read.
+func validRole(word string) bool {
+	return oneOf(word, roleWords...)
+}
+
+// roleRefusal is the one sentence that names the four seats, so the store's
+// own validation and the CLI's own flag refuse with the same words.
+func roleRefusal() error {
+	return fmt.Errorf("role must be one of %s", strings.Join(roleWords, ", "))
 }
 
 func validateGraphs(value state) error {
@@ -1689,6 +1910,7 @@ func depsDone(value state, task *Task) bool {
 func (s *Store) CanFinish(id string) (bool, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.refresh()
 	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
 	task := s.data.Tasks[id]
 	if task == nil {
@@ -1990,7 +2212,7 @@ func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outT
 func (s *Store) spendTotals() (map[string]SpendTotal, map[string]SpendTotal, error) {
 	byProject := map[string]SpendTotal{}
 	byChat := map[string]SpendTotal{}
-	rows, err := s.db.Query(`SELECT t.project, t.chat, SUM(s.usd), COUNT(*)
+	rows, err := s.rdb.Query(`SELECT t.project, t.chat, SUM(s.usd), COUNT(*)
 		FROM spend s JOIN tasks t ON t.id = s.task_id
 		GROUP BY t.project, t.chat`)
 	if err != nil {
@@ -2012,6 +2234,153 @@ func (s *Store) spendTotals() (map[string]SpendTotal, map[string]SpendTotal, err
 // addSpend folds one group's totals into a tag's running total.
 func addSpend(into, add SpendTotal) SpendTotal {
 	return SpendTotal{USD: into.USD + add.USD, Calls: into.Calls + add.Calls}
+}
+
+// SpendSummary answers the ledger grouped by role and by model: the dollars
+// spent and the calls that spent them under each seat and each model. The
+// ledger is append-only and read here whole — one query, two groupings — so a
+// seat's cost is a row drawn from every run, and a charge whose role or model
+// the run never named still appears under the empty word rather than being
+// dropped.
+func (s *Store) SpendSummary() SpendSummary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := SpendSummary{ByRole: map[string]SpendTotal{}, ByModel: map[string]SpendTotal{}}
+	rows, err := s.rdb.Query(`SELECT role, model, SUM(usd), COUNT(*) FROM spend GROUP BY role, model`)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var role, model string
+		var total SpendTotal
+		if err := rows.Scan(&role, &model, &total.USD, &total.Calls); err != nil {
+			return result
+		}
+		result.ByRole[role] = addSpend(result.ByRole[role], total)
+		result.ByModel[model] = addSpend(result.ByModel[model], total)
+	}
+	return result
+}
+
+// SpendLine is one row of a spend rollup: the key the ledger was grouped
+// under — a chat, a project, a seat, a model, or the task a charge was made
+// against — and the dollars, tokens and calls the rows under that key carry.
+//
+// MODEL AND ROLE MIRROR THE KEY ON THE MODEL AND SEAT AXES, so a reader asking
+// for a model's or a seat's spend can read the word by name; on the entity
+// axes — chat, project, task — a group spans several models and seats, so both
+// stay empty rather than naming one of many.
+type SpendLine struct {
+	Key   string  `json:"key"`
+	Model string  `json:"model,omitempty"`
+	Role  string  `json:"role,omitempty"`
+	USD   float64 `json:"usd"`
+	In    int     `json:"in"`
+	Out   int     `json:"out"`
+	Calls int     `json:"calls"`
+}
+
+// spendAxes names the rollups SpendBy accepts: the two tags a store carries
+// on every row, the two attribution columns the ledger writes, and the task a
+// charge was made against.
+var spendAxes = []string{"chat", "project", "seat", "model", "task"}
+
+// spendAxisKey answers the column one axis groups on, and whether it needs the
+// tasks join: chat and project read the tags of the task a charge names, while
+// seat, model and task read the ledger's own columns.
+func spendAxisKey(axis string) (string, bool) {
+	switch axis {
+	case "chat":
+		return "t.chat", true
+	case "project":
+		return "t.project", true
+	case "seat":
+		return "s.role", false
+	case "model":
+		return "s.model", false
+	case "task":
+		return "s.task_id", false
+	}
+	return "", false
+}
+
+// SpendBy answers the ledger rolled up under one axis, heaviest key first,
+// over the charges written since a moment — the zero time means the whole
+// ledger. Each line is the exact sum of the rows under its key, and a key with
+// no rows under it is absent, never a zero line.
+//
+// chat and project read the tags of the task each charge names, so a charge
+// whose task the store does not hold has no tag to be counted under and is left
+// out, exactly as spendTotals does. seat, model and task read the ledger's own
+// columns, so a charge the store cannot place still answers under the word it
+// carries. An axis that is not one of spendAxes answers nothing.
+func (s *Store) SpendBy(axis string, since time.Time) []SpendLine {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keyExpr, join := spendAxisKey(axis)
+	if keyExpr == "" {
+		return nil
+	}
+	// THE WINDOW IS APPLIED IN GO, not in the query: the ledger stores `at` as
+	// RFC3339Nano, whose fractional digits are variable, so a text comparison
+	// against a bound would misorder a whole second against its own fraction.
+	// The ledger is small by design, so reading its rows and cutting them at
+	// the parsed moment is both exact and cheap.
+	query := `SELECT ` + keyExpr + `, s.usd, s.in_tokens, s.out_tokens, s.at FROM spend s`
+	if join {
+		query += ` JOIN tasks t ON t.id = s.task_id`
+	}
+	rows, err := s.rdb.Query(query)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	grouped := map[string]*SpendLine{}
+	for rows.Next() {
+		var key, at string
+		var usd float64
+		var in, out int
+		if err := rows.Scan(&key, &usd, &in, &out, &at); err != nil {
+			return nil
+		}
+		moment, err := parseTime(at)
+		if err != nil {
+			return nil
+		}
+		if !since.IsZero() && moment.Before(since) {
+			continue
+		}
+		line := grouped[key]
+		if line == nil {
+			line = &SpendLine{Key: key}
+			grouped[key] = line
+		}
+		line.USD += usd
+		line.In += in
+		line.Out += out
+		line.Calls++
+	}
+	if err := rows.Err(); err != nil {
+		return nil
+	}
+	lines := make([]SpendLine, 0, len(grouped))
+	for _, line := range grouped {
+		switch axis {
+		case "model":
+			line.Model = line.Key
+		case "seat":
+			line.Role = line.Key
+		}
+		lines = append(lines, *line)
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		if lines[i].USD != lines[j].USD {
+			return lines[i].USD > lines[j].USD
+		}
+		return lines[i].Key < lines[j].Key
+	})
+	return lines
 }
 
 func cloneTask(task *Task) *Task {
