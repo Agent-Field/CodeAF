@@ -172,3 +172,43 @@ func TestSupervisorParksAWaitingTaskAndWakesItWhenASiblingLands(t *testing.T) {
 		t.Fatalf("root result = %q, want the report the woken root gave", root.Result)
 	}
 }
+
+// TestStartAnswersTheRootsDoneResult: the run's Result is the root's `done`
+// result, read through the door a caller actually uses ([run.Start]). The root
+// worker finishes its own task with `plandb done root` — the one rule c174
+// changed — and the run's summary carries the result that command wrote.
+func TestStartAnswersTheRootsDoneResult(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	const answer = "the run is done, and this is its result"
+	seat := &seat{script: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolReply(finishCommand("root", answer)), nil
+		},
+	}}
+	factory := func(task plandb.Task) run.Worker {
+		return run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	}
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "finish yourself through the plan CLI",
+		Slots:     1,
+		Factory:   factory,
+	})
+
+	if outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if summary.Result != answer {
+		t.Fatalf("summary result = %q, want the root's done result %q", summary.Result, answer)
+	}
+	root := store.Task(store.RootID())
+	if root.Status != plandb.StatusDone || root.Result != answer {
+		t.Fatalf("root = %s with %q, want done with the result its worker wrote", root.Status, root.Result)
+	}
+}
