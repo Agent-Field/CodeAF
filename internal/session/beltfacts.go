@@ -120,7 +120,23 @@ func (c Config) mayProposeTask() bool { return !c.InTask || (c.mayFanOut() && !c
 // written as its own predicate rather than as the other one spelled twice
 // because the page's bullet is about THIS verb, and a fact naming the wrong
 // predicate is a sentence nobody can check.
-func (c Config) mayQuickTask() bool { return c.mayProposeTask() }
+func (c Config) mayQuickTask() bool { return c.mayProposeTask() && !c.oneTaskRoad() }
+
+// oneTaskRoad says whether this agent is a conversation whose hand-offs are
+// runs in the plan store: the bash belt is asked for and a run engine is wired.
+//
+// THERE IS ONE WAY TO PUT WORK OUT UNDER THE BELT, AND IT IS `propose_task`.
+// The owner's words, 2026-09-18: one way, a task; the model launches several
+// when it needs to, and each is more of the plan. So `quick_task` is ABSENT
+// here, not refusing: it runs on the session tree, outside the plan store, where
+// no tree on the screen can show it and no check reads it, and a belt that
+// carried it would be offering a second engine under the first one's name. The
+// predicate is [stagedProposal.Commit]'s own guard, so the verb leaves the belt
+// exactly where a proposal starts a run and nowhere else; with no engine wired
+// a proposal still runs on the session tree and both verbs stay.
+func (c Config) oneTaskRoad() bool {
+	return !c.InTask && bashBeltAsked() && chatRunEngine != nil
+}
 
 // mayTickItems says whether `items` belongs on this belt (task_quick.go), and
 // it is the presence of the node's own list door and nothing else: a quick
@@ -232,6 +248,11 @@ type beltFact struct {
 	// falls back to [beltFact.absent], which is right for every fact whose
 	// absence means the same thing on both belts.
 	bashAbsent string
+	// oneRoad is the present wording for a conversation whose hand-offs are runs
+	// in the plan store ([Config.oneTaskRoad]). It names `propose_task` alone,
+	// because that is the only verb such a belt carries. Empty falls back to
+	// [beltFact.present].
+	oneRoad string
 }
 
 // beltFacts is the whole of it, in the order the section reads.
@@ -448,6 +469,27 @@ var handoffFacts = []beltFact{{
 		"can. Each landing comes to you as a note, and starts a turn if yours has ended,\n" +
 		"so fold them as they arrive. When nothing independent of what you handed out\n" +
 		"remains, end your turn. That is how you wait.",
+	oneRoad: "You are one mind with a clock, and ONE way to put more minds on the work:\n" +
+		"`propose_task`. Each is a worker in a copy of the folder, checked when it\n" +
+		"finishes, that outlives this window. The first opens a run; every one after it\n" +
+		"while that run lives joins the same run as another task of it, and so does a\n" +
+		"`/task` the person types. SEVERAL PROPOSALS IN ONE MESSAGE ARE HOW YOU WORK IN\n" +
+		"PARALLEL: parts that do not need each other go out together and cost the\n" +
+		"longest of them alone, where done in your own hands they cost their sum. A part\n" +
+		"that must follow another is proposed once that one's id is back, naming it in\n" +
+		"`depends_on`. Parts that feed each other closely are ONE task: its worker\n" +
+		"splits it further in the plan when the material shows it is wide.\n" +
+		"\n" +
+		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
+		"more than you knew. WHEN THE ASK ITSELF NAMES SEVERAL THINGS, THOSE ARE THE\n" +
+		"PARTS. THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB. One read, one edit,\n" +
+		"one command is never worth a hand-off: do it here.\n" +
+		"\n" +
+		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
+		"can, and end your turn when nothing independent of what you handed out remains.\n" +
+		"A landing speaks here only when the person is owed an answer. Asked about\n" +
+		"running work, read the run's rows and the task's own steps and answer from\n" +
+		"them; never redo the work.",
 	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
 		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
 		"is given a worker of its own. What is yours alone you carry here, in the order\n" +
@@ -613,6 +655,9 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 		}
 		if fact.holds(config) {
 			text = fact.present
+			if fact.oneRoad != "" && config.oneTaskRoad() {
+				text = fact.oneRoad
+			}
 			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES
 			// THESE TOOLS. A worker or a task node carries them directly, so
 			// telling it to call `load_capability` — which is not on its belt at
@@ -649,37 +694,7 @@ func promptWithBeltFacts(config Config) string {
 	for strings.Contains(page, "\n\n\n") {
 		page = strings.ReplaceAll(page, "\n\n\n", "\n\n")
 	}
-	return withChatTaskRouting(config, page)
-}
-
-// chatTaskRoutingAnchor is the heading the conversation's three hand-off rules
-// sit under when the bash belt is on.
-const chatTaskRoutingAnchor = "# Putting more hands on the work\n"
-
-// withChatTaskRouting joins the three hand-off rules to the conversation's page
-// under the bash belt, and is the identity everywhere else.
-//
-// A CONDITIONAL RULE IS A BELT FACT, COMPOSED HERE, AND NEVER BYTES OF
-// system.md. The rules first lived inside the page between two markers and a
-// profile door cut them when the belt was off: their bytes then sat in every
-// request's fixed prefix (prefixbudget_test.go went over its budget by 231) and
-// a frontier page stopped being the composed page byte for byte. Joined by the
-// composer they cost a conversation without the belt nothing, and the render
-// still carries exactly what the composer built.
-//
-// Both doors take the run road under the belt: a typed /task through
-// StartTask, and an approved propose_task through stagedProposal.Commit. These
-// rules describe that road and open no new one.
-func withChatTaskRouting(config Config, page string) string {
-	if config.InTask || !bashBeltAsked() {
-		return page
-	}
-	at := strings.Index(page, chatTaskRoutingAnchor)
-	if at < 0 {
-		return page
-	}
-	at += len(chatTaskRoutingAnchor)
-	return page[:at] + chatTaskRoutingPage + page[at:]
+	return page
 }
 
 // promptNamesBeyondTheBelt is the DEBT LEDGER, and it exists so that the

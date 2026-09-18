@@ -20,12 +20,6 @@ import (
 //go:embed prompts/system.md
 var systemPromptSource string
 
-// chatTaskRoutingPage is the three hand-off rules the conversation is told
-// under the bash belt, and only there: see withChatTaskRouting.
-//
-//go:embed prompts/chatrouting.md
-var chatTaskRoutingPage string
-
 // disciplinePrompt is the working discipline itself — how to spend the time —
 // and it lives in a file of its own because TWO SURFACES ARE TAUGHT IT AND ONE
 // WORDING IS ALL THERE MAY BE.

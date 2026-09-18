@@ -252,3 +252,20 @@ dependency may name a task that lives only in the store, and the spawn floor
 asks the store before refusing it. The run is started under a context that
 does not end with the turn: the turn cancels its own context on the way out,
 and a run driven under it stopped the moment the model finished its sentence.
+
+## One way to put work out (the owner, 2026-09-18)
+
+Under the belt the conversation has one verb for work, `propose_task`, and
+`quick_task` is absent from its belt and its page. The owner's words: one way,
+a task; the model launches several when it needs to, and each is more of the
+plan. A quick task ran on the session tree, outside the plan store, so the tree
+could not show it and no check read it. The chat parallelizes by proposing
+several tasks in one message: the first opens the run and each one after it
+joins the live root, with `depends_on` for a part that must follow another.
+`divide_work` was never on the conversation's belt and is never on a bash
+belt worker, so nothing changed there. The predicate is the hand-off's own
+guard (`Config.oneTaskRoad`): with the belt off, or with no run engine wired,
+both verbs stay. The three rules c250 wrote are now one paragraph of the
+hand-off fact (`handoffFacts`, `oneRoad`), so the page has no second copy.
+The shipped engine's quick task and its pages are deleted with the rest of the
+legacy engine when the default flips.

@@ -8,6 +8,7 @@ invalidates:
   - "There was no place to watch a run without leaving the conversation. A conversation with a live belt run gains a tab on the strip titled with the run's root, holding the run's rows as the tasks place draws them, the live lines and the note composer; it closes itself when the run lands."
   - "The chat's system page said nothing about when to hand work off. Under the belt it states three rules once: hand off (launch a task), add to (a second `/task` joins the live root), ask about (answer from the store's rows and the task's steps, never redo the work)."
   - "An approved `propose_task` was admitted to the session tree and ran on the shipped engine even under `CODEAF_TASK_BELT=bash`; only a typed `/task` reached the plan store. An approved hand-off under the belt now starts as a run like a typed `/task`, keeps the id its card showed, joins the live root when one is running, carries its acceptance and its declared dependencies into the store, and outlives the turn that launched it."
+  - "The conversation carried two verbs for putting work out, `propose_task` and `quick_task`, and under `CODEAF_TASK_BELT=bash` only the first reached the plan store: a quick task ran on the session tree where no tree showed it and no check read it. Under the belt, with a run engine wired, `quick_task` is absent from the conversation's belt and its page; the chat parallelizes by proposing several tasks in one message, each joining the live run. With the belt off both verbs stay."
 ---
 
 Design: `docs/design/worker-harness/CHAT-ROLE.md`, candidate C with the
