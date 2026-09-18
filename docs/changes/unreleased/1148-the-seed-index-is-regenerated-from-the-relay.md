@@ -1,7 +1,7 @@
 ---
 kind: added
 title: The seed index is regenerated from the relay by one in-repo command
-pr: 0000
+pr: 1148
 surface: [chat, engine]
 invalidates:
   - "Nothing in the repository regenerated `internal/pool/index/seed.json` — it was a hand-authored snapshot, and `relay/tools/prime.py` only compared against it. `internal/pool/index/cmd/seedgen` fetches the signed index through `pull` (signature and size checked, the mirror read when the relay does not answer), reads it through `index.Parse`, and writes the seed deterministically, so the fallback a fresh install picks from is a verified copy of the pool rather than a figure that lags it."
