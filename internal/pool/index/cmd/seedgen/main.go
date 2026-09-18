@@ -339,13 +339,10 @@ func render(live, embedded []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// The floor the seed will carry. It is the live document's, and the check
-	// is that a seed is never MORE PERMISSIVE than the pool it copies: a floor
-	// below the relay's would admit cells the relay itself dropped.
+	// The floor the seed will carry is the live document's, never a lower one:
+	// a floor below the relay's would admit cells the relay itself dropped, so
+	// the copier does not offer a way to set it.
 	seedMin := liveMin
-	if seedMin < liveMin {
-		return nil, fmt.Errorf("the seed's min_installs %d is below the live document's %d", seedMin, liveMin)
-	}
 
 	compact := objectOf([][2][]byte{
 		{quote("schema"), schema},

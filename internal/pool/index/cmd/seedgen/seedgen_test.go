@@ -239,7 +239,7 @@ func TestFetchRefusesABadSignature(t *testing.T) {
 // ── THE RUN ─────────────────────────────────────────────────────────────────
 
 // run writes the seed and its figure from the relay, and -check reports both as
-// current; a drifed file is refused with errDrift.
+// current; a drifted file is refused with errDrift.
 func TestRunWritesAndThenChecks(t *testing.T) {
 	pub, priv := makeKey(t)
 	srv := serveRelay(t, []byte(liveFixture), priv)
@@ -280,12 +280,12 @@ func TestRunWritesAndThenChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc["generated"] = "1999-01-01"
-	drifed, _ := json.Marshal(doc)
-	if err := os.WriteFile(out, drifed, 0o644); err != nil {
+	drifted, _ := json.Marshal(doc)
+	if err := os.WriteFile(out, drifted, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := run(ctx, srv.URL+"/index.json", "", out, cells, true, keys); err == nil {
-		t.Fatal("a drifed seed passed -check")
+		t.Fatal("a drifted seed passed -check")
 	}
 }
 
