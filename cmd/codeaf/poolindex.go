@@ -22,6 +22,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -72,6 +73,94 @@ func poolIndexFor(profileDir string, cfg poolcfg.Config, now func() time.Time) f
 // goroutine is started when the build carries no key.
 var poolRefreshGo = func(scope string, fn func()) { guard.Go(scope, fn) }
 
+// poolErrands is the lifetime of the start-up errands one profile's wiring
+// started: the context they are cancelled by and the WaitGroup that answers
+// when the last of them has returned.
+//
+// IT EXISTS BECAUSE A FIRE-AND-FORGET ERRAND OUTLIVES THE PROCESS THAT STARTED
+// IT. Both errands write under the profile's pool directory — the refresh its
+// doc.json and its signature, the push the outbox and the install nonce — and
+// [guard.Go] joins nothing at shutdown, so a process that closed left them
+// running against a profile nobody was waiting for. In a test whose profile is
+// a temporary directory, that is the directory removed out from under a live
+// writer; on a door that reopens on another profile it is a write into a
+// directory the process no longer owns. Neither errand is on a run's path, so
+// joining them at close costs the person nothing.
+type poolErrands struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// poolErrandSet holds the errands of each wired profile, so [stopPoolErrands]
+// can find the ones a closing process must join. It is keyed by the profile
+// directory rather than carried on a process because [wirePoolIndex] is a plain
+// function several doors call, and stopping takes the entry out — so a table
+// answering a lookup per wiring never grows.
+var (
+	poolErrandsMu sync.Mutex
+	poolErrandSet = map[string]*poolErrands{}
+)
+
+// poolErrandsStart seats the tracker for a profile and answers it, so the
+// errands wired below register on one context and one WaitGroup. A profile
+// wired twice — the host road assembles its options once per launch on the
+// same profile — keeps the tracker it has: replacing it would orphan the first
+// wiring's errands, which is the leak this tracker exists to close.
+func poolErrandsStart(profileDir string) *poolErrands {
+	poolErrandsMu.Lock()
+	defer poolErrandsMu.Unlock()
+	if held := poolErrandSet[profileDir]; held != nil {
+		return held
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	held := &poolErrands{ctx: ctx, cancel: cancel}
+	poolErrandSet[profileDir] = held
+	return held
+}
+
+// stopPoolErrands cancels the profile's start-up errands and waits for them to
+// return, so that once a process closes nothing it started is still writing
+// under the profile.
+//
+// IT IS THE HALF THE ERRANDS' OWN BUDGETS DO NOT KEEP. A budget bounds one
+// fetch, not the life of the goroutine: an unstopped refresh whose relay does
+// not answer is still running when the process — or, in a test, the temporary
+// profile — is gone, which is a write into a directory nobody owns. It is
+// idempotent: a profile with no live errands is a no-op.
+func stopPoolErrands(profileDir string) {
+	poolErrandsMu.Lock()
+	held := poolErrandSet[profileDir]
+	delete(poolErrandSet, profileDir)
+	poolErrandsMu.Unlock()
+	if held == nil {
+		return
+	}
+	held.cancel()
+	held.wg.Wait()
+}
+
+// poolErrandGo starts one errand on the profile's tracker, so [stopPoolErrands]
+// waits for it, through the same [poolRefreshGo] seam every pool goroutine
+// starts through. A profile wired without a tracker — a bare
+// [startPoolIndexRefresh] in a test — is the plain seam with nothing to join.
+func poolErrandGo(profileDir, scope string, fn func()) {
+	poolErrandsMu.Lock()
+	held := poolErrandSet[profileDir]
+	if held != nil {
+		held.wg.Add(1)
+	}
+	poolErrandsMu.Unlock()
+	if held == nil {
+		poolRefreshGo(scope, fn)
+		return
+	}
+	poolRefreshGo(scope, func() {
+		defer held.wg.Done()
+		fn()
+	})
+}
+
 // startPoolIndexRefresh is the loader's own tail: it starts the background
 // fetch that keeps the cache fresh, and starts NOTHING when the mode forbids
 // reading or the build carries no public key to check a fetched document under
@@ -80,7 +169,7 @@ func startPoolIndexRefresh(ctx context.Context, profileDir string, cfg poolcfg.C
 	if !cfg.CanRead() || len(keys) == 0 {
 		return
 	}
-	poolRefreshGo("pool/index", func() { refreshPoolIndex(ctx, profileDir, cfg, keys) })
+	poolErrandGo(profileDir, "pool/index", func() { refreshPoolIndex(ctx, profileDir, cfg, keys) })
 }
 
 // refreshPoolIndex fetches a fresh index and lets the puller's own cache keep
@@ -142,13 +231,16 @@ func wirePoolIndex(profileDir string) {
 	cfg := config.ModelPoolAt(profileDir)
 	config.AutoIndex = poolIndexFor(profileDir, cfg, time.Now)
 	config.AutoOwnCells = poolOwnCellsFor(profileDir, cfg)
-	startPoolIndexRefresh(context.Background(), profileDir, cfg, poolTrustedKeys(cfg))
+	// The errands below run on this profile's tracker so the process that
+	// seated them can join them when it closes ([stopPoolErrands]).
+	held := poolErrandsStart(profileDir)
+	startPoolIndexRefresh(held.ctx, profileDir, cfg, poolTrustedKeys(cfg))
 	// The rows a previous run judged and could not hand over leave at once,
 	// on their own goroutine behind the same guard the refresh uses: a
 	// start-up errand, bounded by its own budget, and never on the run's
 	// path.
 	if cfg.CanSend() {
-		poolRefreshGo("pool/push", func() { poolPush(context.Background(), profileDir, cfg, poolPushBudget) })
+		poolErrandGo(profileDir, "pool/push", func() { poolPush(held.ctx, profileDir, cfg, poolPushBudget) })
 	}
 }
 
