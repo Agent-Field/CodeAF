@@ -1223,6 +1223,154 @@ func TestPoolShowJSONCarriesTheMetricsBesideTheCount(t *testing.T) {
 	}
 }
 
+// poolDocThreeCells is a document with two metrics and three cells, every
+// cell carrying installs and one carrying the source dim its metric is split
+// by — one cell of the graded shares spells no source at all. The numbers
+// name no model; it is a fixture, and the field it is read for is its shape.
+func poolDocThreeCells() []byte {
+	return []byte(`{
+		"version": 7,
+		"schema": 1,
+		"generated": "2026-09-10",
+		"min_installs": 1,
+		"judges": ["z-ai/glm-5.3"],
+		"metrics": {
+			"role_quality": {"kind": "gaussian", "unit": "score", "dims": ["role", "model"]},
+			"acceptable": {"kind": "bernoulli", "unit": "share", "dims": ["role", "model", "source"]}
+		},
+		"cells": [
+			{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 71.2, "sd": 9.4, "n": 42, "installs": 5},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.75, "sd": 0, "n": 20, "installs": 2},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.83, "sd": 0, "n": 12, "installs": 4, "source": "grader"}
+		]
+	}`)
+}
+
+// --cells is the per-cell reading form show has lacked: one line per cell
+// under a `cells:` header, each line naming its metric, the role and model
+// it is addressed by, the dims it spells, the measurement — a share for a
+// graded metric — its rows, and the installs behind it, all in the index's
+// own order. --json carries the same cells as an array beside the summary,
+// and without the flag neither answer moves.
+func TestPoolShowCellsListsEachCellWithItsInstallsAndItsDims(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, string(poolDocThreeCells()))
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--cells"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	for _, want := range []string{
+		"cells:\n",
+		"acceptable · worker · z-ai/glm-5.3 · share 0.75 · n 20 · installs 2",
+		"acceptable · worker · z-ai/glm-5.3 · source grader · share 0.83 · n 12 · installs 4",
+		"role_quality · worker · z-ai/glm-5.3 · mean 71.2 · sd 9.4 · n 42 · installs 5",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("show --cells is missing %q:\n%s", want, body)
+		}
+	}
+	// The order is the index's own — metric, then role, model, then dims —
+	// and the table follows the metric lines it details, ahead of the own
+	// sheet, which is a different document.
+	header, shares, quality, own := strings.Index(body, "cells:\n"),
+		strings.Index(body, "acceptable · worker"), strings.Index(body, "role_quality · worker"),
+		strings.Index(body, "own sheet:")
+	if header < 0 || shares < 0 || quality < 0 || own < 0 {
+		t.Fatalf("show --cells did not print the table:\n%s", body)
+	}
+	if shares < header || quality < shares || own < quality {
+		t.Fatalf("the cells did not follow their metrics in the index's own order:\n%s", body)
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json", "--cells"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Index *struct {
+			Metrics int `json:"metrics"`
+		} `json:"index"`
+		Cells []struct {
+			Metric   string            `json:"metric"`
+			Role     string            `json:"role"`
+			Model    string            `json:"model"`
+			Dims     map[string]string `json:"dims"`
+			Mean     float64           `json:"mean"`
+			SD       float64           `json:"sd"`
+			N        int               `json:"n"`
+			Installs int               `json:"installs"`
+		} `json:"cells"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("--json --cells did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Index == nil || answer.Index.Metrics != 2 {
+		t.Fatalf("the summary did not stay beside the cells: %+v", answer.Index)
+	}
+	if len(answer.Cells) != 3 {
+		t.Fatalf("--json --cells carried %d cell(s), want three: %+v", len(answer.Cells), answer.Cells)
+	}
+	plain, graded, scored := answer.Cells[0], answer.Cells[1], answer.Cells[2]
+	if plain.Metric != "acceptable" || plain.Role != "worker" || len(plain.Dims) != 0 ||
+		plain.Mean != 0.75 || plain.N != 20 || plain.Installs != 2 {
+		t.Fatalf("the sourceless share read as %+v", plain)
+	}
+	if graded.Metric != "acceptable" || graded.Dims["source"] != "grader" ||
+		graded.Mean != 0.83 || graded.N != 12 || graded.Installs != 4 {
+		t.Fatalf("the graded share read as %+v", graded)
+	}
+	if scored.Metric != "role_quality" || scored.Mean != 71.2 || scored.SD != 9.4 ||
+		scored.N != 42 || scored.Installs != 5 {
+		t.Fatalf("the judged score read as %+v", scored)
+	}
+
+	// Without the flag the answer is the answer it has always been: no
+	// table in the words, no cells key in the object.
+	out.Reset()
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	plain0 := out.String()
+	if strings.Contains(plain0, "installs 5") || strings.Contains(plain0, "cells:\n") {
+		t.Fatalf("a show without --cells grew the table:\n%s", plain0)
+	}
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var noCells map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out.String()), &noCells); err != nil {
+		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
+	}
+	if _, has := noCells["cells"]; has {
+		t.Fatal("a show --json without --cells carried a cells array")
+	}
+}
+
+// A metric the document declares but holds no cell of — the floor held its
+// cells back, or none were ever measured — says none in the table, the way
+// every other nothing here is said.
+func TestPoolShowCellsSaysNoneForAMetricWithNoCells(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, `{
+		"version": 7,
+		"schema": 1,
+		"generated": "2026-09-10",
+		"min_installs": 1,
+		"metrics": {"role_rating": {"kind": "gaussian", "dims": ["role", "model"]}},
+		"cells": []
+	}`)
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--cells"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "role_rating · none") {
+		t.Fatalf("an empty metric did not say none:\n%s", out.String())
+	}
+}
+
 // ── THE OWN SHEET ───────────────────────────────────────────────────────────
 
 // seedOwnSheet records the install's own scores the way a recorder would:
