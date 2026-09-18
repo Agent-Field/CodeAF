@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the auditor's calls say they are the auditor's and which node they check
-pr: 0000
+pr: 1181
 surface: [engine]
 invalidates:
   - "An auditor's provider calls were indistinguishable from a conversation's own turns in every record: the model-call log tagged both `turn` and named no node, and the usage ledger wrote no role and no task on either. A check and a session turn on the same model were the same row. The auditor's calls now tag `auditor` — its role's own word — and name the id of the node they check; the usage row carries `role: auditor` and that node's `task` on the high seat."
