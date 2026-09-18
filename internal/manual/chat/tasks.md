@@ -5223,6 +5223,23 @@ or queued stays open on the rail.
 to finish. It counts direct dependants, not every later task in the subtree, and
 nothing is printed when the count is zero. Their own rows remain under their
 parents and say `queued · waits: <title>`.
+## can I ask what a task did without opening its conversation?
+
+Yes. From the run pane, open the ask box and ask about one task. codeaf answers from
+the run's own record: the task rows and results, the run's notes, and, when those are
+not enough, one read-only look at a named task's description, result, notes and last twelve
+steps. The turn is bounded to three rounds. It cannot run commands, write files, change the
+store or redo the work; if the record does not hold the answer, it says so plainly.
+
+Every answer names the task it came from and the range of steps it read, so you can open
+that source rather than taking an unsourced answer on trust. The exchange is temporary: up
+to three earlier questions and answers stay in the box while it is open, and none of them is
+written into the task's conversation.
+
+If your question is really steering — for example, *“tell it to skip the fixtures”* — the
+box does not send it. It shows the note text and asks you to confirm with `enter`; only that
+confirmation writes the same steering note that the task page would write.
+
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
 On a terminal **110 columns or wider** the tasks place splits: the list keeps the left, a dim
