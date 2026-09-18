@@ -149,10 +149,15 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	live := store.LiveSteps()
 	tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
 	rows := make([]PlanTaskRow, 0, len(tasks))
+	// THE RUN'S ROOT IS WHAT THE STORE SAYS IT IS, never a name. A run the
+	// conversation opens is rooted at the task's own number
+	// ([Agent.startKnownTaskRun]), so a comparison against the word `root`
+	// counted nothing on any real run and its row wore no progress.
+	root := store.RootID()
 	for _, task := range tasks {
 		rows = append(rows, planTaskRow(store, dir, task, spend, live))
-		if task.ID == planRootID {
-			applyPlanRootProgress(&rows[len(rows)-1], tasks)
+		if task.ID == root {
+			applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
 		}
 	}
 	return rows
@@ -196,8 +201,8 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	}
 	var waitRows []PlanTaskRow
 	pageRow := rows[task.ID]
-	if task.ID == planRootID {
-		applyPlanRootProgress(&pageRow, all)
+	if root := store.RootID(); task.ID == root {
+		applyPlanRootProgress(&pageRow, all, root)
 	}
 	for _, id := range pageRow.Waits {
 		if row, ok := rows[id]; ok && open(plandb.Status(row.Status)) {
@@ -396,9 +401,9 @@ func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
 
 // applyPlanRootProgress puts the run-wide subtree figures on its root row. The
 // caller supplies the store read it already made, so progress costs no second read.
-func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task) {
+func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task, root string) {
 	for _, task := range tasks {
-		if task.ID == planRootID {
+		if task.ID == root {
 			continue
 		}
 		row.Total++

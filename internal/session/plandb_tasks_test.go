@@ -344,3 +344,32 @@ func TestPlanTasksFindsTheStoreAReopenedConversationLeft(t *testing.T) {
 		t.Fatalf("PlanTasks in a reopened conversation = %v, want the root and t-alpha", rowIDs(rows))
 	}
 }
+
+// THE RUN'S ROOT IS WHAT THE STORE SAYS IT IS. A run the conversation opens is
+// rooted at the task's own number, never at the word `root`, and its row must
+// carry the run's progress all the same: that row is where the dot row draws.
+func TestPlanTaskRootCarriesProgressWhenTheRootIsATaskNumber(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	store, err := plandb.Open(path, "p", "7", "the run", "the brief", "chat-a")
+	if err != nil {
+		t.Fatalf("open the store: %v", err)
+	}
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}}); err != nil {
+		t.Fatalf("add the run's tasks: %v", err)
+	}
+	if _, err := store.Claim("a", "worker-a"); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := store.Done("a", "worker-a", "done", nil, nil); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+	_ = store.Close()
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	root := planRowByID(t, agent.PlanTasks(), "t-7")
+	if root.Total != 2 || root.Done != 1 {
+		t.Fatalf("a numbered root's progress = %d of %d, want 1 of 2", root.Done, root.Total)
+	}
+}
