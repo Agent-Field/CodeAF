@@ -891,6 +891,15 @@ func needsWake(tasks []*plandb.Task, task *plandb.Task, cancels map[string]conte
 		if !terminalStatus(child.Status) {
 			return false
 		}
+		// A CHECK'S LANDING WAKES NOBODY. A check reviews work its parent has
+		// already been told about; its finding reaches the parent as a `fix:`
+		// task, which is work and does wake it when it lands, or as a note.
+		// Waking a parent for the check itself was the turn that left a root
+		// finished alone standing `ready` forever: reopened for its one check,
+		// then owed a wake with nothing to integrate (do_engine_test.go).
+		if child.Role == plandb.RoleCheck {
+			continue
+		}
 		if !seen[child.ID] {
 			unreported = true
 		}
