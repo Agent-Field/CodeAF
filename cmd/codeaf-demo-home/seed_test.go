@@ -477,7 +477,9 @@ func TestTheDemoHomeSeedsTheBeltRuns(t *testing.T) {
 	if chat.ID == "" {
 		t.Fatalf("no seeded conversation called %q", roomTalkTitle)
 	}
-	storeDir := filepath.Join(chat.ProjectDir, ".codeaf")
+	// The store sits in the conversation's own folder, where a placed
+	// conversation's run keeps it and where the reopened conversation looks.
+	storeDir := chat.Dir
 	plan, err := plandb.Open(filepath.Join(storeDir, "plandb.db"), "", "", "", "")
 	if err != nil {
 		t.Fatalf("open the demo plan: %v", err)
@@ -543,7 +545,7 @@ func TestTheDemoHomeSeedsTheBeltRuns(t *testing.T) {
 		t.Errorf("index the poems has no failed child")
 	}
 	live := plan.LiveSteps()
-	for title, command := range map[string]string{"write the handler": "$ go test ./internal/auth/...", "write the middleware": "$ cat > internal/auth/mw.go <<'EOF'"} {
+	for title, command := range map[string]string{"write the handler": "go test ./internal/auth/...", "write the middleware": "cat > internal/auth/mw.go <<'EOF'"} {
 		row := byTitle[title]
 		if row == nil || live[row.ID].Command != command {
 			t.Errorf("live step for %q = %+v, want %q", title, live[row.ID], command)
