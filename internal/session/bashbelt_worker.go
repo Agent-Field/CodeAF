@@ -133,7 +133,12 @@ func workerJournalName() string {
 // trajectory already has steps — a predecessor was interrupted mid-work, and
 // the effects it left are unannounced facts about the tree this worker is
 // about to act in.
-func BeltWorkerBrief(task *plandb.Task, root, resume bool) string {
+// THE WAKE CLAUSE, WHEN THERE IS ONE, IS WHAT THE OPENING CARRIES. A worker
+// launched to integrate its children's landings opens on the supervisor's list
+// of what they did — every child's title, status and result — in place of the
+// interrupted-predecessor sentence, which is a fact about a different worker
+// and not about this one. The resume flag still rides the trajectory's steps.
+func BeltWorkerBrief(task *plandb.Task, root, resume bool, wake string) string {
 	role := planIsTask
 	if root {
 		role = planIsRoot
@@ -143,7 +148,10 @@ func BeltWorkerBrief(task *plandb.Task, root, resume bool) string {
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
 		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
-	if resume {
+	switch {
+	case strings.TrimSpace(wake) != "":
+		doc = withReport(doc, wake)
+	case resume:
 		doc = withReport(doc, taskResumeClause)
 	}
 	return doc
