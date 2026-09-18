@@ -1149,11 +1149,17 @@ in this conversation*.
 
 ## Finishing a task's work stays in this conversation — it started a second task while integrating, my cherry-pick became a task, the commit after the task finished never happened, why did merging the branch start more work
 
-**When a task lands, its report starts a reply here, and that reply is usually where the rest
-of what you asked for happens**: cherry-picking the branch across, staging the files, the
-commit, the pull request. That is many files changed under this folder, so the write count
-above would move it. **It does not.** A reply delivering the result of a task this
-conversation started finishes here, however many files it touches.
+**A landing speaks only when an answer is owed.** When the chat launches a task in a turn
+that answers something you asked, the task carries your question with it. Its landing wakes
+one short reply, fed only the question and the task’s result note. That reply answers from
+the result and never redoes the work; if the result is thin, it says so and offers a
+follow-up task.
+
+A task you start yourself with `/task` carries no question, so its landing only writes the
+dim line and starts no reply. A family replies once, when the root lands, never for each
+child. A check’s landing starts no reply. The reply that does start is where the rest of
+what you asked for happens: cherry-picking the branch across, staging the files, the commit,
+the pull request. However many files it touches, it finishes here.
 
 **Why.** A four-module repair was asked for on a branch with a final commit. The task did the
 work — 29 independent checks passed, the protected files were untouched, the branch was
@@ -1748,6 +1754,14 @@ language word after it, is passed over the way a blank line is. The first line t
 neither is what the card quotes, which for a report that is nothing but a fenced block is
 the first line inside it. A report with no line to quote draws no quotation marks at all,
 only the start stamp.
+
+**The conversation replies only when its task was started while answering your question.**
+That task carries the question until its family lands, then one short reply answers from the
+root task’s report. A part does not reply when it finishes, and neither does a check; the
+family replies once, when the root lands. If you typed `/task` yourself, you asked for work
+rather than an answer, so finishing only shows the landing line and makes no model call.
+The same is true when a task started by the conversation carries no question: the landing
+line is the whole arrival.
 
 **Every fact on the head is joined by ` · `, the state word included.** It used to read
 `done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside

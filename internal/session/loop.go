@@ -757,7 +757,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// the LADDER'S answer and not a field ([Agent.effortFor]): a rung set on the
 	// conversation, on the work, or on the install reaches this turn through the
 	// same call the dialled level does, which is what makes one resolver true.
-	model := a.latchTheModel()
+	model := ""
+	if wake, settle := settleWakeFrom(ctx); settle {
+		model = wake.model
+	}
+	model = a.latchModelAs(model)
 	rung := a.effortFor(model)
 	// AND THE SURFACE HEARS ABOUT A RESCUE WHILE IT IS STILL OUT, under the
 	// latched model for the latch's own reason (lanenews.go). The report is read
@@ -1943,6 +1947,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
 		messages, carried := a.snapshotWithReasoning()
+		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 {
+			rolePage := textMessage("system", strings.TrimSpace(wake.prompt))
+			messages = append(messages[:1:1], append([]ai.Message{rolePage}, messages[1:]...)...)
+		}
 		// OLD FROZEN TOOL RESULTS ARE ALREADY CONSUMED EVIDENCE. The live
 		// transcript keeps them whole — the journal is the record — and the
 		// request the model is about to read does not. compactToolHistory leaves
