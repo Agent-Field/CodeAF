@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
@@ -29,9 +31,37 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pool/tally"
 )
 
-// Metric is the sheet metric a judged seat score is observed under: the word
-// the crew picker reads a measured seat quality from.
+// Metric is the sheet metric a judged seat score is observed under: a model's
+// 0-100 opinion of a seat's work. It is kept as its own evidence and is NOT
+// what the crew picker reads a measured seat quality from; that is Acceptable.
 const Metric = "role_quality"
+
+// Acceptable is the sheet metric a graded task is observed under, one
+// observation per seat the crew held: 100 when the harness's own model-free
+// grade of the landing passed, 0 when it did not. Its mean is the share of
+// graded tasks accepted, on the 0-100 scale the crew picker scores a seat on,
+// and it is the one metric the picker learns from. The cell carries one dim,
+// SourceDim, naming which grader said so — internal/pool/grade's source words
+// for this install's own grades, and the seeded reviewer for the index's
+// seed — so the relay can fit a reliability per source and never blends two
+// scales in one cell (docs/design/model-pool/pareto-crewing.tex, the reward
+// section).
+const Acceptable = "acceptable"
+
+// SourceDim is the dim label an Acceptable cell carries its grader under. The
+// label's value is the source's own word — `grader`, `grader-build`,
+// `reviewer` — which is the wire's judge id with its `codeaf/` vendor taken
+// off, because a sheet label may not carry a slash and a wire judge must.
+const SourceDim = "source"
+
+// sourceWord is the sheet's spelling of a wire source: the text after the
+// last slash, or the whole id when there is none.
+func sourceWord(source string) string {
+	if i := strings.LastIndex(source, "/"); i >= 0 {
+		return source[i+1:]
+	}
+	return source
+}
 
 // OwnSheetName is the file the install's own sheet is kept as, under the pool
 // directory.
@@ -196,21 +226,80 @@ func (r *Recorder) Record(scores []judge.Score, judgeModel, door, size, day stri
 	return errors.Join(errs...)
 }
 
-// Cells reads the sheet's own role_quality cells — the ones recorded with no
-// dim labels — as the cells a prior reads: the seat, the model, the mean of
-// the scores and the count behind them, sorted by seat then model, so the
-// answer is a property of the sheet and never of the order it was observed
-// in. A nil sheet answers no cells.
+// Cells reads the sheet's own Acceptable cells as the cells a prior reads:
+// the seat, the model, the share accepted and the count behind it, one cell
+// per source, sorted by seat then model then source, so the answer is a
+// property of the sheet and never of the order it was observed in. The
+// picker's PriorFromCells folds the sources of one seat and model into one
+// rating. A nil sheet answers no cells.
 func Cells(s *tally.Sheet) []crewpick.Cell {
 	if s == nil {
 		return nil
 	}
 	var cells []crewpick.Cell
-	s.Each(Metric, func(role, model string, dims map[string]string, c tally.Cell) {
-		if dims != nil {
-			return
-		}
+	s.Each(Acceptable, func(role, model string, dims map[string]string, c tally.Cell) {
 		cells = append(cells, crewpick.Cell{Role: role, Model: model, Mean: c.Mean(), N: int(c.N)})
 	})
 	return cells
+}
+
+// RecordGrade observes one graded task into the sheet, one Acceptable
+// observation per seat the crew held — 100 when the grade passed, 0 when it
+// did not — under the source that graded it, and appends one row per seat to
+// the outbox when the recorder holds one, with the source in the row's judge
+// column, which is the column the relay fits a reliability per grader on.
+// THE SHEET IS OBSERVED WHATEVER THE OUTBOX DOES, exactly as Record keeps it.
+// A seat whose role is not a judged seat, or whose model is empty, is skipped
+// and named in the error beside the others that were recorded.
+func (r *Recorder) RecordGrade(seats map[judge.Role]string, source string, pass bool, door, size, day string) error {
+	if r.Sheet == nil {
+		return errors.New("record: no sheet to observe into")
+	}
+	score := 0.0
+	if pass {
+		score = 100
+	}
+	roles := make([]judge.Role, 0, len(seats))
+	for role := range seats {
+		roles = append(roles, role)
+	}
+	sort.Slice(roles, func(i, j int) bool { return roles[i] < roles[j] })
+	var errs []error
+	var appendErr error
+	for _, role := range roles {
+		model := seats[role]
+		if !judgedRoles[role] {
+			errs = append(errs, fmt.Errorf("record: the %s seat is not a judged seat and was skipped", role))
+			continue
+		}
+		if model == "" {
+			errs = append(errs, fmt.Errorf("record: the %s seat names no model and was skipped", role))
+			continue
+		}
+		r.Sheet.Observe(Acceptable, string(role), model, map[string]string{SourceDim: sourceWord(source)}, score)
+		if r.Outbox == nil {
+			continue
+		}
+		line, err := json.Marshal(Row{
+			Schema: 1,
+			Metric: Acceptable,
+			Role:   string(role),
+			Model:  model,
+			Score:  score,
+			Judge:  source,
+			Door:   door,
+			Size:   size,
+			Day:    day,
+		})
+		if err != nil {
+			continue // a struct of scalars never fails to marshal
+		}
+		if err := r.Outbox.Append(line); err != nil && appendErr == nil {
+			appendErr = err
+		}
+	}
+	if appendErr != nil {
+		errs = append(errs, appendErr)
+	}
+	return errors.Join(errs...)
 }
