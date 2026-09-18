@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -15,10 +16,18 @@ import (
 // throwaway CODEAF_HOME and a local httptest sink pinned as the endpoint, so
 // nothing a test spools can ever leave the machine (the package's own spool
 // tests POST to the production relay when the endpoint is unset).
+//
+// AND THE PROFILE IS PINNED WITH THE STATE ROOT, because `telemetry on` and
+// `telemetry off` write the profile's own row through config.WriteTelemetry with
+// the directory config.ProfileDir() resolves. An exported CODEAF_PROFILE_DIR —
+// which the harness that runs this suite sets at a live profile — outranks
+// CODEAF_HOME, so a test that moved only the state root wrote that row, and the
+// spool it read back, into somebody else's profile.
 func telemetryHome(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	t.Setenv(home.EnvVar, root)
+	t.Setenv(config.ProfileDirEnv, "")
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "")
 	t.Setenv("CODEAF_TELEMETRY", "")
 	t.Setenv("DO_NOT_TRACK", "")
