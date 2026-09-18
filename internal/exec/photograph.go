@@ -152,6 +152,11 @@ func PhotographBefore(
 		}
 		pace = held.Pace()
 	}
+	// THE READING IS TAKEN AT THE PROJECT'S OWN ROOT, WHICH IS NOT ALWAYS THE
+	// WORKSPACE ROOT. verify.Photograph looks one level down when the workspace
+	// root declares no check and answers with the rung's Workdir — "repo" for a
+	// project cloned into ./repo — so the workspace root is the right base here
+	// and the command still runs inside the discovered project.
 	reading := verify.Photograph(ctx, workspace.Root(), wall, focusOf(task), pace)
 	verify.RememberBaseline(workspace.Root(), job, tree, reading)
 	journalReading(history, task, reading, reading.Before, "before the job's first change", false)
@@ -373,6 +378,10 @@ func PhotographAfter(
 			strategy = narrowed
 		}
 	}
+	// THE PINNED RUNG CARRIES ITS OWN WORKDIR, so this second reading runs at the
+	// same discovered project root the first one did, under the workspace root
+	// this is handed — and every path involved (the artifact record, the plan's
+	// entrypoints, the surface) stays workspace-relative.
 	after, ok := readFinishedTree(ctx, workspace.Root(), strategy, reading, outcome.Artifacts)
 	switch {
 	case !ok:
