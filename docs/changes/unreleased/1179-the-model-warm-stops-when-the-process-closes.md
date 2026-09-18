@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the model warm stops when the process closes
-pr: 1178
+pr: 1179
 surface: [chat, engine]
 invalidates:
   - "The model catalog warm — the goroutine a v3 door started through `guard.Go` to learn the session model's context window and refresh `~/.codeaf/v3/models.json` — was fire-and-forget, and `guard.Go` joins nothing at shutdown. It writes the picker cache through `tui3.WriteModelCache`, which resolves `CODEAF_HOME` AT THE MOMENT IT WRITES, so a warm that outlived the process that asked for it landed in whichever state root was current when the rows finally arrived: in a package run the NEXT test's own `TempDir`, whose clean-up then failed with `unlinkat …: directory not empty`, and on a door that reopened on another profile, a directory the process no longer owned. It is now seated on the profile's start-up errand tracker (`cmd/codeaf/chatv3_process.go`'s `warmModels`, through `poolindex.go`'s `poolErrandGoCtx`) and the errand observes the tracker's context, so `v3Process.closeAll` cancels the warm's wait and joins the goroutine before it closes the conversations and the stores."
