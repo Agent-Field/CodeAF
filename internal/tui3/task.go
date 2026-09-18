@@ -2428,7 +2428,7 @@ const (
 // in its way but a slot) and `waiting` (blocked behind other work), which keeps
 // the distinction the groups exist for and is readable without learning it. The
 // dependency reason still rides on the row ([app.railWaits]).
-var railGroupWords = [railGroupCount]string{"needs you", "running", "queued", "queued", "done"}
+var railGroupWords = [railGroupCount]string{"needs you", "running", "queued", "waiting", "done"}
 
 // railGroupOf groups the task's own state. Explicit decisions and conflicts
 // lead, then active and waiting work, then finished reports. A retained branch
