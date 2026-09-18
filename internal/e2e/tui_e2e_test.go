@@ -58,6 +58,13 @@ import (
 // `stand` tool takes longer, and a machine under load takes longer again.
 const modelPatience = 90 * time.Second
 
+// runPatience is how long a RUN is given, and it is not [modelPatience] because
+// a run is not a turn. A `/task` on the run engine seeds a plan store, dispatches
+// a worker, drives its whole loop of model calls, then commits the tree and hands
+// the conversation its landing — a measured one-file brief lands in about thirty
+// seconds and costs a few cents, and a machine under load takes minutes.
+const runPatience = 6 * time.Minute
+
 // The two frames this suite drives, and why each is the width it is.
 const (
 	// tuiPlain is an ordinary terminal: home is two columns of panels, the
@@ -106,6 +113,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
 	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
+	t.Run("TaskOnTheRunEngine", testTaskOnTheRunEngine)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
@@ -2086,4 +2094,180 @@ func waitForRecord(t *testing.T, home string, within time.Duration) string {
 		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// ── the run engine's own plan ───────────────────────────────────────────────
+
+// testTaskOnTheRunEngine is a `/task` on the RUN ENGINE, read off a real screen:
+// the conversation seeds a plan store rather than a node of its own tree, the
+// engine drives it, and what lands is the store's root — a row on the tasks
+// place that moves with the store's own state, and the page that row opens,
+// whose trajectory is the worker's record of every command it ran.
+//
+// THE BELT IS ASKED FOR IN THE BINARY'S OWN ENVIRONMENT. CODEAF_TASK_BELT=bash
+// is the one switch that makes the door take the run road at all (internal/run's
+// engine is linked and registered for it, cmd/codeaf/runwire.go); with the
+// variable unset the same `/task` starts an ordinary node of this session's
+// tree, which the roster subtests already read. [startWithEnv] is how this suite
+// hands a variable to the launched process.
+//
+// IT COSTS A FEW CENTS AND LANDS IN ABOUT THIRTY SECONDS, the shape and the
+// price [testStatesDone] pays for the same brief on the shipped belt.
+//
+// THE STATE WORD IS READ OFF THE ROW AND NOT OFF THE SCREEN. The place files its
+// rows under headings that are state words themselves — everything working stands
+// under `running` (tasksplace.go's tasksSectionWord) — so a screen-wide wait for
+// the word is a wait for a heading and proves nothing about any row. It is the
+// care [statesHeadLine] takes on a landing card, spent on a row of the list
+// ([planRowWearing]).
+func testTaskOnTheRunEngine(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "runws", false)
+	r := startWithEnv(t,
+		[]string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=bash"},
+		"afe2e_task_run", home, ws, tuiWide, 45, "chat", "--one-model")
+	r.skipSetup(t)
+
+	// runRowWord is the run's own words on the tasks place, and one word of the
+	// brief this subtest types: the row the record publishes and the row the store
+	// answers are both named from the person's own sentence, so it is the anchor a
+	// row is found by when the state word beside it is what is being proved. It is
+	// a constant rather than a second spelling of the brief so the two cannot
+	// drift apart.
+	const runRowWord = "HELLO.md"
+
+	r.lit("/task write " + runRowWord + " containing the word hello")
+	r.keys("Enter")
+
+	// ── the row on the tasks place ──────────────────────────────────────────
+	//
+	// THE PLAN IS THE STORE'S READ, and the place draws it beside this
+	// conversation's own record: a plan row wears the state word its store status
+	// maps to (internal/tui3's planStateWord), so `ready` and `claimed` — the
+	// store saying a task is deliverable and a worker has it — both read as work
+	// in flight, and a task whose root has landed reads done.
+	openTasksPlace(t, r)
+	running := r.waitFor(40*time.Second, say(t, "planRunningWord"))
+	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
+	planRowWearing(t, running, runRowWord, say(t, "planRunningWord"))
+
+	done := r.waitFor(runPatience, say(t, "planDoneWord"))
+	t.Logf("the run on the tasks place once its root landed:\n%s", done)
+	planRowWearing(t, done, runRowWord, say(t, "planDoneWord"))
+
+	// ── the landing, in the thread ──────────────────────────────────────────
+	//
+	// THE ENGINE COMMITS THE RUN'S TREE ON ITS BRANCH and hands the conversation
+	// the same landing a node sends (the door's own note and the row it settles).
+	// The card that lands names the branch the work was left on, which is the one
+	// handle back to work that is not on the screen; the branch is the working
+	// copy's own, because a run lands the tree where it stands (internal/run's
+	// Land over session.LandRunTree).
+	r.keys("Escape")
+	landed := r.waitFor(modelPatience, say(t, "taskDoneGlyph"), say(t, "taskDoneWord"),
+		say(t, "taskBranchKeptFact"))
+	t.Logf("the run's landing card in the thread:\n%s", landed)
+	if branch := runBranch(t, ws); branch != "" && !strings.Contains(landed, branch) {
+		t.Errorf("the landing does not name the branch the run's work is on (%q):\n%s", branch, landed)
+	}
+
+	// ── the page one row opens ──────────────────────────────────────────────
+	//
+	// ENTER OVER THE ROW OPENS THE STORE'S OWN PAGE — the description the worker
+	// was given, the notes left on the task, and the trajectory: one line per
+	// command the worker ran, and the run's own finish among them. `esc` backs out
+	// one layer to the list, the card's own bargain.
+	openTasksPlace(t, r)
+	r.keys("Enter")
+	// glimpse AND NOT waitFor, BECAUSE THE PAGE NOT COMING UP IS NOT A TIMEOUT. A
+	// wait that ran out would report a screen the suite never saw and leave the
+	// reader to work out which of two pages answered the key; the answer is a fact
+	// about the row that was under the cursor, and it is said as one.
+	page, saw := r.glimpse(40*time.Second, say(t, "planFinishCommand"))
+	if !saw {
+		t.Fatalf("Enter over the run's row never opened the store's plan page, so no screen this suite "+
+			"can reach carries the %q line its worker finishes with. The row under the cursor is the "+
+			"run's node row and not its plan row — planRowWearing says why — and a node row opens a "+
+			"room, which the engine holds no node for, so it is empty. The screen after Enter was:\n%s",
+			say(t, "planFinishCommand"), r.capture())
+	}
+	t.Logf("the plan page, carrying the worker's own finish command:\n%s", page)
+	r.keys("Escape")
+	back := r.waitFor(30*time.Second, say(t, "planDoneWord"))
+	t.Logf("esc backed out of the page to the list:\n%s", back)
+	r.quit()
+}
+
+// openTasksPlace opens the place onto everything this machine has run, through
+// its one command: `/history` (commands.go — deliberately not `/tasks`, which the
+// three work-starting rows would narrow to), and `→` to open the conversation's
+// own fold, which the place draws SHUT (tasksReading.opens).
+func openTasksPlace(t *testing.T, r *rig) {
+	t.Helper()
+	r.lit("/history")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
+	time.Sleep(700 * time.Millisecond)
+	// THE FOLD IS OPENED UNDER THE CURSOR. The place groups its rows by
+	// conversation and opens every group shut, so the run's row is not drawn until
+	// its conversation is unfolded.
+	r.keys("Right")
+}
+
+// tasksRowOf is the one line of the tasks place carrying these words, or "" when
+// the place draws no such row.
+//
+// IT IS SOUGHT AS A LINE AND NOT AS A SUBSTRING OF THE SCREEN for the reason
+// [statesHeadLine] is: a state word on this place is also a heading over it, and
+// a pair of screen-wide searches is satisfied by the word standing in two
+// different places with nothing between them.
+func tasksRowOf(screen, words string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		if row := strings.TrimSpace(line); strings.Contains(row, words) {
+			return row
+		}
+	}
+	return ""
+}
+
+// planRowWearing asserts that the run's row is on the tasks place wearing this
+// state word, and answers the row for the log.
+//
+// THE FAILURE IT MAKES IS THE WHOLE OF WHAT STANDS BETWEEN THIS SUITE AND THE
+// RUN'S OWN PAGE, so it says the mechanism rather than the symptom. internal/tui3
+// drops the store's plan row whenever a node row of this conversation wears the
+// same title (taskplan.go's planRowShown, which exists for a plan-born node — a
+// node the plan dispatched, whose store task is the same work read from the other
+// end). A run is not one: its door publishes a row of its own with the store
+// root's title on it (internal/session's task_run_belt.go seeds the store and the
+// row from one sentence), so the dedupe takes the plan row for a duplicate of it.
+// What the place is left drawing is the node's row in the engine's own word, and
+// Enter over that row opens a room the engine holds no node for.
+func planRowWearing(t *testing.T, screen, words, state string) string {
+	t.Helper()
+	row := tasksRowOf(screen, words)
+	if row == "" {
+		t.Errorf("the tasks place draws no row for the run (%q), so nothing on it can wear %q:\n%s",
+			words, state, screen)
+		return ""
+	}
+	if !strings.Contains(row, state) {
+		t.Errorf("the run's row does not wear %q, so the row the place drew is not the store's plan "+
+			"row: planRowShown (internal/tui3/taskplan.go) drops a plan row whose title a node row of "+
+			"this conversation already wears, and the run's door publishes its own row with the store "+
+			"root's title on it. The row drawn is the node's, in the engine's own word:\n\t%s", state, row)
+	}
+	return row
+}
+
+// runBranch is the branch the run's working copy stands on, which is the branch
+// its landing commits onto and names. A workspace with no repository of its own
+// answers "", and the branch assertion is skipped rather than failed for it.
+func runBranch(t *testing.T, ws string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", ws, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
