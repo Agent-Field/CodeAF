@@ -1848,9 +1848,17 @@ func promote(value *state, now time.Time) {
 		// A COMPOSITE TASK AUTO-COMPLETES when its children are all terminal
 		// and all done — the half the doctrine's parents rely on to finish
 		// without a worker ever touching them.
+		//
+		// A COMPOSITE A WORKER IS HOLDING IS NOT THE STORE'S TO CLOSE. A parent
+		// whose own worker is claimed or running has a result still to be written
+		// — its children's landings wake it, and it reports them — so the store
+		// leaves it open and the run writes its ending (internal/run's supervisor).
+		// A composite nobody is working — a parent that never had a worker of its
+		// own — still auto-completes here, which is what lets a store-only plan
+		// finish without a seat for every coordinator.
 		for _, id := range value.Order {
 			task := value.Tasks[id]
-			if id == value.RootID || !task.Composite || terminal(task.Status) || !allChildrenTerminal(*value, id) {
+			if id == value.RootID || !task.Composite || terminal(task.Status) || heldStatus(task.Status) || !allChildrenTerminal(*value, id) {
 				continue
 			}
 			task.Status = StatusDone

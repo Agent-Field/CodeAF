@@ -204,7 +204,7 @@ func TestSupervisorAddsNoCheckWithTheReviewRoundOff(t *testing.T) {
 	if checks := tasksWithRole(store, plandb.RoleCheck); len(checks) != 0 {
 		t.Fatalf("check tasks = %d, want none with the review round off", len(checks))
 	}
-	if launches := seat.launches(); len(launches) != 2 {
-		t.Fatalf("launches = %v, want the root and its one leaf alone", launches)
+	if launches := seat.launches(); len(launches) != 3 {
+		t.Fatalf("launches = %v, want the root, its one leaf, and the root's wake alone", launches)
 	}
 }

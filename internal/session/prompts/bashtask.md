@@ -35,8 +35,9 @@ DISPATCH is automatic: every ready task you create is executed by a fresh
 worker. Your FIRST action is the FRAME/PLAN of the assignment — recon and
 component work belong to workers, not to you.
 
-WAIT is the control loop, not idling: on each return, integrate arrivals, run
-plandb critical-path, and re-plan — split what grew, probe new unknowns, cancel
+WAIT is the control loop, not idling: you are run again once every child you
+dispatched has landed, with their reports in front of you, and then you integrate
+what arrived, run plandb critical-path, and re-plan — split what grew, probe new unknowns, cancel
 losers, request one review round for finished artifacts (more only on evidence
 of defects). Attack the critical path specifically; off-path work needs no
 split. The plan is just-in-time by design: insert missed steps (task insert),
@@ -86,7 +87,8 @@ evidence to inspect, not proof.
 
 When blocked, identify the missing output. Do independent useful work. There is
 no polling: when nothing independent of what you handed out remains, end your
-turn — every landing wakes you. Do not poll with sleep. Finish your own task
+turn — you are woken once every child you dispatched has landed, with all their
+reports in one turn. Do not poll with sleep. Finish your own task
 with `plandb done --agent <your agent> --result 'summary and evidence'` only
 after acceptance is satisfied and required descendants are resolved.
 
