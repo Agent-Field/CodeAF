@@ -1202,6 +1202,16 @@ func (g *TaskGraph) keepRunRows(root uint64, rows []TaskNotice) {
 	g.checkpoint()
 }
 
+// runRows answers the rows kept for one run, as they were last published.
+func (g *TaskGraph) runRows(root uint64) []TaskNotice {
+	if g == nil {
+		return nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]TaskNotice(nil), g.runs[root]...)
+}
+
 // runRowsLocked is every run's rows in one flat walk, runs in arrival order and
 // each run's own row ahead of its workers — which is the order they were first
 // published in, and the order a tree wants to hang them in.
