@@ -21,6 +21,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1817,5 +1818,41 @@ func TestPlandbCliAClosedStoreRefusesInsteadOfPanicking(t *testing.T) {
 	// ledger nothing and the refusal is what keeps the process up.
 	if err := store.AddSpend("l1", "a-model", RoleWork, 0.25, 10, 20); !errors.Is(err, ErrClosed) {
 		t.Fatalf("a second AddSpend on a closed store = %v, want ErrClosed", err)
+	}
+}
+
+func TestPlandbCliChecksRoundTripAndMigrate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store := planOpen(t, path)
+	planAdd(t, store, TaskSpec{ID: "checked", Title: "Checked", Checks: []string{"go test ./x", "go vet ./x"}})
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	reopened := planReopen(t, path)
+	if got := reopened.Task("checked").Checks; !reflect.DeepEqual(got, []string{"go test ./x", "go vet ./x"}) {
+		t.Fatalf("reopened checks = %#v", got)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatalf("close reopened: %v", err)
+	}
+	db, err := openDatabase(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"tasks", "archived_tasks"} {
+		if _, err := db.Exec("ALTER TABLE " + table + " DROP COLUMN checks"); err != nil {
+			t.Fatalf("drop %s.checks: %v", table, err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	defer migrated.Close()
+	if got := migrated.Task("checked").Checks; len(got) != 0 {
+		t.Fatalf("migrated checks = %#v, want []", got)
 	}
 }

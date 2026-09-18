@@ -29,6 +29,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -252,7 +253,16 @@ func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 				return beltToolReply(beltFinish(beltAnswer)), nil
 			},
 		},
-		ever: func(context.Context, []ai.Message) (*ai.Response, error) { return beltTextReply(beltAnswer), nil },
+		// THE ROOT IS CHECKED ONCE IT FINISHES ALONE, so the seat's standing
+		// answer must also serve the review check: it answers `holds` when the
+		// document is the check's, and the text reply everywhere else.
+		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+				id := briefTaskID(doc)
+				return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+			}
+			return beltTextReply(beltAnswer), nil
+		},
 	}
 
 	var stdout, stderr strings.Builder
@@ -448,6 +458,58 @@ func TestDoOnTheRunEngineChecksALeafAndExitsZeroWhenItHolds(t *testing.T) {
 	}
 }
 
+// A CHILDLESS ROOT THAT FINISHES THROUGH THE PLANDB BELT IS CHECKED ONCE.
+//
+// This is the do road real runs take most often: the root does the work itself
+// and calls the CLI done verb rather than returning a report. The command must
+// remain accepted for a root worker, the holding check must land, and the do
+// envelope must still leave on the success rung with the worker's own result.
+func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testing.T) {
+	beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	workspace := beltRepoWorkspace(t)
+	seat := &beltSeat{ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+		doc := beltDocument(msgs)
+		if strings.Contains(doc, "## Who checks this work") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+		}
+		return beltToolReply(beltFinish(beltAnswer)), nil
+	}}
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task: "do the work alone and say what you did", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		newBeltCompleter: func(string) session.Completer { return seat },
+	}); err != nil {
+		t.Fatalf("a self-finished root whose check held left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if !strings.Contains(outcome.Deliverable, beltAnswer) {
+		t.Fatalf("the envelope does not carry the root worker's result: %q", outcome.Deliverable)
+	}
+
+	store, err := plandb.Open(session.PlanStorePath(workspace), "", "root", "", "")
+	if err != nil {
+		t.Fatalf("open the do run's plan: %v", err)
+	}
+	defer store.Close()
+	var checks []*plandb.Task
+	for _, task := range store.Tasks() {
+		if task.Role == plandb.RoleCheck {
+			checks = append(checks, task)
+		}
+	}
+	if len(checks) != 1 {
+		t.Fatalf("check tasks in store = %d, want exactly one", len(checks))
+	}
+	if checks[0].Status != plandb.StatusDone {
+		t.Fatalf("check status = %s, want done", checks[0].Status)
+	}
+}
+
 // A CEILING OF NOTHING IS A LIMIT THAT STOPPED THE RUN, before any worker.
 //
 // The run road has no cost flag, and this is why the ceiling lives on the
@@ -498,7 +560,16 @@ func TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession(t *testing.T) {
 				return beltToolReply(beltFinish(beltAnswer)), nil
 			},
 		},
-		ever: func(context.Context, []ai.Message) (*ai.Response, error) { return beltTextReply(beltAnswer), nil },
+		// THE ROOT IS CHECKED ONCE IT FINISHES ALONE, so the seat's standing
+		// answer must also serve the review check: it answers `holds` when the
+		// document is the check's, and the text reply everywhere else.
+		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+				id := briefTaskID(doc)
+				return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+			}
+			return beltTextReply(beltAnswer), nil
+		},
 	}
 
 	var stdout, stderr strings.Builder

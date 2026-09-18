@@ -93,6 +93,7 @@ type TaskSpec struct {
 	EvidenceRequirements []string `json:"evidence_requirements,omitempty"`
 	Agent                string   `json:"agent,omitempty"`
 	Acceptance           string   `json:"acceptance,omitempty"`
+	Checks               []string `json:"checks,omitempty"`
 }
 
 // TaskPatch is the contract half of a task that may be revised before it
@@ -115,6 +116,7 @@ type TaskPatch struct {
 	EvidenceRequirements *[]string
 	Agent                *string
 	Acceptance           *string
+	Checks               *[]string
 }
 
 type Task struct {

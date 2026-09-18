@@ -112,7 +112,7 @@ func TestPlandbCliInitAndAddCapturedShapes(t *testing.T) {
 	cliWantCode(t, code, 0)
 	for _, want := range []string{
 		"created p-demo (demo)",
-		`next: plandb add "title" --description "detailed spec" [--dep t-upstream] [--as custom-id]`,
+		`next: plandb add "title" --description "detailed spec" [--dep t-upstream] [--check command] [--as custom-id]`,
 		"tip:  create tasks in dependency order. use --dep to chain them.",
 		`plandb add "A" --as a && plandb add "B" --dep t-a --as b`,
 		"plandb go → work → plandb done --next → repeat",
@@ -1176,4 +1176,38 @@ func TestPlandbCliSpendSinceBoundsTheWindow(t *testing.T) {
 
 	code = h.run("--db", h.db, "spend", "--by", "model", "--since", "yesterday")
 	cliWantError(t, h, code, `--since "yesterday"`)
+}
+
+func TestPlandbCliAddSetChecksAndShow(t *testing.T) {
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	code := h.run("--db", h.db, "add", "Checked", "--as", "checked", "--check", "go test ./x", "--check", "go vet ./x")
+	if code != 0 {
+		t.Fatalf("add failed: %s", h.errb.String())
+	}
+	code = h.run("--db", h.db, "show", "t-checked")
+	cliWantCode(t, code, 0)
+	for _, want := range []string{"checks:\n  go test ./x\n  go vet ./x"} {
+		if !strings.Contains(h.out.String(), want) {
+			t.Fatalf("show misses %q:\n%s", want, h.out.String())
+		}
+	}
+	code = h.run("--db", h.db, "task", "set-checks", "t-checked", "--check", "make test-focus")
+	cliWantCode(t, code, 0)
+	code = h.run("--db", h.db, "show", "t-checked")
+	cliWantCode(t, code, 0)
+	if got := h.out.String(); !strings.Contains(got, "checks:\n  make test-focus") || strings.Contains(got, "go test ./x") {
+		t.Fatalf("replacement checks:\n%s", got)
+	}
+}
+
+func TestPlandbCliNextClaimPrintsChecks(t *testing.T) {
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	h.cliAdd("Checked", "checked", "--check", "go test ./x", "--check", "go vet ./x")
+	code := h.run("--db", h.db, "go", "--agent", "worker")
+	cliWantCode(t, code, 0)
+	if got := h.out.String(); !strings.Contains(got, "checks:\n  go test ./x\n  go vet ./x") {
+		t.Fatalf("next claim misses checks:\n%s", got)
+	}
 }
