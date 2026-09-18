@@ -6,7 +6,7 @@
 //   {"schema":1,"day":"YYYY-MM-DD","nonce":"<32 lowercase hex>","payload":{...}}
 // The payload is the record.Row fields:
 //   {"schema":1,"metric":"role_quality","role":...,"model":...,"score":...,
-//    "judge":...,"door":...,"size":...,"day":"YYYY-MM-DD"}
+//    "judge":...,"door":"task"|"do"|"exec"|"run","size":...,"day":"YYYY-MM-DD"}
 //
 // Everything here is pure: no KV, no fetch, no clock of its own.
 
@@ -14,7 +14,7 @@
 const METRIC = 'role_quality';
 
 const ROLES = new Set(['worker', 'high', 'mastermind']);
-const DOORS = new Set(['task', 'do']);
+const DOORS = new Set(['task', 'do', 'exec', 'run']);
 const SIZES = new Set(['S', 'M', 'L']);
 
 // A model id is "<vendor>/<id>". The Go side draws both halves from a closed
@@ -97,7 +97,7 @@ export function validateRow(line, now = new Date()) {
     return fail('judge must be <vendor>/<id>');
   }
   if (!DOORS.has(payload.door)) {
-    return fail('door must be task or do');
+    return fail('door must be task, do, exec or run');
   }
   if (!SIZES.has(payload.size)) {
     return fail('size must be S, M or L');
