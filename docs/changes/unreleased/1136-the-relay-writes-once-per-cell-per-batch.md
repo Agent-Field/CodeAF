@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the relay writes a submit batch once per distinct cell and day
-pr: 0000
+pr: 1136
 surface: [engine]
 invalidates:
   - "A folded row's identity lived under its own `seen/<install>/<nonce>` key, so a submit batch spent one KV `get` and one KV `put` per row: an install re-sending a 200-row outbox spent 400 writes and reads to fold a handful of cells. The nonces of a day now live together under one `seen/<install>/<day>` key, and a batch costs one read and one write per distinct (day, cell) it folds into plus one read and one write per day for that day's seen set and its quota counter — 12 writes for 200 rows over ten cells on one day."
