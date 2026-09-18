@@ -339,8 +339,15 @@ func TestPlanSpendRollsUpBySeat(t *testing.T) {
 		t.Fatalf("PlanSpend for another chat = %#v, want nil", lines)
 	}
 
-	// AND A WINDOW CUTS EVERY ROW THAT BEGAN BEFORE IT: the beat a day out is
-	// after every charge here, so the rollup is empty rather than stale.
+	// AND A WINDOW CUTS EVERY ROW THAT BEGAN BEFORE IT. A window that opened an
+	// hour ago is before every charge here and so keeps both seats — which is the
+	// half that proves the ledger's written moment was PARSED, since a moment that
+	// failed to parse is cut by the same branch and would answer nothing here too.
+	// A window opening an hour from now is after every charge, so the rollup
+	// answers nothing rather than a stale figure.
+	if lines := agent.PlanSpend(time.Now().Add(-time.Hour)); len(lines) != 2 {
+		t.Fatalf("PlanSpend over a window that opened an hour ago = %d lines, want the ledger's own 2 (%#v)", len(lines), lines)
+	}
 	if lines := agent.PlanSpend(time.Now().Add(time.Hour)); lines != nil {
 		t.Fatalf("PlanSpend over a future window = %#v, want nil", lines)
 	}
