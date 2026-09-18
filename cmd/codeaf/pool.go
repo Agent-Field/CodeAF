@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pool/index"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
+	"github.com/Agent-Field/codeaf/internal/pool/poolkey"
 	"github.com/Agent-Field/codeaf/internal/pool/pull"
 	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/tui2/reltime"
@@ -38,17 +39,10 @@ import (
 // poolPublicKeys are the ed25519 public keys a fetched index's signature is
 // checked under when no key is stored beside the pool row. The list carries
 // the key the index signer publishes (relay/wrangler.toml's POOL_PUBLIC_KEY),
-// decoded once here from its base64 literal: a build whose literal could not
-// decode would verify nothing, so the test beside the verb pins the length.
-var poolPublicKeys = mustPoolKey("WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0=")
-
-func mustPoolKey(encoded string) []ed25519.PublicKey {
-	raw, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil || len(raw) != ed25519.PublicKeySize {
-		panic(fmt.Sprintf("pool: the built-in public key does not decode: %q", encoded))
-	}
-	return []ed25519.PublicKey{ed25519.PublicKey(raw)}
-}
+// and it decodes it once, at init, in the one package that spells the literal
+// ([poolkey]): a build whose literal could not decode would verify nothing, so
+// the test beside the verb pins the length.
+var poolPublicKeys = poolkey.Keys()
 
 // poolTrustedKeys resolves the keys a fetched index is checked under: the
 // stored key when one is set, AND ONLY IT — the row is the one word the

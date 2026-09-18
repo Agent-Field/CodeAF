@@ -82,6 +82,16 @@ key.
    allowed to drop nonces.
 10. Rotating the signing key: generate a new seed, add the new public key to the
     binary's trusted key list, then redeploy with the new secret.
+11. Keep the seed index the binary carries faithful to the relay. Before a
+    release, run `go run ./internal/pool/index/cmd/seedgen -check` from the
+    repository root: it fetches the signed index, verifies it, and diffs it
+    against `internal/pool/index/seed.json` and
+    `docs/design/model-pool/data/seed-cells.csv`, exiting non-zero when either
+    has drifted. Review the diff, then re-run without `-check` to write both,
+    and let the regenerated files ride the release's pull request and change
+    note. The command checks signatures under the key the build carries; pass
+    `-key <base64>` (repeatable) for a relay of your own, and `-url`/`-mirror`
+    to point it elsewhere.
 
 ## Observability
 
