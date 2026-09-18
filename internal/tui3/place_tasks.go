@@ -1735,9 +1735,9 @@ func (placeTasks) close(a *app) { a.taskSheet.close(a) }
 // bar's numbers are recomputed on this beat, so standing on this place froze
 // every tab's count — including the counts of the six rooms this one has
 // nothing to do with (placecounts.go's [app.placeBeat]).
-func (placeTasks) tick(a *app, now time.Time) bool {
+func (placeTasks) tick(a *app, now time.Time) (bool, tea.Cmd) {
 	a.taskSheet.regroup(a)
-	return true
+	return true, nil
 }
 
 func (placeTasks) body(a *app, width, room int) []placeRow {
@@ -1788,7 +1788,9 @@ func (placeTasks) rowID(a *app) string {
 	}
 	return item.entry.SessionID + "\x00" + item.entry.ID
 }
-func (placeTasks) window(a *app, key string) bool      { return a.taskSheet.window(a, key) }
+func (placeTasks) window(a *app, key string) (bool, tea.Cmd) {
+	return a.taskSheet.window(a, key), nil
+}
 func (placeTasks) note(a *app, width int) []string     { return a.taskSheet.note(a, width) }
 func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint(a) }
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }

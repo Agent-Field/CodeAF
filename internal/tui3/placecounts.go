@@ -162,11 +162,12 @@ func (a *app) placeBeat(gen int) tea.Cmd {
 	// AND THE ROOM ANSWERS ONLY WHETHER THE BEAT GOES ON. Home runs a beat of
 	// its own and answers false, which is what stops a clock armed by another
 	// place turning forever behind it ([place.tick] holds the whole argument).
-	if !pl.tick(a, now) {
-		return nil
+	again, more := pl.tick(a, now)
+	if !again {
+		return more
 	}
 	a.touch()
-	return placeTick(a.placeGen)
+	return tea.Batch(more, placeTick(a.placeGen))
 }
 
 // leavePage writes the look stamp for one place: the record that says nothing
