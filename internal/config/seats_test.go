@@ -994,3 +994,32 @@ func TestAnAutoRowUnderLearnReadsTheLearnRung(t *testing.T) {
 		}
 	}
 }
+
+// THE CHECK SEAT IS RESOLVED AT THE DOOR, and this is the order it resolves in:
+// the check flag when the person typed one; the plan flag when they typed only
+// that, so a pinned two model run keeps its two models and no third model
+// appears from the profile; and empty when they typed neither, which seats a
+// check on the profile's careful row at the crew factory rather than here,
+// because an empty seat is the profile's to answer.
+func TestCheckSeatRidesTheFlagThenThePlanFlagThenNothing(t *testing.T) {
+	// The check flag wins, even beside a plan flag.
+	seat := CheckSeat("vendor/named-check", "vendor/named-plan")
+	if seat.Model != "vendor/named-check" || seat.Source != SeatFlag {
+		t.Fatalf("check seat = %q (%s), want the flag's model", seat.Model, seat.Rung())
+	}
+	// A plan flag alone pins the check to the plan seat: a two flag run runs
+	// on exactly its two models.
+	seat = CheckSeat("", "vendor/named-plan")
+	if seat.Model != "vendor/named-plan" || seat.Source != SeatFlag {
+		t.Fatalf("check seat = %q (%s), want the plan flag's model", seat.Model, seat.Rung())
+	}
+	// Neither flag typed answers empty, and empty is the crew's checker.
+	seat = CheckSeat("", "")
+	if seat.Model != "" {
+		t.Fatalf("check seat = %q, want an empty seat the crew answers", seat.Model)
+	}
+	// Whitespace is not a model, on this seat as on the other two.
+	if seat := CheckSeat("  ", "  "); seat.Model != "" {
+		t.Fatalf("check seat = %q, want blank flags to read as empty", seat.Model)
+	}
+}
