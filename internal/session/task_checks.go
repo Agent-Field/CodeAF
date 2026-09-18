@@ -1159,11 +1159,63 @@ func InvocableChecks(tree string, recorded []string) []string {
 				command = strings.TrimSpace(inner)
 			}
 		}
-		command, ok := commandLike(command)
-		if !ok || !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
-			continue
+		for _, segment := range commandSegments(command) {
+			segment = strings.TrimSpace(strings.TrimLeft(segment, "{ "))
+			if !exitBearingRunner(segment) {
+				continue
+			}
+			segment, ok := commandLike(segment)
+			if !ok || !approval.Vouchable(segment) || auditAllowed.CheckBash(segment).Action != approval.ActionAllow {
+				continue
+			}
+			candidates = append(candidates, segment)
 		}
-		candidates = append(candidates, command)
 	}
 	return invocableChecks(tree, runnableChecks(candidates, standingOn(tree)))
+}
+
+func commandSegments(command string) []string {
+	var segments []string
+	start, quote, escaped := 0, byte(0), false
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			continue
+		}
+		if c == ';' || c == '&' && i+1 < len(command) && command[i+1] == '&' {
+			segments = append(segments, command[start:i])
+			if c == '&' {
+				i++
+			}
+			start = i + 1
+		}
+	}
+	return append(segments, command[start:])
+}
+
+func exitBearingRunner(command string) bool {
+	fields := strings.Fields(command)
+	if len(fields) >= 2 && fields[0] == "go" {
+		return fields[1] == "test" || fields[1] == "build" || fields[1] == "vet"
+	}
+	if len(fields) >= 2 && fields[0] == "make" {
+		target := fields[1]
+		return strings.Contains(target, "test") || strings.Contains(target, "build") || strings.Contains(target, "vet")
+	}
+	return false
 }

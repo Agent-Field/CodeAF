@@ -524,8 +524,8 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 // and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
-		if task.Role == RoleCheck && isReviewConclusion(result) && !s.ranDeclaredCheck(task) {
-			return errors.New("check conclusion requires an executed Checks: command")
+		if task.Role == RoleCheck && strings.HasPrefix(strings.TrimSpace(result), "holds:") && !s.ranEveryDeclaredCheck(task) {
+			return errors.New("holds conclusion requires every declared Checks: command")
 		}
 		if len(result) > 64<<10 {
 			return errors.New("completion result exceeds 65536 bytes")
@@ -580,7 +580,7 @@ func isReviewConclusion(result string) bool {
 	return strings.HasPrefix(result, "holds:") || strings.HasPrefix(result, "does not hold:")
 }
 
-func (s *Store) ranDeclaredCheck(task *Task) bool {
+func (s *Store) ranEveryDeclaredCheck(task *Task) bool {
 	if len(task.Checks) == 0 {
 		return false
 	}
@@ -592,6 +592,7 @@ func (s *Store) ranDeclaredCheck(task *Task) bool {
 	for _, check := range task.Checks {
 		declared[strings.TrimSpace(check)] = struct{}{}
 	}
+	ran := make(map[string]struct{}, len(task.Checks))
 	for _, line := range strings.Split(string(data), "\n") {
 		var step struct {
 			Kind    string `json:"kind"`
@@ -606,11 +607,11 @@ func (s *Store) ranDeclaredCheck(task *Task) bool {
 				}
 			}
 			if _, ok := declared[command]; ok {
-				return true
+				ran[command] = struct{}{}
 			}
 		}
 	}
-	return false
+	return len(declared) > 0 && len(ran) == len(declared)
 }
 
 // Fail marks a task failed by its owner, with a reason the next reader sees.
