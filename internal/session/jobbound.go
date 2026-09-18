@@ -15,47 +15,44 @@ package session
 // its leader's identity — gets a bound of its own, and a subtree that passes it
 // is CUT and the run is TOLD, never stopped silently.
 //
-// ── WHAT THE SIGNAL IS, AND WHY CPU RATE IS THE ONE THAT SEPARATES ──
+// ── WHERE EACH HALF OF THE BOUND APPLIES ──
 //
-// The two shapes have to be told apart, and the process count cannot do it: the
-// honest peak an actual verify reached was 34 processes and 8.5 cores, while
-// the 16-loop storm is 16 processes — FEWER than the honest peak — and far more
-// CPU than the honest peak ever held. So the CPU RATE is what separates them,
-// and the process count is a second, much higher ceiling kept for the
-// orthogonal storm (a fork that has not yet accumulated CPU).
+// PROCESSES, ALWAYS. A subtree may not hold more than jobBoundProcesses (128,
+// about four times the honest peak of 34). This is the fork storm's ceiling and
+// it applies to every subtree, quota'd or not, because a fork that has not yet
+// accumulated CPU is invisible to a rate and a cgroup CPU quota does nothing to
+// a process count.
+//
+// CPU, ONLY WHERE NOTHING ELSE CAPS IT. When a cgroup CPU quota or an affinity
+// mask BINDS this process — the effective cores it may use are fewer than the
+// machine's ([processgroup.EffectiveCores] below runtime.NumCPU) — the quota is
+// already the ceiling on what any subtree under it can burn, and #1187's park
+// bound is what returns a turn wedged on a job that never ends. Adding a CPU
+// rate rule there would only cut honest work early: inside a four-core cell an
+// ordinary `go test` legitimately uses most of its four cores, and a share of
+// them would end it. So the CPU rule is OFF under a binding quota, and only the
+// process backstop applies.
+//
+// When NOTHING binds — the process may use the whole machine — there is no other
+// ceiling, and the CPU rule is the only thing between a spinner storm and the
+// box: a subtree may not sustain more than THREE FIFTHS of runtime.NumCPU. On
+// the 20-core box the numbers came from that is 12 cores, clearing the honest
+// peak (8.5) and cutting the storm (16 loops → 16 cores, 64 → 20).
+//
+// ── HOW THE CPU RATE IS TAKEN ──
 //
 // The rate is taken from two readings of the subtree's cumulative CPU over the
 // wall between them, and the reading is the subtree's WHOLE tree — the shell
 // and every compiler, spinner or child under it — so a command that forks is
 // bounded as one job and not as its leader alone.
 //
-// ── THE CEILINGS, AGAINST THE NUMBERS THAT WERE MEASURED ──
+// ── SUSTAINED OVER HALF A MINUTE, NOT A SPIKE ──
 //
-// CPU: a subtree may not sustain more than THREE FIFTHS OF THE CORES IT CAN
-// ACTUALLY USE, floored at ONE. The cores it can use are the effective cores —
-// the smallest of the machine's cores, the cgroup CPU quota, and the affinity
-// mask ([processgroup.EffectiveCores]) — and NOT the machine's raw count,
-// because a job runs held under a quota: a cell's own subtree is capped at a few
-// cores, and a ceiling drawn from the machine's twenty would sit above anything
-// that quota lets the subtree reach and never trip. On the 20-core box the
-// numbers came from, with nothing capping it, the ceiling is 12 cores: it clears
-// the honest peak (8.5) and cuts the smallest measured storm (16 loops → 16
-// cores). Under a four-core quota the same rule gives 2.4 cores, which is what
-// cuts a storm on the machines cells actually run on. The floor of one keeps a
-// single-core box from a ceiling of zero, where every subtree would be over at
-// once.
-//
-// PROCESSES: a subtree may not hold more than 128 processes — about four times
-// the honest peak of 34, so it is never what separates an honest run from the
-// spinner storm, and low enough that a fork storm (measured here as thousands)
-// is caught long before it eats the machine's pid space.
-//
-// ── SUSTAINED, NOT A SPIKE ──
-//
-// A single reading above a ceiling is a spike, and honest work has them. The
-// bound trips only after the subtree has been over on jobBoundStrikes
-// consecutive readings, so the transient never cuts anything and a real storm —
-// which is over on every reading by construction — is cut within seconds.
+// A build burst can pass 12 cores for several seconds on a big box, so the bound
+// trips only after the subtree has been over on jobBoundStrikes consecutive
+// readings — 15 at jobBoundInterval of 2 s, thirty seconds sustained. The
+// transient never cuts anything and a real storm, over on every reading by
+// construction, is cut half a minute in.
 //
 // ── PORTABLE FIRST ──
 //
@@ -64,18 +61,14 @@ package session
 // group is a process group; the CPU-and-process reading itself is /proc, so off
 // Linux it says it cannot say and the bound never cuts ([processgroup.Usage]).
 // The subtree's USAGE needs no cgroup — a job is a process group and not a
-// cgroup, so there is no per-job cgroup to read. The CEILING it is judged
-// against is drawn from the process's OWN cgroup CPU quota where there is one
-// ([processgroup.EffectiveCores]), which is a different question — how many cores
-// the subtree could ever reach — and off Linux falls back to the machine count.
-//
-// ── SILENCE IS NEVER A CUT ──
-//
-// A subtree whose usage cannot be read, or a machine whose cores cannot be
-// sized, gets exactly the scheduler it had before the bound existed.
+// cgroup. Whether a quota BINDS is a different question — how many cores the
+// subtree could ever reach — answered from the process's own cgroup CPU quota and
+// affinity mask ([processgroup.EffectiveCores]), which off Linux is the machine
+// count, so nothing binds and the CPU rule governs as it always did.
 
 import (
 	"math"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -84,27 +77,21 @@ import (
 )
 
 const (
-	// jobBoundCoreShare is the share of the effective cores a job subtree may
-	// sustain before its bound trips.
+	// jobBoundCoreShare is the share of the machine's cores a job subtree may
+	// sustain before its bound trips, and it is read only when NOTHING caps the
+	// process below the machine (see the file header).
 	jobBoundCoreShare = 3.0 / 5.0
 
-	// jobBoundCoreFloor is the least number of cores any subtree's ceiling
-	// allows: one core, so that a single-core machine — where the effective
-	// cores are one and three fifths of that rounds toward nothing — never draws
-	// a ceiling of zero, under which every subtree would be over at once. On any
-	// larger machine the share is what governs.
-	jobBoundCoreFloor = 1.0
-
-	// jobBoundProcesses is the process ceiling on one subtree. It is about four
-	// times the honest peak (34) so it is never what separates an honest run from
-	// the spinner storm, and it catches the fork storm the CPU rate alone would
-	// miss.
+	// jobBoundProcesses is the process ceiling on one subtree, and it applies
+	// always. It is about four times the honest peak (34) so it is never what
+	// separates an honest run from the spinner storm, and it catches the fork
+	// storm the CPU rate alone would miss.
 	jobBoundProcesses = 128
 
-	// jobBoundStrikes is how many consecutive readings over the ceiling the
-	// bound waits for before it trips: one reading is a spike, a storm is over on
-	// every reading.
-	jobBoundStrikes = 3
+	// jobBoundStrikes is how many consecutive readings over a ceiling the bound
+	// waits for before it trips: at jobBoundInterval that is thirty seconds, long
+	// enough that an honest build burst is never cut and a storm still is.
+	jobBoundStrikes = 15
 
 	// jobBoundInterval is how often the bound samples a subtree.
 	jobBoundInterval = 2 * time.Second
@@ -118,7 +105,7 @@ const (
 	// jobBoundRule is the one clause the record carries about itself: the subtree
 	// is not still running and nothing is coming for it, so a model must not go
 	// looking for the job or run the command again.
-	jobBoundRule = "— it was ended for passing its bound: a job subtree may not hold more than its share of the cores it can use, or grow past its process ceiling, for long. The command was cut, not waited on; do not go looking for it."
+	jobBoundRule = "— it was ended for passing its bound: a job subtree may not sustain more than its share of the machine's cores, or grow past its process ceiling, for long. The command was cut, not waited on; do not go looking for it."
 )
 
 // jobSubtreeUsage reads one job subtree's usage. It is a variable so the bound
@@ -134,14 +121,17 @@ var jobSubtreeUsage = func(group processgroup.Group) (processgroup.Usage, bool) 
 // sleep standing in for causality.
 var jobBoundNow = time.Now
 
-// subtreeBound is the running state of the bound on ONE job subtree: the cores it
-// is measured against, the previous reading a rate is taken from, and how many
-// readings in a row have been over.
+// subtreeBound is the running state of the bound on ONE job subtree: the machine
+// it runs on, the cores it may actually use, the previous reading a rate is taken
+// from, and how many readings in a row have been over.
 type subtreeBound struct {
-	// effectiveCores is how many cores this subtree could ever reach — the
-	// smallest of the machine, its cgroup quota and its affinity mask — from
-	// which the CPU ceiling is drawn. A value of zero turns the bound off: a
-	// subtree whose cores cannot be sized is one the bound must not cut on.
+	// machineCores is runtime.NumCPU: the whole machine, and the number the CPU
+	// ceiling is drawn from when nothing caps the process below it. Zero turns the
+	// bound off — a machine the bound cannot size is one it must not cut on.
+	machineCores float64
+	// effectiveCores is the smallest of the machine, the cgroup CPU quota and the
+	// affinity mask: how many cores this subtree could ever reach. When it is
+	// below machineCores a quota or mask BINDS, and the CPU rule is off.
 	effectiveCores float64
 
 	last    time.Time
@@ -153,22 +143,36 @@ type subtreeBound struct {
 	lastCores float64
 }
 
-// newSubtreeBound builds the bound for the cores this process can actually use.
+// newSubtreeBound builds the bound for the machine this process runs on and the
+// cores it can actually use.
 func newSubtreeBound() *subtreeBound {
-	return &subtreeBound{effectiveCores: processgroup.EffectiveCores()}
+	return &subtreeBound{
+		machineCores:   float64(runtime.NumCPU()),
+		effectiveCores: processgroup.EffectiveCores(),
+	}
 }
 
-// ceilingCores is the CPU ceiling this subtree may sustain.
+// quotaBinds reports whether a cgroup CPU quota or an affinity mask holds this
+// subtree below the machine's cores. When it does, the quota is already the
+// ceiling and the CPU rate rule is off — only the process backstop applies.
+func (b *subtreeBound) quotaBinds() bool {
+	return b.effectiveCores > 0 && b.effectiveCores < b.machineCores
+}
+
+// ceilingCores is the CPU ceiling this subtree may sustain, or +Inf when a quota
+// binds and the CPU rule does not apply.
 func (b *subtreeBound) ceilingCores() float64 {
-	return math.Max(jobBoundCoreShare*b.effectiveCores, jobBoundCoreFloor)
+	if b.quotaBinds() {
+		return math.Inf(1)
+	}
+	return jobBoundCoreShare * b.machineCores
 }
 
 // strike records one reading of the subtree and reports whether the bound has
 // tripped. A rate needs two readings, so the first reading can only be judged on
-// its process count; that is why the bound takes a few ticks to arm and not an
-// instant.
+// its process count; that is why the CPU half takes a tick to arm.
 func (b *subtreeBound) strike(now time.Time, usage processgroup.Usage, ok bool) bool {
-	if !ok || b.effectiveCores <= 0 {
+	if !ok || b.machineCores <= 0 {
 		// SILENCE IS NEVER A CUT. A subtree this machine cannot read gets the
 		// scheduler it had before the bound existed.
 		b.strikes, b.have = 0, false
