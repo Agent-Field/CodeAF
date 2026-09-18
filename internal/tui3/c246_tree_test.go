@@ -141,8 +141,8 @@ func TestPlanPageWaitsOwnFirstThenTasksWaitingOnItAndOmitsEmptySection(t *testin
 	}
 	a.taskSheetPlan(tests.ID)
 	text := taskSheetText(a)
-	own := "write the tests · waits: write the handler"
-	behind := "write the fixtures · waits: write the tests"
+	own := "write the tests · waits: write the handler       ▶ 12 steps"
+	behind := "write the fixtures · waits: write the tests      ○ queued"
 	if !strings.Contains(text, "waits") || strings.Index(text, own) < 0 || strings.Index(text, behind) < 0 || strings.Index(text, own) > strings.Index(text, behind) {
 		t.Fatalf("waits is not own-first in each row's sentence shape:\n%s", text)
 	}
