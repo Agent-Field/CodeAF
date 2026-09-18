@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -79,13 +80,12 @@ func TestANeedThatPointsAtNothingIsNotAGate(t *testing.T) {
 // over levelled shapes — so two list-shaped samples cannot outvote the one
 // that wrote the single stage plainly.
 func TestTheSpineReadsItsOwnNeedsBeforeTheVote(t *testing.T) {
-	var calls int
+	var calls atomic.Int64
 	client := &stubClient{reply: func(system, user string) string {
 		if !strings.Contains(system, "You break a goal into its ordered stages") {
 			return ""
 		}
-		calls++
-		if calls == 3 {
+		if calls.Add(1) == 3 {
 			return `{"stages":[{"title":"Build the three tools","summary":"csv, markdown and slug tools, side by side","needs":[]}]}`
 		}
 		return `{"stages":[` +
