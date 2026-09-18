@@ -2619,33 +2619,14 @@ The page takes the whole frame, the way the settings panel does. `esc` closes it
 pages here take the frame — the settings panel, this one, and `/home` — and **only one of
 them is ever up**: opening any one closes the other two.
 
-It opens on one heading saying what it is holding. A page holding conversations reads, for
-example, `work · 15 chats · 13 subtasks · $2.98`: chats first, then the work under them. A
-page holding work with no conversation on it reads, for example,
-`work · 148 pieces of work since aug 11 · $34.10`. The count is every row the time window
-holds, the date is the far edge of that window, and the money is what those rows are known
-to have cost. A window with no known start drops the `since`, and rows nobody priced drop
-the money: zero means "nobody published a price", never "free". **A frame too narrow for
-the whole line drops the money clause** rather than cutting it, because half a figure is a
-wrong number.
+The head is the counts strip: for example,
+`4 running · 3 queued · 1 your call · 2 done today`. Each count is the number of runs in
+that group, and a count at zero is left out. The same groups stand below it in that order;
+the rule at the foot keeps its line and carries no second copy of the counts.
 
-It used to be a paragraph — `work codeaf ran on its own. 148 pieces of work since aug 11,
-$34.10 between them.` — which was the widest thing on the page, taught the machinery's own
-idea of itself before naming anything, and pushed the rows a person came for further down.
-The place's name, its count and its window are what the line is for.
-
-**The count is a claim about the PLACE and never about what you have typed.** With a filter
-on, the sentence goes on counting every row the window holds — a word that matches nothing
-does not make the machine's history empty. What matched is said on the line under the
-list instead: `nothing matches`. The words you typed are on the control row at the top of
-the list, where you typed them.
-
-**When the time window holds none of it, that line says `tasks · nothing since jul 29`** —
-in words, because a `0` there is the figure the emptiness law forbids, and with the date
-still on it because the date is what says the window is the reason. The sentence stays on the frame in that state: it is the only thing naming the
-window the four shift-arrows move, so a page that replaced it with the teaching prose
-would have swallowed the way back. The teaching prose is for a machine that has run
-nothing IN ANY WINDOW, which is a different screen.
+**The counts do not change with the filter.** A word that matches nothing does not make the
+machine's work empty. What matched is said under the list instead: `nothing matches`. The
+words you typed are on the control row at the top of the list, where you typed them.
 
 Under it, **five sections, in the order you act on them**: `your call`, `running`,
 `waiting`, `finished today`, then `earlier`. `running` is work a worker is actually inside;
@@ -2710,29 +2691,18 @@ background.
 this window's own live work, and the window next door are read together and joined on the
 conversation and the id, with the freshest of them winning.
 
-**A family can be folded away.** Where it is, the section's own heading says so —
-`finished today · 3 folded away` — and `→` opens it. Everything else the window holds has a
-line, and the page scrolls —
-`↑`/`↓`, `pgup`/`pgdown`, `home`/`end` and the wheel all walk it. **The last rows fade** when
-the list runs on below the bottom of the window: three rows, each a step fainter, saying
+**Each group heading says how many runs stand in it** — `your call · 1`, `running · 3`.
+Older done work keeps one dim line below `done today`: `N more · type to find one`.
+Typing finds one of those older runs. **The last rows fade** when the list runs on below the
+bottom of the window: three rows, each a step fainter, saying
 there is more under them. The row the cursor is on never fades wherever it sits, and a list
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-## Why the count at the bottom does not match the rows or headings
+## Why a count is absent from the head
 
-At the bottom, written into the rule over the composer, one dim count says what each piece
-of work IS. The sections answer a different question: they file a conversation and
-everything under it where the CONVERSATION stands, according to its most urgent work. A
-finished `✓` row can therefore sit under `waiting`, and the foot can name `running` or
-`finished today` when there is no heading for that state on the page at all. Each work row
-still says what it is with its own mark and its own words. A fold is a second, smaller
-difference: when it hides filed rows, that section's heading says exactly how many are
-`folded away`.
-
-The foot can read, for example,
-`2 your call · 3 running · 12 finished today · 148 earlier`. A state with no work in it is
-not counted at all, and the keys sit under the line.
+The head and each group heading count runs. A state with no runs in it is absent from both.
+The foot keeps its rule and the keys sit under it; it carries no second copy of the counts.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
 a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
@@ -2973,7 +2943,7 @@ you go. The two exceptions are `1` and `2` over a row the record pane beside the
 drawing answers for, which answer it: see *Answer a task from the list*.
 
 ```
-⌕ parser                                            state               age ↓
+⌕ parser
 ```
 
 is the **control row**, the first line of the list, and your letters land there in the
@@ -3029,9 +2999,6 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 | `enter` | open the main chat, task room, or record card named by this row |
 | `→` | open the family under this row, where it has one; a second `→` on an open family opens the row's verbs |
 | `←` | fold that conversation or family back up |
-| `alt+s` | sort by the next column: age, name, state, files, cost |
-| `alt+shift+s` | turn the column you are sorted on round |
-| a press on a column label | sort by that column; press it again to turn it round |
 | any printable key | type into the filter — except `1` and `2` over a row the pane is offering those two answers for, which answer it |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
@@ -5144,14 +5111,12 @@ keypress away through `enter`, and in the pane beside the list where the frame i
 for one. On a frame under 110 cells there is no pane, so the row **under the cursor** grows
 one dim line of its own: `your call · nobody could check it`, and the first sentence of a
 landed task's report after it. One row said whole, rather than twenty rows each missing the
-same word. The row's kind is not drawn, and neither is its cost unless you are sorted by it.
+same word. The row's kind is not drawn.
 
 **Everything opens shut.** Every main chat and every family of work opens folded, so a fresh
-page is a page of main chats with a count on each. `→` opens the one under the cursor and
-`←` shuts it again; the section's own heading says how many rows are behind the folds
-(`your call · 4 folded away`), so the count on the row and the count on the heading are
-about the same rows. Nothing is capped: the list scrolls through everything the time window
-holds, and the window's edge is named once in the page header.
+page is a page of main chats. `→` opens the one under the cursor and `←` shuts it again.
+Each group heading counts the runs standing in it, and older done work is the one dim
+`N more · type to find one` line.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 The one printable keys that are not the filter are `1` and `2` over a row the pane is offering
@@ -5170,14 +5135,9 @@ entirely, the cursor parks on the nearest row that is still there.
 
 **On a frame 110 columns or wider the body splits** and the right of it is the cursor row's
 record — what it did, what it cost, where it left the work and what can be done about it. It is
-described in *Preview a task without opening it*, below. The page's own head sentence, with the
-time-window control on it, keeps the whole frame above the rule.
-
-`shift+←` and `shift+→` move the time window backward and forward. `shift+↑` zooms from
-days to weeks and then months; `shift+↓` zooms back in. The window is re-grouped from the
-reading already in hand — nothing goes back to disk for it. On a phone the bottom line
-remains the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing
-empty headings, and says no count beside that prose.
+described in *Preview a task without opening it*, below. The counts strip keeps the whole
+frame above the rule. This page has no date window or coarseness control. On a phone the
+bottom line remains the pressable `‹ back` bar.
 
 ## what are the dots next to a task?
 
@@ -5313,36 +5273,10 @@ asking its question in *that* window, and this one cannot answer for it — so t
 `enter open` alone, and `1` and `2` are typed into the filter like any other character. That
 is also what happens on a frame too narrow for the pane: nothing on screen names the digits, so
 nothing takes them.
-## sort the tasks list — alt+s, clicking a column label, and what age, name, state, files and cost each order
+## How the work list is ordered
 
-**The sort key is the column you see.** There are five keys and the second column always
-shows the one the list is ordered by:
-
-| key | what the column draws |
-| --- | --- |
-| `age` | how long ago — `7h`, `1d`, `now`. This is the default, newest first. |
-| `name` | the age, because the name is already the widest thing on the row. |
-| `state` | the age, because `state` is the column standing right beside it. |
-| `files` | what the work touched — `2 files`, `12 files`. |
-| `cost` | what it cost — `$1.50`, in the money's own ink. This is the **only** place money is drawn on this page. |
-
-**`alt+s` walks the keys** — age, name, state, files, cost, and round again — and
-**`alt+shift+s` turns the column you are on round**. It is a chord rather than a bare `s`
-because on this place every printable key goes into the filter: `s` alone would cost you
-`sweep`, `stop` and `site`.
-
-**Or click a label.** The two column labels are drawn at the right of the control row at the
-top of the list, over the columns they name, and pressing one sorts by it. Pressing the one
-already sorted turns it round. The sorted label wears the arrow: `cost ↓` newest or dearest
-first, `cost ↑` the other way. The foot names the chord (`alt+s sort`) and the label wears the
-column.
-
-**Sorting happens inside each level of the tree, and the tree never flattens.** The sections
-keep their order — a sort may not move `your call` below `finished today` — main chats order
-by their **aggregate** inside their section (their total cost, their newest row, their whole
-file count), and the work under one chat orders among itself. A blank cell is a true answer,
-not a missing one: a row nobody priced sinks to the bottom of its group whichever way the
-column points.
+The page groups runs by state and orders each group by newest activity first. There is no
+sort control and no column header on this page; typing filters the groups instead.
 
 ## filter the tasks list — type to filter, what it matches, and esc to clear it
 
@@ -5371,7 +5305,7 @@ under the cursor**, and never from a fixed sentence. Over a task this window is 
 reads
 
 ```
-enter open its room · → verbs: stop it · alt+s sort · type to filter · alt+. map · tab next place
+enter open its room · → verbs: stop it · type to filter · alt+. map · tab next place
 ```
 
 The last two keys are on every place and the router adds them. What comes before them
@@ -5395,11 +5329,8 @@ changes with the cursor:
   in, on the one line the foot draws them on.
 - `→ what ran under it` or `← fold it back up` over a fold, whichever the fold is not.
 
-The last two clauses are about the **page** rather than the row, and they are always there:
+The last clause is about the **page** rather than the row, and it is always there:
 
-- `alt+s sort` names the chord. A chord nobody can find is a chord that does not exist, and
-  every printable key here belongs to the filter, so sorting cannot be a bare letter. WHICH
-  column the list is on is on the control row's own label, wearing the arrow.
 - `type to filter`, because nothing else on the frame says that a letter goes into the box on
   the control row rather than to the page's own keys. While a filter **is** on, that slot
   says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
