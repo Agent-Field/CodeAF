@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The published pool index holds only the cells that meet its min_installs floor
-pr: 0000
+pr: 1131
 surface: [engine]
 invalidates:
   - "`relay/src/sheet.js` published every cell, the ones below `min_installs` sorted after the ones that meet it, so a cell one contributor filled was public in the document although every client dropped it unread. The sheet now drops a below-floor cell before it leaves the relay, and the document's cells all meet the floor."
