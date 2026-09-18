@@ -1467,6 +1467,37 @@ func (r tasksReading) rows(width int, pal palette) []string {
 	return out
 }
 
+// planRows draws only this reading's store-backed plan rows, through the same
+// layout and paint pass that owns their tree on the tasks page. Page chrome is
+// not part of the projection: the rail already owns its section label and
+// controls, while task rows and their live under-lines remain one tree.
+func (r tasksReading) planRows(width int, pal palette) []string {
+	if width <= 0 {
+		return nil
+	}
+	items := make([]tasksItem, 0, len(r.items))
+	for _, item := range r.items {
+		if item.plan != nil {
+			items = append(items, item)
+		}
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	plan := r
+	plan.items, plan.held, plan.whole = items, len(items), len(items)
+	plan.chats, plan.shape = nil, nil
+	lines := plan.lay(width)
+	out := make([]string, 0, len(lines))
+	for i := range lines {
+		switch lines[i].kind {
+		case tasksLineTask, tasksLineTail, tasksLinePlanUnder:
+			out = append(out, plan.paint(lines, i, width, pal, false))
+		}
+	}
+	return out
+}
+
 // paint draws ONE line of the layout, lit where the cursor or the pointer is on
 // it. Every line it returns is at most width cells, at every width.
 func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bool) string {
@@ -1868,7 +1899,11 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if item.plan != nil {
 		state, second = planStateField(item), planSpendField(item)
 	}
-	return tasksTableRow(lead, cells, tasksLabel(item.entry),
+	label := tasksLabel(item.entry)
+	if item.plan != nil && item.plan.Total > 0 {
+		label += "  " + planProgress(*item.plan, width, pal)
+	}
+	return tasksTableRow(lead, cells, label,
 		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
