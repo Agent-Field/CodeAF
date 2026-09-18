@@ -1986,13 +1986,10 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if tail := workConversationTail(item); tail != "" {
 		name += "  " + pal.dim(tail)
 	}
-	if item.plan != nil && item.plan.Parent == "" {
-		// A RUN'S OWN ROW SAYS NO STATE WORD: the group it stands in and the mark
-		// it wears are its state. A TASK UNDER A RUN KEEPS ITS WORD, because
-		// `queued · waits: <task>` is the one thing that row is there to say
-		// (TREE.md).
-		return tasksTableRow(lead, cells, name, rowSay(), tasksAgeField(item, now), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
-	}
+	// A RUN OF ONE TASK WEARS THE STATE WORD ALONE, and so does a task under a
+	// run: `queued · waits: <task>` is the one thing that row is there to say
+	// (WORK-TAB.md, the dot row's table; TREE.md). Only a run with parts trades
+	// the word for its dots, above.
 	if item.plan != nil {
 		return tasksTableRow(lead, cells, name, planStateField(item), planSpendField(item), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 	}
