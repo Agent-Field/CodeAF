@@ -16,5 +16,5 @@ The check seat is resolved at the door: `--check-model`, then
 `CODEAF_CHECK_MODEL`, then a plan seat pinned by `--plan-model` or
 `CODEAF_PLAN_MODEL`, then the crew's careful row. A pinned run sees no third
 model from the profile. run.Seats carries the door's Check seat and CrewFactory
-seats the careful tier on it. `CHECKER_CAP_USD=2` is now live, so a cell can end
+seats the careful tier on it. `CHECKER_CAP_USD=2` is live, so a cell can end
 on the checker cap.
