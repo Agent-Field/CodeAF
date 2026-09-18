@@ -231,6 +231,58 @@ func planSpendWord(usd float64) string {
 	return dollars(usd)
 }
 
+// planProgress is the run root progress row shared by every tasks reading. The
+// width chooses a vocabulary tier; marks always come through the palette.
+func planProgress(row session.PlanTaskRow, width int, pal palette) string {
+	if row.Total <= 1 {
+		return planStateWord(row.Status)
+	}
+	if row.Done == row.Total && row.Failed == 0 {
+		return "done"
+	}
+	long := width >= 90
+	if long && row.Failed > 0 {
+		return itoa(row.Done) + " of " + itoa(row.Total) + railSep + itoa(row.Failed) + " failed"
+	}
+	cells := 0
+	switch {
+	case width >= 60:
+		cells = 10
+	case width >= 40:
+		cells = 5
+	}
+	if row.Total <= 10 && cells > row.Total {
+		cells = row.Total
+	}
+	var dots strings.Builder
+	for cell := 0; cell < cells; cell++ {
+		lo, hi := cell*row.Total, (cell+1)*row.Total
+		doneAt := row.Done * cells
+		failedLo, failedHi := row.Done*cells, (row.Done+row.Failed)*cells
+		id := tokens.GEmptyCell
+		switch {
+		case lo < failedHi && hi > failedLo:
+			id = tokens.GFailedCell
+		case hi <= doneAt:
+			id = tokens.GDoneCell
+		case lo < doneAt || (row.Running > 0 && lo <= doneAt && hi > doneAt):
+			id = tokens.GRunningCell
+		}
+		dots.WriteString(pal.glyph(id))
+	}
+	count := itoa(row.Done) + "/" + itoa(row.Total)
+	if long {
+		count = itoa(row.Done) + " of " + itoa(row.Total)
+		if row.Running > 0 {
+			count += railSep + itoa(row.Running) + " running"
+		}
+	}
+	if dots.Len() == 0 {
+		return count
+	}
+	return dots.String() + "  " + count
+}
+
 // planStateField is the state cell of a plan row: the word every row wears, with
 // the step count beside it — the one figure on a running task that changes while
 // somebody watches it.
