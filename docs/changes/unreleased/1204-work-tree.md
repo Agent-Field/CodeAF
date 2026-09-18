@@ -8,6 +8,7 @@ invalidates:
   - "The rail listed every plan task at every state. A family whose every task is done or failed folds to one line with its count; a family with running or queued work stays open, and `enter` on the folded line opens its page."
   - "A task's page showed one level of children. It shows the whole subtree under its steps, each row with its live `$ <command>` line, `· N queued behind it` on a row other open tasks wait on, and a `waits` section in both directions; `enter` on a subtree row opens that task's page and `esc` returns."
   - "A plan row on the chat's rail took two to four lines: the tasks page's stats line wrapped under the title, and the steps and money were drawn a second time under a running row's live command. A plan row on the rail is one line — the connector, the state mark, the fitted title — with `waits: <task>` at the end of a held row's line (never cut short of the task's name) and the one `$ <command>` line under a row with a step in flight; the run's own row ends in the dot row at the rail's width tier, and a run of one task shows no dots."
+  - "The chat's rail drew one flat row per `/task` and nothing of the tasks a worker added to the plan; the run's tree was only on the tasks page. The rail draws the run's tree out of the tasks place's own reading, in a conversation that never opened that page, and the run's row carries its progress on a run rooted at a task's number, where it used to be counted only for a root named `root`."
 ---
 
 The owner ran a `/task` under the belt and saw a flat list of tasks with no
