@@ -2162,7 +2162,7 @@ func cliVerbHelp(verb string) string {
 		"critical-path":  `usage: plandb critical-path`,
 		"bottlenecks":    `usage: plandb bottlenecks [--limit N]`,
 		"show":           `usage: plandb show TASK_ID`,
-		"spend":          `usage: plandb spend [--by chat|project|seat|model|task] [--since 7d|24h|2026-09-01] — the ledger by role and by model, or rolled up under one axis`,
+		"spend":          `usage: plandb spend [--by chat|project|role|model|task] [--since 7d|24h|2026-09-01] — the ledger by role and by model, or rolled up under one axis`,
 		"help":           `usage: plandb help`,
 		"task":           `usage: plandb task <add-dep|amend|cancel|get|insert|note|notes|overview|pause|pivot|resume>`,
 		"task add-dep":   `usage: plandb task add-dep DOWNSTREAM --after UPSTREAM [--kind feeds_into|blocks|suggests]`,
@@ -2213,7 +2213,7 @@ reading:
   archive [--older-than 72h]  move old finished subtrees into the archive
   status [--full] | search QUERY [--limit N] [--project P] [--chat C] | critical-path | bottlenecks [--limit N]
   context TEXT [--kind K] [--task TASK_ID] | contexts [--kind K] [--limit N] [--project P] [--chat C] | prune CONTEXT_ID
-  spend                     the ledger by role and by model, or --by chat|project|seat|model|task [--since WHEN]
+  spend                     the ledger by role and by model, or --by chat|project|role|model|task [--since WHEN]
 
 global flags:
   --db PATH      the store file (found by walking up when not given)
