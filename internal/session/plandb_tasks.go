@@ -38,6 +38,8 @@ type PlanTaskRow struct {
 	Status string
 	Seat   string
 	Parent string
+	// Depth is the row's level below the page task; direct children are zero.
+	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
 	// of its hard dependencies (feeds_into/blocks), in store order, and empty
 	// when it waits on nothing but its own parent. A row still `pending` because
@@ -97,6 +99,9 @@ type PlanTaskPage struct {
 	// in store order, so a page can draw the tree under the task the way the
 	// plan list draws it. Empty for a leaf, which is the ordinary case.
 	Children []PlanTaskRow
+	// WaitRows feed the page's two-way waits reading: own dependencies first,
+	// then open tasks directly waiting on this task. Empty omits the section.
+	WaitRows []PlanTaskRow
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -159,15 +164,43 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
 	live := store.LiveSteps()
-	// THE CHILDREN ARE THE TASK'S OWN SUBTREE, ONE LEVEL DEEP: every row the store
-	// holds under this task, in store order, built the same way the top row is so
-	// a page can draw them with the same words ([PlanTaskRow]).
+	// Walk admission order once; membership follows parent edges only.
+	all := store.Tasks(plandb.Filter{Chat: plan.chat})
+	rows := make(map[string]PlanTaskRow, len(all))
 	var children []PlanTaskRow
-	for _, child := range store.Tasks(plandb.Filter{Chat: plan.chat}) {
-		if child.ParentID != task.ID {
+	depths := map[string]int{task.ID: -1}
+	for _, child := range all {
+		row := planTaskRow(store, dir, child, spend, live)
+		rows[child.ID] = row
+		depth, under := depths[child.ParentID]
+		if !under || child.ID == task.ID {
 			continue
 		}
-		children = append(children, planTaskRow(store, dir, child, spend, live))
+		row.Depth = depth + 1
+		children = append(children, row)
+		depths[child.ID] = row.Depth
+	}
+	open := func(status plandb.Status) bool {
+		return status != plandb.StatusDone && status != plandb.StatusFailed && status != plandb.StatusCancelled
+	}
+	var waitRows []PlanTaskRow
+	pageRow := rows[task.ID]
+	for _, id := range pageRow.Waits {
+		if row, ok := rows[id]; ok && open(plandb.Status(row.Status)) {
+			waitRows = append(waitRows, row)
+		}
+	}
+	for _, candidate := range all {
+		row := rows[candidate.ID]
+		if candidate.ID == task.ID || !open(candidate.Status) {
+			continue
+		}
+		for _, id := range row.Waits {
+			if id == task.ID {
+				waitRows = append(waitRows, row)
+				break
+			}
+		}
 	}
 	return PlanTaskPage{
 		Row:         planTaskRow(store, dir, task, spend, live),
@@ -175,6 +208,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
 		Children:    children,
+		WaitRows:    waitRows,
 	}, true
 }
 
