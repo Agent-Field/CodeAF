@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The pool relay folds a retried batch once
-pr: 0000
+pr: 1128
 surface: [engine]
 invalidates:
   - "A resubmitted batch was folded again. The relay keyed nothing by a row's identity, so a row whose 202 the client never saw — the client holds every row that did not get one and re-sends its outbox on the next judged run and at start-up, and a timeout after the relay had already stored the batch is the ordinary case — was summed into the install's running total a second time and charged against its daily quota a second time. A row's own nonce now names it under `seen/<install>/<nonce>`, and a nonce the relay has already stored is neither folded nor charged again; a batch that was entirely already stored still answers 202 with `accepted: 0`."
