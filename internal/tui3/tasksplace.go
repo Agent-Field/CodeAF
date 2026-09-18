@@ -1715,13 +1715,13 @@ func tasksSectionWord(section tasksSection) string {
 		// word for both halves. The rail says `queued` for work with nothing in its
 		// way but a slot and `waiting` for work blocked behind other work; this
 		// section holds both, and every row in it is waiting for something.
-		return railGroupWords[railParked]
+		return "queued"
 	case tasksToday:
 		// `done today` HELD FAILURES. Three rows under it, one of them `× install
 		// the render toolchain · failed` — and `done` is the word this surface uses
 		// for work that came off. What is actually true of every row here is that
 		// it ENDED today, whatever it ended as, and each row still says which.
-		return "finished today"
+		return "done today"
 	default:
 		return taskSheetPastHead
 	}
