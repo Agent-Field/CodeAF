@@ -612,8 +612,10 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 // — is a negative answer rather than the absence of one.
 //
 // A record row knows less than a live one. The index carries no merge word,
-// branch, hold, gap or prerequisite, so a row read from it can say what state it
-// is in and why it ended, and never where its edits are or what is holding it.
+// hold, gap or prerequisite, and it carries only the KEPT branch
+// ([TaskIndexEntry.Branch]) rather than the merge that left the work there — so a
+// row read from it can say what state it is in, why it ended, and where its
+// edits were kept, and never what is holding it.
 func (e TaskIndexEntry) StatusFacts(held bool) TaskFacts {
 	facts := TaskFacts{
 		State:  TaskState(e.Status),

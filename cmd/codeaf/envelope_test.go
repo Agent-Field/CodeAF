@@ -205,9 +205,9 @@ func TestTheThreeVerbsReturnOneEnvelope(t *testing.T) {
 			stop: stopError, Artifacts: []string{}, Error: "the store directory could not be made",
 		})),
 		"exec/success": decode(t, buildExecEnvelope(
-			&exec.Outcome{Stop: exec.StopDone, Text: "the answer", Turns: 2, Elapsed: time.Second}, nil, "openai/gpt-5", "")),
+			&exec.Outcome{Stop: exec.StopDone, Text: "the answer", Turns: 2, Elapsed: time.Second}, nil, "openai/gpt-5", "", "")),
 		"exec/failure": decode(t, buildExecEnvelope(
-			&exec.Outcome{Stop: exec.StopError}, errors.New("no key"), "openai/gpt-5", "")),
+			&exec.Outcome{Stop: exec.StopError}, errors.New("no key"), "openai/gpt-5", "", "")),
 		"run/success": runEnvelope(t, subharnessRun{model: "openai/gpt-5"}, func(run subharnessRun) error {
 			return reportSubharnessRun(run, exec.RunResult{
 				Output: json.RawMessage(`{"fixed":true}`), Report: "the test passes"})
@@ -342,7 +342,7 @@ func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
 	if !errors.As(err, &status) || status != exitIncomplete {
 		t.Fatalf("the legacy switch reached `run`: %v, want exit 2", err)
 	}
-	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "answer", Turns: 1}, nil, "openai/gpt-5", "")
+	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "answer", Turns: 1}, nil, "openai/gpt-5", "", "")
 	if !envelope.OK || envelope.Stop != stopDone || envelope.Answer != "answer" {
 		t.Fatalf("the legacy switch changed the envelope: %+v", envelope)
 	}

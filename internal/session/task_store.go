@@ -1416,6 +1416,14 @@ type taskRecovery struct {
 	// are the whole reason the summary is worth reading: a kept branch is work
 	// the person still has.
 	branches []string
+	// failedBranches and unverifiedBranches are the same fact for the two states
+	// that settle rather than resume: a node that ended failed or unverified kept
+	// its deliverable on its own `task/<slug>` branch and did NOT merge it home
+	// ([keptWork]), and the note that counts it must name that branch or a person
+	// told "1 incomplete" has nowhere to go and look. They are the chat-side half
+	// of the `kept_branch` and `verdict` #1182 put on the headless envelope.
+	failedBranches     []string
+	unverifiedBranches []string
 	// notes are the completion notes that were never handed over, in the shape
 	// [taskNote] would have produced for them.
 	notes []string
@@ -1488,13 +1496,16 @@ func (r taskRecovery) note() string {
 	// `unverified` was the machinery describing itself; the counts are the same
 	// counts, said in the words every other place a task is drawn now uses.
 	if r.failed > 0 {
-		parts = append(parts, strconv.Itoa(r.failed)+" "+taskWordIncomplete)
+		clause := strconv.Itoa(r.failed) + " " + taskWordIncomplete
+		clause = withKeptBranches(clause, r.failedBranches)
+		parts = append(parts, clause)
 	}
 	if r.unverified > 0 {
 		clause := strconv.Itoa(r.unverified) + " " + taskWordYourCall
 		if word := cutRoundsWord(r.unverified, r.cutRounds); word != "" {
 			clause += " (" + word + ")"
 		}
+		clause = withKeptBranches(clause, r.unverifiedBranches)
 		parts = append(parts, clause)
 	}
 	if r.interrupted > 0 {
@@ -1547,6 +1558,45 @@ func keptBranches(branches []string) string {
 	default:
 		return "branches " + strings.Join(branches, ", ") + " kept"
 	}
+}
+
+// withKeptBranches hangs the "(branch <b> kept)" clause on a counted category
+// that kept work, and leaves the clause alone when it kept none: a failed node
+// that never reached a repository has no branch to name, and a clause saying so
+// would send a person looking for work that was never there. It reuses
+// [keptBranches] so a category that kept several wears the same plural clause an
+// interrupt does.
+func withKeptBranches(clause string, branches []string) string {
+	if len(branches) == 0 {
+		return clause
+	}
+	return clause + " (" + keptBranches(branches) + ")"
+}
+
+// appendKeptBranch adds the branch a settled node's work was kept on, or nothing
+// for a node whose work came home, was laid in place, or never had a branch.
+func appendKeptBranch(branches []string, record taskRecord) []string {
+	if branch := keptBranchOf(record.Branch, record.Merge); branch != "" {
+		branches = append(branches, branch)
+	}
+	return branches
+}
+
+// keptBranchOf names the branch a node's work was KEPT on, or "" for work that
+// came home or was laid in place. The three merge words that keep a branch are
+// task_run.go's own: [mergeAborted] for work kept instead of merged
+// ([keptWork], the ending a failure, a stop or a refused gate takes),
+// [mergeConflicted] for a merge that would not go cleanly, and [mergeKept] for a
+// landing deliberately left on a protected, moved or detached checkout.
+func keptBranchOf(branch, merge string) string {
+	if branch = strings.TrimSpace(branch); branch == "" {
+		return ""
+	}
+	switch merge {
+	case mergeAborted, mergeConflicted, mergeKept:
+		return branch
+	}
+	return ""
 }
 
 // recoverTasks is the whole resume: load, reconcile, continue.
@@ -1666,6 +1716,7 @@ func (r *taskRecovery) countSettled(record *taskRecord) {
 		r.done++
 	case TaskFailed:
 		r.failed++
+		r.failedBranches = appendKeptBranch(r.failedBranches, *record)
 	case TaskUnverified:
 		// Counted apart from both: it is not work that failed and it is not work
 		// still to come, it is work waiting on a person (task_contract.go's
@@ -1673,6 +1724,7 @@ func (r *taskRecovery) countSettled(record *taskRecord) {
 		// be telling somebody the scheduler will get to it, and the scheduler
 		// never will.
 		r.unverified++
+		r.unverifiedBranches = appendKeptBranch(r.unverifiedBranches, *record)
 		// AND A ROUND THAT WAS IN FLIGHT IS SAID OUT LOUD. The person pressed
 		// `resolve it`, a worker opened in the working copy, and the process died
 		// under it — so the card is back offering the same three answers it
