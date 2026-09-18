@@ -69,6 +69,19 @@ func poolTestLanding() session.TaskLanding {
 	}
 }
 
+// poolTildeCatalog is the crew's two seats' models beside a same-vendor row
+// dearer than the pick and the one row that should be picked: with the seats'
+// ids spelled the way the client routes them — the `~` alias marker on — the
+// pool's judge must not come from the crew's own vendor.
+func poolTildeCatalog() []catalog.Model {
+	return []catalog.Model{
+		{ID: "vendor/worker", PromptPrice: 1, CompletionPrice: 2, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "vendor/high", PromptPrice: 1, CompletionPrice: 2, CodingIndex: 80, Parameters: []string{"tools"}},
+		{ID: "vendor/cheap", PromptPrice: 0.25, CompletionPrice: 0.25, CodingIndex: 90, Parameters: []string{"tools"}},
+		{ID: "other/judge", PromptPrice: 0.5, CompletionPrice: 1, CodingIndex: 90, Parameters: []string{"tools"}},
+	}
+}
+
 // restoreOwnCells puts the picker's own-cells seam back after a test that
 // repointed it, so no other test in the process reads this test's sheet.
 func restoreOwnCells(t *testing.T) {
@@ -147,6 +160,101 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 		if row.Input != 10 || row.Output != 20 {
 			t.Fatalf("a row carries %d in / %d out", row.Input, row.Output)
 		}
+	}
+}
+
+// TestPoolJudgeHookSpellsASeatByItsBareModelID is the fresh install's road: a
+// seat arrives spelled the way the client routes it — the `~` alias marker on
+// the front — and the pool's copy of that id must be the bare `<vendor>/<id>`,
+// the spelling the own sheet, the outbox, the judge-last record and the relay's
+// schema all read. The judge picked must also stay outside the seats' own
+// vendor, which the marker otherwise hides.
+func TestPoolJudgeHookSpellsASeatByItsBareModelID(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{}
+	var asked []string
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTildeCatalog, poolTestAsk(settings, &asked), time.Now, "task")
+	if hook == nil {
+		t.Fatal("a pool whose mode allows reading built no hook")
+	}
+	landing := poolTestLanding()
+	landing.Worker = "~vendor/worker"
+	landing.High = "~vendor/high"
+	hook(landing)
+
+	sheet, err := record.LoadSheet(record.OwnSheetPath(config.ProfilePath(profileDir, "pool")))
+	if err != nil {
+		t.Fatalf("the own sheet: %v", err)
+	}
+	cells := record.Cells(sheet)
+	seen := map[string]bool{}
+	for _, cell := range cells {
+		seen[cell.Role+"/"+cell.Model] = true
+	}
+	for _, seat := range []string{"worker/vendor/worker", "high/vendor/high"} {
+		if !seen[seat] {
+			t.Fatalf("the sheet holds no cell for %s spelled bare: %+v", seat, cells)
+		}
+	}
+	if seen["worker/~vendor/worker"] || seen["high/~vendor/high"] {
+		t.Fatalf("the sheet holds a seat under its tilde spelling: %+v", cells)
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ProfilePath(profileDir, "pool"), "outbox.jsonl"))
+	if err != nil {
+		t.Fatalf("the outbox: %v", err)
+	}
+	rows := decodeOutboxRows(t, data)
+	if len(rows) != 2 {
+		t.Fatalf("the outbox holds %d rows, want one per held seat", len(rows))
+	}
+	for _, row := range rows {
+		if row.Model != "vendor/worker" && row.Model != "vendor/high" {
+			t.Fatalf("an outbox row names model %q, want the seat spelled bare", row.Model)
+		}
+	}
+
+	last := decodeJudgeLast(t, profileDir)
+	if strings.Join(last.Seats, ", ") != "vendor/worker, vendor/high" {
+		t.Fatalf("the record holds seats %v, want them spelled bare", last.Seats)
+	}
+	if strings.Join(last.Scored, ", ") != "vendor/worker, vendor/high" {
+		t.Fatalf("the record scored %v, want the seats spelled bare", last.Scored)
+	}
+	if len(asked) != 2 || asked[0] != "other/judge" || asked[1] != "other/judge" {
+		t.Fatalf("the judge asked %v, want only other/judge — never a row from the seats' own vendor", asked)
+	}
+}
+
+// TestWritePendingLandingSpellsThePoolSeatsBare pins the pending file: a row
+// the headless doors leave is read back by the restart sweep and scored into
+// the pool's records from it, so the seats it carries are written already
+// spelled bare — the pool's copy of the id, not the client's routing spelling.
+func TestWritePendingLandingSpellsThePoolSeatsBare(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+
+	profileDir := t.TempDir()
+	landing := poolTestLanding()
+	landing.Worker = "~vendor/worker"
+	landing.High = "~vendor/high"
+	if err := writePendingLanding(profileDir, "exec", landing); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(pendingPath(config.ProfilePath(profileDir, "pool")))
+	if err != nil {
+		t.Fatalf("the pending file: %v", err)
+	}
+	var row pendingLanding
+	if err := json.Unmarshal(data, &row); err != nil {
+		t.Fatalf("the pending row does not parse: %v", err)
+	}
+	if row.Landing.Worker != "vendor/worker" || row.Landing.High != "vendor/high" {
+		t.Fatalf("the pending row spells its seats %q and %q, want them bare", row.Landing.Worker, row.Landing.High)
 	}
 }
 
