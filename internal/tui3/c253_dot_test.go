@@ -84,3 +84,14 @@ func TestTasksWideRunRowShowsPlanProgressAtWidthTier(t *testing.T) {
 		})
 	}
 }
+
+// ONE FAILURE IS ONE CELL AT THE ROW'S END, and the running mark keeps the
+// frontier: eight of fourteen done with one failed and two running drew two
+// failed cells after the finished work and no running cell at all.
+func TestAFailureTakesTheRowsEndAndLeavesTheFrontierItsRunningCell(t *testing.T) {
+	pal := palette{}
+	got := planProgress(session.PlanTaskRow{Done: 8, Running: 2, Queued: 3, Failed: 1, Total: 14}, 70, pal)
+	if got != "●●●●●◐○○○✘  8/14" {
+		t.Fatalf("progress = %q", got)
+	}
+}
