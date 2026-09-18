@@ -334,6 +334,7 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	e.answers[MethodTranscript] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
 	e.answers[MethodRewindPoints] = []session.RewindPoint{{Index: 2, Turn: true, Said: "hello"}}
 	e.answers[MethodRewindAt] = []session.DisplayEntry{{Role: "user", Text: "hello"}}
+	e.answers[MethodPlanSpend] = []session.PlanSpendLine{{Seat: "worker", Model: "a/b", USD: 1.5, Calls: 3}}
 
 	agent := client.Agent()
 	if got := agent.Transcript(); len(got) != 1 || got[0].Text != "hello" {
@@ -345,6 +346,12 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	entries, err := agent.RewindAt(0)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("RewindAt = %+v, %v", entries, err)
+	}
+	if got := agent.PlanSpend(time.Time{}); len(got) != 1 || got[0].Seat != "worker" || got[0].USD != 1.5 {
+		t.Fatalf("PlanSpend = %+v", got)
+	}
+	if len(e.calls(MethodPlanSpend)) != 1 {
+		t.Fatal("PlanSpend did not travel exactly once")
 	}
 
 	// The setters and the answers, which return nothing and must still travel.
@@ -384,6 +391,20 @@ func TestEveryGetterIsOneRoundTrip(t *testing.T) {
 	}
 	if consent.ID != 8 || !consent.Allow || consent.Scope != session.ConsentToolSession {
 		t.Fatalf("consent args = %+v", consent)
+	}
+}
+
+// TestPlanSpendIsEmptyForAnEngineWithoutTheDoor is the emptiness law on the
+// surface's side: an engine older than this door answers `no such method`, and
+// the seat block reads that as nothing drawn rather than as a failure. The
+// block is DRAWN FROM the lines, so nil is the whole of what a person meets —
+// the page simply has no seat rows, exactly as it had none before the door
+// crossed.
+func TestPlanSpendIsEmptyForAnEngineWithoutTheDoor(t *testing.T) {
+	client, e := newEngine(t)
+	e.fails[MethodPlanSpend] = `engine: no such method "PlanSpend"`
+	if got := client.Agent().PlanSpend(time.Time{}); got != nil {
+		t.Fatalf("PlanSpend answered %+v for an engine that does not know it, want nil", got)
 	}
 }
 
