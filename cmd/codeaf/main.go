@@ -1202,8 +1202,13 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 const (
 	workLadderHelp    = "flag › CODEAF_MODEL › crew › default"
 	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew mastermind › the work model"
+	checkLadderHelp   = "flag › --plan-model › crew careful"
 	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
 	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
+	// The check seat's ladder names the plan flag rather than a variable
+	// because it has no variable of its own: the check flag, else the plan
+	// flag the person typed, else the crew's careful row.
+	checkModelFlagHelp = "model that checks finished work (" + checkLadderHelp + ")"
 )
 
 // yesSpendFlagHelp is what `--yes-spend` MEANS, said once, on both doors that
