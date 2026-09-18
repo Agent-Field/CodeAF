@@ -294,7 +294,13 @@ func (a *app) taskPaneRows(r tasksReading, lines []tasksLine, width, room int) [
 		if chat, ok := r.chatAt(lines, a.taskSheet.cursor); ok {
 			rows = a.taskPaneChat(r, chat, width)
 		} else if item, ok := r.at(lines, a.taskSheet.cursor); ok {
-			rows = a.taskPaneRecord(item, width)
+			if item.plan != nil {
+				if page, found := a.taskSheet.panePlan[item.plan.ID]; found {
+					rows = a.taskPaneRunFitFrom(page, item.row.Title, width, room)
+				}
+			} else {
+				rows = a.taskPaneRecord(item, width)
+			}
 		}
 	}
 	// A FRAME TOO SHORT FOR THE WHOLE PREVIEW KEEPS ITS HEAD AND ITS VERBS: what
@@ -769,6 +775,17 @@ func (a *app) taskPaneFollow() tea.Cmd {
 		return nil
 	}
 	item, ok := a.taskSheetCurrent()
+	if ok && item.plan != nil {
+		id := item.plan.ID
+		agent, readable := a.planReader()
+		if !readable {
+			return nil
+		}
+		return func() tea.Msg {
+			page, found := agent.PlanTaskPage(id)
+			return taskPanePlanMsg{id: id, page: page, found: found}
+		}
+	}
 	if !ok || item.away {
 		// WORK ANOTHER WINDOW IS RUNNING HAS NO REPORT HERE TO READ. Its pane says
 		// where the work is and nothing else ([app.taskPaneRecord] stops there), so
@@ -836,4 +853,137 @@ func (a *app) taskPaneKeep(key tasksKey, at time.Time, tail string) {
 type taskPaneTail struct {
 	at     time.Time
 	report string
+}
+
+// taskPanePlanMsg is fetched by a command after selection, never by paint.
+type taskPanePlanMsg struct {
+	id    string
+	page  session.PlanTaskPage
+	found bool
+}
+
+func (a *app) taskPanePlanRead(msg taskPanePlanMsg) {
+	if !msg.found {
+		return
+	}
+	if a.taskSheet.panePlan == nil {
+		a.taskSheet.panePlan = map[string]session.PlanTaskPage{}
+	}
+	a.taskSheet.panePlan[msg.id] = msg.page
+	a.touch()
+}
+func (a *app) taskPaneRun(page session.PlanTaskPage, width int) []taskPaneRow {
+	return a.taskPaneRunFrom(page, page.Row.Title, width)
+}
+func (a *app) taskPaneRunFrom(page session.PlanTaskPage, conversation string, width int) []taskPaneRow {
+	pal := a.pal
+	var out []taskPaneRow
+	add := func(s string) { out = append(out, taskPaneRow{text: fit(s, width)}) }
+	add(pal.bold(pal.ink(strings.TrimSpace(page.Row.Title))))
+	if p := planProgress(page.Row, width, pal); p != "" {
+		add(pal.dim(p))
+	}
+	origin := "from " + strings.TrimSpace(conversation)
+	state := planStateWord(page.Row.Status)
+	at := page.Row.Ended
+	if at.IsZero() {
+		at = page.Row.Started
+	}
+	age := ""
+	if !at.IsZero() {
+		age = session.TaskAgeWord(a.now().Sub(at))
+	}
+	fact := strings.TrimSpace(state + " " + age)
+	if fact != "" {
+		origin += railSep + fact
+	}
+	if cost := planSpendWord(page.Row.USD); cost != "" {
+		origin += railSep + cost
+	}
+	add(pal.dim(origin))
+	var seats []string
+	if page.WorkModel != "" {
+		seats = append(seats, "work "+page.WorkModel)
+	}
+	if page.PlanModel != "" {
+		seats = append(seats, "plan "+page.PlanModel)
+	}
+	if len(seats) > 0 {
+		add(pal.dim(strings.Join(seats, railSep)))
+	}
+	if len(page.Questions) > 0 {
+		add(pal.dim("your call"))
+		for _, q := range page.Questions {
+			add(pal.ink("? " + strings.TrimSpace(q.Head)))
+			var opts []string
+			for _, o := range q.Options {
+				opts = append(opts, strings.TrimSpace(o.Key)+" "+strings.TrimSpace(o.Label))
+			}
+			if len(opts) > 0 {
+				add(pal.dim("  " + strings.Join(opts, "  ")))
+			}
+		}
+	}
+	done := 0
+	for _, row := range page.Children {
+		if strings.TrimSpace(row.Status) == "done" {
+			done++
+			continue
+		}
+		glyph := tierGlyph(pal, planStatus(row.Status))
+		line := strings.TrimSpace(glyph + " " + row.Title)
+		if row.Seat != "" {
+			line = padTo(line, max(1, width-ansi.StringWidth(row.Seat)-1)) + pal.dim(row.Seat)
+		}
+		add(line)
+	}
+	if done > 0 {
+		add(pal.dim(itoa(done) + " done"))
+	}
+	if len(page.Notes) > 0 {
+		add(pal.dim("notes"))
+		for _, n := range page.Notes {
+			for _, line := range wrap(strings.TrimSpace(n.Body), width) {
+				add(pal.ink(line))
+			}
+		}
+	}
+	return out
+}
+func (a *app) taskPaneRunFit(page session.PlanTaskPage, width, room int) []taskPaneRow {
+	return a.taskPaneRunFitFrom(page, page.Row.Title, width, room)
+}
+func (a *app) taskPaneRunFitFrom(page session.PlanTaskPage, conversation string, width, room int) []taskPaneRow {
+	rows := a.taskPaneRunFrom(page, conversation, width)
+	if len(rows) <= room {
+		return rows
+	}
+	note := -1
+	for i, r := range rows {
+		if plain(r.text) == "notes" {
+			note = i
+			break
+		}
+	}
+	if note >= 0 {
+		rows = rows[:note]
+	}
+	for len(rows) > room {
+		cut := -1
+		for i := len(rows) - 1; i >= 0; i-- {
+			s := plain(rows[i].text)
+			if strings.Contains(s, " done") {
+				cut = i
+				break
+			}
+		}
+		if cut < 0 {
+			break
+		}
+		rows = append(rows[:cut], rows[cut+1:]...)
+	}
+	if len(rows) > room {
+		rows = rows[:room]
+	}
+	return rows
 }
