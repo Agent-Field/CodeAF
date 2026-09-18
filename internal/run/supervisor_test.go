@@ -1130,3 +1130,46 @@ func TestSupervisorEndsAWorkerWhoseTaskAnotherWriterFailed(t *testing.T) {
 		t.Fatalf("leaf = %s error %q, want foreign terminal word", task.Status, task.Error)
 	}
 }
+
+// A WORKER THAT FINISHED IS NEVER CANCELLED. It writes its own `done` and then
+// returns; a supervisor pass landing between the two must leave its context
+// alone, or its return carries the cancellation as an error and the run treats
+// work that completed as a worker that was stopped.
+func TestSupervisorNeverCancelsAWorkerThatWroteItsOwnDone(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	// The root holds its own second turn open past the leaf's linger, so the
+	// only thing that could cancel the leaf's worker is a pass finding its task
+	// done, never the run ending around it.
+	var rootTurns atomic.Int32
+	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		if rootTurns.Add(1) == 1 {
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "leaf", Title: "leaf", ParentID: task.ID}}); err != nil {
+				return run.Report{}, err
+			}
+			return run.Report{Result: "split", Steps: 1}, nil
+		}
+		time.Sleep(900 * time.Millisecond)
+		return run.Report{Result: "folded", Steps: 1}, nil
+	}
+	var cancelled atomic.Bool
+	seat.actions["leaf"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		if _, err := store.Done(task.ID, task.ID, "the leaf's own ending", nil, nil); err != nil {
+			return run.Report{}, err
+		}
+		// Linger past several supervisor passes with the task already done.
+		select {
+		case <-ctx.Done():
+			cancelled.Store(true)
+			return run.Report{}, ctx.Err()
+		case <-time.After(400 * time.Millisecond):
+		}
+		return run.Report{Result: "the leaf's own ending", Steps: 1}, nil
+	}
+	if outcome := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor).Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want done", outcome)
+	}
+	if cancelled.Load() {
+		t.Fatal("the supervisor cancelled a worker whose task it found done")
+	}
+}

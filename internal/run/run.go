@@ -703,12 +703,15 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		}
 		// THE WOKEN-PARENT LAW: every non-root launch holds the task under its
 		// own agent id, so wait and done work identically on a first turn and a wake.
+		//
+		// A CLAIM THE STORE REFUSES DOES NOT CANCEL THE WAKE. A parent that is
+		// never woken holds its family open until the wall, which is worse than
+		// one launched as it was before this law: it can still answer in words,
+		// and the run closes it on that.
 		if task.ID != rootID && task.ClaimedBy == "" {
-			claimed, err := s.store.ClaimWake(task.ID, task.ID, s.Owner)
-			if err != nil {
-				continue
+			if claimed, err := s.store.ClaimWake(task.ID, task.ID, s.Owner); err == nil {
+				task = *claimed
 			}
-			task = *claimed
 		}
 		s.wakes[task.ID]++
 		s.reported[task.ID] = childIDs(tasks, task.ID)
@@ -764,10 +767,11 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 		if err != nil {
 			continue
 		}
+		// The park flag is already cleared, so a refused claim still launches:
+		// see [Supervisor.launchWakes] for why a wake is never dropped on it.
 		if task.Composite && task.ID != rootID {
-			woken, err = s.store.ClaimWake(task.ID, task.ID, s.Owner)
-			if err != nil {
-				continue
+			if claimed, err := s.store.ClaimWake(task.ID, task.ID, s.Owner); err == nil {
+				woken = claimed
 			}
 		}
 		if task.Composite {
@@ -1102,7 +1106,12 @@ func (s *Supervisor) releaseStale() {
 func (s *Supervisor) endCancelledWorkers() {
 	for id, cancel := range s.cancels {
 		task := s.store.Task(id)
-		if task == nil || terminalStatus(task.Status) || s.hasCancelledAncestor(*task) {
+		// FAILED AND CANCELLED, NEVER DONE. A worker that finishes writes its own
+		// `done` and then returns; a pass landing between the two would cancel a
+		// worker that ended well, its return would carry the cancellation as an
+		// error, and absorb would skip the review round on work that completed.
+		ended := task != nil && (task.Status == plandb.StatusCancelled || task.Status == plandb.StatusFailed)
+		if task == nil || ended || s.hasCancelledAncestor(*task) {
 			cancel()
 			delete(s.cancels, id)
 		}
