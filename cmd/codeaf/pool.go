@@ -185,16 +185,11 @@ func statusPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 // install's own sheet, then, for status, the outbox and the two doors the
 // mode opens.
 func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withCells, withStatus bool, keys []ed25519.PublicKey) error {
-	var cached *index.Index
 	// The cache is read the way show reads everything else, as an answer and
 	// not as an argument: a document that does not parse is not there yet,
 	// and the line below says so. The signature and the puller's version mark
 	// are verify's business; show reports what a person has.
-	if doc, err := os.ReadFile(filepath.Join(poolDir, "doc.json")); err == nil {
-		if parsed, err := index.Parse(doc); err == nil {
-			cached = parsed
-		}
-	}
+	cached := readCachedIndex(poolDir)
 	if asJSON {
 		return printPoolJSON(output, poolDir, cfg, cached, now, withCells, withStatus, keys)
 	}
@@ -211,29 +206,52 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		}
 	}
 	held := cached
+	// For status the probe runs BEFORE the index line, because the probe is
+	// what fetches and caches: the line below must describe the document this
+	// run now holds, not the one it held before the fetch. show asks nothing,
+	// so its line is the cache's own. prior is the cache as it stood before
+	// the fetch, read to name what a stored document replaced.
+	prior := cached
+	var relay, mirror probeSummary
+	if withStatus {
+		relay, mirror = probePool(poolDir, cfg, now, keys)
+		if relay.stored || mirror.stored {
+			cached = readCachedIndex(poolDir)
+			held = cached
+		}
+	}
+	var indexLine string
 	if held == nil {
 		// A nothing is said in a sentence, the way an empty cache is:
 		// silence and a bare header both read as a command that broke. And the
 		// index the build carries is named beside it, so a person knows there
 		// are numbers before any fetch: the seed is what a pick reads until a
 		// fresher signed one is cached.
-		line := "no index cached yet"
+		indexLine = "no index cached yet"
 		if seed, err := index.SeedIndex(); err == nil {
-			line = fmt.Sprintf("no index cached yet · built-in seed of %s, %s", seed.Generated().Format("2006-01-02"), countWord(indexCellCount(seed), "cell", "cells"))
+			indexLine = fmt.Sprintf("no index cached yet · built-in seed of %s, %s", seed.Generated().Format("2006-01-02"), countWord(indexCellCount(seed), "cell", "cells"))
 			held = seed
 		}
-		if _, err := fmt.Fprintln(output, line); err != nil {
-			return err
-		}
 	} else {
-		generated := cached.Generated()
-		if _, err := fmt.Fprintf(output,
-			"index · generated %s · %s old · schema %d · %s · %s · %s · min installs %d\n",
+		generated := held.Generated()
+		indexLine = fmt.Sprintf("index · generated %s · %s old · schema %d · %s · %s · %s · min installs %d",
 			generated.Format("2006-01-02"), reltime.Elapsed(now.Sub(generated)),
-			cached.Schema(), countWord(len(cached.Metrics()), "metric", "metrics"),
-			countWord(len(cached.Judges()), "judge", "judges"), countWord(indexCellCount(cached), "cell", "cells"), cached.MinInstalls()); err != nil {
-			return err
+			held.Schema(), countWord(len(held.Metrics()), "metric", "metrics"),
+			countWord(len(held.Judges()), "judge", "judges"), countWord(indexCellCount(held), "cell", "cells"), held.MinInstalls())
+		// The tail says what THIS run's probe did to the cache: a document it
+		// stored is named as cached now, beside what stood there before — the
+		// built-in seed, or the day of the document it replaced. A probe that
+		// stored nothing leaves the line as it has always been.
+		if withStatus && (relay.stored || mirror.stored) {
+			was := "built-in seed"
+			if prior != nil {
+				was = prior.Generated().Format("2006-01-02")
+			}
+			indexLine += fmt.Sprintf(" · cached now (was %s)", was)
 		}
+	}
+	if _, err := fmt.Fprintln(output, indexLine); err != nil {
+		return err
 	}
 	// One line per declared metric, after the index line: the count above
 	// says how many, these say which — and which of them are judged scores
@@ -281,7 +299,6 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		if _, err := fmt.Fprintln(output, sweepLastLine(readSweepLast(poolDir), now)); err != nil {
 			return err
 		}
-		relay, mirror := probePool(poolDir, cfg, now, keys)
 		if _, err := fmt.Fprintln(output, relayStatusLine(cfg, relay, mirror, cached)); err != nil {
 			return err
 		}
@@ -366,15 +383,34 @@ func pendingJudgeLine(summary pendingJudgeSummary, now time.Time) string {
 // longer than this to answer has not answered.
 const poolProbeBudget = 3 * time.Second
 
+// readCachedIndex reads the document under the profile's pool directory the
+// way every reading form reads it: a file that does not parse is not there
+// yet. The signature and the puller's version mark are verify's business; a
+// reading reports what a person has.
+func readCachedIndex(poolDir string) *index.Index {
+	doc, err := os.ReadFile(filepath.Join(poolDir, "doc.json"))
+	if err != nil {
+		return nil
+	}
+	parsed, err := index.Parse(doc)
+	if err != nil {
+		return nil
+	}
+	return parsed
+}
+
 // probeSummary is one address's answer under status: whether it answered, the
 // index version it served when it did, and — when it did not — the one-line
 // reason. fromCache says the document was the copy already on disk, which the
-// relay line words differently; it is not part of the JSON shape.
+// relay line words differently; it is not part of the JSON shape. stored says
+// this pull wrote a document the cache did not hold before, which is what the
+// index line's tail reports.
 type probeSummary struct {
 	Reachable bool   `json:"reachable"`
 	Version   int64  `json:"version"`
 	Reason    string `json:"reason"`
 	fromCache bool
+	stored    bool
 }
 
 // probePool asks the relay for the index, and the mirror when the relay does
@@ -429,7 +465,7 @@ func probeAddress(url, poolDir string, keys []ed25519.PublicKey, now func() time
 	if err != nil {
 		return probeSummary{Reason: oneLine(err.Error())}
 	}
-	return probeSummary{Reachable: true, Version: result.Version, fromCache: result.FromCache}
+	return probeSummary{Reachable: true, Version: result.Version, fromCache: result.FromCache, stored: result.Changed}
 }
 
 // relayStatusLine is the one line status says about the addresses: whether the
@@ -530,6 +566,9 @@ type indexSummary struct {
 	Cells       int             `json:"cells"`
 	MinInstalls int             `json:"min_installs"`
 	Source      string          `json:"source"`
+	// CachedNow is true on the one status whose probe stored this document,
+	// and left out otherwise so a reader sees it only when it happened.
+	CachedNow bool `json:"cached_now,omitempty"`
 }
 
 // metricSummary is one declared metric as the reading forms carry it: the
@@ -571,6 +610,18 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		SubmitURL:  cfg.SubmitURL,
 		TTLSeconds: int(cfg.TTL / time.Second),
 	}
+	// The probe runs BEFORE the index is summarized, for the same reason
+	// status's line waits for it: the summary is about the document this run
+	// holds after the fetch, and cached_now says this run stored it.
+	relay, mirror := probeSummary{}, probeSummary{}
+	cachedNow := false
+	if withStatus {
+		relay, mirror = probePool(poolDir, cfg, now, keys)
+		if relay.stored || mirror.stored {
+			cached = readCachedIndex(poolDir)
+			cachedNow = true
+		}
+	}
 	// A cached document is reported as itself; with no cache the build's seed
 	// stands in, so a script reading `index` sees the index a pick would read
 	// and the source field says which one it was.
@@ -592,6 +643,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 			Cells:       indexCellCount(held),
 			MinInstalls: held.MinInstalls(),
 			Source:      source,
+			CachedNow:   cachedNow,
 		}
 	}
 	// The cells ride beside the summary only when they were asked for:
@@ -612,7 +664,6 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		}
 		judged := readPendingJudge(poolDir)
 		answer.PendingJudge = &judged
-		relay, mirror := probePool(poolDir, cfg, now, keys)
 		answer.Relay = &relay
 		answer.Mirror = &mirror
 	}
