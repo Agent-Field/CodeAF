@@ -455,11 +455,15 @@ money are read from:
   budget, on every read. Nothing is stored; a catalog that moves moves the seat with it,
   and your profile never holds a model id this build chose for you.
 - **learn** — the catalog computation plus the Model Pool's measurements and your own
-  judged runs, carried as a quality rating the better-measured models read on top of
-  their published scores.
+  graded runs, carried as a quality rating the better-measured models read on top of
+  their published scores: the share of graded tasks a model was accepted on, blended
+  with the catalog by how many tasks stand behind it (thirty tasks weigh as much as the
+  catalog). See *What balanced means in dollars* and *How a task is graded*, below.
 
 `catalog` and `learn` are Pareto crewing: the crew is picked on the cost-quality front,
-per role and per task, from evidence rather than from a fixed table.
+per role and per task, from evidence rather than from a fixed table — and the three
+preset words are read off that front by a stake in dollars, not by the shape of the
+curve.
 
 A pick moves the three seats the presets dial — **worker**, **careful work** and
 **mastermind** — and never the two that read every turn: **reflex** and **small work**
@@ -475,6 +479,62 @@ When the catalog cannot compute a seat — no catalog yet, or no pick off its fr
 seat falls back to the table row for your preset, never to `auto` and never to empty. A
 seat the pick computed names it where the preset would be: `crew balanced, computed
 from the catalog` under **catalog**, `crew balanced, learned` under **learn**.
+
+## What balanced means in dollars — the stake, why frugal and balanced are prices and max is not, why the checker is not the dearest model any more
+
+The three crew words are read off the cost-quality front by **a stake: what one failed
+task costs you, in dollars.** Every crew on the front has a *loss* at a stake — its
+expected bill for a typical task (4.4M tokens, the median of the measured runs) plus the
+stake times the chance the task is not accepted, read as one minus its quality — and the
+pick is the crew with the least loss:
+
+- **frugal** is a stake of **$1**: a failed task is an annoyance, spend nothing to avoid one.
+- **balanced** is a stake of **$10**: a failed task costs about ten minutes of a person.
+- **max** is not a stake. It is the best crew on the front whatever it bills, because
+  someone who says max has said the bill is not the point.
+
+That is the whole rule, and it has units. It replaced the knee — the crew farthest above
+the line between the two ends of the front — which had none, and which is how `balanced`
+under `learn` once seated a checker that took three quarters of every bill: on the
+2026-09-17 catalog the all-family `balanced` crew moved from a $2.60 task at quality 95
+to a $0.65 task at quality 89, and the $2.60 crew is what a $50 stake would buy. Bills
+per preset are now predictable — a bigger stake can only walk the pick *up* the front,
+never back down — and the seat the pick names says which word it answers for, exactly as
+before (`crew balanced · learn`).
+
+**Limits.** There is no setting to type a stake of your own yet — the two words are the
+only two stakes, and `max` is the top of the front. The bill a crew is priced on is what
+*your* tasks have spent per seat: the volume each seat took and its input-to-output mix
+are learned from your usage ledger (`~/.codeaf/v3/usage.jsonl`) and pulled toward the
+shipped defaults by how many tasks stand behind them, so one strange task moves nothing
+and thirty ordinary ones move half way. Nothing here changes a model you typed by hand.
+
+## How a task is graded — build, vet, tests, gofmt; the grade codeaf learns from; grade-last.json
+
+When a task lands on the chat door, codeaf grades the tree itself, with no model in the
+loop: `gofmt` over the files the task wrote, `go build ./...`, then `go vet` and
+`go test` on the packages those files live in — the build stage under two minutes, the
+tests under three. Pass or fail, one observation lands for every seat the crew held, as
+the metric `acceptable` in the install's own sheet (`pool/own.json` under your profile):
+100 for a pass, 0 for a fail, under the source that graded it — `grader` when the tests
+ran, `grader-build` when they did not finish inside their budget and only the format,
+build and vet stages count. **This grade, and only this grade, is what the crew picker
+learns from.** The judge — a model outside the crew asked to score each seat 0–100 — is
+still asked and its opinion is still kept, under its own metric, but a model's opinion
+of a model's work is evidence and not a grade.
+
+`pool/grade-last.json` beside `judge-last.json` says what the last grade found: pass or
+fail, the source, the stage it stopped at when it failed (`fmt`, `build`, `vet`, `test`),
+the first lines of that stage's output, and the packages it ran. `codeaf pool show`
+counts the graded cells and the tasks behind them.
+
+**Limits.** Only a workspace with a `go.mod` at its root is graded; any other tree gets
+no grade and nothing is recorded for it — an absent capability, not a failed one. A
+test that does not finish inside its budget is unknown, not a failure. The grade reads
+what the task left in the tree, so a task that wrote no Go file still grades the build.
+The seeded ratings this build ships with come from a different source, `reviewer` —
+the share of measured runs the checker found no major defect in — and the two sources
+are kept apart in every cell and folded only when a seat's rating is read.
 
 **The per-seat alias is the bare word `auto`.** Any of the five class rows may hold the
 bare word `auto` instead of a model id, case folded. The seat's model is then
