@@ -696,6 +696,101 @@ func TestSendSaysWhatFailedAndLeavesTheRowsPending(t *testing.T) {
 	}
 }
 
+func TestARefusedRowLeavesTheOutboxAndTheRestOfItsBatchSends(t *testing.T) {
+	// The relay refuses a batch on the first line it cannot validate and
+	// answers which line that was, so the client can retire exactly that row
+	// and send the rows around it rather than hold every row behind it
+	// pending on every run to come.
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		lines := strings.Count(string(b), "\n")
+		mu.Unlock()
+		if lines == 3 {
+			w.WriteHeader(400)
+			w.Write([]byte(`{"error":"line 2: role must be worker, high or mastermind"}`))
+			return
+		}
+		w.WriteHeader(202)
+	}))
+	defer srv.Close()
+	o, path := openOutbox(t)
+	o.Rand = &stepRand{step: 14}
+	appendRow(t, o, `{"k":"worker"}`)
+	appendRow(t, o, `{"role":"scout"}`)
+	appendRow(t, o, `{"k":"mastermind"}`)
+	bad := pendingNonces(t, o)[1]
+	n, err := o.Send(context.Background(), srv.URL)
+	if n != 2 || err != nil {
+		t.Fatalf("Send answered (%d, %v), want (2, nil)", n, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 2 {
+		t.Fatalf("the send made %d posts, want one per refused line", len(bodies))
+	}
+	if strings.Contains(bodies[1], bad) {
+		t.Fatal("the retried batch carried the refused row again")
+	}
+	if cn := countMarks(t, path, "sent"); cn != 2 {
+		t.Fatalf("file holds %d sent markers, want 2", cn)
+	}
+	if cn := countMarks(t, path, "dropped"); cn != 1 {
+		t.Fatalf("file holds %d dropped markers, want 1", cn)
+	}
+	want := `{"dropped":"` + bad + `"}`
+	found := false
+	for _, line := range fileLines(t, path) {
+		if line == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no dropped marker names the refused row, want %s", want)
+	}
+	if got := o.Pending(); len(got) != 0 {
+		t.Fatalf("%d rows stayed pending after the refused row was retired, want 0", len(got))
+	}
+	if err := o.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	o2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer o2.Close()
+	if got := pendingNonces(t, o2); len(got) != 0 {
+		t.Fatalf("the dropped mark did not survive a reopen: %d rows pending", len(got))
+	}
+}
+
+func TestAQuotaRefusalKeepsEveryRowPending(t *testing.T) {
+	rec := &postRecord{status: []int{429}}
+	srv := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer srv.Close()
+	o, path := openOutbox(t)
+	o.Rand = &stepRand{step: 15}
+	for i := 0; i < 3; i++ {
+		appendRow(t, o, fmt.Sprintf(`{"k":%d}`, i))
+	}
+	n, err := o.Send(context.Background(), srv.URL)
+	if n != 0 || err == nil {
+		t.Fatalf("Send answered (%d, %v), want (0, an error)", n, err)
+	}
+	if !strings.Contains(err.Error(), "429") {
+		t.Fatalf("the error does not say what failed: %v", err)
+	}
+	if got := len(o.Pending()); got != 3 {
+		t.Fatalf("%d rows stayed pending after the quota refusal, want 3", got)
+	}
+	if cn := countMarks(t, path, "sent") + countMarks(t, path, "dropped"); cn != 0 {
+		t.Fatalf("file holds %d markers after a quota refusal, want none", cn)
+	}
+}
+
 func TestSendAnswersARefusedConnection(t *testing.T) {
 	o, _ := openOutbox(t)
 	o.Rand = &stepRand{step: 12}
