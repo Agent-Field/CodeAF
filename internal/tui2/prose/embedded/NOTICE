@@ -1,0 +1,11 @@
+The XML files in this directory are copied, unchanged, from chroma v2.27.0's
+lexers/embedded/ directory (github.com/alecthomas/chroma/v2, MIT licensed).
+../lexers.go embeds them and parses them lazily, on first use.
+
+They are kept BYTE-FOR-BYTE identical to the dependency's copies, so that
+re-copying one after a dependency upgrade is a diff with no local edits to
+reconcile, and so nothing here is a second, drifting copy of a table somebody
+else maintains. Do not edit them here: a definition that needs a change needs it
+in the dependency, or a rule of our own in ../lexers_builtin.go.
+
+chroma's licence is recorded in THIRD-PARTY-NOTICES.md at the repository root.
