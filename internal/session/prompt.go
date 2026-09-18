@@ -163,10 +163,12 @@ var bashworkerPrompt string
 // because the composition it leads REPLACES the chat colleague page for this
 // belt (bashtask.md's own words are the authority; this is only where it rides).
 //
-// THE ONLY TRANSLATIONS ARE THE TWO COMMANDS THE LOOP NAMES, and they are named
+// THE ONLY TRANSLATIONS ARE THE THREE VERBS THE LOOP NAMES, and they are named
 // here rather than in the page so a drifted source is a red test and never a
-// stale sentence: the wait is this session's own — end the turn, every landing
-// wakes you — and the finish is the plan CLI's own `plandb done --agent`.
+// stale sentence: the act is the belt's own one bash call, the finish is the
+// plan CLI's own `plandb done --agent`, and the wait is the plan CLI's own
+// `plandb wait --agent` — the task parks, the claim is released, and the
+// runtime runs it again when a dependency or a child moves.
 //
 //go:embed prompts/bashtask.md
 var bashPolicyPrompt string

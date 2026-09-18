@@ -334,6 +334,8 @@ func cliDispatch(st *Store, p *cliParsed) error {
 		return cliGo(st, p)
 	case "done":
 		return cliDone(st, p)
+	case "wait":
+		return cliWait(st, p)
 	case "list":
 		return cliList(st, p)
 	case "archive":
@@ -706,6 +708,39 @@ func cliRunningFor(st *Store, agent string) *Task {
 			return task
 		}
 	}
+	return nil
+}
+
+// cliWait parks a task its worker cannot go on: the store releases the claim
+// and leaves the task open and not done, and the runtime launches it again
+// through its wake road when one of its dependencies or its children moves. A
+// task with nothing open to wait on — no dependency that is not done, no
+// child that is not terminal — is refused by the store with the reason, so a
+// worker cannot park on nothing.
+func cliWait(st *Store, p *cliParsed) error {
+	agent := cliAgent(p)
+	var id string
+	if len(p.pos) >= 2 {
+		task, err := cliResolve(st, p.pos[1])
+		if err != nil {
+			return err
+		}
+		id = task.ID
+	} else {
+		task := cliRunningFor(st, agent)
+		if task == nil {
+			return fmt.Errorf("no running task found for agent '%s'. Specify task ID explicitly.", agent)
+		}
+		id = task.ID
+	}
+	task, err := st.Wait(id, agent)
+	if err != nil {
+		return err
+	}
+	if p.bools["json"] {
+		return cliPrintJSON(cliTaskObject(st, task))
+	}
+	fmt.Fprintf(cliOut, "⏸ %s waiting %s — it is launched again when a dependency or child moves\n", cliID(task.ID), cliBracket(st))
 	return nil
 }
 
@@ -2152,6 +2187,7 @@ func cliVerbHelp(verb string) string {
 		"split":          `usage: plandb split TASK_ID --into SPEC   (SPEC: JSON parts, "A, B", or "A > B > C")`,
 		"go":             `usage: plandb go [--agent ID] — claim the highest-priority ready task for you`,
 		"done":           `usage: plandb done [TASK_ID] --result TEXT [--agent ID] [--next]`,
+		"wait":           `usage: plandb wait [TASK_ID] [--agent ID] — park the task until a dependency or a child moves; the runtime launches it again when one does`,
 		"archive":        `usage: plandb archive [--older-than 72h] — move old finished subtrees into the archive`,
 		"list":           `usage: plandb list [--status STATUS] [--kind K] [--agent ID] [--project P] [--chat C] [--archived]`,
 		"status":         `usage: plandb status [--full] — the one-line summary, or the containment tree with it`,

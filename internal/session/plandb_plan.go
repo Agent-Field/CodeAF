@@ -620,12 +620,19 @@ func planBrief(task *plandb.Task, agent string, role planRole) string {
 	b.WriteString(agent)
 	b.WriteString(".\n")
 	if role == planIsRoot {
-		b.WriteString("- The runtime completes the run itself; finish your work and end your turn.\n")
+		b.WriteString("- Finish the run with: plandb done ")
+		b.WriteString(planStoreID(task.ID))
+		b.WriteString(" --agent ")
+		b.WriteString(agent)
+		b.WriteString(" --result 'what the run did and what it changed' — the root's own worker writes it, after every child has landed and the work holds. A reply that runs nothing does not end it.\n")
 	} else {
 		b.WriteString("- Finish it with: plandb done --agent ")
 		b.WriteString(agent)
 		b.WriteString(" --result 'what you did and what it changed' — after the work holds, and never before.\n")
 	}
+	b.WriteString("- If you are blocked on another task, park with: plandb wait --agent ")
+	b.WriteString(agent)
+	b.WriteString(" — the runtime runs you again, with what changed, once a dependency or a child moves.\n")
 	b.WriteString("- Coordinate through the plan CLI: plandb add, plandb split, plandb task note, plandb task overview (the page lists them all).\n")
 	b.WriteString("- Dispatch is automatic: every ready task you create gets a worker. Never run the lifecycle verbs (claim, start, go, fail, pause, approve) — the runtime owns them.\n")
 	return b.String()

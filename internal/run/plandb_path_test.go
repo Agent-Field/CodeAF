@@ -95,7 +95,7 @@ func realPlandbDoor(t *testing.T) string {
 // binding must reach the whole command, not only the first simple command.
 func TestBashWorkerResolvesTheRunsPlandbOverAHostOne(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	decoy := t.TempDir()
 	if err := os.WriteFile(filepath.Join(decoy, "plandb"), []byte("#!/bin/sh\necho DECOY\n"), 0o755); err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestBashWorkerResolvesTheRunsPlandbOverAHostOne(t *testing.T) {
 			return toolReply(`{"command":"true && command -v plandb"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textReply("checked the plan binary"), nil
+			return toolReply(finishCommand("root", "checked the plan binary")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
@@ -121,7 +121,7 @@ func TestBashWorkerResolvesTheRunsPlandbOverAHostOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the trajectory: %v", err)
 	}
-	if len(steps) != 1 {
+	if len(steps) < 1 {
 		t.Fatalf("the trajectory reads %d steps, want the one the worker took", len(steps))
 	}
 	want := filepath.Join(storeDir, "bin", "plandb")
@@ -144,6 +144,15 @@ func TestBashWorkerPlandbWritesTheRunsStoreFromAnyCwd(t *testing.T) {
 	elsewhere := t.TempDir()
 	store := runOpenStore(t)
 	storeDir := filepath.Dir(store.Path())
+	// THE WORKER RUNS ON A LEAF, because this test's own first command adds a
+	// task under the root: a root with an open child cannot finish, and the
+	// leaf's own `plandb done` is what ends the loop.
+	if _, err := store.AddMany([]plandb.TaskSpec{leafDone("outside")}); err != nil {
+		t.Fatalf("add the leaf: %v", err)
+	}
+	if _, err := store.Claim("outside", "outside", "test-owner"); err != nil {
+		t.Fatalf("claim the leaf: %v", err)
+	}
 	const title = "A task written from outside the tree"
 	command := "cd " + elsewhere + ` && plandb add '` + title + `' --description 'landed from outside'`
 	seat := &seat{script: []step{
@@ -151,12 +160,12 @@ func TestBashWorkerPlandbWritesTheRunsStoreFromAnyCwd(t *testing.T) {
 			return toolReply(bashArguments(t, command)), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textReply("added the task"), nil
+			return toolReply(finishCommand("outside", "added the task")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 
-	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
+	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task("outside")); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
 	}
 

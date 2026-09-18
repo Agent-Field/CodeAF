@@ -83,21 +83,27 @@ plandb critical-path          # the chain to watch; plandb bottlenecks for what 
 ONE OWNED OUTPUT AND NO UNKNOWN: do the work in your own steps and finish. Do
 not run `plandb init`, `plandb status`, `plandb context` or `plandb task overview`
 for yourself first — the run opened the store and this task is the only one you
-own, so the ritual is steps not spent on the work. A ROOT task is finished by the
-run itself once its report is written: a root worker never calls `plandb done` on
-itself, and the store refuses that write.
+own, so the ritual is steps not spent on the work.
 
-FINISH YOUR OWN TASK through the CLI, and only after the work holds:
+THREE VERBS END OR HOLD A TASK, and none of them is a reply. You ACT with a
+bash call; you FINISH with `plandb done` on your own task, and only after the
+work holds; you WAIT with `plandb wait` when you are blocked on another task. A
+reply that executed no action runs nothing and does not end the task — the
+runtime answers it in its own voice and you go on, and four such replies in a
+row fail the task. The only ways a task ends are `plandb done`, `plandb wait`,
+the step cap, the run's wall and an errored turn.
 
 ```
 plandb done --agent <your agent> --result 'what you did and what it changed'
+plandb wait --agent <your agent>    # blocked on a dependency or a child? park here
 ```
 
 Your agent name and your task's id are in your brief, above. `plandb done`
 refuses a task that is not yours — the ownership check is what keeps one
-worker from finishing another's work. When nothing independent of what you
-handed out remains, end your turn; you are run again once every child you
-dispatched has landed, with their reports.
+worker from finishing another's work. `plandb wait` releases your claim and
+leaves the task open and not done; the runtime runs you again, with what
+changed in your brief, once a dependency or a child you named moves — and a
+wait with nothing open to wait on is refused, so you cannot park on nothing.
 
 Parallelism lives in the shell, not in the batch:
 
