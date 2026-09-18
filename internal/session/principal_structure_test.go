@@ -66,6 +66,11 @@ var wakeRoads = map[string]string{
 		"[Agent.bubbleUnverifiedChildren] re-addresses what is still owed). The note is built " +
 		"by [taskNote] out of a [landingAddress], which is what the session's goal owner " +
 		"answered about that landing ([Agent.addressLanding] → [Principal.Report])",
+	"deliverBeltRunLanding": "A RUN'S LANDING, and the seam above with nothing added to it: the " +
+		"line is built by [taskNote] out of the [landingAddress] the session's goal owner answered " +
+		"about that landing ([Agent.addressLanding] → [Principal.Report]). A run is this " +
+		"conversation's own work coming home rather than a node's, so who the ending is addressed " +
+		"to is the same question with the same reader",
 }
 
 // TestEveryWakeRoadSaysWhoItIsAddressedTo fails when a new road into the wake
