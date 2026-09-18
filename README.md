@@ -35,6 +35,22 @@ the more it does.
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
 
+## What one binary costs
+
+Measured against the other agent CLIs on one machine, in the same repository, on
+the same day; memory is PSS, not RSS, because this binary runs two processes that
+share one binary's text, which RSS would count twice.
+
+<!-- REFRESH: re-run docs/benchmarks/ after the init-laziness changes land -->
+
+| cost | codeaf | the CLIs compared |
+| --- | --- | --- |
+| on disk | 53 MB | smallest of the seven; 2.8x under the next smallest |
+| cold start (`--version`) | 14-23 ms | one is faster, by 2.6x; codeaf is 14-23x faster than the four that boot an interpreter |
+| idle memory (PSS) | 66 MB | one is lighter, by 1.36x; codeaf is 2.4x-10.7x lighter than the rest |
+
+The full comparison, the method, and how to re-run it: [the benchmark write-up](docs/benchmarks/).
+
 > **Early preview.** CodeAF is young and moving fast. Expect rough edges, and tell
 > us where you hit them on [Discord](https://discord.gg/aBHaXMkpqh) or in an [issue](https://github.com/Agent-Field/codeaf/issues).
 
