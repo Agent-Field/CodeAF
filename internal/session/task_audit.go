@@ -1112,6 +1112,12 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// landing quotes is the figure the checking actually had.
 	pace := newAuditPace(a.auditWindowFor(door), a.now())
 	if len(door.checks) == 0 {
+		// AND THE NODE KEEPS THE FACT. "Nothing this work declares is re-runnable"
+		// is known only here and dies with the audit, and it is half of what makes
+		// settling the landing one call's work (task_run.go's
+		// [TaskNode.settleCeiling]); the other half is the clean tree the packet
+		// reads ([auditQuestion]).
+		node.sawNoDeclaredCheck()
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
 			pace.window)
 	}
@@ -1857,6 +1863,12 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	// a repository.
 	if manifest := groundManifest(ground.dir); manifest != "" {
 		out.WriteString("\n" + manifest)
+		// AND A TREE GIT REPORTS NOTHING ABOUT IS A FACT THE NODE KEEPS, beside
+		// the no-check fact above: a landing nobody could check on a tree nothing
+		// moved is the one a settle turn reads in a single call.
+		if strings.Contains(manifest, groundManifestClean) {
+			node.sawCleanGround()
+		}
 	}
 	out.WriteString(checkGroundBlock(checks))
 	out.WriteString("\n" + door.line())
@@ -2642,8 +2654,12 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	// back when the model's turn ends without an answer (agent.go).
 	node.holdsDecision(TaskAskOwnerModel)
 	notice := node.notice()
-	a.enqueueSteering(handOverLead + "\n" +
-		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
+	// AND IT IS A SETTLE WAKE. A person handing a decision over is exactly what
+	// `task.settle = auto` does at the landing, so the turn this line wakes runs
+	// under the checker's own bound for the same reason ([settleWake], agent.go's
+	// [Agent.enqueueSettleSteering]).
+	a.enqueueSettleSteering(handOverLead+"\n"+
+		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()), node.settleCeiling())
 	a.emitTaskUpdate(notice)
 	return nil
 }
