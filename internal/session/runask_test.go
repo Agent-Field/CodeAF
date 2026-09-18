@@ -169,3 +169,22 @@ func runAskMessagesText(ms []ai.Message) string {
 	}
 	return b.String()
 }
+
+// A MODEL WRAPS ITS OBJECT IN A FENCE OR A SENTENCE MORE OFTEN THAN NOT. The
+// answer and its sources are still read; text with no object is the answer with
+// no source, which the caller refuses once.
+func TestRunAskAnswerIsReadThroughAFenceAndANoteIsRecognised(t *testing.T) {
+	fenced := "Here you go:\n```json\n{\"text\":\"It checks the token.\",\"from\":[{\"id\":\"t-leaf\",\"title\":\"write the handler\",\"step_start\":7,\"step_end\":11}]}\n```"
+	got, err := decodeRunAsk(fenced)
+	if err != nil || got.Text != "It checks the token." || len(got.From) != 1 || got.From[0].ID != "t-leaf" || got.From[0].StepEnd != 11 {
+		t.Fatalf("fenced answer = %#v, %v", got, err)
+	}
+	bare, _ := decodeRunAsk("The record does not say.")
+	if bare.Text != "The record does not say." || len(bare.From) != 0 || bare.IsNote {
+		t.Fatalf("bare answer = %#v", bare)
+	}
+	note, _ := decodeRunAsk(`{"note":"skip the fixtures"}`)
+	if !note.IsNote || note.Note != "skip the fixtures" || note.Text != "" {
+		t.Fatalf("a recognised steer = %#v, want a note and no answer", note)
+	}
+}

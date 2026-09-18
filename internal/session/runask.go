@@ -31,8 +31,18 @@ type RunAskAnswer struct {
 	Text   string         `json:"text"`
 	From   []RunAskSource `json:"from"`
 	IsNote bool           `json:"-"`
-	Note   string         `json:"-"`
+	Note   string         `json:"note,omitempty"`
 }
+
+// THE ASK TURN IS BOUNDED BY ITS INPUT, the way the run summary is: it is one
+// small errand on the worker model, and a run of two hundred tasks with long
+// results must cost what a run of five does to ask about.
+const (
+	runAskMaxRows      = 60
+	runAskNotesPerTask = 3
+	runAskLineChars    = 160
+	runAskBodyChars    = 4000
+)
 
 type runAskToolArgs struct {
 	ID string `json:"id"`
@@ -47,8 +57,7 @@ func (a *Agent) AskRun(ctx context.Context, rootID, question string, earlier []R
 		return RunAskAnswer{}, err
 	}
 	var front strings.Builder
-	front.WriteString(runAskPrompt)
-	front.WriteString("\nRUN ROWS AND NOTES\n")
+	front.WriteString("RUN ROWS AND NOTES\n")
 	front.WriteString(rows)
 	if len(earlier) > 3 {
 		earlier = earlier[len(earlier)-3:]
@@ -62,7 +71,7 @@ func (a *Agent) AskRun(ctx context.Context, rootID, question string, earlier []R
 	if err != nil {
 		return RunAskAnswer{}, err
 	}
-	if len(answer.From) > 0 {
+	if answer.IsNote || len(answer.From) > 0 {
 		return answer, nil
 	}
 	messages = append(messages, ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: answer.Text}}}, ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "Refused: every answer must name its task source. Answer once more with a source from the run record, or say plainly that the record does not hold it."}}})
@@ -99,10 +108,23 @@ func (a *Agent) runAskCalls(ctx context.Context, rootID string, messages []ai.Me
 	return RunAskAnswer{Text: "The bounded read ended before the record yielded an answer."}, nil
 }
 
+// decodeRunAsk reads the one object the page asks for. A MODEL WRAPS JSON IN A
+// FENCE OR A SENTENCE MORE OFTEN THAN IT DOES NOT, so the object is found by its
+// braces; text that holds no object is the answer itself, with no source, and
+// the caller refuses that once.
 func decodeRunAsk(text string) (RunAskAnswer, error) {
+	text = strings.TrimSpace(text)
+	body := text
+	if open, shut := strings.IndexByte(text, '{'), strings.LastIndexByte(text, '}'); open >= 0 && shut > open {
+		body = text[open : shut+1]
+	}
 	var out RunAskAnswer
-	if err := json.Unmarshal([]byte(strings.TrimSpace(text)), &out); err != nil {
-		return RunAskAnswer{Text: strings.TrimSpace(text)}, nil
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		return RunAskAnswer{Text: text}, nil
+	}
+	out.Text, out.Note = strings.TrimSpace(out.Text), strings.TrimSpace(out.Note)
+	if out.Note != "" && out.Text == "" {
+		out.IsNote = true
 	}
 	return out, nil
 }
@@ -118,16 +140,23 @@ func (a *Agent) runAskRows(rootID string) (string, error) {
 		return "", planNoTask(rootID)
 	}
 	members := map[string]bool{root.ID: true}
+	rows := 0
 	var b strings.Builder
 	for _, task := range store.Tasks(plandb.Filter{Chat: plan.chat}) {
 		if task.ID != root.ID && !members[task.ParentID] {
 			continue
 		}
 		members[task.ID] = true
-		result := strings.Split(strings.TrimSpace(task.Result), "\n")[0]
-		fmt.Fprintf(&b, "%s · %s · %s [%s]\n", task.Title, task.Status, result, "t-"+task.ID)
-		for _, n := range store.Notes(task.ID, 0) {
-			fmt.Fprintf(&b, "note on t-%s: %s\n", task.ID, n.Body)
+		if rows++; rows > runAskMaxRows {
+			continue
+		}
+		fmt.Fprintf(&b, "%s · %s · %s [%s]\n", cutChars(task.Title, runAskLineChars), task.Status, summaryFirstLine(task.Result, runAskLineChars), "t-"+task.ID)
+		notes := store.Notes(task.ID, 0)
+		if len(notes) > runAskNotesPerTask {
+			notes = notes[len(notes)-runAskNotesPerTask:]
+		}
+		for _, n := range notes {
+			fmt.Fprintf(&b, "note on t-%s: %s\n", task.ID, summaryFirstLine(n.Body, runAskLineChars))
 		}
 	}
 	return b.String(), nil
@@ -170,7 +199,7 @@ func (a *Agent) runAskTask(rootID, id string) string {
 		ID, Title, Description, Result string
 		Notes                          []PlanTaskNote
 		Steps                          []PlanStep
-	}{page.Row.ID, page.Row.Title, page.Description, result, page.Notes, steps}
+	}{page.Row.ID, page.Row.Title, cutChars(page.Description, runAskBodyChars), cutChars(result, runAskBodyChars), page.Notes, steps}
 	raw, _ := json.Marshal(payload)
 	return string(raw)
 }
