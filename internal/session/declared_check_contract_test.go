@@ -9,7 +9,7 @@ import (
 )
 
 func TestDeclaredCommandsAloneAreTheCheckerContract(t *testing.T) {
-	declared := []string{"printf proof", "cat record"}
+	declared := []string{"./verify proof", "./verify record"}
 	checks, problem := declaredCheckList(declared)
 	if problem != "" {
 		t.Fatalf("declaration refused: %s", problem)
@@ -33,7 +33,7 @@ func TestNoDeclarationLeavesAReadingOnlyCheckerDoor(t *testing.T) {
 	if len(door.checks) != 0 {
 		t.Fatalf("reading contract has commands: %q", door.checks)
 	}
-	if refusal, ok := doorRefusal("printf proof", door); ok {
+	if refusal, ok := doorRefusal("./verify proof", door); ok {
 		t.Fatalf("reading contract admitted an undeclared command: %s", refusal)
 	}
 }
