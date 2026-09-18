@@ -57,26 +57,18 @@ func TestTaskTallyCountsActualStatesWithinAnUrgentConversation(t *testing.T) {
 	}
 }
 
-func TestOpeningMainChatFromTasksLeavesItsChildRoom(t *testing.T) {
+func TestOpeningRunFromTasksLeavesItsChildRoom(t *testing.T) {
 	a, _, _ := roomApp(t)
-	a.title = "Repair the parser"
-	a.input.setText("main draft")
 	a.openRoom(7, "Fix the nil-map crash")
 	a.input.setText("child draft")
 	a.showPage(pageTasks)
-	if _, ok := a.taskSheetChat(); !ok {
-		t.Fatal("the conversation is not the first selectable row")
+	if _, found := tasksCursorOn(a, "Fix the nil-map crash"); !found {
+		t.Fatal("the run is not selectable on the work page")
 	}
 	a.taskSheetEnter()
-	if a.roomOpen() || a.at(pageTasks) {
-		t.Fatal("opening the main conversation left its child room or Tasks open")
-	}
-	if a.input.String() != "main draft" {
-		t.Fatalf("the main draft was not restored: %q", a.input.String())
-	}
 	a.openRoom(7, "Fix the nil-map crash")
 	if a.input.String() != "child draft" {
-		t.Fatalf("the child draft was lost: %q", a.input.String())
+		t.Fatalf("opening the run lost its child-room draft: %q", a.input.String())
 	}
 }
 

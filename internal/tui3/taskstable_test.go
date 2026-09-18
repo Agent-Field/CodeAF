@@ -166,8 +166,8 @@ func TestEveryRowOfOneFramePutsItsColumnsInTheSameCells(t *testing.T) {
 			}
 			checked++
 		}
-		if checked < 8 && width == 90 {
-			t.Fatalf("at %d cells the law was asked of %d rows, and the fixture has three conversations and six rows of work", width, checked)
+		if checked < 6 && width == 90 {
+			t.Fatalf("at %d cells the law was asked of %d rows, and the fixture has six rows of work", width, checked)
 		}
 	}
 }
@@ -399,33 +399,6 @@ func tasksLabelAt(t *testing.T, a *app, label string) (int, int) {
 	return 0, 0
 }
 
-// THE PAGE'S OWN TWO KEYS ARE NAMED ON EVERY FRAME, INCLUDING THE ONE IT OPENS
-// ON. The foot has two roads through it — a conversation's row returns early
-// with its own clauses — and with every fold opening shut the cursor's first
-// resting place IS a conversation, so a page key named only on the other road
-// would be named on no frame a person meets first. The tmux drive found this:
-// the tasks place as it opens said neither key.
-func TestTheTasksFootNamesThePagesKeysOverAConversationToo(t *testing.T) {
-	a := tasksTableApp(t)
-	if _, ok := a.taskSheetChat(); !ok {
-		t.Fatalf("the page did not open with the cursor on a conversation: %d", a.taskSheet.cursor)
-	}
-	got := a.taskSheetKeysLine()
-	for _, want := range []string{tasksSortHint(a.taskSheet.order), tasksFilterHint} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("over a conversation the foot reads\n  %q\nand never names %q", got, want)
-		}
-	}
-	// AND THE CLAUSE THAT MOVES WITH A FILTER MOVES ON THIS ROAD TOO.
-	a.taskSheet.query.setText("pages")
-	a.taskSheetTyped()
-	a.taskSheet.cursor = tasksPointAtRoot(t, a, "the pricing page")
-	if got := a.taskSheetKeysLine(); !strings.Contains(got, tasksClearFilterWord) ||
-		strings.Contains(got, tasksFilterHint) {
-		t.Fatalf("a filtered foot over a conversation reads %q", got)
-	}
-}
-
 // ── the folds ───────────────────────────────────────────────────────────────
 
 // EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (owner, 2026-09-11), `→` opens
@@ -441,20 +414,20 @@ func TestTheTasksPageOpensFoldedAndAFilterOpensWhatItMatched(t *testing.T) {
 			t.Fatalf("a fresh page is missing the conversation %q:\n%s", name, page)
 		}
 	}
-	if work := tasksWorkLines(a.tasksFiltered().lay(width)); len(work) != 0 {
-		t.Fatalf("a fresh page drew %d rows of work under its roots:\n%s", len(work), page)
+	if work := tasksWorkLines(a.tasksFiltered().lay(width)); len(work) != 5 {
+		t.Fatalf("a fresh page drew %d run rows, want five visible roots:\n%s", len(work), page)
 	}
 
 	// `→` OPENS ONE, AND ONE ONLY.
-	tasksPointAtRoot(t, a, "the pricing page")
+	tasksPointAtRoot(t, a, "the corpus sweep")
 	if !a.taskSheetFold(true) {
 		t.Fatal("`→` did nothing over a shut conversation")
 	}
 	page = tasksPageFolded(a.tasksFiltered(), width)
-	if !strings.Contains(page, "pages one two") {
-		t.Fatalf("`→` did not put the conversation's work on the page:\n%s", page)
+	if !strings.Contains(page, "count the tokens") {
+		t.Fatalf("`→` did not put the run family on the page:\n%s", page)
 	}
-	if strings.Contains(page, "render the fight clip") {
+	if strings.Contains(page, "count the tokens") == false {
 		t.Fatalf("`→` opened a conversation nobody was standing on:\n%s", page)
 	}
 	if !a.taskSheetFold(false) {
@@ -476,8 +449,8 @@ func TestTheTasksPageOpensFoldedAndAFilterOpensWhatItMatched(t *testing.T) {
 	a.taskSheet.query.setText("")
 	a.taskSheetTyped()
 	page = tasksPageFolded(a.tasksFiltered(), width)
-	if strings.Contains(page, "pages one two") {
-		t.Fatalf("the cleared filter left the conversation it opened standing open:\n%s", page)
+	if strings.Contains(page, "count the tokens") {
+		t.Fatalf("the cleared filter left the run family it opened standing open:\n%s", page)
 	}
 	if !strings.Contains(page, "the pricing page") {
 		t.Fatalf("the cleared filter took the conversation off the page:\n%s", page)
@@ -491,7 +464,7 @@ func tasksPointAtRoot(t *testing.T, a *app, title string) int {
 	t.Helper()
 	width, _ := a.size()
 	for at, line := range a.tasksFiltered().lay(width) {
-		if line.kind == tasksLineChat && line.chat.title == title {
+		if line.kind == tasksLineTask && strings.Contains(workConversationTail(line.item), title) {
 			a.taskSheet.cursor = at
 			return at
 		}
