@@ -17,7 +17,7 @@ func TestProgressCellGlyphs(t *testing.T) {
 		{"done", GDoneCell, "●", "\uF111", "nf-fa-circle", "#", Green},
 		{"running", GRunningCell, "◐", "\uF042", "nf-fa-adjust", ">", Cyan},
 		{"empty", GEmptyCell, "○", "\uF10C", "nf-fa-circle_o", ".", TextTertiary},
-		{"failed", GFailedCell, "✘", "\uF00D", "nf-fa-times", "x", Coral},
+		{"failed", GFailedCell, "✘", "\uF05C", "nf-fa-times_circle_o", "x", Coral},
 	}
 	byID := make(map[GlyphID]GlyphBinding, len(Vocabulary()))
 	for _, binding := range Vocabulary() {
