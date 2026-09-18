@@ -214,9 +214,12 @@ named on a door or in the profile:
   way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then the crew; a
   conversation takes it from its mastermind row. A leaf that splits moves onto
   this seat for the turns where it is a coordinator.
-- **The profile's own rows answer the two seats no flag names**: the **check**
-  seat (the `high` row) and the **probe** seat (the `low` row). Nothing on a door
-  moves them, so a review round and a probe run on the crew you set in `/crew`.
+- **The plan seat also answers the check seat.** A check the review round adds
+  reads a finished leaf against its acceptance, and it rides the plan seat
+  (`--plan-model`) the way a coordinator does — so a pinned plan model seats the
+  check too, and the profile's own `high` row is not billed unasked. The **probe**
+  seat is the one the profile's own `low` row answers alone: nothing on a door
+  names it, so a probe runs on the crew you set in `/crew`.
 
 The seat a person names is the seat **every** launch takes — a task launched
 after the door resolved the seats still runs on them, not on whichever row the
@@ -245,6 +248,29 @@ when it could not be run at all.
 it was (`done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`,
 `deadline`, `price`, `question`), and `ok` is true on exactly the runs that leave
 with 0.
+
+## Who checks a task's work?
+
+Every leaf that lands **done** is checked, at both doors — `/task` and `codeaf
+do`. The run adds one **check** task under the leaf's parent, on the plan seat,
+carrying the leaf's acceptance and the result it reported, and the run's
+completion waits on it like on any other child: a run is not over until its
+checks have landed.
+
+A check does not redo the work. It reads the acceptance sentence by sentence,
+runs the leaf's own tests, and probes each sentence the tests do not cover. It
+finishes with one line, in one of two shapes:
+
+- `holds: <one sentence saying why>` — the acceptance is met.
+- `does not hold: <the one unmet requirement, and the command that showed it>` —
+  the acceptance is not met.
+
+**A `does not hold:` finding is work, not a remark.** The checked task keeps its
+done ending and the sentence is left as its note, and the run adds a `fix:` task
+under that task's parent — carrying the acceptance, the finding and the result —
+which must land before the run is over. The fix is checked in turn, but only
+once: a finding on a `fix:` task is a note and no second fix task, so a run
+cannot loop.
 
 ## How to turn it on
 
