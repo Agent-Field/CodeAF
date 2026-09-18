@@ -69,7 +69,9 @@ function splitKey(key) {
 // taken out of every score. It alternates beta_j = weighted mean over cells
 // scored by j of (cellMean - mu_rm) with mu_rm = weighted mean over judges of
 // (cellMean - beta_j), weights n, five sweeps, re-centring beta to weighted
-// mean zero each sweep. It answers {beta, judges}.
+// mean zero each sweep, and holds each beta inside ±10: the rubric's own
+// width is 100, and a judge further off than a tenth of it is not a severity,
+// it is a different rubric. It answers {beta, judges}.
 function judgeSeverity(cells) {
   const judges = [...new Set(cells.map((c) => c.judge))].sort();
   const beta = new Map(judges.map((j) => [j, 0]));
@@ -100,6 +102,13 @@ function judgeSeverity(cells) {
     const centre = bden ? bnum / bden : 0;
     for (const j of judges) {
       beta.set(j, beta.get(j) - centre);
+    }
+    // Hold each severity inside ±10 after the re-centring, before the next
+    // sweep reads it: the rubric is 100 points wide, and a tenth of it is
+    // the most a judge's taste can be worth before it is a different
+    // rubric rather than a severity.
+    for (const j of judges) {
+      beta.set(j, Math.max(-10, Math.min(10, beta.get(j))));
     }
     // mu_rm from the fresh beta_j.
     const mnum = new Map();
@@ -137,7 +146,10 @@ function huberMean(values) {
   const mad = median(values.map((v) => Math.abs(v - centre)));
   const scale = 1.4826 * mad;
   if (!(scale > 0)) {
-    return values.reduce((a, b) => a + b, 0) / values.length;
+    // A zero MAD says half the values sit at the median, so the data's own
+    // centre is the median; the plain mean would let the far half drag the
+    // estimate below (or above) every repeated value.
+    return centre;
   }
   const c = 1.345 * scale;
   let mu = centre;
@@ -162,12 +174,15 @@ function huberMean(values) {
 //
 // entries are {install, day, key, triple}: one install's running total for one
 // cellKey on one day. Cells group by (role, model); each install's mean over
-// its triples is taken after judge severity is removed, and the cell mean is
-// the Huber M-estimate over those install means once there are at least five
-// installs, the n-weighted mean of them otherwise. A cell whose installs are
-// below minInstalls is dropped: the floor keeps any single install's numbers
-// from being published, and the cells have no reader but the publish path
-// that renders them into the document.
+// its triples is taken after judge severity is removed — bounded, and with
+// every adjusted score clamped back into the rubric before it is folded —
+// and the cell mean is the Huber M-estimate over those install means once
+// there are at least five installs, the n-weighted mean of them otherwise.
+// The sd is pooled from the same adjusted triples, so the published mean and
+// sd describe one scale. A cell whose installs are below minInstalls is
+// dropped: the floor keeps any single install's numbers from being
+// published, and the cells have no reader but the publish path that renders
+// them into the document.
 export function aggregate(entries, { minInstalls = 0 } = {}) {
   const cells = [];
   for (const entry of entries) {
@@ -202,13 +217,34 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
       group = { metric: dims.metric, role: dims.role, model: dims.model, source: graded ? dims.judge : undefined, installs: new Map(), n: 0, s: 0, s2: 0 };
       groups.set(rm, group);
     }
-    // Judge severity removal shifts each score by -beta[judge]; over a
-    // triple of n scores and sum s that is a shift of n·beta in the sum.
+    // Judge severity removal shifts each score by -beta[judge], and the
+    // rubric holds every score in [0, 100]: a shift can carry a triple past
+    // either end, so the adjusted scores are clamped back into the rubric
+    // before they are folded. Over a triple the shift itself is exact —
+    // Sum(x - beta) = s - n*beta and Sum((x - beta)^2) = s2 - 2*beta*s +
+    // n*beta^2, from expanding (x - beta)^2 — but the store holds {n, s, s2}
+    // and not the scores, so the clamp acts on what the triple still knows:
+    // its mean. An adjusted mean outside [0, 100] says the scores as adjusted
+    // lie past the rubric, and the nearest triple inside it is every score at
+    // the bound it crossed — sums n*b and n*b^2, which is also the case the
+    // exact shift cannot express.
     const shift = graded ? 0 : (beta.get(dims.judge) || 0);
-    const adjustedSum = entry.triple.s - n * shift;
+    const adjustedMean = entry.triple.s / n - shift;
+    let adjustedSum;
+    let adjustedSum2;
+    if (adjustedMean > 100) {
+      adjustedSum = 100 * n;
+      adjustedSum2 = 100 * 100 * n;
+    } else if (adjustedMean < 0) {
+      adjustedSum = 0;
+      adjustedSum2 = 0;
+    } else {
+      adjustedSum = entry.triple.s - n * shift;
+      adjustedSum2 = entry.triple.s2 - 2 * shift * entry.triple.s + n * shift * shift;
+    }
     group.n += n;
-    group.s += entry.triple.s;
-    group.s2 += entry.triple.s2;
+    group.s += adjustedSum;
+    group.s2 += adjustedSum2;
     const install = group.installs.get(entry.install);
     if (install) {
       install.n += n;
@@ -233,7 +269,8 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
     const mean = installs >= 5
       ? huberMean(installMeans)
       : (weightSum ? weightedSum / weightSum : 0);
-    // Pooled within-cell standard deviation from the raw triples.
+    // Pooled within-cell standard deviation from the adjusted triples, the
+    // same ones the mean is taken over.
     const sd = group.n >= 2
       ? Math.sqrt(Math.max(0, (group.s2 - (group.s * group.s) / group.n) / (group.n - 1)))
       : 0;
