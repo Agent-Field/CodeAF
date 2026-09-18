@@ -253,7 +253,16 @@ func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 				return beltToolReply(beltFinish(beltAnswer)), nil
 			},
 		},
-		ever: func(context.Context, []ai.Message) (*ai.Response, error) { return beltTextReply(beltAnswer), nil },
+		// THE ROOT IS CHECKED ONCE IT FINISHES ALONE, so the seat's standing
+		// answer must also serve the review check: it answers `holds` when the
+		// document is the check's, and the text reply everywhere else.
+		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+				id := briefTaskID(doc)
+				return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+			}
+			return beltTextReply(beltAnswer), nil
+		},
 	}
 
 	var stdout, stderr strings.Builder
@@ -551,7 +560,16 @@ func TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession(t *testing.T) {
 				return beltToolReply(beltFinish(beltAnswer)), nil
 			},
 		},
-		ever: func(context.Context, []ai.Message) (*ai.Response, error) { return beltTextReply(beltAnswer), nil },
+		// THE ROOT IS CHECKED ONCE IT FINISHES ALONE, so the seat's standing
+		// answer must also serve the review check: it answers `holds` when the
+		// document is the check's, and the text reply everywhere else.
+		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+				id := briefTaskID(doc)
+				return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+			}
+			return beltTextReply(beltAnswer), nil
+		},
 	}
 
 	var stdout, stderr strings.Builder

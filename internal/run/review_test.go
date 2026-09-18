@@ -431,6 +431,19 @@ func TestSupervisorChecksAChildlessRootThatCompletedItselfInTheStore(t *testing.
 	if got := store.Task(store.RootID()).Result; got != result {
 		t.Fatalf("root result = %q, want worker result %q", got, result)
 	}
+	// A CHECK'S LANDING WAKES NOBODY: the root ran once for its work and was
+	// not run again to "integrate" its own check. Before this held, a root
+	// reopened for its check was owed a wake it could never be given and the
+	// run stood `ready` forever (the do door's own tests caught it).
+	rootRuns := 0
+	for _, id := range seat.launches() {
+		if id == store.RootID() {
+			rootRuns++
+		}
+	}
+	if rootRuns != 1 {
+		t.Fatalf("root launched %d times, want once: launches = %v", rootRuns, seat.launches())
+	}
 }
 
 func TestSupervisorTurnsARootsDoesNotHoldFindingIntoAFix(t *testing.T) {
