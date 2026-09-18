@@ -847,8 +847,10 @@ func TestAnOrdinaryLaunchCarriesTheCrewOnItsPageAtEveryWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, width := range []int{80, 120} {
-		a := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
-		a.profileDir = dir
+		// TWO SURFACES OVER ONE PROFILE, ON PURPOSE: the crew the preset put on
+		// `dir` is what both read, so both name the same directory rather than one
+		// of their own.
+		a := newTestAppWithProfile(dir, &fakeAgent{model: "openai/gpt-4.1-mini"})
 		a.model = "openai/gpt-4.1-mini"
 		a.width, a.height = width, 24
 		painted, _, _ := a.frame()
@@ -859,8 +861,7 @@ func TestAnOrdinaryLaunchCarriesTheCrewOnItsPageAtEveryWidth(t *testing.T) {
 			t.Fatalf("at %d columns the sheet's crew row is %q, want the picked preset", width, got)
 		}
 
-		hostedWindow := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
-		hostedWindow.profileDir = dir
+		hostedWindow := newTestAppWithProfile(dir, &fakeAgent{model: "openai/gpt-4.1-mini"})
 		hostedWindow.host = "devbox"
 		hostedWindow.model = "openai/gpt-4.1-mini"
 		hostedWindow.width, hostedWindow.height = width, 24
