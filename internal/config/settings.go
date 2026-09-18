@@ -1102,6 +1102,9 @@ var ModelPoolChoices = []string{"on", "read", "off"}
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
 	"CODEAF_BASE_URL",
+	// The check seat has no editable profile row. Its environment rung is
+	// launch plumbing, listed read-only without changing the task.Role boundary.
+	"CODEAF_CHECK_MODEL",
 	// CODEAF_HOME moves the graph, workspace, craft repository and resident
 	// lease somewhere else in one word. It is plumbing rather than a setting
 	// for the plainest reason there is: it decides which store the sheet
