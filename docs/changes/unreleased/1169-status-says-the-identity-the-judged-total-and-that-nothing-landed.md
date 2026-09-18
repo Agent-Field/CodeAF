@@ -1,7 +1,7 @@
 ---
 kind: added
 title: `codeaf pool status` says the install identity, every landing judged in all, and that nothing has landed
-pr: 0000
+pr: 1169
 surface: [chat]
 invalidates:
   - "`pool status` said `last judge: none yet` both for an install whose pool never ran a judge and for one with no landing judged. With no judge record it says `last judge: none yet (no landing judged)`, and `--json`'s `last_judge` stays null."
