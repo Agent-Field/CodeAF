@@ -18,6 +18,7 @@ package plandb
 // collide with these.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1738,5 +1739,83 @@ func TestPlandbCliStaleClaimsReadsTheUntouched(t *testing.T) {
 	// An owner holding nothing writes nothing.
 	if touched, err := store.TouchClaims("host:9"); err != nil || touched != 0 {
 		t.Fatalf("touch of an idle owner = %d, %v, want nothing", touched, err)
+	}
+}
+
+// A CLOSED STORE REFUSES AND NEVER PANICS. Close is what a caller does the
+// moment a run is over — the door closes its store on the line after the run
+// answers — and a worker that outlived its run still owes a spend row, a
+// completion and a failure. Each of those writes used to meet the nil handles
+// Close had left behind and take the process down with a nil-pointer panic in
+// the middle of a report; here they meet ErrClosed, which a best-effort writer
+// drops the way it drops any other refusal.
+func TestPlandbCliAClosedStoreRefusesInsteadOfPanicking(t *testing.T) {
+	store := planOpen(t, "")
+	planAdd(t, store, planSpec("l1", "The leaf"))
+	if _, err := store.Claim("l1", "l1"); err != nil {
+		t.Fatalf("claim the leaf: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close the store: %v", err)
+	}
+	// Closing twice is the same statement twice: a caller that closes in a
+	// defer and again on its ending road is not an error.
+	if err := store.Close(); err != nil {
+		t.Fatalf("close the store a second time: %v", err)
+	}
+	// THE WRITES A WORKER THAT OUTLIVED ITS RUN STILL OWES.
+	if err := store.AddSpend("l1", "a-model", RoleWork, 0.25, 10, 20); !errors.Is(err, ErrClosed) {
+		t.Fatalf("AddSpend on a closed store = %v, want ErrClosed", err)
+	}
+	if _, err := store.Done("l1", "l1", "the late completion", nil, nil); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Done on a closed store = %v, want ErrClosed", err)
+	}
+	if _, err := store.Fail("l1", "l1", "the late failure"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Fail on a closed store = %v, want ErrClosed", err)
+	}
+	if _, err := store.AddNote("l1", "worker", "a late note"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("AddNote on a closed store = %v, want ErrClosed", err)
+	}
+	// THE READS THE DATABASE ANSWERS, which have no memory to fall back on.
+	if _, err := store.Show("l1"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Show on a closed store = %v, want ErrClosed", err)
+	}
+	if _, err := store.Resolve("l1"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Resolve on a closed store = %v, want ErrClosed", err)
+	}
+	if _, err := store.RoleOf("l1"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("RoleOf on a closed store = %v, want ErrClosed", err)
+	}
+	if _, err := store.Archived(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Archived on a closed store = %v, want ErrClosed", err)
+	}
+	// THE READS THAT CARRY NO ERROR CANNOT REFUSE — there is no word to answer
+	// with — and the one thing they must never do is reach for the handle: the
+	// plan the handle last held is answered instead, which is what a caller
+	// reading a run's figures after it ended gets. The rollups below are the
+	// four that panicked on a closed store before.
+	if tasks := store.Tasks(); len(tasks) != 2 {
+		t.Fatalf("Tasks on a closed store = %d rows, want the plan the handle last held", len(tasks))
+	}
+	if root := store.RootID(); root != "root" {
+		t.Fatalf("RootID on a closed store = %q, want the root the handle last held", root)
+	}
+	if got, reason := store.CanFinalize(); got || !strings.Contains(reason, "l1") {
+		t.Fatalf("CanFinalize on a closed store = %v, %q, want the open leaf", got, reason)
+	}
+	if summary := store.Summary(); summary.Total != 2 || summary.Done != 0 {
+		t.Fatalf("Summary on a closed store = %+v, want the plan the handle last held", summary)
+	}
+	if got := store.SpendSummary(); len(got.ByRole) != 0 || len(got.ByModel) != 0 {
+		t.Fatalf("SpendSummary on a closed store = %+v, want nothing read", got)
+	}
+	if lines := store.SpendBy("model", time.Time{}); len(lines) != 0 {
+		t.Fatalf("SpendBy on a closed store = %v, want nothing read", lines)
+	}
+	// A LATE SPEND ROW IS THE ONE WRITE WITH NOTHING BEHIND IT: the worker's
+	// own session ledger is where the money already is, so the drop costs the
+	// ledger nothing and the refusal is what keeps the process up.
+	if err := store.AddSpend("l1", "a-model", RoleWork, 0.25, 10, 20); !errors.Is(err, ErrClosed) {
+		t.Fatalf("a second AddSpend on a closed store = %v, want ErrClosed", err)
 	}
 }

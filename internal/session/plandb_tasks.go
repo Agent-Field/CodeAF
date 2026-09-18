@@ -50,6 +50,13 @@ type PlanTaskRow struct {
 	Ended   time.Time
 	// Note is the text of the task's last note, empty when nobody has left one.
 	Note string
+	// Live is the step the task is running right now — its number, the command
+	// its worker asked the belt to run, and the moment the command started — read
+	// off the store's live row. Its zero value is the honest answer for a task
+	// that is running nothing, which the emptiness law turns into no line drawn
+	// at all; the worker clears the row the moment the command ends, and every
+	// ending of its loop, so a task that is not running never claims a present.
+	Live plandb.LiveStep
 	// TrajectoryPath is the file the task's steps are recorded in, for a reader
 	// that wants the record itself and not only its length.
 	TrajectoryPath string
@@ -110,10 +117,11 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	defer closeStore()
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
+	live := store.LiveSteps()
 	tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
 	rows := make([]PlanTaskRow, 0, len(tasks))
 	for _, task := range tasks {
-		rows = append(rows, planTaskRow(store, dir, task, spend))
+		rows = append(rows, planTaskRow(store, dir, task, spend, live))
 	}
 	return rows
 }
@@ -134,8 +142,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	}
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
+	live := store.LiveSteps()
 	return PlanTaskPage{
-		Row:         planTaskRow(store, dir, task, spend),
+		Row:         planTaskRow(store, dir, task, spend, live),
 		Description: task.Description,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
@@ -312,8 +321,9 @@ func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
 
 // planTaskRow builds one row from the store read and the two figures that are
 // not on the task: the dollars its spend rows carry, already summed, and its
-// steps, already read.
-func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64) PlanTaskRow {
+// steps, already read. The live step is the third: the store's live rows, read
+// whole in one pass by the caller, keyed by the task's own bare id.
+func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64, live map[string]plandb.LiveStep) PlanTaskRow {
 	seat, _ := store.RoleOf(task.ID)
 	// A HELD TASK WEARS THE HOLD'S OWN WORD. Pause is status-independent in the
 	// store — a held task keeps the rung it reached — while the row says what a
@@ -335,6 +345,7 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		Ended:          task.CompletedAt,
 		Note:           planLastNote(store, task.ID),
 		TrajectoryPath: planTrajectoryPath(dir, task.ID),
+		Live:           live[task.ID],
 	}
 	if task.ParentID != "" {
 		row.Parent = planStoreID(task.ParentID)

@@ -127,6 +127,16 @@ type Task struct {
 	// not a rung of the status ladder, which is why it lives here beside the
 	// containment flag and not among the statuses.
 	Paused bool `json:"paused,omitempty"`
+	// Waiting is the parked flag: a worker that could not proceed called
+	// `plandb wait`, the store released its claim, and the task stays open and
+	// not done until a dependency or a child moves. It is not a rung of the
+	// status ladder either — a parked task keeps a non-terminal status — so it
+	// lives here beside Paused. WaitedAt is the moment it parked, which is the
+	// moment Changed is asked from when the runtime looks for what moved.
+	// ReadySet leaves a waiting task off the frontier: the runtime launches it
+	// again on the wake road, not on the ordinary ready dispatch.
+	Waiting  bool      `json:"waiting,omitempty"`
+	WaitedAt time.Time `json:"waited_at,omitempty"`
 	// Project and Chat are the row's tags: the run it belongs to and the
 	// conversation it was made in. They are not the caller's to set — a task
 	// inherits them from its parent — so they live beside the status ladder

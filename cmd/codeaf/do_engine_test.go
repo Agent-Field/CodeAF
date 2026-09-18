@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -126,6 +127,52 @@ func beltRunEnv(t *testing.T) string {
 	return home
 }
 
+// beltPlandbDoor is the real plandb CLI behind the resolver's override, built
+// once for the package. THE LOOP ENDS IN THE STORE: a worker's task is done
+// when `plandb done` marks it so and no other way, so a scripted worker that
+// is to finish must run that verb against a door that reaches the store — the
+// exit-0 stub the other tests use would leave the task open and the loop
+// asking for an action until it failed.
+func beltPlandbDoor(t *testing.T) string {
+	t.Helper()
+	beltCLIOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "plandb-cli")
+		if err != nil {
+			beltCLIErr = err
+			return
+		}
+		out := filepath.Join(dir, "plandb")
+		build := exec.Command("go", "build", "-o", out, "github.com/Agent-Field/codeaf/cmd/plandb")
+		if output, err := build.CombinedOutput(); err != nil {
+			beltCLIErr = errors.New("go build cmd/plandb: " + err.Error() + "\n" + string(output))
+			return
+		}
+		beltCLIPath = out
+	})
+	if beltCLIErr != nil {
+		t.Skipf("cannot build the real plandb CLI: %v", beltCLIErr)
+	}
+	door := filepath.Join(t.TempDir(), "plandb-door")
+	script := "#!/bin/sh\nif [ \"$1\" = plandb ]; then shift; fi\nexec " + beltCLIPath + " \"$@\"\n"
+	if err := os.WriteFile(door, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return door
+}
+
+var (
+	beltCLIOnce sync.Once
+	beltCLIPath string
+	beltCLIErr  error
+)
+
+// beltFinish is the command a scripted root worker ends its task with: the
+// store's own done verb, claimed under the root's id, carrying the result the
+// envelope is expected to name.
+func beltFinish(result string) string {
+	return "plandb done root --agent root --result '" + result + "'"
+}
+
 // beltRepoWorkspace is the working copy the run lands on: a real repository on
 // one committed file, so the landing has a branch to commit the run's work to
 // and the envelope has a branch to name.
@@ -156,17 +203,21 @@ func beltGit(t *testing.T, dir string, args ...string) {
 
 // THE RUN ROAD COMPLETES A BRIEF AND NAMES THE ROOT'S RESULT.
 //
-// The scripted worker writes one file through bash and then reports what it
-// did; the run lands that file on the copy's branch, and the caller reads on
+// The scripted worker writes one file through bash and then finishes its task
+// in the store with the result as its words; the run lands that file on the copy's branch, and the caller reads on
 // stdout the root's own result, the landed path, and the branch the landing
 // answered — the whole of what the run road owes an envelope.
 func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 	workspace := beltRepoWorkspace(t)
 	seat := &beltSeat{
 		script: []func(context.Context, []ai.Message) (*ai.Response, error){
 			func(context.Context, []ai.Message) (*ai.Response, error) {
 				return beltToolReply("printf 'written by the run' > out.txt"), nil
+			},
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply(beltFinish(beltAnswer)), nil
 			},
 		},
 		ever: func(context.Context, []ai.Message) (*ai.Response, error) { return beltTextReply(beltAnswer), nil },
@@ -242,11 +293,15 @@ func TestDoOnTheRunEngineStopsAtACostCapOfZero(t *testing.T) {
 // completed brief, the ledger this home holds has the worker's own call in it.
 func TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession(t *testing.T) {
 	home := beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 	workspace := beltRepoWorkspace(t)
 	seat := &beltSeat{
 		script: []func(context.Context, []ai.Message) (*ai.Response, error){
 			func(context.Context, []ai.Message) (*ai.Response, error) {
 				return beltToolReply("printf 'written by the run' > out.txt"), nil
+			},
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply(beltFinish(beltAnswer)), nil
 			},
 		},
 		ever: func(context.Context, []ai.Message) (*ai.Response, error) { return beltTextReply(beltAnswer), nil },

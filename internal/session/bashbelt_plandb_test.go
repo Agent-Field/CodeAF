@@ -1115,8 +1115,8 @@ func TestPlandbShimRidesTheCommandNotTheProcessPath(t *testing.T) {
 	// conversation's, shared with every node it admits, so an armed plan is
 	// visible from a belt the experiment never composed — and the belt gate,
 	// not the armed plan, is what keeps the person's own shell free of it.
-	if got := agent.planCommand("plandb status"); !strings.HasPrefix(got, "PATH=") {
-		t.Fatalf("the belt worker's command carries no shim prefix: %q", got)
+	if got := agent.planCommand("plandb status"); !strings.HasPrefix(got, "export PATH=") || !strings.Contains(got, "PLANDB_DB=") {
+		t.Fatalf("the belt worker's command carries no shim and store prefix: %q", got)
 	}
 	plain, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.tasker = g

@@ -61,6 +61,14 @@ shows, in order, each section left out when nothing is behind it:
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
+## Does a subtask see my original request
+
+Yes — every worker that is not the run's root reads your sentence again, word for
+word, in a section of its page headed *The ask this run serves*. The planner's work
+order is only that worker's one part of it, and where the two disagree about that
+part your words win — a worker that had to go against them says so in its report
+rather than quietly choosing.
+
 ## Steering a task: notes, pause, cancel, amend, priority
 
 The person's door onto a run's plan is six verbs, each resolving an id **inside
@@ -124,6 +132,32 @@ answered it answers by **re-planning**. The verbs a node worker has for handing
 work out — the task graph's own — are off this belt for the same reason: a belt
 carrying both would teach two ways to say one thing.
 
+## How does a task finish, and what if it is blocked?
+
+A worker ends a task one of three ways, and **a reply is not one of them**. It
+acts with a bash call; it **finishes** with `plandb done --agent <name> --result
+'…'` on its own task, and only once the acceptance holds; or it **parks** with
+`plandb wait` when it is blocked on a dependency or a child. A reply that runs no
+command — "now writing the parser:" — changes nothing and does not end the task:
+the harness answers it in the belt's own voice and the worker goes on, and four
+such replies in a row fail the task.
+
+A parked task stays open and not done, and its claim is released: the runtime runs
+its worker again, with what changed in front of it, the moment a dependency or a
+child it named moves. A `plandb wait` with nothing open to wait on is refused, so
+a worker cannot park on nothing. The remaining endings are the run's step cap, its
+wall, and an errored turn.
+
+## How does a task decide it is done?
+
+Finishing is not reaching the end of the work — it is proving every requirement
+of it. Before it runs `plandb done`, a worker walks each requirement sentence of
+its own work order, and of the ask the run serves, one per line, and names
+beside each the command or test that proved it in that run. A requirement with
+no proof is not done: the worker proves it then, or reports it undone in its
+result. Reaching the end of the steps is not the same as having met every
+requirement in them, and speed is no permission to skip the walk.
+
 ## Costs and limits
 
 - **The cost cap.** A run may spend what the conversation's own **spend rail**
@@ -139,6 +173,10 @@ carrying both would teach two ways to say one thing.
   Read it back with `plandb spend`, by role and by model, or rolled up under one
   axis: `plandb spend --by seat` (also `chat`, `project`, `model`, `task`), with
   `--since 7d` to bound the window.
+- **Thinking level.** A run worker answers at **low** reasoning. Its belt is one
+  action per response, so the depth you configured would be paid again on every
+  round of the run. The seat is a floor and not a cap: a rung set on the task, on
+  the conversation or on the turn still wins.
 
 ## Headless: codeaf do — the exit code it leaves with
 

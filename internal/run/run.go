@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -36,6 +37,14 @@ const passInterval = 300 * time.Millisecond
 // enough that a slow step never looks like a dead process and short enough
 // that a run whose owner died is picked up within a working session.
 const defaultStaleAfter = 5 * time.Minute
+
+// maxWakes is how many times one composite task's worker is launched again to
+// integrate its children's landings. A parent that keeps spawning more children
+// every time it is woken would otherwise wake forever; at the cap the run stops
+// waking it and closes it the way the store's own auto-completion would have,
+// with whatever result it last reported. Four is the ordinary depth of a
+// re-plan over a fold — split, integrate, a gap, a second fold — with one spare.
+const maxWakes = 4
 
 // workerReturn is one finished worker, on its way from its goroutine back to
 // the loop.
@@ -81,7 +90,13 @@ type Supervisor struct {
 	// touched by no one else. cancels maps a running task to the context
 	// cancel that ends its worker, so a pass can end one worker's context
 	// without touching the rest.
-	finished       chan workerReturn
+	finished chan workerReturn
+	// workers counts the goroutines launch has started and not yet seen end.
+	// It is the run's one promise to its caller — NO WORKER OUTLIVES ITS RUN —
+	// and drain is its only reader: every road out of Run waits on it before
+	// answering, so the store, the working copy and the process are the
+	// caller's alone the moment the run is over.
+	workers        sync.WaitGroup
 	inFlight       int
 	spent          float64
 	nodes          int
@@ -91,6 +106,18 @@ type Supervisor struct {
 	limitHit       bool
 	dispatchedRoot bool
 	cancels        map[string]context.CancelFunc
+	// wakes counts how many times each composite task's worker has been launched
+	// again to integrate a landing of its children, and reported names the child
+	// ids a task's worker has already been woken with, so a wake fires once per
+	// landing generation (and once more only when a wake adds children).
+	// lastReport keeps the report of a parent whose ending is being held for a
+	// wake: absorb writes nothing into the store for such a return, so without
+	// it the parent's own words would exist nowhere and the ending the run
+	// writes at the cap would carry an empty result. All three belong to the
+	// loop goroutine like the counters beside them.
+	wakes      map[string]int
+	reported   map[string]map[string]bool
+	lastReport map[string]string
 	// checkOf maps a check task's id to the leaf it reads, for the review
 	// round: a check whose result does not hold leaves its sentence as a note
 	// on the leaf it names here. It is written when the check is added and read
@@ -127,6 +154,15 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 // when a worker returns and on the idle timer, so a task added through the
 // store while the loop waits is launched without waiting for anything else.
 //
+// NO WORKER OUTLIVES ITS RUN. The word this answers is the caller's licence to
+// close the store, land the working copy or drop the process, so every road
+// out of the loop ends the workers still in flight through their contexts and
+// waits for each of them before answering — [Supervisor.drain], on all four
+// roads. The road that needs it most is the tree's completion: the run's own
+// row is written the moment its last descendant lands, and a coordinator still
+// in its turn is a worker the completed tree left behind, with a spend row and
+// a trajectory ending still to write.
+//
 // The run is over when the root task is terminal, when the cost limit has
 // been crossed and every worker already launched has come home, or when the
 // context ends. A run that ends on anything but the root's own completion
@@ -151,6 +187,9 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.inFlight = 0
 	s.cancels = make(map[string]context.CancelFunc)
 	s.checkOf = make(map[string]string)
+	s.wakes = make(map[string]int)
+	s.reported = make(map[string]map[string]bool)
+	s.lastReport = make(map[string]string)
 	s.staleAfter = s.limits.StaleAfter
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
@@ -164,6 +203,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	defer timer.Stop()
 	for {
 		if outcome := s.pass(ctx, rootID); outcome != "" {
+			s.drain()
 			return outcome
 		}
 		select {
@@ -175,12 +215,16 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 		case <-ctx.Done():
 			// The caller's wall: workers still out there were handed this
 			// context and end with it. Their endings are absorbed so their
-			// writes land before the word is returned.
+			// writes land before the word is returned, and the drain below is
+			// what makes the word true — the wall is the one road that reads
+			// the endings rather than dropping them, because the run it stops
+			// is one a later pass picks up from the store.
 			for s.inFlight > 0 {
 				ret := <-s.finished
 				s.inFlight--
 				s.absorb(ret)
 			}
+			s.drain()
 			return OutcomeIncomplete
 		}
 	}
@@ -217,7 +261,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		// The root is the first worker of the run. It is claimed by the runtime
 		// in the store, so it needs no claim here — only a seat.
 		s.dispatchedRoot = true
-		s.launch(ctx, *root)
+		s.launch(ctx, *root, "")
 	}
 	if !s.limitHit {
 		for _, ready := range s.store.ReadySet().Runnable {
@@ -239,23 +283,39 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 				// sees the store as it now stands.
 				continue
 			}
-			s.launch(ctx, task)
+			s.launch(ctx, task, "")
 		}
 	}
+	// WAKING A PARKED TASK COMES BEFORE WAKING A PARENT, so a task this sweep
+	// starts is registered as running and the composite sweep below leaves it
+	// alone.
+	s.launchWaits(ctx, rootID)
+	// WAKING A PARENT IS THE PASS'S LAST LAUNCH: with the ready leaves out of
+	// the way, every composite task whose children have landed and whose worker
+	// has not been woken with them is started again to integrate them.
+	s.launchWakes(ctx, rootID)
 	return ""
 }
 
 // launch starts one worker in its own goroutine. The task's context is the
 // run's with a cancel of its own, recorded so a pass can end this one worker
 // — a task the store has cancelled — without ending the run; it carries the
-// step cap. The goroutine reports back on the channel and ends.
-func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
+// step cap and, when wake is not empty, the resume clause a woken parent opens
+// with. The goroutine reports back on the channel and ends.
+func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) {
 	worker := s.factory(task)
 	taskCtx, cancel := context.WithCancel(ctx)
+	if strings.TrimSpace(wake) != "" {
+		taskCtx = WithWakeClause(taskCtx, wake)
+	}
 	s.cancels[task.ID] = cancel
 	s.inFlight++
 	s.nodes++
+	// THE GOROUTINE IS COUNTED BEFORE IT STARTS, so a drain that begins the
+	// moment after this launch cannot miss it and answer before it ends.
+	s.workers.Add(1)
 	go func() {
+		defer s.workers.Done()
 		report, err := Report{}, error(nil)
 		if worker == nil {
 			err = errors.New("no worker for task " + task.ID)
@@ -264,6 +324,31 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task) {
 		}
 		s.finished <- workerReturn{task: task, report: report, err: err}
 	}()
+}
+
+// drain ends every worker still in flight and waits for each of them to
+// return: NO WORKER OUTLIVES ITS RUN. The run's word is the caller's licence
+// to close its store and take its working copy away, and a worker goroutine
+// still running at that moment writes its spend row, its trajectory ending or
+// even a completion through a handle that is gone — the nil-database panic a
+// run that answered while a worker was alive died on. Every road out of Run
+// calls this, so the moment the outcome is answered is a moment at which the
+// run holds nothing alive.
+//
+// THE CONTEXT GOES FIRST. A worker in the middle of a step ends at its next
+// one, which is what bounds the wait however long the step was going to take;
+// a worker whose context a pass already ended — a cancelled task, the caller's
+// wall — is in the map no more and has only to be waited for. The endings are
+// dropped rather than absorbed: the run is over, the store already carries the
+// ending that stands, and the return of a worker the run outlived has no
+// reader — the same reading absorb makes of a worker whose task the store
+// cancelled under it.
+func (s *Supervisor) drain() {
+	for id, cancel := range s.cancels {
+		cancel()
+		delete(s.cancels, id)
+	}
+	s.workers.Wait()
 }
 
 // absorb writes one worker's ending into the store and keeps the run's
@@ -281,10 +366,29 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	// hands back no account this run counts. The completion check below still
 	// runs, because the cancellation may be the write that finished the tree.
 	delete(s.cancels, ret.task.ID)
+	if ret.report.Waiting {
+		// A PARKED RETURN IS NOT AN ENDING. The worker called `plandb wait`; the
+		// store already released the claim and flagged the task waiting, and the
+		// task stays open until the run wakes it ([launchWaits]). Nothing is
+		// written over the store's own park, and the spend the worker made is
+		// still the run's.
+		s.spent += ret.report.USD
+		s.steps += ret.report.Steps
+		if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
+			s.limitHit = true
+		}
+		s.completeTree()
+		return
+	}
 	if task := s.store.Task(ret.task.ID); task == nil || task.Status == plandb.StatusCancelled {
 		s.completeTree()
 		return
 	}
+	// A WORKER THAT FINISHED ITS OWN TASK IN THE STORE needs no ending written
+	// for it: the store carries the completion and its result. The run still
+	// counts what the worker spent, and the root's own report is still the
+	// run's result.
+	endedByStore := ret.err == nil && s.store.Task(ret.task.ID).Status == plandb.StatusDone
 	s.spent += ret.report.USD
 	s.steps += ret.report.Steps
 	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD {
@@ -301,11 +405,32 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		}
 	} else {
 		switch {
+		case endedByStore:
+			// THE WORKER WROTE ITS OWN ENDING, so the store's word stands and
+			// nothing here speaks over it. The run counts the spend above and the
+			// tree is checked below.
+			delete(s.lastReport, ret.task.ID)
+		case ret.err == nil && s.waitsForWake(ret.task.ID):
+			// A PARENT'S RESULT IS WRITTEN AFTER ITS CHILDREN LAND, NOT BEFORE.
+			// The worker dispatched and ended its turn to wait on what it handed
+			// out; this return is not an ending, so nothing is written and the
+			// task stays with the run — held by this process's own claim — to be
+			// woken once every child it dispatched has landed.
+			//
+			// THE WAIT DOES NOT TURN ON THE CHILDREN STILL BEING OPEN. Children
+			// go out into slots and land when they land, so a set of short
+			// children is often terminal before their own parent's turn ends;
+			// writing this report would make the parent's first word its result
+			// with nobody having integrated anything, which is the one bug this
+			// law exists for. A landing the parent has not been woken with is
+			// not in its report yet, so the ending waits either way.
+			s.lastReport[ret.task.ID] = ret.report.Result
 		case ret.err == nil:
 			// THE REVIEW ROUND: a work-seat leaf that lands done is checked
 			// once. The check is added BEFORE the completion is written, so the
 			// leaf's parent cannot auto-complete past it in the same write and
 			// the run's root waits on the open check like on any other child.
+			delete(s.lastReport, ret.task.ID)
 			s.addReviewCheck(ret.task, ret.report.Result)
 			_, err := s.store.Done(ret.task.ID, ret.task.ID, ret.report.Result, nil, nil)
 			if err == nil {
@@ -404,9 +529,33 @@ func (s *Supervisor) completeTree() {
 	if s.rootFailed {
 		return
 	}
+	// THE ROOT IS NOT COMPLETED WHILE A WAKE IS STILL OWED IT: its children
+	// have landed but its own worker has not yet been run again to integrate
+	// them, or that waking worker is still out. The result the root reports
+	// after that wake is the one the run carries, so closing it now would keep
+	// the first turn's word as the run's answer — the bug this law exists for.
+	if s.rootAwaitingWake() {
+		return
+	}
 	if s.treeTerminal() {
 		_ = s.store.CompleteRoot(s.rootResult)
 	}
+}
+
+// rootAwaitingWake answers whether the root still owes a wake: a landing of its
+// children it has not been given, or a waking worker of its own still running.
+func (s *Supervisor) rootAwaitingWake() bool {
+	rootID := s.store.RootID()
+	if _, running := s.cancels[rootID]; running {
+		return true
+	}
+	tasks := s.store.Tasks()
+	for _, task := range tasks {
+		if task.ID == rootID {
+			return needsWake(tasks, task, s.cancels, s.wakes, s.reported)
+		}
+	}
+	return false
 }
 
 // treeTerminal answers whether every task but the root has ended — the one
@@ -420,6 +569,316 @@ func (s *Supervisor) treeTerminal() bool {
 		}
 	}
 	return true
+}
+
+// launchWakes starts the worker of every composite task whose children have all
+// landed and whose worker has not yet been woken with them — THE WOKEN-PARENT
+// LAW. A parent's result is written after its children land, not before, so a
+// parent that dispatched and waited is started again in its own seat, with a
+// resume clause naming what every child did, to integrate, verify, add more
+// work if something is missing, and report. A woken parent that adds children
+// is woken again when they land; the run wakes a task at most maxWakes times,
+// because a parent that keeps spawning would otherwise never stop. The root is
+// no exception: it is woken like any parent, and the report it gives after the
+// wake is the run's Result.
+//
+// WAKES COUNT AS WORKERS: each one comes from the same factory, takes a slot and
+// a node, and its spend is counted like any other seat's.
+func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
+	if s.limitHit {
+		return
+	}
+	// THE PLAN IS READ ONCE for the whole sweep: every helper below answers out
+	// of this one snapshot rather than re-reading the store per task.
+	tasks := s.store.Tasks()
+	for _, taskp := range tasks {
+		task := *taskp
+		if !task.Composite || terminalStatus(task.Status) {
+			continue
+		}
+		if _, running := s.cancels[task.ID]; running {
+			continue
+		}
+		if !childrenAllTerminal(tasks, task.ID) {
+			continue
+		}
+		if s.wakes[task.ID] >= maxWakes {
+			// THE CAP. The run stops waking this parent and ends it the way the
+			// store's own auto-completion would have: the root is closed by
+			// completeTree with the last report it gave; every other parent is
+			// closed here, because the store leaves a held composite open.
+			if task.ID != rootID {
+				s.closeAtCap(tasks, task)
+			}
+			continue
+		}
+		if !needsWake(tasks, &task, s.cancels, s.wakes, s.reported) {
+			continue
+		}
+		if s.inFlight >= s.slots {
+			return
+		}
+		s.wakes[task.ID]++
+		s.reported[task.ID] = childIDs(tasks, task.ID)
+		s.launch(ctx, task, wakeClause(tasks, task))
+	}
+}
+
+// launchWaits starts the worker of a task that parked itself with `plandb
+// wait`, once something it waited on has moved. The task called `plandb wait`;
+// the store released its claim and left it open with the moment it parked
+// ([Task.WaitedAt]), and the park flag ([Task.Waiting]) keeps it off the
+// ordinary ready frontier — so this is the one road that brings it back. When a
+// dependency or a child of it has changed since that moment ([Store.Changed]),
+// its worker is started again with a clause naming what changed, because the
+// change is the whole reason it is running again. A task whose dependency moved
+// without landing is left parked: a hard dependency that is not done is still a
+// block, and its own landing will move it. THE PARK FLAG IS CLEARED IN THE STORE
+// FIRST, so the task comes back to life through the store's own write and a
+// launch this pass cannot make — no slot, another writer took it — is made on a
+// later one.
+func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
+	if s.limitHit {
+		return
+	}
+	tasks := s.store.Tasks()
+	for _, taskp := range tasks {
+		task := *taskp
+		if !task.Waiting {
+			continue
+		}
+		if _, running := s.cancels[task.ID]; running {
+			continue
+		}
+		moved := waitMoved(tasks, &task, s.store)
+		if len(moved) == 0 {
+			continue
+		}
+		if s.inFlight >= s.slots {
+			return
+		}
+		// A READY LEAF IS CLAIMED, the same claim every dispatch makes, so its
+		// finish command still answers the ownership check. A composite is not
+		// claimable and needs none — the root among them, which the run holds
+		// without claiming like any other coordinator.
+		if !task.Composite {
+			if _, err := s.store.Claim(task.ID, task.ID, s.Owner); err != nil {
+				continue
+			}
+		}
+		woken, err := s.store.Wake(task.ID)
+		if err != nil {
+			continue
+		}
+		if task.Composite {
+			s.reported[task.ID] = childIDs(tasks, task.ID)
+		}
+		s.launch(ctx, *woken, waitClause(moved))
+	}
+}
+
+// waitMoved answers the tasks a parked task waited on that have changed since
+// it parked: its dependencies and its children, filtered to what Store.Changed
+// names from the moment it parked. The order is the store's own admission
+// order, so the clause reads the same way twice.
+func waitMoved(tasks []*plandb.Task, task *plandb.Task, store *plandb.Store) []*plandb.Task {
+	waited := map[string]bool{}
+	for _, dep := range task.Dependencies {
+		waited[dep.TaskID] = true
+	}
+	for _, candidate := range tasks {
+		if candidate.ParentID == task.ID {
+			waited[candidate.ID] = true
+		}
+	}
+	if len(waited) == 0 {
+		return nil
+	}
+	all := map[string]*plandb.Task{}
+	for _, candidate := range tasks {
+		all[candidate.ID] = candidate
+	}
+	var moved []*plandb.Task
+	for _, id := range store.Changed(task.WaitedAt) {
+		if !waited[id] {
+			continue
+		}
+		if candidate, ok := all[id]; ok {
+			moved = append(moved, candidate)
+		}
+	}
+	return moved
+}
+
+// waitClause is the sentence a woken parked task opens on: what it waited on,
+// and what each of those has done since. It is the wait's other half — a worker
+// parked because it could not go on, and this is the fact that lets it.
+func waitClause(moved []*plandb.Task) string {
+	var b strings.Builder
+	b.WriteString("something you waited on has moved, so your parked task is running again: ")
+	for i, task := range moved {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		fmt.Fprintf(&b, "%s %q is now %s", task.ID, task.Title, task.Status)
+		if result := strings.TrimSpace(task.Result); result != "" {
+			b.WriteString(": ")
+			b.WriteString(resultOrNoResult(result))
+		}
+	}
+	return b.String()
+}
+
+// needsWake answers whether a composite task owes a wake: its children have all
+// landed, at least one of them has not been reported to its worker yet, no worker
+// of its own is running, and it is under the wake cap. A task nobody has worked
+// is not held and the store closes it without a wake, so it never gets here.
+func needsWake(tasks []*plandb.Task, task *plandb.Task, cancels map[string]context.CancelFunc, wakes map[string]int, reported map[string]map[string]bool) bool {
+	if task == nil || !task.Composite || terminalStatus(task.Status) {
+		return false
+	}
+	if _, running := cancels[task.ID]; running {
+		return false
+	}
+	if wakes[task.ID] >= maxWakes {
+		return false
+	}
+	seen := reported[task.ID]
+	children, unreported := 0, false
+	for _, child := range tasks {
+		if child.ParentID != task.ID {
+			continue
+		}
+		children++
+		if !terminalStatus(child.Status) {
+			return false
+		}
+		if !seen[child.ID] {
+			unreported = true
+		}
+	}
+	return children > 0 && unreported
+}
+
+// childIDs is the set of a task's direct children, the generation a wake reports.
+func childIDs(tasks []*plandb.Task, id string) map[string]bool {
+	set := map[string]bool{}
+	for _, child := range tasks {
+		if child.ParentID == id {
+			set[child.ID] = true
+		}
+	}
+	return set
+}
+
+// childrenAllTerminal answers whether a task has children and every one of them
+// has ended. A composite with no children is not one whose landings can wake it.
+func childrenAllTerminal(tasks []*plandb.Task, id string) bool {
+	has, all := false, true
+	for _, child := range tasks {
+		if child.ParentID != id {
+			continue
+		}
+		has = true
+		if !terminalStatus(child.Status) {
+			all = false
+			break
+		}
+	}
+	return has && all
+}
+
+// waitsForWake answers whether a worker's return is a WAIT rather than an
+// ending: its task is a composite the store has not ended, and either a child of
+// it has not landed yet, or a child has landed that its worker has not been woken
+// with. The second half is the one a race needs: children are dispatched into
+// slots and land whenever they land, so asking only whether any of them is still
+// open lets a set of short children finish before their parent's own turn ends —
+// and the parent's first word becomes its result with nobody having integrated
+// anything, which is the bug the woken-parent law exists for. The root needs no
+// such help at its own ending, because completeTree asks rootAwaitingWake before
+// it writes; every other parent is written here, so here is where the law has to
+// hold.
+//
+// THE ANSWER IS A SUBSET OF WHAT launchWakes FIRES ON, which is what keeps the
+// run from holding a task open that no wake will close: a task the store already
+// ended is not waiting, a task whose every landing has been reported is writing
+// its ending now, and a task at the cap is closed by closeAtCap on the pass its
+// last child lands in.
+func (s *Supervisor) waitsForWake(id string) bool {
+	// ONE READ OF THE PLAN, the way the wake sweep reads it: the task and its
+	// children come out of the same snapshot, so the two halves of the question
+	// cannot be answered about two different moments.
+	tasks := s.store.Tasks()
+	var task *plandb.Task
+	for _, candidate := range tasks {
+		if candidate.ID == id {
+			task = candidate
+			break
+		}
+	}
+	if task == nil || !task.Composite || terminalStatus(task.Status) {
+		return false
+	}
+	for _, child := range tasks {
+		if child.ParentID == id && !terminalStatus(child.Status) {
+			return true
+		}
+	}
+	return needsWake(tasks, task, s.cancels, s.wakes, s.reported)
+}
+
+// closeAtCap ends a composite the run has woken its fill of times, the way the
+// store's own auto-completion would have written it: done when every child
+// finished, failed when one did not. It is reached only for a parent this run is
+// holding open, since the store leaves a held composite alone — and a parent the
+// run holds open carries NO RESULT IN THE STORE, because every return of its
+// worker was a wait that wrote nothing. What is written here is therefore the
+// parent's own last report, the one absorb kept: the cap is the run's decision to
+// stop waking it, not a reason to throw away what it said.
+func (s *Supervisor) closeAtCap(tasks []*plandb.Task, task plandb.Task) {
+	allDone := true
+	for _, child := range tasks {
+		if child.ParentID == task.ID && child.Status != plandb.StatusDone {
+			allDone = false
+			break
+		}
+	}
+	if allDone {
+		result := task.Result
+		if kept := s.lastReport[task.ID]; strings.TrimSpace(kept) != "" {
+			result = kept
+		}
+		_, _ = s.store.Done(task.ID, task.ID, result, nil, nil)
+		return
+	}
+	_, _ = s.store.Fail(task.ID, task.ID, "the wake cap was reached with a child that did not finish")
+}
+
+// wakeClause is the resume clause a woken parent's worker opens with: what every
+// child it dispatched reported, verbatim, and the instruction to integrate and
+// verify the combined result. It is the same sentence for the root and for every
+// other parent — the law does not turn on who owns the run.
+func wakeClause(tasks []*plandb.Task, task plandb.Task) string {
+	var b strings.Builder
+	b.WriteString("every child you dispatched has landed. Integrate their results, verify the combined result in the workspace, add more children if something is missing, and report.")
+	for _, child := range tasks {
+		if child.ParentID != task.ID {
+			continue
+		}
+		fmt.Fprintf(&b, "\n- child %s %q is %s: %s", child.ID, child.Title, child.Status, resultOrNoResult(child.Result))
+	}
+	return b.String()
+}
+
+// resultOrNoResult is what a wake clause says for a child that reported nothing:
+// the phrase stands where the result would, so the clause never reads as a
+// missing half-sentence.
+func resultOrNoResult(result string) string {
+	if strings.TrimSpace(result) == "" {
+		return "(no result)"
+	}
+	return result
 }
 
 // ownerName is the identity a run's claims are held under: "<hostname>:<pid>",
@@ -560,6 +1019,11 @@ type Summary struct {
 // outcome word, and answers what came of it. The context is the run's wall —
 // workers end with it — and nothing here needs a worker of its own: every
 // seat, the root's included, comes from the spec's factory.
+//
+// IT DOES NOT ANSWER WHILE A WORKER IT STARTED IS ALIVE: the supervisor drains
+// every goroutine it launched before its outcome comes back here, so a caller
+// may close its store — or the process — on the line after this returns and
+// nothing of the run is left to write into it.
 func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	started := time.Now()
 	if spec.Store == nil || spec.Factory == nil {
