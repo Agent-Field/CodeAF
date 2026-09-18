@@ -538,6 +538,19 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 	if strings.TrimSpace(outcome.JudgedBy) != "" {
 		fields["judged_by"] = outcome.JudgedBy
 	}
+	// WHERE A NON-VERIFIED RUN'S WORK IS STANDING, AND WHAT LEFT IT THERE.
+	// Both ride the omitempty spirit of `unjudged` and `judged_by` above: a run
+	// that settled whole carries neither, so the presence of either is itself
+	// the answer to "was this work landed?". Each stands on its own — a
+	// workspace that is no repository still knows its verdict, and says so with
+	// no branch beside it — which is why a script reads them apart and not as
+	// one pair.
+	if strings.TrimSpace(outcome.KeptBranch) != "" {
+		fields["kept_branch"] = outcome.KeptBranch
+	}
+	if strings.TrimSpace(outcome.Verdict) != "" {
+		fields["verdict"] = outcome.Verdict
+	}
 	if len(outcome.Checklist) > 0 {
 		fields["checklist"] = outcome.Checklist
 	}
