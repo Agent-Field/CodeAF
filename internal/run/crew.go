@@ -15,9 +15,9 @@ package run
 // mid-run, and every one of those launches seats a task the door never saw. So
 // the factory is HANDED the seats the door already climbed and reads them for
 // the two tiers they name, rather than asking the profile again for a row the
-// person overrode with a flag. THE CHECK RIDES THE PLAN TIER TOO ([SeatFor]), so
-// a check the review round adds after the launch still takes the plan seat the
-// door named. The probe row has no door flag — nothing names it — so it still
+// person overrode with a flag. THE CHECK RIDES THE CAREFUL WORK TIER ([SeatFor]),
+// so a check the review round adds after the launch still takes the profile seat.
+// The probe row has no door flag — nothing names it — so it still
 // comes from the profile's tiers, and an empty seat falls exactly where an empty
 // tier always fell.
 //
@@ -41,17 +41,17 @@ import (
 // The run's root and every coordinator are planning work and take the mastermind
 // row; a leaf that does the work itself takes the worker row, which is also
 // where a task born from add or split sits; the review round reads a finished
-// leaf against its acceptance and takes THE PLAN TIER, because a check is
-// planning work — a pinned `--plan-model` seats it too, and the profile's
-// careful row is not billed unasked; and a probe is a small disposable unknown
-// and takes the small-work row. Any other word — a role this build has not
+// leaf against its acceptance and takes the careful work tier; and a probe is
+// a small disposable unknown and takes the small-work row. Any other word — a role this build has not
 // learned, or a task the store could not name — does the work, so an unknown
 // word falls to the seat every task is born in rather than failing a task on its
 // metadata.
 func SeatFor(role string) string {
 	switch role {
-	case plandb.RolePlan, plandb.RoleCheck:
+	case plandb.RolePlan:
 		return config.ModelTierMastermind
+	case plandb.RoleCheck:
+		return config.ModelTierHigh
 	case plandb.RoleProbe:
 		return config.ModelTierLow
 	default:
@@ -70,7 +70,7 @@ func SeatFor(role string) string {
 // beneath that.
 //
 // Only these two seats travel, because only these two are a person's to name.
-// A check rides the plan seat ([SeatFor]); the small row a probe rides has no
+// A check rides the careful work seat ([SeatFor]); the small row a probe rides has no
 // flag on any door and is the profile's, read below.
 type Seats struct {
 	Work string
@@ -110,10 +110,8 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		role, _ := store.RoleOf(task.ID)
 		tier := SeatFor(role)
 		// THE DOOR'S SEAT WINS WHERE IT NAMED ONE. A planner (the run's root or
-		// a task that has children) rides the plan seat, and so does a check
-		// (SeatFor gives it the plan tier) — a check added after the launch still
-		// takes the seat the door named. A leaf — and every task an unknown role
-		// falls to — rides the work seat. The probe tier is named by nobody, so it
+		// a task that has children) rides the plan seat. A check rides the careful
+		// work seat. A leaf and every task an unknown role falls to the work seat. The probe tier is named by nobody, so it
 		// keeps the profile's row below.
 		var model string
 		switch tier {
