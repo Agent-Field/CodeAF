@@ -103,25 +103,27 @@ const surfaceMaxProcs = 8
 // heap alone, that the collector works to stay under by running continuously
 // rather than crossing it.
 //
-// THE LIMIT IS DERIVED FROM THE MACHINE, NOT FROM TASTE. [surfaceMemoryLimit]
-// takes HALF of the machine's physical memory, under an absolute floor, and both
-// halves of that are there because the failure this must never cause is a limit
-// BELOW the live heap: a limit under the working set makes the collector thrash
-// continuously, which is a worse failure than the unbounded growth it was added
-// to prevent. Half a machine that can run a surface at all is far clear of the
-// roughly 104 MB a surface's resident set was measured at, and the floor refuses
-// the small machines where half of physical memory would not be.
+// THE LIMIT IS DERIVED FROM THE SMALLEST REAL BOUND, NOT FROM TASTE.
+// [surfaceMemoryLimit] takes HALF of the tightest bound the machine and the
+// process's cgroup give, under an absolute floor, and both halves of that are
+// there because the failure this must never cause is a limit BELOW the live
+// heap: a limit under the working set makes the collector thrash continuously,
+// which is a worse failure than the unbounded growth it was added to prevent.
+// Half a bound that can run a surface at all is far clear of the roughly 104 MB
+// a surface's resident set was measured at, and the floor refuses the small
+// machines where half of the bound would not be.
 //
-// THE OTHER TWO CANDIDATES LOSE. A fixed generous ceiling is one number written
-// by hand, and it is wrong in both directions at once: on a small machine it is
-// the thrashing limit above, and on a big one it is a bound that never binds,
-// so it follows the machine in neither case. A fraction of a cgroup limit reads
-// a second kernel interface for a bound that is only ever tighter than the one
-// physical memory already gives — and when a container has no cgroup limit the
-// reading fails and leaves the surface with nothing, which is the case a bound
-// most wants to cover. Reading physical memory OVER-estimates inside a
-// container, and an over-estimate is the safe error: it makes the limit loose,
-// never tight.
+// PHYSICAL MEMORY ALONE IS THE WRONG BOUND INSIDE A CONTAINER, which is the
+// usual reason to set GOMEMLIMIT at all. The machine's physical memory there is
+// the HOST's, so a limit drawn from it lands far above what the process may
+// actually use: it never binds, and the kernel OOM-kills instead of the
+// collector working. So the cgroup the process runs in is read as well, and the
+// SMALLEST finite bound wins. A fixed generous ceiling still loses — one number
+// written by hand is wrong on a small machine and a large one at once. And a
+// bound that cannot be read (physical memory unreadable, no cgroup files, every
+// cgroup file `max`, or the cgroup v1 "no limit" sentinel) is not counted at
+// all; if none is readable the surface sets nothing, exactly as it did before
+// the cgroup read existed.
 //
 // AN EXPLICIT GOMEMLIMIT STILL DECIDES, exactly as an explicit GOGC and
 // GOMAXPROCS do above — this is a default, not a policy. A machine whose memory
@@ -140,7 +142,7 @@ func tuneForTheSurface() {
 		debug.SetGCPercent(400)
 	}
 	if os.Getenv("GOMEMLIMIT") == "" {
-		if limit := surfaceMemoryLimit(hostTotalMemory()); limit > 0 {
+		if limit := surfaceMemoryLimit(hostTotalMemory(), hostCgroupMemoryLimit()); limit > 0 {
 			debug.SetMemoryLimit(limit)
 			os.Setenv("GOMEMLIMIT", strconv.FormatInt(limit, 10))
 		}

@@ -16,3 +16,8 @@ func readTotalMemory() int64 {
 	}
 	return int64(bytes)
 }
+
+// readCgroupMemoryLimit is the zero for a platform with no cgroup hierarchy to
+// read: macOS has none, and a container on a Mac runs the Linux process inside a
+// VM, so the cgroup bound a Mac's own process could be under does not exist.
+func readCgroupMemoryLimit() int64 { return 0 }
