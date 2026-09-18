@@ -144,6 +144,36 @@ func seedOutbox(t *testing.T) string {
 	return dir
 }
 
+// seedDroppedOutbox writes an outbox that holds one dropped marker per reason,
+// the way a relay's refusal or the cap leaves them, so status reads a box
+// whose measurements were thrown away. An empty reason writes the marker an
+// older build left, with no reason at all.
+func seedDroppedOutbox(t *testing.T, reasons ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for i, reason := range reasons {
+		marker := fmt.Sprintf(`{"dropped":"%032x"`, i+1)
+		if reason != "" {
+			encoded, err := json.Marshal(reason)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marker += `,"reason":` + string(encoded)
+		}
+		body.WriteString(marker + "}")
+		body.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "outbox.jsonl"), []byte(body.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // The reading form answers over the whole config, every value beside the word
 // saying where it came from — and a machine that has never read an index says
 // so in a sentence rather than printing nothing at all. An install that has
@@ -247,6 +277,9 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	if !strings.Contains(out.String(), "pending 2 · can send yes · can read yes") {
 		t.Fatalf("status did not count the seeded rows:\n%s", out.String())
 	}
+	if strings.Contains(out.String(), "dropped") {
+		t.Fatalf("status named dropped rows when none were dropped:\n%s", out.String())
+	}
 	if !strings.Contains(out.String(), "own sheet: none") {
 		t.Fatalf("status did not say the install has recorded nothing of its own:\n%s", out.String())
 	}
@@ -280,6 +313,49 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(quiet, "pool", "outbox.jsonl")); !os.IsNotExist(err) {
 		t.Fatal("status created the outbox it was only counting")
+	}
+}
+
+// When the relay refuses a row by line, or the cap drops one, the outbox
+// retires it as dropped and keeps the reason. Status says how many and the
+// last one's reason, so a person can tell a working install from one whose
+// measurements are being thrown away — and a file that kept no reason says
+// the count alone.
+func TestPoolStatusSaysWhenTheRelayDroppedRowsAndWhy(t *testing.T) {
+	dir := seedDroppedOutbox(t, "a first reason", "role must be worker, high or mastermind")
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	want := "pending 0 · dropped 2 (last: role must be worker, high or mastermind) · can send yes · can read yes"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("status did not say the relay dropped rows and why:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Pending     int    `json:"pending"`
+		Dropped     int    `json:"dropped"`
+		DroppedLast string `json:"dropped_last"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Pending != 0 || answer.Dropped != 2 || answer.DroppedLast != "role must be worker, high or mastermind" {
+		t.Fatalf("the dropped rows did not carry: %+v", answer)
+	}
+
+	// A file written before reasons were kept says how many and no more.
+	old := seedDroppedOutbox(t, "", "")
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, old, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "pending 0 · dropped 2 · can send yes · can read yes") {
+		t.Fatalf("a reasonless dropped marker did not read as the count alone:\n%s", out.String())
 	}
 }
 
