@@ -639,6 +639,28 @@ func (r tasksReading) lay(width int) []tasksLine {
 	work = func(item tasksItem, depth int, last, named, nested bool) {
 		key := tasksKeyOf(item.entry)
 		kids := tree.kids[key]
+		if item.plan != nil && len(kids) > 0 {
+			kept := make([]tasksItem, 0, len(kids))
+			var folded *tasksItem
+			done := 0
+			for _, kid := range kids {
+				if kid.plan != nil && kid.plan.Status == "done" {
+					done++
+					if folded == nil {
+						copy := kid
+						folded = &copy
+					}
+					continue
+				}
+				kept = append(kept, kid)
+			}
+			if folded != nil {
+				folded.entry.Title, folded.entry.Label = "done", "done"
+				folded.entry.Activity = itoa(done) + " done"
+				kept = append(kept, *folded)
+			}
+			kids = kept
+		}
 		own := len(lines)
 		line := tasksLine{kind: tasksLineTask, item: item, owner: own, under: named || nested,
 			rank: tree.rank[key]}
@@ -1027,8 +1049,11 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		rank:  make(map[tasksKey]tasksRank, len(items)),
 		sort:  order,
 	}
-	for _, item := range items {
-		t.at[tasksKeyOf(item.entry)] = item
+	for i := range items {
+		// A tree may be built directly by the rail as well as through readTasks.
+		// File every row here so both entrances use the same family ordering.
+		items[i].section = tasksSectionOf(items[i], now)
+		t.at[tasksKeyOf(items[i].entry)] = items[i]
 	}
 	// parentOf is one row's parent WHERE THE PAGE IS DRAWING THAT PARENT TOO. A
 	// child whose parent is outside the time window, or filtered off the page,
@@ -1109,6 +1134,23 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	// what changes with the key is which of two SIBLINGS comes first, never
 	// whether a row is still under its parent.
 	for key, kids := range t.kids {
+		if len(kids) > 0 && kids[0].plan != nil && t.sort == (tasksSort{}) {
+			// Stable partition: running rows float, every other store row keeps
+			// its relative order.
+			ordered := make([]tasksItem, 0, len(kids))
+			for _, kid := range kids {
+				if kid.plan.Status == "claimed" || kid.plan.Status == "running" {
+					ordered = append(ordered, kid)
+				}
+			}
+			for _, kid := range kids {
+				if kid.plan.Status != "claimed" && kid.plan.Status != "running" {
+					ordered = append(ordered, kid)
+				}
+			}
+			t.kids[key] = ordered
+			continue
+		}
 		sort.SliceStable(kids, func(i, j int) bool {
 			return t.sort.key.less(t.rank[tasksKeyOf(kids[i].entry)], t.rank[tasksKeyOf(kids[j].entry)], t.sort.back)
 		})
@@ -1213,7 +1255,11 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 					held := item
 					urgent = &held
 				}
-				if stamp := tasksEntryAt(item.entry, now); stamp.After(g.order) {
+				stamp := item.entry.StartedAt
+				if item.entry.EndedAt.After(stamp) {
+					stamp = item.entry.EndedAt
+				}
+				if stamp.After(g.order) {
 					g.order = stamp
 				}
 				if stamp := tasksEntryStamp(item, now); stamp.After(g.chat.at) {
@@ -1251,6 +1297,11 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	sort.SliceStable(t.groups, func(a, b int) bool {
 		if t.groups[a].section != t.groups[b].section {
 			return t.groups[a].section < t.groups[b].section
+		}
+		// The rail default is activity, newest first. Explicit column sorts
+		// retain the table comparator below.
+		if t.sort == (tasksSort{}) {
+			return t.groups[a].order.After(t.groups[b].order)
 		}
 		return t.sort.key.less(t.groups[a].chat.rank, t.groups[b].chat.rank, t.sort.back)
 	})
