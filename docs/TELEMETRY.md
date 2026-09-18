@@ -90,13 +90,30 @@ Any one of these turns the counts off. They are checked in this order:
 A build that cannot name its own source — dirty or unstamped — never reports,
 and neither does a test binary.
 
+## The Model Pool is a second stream, under its own switch
+
+The usage counts are not the only thing this binary sends to AgentField. With
+`model_pool` set to `on` — the default — a judge scores each crew seat after a
+task lands, and one row per seat leaves for
+`https://codeaf.agentfield.ai/pool/v1/rows`: the model slug that held the
+seat, the judge's slug, the seat (worker, high or mastermind), a 0-100 score,
+the door the run came in by (task, do, exec or run), the crew size and the UTC
+day, under a random per-install nonce in an `X-Codeaf-Install` header. No
+prompt, code, path or name rides in a row. `CODEAF_TELEMETRY=off` does NOT
+turn this stream off: its switch is `model_pool` in settings or
+`CODEAF_MODEL_POOL`, with `read` (use the pool, send nothing) and `off` (ask no
+judge at all). `codeaf telemetry show` prints the rows waiting to leave beside
+the usage counts, so the notice's "see exactly what leaves" is true of both.
+
 ## The command
 
 `codeaf telemetry` reads the counts and never sends anything of its own.
 
 - `codeaf telemetry status` says whether the counts are on, and why not when
   they are off.
-- `codeaf telemetry show` prints exactly what is waiting to leave the machine.
+- `codeaf telemetry show` prints exactly what is waiting to leave the machine,
+  from BOTH streams: the usage counts above, then the Model Pool's rows, each
+  under a line naming where it goes or why it is not sent.
 - `codeaf telemetry off` and `codeaf telemetry on` write the profile setting.
 
 ```

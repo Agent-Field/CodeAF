@@ -580,8 +580,9 @@ spells, the measurement and the installs behind it — and `--json
 --cells` carries them as an array. Your install also keeps
 the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
-the crew reads them beside the index. `status` adds what is waiting to be sent
-and whether the mode allows sending and reading. `codeaf pool status` also
+the crew reads them beside the index. `status` adds how many rows are waiting to be sent
+and whether the mode allows sending and reading; `codeaf telemetry show` prints the
+rows themselves. `codeaf pool status` also
 says whether the relay answered, and whether the mirror did, and what the
 last judge did — which model, which seats it scored, or why it failed. `--json` prints
 the same answer as one object; `show` reads nothing off the network.
@@ -759,7 +760,11 @@ retracted belief restores, a stopped service starts again, a revoked device pair
 
 `codeaf telemetry` is the door onto the anonymous usage counts: `status` says whether
 they are on and why not when they are off, `show` prints exactly what is waiting to
-leave the machine, and `off` and `on` write the answer to your profile. It reads and
+leave the machine — the usage counts AND the Model Pool's rows, each under a line naming
+where it goes or why it is not sent — and `off` and `on` write the answer to your profile.
+`CODEAF_TELEMETRY=off` turns off the usage counts only; the Model Pool has its own switch,
+`model_pool` in `/settings` or `CODEAF_MODEL_POOL`, with `read` (use the pool, send
+nothing) and `off`. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
 notice the first session prints names the bargain before the first byte leaves, and
 `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
