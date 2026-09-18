@@ -831,10 +831,11 @@ func TestARecoveredMergeRoundSaysItWasCutAndTheCardStillAsks(t *testing.T) {
 	if node == nil {
 		t.Fatal("the node did not come back at all")
 	}
-	if !node.claimResolving() {
+	round, ok := node.claimResolving()
+	if !ok {
 		t.Fatal("a round nothing is running still holds the node's claim")
 	}
-	node.releaseResolving()
+	node.releaseResolving(round)
 	// AND THE CARD IS ASKING THE SAME QUESTION IT ASKED BEFORE THE PRESS: the
 	// node is exactly where it was, so the three answers are exactly the three.
 	status := ProjectTask(node.notice().StatusFacts())
@@ -882,7 +883,8 @@ func TestTakingAMergeRoundsClaimIsWrittenToTheCheckpoint(t *testing.T) {
 		}},
 	}, t.TempDir(), TaskSettleAsk)
 	node := graph.node(1)
-	if !node.claimResolving() {
+	round, ok := node.claimResolving()
+	if !ok {
 		t.Fatal("the claim was refused on a node with no round in flight")
 	}
 	graph.mu.Lock()
@@ -891,11 +893,187 @@ func TestTakingAMergeRoundsClaimIsWrittenToTheCheckpoint(t *testing.T) {
 	if !record.Resolving {
 		t.Fatal("the checkpoint does not say a round was in flight, so a resume cannot say it was cut")
 	}
-	node.releaseResolving()
+	node.releaseResolving(round)
 	graph.mu.Lock()
 	record = node.recordLocked()
 	graph.mu.Unlock()
 	if record.Resolving {
 		t.Fatal("a round that landed left its claim on the record")
+	}
+}
+
+// ── the landing card under --yolo ───────────────────────────────────────────
+
+// ranOutLanding is one node landed on the CHECK ROAD by a clock that ran out of
+// its window: the row asks [taskAskTimeReason] and the work's own account stands
+// under it. It runs where the person stands, so nothing here needs a repository
+// — the branch is what a merge would move, and an in-place node has none. It is
+// the exact landing a `--yolo` run used to park on: a surface exists and nobody
+// is at it.
+func ranOutLanding(t *testing.T, mutate func(*Config)) (*Agent, *TaskNode) {
+	t.Helper()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: config.Workspace, Workspace: config.Workspace}
+		if mutate != nil {
+			mutate(config)
+		}
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		report := withReport(
+			taskAskTimeReason+yourCallDash+"one call ran 30s without answering and was abandoned",
+			workClaimSaid)
+		node.finish(report, nil, "", "")
+		node.keepClaim(workClaimSaid)
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Add the guard", brief: "b", acceptance: "a"})
+	node := graph.node(id)
+	waitDoneNode(t, node)
+	return agent, node
+}
+
+// conflictedLanding is the same road's refusal: one node whose branch would not
+// fasten onto the person's, which is a question no settle policy may hand to a
+// model (task-states law). It is the control for the check road's default.
+func conflictedLanding(t *testing.T, mutate func(*Config)) (*Agent, *TaskNode) {
+	t.Helper()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: config.Workspace, Workspace: config.Workspace}
+		if mutate != nil {
+			mutate(config)
+		}
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		facts := TaskFacts{State: TaskUnverified, Merge: mergeConflicted, Conflicts: []string{"parser.go"}}
+		node.finish(withReport(yourCallLead(facts), workClaimSaid), nil, "task/parser", mergeConflicted)
+		node.keepClaim(workClaimSaid)
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Port the parser", brief: "b", acceptance: "a"})
+	node := graph.node(id)
+	waitDoneNode(t, node)
+	return agent, node
+}
+
+// THE LANDING CARD MUST NOT STOP A --yolo RUN. yolo says a surface exists
+// (AskConsent is true, Interactive is true) and that nobody is sitting at it
+// (Unattended), so a check-road landing that raises `▸a accept · n not right ·
+// s tell it` and parks is a run waiting on a key nobody will press. The check
+// road's card carries a default — accept — so an unattended run takes it: the
+// card is never raised, the node settles the way an accepted landing settles,
+// and the record says the dial answered rather than a person.
+//
+// BOTH SETTLE VALUES TAKE THE DEFAULT, because the park is the posture and not
+// the `task.settle` row: a person-owned landing and a model-owned one are each a
+// card nobody is coming back to answer.
+func TestAYoloRunTakesTheLandingDefaultAndSaysSo(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		settle string
+	}{
+		{name: "the person holds it", settle: ""},
+		{name: "the model holds it", settle: "auto"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent, node := ranOutLanding(t, func(config *Config) {
+				config.AskConsent = true
+				config.Interactive = true
+				config.Unattended = true
+				config.TaskSettle = tc.settle
+			})
+			// NO CARD IS LEFT STANDING: the run does not wait on anybody.
+			for _, open := range agent.OpenQuestions() {
+				if open.Kind == QuestionLanding || open.Kind == QuestionConflict {
+					t.Fatalf("an unattended run parked on the landing card: %+v", open)
+				}
+			}
+			// AND THE NODE SETTLES THE WAY AN ACCEPTED LANDING SETTLES.
+			if state := node.stateNow(); state != TaskDone {
+				t.Fatalf("the landing is %q, want it taken as accepted", state)
+			}
+			// AND THE RECORD SAYS THE DIAL ANSWERED — not a person, and not the
+			// model — with the accept key the card would have offered, so a
+			// restart sweep and `pool status` can read who did it.
+			records := agent.Decisions()
+			if len(records) == 0 {
+				t.Fatal("the taken default left no decision record")
+			}
+			last := records[len(records)-1]
+			if last.By != DecidedByDial {
+				t.Fatalf("the record says %q answered, want the dial: %+v", last.By, last)
+			}
+			if len(last.Picked) == 0 || last.Picked[0] != LandingYesKey {
+				t.Fatalf("the dial did not take the accept key: %+v", last)
+			}
+			// AND THE LANDING STILL SAYS THE CHECK RAN OUT OF TIME. The dial's
+			// accept must not erase WHY this needed a look: a landing a check
+			// PASSED reads its own way, and the two stay tellable apart.
+			if report := node.notice().Report; !strings.Contains(report, taskAskTimeReason) {
+				t.Fatalf("the accepted landing no longer says the check ran out of time:\n%s", report)
+			}
+		})
+	}
+}
+
+// AND A RUN SOMEBODY IS WATCHING STILL WAITS. Unattended is the whole of the
+// gate: with it false the same landing raises the question and parks, exactly as
+// it did before, because a card somebody can answer is not a hang.
+func TestAWatchedRunStillWaitsOnTheLandingCard(t *testing.T) {
+	agent, node := ranOutLanding(t, func(config *Config) {
+		config.AskConsent = true
+		config.Interactive = true
+	})
+	if state := node.stateNow(); state != TaskUnverified {
+		t.Fatalf("a watched run settled the landing itself: %q", state)
+	}
+	found := false
+	for _, open := range agent.OpenQuestions() {
+		if open.Kind == QuestionLanding {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("a watched run left no landing card standing: %+v", agent.OpenQuestions())
+	}
+	if records := agent.Decisions(); len(records) != 0 {
+		t.Fatalf("a watched run recorded a decision nobody made: %+v", records)
+	}
+}
+
+// A CONFLICT IS STILL A PERSON'S UNDER --yolo, AND THE RUN SAYS SO. However
+// nobody-watching the run is, two versions of somebody's own file is not a
+// default any dial may take (task-states law) — so a conflicted landing raises
+// its card and parks, and the note the run leaves the model names the conflict
+// and says it is not the model's to accept, rather than ending in silence.
+func TestAConflictStillParksUnderYoloAndSaysWhy(t *testing.T) {
+	agent, node := conflictedLanding(t, func(config *Config) {
+		config.AskConsent = true
+		config.Interactive = true
+		config.Unattended = true
+	})
+	if state := node.stateNow(); state != TaskUnverified {
+		t.Fatalf("an unattended run settled a conflict itself: %q", state)
+	}
+	found := false
+	for _, open := range agent.OpenQuestions() {
+		if open.Kind == QuestionConflict {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the conflict card is not standing: %+v", agent.OpenQuestions())
+	}
+	// AND THE RUN DOES NOT GO SILENT. The landing report still leads with the
+	// question the card asks, and the note written for the model says what
+	// conflicts and that the choice is the person's.
+	notice := node.notice()
+	if report := notice.Report; !strings.HasPrefix(strings.TrimSpace(report), taskAskConflictReason) {
+		t.Fatalf("the parked conflict does not say what it is asking:\n%s", report)
+	}
+	note := taskNote(notice, "", agent.settlePolicy(), agent.addressLanding(notice))
+	if !strings.Contains(note, conflictNotYours) {
+		t.Fatalf("the parked conflict's note does not say it is not the model's to accept:\n%s", note)
 	}
 }

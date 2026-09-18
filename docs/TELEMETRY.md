@@ -71,8 +71,9 @@ the marshalled output.
 
 Events wait in ~/.codeaf/telemetry/spool.jsonl until they are sent: at most 50
 per request, nothing older than 7 days, at most 1000 lines kept, and nothing
-sent before the notice has been shown. `codeaf telemetry show` prints exactly
-what has not left yet.
+sent before the notice has been shown. An event whose version is unknown is
+dropped at send time and never leaves the machine. `codeaf telemetry show`
+prints exactly what has not left yet.
 
 ## Turning it off
 

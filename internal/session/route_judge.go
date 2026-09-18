@@ -696,9 +696,10 @@ func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, br
 	if err != nil || response == nil {
 		return routeVerdict{}, false
 	}
-	// The person pays for it, out of the pocket every auxiliary call comes from,
-	// against the model that answered.
-	a.addAuxiliaryUsage(response, judge, 1)
+	// The person pays for it, out of the pocket every auxiliary call comes
+	// from, against the model that answered — and the call names itself on the
+	// row, so the ledger can seat it by the role's own tier.
+	a.addAuxiliaryUsageAs(response, judge, 1, string(role))
 
 	// The salvage ladder is internal/subharness's, shared rather than reimplemented
 	// so that a fenced or smart-quoted reply is read here exactly as it is read

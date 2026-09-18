@@ -151,6 +151,11 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "not-a-real-key")
+	// hostOptions wires the pool's start-up errands on the terminal's profile;
+	// the doors exit the process behind them, this test does not, so it closes
+	// them through the seam the process's own close uses (poolindex.go) before
+	// the profile is removed.
+	t.Cleanup(func() { stopPoolErrands(surfaceProfile) })
 	if err := config.WriteSources(engineProfile, []config.PersistedSource{{
 		ID: "custom", Written: "engine-service", Address: "https://engine.example/v1", Key: "engine-key", Order: 1,
 	}}); err != nil {
@@ -297,7 +302,7 @@ func TestAConnectedModelServiceIsLiveInTheRunningEngineConversation(t *testing.T
 		}
 	}
 	if custom.ID == "" {
-		t.Fatal("the model-service catalog has no Something else door")
+		t.Fatal("the model-service catalog has no Custom OpenAI-compatible API door")
 	}
 	outcome, err := config.ConnectService(context.Background(), profileDir, config.PersistedSource{
 		ID: custom.ID, Written: "localhost", Address: directServer.URL(), Key: "direct-key", Order: 1,

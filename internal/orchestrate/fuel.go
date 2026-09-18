@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // The three answers to the gate. They are the whole vocabulary, and a surface
@@ -43,6 +44,46 @@ type Price struct {
 	Out float64
 }
 
+// PriceSource is a reader this package does not own, asked before the table
+// falls back. It answers with the same pair PriceOf itself returns — one
+// model's row in dollars per MILLION tokens — and false means "ask somebody
+// else", never "free".
+type PriceSource func(model string) (Price, bool)
+
+// priceTariff is the installed source, held behind an atomic because the
+// package's meters read it on every call and the installer may swap it while a
+// run is in flight. A nil tariff is the unset state: the table alone.
+var priceTariff atomic.Value // PriceSource
+
+// UsePrices installs (or, with nil, removes) the source asked before the
+// table. Replacing one source with another is the whole point — a tariff can
+// move without this package being rebuilt — and a swap is safe to make while
+// other goroutines are metering: a call in flight sees either the old source
+// or the new one, never half of either.
+func UsePrices(src PriceSource) {
+	priceTariff.Store(src) // a nil PriceSource is a stored value, not a nil store
+}
+
+// CatalogPrices adapts a reader that answers per TOKEN — the shape a model
+// catalog publishes — into the per-MILLION PriceSource this package meters
+// with, so the unit conversion exists in exactly one place. A reader that
+// knows a model carries the answer straight through, a per-token zero
+// included; a reader that publishes nothing for it answers false, and the
+// table gets its turn. A nil reader adapts to a nil source: nobody published
+// anything.
+func CatalogPrices(priceNow func(model string) (prompt, completion float64, known bool)) PriceSource {
+	if priceNow == nil {
+		return nil
+	}
+	return func(model string) (Price, bool) {
+		in, out, known := priceNow(model)
+		if !known {
+			return Price{}, false
+		}
+		return Price{In: in * 1e6, Out: out * 1e6}, true
+	}
+}
+
 // prices is the table this build meters against — the models an adaptive run
 // actually rides, at their OpenRouter list price.
 //
@@ -52,12 +93,21 @@ type Price struct {
 // cannot know. [Meter] is what answers when a response carries no figure at
 // all, which is common enough that a run metering only reported costs would
 // have a tank that never empties.
+//
+// The rows are the ids the shipped defaults and crew tables name, each copied
+// from the catalog's published price on the day its row was written; the
+// installed tariff ([CatalogPrices]) is what answers when a catalog is present,
+// and this table is only the fallback behind it.
 var prices = map[string]Price{
-	"deepseek/deepseek-v4-flash": {In: 0.14, Out: 0.28},
-	"z-ai/glm-5.2":               {In: 0.60, Out: 2.20},
-	"moonshotai/kimi-k3":         {In: 0.60, Out: 2.50},
-	"anthropic/claude-opus":      {In: 15.00, Out: 75.00},
-	"openai/gpt-5":               {In: 1.25, Out: 10.00},
+	"google/gemini-2.5-flash":         {In: 0.30, Out: 2.50},
+	"mistralai/mistral-nemo":          {In: 0.02, Out: 0.03},
+	"deepseek/deepseek-v4-flash-0731": {In: 0.06, Out: 0.12},
+	"z-ai/glm-5.3-flash":              {In: 0.09, Out: 0.30},
+	"z-ai/glm-5.3":                    {In: 1.40, Out: 4.40},
+	"moonshotai/kimi-k3":              {In: 3.00, Out: 15.00},
+	"qwen/qwen3.8-max-0902":           {In: 2.00, Out: 6.00},
+	"anthropic/claude-fable-5.1":      {In: 10.00, Out: 50.00},
+	"anthropic/claude-opus-5":         {In: 5.00, Out: 25.00},
 }
 
 // unpriced is what a model nobody has a row for costs.
@@ -70,9 +120,11 @@ var prices = map[string]Price{
 // governor people turn off.
 var unpriced = Price{In: 1.25, Out: 10.00}
 
-// PriceOf is one model's row, and whether the table actually holds one. The id
+// PriceOf is one model's row, and whether anybody actually holds one. The id
 // is matched the way the wire spells it, with suffixes an endpoint adds
-// (":free", "@2026-01") cut before the lookup.
+// (":free", "@2026-01") cut before the lookup — and the cut, lowercased name
+// is what the installed source is asked too, so a source never has to repeat
+// this package's normalisation to agree with its own table.
 //
 // A BARE NAME IS NOT A VENDOR'S ROW. A vendor serving a model on its own base
 // does not charge the router's price for it, and a wrong price is worse than no
@@ -84,6 +136,11 @@ func PriceOf(model string) (Price, bool) {
 	}
 	if name == "" {
 		return unpriced, false
+	}
+	if tariff, _ := priceTariff.Load().(PriceSource); tariff != nil {
+		if price, known := tariff(name); known {
+			return price, true
+		}
 	}
 	if price, known := prices[name]; known {
 		return price, true

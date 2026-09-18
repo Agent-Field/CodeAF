@@ -161,6 +161,50 @@ func gatheringGrant(turns, tokens int, fanIn store.DependencyFanIn) (int, int) {
 	return turns + fanIn.Count, tokens + 2*landed
 }
 
+// The re-dispatch grant: what a leaf that has been sent round again in place
+// is given, in the one number the dispatch path states for ctxbudget.
+const (
+	// overrunRegrantNum over overrunRegrantDen is how much bigger one
+	// re-dispatch's token grant is than the grant of the attempt that ran
+	// out: three halves. A re-dispatch exists to finish a truncated tail, and
+	// half again is enough to finish one, where doubling would buy the whole
+	// run a second time.
+	overrunRegrantNum = 3
+	overrunRegrantDen = 2
+
+	// overrunGrantCeiling is where the regrant stops adding: four flat leaf
+	// grants, which is room to run an ordinary leaf's whole text through twice
+	// over and therefore more than finishing a tail can ever cost. The bound
+	// is on what the ladder adds and not on what the leaf was granted — a
+	// fan-in that measured more than this keeps every token it measured,
+	// because the one thing a re-dispatch must never do is hand back room.
+	overrunGrantCeiling = 4 * chatLeafTokens
+)
+
+// regrantAfterRunningOut is the token grant one claim of a leaf that has been
+// re-dispatched in place is given, from the grant this claim measured and the
+// attempt it is on. Attempt zero is the grant unchanged; every attempt after
+// it grows by [overrunRegrantNum] over [overrunRegrantDen] for each re-dispatch
+// before it, and the ladder adds nothing beyond [overrunGrantCeiling].
+// Turns are not regrown: a re-dispatch carries its banked turns as inputs
+// rather than re-running them, so the turn ceiling was never what ran out.
+//
+// The growth is the point. A re-dispatch handed the room its predecessor ran
+// out of re-runs the same brief to the same truncated ending — the meter stops
+// it at the same place — so the runner's release (see resident's overrun
+// settle) is worth a claim only if the room moves with it. The wall the leaf
+// is given follows, because it is arithmetic over the same number.
+func regrantAfterRunningOut(tokens, attempt int) int {
+	room := tokens
+	for ; attempt > 0 && room < overrunGrantCeiling; attempt-- {
+		room = room * overrunRegrantNum / overrunRegrantDen
+		if room > overrunGrantCeiling {
+			return overrunGrantCeiling
+		}
+	}
+	return room
+}
+
 // foldGrant sizes the whole run of a leaf that is going to make one model call.
 //
 // The gathering grant above is the right arithmetic for a node that has to go
@@ -368,7 +412,13 @@ func installMeasuredRulers(settings config.Config, model string) *profile.Profil
 // it would hold the terminal behind a network round trip. Memoising it means the
 // identity seam and the surface that shows the model list are looking at the
 // same catalog rather than racing two fetches over one cache file.
-var sharedCatalog = func() func(config.Config) *catalog.Catalog {
+var sharedCatalog = newSharedCatalog()
+
+// newSharedCatalog builds the memoised accessor [sharedCatalog] is. It is a
+// function rather than the value alone so a test can seat its own instance:
+// the once is inside, and two runs in one process must not share a catalog
+// pointed at whichever of them called first.
+func newSharedCatalog() func(config.Config) *catalog.Catalog {
 	var once sync.Once
 	var resolved *catalog.Catalog
 	return func(settings config.Config) *catalog.Catalog {
@@ -376,10 +426,56 @@ var sharedCatalog = func() func(config.Config) *catalog.Catalog {
 			resolved = catalog.LoadLazy(context.Background(), catalog.Options{
 				BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 			})
+			// A tier row that says auto is answered from this catalog (config.AutoModels):
+			// the same non-blocking read, never a fetch, and set once at start-up so every
+			// headless door resolves the word against the list it already holds.
+			config.AutoModels = resolved.ModelsNow
+			// and the pool's index beside it, in the same one-time manner: a tier
+			// row that says auto is answered from the index this process was seated
+			// with, the seed when no cache is fresher, and the one fetch it makes
+			// runs in the background and never blocks this read.
+			wirePoolIndex(settings.ProfileDir)
 		})
 		return resolved
 	}
-}()
+}
+
+// autoSeatRowsBound is how long a headless door waits for the catalog's rows
+// when the profile's pick or a tier row needs them. It is sized to cover the
+// disk read of a cached catalog and nothing more. It is a variable because the
+// test of the bound must not spend three seconds proving the bound is honoured.
+var autoSeatRowsBound = 3 * time.Second
+
+// useAutoSeats seats this process's catalog under the seat ladder, and is what
+// a headless door calls BEFORE it resolves its seats.
+//
+// The order is the whole of it. A tier row that says `auto` is answered from
+// the rows already in hand ([config.AutoModels]), and every headless door
+// climbed the ladder before it asked for a catalog at all — so the word read
+// against nothing and landed on the family's table row on every run, on a
+// machine whose catalog was sitting in its own cache file. It is the same lazy,
+// memoised catalog every one of those doors goes on to use; asking for it a few
+// lines earlier waits for nothing.
+//
+// AND WHEN THE ANSWER NEEDS THE ROWS, THE DOOR WAITS FOR THEM, within
+// [autoSeatRowsBound]: a pick taken off the table ([config.CrewPickAt]) and a
+// tier row that says auto ([config.AnyTierAutoAt]) are both computed from those
+// rows, and the chat surface never met the defect because its picks happen after
+// the warm has landed. The bound is a bound on the wait, not on the fetch — when
+// it runs out the warm carries on in the background, the resolver falls to the
+// family's table row exactly as it did before, and the seat's receipt names the
+// rung that answered (`table`), so a run that fell says it fell. A profile with
+// neither a pick nor an auto row reads no rows at all, and waits for nothing,
+// the way it always has.
+func useAutoSeats(settings config.Config) {
+	resolved := sharedCatalog(settings)
+	if config.CrewPickAt(settings.ProfileDir) == config.CrewPickTable && !config.AnyTierAutoAt(settings.ProfileDir) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), autoSeatRowsBound)
+	defer cancel()
+	resolved.Warmed(ctx)
+}
 
 // promisedWorker is the node's own answer to "who runs this", read in the order
 // admission settled it: the row's worker where there is one, the subtree's

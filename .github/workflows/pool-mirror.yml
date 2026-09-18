@@ -1,0 +1,95 @@
+name: Model Pool mirror
+
+# Mirrors the relay's signed index document onto the `model-pool` orphan data
+# branch, under pool/index.json and pool/index.json.sig, so it can be served
+# and linked from GitHub. The branch holds the signed document and its
+# signature, and nothing derived from them — no count, no leaderboard, no
+# extracted statistic.
+on:
+  schedule:
+    # Every six hours.
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pool-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      # Gets relay/verify.mjs, the only thing this workflow needs from the tree.
+      - uses: actions/checkout@v4
+
+      # -fsS: fail the job on any non-200, print an error on any other failure.
+      - name: Fetch the signed document and its signature
+        run: |
+          set -euo pipefail
+          curl -fsS -o index.json https://codeaf.agentfield.ai/pool/index.json
+          curl -fsS -o index.json.sig https://codeaf.agentfield.ai/pool/index.json.sig
+
+      # The value is the public key copied from relay/wrangler.toml, and it is a
+      # literal: no secret is needed to verify a signature. A bad signature or
+      # any non-2xx fetch fails the job before anything is published.
+      - name: Verify the signature
+        env:
+          POOL_PUBLIC_KEY: WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0=
+        run: node relay/verify.mjs index.json index.json.sig "$POOL_PUBLIC_KEY"
+
+      - name: Mirror onto the model-pool branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p mirror
+          cd mirror
+          git init -q
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # The data branch shares no history with the tree; adopt it when it
+          # exists and start an orphan when this is the first run.
+          if git fetch -q origin model-pool; then
+            git checkout -q -B model-pool FETCH_HEAD
+          else
+            git checkout -q --orphan model-pool
+          fi
+
+          mkdir -p pool
+          if [ ! -f pool/README.md ]; then
+            cat > pool/README.md <<'EOF'
+          # model-pool
+
+          This orphan branch holds the Model Pool's published index document and
+          its detached signature, and nothing derived from them.
+
+          - `pool/index.json` — the signed index document.
+          - `pool/index.json.sig` — the detached Ed25519 signature (standard
+            base64) over the exact bytes of `pool/index.json`.
+
+          Both files are copies of what the relay serves; there is no count, no
+          leaderboard and no extracted statistic here. Verify them with:
+
+          ```
+          node relay/verify.mjs pool/index.json pool/index.json.sig <public-key-base64>
+          ```
+          EOF
+          fi
+
+          cp ../index.json pool/index.json
+          cp ../index.json.sig pool/index.json.sig
+
+          git add -A
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No change; nothing to publish."
+            exit 0
+          fi
+
+          version=$(node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync('../index.json', 'utf8')).version))")
+          git commit -q -m "pool: index version ${version}"
+          git push -q origin model-pool

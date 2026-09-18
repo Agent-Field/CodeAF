@@ -170,22 +170,51 @@ func TestTheCheckpointIsToldHowManyActionsProducedNothingNew(t *testing.T) {
 }
 
 // NOTHING IN THE HARNESS DECIDES THAT A REPEAT IS TOO MANY. The run raises the
-// question and the reader answers it: told to carry on, a worker rewriting the
-// same bytes forty times is not stopped by any repetition rule, and it is asked
-// again rather than asked on every step.
+// question and the reader answers it: told to carry on, a worker saving the same
+// bytes forty times is not stopped by any repetition rule, and it is asked again
+// rather than asked on every step.
+//
+// THE EFFECT IS IDENTICAL AND THE CALLS ARE NOT, and both halves are what take
+// every real-time dependency out of the assertion. Said once, plainly: the forty
+// saves leave one identical effect and forty deliberately distinct call
+// signatures, so the turn's repetition guard is NOT what ends this turn and the
+// leash is left as the only thing the assertion can be about.
+//
+// THE SAME EFFECT. Every save leaves note.md byte-for-byte what the last one left
+// — the effect the leash fingerprints is the file ([effectPrintOf], effects.go) —
+// and the content is EMPTY, so the file is zero bytes before, during and after
+// every write. A truncating write of nothing never changes the file, so the
+// fingerprint reads the same sum whenever this side of the wall gets to it,
+// before or after the worker's next save. With any non-empty content that read
+// races the next truncating write and the fingerprint flickers between the file
+// and the write's own answer — the real-time dependency that made this test
+// flake under load.
+//
+// NOT THE SAME CALL. The key order in the JSON is the only thing that turns over,
+// so no two calls share a signature and the turn's own repetition guard
+// (looped.go), which keys on the CALL, never fires. Spelled identically instead,
+// the guard reads the run as a turn going in circles and hands it over at its
+// seventh write, and whether the run reached its third repeat checkpoint before
+// that turn ended was a race this test lost under load — the leash was never the
+// thing that ended it.
 func TestARunOfIdenticalEffectsEndsNothingByItself(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	// TWO, so the reader is asked several times before the turn's own repetition
-	// guard (looped.go) hands the turn over — which it will, because forty
-	// identical calls are a loop by that rule as well. What is under test here is
-	// that NO rule in the leash ends the work on the count itself.
+	// TWO, so the reader is asked over many runs rather than once. What is under
+	// test here is that NO rule in the leash ends the work on the count itself, and
+	// that a WORKING answer buys a reset so the reader is asked once per run of
+	// effects and never on every step.
 	arguments, _ := json.Marshal(taskArguments{
 		Title: "Rewrite", Summary: "s", Brief: "get the file right\n" + taskBriefMark,
 		Deliverable: "d", Acceptance: "a", MaxSteps: 200, NoProgress: 2,
 	})
+	const writes, noProgress = 40, 2
 	var child []step
-	for index := 0; index < 40; index++ {
-		child = append(child, writeCall(fmt.Sprintf("call-%d", index), "note.md", "the same words\n"))
+	for index := 0; index < writes; index++ {
+		spelling := `{"path":"note.md","content":""}`
+		if index%2 == 1 {
+			spelling = `{"content":"","path":"note.md"}`
+		}
+		child = append(child, writeSpelled(fmt.Sprintf("call-%d", index), spelling))
 	}
 	child = append(child, finalText("note.md holds what was asked for"))
 
@@ -215,6 +244,25 @@ func TestARunOfIdenticalEffectsEndsNothingByItself(t *testing.T) {
 	rounds := spy.rounds()
 	if len(rounds) < 2 {
 		t.Fatalf("the reader was asked %d times over a long run of repeats, want it asked again after each run it allowed", len(rounds))
+	}
+	// AND NOT ON EVERY STEP. A WORKING answer on the repeat threshold calls
+	// effects.pardon and ends the run ([childRun.checkpoint]'s `working && !renew`
+	// arm), so the next save meets a fresh count and the reader is asked once per
+	// `noProgress`-long run of identical effects. Without that reset the run never
+	// clears, every save past the first run meets the same count, and the reader is
+	// asked again on every step — which is the behaviour this bound holds.
+	if most := writes/noProgress + 1; len(rounds) > most {
+		t.Fatalf("the reader was asked %d times over %d identical saves, want it asked once per %d-save run and never on every step (at most %d)", len(rounds), writes, noProgress, most)
+	}
+}
+
+// writeSpelled is one save whose raw arguments the test spells itself, so a run
+// can hold one identical effect and forty distinct call signatures at once — the
+// effect is what the leash counts (effects.go) and the signature is what the
+// turn's own loop guard keys on (looped.go), and the two are deliberately apart.
+func writeSpelled(id, arguments string) step {
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse(id, "write", arguments), nil
 	}
 }
 

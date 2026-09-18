@@ -49,6 +49,9 @@ var wakeRoads = map[string]string{
 		"which is the one wake that is already a person's own sentence",
 	"enqueueSteering": "the generic lane. Its callers own the addressing: a landing goes through " +
 		"[Agent.deliverTaskNote] below, a standing firing is the person's own armed words",
+	"enqueueSettleSteering": "[Agent.enqueueSteering] with the wake marked a settle one, and the " +
+		"same addressing: its one caller is a person handing a landing over (task_audit.go's " +
+		"[Agent.HandUnverifiedToModel]), and the sentence it carries is that person's own press",
 	"spoken": "the person's own line, said into a node (task_room.go). The other speaker on " +
 		"this road is another agent in this session, and it is addressed to the node's own " +
 		"runner rather than to anybody out there ([relayNote])",

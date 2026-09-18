@@ -136,6 +136,16 @@ func (l *questionLab) press(key string) bool {
 	return taken
 }
 
+// pressMsg is [questionLab.press] for a chord whose spelling is a Code and a
+// Modifier together and not a one-rune name — every modified ARROW and
+// backspace, which is the half of the surface's vocabulary a test written in
+// names cannot reach ([questionPressOf] spells only the plain keys).
+func (l *questionLab) pressMsg(msg tea.KeyPressMsg) bool {
+	cmd, taken := l.a.questionKey(msg)
+	l.spend(cmd)
+	return taken
+}
+
 // spend runs one command the way the loop would, including whatever it hands
 // back — the fold of a door's answer among it (offloop.go).
 func (l *questionLab) spend(cmd tea.Cmd) {
@@ -144,6 +154,141 @@ func (l *questionLab) spend(cmd tea.Cmd) {
 	}
 	l.t.Helper()
 	drive(l.t, l.a, runCmd(cmd)...)
+}
+
+// ── THE ANSWER BOX IS A BOX ─────────────────────────────────────────────────
+
+// TestAQuestionAnswerBoxEditsLikeEveryOtherBoxOnTheSurface holds the `something
+// else…` row — the one box on this block a person WRITES an answer in — to the
+// surface's one word-and-line vocabulary (editkeys.go).
+//
+// WHAT WAS MEASURED. The row hand-rolled its key map: the two ends of the line
+// and `alt+←`/`alt+b`, and nothing else. So the chords a hand actually presses
+// to fix a sentence did nothing in the one box the block gives them for exactly
+// that — ⌘←/⌘→ reached no part of the caret, ⌘⌫ killed no line, and ⌥⌫/ctrl+⌫
+// killed no word — while the message box directly beneath the question answered
+// to all of them. A box that answers to fewer names than the box under it is the
+// split editkeys.go was written to end, said about the last box it had not
+// reached.
+func TestAQuestionAnswerBoxEditsLikeEveryOtherBoxOnTheSurface(t *testing.T) {
+	const draft = "read the config file" // 20 runes; "file" starts at 16
+
+	// openBox raises a question, aims at the block, presses `c` — which walks the
+	// pointer onto the `something else…` row and carries the answer it came from
+	// — and hands back that row's own box.
+	openBox := func(t *testing.T, words string) (*questionLab, *questionShown) {
+		t.Helper()
+		lab := newQuestionLab(t)
+		lab.a.width = 120
+		lab.raise(session.Question{
+			ID: 61, Kind: session.QuestionAsk, Ask: session.AskChoice,
+			Asker: session.Asker{Kind: session.AskerModel}, Head: "Which store?",
+			Reason: "two fit", Stakes: session.StakesReversible,
+			Options: []session.AnswerOption{{Key: "1", Label: "sqlite"}, {Key: "2", Label: "postgres"}},
+		})
+		lab.tick(questionSettle)
+		lab.rows()
+		// The person is looking at the block rather than at the box, which is what
+		// lets the letter `c` reach it at all (questionkeys.go's THE BOX KEEPS THE
+		// FIRST LETTER).
+		aimed(lab.a)
+		if !lab.press(questionCommentKey) {
+			t.Fatal("c did not reach the block")
+		}
+		open := lab.a.questionHeld(lab.a.questions[0].token())
+		if open == nil || !lab.a.questionOthering(*open) {
+			t.Fatal("c did not walk the pointer onto the something else… row")
+		}
+		open.other.words.setText(words)
+		return lab, open
+	}
+
+	// THE CARET JUMPS, UNDER EVERY NAME A TERMINAL SENDS THEM BY. `meta+←/→` is
+	// what ⌘←/⌘→ arrives as on the arrow's own road; `super+←/→` is the same key
+	// from a terminal that spells the ninth modifier the other way — the split
+	// that left cmd+←/→ dead on every terminal until both names were bound
+	// (inputguard_test.go's TestTheCaretJumpsDecodeToTheNamesWeBindThemUnder).
+	for _, tc := range []struct {
+		name string
+		msg  tea.KeyPressMsg
+		from int
+		want int
+	}{
+		{"cmd+←", tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModMeta}, len(draft), 0},
+		{"cmd+→", tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModMeta}, 0, len(draft)},
+		{"super+←", tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModSuper}, len(draft), 0},
+		{"alt+←", tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModAlt}, len(draft), 16},
+		{"alt+→", tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModAlt}, 0, 4},
+		{"ctrl+←", tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModCtrl}, len(draft), 16},
+		// `ctrl+a` is the start of the line and `ctrl+e` its end, the same two the
+		// message box binds (input.go).
+		{"ctrl+a", tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl}, len(draft), 0},
+		{"ctrl+e", tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}, 0, len(draft)},
+	} {
+		lab, open := openBox(t, draft)
+		open.other.words.cursor = tc.from
+		lab.pressMsg(tc.msg)
+		if got := open.other.words.cursor; got != tc.want {
+			t.Fatalf("%s left the caret at %d in the answer box, want %d", tc.name, got, tc.want)
+		}
+		if open.other.words.String() != draft {
+			t.Fatalf("%s changed the words: %q", tc.name, open.other.words.String())
+		}
+		if lab.a.input.String() != "" {
+			t.Fatalf("%s reached the message box instead of the answer box", tc.name)
+		}
+	}
+
+	// THE KILLS. ⌘⌫ and `ctrl+u` kill to the start of the line; ⌥⌫ and ctrl+⌫ kill
+	// the word behind the caret. `ctrl+w` is deliberately not among them: it shuts
+	// the tab in front everywhere on this surface now (tabclosekey.go).
+	for _, tc := range []struct {
+		name string
+		msg  tea.KeyPressMsg
+		want string
+	}{
+		{"ctrl+u", tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, ""},
+		{"cmd+⌫", tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModSuper}, ""},
+		{"⌥⌫", tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}, "read the config "},
+		{"ctrl+⌫", tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModCtrl}, "read the config "},
+	} {
+		lab, open := openBox(t, draft)
+		open.other.words.end()
+		lab.pressMsg(tc.msg)
+		if got := open.other.words.String(); got != tc.want {
+			t.Fatalf("%s left %q in the answer box, want %q", tc.name, got, tc.want)
+		}
+		if lab.a.input.String() != "" {
+			t.Fatalf("%s deleted from the message box instead of the answer box", tc.name)
+		}
+	}
+
+	// `ctrl+k` is the other half of `ctrl+u`: from the caret to the end of the
+	// line, and nothing before it.
+	{
+		lab, open := openBox(t, draft)
+		open.other.words.cursor = 4
+		lab.pressMsg(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+		if got := open.other.words.String(); got != draft[:4] {
+			t.Fatalf("ctrl+k left %q in the answer box, want %q", got, draft[:4])
+		}
+		if lab.a.input.String() != "" {
+			t.Fatalf("ctrl+k deleted from the message box instead of the answer box")
+		}
+	}
+
+	// AND THE EDITED WORDS STILL TRAVEL AS THE ANSWER. Editing the row's own box
+	// has to leave the answer it carries intact — the whole reason the row is a
+	// box.
+	lab, open := openBox(t, draft)
+	open.other.words.end()
+	lab.pressMsg(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt})
+	lab.press(questionEnterKey)
+	// The words travel TRIMMED, as the row always sent them; what matters here is
+	// that the edit reached the answer and the pointer's carry survived it.
+	if len(lab.answer) != 1 || lab.answer[0].Change != "read the config" || lab.answer[0].Key != "1" {
+		t.Fatalf("enter after editing the answer box sent %+v", lab.answer)
+	}
 }
 
 // questionPressOf spells one key the way bubbletea hands it over, so a test
@@ -1700,5 +1845,84 @@ func TestEnterOnTheEnginesOwnPermissionDeniesTheCall(t *testing.T) {
 	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != ask.Options[safe].Key {
 		t.Fatalf("enter on `rm -rf *` answered %+v, not the refusal %q",
 			lab.answer, ask.Options[safe].Key)
+	}
+}
+
+// THE RE-RAISED LANDING DRAWS WHAT BECAME OF THE ANSWER (#1077): the subject's
+// own card already says the ask's reason, so an unchanged reason stays
+// suppressed beside it — but the answer's fate is a sentence the card cannot
+// have, and suppressing it drew the twelfth card byte-identical to the first.
+func TestAReRaisedLandingDrawsItsAnswerFate(t *testing.T) {
+	card := func() []entry {
+		return []entry{
+			{kind: entryTask, card: &taskCard{id: 7}},
+			{kind: entryDone, done: &taskDone{id: 7, status: session.TaskStatus{
+				Ask: session.TaskAsk{Reason: "nobody could check it"},
+			}}},
+		}
+	}
+
+	stamped := newQuestionLab(t)
+	stamped.a.entries = append(stamped.a.entries, card()...)
+	stamped.raise(session.Question{
+		ID: 7, Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 7, Name: "write the sheet"},
+		Head:    "write the sheet",
+		Reason:  "accepted 18:20 · nobody could check it",
+		Options: []session.AnswerOption{
+			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
+		},
+	})
+	if out := stamped.plain(); !strings.Contains(out, "accepted 18:20") {
+		t.Fatalf("the re-raised card does not say what became of the answer:\n%s", out)
+	}
+
+	unchanged := newQuestionLab(t)
+	unchanged.a.entries = append(unchanged.a.entries, card()...)
+	unchanged.raise(session.Question{
+		ID: 7, Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 7, Name: "write the sheet"},
+		Head:    "write the sheet",
+		Reason:  "nobody could check it",
+		Options: []session.AnswerOption{
+			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
+		},
+	})
+	if out := unchanged.plain(); strings.Contains(out, "nobody could check it") {
+		t.Fatalf("the unchanged reason is drawn beside the card that already says it:\n%s", out)
+	}
+}
+
+// A CARD WITH NO ASK REASON STILL SAYS WHO IS DECIDING (#1077's Opus review):
+// the done card draws the decider in its own chips, so the question repeating
+// the deciding clause alone beside it is a duplication, not news.
+func TestTheDecidingClauseAloneIsNotNews(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.entries = append(lab.a.entries,
+		entry{kind: entryTask, card: &taskCard{id: 9}},
+		entry{kind: entryDone, done: &taskDone{id: 9, status: session.TaskStatus{
+			Ask: session.TaskAsk{Owner: session.TaskAskOwnerModel},
+		}}},
+	)
+	lab.raise(session.Question{
+		ID: 9, Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: 9, Name: "write the sheet"},
+		Head:    "write the sheet",
+		Reason:  session.LandingDecidingWord,
+		Options: []session.AnswerOption{
+			{Key: "a", Label: "accept it"}, {Key: "n", Label: "not right", Safe: true},
+		},
+	})
+	if out := lab.plain(); strings.Contains(out, "codeaf is deciding") {
+		t.Fatalf("the deciding clause alone is drawn beside the card that already says it:\n%s", out)
+	}
+
+	// AND THE CARD IS THE PLACE THAT SAYS IT: a `your call` with no ask reason
+	// still draws who is deciding on its own row, so the suppression above
+	// hides a duplication, never the fact.
+	done := lab.a.entries[1].done
+	done.status.Tier = session.TaskTierYourCall
+	if row := lab.a.doneUnder(done, 140); !strings.Contains(row, "codeaf is deciding") {
+		t.Fatalf("the done card does not say who is deciding:\n%q", row)
 	}
 }

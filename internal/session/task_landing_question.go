@@ -33,6 +33,17 @@ package session
 // rather than stacking a second (internal/tui3's [app.raiseQuestion] matches on
 // the token); a node that settles takes it back.
 //
+// TWO MOVES ARE NOT NEW QUESTIONS. A move that is the ANSWER'S OWN WORK IN
+// FLIGHT — the accept whose merge is still deciding, the re-audit still
+// spending its window — raises nothing and withdraws nothing: the notice
+// carries [TaskNotice.Settling], and asking again within seconds with no new
+// fact is how one card got answered twelve times in an hour (#1077). And a
+// question somebody ANSWERED carries that answer's fate when it is raised
+// again — what was answered, when, and what became of it — so the re-asked
+// card never reads as though the last answer was ignored (question.go's
+// [Agent.landingQuestion] consults the decision record, the raise owing the
+// record what the replay already owed it).
+//
 // IT RIDES [Agent.emitTaskUpdate] BECAUSE THAT IS THE ONE DOOR EVERY MOVE GOES
 // THROUGH. A second list of which landings have been asked about would be a
 // second source of truth for a fact the graph already holds, which is the defect
@@ -41,6 +52,7 @@ package session
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -89,16 +101,50 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 		a.retireLandingQuestion(notice, standing)
 		return
 	}
+	// THE ANSWER'S OWN WORK IN FLIGHT IS NOT A NEW QUESTION: a notice naming a
+	// resolution in flight raises nothing and withdraws nothing, leaving the
+	// standing map at the last DRAWN shape, which is exactly what a later
+	// shape-change withdrawal must take back. The settle's own terminal notice
+	// is not blanketed by this: resettle hands the claim back inside its
+	// locked write, before the notice is built (task_run.go's
+	// [TaskGraph.resettle]).
+	//
+	// A DECIDER CHANGE IS STILL A NEW FACT, and it survives the flight. `let
+	// codeaf decide this one` or `take it back` pressed while a re-audit runs
+	// changes who holds the decision — the ask's own shape — and a card drawing
+	// `codeaf is deciding` for the five minutes of the flight, after the person
+	// took it back, contradicts the person's own act. So a flight holds down
+	// only the moves that are the loop (#1077's re-raises with no new fact) —
+	// spend, heartbeat, done-phase — and lets a changed holder through to the
+	// redraw below, which carries the flight's own stamp (`accepted 18:20 ·
+	// still working on it`) so the person reads what they answered AND that it
+	// is still running.
+	if strings.TrimSpace(notice.Settling) != "" && !a.landingDeciderChanged(notice) {
+		return
+	}
+	// AND THE TAKE-DOWN COMES BEFORE EVERY MINT, because the raise's own law
+	// is that a node that moves while it is there raises it again WITH THE
+	// NEW SHAPE — and the bank holds the old one, [Agent.said] returning
+	// banked words untouched. Left standing, the bank would re-emit the old
+	// card verbatim: a flight stamp whose flight has ended, the old holder's
+	// policy after the decision was handed back, the ask reason from before
+	// the re-check — the stale-card class #1077 is about. The take-down is
+	// the answer's own claim ([Agent.claimQuestion]), so the words minted
+	// below always carry the notice's own shape and whatever the record says
+	// became of the last answer. Nothing is lost by it: a landing's words
+	// are derived from the notice and the record, never typed by an asker,
+	// so a fresh mint is never the poorer card.
+	if standing != "" {
+		_, _ = a.claimQuestion(standing, strconv.FormatUint(notice.ID, 10), false)
+	}
 	q := a.landingQuestion(PendingDecision{Notice: notice})
 	// AND A LANDING THAT CHANGED SHAPE TAKES THE OLD SHAPE BACK FIRST. The two
 	// lanes are two tokens — `landing:7` and `conflict:7` — so a node that lands
 	// unchecked and is then refused a merge would otherwise leave the first
 	// question standing beside the second, which is two accounts of one node.
+	// The old shape's words are already off the book (the take-down above),
+	// so what is left to withdraw is the drawn card.
 	if standing != "" && standing != q.Kind {
-		token := strconv.FormatUint(notice.ID, 10)
-		a.mu.Lock()
-		delete(a.questionWords, questionToken(standing, token))
-		a.mu.Unlock()
 		stale := q
 		stale.Kind = standing
 		stale.Withdrawn = &Withdrawal{
@@ -107,6 +153,37 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 			At:     time.Now(),
 		}
 		a.emitQuestion(EventQuestionWithdrawn, stale, nil)
+	}
+	// AND THE CARD NOBODY IS AT MUST NOT STOP THE RUN. --yolo says a surface
+	// exists ([Config.AskConsent], true for every interactive chat) and that
+	// nobody is sitting at it ([Config.Unattended]), so a check-road landing that
+	// raised `▸a accept · n not right · s tell it` and parked would wait on a key
+	// nobody will press. The check road's card carries a default — accept — so an
+	// unattended run TAKES it, through the one door every answer goes through,
+	// which records the dial as who answered and settles the node the way an
+	// accepted landing settles. Nothing is raised, so the standing map is left
+	// empty.
+	//
+	// A HEADLESS RUN IS NOT THIS ROAD. `--once` has no surface to draw the card,
+	// so its landing is not a hang on a key — its unverified node is the reading
+	// law's own (a dependent waits for a person there is none of) and taking the
+	// default would erase it. So the gate is the closed fact that a card exists at
+	// all: the surface (AskConsent) AND the nobody-watching posture (Unattended).
+	//
+	// THE POLICY IS NOT THE PLACE FOR THIS. [landingPolicy] is what a person
+	// WATCHING sees — [PolicyAsk] for a landing that is theirs, [PolicyDecide]
+	// where a settle policy handed it over — and it is read to draw the card and
+	// for nothing else; it has no default to take. This is what nobody-watching
+	// DOES, and the two are different questions.
+	//
+	// AND A CONFLICT, A SHIFT OR A GROUND THAT MOVED IS NOT THIS ROAD. Its ask is
+	// [TaskAskConflict] and not [TaskAskCheck], and two versions of somebody's
+	// own file is the person's however unattended the run is (task-states law) —
+	// it parks as it always did.
+	if a.landingTakesItsDefault(notice) {
+		a.landingAsking(notice.ID, "")
+		a.takeLandingDefault(q)
+		return
 	}
 	a.landingAsking(notice.ID, q.Kind)
 	// Raised through the one door (question.go's [Agent.raiseQuestion]) and the
@@ -150,8 +227,137 @@ func (a *Agent) retireLandingQuestion(notice TaskNotice, standing QuestionKind) 
 	a.emitQuestion(EventQuestionWithdrawn, gone, nil)
 }
 
+// landingTakesItsDefault reports that an unattended run must not wait on this
+// landing's card: a surface exists to draw it ([Config.AskConsent]), the run was
+// left alone ([Config.Unattended]), and the ask is the CHECK ROAD's, whose card
+// carries a default (accept). A headless run misses the first fact and is left
+// to the reading law; a conflict, a shift, a ground that moved, or a check that
+// did not pass misses the last, and each stays the person's (task-states law).
+func (a *Agent) landingTakesItsDefault(notice TaskNotice) bool {
+	if !a.config.Unattended || !a.config.AskConsent {
+		return false
+	}
+	return ProjectTask(notice.StatusFacts()).Ask.Kind == TaskAskCheck
+}
+
+// takeLandingDefault answers a check-road landing with the key its card would
+// have offered first, and records the dial as who answered. It goes through
+// [Agent.ResolveQuestion] — the one door every answer goes through — so the
+// record, the settle and the answered event are exactly the ones an accept
+// always produces, and there is no second place that knows what `accept` does.
+func (a *Agent) takeLandingDefault(q Question) {
+	// The asker's own pick is the accept key — the key the card draws first — so
+	// [defaultAnswer] reads it and marks the answer [DecidedByDial] rather than a
+	// person. The landing's own kind is what the answer must carry, or the door
+	// would hand it to the model's lane instead of this one.
+	pick := Pick{Key: LandingYesKey}
+	q.Pick = &pick
+	answer := defaultAnswer(q, "")
+	answer.Kind = q.Kind
+	_ = a.ResolveQuestion(answer)
+}
+
+// landingDeciderChanged says the ask's own HOLDER moved while a resolution is
+// in flight over this node — the decision handed to codeaf, or taken back
+// ([TaskAsk.Owner], the one holder task-states keeps, dressed as the
+// question's Policy by [landingPolicy]). It is the one change a flight must
+// not hold down: every other fact the offer draws (effort, retarget) is
+// redrawn by the flight's own terminal notice, but a card saying `codeaf is
+// deciding` after the person took it back contradicts the person's own act
+// for as long as the flight runs.
+//
+// THE COMPARISON IS THE BANKED QUESTION'S OWN POLICY, read through
+// [Agent.questionSaid] — no second holder is minted here — against the holder
+// the notice carries. A flight whose holder did not move answers false, and
+// the flight goes on holding the question down.
+func (a *Agent) landingDeciderChanged(notice TaskNotice) bool {
+	kind := a.landingAsked(notice.ID)
+	if kind == "" {
+		return false
+	}
+	q, said := a.questionSaid(kind, strconv.FormatUint(notice.ID, 10))
+	if !said {
+		return false
+	}
+	status := ProjectTask(notice.StatusFacts())
+	return q.Policy != landingPolicy(status.Ask.Owner)
+}
+
 // landingQuestionToken is the string one landing question is known by, for a
 // caller holding the id and the shape rather than the object.
 func landingQuestionToken(kind QuestionKind, id uint64) string {
 	return questionToken(kind, strconv.FormatUint(id, 10))
+}
+
+// landingAnsweredStamp is how a re-raised landing says what became of the last
+// answer: the lane's own word for the key that was pressed, and the minute it
+// landed. `accepted 18:20` under `nobody could check it` is one card carrying
+// both halves — the half the twelve identical cards in #1077 never said.
+func landingAnsweredStamp(record DecisionRecord) string {
+	word := landingAnsweredWord(record)
+	// A STAMP FROM ANOTHER DAY SAYS ITS DAY. `accepted 18:20` on a card drawn
+	// the next morning reads as an hour ago, and the stamp is the one place
+	// the card says when — so the day leads when the day is not this one. The
+	// day is judged in THIS machine's local zone, the zone the person reading
+	// the card is in: a record written under another offset keeps its words
+	// from drifting across midnight.
+	at := record.At.Local()
+	when := at.Format("15:04")
+	if at.Format("2006-01-02") != time.Now().Format("2006-01-02") {
+		when = at.Format("Jan 2 15:04")
+	}
+	stamp := word + " " + when
+	return landingAnsweredBy(record, stamp)
+}
+
+// landingAnsweredWord is the lane's own word for the key that was pressed.
+//
+// THE MAP IS THE LANE'S VOCABULARY AND NOTHING ELSE: the keys answers.go fixes
+// for a landing, each in the words the receipt lines beside it already use
+// (task_audit.go's acceptedLine and family), and a custom ask's own label as
+// the fallback.
+func landingAnsweredWord(record DecisionRecord) string {
+	for _, key := range record.Picked {
+		switch key {
+		case LandingYesKey:
+			if record.Kind == QuestionConflict {
+				return "said resolve it"
+			}
+			return "accepted"
+		case LandingNoKey:
+			return "said not right"
+		case LandingAgainKey:
+			return "asked for a re-check"
+		case LandingDecideKey:
+			return "handed it to codeaf"
+		case LandingTakeBackKey:
+			return "took it back"
+		}
+	}
+	if len(record.Labels) > 0 && strings.TrimSpace(record.Labels[0]) != "" {
+		return "answered " + strings.TrimSpace(record.Labels[0])
+	}
+	return "answered"
+}
+
+// landingAnsweredBy says who answered, in the words a person reads — only
+// when it was not this person. The record's own value is machinery vocabulary
+// (answers.go's [DecidedBy]), and `window accepted 18:20` is a card a person
+// reads; the lane's receipts already say these in plain words (`another
+// window`, `the dial`), so the stamp says them the same way.
+func landingAnsweredBy(record DecisionRecord, stamp string) string {
+	switch record.By {
+	case "", DecidedByPerson:
+		return stamp
+	case DecidedByWindow:
+		return "another window " + stamp
+	case DecidedByDial:
+		return "the dial " + stamp
+	case DecidedByRecord:
+		return "an earlier decision " + stamp
+	case DecidedByAsker:
+		return "the asker " + stamp
+	default:
+		return string(record.By) + " " + stamp
+	}
 }

@@ -213,7 +213,8 @@ stdout, always parseable, printed even when the run failed**:
   "steps": 3,
   "run": "0123456789abcdef",
   "calls": 47,
-  "rounds": 2
+  "rounds": 2,
+  "redispatches": 1
 }
 ```
 
@@ -227,11 +228,13 @@ stdout, always parseable, printed even when the run failed**:
 | `spend_usd` | what it cost, whole, in dollars |
 | `tokens` | `{"in": …, "out": …}` |
 | `seconds` | wall clock |
+| `core_done_seconds` | when the requested work was first found done, in seconds from the start; absent when the gate never said so |
 | `model` | the model the work ran on |
 | `steps` | how many pieces of work ran — `do`'s nodes, `exec`'s turns. A saved program does not measure it: the key is still there, holding `0`, and that `0` is a measurement nobody took rather than a count of none |
 | `run` | this invocation's id. It names the folder `--debug` writes into, and every row this run wrote into `~/.codeaf/logs/calls.jsonl` carries it too — so `codeaf logs --run <that id>` is how you get from this object to the calls behind it. Empty on a verb that opened no run of its own |
 | `calls` | how many model calls the run made, counted whether or not the call log is switched on. It is the figure you would otherwise count by hand in `calls.jsonl` |
 | `rounds` | how many times the run went back for **more work** after looking at what it had. One is the ordinary shape; eight is a run that kept finding more to do, and it is the number that explains a bill nothing else here accounts for. `exec` does not plan and a saved program does not grow, so both hold `0` — a measurement nobody took, the way `steps` does |
+| `redispatches` | how many times one of the run's nodes was sent round again **in place** after running out of the room it was granted — back on the queue to carry on from what it had already banked, rather than grown around. Present only when it happened: a run that never re-dispatched a node carries no key at all, and neither does a verb with no plan nodes |
 
 **Within a release a field is never removed and never changes meaning; new fields may
 appear.** `stop` is the field to read for *why*; the exit code only says how much is wrong.
@@ -550,6 +553,75 @@ machine would run work on. **On a machine with no evidence the whole answer is o
 ```
 No competence evidence yet.
 ```
+
+## The Model Pool — what this machine reads from it, with codeaf pool
+
+codeaf picks its models against the public Model Pool: a signed index of
+measured models that your runs improve. Nothing about your code ever leaves
+the machine — what is shared is a measurement of the run, not the work. One
+setting answers for all of it, `model_pool` in `/settings`, with three
+values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
+does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
+from the shell, and on a CI machine with neither set codeaf reads but does
+not send.
+
+```
+codeaf pool [show|status|verify] [--json] [--key key]
+```
+
+`show` — also what bare `codeaf pool` prints — is the reading form: the mode
+and the addresses in force with the word saying where each came from
+(`default`, `setting`, `env` or `ci`), then what index is cached, how old
+it is and how many cells it holds, or `no index cached yet · built-in
+seed of <date>`. The binary carries a seed index of our own scored runs,
+read until a fresher signed one is cached. `--cells` lists the held
+index's cells, one per line — the role, the model, the dims the cell
+spells, the measurement and the installs behind it — and `--json
+--cells` carries them as an array. Your install also keeps
+the scores its judge gave in `own.json`
+under the pool directory — `show` and `status` say what that sheet holds — and
+the crew reads them beside the index. `status` adds what is waiting to be sent
+and whether the mode allows sending and reading. `codeaf pool status` also
+says whether the relay answered, and whether the mirror did, and what the
+last judge did — which model, which seats it scored, or why it failed. `--json` prints
+the same answer as one object; `show` reads nothing off the network.
+
+**The scores start here.** In a conversation, after a task lands, a model
+outside the crew is asked to score each seat the work ran on — the worker that
+carried it, and the seat that checked it when there was one. The scores stay
+in your install's own sheet (`own.json`) and feed the very next crew pick;
+nothing else reads them. With `model_pool` set to `on` the same scores also
+wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
+measurements; `read` keeps them local, and `off` asks no judge at all and
+writes nothing. The call itself is billed to the `judge` seat, so it shows up
+in the spend pages beside the crew seats rather than inside a task's own
+cost.
+
+With `model_pool` on, the rows leave for the relay after each judged run and
+once more at start-up, under this install's own nonce and nothing else. The
+index is fetched once a day, checked against the key built into the binary —
+or the key in `models.pool.public_key` when one is set — and a changed
+document is read at the next start.
+
+`verify` fetches a fresh index and checks its detached ed25519 signature,
+then prints the version whose signature checked out:
+
+```
+signature good: version 7, generated 2026-09-10, 3 metrics
+```
+
+It wants a public key: `--key <base64 ed25519 public key>`, repeatable, or
+one built into the build. The build carries the index signer's key, so
+`verify` works as it stands; `--key` checks under that key alone — the
+build's key is not consulted beside it, so a document signed under any
+other key does not verify. A fetch or a signature that fails is exit 1; a
+`verify` on a machine whose setting is `off`, or whose
+`models.pool.public_key` does not decode, is refused with exit 2 and
+fetches nothing.
+
+A private relay is a copy of `relay/` deployed to your own account with your
+own keypair, and `CODEAF_MODEL_POOL_RELAY_URL` with `models.pool.public_key`
+(or `CODEAF_MODEL_POOL_PUBLIC_KEY`) point an install at it.
 
 ## What is still running in the background — codeaf services, and stopping one
 

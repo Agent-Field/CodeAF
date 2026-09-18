@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/resident"
@@ -51,6 +52,36 @@ func TestPlanProgressPosterSurvivesAZeroConstruction(t *testing.T) {
 	}
 }
 
+// TestTheFaultLogStaysUnderTheProfileTheTestChose is the incident, held down.
+// reportFault appends the fault to config.ProfilePath(config.ProfileDir(),
+// "chat.log"), and the harness that runs this suite exports CODEAF_PROFILE_DIR
+// at a live profile — so a test that moved HOME and CODEAF_HOME but not the
+// profile wrote its fixture into somebody's real chat.log, where it was read as
+// a genuine crash.
+//
+// The assertion is on WHERE the file landed and never on a byte of its text, and
+// it reads only directories this test owns. Every variable that decides where
+// the write goes is named here, so no inherited CODEAF_PROFILE_DIR can reach it.
+func TestTheFaultLogStaysUnderTheProfileTheTestChose(t *testing.T) {
+	login := t.TempDir()
+	profile := filepath.Join(t.TempDir(), "profile")
+	t.Setenv("HOME", login)
+	t.Setenv(home.EnvVar, filepath.Join(login, ".codeaf"))
+	// The profile the test chose, so the log can only land in a directory it
+	// owns — never the live one an inherited CODEAF_PROFILE_DIR would name.
+	t.Setenv(config.ProfileDirEnv, profile)
+
+	reportFault(&bytes.Buffer{}, "runtime error: slice bounds out of range [:-1]",
+		[]byte("goroutine 1 [running]:\nmain.runDo(...)\n"))
+
+	if _, err := os.Stat(filepath.Join(profile, "chat.log")); err != nil {
+		t.Fatalf("the fault log is not under the profile the test chose: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(login, ".codeaf", "chat.log")); !os.IsNotExist(err) {
+		t.Fatalf("the fault log also landed under the state root: %v", err)
+	}
+}
+
 // TestReportFaultSaysOneCalmThingAndLogsTheStack holds the promise the user
 // reads when nothing else worked.
 func TestReportFaultSaysOneCalmThingAndLogsTheStack(t *testing.T) {
@@ -61,6 +92,12 @@ func TestReportFaultSaysOneCalmThingAndLogsTheStack(t *testing.T) {
 	// moving HOME alone is reading whatever the environment happened to say —
 	// which is a pass or a failure depending on whose machine it runs on.
 	t.Setenv(home.EnvVar, filepath.Join(login, ".codeaf"))
+	// AND WHERE THE PROFILE'S LOG IS, for the same reason and by the same road:
+	// reportFault appends through config.ProfilePath(config.ProfileDir(),
+	// "chat.log"), and an exported CODEAF_PROFILE_DIR — which the harness that
+	// runs this suite sets at a live profile — wins over both roots above and
+	// would send the fixture into somebody's real chat.log.
+	t.Setenv(config.ProfileDirEnv, "")
 
 	stderr := &bytes.Buffer{}
 	code := reportFault(stderr, "runtime error: slice bounds out of range [:-1]",

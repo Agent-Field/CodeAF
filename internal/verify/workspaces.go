@@ -30,7 +30,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -218,9 +217,9 @@ func expandMemberPattern(root, glob string) []string {
 // only place it can come from, and a dependency on a parser for the whole
 // grammar buys nothing this reader would use.
 var (
-	cargoTableHeader   = regexp.MustCompile(`^\[([^\]]+)\]`)
-	cargoMembersKey    = regexp.MustCompile(`^members[[:space:]]*=`)
-	quotedListElements = regexp.MustCompile(`"([^"]*)"`)
+	cargoTableHeader   = lazyRegexp(`^\[([^\]]+)\]`)
+	cargoMembersKey    = lazyRegexp(`^members[[:space:]]*=`)
+	quotedListElements = lazyRegexp(`"([^"]*)"`)
 )
 
 func cargoWorkspaceMembers(root string) []string {
@@ -232,17 +231,17 @@ func cargoWorkspaceMembers(root string) []string {
 	table, collecting := "", false
 	for _, line := range strings.Split(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if header := cargoTableHeader.FindStringSubmatch(trimmed); header != nil {
+		if header := cargoTableHeader().FindStringSubmatch(trimmed); header != nil {
 			table, collecting = strings.TrimSpace(header[1]), false
 			continue
 		}
-		if table == "workspace" && cargoMembersKey.MatchString(trimmed) {
+		if table == "workspace" && cargoMembersKey().MatchString(trimmed) {
 			collecting = true
 		}
 		if !collecting {
 			continue
 		}
-		for _, match := range quotedListElements.FindAllStringSubmatch(trimmed, -1) {
+		for _, match := range quotedListElements().FindAllStringSubmatch(trimmed, -1) {
 			globs = append(globs, match[1])
 		}
 		if strings.Contains(trimmed, "]") {

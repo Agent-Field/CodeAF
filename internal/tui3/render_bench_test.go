@@ -42,7 +42,7 @@ func benchTranscript(a *app, turns int) {
 
 func benchApp(turns int) *app {
 	agent := &fakeAgent{model: "bench/model"}
-	a := newApp(nil, Options{Agent: agent, Workspace: "/tmp/lab"})
+	a := newApp(nil, Options{Agent: agent, Workspace: "/tmp/lab", ProfileDir: mintProfileDir()})
 	a.width, a.height = 100, 40
 	a.tmux = false
 	a.entries = nil

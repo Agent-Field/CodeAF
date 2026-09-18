@@ -585,6 +585,85 @@ func TestAnExplicitBackgroundJobDoesNotHoldATaskOpen(t *testing.T) {
 	}
 }
 
+// ── the park's own bound ────────────────────────────────────────────────────
+
+// THE WEDGE, PINNED, WITH ITS TWO HALVES. A promoted command that never ends must
+// not hold the turn for the node's whole allowance: the park has a bound of its
+// own, and when that bound trips the turn comes back to the model with a record
+// of the wait — and the command is left RUNNING, because the bound ends the WAIT
+// and never the WORK.
+//
+// The command here is held open by the test and never released on its own, so the
+// only ending it can have is the one the test gives it at the very end. The bound
+// is the park's own share of the allowance, and the clock is the run's own seam:
+// advancing it is what trips the bound, so nothing below races a clock it can own
+// and no machine load stands in for causality.
+func TestAParkedWorkerIsHandedBackWithARecordBeforeItsWholeAllowance(t *testing.T) {
+	clock := newFakeClock()
+	record := &askLog{}
+	long := holdACommand(t, "the long one", "never")
+	completer := &scriptedCompleter{steps: []step{
+		bashStep(record, "the-long-one", long.text),
+		sayStep(record, "the command is still running; here is where I got to"),
+	}}
+	here := jobNest(t, completer)
+	here.node.taskNow = clock.now
+	here.node.taskTimer = clock.timer
+
+	const allowance = 90 * time.Second
+	bound := allowance / jobParkBoundShare
+	done, stopped := runParent(t, here, taskLimits{maxSteps: 200, noProgress: 6, deadline: allowance})
+
+	promoted := waitPromoted(t, here.node)
+	waitParkedOnItsCommand(t, here.node, completer, theCallAlone)
+	// The call that started the command is the only ask so far: the worker is
+	// parked on the command it made, not being asked anything about it.
+	if got := completer.requests(); got != theCallAlone {
+		t.Fatalf("the worker was asked %d times before its bound, want just the call (%d)", got, theCallAlone)
+	}
+
+	// THE BOUND TRIPS WELL BEFORE THE WHOLE ALLOWANCE, and the turn comes back.
+	clock.advance(bound)
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the worker never came back from its parked command: the park outlived its own bound")
+	}
+
+	// AND THE RECORD IS IN FRONT OF THE MODEL, in the bound's own voice.
+	if got := completer.requests(); got != 2 {
+		t.Fatalf("the worker was asked %d times after its park tripped, want the call and the turn that reads the record", got)
+	}
+	read := userTextIn(completer.request(1))
+	if !strings.Contains(read, jobParkBoundReason) {
+		t.Fatalf("the turn after the park trips reads %q, want the bound's own reason %q", read, jobParkBoundReason)
+	}
+	if !strings.Contains(read, "job 1") {
+		t.Fatalf("the record does not name the command it is about: %q", read)
+	}
+	// AND IT IS NOT A STOP. A bound that ended the run would be the silent cut
+	// this replaces; the turn is handed back, said out loud.
+	if *stopped != "" {
+		t.Fatalf("the worker was stopped with %q, want a bound that hands the turn back rather than ending it", *stopped)
+	}
+	// AND THE COMMAND IS NOT CUT. The bound ended the wait and not the command:
+	// it is still running, still owed, and will end on its own — so its own ending
+	// still has somewhere to arrive.
+	one := here.node.jobs.find(promoted.id)
+	if one == nil || !one.running() {
+		t.Fatal("the park's bound cut a command that was still running; want the command left alone")
+	}
+	if !one.stillOwed() {
+		t.Fatal("the park's bound cleared the command's debt, so its ending would never reach the model")
+	}
+	// Released by the test, the command runs to its own end. That the live work
+	// outlives the bound is the half of this law that a bound which killed the
+	// command would fail.
+	long.release(t)
+	waitSettled(t, here.node, promoted.id)
+}
+
 // ── what the wait costs ─────────────────────────────────────────────────────
 
 // THE WAIT SPENDS NOTHING, and that is the half of this the field bill was

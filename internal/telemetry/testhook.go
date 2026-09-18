@@ -39,3 +39,14 @@ func ResetCountersForTest(t testing.TB) {
 	resetCountersForTest()
 	t.Cleanup(resetCountersForTest)
 }
+
+// VersionForTest makes every event built during one test carry version, and
+// restores the build's own answer when the test ends. Test-only for the same
+// reason EnableForTest is: a test binary has no stamped version, and the send
+// path drops what cannot name one.
+func VersionForTest(t testing.TB, version string) {
+	t.Helper()
+	previous := forcedVersion
+	forcedVersion = version
+	t.Cleanup(func() { forcedVersion = previous })
+}

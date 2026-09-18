@@ -33,6 +33,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Focus is what this job is about, as paths: what the person's request named,
@@ -243,7 +244,7 @@ const locateLimit = 4
 // characters is dropped: `Log` and `App` and `Row` are names half a repository
 // answers to, and a focus that resolves to half a repository is no focus.
 func locateKey(name string) string {
-	key := separators.ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "")
+	key := separators().ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "")
 	// Three, because a module named for one segment of a compound the request
 	// also spells is a real name — textual's `Log` beside its `RichLog` — and
 	// two is where a name stops being one. See standaloneSegments, which is the
@@ -256,7 +257,7 @@ func locateKey(name string) string {
 
 // separators are the word marks a name is spelled with in one convention and
 // without in another: rich_log, rich-log, RichLog.
-var separators = regexp.MustCompile(`[^a-z0-9]+`)
+var separators = lazyRegexp(`[^a-z0-9]+`)
 
 // namedPath matches a token that reads as a path: a stem, a dot, and a
 // two-to-eight character alphanumeric extension opening with a letter. The
@@ -270,14 +271,14 @@ var separators = regexp.MustCompile(`[^a-z0-9]+`)
 // which decides where a reading is taken, and which files a request named, which
 // the delivery record settles against the disk. revision.NamedFiles reads this
 // one rather than keeping a second copy of it.
-var namedPath = regexp.MustCompile(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
+var namedPath = lazyRegexp(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
 
 // NamedPaths lists, in order and without repeats, the paths a piece of text
 // names.
 func NamedPaths(text string) []string {
 	var names []string
 	seen := map[string]bool{}
-	for _, match := range namedPath.FindAllString(text, -1) {
+	for _, match := range namedPath().FindAllString(text, -1) {
 		clean := strings.Trim(strings.TrimSpace(match), "/")
 		clean = strings.TrimPrefix(clean, "./")
 		if clean == "" || seen[strings.ToLower(clean)] {
@@ -303,14 +304,14 @@ func NamedPaths(text string) []string {
 // looking for names wanted CamelCase or snake_case, and `subharness` is neither.
 // So the focus came out empty, the ladder had one whole rung, and the run
 // photographed 4,587 tests nine times over a request about seventeen files.
-var namedDirectory = regexp.MustCompile(`(?:\./)?\w[\w\-.]*(?:/[\w\-.]+)+/?`)
+var namedDirectory = lazyRegexp(`(?:\./)?\w[\w\-.]*(?:/[\w\-.]+)+/?`)
 
 // namedDirectories lists, in order and without repeats, the places a piece of
 // text spells. They are candidates and never answers — see [Locate].
 func namedDirectories(text string) []string {
 	var places []string
 	seen := map[string]bool{}
-	for _, match := range namedDirectory.FindAllString(text, -1) {
+	for _, match := range namedDirectory().FindAllString(text, -1) {
 		clean := strings.Trim(strings.TrimPrefix(strings.TrimSpace(match), "./"), "/")
 		if clean == "" || filepath.Ext(clean) != "" || seen[strings.ToLower(clean)] {
 			continue
@@ -327,10 +328,12 @@ func namedDirectories(text string) []string {
 // a word a person could have used by accident is one segment — and both are only
 // ever resolved by whole-name equality against a file the workspace holds, so a
 // spelling that names nothing costs nothing.
-var subjectSpellings = []*regexp.Regexp{
-	regexp.MustCompile(`\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b`),
-	regexp.MustCompile(`\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`),
-}
+var subjectSpellings = sync.OnceValue(func() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b`),
+		regexp.MustCompile(`\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`),
+	}
+})
 
 // namedSubjectLimit bounds how many subjects one request contributes. A request
 // naming more than this many distinct things is not describing a change, and the
@@ -372,7 +375,7 @@ func NamedSubjects(text string) []string {
 			return named
 		}
 	}
-	for _, spelling := range subjectSpellings {
+	for _, spelling := range subjectSpellings() {
 		for _, match := range spelling.FindAllString(text, -1) {
 			key := strings.ToLower(match)
 			if seen[key] || locateKey(match) == "" {
@@ -399,7 +402,7 @@ func NamedSubjects(text string) []string {
 
 // segmentSpelling is one segment of a CamelCase name: a capital and the small
 // letters and digits after it.
-var segmentSpelling = regexp.MustCompile(`[A-Z][a-z0-9]*`)
+var segmentSpelling = lazyRegexp(`[A-Z][a-z0-9]*`)
 
 // standaloneSegments are the segments of a compound name that the SAME TEXT also
 // uses on their own.
@@ -424,7 +427,7 @@ var segmentSpelling = regexp.MustCompile(`[A-Z][a-z0-9]*`)
 // a name — it is an initial, an article or a unit, and there is no repository
 // where matching it whole means anything.
 func standaloneSegments(text, compound string) []string {
-	parts := segmentSpelling.FindAllString(compound, -1)
+	parts := segmentSpelling().FindAllString(compound, -1)
 	if len(parts) < 2 {
 		return nil
 	}
@@ -826,7 +829,7 @@ func (c change) importedBy(file, body string) bool {
 	dir := pathDir(file)
 	for _, line := range strings.Split(body, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if !importLine.MatchString(trimmed) {
+		if !importLine().MatchString(trimmed) {
 			continue
 		}
 		for identifier := range c.identifiers {
@@ -837,7 +840,7 @@ func (c change) importedBy(file, body string) bool {
 		// A relative specifier is a path, and it resolves against the file that
 		// wrote it. `import { Element } from '../src/nodes/Element'` in
 		// test/nodes/X.test.ts is that file and nothing else.
-		for _, specifier := range relativeSpecifier.FindAllStringSubmatch(trimmed, -1) {
+		for _, specifier := range relativeSpecifier().FindAllStringSubmatch(trimmed, -1) {
 			if c.resolves(dir, specifier[1]) {
 				return true
 			}
@@ -865,14 +868,14 @@ func (c change) resolves(dir, specifier string) bool {
 var (
 	// An import statement, in the two grammars this program meets. It is the
 	// line's own shape and not a search for a word.
-	importLine = regexp.MustCompile(
+	importLine = lazyRegexp(
 		`^(?:from[[:space:]]|import[[:space:]]|import\{|const[[:space:]].*=[[:space:]]*require\(|.*[[:space:]]require\()` +
 			`|^import[[:space:]]*[{*'"]` + "|^export[[:space:]].*[[:space:]]from[[:space:]]")
 	// A relative specifier inside one, in either quote.
-	relativeSpecifier = regexp.MustCompile(`['"](\.[^'"]*)['"]`)
+	relativeSpecifier = lazyRegexp(`['"](\.[^'"]*)['"]`)
 	// A leading underscore is Python's mark for a private module, and it is not
 	// part of the name the check for it is written under.
-	privateMark = regexp.MustCompile(`^_+`)
+	privateMark = lazyRegexp(`^_+`)
 )
 
 // namesIdentifier says this line names this identifier AS AN IDENTIFIER: not as
@@ -961,7 +964,7 @@ func focusShape(root string, focus Focus) change {
 		}
 		shape.files[strings.TrimSuffix(clean, filepath.Ext(clean))] = true
 		shape.stems[strings.ToLower(stem)] = true
-		public := privateMark.ReplaceAllString(stem, "")
+		public := privateMark().ReplaceAllString(stem, "")
 		if len(public) >= 2 {
 			shape.stems[strings.ToLower(public)] = true
 		}
@@ -985,7 +988,7 @@ var commonStems = map[string]bool{
 // name comes from one of its modules: `from textual.widgets._rich_log import
 // RichLog`, `from ._rich_log import RichLog`, `export { Element } from
 // './nodes/Element'`.
-var reExport = regexp.MustCompile(
+var reExport = lazyRegexp(
 	`(?m)^[[:space:]]*(?:from[[:space:]]+([\w.]+)[[:space:]]+import[[:space:]]+(.+)$` +
 		`|export[[:space:]]*\{([^}]*)\}[[:space:]]*from[[:space:]]*['"]([^'"]+)['"])`)
 
@@ -1007,7 +1010,7 @@ func reExportedNames(root, dir, module string) map[string]bool {
 		if !ok {
 			continue
 		}
-		for _, match := range reExport.FindAllStringSubmatch(body, -1) {
+		for _, match := range reExport().FindAllStringSubmatch(body, -1) {
 			source, exported := match[1], match[2]
 			if source == "" {
 				source, exported = match[4], match[3]

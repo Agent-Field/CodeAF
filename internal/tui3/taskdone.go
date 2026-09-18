@@ -608,6 +608,17 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 		if reason := strings.TrimSpace(card.status.Ask.Reason); reason != "" {
 			return a.pal.dim("  " + fit(reason, width-4))
 		}
+		// AND A `YOUR CALL` WITH NO REASON STILL SAYS WHO IS DECIDING. The
+		// holder is the one fact left, and it is the card's to say: the question
+		// above the box suppresses the same clause beside this card
+		// ([app.questionReasonIsNews]), so silence here would take the clause
+		// off the screen entirely — and `codeaf is deciding` is the fact a
+		// person most needs on a card they cannot answer (#1077's Opus review).
+		// The words are the engine's one constant
+		// ([session.LandingDecidingWord]); this surface writes none of its own.
+		if card.status.Ask.Owner == session.TaskAskOwnerModel {
+			return a.pal.dim("  " + fit(session.LandingDecidingWord, width-4))
+		}
 		return ""
 	}
 	// AND AN INCOMPLETE LANDING'S SECOND ROW IS WHY, dim, in the engine's own

@@ -53,6 +53,31 @@ func TestAProviderRefusalCarriesTheUpstreamAndItsOwnWords(t *testing.T) {
 	}
 }
 
+// A LANE TO AVOID IS A NAMED ENDPOINT THAT FAILED ON ITS OWN ACCOUNT. The
+// retry asks this question rather than reading the status itself.
+func TestOnlyANamedUpstreamsOwnFaultNamesALaneToAvoid(t *testing.T) {
+	fault := &APIError{Status: 502, Message: "upstream broke", Provider: "Alpha"}
+	if !fault.UpstreamFault() {
+		t.Error("a relayed 502 named no lane to avoid")
+	}
+	refused := &APIError{Status: 400, Message: "too long", Provider: "Alpha"}
+	if refused.UpstreamFault() {
+		t.Error("a relayed 400 was read as the endpoint's own fault")
+	}
+	paced := &APIError{Status: 429, Message: "slow down", Provider: "Alpha"}
+	if paced.UpstreamFault() {
+		t.Error("relayed pacing was read as the endpoint's own fault")
+	}
+	router := &APIError{Status: 502, Message: "bad gateway"}
+	if router.UpstreamFault() {
+		t.Error("a 502 that named nobody was blamed on an upstream")
+	}
+	var none *APIError
+	if none.UpstreamFault() {
+		t.Error("a nil refusal named a lane")
+	}
+}
+
 // AND THE TWO KINDS OF 4xx ARE TOLD APART BY SHAPE, NEVER BY A STATUS LIST.
 //
 // An upstream refused: another endpoint may serve, so the ladder goes on. The
@@ -238,6 +263,57 @@ func ledgerClient(t *testing.T, handler http.Handler) *Client {
 	client.velocity = newVelocityLedger()
 	client.pins = newEndpointPins()
 	return client
+}
+
+// ── THE CUSTOM CONNECTION'S 400 (#1089) ─────────────────────────────────────
+//
+// A plain OpenAI-compatible base — the custom connection: no endpoints sheet,
+// no catalog row, nothing router-shaped about it — that does not know the
+// `provider` field at all. A request carrying one is refused whole with a bare
+// 400, in OpenAI's own words, before any model was asked anything.
+//
+// What is owed here is the ONE widened retry (#433's): the identical request
+// with the object taken off, whose landing is the whole of the evidence. No
+// reading of the words decides this, so the words are read by nothing.
+func TestABare400AboutTheProviderFieldFromACustomBaseIsRetriedWithoutIt(t *testing.T) {
+	forgetLanes(t)
+	var carried []bool
+	base := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, carriedObject := decodedBody(t, request)["provider"]
+		carried = append(carried, carriedObject)
+		writer.Header().Set("Content-Type", "application/json")
+		if carriedObject {
+			writer.WriteHeader(http.StatusBadRequest)
+			_, _ = writer.Write([]byte(`{"error":{"message":"Unrecognized request argument supplied: provider","type":"invalid_request_error","code":400}}`))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"model":"` + plainModel + `","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`))
+	})
+	client, err := NewClient(Config{
+		APIKey:     "test-key",
+		BaseURL:    "https://home-lab.example/v1",
+		Model:      plainModel,
+		Routing:    StaticRouting(RoutingLatency),
+		HTTPClient: handlerClient(base),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.velocity = newVelocityLedger()
+	client.pins = newEndpointPins()
+	// The pin is why a `provider` object went out at all: on a base nobody has
+	// asked, the only preference on the wire is one a person put there.
+	pinned(t, LanePin{Lane: "Harbor"})
+
+	if _, err := client.CompleteWithMessages(talking(), userMessages("hello")); err != nil {
+		t.Fatalf("the custom base's 400 about the provider field was not retried without it: %v", err)
+	}
+	if len(carried) != 2 {
+		t.Fatalf("%d requests reached the custom base, want the refused one and the widened one: %v", len(carried), carried)
+	}
+	if !carried[0] || carried[1] {
+		t.Fatalf("the retry did not take the object off: carried = %v", carried)
+	}
 }
 
 // decodedBody reads one request's JSON body.

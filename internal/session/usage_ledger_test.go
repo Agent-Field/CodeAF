@@ -468,7 +468,7 @@ func TestAConversationLineSpellsNoEmptyIds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, absent := range []string{`"task"`, `"standing"`, `"workspace"`, `"role"`} {
+	for _, absent := range []string{`"task"`, `"standing"`, `"workspace"`, `"role", "seat"`} {
 		if strings.Contains(string(line), absent) {
 			t.Fatalf("an empty %s reached the file: %s", absent, line)
 		}

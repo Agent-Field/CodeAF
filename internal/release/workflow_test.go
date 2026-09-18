@@ -216,7 +216,10 @@ func TestPublishedPinExamplesGiveVersionToBash(t *testing.T) {
 	root := repositoryRoot(t)
 	paths := []string{
 		filepath.Join(root, ".github", "workflows", "release.yml"),
-		filepath.Join(root, "README.md"),
+		// The install reference, pin examples included, moved out of README.md
+		// into docs/GUIDE.md when the README became the launch page; the README
+		// now points at the releases page for pinning and carries no example.
+		filepath.Join(root, "docs", "GUIDE.md"),
 		filepath.Join(root, "docs", "rules", "promotion.md"),
 		filepath.Join(root, "internal", "manual", "chat", "running-from-the-terminal.md"),
 	}

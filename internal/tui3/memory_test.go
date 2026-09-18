@@ -165,7 +165,7 @@ func memoryPlaceApp(t *testing.T, rows []store.Memory) (*app, *panelMemoryStore)
 		agent.kept = append(agent.kept, session.MemoryLine{ID: row.ID, Title: row.Title, Text: row.Text})
 	}
 	memory := &panelMemoryStore{rows: rows, origins: map[string]memoryOrigin{}}
-	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab", Memory: memory})
+	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab", Memory: memory, ProfileDir: t.TempDir()})
 	return a, memory
 }
 

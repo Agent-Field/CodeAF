@@ -2,9 +2,12 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -197,6 +200,86 @@ const cachePricePayload = `{"data":[
   {"id":"router/model","name":"Router","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
    "pricing":{"prompt":"-1","completion":"-1"}}
 ]}`
+
+// WHAT A SEAT ASKS DECIDES WHICH SCORE IT NEEDS. The three indexes the
+// artificial_analysis block publishes describe different work — the agentic and
+// coding scores a long tool loop, the intelligence score a single reasoning
+// call — so all three travel on the row, and every shape the block can arrive
+// in costs only the score it broke. OpenWeights rides the same row: a
+// hugging_face_id is the published answer to whether the weights are public.
+const benchmarkPayload = `{"data":[
+  {"id":"bench/all","name":"All","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+   "benchmarks":{"artificial_analysis":{"intelligence_index":56,"coding_index":41,"agentic_index":33}},
+   "hugging_face_id":"deepseek-ai/DeepSeek-V3"},
+  {"id":"bench/coding-null","name":"CodingNull","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+   "benchmarks":{"artificial_analysis":{"intelligence_index":40,"coding_index":null,"agentic_index":"high"}},
+   "hugging_face_id":""},
+  {"id":"bench/no-benchmarks","name":"NoBenchmarks","architecture":{"input_modalities":["text"],"output_modalities":["text"]}}
+]}`
+
+func TestACarriesTheThreeArtificialAnalysisIndexesAndOpenWeights(t *testing.T) {
+	dir := t.TempDir()
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusOK, benchmarkPayload, nil),
+	})
+
+	all, ok := c.Model("bench/all")
+	if !ok {
+		t.Fatal("bench/all is missing from the catalog")
+	}
+	if all.IntelligenceIndex != 56 || all.CodingIndex != 41 || all.AgenticIndex != 33 {
+		t.Fatalf("bench/all indexes = %v/%v/%v, want 56/41/33", all.IntelligenceIndex, all.CodingIndex, all.AgenticIndex)
+	}
+	if !all.OpenWeights {
+		t.Fatal("a row with a hugging_face_id read as closed-weights")
+	}
+
+	// Zero keeps meaning nobody published a score: a null and a non-number are
+	// absence, exactly like the missing block beside them, and an empty
+	// hugging_face_id is not a published one.
+	partial, _ := c.Model("bench/coding-null")
+	if partial.IntelligenceIndex != 40 || partial.CodingIndex != 0 || partial.AgenticIndex != 0 {
+		t.Fatalf("bench/coding-null indexes = %v/%v/%v, want 40/0/0", partial.IntelligenceIndex, partial.CodingIndex, partial.AgenticIndex)
+	}
+	if partial.OpenWeights {
+		t.Fatal("an empty hugging_face_id read as open-weights")
+	}
+	none, _ := c.Model("bench/no-benchmarks")
+	if none.IntelligenceIndex != 0 || none.CodingIndex != 0 || none.AgenticIndex != 0 {
+		t.Fatalf("bench/no-benchmarks invented indexes: %v/%v/%v", none.IntelligenceIndex, none.CodingIndex, none.AgenticIndex)
+	}
+
+	// A second process reads the file the first one wrote; a cache that dropped
+	// the scores or the fact would hand it rows the fetch had filled in.
+	second := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusInternalServerError, "", nil),
+	})
+	if got, _ := second.Model("bench/all"); got.IntelligenceIndex != 56 || got.CodingIndex != 41 || got.AgenticIndex != 33 || !got.OpenWeights {
+		t.Fatalf("cached row lost the scores or the fact: %+v", got)
+	}
+
+	// An older cache predating the fields serves the same rows: absence there
+	// is unknown, not zero-published, and nothing about loading refuses it.
+	legacy := t.TempDir()
+	day := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
+	old, err := json.Marshal(cache{FetchedAt: day, Models: []Model{{ID: "legacy/model", IntelligenceIndex: 22}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, cacheName), old, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fromOld := Load(context.Background(), Options{
+		BaseURL: DefaultBaseURL, Dir: legacy, Now: func() time.Time { return day.Add(time.Hour) },
+		HTTPClient: failedCatalogClient(),
+	})
+	got, ok := fromOld.Model("legacy/model")
+	if !ok || got.IntelligenceIndex != 22 || got.CodingIndex != 0 || got.AgenticIndex != 0 {
+		t.Fatalf("older cache row = %+v found %t", got, ok)
+	}
+}
 
 // WHAT A CACHE READ COSTS IS THE WHOLE OF WHAT A CACHE IS WORTH. A session
 // re-sends its transcript on every step, so the gap between the prompt price and

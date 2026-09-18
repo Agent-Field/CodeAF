@@ -54,7 +54,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
-	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -677,6 +676,18 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	if err != nil {
 		return nil, err
 	}
+	// AND THIS PROCESS HOLDS THE CONVERSATION IT JUST BUILT, the same way both
+	// local doors hold theirs (chatv3.go's boot conversation and
+	// chatv3_process.go's /new). It is what makes a service connected while
+	// this conversation is open reach this conversation: the broadcast that
+	// carries a freshly resolved profile walks the tracked agents
+	// ([v3Process.setModelSources]), and a conversation missing from that list
+	// keeps the account set it was BORN with. A model id naming a service the
+	// agent has never heard of then falls through to the default one with its
+	// prefix still on it, which is a 400 from a router that has no such model.
+	// The pair is Closed below, and the pair is not optional — an engine
+	// process outlives every conversation in it.
+	proc.track(agent)
 	// The boot override for how hard this session's model is asked to think,
 	// landed the same way every local door lands it (chatv3.go's SetReasoning)
 	// and on the same model — the one this session opened on. A level the
@@ -694,7 +705,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		transcript, resumed = cfg.SessionFile, false
 	}
 
-	guard.Go("engine/models", func() { warmV3Models(launch.Models, agent, launch.Model) })
+	proc.warmModels("engine/models", launch.Models, agent, launch.Model)
 
 	return &remote.Engine{
 		Agent: agent,
@@ -702,6 +713,18 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// model-set call. Re-read the engine's profile immediately before it is
 		// applied, so that model's address and key are live for the next turn.
 		RefreshModelSources: proc.refreshModelSources,
+		// And the pair of the tracking above: a conversation this engine closed
+		// is one this process stops holding. Every road out reaches it — a
+		// person's own goodbye, a torn pipe, an idle retirement, and the swap
+		// /new and /resume make — so the list is the conversations that are
+		// actually open rather than every conversation the daemon has ever
+		// served. The type assertion is the seam's own shape: the wire holds a
+		// remote.WrappedAgent and this process tracks what it built.
+		Closed: func(closed remote.WrappedAgent) {
+			if built, ok := closed.(*session.Agent); ok {
+				proc.forget(built)
+			}
+		},
 		// A linked-local surface writes a banked approval into this profile and
 		// carries ConsentRule on the answer already crossing the wire. Rebuild
 		// this conversation's gate at that door, using this conversation's own
@@ -755,6 +778,12 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			if err != nil {
 				return nil, "", err
 			}
+			// A CONVERSATION OPENED OVER THE WIRE IS TRACKED LIKE THE BOOT ONE.
+			// Without this the defect above returns for anybody who reaches a
+			// new conversation through /new rather than by relaunching, which
+			// is the road a person takes precisely when they have just
+			// connected something.
+			proc.track(replacement)
 			return replacement, fresh.SessionFile, nil
 		},
 		Open: func(name string) (remote.WrappedAgent, bool, error) {
@@ -777,6 +806,8 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 				// exactly that.
 				return nil, false, err
 			}
+			// And the picker's road, for the reason /new's is tracked.
+			proc.track(replacement)
 			return replacement, statErr == nil, nil
 		},
 		// The engine machine's ambient side, as a remote surface reads it, off

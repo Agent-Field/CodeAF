@@ -178,8 +178,9 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 		return ""
 	}
 	// The person pays for it out of the same pocket the session's title, the
-	// namer and the shaper come out of, and no turn asked for it.
-	a.addAuxiliaryUsage(response, call.Model, 1)
+	// namer and the shaper come out of, and no turn asked for it. It names
+	// itself the spell-out, so the row is seated by the spell-out's tier.
+	a.addAuxiliaryUsageAs(response, call.Model, 1, string(roles.RoleSpellOut))
 	return cleanSpellOut(response.Text())
 }
 

@@ -289,6 +289,24 @@ func TestBackgroundHardCapMarksTimedOut(t *testing.T) {
 	}
 }
 
+// A background job whose shell exited with nothing detached is reported done
+// at once. On Linux the detached sweep runs while the shell is still a zombie,
+// and a sweep that mistook that zombie for a live member waited out the whole
+// termination grace before publishing the job's end — two seconds on every
+// job, which is what turned the four-second bound below red on every
+// pull-request run. The bound here is the grace itself.
+func TestAFinishedBackgroundJobIsReportedBeforeTheTerminationGrace(t *testing.T) {
+	tools, _ := backgroundToolbox(t)
+	started := time.Now()
+	if result := tools.Execute(context.Background(), "sh", `{"cmd":"true","bg":true}`); result.IsError {
+		t.Fatal(result.Content)
+	}
+	waitForJobDone(t, tools, 1, 10*time.Second)
+	if elapsed := time.Since(started); elapsed >= jobTerminateGrace {
+		t.Fatalf("a finished job took %s to be reported done; the termination grace is %s", elapsed, jobTerminateGrace)
+	}
+}
+
 func TestTurnBoundaryReportsRunningAndOneTerminalTransition(t *testing.T) {
 	noJobs, _ := backgroundToolbox(t)
 	if result := noJobs.Execute(context.Background(), "sh", `{"cmd":"printf exact"}`); result.Content != "exact" {
