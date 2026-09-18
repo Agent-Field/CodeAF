@@ -28,6 +28,13 @@ import (
 // provider credentials, and a state root under a directory that is thrown away
 // with the run. It answers a cleanup the caller runs last.
 func isolateTestEnvironment() func() {
+	_, launchedByPlanWorker := os.LookupEnv("PLANDB_DB")
+	os.Unsetenv("PLANDB_DB")
+	if launchedByPlanWorker {
+		for _, name := range []string{home.EnvVar, "CODEAF_PROFILE_DIR", "CODEAF_TASK_BELT"} {
+			os.Unsetenv(name)
+		}
+	}
 	clearTestCredentials()
 	root, err := os.MkdirTemp("", "codeaf-cmd-tests-")
 	if err != nil {
