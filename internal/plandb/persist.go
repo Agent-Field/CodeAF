@@ -237,42 +237,60 @@ func openReadDatabase(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-// ensureSchema makes sure the database holds the store's tables, entering the
-// file into WAL mode as it creates them. THE CHECK IS ONE READ on a store that
-// is already built — the common case, every open of an existing plan — so a
-// process that opens the store for one verb pays for one query and not for the
-// schema, and a store that exists but is empty (a file an interrupted build
-// left behind) is built the same way a fresh one is.
+// ensureSchema makes sure the database holds the store's tables and — for a
+// store that predates a column — every column the store now reads, entering
+// its file into WAL mode as it builds them. NO READER IS EVER LEFT WITHOUT A
+// TABLE: the whole step runs inside one transaction, so a second process
+// opening the same path sees the schema whole or sees nothing yet and builds
+// it itself — never a meta table committed without the tables beside it, and
+// never a store caught half-migrated.
+//
+// EVERY STATEMENT IS IDEMPOTENT. Each table arrives IF NOT EXISTS and each
+// column is added only when the table does not already carry it, so a store
+// that is already current is rewritten to exactly the schema it holds and the
+// commit writes no page — an open of an existing plan makes no write at all.
+// AND NOTHING IS DROPPED on this road: the schema is created and never torn
+// down, so the table a reader reaches for is present from the first commit and
+// stays present after.
+//
+// BEGIN IMMEDIATE — the mode _txlock asks for on the write handle — makes the
+// transaction take the database's write lock at the start, so two processes
+// creating the store at once serialize rather than interleave their DDL.
 func ensureSchema(db *sql.DB) error {
-	var present int
-	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'`).Scan(&present); err != nil {
+	if err := enterWAL(db); err != nil {
 		return err
 	}
-	if present == 0 {
-		if err := enterWAL(db); err != nil {
-			return err
-		}
-		for _, statement := range schemaStatements {
-			if _, err := db.Exec(statement); err != nil {
-				return fmt.Errorf("create plan store schema: %w", err)
-			}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, statement := range schemaStatements {
+		if _, err := tx.Exec(statement); err != nil {
+			return fmt.Errorf("create plan store schema: %w", err)
 		}
 	}
 	// THE TAGS ARRIVED AFTER THE FIRST STORES, and the paused, from and seat
 	// columns arrived after them. A store built before a column existed still
 	// opens: the column is added, and its old rows read back with an honest
 	// "made before this change" value — the empty tag, an unpaused task, a
-	// worker's note, the default seat.
-	return migrateColumns(db)
+	// worker's note, the default seat. The adds run inside the same transaction
+	// that creates the tables, so a reader never catches a store half-migrated.
+	if err := migrateColumns(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // migrateColumns adds every column that arrived after the store's first
 // schema to the tables that carry it. It runs on a fresh store too, where the
-// columns are already there and every step is a no-op.
-func migrateColumns(db *sql.DB) error {
+// columns are already there and every step is a no-op. It runs inside the
+// schema transaction, so an old store's columns are added atomically with the
+// tables and a reader never sees one column present and its sibling absent.
+func migrateColumns(tx *sql.Tx) error {
 	for _, table := range []string{"tasks", "notes", "contexts"} {
 		for _, column := range []string{"project", "chat"} {
-			if err := ensureColumn(db, table, column, "TEXT", "''"); err != nil {
+			if err := ensureColumn(tx, table, column, "TEXT", "''"); err != nil {
 				return err
 			}
 		}
@@ -283,29 +301,30 @@ func migrateColumns(db *sql.DB) error {
 	// SEEN-AT STAMP arrived with per-process dispatch: a file written before
 	// them still opens, its old claims reading back with no owner and a zero
 	// stamp, and the archive carries the same two columns.
-	if err := ensureColumn(db, "tasks", "role", "TEXT", "'work'"); err != nil {
+	if err := ensureColumn(tx, "tasks", "role", "TEXT", "'work'"); err != nil {
 		return err
 	}
-	if err := ensureColumn(db, "tasks", "paused", "INTEGER", "0"); err != nil {
+	if err := ensureColumn(tx, "tasks", "paused", "INTEGER", "0"); err != nil {
 		return err
 	}
 	for _, table := range []string{"tasks", "archived_tasks"} {
-		if err := ensureColumn(db, table, "owner", "TEXT", "''"); err != nil {
+		if err := ensureColumn(tx, table, "owner", "TEXT", "''"); err != nil {
 			return err
 		}
-		if err := ensureColumn(db, table, "seen_at", "TEXT", "''"); err != nil {
+		if err := ensureColumn(tx, table, "seen_at", "TEXT", "''"); err != nil {
 			return err
 		}
 	}
-	return ensureColumn(db, "notes", "from", "TEXT", "'worker'")
+	return ensureColumn(tx, "notes", "from", "TEXT", "'worker'")
 }
 
 // ensureColumn adds one column when its table predates it and does nothing
 // when it is already there. SQLite has no ADD COLUMN IF NOT EXISTS, so the
-// check is a read of the table's own description. The column name is quoted,
-// because one of them is a SQL keyword.
-func ensureColumn(db *sql.DB, table, column, columnType, dflt string) error {
-	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+// check is a read of the table's own description, and the ALTER only runs
+// when the read comes back empty. The column name is quoted, because one of
+// them is a SQL keyword.
+func ensureColumn(tx *sql.Tx, table, column, columnType, dflt string) error {
+	rows, err := tx.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
 		return err
 	}
@@ -330,15 +349,16 @@ func ensureColumn(db *sql.DB, table, column, columnType, dflt string) error {
 	if found {
 		return nil
 	}
-	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN "` + column + `" ` + columnType + ` NOT NULL DEFAULT ` + dflt)
+	_, err = tx.Exec(`ALTER TABLE ` + table + ` ADD COLUMN "` + column + `" ` + columnType + ` NOT NULL DEFAULT ` + dflt)
 	return err
 }
 
-// enterWAL puts a new store in WAL journal mode. The mode is a property of the
-// FILE and not of a connection, so this runs once, as the schema is made, and
-// later opens inherit it. SQLite does NOT run the busy handler for a
-// journal-mode change, so the switch is retried briefly: two processes can
-// create the store at once and only one of them changes the mode.
+// enterWAL reads the file's journal mode and switches a new store to WAL. The
+// mode is a property of the FILE and not of a connection, so once a store is
+// in WAL every later open reads `wal` back and changes nothing, and only a
+// fresh file is switched as its schema is built. SQLite does NOT run the busy
+// handler for a journal-mode change, so the switch is retried briefly: two
+// processes can create the store at once and only one of them changes the mode.
 func enterWAL(db *sql.DB) error {
 	var mode string
 	if err := db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
