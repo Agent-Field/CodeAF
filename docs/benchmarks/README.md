@@ -28,7 +28,7 @@ session. Numbers from different machines or different days do not belong in one 
   (`VmHWM`), thread count, open file descriptors, CPU from `utime+stime` deltas, and
   voluntary context switches per second.
 
-## Four rules the numbers depend on
+## Five rules the numbers depend on
 
 **Run in a real repository, not an empty directory.** Some of these CLIs index the working
 tree at startup. In an empty directory that cost is invisible, and the comparison flatters
@@ -38,6 +38,17 @@ everything that does it.
 folder-trust dialog, not a working session. Two of the CLIs compared read more than 120 MB
 higher once actually authenticated in a repository — measured the naive way, every
 competitor is understated.
+
+**The idle figure is the part of the tree still alive at the end of the window.** A
+CLI's idle resident cost is the sum over the processes of its own tree that are alive at
+the last sample. A helper that appears and then exits inside the window is not in that
+sum, because a steady-state figure must not depend on how long you watched: counting
+every process ever seen would make one unchanged idle CLI cost more over five minutes
+than over thirty seconds, and would charge it for helpers that were never resident at the
+same moment. What such a helper cost while it lived shows in peak RSS instead. Both
+counts are printed, `procs` for the processes alive at the last sample and `procs_seen`
+for how many distinct processes the tree held at any sample, so a reader can tell a
+steady pair of processes from a CLI that churns short-lived helpers.
 
 **Report PSS, not RSS, for anything with more than one process.** CodeAF runs a surface and
 a detached engine daemon that share one binary's text pages; RSS charges that memory to
