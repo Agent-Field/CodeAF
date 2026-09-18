@@ -30,7 +30,9 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 	if !isError {
 		t.Fatalf("a composed check was accepted:\n%s", composed)
 	}
-	if composed != refusal {
+	// A proposal's refusal is a list of sentences (every problem at once), so the
+	// door closes the last one with a full stop the sentence itself does not carry.
+	if strings.TrimSuffix(composed, ".") != refusal {
 		t.Fatalf("the refusal is not the belt's own sentence, whole:\n got %s\nwant %s", composed, refusal)
 	}
 
@@ -99,7 +101,7 @@ func TestDeclaredChecksJudgeCompositionOutsideQuotesAndPreserveBytes(t *testing.
 				return
 			}
 			if len(got) != 0 || !strings.Contains(refusal, strconv.Quote(tt.wantBad)) ||
-				!strings.Contains(refusal, "A valid check is one rerunnable command with composition characters only inside quoted arguments.") {
+				!strings.Contains(refusal, "may stand only inside a single-quoted argument, where it is text") {
 				t.Fatalf("checks = %q, refusal = %q", got, refusal)
 			}
 		})
