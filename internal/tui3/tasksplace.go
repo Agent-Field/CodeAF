@@ -1052,7 +1052,9 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 	for i := range items {
 		// A tree may be built directly by the rail as well as through readTasks.
 		// File every row here so both entrances use the same family ordering.
-		items[i].section = tasksSectionOf(items[i], now)
+		if items[i].plan != nil {
+			items[i].section = tasksSectionOf(items[i], now)
+		}
 		t.at[tasksKeyOf(items[i].entry)] = items[i]
 	}
 	// parentOf is one row's parent WHERE THE PAGE IS DRAWING THAT PARENT TOO. A
@@ -1255,9 +1257,15 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 					held := item
 					urgent = &held
 				}
-				stamp := item.entry.StartedAt
-				if item.entry.EndedAt.After(stamp) {
-					stamp = item.entry.EndedAt
+				// A PLAN ROW'S ACTIVITY IS ITS OWN LAST MOVE; every other row
+				// keeps the stamp the record's list has always sorted by, so the
+				// plan's order never re-files the shipped engine's rows.
+				stamp := tasksEntryAt(item.entry, now)
+				if item.plan != nil {
+					stamp = item.entry.StartedAt
+					if item.entry.EndedAt.After(stamp) {
+						stamp = item.entry.EndedAt
+					}
 				}
 				if stamp.After(g.order) {
 					g.order = stamp
@@ -1300,12 +1308,20 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		}
 		// The rail default is activity, newest first. Explicit column sorts
 		// retain the table comparator below.
-		if t.sort == (tasksSort{}) {
+		if t.sort == (tasksSort{}) && tasksPlanGroup(t.groups[a]) && tasksPlanGroup(t.groups[b]) {
 			return t.groups[a].order.After(t.groups[b].order)
 		}
 		return t.sort.key.less(t.groups[a].chat.rank, t.groups[b].chat.rank, t.sort.back)
 	})
 	return t
+}
+
+// tasksPlanGroup answers whether a group is a belt run's family: its roots are
+// plan rows. THE ACTIVITY ORDER IS THE PLAN'S AND NOT THE RECORD'S, so only two
+// plan families are compared by it; a group of the shipped engine's rows keeps
+// the comparator its own list has always used.
+func tasksPlanGroup(g tasksGroup) bool {
+	return len(g.roots) > 0 && g.roots[0].plan != nil
 }
 
 // under walks one piece of work and everything beneath it, in draw order, with
