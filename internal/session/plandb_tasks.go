@@ -38,6 +38,8 @@ type PlanTaskRow struct {
 	Status string
 	Seat   string
 	Parent string
+	// Depth is the row's level below the page task; direct children are zero.
+	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
 	// of its hard dependencies (feeds_into/blocks), in store order, and empty
 	// when it waits on nothing but its own parent. A row still `pending` because
@@ -159,15 +161,18 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
 	live := store.LiveSteps()
-	// THE CHILDREN ARE THE TASK'S OWN SUBTREE, ONE LEVEL DEEP: every row the store
-	// holds under this task, in store order, built the same way the top row is so
-	// a page can draw them with the same words ([PlanTaskRow]).
+	// Walk admission order once; membership follows parent edges only.
 	var children []PlanTaskRow
+	depths := map[string]int{task.ID: -1}
 	for _, child := range store.Tasks(plandb.Filter{Chat: plan.chat}) {
-		if child.ParentID != task.ID {
+		depth, under := depths[child.ParentID]
+		if !under || child.ID == task.ID {
 			continue
 		}
-		children = append(children, planTaskRow(store, dir, child, spend, live))
+		row := planTaskRow(store, dir, child, spend, live)
+		row.Depth = depth + 1
+		children = append(children, row)
+		depths[child.ID] = row.Depth
 	}
 	return PlanTaskPage{
 		Row:         planTaskRow(store, dir, task, spend, live),
