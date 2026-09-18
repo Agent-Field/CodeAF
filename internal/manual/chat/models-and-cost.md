@@ -524,14 +524,19 @@ still asked and its opinion is still kept, under its own metric, but a model's o
 of a model's work is evidence and not a grade.
 
 `pool/grade-last.json` beside `judge-last.json` says what the last grade found: pass or
-fail, the source, the stage it stopped at when it failed (`fmt`, `build`, `vet`, `test`),
-the first lines of that stage's output, and the packages it ran. `codeaf pool show`
+fail, the source, the stage it stopped at when it failed (`landing`, `fmt`, `build`,
+`vet`, `test`), the first lines of that stage's output, the packages it ran, and the
+grader's version number (`grader`). `codeaf pool show`
 counts the graded cells and the tasks behind them.
 
 **Limits.** Only a workspace with a `go.mod` at its root is graded; any other tree gets
 no grade and nothing is recorded for it — an absent capability, not a failed one. A
-test that does not finish inside its budget is unknown, not a failure. The grade reads
-what the task left in the tree, so a task that wrote no Go file still grades the build.
+test that does not finish inside its budget is unknown, not a failure. **A task that
+changed no files at all is a fail** at the `landing` stage, with the detail
+`no landing: the task changed no files`: an unchanged tree building says nothing about
+work that was never done. A task that deleted a test file fails at the same stage,
+`test file removed: <path>`. A task that changed files but no Go file gets no grade
+and nothing is recorded, because the grader reads Go and nothing else.
 The seeded ratings this build ships with come from a different source, `reviewer` —
 the share of measured runs the checker found no major defect in — and the two sources
 are kept apart in every cell and folded only when a seat's rating is read.
