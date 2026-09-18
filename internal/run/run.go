@@ -402,14 +402,27 @@ func (s *Supervisor) absorb(ret workerReturn) {
 			s.rootFailed = true
 		} else {
 			s.rootResult = ret.report.Result
+			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other: its
+			// own check is added under the run's root before the completion is
+			// written, so the root's completion waits on it the way it waits on a
+			// child. A root with children answers plan and is not checked
+			// ([addReviewCheck] reads the shape fresh). A root whose own worker
+			// already wrote the ending is terminal, and the store refuses a child
+			// under a terminal parent — the check is then the one the run does
+			// without, and the run still completes.
+			s.addReviewCheck(ret.task, ret.report.Result)
 		}
 	} else {
 		switch {
 		case endedByStore:
 			// THE WORKER WROTE ITS OWN ENDING, so the store's word stands and
 			// nothing here speaks over it. The run counts the spend above and the
-			// tree is checked below.
+			// tree is checked below. THE REVIEW ROUND STILL READS IT: a worker's
+			// own `plandb done` is the ending every real leaf writes, so the check
+			// and a check's finding both run here, or the round would never fire on
+			// real work.
 			delete(s.lastReport, ret.task.ID)
+			s.reviewLanded(ret.task, ret.report.Result)
 		case ret.err == nil && s.waitsForWake(ret.task.ID):
 			// A PARENT'S RESULT IS WRITTEN AFTER ITS CHILDREN LAND, NOT BEFORE.
 			// The worker dispatched and ended its turn to wait on what it handed
@@ -475,13 +488,20 @@ func (s *Supervisor) absorb(ret workerReturn) {
 // is ready the moment it exists. Its id is minted here and mapped back to the
 // leaf, because that is what a "does not hold" finding names when it lands.
 func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
-	if !s.limits.ReviewRound || leaf.Role == plandb.RoleCheck || leaf.Composite {
+	if !s.limits.ReviewRound || leaf.Role == plandb.RoleCheck {
+		return
+	}
+	// A TASK WITH CHILDREN ANSWERS PLAN: it is a coordinator, its end is the
+	// store's own bookkeeping, and no check reads it. The shape is read FRESH,
+	// because a leaf that split during its turn is a coordinator by the time it
+	// lands, while the task handed here was cloned before the split.
+	if len(childIDs(s.store.Tasks(), leaf.ID)) > 0 {
 		return
 	}
 	id := s.store.NextID()
 	_, err := s.store.AddMany([]plandb.TaskSpec{{
 		ID:          id,
-		Title:       "check: " + leaf.Title,
+		Title:       checkTitlePrefix + leaf.Title,
 		Description: "Acceptance: " + leaf.Description + "\n\nResult: " + result,
 		ParentID:    leaf.ParentID,
 		Role:        plandb.RoleCheck,
@@ -489,19 +509,37 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 	if err != nil {
 		// A check the store would not admit is one the run does without: the
 		// leaf has already earned its ending and an unwritable review round is
-		// not an ending to fail it on.
+		// not an ending to fail it on. The store refuses a child under a terminal
+		// parent, which is how a root whose own worker already wrote its ending
+		// ends up unchecked.
 		return
 	}
 	s.checkOf[id] = leaf.ID
 }
 
-// recordCheckFinding turns a check's "does not hold" into a note on the leaf it
-// read. A check's result begins "holds:" or "does not hold:" and closes with one
-// sentence; the second is the finding the coordinator reads, so it is left on
-// the checked leaf in the check's own voice — author "check" — and the leaf
-// keeps the done ending it earned. NOTHING IS REOPENED: the note is evidence for
-// the coordinator's next wait, not a refusal of the leaf's completion, and no
-// automatic step revisits the work because of it.
+// reviewLanded is the review round's own half for a task whose ending the store
+// already carries — the `plandb done` a real worker writes on itself. The leaf
+// is checked exactly as it would be had this run written the ending, and a
+// check's finding is recorded exactly as it would be, so the round fires on real
+// work and not only on the endings the supervisor writes itself.
+func (s *Supervisor) reviewLanded(task plandb.Task, result string) {
+	s.addReviewCheck(task, result)
+	s.recordCheckFinding(task, result)
+}
+
+// recordCheckFinding turns a check's "does not hold" into work. A check's result
+// begins "holds:" or "does not hold:" and closes with one sentence; the second is
+// the finding, so it is left on the checked leaf in the check's own voice —
+// author "check" — AND it is made into a fix task under the checked leaf's
+// parent, the coordinator that owns the work.
+//
+// A FINDING IS WORK, NOT A REMARK. The note alone left the coordinator to notice
+// a sentence nobody read; the fix task is the repair, and the run is not over
+// until it lands. The fix carries the leaf's acceptance, the finding and the
+// leaf's own result, and depends on nothing, so it is ready at once.
+//
+// ONE ROUND ONLY: a finding on a fix task is a note and no second fix task, so a
+// run cannot loop.
 func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 	if check.Role != plandb.RoleCheck {
 		return
@@ -516,7 +554,38 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 	if leaf == "" || sentence == "" {
 		return
 	}
+	checked := s.store.Task(leaf)
+	if checked == nil {
+		return
+	}
 	_, _ = s.store.AddNote(leaf, "check", sentence)
+	if strings.HasPrefix(checked.Title, fixTitlePrefix) {
+		return
+	}
+	id := s.store.NextID()
+	_, _ = s.store.AddMany([]plandb.TaskSpec{{
+		ID:          id,
+		Title:       fixTitlePrefix + checked.Title,
+		Description: fixDescription(checked, sentence),
+		ParentID:    checked.ParentID,
+	}})
+}
+
+// The two prefixes the review round mints: the check it adds under a leaf, and
+// the fix it adds under a leaf's parent when the check does not hold. They are
+// named once so the title a check carries and the title a fix is recognised by
+// cannot drift apart.
+const (
+	checkTitlePrefix = "check: "
+	fixTitlePrefix   = "fix: "
+)
+
+// fixDescription is the work order the review round writes for a fix task: the
+// acceptance the checked leaf was held to, the finding's one sentence, and the
+// leaf's own result — everything a fresh worker needs to make the unmet
+// requirement hold.
+func fixDescription(leaf *plandb.Task, finding string) string {
+	return "Acceptance: " + leaf.Description + "\n\nFinding: " + finding + "\n\nResult: " + leaf.Result
 }
 
 // completeTree finishes the run once every task but the root has ended: the

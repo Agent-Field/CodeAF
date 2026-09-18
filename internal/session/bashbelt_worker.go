@@ -178,6 +178,13 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 			doc = withReport(doc, askSection(ask))
 		}
 	}
+	// THE CHECK'S OWN SECTION. The review round dispatches a check as a leaf
+	// whose work order already carries the checked leaf's acceptance and its own
+	// result; this section says what a check does and the one shape its answer
+	// takes. It is absent on every other task, so a doer never reads it.
+	if !root && task.Role == plandb.RoleCheck {
+		doc = withReport(doc, checkSection)
+	}
 	switch {
 	case strings.TrimSpace(wake) != "":
 		doc = withReport(doc, wake)
@@ -208,6 +215,27 @@ const (
 func askSection(ask string) string {
 	return askSectionHeading + "\n" + askSectionRule + "\n\n" + clip(ask, askSectionLimit)
 }
+
+// checkSection is the document the review round's check worker opens on, added
+// to its brief by [BeltWorkerBrief] and read by no other task. THE CHECK IS NOT
+// A DOER: it reads the acceptance above against the result above, proves each
+// sentence with the leaf's own tests or one probe, and answers in one of the two
+// shapes the finding is read from ([internal/run]'s recordCheckFinding reads
+// "does not hold:"). It is written to stay under 120 words, because the whole
+// job is one comparison and a wall of instruction is the drift it exists to stop.
+const checkSection = `## Who checks this work
+
+You are the check, not the doer: you read the acceptance above against the result above, and you do not redo the work.
+
+Read the acceptance sentence by sentence. Run the leaf's own tests. For every sentence the tests do not cover, run one probe — the smallest command that would fail were that sentence not met.
+
+Answer with exactly one of these, as your whole result:
+
+- "holds: <one sentence saying why>" when every sentence holds.
+- "does not hold: <the one unmet requirement, and the command that showed it>" otherwise.
+
+One line. A requirement you could not test is one you did not prove.
+`
 
 // runRootAsk answers the run root's description as the store keeps it — the
 // person's own ask, seeded on the root row — or "" when there is no root to
