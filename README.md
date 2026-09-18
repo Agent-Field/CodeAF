@@ -32,6 +32,15 @@ does.
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
 
+> **Early preview.** CodeAF is young and moving fast. Expect rough edges, and tell
+> us where you hit them on [Discord](https://discord.gg/aBHaXMkpqh) or in an [issue](https://github.com/Agent-Field/codeaf/issues).
+
+<img src="assets/readme/screens/overview.webp" alt="From one chat to a factory: a chat, the tasks it fanned out into (14 chats, 35 subtasks), home showing every project on the machine, and a question waiting on your answer" width="100%">
+
+https://github.com/user-attachments/assets/bc87e460-17b1-4d7a-8c69-284b524ea194
+
+<sub>Real speed, with sound. The three tasks run live on DeepSeek V4.1 Flash; the other projects and the large task tree are a seeded demo machine.</sub>
+
 ## What one binary costs
 
 Measured against six other agent CLIs on one machine, in the same repository, on the
@@ -43,15 +52,15 @@ one binary's text and RSS would count it twice.
 | cost | CodeAF | the CLIs compared |
 | --- | --- | --- |
 | on disk | 53 MB | smallest of the seven; 2.8x under the next smallest, 21x under the largest |
-| first interactive frame | 208 ms | 1.9x–11.6x faster than five of six; one is faster, by 1.6x |
-| memory during a turn (PSS) | 79 MB | lightest of the four that completed one; 4.1x–9.5x lighter |
-| cold start (`--version`) | 12.5 ms | 25x–38x faster than the four that boot an interpreter; one is faster, by 2x |
-| idle memory (PSS) | 66 MB | 2.4x–10.7x lighter than five of six; one is lighter, by 1.4x |
+| first interactive frame | 208 ms | 1.9x to 11.6x faster than five of six; one is faster, by 1.6x |
+| memory during a turn (PSS) | 79 MB | lightest of the four that completed one; 4.1x to 9.5x lighter |
+| cold start (`--version`) | 12.5 ms | 25x to 38x faster than the four that boot an interpreter; one is faster, by 2x |
+| idle memory (PSS) | 66 MB | 2.4x to 10.7x lighter than five of six; one is lighter, by 1.4x |
 
-One of the seven — a single static binary like this one — is faster to start and
-lighter at rest. It is named, with every figure, in
-[the benchmark method and full table](docs/benchmarks/results-2026-09-17.md), which also says how to
-re-run all of it.
+One of the seven is faster to start and lighter at rest. It is a single static binary
+too, and it is named with every figure in
+[the benchmark method and full table](docs/benchmarks/results-2026-09-17.md), which also
+says how to re-run all of it.
 
 ## Install
 
