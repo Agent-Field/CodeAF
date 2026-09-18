@@ -589,12 +589,16 @@ var tuiWords = map[string]tuiWord{
 		screen: "running",
 		why: "the state word a run's plan row wears while a worker holds the task. planStateWord maps " +
 			"the store's `ready` and `claimed` onto it, so the row says what a person does next — work is " +
-			"in flight — and never a machinery word of its own",
+			"in flight — and never a machinery word of its own. THE PLACE'S OWN HEADING SPELLS IT TOO " +
+			"(tasksSectionWord files everything working under `running`), so the suite reads the word off " +
+			"the run's row and not off the screen",
 	},
 	"planDoneWord": {
 		screen: "done",
 		why: "the state word the same row wears once the run's root has landed — planStateWord's other " +
-			"mapping, and the one word every surface gives work that finished",
+			"mapping, and the one word every surface gives work that finished. Asked of the row for its " +
+			"running neighbour's reason: `done` is an ordinary English word and a screen-wide search for " +
+			"it is satisfied by a sentence that is not the row's",
 	},
 	"planFinishCommand": {
 		screen: "plandb done",

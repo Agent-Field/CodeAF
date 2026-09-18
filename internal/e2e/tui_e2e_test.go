@@ -2113,6 +2113,13 @@ func waitForRecord(t *testing.T, home string, within time.Duration) string {
 //
 // IT COSTS A FEW CENTS AND LANDS IN ABOUT THIRTY SECONDS, the shape and the
 // price [testStatesDone] pays for the same brief on the shipped belt.
+//
+// THE STATE WORD IS READ OFF THE ROW AND NOT OFF THE SCREEN. The place files its
+// rows under headings that are state words themselves — everything working stands
+// under `running` (tasksplace.go's tasksSectionWord) — so a screen-wide wait for
+// the word is a wait for a heading and proves nothing about any row. It is the
+// care [statesHeadLine] takes on a landing card, spent on a row of the list
+// ([planRowWearing]).
 func testTaskOnTheRunEngine(t *testing.T) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "runws", false)
@@ -2121,7 +2128,15 @@ func testTaskOnTheRunEngine(t *testing.T) {
 		"afe2e_task_run", home, ws, tuiWide, 45, "chat", "--one-model")
 	r.skipSetup(t)
 
-	r.lit("/task write HELLO.md containing the word hello")
+	// runRowWord is the run's own words on the tasks place, and one word of the
+	// brief this subtest types: the row the record publishes and the row the store
+	// answers are both named from the person's own sentence, so it is the anchor a
+	// row is found by when the state word beside it is what is being proved. It is
+	// a constant rather than a second spelling of the brief so the two cannot
+	// drift apart.
+	const runRowWord = "HELLO.md"
+
+	r.lit("/task write " + runRowWord + " containing the word hello")
 	r.keys("Enter")
 
 	// ── the row on the tasks place ──────────────────────────────────────────
@@ -2134,9 +2149,11 @@ func testTaskOnTheRunEngine(t *testing.T) {
 	openTasksPlace(t, r)
 	running := r.waitFor(40*time.Second, say(t, "planRunningWord"))
 	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
+	planRowWearing(t, running, runRowWord, say(t, "planRunningWord"))
 
 	done := r.waitFor(runPatience, say(t, "planDoneWord"))
 	t.Logf("the run on the tasks place once its root landed:\n%s", done)
+	planRowWearing(t, done, runRowWord, say(t, "planDoneWord"))
 
 	// ── the landing, in the thread ──────────────────────────────────────────
 	//
@@ -2162,7 +2179,18 @@ func testTaskOnTheRunEngine(t *testing.T) {
 	// one layer to the list, the card's own bargain.
 	openTasksPlace(t, r)
 	r.keys("Enter")
-	page := r.waitFor(40*time.Second, say(t, "planFinishCommand"))
+	// glimpse AND NOT waitFor, BECAUSE THE PAGE NOT COMING UP IS NOT A TIMEOUT. A
+	// wait that ran out would report a screen the suite never saw and leave the
+	// reader to work out which of two pages answered the key; the answer is a fact
+	// about the row that was under the cursor, and it is said as one.
+	page, saw := r.glimpse(40*time.Second, say(t, "planFinishCommand"))
+	if !saw {
+		t.Fatalf("Enter over the run's row never opened the store's plan page, so no screen this suite "+
+			"can reach carries the %q line its worker finishes with. The row under the cursor is the "+
+			"run's node row and not its plan row — planRowWearing says why — and a node row opens a "+
+			"room, which the engine holds no node for, so it is empty. The screen after Enter was:\n%s",
+			say(t, "planFinishCommand"), r.capture())
+	}
 	t.Logf("the plan page, carrying the worker's own finish command:\n%s", page)
 	r.keys("Escape")
 	back := r.waitFor(30*time.Second, say(t, "planDoneWord"))
@@ -2184,6 +2212,52 @@ func openTasksPlace(t *testing.T, r *rig) {
 	// conversation and opens every group shut, so the run's row is not drawn until
 	// its conversation is unfolded.
 	r.keys("Right")
+}
+
+// tasksRowOf is the one line of the tasks place carrying these words, or "" when
+// the place draws no such row.
+//
+// IT IS SOUGHT AS A LINE AND NOT AS A SUBSTRING OF THE SCREEN for the reason
+// [statesHeadLine] is: a state word on this place is also a heading over it, and
+// a pair of screen-wide searches is satisfied by the word standing in two
+// different places with nothing between them.
+func tasksRowOf(screen, words string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		if row := strings.TrimSpace(line); strings.Contains(row, words) {
+			return row
+		}
+	}
+	return ""
+}
+
+// planRowWearing asserts that the run's row is on the tasks place wearing this
+// state word, and answers the row for the log.
+//
+// THE FAILURE IT MAKES IS THE WHOLE OF WHAT STANDS BETWEEN THIS SUITE AND THE
+// RUN'S OWN PAGE, so it says the mechanism rather than the symptom. internal/tui3
+// drops the store's plan row whenever a node row of this conversation wears the
+// same title (taskplan.go's planRowShown, which exists for a plan-born node — a
+// node the plan dispatched, whose store task is the same work read from the other
+// end). A run is not one: its door publishes a row of its own with the store
+// root's title on it (internal/session's task_run_belt.go seeds the store and the
+// row from one sentence), so the dedupe takes the plan row for a duplicate of it.
+// What the place is left drawing is the node's row in the engine's own word, and
+// Enter over that row opens a room the engine holds no node for.
+func planRowWearing(t *testing.T, screen, words, state string) string {
+	t.Helper()
+	row := tasksRowOf(screen, words)
+	if row == "" {
+		t.Errorf("the tasks place draws no row for the run (%q), so nothing on it can wear %q:\n%s",
+			words, state, screen)
+		return ""
+	}
+	if !strings.Contains(row, state) {
+		t.Errorf("the run's row does not wear %q, so the row the place drew is not the store's plan "+
+			"row: planRowShown (internal/tui3/taskplan.go) drops a plan row whose title a node row of "+
+			"this conversation already wears, and the run's door publishes its own row with the store "+
+			"root's title on it. The row drawn is the node's, in the engine's own word:\n\t%s", state, row)
+	}
+	return row
 }
 
 // runBranch is the branch the run's working copy stands on, which is the branch
