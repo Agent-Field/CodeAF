@@ -4,6 +4,7 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Home row options opened by → used to insert a full-width line below the selected row. On a wide home they now appear below its description in the middle column, with whole choices wrapped to fit; the list and its hit map stay in place. The same keys and activation apply, and narrow layouts retain the inline strip."
   - "Home, tasks, standing, memory, spend, search and the chat switcher now share one mouse/keyboard row selection. Mouse motion selects the row; keyboard navigation clears stale hover and pending pointer movement. A stationary mouse cannot reclaim it, and row options close when selection changes, preventing actions on a formerly hovered row."
   - "Home now renders whitespace-only drafts instead of leaving the placeholder over inserted newlines. The cursor follows those lines, arrows navigate within a multiline draft before moving home selections, and blank draft lines accept cursor clicks. The compact home frame uses the same multiline layout."
   - "Home no longer hides the effort seam field and ctrl+v effort hint when the engine reports an unset default. Empty effort means auto on local engine connections and --host, matching conversations; only an engine without effort support loses the control."

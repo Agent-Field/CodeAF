@@ -1275,6 +1275,11 @@ func placeFrameWithBar(a *app, width, height int,
 	// layer has claimed the whole keyboard (composerlayer.go), so every letter on
 	// a strip drawn under it would be a letter that does nothing — which is the
 	// one state this surface may never be in.
+	// A wide home keeps row options beneath the middle-column description,
+	// so opening them takes no space from the list or its pointer map.
+	if a.homeStripInDescription(width, room) {
+		inline = nil
+	}
 	bodyRoom := room - len(inline)
 	// AND THE SWITCHER TAKES THE STRIP DOWN FOR THE LAYER'S REASON EXACTLY: it
 	// has claimed the whole keyboard (hop.go), so every letter on a strip drawn

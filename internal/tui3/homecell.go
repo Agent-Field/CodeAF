@@ -111,6 +111,7 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 	// The selected description may outgrow a short field: its thread title
 	// and answer buttons still have the rest of the body available to them.
 	preview := h.previewAt()
+	withVerbs := a.homeStripInDescription(h.gridWidth, room)
 	type note struct {
 		y     int
 		words []string
@@ -127,10 +128,25 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 		}
 		said := strings.TrimSpace(line.cell.sub)
 		selected := at == preview
-		if said == "" || !selected {
+		if !selected || (said == "" && !withVerbs) {
 			continue
 		}
-		notes = append(notes, note{y: y, words: a.homeDescNote(line, at, said, width, selected, pal)})
+		words := a.homeDescNote(line, at, said, width, selected, pal)
+		top := y
+		if withVerbs {
+			options := a.homeDescriptionVerbs(width, pal)
+			// Keep every option visible even when a long description or a row
+			// near the bottom would otherwise push the shortcuts off screen.
+			if keep := max(0, room-len(options)-1); len(words) > keep {
+				words = words[:keep]
+			}
+			if len(words) > 0 {
+				words = append(words, "")
+			}
+			words = append(words, options...)
+			top = min(top, max(0, room-len(words)))
+		}
+		notes = append(notes, note{y: top, words: words})
 	}
 	if len(notes) == 0 {
 		return nil
@@ -158,6 +174,59 @@ func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) 
 	return out
 }
 
+// homeStripInDescription is shared by the frame and the description painter:
+// exactly one of them draws the options, including during a resize.
+func (a *app) homeStripInDescription(width, room int) bool {
+	if !a.at(pageHome) || !a.strip.open || !a.home.gridOn() || !homeDescOn(homeGridCols(width)) || a.composer.open || a.hopShowing() {
+		return false
+	}
+	if _, stacked := a.homeStacked(); stacked {
+		return false
+	}
+	if _, asking := a.homeAsking(); asking {
+		return false
+	}
+	_, widths := homeGridGeometry(width, homeGridCols(width))
+	options := a.homeDescriptionVerbs(widths[homeDescCol(len(widths))], a.pal)
+	return len(options) > 0 && len(options) <= room
+}
+
+// homeDescriptionVerbs wraps whole choices within the description column.
+// It reads the same captured verbs as the inline strip, preserving their keys.
+func (a *app) homeDescriptionVerbs(width int, pal palette) []string {
+	room := max(1, width-homeDescLeadCells)
+	var out []string
+	line, used := "", 0
+	for _, v := range a.strip.verbs {
+		word := string(v.key) + " " + v.word
+		cells := ansi.StringWidth(word)
+		if used > 0 && used+len(verbGap)+cells > room {
+			out = append(out, homeDescLeadBlank+line)
+			line, used = "", 0
+		}
+		if cells > room {
+			for i, part := range wrap(word, room) {
+				painted := pal.dim(part)
+				if i == 0 {
+					painted = pal.data(string(v.key)) + pal.dim(strings.TrimPrefix(part, string(v.key)))
+				}
+				out = append(out, homeDescLeadBlank+painted)
+			}
+			continue
+		}
+		if used > 0 {
+			line += verbGap
+			used += len(verbGap)
+		}
+		line += pal.data(string(v.key)) + pal.dim(" "+v.word)
+		used += cells
+	}
+	if used > 0 {
+		out = append(out, homeDescLeadBlank+line)
+	}
+	return out
+}
+
 // homeDescNote is one row's note as the lines it takes: the thread's title
 // line and a blank where the row names one ([homeCell.thread]), the sentence,
 // wrapped, and the row's answers under it. It is only ever asked for the row
@@ -174,8 +243,10 @@ func (a *app) homeDescNote(line homeLine, at int, said string, width int, select
 	if thread := strings.TrimSpace(line.cell.thread); thread != "" {
 		out = append(out, homeDescLeadBlank+homeThreadLine(thread, room, pal), "")
 	}
-	for _, words := range wrap(said, room) {
-		out = append(out, homeDescLeadBlank+pal.dim(words))
+	if said != "" {
+		for _, words := range wrap(said, room) {
+			out = append(out, homeDescLeadBlank+pal.dim(words))
+		}
 	}
 	if answers != "" {
 		out = append(out, "", homeDescLeadBlank+paintHint(answers, pal, pal.dim))

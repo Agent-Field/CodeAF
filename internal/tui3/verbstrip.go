@@ -24,9 +24,9 @@ import (
 //
 // So: `→` on a row that has verbs draws them, and while that strip is drawn the
 // letters on it are the verbs and THE COMPOSER IS ASLEEP. `esc` or `←` closes
-// it, `enter` still opens the row, and the strip displaces the body by its own
-// height — that visible displacement is what makes the bare letters safe, and it
-// is the reason the strip is a row of the frame rather than a popup.
+// it, and `enter` still opens the row. A wide home draws the options beneath
+// the selected description; elsewhere the strip displaces the list by its own
+// height. Either way the active letters are visible beside the selected item.
 //
 // The strip is [app.answerStrip] generalised. That function already held this
 // law in its own words — "IT IS AN ANSWER, NOT A MIRROR: it draws only when the

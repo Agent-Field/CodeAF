@@ -1675,10 +1675,10 @@ place is where every one of them is.
 
 Put the cursor on the item's row (or point at it). **`ctrl+e` pauses it** and **`ctrl+x`
 stops it for good**, from any column, with no strip (on a `tasks` row this window holds,
-`ctrl+x` asks to stop that task instead). On a `tasks` row, or on any row at
-one column, **`→`** opens a strip under the row offering `p pause it`, or `r resume it` when
-it is already paused, and while that strip is drawn those letters are the verbs. `esc` or
-`←` closes it.
+`ctrl+x` asks to stop that task instead). **`→`** shows the row's options, including
+`p pause it` or `r resume it` for a paused item. They appear below its description in the
+middle column on a wide home, or under the row on a narrower layout. While they are
+drawn those letters are the verbs. `esc` or `←` closes them.
 
 A third chord, **`ctrl+v`**, raises how hard that item thinks — see "Make a reminder think
 harder" below. Home says `paused · <your words>` or `stopped · <your words>` at the foot and
@@ -1936,9 +1936,10 @@ copied path says `copied <path>`.
 
 ## How do I answer without opening the chat — the verb strip on a row
 
-**Press `→` where it opens the strip** — on the right-hand column, or anywhere at one
-column. A strip opens **directly under the row you are standing on**, carrying that row's
-own verbs, and **while it is drawn those letters are the verbs and the box is asleep**:
+**Press `→` on the selected row.** On a wide home, its options appear at the bottom of
+its description in the middle column, wrapping as needed. On a narrower home without
+that column, they appear directly under the selected row. **While the options are drawn,
+those letters are the verbs and the box is asleep**:
 
 ```
 y let it send   n not this time   a put it away   t new chat here
@@ -1946,8 +1947,8 @@ esc or ← to leave · enter opens it instead
 ```
 
 `esc` or `←` closes it, `enter` still opens the row, and moving off the row closes it too.
-The strip pushes the rows under it down by its own height; that visible displacement is
-what makes the bare letters safe.
+In the middle column the options leave the list in place. In the narrow layout the strip
+pushes the rows under it down. The options are shown only while their shortcuts are active.
 
 **The verbs are the row's own:** a question's first two option words on `y` and `n`; a
 conversation's `a put it away` and, where it has a folder, `t new chat here`,

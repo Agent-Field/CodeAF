@@ -352,14 +352,13 @@ On memory they are `c open the card`, `e fix the wording` and `f forget it`. On 
 verbs are the row's own — a question's first two answers in its own words on
 `y` and `n`, `a put it away`, `t new chat here`, `o open folder`, `c copy path`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
-`its chats` and `open folder` on a project. On home's panels `→` opens them only where no
-column with rows lies to the right; elsewhere it crosses columns and the chords
-(`ctrl+e`, `ctrl+o`, `ctrl+y`) reach the same verbs.
+`its chats` and `open folder` on a project. On home, `→` opens the selected row's
+options at every width; the arrows stay in the list.
 
-While that strip is drawn, **those letters are the verbs** and the composer is asleep. The
-strip pushes the rest of the list down by its own height — the frame stays the same height
-and the composer does not move — and that visible displacement is exactly why the letters
-are safe: you can see that typing has stopped.
+While those options are drawn, **those letters are the verbs** and the composer is asleep.
+On wide home layouts they appear below the selected description in the middle column,
+without moving the list. Elsewhere the strip pushes the rows below it down; the frame
+stays the same height and the composer does not move.
 
 `esc` or `←` closes it. `enter` still opens the row. **Anything that moves the cursor off
 that row closes it** — `↑`, `↓`, `ctrl+p`, `ctrl+n`, `home`, `end`, the page keys, a click on
