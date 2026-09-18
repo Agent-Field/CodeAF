@@ -876,17 +876,28 @@ func (s *Store) Amend(id, text string) (*Task, error) {
 // the failure the revision gate exists to prevent.
 func (s *Store) Revise(id string, patch TaskPatch) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
-		if task.Status != StatusPending && task.Status != StatusReady {
+		if task.Status != StatusPending && task.Status != StatusReady && !questionOnlyPatch(patch) {
 			return fmt.Errorf("task %q can only be revised before execution", id)
 		}
 		applyPatch(&task.TaskSpec, patch)
 		task.TaskSpec = normalizeSpec(task.TaskSpec, next.RootID)
+		if task.ID == next.RootID {
+			task.ParentID = ""
+		}
 		if err := validateSpec(task.TaskSpec); err != nil {
 			return err
 		}
 		task.UpdatedAt = now
 		return nil
 	})
+}
+
+func questionOnlyPatch(patch TaskPatch) bool {
+	return patch.Question != nil && patch.Title == nil && patch.Description == nil && patch.Kind == nil &&
+		patch.Priority == nil && patch.Capabilities == nil && patch.Resources == nil && patch.Effect == nil &&
+		patch.Parallel == nil && patch.Isolation == nil && patch.Role == nil && patch.ContextInputs == nil &&
+		patch.Deliverables == nil && patch.EvidenceRequirements == nil && patch.Agent == nil &&
+		patch.Acceptance == nil && patch.Checks == nil
 }
 
 // AddDep adds one edge between two tasks. It is the CLI's `task add-dep`, and
@@ -2278,6 +2289,9 @@ func applyPatch(spec *TaskSpec, patch TaskPatch) {
 	}
 	if patch.Description != nil {
 		spec.Description = *patch.Description
+	}
+	if patch.Question != nil {
+		spec.Question = *patch.Question
 	}
 	if patch.Kind != nil {
 		spec.Kind = *patch.Kind
