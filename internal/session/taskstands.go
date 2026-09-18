@@ -23,17 +23,20 @@ package session
 // and the first rung that answers wins:
 //
 //  1. SAID — `propose_task{ground}`, the place a person named in their own
-//     request, or a place THIS CONVERSATION IS ALREADY ABOUT (places.go).
-//     Somebody's own word is never overruled by anything below it, and a folder
-//     the conversation named or resolved once is not asked about twice.
-//  2. TOUCHED — the git roots of every path this conversation's tool calls read,
+//     request. Somebody's own word is never overruled by anything below it.
+//  2. BRIEF — the unique existing folder that contains every existing place the
+//     task's own contract writes down. Existence, containment, and uniqueness
+//     decide this rung; no spelling convention or kind of artifact does.
+//  3. CONVERSATION PLACES — places this conversation is already about
+//     (places.go). A folder resolved once is not asked about twice.
+//  4. TOUCHED — the git roots of every path this conversation's tool calls read,
 //     edited, grepped or wrote, and every `cd` a shell command made, weighted by
 //     recency. One root that dominates is the ground. TWO WITH REAL WEIGHT ARE A
 //     QUESTION, never a coin toss: the caller is handed the two names and asks.
-//  3. STANDING IN — the conversation's own workspace when it is a repository.
+//  5. STANDING IN — the conversation's own workspace when it is a repository.
 //     This is what every task got before this file existed, and a session opened
 //     inside the project it is about still gets exactly it.
-//  4. NOTHING — the conversation's own folder, with no repository anywhere. The
+//  6. NOTHING — the conversation's own folder, with no repository anywhere. The
 //     work happens there because there is nowhere else it could be about.
 //
 // ── AND THE MODE FALLS OUT OF THE DELIVERABLE ──
@@ -112,6 +115,7 @@ type taskStand struct {
 // The rungs, spelled once so a log line and a test cannot disagree about them.
 const (
 	taskGroundSaid       = "said"
+	taskGroundBrief      = "brief"
 	taskGroundTouched    = "touched"
 	taskGroundStandingIn = "standing in"
 	taskGroundNothing    = "nothing"
@@ -301,7 +305,7 @@ func (a *Agent) taskGroundOrStandingIn(spec taskSpec) taskStand {
 	return taskStand{dir: workspace, mode: TaskModeFolder, rung: taskGroundNothing}
 }
 
-// groundLadder is rungs one to four, with the person's own placement already
+// groundLadder climbs the placement rungs, with the person's own placement already
 // answered for.
 func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	if said := strings.TrimSpace(spec.ground); said != "" {
@@ -324,6 +328,12 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	// something its own reading of the evidence liked better is a part whose work
 	// can never come home.
 	if spec.parent == 0 {
+		// THE BRIEF GETS ITS OWN RUNG before conversation evidence. It answers only
+		// when every existing absolute place the contract writes down has one
+		// containment answer; a path-shaped aside therefore cannot silently win.
+		if dir, ok := groundPlainlyNamedByBrief(spec, workspace); ok {
+			return taskStand{dir: dir, rung: taskGroundBrief}
+		}
 		// ONE READING OF THE EVIDENCE, weighed once and handed to both rungs that
 		// want it. The walk stats every path this conversation named and asks git
 		// about every directory it finds; doing it twice for one answer would
@@ -346,6 +356,107 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 		return taskStand{dir: root, rung: taskGroundStandingIn}
 	}
 	return taskStand{dir: workspace, rung: taskGroundNothing}
+}
+
+// groundPlainlyNamedByBrief reports the one ground that holds every existing
+// absolute place the contract writes down: the repository they are all inside,
+// or, where none is in a repository, the one named folder that holds them all.
+// The rule is about properties: existence, containment, and there being exactly
+// one such ground. A spelling convention,
+// a particular kind of artifact, or a path-shaped word alone is not evidence.
+func groundPlainlyNamedByBrief(spec taskSpec, workspace string) (string, bool) {
+	refs, candidates := briefGroundReferents(spec.brief+"\n"+spec.deliverable+"\n"+spec.acceptance, workspace)
+	if len(refs) == 0 {
+		return "", false
+	}
+	return theOneGroundHolding(placesTheWorkIsAbout(refs), candidates)
+}
+
+// placesTheWorkIsAbout drops, from the folders a contract names, the ones that
+// are only WHERE OUTPUT GOES. The property: when any named folder is inside a
+// repository, a named folder inside no repository does not vote on where the
+// task stands. A brief that works in one repository and writes its report to a
+// scratch folder beside it names one place the work is about and one place the
+// result lands, and read as two rivals they cancelled each other out: measured
+// 2026-09-18, where the scratch folder did not exist for the first round of
+// proposals (so the rung answered) and did for the second (so it fell silent
+// and the person was asked a question every brief had already answered). With
+// no repository named at all, every named folder votes as before.
+func placesTheWorkIsAbout(refs []string) []string {
+	var versioned []string
+	for _, ref := range refs {
+		if _, ok := repositoryRoot(ref); ok {
+			versioned = append(versioned, ref)
+		}
+	}
+	if len(versioned) == 0 {
+		return refs
+	}
+	return versioned
+}
+
+// briefGroundReferents collects existing directory referents and the meaningful
+// boundaries the text itself supplies. Repository roots remain boundaries even
+// when the contract writes only their descendants.
+func briefGroundReferents(text, workspace string) ([]string, []string) {
+	var refs, candidates []string
+	seenRef, seenCandidate := map[string]bool{}, map[string]bool{}
+	for _, token := range pathTokens(text) {
+		if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
+			continue
+		}
+		dir := canonicalPath(groundDirOf(token, workspace))
+		if info, err := os.Stat(dir); dir == "" || err != nil || !info.IsDir() {
+			continue
+		}
+		if !seenRef[dir] {
+			seenRef[dir], refs = true, append(refs, dir)
+		}
+		if root, ok := repositoryRoot(dir); ok && !seenCandidate[root] {
+			seenCandidate[root], candidates = true, append(candidates, root)
+		}
+		if info, err := os.Stat(token); err == nil && info.IsDir() {
+			named := canonicalPath(token)
+			if !seenCandidate[named] {
+				seenCandidate[named], candidates = true, append(candidates, named)
+			}
+		}
+	}
+	return refs, candidates
+}
+
+// theOneGroundHolding answers the ONE ground that holds every place the work is
+// about, and reports false when there is none or more than one.
+//
+// A CANDIDATE IS READ AS THE GROUND IT WOULD BECOME, which is what the said rung
+// does with a folder somebody names ([groundRoot]): a folder inside a repository
+// is that repository, because a branch is cut from a repository and not from a
+// directory inside one. So a brief that names a repository's subfolder and only
+// files under it has ONE answer, the repository, and not two nested rivals of
+// which the deeper silently wins. Two candidates that are still two grounds
+// after that are two answers, and this rung says nothing: the rungs below weigh
+// the conversation's own evidence and, failing that, ask the person. EXACTLY
+// ONE, OTHERWISE NOT THIS RUNG; it never picks.
+func theOneGroundHolding(refs, candidates []string) (string, bool) {
+	answer := ""
+	for _, candidate := range candidates {
+		holds := true
+		for _, ref := range refs {
+			if _, inside := insideWorkspace(candidate, ref); !inside {
+				holds = false
+				break
+			}
+		}
+		if !holds {
+			continue
+		}
+		ground := groundRoot(candidate)
+		if answer != "" && ground != answer {
+			return "", false
+		}
+		answer = ground
+	}
+	return answer, answer != ""
 }
 
 // groundFromTouched weighs the repositories this conversation has actually been
@@ -810,6 +921,33 @@ func groundHolds(ground, token string) bool {
 	return err == nil && info.IsDir()
 }
 
+// groundAnsweredByTheProposal reports whether where this task stands was
+// answered by the proposal itself, which [groundLint] does not second-guess. It
+// is a question with its own name because the lint is a road already as long as
+// its ledger row allows (complexityDebt).
+//
+// A GROUND THE CONVERSATION MERELY REMEMBERED IS NOT SOMEBODY SAYING IT. A
+// referred place answers at SAID ([Agent.groundFromPlaces]) so that nobody is
+// asked twice, but a cached answer has no authority over a brief that names a
+// repository; only a person's own word does ([taskStand.kept]).
+//
+// AND THE BRIEF'S OWN RUNG HAS ANSWERED THIS QUESTION TOO. It stands only when
+// exactly one ground holds what the contract names, so there is no second one to
+// move to, and the folder outside every repository that its deliverable names
+// is the place it said its output goes, in the same contract and the same
+// breath. Refusing that would hand the proposer a new refusal in place of the
+// question this rung exists to spare them; a ground said out loud is already
+// trusted with exactly this, and the work is judged where it lands.
+func groundAnsweredByTheProposal(stand taskStand) bool {
+	switch stand.rung {
+	case taskGroundSaid:
+		return !stand.kept
+	case taskGroundNamed, taskGroundHere, taskGroundBrief:
+		return true
+	}
+	return false
+}
+
 // groundLint holds the brief up against the ground, and it is the second half of
 // the law this file states: A TASK NEVER WRITES OUTSIDE ITS GROUND.
 //
@@ -844,12 +982,7 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 	if stand.dir == "" || spec.parent != 0 {
 		return "", ""
 	}
-	// AND A GROUND THE CONVERSATION MERELY REMEMBERED IS NOT SOMEBODY SAYING IT.
-	// A referred place answers at SAID ([Agent.groundFromPlaces]) so that nobody
-	// is asked twice, but a cached answer has no authority over a brief that
-	// names a repository — only a person's own word does ([taskStand.kept]).
-	if (stand.rung == taskGroundSaid && !stand.kept) ||
-		stand.rung == taskGroundNamed || stand.rung == taskGroundHere {
+	if groundAnsweredByTheProposal(stand) {
 		return "", ""
 	}
 	var outside []string
