@@ -296,7 +296,7 @@ named on a door or in the profile:
   way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then the crew; a
   conversation takes it from its mastermind row. A leaf that splits moves onto
   this seat for the turns where it is a coordinator.
-- **`--check-model` is the check seat** — the model a check the review round
+- **`--check-model` is the check seat**: the model a check the review round
   adds reads a finished leaf against. `codeaf do` resolves it from
   `--check-model`, then from `--plan-model` when the person typed that flag and
   no check model, so a run pinned to two models checks on the plan seat and no
