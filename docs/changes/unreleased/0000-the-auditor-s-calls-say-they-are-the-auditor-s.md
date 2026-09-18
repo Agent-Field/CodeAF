@@ -23,6 +23,9 @@ role-worn purpose. `addUsage` banks the turn with that same role word so
 `taskID` it deliberately leaves empty.
 
 The progress check's auditor (`task_run.go`) shares `newAuditAgent`, so it carries
-the same two facts without a second change. The pool's own row
-(`internal/pool/record`) carries the high seat's model and a score and no calls or
-cost, so there was nothing there to change.
+the same two facts without a second change. The pool's record was read and left
+alone, and no file under `internal/pool/record` changed: its `Row` is one row per
+judged seat score — metric, seat, model, score, judge, door, size, day — written by
+`Recorder.Record` out of judge scores at the pool's own `record` command and never
+out of a provider call, and it carries no call count and no cost. An auditor's tag
+and the node it checks have no field there to land in.
