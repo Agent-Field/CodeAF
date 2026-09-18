@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -41,8 +42,15 @@ func main() {
 	os.Exit(execute())
 }
 
-// tuneForTheSurface raises the heap target for a command that is about to draw
-// one, and IT IS CALLED FROM THE DISPATCH BELOW rather than from main.
+// surfaceMaxProcs is the GOMAXPROCS a surface runs under on a machine bigger
+// than this. It is not the machine's core count, and the number was chosen by
+// counting what the runtime does with the ones above it, not by taste — see
+// [tuneForTheSurface] for the census.
+const surfaceMaxProcs = 8
+
+// tuneForTheSurface caps the scheduler and raises the heap target for a command
+// that is about to draw one, and IT IS CALLED FROM THE DISPATCH BELOW rather
+// than from main.
 //
 // The default heap target collects several times before the surface is even
 // drawn, and none of those collections free anything worth the pause: the launch
@@ -57,10 +65,55 @@ func main() {
 // cost paid to shorten a pause no one can see. Those commands keep the Go
 // default. An explicit GOGC still decides for both — this is a default, not a
 // policy.
+//
+// ── AND THE SCHEDULER IS THE SAME BARGAIN IN A DIFFERENT UNIT ───────────────
+//
+// GOMAXPROCS is the number of Ps the scheduler runs, and the Go runtime spends
+// the machine's cores on that number whether or not a surface uses them: an idle
+// session's engine host was measured holding ONE runtime GC-worker goroutine PER
+// P. On a 20-core machine that was 20 of the process's 33 goroutines; at
+// GOMAXPROCS=8 the same process held 8 workers and 21 goroutines, with its OS
+// threads falling 13 to 11 (measured Sep 2026, `engine --daemon`, an empty
+// workspace, before and after, two runs each side).
+//
+// A surface draws one conversation and waits on a network, and the parallelism
+// that DOES want the whole machine is subprocesses — the tools a session runs,
+// each with its own Ps — so the cores above the cap buy a waiting surface
+// nothing and cost it a pool of idle runtime workers. Capping at 8 rather than
+// lower is measured too: 20->8 removes 12 of the idle goroutines, and 8->4
+// removes 4 more while halving what any in-process work may use.
+//
+// THE CAP HAS TO CROSS A PROCESS BOUNDARY, because a surface's far half is a
+// SEPARATE `engine --daemon` this launch starts (enginehost.Spawn from
+// chatv3_local.go) — its own process, so it inherits the environment and not
+// this process's scheduler, and reads GOMAXPROCS at its own startup. Setting the
+// variable is what carries the cap to it.
+//
+// AN EXPLICIT GOMAXPROCS STILL DECIDES, exactly as an explicit GOGC does just
+// below: this is a default, not a policy. And a machine no bigger than the cap
+// is left completely alone — not even the variable is set.
 func tuneForTheSurface() {
+	if os.Getenv("GOMAXPROCS") == "" {
+		if n := surfaceProcs(runtime.NumCPU()); n < runtime.NumCPU() {
+			runtime.GOMAXPROCS(n)
+			os.Setenv("GOMAXPROCS", strconv.Itoa(n))
+		}
+	}
 	if os.Getenv("GOGC") == "" {
 		debug.SetGCPercent(400)
 	}
+}
+
+// surfaceProcs is the GOMAXPROCS a surface should run under on a machine with
+// ncpu cores: the cap, or the machine's own count when it is no bigger than the
+// cap. The caller reads it as "is this smaller than what we have" — on a machine
+// that is already at or under the cap the answer is the machine, so nothing is
+// capped and not even the variable is set.
+func surfaceProcs(ncpu int) int {
+	if ncpu <= surfaceMaxProcs {
+		return ncpu
+	}
+	return surfaceMaxProcs
 }
 
 // execute is the last line of defense. Everything below it absorbs its own

@@ -29,8 +29,6 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
-	"regexp"
-
 	"strings"
 )
 
@@ -513,11 +511,11 @@ func goReceiver(expr ast.Expr) string {
 // line. The indent is captured because it is what says whether a name belongs to
 // the module or to the class above it.
 var (
-	pythonDef    = regexp.MustCompile(`^(\s*)(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
-	pythonClass  = regexp.MustCompile(`^(\s*)class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[(:]`)
-	pythonAssign = regexp.MustCompile(
+	pythonDef    = lazyRegexp(`^(\s*)(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
+	pythonClass  = lazyRegexp(`^(\s*)class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[(:]`)
+	pythonAssign = lazyRegexp(
 		`^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*[^=]+)?=[^=]`)
-	pythonSelfAssign = regexp.MustCompile(
+	pythonSelfAssign = lazyRegexp(
 		`^\s*self\.([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*[^=]+)?=[^=]`)
 )
 
@@ -548,15 +546,15 @@ func pythonDeclarations(body string) []Declaration {
 			class, classIndent, bodyIndent, inMethod = "", -1, -1, false
 		}
 		switch {
-		case pythonClass.MatchString(line):
-			match := pythonClass.FindStringSubmatch(line)
+		case pythonClass().MatchString(line):
+			match := pythonClass().FindStringSubmatch(line)
 			if len(match[1]) == 0 && public(match[2]) {
 				found = append(found, opened{name: match[2], line: index})
 				class, classIndent, bodyIndent, inMethod = match[2], 0, -1, false
 			}
 			continue
-		case pythonDef.MatchString(line):
-			match := pythonDef.FindStringSubmatch(line)
+		case pythonDef().MatchString(line):
+			match := pythonDef().FindStringSubmatch(line)
 			switch {
 			case len(match[1]) == 0:
 				if public(match[2]) {
@@ -587,23 +585,23 @@ func pythonDeclarations(body string) []Declaration {
 			// a dict, the run rebound it to an instance of a class it wrote, and
 			// the photograph compared eight names and lost none because the one
 			// that moved was never in the reading at all.
-			if match := pythonAssign.FindStringSubmatch(line); match != nil &&
+			if match := pythonAssign().FindStringSubmatch(line); match != nil &&
 				len(match[1]) == 0 && public(match[2]) {
 				found = append(found, opened{name: match[2], line: index})
 			}
 			continue
 		}
-		if inMethod && pythonSelfAssign.MatchString(line) {
+		if inMethod && pythonSelfAssign().MatchString(line) {
 			// An instance attribute, wherever in the class it is set. Which
 			// method sets it is not read, because a name reachable on an
 			// instance is public whether __init__ or a setter put it there.
-			if name := pythonSelfAssign.FindStringSubmatch(line)[1]; public(name) {
+			if name := pythonSelfAssign().FindStringSubmatch(line)[1]; public(name) {
 				found = append(found, opened{
 					name: class + "()." + name, line: index, indent: indent})
 			}
 			continue
 		}
-		if match := pythonAssign.FindStringSubmatch(line); match != nil {
+		if match := pythonAssign().FindStringSubmatch(line); match != nil {
 			if bodyIndent < 0 {
 				bodyIndent = len(match[1])
 			}
@@ -619,18 +617,18 @@ func pythonDeclarations(body string) []Declaration {
 // scriptExport and its siblings read the shapes typescript and javascript spell
 // an export in. Only the forms whose name is on the same line are read.
 var (
-	scriptExport = regexp.MustCompile(
+	scriptExport = lazyRegexp(
 		`^\s*export\s+(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?` +
 			`(?:async\s+)?(?:function\*?|class|interface|type|enum|const|let|var)\s+` +
 			`([A-Za-z_$][A-Za-z0-9_$]*)`)
-	scriptExportList = regexp.MustCompile(`^\s*export\s*\{([^}]*)\}`)
-	scriptClass      = regexp.MustCompile(
+	scriptExportList = lazyRegexp(`^\s*export\s*\{([^}]*)\}`)
+	scriptClass      = lazyRegexp(
 		`^(\s*)export\s+(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+` +
 			`([A-Za-z_$][A-Za-z0-9_$]*)`)
-	scriptMember = regexp.MustCompile(
+	scriptMember = lazyRegexp(
 		`^(\s+)(?:public\s+|readonly\s+|static\s+|async\s+|get\s+|set\s+)*` +
 			`([A-Za-z_$][A-Za-z0-9_$]*)\s*[(:=]`)
-	scriptPrivate = regexp.MustCompile(`^\s*(?:private|protected)\s|^\s*#`)
+	scriptPrivate = lazyRegexp(`^\s*(?:private|protected)\s|^\s*#`)
 )
 
 // scriptPublicNames is what a module exports, and what its exported classes
@@ -653,17 +651,17 @@ func scriptDeclarations(body string) []Declaration {
 		if class != "" && indent <= classIndent && !strings.HasPrefix(trimmed, "}") {
 			class, classIndent, bodyIndent = "", -1, -1
 		}
-		if match := scriptClass.FindStringSubmatch(line); match != nil {
+		if match := scriptClass().FindStringSubmatch(line); match != nil {
 			found = append(found, opened{name: match[2], line: index, indent: len(match[1])})
 			class, classIndent, bodyIndent = match[2], len(match[1]), -1
 			continue
 		}
-		if match := scriptExport.FindStringSubmatch(line); match != nil {
+		if match := scriptExport().FindStringSubmatch(line); match != nil {
 			found = append(found, opened{name: match[1], line: index, indent: indentOf(line)})
 			class, classIndent, bodyIndent = "", -1, -1
 			continue
 		}
-		if match := scriptExportList.FindStringSubmatch(line); match != nil {
+		if match := scriptExportList().FindStringSubmatch(line); match != nil {
 			for _, part := range strings.Split(match[1], ",") {
 				// `export { a as b }` exports b, which is the name a caller
 				// writes; that is the one this is about.
@@ -678,10 +676,10 @@ func scriptDeclarations(body string) []Declaration {
 			}
 			continue
 		}
-		if class == "" || scriptPrivate.MatchString(line) || strings.HasPrefix(trimmed, "}") {
+		if class == "" || scriptPrivate().MatchString(line) || strings.HasPrefix(trimmed, "}") {
 			continue
 		}
-		if match := scriptMember.FindStringSubmatch(line); match != nil {
+		if match := scriptMember().FindStringSubmatch(line); match != nil {
 			if bodyIndent < 0 {
 				bodyIndent = len(match[1])
 			}
@@ -708,12 +706,12 @@ func scriptKeyword(name string) bool {
 
 // rustPub and its siblings read the shapes rust spells a public item in.
 var (
-	rustPub = regexp.MustCompile(
+	rustPub = lazyRegexp(
 		`^(\s*)pub(?:\s*\([^)]*\))?\s+(?:async\s+|unsafe\s+|extern\s+"[^"]*"\s+)*` +
 			`(?:fn|struct|enum|trait|type|const|static|mod|union)\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	rustImpl  = regexp.MustCompile(`^(\s*)impl(?:\s*<[^>]*>)?\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s+for\s+)?([A-Za-z_][A-Za-z0-9_]*)`)
-	rustField = regexp.MustCompile(`^(\s+)pub(?:\s*\([^)]*\))?\s+([A-Za-z_][A-Za-z0-9_]*)\s*:`)
-	rustBlock = regexp.MustCompile(`^(\s*)pub(?:\s*\([^)]*\))?\s+struct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{`)
+	rustImpl  = lazyRegexp(`^(\s*)impl(?:\s*<[^>]*>)?\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s+for\s+)?([A-Za-z_][A-Za-z0-9_]*)`)
+	rustField = lazyRegexp(`^(\s+)pub(?:\s*\([^)]*\))?\s+([A-Za-z_][A-Za-z0-9_]*)\s*:`)
+	rustBlock = lazyRegexp(`^(\s*)pub(?:\s*\([^)]*\))?\s+struct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{`)
 )
 
 // rustPublicNames is a module's public items, and the public members of the
@@ -735,16 +733,16 @@ func rustDeclarations(body string) []Declaration {
 		if scope != "" && indent <= scopeIndent && !strings.HasPrefix(trimmed, "}") {
 			scope, scopeIndent = "", -1
 		}
-		if match := rustImpl.FindStringSubmatch(line); match != nil {
+		if match := rustImpl().FindStringSubmatch(line); match != nil {
 			scope, scopeIndent = match[3], len(match[1])
 			continue
 		}
-		if match := rustBlock.FindStringSubmatch(line); match != nil {
+		if match := rustBlock().FindStringSubmatch(line); match != nil {
 			found = append(found, opened{name: match[2], line: index, indent: len(match[1])})
 			scope, scopeIndent = match[2], len(match[1])
 			continue
 		}
-		if match := rustPub.FindStringSubmatch(line); match != nil {
+		if match := rustPub().FindStringSubmatch(line); match != nil {
 			if scope != "" && len(match[1]) > scopeIndent {
 				found = append(found, opened{
 					name: scope + "::" + match[2], line: index, indent: len(match[1])})
@@ -754,7 +752,7 @@ func rustDeclarations(body string) []Declaration {
 			}
 			continue
 		}
-		if match := rustField.FindStringSubmatch(line); match != nil && scope != "" {
+		if match := rustField().FindStringSubmatch(line); match != nil && scope != "" {
 			found = append(found, opened{
 				name: scope + "." + match[2], line: index, indent: len(match[1])})
 		}
