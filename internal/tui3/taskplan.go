@@ -18,6 +18,7 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -50,12 +51,67 @@ type planAgent interface {
 	PlanCancel(id string) error
 	PlanAmend(id, text string) error
 	PlanPriority(id string, n int) error
+	// The summary is stored beside the plan and belongs to the same optional
+	// local-store door. Keeping it on this seam avoids inventing a second door
+	// that the remote road cannot truthfully provide.
+	PlanRunSummary(string) (session.RunPlanSummary, bool)
+	RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
 }
 
 // planReader is the agent under this surface, when it carries a plan at all.
 func (a *app) planReader() (planAgent, bool) {
 	agent, ok := a.agent.(planAgent)
 	return agent, ok
+}
+
+const runSummaryRefreshEvery = time.Minute
+
+type runSummaryRefreshedMsg struct {
+	summary session.RunPlanSummary
+	ok      bool
+}
+
+// refreshRunSummary asks for the run's four lines OFF THE LOOP, and decides
+// whether to ask from what the loop already holds. THIS RUNS AFTER EVERY
+// MESSAGE, so it may not open the store: the run's rows are the ones the task
+// sheet already carries ([tasksMine.plan]), and their ids and states are the
+// same shape the stored stamp is made of. Nothing moved since the last look
+// means no command; something moved means one command, never two at once, and
+// never more often than [runSummaryRefreshEvery]. The command does the store
+// read and, only when the stored lines are stale, the one model call.
+func (a *app) refreshRunSummary() tea.Cmd {
+	agent, ok := a.planReader()
+	if !ok || a.runSummaryRefreshing {
+		return nil
+	}
+	root, shape := "", ""
+	for _, row := range a.taskSheet.mine.plan {
+		if row.Parent == "" && root == "" {
+			root = row.ID
+		}
+		shape += row.ID + ":" + row.Status + ";"
+	}
+	if root == "" || shape == a.runSummaryShape {
+		return nil
+	}
+	now := a.now()
+	if !a.runSummaryRefreshedAt.IsZero() && now.Sub(a.runSummaryRefreshedAt) < runSummaryRefreshEvery {
+		return nil
+	}
+	a.runSummaryRefreshing = true
+	a.runSummaryRefreshedAt = now
+	a.runSummaryShape = shape
+	ctx := a.ctx
+	return func() tea.Msg {
+		// NOBODY RECORDS A LOOK AT A RUN YET (the run pane will), so the last
+		// look is the zero time and the page's `since` line reads "never".
+		stored, stale := agent.PlanRunSummary(root)
+		if !stale && strings.TrimSpace(stored.What) != "" {
+			return runSummaryRefreshedMsg{summary: stored, ok: true}
+		}
+		summary, kept := agent.RefreshRunSummary(ctx, root, time.Time{})
+		return runSummaryRefreshedMsg{summary: summary, ok: kept}
+	}
 }
 
 // planStateWord maps one store status onto the ONE state word a row wears
@@ -1406,4 +1462,32 @@ func planPageTelemetryLine(page session.PlanTaskPage) string {
 		segs = append(segs, itoa(queued)+" queued")
 	}
 	return strings.Join(segs, railSep)
+}
+
+// planRailNow draws the stored now sentence beneath the root's dot row. It is
+// pure frame work: wrapping plain data already carried by the reading.
+func planRailNow(line tasksLine, width int, pal palette, sentence string) []string {
+	sentence = strings.TrimSpace(sentence)
+	if sentence == "" || width >= planRailDotsUnder {
+		return nil
+	}
+	pad := line.underKin
+	if pad == "" {
+		pad = strings.Repeat(" ", ansi.StringWidth(line.kin))
+	}
+	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
+	room := width - ansi.StringWidth(planRailLead+pad) - taskSheetPhoneIndent
+	if room < 4 {
+		return nil
+	}
+	lines := wrap(sentence, room)
+	if len(lines) > 2 {
+		lines[1] = fit(strings.Join(lines[1:], " "), room)
+		lines = lines[:2]
+	}
+	out := make([]string, 0, len(lines))
+	for _, text := range lines {
+		out = append(out, lead+pal.dim(text))
+	}
+	return out
 }

@@ -151,7 +151,7 @@ func TestTheWorkerPromptStatesTheDeliverableFilePathLawOnce(t *testing.T) {
 	// THE DECLARATION DOOR IS A DIFFERENT LAW and stays on the task page:
 	// declaredFiles / declarationWord read a last line spelled exactly
 	// `files:`. Dropping the path restatement must not take that with it.
-	if !strings.Contains(worker, "    files: path/one.go, path/two.json") {
+	if !strings.Contains(worker, "    files: path/to/one-file, path/to/another-file") {
 		t.Error("the worker prompt lost the files: declaration door")
 	}
 }

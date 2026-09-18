@@ -99,7 +99,7 @@ When part of your deliverable is a file you did NOT write by hand — a scaffold
 generated it, a command produced it, and you have looked at it and stand behind
 it — say so on the last line of your report:
 
-    files: path/one.go, path/two.json
+    files: path/to/one-file, path/to/another-file
 
 Paths inside your own working copy, comma-separated. Only files, only ones
 that exist, and only ones you mean the person to have. Anything you leave behind

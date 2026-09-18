@@ -36,6 +36,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -132,6 +133,13 @@ func RegisterRunEngine(engine RunEngine) { chatRunEngine = engine }
 // spelled here rather than imported because the outcome ladder is the engine's
 // and this package cannot reach it.
 const beltRunOutcomeDone = "done"
+
+// beltRunSummaryDeadline is the most a landing waits for its one final
+// summary refresh before preserving the outcome note it already knows. IT IS
+// SIZED TO A REAL CALL: four short lines on the worker model come back in two
+// to four seconds, and a deadline under that would make the refresh a thing
+// that never happens outside a test. A variable only so a test can shorten it.
+var beltRunSummaryDeadline = 6 * time.Second
 
 // beltRun is one live run this conversation started: the store it drives, the
 // root it was seeded under, and the row the conversation knows it by. It is held
@@ -319,6 +327,13 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		}
 		landing = RunLanding{}
 	}
+	// A LANDING GETS ONE LAST READING before its digest is composed. The call
+	// owns the short beltRunSummaryDeadline: refusal, malformed output, or a
+	// slow provider leaves the stored reading alone and cannot hold the run
+	// beyond that bound. RefreshRunSummary itself declines without a store.
+	refreshCtx, cancelRefresh := context.WithTimeout(ctx, beltRunSummaryDeadline)
+	a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
+	cancelRefresh()
 	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing)); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's outcome note failed: " + err.Error())
