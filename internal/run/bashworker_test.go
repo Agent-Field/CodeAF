@@ -185,7 +185,7 @@ func endLine(t *testing.T, lines []string) run.Step {
 // lets the command finish only once that reading has been seen.
 func TestBashWorkerPublishesTheLiveStepWhileItsCommandRuns(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)
 	workspace := t.TempDir()
 	release := filepath.Join(workspace, "release")
@@ -195,7 +195,7 @@ func TestBashWorkerPublishesTheLiveStepWhileItsCommandRuns(t *testing.T) {
 			return toolReply(`{"command":` + jsonString(command) + `}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textReply("the wait is over"), nil
+			return toolReply(finishCommand("root", "the wait is over")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, workspace, "test/model", seat)
@@ -224,7 +224,8 @@ func TestBashWorkerPublishesTheLiveStepWhileItsCommandRuns(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
 	}
-	// The end line cleared it: a turn that ended is not running a command.
+	// The finish cleared it: a task the store says is done is not running a
+	// command, and the loop ended on that store ending, not on a reply.
 	if after := store.Live(store.RootID()); !after.Empty() {
 		t.Fatalf("the live step outlived its command: %#v", after)
 	}
