@@ -5560,3 +5560,11 @@ are restored. The row disappears when you are already in the main conversation.
 Breadcrumbs still let you choose a particular ancestor; Escape can step back
 through nested task views. If the column is hidden, the header's return control
 and breadcrumbs remain available.
+
+## how do I find an old task?
+
+Start typing on the tasks tab. The list narrows fuzzily across run and task titles, the brief, results, notes, and the conversation title already held by search. The right pane follows the top match and shows the matching line. Press `esc` to clear the filter.
+
+## how do I see only what is running?
+
+Open a run, then press `tab` to switch its tree to the by-state reading. The `running` group contains the tasks that are running. Press `tab` again to return to the tree.
