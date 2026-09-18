@@ -501,6 +501,8 @@ const (
 	// tasksLineAir is the blank line between two sections. GROUPS ARE SEPARATED
 	// BY WHITESPACE AND NEVER BY A DIVIDER on this surface.
 	tasksLineAir
+	// tasksLineFold stands for older completed runs without drawing them.
+	tasksLineFold
 	// tasksLineTask is one piece of work.
 	tasksLineTask
 	// tasksLineTail is the second line of a phone card — the same row continued
@@ -717,6 +719,10 @@ func (r tasksReading) lay(width int) []tasksLine {
 			continue
 		}
 		add(tasksLineAir, "")
+		if section == tasksEarlier && r.query == "" {
+			add(tasksLineFold, workOlderFold(tree.held(section)))
+			continue
+		}
 		add(tasksLineWord, tasksSectionHead(section, tree.held(section), tree.shown(r, section)))
 		// THE SECTION IS DRAWN AS CONVERSATIONS AND NOT AS A FLAT LIST. A chat that
 		// split one ask into eight workers used to arrive as eight peers of
@@ -1414,6 +1420,8 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 	switch line.kind {
 	case tasksLineAir:
 		return ""
+	case tasksLineFold:
+		return placeLead + pal.dim(fit(line.text, room))
 	case tasksLineControl:
 		return tasksControlRow(r.query, r.order, width, pal)
 	case tasksLineWord:
