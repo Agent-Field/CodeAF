@@ -1,0 +1,3 @@
+{"kind":"step","step":1,"command":"cd /workspace/sample && python -m unittest discover","observation":"Ran 3 tests in 0.012s\n\nOK\n"}
+{"kind":"step","step":2,"command":"cd /workspace/sample && python -m compileall -q src","observation":""}
+{"kind":"end","step":0,"command":"","steps":2,"result":"The declared proof passed and the package was checked."}
