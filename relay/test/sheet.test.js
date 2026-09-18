@@ -110,3 +110,40 @@ test('aggregate publishes judges sorted and sorts below-minInstalls cells last',
   assert.equal(cells[0].model, 'b/two'); // 3 installs meets the floor, sorts first
   assert.equal(cells[1].model, 'a/one'); // 2 installs falls after
 });
+
+const GRADED = cellKey({
+  metric: 'acceptable',
+  role: 'worker',
+  model: 'z-ai/glm-5.3-flash',
+  judge: 'codeaf/grader',
+  door: 'task',
+  size: 'M',
+});
+
+test('cellKey leads with the metric for anything but role_quality, so stored keys never move', () => {
+  assert.equal(GRADED, 'acceptable|worker|z-ai/glm-5.3-flash|codeaf/grader|task|M');
+  assert.equal(cellKey({ metric: 'role_quality', role: 'worker', model: 'a/b', judge: 'c/d', door: 'task', size: 'S' }), 'worker|a/b|c/d|task|S');
+});
+
+test('aggregate keeps a graded cell per source beside the judged cells and removes no severity from it', () => {
+  const seeded = cellKey({ metric: 'acceptable', role: 'worker', model: 'z-ai/glm-5.3-flash', judge: 'codeaf/reviewer', door: 'task', size: 'M' });
+  const entries = [
+    entry('i1', '2026-09-17', KEY, 50),
+    entry('i1', '2026-09-17', GRADED, 100, 2),
+    entry('i2', '2026-09-17', GRADED, 0, 2),
+    entry('i1', '2026-09-17', seeded, 100, 3),
+  ];
+  const cells = aggregate(entries, { minInstalls: 1 });
+  const graded = cells.filter((c) => c.metric === 'acceptable');
+  assert.equal(graded.length, 2);
+  const byGrader = graded.find((c) => c.source === 'codeaf/grader');
+  assert.equal(byGrader.installs, 2);
+  assert.equal(byGrader.n, 4);
+  assert.equal(byGrader.mean, 50);
+  const bySeed = graded.find((c) => c.source === 'codeaf/reviewer');
+  assert.equal(bySeed.mean, 100);
+  const judged = cells.find((c) => c.metric === 'role_quality');
+  assert.equal(judged.source, undefined);
+  assert.equal(judged.mean, 50);
+  assert.deepEqual(judgesOf(entries), ['anthropic/claude-opus-5', 'codeaf/grader', 'codeaf/reviewer']);
+});
