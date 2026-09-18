@@ -503,14 +503,15 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 			t.Fatalf("family member %q was filed under %q, want running", item.entry.Label, tasksSectionWord(item.section))
 		}
 	}
-	// The conversation over the family is opened by hand with it; what this test
-	// is about is what stands UNDER the running parent.
-	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true, tasksFamilyOf(rows[0]): true}
+	// The family is opened by hand; what this test is about is what stands UNDER
+	// the running parent. THE RUN STANDS AT THE PAGE'S OWN EDGE (WORK-TAB.md: no
+	// conversation row over it), so its child is one level in, not two.
+	reading.open = map[tasksKey]bool{tasksFamilyOf(rows[0]): true}
 	found := false
 	for _, line := range reading.lay(120) {
 		if line.kind == tasksLineTask && line.item.entry.ID == "2" {
 			found = true
-			if line.kin != tasksKinStep+tasksKinStep+tasksKinCont && line.kin != tasksKinStep+tasksKinStep+tasksKinLast {
+			if line.kin != tasksKinStep+tasksKinCont && line.kin != tasksKinStep+tasksKinLast {
 				t.Fatalf("the refused worker is no longer under its parent: %q", line.kin)
 			}
 			if got := taskStateWord(line.item.entry, line.item.runs); got != taskRecordStoppedWord {
