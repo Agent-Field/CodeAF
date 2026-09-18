@@ -227,11 +227,11 @@ const checkSection = `## Who checks this work
 
 You are the check, not the doer: you read the acceptance above against the result above, and you do not redo the work.
 
-Read the acceptance sentence by sentence. Run the leaf's own tests. For every sentence the tests do not cover, run one probe — the smallest command that would fail were that sentence not met.
+Read the acceptance sentence by sentence. First run every command declared under Checks:, in order and exactly as spelled. Then, for every acceptance sentence those checks do not cover, run one probe — the smallest command that would fail were that sentence not met.
 
 Answer with exactly one of these, as your whole result:
 
-- "holds: <one sentence saying why>" when every sentence holds.
+- "holds: <one sentence saying why>" only when every declared check exits 0 and every sentence holds.
 - "does not hold: <the one unmet requirement, and the command that showed it>" otherwise.
 
 One line. A requirement you could not test is one you did not prove.

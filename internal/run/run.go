@@ -402,14 +402,11 @@ func (s *Supervisor) absorb(ret workerReturn) {
 			s.rootFailed = true
 		} else {
 			s.rootResult = ret.report.Result
-			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other: its
-			// own check is added under the run's root before the completion is
-			// written, so the root's completion waits on it the way it waits on a
-			// child. A root with children answers plan and is not checked
-			// ([addReviewCheck] reads the shape fresh). A root whose own worker
-			// already wrote the ending is terminal, and the store refuses a child
-			// under a terminal parent — the check is then the one the run does
-			// without, and the run still completes.
+			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other. If
+			// its worker already wrote the ending, the store preserves that result
+			// and moves the root back to waiting on the check; CompleteRoot writes
+			// the final word after the check lands. A root with children answers
+			// plan and is not checked ([addReviewCheck] reads the shape fresh).
 			s.addReviewCheck(ret.task, ret.report.Result)
 		}
 	} else {
@@ -499,19 +496,24 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 		return
 	}
 	id := s.store.NextID()
-	_, err := s.store.AddMany([]plandb.TaskSpec{{
+	spec := plandb.TaskSpec{
 		ID:          id,
 		Title:       checkTitlePrefix + leaf.Title,
-		Description: "Acceptance: " + leaf.Description + "\n\nResult: " + result,
+		Description: descriptionWithChecks("Acceptance: "+leaf.Description+"\n\nResult: "+result, leaf.Checks),
+		Checks:      append([]string(nil), leaf.Checks...),
 		ParentID:    leaf.ParentID,
 		Role:        plandb.RoleCheck,
-	}})
+	}
+	var err error
+	if leaf.ID == s.store.RootID() && s.store.Task(leaf.ID).Status == plandb.StatusDone {
+		_, err = s.store.AddRootCheck(spec)
+	} else {
+		_, err = s.store.AddMany([]plandb.TaskSpec{spec})
+	}
 	if err != nil {
-		// A check the store would not admit is one the run does without: the
-		// leaf has already earned its ending and an unwritable review round is
-		// not an ending to fail it on. The store refuses a child under a terminal
-		// parent, which is how a root whose own worker already wrote its ending
-		// ends up unchecked.
+		// A check the store would not admit does not replace the task's earned
+		// ending. The terminal-root case has its explicit store seam above; all
+		// other refusals keep the existing outcome and result unchanged.
 		return
 	}
 	s.checkOf[id] = leaf.ID
@@ -567,6 +569,7 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		ID:          id,
 		Title:       fixTitlePrefix + checked.Title,
 		Description: fixDescription(checked, sentence),
+		Checks:      append([]string(nil), checked.Checks...),
 		ParentID:    checked.ParentID,
 	}})
 }
@@ -585,7 +588,18 @@ const (
 // leaf's own result — everything a fresh worker needs to make the unmet
 // requirement hold.
 func fixDescription(leaf *plandb.Task, finding string) string {
-	return "Acceptance: " + leaf.Description + "\n\nFinding: " + finding + "\n\nResult: " + leaf.Result
+	base := "Acceptance: " + leaf.Description + "\n\nFinding: " + finding + "\n\nResult: " + leaf.Result
+	return descriptionWithChecks(base, leaf.Checks)
+}
+
+// descriptionWithChecks keeps the historical description byte-for-byte when a
+// task declares no checks. Declared checks follow the acceptance and result as
+// worker-readable lines while the same commands remain structured on the node.
+func descriptionWithChecks(base string, checks []string) string {
+	if len(checks) == 0 {
+		return base
+	}
+	return base + "\n\nChecks:\n" + strings.Join(checks, "\n")
 }
 
 // completeTree finishes the run once every task but the root has ended: the
@@ -876,6 +890,15 @@ func needsWake(tasks []*plandb.Task, task *plandb.Task, cancels map[string]conte
 		children++
 		if !terminalStatus(child.Status) {
 			return false
+		}
+		// A CHECK'S LANDING WAKES NOBODY. A check reviews work its parent has
+		// already been told about; its finding reaches the parent as a `fix:`
+		// task, which is work and does wake it when it lands, or as a note.
+		// Waking a parent for the check itself was the turn that left a root
+		// finished alone standing `ready` forever: reopened for its one check,
+		// then owed a wake with nothing to integrate (do_engine_test.go).
+		if child.Role == plandb.RoleCheck {
+			continue
 		}
 		if !seen[child.ID] {
 			unreported = true

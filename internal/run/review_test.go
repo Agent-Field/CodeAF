@@ -77,6 +77,13 @@ func TestSupervisorAddsOneCheckForAFinishedLeafUnderTheReviewRound(t *testing.T)
 	if !strings.Contains(check.Description, "did l1") {
 		t.Fatalf("check description = %q, want the leaf's own result", check.Description)
 	}
+	wantDescription := "Acceptance: acceptance: the handler returns 200\n\nResult: did l1"
+	if check.Description != wantDescription {
+		t.Fatalf("check description = %q, want unchanged no-check description %q", check.Description, wantDescription)
+	}
+	if len(check.Checks) != 0 {
+		t.Fatalf("check checks = %v, want none copied from a leaf with none", check.Checks)
+	}
 	// The check ran, and the leaf's own completion did not carry the root with
 	// it: the root completed no earlier than the check.
 	if !seat.launched(check.ID) {
@@ -88,6 +95,35 @@ func TestSupervisorAddsOneCheckForAFinishedLeafUnderTheReviewRound(t *testing.T)
 	root := store.Task(store.RootID())
 	if root.CompletedAt.Before(check.CompletedAt) {
 		t.Fatalf("root completed at %v, before the check at %s", root.CompletedAt, check.CompletedAt)
+	}
+}
+
+// TestSupervisorCopiesDeclaredChecksOntoTheReviewTask proves declared proof stays
+// machine-readable on the review node and is also appended to its worker brief.
+func TestSupervisorCopiesDeclaredChecksOntoTheReviewTask(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	leafChecks := []string{"go test ./internal/widget", "go vet ./internal/widget"}
+	seat.actions["root"] = splitRoot(t, store, plandb.TaskSpec{
+		ID: "l1", Title: "the leaf", Description: "the handler returns 200", Checks: leafChecks,
+	})
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+
+	if outcome := supervisor.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 {
+		t.Fatalf("check tasks = %d, want one", len(checks))
+	}
+	check := checks[0]
+	if strings.Join(check.Checks, "\n") != strings.Join(leafChecks, "\n") {
+		t.Fatalf("check node checks = %v, want %v", check.Checks, leafChecks)
+	}
+	wantDescription := "Acceptance: the handler returns 200\n\nResult: did l1\n\nChecks:\ngo test ./internal/widget\ngo vet ./internal/widget"
+	if check.Description != wantDescription {
+		t.Fatalf("check description = %q, want %q", check.Description, wantDescription)
 	}
 }
 
@@ -246,7 +282,7 @@ func TestSupervisorTurnsADoesNotHoldFindingIntoAFixTask(t *testing.T) {
 	ctx := runContext(t)
 	seat := newFakeSeat()
 	seat.actions["root"] = splitRoot(t, store,
-		plandb.TaskSpec{ID: "l1", Title: "the leaf", Description: "acceptance: the handler returns 200"})
+		plandb.TaskSpec{ID: "l1", Title: "the leaf", Description: "acceptance: the handler returns 200", Checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}})
 	finding := "does not hold: the handler still returns 500 under load."
 	factory := func(task plandb.Task) run.Worker {
 		if task.Role == plandb.RoleCheck {
@@ -274,6 +310,10 @@ func TestSupervisorTurnsADoesNotHoldFindingIntoAFixTask(t *testing.T) {
 	}
 	if len(fix.Dependencies) != 0 {
 		t.Fatalf("fix dependencies = %v, want none so it is ready at once", fix.Dependencies)
+	}
+	wantChecks := []string{"go test ./internal/widget", "go vet ./internal/widget"}
+	if strings.Join(fix.Checks, "\n") != strings.Join(wantChecks, "\n") {
+		t.Fatalf("fix checks = %v, want inherited %v", fix.Checks, wantChecks)
 	}
 	for _, want := range []string{"acceptance: the handler returns 200", "the handler still returns 500 under load.", "did l1"} {
 		if !strings.Contains(fix.Description, want) {
@@ -362,6 +402,103 @@ func TestSupervisorChecksAChildlessRootBeforeCompletion(t *testing.T) {
 }
 
 // TestSupervisorAddsNoCheckWithTheReviewRoundOff proves the default: with the
+func rootDoneAction(store *plandb.Store, result string) func(context.Context, plandb.Task) (run.Report, error) {
+	return func(_ context.Context, task plandb.Task) (run.Report, error) {
+		if _, err := store.Done(task.ID, task.ID, result, nil, nil); err != nil {
+			return run.Report{}, err
+		}
+		return run.Report{Result: result, Steps: 1}, nil
+	}
+}
+
+func TestSupervisorChecksAChildlessRootThatCompletedItselfInTheStore(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	const result = "the root wrote its own ending"
+	seat.actions["root"] = rootDoneAction(store, result)
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 {
+		t.Fatalf("check tasks = %d, want exactly one for the root that completed itself", len(checks))
+	}
+	check := checks[0]
+	if check.ParentID != store.RootID() || !seat.launched(check.ID) || check.Status != plandb.StatusDone {
+		t.Fatalf("check = parent %q launched %v status %s, want one landed under root", check.ParentID, seat.launched(check.ID), check.Status)
+	}
+	if got := store.Task(store.RootID()).Result; got != result {
+		t.Fatalf("root result = %q, want worker result %q", got, result)
+	}
+	// A CHECK'S LANDING WAKES NOBODY: the root ran once for its work and was
+	// not run again to "integrate" its own check. Before this held, a root
+	// reopened for its check was owed a wake it could never be given and the
+	// run stood `ready` forever (the do door's own tests caught it).
+	rootRuns := 0
+	for _, id := range seat.launches() {
+		if id == store.RootID() {
+			rootRuns++
+		}
+	}
+	if rootRuns != 1 {
+		t.Fatalf("root launched %d times, want once: launches = %v", rootRuns, seat.launches())
+	}
+}
+
+func TestSupervisorTurnsARootsDoesNotHoldFindingIntoAFix(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = rootDoneAction(store, "the root wrote its own ending")
+	factory := func(task plandb.Task) run.Worker {
+		if task.Role == plandb.RoleCheck {
+			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
+				return run.Report{Result: "does not hold: the hidden case fails", Steps: 1}, nil
+			})
+		}
+		return seat.workerFor(task)
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, factory)
+	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	fixes := tasksTitled(store, "fix: The run")
+	if len(fixes) != 1 {
+		t.Fatalf("fix tasks = %d, want exactly one under the root", len(fixes))
+	}
+	fix := fixes[0]
+	if fix.ParentID != store.RootID() || fix.Status != plandb.StatusDone || !seat.launched(fix.ID) {
+		t.Fatalf("fix = parent %q launched %v status %s, want one landed under root", fix.ParentID, seat.launched(fix.ID), fix.Status)
+	}
+	if root := store.Task(store.RootID()); root.CompletedAt.Before(fix.CompletedAt) {
+		t.Fatalf("root completed at %v, before fix at %v", root.CompletedAt, fix.CompletedAt)
+	}
+}
+
+func TestSupervisorDoesNotCheckARootWithChildrenThatCompletedItself(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	turn := 0
+	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		turn++
+		if turn == 1 {
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "l1", Title: "the leaf", ParentID: task.ID}}); err != nil {
+				return run.Report{}, err
+			}
+			return run.Report{Result: "split", Steps: 1}, nil
+		}
+		return rootDoneAction(store, "the coordinator integrated its child")(context.Background(), task)
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 || checks[0].Title == "check: The run" {
+		t.Fatalf("checks = %#v, want only the child leaf's check and none for the root", checks)
+	}
+}
+
 // review round unset — the zero Limits every existing caller builds — a leaf
 // that lands done adds nothing, and the run is the root and its one leaf.
 func TestSupervisorAddsNoCheckWithTheReviewRoundOff(t *testing.T) {

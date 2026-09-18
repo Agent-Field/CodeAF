@@ -82,6 +82,7 @@ var schemaStatements = []string{
 		role                  TEXT    NOT NULL,
 		agent                 TEXT    NOT NULL,
 		acceptance            TEXT    NOT NULL,
+		checks                TEXT    NOT NULL DEFAULT '[]',
 		capabilities          TEXT    NOT NULL,
 		resources             TEXT    NOT NULL,
 		context_inputs        TEXT    NOT NULL,
@@ -130,6 +131,7 @@ var schemaStatements = []string{
 		role                  TEXT    NOT NULL,
 		agent                 TEXT    NOT NULL,
 		acceptance            TEXT    NOT NULL,
+		checks                TEXT    NOT NULL DEFAULT '[]',
 		capabilities          TEXT    NOT NULL,
 		resources             TEXT    NOT NULL,
 		context_inputs        TEXT    NOT NULL,
@@ -334,6 +336,9 @@ func migrateColumns(tx *sql.Tx) error {
 	// still opens, its old tasks reading back as not waiting. Both the live
 	// table and the archive carry them.
 	for _, table := range []string{"tasks", "archived_tasks"} {
+		if err := ensureColumn(tx, table, "checks", "TEXT", "'[]'"); err != nil {
+			return err
+		}
 		if err := ensureColumn(tx, table, "waiting", "INTEGER", "0"); err != nil {
 			return err
 		}
@@ -446,7 +451,7 @@ func loadState(tx *sql.Tx) (state, error) {
 // reads them. The archive keeps the same columns and adds archived_at, so the
 // list lives here and both the loader and the archive reader share it.
 const taskColumns = `id, title, description, kind, parent_id, priority, effect,
-	parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
+	parallel, isolation, role, agent, acceptance, checks, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
 	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at,
 	waiting, waited_at`
@@ -464,18 +469,18 @@ type rowQuerier interface {
 func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 	task := &Task{}
 	var (
-		capabilities, resources, contextInputs, deliverables string
-		evidenceRequirements, artifacts, evidence            string
-		composite, paused                                    int
-		createdAt, updatedAt, completedAt                    string
-		effect, parallel, isolation                          string
-		seenAt, waitedAt                                     string
-		waiting                                              int
+		checks, capabilities, resources, contextInputs, deliverables string
+		evidenceRequirements, artifacts, evidence                    string
+		composite, paused                                            int
+		createdAt, updatedAt, completedAt                            string
+		effect, parallel, isolation                                  string
+		seenAt, waitedAt                                             string
+		waiting                                                      int
 	)
 	dest := []any{
 		&task.ID, &task.Title, &task.Description, &task.Kind, &task.ParentID,
 		&task.Priority, &effect, &parallel, &isolation, &task.Role, &task.Agent, &task.Acceptance,
-		&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
+		&checks, &capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
 		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
 		&task.Owner, &seenAt, &waiting, &waitedAt,
@@ -489,6 +494,9 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 	task.Composite = composite != 0
 	task.Paused = paused != 0
 	task.Waiting = waiting != 0
+	if err := decodeJSON(checks, &task.Checks); err != nil {
+		return nil, err
+	}
 	if err := decodeJSON(capabilities, &task.Capabilities); err != nil {
 		return nil, err
 	}
@@ -577,15 +585,18 @@ func loadArchived(q rowQuerier) ([]*Task, error) {
 func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 	statement, err := tx.Prepare(`INSERT INTO archived_tasks (
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
-		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
+		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
 	for ord, task := range tasks {
+		checks, err := encodeJSON(task.Checks)
+		if err != nil {
+			return err
+		}
 		capabilities, err := encodeJSON(task.Capabilities)
 		if err != nil {
 			return err
@@ -616,7 +627,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 		}
 		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Kind,
 			task.ParentID, task.Priority, string(task.Effect), task.Parallel, task.Isolation,
-			task.Role, task.Agent, task.Acceptance, capabilities, resources, contextInputs, deliverables,
+			task.Role, task.Agent, task.Acceptance, checks, capabilities, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat,
@@ -725,16 +736,19 @@ func saveState(tx *sql.Tx, value state) error {
 func saveTasks(tx *sql.Tx, value state) error {
 	statement, err := tx.Prepare(`INSERT INTO tasks (
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
-		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
+		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
 	for ord, id := range value.Order {
 		task := value.Tasks[id]
+		checks, err := encodeJSON(task.Checks)
+		if err != nil {
+			return err
+		}
 		columns, err := encodeJSON(task.Capabilities)
 		if err != nil {
 			return err
@@ -765,7 +779,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 		}
 		if _, err := statement.Exec(task.ID, ord, task.Title, task.Description, task.Kind,
 			task.ParentID, task.Priority, string(task.Effect), task.Parallel, task.Isolation,
-			task.Role, task.Agent, task.Acceptance, columns, resources, contextInputs, deliverables,
+			task.Role, task.Agent, task.Acceptance, checks, columns, resources, contextInputs, deliverables,
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused),

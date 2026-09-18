@@ -331,13 +331,25 @@ it was (`done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`,
 `deadline`, `price`, `question`), and `ok` is true on exactly the runs that leave
 with 0.
 
+## How do I tell the check what to run?
+
+Declare each proof command when the task is created: add `--check '<the command
+that proves it>'` to `plandb add`, and repeat `--check` when the task has more than
+one command to run. The check runs every command exactly as declared before it
+probes any acceptance sentence those commands do not cover.
+
+A task with **no declared check** is checked by reading its result and by the
+acceptance alone. Commands mentioned only in the task's prose are not declarations,
+so put every command the check must run on the task with `--check`.
+
 ## Who checks a task's work?
 
 Every leaf that lands **done** is checked, at both doors — `/task` and `codeaf
 do`. The run adds one **check** task under the leaf's parent, on the plan seat,
 carrying the leaf's acceptance and the result it reported, and the run's
 completion waits on it like on any other child: a run is not over until its
-checks have landed.
+checks have landed. A run whose root did the work alone is checked the same way
+before it finishes.
 
 A check does not redo the work. It reads the acceptance sentence by sentence,
 runs the leaf's own tests, and probes each sentence the tests do not cover. It
