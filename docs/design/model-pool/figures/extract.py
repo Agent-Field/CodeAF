@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Turn the private bench ledger into the three text-free CSV files the figure
-script reads.
+"""Turn the private run ledger into the text-free CSV files the figure script
+reads.
 
 The ledger rows carry the brief and the reviewer's prose; NONE of that is
 written here. What comes out is numbers, model identifiers and coarse category
 words -- the same discipline the pool's own rows obey (Section 4 of the paper).
 Run it once, from anywhere:
 
-    python3 extract.py --runs ~/codeaf-hero/.codeaf-runs
+    python3 extract.py --runs ~/codeaf-hero/.codeaf-runs \
+        --seats ~/scratch/spark_runs.json --catalog ~/.codeaf/model-catalog.json
 
-It rewrites data/runs.csv, data/seatcost.csv and data/cells.csv beside itself.
-The CSVs are committed; the ledger is not, so the figures rebuild on a machine
-that has never seen it.
+It rewrites data/runs.csv, data/seatcost.csv, data/cells.csv, data/seats.csv
+and data/catalog.csv beside itself. The CSVs are committed; the ledger is not,
+so the figures rebuild on a machine that has never seen it. THIS IS THE ONLY
+SCRIPT THAT READS A PATH OUTSIDE THIS DIRECTORY: every figure is drawn from the
+committed CSVs alone.
 """
 
 import argparse
@@ -25,7 +28,8 @@ DATA = os.path.join(HERE, "data")
 # Fields that may carry task text, a file name or a reviewer's sentence. They
 # are named here rather than filtered by a rule so that a field added upstream
 # is excluded until somebody looks at it.
-NEVER = {"task", "notes", "claim", "contam_note", "diff", "tier_note", "pass_type"}
+NEVER = {"task", "notes", "claim", "contam_note", "diff", "tier_note", "pass_type",
+         "commits", "dirty", "arm"}
 
 
 def load(path):
@@ -156,15 +160,103 @@ def cells(src):
           rows)
 
 
+def seats(path):
+    """The per-seat token and dollar split, one row per run.
+
+    The source is a per-run usage ledger keyed by model identifier. A run names
+    a model in each of the three seats; the accounting is per model, so a model
+    that holds no seat (a one-token probe, a fallback) lands in the OTHER
+    column. Nothing here carries the brief, the diff or a file name.
+    """
+    with open(path) as fh:
+        raw = json.load(fh)
+    header = ["run"]
+    for seat in ("work", "check", "plan"):
+        header.append(seat)
+    for seat in ("work", "check", "plan", "other"):
+        header += ["calls_" + seat, "tin_" + seat, "tout_" + seat, "usd_" + seat]
+    header += ["spend", "minutes", "stop"]
+
+    rows = []
+    for r in raw:
+        if not r.get("work"):
+            continue                      # a run that never reached a seat
+        by = r.get("by_model") or {}
+        held = {seat: r.get(seat) for seat in ("work", "check", "plan")}
+        row = [r.get("run", ""), held["work"] or "", held["check"] or "",
+               held["plan"] or ""]
+        used = set()
+        for seat in ("work", "check", "plan"):
+            m = held[seat]
+            e = by.get(m) if m else None
+            if m is not None and m in by:
+                used.add(m)
+            e = e or {}
+            row += [int(num(e.get("calls"), 0)), int(num(e.get("tin"), 0)),
+                    int(num(e.get("tout"), 0)), "%.6f" % num(e.get("usd"), 0.0)]
+        oc = ot_in = ot_out = 0
+        ousd = 0.0
+        for m, e in by.items():
+            if m in used:
+                continue
+            oc += int(num(e.get("calls"), 0))
+            ot_in += int(num(e.get("tin"), 0))
+            ot_out += int(num(e.get("tout"), 0))
+            ousd += num(e.get("usd"), 0.0)
+        row += [oc, ot_in, ot_out, "%.6f" % ousd]
+        row += ["%.6f" % num(r.get("spend"), 0.0), "%.2f" % num(r.get("minutes"), 0.0),
+                (r.get("stop") or "").split(":")[0]]
+        rows.append(row)
+    write("seats.csv", header, rows)
+
+
+def catalog(path):
+    """The published catalog snapshot: prices per token and published indexes.
+
+    Only rows that carry a price or an index are kept, and only the columns the
+    paper uses. Prices are as published on the day of the snapshot; they are
+    public, and committing them is what lets a reader reprice every run.
+    """
+    with open(path) as fh:
+        cat = json.load(fh)
+    rows = []
+    for m in cat.get("models", []):
+        if m.get("prompt_price") is None and m.get("intelligence_index") is None \
+                and m.get("arena_elo") is None:
+            continue
+        rows.append([
+            m.get("id", ""),
+            "" if m.get("prompt_price") is None else "%.10g" % m["prompt_price"],
+            "" if m.get("completion_price") is None else "%.10g" % m["completion_price"],
+            "" if m.get("cache_read_price") is None else "%.10g" % m["cache_read_price"],
+            "" if m.get("intelligence_index") is None else "%.4g" % m["intelligence_index"],
+            "" if m.get("arena_elo") is None else "%.0f" % m["arena_elo"],
+            "" if m.get("context_length") is None else int(m["context_length"]),
+        ])
+    rows.sort()
+    write("catalog.csv",
+          ["model", "prompt_price", "completion_price", "cache_read_price",
+           "intelligence_index", "arena_elo", "context_length"],
+          rows)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--runs", default=os.path.expanduser("~/codeaf-hero/.codeaf-runs"),
                     help="the directory holding ledger.jsonl, cells.jsonl and crew/")
+    ap.add_argument("--seats", default="",
+                    help="the per-run, per-model usage ledger (JSON array)")
+    ap.add_argument("--catalog", default=os.path.expanduser("~/.codeaf/model-catalog.json"),
+                    help="the published catalog cache")
     args = ap.parse_args()
     os.makedirs(DATA, exist_ok=True)
     runs(args.runs)
     seatcost(args.runs)
     cells(args.runs)
+    if args.seats:
+        seats(args.seats)
+    if args.catalog and os.path.exists(args.catalog):
+        catalog(args.catalog)
     print("no field in %s was written" % ", ".join(sorted(NEVER)))
 
 
