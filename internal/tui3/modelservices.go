@@ -212,9 +212,13 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	}
 	// A CONNECTED INSTANCE IS CALLED WHAT THE PERSON CALLED IT. The vendored
 	// template's own name stops being true the moment a connection has a
-	// name; without this every instance reads identically on the panel.
+	// name; without this every instance reads identically on the panel. THE
+	// UNCONNECTED ROW KEEPS THE VENDORED NAME: the catalog template's Written
+	// is the bare id, and a person who has connected nothing yet finds the
+	// row by the name the manual and the README spell, `Custom
+	// OpenAI-compatible API`, never by `custom`.
 	name := source.Name
-	if modelsource.IsCustomID(source.ID) {
+	if held && modelsource.IsCustomID(source.ID) {
 		if written := strings.TrimSpace(source.Written); written != "" {
 			name = written
 		}
