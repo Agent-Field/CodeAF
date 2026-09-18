@@ -18,6 +18,8 @@ finished tasks can recover their pages too.
 
 ## What is on this task page — everything a task's page shows, in order
 
+A task opened from the rail starts with its full title, then the opening three lines of its brief with a door onto the rest, then any declared checks, then the folder where it works. Empty parts are absent. The folder is said once in this head rather than repeated as page context on every step.
+
 The instruction it was given, folded to three lines with a door. The work it did, folded
 into chips it counts. The paragraphs it wrote as it went, each standing above the chip that
 covers the work behind it. Anything you steered into it, drawn where you said it. The report
