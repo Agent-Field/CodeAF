@@ -17,6 +17,10 @@ func workTabFixture(t *testing.T) (*app, *planFake) {
 		"t-root": {Row: root},
 	})
 	a.width, a.height = 120, 28
+	// The strip reads the rows the task sheet carries, never the store; the
+	// fixture hands it the fake's own slice so a test that moves a state moves
+	// what the strip sees.
+	a.taskSheet.mine.plan = fake.plan
 	return a, fake
 }
 
@@ -87,5 +91,34 @@ func TestWorkTabKeepsTheStripSwitchKey(t *testing.T) {
 	drive(t, a, key(hopOpenKey))
 	if !a.hopShowing() {
 		t.Fatal("the strip switch key did not open its conversation card from the work tab")
+	}
+}
+
+// countingPlan counts the store reads a surface asks its agent for.
+type countingPlan struct {
+	*planFake
+	reads int
+}
+
+func (c *countingPlan) PlanTasks() []session.PlanTaskRow {
+	c.reads++
+	return c.planFake.PlanTasks()
+}
+
+// THE TAB STRIP IS FRAME CODE AND NEVER OPENS THE STORE. It asked the agent for
+// the run's rows twice on every frame, and behind that door is a database file;
+// it reads the rows the task sheet already carries.
+func TestTheWorkTabNeverAsksTheStoreFromAFrame(t *testing.T) {
+	a, fake := workTabFixture(t)
+	counted := &countingPlan{planFake: fake}
+	a.agent = counted
+	for i := 0; i < 3; i++ {
+		if tabs := a.tabList(); len(tabs) != 2 || !tabs[1].work {
+			t.Fatalf("the work tab is missing: %+v", tabs)
+		}
+		a.tabsRow(a.width)
+	}
+	if counted.reads != 0 {
+		t.Fatalf("drawing the tab strip read the store %d times", counted.reads)
 	}
 }

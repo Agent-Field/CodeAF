@@ -6,11 +6,11 @@ import (
 )
 
 func (a *app) workTab() (chatTab, bool) {
-	p, ok := a.planReader()
-	if !ok {
-		return chatTab{}, false
-	}
-	rows := p.PlanTasks()
+	// THE TAB STRIP IS FRAME CODE, AND A FRAME NEVER OPENS THE STORE. The run's
+	// rows are the ones the task sheet already carries ([tasksMine.plan], read
+	// off the loop); asking the agent here opened the plan store twice on
+	// every frame of a conversation with a run in it.
+	rows := a.taskSheet.mine.plan
 	if len(rows) == 0 {
 		return chatTab{}, false
 	}
@@ -32,12 +32,8 @@ func (a *app) workTab() (chatTab, bool) {
 }
 
 func (a *app) workTabStable() bool {
-	p, ok := a.planReader()
-	if !ok {
-		return true
-	}
 	var sig strings.Builder
-	for _, row := range p.PlanTasks() {
+	for _, row := range a.taskSheet.mine.plan {
 		if planRunning(row.Status) {
 			a.workTabSettled = ""
 			return false
