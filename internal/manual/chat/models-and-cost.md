@@ -2936,8 +2936,9 @@ It goes quiet only when nothing is being written and no answer has come back in 
 ten minutes.
 
 **It is drawn whoever served, the vendor's own providers included.** `glm-5.3-flash · via
-z-ai` is not a line saying the same thing twice: the model is spelled there as its
-basename, so the vendor half of its address (`z-ai/`) is not on the screen at all. Until
+z-ai` identifies the machine that served the answer. The model now keeps its full
+address, including the organization prefix, on both home and conversation seams;
+the serving machine is a separate fact. Until
 2026-09-09 the rider was hidden in exactly that case, and what it produced was a name
 that came and went as the router moved between a vendor's own providers and everybody
 else's — which reads as codeaf having lost track of who is answering. The `served` row on

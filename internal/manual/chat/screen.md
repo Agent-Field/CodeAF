@@ -67,8 +67,9 @@ the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** Its seam starts with the model, a colon and
 its effort word and approvals, with the project at the far right:
-`glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`. Conversation seams use the same
-layout, naming the current workspace after any telemetry on the right. Home's project is clickable to cycle the draft
+`z-ai/glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`. Conversation seams use the same
+layout and retain the full model identifier, including the organization before `/`
+(for example, `deepseek/deepseek-v4.1-flash`). They name the current workspace after any telemetry on the right. Home's project is clickable to cycle the draft
 destination; the conversation's is a reading. Model names and project paths underline
 on mouse-over on both seams; the model stays bold and bright. Paths truncate on the right, and the
 project field disappears if the controls and telemetry leave too little room. The model stays
@@ -721,9 +722,9 @@ is a claim about now and who is attribution.
 
 **The machine in brackets is drawn whoever served**, including a vendor serving its own
 model (`glm-5.3-flash (z-ai)`). It was hidden in that case until 2026-09-09, on the
-argument that the id already said it — but the model is spelled here as its basename,
-so the vendor half of the address is not on the screen at all, and a name that came and
-went with the endpoint read as a lost sighting. It names the machine writing the answer
+argument that the id already said it. The full model address now includes the
+organization, while the brackets name the machine that actually served the answer;
+a name that came and went with the endpoint read as a lost sighting. It names the machine writing the answer
 in flight as soon as that machine has named itself, and after that the one that answered
 last — **and it stays**: since 2026-09-17 the last machine to answer is named until
 another one does, however long the conversation sits idle. (Until then it went quiet ten
@@ -1415,8 +1416,8 @@ three:
 Row 1 is **what this is** (the session name, or the workspace place if it has not named
 itself) against **what it has cost** (spend, and the context percent only — the
 fraction is what the sheet is for), with a `▸` on the end. Row 2 is **what is
-answering** (the model basename, no rider, with the reasoning level spelled on when one
-is set — `kimi-k3:high`) against **what is still moving**
+answering** (the full model identifier, no rider, with the reasoning level spelled on when one
+is set — `moonshotai/kimi-k3:high`) against **what is still moving**
 (`⏺ N running`, `N jobs`, then the state word). Identity left, telemetry right, the gap
 as the only separator, same as the wide row.
 

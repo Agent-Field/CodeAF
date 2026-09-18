@@ -1338,8 +1338,21 @@ func (a *app) laneForceNow() laneForce {
 	return laneInForce(a.model)
 }
 
-// modelWord is THE MODEL AS THE CHROME NAMES IT: its basename ([modelBase]),
-// and — while a lane is pinned — `@` and that lane: `deepseek-v4-flash@cloudflare`.
+// modelIdentity keeps the complete model address on home and conversation seams.
+// Connected services qualify their own models; without a catalog the stored id
+// still keeps its organization prefix, so the two surfaces cannot disagree.
+func (a *app) modelIdentity(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || a.sources.Empty() {
+		return id
+	}
+	service, bare := a.sources.For(id)
+	return service.Qualify(bare)
+}
+
+// modelWord is THE MODEL AS THE CHROME NAMES IT: its complete address,
+// and — while a lane is pinned — `@` and that lane:
+// `deepseek/deepseek-v4-flash@cloudflare`.
 //
 // A PIN IS AN INSTRUCTION THAT CHANGES EVERY FUTURE REQUEST, and until this the
 // chrome never said it. The picker's row said `via inception` only while the
@@ -1355,7 +1368,7 @@ func (a *app) laneForceNow() laneForce {
 func (a *app) modelWord() string { return a.modelWordAt("") }
 
 // modelWordAt is [app.modelWord] with a reasoning level spelled onto the id —
-// `deepseek-v4-flash:high@cloudflare` — which is how the phone deck's chip names
+// `deepseek/deepseek-v4-flash:high@cloudflare` — which is how the phone deck's chip names
 // the conversation's model (statusdeck.go's [app.deckModelRow]). An empty level
 // is the word [app.modelWord] draws.
 //
@@ -1365,11 +1378,7 @@ func (a *app) modelWord() string { return a.modelWordAt("") }
 // the model by a name nothing is filed under — which is how a person who had set
 // a level lost the live rate from the right edge of the row.
 func (a *app) modelWordAt(level string) string {
-	model := modelBase(a.model)
-	if !a.sources.Empty() {
-		service, bare := a.sources.For(a.model)
-		model = service.Qualify(bare)
-	}
+	model := a.modelIdentity(a.model)
 	if model == "" {
 		return ""
 	}

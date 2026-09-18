@@ -512,7 +512,7 @@ func (a *app) seamPieces(width int) seamPieces {
 	// The slot is still a slot because a room writes its way out into it
 	// (roomseam.go).
 	//
-	// THE MODEL IS ITS BASENAME, AND HOW HARD IT IS BEING ASKED TO THINK IS THE
+	// THE MODEL KEEPS ITS FULL ADDRESS, AND HOW HARD IT IS ASKED TO THINK IS THE
 	// CELL AFTER IT. The level used to be spelled onto the id with a colon —
 	// `glm-5.3-flash:high` — which said the picker-dialled level and nothing
 	// else, so one ladder had two spellings on one frame: this suffix, and the

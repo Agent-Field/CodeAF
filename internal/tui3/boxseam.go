@@ -395,7 +395,7 @@ var draftLadder = []draftTry{
 // draftPieces shares the conversation's model, effort and approval spelling.
 func (a *app) draftPieces() seamPieces {
 	return seamPieces{
-		model: modelBase(a.targetModel()),
+		model: a.modelIdentity(a.targetModel()),
 		rung:  a.targetEffortChip(),
 		gate:  a.targetApprovalChip(),
 	}

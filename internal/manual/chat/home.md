@@ -1362,7 +1362,9 @@ files are still there, and the conversation you open shows them.
 ## Change the model before starting — /model on home, the seam above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
-at the left: `glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`.
+at the left: `z-ai/glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`.
+Home and conversation seams both keep the complete model identifier, including the
+organization before `/`, for the current model or a model pinned for the next conversation.
 The project sits at the right edge of the seam. A long path
 truncates at its right end before the project field disappears on narrow frames.
 With nothing pinned that is this window's own model. Two doors change it, and they are the

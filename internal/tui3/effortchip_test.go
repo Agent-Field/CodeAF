@@ -295,12 +295,14 @@ func TestANarrowSeamDropsTheRungRatherThanCuttingIt(t *testing.T) {
 	for width := 120; width >= 40; width-- {
 		a.width = width
 		line := seamLine(t, a)
-		if !strings.Contains(line, seamEffortJoin) {
+		// The project label has its own colon even when the model has gone.
+		controls := strings.SplitN(line, targetProjectLead, 2)[0]
+		if !strings.Contains(controls, seamEffortJoin) {
 			continue
 		}
 		found := false
 		for _, rung := range effort.Rungs {
-			if strings.Contains(line, seamEffortJoin+rung.String()) {
+			if strings.Contains(controls, seamEffortJoin+rung.String()) {
 				found = true
 			}
 		}

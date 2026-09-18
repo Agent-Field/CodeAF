@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -242,7 +243,7 @@ func TestTheDraftRuleKeepsTheProjectAtTheRight(t *testing.T) {
 	a.target.where = "/tmp/landing-test"
 	line, drew := a.targetLegend(120, a.pal)
 	text := ansi.Strip(line)
-	if !drew || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
+	if !drew || !strings.HasPrefix(text, "─ moonshotai/kimi-k3:high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
 		t.Fatalf("the draft seam has the wrong order: %q", text)
 	}
 	if a.targetModelSpan.from != 2 || a.targetFolderSpan.from <= a.targetApprovalSpan.to {
@@ -254,7 +255,7 @@ func TestTheDraftRuleKeepsTheProjectAtTheRight(t *testing.T) {
 	a.target.where = "/tmp/" + strings.Repeat("long-project/", 12)
 	line, drew = a.targetLegend(80, a.pal)
 	text = ansi.Strip(line)
-	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.Contains(text, "project: /tmp/") || !strings.Contains(text, "… ─") {
+	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ moonshotai/kimi-k3:high · ") || !strings.Contains(text, "project: /tmp/") || !strings.Contains(text, "… ─") {
 		t.Fatalf("the long project displaced controls or lost its root: %q", text)
 	}
 	for width := 1; width <= 120; width++ {
@@ -293,22 +294,31 @@ func TestConversationProjectStaysAtTheRightOfTheSeam(t *testing.T) {
 
 // The model stays identifiable before anyone pins it or points at it.
 func TestTheCurrentModelIsBoldAndBrightOnBothSeams(t *testing.T) {
-	_, home := drafting(t)
-	_, conversation := gated(t)
-	for _, a := range []*app{home, conversation} {
-		a.pal = newPalette(tokens.TrueColor, false)
-		a.model = "moonshotai/kimi-k3"
-	}
-	for _, pinned := range []string{"", "zhipu/glm-5.3"} {
-		home.target.model = pinned
-		line, ok := home.targetLegend(200, home.pal)
-		if !ok || !strings.Contains(line, home.pal.bold(home.pal.data(modelBase(home.targetModel())))) {
-			t.Fatalf("home's model is not bold and bright (pin %q): %q", pinned, line)
+	for _, catalog := range []bool{false, true} {
+		_, home := drafting(t)
+		_, conversation := gated(t)
+		for _, a := range []*app{home, conversation} {
+			a.pal = newPalette(tokens.TrueColor, false)
+			a.model = "deepseek/deepseek-v4.1-flash"
+			if catalog {
+				a.sources = modelsource.NewSet(modelsource.Connected{Source: modelsource.Source{ID: modelsource.DefaultID}})
+			}
 		}
-	}
-	line := conversation.legend(200)
-	if !strings.Contains(line, conversation.pal.bold(conversation.pal.data(conversation.modelWord()))) {
-		t.Fatalf("the conversation's model is not bold and bright: %q", line)
+		for _, pinned := range []string{"", "moonshotai/kimi-k3"} {
+			home.target.model = pinned
+			line, ok := home.targetLegend(200, home.pal)
+			want := home.targetModel()
+			if !ok || !strings.Contains(line, home.pal.bold(home.pal.data(want))) {
+				t.Fatalf("home's full model is not bold and bright (catalog %v, pin %q): %q", catalog, pinned, line)
+			}
+			if got := ansi.Cut(plain(line), home.targetModelSpan.from, home.targetModelSpan.to); got != want {
+				t.Fatalf("home's model click span covers %q, want %q", got, want)
+			}
+		}
+		line := conversation.legend(200)
+		if !strings.Contains(line, conversation.pal.bold(conversation.pal.data(conversation.model))) {
+			t.Fatalf("the conversation's full model is not bold and bright (catalog %v): %q", catalog, line)
+		}
 	}
 }
 
