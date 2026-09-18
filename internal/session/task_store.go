@@ -1257,6 +1257,26 @@ func loadTaskCheckpoint(path string) (taskDocument, bool) {
 	return document, true
 }
 
+// recordOwesAcceptance reports whether a node record is one this file should
+// have been given an acceptance for, and was not. A kind that declares it
+// carries none owes nothing ([acceptanceHolds]).
+//
+// A PLAN-BORN NODE OWES THIS FILE NO ACCEPTANCE EITHER: it is a task out of the
+// plan store, admitted with the store's id and nothing else, and what it is held
+// to lives there. THE READER MAY NOT REFUSE WHAT THE WRITER WRITES. It did
+// (2026-09-18): the first part a run handed to the tree made the whole file
+// unreadable, the conversation reopened with no tasks, and its next save
+// replaced twenty of them with nothing.
+//
+// The question has a name of its own because [decodeTasks] is a road already
+// longer than its ledger row allows to grow (complexityDebt).
+func recordOwesAcceptance(record taskRecord) bool {
+	if strings.TrimSpace(record.PlanID) != "" {
+		return false
+	}
+	return !acceptanceHolds(record.Kind, record.Acceptance)
+}
+
 // decodeTasks parses and VALIDATES one checkpoint. Every rule below is a rule
 // this store enforces on the way out, so a file that breaks one was not written
 // by this code — and a half-loaded graph is a graph nobody scheduled, which is
@@ -1299,13 +1319,7 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("node %d has no title", record.ID)
 		case strings.TrimSpace(record.Brief) == "":
 			return taskDocument{}, fmt.Errorf("node %d has no brief", record.ID)
-		case !acceptanceHolds(record.Kind, record.Acceptance) && strings.TrimSpace(record.PlanID) == "":
-			// A PLAN-BORN NODE OWES THIS FILE NO ACCEPTANCE: it is a task out of the
-			// plan store, admitted with the store's id and nothing else, and what it
-			// is held to lives there. THE READER MAY NOT REFUSE WHAT THE WRITER
-			// WRITES. It did (2026-09-18): the first part a run handed to the tree
-			// made the whole file unreadable, the conversation reopened with no
-			// tasks, and its next save replaced twenty of them with nothing.
+		case recordOwesAcceptance(record):
 			return taskDocument{}, fmt.Errorf("node %d has no acceptance", record.ID)
 		case !validTaskState(record.State):
 			return taskDocument{}, fmt.Errorf("node %d is in state %q", record.ID, record.State)
