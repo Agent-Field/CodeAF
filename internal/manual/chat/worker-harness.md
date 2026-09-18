@@ -146,10 +146,28 @@ worker goes on. Four such replies in a row fail the task, and the task's record
 ends with the reason `4 replies in a row carried no action`.
 
 A parked task stays open and not done, and its claim is released: the runtime runs
-its worker again, with what changed in front of it, the moment a dependency or a
-child it named moves. A `plandb wait` with nothing open to wait on is refused, so
-a worker cannot park on nothing. The remaining endings are the run's step cap, its
-wall, and an errored turn.
+its worker again **once, when its wait is over** (see the next section), with the
+finished work in front of it. A `plandb wait` with nothing open to wait on is
+refused, so a worker cannot park on nothing. The remaining endings are the run's
+step cap, its wall, and an errored turn.
+
+## When does a waiting task come back?
+
+A parked task comes back **once, when its wait is over** — and "over" is one of
+two facts, nothing else:
+
+- **Nothing it waited on is open any more.** Every dependency is done and every
+  child it parked on has finished; the task is launched again with all of their
+  titles, statuses and results in one clause, so it integrates the whole set
+  rather than only the last thing to land.
+- **One of them failed or was cancelled.** The task is launched again at once,
+  with that one's ending named, so it can re-plan instead of waiting on siblings
+  that are still running.
+
+A child merely being **claimed, started, noted or otherwise touched** while a
+sibling still runs is **not** a reason to come back, and neither is a dependency
+stirring without landing. The park is a wait on something, and it is over when
+that something has finished — not when it has moved.
 
 ## How does a task decide it is done?
 

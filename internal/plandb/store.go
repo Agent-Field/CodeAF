@@ -577,7 +577,8 @@ func heldStatus(status Status) bool {
 
 // Wait parks a task whose worker cannot go on: the claim is released, the task
 // stays open and NOT done, and the runtime launches it again through its wake
-// road when one of its dependencies or its children changes. THE PARK IS A
+// road when its wait is over — once every dependency is done and every child has
+// finished, or at once if one of them failed or was cancelled. THE PARK IS A
 // WAIT ON SOMETHING, so a task with nothing open to wait on — no dependency
 // that is not done, no child that is not terminal — is refused, and a worker
 // cannot park forever on nothing. A parked task keeps a non-terminal status,
@@ -609,6 +610,23 @@ func (s *Store) Wait(id, agent string) (*Task, error) {
 	})
 }
 
+// OpenWaits names what a task is still waiting on, from the store's own
+// current state: every dependency whose upstream is not done, and every child
+// that is not terminal. It is the wait's other half — a parked task's wait is
+// OVER exactly when this answers nothing — and the runtime reads it there
+// rather than re-deriving the rule (internal/run's waitMoved). Sorted, so the
+// reason a refusal names is the same on every call.
+func (s *Store) OpenWaits(id string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	task := s.data.Tasks[id]
+	if task == nil {
+		return nil
+	}
+	return openWaits(s.data, task)
+}
+
 // openWaits names what a task is waiting on: every dependency whose upstream is
 // not done, and every child that is not terminal. Sorted, so the reason a
 // refusal names is the same on every call.
@@ -631,8 +649,9 @@ func openWaits(value state, task *Task) []string {
 }
 
 // Wake clears a parked task's wait flag, the other half of [Store.Wait]: the
-// runtime calls it when something the task waited on has moved, immediately
-// before it launches the task's worker again. It moves NOTHING ELSE — not the
+// runtime calls it when the task's wait is over — nothing it waited on is open
+// any more, or one of them failed or was cancelled — immediately before it
+// launches the task's worker again. It moves NOTHING ELSE — not the
 // status, and it does not promote. A leaf keeps the status [Wait] left it (Ready
 // where its hard dependencies are done, so the launch's claim answers the
 // ownership check, and Pending where one is still open, so the launch is
@@ -971,11 +990,13 @@ func (s *Store) Notes(taskID string, limit int) []Note {
 
 // Changed answers the ids of the tasks that moved since a moment: the task
 // row itself, a note left on it, or a context entry scoped to it. It is what
-// a waiting worker's wake reads — one read over the three places a task's
-// state lives — and it names which tasks to look at again, never what
-// changed about them. The ids are the store's bare spelling, in admission
-// order, and a task created after the moment counts as changed because its
-// own row is newer than the moment.
+// a waiting worker's wake reads for its one early return — the child or
+// dependency that ended failed or cancelled since the park ([internal/run]'s
+// waitMoved), not the whole wake: a move that is not a landing is not a reason
+// to come back. One read over the three places a task's state lives, and it
+// names which tasks to look at again, never what changed about them. The ids
+// are the store's bare spelling, in admission order, and a task created after
+// the moment counts as changed because its own row is newer than the moment.
 func (s *Store) Changed(since time.Time) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -2017,7 +2038,15 @@ func promote(value *state, now time.Time) {
 			task.Status = StatusDone
 			for _, child := range value.Tasks {
 				if child.ParentID == id && child.Status != StatusDone {
+					// FAILED IS FOR A CHILD THAT DID NOT LAND DONE, AND THE REASON
+					// NAMES IT. A composite whose children all landed done is never
+					// closed failed; when one did not, the next reader — the
+					// coordinator's own re-plan — is told which child and how it
+					// ended.
 					task.Status = StatusFailed
+					if strings.TrimSpace(task.Error) == "" {
+						task.Error = fmt.Sprintf("child %q %s", child.ID, child.Status)
+					}
 					break
 				}
 			}
