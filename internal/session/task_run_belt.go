@@ -31,6 +31,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -163,7 +164,25 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
+	if err := a.startKnownTaskRun(ctx, id, title, brief, nil); err != nil {
+		return a.startTaskLegacy(ctx, brief, solo)
+	}
+	return id, title, "", nil
+}
+
+// An approved hand-off under the bash belt belongs to the run store and never to the session tree.
+func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64) error {
+	engine := chatRunEngine
+	g := a.graph()
+	if engine == nil || g == nil || g.planPath() == "" {
+		return errors.New("the run road is unavailable")
+	}
+	path := g.planPath()
 	storeID := strconv.FormatUint(id, 10)
+	dependencies := make([]plandb.Dependency, 0, len(dependsOn))
+	for _, dependency := range dependsOn {
+		dependencies = append(dependencies, plandb.Dependency{TaskID: strconv.FormatUint(dependency, 10)})
+	}
 
 	a.beltMu.Lock()
 	live := a.beltRun
@@ -175,17 +194,17 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 	// pass. Nothing opens a second store.
 	if live != nil {
 		if _, err := live.store.AddMany([]plandb.TaskSpec{{
-			ID: storeID, ParentID: live.root, Title: title, Description: brief,
+			ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
 		}}); err != nil {
-			return a.startTaskLegacy(ctx, brief, solo)
+			return err
 		}
 		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
-		return id, title, "", nil
+		return nil
 	}
 
 	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief)
 	if err != nil {
-		return a.startTaskLegacy(ctx, brief, solo)
+		return err
 	}
 	run := &beltRun{plan: plan, store: store, root: store.RootID(), row: id, title: title}
 	a.installBeltRun(g, run)
@@ -215,7 +234,7 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 	}
 	go a.driveBeltRun(ctx, engine, run, spec)
-	return id, title, "", nil
+	return nil
 }
 
 // openBeltRunStore opens the conversation's store for a run, creating it under
@@ -398,4 +417,20 @@ func beltLandingLine(landing RunLanding) string {
 		files = "file"
 	}
 	return fmt.Sprintf("landed on %s: %d %s", landing.Branch, len(landing.Changed), files)
+}
+
+func (a *Agent) missingRunDependencies(ids []uint64) []uint64 {
+	a.beltMu.Lock()
+	live := a.beltRun
+	a.beltMu.Unlock()
+	if live == nil {
+		return ids
+	}
+	missing := ids[:0]
+	for _, id := range ids {
+		if live.store.Task(strconv.FormatUint(id, 10)) == nil {
+			missing = append(missing, id)
+		}
+	}
+	return missing
 }
