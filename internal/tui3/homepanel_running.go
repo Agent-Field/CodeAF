@@ -294,9 +294,7 @@ func (a *app) openTaskDoor(entry *session.TaskIndexEntry) tea.Cmd {
 // THE VERB IS SPELLED AS THE TASKS PLACE SPELLS IT ([stopActWord]), because it
 // is the same act on the same work and reaches the same card; a row that said
 // `stop` on home and `stop it` one `tab` away would be two verbs to a person.
-// `ctrl+x` reaches it without the strip, which is what a three-column home
-// needs: there `tasks` is the middle column and `→` crosses rather than
-// opening the strip ([app.homeCrossChord] names the chord on the foot).
+// `ctrl+x` reaches it without the strip too, from any column.
 func (a *app) runningVerbs(line homeLine) []verb {
 	target := a.runningStopTarget(line)
 	if target.empty() {
@@ -320,7 +318,7 @@ func (a *app) runningVerbs(line homeLine) []verb {
 // WHICH CONVERSATION THIS WINDOW HOLDS IS THE READING'S OWN FACT
 // ([switcherRow.here], the fact the row's `here` margin is drawn from), and
 // never a path resolved again here. The foot asks this on every frame a
-// running row is under the cursor ([app.homeCrossChord]), and a draw may not
+// running row is under the cursor ([app.homeHint]), and a draw may not
 // walk the disk to answer it — resolving the transcript's symlinks would be a
 // syscall a frame.
 func (a *app) runningStopTarget(line homeLine) stopTarget {

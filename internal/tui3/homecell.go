@@ -88,9 +88,9 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 // IT FOLLOWS THE POINTER TOO, through the same [homeView.previewLine] the card
 // beside the search has always used.
 //
-// NOTHING IN IT IS A STOP. The column holds no row a cursor may stand on, which
-// is what makes `→` step over it to the rail ([homeView.gridCrossTarget]) rather
-// than parking the cursor on a sentence about the row it just left.
+// NOTHING IN IT IS A STOP. The column holds no row a cursor may stand on, and
+// the arrows never leave the field in any case (homegrid.go, "the arrows stay
+// in their column").
 func (a *app) homeDescLines(width, room int, pal palette, field []homeCellLine) []homeCellLine {
 	h := &a.home
 	if room <= 0 || width <= homeGridLead {

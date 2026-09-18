@@ -961,17 +961,13 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	// The last row is the hint and the row above it is the box, which is the
 	// order pages.go assembles every place's foot in.
 	//
-	// THE RESTING ROW CARRIES ONE CHORD BESIDE THE DESIGN'S FOUR KEYS, and it is
-	// the door §6.6 refuses to leave invisible: the rail is a column with rows in
-	// it (projects is pinned there and is never empty), so `→` on a field row
-	// crosses columns rather than opening the row's verbs, and the foot names the
-	// one key that still reaches them ([app.homeCrossChord]). It was already on
-	// this row on any machine whose right column had rows; what the 2026-09-15
-	// ruling changed is that the right column now always does.
+	// THE RESTING ROW IS THE DESIGN'S SENTENCE ALONE. It carried `ctrl+o open
+	// folder` beside the four keys while `→` crossed columns and could not
+	// reach the strip; the arrows stay in their column now (owner, 2026-09-17),
+	// so the strip is one `→` away on every row and no chord needs naming.
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
-	want := strings.Replace(design, " · tab next place", rowSep+homeFolderChordWord+" · tab next place", 1)
-	if rest != want {
-		t.Fatalf("the resting hint reads %q, want %q", rest, want)
+	if rest != design {
+		t.Fatalf("the resting hint reads %q, want %q", rest, design)
 	}
 	if !strings.HasPrefix(rest, "type to search or start something new · ↑↓ pick · enter open") {
 		t.Fatalf("the resting hint no longer opens with the design's own words: %q", rest)
@@ -2522,14 +2518,12 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
 			}
 		}
-		// AND THE ONE ROW AN EMPTY HOME HAS TO STAND ON IS THE FOLDER IT WAS
-		// OPENED IN: `projects` is never empty (DESIGN.md §4), and enter there
-		// starts the first conversation. Every other panel whispers, and a
-		// whisper names what arrives rather than a thing to open.
-		for _, at := range (placeHome{}).stops(a) {
-			if kind := a.home.lines[at].kind; kind != homeProjectRow {
-				t.Fatalf("at %d columns an empty home offered a row of kind %v to stand on", tc.width, kind)
-			}
+		// AND AN EMPTY HOME HAS NO ROW TO STAND ON AT ALL: `projects` is never
+		// empty (DESIGN.md §4) but its rows are read and not stood on (owner,
+		// 2026-09-17), and every other panel whispers — a whisper names what
+		// arrives rather than a thing to open.
+		if stops := (placeHome{}).stops(a); len(stops) != 0 {
+			t.Fatalf("at %d columns an empty home offered rows of kind %v to stand on", tc.width, a.home.lines[stops[0]].kind)
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))

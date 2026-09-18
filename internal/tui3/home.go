@@ -2344,8 +2344,10 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 // everything else on the column answers enter.
 func (l homeLine) stop() bool {
 	switch l.kind {
+	// A PROJECT'S ROW IS READ AND NOT STOOD ON (owner, 2026-09-17), like spend's
+	// lines: the rail holds nothing a cursor may rest on (homepanel_projects.go).
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow, homeProjectRow, homeFold:
+		homeProject, homeExchangeRow, homeFold:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -2677,15 +2679,14 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		// EVERY ROW WITH A FOLDER OPENS IT — a conversation's workspace, a
-		// project's path, the workspace a standing order stands over, the
-		// conversation a `since you left` line happened in — because the foot
-		// names this chord on every row of the field and a key the foot names
-		// must work (homegrid.go's [app.homeCrossChord] and [homeRowFolder]). A
-		// row with no folder says nothing, which is the emptiness law on a key.
+		// workspace a standing order stands over, the conversation a `since you
+		// left` line happened in — the strip's `open folder` on its chord
+		// ([homeRowFolder]). A row with no folder says nothing, which is the
+		// emptiness law on a key.
 		if line, ok := h.previewLine(); ok {
 			path := homeRowFolder(line)
 			if path == "" {
-				if line.kind == homeSession || line.kind == homeProjectRow {
+				if line.kind == homeSession {
 					h.say("could not open "+path, "")
 				}
 				return nil
@@ -3176,9 +3177,6 @@ func (a *app) homeEnter() tea.Cmd {
 		// design: you learn a place exists on the day it has something to tell
 		// you, and enter takes you to it.
 		return a.homeLedgerEnter(line)
-	case homeProjectRow:
-		// A PROJECT ON THE GRID STARTS A CONVERSATION THERE (homepanel_projects.go).
-		return a.homeProjectEnter(line)
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
 		// get this?" opens the conversation that asked for it
@@ -5446,10 +5444,9 @@ func (a *app) homeHintWords() string {
 		// step of the cursor. The owner ruled (2026-09-15) that the rows under
 		// the moving headings all rest on the resting sentence, so the foot is
 		// something a person reads once and then stops reading; `enter open` is
-		// true of every one of them, and the chord the tail adds is the one true
-		// on all of them too ([app.homeCrossChord]). The rows' own sentences
-		// below still serve the phone and the filtered list, where there is no
-		// grid to be consistent across.
+		// true of every one of them. The rows' own sentences below still serve
+		// the phone and the filtered list, where there is no grid to be
+		// consistent across.
 	case line.kind == homeFold:
 		// The panel's fold is a toggle and the foot says which way it will go;
 		// the words are the ones every fold door on every place uses
@@ -5474,21 +5471,17 @@ func (a *app) homeHintWords() string {
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
-		// [homeItemActions]) — except on a grid row whose `→` crosses columns,
-		// where the strip is not one arrow away and its chord is named instead.
-		if chord := a.homeCrossChord(line); chord != "" {
-			return homeItemEnterWord + " · " + chord + " · esc close"
-		}
+		// [homeItemActions]).
 		return homeItemActions + " · esc close"
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
 	// AT REST THE FOOT IS THE PROMISE THE BOX MAKES, and [app.homeHint] turns it
-	// into the design's whole sentence. Every other row said its own thing above,
-	// and a row whose verbs `→` cannot reach adds the one chord that can.
-	if chord := a.homeCrossChord(line); chord != "" {
-		return homeFootWord + " · " + chord
-	}
+	// into the design's whole sentence. Every other row said its own thing above.
+	// It named `ctrl+o open folder` beside the four keys while `→` crossed
+	// columns and could not reach the strip; the arrows stay in their column now
+	// (homegrid.go), so the strip is one `→` away on every row and the foot is
+	// the design's sentence alone.
 	return homeFootWord
 }
 

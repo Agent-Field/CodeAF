@@ -127,15 +127,13 @@ func TestTheSecondColumnIsTheCardOfTheRowUnderTheCursor(t *testing.T) {
 		t.Fatalf("the card is not on the frame at all:\n%s", got)
 	}
 
-	// AND WALKING TO THE TOP AND ON UP KEEPS IT. The cursor leaves the BODY for
-	// the tab bar and not the list, so the card underneath still answers for the
-	// row a person walked up off.
+	// AND RAISING THE BAR KEEPS IT. The cursor leaves the BODY for the tab bar
+	// and not the list (raised as a press would — `↑` on home stays in the
+	// field), so the card underneath still answers for the row it stood on.
 	a.frame()
-	for i := 0; i < len(a.home.lines)+2; i++ {
-		drive(t, a, key("up"))
-	}
+	a.barRaise()
 	if !a.bar.on {
-		t.Fatalf("walking up off the top row did not reach the bar:\n%s", homeText(a))
+		t.Fatalf("the bar did not rise:\n%s", homeText(a))
 	}
 	if card := a.homeDetail(right, 20, a.pal); len(card) == 0 {
 		t.Fatal("the column went blank with the cursor on the bar")
@@ -147,15 +145,11 @@ func TestTheSecondColumnIsTheCardOfTheRowUnderTheCursor(t *testing.T) {
 
 // HOME OPENS ON THE CONVERSATION THIS WINDOW HOLDS, VISIBLY SELECTED — the row
 // esc drops back into — so the first frame answers "where am I" before a key is
-// pressed. `↑` off the top row reaches the TAB BAR, and the first `↓` back off
-// the bar lands on the first stop of the body.
-//
-// THE LAW THAT DIED IS "REST IS STILL A PLACE, ONE `↑` ABOVE THE LIST". The
-// cursor used to leave the list at the top row and stand on no row at all. It
-// leaves the BODY now and stands on the bar (pages.go's [barCursor]), which is a
-// row a person can walk along and open a room from — so what this pins is the
-// same journey with a destination that does something.
-func TestHomeOpensOnItsOwnConversationAndUpOffTheTopReachesTheBar(t *testing.T) {
+// pressed. `↑` OFF THE TOP ROW STAYS THERE: the field's column has no way up
+// onto the tab bar (owner, 2026-09-17: nothing outside the left column is
+// walked, and the tabs are reached by a press, `tab` or a chord), where every
+// other place's `↑` still climbs onto the bar (pages.go's [app.barReach]).
+func TestHomeOpensOnItsOwnConversationAndUpOffTheTopStaysInTheColumn(t *testing.T) {
 	a, mine := bridgeLab(t)
 	line, ok := a.home.focusedLine()
 	if !ok || line.row.Transcript != mine {
@@ -166,40 +160,30 @@ func TestHomeOpensOnItsOwnConversationAndUpOffTheTopReachesTheBar(t *testing.T) 
 	for i := 0; i < len(a.home.lines)+2; i++ {
 		drive(t, a, key("up"))
 	}
-	if !a.bar.on {
-		t.Fatalf("↑ off the top row did not reach the bar:\n%s", homeText(a))
-	}
-	if a.bar.at != pageHome {
-		t.Fatalf("the bar cursor landed on %q, want the room it was standing in", a.bar.at.word())
-	}
-	// AND THE FIRST `↓` OFF THE BAR LANDS ON THE FIRST STOP OF THE BODY, which is
-	// where the walk up left home's own cursor: the router claims `↑` at the top
-	// row before home ever sees it, so nothing moved on the way up.
-	drive(t, a, key("down"))
 	if a.bar.on {
-		t.Fatalf("↓ left the cursor on the bar:\n%s", homeText(a))
+		t.Fatalf("↑ off the top row climbed onto the bar:\n%s", homeText(a))
 	}
 	if a.home.cursor != a.home.placesTop() {
-		t.Fatalf("↓ off the bar landed on line %d, want the top of the list at %d:\n%s",
+		t.Fatalf("↑ off the top row left the cursor on line %d, want the top of the list at %d:\n%s",
 			a.home.cursor, a.home.placesTop(), homeText(a))
 	}
 	if line, ok := a.home.focusedLine(); !ok || !line.stop() {
-		t.Fatalf("↓ off the bar landed on a line no cursor may rest on:\n%s", homeText(a))
+		t.Fatalf("the top of the list is a line no cursor may rest on:\n%s", homeText(a))
 	}
 }
 
-// AND THE LANDING IS THE SAME LINE AT BOTH RUNGS OF THE LADDER.
+// AND THE TOP IS THE SAME LINE AT BOTH RUNGS OF THE LADDER.
 //
 // It used to differ: below the columns tier the strips stood over the list and
 // the first `↓` walked into them, above it they had a column of their own. With
-// one list the landing cannot depend on the width at all — it is
-// [homeView.placesTop] at every width — and a landing that moved with the frame
+// one list the top cannot depend on the width at all — it is
+// [homeView.placesTop] at every width — and a top that moved with the frame
 // would be a landing nobody can build a habit on.
 //
 // IT IS ALSO NOT LINE ZERO, which is why it is a function and not a constant:
 // the `since you left` heading and the claim over the ranked rows both stand
 // above the first row a cursor may rest on.
-func TestTheLandingIsTheSameLineAtBothRungsOfTheLadder(t *testing.T) {
+func TestTheTopIsTheSameLineAtBothRungsOfTheLadder(t *testing.T) {
 	lab := newSwitchLab(t)
 	tops := map[int]int{}
 	for _, width := range []int{120, homeCardMin, 200} {
@@ -207,24 +191,19 @@ func TestTheLandingIsTheSameLineAtBothRungsOfTheLadder(t *testing.T) {
 		a.home.seen = lab.now.Add(-30 * time.Minute)
 		a.home.build()
 		a.frame()
-		// UP OFF THE TOP AND STRAIGHT BACK DOWN, which is the whole journey the
-		// bar added and the one this landing is about.
 		for i := 0; i < len(a.home.lines)+2; i++ {
 			drive(t, a, key("up"))
 		}
-		drive(t, a, key("down"))
 		if a.home.cursor != a.home.placesTop() {
-			t.Fatalf("at %d columns ↓ off the bar landed on %d, want %d", width, a.home.cursor, a.home.placesTop())
+			t.Fatalf("at %d columns ↑ off the top landed on %d, want %d", width, a.home.cursor, a.home.placesTop())
 		}
 		if a.home.cursor == 0 {
 			t.Fatalf("at %d columns the list has no heading above its first row:\n%s", width, homeText(a))
 		}
 		tops[width] = a.home.cursor
 	}
-	for width, at := range tops {
-		if at != tops[120] {
-			t.Fatalf("the landing moved with the frame: %d at 120 columns, %d at %d", tops[120], at, width)
-		}
+	if tops[120] != tops[homeCardMin] || tops[homeCardMin] != tops[200] {
+		t.Fatalf("the top of the list moves with the width: %v", tops)
 	}
 }
 
@@ -240,11 +219,10 @@ func TestTheLandingIsTheSameLineAtBothRungsOfTheLadder(t *testing.T) {
 func TestEnterOnTheBarOpensThePlaceUnderTheCursor(t *testing.T) {
 	a, _ := bridgeLab(t)
 	a.frame()
-	for i := 0; i < len(a.home.lines)+2; i++ {
-		drive(t, a, key("up"))
-	}
+	// Raised as a press on it would — `↑` on home stays in the field.
+	a.barRaise()
 	if !a.bar.on {
-		t.Fatal("↑ off the top row did not reach the bar")
+		t.Fatal("the bar did not rise")
 	}
 	// One word along the bar, which opens nothing by itself...
 	drive(t, a, key("right"))

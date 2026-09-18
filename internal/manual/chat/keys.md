@@ -2087,7 +2087,7 @@ what each holds), and its keys are a small grammar:
 
 | Key | On home |
 | --- | --- |
-| `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the column you are in, from one panel into the next; `↑` off the top of a column reaches **the tab bar** (*The tab bar is a row the cursor can stand on*) |
+| `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the field, from one panel into the next, and stop at both ends: `↑` off the top row stays there and does not climb onto the tab bar (reach the bar with a click, `tab`, or a place's chord) |
 | `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
 | `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a `scheduled` row opens standing, a fold line opens or shuts its panel. `spend`'s lines are not stops, so the cursor never reaches them |
@@ -2110,8 +2110,8 @@ opens the row's verbs** on a strip drawn **directly under that row**, pushing th
 of the list down by its own height, and while that strip is drawn its letters are the verbs
 and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
-`←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
-with no verbs the arrows cross home's columns, and on a panel's fold line (`N more`) `enter`
+`←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
+never leave home's field, and on a panel's fold line (`N more`) `enter`
 opens the panel and shows the rest; on `N fewer` it folds them again.
 While something is typed the two arrows move the caret in the box instead.
 
@@ -2154,13 +2154,13 @@ the conversation's own legend, and it is absent when there is nowhere to go.
 **On a Mac the right-hand side reads `opt+w folder · opt+o model · opt+k chats · / commands`** —
 the same keys, drawn with the modifier your keycaps wear.
 The line under the box is the foot, and **at rest it is exactly**
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`. `esc`
+`type to search or start something new · ↑↓ pick · enter open · tab next place`. `esc`
 still closes home from anywhere; the resting foot does not spend a cell naming it, and
 `alt+.` draws the whole map when you want it.
 
 On the grid every row under a moving heading — a conversation, a question, a running task,
 a `scheduled` order, a `since you left` line — rests on the one sentence,
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`,
+`type to search or start something new · ↑↓ pick · enter open · tab next place`,
 and it does not change as the cursor walks. Elsewhere, on a row with keys of its own, the
 foot says what THAT row's keys do and gains the two that are true everywhere —
 `enter opens the place this happened in · alt+. map · tab next place · esc close` on a
@@ -2904,8 +2904,8 @@ by `/effort`.
 
 **The machine's own default is not one of the scopes.** It used to be — home had a state
 where the cursor stood on no row at all and the right-hand side became a card about the
-machine, and this chord moved the install's rung from there. `↑` off the top of a column on home
-reaches the **tab bar** now, so that card is gone. To change how hard this machine thinks by
+machine, and this chord moved the install's rung from there. That state is gone: `↑` off the
+top of the column on home stays on the top row, and there is no machine card. To change how hard this machine thinks by
 default, open `/settings` and walk to the **`thinking`** row, which is the setting both
 roads always wrote.
 

@@ -652,8 +652,12 @@ func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
 			continue
 		}
 		if placeFor(slot.head) == nil {
-			if !strings.Contains(frame, a.pal.dim(slot.word+rowSep+slot.explainer)) {
-				t.Fatalf("the %q heading opens nothing and is not painted dim with its explainer", slot.word)
+			want := a.pal.dim(slot.word)
+			if slot.explainer != "" {
+				want = a.pal.dim(slot.word + rowSep + slot.explainer)
+			}
+			if !strings.Contains(frame, want) {
+				t.Fatalf("the %q heading opens nothing and is not painted dim", slot.word)
 			}
 			if strings.Contains(frame, open+slot.word) {
 				t.Fatalf("the %q heading opens nothing and wears the door headings' ink", slot.word)

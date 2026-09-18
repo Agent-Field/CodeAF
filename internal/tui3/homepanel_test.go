@@ -260,29 +260,42 @@ func TestProjectsListsThisFolderFirstWithItsCountsAndRepository(t *testing.T) {
 	}
 }
 
-// ENTER ON A PROJECT STARTS A CONVERSATION THERE, and home steps aside for it.
-func TestEnterOnAProjectStartsAConversationInThatFolder(t *testing.T) {
+// A PROJECT'S ROW IS READ AND NOT STOOD ON (owner, 2026-09-17): the cursor
+// steps over every row of `projects`, a press on one leaves home up and moves
+// nothing, and the panel offers no verbs — its heading opens nothing either.
+// `enter` used to start a conversation in the folder and `→` offered its chats
+// and its folder; both are gone with the rail's interactivity.
+func TestAProjectsRowIsReadAndNotStoodOn(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)
-	beta := lab.workspace("beta")
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.proj.Path == beta })
-	a.homeKey(key("enter"))
-	if a.at(pageHome) || a.workspace != beta {
-		t.Fatalf("enter on the beta project left home=%v in %q, want a conversation in %q", a.at(pageHome), a.workspace, beta)
+	placeFrameText(a)
+	rows := 0
+	for _, line := range a.home.lines {
+		if line.kind != homeProjectRow {
+			continue
+		}
+		rows++
+		if line.stop() {
+			t.Fatalf("a project's row is a cursor stop: %+v", line.cell)
+		}
 	}
-}
-
-// AND ITS VERBS ARE ITS CHATS AND ITS FOLDER.
-func TestAProjectOffersItsChatsAndItsFolder(t *testing.T) {
-	a := newSwitchLab(t).open(120, 45)
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.project == "beta" })
-	verbs := a.homeRowVerbs()
-	if len(verbs) != 2 || verbs[0].word != homeProjectChatsWord || verbs[1].word != homeProjectFolderWord {
-		t.Fatalf("a project offers %+v", verbs)
+	if rows == 0 {
+		t.Fatalf("no project rows on the frame:\n%s", homeText(a))
 	}
-	verbs[0].do()
-	if a.home.box.String() != "beta" || a.home.gridOn() {
-		t.Fatalf("its chats did not search the project: box %q", a.home.box.String())
+	x, y, ok := homeHeadingAt(a, "projects")
+	if !ok {
+		t.Fatalf("the projects heading is not on the frame:\n%s", homeText(a))
+	}
+	was := a.home.cursor
+	frame := strings.Split(homeText(a), "\n")
+	for dy := 0; dy <= rows; dy++ {
+		drive(t, a, tea.MouseClickMsg{X: x + homeGridLead, Y: y + dy, Button: tea.MouseLeft})
+		if a.page != pageHome || a.home.cursor != was || a.strip.open {
+			t.Fatalf("a press on %q (page %q, cursor %d→%d, strip %v) did something", strings.TrimSpace(frame[y+dy]), a.page.word(), was, a.home.cursor, a.strip.open)
+		}
+	}
+	if line, ok := a.home.previewLine(); ok && line.kind == homeProjectRow {
+		t.Fatal("a project's row is the row being read")
 	}
 }
 

@@ -185,7 +185,7 @@ func TestTheDescriptionColumnCarriesTheSelectedRowsOwnSentence(t *testing.T) {
 	// old word), and the
 	// first place the letters happen to appear is not the place the column
 	// draws them.
-	_, rail := homeRowOf(frame, "projects · ")
+	_, rail := homeRowOf(frame, "projects")
 	xs, _ := homeGridGeometry(a.home.gridWidth, a.home.cols)
 	descX := xs[homeDescCol(a.home.cols)]
 	row, at := -1, -1
@@ -258,7 +258,7 @@ func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 	if sentence, _ := homeRowOf(frame, firstWordsOf(said)); sentence != row+2 {
 		t.Fatalf("the question is on row %d, want two under its thread title at %d:\n%s", sentence, row, frame)
 	}
-	_, rail := homeRowOf(frame, "projects · ")
+	_, rail := homeRowOf(frame, "projects")
 	if at <= homeGridMargin || at >= rail {
 		t.Fatalf("the question is at cell %d, want the description column between %d and %d:\n%s", at, homeGridMargin, rail, frame)
 	}
@@ -301,7 +301,7 @@ func TestARaisedQuestionIsDrawnInTheDescriptionColumnAndNotOnTheFoot(t *testing.
 	if row < 0 {
 		t.Fatalf("the question %q is not on the frame:\n%s", head, frame)
 	}
-	_, rail := homeRowOf(frame, "projects · ")
+	_, rail := homeRowOf(frame, "projects")
 	if at <= homeGridMargin || at >= rail {
 		t.Fatalf("the question is at cell %d, want the description column between %d and %d:\n%s", at, homeGridMargin, rail, frame)
 	}
@@ -682,48 +682,103 @@ func focusedTitle(a *app) string {
 	return ""
 }
 
-// COLUMNS WIN THE ARROW, SO THE FOOT NAMES A CHORD (DESIGN §6 ruling 6). On a
-// left-column row whose `→` crosses to the right, the foot says `ctrl+o open
-// folder`, and the chord opens that row's folder — a project's too. On a row
-// whose `→` is its strip, the foot is the resting sentence.
-func TestTheFootNamesAChordWhereTheArrowCrossesColumns(t *testing.T) {
+// THE ARROWS STAY IN THE FIELD AND THE FOOT IS THE RESTING SENTENCE (owner,
+// 2026-09-17). `→` on a field row opens that row's own strip rather than
+// crossing to the rail, `←` closes it, and `ctrl+o` still opens the row's
+// folder without the strip. A project's row is not a stop and has no folder
+// door of its own any more.
+func TestTheArrowsStayInTheFieldAndTheFootIsTheRestingSentence(t *testing.T) {
 	var opened string
 	was := processOpener
 	processOpener = func(target string) error { opened = target; return nil }
 	t.Cleanup(func() { processOpener = was })
 
 	a := newSwitchLab(t).open(120, 45)
-	if hint := a.homeHint(); !strings.Contains(hint, homeFolderChordWord) || !strings.HasSuffix(hint, placeHintTail) {
-		t.Fatalf("a left-column conversation's foot is %q, want it to name %q before the way out", hint, homeFolderChordWord)
+	if hint := a.homeHint(); hint != homeRestHint {
+		t.Fatalf("a field row's foot is %q, want the resting sentence %q", hint, homeRestHint)
 	}
 	a.placeKeyPress(key("ctrl+o"))
 	if opened == "" || !strings.HasSuffix(opened, "alpha") {
 		t.Fatalf("ctrl+o opened %q, want the conversation's folder", opened)
 	}
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.project == "beta" })
-	a.placeKeyPress(key("ctrl+o"))
-	if !strings.HasSuffix(opened, "beta") {
-		t.Fatalf("ctrl+o on a project opened %q, want its folder", opened)
-	}
-	// A PROJECT IS IN THE RAIL NOW (law 2), and the rail is the last column — so
-	// → has no column to cross to and opens the row's verb strip instead, which
-	// is §6.6 read on the column the row actually ended up in.
-	if got := a.home.columnOf(a.home.cursor); got != homeRailCol(a.home.cols) {
-		t.Fatalf("a project is in column %d, want the rail at %d", got, homeRailCol(a.home.cols))
-	}
-	if hint := a.homeHint(); hint != homeRestHint {
-		t.Fatalf("a rail row's foot is %q, want the resting sentence", hint)
-	}
+	from := a.home.cursor
 	a.placeKeyPress(key("right"))
-	if !a.strip.open {
-		t.Fatal("→ on a rail row neither crossed a column nor opened its verbs")
+	if a.home.cursor != from || !a.strip.open {
+		t.Fatalf("→ on a field row moved the cursor from %d to %d (strip %v), want the row's own strip", from, a.home.cursor, a.strip.open)
+	}
+	a.placeKeyPress(key("left"))
+	if a.home.cursor != from || a.strip.open {
+		t.Fatalf("← did not close the strip and stay on the row (cursor %d, strip %v)", a.home.cursor, a.strip.open)
+	}
+	for _, line := range a.home.lines {
+		if line.kind == homeProjectRow && line.stop() {
+			t.Fatalf("a project's row is a cursor stop: %+v", line.cell)
+		}
 	}
 }
 
-// ↑↓ WALK A COLUMN AND ←→ CROSS TO THE NEAREST ROW OF THE NEXT, through the real
-// door every key on a place takes — and `↑` off the top of a column is the tab
-// bar, from whichever column it is.
-func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
+// AND THE SAME ON EVERY KIND OF FIELD ROW at three columns: a conversation, a
+// `scheduled` order and a `since you left` line all rest on the one sentence,
+// and `ctrl+o` opens the folder each belongs to.
+func TestEveryFieldRowRestsOnTheOneFootAndOpensItsFolder(t *testing.T) {
+	var opened string
+	was := processOpener
+	processOpener = func(target string) error { opened = target; return nil }
+	t.Cleanup(func() { processOpener = was })
+
+	lab := newSwitchLab(t)
+	a := lab.open(180, 45)
+	dir := a.home.world.Projects[0].Dir
+	a.home.items = map[string][]StandingItemView{dir: {{Item: standing.Item{ID: "w1", Words: "water the plants",
+		Workspace: "/w/alpha", Status: standing.StatusActive, When: standing.When{Kind: standing.WhenAt},
+		NextDue: lab.now.Add(2 * time.Hour)}}}}
+	a.home.build()
+	want := homeFootWord + " · tab next place"
+
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelRecent })
+	if hint := a.homeHint(); hint != want {
+		t.Fatalf("a conversation's foot is %q, want %q", hint, want)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelNext && l.stop() })
+	if hint := a.homeHint(); hint != want {
+		t.Fatalf("a next up row's foot is %q, want %q", hint, want)
+	}
+	a.placeKeyPress(key("ctrl+o"))
+	if opened != "/w/alpha" {
+		t.Fatalf("ctrl+o on a standing order opened %q, want the workspace it stands over", opened)
+	}
+}
+
+// AND A LANDING ON `since you left` IS ONE OF THEM: its chord opens the folder of
+// the conversation that ran the work.
+func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *testing.T) {
+	var opened string
+	was := processOpener
+	processOpener = func(target string) error { opened = target; return nil }
+	t.Cleanup(func() { processOpener = was })
+
+	l := newLiveLab(t)
+	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
+		Status: string(session.TaskDone), Outcome: "all up", EndedAt: l.now.Add(-time.Hour)})
+	a := l.open()
+	a.width, a.height = 180, 45
+	a.home.seen = l.now.Add(-4 * time.Hour)
+	a.home.build()
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelLeft && l.cell.kind == cellRow })
+	if hint, want := a.homeHint(), homeFootWord+" · tab next place"; hint != want {
+		t.Fatalf("a since you left row's foot is %q, want %q", hint, want)
+	}
+	a.placeKeyPress(key("ctrl+o"))
+	if opened == "" || !strings.HasSuffix(opened, "alpha") {
+		t.Fatalf("ctrl+o on a landing opened %q, want the folder of the conversation that ran it", opened)
+	}
+}
+
+// THE ARROWS WALK THE FIELD AND NEVER LEAVE IT (owner, 2026-09-17): `↓` is
+// the next row of the column, `→` is the row's own strip and not the rail,
+// `←` closes it, and `↑` off the top row stays there rather than climbing onto
+// the tab bar.
+func TestTheArrowsWalkTheFieldAndNeverLeaveIt(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	if got := focusedTitle(a); got != "Porting the Resume Picker" {
 		t.Fatalf("home opened on %q", got)
@@ -732,24 +787,23 @@ func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
 	if got := focusedTitle(a); got != "Bounty Reward Companies" {
 		t.Fatalf("↓ went to %q, want the next row of threads", got)
 	}
+	here := a.home.cursor
 	a.placeKeyPress(key("right"))
-	if got, want := a.home.columnOf(a.home.cursor), 1; got != want || a.strip.open {
-		t.Fatalf("→ went to column %d (strip %v), want the right column", got, a.strip.open)
+	if a.home.cursor != here || a.home.columnOf(a.home.cursor) != 0 || !a.strip.open {
+		t.Fatalf("→ went to line %d in column %d (strip %v), want the row's own strip", a.home.cursor, a.home.columnOf(a.home.cursor), a.strip.open)
 	}
-	right := a.home.cursor
 	a.placeKeyPress(key("left"))
-	if got := a.home.columnOf(a.home.cursor); got != 0 {
-		t.Fatalf("← went to column %d, want the left column", got)
+	if a.home.cursor != here || a.strip.open {
+		t.Fatalf("← left the cursor on line %d with the strip %v, want the row with its strip closed", a.home.cursor, a.strip.open)
 	}
-	a.home.cursor = right
-	for i := 0; i < 20 && !a.bar.on; i++ {
-		if a.home.columnOf(a.home.cursor) != 1 {
-			t.Fatal("↑ walked out of the right column sideways")
-		}
+	for i := 0; i < 20; i++ {
 		a.placeKeyPress(key("up"))
+		if a.home.columnOf(a.home.cursor) != 0 {
+			t.Fatal("↑ walked out of the field sideways")
+		}
 	}
-	if !a.bar.on {
-		t.Fatal("↑ off the top of the right column did not reach the tab bar")
+	if a.bar.on || a.home.cursor != a.home.placesTop() {
+		t.Fatalf("↑ off the top of the field left the cursor on line %d (bar %v), want the top row at %d", a.home.cursor, a.bar.on, a.home.placesTop())
 	}
 }
 
@@ -784,65 +838,6 @@ func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
 	}
 	if got := len([]rune(row)); got > width-homeGridLead {
 		t.Fatalf("the row is %d cells wide, its column holds %d", got, width-homeGridLead)
-	}
-}
-
-// EVERY ROW OF THE FIELD RESTS ON ONE SENTENCE (owner, 2026-09-15). A
-// conversation, a standing order on `next up`, a landing on `since you left`:
-// the foot under each is the four keys and `ctrl+o open folder`, and the chord
-// opens the folder that row belongs to — an order's workspace, the conversation
-// a landing ran in. It used to be a different sentence on each kind of row.
-func TestEveryFieldRowRestsOnTheOneFootAndItsChordOpensItsFolder(t *testing.T) {
-	var opened string
-	was := processOpener
-	processOpener = func(target string) error { opened = target; return nil }
-	t.Cleanup(func() { processOpener = was })
-
-	lab := newSwitchLab(t)
-	a := lab.open(180, 45)
-	dir := a.home.world.Projects[0].Dir
-	a.home.items = map[string][]StandingItemView{dir: {{Item: standing.Item{ID: "w1", Words: "water the plants",
-		Workspace: "/w/alpha", Status: standing.StatusActive, When: standing.When{Kind: standing.WhenAt},
-		NextDue: lab.now.Add(2 * time.Hour)}}}}
-	a.home.build()
-	want := homeFootWord + rowSep + homeFolderChordWord + " · tab next place"
-
-	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeSession && l.cell != nil && l.cell.panel == panelRecent })
-	if hint := a.homeHint(); hint != want {
-		t.Fatalf("a conversation's foot is %q, want %q", hint, want)
-	}
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelNext && l.stop() })
-	if hint := a.homeHint(); hint != want {
-		t.Fatalf("a next up row's foot is %q, want %q", hint, want)
-	}
-	a.placeKeyPress(key("ctrl+o"))
-	if opened != "/w/alpha" {
-		t.Fatalf("ctrl+o on a standing order opened %q, want the workspace it stands over", opened)
-	}
-}
-
-// AND A LANDING ON `since you left` IS ONE OF THEM: its chord opens the folder of
-// the conversation that ran the work.
-func TestASinceYouLeftRowRestsOnTheOneFootAndOpensItsConversationsFolder(t *testing.T) {
-	var opened string
-	was := processOpener
-	processOpener = func(target string) error { opened = target; return nil }
-	t.Cleanup(func() { processOpener = was })
-
-	l := newLiveLab(t)
-	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
-		Status: string(session.TaskDone), Outcome: "all up", EndedAt: l.now.Add(-time.Hour)})
-	a := l.open()
-	a.width, a.height = 180, 45
-	a.home.seen = l.now.Add(-4 * time.Hour)
-	a.home.build()
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelLeft && l.cell.kind == cellRow })
-	if hint, want := a.homeHint(), homeFootWord+rowSep+homeFolderChordWord+" · tab next place"; hint != want {
-		t.Fatalf("a since you left row's foot is %q, want %q", hint, want)
-	}
-	a.placeKeyPress(key("ctrl+o"))
-	if opened == "" || !strings.HasSuffix(opened, "alpha") {
-		t.Fatalf("ctrl+o on a landing opened %q, want the folder of the conversation that ran it", opened)
 	}
 }
 

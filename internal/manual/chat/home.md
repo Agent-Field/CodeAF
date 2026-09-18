@@ -11,7 +11,7 @@ answering one question you would ask walking up to a colleague's desk:
   home   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
- needs you                                       projects · folders you've opened
+ needs you                                       projects
  ? Searching for Apartments Near Minto      2h     ~/codeaf      12 chats · 1 running  master
    thread: Searching for Apartments Near Minto      ~/pricing-site   5 chats
 
@@ -49,13 +49,12 @@ is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The foot reads `type to search or start
-something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`, **and it is the
+something new · ↑↓ pick · enter open · tab next place`, **and it is the
 same sentence on every row of the field** — a conversation, a question, a running task, a
 standing order on `scheduled`, a line of `since you left`. It does not change as the cursor
-walks, so it is something you read once. The chord is there because `→` on a field row
-crosses to the rail rather than opening the row's verbs, and a door you cannot see is a door
-you never learn; `ctrl+o` opens the folder each row belongs to — a conversation's workspace,
-the workspace an order stands over, the conversation a landing ran in. `alt+.` draws the
+walks, so it is something you read once. `→` on any row opens that row's own verbs under
+it, and `ctrl+o` opens the folder each row belongs to without the strip — a conversation's
+workspace, the workspace an order stands over, the conversation a landing ran in. `alt+.` draws the
 whole map over the cells you are already reading.
 
 There is no argument form. The screen is how you name what you want; a command that took a
@@ -316,12 +315,10 @@ place's to show — the `tasks` heading opens it.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
 conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
-from any column with no strip. A `tasks` row with rows in it is in the field, and the rail
-is always a column with rows to its right — so `→` crosses to the rail instead of opening
-the verbs; `ctrl+x` still asks, and the foot does not name it — the foot under every row of
-the field is the one resting sentence, and the stop is on the `alt+.` map. Where the column
-the arrow would reach is empty, it steps over it to the next one that has a row. **A task another window runs cannot be stopped from here** — the row
-offers no stop at all; bring it here with `enter` and stop it there.
+from any column with no strip. `→` on the row opens its verbs under it; the foot under
+every row of the field is the one resting sentence and does not name the stop, which is on
+the `alt+.` map. **A task another window runs cannot be stopped from here** — the row
+offers no stop at all; `enter` opens the task, and its own window can stop it.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
 
@@ -406,11 +403,15 @@ of word allowed to stand where a time does, because it is the truth about the ke
 switch back is two keys — `space` `space`, then `enter` — and `esc` still goes back to the
 conversation behind home.
 
-## Start a chat in another folder — the projects panel
+## Start a chat in another folder — the projects panel is read, not pressed; ctrl+t starts a chat elsewhere
 
-**`enter` on a row of `projects` starts a fresh conversation in that folder.** The
-conversation you were in stays open and keeps running behind it, one `tab` away, and the new
-one is built on **its own** workspace, with that project's approval rules, crew, spend
+**The `projects` panel is a reading and nothing on it opens.** Its heading is drawn dim and
+opens nothing, its rows are not cursor stops — the arrows step over the whole panel and a
+click on a row does nothing — and it offers no verbs. It used to be that `enter` on a row
+started a fresh conversation in that folder; that door is gone (owner, 2026-09-17). To start
+a chat in another folder, stand on any row of that folder's conversations and press
+**`ctrl+t`**, or type the folder's name into the box. A conversation started that way is
+built on **its own** workspace, with that project's approval rules, crew, spend
 ceiling and saved shapes of work.
 
 ```
@@ -426,10 +427,10 @@ folder is always the first row**, even before anyone has spoken in it, which is 
 panel is never empty. Your home directory is `~`. **A long path is cut from the left**, at a
 folder, so its own name and the counts stay on the row.
 
-**`→` on a project row offers `its chats`** — which types the project's name into the box,
-so the search lists every conversation in it — **and `open folder`**. Five rows show, eight
-in a tall window, then `N more`, which `enter` opens; typing a folder's name or path finds
-the rest, and a typed path starts a conversation there too (*Start something new from home*).
+**A project row offers nothing to press** — no `enter`, no strip, no cursor on it. Typing
+the project's name into the box lists every conversation in it. Five rows show, eight in a
+tall window, then `N more`; typing a folder's name or path finds the rest, and a typed path
+starts a conversation there too (*Start something new from home*).
 
 `ctrl+t` on a conversation's row still starts one in that row's folder, but the projects
 panel is the way home offers it now.
@@ -482,10 +483,9 @@ each of those is a panel of its own now.
 
 **You cannot any more, and `alt+g` does nothing.** Home is panels now, and the
 `projects` panel is the by-project view: every folder with a conversation in it, this
-window's own first, each with `N chats · M running` and its branch, and `enter` on one
-starts a conversation there. `→` on a project row offers `its chats` — which types the
-project's name into the box, so the search lists every conversation in it — and
-`open folder`.
+window's own first, each with `N chats · M running` and its branch. It is a reading and
+not a list to walk: nothing on it opens. Typing the project's name into the box lists
+every conversation in it, and `ctrl+t` on one of them starts a new one there.
 
 ## How do I hide the quiet chats — alt+q hide the quiet ones
 
@@ -497,10 +497,11 @@ line under it — and the four most recent, nine in a tall window, folding the r
 
 ## Which column am I in — move between the columns on home: ↑↓ walk a panel, ←→ cross columns
 
-**`↑` and `↓` walk the column you are in**, from one panel into the next at its ends.
-**`←` and `→` cross to the next column**, landing on the row nearest the one you left, and
-only into a column that has a row to stand on. `↑` off the top of a column reaches the tab
-bar.
+**`↑` and `↓` walk the field**, from one panel into the next at its ends, and stop at
+both ends: `↑` off the top row stays on it and does not climb onto the tab bar. **`←` and
+`→` never leave the field** — `→` opens the row's own verbs under it and `←` closes them.
+Nothing on the rail — `projects`, `spend`, or a panel with nothing in it — can be walked
+onto or pressed.
 
 **The panel the cursor is in marks its heading** with the cursor's ground; the words stay
 where they were. So one heading on the frame is lit — `needs you`, `tasks`, whichever the
@@ -508,15 +509,11 @@ cursor is in — and that is how you tell which column your arrows are in. The r
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
 
-**Columns win the arrow: `→` opens a row's verbs only where no column with rows lies to its
-right** — on the rail, and everywhere at one column. Where the next column along is empty
-the arrow steps over it to the next one that has a row, so the rail is always reachable. On a row where `→` crosses
-instead, **the foot names the one chord that is true on every row** — `ctrl+o open folder`,
-which opens a conversation's workspace, the workspace a standing order stands over, or the
-conversation a `since you left` line happened in — and the rest are on their chords too:
-`ctrl+y` copy path, `ctrl+e` put away or pause, `ctrl+x` stop. The foot does not change
-from row to row; `alt+.` draws the map when you want the rest. `ctrl+o` on a `projects` row
-opens that project's folder.
+**`→` opens a row's verbs, on every row and at every width**, and the chords work without
+the strip: `ctrl+o` opens a conversation's workspace, the workspace a standing order stands
+over, or the conversation a `since you left` line happened in; `ctrl+y` copies the path,
+`ctrl+e` puts away or pauses, `ctrl+x` stops. The foot does not change from row to row and
+names none of them; `alt+.` draws the map when you want the rest.
 
 A digit answers the one row of `needs you` drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
@@ -542,8 +539,10 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 **On a launch** — home greeting you — the cursor is on the conversation this window is
 holding, the row `esc` drops back into.
 
-**`↑` off the top row of a column walks up onto the tab bar** — the row of four words. `←`
-and `→` walk along them without opening anything, `enter` or `↓` goes into the one under the
+**`↑` off the top row of home stays on it.** The tab bar — the row of four words — is
+reached by clicking a word, by `tab`, or by a place's own chord (`alt+2` and the rest); on
+every other place `↑` off the top row still walks up onto it. On the bar `←`
+and `→` walk along the words without opening anything, `enter` or `↓` goes into the one under the
 cursor, and `esc` puts the cursor back on the row it came from. Walking up onto the bar does
 not move home's own cursor, so `↑` and then `↓` costs nothing.
 
@@ -681,7 +680,7 @@ effect the launch is the launch you always had, with home already open on top of
 
 **The cursor starts on the conversation this window is holding** — its row in `where you
 were`, wearing `here` — so the first frame already answers "where am I". `↑` off the top of
-the column walks up onto the **tab bar** (see *Where the cursor starts*); `esc` goes on with
+the column stays there (see *Where the cursor starts*); `esc` goes on with
 what you were doing.
 
 Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
@@ -786,7 +785,7 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The foot line reads exactly:
 
 ```
-type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place
+type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
 and it says what THAT row's keys do on a row that has its own — a `since you left` line,
@@ -922,9 +921,9 @@ nothing is opened under you: home says `it came free — enter opens it` when yo
 
 ## Open another project from home
 
-**`enter` opens any row on this screen, whatever project it belongs to**, and **`enter` on a
-row of the `projects` panel starts a fresh conversation in that folder** (*Start a chat in
-another folder*). There is nothing to go to another terminal for and nothing to type.
+**`enter` opens any row on this screen, whatever project it belongs to**, and **`ctrl+t` on
+a row starts a fresh conversation in that row's folder** (*Start a chat in another
+folder*). There is nothing to go to another terminal for and nothing to type.
 
 What happens is a **second conversation**, not this one moving. The conversation you were
 in is left running exactly where it was — its turn keeps streaming into its own transcript,
@@ -1016,7 +1015,7 @@ because there is nowhere to continue it.
 
 **What to do:** recreate the folder at that exact path and the row opens again on the next
 refresh (home re-checks every three seconds); or start a new conversation in a project that
-exists — `enter` on a row of `projects`.
+exists — `ctrl+t` on one of its rows.
 
 ## Why does it say elsewhere — on a standing item, and nowhere else
 
@@ -1082,7 +1081,7 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
 `--no-host` alike:
 
 - **`enter` on home** opens any conversation, in any project, and leaves the one you were in
-  open; `enter` on a row of `projects` starts a new one in that folder.
+  open; `ctrl+t` on a row starts a new one in that row's folder.
 - **`tab`**, pressed with an empty message box, goes to the conversation you were in before
   this one. Press it again and you are back. It is `cd -`.
 - **`/new`** adds a conversation in this project — unless the one on screen is fresh and
@@ -1844,7 +1843,7 @@ typing, the match under the cursor has a card to the right of the list (*The car
 search*). Under 60 columns a row opens a full-frame sheet instead (*Opening a row on a
 phone*).
 
-**The machine's own card is gone too.** `↑` off the top of a column reaches the tab bar,
+**The machine's own card is gone too.** `↑` off the top of the column stays on the top row,
 and each thing that card said has a place: `keeping an eye on` is the standing place
 (`alt+5`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
 `4 moving`, and `thinking` is the `thinking` row of `/settings`.
@@ -1885,7 +1884,7 @@ are looking at: the row under your pointer when there is one, the cursor's row o
 
 | chord | what it does |
 | --- | --- |
-| `ctrl+t` | a fresh conversation **in that row's own folder** — the one you were in keeps running (on the panels, `enter` on a `projects` row is the way home offers it) |
+| `ctrl+t` | a fresh conversation **in that row's own folder** — the one you were in keeps running |
 | `ctrl+o` | asks the machine to open that conversation's workspace folder |
 | `ctrl+y` | copies the workspace path |
 | `ctrl+e` | puts the conversation away, or pauses a standing item |
@@ -1917,13 +1916,12 @@ what makes the bare letters safe.
 **The verbs are the row's own:** a question's first two option words on `y` and `n`; a
 conversation's `a put it away` and, where it has a folder, `t new chat here`,
 `o open folder`, `c copy path`; a standing item's `p pause it` or `r resume it`; a task this
-window runs, `s stop`; a project's `its chats` and `open folder`.
+window runs, `s stop`.
 
-**In the field `→` crosses to the rail instead** — columns win the arrow, and the rail
-always has rows in it because `projects` is pinned there — so a question in the field is
-answered with its digit, and a conversation's verbs are on their chords —
-`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that is true on every row,
-`ctrl+o open folder`, and says the same sentence on all of them.
+**`→` opens the strip on every row of the field, at every width** — the arrows never
+leave the field (owner, 2026-09-17) — and a conversation's verbs are on their chords too:
+`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names none of them and says the same
+sentence on every row. A project's row has no strip: `projects` is read, not pressed.
 
 ## The work on the right of home — what each task came to
 

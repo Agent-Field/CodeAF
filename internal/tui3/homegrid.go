@@ -177,7 +177,7 @@ type homePanelSlot struct {
 var homePanelOrder = []homePanelSlot{
 	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: recentPanel{homePanelBase{panelRecent}}, word: "threads", keep: 5, least: 4, rest: 5, most: 10},
-	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
+	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "tasks", keep: 3, least: 4, rest: 10, most: 10, place: pageTasks, head: pageTasks},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
@@ -1215,120 +1215,16 @@ func (h *homeView) rowOf(at int) int {
 	return row
 }
 
-// gridCross moves the cursor into the neighbouring column, onto the stop whose
-// row is nearest the one it left — the same rank a person's eye was at. It
-// reports false when there is no column that way, or none with a row in it, so
-// the arrow keeps whatever else it means at the edge (the verb strip).
-func (h *homeView) gridCross(dir int) bool {
-	best := h.gridCrossTarget(dir)
-	if best < 0 {
-		return false
-	}
-	h.cursor, h.picked = best, true
-	return true
-}
-
-// gridCrossTarget is the line [homeView.gridCross] would land on, and -1 where
-// the arrow keeps its other meaning. The foot asks it too, to know whether `→`
-// on the row under the cursor is a move or the strip ([app.homeCrossChord]).
-func (h *homeView) gridCrossTarget(dir int) int {
-	y := h.rowOf(h.cursor)
-	// A COLUMN WITH NOTHING TO STAND ON IS NO COLUMN THAT WAY — every panel in
-	// it is whispering, or the field never filled it at all — so the arrow STEPS
-	// OVER IT and asks the next one. It stopped at the neighbour until the field
-	// began leaving its second column empty (law 2, ruled 2026-09-15), and a
-	// crossing that stopped there would put the rail out of the arrows' reach
-	// entirely on a wide quiet frame: projects and spend would be drawn on the
-	// screen with no key that walks to them.
-	for next := h.columnOf(h.cursor) + dir; next >= 0 && next < h.grid.cols; next += dir {
-		best, gap := -1, 0
-		for _, at := range h.columnStops(next) {
-			d := h.rowOf(at) - y
-			if d < 0 {
-				d = -d
-			}
-			if best < 0 || d < gap {
-				best, gap = at, d
-			}
-		}
-		if best >= 0 {
-			return best
-		}
-	}
-	// AND WHERE NO COLUMN THAT WAY HAS A ROW, the arrow keeps its other meaning.
-	return -1
-}
-
-// homeGridCross is `←` and `→` on the resting grid: the neighbouring column.
-//
-// IT IS READ BEFORE THE ROUTER'S ARROWS (place_home.go's [placeHome.owns]),
-// because the router's `→` opens a row's verbs and nearly every row on home has
-// some — so the geography would lose to the strip on every row a person could
-// stand on. The strip is still one arrow away where no column lies to the right.
-// Nothing else that holds the arrows is overruled: the tab bar, an open strip, a
-// question this window raised about a row.
-func (a *app) homeGridCross(msg tea.KeyPressMsg) bool {
-	// AN ERRAND'S ROW KEEPS ITS `→`, which takes the keyboard into the errand
-	// (home.go's [app.homeKey]) — the one row on home whose arrow already meant
-	// "into what is beside me".
-	if a.bar.on || a.strip.open || a.home.ask != nil || !a.home.gridOn() || a.paneExchange() != nil {
-		return false
-	}
-	dir := 0
-	switch msg.String() {
-	case "left":
-		dir = -1
-	case "right":
-		dir = 1
-	default:
-		return false
-	}
-	if !a.home.gridCross(dir) {
-		return false
-	}
-	// A KEY IS THE PERSON TAKING THE CURSOR BACK, and it clears what every other
-	// key on home clears ([app.homeKey]).
-	a.movedFrom = ""
-	a.home.say("", "")
-	a.sweepExchanges()
-	a.touch()
-	return true
-}
-
-// homeFolderChordWord is the ONE chord the foot names for a row whose `→`
-// crosses columns: the strip's own word for the verb, after the key that
-// reaches it without the strip.
-const homeFolderChordWord = "ctrl+o " + homeProjectFolderWord
-
-// homeCrossChord is the one chord the foot names on a grid row whose `→` crosses
-// into the next column, and "" everywhere else.
-//
-// COLUMNS WIN THE ARROW (DESIGN §6 ruling 6), so a row with a column of rows to
-// its right has verbs `→` cannot reach. The chords still reach them, and a door
-// a person cannot see is a door they never learn (docs/DESIGN-LANGUAGE.md: every
-// chord keeps a visible door beside it) — so the foot says one.
-//
-// AND IT IS THE SAME ONE ON EVERY ROW: THE FOLDER. It used to be the row's own
-// verb — `ctrl+e pause` on a standing order, `ctrl+x stop` on work this window
-// holds, the folder otherwise — so the foot changed as the cursor walked from a
-// conversation to an order to a task, three sentences for one gesture (owner,
-// 2026-09-15: "it flops between a few redundant alternatives"). One sentence on
-// every row of the field is a thing a person stops reading, which is what a
-// resting foot is for; pause and stop are still on their chords and on the
-// `alt+.` map. The folder is the one verb every kind of row has, because every
-// row of the field belongs to a project — a conversation's workspace, an
-// order's, the conversation a landing ran in — and a row with none, or whose
-// folder has been deleted, or on a machine whose folders are not this one's,
-// says the four keys alone rather than a chord that would refuse.
-func (a *app) homeCrossChord(line homeLine) string {
-	if !a.home.gridOn() || a.home.gridCrossTarget(1) < 0 {
-		return ""
-	}
-	if folder := homeRowFolder(line); folder != "" && !a.hosted() && !a.home.gone[folder] {
-		return homeFolderChordWord
-	}
-	return ""
-}
+// THE ARROWS STAY IN THEIR COLUMN. `←` and `→` used to cross into the
+// neighbouring column, onto the row nearest the one they left (DESIGN §6 ruling
+// 6, "columns win the arrow"), and the foot named `ctrl+o open folder` on every
+// field row because the strip was then not one arrow away. The owner ruled
+// (2026-09-17) that nothing outside the left column is to be walked at all: the
+// rail is read, not stood on — `projects` and `spend` have no stops — and a
+// person on a field row who pressed `→` landed on a project and then opened its
+// strip under the row they had just left. So the two arrows are the router's
+// again on every column, as they are at one column: `→` opens the row's verbs
+// and `←` closes them, and the foot is the resting sentence alone.
 
 // homeRowFolder is the folder `ctrl+o` opens for a row, and "" for a row that
 // belongs to no folder — a spend row, a fold.
@@ -1341,8 +1237,6 @@ func homeRowFolder(line homeLine) string {
 	switch line.kind {
 	case homeSession:
 		return strings.TrimSpace(line.row.Workspace)
-	case homeProjectRow:
-		return strings.TrimSpace(line.proj.Path)
 	case homeItem:
 		return strings.TrimSpace(line.item.Workspace)
 	case homeLedger:
