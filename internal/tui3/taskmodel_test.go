@@ -54,7 +54,7 @@ func TestAnAmbiguousProposalOffersTheModelsInAHoleAndPicksTheClosest(t *testing.
 		t.Fatalf("the proposal does not name the model it resolved to:\n%s", text)
 	}
 	block := questionBlockText(a)
-	for _, want := range []string{"run it on", options[0], questionWalkKey + " move it"} {
+	for _, want := range []string{"run it on", options[0], "c other", "? clarify"} {
 		if !strings.Contains(block, want) {
 			t.Fatalf("the proposal's question does not offer %q:\n%s", want, block)
 		}
