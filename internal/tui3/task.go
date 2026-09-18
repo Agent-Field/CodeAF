@@ -5358,7 +5358,7 @@ func planUnderRows(item tasksItem, width int, pal palette) []string {
 		return nil
 	}
 	rows := make([]string, 0, railUnderRows)
-	if line := planLiveRow(item.plan.Live.Command, width, pal); line != "" {
+	if line := planLiveRow(item.plan.Live.Command, item.plan.Folder, width, pal); line != "" {
 		rows = append(rows, line)
 	}
 	if figures := planFigures(item.plan); figures != "" {
@@ -5376,7 +5376,8 @@ func planUnderRows(item tasksItem, width int, pal palette) []string {
 // spend them — so a narrow column drops the command's tail and never a half
 // glyph (the mark comes off the vocabulary's own door, [palette.glyph], so this
 // line gets this terminal's repertoire).
-func planLiveRow(command string, width int, pal palette) string {
+func planLiveRow(command, folder string, width int, pal palette) string {
+	command = planDisplayCommand(command, folder)
 	lead := pal.glyph(tokens.GStepRunning) + " " + tokens.GlyphShell + " "
 	if width < ansi.StringWidth(lead) {
 		return ""
