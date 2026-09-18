@@ -58,7 +58,7 @@ func (a *Agent) AskRun(ctx context.Context, rootID, question string, earlier []R
 	}
 	fmt.Fprintf(&front, "\n\nQuestion: %s", question)
 	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: runAskPrompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: front.String()}}}}
-	answer, err := a.runAskCalls(ctx, messages)
+	answer, err := a.runAskCalls(ctx, rootID, messages)
 	if err != nil {
 		return RunAskAnswer{}, err
 	}
@@ -66,10 +66,10 @@ func (a *Agent) AskRun(ctx context.Context, rootID, question string, earlier []R
 		return answer, nil
 	}
 	messages = append(messages, ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: answer.Text}}}, ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "Refused: every answer must name its task source. Answer once more with a source from the run record, or say plainly that the record does not hold it."}}})
-	return a.runAskCalls(ctx, messages)
+	return a.runAskCalls(ctx, rootID, messages)
 }
 
-func (a *Agent) runAskCalls(ctx context.Context, messages []ai.Message) (RunAskAnswer, error) {
+func (a *Agent) runAskCalls(ctx context.Context, rootID string, messages []ai.Message) (RunAskAnswer, error) {
 	tool := ai.ToolDefinition{Type: "function", Function: ai.ToolFunction{Name: "read_task", Description: "Read one task from this run", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "required": []string{"id"}, "additionalProperties": false}}}
 	for round := 0; round < 3; round++ {
 		response, _, err := a.callRole(ctx, roles.RoleWorker, a.Model(), messages, ai.WithTools([]ai.ToolDefinition{tool}))
@@ -92,7 +92,7 @@ func (a *Agent) runAskCalls(ctx context.Context, messages []ai.Message) (RunAskA
 		} else if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
 			body = `{"error":"invalid read_task arguments"}`
 		} else {
-			body = a.runAskTask(args.ID)
+			body = a.runAskTask(rootID, args.ID)
 		}
 		messages = append(messages, ai.Message{Role: "tool", ToolCallID: call.ID, Content: []ai.ContentPart{{Type: "text", Text: body}}})
 	}
@@ -133,7 +133,23 @@ func (a *Agent) runAskRows(rootID string) (string, error) {
 	return b.String(), nil
 }
 
-func (a *Agent) runAskTask(id string) string {
+func (a *Agent) runAskTask(rootID, id string) string {
+	store, plan, close := a.openPlanHandle()
+	if store == nil {
+		return `{"error":"task is not in this run"}`
+	}
+	task, root := store.Task(planTaskID(id)), store.Task(planTaskID(rootID))
+	inside := task != nil && root != nil && task.Chat == plan.chat
+	for cursor := task; inside && cursor.ID != root.ID; cursor = store.Task(cursor.ParentID) {
+		if cursor.ParentID == "" {
+			inside = false
+			break
+		}
+	}
+	close()
+	if !inside {
+		return `{"error":"task is not in this run"}`
+	}
 	page, ok := a.PlanTaskPage(id)
 	if !ok {
 		return `{"error":"task is not in this run"}`
