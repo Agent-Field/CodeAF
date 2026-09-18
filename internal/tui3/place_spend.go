@@ -101,9 +101,11 @@ type spendPage struct {
 	names map[string]string
 	// seats is THE RUN'S OWN SPEND, rolled up by seat and held here for the same
 	// reason [spendPage.names] is: it is read from the plan store, which touches
-	// seams, so it is read once on the open and on the beat and every keystroke
-	// after it — the window arrows included — is arithmetic over what that read
-	// left behind ([app.spendSeats], [session.Agent.PlanSpend]).
+	// seams, so it is read on the open and on the beat and never on the draw
+	// ([app.spendSeats], [session.Agent.PlanSpend]). THE WINDOW ARROWS RE-ASK IT
+	// and they are the one keystroke that does: the rollup arrives already summed
+	// over a window, and a sum cannot be cut down to a narrower one the way the
+	// ledger's own lines can.
 	seats []session.PlanSpendLine
 	// slice is WHICH CUT OF THE LEDGER IS DRAWN ([spendSlice]) — `by topic` on
 	// the way in, and `by model` a keystroke away. It lives on the page rather
@@ -284,6 +286,8 @@ func (a *app) readSpendLines(now time.Time) {
 	// AND THE RUN'S OWN SEAT SPEND, on the same open-and-beat cadence and over
 	// the same window the ledger's figures use: [app.spendSeats] asserts the plan
 	// seam, and a conversation with no plan draws the block's heading and whisper.
+	// A window the arrows move is re-asked where they move it, since a sum over
+	// one window says nothing about the next.
 	a.spend.seats = a.spendSeats(a.spend.win.From)
 	a.spend.held = held
 	if a.ledger == nil {
@@ -708,9 +712,20 @@ func (a *app) spendWindowKey(key string) bool {
 		return false
 	}
 	a.spend.win = next
-	// THE LINES ARE ALREADY IN MEMORY, so moving the window is arithmetic and
-	// never a read. A fortnight back is the same cache answered a different
-	// question, which is what lets a person hold the arrow down.
+	// THE LEDGER'S LINES ARE ALREADY IN MEMORY, so moving the window is arithmetic
+	// over them and never a re-read of the ledger. A fortnight back is the same
+	// cache answered a different question, which is what lets a person hold the
+	// arrow down.
+	//
+	// THE SEAT ROLLUP IS THE ONE FIGURE THAT CANNOT BE RE-CUT FROM WHAT A READ
+	// LEFT BEHIND, because it arrives already summed over the window it was asked
+	// for: the lines behind it stay in the store. Keeping the old sum under the
+	// new window would draw a fortnight's seat dollars beside a month's every
+	// other figure, so the rollup is asked again over the window the page now
+	// draws. It costs a conversation with no plan nothing at all — that is the
+	// seam's own nil — and one read-only pass over a small ledger for one that
+	// has a plan, which is the same pass the beat was already making.
+	a.spend.seats = a.spendSeats(next.From)
 	a.rebuildSpend()
 	return true
 }
