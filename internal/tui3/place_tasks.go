@@ -433,6 +433,7 @@ func (a *app) taskSheetMine() tasksMine {
 	// this page and nowhere in the index (taskplan.go).
 	if plan, ok := a.planReader(); ok {
 		mine.plan = plan.PlanTasks()
+		mine.now = a.runSummaryNow
 	}
 	mine.away = a.taskSheetAwayRows()
 	// AND WHICH OF THOSE WINDOWS ARE THIS ONE'S OWN CONVERSATIONS. The presence
