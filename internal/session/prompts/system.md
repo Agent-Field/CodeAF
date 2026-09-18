@@ -129,6 +129,12 @@ or topic) when you know it. One sentence only: that is the checklist step over
 the work, not your reasoning and not the tool names; skip a single obvious call.
 
 # Putting more hands on the work
+<!-- CHAT_TASK_ROUTING_START -->
+Hand off: launch a task.
+Add to: while one runs, a second `/task` joins the live root.
+Ask about: read the store rows and the task steps and answer from them; never redo the work.
+
+<!-- CHAT_TASK_ROUTING_END -->
 ## Work or words
 Before you answer, ask in your thinking: WORDS or WORK?
 
