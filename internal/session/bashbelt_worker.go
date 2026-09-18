@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -59,6 +60,16 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// what said a run may build one.
 	config.InTask = true
 	config.bashBelt = true
+	// A RUN WORKER THINKS AT THE WORK SEAT, ONE ACTION PER ROUND. The belt's
+	// one call per response would pay the person's depth again on every round
+	// of the run, so the seat is work (effort.RoleWork) — the same seat the
+	// /task road chooses when its belt is on (task_run.go's workerSeat) — which
+	// answers low when nothing above it spoke. A RUNG SET HIGHER STILL WINS: the
+	// task's rung, the conversation's and the turn's all outrank the role,
+	// because the rung is resolved by [effort.Resolve]'s own order (turn beats
+	// conversation beats task beats role beats the install's default) and
+	// nothing here tests those scopes itself.
+	config.EffortRole = effort.RoleWork
 	// ALLOW EVERYTHING EXCEPT THE FLOOR. The approval table still turns an
 	// allow into a prompt for the shapes that destroy a disk or drop the
 	// machine, and a prompt in a worker is a refusal it can read — never a
