@@ -348,7 +348,8 @@ Every leaf that lands **done** is checked, at both doors — `/task` and `codeaf
 do`. The run adds one **check** task under the leaf's parent, on the plan seat,
 carrying the leaf's acceptance and the result it reported, and the run's
 completion waits on it like on any other child: a run is not over until its
-checks have landed.
+checks have landed. A run whose root did the work alone is checked the same way
+before it finishes.
 
 A check does not redo the work. It reads the acceptance sentence by sentence,
 runs the leaf's own tests, and probes each sentence the tests do not cover. It
