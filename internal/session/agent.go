@@ -53,9 +53,18 @@ func New(config Config) (*Agent, error) {
 	// which service this conversation was using.
 	launchModel := config.Model
 	config.Model, _ = roles.SplitEffort(config.Model)
-	client, err := newProviderClient(config, launchModel)
-	if err != nil {
-		return nil, err
+	// AND THE REQUEST ROAD IS THE CALLER'S WHEN IT SAID ONE. A caller that has
+	// already resolved its provider — the bash-belt worker seat, handed this
+	// conversation's account-aware completer — hands it in rather than have one
+	// minted from settings the seat does not carry; every other caller leaves it
+	// nil and New builds it here.
+	client := config.completer
+	if client == nil {
+		built, err := newProviderClient(config, launchModel)
+		if err != nil {
+			return nil, err
+		}
+		client = built
 	}
 	// AND THE OFFER DESK IS POINTED AT THE SIDE THAT HOLDS THE OPEN QUESTIONS,
 	// at the same moment and for the same reason: this is where a real transport

@@ -1215,6 +1215,14 @@ type Config struct {
 	// without a lock.
 	ApprovalPolicy *approval.Policy
 
+	// completer is the request road this session is built on when the caller has
+	// already resolved one, and nil when [New] should build it from the settings
+	// above. It is the seam the bash-belt worker seat takes: the run hands the
+	// seat this conversation's account-aware completer ([Agent.beltRunCompleter]),
+	// and the worker is born through [New] like any other standalone seat rather
+	// than through the scripted-completer seam the tests keep for themselves.
+	completer Completer
+
 	// auditWindow overrides how long a second look at finished work gets, and it
 	// is UNEXPORTED AND FOR TESTS ONLY (pending.go's [Agent.auditWindowFor]). The
 	// product's answer is the door's own, which turns on whether there is a check
