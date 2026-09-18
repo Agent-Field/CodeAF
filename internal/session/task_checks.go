@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Each ONE rerunnable command re-establishing the result: no leading cd, no &&. ` +
+	`"description":"Optional. Each check is ONE rerunnable command; composition characters are allowed only inside quoted arguments. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
@@ -595,6 +595,68 @@ func leadsWithDirectoryChange(said string) bool {
 	return composed && len(fields) == 2 && fields[0] == "cd"
 }
 
+// checkShapeRefusal is what a declared check that is not one command hears, and
+// IT SAYS WHAT WOULD PASS. "… is not" was the whole of the old sentence, and a
+// model refused by it wrote the same shape again (measured 2026-09-18: nine
+// refusals over three rounds). So it names the one character that made this a
+// composition and the form of a check in one sentence. IT NEVER OFFERS A
+// REWRITTEN COMMAND: naming the tail after the last joiner as the repair was
+// tried and drops the step the check needed.
+func checkShapeRefusal(said string) string {
+	refusal := "Invalid arguments: checks must each be ONE rerunnable command"
+	if offending, composed := firstCompositionOutsideQuotes(said); composed {
+		refusal += ": " + strconv.Quote(string(offending)) + " joins, redirects or expands commands in " +
+			strconv.Quote(clip(said, auditCommandLimit)) +
+			". Such a character may stand only inside a single-quoted argument, where it is text"
+	}
+	if leadsWithDirectoryChange(said) {
+		refusal += ". A check runs from the root of the task's own copy: leave the directory change out and name each file by its path"
+	}
+	return refusal
+}
+
+// firstCompositionOutsideQuotes finds the first character that makes a line more
+// than one command, reading quotes the way the shell that runs the check reads
+// them, and reports false for a line that is one command.
+//
+// THE RULE IS ABOUT WHAT THE SHELL WOULD DO WITH THE CHARACTER, NOT ABOUT THE
+// CHARACTER. Inside single quotes every character is text, so a bar in a quoted
+// pattern is an argument and was refused as a pipe (2026-09-18, a search for
+// three words joined by bars). Inside double quotes the shell still EXPANDS: a
+// dollar or a backtick there runs a command of its own, and a backslash escapes,
+// so those three stay composition in double quotes exactly as they are outside
+// any. Everything else in double quotes is text. NOTHING THE SHAPE LAW STOPPED
+// BEFORE STARTS RUNNING: what is newly allowed is only what the shell passes to
+// the one program as an argument, byte for byte.
+func firstCompositionOutsideQuotes(text string) (byte, bool) {
+	const liveInDoubleQuotes = "$`\\"
+	var quote byte
+	for i := 0; i < len(text); i++ {
+		char := text[i]
+		switch {
+		case quote == '\'':
+			if char == quote {
+				quote = 0
+			}
+		case quote == '"':
+			if char == quote {
+				quote = 0
+			} else if strings.IndexByte(liveInDoubleQuotes, char) >= 0 {
+				return char, true
+			}
+		case char == '\'' || char == '"':
+			quote = char
+		case strings.IndexByte(shellComposition, char) >= 0:
+			return char, true
+		}
+	}
+	// AN UNCLOSED QUOTE IS NOT ONE COMMAND EITHER: the shell would wait for more.
+	if quote != 0 {
+		return quote, true
+	}
+	return 0, false
+}
+
 func declaredCheckList(raw []string) ([]string, string) {
 	out := make([]string, 0, len(raw))
 	for _, entry := range raw {
@@ -604,12 +666,7 @@ func declaredCheckList(raw []string) ([]string, string) {
 		}
 		command, ok := commandLike(said)
 		if !ok {
-			refusal := "Invalid arguments: checks must each be ONE command with no shell composition — " +
-				strconv.Quote(clip(said, auditCommandLimit)) + " is not"
-			if leadsWithDirectoryChange(said) {
-				refusal += ". A check runs from the root of the task's own copy: leave the directory change out and name each file by its path"
-			}
-			return nil, refusal
+			return nil, checkShapeRefusal(said)
 		}
 		if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
 			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +
@@ -1148,7 +1205,10 @@ func sameFile(one, other string) bool {
 // than about how it was typed.
 func commandLike(text string) (string, bool) {
 	text = strings.TrimSpace(text)
-	if text == "" || strings.ContainsAny(text, shellComposition) {
+	if text == "" {
+		return "", false
+	}
+	if _, composed := firstCompositionOutsideQuotes(text); composed {
 		return "", false
 	}
 	fields := strings.Fields(text)
@@ -1159,9 +1219,8 @@ func commandLike(text string) (string, bool) {
 	if strings.HasPrefix(program, "-") || strings.Trim(program, "*?[]") == "" {
 		return "", false
 	}
-	normalized := strings.Join(fields, " ")
-	if len(normalized) > auditCommandLimit {
+	if len(text) > auditCommandLimit {
 		return "", false
 	}
-	return normalized, true
+	return text, true
 }

@@ -11,6 +11,7 @@ package session
 // repair can happen.
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -29,7 +30,8 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 	if !isError {
 		t.Fatalf("a composed check was accepted:\n%s", composed)
 	}
-	if !strings.Contains(composed, "checks must each be ONE command with no shell composition") {
+	if !strings.Contains(composed, `composition character "&" is outside quotes`) ||
+		!strings.Contains(composed, "A valid check is one rerunnable command") {
 		t.Fatalf("the refusal does not name the repair:\n%s", composed)
 	}
 
@@ -48,7 +50,7 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 // A CHECK IS JUDGED BY ITS SHAPE, AND THE SCHEMA SAYS THE SHAPE IN ANY SETUP: one
 // rerunnable command, no leading cd, no composition. It names no tool and no language.
 func TestChecksSchemaSaysWhereAChecksRunsAndNamesNoTool(t *testing.T) {
-	for _, want := range []string{"ONE rerunnable command", "no leading cd", "no &&"} {
+	for _, want := range []string{"ONE rerunnable command", "composition characters", "only inside quoted arguments"} {
 		if !strings.Contains(checksSchemaJSON, want) {
 			t.Errorf("checks schema does not say %q:\n%s", want, checksSchemaJSON)
 		}
@@ -75,5 +77,39 @@ func TestACheckThatLeadsWithADirectoryChangeIsRefusedWithTheFormThatPasses(t *te
 	}
 	if got, refusal := declaredCheckList([]string{"./run.sh /srv/elsewhere/report"}); refusal != "" || len(got) != 1 {
 		t.Fatalf("an absolute path as an argument: checks = %q, refusal = %q", got, refusal)
+	}
+}
+
+func TestDeclaredChecksJudgeCompositionOutsideQuotesAndPreserveBytes(t *testing.T) {
+	tests := []struct {
+		name    string
+		check   string
+		wantBad string
+	}{
+		{name: "composition outside quotes", check: "test -s /tmp/wisp-ideation/walls.md && grep -c '^## ' /tmp/wisp-ideation/walls.md | awk '$1>=6'", wantBad: "&"},
+		{name: "composition characters inside quotes", check: "grep -iE 'handoff|vault|wall' /tmp/wisp-ideation/walls.md"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, refusal := declaredCheckList([]string{tt.check})
+			if tt.wantBad == "" {
+				if refusal != "" || len(got) != 1 || got[0] != tt.check {
+					t.Fatalf("checks = %q, refusal = %q; want the declared bytes unchanged", got, refusal)
+				}
+				return
+			}
+			if len(got) != 0 || !strings.Contains(refusal, strconv.Quote(tt.wantBad)) ||
+				!strings.Contains(refusal, "A valid check is one rerunnable command with composition characters only inside quoted arguments.") {
+				t.Fatalf("checks = %q, refusal = %q", got, refusal)
+			}
+		})
+	}
+}
+
+func TestCommandLikePreservesQuotedArgumentSpacing(t *testing.T) {
+	const check = `verify 'left  |  right' --label="x && y"`
+	got, ok := commandLike(check)
+	if !ok || got != check {
+		t.Fatalf("commandLike(%q) = %q, %v", check, got, ok)
 	}
 }
