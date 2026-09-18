@@ -231,6 +231,13 @@ const (
 	// of them could falsify by being edited, and a settings sheet that told you
 	// "balanced" over a hand-pinned tier would be lying in the one place a person
 	// went to check.
+	//
+	// THE BUILD WRITES NO WORD HERE, AND READS ONE THAT IS. The derivation above is
+	// what every profile this product shapes reads — but a run that wrote the
+	// word itself (a harness, a hand edit) named a budget, and a crew word that
+	// reached nobody is worse than a row five others can falsify: [storedCrewWord]
+	// reads it as the budget its seats run at, and the class rows under it are
+	// that run's own pins ([pickedSeat]).
 	KeyCrew = "models.crew"
 	// KeyCrewSource is which family the crew words draw from: `open`, the
 	// open-weight table this build ships, or `all`, the same three words
