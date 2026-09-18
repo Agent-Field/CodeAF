@@ -3184,6 +3184,11 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// was planned on a leaf's patience, which never acts on a silent machine
 		// inside a thirty-second share (#941).
 		crewRole: roles.RoleAuditor,
+		// AND IT CHECKS A NODE IT IS NOT. The checker's whole finding is about
+		// this node, so its records name it — the model-call log's node and the
+		// usage row's task ([Config.checksNode]) — while taskID above stays 0,
+		// because the auditor is not the node it reads.
+		checksNode: node.id,
 		// The auditor is the node too, as far as anybody watching is concerned:
 		// it runs on the node's clock, in the node's worktree, and a card whose
 		// audit is parked on a provider's pacing is a card whose task is not
