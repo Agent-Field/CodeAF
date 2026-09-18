@@ -62,11 +62,27 @@ func (r *recordingCompleter) forModel(model string) session.Completer {
 	return &seat{script: r.script}
 }
 
+// TestSeatForMapsBeltRolesToCrewSeats keeps the work, fix, and plan seats in
+// place while a check takes the careful work seat.
+func TestSeatForMapsBeltRolesToCrewSeats(t *testing.T) {
+	for _, test := range []struct {
+		role, want string
+	}{
+		{plandb.RoleWork, config.ModelTierWorker},
+		{plandb.RoleCheck, config.ModelTierHigh},
+		{"fix", config.ModelTierWorker},
+		{plandb.RolePlan, config.ModelTierMastermind},
+	} {
+		if got := run.SeatFor(test.role); got != test.want {
+			t.Errorf("SeatFor(%q) = %q, want %q", test.role, got, test.want)
+		}
+	}
+}
+
 // TestCrewFactorySeatsEachRoleInItsTier is the shape rule the factory exists
 // for: a task with children is a coordinator and takes the mastermind row, a
 // leaf takes the worker row, and check and probe are read off the role they were
-// declared with — the check rides the plan tier (it is planning work), and the
-// probe takes the small row.
+// declared with.
 func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 	store := runOpenStore(t)
 	if _, err := store.AddMany([]plandb.TaskSpec{
@@ -92,7 +108,7 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 	}{
 		{store.RootID(), "vendor/thinking"},
 		{"one", "vendor/worker"},
-		{"review", "vendor/thinking"},
+		{"review", "vendor/careful"},
 		{"discriminate", "vendor/small"},
 	} {
 		recorder.models = nil
@@ -110,7 +126,7 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 // so a factory that fell back to the profile for those seats would seat the
 // wrong model and this would see it.
 //
-// The check rides the plan tier, so it takes the door's plan seat; the probe row
+// The check rides the careful work tier from the profile; the probe row
 // is the profile's still, since no door names it.
 func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 	store := runOpenStore(t)
@@ -142,9 +158,9 @@ func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 		{store.RootID(), "vendor/named-plan"},
 		// A leaf does the work itself and rides the work seat.
 		{"one", "vendor/named-work"},
-		// A check is planning work and rides the door's plan seat; the probe row
+		// A check rides the profile's careful work seat; the probe row
 		// is the profile's own.
-		{"review", "vendor/named-plan"},
+		{"review", "vendor/profile-careful"},
 		{"discriminate", "vendor/profile-small"},
 	} {
 		recorder.models = nil
@@ -157,16 +173,16 @@ func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 
 // TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier: a row cleared on purpose
 // reads empty, and a tier with no model falls to the worker row rather than
-// seating the task on nothing. The check rides the plan tier, whose row is
-// cleared here.
+// seating the task on nothing. The check rides the careful work tier, whose
+// row is cleared here.
 func TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier(t *testing.T) {
 	store := runOpenStore(t)
 	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "Review", Role: plandb.RoleCheck}}); err != nil {
 		t.Fatalf("add the review: %v", err)
 	}
 	dir := crewProfile(t, map[string]string{
-		config.KeyTierMastermindModel: "",
-		config.KeyTierWorkerModel:     "vendor/worker",
+		config.KeyTierHighModel:   "",
+		config.KeyTierWorkerModel: "vendor/worker",
 	})
 	recorder := &recordingCompleter{}
 	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
