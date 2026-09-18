@@ -17,6 +17,14 @@ import (
 
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
+// ErrClosed is what every method that can refuse answers once Close has
+// released the store: each write, and each read whose answer the database
+// holds rather than this handle's memory. IT IS THE SEAM A WORKER THAT
+// OUTLIVED ITS RUN LANDS ON — the spend row, the trajectory ending and the
+// completion such a worker still owes come back as a refusal a best-effort
+// writer drops, rather than as a nil handle to dereference.
+var ErrClosed = errors.New("plan store is closed")
+
 // Store is the plan: one SQLite database, a mutex for this process, and a
 // transaction per write that every other process serializes on. Its method set
 // is the earlier port's, kept because it already answers the CLI's questions:
@@ -35,6 +43,10 @@ type Store struct {
 	path string
 	now  func() time.Time
 	data state
+	// closed is set by Close under the lock. Every method asks it there before
+	// it touches a handle Close may already have released — the nil `db` and
+	// `rdb` below, which used to be what a late write found.
+	closed bool
 	// db is the SQLite handle every read-modify-write transaction runs on. One
 	// connection per store (openDatabase), so the pragmas are set once and a
 	// transaction never races its own store for the write lock.
@@ -330,6 +342,9 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 func (s *Store) Show(id string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	s.refresh()
 	task := s.data.Tasks[id]
 	if task == nil {
@@ -348,6 +363,9 @@ func (s *Store) Show(id string) (*Task, error) {
 func (s *Store) RoleOf(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return "", err
+	}
 	s.refresh()
 	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
 	task := s.data.Tasks[id]
@@ -386,6 +404,9 @@ func (s *Store) Task(id string) *Task {
 func (s *Store) Resolve(word string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	s.refresh()
 	if task := s.data.Tasks[strings.TrimPrefix(word, "t-")]; task != nil {
 		return cloneTask(task), nil
@@ -1127,6 +1148,9 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 func (s *Store) Archived() ([]*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	return loadArchived(s.rdb)
 }
 
@@ -1539,6 +1563,13 @@ const writeLockWait = 60 * time.Second
 // so a refusal is asked again with a short backoff — each attempt re-enters
 // the queue — until a generous bound.
 func (s *Store) beginWrite() (*sql.Tx, error) {
+	// A RELEASED STORE REFUSES HERE, once, for every writer there is: each
+	// write ends up through this one transaction opener, so a late spend row,
+	// a late completion or a late failure all answer ErrClosed rather than
+	// dereferencing the nil handle Close left behind.
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	deadline := time.Now().Add(writeLockWait)
 	for {
 		tx, err := s.db.Begin()
@@ -1591,6 +1622,19 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 	return nil
 }
 
+// errIfClosed is the refusal every method makes on a store Close has already
+// released, and nil while the store is open. The caller holds the store's
+// lock, which is the one moment `closed` and the two database handles are in
+// a known state together: this is why the check is here rather than in each
+// writer, and why a handle released while a worker still held it answers a
+// word instead of dying.
+func (s *Store) errIfClosed() error {
+	if s.closed {
+		return ErrClosed
+	}
+	return nil
+}
+
 // refresh adopts the last committed plan from the database into the handle's
 // memory, through the read handle in a DEFERRED transaction. Every read calls
 // it before answering, so a handle's answer is the plan the database holds and
@@ -1600,9 +1644,11 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 // the write lock, so a read never waits behind an open write; and because the
 // read is one transaction, it answers a whole committed plan and never a plan
 // half-written. A refresh that cannot read keeps the memory it has: the store
-// would rather answer its last good plan than fail a read it cannot report.
+// would rather answer its last good plan than fail a read it cannot report,
+// and a read on a closed store is exactly that — the plan the handle last
+// held, answered rather than reached for.
 func (s *Store) refresh() {
-	if s.rdb == nil {
+	if s.closed || s.rdb == nil {
 		return
 	}
 	tx, err := s.rdb.Begin()
@@ -1617,12 +1663,25 @@ func (s *Store) refresh() {
 	s.data = fresh
 }
 
-// Close releases the store's database handles. A store opened for one pass —
-// the runtime opens one per pulse — must be closed when the pass is done, or
-// every pass would leave a connection and a file descriptor behind.
+// Close releases the store's database handles and marks the handle closed
+// against every later call. A store opened for one pass — the runtime opens
+// one per pulse — must be closed when the pass is done, or every pass would
+// leave a connection and a file descriptor behind.
+//
+// A CLOSED STORE REFUSES; IT NEVER PANICS. Close is what a caller does the
+// moment a run is over, and the run's own workers are the last writers to
+// reach for the handle: every method that carries an error — each write,
+// through the one transaction opener, and each read the database answers
+// rather than this handle's memory (Show, RoleOf, Resolve, Archived) —
+// answers ErrClosed afterwards, and the reads that carry none (Tasks, Notes,
+// the summaries and rollups) answer the plan the handle last held instead of
+// reaching for a handle that is gone. Closing a store twice is not an error:
+// a caller that closes in a defer and again on the ending road says the same
+// thing both times.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.closed = true
 	err := error(nil)
 	if s.rdb != nil {
 		err = s.rdb.Close()
@@ -2218,6 +2277,9 @@ func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outT
 // carrying the dollars and the call count under that tag. A charge whose task
 // the store does not know is left out — it has no tag to be counted under.
 func (s *Store) spendTotals() (map[string]SpendTotal, map[string]SpendTotal, error) {
+	if err := s.errIfClosed(); err != nil {
+		return nil, nil, err
+	}
 	byProject := map[string]SpendTotal{}
 	byChat := map[string]SpendTotal{}
 	rows, err := s.rdb.Query(`SELECT t.project, t.chat, SUM(s.usd), COUNT(*)
@@ -2254,6 +2316,9 @@ func (s *Store) SpendSummary() SpendSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := SpendSummary{ByRole: map[string]SpendTotal{}, ByModel: map[string]SpendTotal{}}
+	if s.closed {
+		return result
+	}
 	rows, err := s.rdb.Query(`SELECT role, model, SUM(usd), COUNT(*) FROM spend GROUP BY role, model`)
 	if err != nil {
 		return result
@@ -2326,6 +2391,9 @@ func spendAxisKey(axis string) (string, bool) {
 func (s *Store) SpendBy(axis string, since time.Time) []SpendLine {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
 	keyExpr, join := spendAxisKey(axis)
 	if keyExpr == "" {
 		return nil

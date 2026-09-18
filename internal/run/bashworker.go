@@ -174,12 +174,22 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 // and a row here is a reading of the run rather than the run's book. A turn that
 // spent nothing writes nothing rather than a zero row somebody reads as a
 // figure.
+//
+// EVERY REFUSAL IS DROPPED ALIKE, and the one a worker the run outlived meets
+// is plandb.ErrClosed: the caller closes the run's store the moment the run is
+// over, and this worker's last act is a write into it. The refusal is already
+// the safe answer — the money is in the ledger, the counters are in the Report
+// — so it is dropped with the rest, and never followed by a second attempt at a
+// handle that is gone.
 func (w *BashWorker) recordSpend(taskID string, usd float64, inTokens, outTokens int) {
 	if usd == 0 && inTokens == 0 && outTokens == 0 {
 		return
 	}
 	role, err := w.store.RoleOf(taskID)
 	if err != nil {
+		// A role the store cannot answer — a task it no longer holds, a store
+		// already closed — leaves the row under the work seat rather than
+		// refusing the write the money is owed to.
 		role = plandb.RoleWork
 	}
 	_ = w.store.AddSpend(taskID, w.model, role, usd, inTokens, outTokens)
