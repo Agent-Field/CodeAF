@@ -350,9 +350,9 @@ func (c Config) profilePage(page string) string {
 	}
 	end += len(chatTaskRoutingEnd)
 	if !c.InTask && bashBeltAsked() {
-		// The model's own propose_task hand-off does not reach startTaskRun under the
-		// bash belt (task.go:525-529, 723-778); only the person's  does
-		// (task_person.go:74-88). This seam does not create a new route.
+		// The model hand-off through propose_task does not reach startTaskRun under
+		// the bash belt (task.go:525-529, 723-778); only a person-entered /task
+		// does (task_person.go:74-88). This seam does not create a new route.
 		return page[:start] + page[start+len(chatTaskRoutingStart)+1:end-len(chatTaskRoutingEnd)] + page[end+1:]
 	}
 	return page[:start] + page[end+1:]
