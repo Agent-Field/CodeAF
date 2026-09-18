@@ -1405,7 +1405,10 @@ are what the counter catches when something is polled that nobody is waiting on.
 started with `background: true` is the other case: a server or a sweep the task deliberately
 left running holds nothing up, and the task is asked its next step straight away.
 
-**A task that repeats itself is told what the work has been doing.** Before it is stopped it
+**A task that repeats itself is told what the work has been doing.** Calls made side by
+side in one reply are ONE attempt, and a failure they share counts once: three proposals
+refused together for one reason are not three repeats, and a refusal whose words changed is
+not the same failure again. Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
 *the work has not changed since step 12; nine results since brought nothing new*. codeaf
 knows which steps changed the deliverable — the files the task's own `write`, `edit` or
