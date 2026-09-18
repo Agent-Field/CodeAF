@@ -37,8 +37,11 @@ While a run is live the task pane draws its **plan**: one row per task in the
 store, in the place's own row machinery, so a plan row looks like every other row.
 Each row wears one state word, mapped off the store's own status:
 
-- `running` — the store says `pending`, `ready`, `claimed` or `running`: the work
-  is deliverable, or a worker has it.
+- `queued` — the store says `pending`: the work is admitted and not started, with
+  nothing in its way but a slot. A row held behind named work says what is holding
+  it: `queued · waits: <the work it hangs under>` — see *Why does it say queued?*.
+- `running` — the store says `ready`, `claimed` or `running`: the work is
+  deliverable, or a worker has it.
 - `done` — the store says `done`.
 - `incomplete` — the store says `failed` or `cancelled`. Nothing judged it, so the
   word must not send you looking for a fault.
@@ -60,6 +63,68 @@ shows, in order, each section left out when nothing is behind it:
 
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
+
+## What step is a run task on?
+
+A run's task row carries the step its worker is on **right now**, under its title:
+the running glyph `◐`, the shell lead `$` and the command that step is running; under
+that, the task's own figures — how many steps its worker has taken and what it has cost
+— joined ` · `:
+
+```
+ ◐ Add rate limiter to /api/upload
+   $ git grep -n RateLimit internal/api
+   12 steps · $0.11
+```
+
+Each half of the figures is left out when nothing is behind it, so a step in flight on a
+task that has recorded no step yet draws the command alone. The command gives up its tail
+to the column's width; the glyph and the `$` are never spent on it.
+
+**The line is there only while a step is in flight.** A task that has not started, one held
+behind named work, and one that has landed all draw their ordinary row and no live line — the
+store clears the step the moment its command ends. These rows are a run's **plan rows**, drawn
+in the tasks place (`/history`, `ctrl+.`, `alt+2`, and the roster raised over the frame), not
+on the always-on column, which draws this conversation's own tree.
+
+## What a run task's page shows while it runs
+
+`enter` on a run's row opens the task's page, and while the task is running the page follows
+its newest step: it re-reads itself on the clock and stays stuck to the bottom — the newest
+step in view — until you scroll up, which releases it. Scrolling back to the bottom takes the
+follow up again without your pressing anything.
+
+The step being run right now is drawn **one step early**, in the page's `steps` section: the
+running glyph beside `$ <command>` in place of the number the record will give it, and, once
+the call has been open ten seconds, its own clock dim under it:
+
+```
+running · 12 steps · $0.11
+description
+  Add a per-IP rate limiter to the upload handler; …
+steps
+  11  $ sed -n 40,120p internal/api/upload.go
+  12  $ git grep -n RateLimit internal/api
+      3 hits
+  ◐  $ go test ./internal/api/...
+      running 41s
+```
+
+When the command ends the store clears the live step and the next read draws it as an ordinary
+step, with its number and the head of what came back.
+
+## Why does it say queued?
+
+`queued` is this surface's own word for a run task the store holds `pending`: the work is
+admitted and not started, with nothing in its way but a slot. It is **not** `running` — a task
+still waiting for its turn has nothing in flight, and the row says so rather than borrowing the
+running word.
+
+**Held behind named work, the row says what holds it.** A task the store keeps `pending` until
+its own hard dependencies and every ancestor's are done reads `queued · waits: <the work>` — the
+name is the row it hangs under, and it is a title and not an id, so a task whose parent this page
+has never heard of, one with no words on it, or one that has already landed draws the bare word
+`queued`.
 
 ## Does a subtask see my original request
 

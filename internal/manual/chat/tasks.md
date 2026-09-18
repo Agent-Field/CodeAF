@@ -2009,6 +2009,13 @@ When two or more workers are running anywhere in the live work, the section labe
 the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
 zero or one running worker there is no tail at all, so the label remains `tasks`.
 
+**A run's rows are not on this column.** The column draws this conversation's own tree and
+nothing else, so the plan rows a run writes to the store — including the root's children — are
+drawn in the tasks place instead (the page `/history`, `ctrl+.` and `alt+2` open). A run's row
+there spends one line under its title while a step is in flight — the running glyph `◐`, the
+shell lead `$` and the command its worker is on right now — with the task's `N steps · $0.11`
+under it. *The tasks place* below has it whole.
+
 ## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
 **On the column at the right there is no diamond.** A task's row there opens with one cell,
@@ -5096,6 +5103,23 @@ for three additions that belong in that cell:
   how much work is under it altogether and how urgent the most urgent of it is, which is the
   question a shut fold raises.
 - work **another window is running** says `another window` here instead.
+
+**A run's row carries its live step while its worker is on one.** A run's rows are rows of
+the store rather than this session's own tree, and while a step is in flight the row spends
+one more line under the title — the running glyph `◐`, the shell lead `$` and the command the
+step is running — with the task's own figures beneath it: how many steps its worker has taken
+and what it has cost, joined ` · ` and each half left out when it is nothing:
+
+```
+ ◐ Add rate limiter to /api/upload
+   $ git grep -n RateLimit internal/api
+   12 steps · $0.11
+```
+
+The line is there only while a step is in flight, so a row between steps, one held behind
+named work and one that has landed draw their ordinary row and no live line. A run row the
+store holds admitted-and-not-started wears `queued` rather than `running`, and one held behind
+named work names what holds it after the word: `queued · waits: <the work>`.
 
 **A main chat's row names its folder only where that folder is news.** A conversation in the
 folder this window is already sitting in wears no tag — the tag would be the same word on
