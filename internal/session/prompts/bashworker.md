@@ -43,9 +43,9 @@ the one exception, taught below.
 The coordination verbs:
 
 ```
-plandb add "Title" --description 'the work order: goal, inputs, owned output, acceptance'
-plandb add "Title" --description '...' --parent t-<id>          # under an existing task
-plandb add "Title" --description '...' --dep t-<upstream>       # after other work
+plandb add "Title" --description 'the work order: goal, inputs, owned output, acceptance' --check 'the command that proves it'
+plandb add "Title" --description '...' --parent t-<id> --check 'first proof' --check 'second proof'
+plandb add "Title" --description '...' --dep t-<upstream> --check 'the command that proves it'      # after other work
 plandb split t-<id> --into '[{"title":"A","description":"..."},{"title":"B","description":"consume A","deps_on":["A"]}]'
 plandb task add-dep t-<downstream> --after t-<upstream> [--kind feeds_into|blocks|suggests]
 plandb task amend t-<id> --prepend 'new constraint or input'
@@ -55,9 +55,12 @@ plandb task cancel t-<id>            # plandb what-if cancel t-<id> previews the
 ```
 
 ALWAYS use `--description`. It is the work order: the worker that gets the
-task reads it instead of your whole brief. `split --into` takes a JSON array
+task reads it instead of your whole brief. Repeat `--check` for every command
+that proves the task. A task that declares no check is checked by reading its
+result and by the acceptance alone. `split --into` takes a JSON array
 (`deps_on` names sibling titles), comma titles, or an `A > B > C` chain, and
 answers the created ids; use them, not the titles, for everything that
+follows.
 follows.
 
 Notes and shared decisions:
