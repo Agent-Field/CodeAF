@@ -99,6 +99,14 @@ type spendPage struct {
 	// to build this map on the spot, walking the standing store once per
 	// project each time. The lines are already in memory and so, now, is this.
 	names map[string]string
+	// seats is THE RUN'S OWN SPEND, rolled up by seat and held here for the same
+	// reason [spendPage.names] is: it is read from the plan store, which touches
+	// seams, so it is read on the open and on the beat and never on the draw
+	// ([app.spendSeats], [session.Agent.PlanSpend]). THE WINDOW ARROWS RE-ASK IT
+	// and they are the one keystroke that does: the rollup arrives already summed
+	// over a window, and a sum cannot be cut down to a narrower one the way the
+	// ledger's own lines can.
+	seats []session.PlanSpendLine
 	// slice is WHICH CUT OF THE LEDGER IS DRAWN ([spendSlice]) — `by topic` on
 	// the way in, and `by model` a keystroke away. It lives on the page rather
 	// than in the reading for [spendPage.unfolded]'s reason: a reading is an
@@ -214,6 +222,29 @@ func (a *app) answersForSlot(slot config.ModelSlot) bool {
 	return slot.Slot == talkSlot
 }
 
+// planSpendAgent is the slice of [session.Agent] the spend page reads a run's
+// seat spending through. It is asserted rather than added to [planAgent] so that
+// the tasks place's own fake, which knows nothing of a spend rollup, keeps
+// answering exactly the plan seam it already answers.
+type planSpendAgent interface {
+	// PlanSpend is this conversation's plan spend rolled up by seat: one line
+	// per role the store charged, the model that seat most spent through, and
+	// the dollars and calls since a moment. Nil is the honest answer for a
+	// conversation with no plan store or nothing priced in the window.
+	PlanSpend(since time.Time) []session.PlanSpendLine
+}
+
+// spendSeats reads the run's seat spend for a surface that carries a plan. Nil
+// is the honest answer for an agent that offers no seat reading, which the page
+// draws as the block's heading and whisper rather than as a zero.
+func (a *app) spendSeats(since time.Time) []session.PlanSpendLine {
+	reader, ok := a.agent.(planSpendAgent)
+	if !ok {
+		return nil
+	}
+	return reader.PlanSpend(since)
+}
+
 // refreshSpend is the place clock's beat on this page: the cache reads only
 // what has been appended since it last looked.
 func (a *app) refreshSpend() {
@@ -252,6 +283,12 @@ func (a *app) readSpendLines(now time.Time) {
 	// that every keystroke after it, the window arrows included, is arithmetic
 	// over what these two lines left behind.
 	a.spend.names = a.spendNames(a.spend.world)
+	// AND THE RUN'S OWN SEAT SPEND, on the same open-and-beat cadence and over
+	// the same window the ledger's figures use: [app.spendSeats] asserts the plan
+	// seam, and a conversation with no plan draws the block's heading and whisper.
+	// A window the arrows move is re-asked where they move it, since a sum over
+	// one window says nothing about the next.
+	a.spend.seats = a.spendSeats(a.spend.win.From)
 	a.spend.held = held
 	if a.ledger == nil {
 		for _, line := range lines {
@@ -298,7 +335,7 @@ func (a *app) usageSince(from time.Time) ([]session.UsageLine, bool) {
 func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).
-		railed(a.machineAllowance()).lost(session.UsageDrops()).
+		seated(p.seats).railed(a.machineAllowance()).lost(session.UsageDrops()).
 		todayed(spendDayTotal(p.lines, p.read)).unfolding(p.unfolded).slicing(p.slice)
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
@@ -675,9 +712,20 @@ func (a *app) spendWindowKey(key string) bool {
 		return false
 	}
 	a.spend.win = next
-	// THE LINES ARE ALREADY IN MEMORY, so moving the window is arithmetic and
-	// never a read. A fortnight back is the same cache answered a different
-	// question, which is what lets a person hold the arrow down.
+	// THE LEDGER'S LINES ARE ALREADY IN MEMORY, so moving the window is arithmetic
+	// over them and never a re-read of the ledger. A fortnight back is the same
+	// cache answered a different question, which is what lets a person hold the
+	// arrow down.
+	//
+	// THE SEAT ROLLUP IS THE ONE FIGURE THAT CANNOT BE RE-CUT FROM WHAT A READ
+	// LEFT BEHIND, because it arrives already summed over the window it was asked
+	// for: the lines behind it stay in the store. Keeping the old sum under the
+	// new window would draw a fortnight's seat dollars beside a month's every
+	// other figure, so the rollup is asked again over the window the page now
+	// draws. It costs a conversation with no plan nothing at all — that is the
+	// seam's own nil — and one read-only pass over a small ledger for one that
+	// has a plan, which is the same pass the beat was already making.
+	a.spend.seats = a.spendSeats(next.From)
 	a.rebuildSpend()
 	return true
 }

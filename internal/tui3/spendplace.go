@@ -73,6 +73,14 @@ type spendReading struct {
 	// this machine has that model BOUND to, and the role slots nothing is bound
 	// to at all ([spendReading.crewed], [spendCrew]).
 	crew spendCrew
+	// seats is THE RUN'S OWN SPEND, rolled up by seat and read from the plan
+	// store rather than from the machine-wide ledger: the role the store gave the
+	// work, the model that seat spent most through, and what it came to
+	// ([session.Agent.PlanSpend], [spendReading.seated]). It is a SECOND reading
+	// beside the ledger's because the two are different money — the ledger counts
+	// every call this machine made, this counts what a run's own tasks were
+	// charged — and the block drawn last on the page is the one place they meet.
+	seats []session.PlanSpendLine
 	// rail is the machine's daily limit, for the pointer line at the top of the
 	// page ([spendReading.railed]). Zero is no limit.
 	rail float64
@@ -139,6 +147,15 @@ type spendCrew struct {
 // [spendReading.naming]'s reason: a reading is an immutable answer.
 func (r spendReading) crewed(crew spendCrew) spendReading {
 	r.crew = crew
+	return r
+}
+
+// seated hands the reading the run's own spend rolled up by seat
+// ([session.Agent.PlanSpend]). It answers a copy, for [spendReading.naming]'s
+// reason: a reading is an immutable answer — and nil is a run with no store or
+// nothing priced in the window, which the block draws as its whisper.
+func (r spendReading) seated(seats []session.PlanSpendLine) spendReading {
+	r.seats = seats
 	return r
 }
 
@@ -493,6 +510,19 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		if hidden := len(r.subjects) - spendSubjectCap; hidden > 0 {
 			fold = len(out)
 			out = append(out, placeLead+placeFactInk(on(fold), pal)(fit(foldDoor(r.unfolded, hidden, ""), inner)))
+		}
+	}
+	// THE SEAT BLOCK IS DRAWN LAST, under whatever cut a person chose: the crew
+	// above says which model ANSWERS each seat, and this says what each seat has
+	// actually SPENT on the run's own tasks. It keeps its heading and one dim
+	// line when no seat was charged in the window, which is [spendSeatsWhisper]'s
+	// job and not a sentence about emptiness.
+	out = appendPlaceSection(out, placeLead+placeHeading(fit(spendSeatsWord, inner), pal))
+	if len(r.seats) == 0 {
+		out = append(out, placeLead+pal.dim(fit(spendSeatsWhisper, inner)))
+	} else {
+		for _, seat := range r.seats {
+			out = append(out, r.seatRow(seat, rule, pal))
 		}
 	}
 	stops := make([]spendStop, len(out))
@@ -1020,6 +1050,23 @@ func (r spendReading) sliceHeading(width int, lit bool, pal palette) string {
 // whole of the fix.
 const spendStandingWord = "by standing order"
 
+// spendSeatsWord heads the block drawn last on the page: what the run's own
+// tasks have spent, by seat.
+//
+// THE LEDGER ABOVE AND THIS BELOW ARE TWO DIFFERENT MONEY. Everything the page
+// draws above counts the calls THIS MACHINE made — the conversation, the
+// titles, the standing promises, the work — while this counts what a run's own
+// tasks were charged, which the plan store writes per seat as the worker harness
+// spends (internal/session's PlanSpend). They stand on one page because a person
+// reading a bill wants both: what the machine cost, and how the work it sent off
+// divided that cost between the seats that ran it.
+const spendSeatsWord = "tasks by seat"
+
+// spendSeatsWhisper is the block's one dim line when no seat was charged in the
+// window. It names what arrives there and is never a sentence saying the block
+// is empty, which is the emptiness law's panel half — and never a zero.
+const spendSeatsWhisper = "task spend by seat arrives here as tasks run"
+
 // spendUnboundRow is one role slot with nothing bound to it:
 //
 //	· planning · unbound · follows execution
@@ -1042,6 +1089,24 @@ func spendUnboundRow(slot config.ModelSlot, width int, pal palette) string {
 // vocabulary: the row a person would bind is empty, and the clause after it says
 // what runs in the meantime.
 const spendUnboundWord = "unbound"
+
+// seatRow is one line of the seat block:
+//
+//	· plan · vendor/deep                                    $1.35
+//
+// THE SEAT LEADS AND THE MODEL FOLLOWS IN DIM, because the seat is the word a
+// person can act on — it is the crew row the model is chosen for — and the model
+// is the fact behind it. The money is right-aligned in the page's own column
+// spelling ([spendMoneyWord]), so the block's figures line up with the tables
+// above them and no amount under a cent ever reads `$0.00`.
+func (r spendReading) seatRow(seat session.PlanSpendLine, width int, pal palette) string {
+	left := pal.dim(tokens.GlyphProseBullet+" ") + pal.data(seat.Seat)
+	if name := r.modelName(seat.Model); name != "" {
+		left += pal.dim(" · " + name)
+	}
+	return placeLead + spendSides(width, left, spendMoneyWord(seat.USD),
+		func(s string) string { return s }, placeMoneyInk(pal))
+}
 
 // ── the two tables ──────────────────────────────────────────────────────────
 //
