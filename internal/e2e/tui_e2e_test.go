@@ -2151,6 +2151,28 @@ func testTaskOnTheRunEngine(t *testing.T) {
 	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
 	planRowWearing(t, running, runRowWord, say(t, "planRunningWord"))
 
+	// ── the page mid-run: the live step at the live edge ────────────────────
+	//
+	// ENTER OPENS THE PLAN PAGE, and while a worker holds the task the page
+	// follows its live edge: the step being run right now is drawn ONE STEP EARLY,
+	// with the running glyph beside the command and the call's own clock under it
+	// (docs/design/worker-harness/SURFACE.md §4, Cell 3; taskplan.go's
+	// taskPlanBody). It is read here, before the root lands, because the live step
+	// is gone the moment its command ends — the page after the landing is the
+	// settled page the section below reads.
+	r.keys("Enter")
+	live, sawLive := r.glimpse(20*time.Second, say(t, "planLiveGlyph"))
+	if !sawLive {
+		t.Fatalf("the plan page open on a running task never drew its live step (%q beside the "+
+			"command):\n%s", say(t, "planLiveGlyph"), r.capture())
+	}
+	if !strings.Contains(live, say(t, "planLiveClockWord")) {
+		t.Errorf("the plan page's live line has no clock under it (%q):\n%s",
+			say(t, "planLiveClockWord"), live)
+	}
+	t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
+	r.keys("Escape")
+
 	done := r.waitFor(runPatience, say(t, "planDoneWord"))
 	t.Logf("the run on the tasks place once its root landed:\n%s", done)
 	planRowWearing(t, done, runRowWord, say(t, "planDoneWord"))

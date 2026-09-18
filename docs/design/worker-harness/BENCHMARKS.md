@@ -97,3 +97,25 @@ commit, and the same 45-minute wall.*
   the run's own store (seven tasks), where before it went to a store the run
   never reads. The run still ended early: a reply with no action ended a task,
   and the fix for that is in flight.
+
+## Reruns on 3585556b4 — explicit endings, one wake per wait, the named seats
+
+Same corpus, same pinned model on both arms, 45-minute wall, one run each.
+Every harness root finished cleanly (exit 0) and no call went to a seat the
+flags did not name. `shipped` is trunk 7231347eb.
+
+| task | harness | shipped |
+| --- | --- | --- |
+| bandit, incremental cache | 88/89, $0.15, 11m, 142 calls | 82/89, $0.24, 45m (wall) |
+| bandit, interprocedural taint | **PASS** 85/85, $0.23, 13m, 231 calls | 83/85, $0.19, 41m |
+| awilix, async container initialization | 23/24, $0.07, 7m, 43 calls | 23/24, $0.27, 45m (wall) |
+| cattrs, partial structuring recovery | 66/69, $0.03, 3m, 32 calls | **PASS**, $0.21, 45m |
+
+Cost and wall are three to ten times lower on every task. Pass rate is one in
+four on both arms and not on the same task: the harness lost bandit cache
+(passed before the prompt diet, one warm-cache CLI case now) and cattrs (the
+root did the work alone in 31 steps and never read `refine()` against the
+sentence that said to preserve fields). Every miss is a result nobody read
+against the ask, which is the review round (`Limits.ReviewRound`, off on both
+doors today).
+

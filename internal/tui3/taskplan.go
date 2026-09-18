@@ -24,6 +24,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // planAgent is the slice of [session.Agent] the tasks place reads a run's plan
@@ -414,6 +415,10 @@ func (a *app) taskSheetPlan(id string) tea.Cmd {
 	}
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
 	a.taskSheet.detailTop = 0
+	// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
+	// follows at all, so it opens stuck to the bottom and a scroll is what
+	// releases it ([app.taskPlanTopFor], [app.taskPlanScroll]).
+	a.taskSheet.planStick = true
 	a.taskSheet.planNote.reset()
 	// The card's recovery band belongs to the row the CARD was opened from, and
 	// this page is not that row ([app.taskSheetInside] clears it at the one other
@@ -426,7 +431,7 @@ func (a *app) taskSheetPlan(id string) tea.Cmd {
 // closeTaskPlan backs out one layer to the list, which is the card's own `esc`.
 func (a *app) closeTaskPlan() {
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = session.PlanTaskPage{}, false, false
-	a.taskSheet.detailTop = 0
+	a.taskSheet.detailTop, a.taskSheet.planStick = 0, false
 	// A half-typed note does not survive the page it was typed on, which is the
 	// box's own law everywhere here ([app.placeHomeGesture] resets the box it
 	// empties for the same reason).
@@ -443,6 +448,12 @@ const (
 	// it: the one thing a person can type on a plan task's page, and the reason
 	// the box is there at all.
 	taskPlanNoteWord = "a note for this task"
+	// taskPlanPickupWord is the page's one sentence about WHEN a note is read. A
+	// worker is a separate loop, so a note waits in the store until the worker
+	// asks for its next step — the manual's own account of a note (worker-harness.md,
+	// "Steering a task"), said on the page because the page is where the note is
+	// typed.
+	taskPlanPickupWord = "the worker reads a note at its next step"
 	// tasksPlanCancelWord is the cancel key on a plan row and its page, spelled
 	// from the roster's own cancel key and verb rather than re-invented here.
 	tasksPlanCancelWord = stopRaiseKey + " " + stopActWord
@@ -650,20 +661,76 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// taskPlanHead is what the page spends above its body: the task's title, the
+// air under it and the rule — three rows, the card's own head.
+const taskPlanHead = 3
+
+// taskPlanFoot is what the page spends under its body: the closing rule, the
+// note composer, the one sentence saying when a note is read, and the key line,
+// in that order — the card's own foot grew three rows for the box the page types
+// into and the sentence that says what happens to what is typed in it.
+const taskPlanFoot = 4
+
+// taskPlanWindow is the page's body, the rows it is drawn in and the rows its
+// foot spends, resolved from the frame once: the draw and the scroll both read
+// the bottom off this, so the two cannot disagree about where the bottom is.
+func (a *app) taskPlanWindow(width, height int) ([]string, int, int) {
+	if height < 1 {
+		height = 1
+	}
+	foot := taskPlanFoot
+	if height-taskPlanHead-foot < 1 {
+		foot = 0
+	}
+	room := height - taskPlanHead - foot
+	if room < 1 {
+		room = 1
+	}
+	return a.taskPlanBody(width - 2), room, foot
+}
+
+// taskPlanTopFor resolves the page's scroll position, sticking to the live edge
+// exactly as the room follows its own ([app.roomOffsetFor]) and the conversation
+// follows its ([app.offsetFor]): while the page is stuck, or while the offset
+// says it is past the bottom, the newest step is what is on screen. It is a
+// resolver and not [clampTop] alone because a PINNED page must FOLLOW — a clamp
+// holds the number it was given and lets the newest line fall off the bottom.
+func (a *app) taskPlanTopFor(count, room int) int {
+	bottom := count - room
+	if bottom < 0 {
+		bottom = 0
+	}
+	if a.taskSheet.planStick || a.taskSheet.detailTop > bottom {
+		return bottom
+	}
+	return clampTop(a.taskSheet.detailTop, count, room)
+}
+
 // taskPlanScroll moves the page's own offset, which is the only thing that
 // moves: there is no cursor to walk in a page that is read rather than listed.
+//
+// IT RE-DECIDES WHETHER THE PAGE IS FOLLOWING, the room's own bargain
+// ([app.roomScroll]): a step up off the bottom releases the pin, and a step back
+// onto the bottom takes it again, so a person who returns to the live edge
+// resumes following without pressing anything.
 func (a *app) taskPlanScroll(delta int) {
-	a.taskSheet.detailTop += delta
-	if a.taskSheet.detailTop < 0 {
-		a.taskSheet.detailTop = 0
+	width, height := a.size()
+	body, room, _ := a.taskPlanWindow(width, height)
+	bottom := len(body) - room
+	if bottom < 0 {
+		bottom = 0
+	}
+	at := a.taskPlanTopFor(len(body), room) + delta
+	switch {
+	case at >= bottom:
+		a.taskSheet.detailTop, a.taskSheet.planStick = bottom, true
+	case at <= 0:
+		a.taskSheet.detailTop, a.taskSheet.planStick = 0, false
+	default:
+		a.taskSheet.detailTop, a.taskSheet.planStick = at, false
 	}
 	a.touch()
 }
-
-// taskPlanFoot is what the page spends under its body: the closing rule, the
-// note composer, and the key line, in that order — the card's own foot grew one
-// row for the box the page types into.
-const taskPlanFoot = 3
 
 // taskPlanFrame is the whole screen while the page is up: a head, the body, and
 // the foot. It is drawn in the card's slot and in the card's own shape — one
@@ -681,25 +748,20 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 	add(fit(pal.bold(pal.ink(a.taskSheet.plan.Row.Title)), width))
 	add("")
 	add(pal.dim(rule(width)))
-	head := len(lines)
-	// THE FOOT IS THE LAST THREE ROWS, and a frame too short for the body under
-	// it gives the body up rather than the way out (the card's own trim).
-	foot := taskPlanFoot
-	if height-head-foot < 1 {
-		foot = 0
-	}
-	room := height - head - foot
-	if room < 1 {
-		room = 1
-	}
-	body := a.taskPlanBody(width - 2)
-	a.taskSheet.detailTop = clampTop(a.taskSheet.detailTop, len(body), room)
+	// THE FOOT IS THE LAST FOUR ROWS, and a frame too short for the body under
+	// it gives the body up rather than the way out — the page's own trim, and the
+	// one [app.taskPlanWindow] resolves so the draw and the scroll agree ([app.taskPlanScroll]).
+	body, room, foot := a.taskPlanWindow(width, height)
+	// THE PAGE RESOLVES ITS OFFSET, it does not hold it: a stuck page reads the
+	// bottom where the body now is, so a step appended between frames is on
+	// screen at the next draw ([app.taskPlanTopFor]).
+	top := a.taskPlanTopFor(len(body), room)
 	drawn := room
 	if len(body) < drawn {
 		drawn = len(body)
 	}
 	for i := 0; i < drawn; i++ {
-		add(" " + fit(body[a.taskSheet.detailTop+i], width-1))
+		add(" " + fit(body[top+i], width-1))
 	}
 	for len(lines) < height-foot {
 		add("")
@@ -720,6 +782,11 @@ func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
 			add(" " + fit(prompt+a.taskSheet.planNote.String(), width-1))
 		}
 		caretX, caretY = ansi.StringWidth(prompt)+1, len(lines)-1
+		// AND WHEN THE WORKER READS IT, under the box that writes it: the worker
+		// is a separate loop, so a note waits in the store until it asks for its
+		// next step — the one thing a person needs to know about the box they are
+		// typing into (taskPlanPickupWord).
+		add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
 		add(" " + paintHint(hintFit(a.taskPlanKeys(), width-2), pal, pal.dim))
 	}
 	if len(lines) > height {
@@ -801,7 +868,7 @@ func (a *app) taskPlanBody(width int) []string {
 			addWrapped(note.Body, pal.ink)
 		}
 	}
-	if len(page.Steps) > 0 {
+	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
 		for _, step := range page.Steps {
 			command := strings.TrimSpace(step.Command)
@@ -813,8 +880,67 @@ func (a *app) taskPlanBody(width int) []string {
 				add(pal.dim("   " + head))
 			}
 		}
+		// THE LIVE STEP IS DRAWN ONE STEP EARLY: the command whose end line has
+		// not reached the trajectory yet, led by the running glyph through
+		// [palette.glyph] in place of the number the record will give it, with the
+		// call's own clock — the same ten-second clock the rail counts ([taskToolFloor]) —
+		// dim under it. It stands below the recorded steps because it is the
+		// newest of them; the moment its command ends the store clears the live row
+		// and the next re-read draws it as an ordinary step (internal/plandb's
+		// live.go states the law, and a live step's zero value draws nothing).
+		if live := page.Live; !live.Empty() {
+			if command := strings.TrimSpace(live.Command); command != "" {
+				add(pal.ink(pal.glyph(tokens.GStepRunning) + "  $ " + command))
+			}
+			if !live.Since.IsZero() {
+				if age := a.now().Sub(live.Since); age >= taskToolFloor {
+					add(pal.dim("   running " + countUpWord(age)))
+				}
+			}
+		}
 	}
 	return out
+}
+
+// taskPlanFollow re-reads the page while it stands on a task that is still
+// running, so the newest step walks in at the live edge as the worker takes it.
+//
+// IT IS THE PAINT CLOCK'S OWN READ, bounded by two facts: the page must be
+// opposite a running task (a settled page is a still page, and the clock that
+// carries this stops with it), and the page must be up. It re-reads the whole
+// page — the same store read [app.taskSheetPlan] made once on the way in —
+// because that is what the room does with its rows on the same clock
+// ([app.room.dirty]), and a page that followed only its steps would miss a note
+// or a state change that arrived beside them. Whether the newest line is ON
+// SCREEN is the resolver's question and not this one's ([app.taskPlanTopFor]):
+// a stuck page reads the bottom, a person who scrolled up stays where they
+// were.
+func (a *app) taskPlanFollow() {
+	if !a.taskPlanRunning() {
+		return
+	}
+	agent, ok := a.planReader()
+	if !ok {
+		return
+	}
+	page, ok := agent.PlanTaskPage(a.taskSheet.plan.Row.ID)
+	if !ok {
+		return
+	}
+	a.taskSheet.plan = page
+}
+
+// taskPlanRunning reports whether the page is open on a task that is still
+// running — the one condition under which the paint clock has to keep turning
+// for the page's own sake, because the page follows a live edge
+// ([app.taskPlanFollow]). It reads the row's own state WORD, so a task that has
+// ended, or one a person has held, takes the page off the clock: a held task is
+// dispatching nothing and a settled one never will again.
+func (a *app) taskPlanRunning() bool {
+	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
+		return false
+	}
+	return planStateWord(a.taskSheet.plan.Row.Status) == "running"
 }
 
 // planTelemetryLine is a plan task's own figures as one dim line: whether the
