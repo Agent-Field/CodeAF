@@ -676,7 +676,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		outcome = groundedAfterShutdown(outcome, produced)
 	}
 	priceErrand(graph, session, openedAt, &outcome)
-	// THE EARRAND LEAVES A PENDING JUDGE RECORD AND NOTHING WAITS ON ONE. It is
+	// THE ERRAND LEAVES A PENDING JUDGE RECORD AND NOTHING WAITS ON ONE. It is
 	// written here, after priceErrand, so the run's own bill is settled first;
 	// the judge that picks the row up later bills its own seat's row in the
 	// usage ledger and never this envelope — the receipt above is a read of
