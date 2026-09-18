@@ -3570,11 +3570,12 @@ func (a *app) railRows(height int) []string {
 	// reading paints every plan row; this column only gives those fitted rows
 	// their place in its existing tasks section.
 	if plan := a.tasksFiltered().planRows(a.railRoom(), a.pal); len(plan) > 0 {
+		// THE TITLES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out
+		// of the store: this is a frame, and a frame never reads the disk. The
+		// reading is refreshed on the paint clock ([tasksPlace.regroup]).
 		titles := make(map[string]bool)
-		if reader, ok := a.planReader(); ok {
-			for _, row := range reader.PlanTasks() {
-				titles[strings.TrimSpace(row.Title)] = true
-			}
+		for _, row := range a.taskSheet.mine.plan {
+			titles[strings.TrimSpace(row.Title)] = true
 		}
 		entries := a.railEntries()
 		next := make([]railLine, 0, len(view)+len(plan))
