@@ -402,7 +402,23 @@ func owedLandingTier() roles.Tier { return roles.TierLow }
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
 	notice.EndedAt = a.taskClockNow()
-	a.emitTaskUpdate(notice)
+	g := a.graph()
+	if g == nil {
+		a.emitTaskUpdate(notice)
+		return
+	}
+	// THE ENDING IS KEPT, NOT ONLY SHOWN. The row was saved when the run started
+	// and its ending went to the surface alone, so the checkpoint said `running`
+	// for ever: a conversation closed and reopened drew a finished run with a
+	// spinner and counted it as moving (measured 2026-09-18 on the real binary).
+	// What the first row knew and the ending does not (when it started, the row
+	// it joined) is carried across.
+	for _, kept := range g.runRows(run.row) {
+		if kept.ID == run.row {
+			notice.StartedAt, notice.Parent = kept.StartedAt, kept.Parent
+		}
+	}
+	a.publishRunRow(g, notice)
 }
 
 // beltRunNotice is the run as a task notice: its row, its ending, the result the
