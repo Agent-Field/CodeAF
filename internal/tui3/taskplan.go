@@ -51,6 +51,11 @@ type planAgent interface {
 	PlanCancel(id string) error
 	PlanAmend(id, text string) error
 	PlanPriority(id string, n int) error
+	// The summary is stored beside the plan and belongs to the same optional
+	// local-store door. Keeping it on this seam avoids inventing a second door
+	// that the remote road cannot truthfully provide.
+	PlanRunSummary(string) (session.RunPlanSummary, bool)
+	RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
 }
 
 // planReader is the agent under this surface, when it carries a plan at all.
@@ -61,25 +66,17 @@ func (a *app) planReader() (planAgent, bool) {
 
 const runSummaryRefreshEvery = time.Minute
 
-type runSummaryAgent interface {
-	PlanRunSummary(string) (session.RunPlanSummary, bool)
-	RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool)
-}
-
 type runSummaryRefreshedMsg struct {
 	summary session.RunPlanSummary
 	ok      bool
 }
 
 func (a *app) refreshRunSummary() tea.Cmd {
-	agent, ok := a.agent.(runSummaryAgent)
+	agent, ok := a.planReader()
 	if !ok || a.runSummaryRefreshing {
 		return nil
 	}
-	rows, ok := a.planReader()
-	if !ok {
-		return nil
-	}
+	rows := agent
 	plan := rows.PlanTasks()
 	root := ""
 	for _, row := range plan {
