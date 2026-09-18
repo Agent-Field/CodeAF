@@ -24,6 +24,7 @@
 # test` and ci-full.yml read it, and reading an absent or empty ledger skips
 # nothing, so burning the ledger down to zero changes nothing here.
 set -euo pipefail
+unset PLANDB_DB
 cd "$(git rev-parse --show-toplevel)"
 
 # Plain grep and not git grep, so a law written a minute ago and not yet
