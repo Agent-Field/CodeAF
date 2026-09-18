@@ -321,6 +321,35 @@ func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 			failedCells = cells - 1
 		}
 	}
+	dots := planCells(row, cells, failedCells, pal)
+	count := itoa(row.Done) + "/" + itoa(row.Total)
+	if long {
+		count = itoa(row.Done) + " of " + itoa(row.Total)
+		// A FAILURE IS SAID IN WORDS AND DRAWN IN ITS CELL, both. The words used
+		// to replace the dot row outright, so the one run a person most needs to
+		// see at a glance was the one drawn with no picture at all.
+		switch {
+		case row.Failed > 0:
+			count += railSep + itoa(row.Failed) + " failed"
+		case row.Running > 0:
+			count += railSep + itoa(row.Running) + " running"
+		}
+	}
+	if dots == "" {
+		return count
+	}
+	return dots + "  " + count
+}
+
+// planCells paints a run's progress as `cells` cells: done, then the running
+// frontier, then empty, with the failures at the row's end. ONE PAINTER, because
+// the rail, the task page and the work tab all draw this row and two spellings
+// of it had already drifted (the work tab's own copy forgot a failure was a
+// cell at all).
+func planCells(row session.PlanTaskRow, cells, failedCells int, pal palette) string {
+	if cells <= 0 || row.Total <= 0 {
+		return ""
+	}
 	var dots strings.Builder
 	for cell := 0; cell < cells; cell++ {
 		lo, hi := cell*row.Total, (cell+1)*row.Total
@@ -336,23 +365,20 @@ func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 		}
 		dots.WriteString(pal.glyph(id))
 	}
-	count := itoa(row.Done) + "/" + itoa(row.Total)
-	if long {
-		count = itoa(row.Done) + " of " + itoa(row.Total)
-		// A FAILURE IS SAID IN WORDS AND DRAWN IN ITS CELL, both. The words used
-		// to replace the dot row outright, so the one run a person most needs to
-		// see at a glance was the one drawn with no picture at all.
-		switch {
-		case row.Failed > 0:
-			count += railSep + itoa(row.Failed) + " failed"
-		case row.Running > 0:
-			count += railSep + itoa(row.Running) + " running"
-		}
+	return dots.String()
+}
+
+// planFailedCells is how many of `cells` a run's failures take: at least one
+// when anything failed, never the whole row.
+func planFailedCells(row session.PlanTaskRow, cells int) int {
+	if row.Failed <= 0 || cells <= 0 || row.Total <= 0 {
+		return 0
 	}
-	if dots.Len() == 0 {
-		return count
+	failed := (row.Failed*cells + row.Total - 1) / row.Total
+	if failed >= cells {
+		failed = cells - 1
 	}
-	return dots.String() + "  " + count
+	return failed
 }
 
 // planStateField is the state cell of a plan row: the word every row wears, with

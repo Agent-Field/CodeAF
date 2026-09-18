@@ -1572,12 +1572,11 @@ drawing those two answers for it** — a frame at least 110 columns wide, over a
 conversation's that is waiting on you; everywhere else a digit is typed · **every other
 printable key, the space included, types into the filter**, which narrows
 every section at once and is drawn on the **control row** at the top of the list, as
-`⌕ port`. `alt+s` sorts by the next column — age, name, state, files, cost — and
-`alt+shift+s` turns the column you are on round; a press on one of the two column labels at
-the right of that control row sorts by it. `→` opens the row's
+`⌕ port`. Runs stay grouped by state and ordered by newest activity; this page has no sort
+key or column label. `→` opens the row's
 verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
 still queued or running. Its foot is assembled from what is true of the row under the
-cursor — `enter open its room · → verbs: stop it · alt+s sort · type to filter` over a task this
+cursor — `enter open its room · → verbs: stop it · type to filter` over a task this
 window is running, `enter go inside it` on a task another conversation ran, which has no room to open,
 and one of three clauses on a task another codeaf **window** is running:
 `enter go to that conversation` when this terminal is holding that conversation, which
@@ -2295,7 +2294,7 @@ on the `jobs` label toggles the section; `enter` on a job row opens that job's p
 **Under 60 columns the TASKS PAGE this column reaches is a thumb's, not a keyboard's** — the
 column itself is unchanged, and its own keys are the ones above. The page's rows become
 two-line cards a tap opens, its foot is a `‹ back` bar in place of the key legend
-`enter open its room · alt+s sort · type to filter`, and the strip that opens it is one full-width door
+`enter open its room · type to filter`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
@@ -2954,7 +2953,7 @@ answer:
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
-| `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
+| `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** on standing (when it fired) and spend (which days): `shift+←→` moves it by its own length and `shift+↑↓` changes how coarse it is. The work page has no time window. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries
