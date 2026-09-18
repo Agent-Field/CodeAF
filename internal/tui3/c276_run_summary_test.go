@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -113,7 +115,11 @@ func TestPlanRowsDrawStoredNowUnderDotsAndRespectAbsenceAndWidth(t *testing.T) {
 			break
 		}
 	}
-	wantLead := planRailLead + pal.dim(root.underKin) + strings.Repeat(" ", taskSheetPhoneIndent)
+	pad := root.underKin
+	if pad == "" {
+		pad = strings.Repeat(" ", ansi.StringWidth(root.kin))
+	}
+	wantLead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
 	var nowRows []string
 	for _, row := range got {
 		if strings.Contains(plain(row), "reviewing") || len(nowRows) == 1 {
