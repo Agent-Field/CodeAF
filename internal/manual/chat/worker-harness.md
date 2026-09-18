@@ -71,11 +71,9 @@ task that requested it — the parent the worker wrote to the store — and a de
 task sits under that, each joined to the row above it by the pane's own connector
 (`├ `, `└ `). The shape of the run reads down the indentation.
 
-A task the store keeps **held behind named work** sits under **what it waits on**.
-`pending` means admitted and not started, waiting on a hard dependency to finish;
-when that dependency is not the task's own parent, the row is drawn under it, one
-level in, and still wears `queued · waits: <that task>`. Where the thing holding a
-task is its own parent the row is already there and nothing moves.
+A dependency never changes that family. `pending` means admitted and not started;
+the row stays under the task that requested it and wears
+`queued · waits: <that task>` to name the separate dependency.
 
 A task's **page** shows its children under its steps the same way, each with its
 live step while its worker is on one. Notes, pause, cancel and the rest of steering
@@ -229,9 +227,11 @@ ends with the reason `4 replies in a row carried no action`.
 
 A parked task stays open and not done, and its claim is released: the runtime runs
 its worker again **once, when its wait is over** (see the next section), with the
-finished work in front of it. A `plandb wait` with nothing open to wait on is
-refused, so a worker cannot park on nothing. The remaining endings are the run's
-step cap, its wall, and an errored turn.
+finished work in front of it. The woken task is claimed under its own agent name
+again, so it can re-plan, add another child and park again, or finish with `done`
+exactly as it could on its first launch. A `plandb wait` with nothing open to wait
+on is refused, so a worker cannot park on nothing. The remaining endings are the
+run's step cap, its wall, and an errored turn.
 
 ## When does a waiting task come back?
 

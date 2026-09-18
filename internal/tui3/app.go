@@ -1737,8 +1737,10 @@ type app struct {
 	chatTabWho tabIdentity
 	// chatTabBar is the strip as it was last laid out, kept from frame to frame
 	// (chattabs.go's [tabBar] states the whole of why).
-	chatTabBar tabBar
-	tabView    tabViewport
+	chatTabBar     tabBar
+	workTabOn      bool
+	workTabSettled string
+	tabView        tabViewport
 	// tabShut is the conversations whose TAB has been dismissed — the whole of
 	// the new state the ✕ on a tab costs (chattabs.go's [app.tabDismiss]). The
 	// conversation itself is untouched: still held, still running, still on the

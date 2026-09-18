@@ -33,11 +33,21 @@ import (
 // the span it covered, the last thing anybody said on it, and where its record
 // lives.
 type PlanTaskRow struct {
-	ID     string
-	Title  string
-	Status string
-	Seat   string
-	Parent string
+	// Done, Running, Queued, Failed and Total summarize every task below a run root.
+	// They stay zero on ordinary task rows. Claimed work is running; pending and
+	// ready work is queued. Total includes every descendant store row.
+	Done    int
+	Running int
+	Queued  int
+	Failed  int
+	Total   int
+	ID      string
+	Title   string
+	Status  string
+	Seat    string
+	Parent  string
+	// Depth is the row's level below the page task; direct children are zero.
+	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
 	// of its hard dependencies (feeds_into/blocks), in store order, and empty
 	// when it waits on nothing but its own parent. A row still `pending` because
@@ -97,6 +107,9 @@ type PlanTaskPage struct {
 	// in store order, so a page can draw the tree under the task the way the
 	// plan list draws it. Empty for a leaf, which is the ordinary case.
 	Children []PlanTaskRow
+	// WaitRows feed the page's two-way waits reading: own dependencies first,
+	// then open tasks directly waiting on this task. Empty omits the section.
+	WaitRows []PlanTaskRow
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -136,8 +149,16 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	live := store.LiveSteps()
 	tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
 	rows := make([]PlanTaskRow, 0, len(tasks))
+	// THE RUN'S ROOT IS WHAT THE STORE SAYS IT IS, never a name. A run the
+	// conversation opens is rooted at the task's own number
+	// ([Agent.startKnownTaskRun]), so a comparison against the word `root`
+	// counted nothing on any real run and its row wore no progress.
+	root := store.RootID()
 	for _, task := range tasks {
 		rows = append(rows, planTaskRow(store, dir, task, spend, live))
+		if task.ID == root {
+			applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
+		}
 	}
 	return rows
 }
@@ -159,22 +180,54 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
 	live := store.LiveSteps()
-	// THE CHILDREN ARE THE TASK'S OWN SUBTREE, ONE LEVEL DEEP: every row the store
-	// holds under this task, in store order, built the same way the top row is so
-	// a page can draw them with the same words ([PlanTaskRow]).
+	// Walk admission order once; membership follows parent edges only.
+	all := store.Tasks(plandb.Filter{Chat: plan.chat})
+	rows := make(map[string]PlanTaskRow, len(all))
 	var children []PlanTaskRow
-	for _, child := range store.Tasks(plandb.Filter{Chat: plan.chat}) {
-		if child.ParentID != task.ID {
+	depths := map[string]int{task.ID: -1}
+	for _, child := range all {
+		row := planTaskRow(store, dir, child, spend, live)
+		rows[child.ID] = row
+		depth, under := depths[child.ParentID]
+		if !under || child.ID == task.ID {
 			continue
 		}
-		children = append(children, planTaskRow(store, dir, child, spend, live))
+		row.Depth = depth + 1
+		children = append(children, row)
+		depths[child.ID] = row.Depth
+	}
+	open := func(status plandb.Status) bool {
+		return status != plandb.StatusDone && status != plandb.StatusFailed && status != plandb.StatusCancelled
+	}
+	var waitRows []PlanTaskRow
+	pageRow := rows[task.ID]
+	if root := store.RootID(); task.ID == root {
+		applyPlanRootProgress(&pageRow, all, root)
+	}
+	for _, id := range pageRow.Waits {
+		if row, ok := rows[id]; ok && open(plandb.Status(row.Status)) {
+			waitRows = append(waitRows, row)
+		}
+	}
+	for _, candidate := range all {
+		row := rows[candidate.ID]
+		if candidate.ID == task.ID || !open(candidate.Status) {
+			continue
+		}
+		for _, id := range row.Waits {
+			if id == task.ID {
+				waitRows = append(waitRows, row)
+				break
+			}
+		}
 	}
 	return PlanTaskPage{
-		Row:         planTaskRow(store, dir, task, spend, live),
+		Row:         pageRow,
 		Description: task.Description,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
 		Children:    children,
+		WaitRows:    waitRows,
 	}, true
 }
 
@@ -344,6 +397,27 @@ func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
 		return out[i].Seat < out[j].Seat
 	})
 	return out
+}
+
+// applyPlanRootProgress puts the run-wide subtree figures on its root row. The
+// caller supplies the store read it already made, so progress costs no second read.
+func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task, root string) {
+	for _, task := range tasks {
+		if task.ID == root {
+			continue
+		}
+		row.Total++
+		switch task.Status {
+		case plandb.StatusDone:
+			row.Done++
+		case plandb.StatusClaimed, plandb.StatusRunning:
+			row.Running++
+		case plandb.StatusPending, plandb.StatusReady:
+			row.Queued++
+		case plandb.StatusFailed:
+			row.Failed++
+		}
+	}
 }
 
 // planTaskRow builds one row from the store read and the two figures that are

@@ -410,7 +410,10 @@ func (parsed quickArguments) askOf() quickAsk {
 // there anywhere for work to go from here — and a belt that carried one without
 // the other would be telling a model half a truth about its own depth.
 func (a *Agent) quickTools() []bare.Tool {
-	if !a.mayProposeTask() {
+	// [Config.mayQuickTask] is the one predicate: the floor of the tree, and a
+	// conversation whose hand-offs are runs in the plan store, where
+	// `propose_task` is the one road ([Config.oneTaskRoad]).
+	if !a.config.mayQuickTask() {
 		return nil
 	}
 	return []bare.Tool{{

@@ -261,6 +261,12 @@ const (
 	GlyphStepPending = "○"
 	GlyphStepBlocked = "⚑"
 
+	// Run progress cells summarize task state across a whole run.
+	GlyphDoneCell    = "●"
+	GlyphRunningCell = "◐"
+	GlyphEmptyCell   = "○"
+	GlyphFailedCell  = "✘"
+
 	// Queue pills: one glyph per queued item, capped (10.3.13).
 	GlyphQueuePill = "▶"
 
@@ -484,6 +490,10 @@ func Glyphs() []GlyphInfo {
 		{"StepRunning", GlyphStepRunning, '◐', true},
 		{"StepPending", GlyphStepPending, '○', true},
 		{"StepBlocked", GlyphStepBlocked, '⚑', false},
+		{"DoneCell", GlyphDoneCell, '●', true},
+		{"RunningCell", GlyphRunningCell, '◐', true},
+		{"EmptyCell", GlyphEmptyCell, '○', true},
+		{"FailedCell", GlyphFailedCell, '✘', false},
 		{"QueuePill", GlyphQueuePill, '▶', true},
 		{"DiffAdd", GlyphDiffAdd, '+', false},
 		{"DiffDel", GlyphDiffDel, '−', false},

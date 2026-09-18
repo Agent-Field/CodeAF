@@ -483,11 +483,20 @@ func (a *Agent) hearModelLocked(model string) ModelLanding {
 // latchTheModel is the model a turn starts on, TAKING THE PERSON'S WORD WITH IT.
 // See the law above for why the word must not outlive the turn it was said to.
 func (a *Agent) latchTheModel() string {
+	return a.latchModelAs("")
+}
+
+// latchModelAs starts a role-bound turn on its named seat without changing the
+// conversation model. Empty keeps the ordinary conversation seat.
+func (a *Agent) latchModelAs(model string) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.spokenModel = ""
-	a.riding = a.model
-	return a.model
+	if model == "" {
+		model = a.model
+	}
+	a.riding = model
+	return model
 }
 
 // rideModel publishes THE MODEL THE WORK IS ACTUALLY TALKING TO. The ladder has

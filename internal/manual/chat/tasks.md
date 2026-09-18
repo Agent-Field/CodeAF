@@ -330,12 +330,11 @@ memory above `task.min_free_mb` can hold and leaves the rest queued, each row re
 `waiting · machine busy`. Those begin by themselves as earlier pieces finish; there is
 nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
-What it will *not* do is watch them. Each landing arrives on its own and wakes the
-conversation, so once nothing is left that is independent of the work it handed out, the
-turn simply ends — a reply that sat there polling would have spent your money to learn
-what it was going to be told anyway. If the pieces share what they learn, they are one
-quick task's items instead, and they stay in order.
-
+What it will *not* do is watch them. Each landing writes one dim line in the
+conversation and does not start a turn, so once nothing is left that is independent of the
+work it handed out, the turn simply ends — a reply that sat there polling would have spent
+your money to learn what it was going to be told anyway. If the pieces share what they
+learn, they are one quick task's items instead, and they stay in order.
 ## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
 
 **Yes, under exactly the bounds every task is under.** A quick task's worker carries
@@ -1150,11 +1149,17 @@ in this conversation*.
 
 ## Finishing a task's work stays in this conversation — it started a second task while integrating, my cherry-pick became a task, the commit after the task finished never happened, why did merging the branch start more work
 
-**When a task lands, its report starts a reply here, and that reply is usually where the rest
-of what you asked for happens**: cherry-picking the branch across, staging the files, the
-commit, the pull request. That is many files changed under this folder, so the write count
-above would move it. **It does not.** A reply delivering the result of a task this
-conversation started finishes here, however many files it touches.
+**A landing speaks only when an answer is owed.** When the chat launches a task in a turn
+that answers something you asked, the task carries your question with it. Its landing wakes
+one short reply, fed only the question and the task’s result note. That reply answers from
+the result and never redoes the work; if the result is thin, it says so and offers a
+follow-up task.
+
+A task you start yourself with `/task` carries no question, so its landing only writes the
+dim line and starts no reply. A family replies once, when the root lands, never for each
+child. A check’s landing starts no reply. The reply that does start is where the rest of
+what you asked for happens: cherry-picking the branch across, staging the files, the commit,
+the pull request. However many files it touches, it finishes here.
 
 **Why.** A four-module repair was asked for on a branch with a final commit. The task did the
 work — 29 independent checks passed, the protected files were untouched, the branch was
@@ -1233,32 +1238,10 @@ reading every small reply cost a thinking-tier call on every message you sent: m
 was a third to a half of a small question's whole bill, and it almost never found anything
 left to do.
 
-**That short-reply exemption is only for a reply YOU typed.** A reply that started on its own —
-the turn a finished task's landing begins, the one *Why did the chat reply on its own* in *how
-tasks run* describes — is read for what remains **however short it was**. You are sitting in
-front of a reply you typed and can carry a small one on yourself; nobody is sitting in front of
-a woken one, so the cheapness that leaves your reply alone is exactly the reason not to leave
-that one alone. Measured, the best clean run of a ten-hour request had a task come home
-unfinished, the landing woke a reply, it read for six steps — under that first point — and
-stopped on "let me diagnose the failures systematically", and the run then sat idle for seven
-and a half of its ten hours. A woken reply that ends by **asking you** something is still left
-alone, and one that **broke** is still not read — those two endings hold for every reply.
-
-**And a woken reply is read against the request its result belongs to, not against the last
-thing you typed.** A reply that a landing started owes THAT work's request: the words you used
-when you asked for it, or — if you redirected the task in its room while it ran — the words you
-redirected it with, together with what the deliverable and the done-condition became. What you
-happened to ask about in between is not part of it, and neither is a question that was already
-answered. Measured: a build was delegated, a checksum question was asked and answered while it
-ran, and when the build landed the reader was handed the checksum question, said it had not
-been answered, and the reply repeated an answer already on the screen.
-
-**Several things landing at once keep several requests, in the order they arrived, and each one
-says where it came from.** A batch of reports is read against each of the targets behind it,
-oldest first, and a reply you typed into while work was out owes both: your words and whatever
-landed in it. Which is which matters — **your latest words are the authority**, and a task's
-line is only what THAT work was for, so a slow task landing after you have said something else
-does not overrule what you said.
+**A finished task starts no reply on its own.** Its landing writes one dim line in the
+conversation and does not start a turn. You can open its room and read the task's own report;
+what you happened to ask about in between is not part of it, and a slow task landing after you
+have said something else does not overrule what you said.
 
 **But a reply that CHANGED a file and then stopped is read however short it was.** The gate is
 what the reply left behind, not what it cost. If the last thing a reply did was save or edit
@@ -1333,19 +1316,10 @@ the running-long point moved the wait into a task whose done-condition nobody co
 
 **A task started for the message you just sent ends the reply, and nothing else does.** If the
 reply handed *this* request's work to a task and that task is queued or running, the reply
-stops there and is not read: the outcome is the task's to deliver, its landing wakes a reply
-here on its own, and *that* reply is read for what remains with the report in front of it. It
-is narrow on purpose — **anything you say after the handoff**, including a correction typed
-into the running reply, puts the reading back; and a task that has already **failed or
-finished** is news to answer rather than work to wait for.
+stops there and is not read: the outcome is the task's to deliver. When it lands, one dim
+line is written in the conversation and no turn starts. Anything you say after the handoff,
+including a correction typed into the running reply, puts the reading back.
 
-**What that says is who owes the outcome, not that it is finished.** Nothing is marked done and
-no done-condition is answered. A reply that hands one part of your message over and quietly
-drops another ends here too, and what catches that is the reading the landing brings — deferred,
-not skipped. The measured failure it fixes: "hand this work to a task, run the build and tell me
-the marker, keep the conversation free while it runs" was done exactly as asked, read as
-unfinished because the marker was not known yet, and carried on into polling the task it had
-just started and a watch over its own work.
 
 ## Why does it say carry on — what carry on means, carried on, why does it say "carried on 3 times", the reply was pushed on, it argued with itself about something it had already answered, why does it say "saying it again would not change it"
 
@@ -1358,53 +1332,21 @@ that simply repeats the one before it never gets that far**: the second identica
 the reply straight away, because a thing said twice is not a second piece of evidence.
 
 **It is never carried on over its own running work.** A reply waiting on a task, a quick
-task, a background command or a watch it started is waiting, not unfinished; the ending it
-waits for wakes a new reply here on its own.
-
-**And a reply you did not type is left alone while any of its own tasks is still out.** A
-landing wakes a reply here, and that reply often has nothing to do but say so: one of two quick
-tasks is in, the other is still running. While a task or a quick task this conversation started
-is queued or running, that reply is not read and not carried on — what it is waiting for is the
-other landing, and that landing is what wakes it. **Your own words outrank this**: the moment
-you type or steer anything, the reply is read for what you asked exactly as it always was,
-whatever is still out, so a task from an earlier message excuses nothing you say. Measured on a
-real drive: a chat started two quick tasks, answered the first one's landing, and was then
-pushed on three times over the second — each push another reading and another `tasks` poll of
-the node that was about to report, each answered "still running, no gap to fix".
+task, a background command or a watch it started is waiting, not unfinished. A landing
+writes one dim line and does not start a reply here on its own.
 
 ## A settled task with green checks is not carried on as unfinished — it kept saying the ask was not finished over a done task, carried on 3 times then said unfinished
 
-**When the task that was this request comes home done and its own checks have passed, the
-reply that reports the landing is not carried on as unfinished.** The card already shows
-it done. The end-of-turn reader is looking at a short account of what was said, not at the
-tree or the checks that already ran, and a reader that answers "still not finished" over
-that card is not evidence — it is the same echo that used to carry a finished ask on three
-times and then tell you it was unfinished.
+**When the task that was this request comes home done and its own checks have passed, one dim
+line reports the landing.** The card already shows it done. No reply starts.
 
-**A piece of a larger ask is still read.** If the landing is one finished part and what you
-asked for is bigger, or the landing is incomplete, or nobody ran the task's own checks, that
-reply is still read for what remains, the way a cheap woken reply always is. The gate is the
-landing's own fact: this request, this task, done, checks green.
+**A piece of a larger ask still writes one dim line.** If the landing is one finished part and
+what you asked for is bigger, or the landing is incomplete, or nobody ran the task's own
+checks, no reply starts.
 
 **It is the other half of handing the work out.** While the task is queued or running, the
-reply that started it is not read. When it lands done with its checks green, the reply that
-reports it is not read either. What is in between — a failed landing, a landing nobody
-checked, a new sentence you typed after it — is still read.
+reply that started it is not read. When it lands, one dim line is written and no turn starts.
 
-**The same observation twice stops the reply, and that comes first.** If the reader's second
-look says exactly what its first look said about the same stopped reply, nothing moved — and
-raising it again only buys another answer to something the reply has already answered. So the
-reply ends there, on one dim line naming what repeated itself:
-
-```
-stopping here · nothing moved since the last look and what is left is the same — the missing zeta.txt has not been reported · saying it again would not change it
-```
-
-That is a **second** carry-on being refused, not the first: the observation is always put to
-the reply once. What it closes is a measured drive where a reply had correctly reported that a
-file did not exist, the reader claimed three times running that the missing file had not been
-reported, and the reply spent three turns explaining that the observation was mistaken — an
-argument you never typed a word into and read all of.
 
 **And a reader that keeps finding NEW things is carried on at most three times.** Three
 different readings are three pieces of evidence, so each one is believed; the fourth time the
@@ -1813,6 +1755,14 @@ neither is what the card quotes, which for a report that is nothing but a fenced
 the first line inside it. A report with no line to quote draws no quotation marks at all,
 only the start stamp.
 
+**The conversation replies only when its task was started while answering your question.**
+That task carries the question until its family lands, then one short reply answers from the
+root task’s report. A part does not reply when it finishes, and neither does a check; the
+family replies once, when the root lands. If you typed `/task` yourself, you asked for work
+rather than an answer, so finishing only shows the landing line and makes no model call.
+The same is true when a task started by the conversation carries no question: the landing
+line is the whole arrival.
+
 **Every fact on the head is joined by ` · `, the state word included.** It used to read
 `done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
 them was properly separated — so on a card asking for a hand, the word and the clock ran
@@ -1895,6 +1845,16 @@ row when needed. An unknown price is omitted. With no end time, the card says
 An expanded card omits the quoted preview and repeated branch from its heading.
 Closing it restores the compact summary. Each long field is capped at 20 rows;
 open the task's conversation for the full record.
+
+## where do I watch a task while I keep chatting?
+
+A live task has a tab after the conversation tab, named with the task title. Open
+that tab to watch its rows while you keep chatting in the conversation. The tab
+closes when the task lands; the landing card stays in the conversation.
+
+At the foot of the task tab, type a note and press `enter` to steer the task. The
+page says the note was left when it lands. Press `esc` to return to the
+conversation.
 
 ## Watching work: the strip along the top
 
@@ -2009,12 +1969,15 @@ When two or more workers are running anywhere in the live work, the section labe
 the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
 zero or one running worker there is no tail at all, so the label remains `tasks`.
 
-**A run's rows are not on this column.** The column draws this conversation's own tree and
-nothing else, so the plan rows a run writes to the store — including the root's children — are
-drawn in the tasks place instead (the page `/history`, `ctrl+.` and `alt+2` open). A run's row
-there spends one line under its title while a step is in flight — the running glyph `◐`, the
-shell lead `$` and the command its worker is on right now — with the task's `N steps · $0.11`
-under it. *The tasks place* below has it whole.
+**A run's rows are on this column too.** The column draws this conversation's own tree, and
+under the conversation that started a run it draws that run's tree out of the same reading:
+one line per task — the connector, the state mark and the fitted title — with
+`waits: <that task>` at the end of a line held behind named work, and the run's own row
+ending in the dot row (*what are the dots next to a task?* has the cells). While a task's
+worker is on a step, its row spends one line under it — the running glyph `◐`, the shell
+lead `$` and the command its worker is on right now — and nothing else, because the steps
+and the cost are the tasks place's own rows. That page (the page `/history`, `ctrl+.` and
+`alt+2` open) has the run whole.
 
 ## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
@@ -5167,6 +5130,23 @@ reading already in hand — nothing goes back to disk for it. On a phone the bot
 remains the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing
 empty headings, and says no count beside that prose.
 
+## what are the dots next to a task?
+
+The dots show how far the whole task family has moved. `●` is done, `◐` is running
+or a share that is partly done, `○` is not started, and `✘` is a share holding a
+failure. The running cell is the first cell that is not full, so the moving edge is
+always the first unfinished part.
+
+A family with one task has no dots and says its state word instead. From two through
+ten tasks, each cell is one task. With eleven or more, ten cells divide the family
+into tenths. The widest row shows all ten cells and words such as `6 of 10 · 2
+running · $0.41`; the next tier keeps ten cells and shortens the count to `6/10`;
+a widened rail uses five cells and `6/10` at the end of the run's row. On the rail at
+its ordinary narrow width the dots take **the line under the run's title**, all ten
+cells and `6/10`, so the title keeps its own line. A family that is entirely
+finished says `done`, never `10 of 10`. A failure is drawn in its cell as `✘` and
+said in words too: `●●●●●●●●✘✘  8 of 10 · 2 failed`.
+
 ## Why is this task indented under that one? — the plan drawn as a tree
 
 The plan is a **graph, and the list draws it as one**. A task sits under the task
@@ -5175,17 +5155,34 @@ sits under that, each joined to the row above it by the list's own connector
 (`├ `, `└ `). You read the shape of the run down the indentation, not a flat list
 of peers.
 
-A task **held behind named work** sits under **the task it waits on**. The store
-keeps a task `pending` until the work it depends on is done; when that work is not
-the task's own parent, the row is drawn under it, one level in, and still wears
-`queued · waits: <that task>` — the row above it is the name the row itself says.
-Where what holds a task is its own parent the row is already there and nothing
-moves.
+A task **held behind named work stays under its parent**. Waiting is a second
+kind of connection; it never changes the family or indentation. The pending row
+still wears `queued · waits: <that task>`, so the words say what holds it while
+the tree continues to say who asked for it.
 
-A task's **page** shows its children under its steps the same way, each with its
-live step while its worker is on one. Opening a row (`enter`) and leaving a note
-are unchanged by the tree.
+A task's **page** shows everything below it under its steps the same way, each
+with its live step while its worker is on one. Opening a row (`enter`) and
+leaving a note are unchanged by the tree.
 
+## Why is this group one line? — finished families fold on the rail
+
+The rail shows the run's tree. It puts families with running work first, newest
+activity on top, then queued families, then done families folded with their age.
+Inside a family it keeps store order, except that running rows float to the top and
+its done rows fold into one `✔ N done` line at the bottom.
+
+A family becomes one rail line when every task in it is done or failed. The line
+keeps the family title and says how many settled below it — `· 3 done`, or
+`· 3 failed` when the family failed. This is a fold, not missing work: select the
+line and press `enter` to open the family's page. A family with anything running
+or queued stays open on the rail.
+
+## What does queued behind it mean? — open tasks are waiting on this one
+
+`· 2 queued behind it` on a row means two open tasks directly wait for that task
+to finish. It counts direct dependants, not every later task in the subtree, and
+nothing is printed when the count is zero. Their own rows remain under their
+parents and say `queued · waits: <title>`.
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
 On a terminal **110 columns or wider** the tasks place splits: the list keeps the left, a dim
@@ -5548,3 +5545,42 @@ are restored. The row disappears when you are already in the main conversation.
 Breadcrumbs still let you choose a particular ancestor; Escape can step back
 through nested task views. If the column is hidden, the header's return control
 and breadcrumbs remain available.
+
+## will the chat do it itself or start a task?
+
+One read, one edit or one command the chat does itself. Anything with parts goes
+out as tasks. With `CODEAF_TASK_BELT=bash` set there is **one way** the chat puts
+work out, a task:
+
+- **hand off:** the chat proposes a task; approving the card, or letting its
+  countdown run out, starts it as a run in the conversation's plan.
+- **in parallel:** the chat proposes several tasks in one message. The first opens
+  the run and every one after it joins the same run as another task of it, so
+  parts that do not need each other run side by side. A part that must follow
+  another names it in `depends_on` and waits for it.
+- **add to:** a `/task` you type while a run is live joins that run too.
+- **ask about:** the chat reads the run's rows and the task's own steps and
+  answers from them. It never redoes the work.
+
+## is there a quick task with the bash belt on? can the chat still start quick tasks?
+
+**No. With `CODEAF_TASK_BELT=bash` set the conversation has no quick task.** The
+chat's only verb for putting work out is a task, and every task it starts is part
+of the conversation's plan, where the tree shows it and a check reads it. A quick
+task ran outside the plan, in the folder you stand in, with no check, so it was
+left off rather than kept as a second road. Asked to parallelize, the chat proposes
+several tasks at once. Small work it simply does itself.
+
+With the variable unset nothing changes: quick tasks work as *What a quick task is*
+describes.
+
+## what are the what, since, now and next lines?
+
+These four lines are a short account of a run. **what** is your goal in your
+own words. **since** says what changed since you last looked, and is left out
+when nothing changed. **now** says what is happening now, or how the run ended.
+**next** says what comes after and whether anything needs you.
+
+The worker model writes these lines. It refreshes them only when the shape of
+the run has moved, rather than every time you look. Without a model key the
+lines are absent; the task facts remain available on their own.

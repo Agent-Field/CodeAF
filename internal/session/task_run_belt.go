@@ -31,11 +31,11 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -151,7 +151,7 @@ type beltRun struct {
 // the engine in a goroutine the moment the run is new. Every refusal falls back
 // to the legacy road rather than inventing a sentence of its own, so a
 // conversation the run road cannot serve gets exactly the door it always had.
-func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
+func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, question string) (uint64, string, string, error) {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil {
@@ -164,7 +164,25 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
+	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, question); err != nil {
+		return a.startTaskLegacy(ctx, brief, solo)
+	}
+	return id, title, "", nil
+}
+
+// An approved hand-off under the bash belt belongs to the run store and never to the session tree.
+func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, question string) error {
+	engine := chatRunEngine
+	g := a.graph()
+	if engine == nil || g == nil || g.planPath() == "" {
+		return errors.New("the run road is unavailable")
+	}
+	path := g.planPath()
 	storeID := strconv.FormatUint(id, 10)
+	dependencies := make([]plandb.Dependency, 0, len(dependsOn))
+	for _, dependency := range dependsOn {
+		dependencies = append(dependencies, plandb.Dependency{TaskID: strconv.FormatUint(dependency, 10)})
+	}
 
 	a.beltMu.Lock()
 	live := a.beltRun
@@ -176,21 +194,27 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 	// pass. Nothing opens a second store.
 	if live != nil {
 		if _, err := live.store.AddMany([]plandb.TaskSpec{{
-			ID: storeID, ParentID: live.root, Title: title, Description: brief,
+			ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies,
 		}}); err != nil {
-			return a.startTaskLegacy(ctx, brief, solo)
+			return err
 		}
-		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: time.Now()})
-		return id, title, "", nil
+		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
+		return nil
 	}
 
 	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief)
 	if err != nil {
-		return a.startTaskLegacy(ctx, brief, solo)
+		return err
+	}
+	if question = strings.TrimSpace(question); question != "" {
+		if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+			_ = store.Close()
+			return err
+		}
 	}
 	run := &beltRun{plan: plan, store: store, root: store.RootID(), row: id, title: title}
 	a.installBeltRun(g, run)
-	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: time.Now()})
+	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: a.taskClockNow()})
 
 	// THE CONVERSATION'S OWN SEATS, read off its role ladder so the engine's
 	// crew factory seats the work and plan roles on what this conversation's
@@ -216,7 +240,7 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 	}
 	go a.driveBeltRun(ctx, engine, run, spec)
-	return id, title, "", nil
+	return nil
 }
 
 // openBeltRunStore opens the conversation's store for a run, creating it under
@@ -295,7 +319,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		}
 		landing = RunLanding{}
 	}
-	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(summary, landing)); err != nil {
+	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing)); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's outcome note failed: " + err.Error())
 		}
@@ -311,23 +335,54 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	_ = run.store.Close()
 }
 
-// deliverBeltRunLanding wakes the conversation with the note a landed task
-// sends, composed for a run: the outcome word in place of a tier word, the
-// result the root reported, and where the work went. It is the run's own voice
-// ([fromRuntime]), so a person reads it as the session's news and not as
-// something they typed.
+// deliverBeltRunLanding writes the run's digest into the conversation record.
+// A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED.
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
-	notice := a.beltRunNotice(run, summary, landing)
-	line := landingNoteLead(notice) + taskNote(notice, "", a.settlePolicy(), a.addressLanding(notice))
-	a.accept(delivery{origin: fromRuntime, kind: msgResult, note: wakeNote(line)})
+	line := beltRunOutcomeNote(run.store, run.root, summary, landing)
+	if task := run.store.Task(run.root); landingOwesAnswer(task) {
+		document := owedLandingDocument(task, line)
+		note := wakeNote(document.text())
+		note.batch = false
+		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
+		note.settlePrompt = landingAnswerPrompt
+		note.settleModel, _ = roles.TierModel(roles.Source(a.config.RolesSource), owedLandingTier())
+		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
+		return
+	}
+	note := userText(line)
+	note.authored = true
+	a.mu.Lock()
+	a.recordUserLocked(note)
+	a.mu.Unlock()
 }
+
+// landingOwesAnswer admits only an owed work root to the one bounded reply turn.
+func landingOwesAnswer(task *plandb.Task) bool {
+	return task != nil && strings.TrimSpace(task.Question) != "" && task.ParentID == "" && task.Role != plandb.RoleCheck
+}
+
+func questionAtTaskHandoff(owed []owedAsk) string {
+	for index := len(owed) - 1; index >= 0; index-- {
+		if owed[index].from == owedByPerson {
+			return strings.TrimSpace(owed[index].text)
+		}
+	}
+	return ""
+}
+
+func owedLandingDocument(task *plandb.Task, result string) userMessage {
+	return userText(strings.TrimSpace(task.Question) + "\n\n" + strings.TrimSpace(result))
+}
+
+func owedLandingCallCeiling() int { return settleCallCeiling }
+func owedLandingTier() roles.Tier { return roles.TierLow }
 
 // settleBeltRun ends the row the run was published under: done when the run
 // finished whole, failed on every other ending, with the result and the branch
 // a surface draws.
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
-	notice.EndedAt = time.Now()
+	notice.EndedAt = a.taskClockNow()
 	a.emitTaskUpdate(notice)
 }
 
@@ -361,13 +416,22 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 
 // beltRunOutcomeNote is the one line a run's own page carries about how it
 // ended: the engine's outcome word and where the work went, or the sentence that
-// says why it did not.
-func beltRunOutcomeNote(summary RunSummary, landing RunLanding) string {
-	line := beltLandingLine(landing)
-	if line == "" {
-		return summary.Outcome
+// says why it did not. The last stored run reading supplies its Now sentence;
+// without one this remains the landing digest that predates run summaries.
+func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding) string {
+	parts := []string{summary.Outcome}
+	if result := strings.TrimSpace(summary.Result); result != "" {
+		parts = append(parts, result)
 	}
-	return summary.Outcome + " · " + line
+	if line := beltLandingLine(landing); line != "" {
+		parts = append(parts, line)
+	}
+	if stored, ok := readRunSummary(store, rootID); ok {
+		if now := strings.TrimSpace(stored.Summary.Now); now != "" {
+			parts = append(parts, now)
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // beltLandingLine is what a landing is in one line: where the work went and how
@@ -385,4 +449,20 @@ func beltLandingLine(landing RunLanding) string {
 		files = "file"
 	}
 	return fmt.Sprintf("landed on %s: %d %s", landing.Branch, len(landing.Changed), files)
+}
+
+func (a *Agent) missingRunDependencies(ids []uint64) []uint64 {
+	a.beltMu.Lock()
+	live := a.beltRun
+	a.beltMu.Unlock()
+	if live == nil {
+		return ids
+	}
+	missing := ids[:0]
+	for _, id := range ids {
+		if live.store.Task(strconv.FormatUint(id, 10)) == nil {
+			missing = append(missing, id)
+		}
+	}
+	return missing
 }
