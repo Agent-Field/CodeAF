@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A row the relay refuses by line leaves the outbox and the rows around it are sent
-pr: 0000
+pr: 1130
 surface: [engine]
 invalidates:
   - "An outbox Send that met a refused batch left every row of it, and every row behind it, pending: the relay refuses a whole batch on the first line it cannot validate and answers `400 {\"error\":\"line N: <why>\"}`, so one row the pool's schema would never accept — a payload written by an older or newer client, or schema drift — was retried at the head of the batch on every judged run and every start-up, refused again, and nothing from that install reached the pool again."
