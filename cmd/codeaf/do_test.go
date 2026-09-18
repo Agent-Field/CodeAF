@@ -2330,3 +2330,70 @@ func TestAnErrandCountsTheRoundsItsOwnJobsBought(t *testing.T) {
 			"a neighbour's rounds as its own", got)
 	}
 }
+
+// TestAnErrandCountsTheRedispatchesItsOwnNodesBought is the figure beside the
+// rounds, and the reason it comes off the journal rather than a counter.
+//
+// `do --json` said how many times a run went back for MORE but never how many
+// times it sent a node round again IN PLACE — a leaf that ran out of its room
+// going back on the queue to be carried on from, which is the other half of
+// what a bill of re-runs is made of.
+//
+// IT IS COUNTED PER NODE AND NOT ACROSS THE STORE, for the reason the rounds
+// are: a run sharing a durable store with another session must not report that
+// session's re-dispatches as its own.
+func TestAnErrandCountsTheRedispatchesItsOwnNodesBought(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "redispatches.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	const mine, theirs = "session-mine", "session-theirs"
+	for _, job := range []struct{ id, session string }{
+		{"job-a", mine}, {"job-b", mine}, {"job-c", theirs},
+	} {
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+			ID: job.id, Brief: "a job", Stage: 1,
+		}}}, store.Provenance{Origin: store.OriginUser, Intent: "a job", SessionID: job.session}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Two hand-ons on one of this errand's nodes, one on another, a hand-back
+	// that carried nothing on — which is a claim taken off a worker, not a
+	// re-dispatch — and one on a node belonging to somebody else entirely.
+	for _, handed := range []struct {
+		node     string
+		reason   string
+		recorded int
+	}{
+		{"job-a", "it was still working when it ran out of its token budget", 3},
+		{"job-a", "it was still working when it ran out of its token budget", 3},
+		{"job-b", "it was still working when it ran out of its token budget", 2},
+		{"job-b", "no sign of life for the claim", 0},
+		{"job-c", "it was still working when it ran out of its token budget", 1},
+	} {
+		claim, ok, err := graph.Claim(handed.node, "chat-runner")
+		if err != nil || !ok {
+			t.Fatalf("claim %s: %v", handed.node, err)
+		}
+		if handed.recorded > 0 {
+			if err := graph.ReleaseWithRecord(claim, handed.reason, handed.recorded); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := graph.ReleaseWithReason(claim, handed.reason); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := errandRedispatches(graph, mine); got != 3 {
+		t.Errorf("this errand's nodes were sent round again three times between them and it reports %d", got)
+	}
+	if got := errandRedispatches(graph, theirs); got != 1 {
+		t.Errorf("the other session re-dispatched once and it reports %d — a run may not "+
+			"count a neighbour's re-dispatches as its own", got)
+	}
+}

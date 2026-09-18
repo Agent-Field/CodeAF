@@ -320,7 +320,7 @@ func (f *engineFleet) takeAll() []*engineConn {
 // connection, and every seam that is about THIS conversation rather than about
 // the window.
 func (f *engineFleet) bundle(conn *engineConn, welcome remote.Welcome) tui3.Conversation {
-	agent := &besideAgent{Agent: conn.client.Agent(), conn: conn, fleet: f}
+	agent := &besideAgent{countingAgent: &countingAgent{Agent: conn.client.Agent()}, conn: conn, fleet: f}
 	link := hostLink(newHostSeams(conn.client))
 	conv := tui3.Conversation{
 		Agent:       agent,
@@ -382,7 +382,10 @@ func farTaskRows(world func() (session.World, bool), file string) func() ([]sess
 // with this connection retired, because after either of them there is nothing
 // left on it for this window to say.
 type besideAgent struct {
-	*remote.Agent
+	// The counting tee and not the bare remote agent: a conversation opened
+	// beside runs in the engine like the one it was opened beside, and its
+	// turns reach this process's tally the same way (telemetry_events.go).
+	*countingAgent
 	conn  *engineConn
 	fleet *engineFleet
 }

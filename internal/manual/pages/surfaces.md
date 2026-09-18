@@ -81,7 +81,9 @@ answer instead of picking. `esc` dismisses it.
 Everything you can tune lives in one sheet. Open it with `/settings`, the
 `⚙` in the header, or `alt+,` — a bare `,` works too whenever the
 cursor is not in the input. It is a single column of grouped rows: **models**
-(all eight slots), **money & limits** (the daily budget, the practice
+(all eight slots, plus the Model Pool row — `on` reads and sends, `read`
+uses the pool and sends nothing, `off` does neither), **money & limits**
+(the daily budget, the practice
 carve-out, the quiet period before practice), **rhythm** (how long an absence
 earns an arrival brief, how many clean firings earn a charter tenure),
 **learning** (how much practice follows measured demand rather than curiosity,

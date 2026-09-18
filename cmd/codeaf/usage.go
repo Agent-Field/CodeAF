@@ -487,7 +487,7 @@ func nearestCommand(typed string) string {
 // reason they are absent from the usage text: nothing types them.
 var knownCommands = []string{
 	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
-	"show", "models", "notebook", "collections", "competence", "services", "wake", "patch",
+	"show", "models", "pool", "notebook", "collections", "competence", "services", "wake", "patch",
 	"doc", "web", "image",
 	"doctor",
 	"logs", "cache", "rebuild", "why", "manual", "version", "help",

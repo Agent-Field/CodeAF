@@ -53,6 +53,31 @@ func TestAProviderRefusalCarriesTheUpstreamAndItsOwnWords(t *testing.T) {
 	}
 }
 
+// A LANE TO AVOID IS A NAMED ENDPOINT THAT FAILED ON ITS OWN ACCOUNT. The
+// retry asks this question rather than reading the status itself.
+func TestOnlyANamedUpstreamsOwnFaultNamesALaneToAvoid(t *testing.T) {
+	fault := &APIError{Status: 502, Message: "upstream broke", Provider: "Alpha"}
+	if !fault.UpstreamFault() {
+		t.Error("a relayed 502 named no lane to avoid")
+	}
+	refused := &APIError{Status: 400, Message: "too long", Provider: "Alpha"}
+	if refused.UpstreamFault() {
+		t.Error("a relayed 400 was read as the endpoint's own fault")
+	}
+	paced := &APIError{Status: 429, Message: "slow down", Provider: "Alpha"}
+	if paced.UpstreamFault() {
+		t.Error("relayed pacing was read as the endpoint's own fault")
+	}
+	router := &APIError{Status: 502, Message: "bad gateway"}
+	if router.UpstreamFault() {
+		t.Error("a 502 that named nobody was blamed on an upstream")
+	}
+	var none *APIError
+	if none.UpstreamFault() {
+		t.Error("a nil refusal named a lane")
+	}
+}
+
 // AND THE TWO KINDS OF 4xx ARE TOLD APART BY SHAPE, NEVER BY A STATUS LIST.
 //
 // An upstream refused: another endpoint may serve, so the ladder goes on. The

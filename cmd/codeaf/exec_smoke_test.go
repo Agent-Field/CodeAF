@@ -101,6 +101,12 @@ func smokeEnv(t *testing.T, baseURL string) (env []string, home string) {
 		"CODEAF_PROFILE_DIR=" + home,
 		"CODEAF_MODEL=test/model",
 		"CODEAF_DAILY_BUDGET=0",
+		// A stamped binary is not a test binary and not an unstamped build,
+		// so its usage-count ladder is on. Both rungs stay shut here, so
+		// either one alone keeps the run from minting an install id or
+		// sending first_run, session_started and session_ended.
+		"CODEAF_TELEMETRY=off",
+		"CODEAF_TELEMETRY_ENDPOINT=",
 	}, home
 }
 
@@ -233,7 +239,7 @@ func TestExecBinaryReportsTheStampedVersion(t *testing.T) {
 func TestExecBinaryVersionNeedsNoAPIKey(t *testing.T) {
 	binary := buildCodeafStamped(t, "v0.0.0-smoke")
 	home := t.TempDir()
-	env := []string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "CODEAF_HOME=" + home, "CODEAF_PROFILE_DIR=" + home}
+	env := []string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "CODEAF_HOME=" + home, "CODEAF_PROFILE_DIR=" + home, "CODEAF_TELEMETRY=off", "CODEAF_TELEMETRY_ENDPOINT="}
 
 	stdout, stderr, code := runSmoke(t, binary, env, "", "version")
 	if code != 0 {
@@ -256,6 +262,8 @@ func TestExecBinaryWithoutAKeyFailsCleanly(t *testing.T) {
 		"PATH=" + os.Getenv("PATH"),
 		"CODEAF_HOME=" + home,
 		"CODEAF_PROFILE_DIR=" + home,
+		"CODEAF_TELEMETRY=off",
+		"CODEAF_TELEMETRY_ENDPOINT=",
 	}
 
 	stdout, stderr, code := runSmoke(t, binary, env, "say hello\n",
@@ -269,5 +277,32 @@ func TestExecBinaryWithoutAKeyFailsCleanly(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "OPENROUTER_API_KEY") {
 		t.Fatalf("stderr does not say what is missing:\n%s", stderr)
+	}
+}
+
+// A stamped smoke run is a real usage-count source unless the environment
+// says otherwise, so the closed environment above must hold: one task run
+// leaves no telemetry directory behind and the status verb reports off.
+func TestSmokeBinaryNeverSendsUsageCounts(t *testing.T) {
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	server := fakeOpenRouter(t)
+	env, home := smokeEnv(t, server.URL)
+	workspace := t.TempDir()
+
+	_, stderr, code := runSmoke(t, binary, env, "say hello\n",
+		"exec", "-w", workspace, "--turns", "1", "--budget", "1000", "--timeout", "30")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstderr:\n%s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(home, "telemetry")); !os.IsNotExist(err) {
+		t.Fatalf("a telemetry directory was created by a smoke run")
+	}
+
+	stdout, stderr, code := runSmoke(t, binary, env, "", "telemetry", "status")
+	if code != 0 {
+		t.Fatalf("telemetry status exited %d\nstderr:\n%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "telemetry off") {
+		t.Fatalf("status printed %q, want it to report telemetry off", stdout)
 	}
 }

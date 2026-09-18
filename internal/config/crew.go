@@ -22,17 +22,14 @@ import (
 // asked to think.
 //
 // TWO FAMILIES BEHIND THE SAME THREE WORDS. Every preset exists twice: once in
-// the open family, every seat an open-weight model, which is the property that
-// makes a shipped default defensible, because nobody's default crew should be
-// a bet on one vendor's pricing; and once in the all family, the same three
-// words resolved over the whole catalog with closed and frontier models in it,
-// for the person who has chosen to spend what those cost. Which family the
-// words draw from is one row, [KeyCrewSource], and open is what it reads when
-// nobody has answered it: the all family is a thing a person asks for, never
-// one they get by saying nothing. Both the derived reading and the write
-// resolve through the row ([CrewSourceAt]), so the word on the sheet can never
-// mean one family while the five values it summarizes were drawn from the
-// other.
+// the all family, the same three words resolved over the whole catalog with
+// closed and frontier models in it; and once in the open family, every seat an
+// open-weight model, for the person who wants the three words to stay on that
+// shelf whatever the catalog does around it. Which family the words draw from
+// is one row, [KeyCrewSource], and all is what it reads when nobody has
+// answered it. Both the derived reading and the write resolve through the row
+// ([CrewSourceAt]), so the word on the sheet can never mean one family while
+// the five values it summarizes were drawn from the other.
 //
 // THE PRESET IS DERIVED AND NEVER STORED. [CrewAt] reads the five live tier
 // values and answers which preset they are, or "custom". A stored word would be
@@ -63,121 +60,259 @@ const (
 var CrewPresets = []string{CrewFrugal, CrewBalanced, CrewMax}
 
 // DefaultCrew is what a profile nobody has touched reads. It is balanced because
-// the five shipped tier defaults ARE the balanced row — see [crewModels] — and
-// that identity is asserted by a test rather than trusted.
+// the five shipped tier defaults ARE the balanced row of the DEFAULT FAMILY —
+// see [crewAllModels] — and that identity is asserted by a test rather than
+// trusted.
 const DefaultCrew = CrewBalanced
 
 // The two families the preset words can draw from. They are the values
 // [KeyCrewSource] takes, spelled here once and read by the row, the resolver
 // and the manual.
 const (
-	// CrewSourceOpen is the open-weight family and the shipped default.
+	// CrewSourceOpen is the open-weight family.
 	CrewSourceOpen = "open"
-	// CrewSourceAll is the whole catalog, closed and frontier models included.
+	// CrewSourceAll is the whole catalog, closed and frontier models included,
+	// and the family a profile that has answered nothing resolves.
 	CrewSourceAll = "all"
 )
 
-// CrewSources lists them, open first, which is also the default and the order
-// the row widens in.
+// CrewSources lists them, open first, which is the order the row widens in: the
+// narrower shelf, then the whole catalog. The default is the second of them,
+// [DefaultCrewSource], because this list is about width and not about which one
+// a profile starts on.
 var CrewSources = []string{CrewSourceOpen, CrewSourceAll}
 
-// DefaultCrewSource is open, for the same reason the shipped crew is open
-// weights: a family nobody chose is the one this build can defend.
-const DefaultCrewSource = CrewSourceOpen
+// DefaultCrewSource is all: the three words are read off the whole catalog
+// unless the row says otherwise, and the five shipped tier defaults are that
+// family's balanced row.
+const DefaultCrewSource = CrewSourceAll
 
-// crewModels is the whole table: one row per preset, one model per class.
+// ── where the seats are picked from ────────────────────────────────────────
+
+// THE THIRD ROW THE CREW WORDS ARE ANSWERED THROUGH. The crew row says how
+// much to spend and the family row says which shelf those budgets name; the
+// pick row says where the models for that money come from when a tier row
+// does not hold a model id of its own:
 //
-// THE WORKER COLUMN IS THE DIAL. It climbs the open-weight pareto front one step
-// per preset — deepseek-v4-flash, glm-5.3-flash, glm-5.3 — because it is the
-// seat that pays most of a task's bill, and a preset that moved every other seat
-// while leaving it alone would change everything about a task except its cost.
-// The mastermind column buys a bigger planning model without choosing its
-// generation behavior. The careful column is always a DIFFERENT VENDOR from
-// the worker and always sees images (the vision role rides it). The reflex and
-// low columns never vary: they are the same
-// near-free models in all three presets, and a column that never varies is not
-// a dial.
+//   - `table` — the rows this build measured and shipped ([crewModels] and
+//     [crewAllModels]), which is what an unwritten seat has always read;
+//   - `catalog` — the same three budgets recomputed off the catalog's own
+//     published prices and scores, on every read, with no measurement of
+//     anybody's own runs in it ([AutoPickWith] with no prior);
+//   - `learn` — the catalog computation plus the Model Pool's measurements
+//     and the person's own judged runs, carried as a quality prior
+//     ([autoPrior]).
 //
-// Every id is an open-weight model, picked off the catalog's own published
-// scores against blended price: 2026-09-01 for the roster as a whole, with the
-// frugal mastermind and the balanced careful and mastermind re-picked on
-// 2026-09-16 (the manual's open table lists every seat; settings.go's
-// DefaultWorkerModel says how). No closed model is here: the open family is the
-// shelf that has to stand on price alone, and the `all` family is where a closed
-// model goes.
+// THE DEFAULT IS THE TABLE because the table is what a profile has always
+// read: an unwritten seat names the preset's own row, and nothing about a
+// profile that has answered nothing moves until somebody answers a row. The
+// other two words are an opt-in to a read that keeps moving — a seat that
+// follows the catalog follows it whether or not the shipped rows do — and a
+// person has to say so.
+//
+// A PICK NEVER OVERRIDES A MODEL ID. The row answers for the seats a person
+// did not name, and the seats they did — written by hand, or by a preset —
+// keep their ids until the crew is picked again, except that a row holding
+// the preset's own table value is the preset answering, not a person pinning
+// one model by id. The rule is [pickedSeat]'s to apply and the manual's to
+// state.
+const (
+	// CrewPickTable is the measured rows this build ships, and the default.
+	CrewPickTable = "table"
+	// CrewPickCatalog is the catalog's own published figures, with nothing
+	// measured on top.
+	CrewPickCatalog = "catalog"
+	// CrewPickLearn is the catalog computation plus the Model Pool's
+	// measurements and the person's own judged runs.
+	CrewPickLearn = "learn"
+)
+
+// CrewPicks lists the words a person may WRITE, narrowest first: the shipped
+// table, then the catalog on its own, then the catalog with what runs
+// measured. A pick word is not a preset and names no budget — the crew row
+// above it still does that.
+var CrewPicks = []string{CrewPickTable, CrewPickCatalog, CrewPickLearn}
+
+// DefaultCrewPick is the table: the rows this build measured are where an
+// unwritten seat's model comes from until somebody answers the row.
+const DefaultCrewPick = CrewPickTable
+
+// knownCrewPick folds a word and says whether it is one of the picks this
+// build knows. It is the ONE place the fold is spelled: [SetCrewPick] and the
+// ladder's [pickedSeat] both go through it, so a pick added to [CrewPicks] is
+// accepted everywhere at once. A reader folds a word it does not know to the
+// default pick; a writer refuses it.
+func knownCrewPick(pick string) (string, bool) {
+	pick = strings.ToLower(strings.TrimSpace(pick))
+	for _, known := range CrewPicks {
+		if pick == known {
+			return known, true
+		}
+	}
+	return "", false
+}
+
+// normalCrewPick folds a pick word to one of the three this build knows,
+// reading a word it does not know as the default pick.
+func normalCrewPick(pick string) string {
+	if known, ok := knownCrewPick(pick); ok {
+		return known
+	}
+	return DefaultCrewPick
+}
+
+// CrewPickAt is where the seats are picked from on this profile,
+// [DefaultCrewPick] when the row is absent. A word this build does not know
+// reads as the default pick, silently, the way a retired choice reads
+// everywhere else on this sheet.
+func CrewPickAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyCrewPick); ok {
+		return normalCrewPick(value)
+	}
+	return DefaultCrewPick
+}
+
+// AnyTierAutoAt answers whether any of the five tier rows reads `auto` on this
+// profile — written directly, or reaching the word through an older row
+// ([crewRow]) — which is the second way a seat resolution is computed from the
+// catalog's rows, beside the pick row ([CrewPickAt]). A door that resolves
+// seats asks both before it resolves, because both answers are computed from
+// the rows the process already holds, and a door that asks before they land
+// reads the family's table row over a profile that never chose it.
+func AnyTierAutoAt(profileDir string) bool {
+	for _, tier := range ModelTiers {
+		if model, _, _, _ := crewRow(profileDir, tier); IsAuto(model) {
+			return true
+		}
+	}
+	return false
+}
+
+// SetCrewPick writes the pick row ALONE, in one file write. The word is
+// refused the way every choice row refuses one, so a typo cannot land a pick
+// nothing reads. It writes no tier row: the pick says where seats are read
+// from, and the seats keep the ids on disk until the crew is picked again.
+func SetCrewPick(profileDir, pick string) error {
+	known, ok := knownCrewPick(pick)
+	if !ok {
+		return fmt.Errorf("pick one of: %s", strings.Join(CrewPicks, ", "))
+	}
+	return writeProfileValue(profileDir, KeyCrewPick, known)
+}
+
+// crewModels is the open-weight table: one row per preset, one model per class.
+//
+// THE WORKER COLUMN IS THE DIAL. It holds glm-5.3-flash through balanced, and
+// max is the preset that takes it to glm-5.3, because it is the seat that pays
+// most of a task's bill, and a preset that moved every other seat while leaving
+// it alone would change everything about a task except its cost. The careful
+// column always sees images (the vision role rides it) and is a second vendor
+// from balanced upward; frugal keeps worker and careful on the same
+// glm-5.3-flash, because at that bill the open-weight front has no second
+// vendor to take the careful seat. The reflex and low columns never vary: they
+// are the same near-free models in all three presets, and a column that never
+// varies is not a dial.
+//
+// HOW THE IDS WERE READ OFF, on 2026-09-16 and seat by seat. Every open-weight
+// row of the catalog was placed on two axes: the expected bill that seat's own
+// call shape runs up, built from the catalog's published prompt, completion and
+// cache-read prices, against that seat's quality, taken from its published
+// intelligence, coding and agentic indexes. THE CALL SHAPE IS PART OF THE
+// PRICE. The worker and the careful seats were costed as LONG CACHED LOOPS — a
+// large prompt read back turn after turn, so the cache-read price carries most
+// of the weight — and the mastermind as ONE-SHOT CALLS, where the prompt is
+// paid in full each time and there are few of them. Each preset then takes, for
+// each seat, a point on the pareto front of that plot at the bill it is willing
+// to run: nothing on the front costs less at the same quality, and nothing at
+// the same bill scores higher.
+//
+// That is why the columns do not climb together. Under one-shot pricing
+// glm-5.3-flash is on the front at frugal's bill and glm-5.3 is the next point
+// above it, so the mastermind column reads flash, glm-5.3, glm-5.3; under
+// long-loop pricing the same plot puts kimi-k3 on the careful seat from
+// balanced upward, which is also the second vendor that seat has to be.
+//
+// No closed model is here: the open family is the shelf that stands on the
+// open-weight rows alone, and the `all` family is where a closed model goes.
 var crewModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
+		ModelTierWorker:     "z-ai/glm-5.3-flash",
 		ModelTierHigh:       "z-ai/glm-5.3-flash",
-		ModelTierMastermind: "z-ai/glm-5.3",
+		ModelTierMastermind: "z-ai/glm-5.3-flash",
 	},
 	CrewBalanced: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 		ModelTierWorker:     "z-ai/glm-5.3-flash",
 		ModelTierHigh:       "moonshotai/kimi-k3",
-		ModelTierMastermind: "moonshotai/kimi-k3",
+		ModelTierMastermind: "z-ai/glm-5.3",
 	},
 	CrewMax: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 		ModelTierWorker:     "z-ai/glm-5.3",
 		ModelTierHigh:       "moonshotai/kimi-k3",
-		ModelTierMastermind: "moonshotai/kimi-k3",
+		ModelTierMastermind: "z-ai/glm-5.3",
 	},
 }
 
 // crewAllModels is the same three presets answered from the whole catalog
 // rather than its open-weight shelf, which is what the `all` family of
-// [KeyCrewSource] draws from. The careful column is the same law here as
-// there: a DIFFERENT VENDOR from the worker in every preset, and the reflex
-// and low columns still never vary. The ids are locked the way the open ones
-// are, off the catalog's own published scores against blended price, and
-// closed models live here and only here.
+// [KeyCrewSource] draws from AND WHAT A PROFILE THAT HAS ANSWERED NOTHING
+// RESOLVES ([DefaultCrewSource]). The careful column is a DIFFERENT VENDOR
+// from the worker in every preset here — the open family's frugal row is the
+// one standing exception — and the reflex and low columns still never vary.
+// Closed models live here and only here.
 //
-// TWO COLUMNS SPEND DIFFERENTLY HERE. The worker column is [crewModels]'s dial
-// but moves once, not per preset: gpt-5.6-sol holds frugal and balanced, and
-// only max buys claude-fable-5.1, because on the catalog the coding ceiling is
-// the expensive step and the two steps below it are the same model. What
-// frugal-to-balanced buys here is the careful seat (gemini-3.8-flash to
-// claude-opus-5) and a smarter mastermind, not a dearer worker. And max's
-// mastermind sits on the worker's own model on purpose: fable-5.1 is the
-// catalog's ceiling, so there is no better planner to buy above it.
+// The ids come off the same plot [crewModels] describes, run on 2026-09-16 over
+// every row of the catalog rather than the open-weight ones: expected task bill
+// against seat quality, the bill built from the published prompt, completion
+// and cache-read prices under each seat's own call shape — the worker and the
+// careful seats as long cached loops, the mastermind as one-shot calls — and
+// the quality from the published intelligence, coding and agentic indexes.
+//
+// THE WORKER STAYS ON glm-5.3-flash THROUGH BALANCED, and that is the whole
+// shape of this table. The worker seat carries most of a task's tokens, so a
+// step there multiplies through the entire bill while a step on the careful or
+// the mastermind seat is paid a handful of times. The money therefore goes to
+// the two low-volume seats first: frugal to balanced moves the careful seat to
+// claude-fable-5.1 and the mastermind to claude-opus-5, and max moves the
+// worker itself, with the careful seat staying on fable beside it.
 var crewAllModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "google/gemini-2.5-flash",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "openai/gpt-5.6-sol",
-		ModelTierHigh:       "google/gemini-3.8-flash",
-		ModelTierMastermind: "anthropic/claude-opus-5",
+		ModelTierWorker:     "z-ai/glm-5.3-flash",
+		ModelTierHigh:       "qwen/qwen3.8-max-0902",
+		ModelTierMastermind: "z-ai/glm-5.3-flash",
 	},
 	CrewBalanced: {
 		ModelTierReflex:     "google/gemini-2.5-flash",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "openai/gpt-5.6-sol",
-		ModelTierHigh:       "anthropic/claude-opus-5",
-		ModelTierMastermind: "anthropic/claude-fable-5.1",
+		ModelTierWorker:     "z-ai/glm-5.3-flash",
+		ModelTierHigh:       "anthropic/claude-fable-5.1",
+		ModelTierMastermind: "anthropic/claude-opus-5",
 	},
 	CrewMax: {
 		ModelTierReflex:     "google/gemini-2.5-flash",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "anthropic/claude-fable-5.1",
-		ModelTierHigh:       "openai/gpt-6-astra",
-		ModelTierMastermind: "anthropic/claude-fable-5.1",
+		ModelTierWorker:     "z-ai/glm-5.3",
+		ModelTierHigh:       "anthropic/claude-fable-5.1",
+		ModelTierMastermind: "anthropic/claude-opus-5",
 	},
 }
 
-// crewTableFor is the family one source word names. It is total: `all` names
-// the catalog-wide family, and every other reading (blank, misspelt, a word a
-// later build retired) names the open one, because a family nobody asked for
-// is the one this build can defend.
+// crewTableFor is the family one source word names. It is total: `open` names
+// the open-weight family, and every other reading (blank, misspelt, a word a
+// later build retired) names the catalog-wide one, because an unreadable answer
+// resolves the same family an absent answer does ([DefaultCrewSource]).
 func crewTableFor(source string) map[string]map[string]string {
-	if normalCrewSource(source) == CrewSourceAll {
-		return crewAllModels
+	if normalCrewSource(source) == CrewSourceOpen {
+		return crewModels
 	}
-	return crewModels
+	return crewAllModels
 }
 
 // knownCrewSource folds a word and says whether it is one of the families this
@@ -206,8 +341,8 @@ func normalCrewSource(source string) string {
 
 // CrewSourceAt is which family the preset words draw from on this profile,
 // [DefaultCrewSource] when the row is absent. A word this build does not know
-// reads as open, silently, the way a retired choice reads everywhere else on
-// this sheet.
+// reads as the default family, silently, the way a retired choice reads
+// everywhere else on this sheet.
 func CrewSourceAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyCrewSource); ok {
 		return normalCrewSource(value)
@@ -237,37 +372,37 @@ func CrewModelsForSource(source, preset string) (map[string]string, bool) {
 // contradiction the chooser exists to prevent.
 var crewLines = map[string]map[string]string{
 	CrewSourceOpen: {
-		CrewFrugal:   "deepseek works, glm-5.3 thinks · pennies a day",
-		CrewBalanced: "glm-flash works, kimi-k3 checks and thinks",
-		CrewMax:      "glm-5.3 works, kimi-k3 thinks and checks",
+		CrewFrugal:   "glm-flash works, checks and thinks · pennies a day",
+		CrewBalanced: "glm-flash works, kimi-k3 checks, glm-5.3 thinks",
+		CrewMax:      "glm-5.3 works and thinks, kimi-k3 checks",
 	},
 	CrewSourceAll: {
-		CrewFrugal:   "gpt-5.6-sol works, gemini-flash checks, opus thinks",
-		CrewBalanced: "gpt-5.6-sol works, opus checks, fable thinks",
-		CrewMax:      "fable works and thinks, astra checks",
+		CrewFrugal:   "glm-flash works and thinks, qwen-max checks",
+		CrewBalanced: "glm-flash works, fable checks, opus thinks",
+		CrewMax:      "glm-5.3 works, fable checks, opus thinks",
 	},
 }
 
-// CrewLine is one preset's own line in the OPEN family, empty for a word that is
-// not a preset. The family-aware spelling is [CrewLineFor].
+// CrewLine is one preset's own line in the DEFAULT family, empty for a word
+// that is not a preset. The family-aware spelling is [CrewLineFor].
 func CrewLine(preset string) string {
-	return CrewLineFor(CrewSourceOpen, preset)
+	return CrewLineFor(DefaultCrewSource, preset)
 }
 
 // CrewLineFor is one preset's own line in one family, empty for a word that is
-// not a preset. A family this build does not know reads as open, the way the
-// row does.
+// not a preset. A family this build does not know reads as the default one, the
+// way the row does.
 func CrewLineFor(source, preset string) string {
 	return crewLines[normalCrewSource(source)][strings.ToLower(strings.TrimSpace(preset))]
 }
 
-// CrewModels is the five models one preset would set in the OPEN family, by
+// CrewModels is the five models one preset would set in the DEFAULT family, by
 // tier word: the family a profile nobody has touched reads, and the spelling
 // the callers hold. The family-aware spelling is
 // [CrewModelsForSource]. It returns a copy, because a caller printing the
 // table must not be able to edit it.
 func CrewModels(preset string) (map[string]string, bool) {
-	return CrewModelsForSource(CrewSourceOpen, preset)
+	return CrewModelsForSource(DefaultCrewSource, preset)
 }
 
 // CrewAt is the crew as the five live tier values make it: the preset they are,
@@ -282,10 +417,19 @@ func CrewModels(preset string) (map[string]string, bool) {
 //
 // The comparison runs against the family [CrewSourceAt] names, so the reading
 // moves with the row and never behind it: flip the family and a crew the old
-// family wrote matches nothing, which reads as custom and is true, because
-// five open ids are not any all-family preset either.
+// family wrote matches nothing, which reads as custom and is true, because one
+// family's five ids are not any preset of the other.
 func CrewAt(profileDir string) string {
 	family := CrewSourceAt(profileDir)
+	if CrewPickAt(profileDir) != CrewPickTable {
+		// WITH THE PICK OFF THE TABLE the three dial seats are computed ids the
+		// preset tables do not hold, and comparing the live seats would read
+		// custom over a crew the person chose. The word answers what the STORED
+		// rows make instead — the budget the seats are computed at ([pickedSeat]
+		// reads the same rows) — so the word on the sheet stays the decision it
+		// summarizes while the ids underneath move with the catalog.
+		return crewStoredAt(profileDir, family)
+	}
 	live := make(map[string]string, len(ModelTiers))
 	for _, tier := range ModelTiers {
 		live[tier] = tierSeatUnder(profileDir, family, tier).Model
@@ -297,6 +441,63 @@ func CrewAt(profileDir string) string {
 		}
 	}
 	return CrewCustom
+}
+
+// crewStoredAt is the crew the STORED five rows make, in the family given:
+// the preset they are, or [CrewCustom]. It is [CrewAt]'s reading when the
+// pick row takes the seats off the table, where the live comparison would
+// compare computed ids.
+//
+// Each row is read through the ladder's own row reader ([crewRow]). A row the
+// reader cannot answer because the key was NEVER HELD reads the family's
+// default-preset id, which is what that tier runs until somebody writes it;
+// a row CLEARED ON PURPOSE reads empty and matches nothing, because
+// "follows the conversation" is not any of the three; a row that says auto is
+// skipped, because auto is the one row with no opinion of its own — it runs
+// at whatever budget the rows around it name ([crewPresetUnder]).
+func crewStoredAt(profileDir, family string) string {
+	defaults := crewTableFor(family)[DefaultCrew]
+	stored := make(map[string]string, len(ModelTiers))
+	for _, tier := range ModelTiers {
+		value, _, source, cleared := crewRow(profileDir, tier)
+		switch {
+		case cleared:
+			stored[tier] = ""
+		case source == "":
+			stored[tier] = strings.ToLower(strings.TrimSpace(defaults[tier]))
+		case IsAuto(value):
+			stored[tier] = AutoValue
+		default:
+			stored[tier] = strings.ToLower(strings.TrimSpace(value))
+		}
+	}
+	table := crewTableFor(family)
+	// THE DEFAULT PRESET WINS EVERY TIE, the law [crewPresetUnder] states: a
+	// profile whose every row says auto is a crew with no opinion of its own,
+	// and it reads balanced rather than whichever preset the loop met first.
+	if crewStoredMatches(stored, table[DefaultCrew]) {
+		return DefaultCrew
+	}
+	for _, preset := range CrewPresets {
+		if preset != DefaultCrew && crewStoredMatches(stored, table[preset]) {
+			return preset
+		}
+	}
+	return CrewCustom
+}
+
+// crewStoredMatches compares a stored reading with one preset row, skipping
+// the tiers whose row says auto.
+func crewStoredMatches(stored, preset map[string]string) bool {
+	for _, tier := range ModelTiers {
+		if stored[tier] == AutoValue {
+			continue
+		}
+		if stored[tier] != strings.ToLower(strings.TrimSpace(preset[tier])) {
+			return false
+		}
+	}
+	return true
 }
 
 // sameCrew compares two crews class by class, case-folded, because a model id is
@@ -386,7 +587,7 @@ func SetCrewSource(profileDir, source string) error {
 
 // CrewSummary is the one line a crew change confirms itself with:
 //
-//	crew → balanced · brain kimi-k3 · hands glm-5.3-flash · checks kimi-k3
+//	crew → balanced · brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
 //
 // The three names are the classes a person actually asked about — what thinks,
 // what works, what checks — and HANDS IS THE WORKER: the seat that does the
@@ -396,12 +597,38 @@ func SetCrewSource(profileDir, source string) error {
 // them would be facts that never vary. The ids are shortened to their base names
 // because the vendor prefix is the half nobody reads twice.
 func CrewSummary(profileDir string) string {
-	return "crew → " + CrewAt(profileDir) + " · " + CrewClasses(profileDir)
+	return crewSummaryWith(profileDir, "")
+}
+
+// CrewSummaryPick is the confirmation with the pick named when it is not the
+// default one:
+//
+//	crew → balanced · learn · brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
+//
+// The pick rides the preset word because the two are one decision read at two
+// heights — how much to spend, and where the models for that money come from
+// — and a confirmation that said only `balanced` would drop the half the
+// person just changed. At the default pick this is [CrewSummary] itself, so a
+// profile nobody has taught the pick to confirms exactly as it always has.
+func CrewSummaryPick(profileDir string) string {
+	return crewSummaryWith(profileDir, CrewPickAt(profileDir))
+}
+
+// crewSummaryWith is the line both summaries are built from: the pick named
+// between the preset and the three classes when one was given that is not the
+// default, and never otherwise — a profile at the default pick confirms in
+// the words it has always confirmed in.
+func crewSummaryWith(profileDir, pick string) string {
+	head := "crew → " + CrewAt(profileDir)
+	if pick != "" && pick != CrewPickTable {
+		head += " · " + pick
+	}
+	return head + " · " + CrewClasses(profileDir)
 }
 
 // CrewClasses is the three class names alone:
 //
-//	brain kimi-k3 · hands glm-5.3-flash · checks kimi-k3
+//	brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
 //
 // It is the tail of [CrewSummary] lifted out because a second surface prints the
 // crew now — /status, where the word already has a label of its own and "crew →"
@@ -417,7 +644,7 @@ func CrewClasses(profileDir string) string {
 // CrewClassModels is the three ids [CrewClasses] names, in that order and
 // without the role words in front of them:
 //
-//	kimi-k3, glm-5.3-flash, kimi-k3
+//	claude-opus-5, glm-5.3-flash, claude-fable-5.1
 //
 // It exists because a surface drawing the crew line has to be able to say which
 // runs of it are the ANSWER — the ids a person typed /crew to change — and which

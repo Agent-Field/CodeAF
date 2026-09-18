@@ -153,7 +153,7 @@ kimi-k3:low` asked OpenRouter for a model id nobody publishes.)
 **Every run says which rung answered**, on stderr, before anything else:
 
 ```
-models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 models: work anthropic/whatever (--model) · plan follows the work model (default)
 ```
 
