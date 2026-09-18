@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a job subtree is cut when it passes its CPU and process bound
-pr: 0000
+pr: 1190
 surface: [chat, engine]
 invalidates:
   - "A run's only bounds were its dollar cap and, since #1158, its memory. Nothing bounded a job subtree's CPU or its process count, so a model that spawned busy loops as bash jobs (`yes`, `awk 'BEGIN{for(;;){}}'`) spent no tokens and no bound ever fired. A job subtree is now cut when it passes its bound, and the run is told why."
