@@ -5167,6 +5167,25 @@ reading already in hand — nothing goes back to disk for it. On a phone the bot
 remains the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing
 empty headings, and says no count beside that prose.
 
+## Why is this task indented under that one? — the plan drawn as a tree
+
+The plan is a **graph, and the list draws it as one**. A task sits under the task
+that requested it — the parent the worker wrote to the store — and a deeper task
+sits under that, each joined to the row above it by the list's own connector
+(`├ `, `└ `). You read the shape of the run down the indentation, not a flat list
+of peers.
+
+A task **held behind named work** sits under **the task it waits on**. The store
+keeps a task `pending` until the work it depends on is done; when that work is not
+the task's own parent, the row is drawn under it, one level in, and still wears
+`queued · waits: <that task>` — the row above it is the name the row itself says.
+Where what holds a task is its own parent the row is already there and nothing
+moves.
+
+A task's **page** shows its children under its steps the same way, each with its
+live step while its worker is on one. Opening a row (`enter`) and leaving a note
+are unchanged by the tree.
+
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
 On a terminal **110 columns or wider** the tasks place splits: the list keeps the left, a dim
