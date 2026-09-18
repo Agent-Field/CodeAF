@@ -3261,7 +3261,10 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 		}
 		completerFor = crewCompleters(settings, newClient)
 	}
-	limits := runengine.Limits{}
+	// THE REVIEW ROUND IS ON for every `do` run: a leaf that lands done is
+	// checked against its acceptance, and a check that does not hold becomes a
+	// fix task under the leaf's parent the run waits on.
+	limits := runengine.Limits{ReviewRound: true}
 	if request.costCap != nil {
 		limits.CostUSD = *request.costCap
 	}

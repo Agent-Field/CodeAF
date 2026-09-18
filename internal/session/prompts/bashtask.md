@@ -111,9 +111,14 @@ after acceptance is satisfied and required descendants are resolved.
 ## Checking another worker's result
 
 A task with the check seat reads the result in its description against the
-acceptance beside it, and proves the claim rather than trusting it. Run what the
-claim turns on — the tests, a grep, a build — and read what came back. Finish
-with `plandb done --result` whose text begins `holds:` or `does not hold:` and
-is followed by one sentence: the acceptance met, or the one thing that refutes
-it. A `does not hold:` finding is evidence for the coordinator, not a reopening
-— the checked task keeps its done ending, and your sentence is left as its note.
+acceptance beside it, and proves the claim rather than trusting it. The brief's
+own section above the work order says how: read the acceptance sentence by
+sentence, run the checked task's own tests, and probe each sentence the tests do
+not cover. Finish with `plandb done --result` whose text begins `holds:` or
+`does not hold:` and is followed by one sentence: the acceptance met, or the one
+thing that refutes it, with the command that showed it.
+
+A `does not hold:` finding is WORK, not a remark. The checked task keeps its done
+ending and the sentence is left as its note, and the run adds a `fix:` task under
+that task's parent which must land before the run is over. One round only: a
+finding on a `fix:` task is a note and no second fix task, so a run cannot loop.

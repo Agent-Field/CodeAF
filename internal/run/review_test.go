@@ -188,6 +188,179 @@ func TestSupervisorRootWaitsOnAnOpenCheckTask(t *testing.T) {
 	}
 }
 
+// tasksTitled answers every task the plan holds that carries one title. It is
+// how a fix task is found by the title the round mints it with.
+func tasksTitled(store *plandb.Store, title string) []*plandb.Task {
+	var out []*plandb.Task
+	for _, task := range store.Tasks() {
+		if task.Title == title {
+			out = append(out, task)
+		}
+	}
+	return out
+}
+
+// TestSupervisorChecksALeafThatCompletedItselfInTheStore proves the round fires
+// on the ending real workers write. A leaf whose own `plandb done` already
+// landed in the store is caught by the supervisor's store-ended road, and the
+// review must read that road too — otherwise the round only ever fires on the
+// scripted endings the supervisor writes itself and never on real work.
+func TestSupervisorChecksALeafThatCompletedItselfInTheStore(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store,
+		plandb.TaskSpec{ID: "l1", Title: "the leaf", Description: "acceptance: the handler returns 200"})
+	seat.actions["l1"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		// The worker writes its own completion, the way every real belt worker
+		// finishes: `plandb done` against the store, then the turn ends.
+		if _, err := store.Done(task.ID, task.ID, "the leaf wrote its own ending", nil, nil); err != nil {
+			return run.Report{}, err
+		}
+		return run.Report{Result: "the leaf wrote its own ending", Steps: 1}, nil
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+
+	if outcome := supervisor.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 {
+		t.Fatalf("check tasks = %d, want one for the leaf that completed itself", len(checks))
+	}
+	if checks[0].ParentID != store.RootID() {
+		t.Fatalf("check parent = %q, want the leaf's parent %q", checks[0].ParentID, store.RootID())
+	}
+	if checks[0].Status != plandb.StatusDone {
+		t.Fatalf("check status = %s, want the check to have run and landed", checks[0].Status)
+	}
+}
+
+// TestSupervisorTurnsADoesNotHoldFindingIntoAFixTask proves A FINDING IS WORK,
+// NOT A REMARK: a check that does not hold leaves its note AND adds one `fix:`
+// task under the checked leaf's parent, carrying the leaf's acceptance, the
+// finding and the leaf's result, with no dependency so it is ready at once — and
+// the run waits on it before the root completes.
+func TestSupervisorTurnsADoesNotHoldFindingIntoAFixTask(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store,
+		plandb.TaskSpec{ID: "l1", Title: "the leaf", Description: "acceptance: the handler returns 200"})
+	finding := "does not hold: the handler still returns 500 under load."
+	factory := func(task plandb.Task) run.Worker {
+		if task.Role == plandb.RoleCheck {
+			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
+				return run.Report{Result: finding, Steps: 2}, nil
+			})
+		}
+		return seat.workerFor(task)
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, factory)
+
+	if outcome := supervisor.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	fixes := tasksTitled(store, "fix: the leaf")
+	if len(fixes) != 1 {
+		t.Fatalf("fix tasks = %d, want exactly one for the finding", len(fixes))
+	}
+	fix := fixes[0]
+	if fix.ParentID != store.RootID() {
+		t.Fatalf("fix parent = %q, want the checked leaf's parent %q", fix.ParentID, store.RootID())
+	}
+	if fix.Role != plandb.RoleWork {
+		t.Fatalf("fix role = %q, want the work seat", fix.Role)
+	}
+	if len(fix.Dependencies) != 0 {
+		t.Fatalf("fix dependencies = %v, want none so it is ready at once", fix.Dependencies)
+	}
+	for _, want := range []string{"acceptance: the handler returns 200", "the handler still returns 500 under load.", "did l1"} {
+		if !strings.Contains(fix.Description, want) {
+			t.Fatalf("fix description = %q, want it to carry %q", fix.Description, want)
+		}
+	}
+	// THE RUN WAITED ON THE FIX: it ended done, and the root completed no
+	// earlier than the fix did.
+	if fix.Status != plandb.StatusDone {
+		t.Fatalf("fix status = %s, want the run to have waited on it", fix.Status)
+	}
+	root := store.Task(store.RootID())
+	if root.CompletedAt.Before(fix.CompletedAt) {
+		t.Fatalf("root completed at %v, before the fix at %s", root.CompletedAt, fix.CompletedAt)
+	}
+}
+
+// TestSupervisorDoesNotAddASecondFixTask proves the round cannot loop: the fix
+// task the finding made is checked in turn, that check does not hold too, and the
+// second finding is left as a note on the fix task with no second fix behind it.
+func TestSupervisorDoesNotAddASecondFixTask(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store, leafDone("l1"))
+	finding := "does not hold: the handler still returns 500 under load."
+	factory := func(task plandb.Task) run.Worker {
+		if task.Role == plandb.RoleCheck {
+			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
+				return run.Report{Result: finding, Steps: 2}, nil
+			})
+		}
+		return seat.workerFor(task)
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, factory)
+
+	if outcome := supervisor.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	fixes := tasksTitled(store, "fix: leaf l1")
+	if len(fixes) != 1 {
+		t.Fatalf("fix tasks = %d, want exactly one however many checks did not hold", len(fixes))
+	}
+	// The fix task's own check ran and did not hold; its finding is a note and no
+	// second fix task, which is what keeps a run from looping.
+	if checks := tasksWithRole(store, plandb.RoleCheck); len(checks) != 2 {
+		t.Fatalf("check tasks = %d, want the leaf's check and the fix's own check", len(checks))
+	}
+	if notes := store.Notes(fixes[0].ID, 10); len(notes) != 1 {
+		t.Fatalf("fix notes = %d, want the second finding left as a note on the fix", len(notes))
+	}
+}
+
+// TestSupervisorChecksAChildlessRootBeforeCompletion proves the childless root is
+// a leaf: it gets its own check UNDER ITSELF, and the root's completion waits on
+// it the way it waits on any child — the root does not complete before the check
+// lands.
+func TestSupervisorChecksAChildlessRootBeforeCompletion(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = leafRoot
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
+
+	if outcome := supervisor.Run(ctx); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	checks := tasksWithRole(store, plandb.RoleCheck)
+	if len(checks) != 1 {
+		t.Fatalf("check tasks = %d, want the one check for the childless root", len(checks))
+	}
+	check := checks[0]
+	if check.ParentID != store.RootID() {
+		t.Fatalf("check parent = %q, want it under the root itself %q", check.ParentID, store.RootID())
+	}
+	if check.Title != "check: The run" {
+		t.Fatalf("check title = %q, want the root's title behind a check prefix", check.Title)
+	}
+	if !seat.launched(check.ID) || check.Status != plandb.StatusDone {
+		t.Fatalf("the check did not run and land: launched=%v status=%s", seat.launched(check.ID), check.Status)
+	}
+	root := store.Task(store.RootID())
+	if root.CompletedAt.Before(check.CompletedAt) {
+		t.Fatalf("root completed at %v, before its check at %s", root.CompletedAt, check.CompletedAt)
+	}
+}
+
 // TestSupervisorAddsNoCheckWithTheReviewRoundOff proves the default: with the
 // review round unset — the zero Limits every existing caller builds — a leaf
 // that lands done adds nothing, and the run is the root and its one leaf.

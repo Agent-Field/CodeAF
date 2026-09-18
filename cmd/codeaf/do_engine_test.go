@@ -174,6 +174,37 @@ func beltFinish(result string) string {
 	return "plandb done root --agent root --result '" + result + "'"
 }
 
+// beltDocument is the whole document a belt worker was handed, joined so a
+// scripted seat can read which section it opened on — the section headings are
+// its own and are not words a person types.
+func beltDocument(messages []ai.Message) string {
+	var b strings.Builder
+	for _, m := range messages {
+		for _, part := range m.Content {
+			b.WriteString(part.Text)
+		}
+	}
+	return b.String()
+}
+
+// briefTaskID reads the plan task id a belt worker owns from the first line of
+// its document — `t-<id> is your task in the plan.` — which is how a check
+// worker learns the id the supervisor minted for it. The `t-` prefix the brief
+// prints is the CLI's spelling of the id; the agent name a finish command must
+// carry is the store's bare id, so it is stripped back off here.
+func briefTaskID(document string) string {
+	const tail = " is your task in the plan."
+	i := strings.Index(document, tail)
+	if i < 0 {
+		return ""
+	}
+	line := document[:i]
+	if j := strings.LastIndexByte(line, '\n'); j >= 0 {
+		line = line[j+1:]
+	}
+	return strings.TrimPrefix(strings.TrimSpace(line), "t-")
+}
+
 // beltRepoWorkspace is the working copy the run lands on: a real repository on
 // one committed file, so the landing has a branch to commit the run's work to
 // and the envelope has a branch to name.
@@ -298,14 +329,17 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	// woken root, now a coordinator, folds it.
 	rootTurns := 0
 	seat := &beltSeat{ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
-		var b strings.Builder
-		for _, m := range msgs {
-			for _, part := range m.Content {
-				b.WriteString(part.Text)
-			}
+		doc := beltDocument(msgs)
+		// THE CHECK IS ANSWERED FIRST: its document carries the leaf's ask
+		// section AND the check section, so testing the ask alone would hand the
+		// check the leaf's own turn and loop it against a task it does not own.
+		if strings.Contains(doc, "## Who checks this work") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
 		}
-		if strings.Contains(b.String(), "## The ask this run serves") {
-			return beltToolReply("plandb done c1 --agent c1 --result 'the child is done'"), nil
+		if strings.Contains(doc, "## The ask this run serves") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'the child is done'"), nil
 		}
 		rootTurns++
 		switch rootTurns {
@@ -353,6 +387,64 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	if built[workModel] == 0 || built[planModel] == 0 {
 		t.Fatalf("the completer was asked for %v, want both the work seat %q and the plan seat %q",
 			models, workModel, planModel)
+	}
+}
+
+// A `do` RUN CHECKS ITS LEAF AND STILL EXITS ZERO WHEN THE CHECK HOLDS.
+//
+// The review round rides every do run: a leaf that lands done is checked against
+// its acceptance, and the run waits on the check. When the check holds — no fix
+// is born — the run is the done run it was before the round existed, and the
+// envelope carries the root's result on exit 0.
+func TestDoOnTheRunEngineChecksALeafAndExitsZeroWhenItHolds(t *testing.T) {
+	beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	workspace := beltRepoWorkspace(t)
+	var mu sync.Mutex
+	checks := 0
+	rootTurns := 0
+	seat := &beltSeat{ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+		doc := beltDocument(msgs)
+		if strings.Contains(doc, "## Who checks this work") {
+			mu.Lock()
+			checks++
+			mu.Unlock()
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+		}
+		if strings.Contains(doc, "## The ask this run serves") {
+			id := briefTaskID(doc)
+			return beltToolReply("plandb done " + id + " --agent " + id + " --result 'the leaf is done'"), nil
+		}
+		rootTurns++
+		switch rootTurns {
+		case 1:
+			return beltToolReply("plandb add 'the leaf' --as l1"), nil
+		case 2:
+			return beltToolReply("plandb wait root --agent root"), nil
+		default:
+			return beltToolReply(beltFinish(beltAnswer)), nil
+		}
+	}}
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		newBeltCompleter: func(string) session.Completer { return seat },
+	}); err != nil {
+		t.Fatalf("a run whose check held left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+	mu.Lock()
+	served := checks
+	mu.Unlock()
+	if served == 0 {
+		t.Fatal("no check worker was served: the review round did not run through the do door")
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if !strings.Contains(outcome.Deliverable, beltAnswer) {
+		t.Fatalf("the envelope does not carry the root's result: %q", outcome.Deliverable)
 	}
 }
 

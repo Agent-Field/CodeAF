@@ -65,7 +65,8 @@ func (r *recordingCompleter) forModel(model string) session.Completer {
 // TestCrewFactorySeatsEachRoleInItsTier is the shape rule the factory exists
 // for: a task with children is a coordinator and takes the mastermind row, a
 // leaf takes the worker row, and check and probe are read off the role they were
-// declared with — each answered by the crew row for its own tier.
+// declared with — the check rides the plan tier (it is planning work), and the
+// probe takes the small row.
 func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 	store := runOpenStore(t)
 	if _, err := store.AddMany([]plandb.TaskSpec{
@@ -91,7 +92,7 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 	}{
 		{store.RootID(), "vendor/thinking"},
 		{"one", "vendor/worker"},
-		{"review", "vendor/careful"},
+		{"review", "vendor/thinking"},
 		{"discriminate", "vendor/small"},
 	} {
 		recorder.models = nil
@@ -109,7 +110,8 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 // so a factory that fell back to the profile for those seats would seat the
 // wrong model and this would see it.
 //
-// The check and probe rows are the profile's still: no door names them.
+// The check rides the plan tier, so it takes the door's plan seat; the probe row
+// is the profile's still, since no door names it.
 func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 	store := runOpenStore(t)
 	if _, err := store.AddMany([]plandb.TaskSpec{
@@ -140,8 +142,9 @@ func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 		{store.RootID(), "vendor/named-plan"},
 		// A leaf does the work itself and rides the work seat.
 		{"one", "vendor/named-work"},
-		// The check and probe rows are the profile's own.
-		{"review", "vendor/profile-careful"},
+		// A check is planning work and rides the door's plan seat; the probe row
+		// is the profile's own.
+		{"review", "vendor/named-plan"},
 		{"discriminate", "vendor/profile-small"},
 	} {
 		recorder.models = nil
@@ -154,15 +157,16 @@ func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 
 // TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier: a row cleared on purpose
 // reads empty, and a tier with no model falls to the worker row rather than
-// seating the task on nothing.
+// seating the task on nothing. The check rides the plan tier, whose row is
+// cleared here.
 func TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier(t *testing.T) {
 	store := runOpenStore(t)
 	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "Review", Role: plandb.RoleCheck}}); err != nil {
 		t.Fatalf("add the review: %v", err)
 	}
 	dir := crewProfile(t, map[string]string{
-		config.KeyTierHighModel:   "",
-		config.KeyTierWorkerModel: "vendor/worker",
+		config.KeyTierMastermindModel: "",
+		config.KeyTierWorkerModel:     "vendor/worker",
 	})
 	recorder := &recordingCompleter{}
 	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)

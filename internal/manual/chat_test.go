@@ -2650,6 +2650,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how much will a task cost me", "worker-harness"},
 		{"what does codeaf do exit with", "worker-harness"},
 		{"does a subtask see my original request", "worker-harness"},
+		{"who checks a task's work", "worker-harness"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
