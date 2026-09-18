@@ -296,7 +296,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		if _, err := fmt.Fprintln(output, pendingJudgeLine(readPendingJudge(poolDir), now)); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintln(output, sweepLastLine(readSweepLast(poolDir), now)); err != nil {
+		if _, err := fmt.Fprintln(output, sweepLastLine(readSweepLast(poolDir), judgedTotal(poolDir), now)); err != nil {
 			return err
 		}
 		if _, err := fmt.Fprintln(output, relayStatusLine(cfg, relay, mirror, cached)); err != nil {
@@ -540,13 +540,20 @@ type poolAnswer struct {
 	PendingJudge *pendingJudgeSummary `json:"pending_judge,omitempty"`
 	CanSend      *bool                `json:"can_send,omitempty"`
 	CanRead      *bool                `json:"can_read,omitempty"`
-	Relay        *probeSummary        `json:"relay,omitempty"`
-	Mirror       *probeSummary        `json:"mirror,omitempty"`
-	LastJudge    *judgeLast           `json:"last_judge"`
-	LastSweep    *sweepLast           `json:"last_sweep"`
-	Index        *indexSummary        `json:"index"`
-	Cells        []cellSummary        `json:"cells,omitempty"`
-	Own          ownSummary           `json:"own"`
+	// Identity is status's own: whether the install has minted the nonce it
+	// sends under, a pointer like every other status field so a show carries
+	// none of it.
+	Identity  *bool         `json:"identity,omitempty"`
+	Relay     *probeSummary `json:"relay,omitempty"`
+	Mirror    *probeSummary `json:"mirror,omitempty"`
+	LastJudge *judgeLast    `json:"last_judge"`
+	LastSweep *sweepLast    `json:"last_sweep"`
+	// JudgedTotal is every landing this install has had judged, counted from
+	// the markers; nil off status, so a show's shape is the one it always had.
+	JudgedTotal *int          `json:"judged_total,omitempty"`
+	Index       *indexSummary `json:"index"`
+	Cells       []cellSummary `json:"cells,omitempty"`
+	Own         ownSummary    `json:"own"`
 }
 
 // indexSummary is the cached index as the reading forms carry it: the
@@ -657,6 +664,8 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		answer.Pending = &pending
 		answer.CanSend = &send
 		answer.CanRead = &read
+		identity := installIdentitySet(poolDir)
+		answer.Identity = &identity
 		dropped, last := droppedRows(poolDir)
 		answer.Dropped = &dropped
 		if last != "" {
@@ -664,6 +673,8 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		}
 		judged := readPendingJudge(poolDir)
 		answer.PendingJudge = &judged
+		total := judgedTotal(poolDir)
+		answer.JudgedTotal = &total
 		answer.Relay = &relay
 		answer.Mirror = &mirror
 	}
@@ -825,10 +836,12 @@ func readSweepLast(poolDir string) *sweepLast {
 // judgeLastLine is the one line status says about the last judge: which model
 // answered and which seats it scored, or — when none did — how many were
 // asked, the first of them, and the one-line reason the last one failed. The
-// moment is the record's own, said in local hours and minutes.
+// moment is the record's own, said in local hours and minutes. A record only a
+// landed task ever writes, so no record at all is said for what it means —
+// nothing has landed to be judged — rather than as a judge that never ran.
 func judgeLastLine(last *judgeLast) string {
 	if last == nil {
-		return "last judge: none yet"
+		return "last judge: none yet (no landing judged)"
 	}
 	at := last.At.Format("15:04")
 	if last.Judge != "" {
@@ -846,23 +859,30 @@ func judgeLastLine(last *judgeLast) string {
 
 // sweepLastLine is the one line status says about the last sweep: what it
 // judged, what it left waiting when the deadline cut it, and how much of the
-// sweep's own budget it spent. The moment is the record's own, said the way
+// sweep's own budget it spent. Beside them stands the total every landing this
+// install has ever had judged, folded on when there is a marker to count —
+// what THIS sweep judged is the record's own, and the two together say whether
+// judging is happening at all. The moment is the record's own, said the way
 // the surface says every when — relatively. A record with no moment is no
 // record worth reporting, the same reading a missing file takes.
-func sweepLastLine(last *sweepLast, now time.Time) string {
-	if last == nil || last.At.IsZero() {
-		return "last sweep: none yet"
+func sweepLastLine(last *sweepLast, total int, now time.Time) string {
+	line := "last sweep: none yet"
+	if last != nil && !last.At.IsZero() {
+		parts := []string{
+			reltime.Short(last.At, now) + " ago",
+			fmt.Sprintf("judged %d", last.Judged),
+		}
+		if last.Left > 0 {
+			parts = append(parts, fmt.Sprintf("%d still pending", last.Left))
+		}
+		parts = append(parts, fmt.Sprintf("%s of %s",
+			reltime.Elapsed(time.Duration(last.BudgetUsed)*time.Second), reltime.Elapsed(poolSweepBudget)))
+		line = "last sweep: " + strings.Join(parts, " · ")
 	}
-	parts := []string{
-		reltime.Short(last.At, now) + " ago",
-		fmt.Sprintf("judged %d", last.Judged),
+	if total > 0 {
+		line += fmt.Sprintf(" · judged %d in all", total)
 	}
-	if last.Left > 0 {
-		parts = append(parts, fmt.Sprintf("%d still pending", last.Left))
-	}
-	parts = append(parts, fmt.Sprintf("%s of %s",
-		reltime.Elapsed(time.Duration(last.BudgetUsed)*time.Second), reltime.Elapsed(poolSweepBudget)))
-	return "last sweep: " + strings.Join(parts, " · ")
+	return line
 }
 
 // pendingRows counts what the outbox is holding. It reads the file by count
@@ -905,9 +925,10 @@ func droppedRows(poolDir string) (int, string) {
 
 // pendingRowsLine is the one line status says about the outbox: how many rows
 // wait to be sent, how many the relay or the cap dropped and the most recent
-// reason, and the two doors the mode opens. The dropped segment is left out
-// entirely when nothing was dropped, so a working install reads the way it
-// always did, and a file that kept no reason says the count alone.
+// reason, the two doors the mode opens, and — when it has been minted — the
+// install's own identity. The dropped segment is left out entirely when
+// nothing was dropped, and the identity segment when no nonce has been drawn,
+// so a working install reads the way it always did.
 func pendingRowsLine(poolDir string, cfg poolcfg.Config) string {
 	line := fmt.Sprintf("pending %d", pendingRows(poolDir))
 	if dropped, last := droppedRows(poolDir); dropped > 0 {
@@ -916,7 +937,38 @@ func pendingRowsLine(poolDir string, cfg poolcfg.Config) string {
 			line += fmt.Sprintf(" (last: %s)", oneLine(last))
 		}
 	}
-	return line + fmt.Sprintf(" · can send %s · can read %s", yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
+	line += fmt.Sprintf(" · can send %s · can read %s", yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
+	if installIdentitySet(poolDir) {
+		line += " · identity set"
+	}
+	return line
+}
+
+// installIdentitySet says whether this install has minted its nonce: a reading
+// form may not call [installNonce], which DRAWS one on the first read, so
+// status asks the file's presence alone — [installFile] is there or it is not,
+// and the word inside it never leaves the file.
+func installIdentitySet(poolDir string) bool {
+	_, err := os.Stat(filepath.Join(poolDir, installFile))
+	return err == nil
+}
+
+// judgedTotal counts the markers under [judgedDir] — every landing this
+// install has ever had judged, one file per landing-and-attempt. A directory
+// that is missing, or an entry that is not a file, counts nothing, the way
+// every other nothing here reads.
+func judgedTotal(poolDir string) int {
+	entries, err := os.ReadDir(judgedDir(poolDir))
+	if err != nil {
+		return 0
+	}
+	total := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			total++
+		}
+	}
+	return total
 }
 
 // orNowhere is an empty submit address said rather than printed empty: the
