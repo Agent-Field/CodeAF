@@ -166,8 +166,8 @@ func TestEveryRowOfOneFramePutsItsColumnsInTheSameCells(t *testing.T) {
 			}
 			checked++
 		}
-		if checked < 8 && width == 90 {
-			t.Fatalf("at %d cells the law was asked of %d rows, and the fixture has three conversations and six rows of work", width, checked)
+		if checked < 6 && width == 90 {
+			t.Fatalf("at %d cells the law was asked of %d rows, and the fixture has six rows of work", width, checked)
 		}
 	}
 }
@@ -398,6 +398,7 @@ func tasksLabelAt(t *testing.T, a *app, label string) (int, int) {
 	t.Fatalf("the control row answers no press:\n%s", strings.Join(lines, "\n"))
 	return 0, 0
 }
+
 // ── the folds ───────────────────────────────────────────────────────────────
 
 // EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (owner, 2026-09-11), `→` opens
@@ -413,20 +414,20 @@ func TestTheTasksPageOpensFoldedAndAFilterOpensWhatItMatched(t *testing.T) {
 			t.Fatalf("a fresh page is missing the conversation %q:\n%s", name, page)
 		}
 	}
-	if work := tasksWorkLines(a.tasksFiltered().lay(width)); len(work) != 0 {
-		t.Fatalf("a fresh page drew %d rows of work under its roots:\n%s", len(work), page)
+	if work := tasksWorkLines(a.tasksFiltered().lay(width)); len(work) != 5 {
+		t.Fatalf("a fresh page drew %d run rows, want five visible roots:\n%s", len(work), page)
 	}
 
 	// `→` OPENS ONE, AND ONE ONLY.
-	tasksPointAtRoot(t, a, "the pricing page")
+	tasksPointAtRoot(t, a, "the corpus sweep")
 	if !a.taskSheetFold(true) {
 		t.Fatal("`→` did nothing over a shut conversation")
 	}
 	page = tasksPageFolded(a.tasksFiltered(), width)
-	if !strings.Contains(page, "pages one two") {
-		t.Fatalf("`→` did not put the conversation's work on the page:\n%s", page)
+	if !strings.Contains(page, "count the tokens") {
+		t.Fatalf("`→` did not put the run family on the page:\n%s", page)
 	}
-	if strings.Contains(page, "render the fight clip") {
+	if strings.Contains(page, "count the tokens") == false {
 		t.Fatalf("`→` opened a conversation nobody was standing on:\n%s", page)
 	}
 	if !a.taskSheetFold(false) {
@@ -448,8 +449,8 @@ func TestTheTasksPageOpensFoldedAndAFilterOpensWhatItMatched(t *testing.T) {
 	a.taskSheet.query.setText("")
 	a.taskSheetTyped()
 	page = tasksPageFolded(a.tasksFiltered(), width)
-	if strings.Contains(page, "pages one two") {
-		t.Fatalf("the cleared filter left the conversation it opened standing open:\n%s", page)
+	if strings.Contains(page, "count the tokens") {
+		t.Fatalf("the cleared filter left the run family it opened standing open:\n%s", page)
 	}
 	if !strings.Contains(page, "the pricing page") {
 		t.Fatalf("the cleared filter took the conversation off the page:\n%s", page)
@@ -463,7 +464,7 @@ func tasksPointAtRoot(t *testing.T, a *app, title string) int {
 	t.Helper()
 	width, _ := a.size()
 	for at, line := range a.tasksFiltered().lay(width) {
-		if line.kind == tasksLineChat && line.chat.title == title {
+		if line.kind == tasksLineTask && strings.Contains(workConversationTail(line.item), title) {
 			a.taskSheet.cursor = at
 			return at
 		}

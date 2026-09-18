@@ -149,6 +149,7 @@ func tasksCursorOn(a *app, name string) (int, bool) {
 	}
 	return 0, false
 }
+
 // WORK NESTS AS DEEPLY AS THE RECORD SAYS IT DOES. A worker's own workers used
 // to be drawn as roots beside the run that commissioned them, because the page
 // read one level of family and stopped.
@@ -193,6 +194,7 @@ func TestWorkNestsToWhateverDepthTheRecordCarries(t *testing.T) {
 		t.Fatalf("the shut worker does not say what it is holding:\n%s", page)
 	}
 }
+
 // A QUERY SHOWS WHAT IT FOUND WHERE IT SITS. A hit dropped out from under the
 // work it was cut from, and out from under the conversation that asked for it,
 // is a hit with the only thing that explains it taken away — and a hit left
@@ -285,22 +287,21 @@ func TestAnOrphanedChildIsStillDrawn(t *testing.T) {
 // TWO CONVERSATIONS' TASK 1 ARE TWO PIECES OF WORK, and one fold is not the
 // other's. Node ids restart with every conversation, so an id alone names a
 // different task in every one of them.
-func TestTwoConversationsWearingTheSameIdKeepTheirOwnFolds(t *testing.T) {
+func TestTwoRunsWearingTheSameIdKeepTheirOwnFolds(t *testing.T) {
 	r := tasksChatReading()
-	// Both conversations in the fixture have a task numbered 1, and both open
-	// shut — so one is opened by hand and the other left where it started.
-	r.open = map[tasksKey]bool{tasksChatKey("room-a"): true, tasksChatKey("room-b"): false}
-	page := tasksPageFolded(r, 120)
-	if !strings.Contains(page, "rotate the certificate") {
-		t.Fatalf("shutting one conversation shut another's work:\n%s", page)
+	r.query = "show runs"
+	r.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true, {session: "room-b", id: "1"}: false}
+	lines := r.lay(120)
+	first := tasksLineOf(t, lines, "port the parser")
+	second := tasksLineOf(t, lines, "render the fight clip")
+	if first.family == second.family || tasksKeyOf(first.item.entry) == tasksKeyOf(second.item.entry) {
+		t.Fatalf("two runs wearing task id 1 shared an identity: %+v %+v", first.family, second.family)
 	}
-	if strings.Contains(page, "render the fight clip") {
-		t.Fatalf("the shut conversation still drew its work:\n%s", page)
-	}
-	if !strings.Contains(page, "thor clips") || !strings.Contains(page, "shipping the gate") {
-		t.Fatalf("a conversation went missing:\n%s", page)
+	if !strings.Contains(tasksPageFolded(r, 120), "render the fight clip") {
+		t.Fatal("one run's fold hid the other run's root")
 	}
 }
+
 // EVERY ROW KEEPS INSIDE ITS CELLS WITH A TREE ON THE PAGE, at every width.
 // The column says where a row sits and may never take the cells the row's own
 // name needs (rowfit.go, law 1).
