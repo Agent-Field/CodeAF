@@ -435,11 +435,13 @@ in `/status`, `crew balanced · learn` on the status line. The **crew** row in `
 → Providers is the same thing: enter or space walks it frugal → balanced → max, and the
 **picked from** row under it walks table → catalog → learn.
 
-**The crew row is not stored — it is worked out from the five.** Answer any one of the five
-rows yourself and the crew row reads `custom`, because that is what is true. `/crew balanced`
-puts all five back in one write. A profile that applied a crew before the worker row
-existed reads `custom` until a preset is applied again, because its four old rows and the
-new fifth are not any of the three.
+**The crew row is not stored by codeaf — it is worked out from the five.** Answer any one
+of the five rows yourself and the crew row reads `custom`, because that is what is true.
+`/crew balanced` puts all five back in one write. A profile that applied a crew before the
+worker row existed reads `custom` until a preset is applied again, because its four old
+rows and the new fifth are not any of the three. A run that writes the crew word into the
+profile itself — nothing this build does, but a harness or a hand edit may — is read as
+the budget its seats run at, and the class rows under it are that run's own pins.
 
 ### Where the seats are picked from — table, catalog, learn
 
@@ -466,10 +468,12 @@ A pick moves the three seats the presets dial — **worker**, **careful work** a
 keep their near-free ids, the same ones in every preset.
 
 **A model you typed by hand wins.** The pick answers for the seats nobody named. A class
-row holding a model id that is not the preset's own keeps it, spelled as you typed it;
-a row holding the preset's own id is the preset answering rather than a pin, and the
-pick computes it. **A flag or an environment variable still outranks the pick** — the
-pick reads the profile, and `--model` and `CODEAF_MODEL` are what an invocation said.
+row YOU wrote keeps its model, spelled as you typed it — the crew table's own id included
+— and a `models.crew` word stored in the profile marks every class row beside it as yours.
+`/crew balanced` writes all five classes at once, so it is the preset answering rather
+than a pin and the pick computes its three dial seats. **A flag or an environment variable
+still outranks the pick** — the pick reads the profile, and `--model` and `CODEAF_MODEL`
+are what an invocation said.
 
 When the catalog cannot compute a seat — no catalog yet, or no pick off its front — the
 seat falls back to the table row for your preset, never to `auto` and never to empty. A
