@@ -55,11 +55,28 @@ both roads in: a ground the conversation worked out from what it had been readin
 one you settled yourself when it asked which of two projects the work was for. The set
 lives in the conversation's own folder, so closing the terminal does not lose it.
 
-A folder **you named** stays until you say otherwise. One the conversation merely worked
-out **decays**: if every call since has been in another repository, the fresh evidence wins
-and the old answer stops being offered — the record stays, it just stops deciding. And two
-folders the conversation is about, with nothing in the work to choose between them, are
-the same one-keypress question rung 2 asks, in the two names you already know.
+A folder **you named** stays until you say otherwise. Before conversation evidence is
+weighed, the task's own brief gets a rung: when every existing place its contract writes
+down is held by exactly one ground, the task stands there. A ground is the repository a
+named folder is inside, or the folder itself when it is inside none, so a brief that names
+a repository's subfolder and only files under it stands on that repository. This is a
+rule of properties (existence, containment, exactly one ground), not of a particular tool,
+kind of artifact, or spelling. A named folder that is inside no repository is where output
+goes and does not vote when another named folder is inside one, so a brief that works in
+one repository and writes its report to a scratch folder beside it still has one answer.
+Two grounds that both hold everything are two answers: the rung never picks, and the rungs
+below decide or ask. An aside that introduces an unrelated folder leaves no ground holding
+everything, so it cannot silently win.
+
+One folder the conversation merely worked out **decays**: if every call since has been in
+another repository, the fresh evidence wins and the old answer stops being offered — the
+record stays, it just stops deciding. And two folders the conversation is about, with
+nothing in the work to choose between them, are the same one-keypress question the next
+rung asks, in the two names you already know. An explicit existing `ground` still outranks
+every other rung, even when it is a third folder not offered by that question; the receipt
+says where in words, `It works in <folder>, the folder this proposal gave as its ground.`,
+so a wrong choice is visible immediately. A stand read from the brief is said the same way:
+`It works in <folder>, the one folder its brief names the work in.`
 
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets a working copy of its own, on a branch cut **from that
