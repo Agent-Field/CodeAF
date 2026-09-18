@@ -1639,17 +1639,11 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 // the sections' filing because conversation grouping must never turn a
 // conversation's finished siblings into more decisions for a person to make.
 func (r tasksReading) tally() string {
-	counts := [tasksSectionCount]int{}
+	counts := make(map[tasksSection]int, tasksSectionCount)
 	for _, item := range r.items {
 		counts[item.section]++
 	}
-	var segs []string
-	for _, section := range tasksSectionOrder {
-		if n := counts[section]; n > 0 {
-			segs = append(segs, itoa(n)+" "+tasksSectionWord(section))
-		}
-	}
-	return strings.Join(segs, railSep)
+	return workCounts(counts)
 }
 
 // shown is how many rows of work the section these items were taken from
@@ -2007,4 +2001,49 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 // step keeps the four time keys in one grammar shared with spend.
 func (r tasksReading) step(win session.UsageWindow, key string) session.UsageWindow {
 	return placeWindowStep(win, key)
+}
+
+// workCounts is the work tab's state strip. Zero is silence.
+func workCounts(counts map[tasksSection]int) string {
+	order := []tasksSection{tasksRunning, tasksParked, tasksNeeds, tasksToday}
+	var out []string
+	for _, section := range order {
+		if n := counts[section]; n > 0 {
+			out = append(out, itoa(n)+" "+tasksSectionWord(section))
+		}
+	}
+	return strings.Join(out, railSep)
+}
+
+// workGrouped exposes the reading's state/activity order without drawing it.
+func workGrouped(items []tasksItem, now time.Time) []string {
+	copyItems := append([]tasksItem(nil), items...)
+	sort.SliceStable(copyItems, func(i, j int) bool {
+		if copyItems[i].section != copyItems[j].section {
+			return copyItems[i].section < copyItems[j].section
+		}
+		return tasksNewer(copyItems[i], copyItems[j], now)
+	})
+	var out []string
+	for _, item := range copyItems {
+		out = append(out, tasksSectionWord(item.section)+":"+tasksLabel(item.entry))
+	}
+	return out
+}
+
+func workConversationTail(item tasksItem) string {
+	if strings.TrimSpace(item.row.ID) != strings.TrimSpace(item.entry.SessionID) {
+		return ""
+	}
+	if title := strings.TrimSpace(item.row.Title); title != "" {
+		return rowSep + title
+	}
+	return ""
+}
+
+func workOlderFold(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return itoa(n) + " more" + rowSep + "type to find one"
 }
