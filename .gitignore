@@ -31,3 +31,9 @@ bench/prompt-diet/out/
 # that documents a feature to conflict with every other one.
 internal/manual/chat.pack.gz
 internal/manual/pages.pack.gz
+# The engine writes the ids of the workspace it opens into .furrow/ — family-id
+# and workspace-id, which name this machine and not this repository. Every
+# checkout a run has lived in therefore carries one, and an untracked directory
+# at the root is what the next lane's `git add -A` sweeps up: two of these were
+# committed that way on #1173 and had to be taken back out.
+.furrow/
