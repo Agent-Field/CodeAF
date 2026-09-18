@@ -2233,10 +2233,12 @@ it says what the box is a draft *for*:
 conversation opens in at the far right. The arrow and effort badge are gone. A long
 project path keeps its root and truncates on the right. The chords that change them are on **the line
 under the box**, with home's own keys, because the lowest line is for keys on home as in a
-conversation: `alt+w project` walks the projects on this machine, `ctrl+v effort`
+conversation: `alt+w project` walks all projects in the projects panel's order, `ctrl+v effort`
 cycles auto → low → medium → high → xhigh → max → auto, and `alt+y approvals`
 walks asks → guardian → YOLO → asks. Pressing the project or approvals cell does the
-same. `/model`, or pressing the model name, opens home's model list; `alt+o` no longer
+same. The project choice survives starting a conversation and returning home for the
+lifetime of this window; the seam alone shows it, with no footer announcement.
+`/model`, or pressing the model name, opens home's model list; `alt+o` no longer
 does. The model is always bold and bright cyan on both home's and a conversation's seam.
 `alt+k chats` opens the conversation switcher and is absent when there is nowhere to go.
 **On a Mac these clauses read `opt+w project · ctrl+v effort · opt+y approvals · opt+k chats`.**

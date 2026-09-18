@@ -218,11 +218,11 @@ next conversation you start here`. The conversation behind home is not touched. 
 rung that differs from what this window would have used is drawn in the accent; an
 open gate is painted in the warning hue, exactly as it is inside a conversation.
 
-**Which pins last:** the model and the rung last as long as this window does. The folder and
-the gate are **spent** by the conversation that uses them — the rule goes back to following
-the row under the cursor, and back to `asks` (or whatever the settings rows say) — so an
-open gate is never quietly the default for the conversation after the one you opened it
-for. With nothing pinned the rung and the gate are what a fresh conversation on this install
+**Which pins last:** the project, model and rung last as long as this window does. The
+project stays selected when a conversation starts and when you return home. Only the gate
+is **spent** by the conversation that uses it — back to `asks` (or whatever the settings
+rows say) — so an open gate is never quietly the default for the conversation after
+the one you opened it for. With nothing pinned the rung and the gate are what a fresh conversation on this install
 would run at: the `thinking` and `ask before running` rows in `/settings`, or `--yolo` if
 this process was started with it.
 

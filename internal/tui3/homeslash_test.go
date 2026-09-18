@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // HOME'S COMPOSER ANSWERS A "/" THE WAY CHAT'S DOES: a ranked menu while typing
@@ -346,10 +348,11 @@ func TestEnterAtHomeOpensTheConversationInTheRowsFolder(t *testing.T) {
 	if len(next.sent) != 1 || next.sent[0] != "why is the lexer allocating" {
 		t.Fatalf("the sentence did not reach the conversation that opened: %q", next.sent)
 	}
-	// AND THE FOLDER PIN IS SPENT. It was used; the honest reading from here on
-	// is the cursor's own row again (homedraft.go's owner ruling).
-	if a.target.where != "" {
-		t.Fatalf("the folder pin survived the conversation that spent it: %q", a.target.where)
+	// The explicit project choice survives both starting and returning home.
+	runCmd(a.openHome())
+	a.home.point(one)
+	if a.targetWhere() != theirs {
+		t.Fatalf("returning home forgot the selected project: %q", a.targetWhere())
 	}
 }
 
@@ -468,43 +471,47 @@ func TestShowPageClosesEveryModalOnTheWayIn(t *testing.T) {
 func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	one := lab.workspace("alpha")
-	two := lab.workspace("beta")
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", one, now)
-	lab.session("-tmp-beta", "bbbb000000000001", "the cafe pricing page", two, now.Add(-time.Hour))
+	paths := []string{lab.workspace("alpha"), lab.workspace("beta"), lab.workspace("gamma"), lab.workspace("delta")}
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", paths[0], now)
+	lab.session("-tmp-beta", "bbbb000000000001", "the cafe pricing page", paths[1], now.Add(-time.Hour))
+	lab.session("-tmp-gamma", "cccc000000000001", "the parser", paths[2], now.Add(-2*time.Hour))
 	a := lab.app(mine)
-	a.width = 240
-	a.workspace = one
+	a.width, a.height = 240, 60
+	a.workspace = paths[0]
 	openHomeOn(a, mine)
 	runCmd(a.openHome())
-
-	places := a.composerDestinations()
-	if len(places) < 2 {
-		t.Skipf("this lab offered one destination (%v); the chord is correctly absent", places)
+	// Standing-only projects are visible too, even without a conversation.
+	a.home.bare = append(a.home.bare, homeBare{project: session.Project{Path: paths[3], Dir: "/buckets/delta"}})
+	in := a.home.gridInput()
+	rows := (projectsPanel{}).rows(&in).lines
+	if len(rows) != len(paths) {
+		t.Fatalf("projects panel has %d rows, want %d", len(rows), len(paths))
 	}
-	was := a.targetWhere()
-	runCmd(a.key(key("alt+w")))
-	if got := a.targetWhere(); got == was {
-		t.Fatalf("alt+w did not move the target off %q", was)
+	for i, row := range rows {
+		if row.proj.Path != paths[i] {
+			t.Fatalf("panel project %d = %q, want %q", i, row.proj.Path, paths[i])
+		}
 	}
-	if !strings.HasPrefix(a.home.msg, targetMovedWord) {
-		t.Fatalf("alt+w said %q, want it naming where the next conversation opens", a.home.msg)
-	}
-	if text := homeText(a); !strings.Contains(text, targetProjectLead+targetPathWord(a)) {
-		t.Fatalf("the rule did not follow the chord:\n%s", text)
-	}
-	// Round the cycle and back: a walk with a fixed order, never a lottery. One
-	// press has already been spent, so the round trip is one short of the list.
-	for i := 0; i < len(places)-1; i++ {
-		runCmd(a.key(key("alt+w")))
-	}
-	if got := a.targetWhere(); got != was {
-		t.Fatalf("the cycle came back to %q, want %q", got, was)
-	}
-	// The project moved across the seam, but pressing its path still cycles it.
-	homeText(a)
-	if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.targetRow); !took || a.targetWhere() == was {
-		t.Fatal("pressing the right-aligned project did not move the draft")
+	// Mix the two real controls for two full laps. The old two-project test
+	// could not see a cycle rebuilding its order around the current pin.
+	for i := 1; i <= 2*len(paths); i++ {
+		if i%2 == 1 {
+			runCmd(a.key(key("alt+w")))
+		} else {
+			homeText(a)
+			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.targetRow); !took {
+				t.Fatal("the seam project did not accept the click")
+			}
+		}
+		if got, want := a.targetWhere(), paths[i%len(paths)]; got != want {
+			t.Fatalf("step %d selected %q, want %q", i, got, want)
+		}
+		if a.home.msg != "" {
+			t.Fatalf("project selection added a footer message: %q", a.home.msg)
+		}
+		if text := homeText(a); !strings.Contains(text, targetProjectLead+targetPathWord(a)) || strings.Contains(text, "next conversation opens in ") {
+			t.Fatalf("the seam and footer disagree with the selection:\n%s", text)
+		}
 	}
 }
 

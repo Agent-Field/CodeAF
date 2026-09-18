@@ -199,8 +199,8 @@ func TestEscFromTheLayerReturnsToTheSamePlaceWithTheSentenceIntact(t *testing.T)
 	if got := a.placeBox().String(); got != "cut the opus spend in half" {
 		t.Fatalf("esc lost the sentence: %q", got)
 	}
-	if !strings.Contains(layerText(a), placeHintTail) {
-		t.Fatalf("the place did not get its own foot back:\n%s", layerText(a))
+	if text := layerText(a); !strings.Contains(text, "enter starts a new conversation and sends this") || strings.Contains(text, placeHintTail) {
+		t.Fatalf("the place did not get its own foot back:\n%s", text)
 	}
 }
 
