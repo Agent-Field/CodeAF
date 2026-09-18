@@ -1896,6 +1896,16 @@ An expanded card omits the quoted preview and repeated branch from its heading.
 Closing it restores the compact summary. Each long field is capped at 20 rows;
 open the task's conversation for the full record.
 
+## where do I watch a task while I keep chatting?
+
+A live task has a tab after the conversation tab, named with the task title. Open
+that tab to watch its rows while you keep chatting in the conversation. The tab
+closes when the task lands; the landing card stays in the conversation.
+
+At the foot of the task tab, type a note and press `enter` to steer the task. The
+page says the note was left when it lands. Press `esc` to return to the
+conversation.
+
 ## Watching work: the strip along the top
 
 The strip is one row under the pinned header — a tab bar of doors into live work:
