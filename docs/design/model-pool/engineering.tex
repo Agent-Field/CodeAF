@@ -1,0 +1,294 @@
+\section{How codeaf runs it}
+\label{app:engineering}
+
+The mechanism as the code stands, with the package, type and function that does
+each step named and every absent capability said plainly.
+
+\subsection{System overview}
+\label{app:overview}
+
+The seat is picked by \code{internal/crewpick} off the Pareto front of expected
+bill against crew quality. \code{wirePoolIndex} in \code{cmd/codeaf/poolindex.go}
+seats its three inputs at start-up: \code{config.AutoIndex}, the measurement
+document, \code{config.AutoOwnCells}, the install's own judged scores, and
+\code{config.AutoShapes}, what real tasks spent on each seat.
+
+A chat landing reaches \code{poolJudgeHook} in \code{cmd/codeaf/poolrecord.go},
+which grades the workspace with \code{grade.Grade} in \code{internal/pool/grade}
+and no model in it, asks \code{judge.Judge} in \code{internal/pool/judge},
+observes both readings with \code{record.Recorder} in \code{internal/pool/record},
+and appends one row per scored seat to \code{outbox.Outbox} in
+\code{internal/pool/outbox}. \code{poolPush} in
+\code{cmd/codeaf/poolinstall.go} posts the rows to the relay, where
+\code{relay/src/worker.js} validates them against \code{relay/src/schema.js} and
+folds each install into its own running total in KV through
+\code{relay/src/sheet.js}, before signing the document it publishes in
+\code{relay/src/index.js}. An install pulls and parses it (\code{internal/pool/pull},
+\code{internal/pool/index}) for its next pick, and a workflow mirrors it to an
+orphan branch.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=1pt, align=center, font=\footnotesize,
+              inner sep=3pt, minimum height=6mm},
+  arr/.style={-{Stealth[length=4pt]}, thin}]
+\node[box] (run)    at (0,0)      {chat door run\\\code{poolJudgeHook}};
+\node[box] (grade)  at (3.8,0)    {grade, no model\\\code{grade.Grade}};
+\node[box] (judge)  at (7.6,0)    {judge asks\\\code{judge.Judge}};
+\node[box] (sheet)  at (2.0,-1.5) {own sheet\\\code{record.Recorder}};
+\node[box] (outbox) at (7.2,-1.5) {client outbox\\\code{outbox.Outbox}};
+\node[box] (relay)  at (7.2,-3.0) {relay\\\code{worker.js}};
+\node[box] (kv)     at (3.8,-3.0) {KV sheets\\\code{sheet.js}};
+\node[box] (doc)    at (0.4,-3.0) {signed index\\\code{index.js}};
+\node[box] (pick)   at (-3.0,-1.5){pick\\\code{crewpick.FrontWith}};
+\node[box] (mirror) at (0.4,-4.5) {GitHub mirror\\\code{model-pool}};
+\draw[arr] (run) -- (grade);
+\draw[arr] (grade) -- (judge);
+\draw[arr] (grade) -- (sheet);
+\draw[arr] (judge) -- (sheet);
+\draw[arr] (judge) -- (outbox);
+\draw[arr] (outbox) -- (relay);
+\draw[arr] (relay) -- (kv);
+\draw[arr] (kv) -- (doc);
+\draw[arr] (doc) -- (pick);
+\draw[arr] (pick) -- (run);
+\draw[arr] (doc) -- (mirror);
+\end{tikzpicture}
+\caption{\textbf{As built.} One install, end to end: a chat landing graded
+without a model and judged with one, both readings into the install's own sheet
+and the client outbox, the relay folding the outbox into KV and publishing a
+signed index, and the next pick read off that index.}
+\label{fig:eng-overview}
+\end{figure}
+
+\subsection{Seat resolution}
+\label{app:seats}
+
+\begingroup\emergencystretch=2em
+The profile's pick word picks one of three routes, \code{CrewPickTable} (the
+default), \code{CrewPickCatalog} and \code{CrewPickLearn} in
+\code{internal/config/crew.go}, all resolved through one seam in
+\code{internal/config/auto.go}: \code{pickedSeat} for a seat the pick answers
+for, \code{autoRow} for a bare row that says auto.
+\par\endgroup
+
+\begin{table}[h]\centering\small
+\begin{tabular}{p{1.4cm}p{5.7cm}p{4.6cm}p{2.4cm}}\toprule
+pick word & where the seat's model comes from & the prior carried & the rung\\\midrule
+\code{table} & the family's preset row on disk, read verbatim through
+\code{CrewModelsForSource} & none & \code{SeatTable}\\
+\code{catalog} & computed by \code{AutoPickWith} from the catalog's published
+figures alone, because \code{priorFor} answers nil & none & \code{SeatComputed}\\
+\code{learn} & computed by \code{AutoPickWith} as under \code{catalog} &
+\code{autoPrior}: the index's cells and the install's own cells &
+\code{SeatLearned}\\
+\bottomrule\end{tabular}
+\caption{The three pick words. \code{pickedSeat} declines the table word
+outright, so the stored row is the answer; the other two compute the seat and
+differ only in the prior the computation is read with.}
+\label{tab:eng-seats}
+\end{table}
+
+The computation is shared. \code{autoCandidates} reads each catalog row as a
+\code{crewpick.Candidate}, dropping an unpublished price and scaling the tariff
+to dollars per million with \code{perMillion}, and \code{AutoShapes} supplies the
+seat shapes, or \code{crewpick.DefaultShapes}. \code{crewpick.FrontWith} keeps
+the crews no other crew beats on both bill and quality;
+\code{crewpick.Presets} reads \code{frugal} at \code{StakeFrugal}, a dollar, and
+\code{balanced} at \code{StakeBalanced}, ten dollars, off that front, and
+\code{max} as its last crew; \code{AtStake} is the argmin of \code{Loss}, which
+is \code{TaskBill} plus the stake times one minus quality; and
+\code{crewpick.ShapesFrom} learns each seat's volume share and input-to-output
+ratio from \code{shape.Tasks} over the usage ledger, shrunk at
+\code{ShapeWeightAt}.
+
+\code{autoPrior} blends the evidence: the index's cells of
+\code{PoolQualityMetric} (\code{acceptable}, a Bernoulli metric) through
+\code{crewpick.PriorFromCells} at the document's \code{min\_installs}, the
+install's own cells through a second \code{PriorFromCells} at a floor of one,
+\code{crewpick.MergePriors} folding the two by observation count, and
+\code{crewpick.SeatQualityWith} moving a seat's catalog quality towards a rating
+by \code{N/(N+PriorWeightAt)}. With no index, \code{autoIndex} answers nil and
+\code{MergePriors} returns the own prior alone, so the install still learns from
+its own graded runs; with neither source the prior is nil and every seat keeps
+its catalog quality, \code{poolIndexFor} falling back to the build's embedded
+seed through \code{index.Fallback}. \code{ownSheetSummary} in
+\code{cmd/codeaf/pool.go}, printed by \code{printPool}, counts the same
+\code{own.json} that \code{poolOwnCellsFor} hands the picker.
+
+\subsection{What happens when a task lands}
+\label{app:landing}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=1pt, align=center, font=\footnotesize,
+              inner sep=3pt, minimum height=6mm},
+  side/.style={draw, dashed, rounded corners=1pt, align=center,
+               font=\footnotesize, inner sep=3pt},
+  arr/.style={-{Stealth[length=4pt]}, thin}]
+\node[box] (land)   at (0,0)    {task lands\\\code{poolJudgeHook}};
+\node[box] (grade)  at (0,-1.4) {grade first, no model\\\code{poolGradeLanding}};
+\node[box] (judge)  at (0,-2.8) {ask the judges\\\code{poolAskJudges}};
+\node[box] (rec)    at (0,-4.2) {record both\\\code{record.Recorder}};
+\node[box] (mark)   at (0,-5.6) {mark and push\\\code{markJudged}};
+\node[side](sweep)  at (6.8,-2.1){restart sweep\\\code{poolJudgeSweep}\\
+                                  \code{sweepClaim}: workspace empty,\\ so the
+                                  grade is skipped};
+\draw[arr] (land) -- (grade);
+\draw[arr] (grade) -- (judge);
+\draw[arr] (judge) -- (rec);
+\draw[arr] (rec) -- (mark);
+\draw[arr, dashed] (sweep) -- (grade);
+\end{tikzpicture}
+\caption{\textbf{As built.} One landing in the order \code{poolJudgeLanding}
+performs it, with the restart sweep entering at the same grade step with no
+workspace.}
+\label{fig:eng-landing}
+\end{figure}
+
+\code{poolGradeLanding} grades first and consults no model: \code{grade.Grade}
+runs four stages in order, stopping at the first failure, formatting over the
+changed Go files, \code{go build ./...} over the module, \code{go vet} over the
+touched packages, and \code{go test -count=1} over those same packages with the
+cache defeated. The source is \code{codeaf/grader} when the tests ran and
+passed and \code{codeaf/grader-build} when they did not finish in budget or there
+were none. The package states the absence law: no \code{go.mod} at the workspace
+root answers not-ok and nothing is recorded, because a capability that cannot
+work is absent rather than broken. \code{grade-last.json} holds the moment, the task id,
+the source word, the pass bit, the failing stage and its detail, the touched
+packages and the seconds.
+
+\code{poolAskJudges} asks the judges. \code{judge.Candidates} lists the priced
+catalog rows that can judge the crew, none of them a seat the crew already holds,
+and \code{judge.Judge} puts at most three of them in turn to one question per
+seat the landing held, reading each answer as one JSON object with a 0-100 score
+and letting a failing seat fail alone. \code{judge-last.json} holds the
+moment, the task id, and either the judge that answered with the seats it scored
+or the candidates tried and the last error's line.
+
+\code{record.Recorder} records. \code{RecordGrade} observes one
+\code{acceptable} cell per seat the crew held, 100 when the grade passed and 0
+otherwise, and appends one row where the judge column names the grader;
+\code{Record} observes each judge score under \code{role\_quality} and appends
+one row per score, and \code{record.SaveSheet} then writes the sheet.
+\code{markJudged} writes one empty marker per run id and attempt under
+\code{judged}, so the sweep never judges a run twice, a sheet that would not load
+or save being the one outcome left unmarked. The picker's own-cells seam is
+repointed at the new cells and \code{poolPush} sends the outbox.
+
+\code{poolJudgeSweep} runs at chat start over the headless doors'
+\code{pending.jsonl} rows and the final-state landings a process death left
+unjudged, skipping a run whose marker is there. Every sweep call site passes an
+empty workspace, \code{poolJudgeSweep} for a resumed landing and
+\code{sweepClaim} for a row it claims, because the tree the run changed may be
+gone by then: the grade is skipped, only the judge reads, and the run is recorded
+with a judge score and no grade.
+
+\subsection{The relay}
+\label{app:relay}
+
+A row is one NDJSON line per scored seat: an envelope with a schema number, the
+day and a nonce, and inside it the seat's score, which \code{relay/src/schema.js}
+refuses unless every field matches. \code{cellKey} in \code{relay/src/sheet.js} renders the address a triple
+lives at: a \code{role\_quality} row takes the five-segment form every stored
+triple was written under, role, model, judge, door and size, while any other
+metric leads with its own name, so an \code{acceptable} row's key is six segments
+with the metric first. A stored value is
+a triple of count, sum and sum of squares, and the relay adds the new score to
+the triple already at that key.
+
+\code{handleRows} in \code{relay/src/worker.js} keeps only the rows the relay has
+not stored: a nonce repeated inside one batch is collapsed by a set, and a nonce
+already stored under its per-install seen key is skipped, so a replayed outbox is
+not folded twice; the seen key carries a time to live of one week.
+
+The publication floor is \code{min\_installs}, three by default, and the relay
+withholds no thin cell: it sorts the cells that meet the floor ahead of the ones
+that do not. \code{internal/pool/index/index.go}
+enforces the floor where the document is read, dropping a cell below it on the
+\code{installs} field or on the row count when it carries none, and
+\code{internal/crewpick} floors again on row counts for cells that never carried
+an install count, on purpose, since rows cannot be fewer than the installs behind
+them.
+
+A cron trigger in \code{wrangler.toml} fires hourly, and a read republishes in
+the background when the stored version is missing or older than
+\code{PUBLISH\_EVERY}, one hour, answering what is stored so no caller waits.
+\code{buildIndex} writes a fixed key order, so the same cells always render the
+same bytes, and \code{signIndex} signs those exact bytes with Ed25519 as a
+detached base64 signature.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=1pt, align=center, font=\footnotesize,
+              inner sep=2.5pt, minimum height=6mm},
+  arr/.style={-{Stealth[length=4pt]}, thin},
+  side/.style={draw, dashed, rounded corners=1pt, align=center,
+               font=\footnotesize, inner sep=3pt}]
+\node[box] (rows)  at (0,0)    {rows\\NDJSON};
+\node[box] (val)   at (2.0,0)  {validate\\\code{schema.js}};
+\node[box] (dedup) at (4.2,0)  {dedup\\seen key};
+\node[box] (fold)  at (6.4,0)  {fold\\\code{sheet.js}};
+\node[box] (agg)   at (8.8,0)  {aggregate\\\code{aggregate}};
+\node[box] (sign)  at (11.2,0) {sign and\\publish};
+\node[side](join)  at (5.3,-1.5){the max-join is defined and tested, and is not on the write path};
+\draw[arr] (rows) -- (val);
+\draw[arr] (val) -- (dedup);
+\draw[arr] (dedup) -- (fold);
+\draw[arr] (fold) -- (agg);
+\draw[arr] (agg) -- (sign);
+\draw[arr, dashed] (join) -- (fold);
+\end{tikzpicture}
+\caption{\textbf{As built.} The merge path: rows validated, deduplicated on the
+nonce, folded additively into one install's running total, and aggregated across
+installs only at publish.}
+\label{fig:eng-merge}
+\end{figure}
+
+The write path takes no maximum: the worker folds each install's rows into that
+install's own running total, and \code{relay/src/sheet.js}'s \code{join}, the
+componentwise maximum of two triples, is defined and called only by its own test. The GitHub mirror is a
+workflow: it fetches the document and its signature, verifies with
+\code{relay/verify.mjs} against the public key copied from \code{wrangler.toml},
+and commits both to the orphan branch \code{model-pool} under \code{pool/}.
+
+\subsection{How an install learns and contributes}
+\label{app:install}
+
+\begingroup\emergencystretch=2em
+One install writes, under the profile's pool directory:
+\code{own.json}, the tally sheet \code{record.SaveSheet} writes;
+\code{outbox.jsonl}, the rows waiting to leave, appended by
+\code{outbox.Append}; \code{install}, the 32-character nonce that is the
+install's whole identity at the relay; \code{doc.json} with its signature, the
+puller's cache; \code{grade-last.json} and \code{judge-last.json}; and
+\code{pending.jsonl} and the judged markers. Elsewhere on the machine,
+\code{session.RecordUsage} appends every provider call to \code{usage.jsonl},
+which \code{poolShapesFor} reads once at start-up through \code{shape.Tasks} and
+\code{crewpick.ShapesFrom}, so a seat is priced on what real tasks spent on it.
+\par\endgroup
+
+What leaves the machine is the outbox, and only when the pool's mode allows
+sending: \code{poolPush} posts the pending rows to the relay with the install
+nonce in the \code{X-Codeaf-Install} header, at start-up and again after every
+judged landing. The start-up refresh pulls the signed index on its own goroutine,
+so a run's picks cannot move under it, and falls through to the mirror when the
+relay does not answer.
+
+What never leaves is the work. A row carries a score, a model id, a seat, a
+door, a size class and a day, and no brief, report or path. The brief, the
+deliverable, the report and the list of files written do travel, in the judge's
+own prompt, to the model picked as judge, which is a call the machine makes to a
+provider under the person's own credentials and bills to the judge's seat; none
+of it is sent to the relay.
+
+A fresh install has nothing under the pool directory, so no sheet, no outbox and
+no nonce yet, the nonce being drawn on the first push. \code{shape.Tasks} finds
+no seat rows, so the front is priced on the default shapes, the fixed shape of
+the paper's baseline, and the empty own sheet leaves the prior the index's alone.
+The index is the build's embedded seed, chosen by \code{index.Fallback} when no
+cached document parses, so a first run picks from real numbers, and until its
+first landing the install contributes nothing.
