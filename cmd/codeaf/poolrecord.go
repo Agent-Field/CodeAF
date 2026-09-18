@@ -312,6 +312,9 @@ type gradeLast struct {
 	Detail   string    `json:"detail,omitempty"`
 	Packages []string  `json:"packages,omitempty"`
 	Seconds  float64   `json:"seconds"`
+	// Grader is [grade.Version], so a record left by an older grader can be
+	// told from one left by this build.
+	Grader int `json:"grader"`
 }
 
 // gradeLastName is the file the grade record is kept as, under the pool
@@ -336,7 +339,7 @@ func poolGradeLanding(poolDir, workspace string, now func() time.Time, landing s
 	if !ok {
 		return grade.Result{}, false
 	}
-	last := gradeLast{At: now(), Task: landing.ID, Source: result.Source, Pass: result.Pass, Stage: result.Stage, Detail: result.Detail, Packages: result.Packages, Seconds: result.Elapsed.Seconds()}
+	last := gradeLast{At: now(), Task: landing.ID, Source: result.Source, Pass: result.Pass, Stage: result.Stage, Detail: result.Detail, Packages: result.Packages, Seconds: result.Elapsed.Seconds(), Grader: result.Version}
 	if data, err := json.MarshalIndent(last, "", "  "); err == nil {
 		if err := os.MkdirAll(poolDir, 0o700); err == nil {
 			if err := os.WriteFile(filepath.Join(poolDir, gradeLastName), append(data, '\n'), 0o600); err != nil && trace.Enabled() {

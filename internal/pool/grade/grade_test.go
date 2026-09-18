@@ -266,20 +266,46 @@ func TestAChangedPathOutsideTheWorkspaceIsIgnored(t *testing.T) {
 	}
 }
 
-// A landing that named no files is still graded on the three stages that do
-// not need them, and the shallow source word says no suite stands behind it.
-func TestAnEmptyChangedListStillBuildsTheModule(t *testing.T) {
-	tools(t)
+// A landing that changed nothing is failed at the landing stage before any
+// tool runs: the unchanged tree building says nothing about work never done,
+// and a pass here taught the pool that doing nothing is acceptable.
+func TestALandingThatChangedNothingFailsAtTheLandingStage(t *testing.T) {
 	root := newModule(t, map[string]string{"pkg/pkg.go": addGo})
 	result := grade(t, root, nil, Options{})
-	if !result.Pass {
-		t.Fatalf("grade: an empty changed list failed at %q: %s", result.Stage, result.Detail)
+	if result.Pass {
+		t.Fatalf("grade: an empty changed list passed")
+	}
+	if result.Stage != stageLanding || result.Detail != detailNoLanding {
+		t.Fatalf("grade: stopped at %q with %q, want %q with %q", result.Stage, result.Detail, stageLanding, detailNoLanding)
 	}
 	if result.Source != SourceBuilt {
 		t.Fatalf("grade: source is %q, want %q", result.Source, SourceBuilt)
 	}
-	if len(result.Packages) != 0 {
-		t.Fatalf("grade: an empty changed list touched packages %v", result.Packages)
+	if result.Version != Version {
+		t.Fatalf("grade: version is %d, want %d", result.Version, Version)
+	}
+}
+
+// A landing that removed a test file fails at the landing stage and names
+// the file, because deleting the suite is the cheapest way to make it pass.
+func TestALandingThatRemovedATestFileFailsByName(t *testing.T) {
+	root := newModule(t, map[string]string{"pkg/pkg.go": addGo})
+	result := grade(t, root, []string{"pkg/pkg.go", "pkg/pkg_test.go"}, Options{})
+	if result.Pass {
+		t.Fatalf("grade: a removed test file passed")
+	}
+	if result.Stage != stageLanding || result.Detail != detailTestRemoved+"pkg/pkg_test.go" {
+		t.Fatalf("grade: stopped at %q with %q", result.Stage, result.Detail)
+	}
+}
+
+// A landing that changed files but no Go file is not graded at all: this
+// grader reads Go, and a build of the tree it did not touch is not a grade of
+// what it did.
+func TestALandingWithNoGoFileIsNotGraded(t *testing.T) {
+	root := newModule(t, map[string]string{"pkg/pkg.go": addGo, "README.md": "# a module\n"})
+	if _, ok := Grade(context.Background(), root, []string{"README.md"}, Options{Env: hermeticEnv()}); ok {
+		t.Fatalf("grade: a landing with no Go file was graded")
 	}
 }
 

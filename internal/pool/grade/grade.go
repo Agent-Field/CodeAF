@@ -27,6 +27,7 @@ package grade
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path"
@@ -57,10 +58,26 @@ const (
 // reads [Result.Stage] against, and they are written once here so the string
 // in the result and the string in the doc comment cannot drift apart.
 const (
-	stageFmt   = "fmt"
-	stageBuild = "build"
-	stageVet   = "vet"
-	stageTest  = "test"
+	stageLanding = "landing"
+	stageFmt     = "fmt"
+	stageBuild   = "build"
+	stageVet     = "vet"
+	stageTest    = "test"
+)
+
+// Version is the grader's own version, stamped into every [Result] so a
+// record made by an older grader can be told apart from one made by this one.
+// IT MOVES WHENEVER THE GRADE OF THE SAME TREE CAN CHANGE. Version 1 graded
+// a landing that changed nothing as a pass on the unchanged tree; version 2
+// fails it at the landing stage, fails a landing that removed a test file,
+// and says nothing at all about a landing that touched no Go file.
+const Version = 2
+
+// The two detail strings the landing stage writes. They are spelled once here
+// so the reader of a grade record and the writer of it cannot drift apart.
+const (
+	detailNoLanding   = "no landing: the task changed no files"
+	detailTestRemoved = "test file removed: "
 )
 
 // The budgets a caller that names none gets. Two minutes covers gofmt, a whole
@@ -119,6 +136,8 @@ type Result struct {
 	Packages []string
 	// Elapsed is wall time spent grading.
 	Elapsed time.Duration
+	// Version is [Version], the grader that produced this result.
+	Version int
 }
 
 // Grade grades the workspace after a task changed the paths given (relative to
@@ -133,10 +152,17 @@ type Result struct {
 // The stages run in order and the first failure stops the run: a tree that
 // does not build has nothing to say about its tests, and running them anyway
 // would spend the budget to learn what the build already said. A changed path
-// that falls outside the workspace is ignored rather than refused, and an
-// empty changed list still builds the module — the four stages are the grade,
-// and a landing that named no files is graded on the three that do not need
-// them.
+// that falls outside the workspace is ignored rather than refused.
+//
+// THE LANDING ITSELF IS THE FIRST STAGE. A task that changed no files at all
+// is failed at the "landing" stage before anything runs: the unchanged tree
+// building says nothing about work that was never done, and grading it as a
+// pass taught the pool that doing nothing is acceptable. A landing that
+// removed a test file fails at the same stage, because deleting the suite is
+// the cheapest way to make it pass. And a landing that changed files but no
+// Go file gets ok=false and no result, the same absence as a tree with no
+// module: this grader reads Go, and a build of the tree it did not touch is
+// not a grade of what it did.
 func Grade(ctx context.Context, workspace string, changed []string, opts Options) (Result, bool) {
 	// A caller that hands no context is handed the background one rather than
 	// a panic: this function is called from the end of a run, where the thing
@@ -170,19 +196,31 @@ func Grade(ctx context.Context, workspace string, changed []string, opts Options
 		testBudget = defaultTestBudget
 	}
 
-	files, dirs := changedGo(root, changed)
+	files, dirs, removedTests := changedGo(root, changed)
 	packages := touchedPackages(root, dirs)
 
 	// The result starts as the shallowest passing grade there is, and every
 	// stage either deepens it or ends it. A run that reaches the end without
 	// testing anything is exactly this.
-	result := Result{Source: SourceBuilt, Pass: true, Packages: packages}
+	result := Result{Source: SourceBuilt, Pass: true, Packages: packages, Version: Version}
 	fail := func(stage, out string, err error) (Result, bool) {
 		result.Pass = false
 		result.Stage = stage
 		result.Detail = detail(out, err)
 		result.Elapsed = time.Since(started)
 		return result, true
+	}
+
+	// The landing stage reads the list, not the tree. Nothing changed is a
+	// fail; a test file gone is a fail; no Go touched is no grade at all.
+	if len(changed) == 0 {
+		return fail(stageLanding, detailNoLanding, nil)
+	}
+	if len(removedTests) > 0 {
+		return fail(stageLanding, detailTestRemoved+strings.Join(removedTests, ", "), nil)
+	}
+	if len(files) == 0 && len(dirs) == 0 {
+		return Result{}, false
 	}
 
 	// The three stages that read the tree rather than run it share one budget,
@@ -283,7 +321,7 @@ func gofmtBeside(goTool string) string {
 //
 // Both lists are sorted and carry no duplicate, so a grade is a property of
 // the landing and never of the order the paths arrived in.
-func changedGo(root string, changed []string) (files, dirs []string) {
+func changedGo(root string, changed []string) (files, dirs, removedTests []string) {
 	realRoot := root
 	// A workspace reached through a symlink — every temporary directory on a
 	// Mac is one — makes an absolute changed path look like it is somewhere
@@ -303,6 +341,13 @@ func changedGo(root string, changed []string) (files, dirs []string) {
 			dirs = append(dirs, dir)
 		}
 		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil || info.IsDir() {
+			// A named test file that is no longer there was deleted by the
+			// landing, and the landing stage fails it by name. Any other
+			// missing path is simply not a file to format.
+			if errors.Is(err, os.ErrNotExist) && strings.HasSuffix(rel, "_test.go") && !seenFile[rel] {
+				seenFile[rel] = true
+				removedTests = append(removedTests, rel)
+			}
 			continue
 		}
 		if !seenFile[rel] {
@@ -312,7 +357,8 @@ func changedGo(root string, changed []string) (files, dirs []string) {
 	}
 	sort.Strings(files)
 	sort.Strings(dirs)
-	return files, dirs
+	sort.Strings(removedTests)
+	return files, dirs, removedTests
 }
 
 // inside answers a changed path as a slash-separated path relative to the
