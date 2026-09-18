@@ -908,11 +908,13 @@ func (a *app) taskPlanBody(width int) []string {
 			own[id] = true
 		}
 		for _, row := range waits {
+			var sentence string
 			if own[row.ID] {
-				add(pal.ink(strings.TrimSpace(page.Row.Title) + railSep + "waits: " + strings.TrimSpace(row.Title)))
-				continue
+				sentence = strings.TrimSpace(page.Row.Title) + railSep + "waits: " + strings.TrimSpace(row.Title)
+			} else {
+				sentence = strings.TrimSpace(row.Title) + railSep + "waits: " + strings.TrimSpace(page.Row.Title)
 			}
-			add(pal.ink(strings.TrimSpace(row.Title) + railSep + "waits: " + strings.TrimSpace(page.Row.Title)))
+			add(pal.ink(padTo(sentence, 51)) + pal.dim(planWaitFigure(pal, row)))
 		}
 	}
 	if desc := strings.TrimSpace(page.Description); desc != "" {
@@ -1103,6 +1105,17 @@ func planChildWordWithKin(row session.PlanTaskRow, kin planKin) string {
 
 // planPageTelemetryLine adds the two subtree figures to the task's own header
 // reading. Running and queued are separate facts and each disappears at zero.
+// planWaitFigure is the related row's state cell and useful figure on a waits
+// sentence. Active work carries its recorded step count; a row without one
+// carries its state word, so the relationship never drops the row's state.
+func planWaitFigure(pal palette, row session.PlanTaskRow) string {
+	figure := planStepWords(row.Steps)
+	if figure == "" {
+		figure = planStateWord(row.Status)
+	}
+	return strings.TrimSpace(tierGlyph(pal, planStatus(row.Status)) + " " + figure)
+}
+
 func planPageTelemetryLine(page session.PlanTaskPage) string {
 	segs := []string{}
 	if own := planTelemetryLine(page.Row); own != "" {
