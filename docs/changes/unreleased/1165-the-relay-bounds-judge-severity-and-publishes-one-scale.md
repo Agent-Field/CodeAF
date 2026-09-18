@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The relay bounds judge severity and publishes mean and sd on one scale
-pr: 0000
+pr: 1165
 surface: [engine]
 invalidates:
   - "`relay/src/sheet.js` fitted each judge's severity with no bound and published a cell's mean over the severity-adjusted sums while its sd was pooled from the raw ones, so a judge far enough off centre pushed a published mean past 100 — the rubric's own top — with an sd that described the unadjusted rows; the robust mean also fell back to the plain mean when the MAD was zero. Each severity is now held inside ±10 (the rubric is 100 points wide; a judge further off than a tenth of it is a different rubric, not a severity), every adjusted score is clamped back into [0, 100] before it is folded, the sd is pooled from the same adjusted triples, and the zero-MAD fallback answers the median. The priming script's all-0/100 rows under one judge id can no longer pull a published cell more than 10 points either way."
