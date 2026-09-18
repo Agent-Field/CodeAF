@@ -203,6 +203,184 @@ func TestDoJSONCarriesTheWholeOutcome(t *testing.T) {
 	}
 }
 
+// A NON-VERIFIED RUN NAMES WHERE ITS WORK IS STANDING AND THE WORD THAT LEFT IT
+// THERE, AND A RUN THAT SETTLED WHOLE NAMES NEITHER.
+//
+// The defect this pins: a headless `do` run whose gate would not let the work
+// land stopped with no field saying where the work was or what verdict left it
+// there — so a caller saw the run end and had nowhere to look for what it made.
+// A `do` errand works IN PLACE, in the directory it was handed, editing that
+// directory's tree on whichever branch is checked out (there is no per-task
+// worktree on this surface the way there is behind a chat `/task`). So the two
+// facts a recoverer needs are the workspace's own branch — read off the tree at
+// the moment the run is over — and the record's word for why the work was not
+// landed. Both are on the envelope now, and a settled run carries neither.
+func TestANonVerifiedErrandNamesItsKeptBranchAndVerdict(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	// A leaf the wire refuses ends the node `failed`, which is the verdict this
+	// run must carry.
+	script.leafFails = true
+
+	workspace := gitWorkspaceOn(t, "work-branch")
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:      "write the release note and include the migration steps",
+		asJSON:    true,
+		workspace: workspace,
+		timeout:   60 * time.Second,
+		stdout:    &stdout,
+		stderr:    &stderr,
+		newClient: script.client,
+	})
+	// It ran and part of it does not stand: exit 2, the rung `incomplete` lives on.
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitIncomplete {
+		t.Fatalf("a failed node left with %v, want %d\nstdout:\n%s\nstderr:\n%s",
+			err, exitIncomplete, stdout.String(), stderr.String())
+	}
+	fields := errandJSONFields(t, stdout.String())
+	if got := fields["verdict"]; got != "failed" {
+		t.Fatalf("verdict = %v, want failed\nstdout:\n%s", got, stdout.String())
+	}
+	if got := fields["kept_branch"]; got != "work-branch" {
+		t.Fatalf("kept_branch = %v, want work-branch\nstdout:\n%s", got, stdout.String())
+	}
+}
+
+// The same law over the other non-verified word. A gate that refuses the
+// deliverable leaves the work where it stands and names why with `unverified`,
+// which is the record's word for work that ran and then nothing could say holds.
+func TestAnUnverifiedErrandNamesItsKeptBranchAndVerdict(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.inventedGap = true
+	defer script.close()
+
+	workspace := gitWorkspaceOn(t, "work-branch")
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:      "write the release note and include the migration steps",
+		asJSON:    true,
+		workspace: workspace,
+		timeout:   60 * time.Second,
+		stdout:    &stdout,
+		stderr:    &stderr,
+		newClient: script.client,
+	})
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitIncomplete {
+		t.Fatalf("an unverified node left with %v, want %d\nstdout:\n%s\nstderr:\n%s",
+			err, exitIncomplete, stdout.String(), stderr.String())
+	}
+	fields := errandJSONFields(t, stdout.String())
+	if got := fields["verdict"]; got != "unverified" {
+		t.Fatalf("verdict = %v, want unverified\nstdout:\n%s", got, stdout.String())
+	}
+	if got := fields["kept_branch"]; got != "work-branch" {
+		t.Fatalf("kept_branch = %v, want work-branch\nstdout:\n%s", got, stdout.String())
+	}
+}
+
+// The other half of the law: a run that settled whole carries NEITHER key, so
+// the presence of either is itself the answer to "was this work landed?".
+func TestAVerifiedErrandNamesNeitherBranchNorVerdict(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+
+	workspace := gitWorkspaceOn(t, "work-branch")
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:      "write the release note and include the migration steps",
+		asJSON:    true,
+		workspace: workspace,
+		timeout:   60 * time.Second,
+		stdout:    &stdout,
+		stderr:    &stderr,
+		newClient: script.client,
+	}); err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	fields := errandJSONFields(t, stdout.String())
+	if got, present := fields["verdict"]; present {
+		t.Fatalf("a settled run carried a verdict: %v", got)
+	}
+	if got, present := fields["kept_branch"]; present {
+		t.Fatalf("a settled run carried a kept branch: %v", got)
+	}
+}
+
+// A workspace that is not a repository still knows its verdict — the word is
+// the record's and does not depend on git — but names no branch, because there
+// is none a person could check out.
+func TestAnUnverifiedErrandInAFolderNamesAVerdictButNoBranch(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.leafFails = true
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:      "write the release note and include the migration steps",
+		asJSON:    true,
+		workspace: t.TempDir(),
+		timeout:   60 * time.Second,
+		stdout:    &stdout,
+		stderr:    &stderr,
+		newClient: script.client,
+	})
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitIncomplete {
+		t.Fatalf("a failed node left with %v, want %d\nstdout:\n%s\nstderr:\n%s",
+			err, exitIncomplete, stdout.String(), stderr.String())
+	}
+	fields := errandJSONFields(t, stdout.String())
+	if got := fields["verdict"]; got != "failed" {
+		t.Fatalf("verdict = %v, want failed\nstdout:\n%s", got, stdout.String())
+	}
+	if got, present := fields["kept_branch"]; present {
+		t.Fatalf("a folder named a kept branch it does not have: %v", got)
+	}
+}
+
+// errandJSONFields reads one `do --json` object as its keys, so a test can ask
+// whether a key is PRESENT and not only whether it holds the right value.
+func errandJSONFields(t *testing.T, stdout string) map[string]any {
+	t.Helper()
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(stdout), &fields); err != nil {
+		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout)
+	}
+	return fields
+}
+
+// gitWorkspaceOn makes a throwaway repository whose HEAD is the branch named, so
+// a run that works in it in place has a branch to name back.
+func gitWorkspaceOn(t *testing.T, branch string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-q", "-b", branch},
+		{"config", "user.email", "test@example.invalid"},
+		{"config", "user.name", "test"},
+	} {
+		if out, err := gitIn(dir, args...); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "seed.txt"), []byte("seed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := gitIn(dir, "add", "-A"); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	if out, err := gitIn(dir, "commit", "-q", "-m", "seed"); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+	return dir
+}
+
 // A wall that arrives first is not a failure and not a success: what exists is
 // printed, and the exit code says A LIMIT YOU SET STOPPED IT — which is the
 // third rung of the one ladder and not the second. It used to be 2, the same
