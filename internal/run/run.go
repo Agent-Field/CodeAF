@@ -1207,9 +1207,14 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	}
 	supervisor := NewSupervisor(store, spec.Workspace, spec.Slots, spec.Limits, spec.Factory)
 	outcome := supervisor.Run(ctx)
+	result := supervisor.rootResult
+	// THE TERMINAL ROOT'S STORED RESULT IS DELIVERABLE even when its worker return lands after the supervisor stops absorbing returns.
+	if root := store.Task(store.RootID()); strings.TrimSpace(result) == "" && root != nil && root.Status == plandb.StatusDone {
+		result = root.Result
+	}
 	return outcome, Summary{
 		Outcome: outcome,
-		Result:  supervisor.rootResult,
+		Result:  result,
 		Nodes:   supervisor.nodes,
 		Steps:   supervisor.steps,
 		USD:     supervisor.spent,
