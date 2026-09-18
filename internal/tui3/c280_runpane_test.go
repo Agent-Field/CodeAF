@@ -48,7 +48,7 @@ func TestC280SelectedRunPaneDrawsOrderedOptionalBlocks(t *testing.T) {
 func TestC280RunPaneRoomDropsTreeBottomThenNotes(t *testing.T) {
 	page := c280Page()
 	a, _ := planAppWith(t, append([]session.PlanTaskRow{page.Row}, page.Children...), map[string]session.PlanTaskPage{page.Row.ID: page})
-	rows := a.taskPaneRunFit(page, 60, 7)
+	rows := a.taskPaneRunFit(page, 60, 8)
 	text := ansi.Strip(strings.Join(func() []string {
 		out := []string{}
 		for _, r := range rows {
