@@ -559,8 +559,12 @@ func TestAFirstRoundWithNoPaceIsRefusedWhenTheWallCannotHoldIt(t *testing.T) {
 		t.Fatalf("a first round was refused with an hour left to run it: %+v %v", verdict, err)
 	}
 
-	// A leaf whose start was never stamped falls back to the documented floor,
-	// and a wall below that floor still refuses it.
+	// A leaf whose start was never stamped — a genuine first round, nothing run
+	// and nothing measured — has no estimate to read, so the wall refuses it
+	// nothing: a round that cannot be costed is admitted rather than handed
+	// over, because refusing a first round buys nothing and produces nothing.
+	// This is the do door's own first round; refusing it here regressed every
+	// do and headless run under a short wall.
 	unstamped := node
 	unstamped.StartedAt = time.Time{}
 	tightAgain, cancelAgain := context.WithTimeout(context.Background(), 5*time.Millisecond)
@@ -571,8 +575,8 @@ func TestAFirstRoundWithNoPaceIsRefusedWhenTheWallCannotHoldIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if verdict.Allow || verdict.Cause != CauseOutOfWall {
-		t.Fatalf("an unstamped first round was bought against five milliseconds: %+v", verdict)
+	if !verdict.Allow {
+		t.Fatalf("an unstamped first round with no measured pace was refused: %+v", verdict)
 	}
 
 	// And a job that has shown its pace is judged by it, not by the floor: two
