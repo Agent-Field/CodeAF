@@ -19,6 +19,7 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -420,6 +421,140 @@ func planSpendField(item tasksItem) rowField {
 		return rowSay(usd)
 	}
 	return rowSay()
+}
+
+// planRailGap is the least room a plan row keeps between its title and the
+// tail at the end of its line, and planRailMinTitle the least the title itself
+// keeps once the tail has taken the rest ([planRailRow] says which yields
+// first, and why).
+const (
+	planRailGap      = 2
+	planRailMinTitle = 2
+)
+
+// planRailRow is one plan task on the rail: the connector, the state mark from
+// the vocabulary, the fitted title, and the state's own tail at the end of the
+// line. It is the rail's row and not the page's — the page has the width for
+// the steps and the money under the title, and the rail, which is read beside
+// a conversation somebody is typing into, has one line ([tasksReading.planRows]).
+//
+// THE TITLE YIELDS BEFORE THE TAIL DOES. The tail is the one fact the row
+// exists to carry at its end — what a held row waits on, where a run stands —
+// and the narrow rail used to spend the tail's cells on the title first, so a
+// row held behind `write the handler` read `queued · w…` and answered nothing.
+// So the title is fitted into what is left beside the whole tail, and only
+// when even a two-cell title cannot stand beside it does the tail give up its
+// own end — never the name of the work it names.
+//
+// THE TASKS PLACE'S OWN PAGE ROWS ARE NOT THIS ROW. The page keeps its card
+// and its figures; this is the projection the rail draws out of the same
+// reading, and the two meet only in the layout that owns their tree
+// ([tasksReading.lay]).
+func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
+	item := line.item
+	glyph, ink := tasksGlyph(item, pal)
+	lead := tasksBareLead + pal.dim(line.kin) + ink(glyph) + " "
+	room := width - ansi.StringWidth(tasksBareLead+line.kin) - ansi.StringWidth(glyph) - 1
+	if room < 1 {
+		room = 1
+	}
+	tail := planRailTail(item, width, pal, now)
+	if tail == "" {
+		return lead + placeSubject(fit(planRailLabel(item), room), false, pal)
+	}
+	tailWidth := ansi.StringWidth(tail)
+	titleRoom := room - tailWidth - planRailGap
+	if titleRoom < planRailMinTitle {
+		tail = fit(tail, room-planRailGap-planRailMinTitle)
+		tailWidth = ansi.StringWidth(tail)
+		titleRoom = room - tailWidth - planRailGap
+	}
+	if tailWidth < 1 || titleRoom < 1 {
+		return lead + placeSubject(fit(planRailLabel(item), room), false, pal)
+	}
+	title, titleWidth := fitWidth(planRailLabel(item), titleRoom)
+	return lead + placeSubject(title, false, pal) +
+		strings.Repeat(" ", room-titleWidth-tailWidth) + pal.dim(tail)
+}
+
+// planRailLive is the one line a plan row with a step in flight spends under
+// its own: the running glyph, the shell lead and the command — and nothing
+// else. The steps and the money that stand under it on the tasks page
+// ([planUnderRows]) are that page's own rows; on the rail they were drawn a
+// second time beside the live command, a frame saying one fact twice.
+func planRailLive(line tasksLine, width int, pal palette) string {
+	if line.item.plan == nil || line.item.plan.Live.Step <= 0 {
+		return ""
+	}
+	// THE UNDER-LINE WEARS THE PAD KIN AND NOT THE CONNECTOR, which is the same
+	// choice the page's own under-block made ([tasksReading.lay]): a connector
+	// says another row of the tree, and this line belongs to the one above it.
+	pad := strings.Repeat(" ", ansi.StringWidth(line.kin))
+	lead := tasksBareLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
+	room := width - ansi.StringWidth(tasksBareLead+line.kin) - taskSheetPhoneIndent
+	if room < 1 {
+		return ""
+	}
+	if live := planLiveRow(line.item.plan.Live.Command, room, pal); live != "" {
+		return lead + live
+	}
+	return ""
+}
+
+// planRailLabel is the words a plan row's one line carries. A family's
+// finished rows fold to their count — [tasksReading.lay] builds the folded row
+// out of them, titled `done` with `N done` as its activity — and the rail draws
+// the count AS the line, `✓ 2 done`, rather than a row titled `done` wearing
+// its count as a state.
+func planRailLabel(item tasksItem) string {
+	if planRailFolded(item) {
+		return strings.TrimSpace(item.entry.Activity)
+	}
+	return tasksLabel(item.entry)
+}
+
+// planRailFolded reports whether this row is the one line a family's finished
+// rows folded to — the row [tasksReading.lay] built out of them, titled `done`
+// with their count as its activity.
+func planRailFolded(item tasksItem) bool {
+	return item.plan != nil &&
+		strings.TrimSpace(item.entry.Title) == "done" &&
+		strings.TrimSpace(item.entry.Activity) != ""
+}
+
+// planRailTail is the one fact a plan row's line ends in, and nothing more.
+//
+// A HELD ROW SAYS WHAT IT WAITS ON — the reason the reading already carries
+// ([planItem] parks it there off [planWaits]) — and a running row carries
+// nothing, because its mark and the live line under it are the whole of what
+// it has to say. The run's row ends in [planProgress] at the rail's own
+// width, which is where the dot row's tiers live; a row that has landed ends
+// in how long ago it did, which is the last fact anybody watching a rail
+// still wants.
+func planRailTail(item tasksItem, width int, pal palette, now time.Time) string {
+	if item.plan == nil || planRailFolded(item) {
+		return ""
+	}
+	switch strings.TrimSpace(item.plan.Status) {
+	case "done", "failed", "cancelled":
+		if !item.entry.EndedAt.IsZero() {
+			return sinceAt(item.entry.EndedAt, now)
+		}
+		return ""
+	}
+	var parts []string
+	if item.plan.Total > 0 {
+		if progress := planProgress(*item.plan, width, pal); progress != "" {
+			parts = append(parts, progress)
+		}
+	}
+	if reason := item.status().Reason; reason != "" {
+		parts = append(parts, reason)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "  ")
 }
 
 // planTitleFor returns the title the store and a plan-born node share.
