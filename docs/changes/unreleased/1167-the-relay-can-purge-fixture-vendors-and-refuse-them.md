@@ -1,7 +1,7 @@
 ---
 kind: added
 title: the relay can purge fixture vendors and refuse them at the door
-pr: 0000
+pr: 1167
 surface: [engine]
 invalidates:
   - "The relay accepted any row whose model and judge matched `<vendor>/<id>`, and a stored fixture row — model vendor `crew`, judge vendor `other` — could only be removed one key at a time with `wrangler kv key delete`. `validateRow` now refuses a row whose model or judge vendor is not in `ALLOWED_VENDORS` when that variable is set, and `relay/tools/purge.js` lists and deletes the stored keys that carry a fixture vendor."
