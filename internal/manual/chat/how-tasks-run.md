@@ -969,6 +969,34 @@ in *What codeaf is, and how you start it* says exactly what that session reads. 
 exists because a task reports work as *its own*, and one that fast-forwarded onto `main`
 really did report somebody else's fixes as the thing it had just built.
 
+## Can a task clone a repository? Inside a repository, no — but in a folder that is not one, yes
+
+The rule above is about **whose work** a command would take. A task normally works in a copy
+of your repository, so its copy shares your object store and every branch in it — and a
+clone there would bring in work the task did not do. **In that case `git clone` is refused
+with the same sentence as `pull` and `fetch`:**
+
+> git clone is not yours to run: it would bring in work this task did not do, and this task
+> reports what it writes as its own. Look with git status, diff, log and show — any branch,
+> as much as you want. What you write with write and edit in this copy comes home on its
+> own.
+
+**But a folder that is not a repository holds none of your work to protect.** A run worker
+handed an empty `-w` folder, or a task whose objective is "clone repository X, check out
+commit Y, then implement Z", is standing somewhere with no copy of yours to answer for — and
+there the guard does not apply at all: `git clone`, `git checkout`, `git fetch`, `git pull`,
+`git merge` and the rest run as they would at your terminal. An objective whose first step
+is a `git clone` is the work, not a reach for somebody else's commits.
+
+The decision is read off the task's **workspace root**, so a repository the task clones into
+a **subfolder** does not switch the guard back on for the rest of the run — the guard looks
+at where the task stands, not at whatever a later command left beside it.
+
+**One thing is refused wherever a task stands, and it is a different rule:** `git push`, and
+the rest of the road home. A task's work comes home through its landing, not over a remote,
+so a push from a folder that is not a repository is refused exactly as one from inside a
+repository is — *Can a task push, or open a pull request?* above says what it reads.
+
 ## How a task reports back to you
 
 When a task lands, its **report** begins with the first **3 non-empty lines** of its final
