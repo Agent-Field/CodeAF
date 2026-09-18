@@ -558,12 +558,16 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		return
 	}
 	const doesNotHold = "does not hold:"
+	const checkAnswer = "check:"
 	text := strings.TrimSpace(result)
-	if !strings.HasPrefix(text, doesNotHold) {
+	prefix := doesNotHold
+	if strings.HasPrefix(text, checkAnswer) {
+		prefix = checkAnswer
+	} else if !strings.HasPrefix(text, doesNotHold) {
 		return
 	}
 	leaf := s.checkOf[check.ID]
-	sentence := strings.TrimSpace(strings.TrimPrefix(text, doesNotHold))
+	sentence := strings.TrimSpace(strings.TrimPrefix(text, prefix))
 	if leaf == "" || sentence == "" {
 		return
 	}
@@ -572,7 +576,7 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		return
 	}
 	_, _ = s.store.AddNote(leaf, "check", sentence)
-	if strings.HasPrefix(checked.Title, fixTitlePrefix) {
+	if prefix == checkAnswer || strings.HasPrefix(checked.Title, fixTitlePrefix) {
 		return
 	}
 	id := s.store.NextID()
