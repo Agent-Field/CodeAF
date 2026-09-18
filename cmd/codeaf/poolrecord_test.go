@@ -693,3 +693,126 @@ func TestPoolJudgeHookWritesNothingWhenEveryCandidateAnswersNothing(t *testing.T
 		t.Fatalf("a landing no judge could score billed %d rows", len(usage))
 	}
 }
+
+// decodeSweepLast reads the sweep's own record of the run it made.
+func decodeSweepLast(t *testing.T, profileDir string) sweepLast {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(config.ProfilePath(profileDir, "pool"), "sweep-last.json"))
+	if err != nil {
+		t.Fatalf("the sweep-last record: %v", err)
+	}
+	var last sweepLast
+	if err := json.Unmarshal(data, &last); err != nil {
+		t.Fatalf("the sweep-last record does not parse: %v", err)
+	}
+	return last
+}
+
+// TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself walks two
+// waiting rows through the real sweep and reads back the record it leaves: what
+// it judged, what its budget left, and — the pending file claimed whole — that
+// the file is gone and the record is none the less there.
+func TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{APIKey: "test-key"}
+	var asked []string
+	first := poolTestLanding()
+	first.ID, first.Attempt = 7, 1
+	second := poolTestLanding()
+	second.ID, second.Attempt = 9, 1
+	if err := writePendingLanding(profileDir, "do", first); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePendingLanding(profileDir, "exec", second); err != nil {
+		t.Fatal(err)
+	}
+	poolJudgeSweep(settings, profileDir, "", poolTestCatalog, poolTestAsk(settings, &asked), time.Now)
+
+	if len(asked) != 4 {
+		t.Fatalf("the sweep asked %d questions, want both rows' seats", len(asked))
+	}
+	last := decodeSweepLast(t, profileDir)
+	if last.Judged != 2 || last.Left != 0 || last.Cut {
+		t.Fatalf("the sweep's record says judged %d left %d cut %v, want both rows judged", last.Judged, last.Left, last.Cut)
+	}
+	if last.At.IsZero() {
+		t.Fatal("the sweep's record carries no moment")
+	}
+	info, err := os.Stat(filepath.Join(config.ProfilePath(profileDir, "pool"), "sweep-last.json"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("the sweep's record's mode is %v with err %v, want 0600", info, err)
+	}
+	if _, err := os.Stat(pendingPath(config.ProfilePath(profileDir, "pool"))); !os.IsNotExist(err) {
+		t.Fatal("a completed sweep left the pending file behind")
+	}
+}
+
+// TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo is the other end: the
+// budget runs out after the first row and the second waits for the next start,
+// and the record says judged one, left one, cut — the reading that keeps a cut
+// sweep from looking like a whole one.
+func TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	settings := config.Config{APIKey: "test-key"}
+	var asked []string
+	inner := poolTestAsk(settings, &asked)
+	base := time.Now()
+	late := false
+	now := func() time.Time {
+		if late {
+			return base.Add(poolSweepBudget + time.Minute)
+		}
+		return base
+	}
+	// The first question judged is where the budget ends: from the moment the
+	// ask answers, the sweep's clock reads past its own deadline, so the row
+	// after the one being judged is the one the budget leaves.
+	ask := func(model string) judge.Ask {
+		one := inner(model)
+		return func(ctx context.Context, system, user string) (string, error) {
+			late = true
+			return one(ctx, system, user)
+		}
+	}
+	first := poolTestLanding()
+	first.ID, first.Attempt = 7, 1
+	second := poolTestLanding()
+	second.ID, second.Attempt = 9, 1
+	if err := writePendingLanding(profileDir, "do", first); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePendingLanding(profileDir, "exec", second); err != nil {
+		t.Fatal(err)
+	}
+	poolJudgeSweep(settings, profileDir, "", poolTestCatalog, ask, now)
+
+	if len(asked) != 2 {
+		t.Fatalf("the sweep asked %d questions, want the first row's seats only", len(asked))
+	}
+	last := decodeSweepLast(t, profileDir)
+	if last.Judged != 1 || last.Left != 1 || !last.Cut {
+		t.Fatalf("a cut sweep's record says judged %d left %d cut %v, want the second row left", last.Judged, last.Left, last.Cut)
+	}
+}
+
+// A pool whose mode forbids reading runs no sweep and leaves no record: the
+// rows simply wait, and status says none yet until one runs.
+func TestPoolJudgeSweepLeavesNoRecordWhenThePoolCannotRead(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "off")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	poolJudgeSweep(config.Config{APIKey: "test-key"}, profileDir, "", poolTestCatalog, poolTestAsk(config.Config{}, new([]string)), time.Now)
+	if _, err := os.Stat(filepath.Join(config.ProfilePath(profileDir, "pool"), "sweep-last.json")); !os.IsNotExist(err) {
+		t.Fatal("a pool whose mode forbids reading left a sweep record")
+	}
+}

@@ -392,6 +392,176 @@ func TestPoolStatusJSONCarriesTheLastJudge(t *testing.T) {
 	}
 }
 
+// seedPendingRows writes pending rows the way the doors leave them, by hand
+// rather than through writePendingLanding: the writer stamps the moment
+// itself, and a status test needs to hold the ages still.
+func seedPendingRows(t *testing.T, dir string, rows ...pendingLanding) {
+	t.Helper()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for _, row := range rows {
+		data, err := json.Marshal(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body.Write(data)
+		body.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "pending.jsonl"), []byte(body.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seedJudgedMarker lays down the marker the judge leaves for a run it scored,
+// so status reads the row behind it as judged.
+func seedJudgedMarker(t *testing.T, dir string, id uint64, attempt int) {
+	t.Helper()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(judgedDir(poolDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(judgedMarkerPath(poolDir, id, attempt), []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seedSweepLast writes the sweep's record the way the sweep leaves it, so
+// status is read against what stands on disk.
+func seedSweepLast(t *testing.T, dir string, last sweepLast) {
+	t.Helper()
+	data, err := json.Marshal(last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "pool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pool", "sweep-last.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// status says what is waiting for a judge and what the last sweep did: the
+// pending file's unjudged rows with the oldest one's door and age, and the
+// sweep's own record of what it judged, what its budget left and whether the
+// deadline cut it. --json carries both records, and a row written before rows
+// carried a moment says an unknown age rather than inventing one.
+func TestPoolStatusCountsThePendingJudgeRowsAndSaysWhatTheLastSweepDid(t *testing.T) {
+	dir := t.TempDir()
+	do := poolTestLanding()
+	do.ID, do.Attempt = 7, 1
+	exec := poolTestLanding()
+	exec.ID, exec.Attempt = 9, 2
+	threeHoursAgo := poolClock(t)().Add(-3 * time.Hour)
+	seedPendingRows(t, dir,
+		pendingLanding{At: threeHoursAgo, Door: "do", Landing: do},
+		pendingLanding{Door: "exec", Landing: exec},
+	)
+	seedJudgedMarker(t, dir, 9, 2)
+	seedSweepLast(t, dir, sweepLast{
+		At: poolClock(t)().Add(-2 * time.Minute), Judged: 3, Left: 2,
+		BudgetUsed: 41, Cut: true,
+	})
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	if !strings.Contains(body, "pending judge: 1 · oldest do run 3h") {
+		t.Fatalf("status did not count the waiting rows:\n%s", body)
+	}
+	if !strings.Contains(body, "last sweep: 2m ago · judged 3 · 2 still pending · 41s of 10m") {
+		t.Fatalf("status did not say what the last sweep did:\n%s", body)
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		PendingJudge *struct {
+			Count      int        `json:"count"`
+			OldestDoor string     `json:"oldest_door"`
+			OldestAt   *time.Time `json:"oldest_at"`
+		} `json:"pending_judge"`
+		LastSweep *struct {
+			At         time.Time `json:"at"`
+			Judged     int       `json:"judged"`
+			Left       int       `json:"left"`
+			BudgetUsed int       `json:"budget_used"`
+			Cut        bool      `json:"cut"`
+		} `json:"last_sweep"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.PendingJudge == nil || answer.PendingJudge.Count != 1 || answer.PendingJudge.OldestDoor != "do" {
+		t.Fatalf("the waiting rows did not carry: %+v", answer.PendingJudge)
+	}
+	if got, err := time.Parse(time.RFC3339, "2026-09-17T21:00:00Z"); err != nil ||
+		answer.PendingJudge.OldestAt == nil || !answer.PendingJudge.OldestAt.Equal(got) {
+		t.Fatalf("the oldest row's moment is %v, want the row's own in RFC 3339", answer.PendingJudge.OldestAt)
+	}
+	if answer.LastSweep == nil || answer.LastSweep.Judged != 3 || answer.LastSweep.Left != 2 ||
+		answer.LastSweep.BudgetUsed != 41 || !answer.LastSweep.Cut {
+		t.Fatalf("the sweep's record did not carry: %+v", answer.LastSweep)
+	}
+	if got, err := time.Parse(time.RFC3339, "2026-09-17T23:58:00Z"); err != nil || !answer.LastSweep.At.Equal(got) {
+		t.Fatalf("the sweep's moment is %v, want the record's own in RFC 3339", answer.LastSweep.At)
+	}
+
+	// A row written before rows carried a moment is the oldest of them — it
+	// predates the stamp — and says so rather than inventing an age.
+	unknown := t.TempDir()
+	seedPendingRows(t, unknown,
+		pendingLanding{At: threeHoursAgo, Door: "do", Landing: do},
+		pendingLanding{Door: "exec", Landing: exec},
+	)
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, unknown, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "pending judge: 2 · oldest exec run age unknown") {
+		t.Fatalf("status did not say the oldest row's age is unknown:\n%s", out.String())
+	}
+}
+
+// An install nothing has reached — no pending file, no sweep record — says so
+// in the two sentences a nothing is said in here, and the reading form writes
+// nothing while it looks.
+func TestPoolStatusSaysWhenNothingWaitsAndNoSweepHasRun(t *testing.T) {
+	quiet := t.TempDir()
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	if !strings.Contains(body, "pending judge: none") {
+		t.Fatalf("status did not say nothing waits:\n%s", body)
+	}
+	if !strings.Contains(body, "last sweep: none yet") {
+		t.Fatalf("status did not say no sweep has run:\n%s", body)
+	}
+	if _, err := os.Stat(filepath.Join(quiet, "pool", "pending.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("status created the pending file it was only counting")
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"pending_judge":{"count":0}`) {
+		t.Fatalf("an absent pending file did not read as zero:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), `"last_sweep":null`) {
+		t.Fatalf("a missing sweep record was not said as null:\n%s", out.String())
+	}
+}
+
 // An empty profile is the state root's own profile, the way every other file
 // under the profile resolves — never a directory called "pool" beside wherever
 // the command happened to run.
