@@ -1861,7 +1861,11 @@ func tasksCardHead(item tasksItem, width int, pal palette, lit bool) string {
 	if room < 1 {
 		room = 1
 	}
-	return lead + placeSubject(fit(tasksLabel(item.entry), room), lit, pal)
+	label := tasksLabel(item.entry)
+	if item.plan != nil && item.plan.Total > 0 {
+		label += "  " + planProgress(*item.plan, width, pal)
+	}
+	return lead + placeSubject(fit(label, room), lit, pal)
 }
 
 // tasksCardTail is the second line of a phone card: what the work came to, where
