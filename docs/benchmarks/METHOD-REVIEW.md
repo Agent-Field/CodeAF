@@ -315,10 +315,38 @@ never recorded**, and a helper process that leaves the pane's tree — the shape
 count unless it is still a descendant when the window opens. Which invocation was used
 decides that, and nothing committed says.
 
-**Verdict on idle memory, revised: cannot decide — and not reproducible as it stands.** The
+**Verdict on idle memory, revised: cannot decide, and not reproducible as it stands.** The
 column stays out of any published table until a run records its own invocations and finds
 helper processes for the CLIs that have them. Its figures are not withdrawn; they are
 unverifiable, which is a different and more fixable thing.
+
+### Resolved, 2026-09-18: the walk was broken, and the published table did not come from the published script
+
+The cause was in the walk itself, not in the invocation. `tree_pids` read each
+`/proc/<pid>/task/*/children` file with `read -r -a kids ... || continue`. Those files carry
+no trailing newline, so `read` fills the array and then reports end of file, and `|| continue`
+discarded the children it had just read. The walk never descended, for any CLI, which is why
+all seven reported one process. `a1f1e805` tests the populated array rather than the read
+status, and `process-tree-recovery-2026-09-18.md` carries the timeline and a committed
+fixture that reports two processes for a helper appearing one second in and one process for a
+run with no helper.
+
+That resolves the column and raises something sharper about the 2026-09-17 table. The bug was
+present in the first committed version of the script, authored 2026-09-17 21:22, and the
+results file was committed at 21:38 the same evening. A script that cannot descend cannot
+report CodeAF at 2 processes or cursor-agent at 5. **So the published process counts were not
+produced by the published script.** Whatever produced them was never committed, which is the
+suspicion this review already recorded, now with the script ruled out rather than suspected.
+The lesson stands as written elsewhere in this file: archive the invocation with the table, or
+the table cannot be defended.
+
+On the rerun, the fixed script reports CodeAF at 2 processes with the engine daemon named and
+its own PSS given, and reports 1 process for the other six with `procs_seen` showing the
+helpers they start and reap. The figure of record for CodeAF becomes about 80 MB PSS, above
+the 66.4 MB published and well above the 38.7 MB that a defective run produced. The
+correction runs against us and every competitor's row moved too, five of the six downward, so
+the column is retired and measured again rather than patched. `results-2026-09-18.md` has the
+session.
 
 ### Binary identity: which binary a table names is not which binary ran
 
