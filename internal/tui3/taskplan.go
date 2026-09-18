@@ -898,8 +898,22 @@ func (a *app) taskPlanBody(width int) []string {
 	if n := len(a.taskSheet.planBack); n > 0 {
 		add(pal.dim("esc/← " + a.taskSheet.planBack[n-1].Row.Title))
 	}
-	if row := planTelemetryLine(page.Row); row != "" {
+	if row := planPageTelemetryLine(page); row != "" {
 		add(pal.dim(row))
+	}
+	if waits := page.WaitRows; len(waits) > 0 {
+		section("waits")
+		own := map[string]bool{}
+		for _, id := range page.Row.Waits {
+			own[id] = true
+		}
+		for _, row := range waits {
+			if own[row.ID] {
+				add(pal.ink(strings.TrimSpace(page.Row.Title) + railSep + "waits: " + strings.TrimSpace(row.Title)))
+				continue
+			}
+			add(pal.ink(strings.TrimSpace(row.Title) + railSep + "waits: " + strings.TrimSpace(page.Row.Title)))
+		}
 	}
 	if desc := strings.TrimSpace(page.Description); desc != "" {
 		section("description")
@@ -1085,4 +1099,29 @@ func planChildWordWithKin(row session.PlanTaskRow, kin planKin) string {
 		return word
 	}
 	return title
+}
+
+// planPageTelemetryLine adds the two subtree figures to the task's own header
+// reading. Running and queued are separate facts and each disappears at zero.
+func planPageTelemetryLine(page session.PlanTaskPage) string {
+	segs := []string{}
+	if own := planTelemetryLine(page.Row); own != "" {
+		segs = append(segs, own)
+	}
+	running, queued := 0, 0
+	for _, row := range page.Children {
+		switch strings.TrimSpace(row.Status) {
+		case "ready", "claimed", "running":
+			running++
+		case "pending":
+			queued++
+		}
+	}
+	if running > 0 {
+		segs = append(segs, itoa(running)+" running")
+	}
+	if queued > 0 {
+		segs = append(segs, itoa(queued)+" queued")
+	}
+	return strings.Join(segs, railSep)
 }
