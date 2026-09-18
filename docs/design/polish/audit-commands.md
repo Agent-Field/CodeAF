@@ -424,8 +424,9 @@ and the moment `make build` stamps, then the Go toolchain and the platform from
 the runtime. It stays ONE line because an external harness reads it to decide
 whether codeaf is installed at all.
 And a binary that cannot name its source says so rather than wearing the bare
-word `dev` like a release name: `codeaf dev (no revision stamped — built outside
-a git checkout) · go1.26.5 linux/arm64`.
+word `dev` like a release name: `codeaf dev (no revision stamped — no .git
+directory for the toolchain to read; `make build` stamps one if git can) ·
+go1.26.5 linux/arm64`.
 
 CORRECTED 2026-09-18: this row said **`debug.ReadBuildInfo` was not the fallback
 row 29 assumed it was** — that the tree embeds no `vcs.revision` under a plain
@@ -435,8 +436,17 @@ row 29 assumed it was** — that the tree embeds no `vcs.revision` under a plain
 `v0.2.2-0.20260918035413-2ab365d6cb3e`, and `--version` prints that pseudo-version
 with no linker stamp anywhere. The same build from a copy of the tree with no
 `.git` embeds no vcs rows and is the case that prints the absence. So the linker
-stamp is not the only source, and the sentence names the condition — no checkout
-to read — instead of a Makefile target.
+stamp is not the only source.
+
+AND THE CONDITION IS THE `.git` DIRECTORY, NOT THE CHECKOUT. Measured on
+go1.26.5 on both linux/arm64 and darwin/arm64: in a git **worktree**, where
+`.git` is a file holding a path and `git rev-parse --is-inside-work-tree` answers
+true, `go build` embeds no vcs rows — with `-buildvcs=true` explicitly, and with
+no error either way — so the dev line appears inside a checkout. There
+`make build` stamps correctly, because BUILD_REV is `git rev-parse --short HEAD`,
+which a worktree answers. So the sentence names the directory the toolchain looks
+for and offers `make build` conditionally: it rescues a worktree, and nothing
+rescues a tree with no git at all.
 Test: `TestVersionNamesTheBuildAndTheMachineItWasBuiltFor`. Two smoke tests that
 asserted the whole line by equality now assert the stamped revision is its
 prefix.

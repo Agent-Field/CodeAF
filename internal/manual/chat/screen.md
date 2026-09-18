@@ -1427,12 +1427,16 @@ build  1265feda (dirty) built 2026-08-27 13:28
 `codeaf --version`, `codeaf version` and `codeaf -v` print the same identity without
 opening a conversation, on one line, with the Go toolchain and the platform after it —
 `codeaf 1265feda (dirty) built 2026-08-27 13:28 · go1.26.5 darwin/arm64` — which is what a
-defect report needs. A bare `go build` inside a checkout carries a revision of its
+defect report needs. A bare `go build` in an ordinary clone carries a revision of its
 own: the toolchain stamps it and the version reads
 `codeaf v0.2.2-0.20260918035413-2ab365d6cb3e`, a pseudo-version rather than the short
-revision `make build` writes. A binary built where there is no git checkout to read — an
-archive, a vendored copy, `-buildvcs=false` — carries no revision at all, and says so:
-`codeaf dev (no revision stamped — built outside a git checkout) · go1.26.5 darwin/arm64`. On a session opened with `--host`, `/status` names the build on
+revision `make build` writes. What the toolchain wants is a `.git` **directory** beside
+`go.mod`, which is not the same as being in a checkout: in a git worktree `.git` is a file,
+git answers normally, and `go build` embeds no revision at all — with `-buildvcs=true` and
+without an error. A copied or archived tree is the same absence. Either way the line says so:
+`codeaf dev (no revision stamped — no .git directory for the toolchain to read; `make build`
+stamps one if git can) · go1.26.5 darwin/arm64`. In a worktree `make build` does stamp, because
+its own revision comes from git rather than from the toolchain. On a session opened with `--host`, `/status` names the build on
 the machine holding the conversation, not the surface machine's build.
 
 If the `codeaf` file is rebuilt while this process is still open, codeaf writes one quiet
