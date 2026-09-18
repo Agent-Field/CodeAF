@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -206,6 +207,28 @@ type headlessOutcome struct {
 	// clean envelope was "nothing is listed, so perhaps nothing checked it"
 	// (#618).
 	JudgedBy string `json:"judged_by,omitempty"`
+	// KeptBranch names the branch the errand's own work is standing on, on the
+	// runs that did not settle whole. It is the answer to "where is the work
+	// this run would not land?" — the one question a non-verified run left a
+	// reader to answer by hand. A `do` errand works in place, so this is the
+	// workspace's own branch: the work is real and it is in that tree, on that
+	// branch, and no field used to say so.
+	//
+	// It is empty on every run that settled whole, because that run's work is on
+	// the branch its caller already reads. A run whose work is on no named branch
+	// — a detached HEAD, a workspace that is not a repository, a run deferred to
+	// another process — names none, exactly as a run that kept nothing does.
+	KeptBranch string `json:"kept_branch,omitempty"`
+	// Verdict is what left the work where KeptBranch names it, in the record's
+	// own words: `failed` for a node the store settled failed or cancelled, and
+	// `unverified` for one that ran and then nothing could say the work holds.
+	//
+	// IT IS NOT A SECOND `stop` UNDER A NEW NAME. `stop` names why THIS process
+	// ended, in the envelope's one vocabulary; this names what the work's own
+	// record says became of it, in the task record's. They travel together
+	// because a script branching on either wants both — how much is wrong and
+	// what the store decided — and neither can be read off the other.
+	Verdict string `json:"verdict,omitempty"`
 	// Checklist is what became of each thing the request asked for, on exactly
 	// the runs whose journal carried a checklist. It is a field because machine
 	// callers must never parse the bounded person's account, and it is never
@@ -439,10 +462,20 @@ func doErrand(request doRequest) error {
 	//
 	// The catalog is seated under the ladder first, because a tier row may say
 	// `auto` and that word is answered from the rows this process already holds
-	// (useAutoSeats). It is read keyless: a run with no key fails further down
-	// with a sentence about the key, and a seat that fell to the table row on
-	// the way there would report a model this run never meant to use.
-	if settings, err := config.LoadKeyless(); err == nil {
+	// (useAutoSeats). The seating read is the one the RUN will use — the key
+	// included, since the environment outranks the profile file — because
+	// [newSharedCatalog] is built once: a catalog seated from a KEYLESS read
+	// would stay keyless for the whole process, and a run that meant to call
+	// with a key would resolve its seats against a catalog that never fetched
+	// its rows. A run with no key anywhere still seats keyless here — the
+	// keyless load is the second rung, kept so a profile with no key prints its
+	// seat line before the missing-key sentence — and a warm cache is read with
+	// or without a key.
+	settings, err := config.Load()
+	if err != nil {
+		settings, err = config.LoadKeyless()
+	}
+	if err == nil {
 		useAutoSeats(settings)
 	}
 	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
@@ -706,10 +739,109 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// A resident owns a different registry and cannot be spoken for here.
 	if deferredTo == nil {
 		outcome.workspace = workspaceRoot
+		// AND WHERE THE WORK IT DID NOT LAND IS STANDING, which the outcome
+		// cannot answer until there IS a workspace: it is read off the directory
+		// the errand worked in, at the moment the run is over. A `do` errand
+		// works IN PLACE — it edits the directory it was handed, on whichever
+		// branch is checked out there — so that directory's own branch is where
+		// its work is standing, and it is the only branch on this road the way a
+		// chat `/task` has its own task/<slug> worktree. A run that settled whole
+		// has no verdict and names no branch; a workspace that is not a
+		// repository, or whose HEAD is detached, names none either — there is no
+		// branch a person could check out.
+		outcome.KeptBranch = errandKeptBranch(outcome)
 		outcome = groundedAfterShutdown(outcome, produced)
 	}
 	priceErrand(graph, session, openedAt, &outcome)
+	// THE ERRAND LEAVES A PENDING JUDGE RECORD AND NOTHING WAITS ON ONE. It is
+	// written here, after priceErrand, so the run's own bill is settled first;
+	// the judge that picks the row up later bills its own seat's row in the
+	// usage ledger and never this envelope — the receipt above is a read of
+	// SpendSinceSeq and may not disagree with it. A run this process handed to a
+	// resident settles in that process instead, so it leaves no row here: the
+	// work is not ours to describe, and the model and deliverable would be wrong.
+	if deferredTo == nil {
+		writeDoPendingLanding(request, seats, outcome)
+	}
 	return outcome, nil
+}
+
+// writeDoPendingLanding leaves the pending record `codeaf do` owns, for the
+// Model Pool's judge to score on the next process that holds a live key — the
+// way a chat task's landing reaches the live judge through
+// session.Config.TaskLanded. The do door is not the chat door: it runs the
+// resident's brain over a store journal and builds no session.Agent, so that
+// seam never fires for it and the row is written by hand here instead.
+//
+// Nothing waits on the judge. The write is one append (poolrecord.go's
+// writePendingLanding), the process exits at once, and a failure to write is
+// debug-only — a landing nobody could score is an ordinary state and must not
+// cost the run its result.
+func writeDoPendingLanding(request doRequest, seats config.Seats, outcome headlessOutcome) {
+	profileDir := config.ProfileDir()
+	if !config.ModelPoolAt(profileDir).CanRead() {
+		return
+	}
+	landing := session.TaskLanding{
+		// THE ID IS MINTED FROM THE RUN'S START IN NANOSECONDS so two runs never
+		// share one: the restart sweep dedups on it (poolrecord.go's judged
+		// markers, keyed id-and-attempt), and a repeated id would swallow the
+		// second run's judgement. The value is well past any node id this store
+		// hands out, so a headless landing never collides with a chat one.
+		ID:          uint64(outcome.started.UnixNano()),
+		State:       session.TaskUnverified,
+		Brief:       request.task,
+		Deliverable: outcome.Deliverable,
+		Wrote:       outcome.Artifacts,
+		Changed:     len(outcome.Artifacts),
+		Worker:      seats.Work.Model,
+		Tokens:      outcome.tokensIn + outcome.tokensOut,
+		CostUSD:     outcome.Spend,
+	}
+	if err := writePendingLanding(profileDir, headlessSurface, landing); err != nil && trace.Enabled() {
+		log.Printf("do: pending landing: %v", err)
+	}
+}
+
+// errandKeptBranch names the branch an errand's own work is standing on, and is
+// empty on every run that needs no such name.
+//
+// IT IS COMPUTED ONLY WHERE IT MEANS SOMETHING. A run with no verdict settled
+// whole — its work is on the branch its caller already reads, and a second name
+// for it would be a fact dressed as a finding. And a directory that is not a
+// repository, or whose HEAD is detached (`git rev-parse --abbrev-ref HEAD`
+// answers the bare word `HEAD`), names no branch a person could check out, so
+// it answers empty rather than a placeholder. Both are ordinary states and
+// neither is an error: this decides how a run is described, and a git that
+// cannot answer is not evidence about the work.
+func errandKeptBranch(outcome headlessOutcome) string {
+	if strings.TrimSpace(outcome.Verdict) == "" || strings.TrimSpace(outcome.workspace) == "" {
+		return ""
+	}
+	return keptBranchIn(outcome.workspace)
+}
+
+// keptBranchIn names the branch a directory's own work is standing on, and is
+// empty on every directory that names no branch a person could check out.
+// It is the ONE reading of that question, shared by the three headless doors
+// (#1182): a directory that is not a repository, and one whose HEAD is
+// detached (`git rev-parse --abbrev-ref HEAD` answers the bare word `HEAD`),
+// answer empty rather than a placeholder. Both are ordinary states and neither
+// is an error: this decides how a run is described, and a git that cannot
+// answer is not evidence about the work.
+func keptBranchIn(dir string) string {
+	if strings.TrimSpace(dir) == "" {
+		return ""
+	}
+	out, err := gitIn(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return ""
+	}
+	branch := strings.TrimSpace(out)
+	if branch == "" || branch == "HEAD" {
+		return ""
+	}
+	return branch
 }
 
 // priceErrand puts the journal's own answer on the outcome.
@@ -2437,6 +2569,26 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 				outcome.Deliverable = strings.TrimSpace(outcome.Deliverable) + "\n\n" + reason
 			}
 		}
+		// WHAT LEFT THE WORK WHERE IT IS, in the record's own word. It is read
+		// here, after the roads have joined and `stop` has had its last word, so
+		// the verdict and the stop cannot disagree: a node the store settled
+		// failed or cancelled is `failed`, and any other ending that ran and did
+		// not settle whole is `unverified` — nobody could say the work holds.
+		//
+		// A run that settled whole takes NEITHER word: its work is on the branch
+		// its caller already reads and nothing left it anywhere else. A run that
+		// never started (error), did nothing (question, price) says nothing
+		// either, because there is no work to account for. And the word is
+		// `TaskFailed`/`TaskUnverified` and not a string typed here: these are the
+		// same words the task record carries, and a reader comparing the envelope
+		// against `tasks.json` must read one vocabulary, not two.
+		switch {
+		case final.Status == store.Failed || final.Status == store.Cancelled:
+			outcome.Verdict = string(session.TaskFailed)
+		case outcome.stop == stopIncomplete, outcome.stop == stopUnchecked,
+			outcome.stop == stopBudget, outcome.stop == stopTurnCap, outcome.stop == stopDeadline:
+			outcome.Verdict = string(session.TaskUnverified)
+		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
 		// One list, once. Grounding has had its look at the narration as the
 		// worker wrote it, so the worker's own file list has done its job and
@@ -3135,6 +3287,8 @@ func errandEnvelope(outcome headlessOutcome) resultEnvelope {
 		Calls:           outcome.calls,
 		Rounds:          outcome.rounds,
 		Redispatches:    outcome.redispatches,
+		KeptBranch:      outcome.KeptBranch,
+		Verdict:         outcome.Verdict,
 		Extra:           legacyErrandFields(outcome),
 	})
 }

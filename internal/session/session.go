@@ -1098,6 +1098,9 @@ type TaskLanding struct {
 	High        string
 	CostUSD     float64
 	Tokens      int
+	// Attempt is which run of this node the landing is, so a per-run judged
+	// marker survives a resettle (same id, re-judged) and a re-run (new attempt).
+	Attempt int
 }
 
 type Config struct {
@@ -1853,6 +1856,19 @@ type Config struct {
 	// (#941). A worker leaves it empty; the zero value is the node it always was.
 	crewRole roles.Role
 
+	// checksNode is the node an agent BUILT TO CHECK one is checking — the
+	// auditor a node's landing waits on, which reads a node's finished work and
+	// is deliberately NOT that node ([Config.taskID] stays 0 for it, session.go's
+	// own law). It exists so a checker's records can say WHICH node it is about:
+	// the node on the model-call log's row (loop.go) and the task on the usage
+	// ledger's (usage_ledger.go), neither of which could be filled from taskID
+	// without the checker claiming to be the node it judges.
+	//
+	// It is set by the one builder that has the node in hand
+	// ([Agent.newAuditAgent]) and nowhere else; a worker leaves it zero, because
+	// it IS its node and taskID already says so.
+	checksNode uint64
+
 	// repairRound marks this agent as ONE REPAIR ROUND'S FRESH WORKER
 	// (task_audit.go's [Agent.repairNode]) rather than the node's own. It
 	// exists for the usage ledger's seat ([Agent.agentKind]): a round is the
@@ -2181,6 +2197,19 @@ type Agent struct {
 	// ([Agent.stashedWork]).
 	stashBefore     map[string]bool
 	stashBeforeRead bool
+
+	// ignoredBefore is every gitignored file the deliverable tree ALREADY HELD
+	// when the run began, by path, and ignoredBeforeRead says that reading
+	// happened — which is not the same as the set being empty, because a
+	// repository with no ignored files at all reads as none
+	// ([Agent.readIgnoredBefore]).
+	//
+	// IT IS THE SAME SUBTRACTION THE STASH GETS, FOR THE SAME REASON. Only
+	// what appeared during the run may be named a build product this run left
+	// ([Agent.ignoredBuildProducts]), and with no photograph the honest answer
+	// about the tree is silence rather than a guess.
+	ignoredBefore     map[string]bool
+	ignoredBeforeRead bool
 
 	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
 	// so one unit of work whose job somebody else did is said once rather than

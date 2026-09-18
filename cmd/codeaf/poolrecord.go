@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -36,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
@@ -59,13 +61,13 @@ const judgeTries = 3
 // poolJudgeHook builds the session's landing reader. Nil is off, for the pool
 // index's reason: a mode that forbids reading runs no judge and writes
 // nothing, and the door then hands the engine no hook at all.
-func poolJudgeHook(settings config.Config, profileDir, workspace string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) func(session.TaskLanding) {
+func poolJudgeHook(settings config.Config, profileDir, workspace string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string) func(session.TaskLanding) {
 	if !config.ModelPoolAt(profileDir).CanRead() {
 		return nil
 	}
 	return func(landing session.TaskLanding) {
 		defer guard.Recover("pool/judge")
-		poolJudgeLanding(settings, profileDir, models, ask, now, landing)
+		poolJudgeLanding(settings, profileDir, models, ask, now, door, landing)
 	}
 }
 
@@ -114,31 +116,47 @@ func writeJudgeLast(poolDir string, last judgeLast) {
 	}
 }
 
+// poolSeatID is the spelling of a seat's model once it enters the pool's
+// records: the thinking level and the leading `~` alias marker come off — the
+// same two things internal/catalog's normaliser takes off before a lookup,
+// mirrored here because that one (normalizeID) is unexported. The pool's rows
+// and the relay's schema name a model by its bare `<vendor>/<id>`; the marker
+// is this client's own routing and rides only the paths that call the
+// provider, never the pool's copy of the id.
+func poolSeatID(seat string) string {
+	model, _ := roles.SplitEffort(seat)
+	return strings.TrimPrefix(model, "~")
+}
+
 // poolJudgeLanding scores one landed task and records what came back. The
 // order is the sheet's own law: every score is observed before the rows are
 // appended, the sheet is saved once, and the picker's own-cells seam is
 // repointed at the new cells so the very next pick in this process reads them.
-func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, landing session.TaskLanding) {
+func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
 	pool := config.ModelPoolAt(profileDir)
 	poolDir := config.ProfilePath(profileDir, "pool")
+	// A seat's id enters the pool spelled bare (poolSeatID): the sheet, the
+	// outbox and the relay read the bare `<vendor>/<id>`, and the same-vendor
+	// exclusion below must see the vendor the marker rides on.
 	seats := map[judge.Role]string{
-		judge.RoleWorker: landing.Worker,
+		judge.RoleWorker: poolSeatID(landing.Worker),
 	}
 	if landing.High != "" {
-		seats[judge.RoleHigh] = landing.High
+		seats[judge.RoleHigh] = poolSeatID(landing.High)
 	}
 	candidates := judge.Candidates(models(), seats, judge.DefaultFloor)
 	// The seats are said in the crew's own order — the worker, then the high
 	// seat when the run held one — so the record reads the way the crew ran.
-	held := []string{landing.Worker}
+	held := []string{poolSeatID(landing.Worker)}
 	if landing.High != "" {
-		held = append(held, landing.High)
+		held = append(held, poolSeatID(landing.High))
 	}
 	if len(candidates) == 0 {
 		if trace.Enabled() {
 			log.Printf("model pool: no judge to ask about task %d", landing.ID)
 		}
 		writeJudgeLast(poolDir, judgeLast{At: now(), Task: landing.ID, Seats: held, Reason: errNoJudgeCandidate})
+		markJudged(poolDir, landing.ID, landing.Attempt)
 		return
 	}
 	if len(candidates) > judgeTries {
@@ -200,6 +218,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		if trace.Enabled() {
 			log.Printf("model pool: no judge scored task %d", landing.ID)
 		}
+		markJudged(poolDir, landing.ID, landing.Attempt)
 		return
 	}
 	scored := make([]string, 0, len(scores))
@@ -233,7 +252,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		}
 	}
 	day := now().UTC().Format("2006-01-02")
-	if err := recorder.Record(scores, judgeID, "task", poolSize(landing.Tokens), day); err != nil && trace.Enabled() {
+	if err := recorder.Record(scores, judgeID, door, poolSize(landing.Tokens), day); err != nil && trace.Enabled() {
 		log.Printf("model pool: record: %v", err)
 	}
 	if err := record.SaveSheet(record.OwnSheetPath(poolDir), sheet); err != nil {
@@ -242,6 +261,10 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		}
 		return
 	}
+	// The run is judged and its scores are saved: mark it so the restart sweep
+	// never judges it again. The live hook writes this but does not read it, so a
+	// resettle still re-judges; only the sweep reads it.
+	markJudged(poolDir, landing.ID, landing.Attempt)
 	// The next pick in this process reads the new cells at once, the same way
 	// the picker reads them at start-up (poolindex.go's poolOwnCellsFor): a
 	// closing one is the install's own evidence and is never held to the
@@ -337,4 +360,272 @@ func recordPoolUsage(settings config.Config, model string, used *ai.Usage) {
 		}
 	}
 	session.RecordUsage(session.UsageLedgerPath(), line)
+}
+
+// poolSweepBudget bounds the whole restart-time sweep, checked between landings,
+// so a backlog of unjudged runs cannot hold the sweep's own goroutine open past a
+// few landings' worth of the per-landing bound. It is generous because the sweep
+// runs on its own goroutine and nobody waits on it.
+const poolSweepBudget = 10 * time.Minute
+
+// pendingLanding is one row of the pool's pending file: a landing a door recorded
+// for the restart sweep to judge, under the door it ran on. At is the moment the
+// row was written — the only when a row has, and what status ages it by; rows
+// written before the stamp existed read as zero and say an unknown age rather
+// than inventing one. The optional fields are forward room for a later grader (an
+// acceptable/source verdict, a role->model map, a lease propensity); this build
+// writes only At, Door and Landing, and the sweep ignores fields it does not know
+// rather than refusing a row.
+type pendingLanding struct {
+	At         time.Time           `json:"at,omitempty"`
+	Door       string              `json:"door"`
+	Landing    session.TaskLanding `json:"landing"`
+	ByModel    map[string]string   `json:"by_model,omitempty"`
+	Propensity *float64            `json:"propensity,omitempty"`
+	Acceptable *bool               `json:"acceptable,omitempty"`
+	Source     string              `json:"source,omitempty"`
+}
+
+func pendingPath(poolDir string) string { return filepath.Join(poolDir, "pending.jsonl") }
+
+// writePendingLanding appends one landing to the pool's pending file for the
+// restart sweep to judge later, under the door it ran on. It is the seam the
+// headless doors (do, exec, run) use: they have no session graph and so no live
+// landing hook, and the chat door judges live and does not write here. The write
+// is ONE O_APPEND of one line, so concurrent doors sharing a profile never tear
+// each other's rows, and the row is stamped with the moment it was written,
+// which is the only when a row has and what status ages it by.
+func writePendingLanding(profileDir, door string, landing session.TaskLanding) error {
+	poolDir := config.ProfilePath(profileDir, "pool")
+	if err := os.MkdirAll(poolDir, 0o700); err != nil {
+		return err
+	}
+	// The row is what the restart sweep scores from, so the seats it carries
+	// are written spelled bare (poolSeatID), not in the door's routing spelling.
+	landing.Worker = poolSeatID(landing.Worker)
+	landing.High = poolSeatID(landing.High)
+	data, err := json.Marshal(pendingLanding{At: time.Now(), Door: door, Landing: landing})
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	f, err := os.OpenFile(pendingPath(poolDir), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(data)
+	return err
+}
+
+// The judged markers record, per run, that a landing was judged, so the restart
+// sweep never judges the same run twice. The key is id AND attempt because a
+// re-audit (resettle) re-judges the same node id and a re-run lands a new attempt
+// of it — a per-id-only marker would swallow either.
+func judgedDir(poolDir string) string { return filepath.Join(poolDir, "judged") }
+
+func judgedMarkerPath(poolDir string, id uint64, attempt int) string {
+	return filepath.Join(judgedDir(poolDir), fmt.Sprintf("%d-%d", id, attempt))
+}
+
+func alreadyJudged(poolDir string, id uint64, attempt int) bool {
+	_, err := os.Stat(judgedMarkerPath(poolDir, id, attempt))
+	return err == nil
+}
+
+func markJudged(poolDir string, id uint64, attempt int) {
+	defer guard.Recover("pool/judged-mark")
+	if err := os.MkdirAll(judgedDir(poolDir), 0o700); err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: judged marker: %v", err)
+		}
+		return
+	}
+	if err := os.WriteFile(judgedMarkerPath(poolDir, id, attempt), []byte{}, 0o600); err != nil && trace.Enabled() {
+		log.Printf("model pool: judged marker: %v", err)
+	}
+}
+
+// sweepLast is the small record the restart sweep leaves at its end, for the
+// one reading that would otherwise need --debug: what it judged, what its
+// budget left waiting, and whether the deadline ended it with rows left. Cut
+// is Left's own word — rows only wait past a sweep the deadline cut short —
+// and BudgetUsed is the seconds the sweep spent of its own poolSweepBudget.
+type sweepLast struct {
+	At         time.Time `json:"at"`
+	Judged     int       `json:"judged"`
+	Left       int       `json:"left"`
+	BudgetUsed int       `json:"budget_used"`
+	Cut        bool      `json:"cut"`
+}
+
+// writeSweepLast leaves the record under the pool directory, mode 0600 like
+// the records beside it. Its errors are debug-only, for the sweep's own
+// reason: a record that could not be written must not matter to a sweep
+// nobody is waiting on, and nobody reading the chat surface moves for it.
+func writeSweepLast(poolDir string, last sweepLast) {
+	defer guard.Recover("pool/sweep-last")
+	data, err := json.Marshal(last)
+	if err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: sweep-last: %v", err)
+		}
+		return
+	}
+	if err := os.MkdirAll(poolDir, 0o700); err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: sweep-last: %v", err)
+		}
+		return
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "sweep-last.json"), data, 0o600); err != nil && trace.Enabled() {
+		log.Printf("model pool: sweep-last: %v", err)
+	}
+}
+
+// poolJudgeSweep judges, at chat start, every landed run that never was: the
+// headless doors' pending rows, and the resumed session's own final-state nodes
+// that a process death left unjudged. It runs on its own goroutine, so the
+// session's checkpoint already reflects whatever recovery made of it and a node
+// that will run again is no longer in a final state. It is a no-op when the pool
+// cannot read or no judge-capable key is present — with no key the rows simply
+// wait. The whole sweep is bounded by poolSweepBudget, checked between landings,
+// and it leaves one record of itself at the end — what it judged, what the
+// budget left — for `pool status` to read.
+func poolJudgeSweep(settings config.Config, profileDir, tasksPath string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) {
+	defer guard.Recover("pool/judge-sweep")
+	if !config.ModelPoolAt(profileDir).CanRead() {
+		return
+	}
+	if strings.TrimSpace(settings.APIKey) == "" {
+		return
+	}
+	poolDir := config.ProfilePath(profileDir, "pool")
+	deadline := now().Add(poolSweepBudget)
+	started := now()
+	judged, left := sweepPending(settings, profileDir, poolDir, models, ask, now, deadline)
+	if strings.TrimSpace(tasksPath) != "" {
+		landed, err := session.LoadLandedForJudge(tasksPath)
+		if err != nil {
+			if trace.Enabled() {
+				log.Printf("model pool: sweep load: %v", err)
+			}
+		} else {
+			for i, landing := range landed {
+				if !now().Before(deadline) {
+					left += unjudgedLandings(poolDir, landed[i:])
+					break
+				}
+				if alreadyJudged(poolDir, landing.ID, landing.Attempt) {
+					continue
+				}
+				poolJudgeLanding(settings, profileDir, models, ask, now, "task", landing)
+				judged++
+			}
+		}
+	}
+	// The sweep's one record of itself, at its end: what it judged, what its
+	// budget left waiting, and whether the deadline ended it with rows left.
+	// Cut is left's own word — the only way rows wait past a sweep is the
+	// deadline ending it with rows behind the check.
+	writeSweepLast(poolDir, sweepLast{
+		At:         now(),
+		Judged:     judged,
+		Left:       left,
+		BudgetUsed: int(now().Sub(started) / time.Second),
+		Cut:        left > 0,
+	})
+}
+
+// unjudgedLandings counts the resumed session's own landings the sweep did not
+// reach: those behind a deadline cut, a judged marker excepted.
+func unjudgedLandings(poolDir string, landed []session.TaskLanding) int {
+	left := 0
+	for _, landing := range landed {
+		if !alreadyJudged(poolDir, landing.ID, landing.Attempt) {
+			left++
+		}
+	}
+	return left
+}
+
+// sweepPending claims the pending file with an atomic rename so concurrent doors
+// keep appending to a fresh one, then judges each row it claimed under that row's
+// own door. A leftover claim from a sweep a process death cut short is taken
+// first. It answers what the claims held: the landings judged and the rows the
+// deadline left waiting.
+func sweepPending(settings config.Config, profileDir, poolDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) (judged, left int) {
+	claim := pendingPath(poolDir) + ".sweeping"
+	judged, left = sweepClaim(settings, profileDir, poolDir, claim, models, ask, now, deadline)
+	if err := os.Rename(pendingPath(poolDir), claim); err != nil {
+		return judged, left
+	}
+	moreJudged, moreLeft := sweepClaim(settings, profileDir, poolDir, claim, models, ask, now, deadline)
+	return judged + moreJudged, left + moreLeft
+}
+
+// sweepClaim judges the rows of one claimed batch. A torn last line (a row
+// half-written when the rename landed) is skipped, not fatal; unknown future
+// fields are ignored; a row already judged is skipped. The claim is removed only
+// when every row was reached, so a deadline cut leaves the rest for the next
+// start, where the markers keep the already-judged rows from being scored twice.
+// It answers what it judged and how many unjudged rows the deadline left behind
+// it — the sweep's record needs both.
+func sweepClaim(settings config.Config, profileDir, poolDir, claim string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) (judged, left int) {
+	data, err := os.ReadFile(claim)
+	if err != nil {
+		return 0, 0
+	}
+	lines := strings.Split(string(data), "\n")
+	completed := true
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !now().Before(deadline) {
+			completed = false
+			left = countUnjudged(poolDir, lines[i:])
+			break
+		}
+		var row pendingLanding
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			continue
+		}
+		door := row.Door
+		if door == "" {
+			door = "task"
+		}
+		if alreadyJudged(poolDir, row.Landing.ID, row.Landing.Attempt) {
+			continue
+		}
+		poolJudgeLanding(settings, profileDir, models, ask, now, door, row.Landing)
+		judged++
+	}
+	if completed {
+		_ = os.Remove(claim)
+	}
+	return judged, left
+}
+
+// countUnjudged counts the rows of a claimed batch the sweep did not reach:
+// the lines behind a deadline cut, parsed the way the sweep reads them — a torn
+// line counted as nothing, a row already judged as not waiting.
+func countUnjudged(poolDir string, lines []string) int {
+	left := 0
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var row pendingLanding
+		if json.Unmarshal([]byte(line), &row) != nil {
+			continue
+		}
+		if alreadyJudged(poolDir, row.Landing.ID, row.Landing.Attempt) {
+			continue
+		}
+		left++
+	}
+	return left
 }

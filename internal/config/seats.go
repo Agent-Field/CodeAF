@@ -258,10 +258,24 @@ func TierSeatAt(profileDir, tier string) Seat {
 // family while the preset table is resolved under another.
 func tierSeatUnder(profileDir, family, tier string) Seat {
 	model, from, source, cleared := crewRow(profileDir, tier)
+	// WHETHER THE ROW ITSELF WAS WRITTEN, read before the fallback below can
+	// stand in for it. A row a person typed is a pin the pick must not recompute
+	// ([pickedSeat]), and that is a fact about the row's presence, not about
+	// whether its id happens to match the preset it sits in.
+	written := source == SeatCrew
+	// THE BUDGET A ROW NOBODY WROTE RUNS AT. A build this one shapes writes no
+	// crew word, and an unwritten row reads the default preset's own id — but a
+	// run that STORED a word on the crew row ([storedCrewWord]) named a budget,
+	// and the seat reads that word's table row instead. The pick may still
+	// compute it when the pick is off the table.
+	var byWord string
 	if source == "" {
 		source = SeatDefault
 		if !cleared {
 			model = defaultTierModel(family, tier)
+			if seat, ok := unwrittenSeat(profileDir, family, tier); ok {
+				model, source, byWord = seat.Model, seat.Source, seat.Crew
+			}
 		}
 	}
 	// A row that says auto resolves through the one seam both ladders share
@@ -280,11 +294,11 @@ func tierSeatUnder(profileDir, family, tier string) Seat {
 	// the table — exactly as it was. A cleared row is a deliberate answer
 	// ("follow the conversation") and no pick unsays it on this surface.
 	if !cleared {
-		if seat, ok := pickedSeat(profileDir, family, tier, model); ok {
+		if seat, ok := pickedSeat(profileDir, family, tier, model, written); ok {
 			return seat
 		}
 	}
-	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}
+	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from, Crew: byWord}
 }
 
 // ModelEnv and PlanModelEnv are the two variables the seats read. They are
@@ -628,7 +642,17 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 		// cleared on purpose still falls through — the pick answers for seats
 		// nobody named, and a cleared row is somebody naming emptiness.
 		if !cleared {
-			if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, ""); ok {
+			if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, "", false); ok {
+				return seat
+			}
+		}
+		// A STORED CREW WORD SEATS THE HEADLESS DOOR TOO ([unwrittenSeat]): the
+		// word names a budget, and the row nobody wrote reads that budget's own
+		// table row rather than the run's fallback — the same seat the
+		// conversation reads, so a word cannot mean one thing here and another in
+		// chat.
+		if !cleared {
+			if seat, ok := unwrittenSeat(profileDir, CrewSourceAt(profileDir), tier); ok {
 				return seat
 			}
 		}
@@ -647,8 +671,10 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 	}
 	// AND BETWEEN THE ROW AND ITS OWN RUNG, the pick: a written row holding
 	// the preset's own table value is the preset answering rather than a pin,
-	// and the pick computes it ([pickedSeat]); a hand-typed id keeps its rung.
-	if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, model); ok {
+	// and the pick computes it ([pickedSeat]) — unless the profile stores a crew
+	// word, which makes every written row a pin. A hand-typed id keeps its rung
+	// either way.
+	if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, model, source == SeatCrew); ok {
 		return seat
 	}
 	seat.Model, seat.Source, seat.From, seat.Crew = model, source, from, CrewAt(profileDir)

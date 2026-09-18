@@ -42,7 +42,7 @@ func (runtime *fakeServiceRuntime) Start(service store.Service) (int, time.Time,
 	return runtime.nextPID, service.StartedAt.Add(time.Minute), nil
 }
 
-func (runtime *fakeServiceRuntime) Stop(pid int) error {
+func (runtime *fakeServiceRuntime) Stop(pid int, _ time.Time) error {
 	runtime.stops = append(runtime.stops, pid)
 	return nil
 }

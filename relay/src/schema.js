@@ -5,16 +5,18 @@
 // One NDJSON line is an outer envelope plus the payload it carries:
 //   {"schema":1,"day":"YYYY-MM-DD","nonce":"<32 lowercase hex>","payload":{...}}
 // The payload is the record.Row fields:
-//   {"schema":1,"metric":"role_quality","role":...,"model":...,"score":...,
-//    "judge":...,"door":...,"size":...,"day":"YYYY-MM-DD"}
+//   {"schema":1,"metric":"role_quality"|"acceptable","role":...,"model":...,"score":...,
+//    "judge":...,"door":"task"|"do"|"exec"|"run","size":...,"day":"YYYY-MM-DD"}
 //
 // Everything here is pure: no KV, no fetch, no clock of its own.
 
-// The one metric the client records.
-const METRIC = 'role_quality';
+// The metrics the client records: a judge's 0-100 opinion of a seat's work
+// (role_quality), and the harness's own model-free grade of a task, 100 or 0
+// per seat the crew held (acceptable), whose judge column names the grader.
+export const METRICS = new Set(['role_quality', 'acceptable']);
 
 const ROLES = new Set(['worker', 'high', 'mastermind']);
-const DOORS = new Set(['task', 'do']);
+const DOORS = new Set(['task', 'do', 'exec', 'run']);
 const SIZES = new Set(['S', 'M', 'L']);
 
 // A model id is "<vendor>/<id>". The Go side draws both halves from a closed
@@ -49,8 +51,11 @@ function dayError(day, now) {
 
 // validateRow reads one NDJSON line. It answers {row, error}: row is the
 // parsed envelope with its payload when the line is good, and null with a
-// message otherwise. `now` bounds how far ahead the day may be.
-export function validateRow(line, now = new Date()) {
+// message otherwise. `now` bounds how far ahead the day may be. `vendors`, when
+// it is a non-null set, is the allowed-vendor set: a model or judge whose
+// vendor is not in it is refused. Null (the default) turns that rule off, so
+// every vendor passes as it always did.
+export function validateRow(line, now = new Date(), vendors = null) {
   if (typeof line !== 'string' || line.trim() === '') {
     return fail('line is empty');
   }
@@ -80,14 +85,17 @@ export function validateRow(line, now = new Date()) {
   if (payload.schema !== 1) {
     return fail('payload schema must be 1');
   }
-  if (payload.metric !== METRIC) {
-    return fail(`metric must be ${METRIC}`);
+  if (!METRICS.has(payload.metric)) {
+    return fail('metric must be role_quality or acceptable');
   }
   if (!ROLES.has(payload.role)) {
     return fail('role must be worker, high or mastermind');
   }
   if (typeof payload.model !== 'string' || !MODEL_RE.test(payload.model)) {
     return fail('model must be <vendor>/<id>');
+  }
+  if (vendors !== null && !vendors.has(vendorOf(payload.model))) {
+    return fail('model vendor is not allowed');
   }
   if (typeof payload.score !== 'number' || !Number.isFinite(payload.score)
       || payload.score < 0 || payload.score > 100) {
@@ -96,8 +104,11 @@ export function validateRow(line, now = new Date()) {
   if (typeof payload.judge !== 'string' || !MODEL_RE.test(payload.judge)) {
     return fail('judge must be <vendor>/<id>');
   }
+  if (vendors !== null && !vendors.has(vendorOf(payload.judge))) {
+    return fail('judge vendor is not allowed');
+  }
   if (!DOORS.has(payload.door)) {
-    return fail('door must be task or do');
+    return fail('door must be task, do, exec or run');
   }
   if (!SIZES.has(payload.size)) {
     return fail('size must be S, M or L');
@@ -131,6 +142,12 @@ export function validateRow(line, now = new Date()) {
 // install id: 32 lowercase hex characters, the install's own nonce.
 export function validateInstall(header) {
   return typeof header === 'string' && HEX32_RE.test(header);
+}
+
+// vendorOf reads the vendor half of a "<vendor>/<id>" model id. An allowed
+// set is held lowercased, so the vendor is lowered before it is looked up.
+function vendorOf(id) {
+  return id.slice(0, id.indexOf('/')).toLowerCase();
 }
 
 function fail(message) {

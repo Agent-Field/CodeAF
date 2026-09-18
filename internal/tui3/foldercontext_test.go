@@ -47,7 +47,7 @@ func mixedLab(t *testing.T) (*app, *fakeAgent, string) {
 	// A tiny valid PNG, so the picture road is a real decode and not a guess.
 	write("shot.png", pngFixture)
 	agent := &fakeAgent{model: "m"}
-	a := newApp(t.Context(), Options{Agent: agent, Workspace: filepath.Join(root, "here")})
+	a := newApp(t.Context(), Options{Agent: agent, Workspace: filepath.Join(root, "here"), ProfileDir: t.TempDir()})
 	a.width, a.height = 140, 34
 	a.pal = newPalette(tokens.TrueColor, false)
 	a.entries = nil

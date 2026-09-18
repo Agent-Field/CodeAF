@@ -255,6 +255,35 @@ const outputLimit = 4000
 
 // ── the turn ────────────────────────────────────────────────────────────────
 
+// settleBoundTripped reports whether the settle turn has spent its bound, and
+// the count that says so — the calls it has made, or the money it has spent.
+// It is false for every turn nobody marked as a settle wake ([settleWake]), so
+// an ordinary turn, and every wake that is not a landing handing over a
+// decision, runs exactly as it always did.
+//
+// IT READS THE CEILING OFF THE CONTEXT and the spend off the turn, which is the
+// one place both facts are in hand. The money arm exists only where a [Steward]
+// is armed: a run with no ceiling of its own has no money to take a share of, and
+// inventing one would bound a turn by a number nobody set (turnwall.go's own
+// argument about a ceiling with no wall).
+func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) (string, bool) {
+	wake, settle := settleWakeFrom(ctx)
+	if !settle {
+		return "", false
+	}
+	if calls >= wake.ceiling {
+		return strconv.Itoa(calls) + " call" + plural(calls), true
+	}
+	if steward := a.steward(); steward != nil {
+		if budget := steward.Budget(); budget.USD > 0 {
+			if share := budget.USD / settleBoundShare; share > 0 && turn.CostUSD >= share {
+				return fmt.Sprintf("$%.2f", turn.CostUSD), true
+			}
+		}
+	}
+	return "", false
+}
+
 // runTurn executes one Submit: provider requests interleaved with tool
 // execution until the assistant answers without a tool call, the person
 // interrupts, or the provider fails permanently.
@@ -269,6 +298,19 @@ const outputLimit = 4000
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	// AND A SETTLE TURN OPENS ITS OWN WINDOW HERE, where no lock is held: the length
+	// is read off the [Steward] ([Agent.settleWindow]), and that reading runs the
+	// run's spend closure, which takes the agent's lock — so it cannot be made
+	// where the wake was decided under it. The window is opened through
+	// [openCallWindow], the one way this package opens a window the model is told,
+	// and the deadline it puts on the context both tells every request how long is
+	// left and cuts the turn itself ([Agent.settleBoundTripped] reads the ceiling
+	// at the loop's boundary). Every other turn is left exactly as it was.
+	if _, settle := settleWakeFrom(ctx); settle {
+		windowed, closeWindow := openCallWindow(ctx, a.settleWindow(), callWindow{})
+		defer closeWindow()
+		ctx = windowed
+	}
 	// A CUT STREAM'S RECEIPT ARRIVES AFTER THIS TURN'S CALL HAS RETURNED. The
 	// sink belongs on the turn context before any of its calls or errands derive
 	// children from it, so every streamed request can hand that late fact back to
@@ -785,6 +827,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// of a conversation on the strength of a conversation that already ended.
 	meter := &checkpointMeter{}
 
+	// settleCalls is HOW MANY PROVIDER CALLS THIS TURN HAS PUT ON THE WIRE, which
+	// is only ever read for a settle turn: it is the count a settle turn's ceiling
+	// bounds ([Agent.settleBoundTripped]), and it lives here rather than on the
+	// meter because it counts requests and the meter counts finished tool rounds
+	// (checkpoint.go). It is one per step, incremented as the request goes out.
+	settleCalls := 0
+
 	// AND THE MARK'S READING RIDES BESIDE THE WORK (checkpoint.go's [markAside]).
 	// It belongs to the turn for the meter's reason — it is a fact about ONE
 	// answer — and it is let go of on every way out, including the ones that end
@@ -840,7 +889,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// drains the queue under the same lock that clears running (agent.go),
 		// so a leftover lands ahead of the next Submit's message.
 		if ctx.Err() != nil {
+			// A SETTLE TURN'S WINDOW RAN OUT, WHICH IS A BOUND AND NOT A STOP.
+			// The node comes back to the person with the reason on its report
+			// ([Agent.markSettleBound]), which is what a bound that ends a turn
+			// does here — never a silent wall stop.
+			if _, settle := settleWakeFrom(ctx); settle {
+				a.markSettleBound(settleWindowCount)
+			}
 			a.endStoppedTurn(ctx, hub, partial, turn, started, model)
+			return false
+		}
+		// AND A SETTLE TURN STOPS AT ITS OWN BOUND, at this boundary rather than
+		// at a new loop: the meter the turn already climbs is where the count
+		// lives, and the hand-back is the end-of-turn floor's ([Agent.handBackUnsettled]),
+		// asked here only for the sentence it carries ([Agent.markSettleBound]).
+		if count, tripped := a.settleBoundTripped(ctx, &turn, settleCalls); tripped {
+			a.markSettleBound(count)
 			return false
 		}
 
@@ -891,6 +955,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// without timing this package's own preparation as well.
 		sentAt := time.Now()
 		a.turnLane.sent(sentAt)
+		// THE SETTLE CEILING COUNTS THIS REQUEST. It is incremented here, at the one
+		// line a request actually leaves on, so the count and the wire agree.
+		settleCalls++
 		// AND THE TURN'S OWN LAW IS TIMED ON THE SAME LINE, which is the only line
 		// where it can be: this is where a request actually leaves, so it is where
 		// the person's wait to be sent anywhere ends and where a tool-result gap
@@ -1850,15 +1917,28 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		}
 		recordEffort(attemptCtx, model, rung)
 		// What this call is FOR, for the model-call log. A conversation's own
-		// turn and a task child's turn run the identical loop, and the one thing
-		// that tells them apart is whether this agent IS a node — so the word
-		// follows that, and the node it is gets named beside it.
+		// turn, a task child's turn and a checker's turn run the identical loop,
+		// and what tells them apart is what this agent IS: a checker answers for
+		// a crew role and names that role's own word, a task child IS a node and
+		// names the node's, and a conversation is neither and answers as the
+		// turn. The node beside the word follows the same fact — a child names the
+		// node it IS, a checker the node it CHECKS, a conversation none.
 		//
 		// THE WORD GOES TO THE DOOR AND THE NODE STAYS HERE. A purpose is what a
 		// request is FOR and the door is the one place it is spelled onto a call
 		// (clientdoor.go); which node made it is a fact only this line knows.
+		//
+		// A CREW ROLE WINS OVER taskID, AND THE TWO ARE NEVER BOTH SET: a checker
+		// is handed the node it checks in [Config.checksNode] and is deliberately
+		// not the node itself, so it leaves taskID at 0 (session.go's law).
 		purpose := purposeTurn
-		if a.config.taskID != 0 {
+		switch {
+		case a.config.crewRole != "":
+			purpose = callPurpose(a.config.crewRole)
+			if a.config.checksNode != 0 {
+				attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.checksNode, 10))
+			}
+		case a.config.taskID != 0:
 			purpose = purposeTask
 			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
@@ -3989,7 +4069,12 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 	if answered == "" {
 		answered = strings.TrimSpace(model)
 	}
-	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context})
+	// AND A TURN THAT ANSWERS FOR A CREW ROLE BANKS THAT ROLE'S WORD, so the
+	// ledger row says what the turn was — `auditor` — rather than nothing at all.
+	// It is the same fact the model-call log's tag carries (loop.go), read from
+	// the one config row that states it; an ordinary conversation or worker
+	// leaves it empty and the row names no role, which is what it always did.
+	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole)})
 
 	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
 	// name the row above banks, so a turn that hopped seals one usage line per

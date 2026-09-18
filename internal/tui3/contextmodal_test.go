@@ -45,7 +45,7 @@ func modalLab(t *testing.T) (*app, *fakeAgent, string) {
 		t.Fatal(err)
 	}
 	agent := &fakeAgent{model: "m"}
-	a := newApp(t.Context(), Options{Agent: agent, Workspace: filepath.Join(root, "work")})
+	a := newApp(t.Context(), Options{Agent: agent, Workspace: filepath.Join(root, "work"), ProfileDir: t.TempDir()})
 	a.width, a.height = 200, 46
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.entries = nil

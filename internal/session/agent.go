@@ -1216,6 +1216,18 @@ type userMessage struct {
 	// for it costs that worker its whole allowance.
 	ending bool
 
+	// settle marks THE WAKE OF A LANDING THAT HANDS THE MODEL THE DECISION: under
+	// `task.settle = auto` (and after somebody pressed "let codeaf decide") the
+	// note tells the model to read the work and settle it, and the turn it wakes
+	// runs under the checker's own bound rather than the run's wall ([settleWake]).
+	// It is read where the wake is started ([Agent.wakeLocked]) and nowhere else.
+	settle bool
+	// settleCeiling is the number of provider calls this landing's settle turn may
+	// spend before it is handed back. It is 1 for a node whose check saw a clean
+	// tree and declared no check ([TaskNode.settleCeiling]) and [settleCallCeiling]
+	// otherwise.
+	settleCeiling int
+
 	// steer is THE PERSON'S WORDS TYPED INTO THIS TURN (steer.go's
 	// [Agent.Steer]): a correction to the question already being worked on,
 	// riding this queue for the reason everything else on it does — a step
@@ -3225,6 +3237,17 @@ func (a *Agent) enqueueSteering(text string) {
 	a.enqueueNote(wakeNote(text))
 }
 
+// enqueueSettleSteering is [Agent.enqueueSteering] for A LANDING THAT HANDS THE
+// MODEL A DECISION: the same lane and the same addressing, with the wake marked a
+// settle one so the turn it starts runs under the checker's own bound rather than
+// the run's wall ([settleWake]). The person pressed "let codeaf decide", which is
+// exactly what `task.settle = auto` does at a landing, so the bound is the same.
+func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
+	note := wakeNote(text)
+	note.settle, note.settleCeiling = true, ceiling
+	a.enqueueNote(note)
+}
+
 // enqueueJobNote is the registry's owed lane, and what it carries is the ending
 // as [jobRegistry.settleExit] composed it. The whole log remains available
 // through `jobs output` for anything past the tail.
@@ -3527,6 +3550,110 @@ func (a *Agent) resumeTurn(ctx context.Context) <-chan Event {
 	return a.startTurnLocked(ctx, userMessage{}, nil)
 }
 
+// ── THE BOUND A SETTLE TURN RUNS UNDER ──────────────────────────────────────
+//
+// The turn a landing note wakes is the conversation's own turn, and under
+// `task.settle = auto` it is the turn that has to read the work and settle it.
+// Left ordinary it is an ordinary full-belt turn with no bound of its own, and it
+// was measured running 28 minutes of 49 tool-call rounds on the high-tier model,
+// stopped only by the run's wall, over a tree that was already clean.
+//
+// So the wake is marked a SETTLE wake where the note is minted (task_run.go's
+// [Agent.postTaskMessage]) and the turn it starts is given the checker's own
+// contract: a call window it is told ([openCallWindow], which is what makes the
+// model read the clock the way the checker does), a ceiling on the calls it may
+// spend, and — when the run carries a ceiling of its own — a share of its money.
+// A bound that trips hands the node back with the reason and the count on its
+// report rather than stopping the turn silently (task_run.go's
+// [Agent.markSettleBound]).
+const (
+	// settleCallCeiling is how many provider calls a settle turn may spend before
+	// it is handed back. It is single digits in the spirit of the checker's own
+	// shares: reading a report, the transcript and the diff, and spending a verb
+	// on it, is a handful of calls — and the measured runaway was forty-nine rounds
+	// of a turn that had no ceiling at all.
+	settleCallCeiling = 6
+	// settleBoundShare divides two things the settle turn may not exceed its own
+	// share of: the run's remaining wall, and — when a Steward is armed — the
+	// run's own money. It is [turnWallShare]'s shape for [turnWallShare]'s reason:
+	// a share means the same thing at every ceiling somebody sets, and what is
+	// left is what the rest of the run gets.
+	settleBoundShare = 3
+	// settleWindowCount is what a settle turn's hand-back says when its WINDOW ran
+	// out rather than its calls — the deadline the checker's contract opened and
+	// the model was told, which is the third way this bound can trip.
+	settleWindowCount = "its window"
+)
+
+// settleWake is the ceiling one settle turn runs under, carried to it on the
+// context the wake starts the turn with ([withSettleWake]).
+//
+// ONLY THE CEILING RIDES HERE. The window is a deadline the turn opens for itself
+// the moment it begins ([Agent.runTurn]), because its length is read off the
+// [Steward] — and that reading runs the run's own spend closure, which takes the
+// agent's lock, so it may not be made where the wake is decided under that lock.
+type settleWake struct {
+	ceiling int
+}
+
+type settleWakeKey struct{}
+
+// withSettleWake marks ctx as the opening of a settle turn and states its bound.
+func withSettleWake(ctx context.Context, wake settleWake) context.Context {
+	return context.WithValue(ctx, settleWakeKey{}, wake)
+}
+
+// settleWakeFrom reports the bound a turn runs under, and false for every turn
+// nobody marked as a settle wake.
+func settleWakeFrom(ctx context.Context) (settleWake, bool) {
+	wake, ok := ctx.Value(settleWakeKey{}).(settleWake)
+	return wake, ok
+}
+
+// settleWakeLocked is the bound the turn about to start runs under, when the
+// queue it is starting on holds a landing that hands the model the decision. The
+// lock is the caller's, which is what lets it read the queue at all.
+//
+// MORE THAN ONE LANDING CAN BE ON THE QUEUE, and the ceiling is the WIDEST of
+// them: a node whose check saw a clean tree wants one call and a node that did
+// not may want several, and a turn that has to settle both is not cut to the
+// narrowest one's share.
+func (a *Agent) settleWakeLocked() (settleWake, bool) {
+	ceiling := 0
+	for _, note := range a.steering {
+		if !note.settle {
+			continue
+		}
+		if note.settleCeiling > ceiling {
+			ceiling = note.settleCeiling
+		}
+	}
+	if ceiling == 0 {
+		return settleWake{}, false
+	}
+	return settleWake{ceiling: ceiling}, true
+}
+
+// settleWindow is how long a settle turn is given before it is handed back: a
+// share of what is left of the run's wall when a [Steward] is armed, and the
+// checker's own deadline — the length of one whole verdict — when it is not.
+//
+// IT IS A SHARE AND NOT A DURATION where there is a wall, for [turnWallShare]'s
+// reason; and where there is no wall it is [auditDeadline], because a settle turn
+// is the same job a check is — read the work and answer — and the checker's own
+// bound is the one figure that job already has.
+func (a *Agent) settleWindow() time.Duration {
+	if steward := a.steward(); steward != nil {
+		budget := steward.Budget()
+		if left := budget.Wall - budget.SpentWall; left > 0 {
+			if share := left / settleBoundShare; share > 0 {
+				return share
+			}
+		}
+	}
+	return auditDeadline
+}
+
 // wakeLocked starts a turn for what is waiting on the steering queue, with a.mu
 // held, and reports whether one began.
 //
@@ -3612,7 +3739,17 @@ func (a *Agent) wakeLocked() bool {
 	// opening message already treats empty as the same class (route_judge.go,
 	// harness.go, task_brief.go), so the bit changes nothing but the one reading
 	// that was missing.
-	a.startTurnLocked(context.Background(), userMessage{wake: true}, sink, watchers...)
+	//
+	// AND A TURN STARTED ON A LANDING THAT HANDS THE MODEL THE DECISION IS A
+	// SETTLE TURN, which runs under the checker's own bound ([settleWake]). The
+	// ceiling rides the context the turn is started with, and the turn opens its
+	// window for itself once it is running ([Agent.runTurn], because the window's
+	// length is read off the Steward's own clock).
+	ctx := context.Background()
+	if wake, settle := a.settleWakeLocked(); settle {
+		ctx = withSettleWake(ctx, wake)
+	}
+	a.startTurnLocked(ctx, userMessage{wake: true}, sink, watchers...)
 	return true
 }
 

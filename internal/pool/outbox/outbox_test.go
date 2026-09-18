@@ -696,6 +696,170 @@ func TestSendSaysWhatFailedAndLeavesTheRowsPending(t *testing.T) {
 	}
 }
 
+func TestARefusedRowLeavesTheOutboxAndTheRestOfItsBatchSends(t *testing.T) {
+	// The relay refuses a batch on the first line it cannot validate and
+	// answers which line that was, so the client can retire exactly that row
+	// and send the rows around it rather than hold every row behind it
+	// pending on every run to come.
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		lines := strings.Count(string(b), "\n")
+		mu.Unlock()
+		if lines == 3 {
+			w.WriteHeader(400)
+			w.Write([]byte(`{"error":"line 2: role must be worker, high or mastermind"}`))
+			return
+		}
+		w.WriteHeader(202)
+	}))
+	defer srv.Close()
+	o, path := openOutbox(t)
+	o.Rand = &stepRand{step: 14}
+	appendRow(t, o, `{"k":"worker"}`)
+	appendRow(t, o, `{"role":"scout"}`)
+	appendRow(t, o, `{"k":"mastermind"}`)
+	bad := pendingNonces(t, o)[1]
+	n, err := o.Send(context.Background(), srv.URL)
+	if n != 2 || err != nil {
+		t.Fatalf("Send answered (%d, %v), want (2, nil)", n, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 2 {
+		t.Fatalf("the send made %d posts, want one per refused line", len(bodies))
+	}
+	if strings.Contains(bodies[1], bad) {
+		t.Fatal("the retried batch carried the refused row again")
+	}
+	if cn := countMarks(t, path, "sent"); cn != 2 {
+		t.Fatalf("file holds %d sent markers, want 2", cn)
+	}
+	if cn := countMarks(t, path, "dropped"); cn != 1 {
+		t.Fatalf("file holds %d dropped markers, want 1", cn)
+	}
+	want := `{"dropped":"` + bad + `","reason":"role must be worker, high or mastermind"}`
+	found := false
+	for _, line := range fileLines(t, path) {
+		if line == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no dropped marker carries the refused row and its reason, want %s", want)
+	}
+	if got := o.Pending(); len(got) != 0 {
+		t.Fatalf("%d rows stayed pending after the refused row was retired, want 0", len(got))
+	}
+	if err := o.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	o2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer o2.Close()
+	if got := pendingNonces(t, o2); len(got) != 0 {
+		t.Fatalf("the dropped mark did not survive a reopen: %d rows pending", len(got))
+	}
+	drops := o2.Dropped()
+	if len(drops) != 1 || drops[0].Nonce != bad || drops[0].Reason != "role must be worker, high or mastermind" {
+		t.Fatalf("the dropped row's reason did not survive a reopen: %+v", drops)
+	}
+}
+
+// The reason a dropped marker carries is the relay's own text after `line N:`,
+// trimmed of the space around it and capped so one refusal cannot grow a
+// marker past a short line.
+func TestADroppedMarkersReasonIsTrimmedAndCapped(t *testing.T) {
+	long := strings.Repeat("x", 260)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(400)
+		w.Write([]byte(`{"error":"line 1:   ` + long + `   "}`))
+	}))
+	defer srv.Close()
+	o, _ := openOutbox(t)
+	o.Rand = &stepRand{step: 22}
+	appendRow(t, o, `{"k":1}`)
+	if n, err := o.Send(context.Background(), srv.URL); n != 0 || err != nil {
+		t.Fatalf("Send answered (%d, %v), want (0, nil)", n, err)
+	}
+	drops := o.Dropped()
+	if len(drops) != 1 {
+		t.Fatalf("Dropped answers %d rows, want 1", len(drops))
+	}
+	if drops[0].Reason != strings.Repeat("x", 200) {
+		t.Fatalf("the reason is %d bytes, want the first 200 trimmed: %q", len(drops[0].Reason), drops[0].Reason)
+	}
+}
+
+// A cap drop is not a refusal, so its reason is the cap's own word rather
+// than any destination's.
+func TestACapDropCarriesTheCapsOwnReason(t *testing.T) {
+	o, _ := openOutbox(t)
+	o.MaxPending = 2
+	o.Rand = &stepRand{step: 23}
+	for i := 0; i < 4; i++ {
+		appendRow(t, o, fmt.Sprintf(`{"k":%d}`, i))
+	}
+	drops := o.Dropped()
+	if len(drops) != 2 {
+		t.Fatalf("Dropped answers %d rows, want the 2 the cap dropped", len(drops))
+	}
+	for i, d := range drops {
+		if d.Reason != "over cap" {
+			t.Fatalf("cap drop %d reason is %q, want %q", i, d.Reason, "over cap")
+		}
+	}
+}
+
+// A file written by a build that kept no reason still parses: its dropped
+// markers read back with the reason empty, the way the reading form says them.
+func TestADroppedMarkerWithNoReasonParses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outbox.jsonl")
+	nonce := fmt.Sprintf("%032x", 1)
+	file := "{\"dropped\":\"" + nonce + "\"}\n"
+	if err := os.WriteFile(path, []byte(file), 0600); err != nil {
+		t.Fatal(err)
+	}
+	o, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer o.Close()
+	drops := o.Dropped()
+	if len(drops) != 1 || drops[0].Nonce != nonce || drops[0].Reason != "" {
+		t.Fatalf("a reasonless dropped marker did not parse: %+v", drops)
+	}
+}
+
+func TestAQuotaRefusalKeepsEveryRowPending(t *testing.T) {
+	rec := &postRecord{status: []int{429}}
+	srv := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer srv.Close()
+	o, path := openOutbox(t)
+	o.Rand = &stepRand{step: 15}
+	for i := 0; i < 3; i++ {
+		appendRow(t, o, fmt.Sprintf(`{"k":%d}`, i))
+	}
+	n, err := o.Send(context.Background(), srv.URL)
+	if n != 0 || err == nil {
+		t.Fatalf("Send answered (%d, %v), want (0, an error)", n, err)
+	}
+	if !strings.Contains(err.Error(), "429") {
+		t.Fatalf("the error does not say what failed: %v", err)
+	}
+	if got := len(o.Pending()); got != 3 {
+		t.Fatalf("%d rows stayed pending after the quota refusal, want 3", got)
+	}
+	if cn := countMarks(t, path, "sent") + countMarks(t, path, "dropped"); cn != 0 {
+		t.Fatalf("file holds %d markers after a quota refusal, want none", cn)
+	}
+}
+
 func TestSendAnswersARefusedConnection(t *testing.T) {
 	o, _ := openOutbox(t)
 	o.Rand = &stepRand{step: 12}
@@ -1093,6 +1257,96 @@ func TestASendWhoseMarkerCannotBeWrittenKeepsTheRowsPending(t *testing.T) {
 	}
 	if got := len(o.Pending()); got != 1 {
 		t.Fatalf("pending = %d, want the row whose marker never reached the file", got)
+	}
+}
+
+// seedRetiredRows writes an outbox file holding retired rows each followed by
+// its sent marker, two pending rows and a torn last line, and answers the two
+// pending row lines in file order. The count sits well above the floor at
+// which a Send rewrites the file, so the trigger is certain.
+func seedRetiredRows(t *testing.T, path string, retired int) (string, string) {
+	t.Helper()
+	nonce := func(n int) string { return fmt.Sprintf("%032x", n) }
+	var lines []string
+	for i := 0; i < retired; i++ {
+		lines = append(lines,
+			`{"schema":1,"day":"2026-09-16","nonce":"`+nonce(i)+`","payload":{"k":`+fmt.Sprintf("%d", i)+`}}`,
+			`{"sent":"`+nonce(i)+`"}`)
+	}
+	const base = 1 << 20
+	keep1 := `{"schema":1,"day":"2026-09-17","nonce":"` + nonce(base) + `","payload":{"k":"keep one"}}`
+	keep2 := `{"schema":1,"day":"2026-09-17","nonce":"` + nonce(base+1) + `","payload":{"k":"keep two"}}`
+	torn := `{"schema":1,"day":"2026-09-17","nonce":"` + nonce(base+2) + `","payload":{"k":"torn"`
+	lines = append(lines, keep1, keep2, torn)
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return keep1, keep2
+}
+
+// A file that has grown mostly into rows a marker retired is rewritten by a
+// Send down to the rows still pending: the markers and the retired rows are
+// gone, a torn last line is dropped rather than kept, and Pending still
+// answers the rows in order.
+func TestSendCompactsAFileGrownMostlyIntoRetiredRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outbox.jsonl")
+	keep1, keep2 := seedRetiredRows(t, path, 1500)
+	o, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer o.Close()
+
+	// A destination that refuses reaches the seam — a Send compacts before its
+	// first POST — and leaves every row pending for this test to read back.
+	if _, err := o.Send(context.Background(), "http://127.0.0.1:1/"); err == nil {
+		t.Fatal("a Send to a refused destination answered no error")
+	}
+
+	got := fileLines(t, path)
+	want := []string{keep1, keep2}
+	if len(got) != len(want) {
+		t.Fatalf("the compacted file holds %d lines, want the %d pending rows: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("line %d is %q, want the pending row %q", i, got[i], want[i])
+		}
+	}
+	rows := o.Pending()
+	if len(rows) != 2 || string(rows[0].Payload) != `{"k":"keep one"}` || string(rows[1].Payload) != `{"k":"keep two"}` {
+		t.Fatalf("Pending answered %v, want the two rows in order", rows)
+	}
+}
+
+// Rows appended after a compaction are read back across a reopen, exactly as
+// rows appended to a file that was never compacted are.
+func TestRowsAppendedAfterACompactionSurviveAReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outbox.jsonl")
+	seedRetiredRows(t, path, 1500)
+	o, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	o.Rand = &stepRand{step: 40}
+	if _, err := o.Send(context.Background(), "http://127.0.0.1:1/"); err == nil {
+		t.Fatal("a Send to a refused destination answered no error")
+	}
+	if got := len(fileLines(t, path)); got != 2 {
+		t.Fatalf("the file holds %d lines after the compaction, want 2", got)
+	}
+	appendRow(t, o, `{"k":"after"}`)
+	if err := o.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	o2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer o2.Close()
+	rows := o2.Pending()
+	if len(rows) != 3 || string(rows[2].Payload) != `{"k":"after"}` {
+		t.Fatalf("a reopen after a compaction answered %v, want the two rows and the fresh one", rows)
 	}
 }
 

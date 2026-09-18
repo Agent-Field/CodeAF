@@ -366,6 +366,14 @@ type journalPrincipal struct {
 	Unread  []string `json:"unread,omitempty"`
 	Removed []string `json:"removed,omitempty"`
 	Kept    []string `json:"kept,omitempty"`
+	// Ignored is the gitignored files the terminal reading found in the
+	// deliverable tree that no ledger explains — build products, ignored by
+	// git, not in the landing ([Agent.ignoredBuildProducts]). They ride the
+	// `reconciled` row because that row is what a reviewer reads to learn what
+	// the tree holds, and they are a report and never work for the sweep: a
+	// gitignored target/ a build made is removed, if ever, by a decision of
+	// its own.
+	Ignored []string `json:"ignored,omitempty"`
 	// Stashed is how many entries `git stash list` named at the terminal
 	// reading, and it rides the `checked` row: work the session took out of the
 	// tree and never put back is part of what that reading found, and a run

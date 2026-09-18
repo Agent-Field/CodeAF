@@ -12,6 +12,7 @@ import (
 
 	modelcatalog "github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -1946,5 +1947,54 @@ func TestACustomConnectionWithNoListKeepsItsPlaceInThePicker(t *testing.T) {
 	studioAt := lineIndex(lines, func(line string) bool { return line == "studio" })
 	if homelabAt < 0 || studioAt < 0 || homelabAt > studioAt {
 		t.Fatalf("the listing-less service was drawn out of order:\n%s", drawn)
+	}
+}
+
+// THE UNCONNECTED CUSTOM ROW IS CALLED WHAT THE MANUAL CALLS IT. The catalog
+// template's Written is the bare id `custom`, so a rename that reads Written for
+// every custom id drew the row a person has not connected yet as `custom` — and
+// the manual, the README and #1107 all send them looking for `Custom
+// OpenAI-compatible API`. Only a connected instance is called what the person
+// called it.
+func TestTheUnconnectedCustomRowKeepsItsVendoredNameAndAConnectedOneTakesThePersons(t *testing.T) {
+	const vendored = "Custom OpenAI-compatible API"
+	defaults := []Model{{ID: "openai/gpt-4.1-mini"}}
+	customRow := func(a *app) (connect.Status, bool) {
+		for _, row := range a.modelConnectionRows() {
+			if row.ID == modelConnectionID("custom") {
+				return row, true
+			}
+		}
+		return connect.Status{}, false
+	}
+
+	dir := t.TempDir()
+	bare := modelServiceTestApp(t, dir, defaults[0].ID, modelsource.NewSet(testDefaultService("sk-default-1234567890")), defaults)
+	installModelServiceShelf(bare, dir)
+	row, ok := customRow(bare)
+	if !ok {
+		t.Fatal("the models group did not offer the custom row")
+	}
+	if row.Connected {
+		t.Fatalf("nothing is connected, yet the custom row reads connected: %+v", row)
+	}
+	if row.Name != vendored {
+		t.Fatalf("the unconnected custom row is drawn %q, want %q", row.Name, vendored)
+	}
+
+	named := modelsource.Connected{
+		Source:  modelsource.Source{ID: "custom", Written: "alpha", Name: vendored, Address: "http://127.0.0.1:1/v1"},
+		Key:     "sk-alpha-1234567890",
+		Address: "http://127.0.0.1:1/v1",
+	}
+	dir2 := t.TempDir()
+	held := modelServiceTestApp(t, dir2, defaults[0].ID, modelsource.NewSet(testDefaultService("sk-default-1234567890"), named), defaults)
+	installModelServiceShelf(held, dir2)
+	row, ok = customRow(held)
+	if !ok {
+		t.Fatal("the connected custom instance has no row")
+	}
+	if !row.Connected || row.Name != "alpha" {
+		t.Fatalf("a connected custom instance the person named alpha is drawn %q (connected=%t), want alpha", row.Name, row.Connected)
 	}
 }

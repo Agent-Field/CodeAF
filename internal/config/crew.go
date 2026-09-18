@@ -38,6 +38,12 @@ import (
 // the place somebody went to check. This is the one-source-of-truth law applied
 // to a summary: a summary that can drift from what it summarizes is not a
 // summary.
+//
+// THE BUILD WRITES NO WORD, AND READS ONE THAT IS THERE ([storedCrewWord]). Every
+// profile this product shapes derives the preset from the rows; a run that wrote
+// the word itself — a harness, a hand edit — named a budget, and a word on disk
+// that nothing read is a crew word that reached nobody. The word is the budget
+// when present, and the class rows under it are then that run's own pins.
 
 // The preset words. They are the values [KeyCrew] takes, and they are strings
 // on disk in the same sense every other choice row's words are — spelled here
@@ -350,6 +356,35 @@ func CrewSourceAt(profileDir string) string {
 	return DefaultCrewSource
 }
 
+// storedCrewWord is the crew word a profile STORES on the crew row, when it
+// names one of this build's presets.
+//
+// THIS BUILD NEVER WRITES IT. The crew row is derived from the five tier rows,
+// not stored ([KeyCrew] argues it), so on every profile this product shapes the
+// row is absent. But a run that writes ONE word into config.json instead of the
+// five rows — a harness driven arm, a hand edit — is asking for a budget, and a
+// word sitting on disk that nothing reads is a crew word that reached nobody.
+// The word is read here, at the one place a preset is decided ([crewPresetUnder]
+// and [crewStoredAt]), so a word that is present seats the crew it names whether
+// the five rows were written or not.
+//
+// A word this build does not know names no preset and is read as no word at all,
+// the way the family and pick rows fold a retired choice. The family is still
+// [CrewSourceAt]'s: the word names a budget, not a shelf.
+func storedCrewWord(profileDir string) (string, bool) {
+	value, held := persistedString(profileDir, KeyCrew)
+	if !held {
+		return "", false
+	}
+	word := strings.ToLower(strings.TrimSpace(value))
+	for _, preset := range CrewPresets {
+		if word == preset {
+			return preset, true
+		}
+	}
+	return "", false
+}
+
 // CrewModelsForSource is the five models one preset would set under one
 // family, by tier word, false for a word that is not a preset. It returns a
 // copy for [CrewModels]'s reason.
@@ -456,6 +491,13 @@ func CrewAt(profileDir string) string {
 // skipped, because auto is the one row with no opinion of its own — it runs
 // at whatever budget the rows around it name ([crewPresetUnder]).
 func crewStoredAt(profileDir, family string) string {
+	// A STORED CREW WORD NAMES THE BUDGET OUTRIGHT. A run that wrote one word
+	// instead of the five rows made its decision on the word, and the five rows
+	// under it are that word's own table rows — so the word is the answer, and
+	// the row comparison below is only for a profile whose budget is the rows.
+	if word, ok := storedCrewWord(profileDir); ok {
+		return word
+	}
 	defaults := crewTableFor(family)[DefaultCrew]
 	stored := make(map[string]string, len(ModelTiers))
 	for _, tier := range ModelTiers {

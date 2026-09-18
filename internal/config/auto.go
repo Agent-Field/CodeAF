@@ -65,11 +65,12 @@ var AutoOwnCells func() []crewpick.Cell
 // crewpick scores a seat on, with one cell per role and model.
 const PoolQualityMetric = "role_quality"
 
-// AutoPick is the bare `auto` word's own answer for one tier, computed from
-// the rows. It is [AutoPickWith] with the measured quality the Model Pool
-// holds carried as a prior — the behaviour the bare word has always had — and
-// it stays the seam a row that says `auto` resolves through ([autoRow]). The
-// pick row's words answer through [AutoPickWith] directly ([pickedSeat]).
+// AutoPick is the pick with the measured quality the Model Pool holds ALWAYS
+// carried as a prior: [AutoPickWith] with [autoPrior], whatever a profile's
+// pick word says. No seat resolves through it any more — the bare `auto` row
+// ([autoRow]) and the pick row's words ([pickedModel]) decide the prior
+// together in [priorFor] — and it stays for a caller that wants the measured
+// computation regardless of the pick word.
 func AutoPick(tier, family, preset string, models []catalog.Model) (modelID string, ok bool) {
 	return AutoPickWith(tier, family, preset, models, autoPrior(autoIndex()))
 }
@@ -263,8 +264,15 @@ func listHolds(words []string, word string) bool {
 // never empty.
 func autoRow(profileDir, family, tier string) (model string, source SeatSource, preset string) {
 	preset = crewPresetUnder(profileDir, family)
-	if id, ok := AutoPick(tier, family, preset, autoCatalogRows()); ok {
-		return id, SeatComputed, preset
+	// THE ANSWER IS THE PICK WORD'S OWN ANSWER, computed the way a
+	// pick-computed seat's is ([pickedModel]): the prior is decided once, in
+	// [priorFor] — the pool's measurements under `learn`, the published
+	// figures alone under every other word — so the two seams cannot disagree
+	// about what `catalog` means, and the rung names the word that ran
+	// ([computedRung]) so they cannot name one computation two ways either.
+	pick := CrewPickAt(profileDir)
+	if id, ok := AutoPickWith(tier, family, preset, autoCatalogRows(), priorFor(pick)); ok {
+		return id, computedRung(pick), preset
 	}
 	if row, ok := CrewModelsForSource(family, preset); ok {
 		if id := strings.TrimSpace(row[tier]); id != "" {
@@ -288,10 +296,12 @@ func autoRow(profileDir, family, tier string) (model string, source SeatSource, 
 //   - the two seats that read every turn are NOT asked: reflex and small work
 //     always read the table, the same law their columns in the shipped tables
 //     keep, and the caller decides which tiers reach here;
-//   - a row holding a model id that is not the preset's own table value is a
-//     person's own model, and it wins — the pick answers for the seats nobody
-//     named, not over the names they typed. A row holding the preset's OWN id
-//     is the preset answering rather than a pin, and the pick computes it;
+//   - a WRITTEN dial row is a person's own model, and it wins — the pick answers
+//     for the seats nobody named, not over the names they typed. A written row
+//     is a pin when the profile's five tier rows are NOT all written (a `/crew`
+//     APPLY writes all five at once, a hand pin writes one), when the profile
+//     STORES its own crew word ([storedCrewWord]), or when the row's id is not
+//     the preset's own table value;
 //   - every other seat among worker, careful work and mastermind is computed
 //     at the crew's preset ([crewPresetUnder]), on the rung the pick names:
 //     [SeatComputed] under the `catalog` word, [SeatLearned] under `learn`;
@@ -304,12 +314,26 @@ func autoRow(profileDir, family, tier string) (model string, source SeatSource, 
 // caller answers with the row's own rung instead. The DEFAULT PICK IS THE
 // FIRST CHECK: a profile that has never answered the row reads every seat
 // exactly as it read before the row existed, which is what a default is for.
-func pickedSeat(profileDir, family, tier, model string) (Seat, bool) {
+func pickedSeat(profileDir, family, tier, model string, written bool) (Seat, bool) {
 	if CrewPickAt(profileDir) == CrewPickTable {
 		return Seat{}, false
 	}
 	if tier != ModelTierWorker && tier != ModelTierHigh && tier != ModelTierMastermind {
 		return Seat{}, false
+	}
+	// A WRITTEN DIAL ROW IS A PIN THE PICK DOES NOT RECOMPUTE when it is not the
+	// preset answering. The preset answering is a `/crew` APPLY, which writes all
+	// five tier rows at once ([ApplyCrew]); so a written row wins when the five
+	// rows are not all written (a person pinned one by hand), when the profile
+	// stores its own crew word ([storedCrewWord] — a run that named a budget and
+	// pinned the crew table's OWN ids, which the value rule below would
+	// recompute), or when the row's id is not the preset's own. A crew applied
+	// WHOLE with no stored word keeps the old rule: a row holding the preset's
+	// own table value is the preset answering and the pick computes it.
+	if written {
+		if _, worded := storedCrewWord(profileDir); worded || !allTiersWritten(profileDir) {
+			return Seat{}, false
+		}
 	}
 	preset := crewPresetUnder(profileDir, family)
 	if row, ok := CrewModelsForSource(family, preset); ok {
@@ -321,21 +345,65 @@ func pickedSeat(profileDir, family, tier, model string) (Seat, bool) {
 	return Seat{Role: tierSeatRole(tier), Model: id, Source: source, Crew: preset}, true
 }
 
+// allTiersWritten reports whether the profile's five tier rows were EACH WRITTEN
+// — every key held and non-empty. It is how the pick tells a crew APPLY, which
+// writes all five at once ([ApplyCrew]), from a person pinning one model by
+// hand: only a whole crew is the preset answering, and a partial write is the
+// person's own rows.
+func allTiersWritten(profileDir string) bool {
+	for _, tier := range ModelTiers {
+		model, _, source, cleared := crewRow(profileDir, tier)
+		if cleared || source != SeatCrew || strings.TrimSpace(model) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// unwrittenSeat is what an UNWRITTEN tier row reads when the profile STORES a
+// crew word: that word's own table row, under the family named, on the table
+// rung. It is shared by both ladders — [tierSeatUnder] for the conversation and
+// the settings sheet, [resolveSeat] for every headless door — so a word that
+// seats one surface seats the other, and a profile that stores no word answers
+// nothing here and keeps its own bottom rung.
+func unwrittenSeat(profileDir, family, tier string) (Seat, bool) {
+	word, ok := storedCrewWord(profileDir)
+	if !ok {
+		return Seat{}, false
+	}
+	row, ok := CrewModelsForSource(family, word)
+	if !ok {
+		return Seat{}, false
+	}
+	id := strings.TrimSpace(row[tier])
+	if id == "" {
+		return Seat{}, false
+	}
+	return Seat{Role: tierSeatRole(tier), Model: id, Source: SeatTable, Crew: word}, true
+}
+
+// priorFor is the prior a seat computed at the crew's preset carries, read
+// from the pick word alone: [autoPrior] under `learn` — the Model Pool's
+// measurements and this install's own judged runs — and nil under every other
+// word, which leaves each seat on the published figures alone. The bare
+// `auto` row ([autoRow]) and the pick word's own seat ([pickedModel]) both
+// answer through it, so the two seams cannot disagree again about what
+// `catalog` means.
+func priorFor(pick string) crewpick.Prior {
+	if normalCrewPick(pick) == CrewPickLearn {
+		return autoPrior(autoIndex())
+	}
+	return nil
+}
+
 // pickedModel is the pick word's own answer for one tier: the catalog's pick
 // at the preset, on the rung the word names; and, when nothing can be
 // computed, the preset's own table row on the table rung — the id a preset
 // write would have landed, and never `auto` and never empty.
 func pickedModel(tier, family, preset, pick string) (modelID string, source SeatSource) {
 	pick = normalCrewPick(pick)
-	var prior crewpick.Prior
-	if pick == CrewPickLearn {
-		prior = autoPrior(autoIndex())
-	}
-	if id, ok := AutoPickWith(tier, family, preset, autoCatalogRows(), prior); ok {
-		if pick == CrewPickLearn {
-			return id, SeatLearned
-		}
-		return id, SeatComputed
+	if id, ok := AutoPickWith(tier, family, preset, autoCatalogRows(), priorFor(pick)); ok {
+		return id, computedRung(pick)
 	}
 	if row, ok := CrewModelsForSource(family, preset); ok {
 		if id := strings.TrimSpace(row[tier]); id != "" {
@@ -346,6 +414,22 @@ func pickedModel(tier, family, preset, pick string) (modelID string, source Seat
 	// five — but the never-empty law is carried rather than assumed, the same
 	// last word [autoRow] keeps.
 	return defaultTierModel(family, tier), SeatTable
+}
+
+// computedRung is the rung a seat computed at the crew's preset answers on,
+// read from the pick word alone: [SeatLearned] under `learn`, whose pick
+// carries the Model Pool's measurements and this install's own judged runs
+// ([autoPrior]), and [SeatComputed] under `catalog` — and under the table word,
+// which computes nothing of its own. IT ASKS WHICH PICK RAN, never whether the
+// prior moved the id: [SeatLearned]'s own comment says the rung names the
+// computation, and a rung that reported an actual move would be a second rule.
+// The pick's own seat ([pickedModel]) and a bare `auto` row ([autoRow]) both
+// answer through it, so the two seams cannot name one computation two ways.
+func computedRung(pick string) SeatSource {
+	if normalCrewPick(pick) == CrewPickLearn {
+		return SeatLearned
+	}
+	return SeatComputed
 }
 
 // autoCatalogRows is [AutoModels] read with its two ordinary absences folded
@@ -381,6 +465,14 @@ func autoCatalogRows() []catalog.Model {
 // Trying the default first is what decides it, so the order above is the rule
 // and not an accident of iteration.
 func crewPresetUnder(profileDir, family string) string {
+	// A STORED CREW WORD IS THE BUDGET, not the rows under it. A run that wrote
+	// one word into config.json instead of the five rows ([storedCrewWord])
+	// named its budget directly, so the computed seats read at that budget
+	// whether or not the rows were written — this is the seam the word reaches
+	// the task door's seats through.
+	if word, ok := storedCrewWord(profileDir); ok {
+		return word
+	}
 	defaults := crewTableFor(family)[DefaultCrew]
 	read := make(map[string]string, len(ModelTiers))
 	for _, tier := range ModelTiers {

@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/alecthomas/chroma/v2"
-	"github.com/alecthomas/chroma/v2/lexers"
 	gtext "github.com/yuin/goldmark/text"
 
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -296,9 +295,9 @@ func HighlightBlock(s *tokens.Styler, src, lang string, tier tokens.Token) []str
 	return out
 }
 
-// LexerName is chroma's own name for the language a FILE is written in — the
-// word [HighlightLine] takes as its lang — or "" when nothing in chroma's
-// registry claims that filename.
+// LexerName is the language a FILE is written in — the word [HighlightLine]
+// takes as its lang — or "" when nothing in the curated set claims that
+// filename.
 //
 // It exists so a caller holding a PATH rather than a fence's info string can
 // still reach the one highlighter in this tree. internal/tui3 draws the body of
@@ -308,13 +307,14 @@ func HighlightBlock(s *tokens.Styler, src, lang string, tier tokens.Token) []str
 // file's opening paragraph exists to prevent.
 //
 // The empty answer is load-bearing: a caller gets to say "nothing here is
-// source" and fall back to whatever it drew before, rather than have chroma's
-// fallback lexer paint a log file as if it were code.
+// source" and fall back to whatever it drew before, rather than have a fallback
+// lexer paint a log file as if it were code. A filename outside the curated set
+// is exactly that case, and answers "" on purpose.
 //
-// IT IS MEMOISED, and it has to be. chroma's own comment on Match says it walks
-// every file pattern of every lexer and is not fast, and the callers are drawing
-// terminal rows at thirty frames a second. The table is keyed by the name it was
-// asked about, so it is bounded by the files one session touched.
+// IT IS MEMOISED, and it has to be. Match walks every file pattern of every
+// curated lexer and is not fast, and the callers are drawing terminal rows at
+// thirty frames a second. The table is keyed by the name it was asked about, so
+// it is bounded by the files one session touched.
 func LexerName(filename string) string {
 	filename = strings.TrimSpace(filename)
 	if filename == "" {
@@ -327,7 +327,7 @@ func LexerName(filename string) string {
 		return name
 	}
 	name = ""
-	if lexer := lexers.Match(filename); lexer != nil {
+	if lexer := curatedMatch(filename); lexer != nil {
 		name = lexer.Config().Name
 	}
 	lexerNames.mu.Lock()
@@ -356,12 +356,18 @@ func highlightPieces(p painter, src, lang string, ground style) [][]piece {
 		return out
 	}
 
-	lexer := lexers.Get(lang)
+	lexer := curatedGet(lang)
 	if lexer == nil {
-		lexer = lexers.Analyse(src)
-	}
-	if lexer == nil {
-		lexer = lexers.Fallback
+		// A language outside the curated set is a MISS, and a miss is plain
+		// text: no lexing, no error, the body drawn at the ground tier exactly as
+		// a block under a profile with no ramp is. An unlabelled fence is the
+		// same case — nothing is guessed from the source, because a wrong guess
+		// is a claim about somebody's code.
+		out := make([][]piece, len(plain))
+		for i, line := range plain {
+			out[i] = []piece{{text: line, st: ground}}
+		}
+		return out
 	}
 	it, err := chroma.Coalesce(lexer).Tokenise(nil, scrubCode(src))
 	if err != nil || it == nil {

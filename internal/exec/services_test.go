@@ -37,7 +37,7 @@ func TestStopServiceProcessEscalatesFromTermToKill(t *testing.T) {
 	}
 
 	begun := time.Now()
-	if err := StopServiceProcess(pid); err != nil {
+	if err := StopServiceProcess(pid, startedAt); err != nil {
 		t.Fatalf("stop service process: %v", err)
 	}
 	if elapsed := time.Since(begun); elapsed < serviceTerminateGrace {
@@ -50,7 +50,7 @@ func TestStopServiceProcessEscalatesFromTermToKill(t *testing.T) {
 	if serviceLeaderAlive(pid) {
 		t.Fatal("process group survived TERM and KILL")
 	}
-	if err := StopServiceProcess(pid); err != nil {
+	if err := StopServiceProcess(pid, startedAt); err != nil {
 		t.Fatalf("stopping an already dead group is not an error: %v", err)
 	}
 }

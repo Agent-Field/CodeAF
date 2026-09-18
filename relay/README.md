@@ -13,6 +13,10 @@ It serves, all under `/pool/`: `POST /pool/v1/rows` for submissions,
 its signature, and `GET /pool/healthz`; every other path answers 404 with an
 empty body.
 
+A submitted row is one NDJSON line per scored seat, and its `door` is the door
+the run came in by — one of `task`, `do`, `exec` or `run`. A door the wire does
+not know is refused.
+
 ## Priming
 
 The first published index was primed once, from the same measured runs the

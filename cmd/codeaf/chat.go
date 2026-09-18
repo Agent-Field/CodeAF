@@ -5658,9 +5658,20 @@ const replanNodeBudget = 12
 // most replanNodeBudget nodes.
 func replanRemainder(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store, terrainRoot string) resident.OverrunPlanFunc {
 	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
+		anchor, anchored := resident.PlanAnchorFromContext(ctx)
+		// CONTINUE, DO NOT RE-PLAN. A remainder of work that already has
+		// recorded turns and a plan continues that plan; it does not buy a
+		// second full planning pass over a goal the job has already planned.
+		// Only an overrun round continues: the gate's gap round buys the work a
+		// reviewer named, and a cooperative split is a worker's own division,
+		// so both keep the full re-plan.
+		if resident.GrowthReasonFrom(ctx) == resident.GrowOverrun {
+			if subtree, ok := continueRemainder(history, plans, anchor, anchored, prefix, goal); ok {
+				return subtree, nil
+			}
+		}
 		workingModel, workingClient := workClient.Snapshot()
 		_, structuring := planClient.Snapshot()
-		anchor, _ := resident.PlanAnchorFromContext(ctx)
 		progress := chatPlanProgress(history, anchor)
 		graph, err := plan.Build(settings.Context(ctx, goal), structuring, goal, plan.Options{
 			Recall: recallHits(history, goal, groundRecallLimit),
@@ -5757,6 +5768,81 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 		return subtree, nil
 	}
+}
+
+// continueRemainder is the CONTINUE path of a remainder: the work already has
+// recorded turns and a plan, so the continuation is built from them instead of
+// buying a second full planning pass.
+//
+// It asks one question of two facts read where the decision is made — the
+// job's lineage for recorded turns, and the registry for the plan it drew — and
+// answers false the moment either is missing. False is not a failure: it is the
+// ground the full re-plan has always stood on, and it is the answer for a cold
+// start (nothing recorded) and for a job that never earned a plan. Without this
+// the overrun replan ran a fresh plan.Build on every round, re-emitted the
+// planner's phases over a plan that already existed, and dropped the shape the
+// job had — the ds1 re-plan that returned a fresh one-step shape where a
+// five-step plan was already recorded.
+//
+// The remainder is one flat continuation node, the same shape the planner's own
+// nothing-drawn fallback admits. A continuation is finishing work, not a fresh
+// judgment, so it keeps the small/flat remainder the re-plan path is held to
+// (Undivided, MaxDepth 1, EnsembleNever) without paying a call to discover it.
+func continueRemainder(history *store.Store, plans *jobPlans, anchor resident.PlanAnchor, anchored bool, prefix, goal string) (store.Subtree, bool) {
+	if !anchored || history == nil || plans == nil || strings.TrimSpace(prefix) == "" {
+		return store.Subtree{}, false
+	}
+	entry, ok := plans.get(anchor.NodeID)
+	if !ok || entry.graph == nil {
+		return store.Subtree{}, false
+	}
+	// The recorded turns belong to the work being continued, which is the
+	// exhausted node's own lineage — the same namespace the overrun itself read
+	// to seed the goal. The plan, by contrast, is the job's, keyed by the root
+	// the anchor names; the two facts are read where each actually lives.
+	lineage, _ := resident.OverrunLineage(prefix)
+	if _, resumed := resident.LineageBank(history, lineage, ""); resumed == 0 {
+		return store.Subtree{}, false
+	}
+	title := "Finish the remainder"
+	if steps := planRemainingSteps(entry.graph); len(steps) > 0 {
+		title = "Continue the plan's remaining steps"
+	}
+	// The job's own rules go on the continuation exactly as they go on every
+	// node the first plan drew: a constraint is a property of the run, and the
+	// worker that finishes the remainder is under it as much as the one that
+	// started it. An empty rule set encodes to nothing, so a job that set none
+	// carries nothing.
+	spec := plan.Spec{Constraints: jobConstraints(history, anchor)}
+	return store.Subtree{Nodes: []store.NodeSpec{{
+		ID:    prefix,
+		Brief: goal,
+		Title: title,
+		Stage: 1,
+		Spec:  resident.EncodeSpec(spec),
+	}}}, true
+}
+
+// planRemainingSteps names the work a retained plan has not finished: its work
+// nodes that have neither landed nor failed. Empty means the plan has nothing
+// left to carry and the continuation is the exhausted node's own remainder.
+func planRemainingSteps(graph *plan.Graph) []string {
+	if graph == nil {
+		return nil
+	}
+	var steps []string
+	for _, node := range graph.Nodes {
+		if node.Kind != plan.KindWork {
+			continue
+		}
+		if node.State == plan.StateDone || node.State == plan.StateFailed {
+			continue
+		}
+		if title := strings.TrimSpace(node.Title); title != "" {
+			steps = append(steps, title)
+		}
+	}
+	return steps
 }
 
 // jobConstraints reads the rules the person set off the node a remainder is

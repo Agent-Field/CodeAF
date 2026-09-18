@@ -154,6 +154,37 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 		}
 		a.emitQuestion(EventQuestionWithdrawn, stale, nil)
 	}
+	// AND THE CARD NOBODY IS AT MUST NOT STOP THE RUN. --yolo says a surface
+	// exists ([Config.AskConsent], true for every interactive chat) and that
+	// nobody is sitting at it ([Config.Unattended]), so a check-road landing that
+	// raised `▸a accept · n not right · s tell it` and parked would wait on a key
+	// nobody will press. The check road's card carries a default — accept — so an
+	// unattended run TAKES it, through the one door every answer goes through,
+	// which records the dial as who answered and settles the node the way an
+	// accepted landing settles. Nothing is raised, so the standing map is left
+	// empty.
+	//
+	// A HEADLESS RUN IS NOT THIS ROAD. `--once` has no surface to draw the card,
+	// so its landing is not a hang on a key — its unverified node is the reading
+	// law's own (a dependent waits for a person there is none of) and taking the
+	// default would erase it. So the gate is the closed fact that a card exists at
+	// all: the surface (AskConsent) AND the nobody-watching posture (Unattended).
+	//
+	// THE POLICY IS NOT THE PLACE FOR THIS. [landingPolicy] is what a person
+	// WATCHING sees — [PolicyAsk] for a landing that is theirs, [PolicyDecide]
+	// where a settle policy handed it over — and it is read to draw the card and
+	// for nothing else; it has no default to take. This is what nobody-watching
+	// DOES, and the two are different questions.
+	//
+	// AND A CONFLICT, A SHIFT OR A GROUND THAT MOVED IS NOT THIS ROAD. Its ask is
+	// [TaskAskConflict] and not [TaskAskCheck], and two versions of somebody's
+	// own file is the person's however unattended the run is (task-states law) —
+	// it parks as it always did.
+	if a.landingTakesItsDefault(notice) {
+		a.landingAsking(notice.ID, "")
+		a.takeLandingDefault(q)
+		return
+	}
 	a.landingAsking(notice.ID, q.Kind)
 	// Raised through the one door (question.go's [Agent.raiseQuestion]) and the
 	// let-go DROPPED: settle and answer own this question's retirement
@@ -194,6 +225,36 @@ func (a *Agent) retireLandingQuestion(notice TaskNotice, standing QuestionKind) 
 		At:     time.Now(),
 	}
 	a.emitQuestion(EventQuestionWithdrawn, gone, nil)
+}
+
+// landingTakesItsDefault reports that an unattended run must not wait on this
+// landing's card: a surface exists to draw it ([Config.AskConsent]), the run was
+// left alone ([Config.Unattended]), and the ask is the CHECK ROAD's, whose card
+// carries a default (accept). A headless run misses the first fact and is left
+// to the reading law; a conflict, a shift, a ground that moved, or a check that
+// did not pass misses the last, and each stays the person's (task-states law).
+func (a *Agent) landingTakesItsDefault(notice TaskNotice) bool {
+	if !a.config.Unattended || !a.config.AskConsent {
+		return false
+	}
+	return ProjectTask(notice.StatusFacts()).Ask.Kind == TaskAskCheck
+}
+
+// takeLandingDefault answers a check-road landing with the key its card would
+// have offered first, and records the dial as who answered. It goes through
+// [Agent.ResolveQuestion] — the one door every answer goes through — so the
+// record, the settle and the answered event are exactly the ones an accept
+// always produces, and there is no second place that knows what `accept` does.
+func (a *Agent) takeLandingDefault(q Question) {
+	// The asker's own pick is the accept key — the key the card draws first — so
+	// [defaultAnswer] reads it and marks the answer [DecidedByDial] rather than a
+	// person. The landing's own kind is what the answer must carry, or the door
+	// would hand it to the model's lane instead of this one.
+	pick := Pick{Key: LandingYesKey}
+	q.Pick = &pick
+	answer := defaultAnswer(q, "")
+	answer.Kind = q.Kind
+	_ = a.ResolveQuestion(answer)
 }
 
 // landingDeciderChanged says the ask's own HOLDER moved while a resolution is

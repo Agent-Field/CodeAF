@@ -243,6 +243,16 @@ type TaskEnding string
 const (
 	// TaskEndingStopped says a person ended it ([Agent.Cancel]).
 	TaskEndingStopped TaskEnding = "stopped"
+	// TaskEndingInterrupted says MACHINERY ended it — the session closing under the
+	// node, the engine going away — without anybody marking it stopped. It is the
+	// other half of [TaskEndingStopped]'s distinction, and it exists because the
+	// two used to be told apart only by one of them saying nothing at all: a node a
+	// person stopped reads `stopped` and settles failed, and a node machinery cut
+	// stays RUNNING and resumable ([Agent.settleUnfinished]'s paused road) — so a
+	// reader with no word for the second could not tell an interruption they had
+	// caused from machinery that cut the work. It is NOT a finding about the work,
+	// and [taskEndingIsFault] answers so.
+	TaskEndingInterrupted TaskEnding = "interrupted"
 	// TaskEndingWire says the run ended on the connection to the model rather
 	// than on the work — a stream that reset, a socket that closed — after the
 	// retries and the second worker (task_run.go) were spent too.
@@ -668,8 +678,10 @@ type TaskNotice struct {
 	// failure afterwards.
 	Stopped bool
 	// Ending is WHY a node that did not finish stopped where it did, in one word
-	// a surface can draw a row from ([TaskEnding]). It is set only on a node
-	// that settled `failed` and is "" on every other — and on every failed node
+	// a surface can draw a row from ([TaskEnding]). It is set on a node that
+	// settled `failed` — and on a node MACHINERY CUT where it stood, which stays
+	// running for recovery to resume and carries [TaskEndingInterrupted] so the cut
+	// is not silent — and is "" on every other state, and on every failed node
 	// checkpointed before the field existed, which a surface draws exactly as it
 	// always did. It exists because every ending that keeps a branch used to wear
 	// the one sentence "stopped — branch kept", and six rows of that on a rail
