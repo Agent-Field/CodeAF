@@ -107,6 +107,21 @@ write_install_marker() {
 
 # Printed once, at the very end of a successful install. The binary repeats it
 # before the first session's counts are ever sent.
+# The one line a person still has to paste, printed last of all, after a blank
+# line, bold green on a terminal. Bare `export PATH=...` and nothing else, so it
+# can be selected and pasted without trimming a prefix. Colour is skipped when
+# stdout is not a terminal or NO_COLOR is set (https://no-color.org).
+print_path_hint() {
+  local hint="$1"
+  [[ -n "$hint" ]] || return 0
+  local on="" off=""
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    on=$'\033[1;32m'
+    off=$'\033[0m'
+  fi
+  printf '\n%s%s%s\n' "$on" "$hint" "$off"
+}
+
 print_telemetry_notice() {
   if telemetry_off; then
     printf 'codeaf: anonymous usage counts are off (CODEAF_TELEMETRY=off or DO_NOT_TRACK=1)\n' >&2
@@ -476,9 +491,13 @@ append_path_line() {
   fi
 }
 
+# The PATH line is not printed here. It is the last thing the installer says,
+# after `codeaf version` and the telemetry notice, so the one line a person
+# has to paste sits at the bottom of the screen where their eye already is.
+PATH_HINT=""
 if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
-  printf 'codeaf: add it to this shell with: %s\n' "$export_line"
+  PATH_HINT="$export_line"
   if [[ "$NO_MODIFY_PATH" != "1" ]]; then
     shell_name=$(basename "${SHELL:-/bin/bash}")
     case "$shell_name" in
@@ -512,3 +531,4 @@ if [[ "$RUN_BOOT_ADOPTION" == "1" || -d "$STATE_ROOT" ]]; then
   write_install_marker "$STATE_ROOT"
 fi
 print_telemetry_notice
+print_path_hint "$PATH_HINT"

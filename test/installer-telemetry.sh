@@ -15,10 +15,11 @@ doc=docs/TELEMETRY.md
 test -f "$doc" || { echo "docs/TELEMETRY.md is missing; this test reads the notice from it"; exit 1; }
 
 eval "$(awk '/^TELEMETRY_NOTICE=/{f=1} /^VERBOSE=/{f=0} f' "$script")"
-eval "$(sed -n '/^telemetry_off()/,/^}/p; /^write_install_marker()/,/^}/p; /^print_telemetry_notice()/,/^}/p' "$script")"
+eval "$(sed -n '/^telemetry_off()/,/^}/p; /^write_install_marker()/,/^}/p; /^print_telemetry_notice()/,/^}/p; /^print_path_hint()/,/^}/p' "$script")"
 type telemetry_off >/dev/null
 type write_install_marker >/dev/null
 type print_telemetry_notice >/dev/null
+type print_path_hint >/dev/null
 
 pass=0
 fail=0
@@ -117,6 +118,26 @@ export CODEAF_TELEMETRY=1
 out=$( print_telemetry_notice 2>&1 )
 ok "CODEAF_TELEMETRY=1 prints the notice" 'case "$out" in *"anonymous usage counts to AgentField"*) true;; *) false;; esac'
 unset CODEAF_TELEMETRY
+
+# --- the PATH line comes last -------------------------------------------------
+# The line a person has to paste is the installer's final word: bare, after a
+# blank line, and never prefixed with "codeaf: add it to this shell with:",
+# which made it a sentence to trim rather than a line to select.
+
+hint='export PATH="/x/bin:$PATH"'
+has_escape() { printf '%s' "$1" | grep -q "$(printf '\033')"; }
+ok "an empty hint prints nothing" '[ -z "$(print_path_hint "" 2>&1)" ]'
+out=$(print_path_hint "$hint"; printf x); out=${out%x}
+expected_hint=$(printf '\n%s\nx' "$hint"); expected_hint=${expected_hint%x}
+ok "the hint is one blank line then the bare export" '[ "$out" = "$expected_hint" ]'
+ok "no colour when stdout is not a terminal" '! has_escape "$out"'
+export NO_COLOR=1
+out=$(print_path_hint "$hint" 2>&1)
+ok "NO_COLOR is respected" '! has_escape "$out"'
+unset NO_COLOR
+last_line=$(grep -v '^[[:space:]]*#' "$script" | grep -v '^[[:space:]]*$' | tail -n 1)
+ok "the hint is the installer's last line" '[ "$last_line" = "print_path_hint \"\$PATH_HINT\"" ]'
+ok "the old prefixed sentence is gone" '! grep -q "add it to this shell with" "$script"'
 
 # --- nothing new on the wire --------------------------------------------------
 
