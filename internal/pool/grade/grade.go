@@ -54,7 +54,7 @@ const (
 	SourceBuilt = "codeaf/grader-build"
 )
 
-// The four stage words a [Result] can name. They are the vocabulary a caller
+// The five stage words a [Result] can name. They are the vocabulary a caller
 // reads [Result.Stage] against, and they are written once here so the string
 // in the result and the string in the doc comment cannot drift apart.
 const (
