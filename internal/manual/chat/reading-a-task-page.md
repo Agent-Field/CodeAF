@@ -549,6 +549,11 @@ until you answer it. A task that is still running is never refused: if nobody is
 to read you — it is being checked, or its worker has just closed — the line is held on the
 task's record instead, which the clause above says out loud.
 
+**A run task's page carries this box too**, and it says when the note is read rather than merely
+saved. Under the box the run page writes `the worker reads a note at its next step`: the note
+goes to the task's store and waits until the worker asks for its next step, which is when it
+reads what you wrote.
+
 ## Task page says finished but the work is still running
 
 It does not any more. If you are on an older build, this is what you were seeing: a job's
