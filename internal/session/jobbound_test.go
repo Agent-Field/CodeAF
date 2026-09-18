@@ -14,10 +14,11 @@ package session
 // ── NOTHING HERE MAKES LOAD ──
 //
 // The storm is a sequence of numbers. The subtree's usage reader and the clock
-// are the code's own seams ([jobSubtreeUsage], [jobBoundNow]), so the whole
-// test runs injected readings with no `yes`, no `awk`, no subprocess at all —
-// on a shared box, a bound proved by real load is the wrong proof and a danger
-// to whoever else is working.
+// are the code's own seams ([jobSubtreeUsage], [jobBoundNow]), and the cores the
+// ceiling is drawn from are a field on the bound, so the whole test runs injected
+// readings with no `yes`, no `awk`, no cgroup and no subprocess at all — on a
+// shared box, a bound proved by real load is the wrong proof and a danger to
+// whoever else is working.
 
 import (
 	"strings"
@@ -74,13 +75,20 @@ func driveBound(registry *jobRegistry, one *job, bound *subtreeBound, samples in
 	return false
 }
 
-// newTestBound is the bound as the box the numbers were measured on would draw
-// it: 20 cores, so the CPU ceiling is 12 cores (three fifths of 20), which is
-// above the honest 8.5 and below the storm's 16.
-func newTestBound() *subtreeBound {
+// boundWith is the bound as it would be drawn on a machine with the given
+// effective cores — the seam that stands a core count in front of the ceiling
+// without a cgroup to be under.
+func boundWith(cores float64) *subtreeBound {
 	bound := newSubtreeBound()
-	bound.machineCores = 20
+	bound.effectiveCores = cores
 	return bound
+}
+
+// newTestBound is the bound as the box the numbers were measured on would draw
+// it: 20 effective cores, so the CPU ceiling is 12 cores (three fifths of 20),
+// which is above the honest 8.5 and below the storm's 16.
+func newTestBound() *subtreeBound {
+	return boundWith(20)
 }
 
 // TestAJobSubtreeOverItsBoundIsCutAndTheModelIsTold is the load-bearing half:
@@ -139,6 +147,37 @@ func TestTheSixtyFourLoopStormIsCut(t *testing.T) {
 	subtreeReadings(t, storm(20, 64, 8, time.Second), time.Second)
 	if !driveBound(registry, one, newTestBound(), 8) {
 		t.Fatal("a 64-loop storm never tripped the bound")
+	}
+}
+
+// TestAStormIsCutUnderAFourCoreQuota is the case the machine's raw core count
+// would miss, and the one that matters because it is where cells run: a cgroup
+// quota holds the whole subtree to four cores, so a ceiling drawn from a 20-core
+// machine (12) could never trip — a subtree capped at four cores cannot reach
+// twelve. Drawn from the EFFECTIVE cores the quota allows (4), the ceiling is
+// 2.4, and a storm sustained at 3.9 cores — near the quota's own ceiling, all a
+// spinner storm can take there — is cut.
+func TestAStormIsCutUnderAFourCoreQuota(t *testing.T) {
+	registry := &jobRegistry{}
+	one := &job{id: 1, kind: jobKindBash, state: jobRunning, done: make(chan struct{})}
+	subtreeReadings(t, storm(3.9, 8, 8, time.Second), time.Second)
+	if !driveBound(registry, one, boundWith(4), 8) {
+		t.Fatal("a storm at 3.9 cores under a four-core quota never tripped: the ceiling must be drawn from the effective cores, not the machine's")
+	}
+	if !one.killRequested {
+		t.Fatal("the storm under a four-core quota was not cut")
+	}
+}
+
+// TestAnHonestBuildUnderAFourCoreQuotaIsNotCut guards the other side of the
+// quota case: a build that uses about half its four cores is well under the 2.4
+// ceiling and must survive.
+func TestAnHonestBuildUnderAFourCoreQuotaIsNotCut(t *testing.T) {
+	registry := &jobRegistry{}
+	one := &job{id: 2, kind: jobKindBash, state: jobRunning, done: make(chan struct{})}
+	subtreeReadings(t, storm(2.0, 20, 8, time.Second), time.Second)
+	if driveBound(registry, one, boundWith(4), 8) {
+		t.Fatal("an honest build at 2.0 cores under a four-core quota was cut")
 	}
 }
 
