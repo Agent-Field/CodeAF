@@ -153,6 +153,17 @@ func conversationNotes(agent *Agent, phrase string) int {
 	return count
 }
 
+// conversationJournalLines counts display entries in the durable conversation record.
+func conversationJournalLines(agent *Agent, phrase string) int {
+	count := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, phrase) {
+			count++
+		}
+	}
+	return count
+}
+
 // waitFor polls a condition to a bounded deadline, failing with what it was
 // waiting on rather than hanging.
 func beltRunWaitFor(t *testing.T, what string, ok func() bool) {
@@ -193,6 +204,7 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = newTestRepo(t)
 		config.Place = Place{Dir: dir}
+		config.SessionFile = filepath.Join(dir, placeTranscript)
 		config.AskConsent = false
 	})
 
@@ -230,7 +242,10 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	close(double.release)
 	beltRunWaitFor(t, "the run's landing", func() bool {
 		task := beltRunTaskAt(t, dir, rootID)
-		return task != nil && task.Status == plandb.StatusDone
+		agent.beltMu.Lock()
+		landed := agent.beltRun == nil
+		agent.beltMu.Unlock()
+		return task != nil && task.Status == plandb.StatusDone && landed
 	})
 	if got := completer.requests(); got != callsBeforeLanding {
 		t.Fatalf("landing made %d completer calls, want zero", got-callsBeforeLanding)
@@ -252,18 +267,19 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 		!strings.Contains(wantDigest, "landed on task/fix-the-nil-map-crash") {
 		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
 	}
-	if got := conversationNotes(agent, wantDigest); got != 1 {
+	if got := conversationJournalLines(agent, wantDigest); got != 1 {
 		t.Fatalf("the conversation journal carries digest %d times, want one", got)
 	}
+	journal := agent.file.journalPath()
 	if err := agent.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	reopened, err := newAgent(Config{Workspace: agent.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: agent.config.SessionFile}, &scriptedCompleter{})
+	reopened, err := newAgent(Config{Workspace: agent.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: journal}, &scriptedCompleter{})
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
 	defer reopened.Close()
-	if got := conversationNotes(reopened, wantDigest); got != 1 {
+	if got := conversationJournalLines(reopened, wantDigest); got != 1 {
 		t.Fatalf("reopened conversation carries digest %d times, want one", got)
 	}
 	// the run's row settled too, on the surface's own lane

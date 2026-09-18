@@ -35,7 +35,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -180,7 +179,7 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 		}}); err != nil {
 			return a.startTaskLegacy(ctx, brief, solo)
 		}
-		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: time.Now()})
+		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
 		return id, title, "", nil
 	}
 
@@ -190,7 +189,7 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 	}
 	run := &beltRun{plan: plan, store: store, root: store.RootID(), row: id, title: title}
 	a.installBeltRun(g, run)
-	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: time.Now()})
+	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: a.taskClockNow()})
 
 	// THE CONVERSATION'S OWN SEATS, read off its role ladder so the engine's
 	// crew factory seats the work and plan roles on what this conversation's
@@ -311,15 +310,26 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	_ = run.store.Close()
 }
 
-// deliverBeltRunLanding wakes the conversation with the note a landed task
-// sends, composed for a run: the outcome word in place of a tier word, the
-// result the root reported, and where the work went. It is the run's own voice
-// ([fromRuntime]), so a person reads it as the session's news and not as
-// something they typed.
+// deliverBeltRunLanding writes the run's digest into the conversation record.
+// A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED. The owed case is the next cell's
+// work; its named seam keeps the wake road present but unreachable here.
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
-	notice := a.beltRunNotice(run, summary, landing)
-	line := landingNoteLead(notice) + taskNote(notice, "", a.settlePolicy(), a.addressLanding(notice))
-	a.accept(delivery{origin: fromRuntime, kind: msgResult, note: wakeNote(line)})
+	line := beltRunOutcomeNote(summary, landing)
+	if landingOwesAnswer(run.store.Task(run.root)) {
+		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: wakeNote(line)})
+		return
+	}
+	note := userText(line)
+	note.authored = true
+	a.mu.Lock()
+	a.recordUserLocked(note)
+	a.mu.Unlock()
+}
+
+// landingOwesAnswer is the seam for the next cell: an owed root landing wakes
+// one bounded reply turn. This cell records no debt, so no landing owes one.
+func landingOwesAnswer(task *plandb.Task) bool {
+	return false
 }
 
 // settleBeltRun ends the row the run was published under: done when the run
@@ -327,7 +337,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 // a surface draws.
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
-	notice.EndedAt = time.Now()
+	notice.EndedAt = a.taskClockNow()
 	a.emitTaskUpdate(notice)
 }
 
@@ -363,11 +373,14 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 // ended: the engine's outcome word and where the work went, or the sentence that
 // says why it did not.
 func beltRunOutcomeNote(summary RunSummary, landing RunLanding) string {
-	line := beltLandingLine(landing)
-	if line == "" {
-		return summary.Outcome
+	parts := []string{summary.Outcome}
+	if result := strings.TrimSpace(summary.Result); result != "" {
+		parts = append(parts, result)
 	}
-	return summary.Outcome + " · " + line
+	if line := beltLandingLine(landing); line != "" {
+		parts = append(parts, line)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // beltLandingLine is what a landing is in one line: where the work went and how
