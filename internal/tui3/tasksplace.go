@@ -623,6 +623,18 @@ func (r tasksReading) lay(width int) []tasksLine {
 	// cells and three things they could say; the fold is a key a person can press,
 	// the connector is furniture, and the indent in front of both has already said
 	// where the row sits.
+	var familyDone func(tasksItem) bool
+	familyDone = func(item tasksItem) bool {
+		if item.plan == nil || (item.plan.Status != "done" && item.plan.Status != "failed" && item.plan.Status != "cancelled") {
+			return false
+		}
+		for _, kid := range tree.kids[tasksKeyOf(item.entry)] {
+			if !familyDone(kid) {
+				return false
+			}
+		}
+		return true
+	}
 	var work func(item tasksItem, depth int, last, named, nested bool)
 	work = func(item tasksItem, depth int, last, named, nested bool) {
 		key := tasksKeyOf(item.entry)
@@ -633,16 +645,19 @@ func (r tasksReading) lay(width int) []tasksLine {
 		mark := ""
 		switch {
 		case len(kids) > 0 && item.plan != nil:
-			// A PLAN ROW IS A NODE OF THE PLAN'S OWN TREE AND NOT A FOLD. A record
-			// row with work under it wears the fold and opens shut
-			// ([tasksReading.opens] says why); a plan row's children are the store's
-			// own graph — the parent the worker wrote and the task a held row waits
-			// on — so they always follow it and the tree a person came to read is on
-			// screen without a keypress. The mark is the tasks place's own connector
-			// ([tasksKin]) and never a second scheme.
-			line.open = true
+			line.folds, line.family, line.kids = familyDone(item), key, len(kids)
+			line.open = !line.folds
+			if line.folds {
+				ending := "done"
+				if item.plan.Status != "done" {
+					ending = "failed"
+				}
+				line.item.entry.Activity = itoa(len(kids)) + " " + ending
+			}
 			mark = tasksKinPad
-			if nested {
+			if line.folds {
+				mark = tasksFoldShut
+			} else if nested {
 				mark = tasksKinCont
 				if last {
 					mark = tasksKinLast

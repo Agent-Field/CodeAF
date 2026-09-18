@@ -250,6 +250,9 @@ func planStateField(item tasksItem) rowField {
 	if said == "" {
 		said = status.Word
 	}
+	if folded := strings.TrimSpace(item.entry.Activity); folded != "" {
+		return rowSay(said+railSep+folded, said)
+	}
 	if steps := planStepWords(item.plan.Steps); steps != "" {
 		return rowSay(said+railSep+steps, said, status.Word)
 	}
@@ -289,58 +292,35 @@ func planKinOf(rows []session.PlanTaskRow) planKin {
 // a person has to go and follow is not a sentence. What is left is read as the
 // rail reads a held row of its own ([app.railWaits] and task.go's
 // `waits: <title>`).
-// planAnchor is the row a plan row hangs under: the parent the store gave it,
-// and, for a row held `pending` behind work that is not its parent, the task it
-// waits on. It is the id the tree walk nests on ([planItem]) and the row
-// [planWaits] names.
-//
-// A HARD DEPENDENCY OUTRANKS THE PARENT WHEN THE TWO DIFFER, because it is the
-// relation a person cannot already read off the tree: the parent is a containing
-// row, while a dependency is the piece of work actually holding this one. Only a
-// dependency that is on the page and still open can hold anything, so a
-// dependency this page has never heard of, one with no words on it, and one that
-// has landed are all skipped and the row falls back to its parent.
-func planAnchor(row *session.PlanTaskRow, kin planKin) string {
+// planAnchor is the row a plan row hangs under: always the parent that requested it.
+// Dependencies are named by planWaits but never change the hierarchy.
+func planAnchor(row *session.PlanTaskRow, _ planKin) string {
 	if row == nil {
 		return ""
 	}
-	parent := strings.TrimSpace(row.Parent)
-	if strings.TrimSpace(row.Status) == "pending" {
-		for _, id := range row.Waits {
-			id = strings.TrimSpace(id)
-			if id == "" || id == parent {
-				continue
-			}
-			dep := kin[id]
-			if dep == nil || strings.TrimSpace(dep.Title) == "" {
-				continue
-			}
-			if planStateWord(dep.Status) == "done" {
-				continue
-			}
-			return id
-		}
-	}
-	return parent
+	return strings.TrimSpace(row.Parent)
 }
 
 // planWaits is the title a held plan row names after `queued · waits:`, and ""
 // for a row that names none. A row is held behind named work only when the store
-// says `pending`; the work it hangs under is [planAnchor]'s answer, and it names
-// nothing when that row has no title or has already landed — the bare word
+// says `pending`; explicit hard dependencies are tried first, with the parent as
+// the inherited gate when no explicit dependency is available — the bare word
 // `queued`, which is the honest reading of a hold this page cannot name.
 func planWaits(row *session.PlanTaskRow, kin planKin) string {
 	if row == nil || strings.TrimSpace(row.Status) != "pending" {
 		return ""
 	}
-	anchor := kin[planAnchor(row, kin)]
-	if anchor == nil || strings.TrimSpace(anchor.Title) == "" {
-		return ""
+	for _, id := range row.Waits {
+		dep := kin[strings.TrimSpace(id)]
+		if dep != nil && strings.TrimSpace(dep.Title) != "" && planStateWord(dep.Status) != "done" {
+			return strings.TrimSpace(dep.Title)
+		}
 	}
-	if planStateWord(anchor.Status) == "done" {
-		return ""
+	parent := kin[strings.TrimSpace(row.Parent)]
+	if parent != nil && strings.TrimSpace(parent.Title) != "" && planStateWord(parent.Status) != "done" {
+		return strings.TrimSpace(parent.Title)
 	}
-	return strings.TrimSpace(anchor.Title)
+	return ""
 }
 
 // planFigures is the telemetry a plan task's under-block carries: the steps its
@@ -461,6 +441,7 @@ func (a *app) taskSheetPlan(id string) tea.Cmd {
 		return nil
 	}
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
+	a.taskSheet.planAt = -1
 	a.taskSheet.detailTop = 0
 	// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
 	// follows at all, so it opens stuck to the bottom and a scroll is what
@@ -670,16 +651,31 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	switch key {
 	case "esc", "left":
-		a.closeTaskPlan()
+		if n := len(a.taskSheet.planBack); n > 0 {
+			a.taskSheet.plan = a.taskSheet.planBack[n-1]
+			a.taskSheet.planBack = a.taskSheet.planBack[:n-1]
+			a.taskSheet.planAt = -1
+			a.touch()
+		} else {
+			a.closeTaskPlan()
+		}
 		return nil
 	case taskSheetKey:
 		a.closeTaskSheet()
 		return nil
 	case "up", "ctrl+p":
-		a.taskPlanScroll(-1)
+		if a.taskSheet.planAt >= 0 {
+			a.taskSheet.planAt--
+		} else {
+			a.taskPlanScroll(-1)
+		}
 		return nil
 	case "down", "ctrl+n":
-		a.taskPlanScroll(1)
+		if a.taskSheet.planAt+1 < len(a.taskSheet.plan.Children) {
+			a.taskSheet.planAt++
+		} else {
+			a.taskPlanScroll(1)
+		}
 		return nil
 	case "pgup":
 		a.taskPlanScroll(-taskSheetRows)
@@ -688,6 +684,16 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.taskPlanScroll(taskSheetRows)
 		return nil
 	case "enter":
+		if a.taskSheet.planNote.empty() && a.taskSheet.planAt >= 0 && a.taskSheet.planAt < len(a.taskSheet.plan.Children) {
+			old := a.taskSheet.plan
+			id := old.Children[a.taskSheet.planAt].ID
+			if cmd := a.taskSheetPlan(id); a.taskSheet.plan.Row.ID == id {
+				a.taskSheet.planBack = append(a.taskSheet.planBack, old)
+			} else {
+				return cmd
+			}
+			return nil
+		}
 		return a.taskPlanNoteSend()
 	case "backspace":
 		a.taskSheet.planNote.deleteBackward()
@@ -889,6 +895,9 @@ func (a *app) taskPlanBody(width int) []string {
 		add(pal.dim(word))
 	}
 
+	if n := len(a.taskSheet.planBack); n > 0 {
+		add(pal.dim("esc/← " + a.taskSheet.planBack[n-1].Row.Title))
+	}
 	if row := planTelemetryLine(page.Row); row != "" {
 		add(pal.dim(row))
 	}
@@ -953,17 +962,29 @@ func (a *app) taskPlanBody(width int) []string {
 	// no new word: a child's line is its state word and its title. The note
 	// composer and its receipt below are untouched by the tree.
 	if kids := page.Children; len(kids) > 0 {
-		if len(page.Steps) == 0 && page.Live.Empty() {
-			section("steps")
+		section("under it")
+		kin := planKinOf(kids)
+		reverse := map[string]int{}
+		for _, kid := range kids {
+			if planRunning(kid.Status) {
+				for _, id := range kid.Waits {
+					reverse[id]++
+				}
+			}
 		}
 		for at, kid := range kids {
 			mark := tasksKinCont
-			if at == len(kids)-1 {
+			if at == len(kids)-1 || kids[at+1].Depth <= kid.Depth {
 				mark = tasksKinLast
 			}
-			add(pal.ink(mark + planChildWord(kid)))
-			if line := planLiveRow(kid.Live.Command, width-2, pal); line != "" {
-				add("  " + line)
+			lead := tasksKin(kid.Depth, tasksKinRoom(width), mark)
+			word := planChildWordWithKin(kid, kin)
+			if n := reverse[kid.ID]; n > 0 {
+				word += railSep + itoa(n) + " queued behind it"
+			}
+			add(pal.ink(lead + word))
+			if line := planLiveRow(kid.Live.Command, width-ansi.StringWidth(lead)-2, pal); line != "" {
+				add(lead + "  " + line)
 			}
 		}
 	}
@@ -1052,4 +1073,16 @@ func planObservationHead(observation string) string {
 		}
 	}
 	return ""
+}
+
+func planChildWordWithKin(row session.PlanTaskRow, kin planKin) string {
+	item := planItem(row, "", kin)
+	word, title := item.status().RowWord(), strings.TrimSpace(row.Title)
+	if word != "" && title != "" {
+		return word + railSep + title
+	}
+	if word != "" {
+		return word
+	}
+	return title
 }

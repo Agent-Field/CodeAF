@@ -759,29 +759,27 @@ func TestThePlanTreeDrawsAChildIndentedUnderItsParent(t *testing.T) {
 	}
 }
 
-// A HELD ROW SITS UNDER WHAT IT WAITS ON even when that is not its parent. The
-// store records a hard dependency between two tasks; a row kept `pending`
-// because of one is drawn under the task it waits on, one level in, still
-// wearing `queued · waits: <that task>`.
-func TestAQueuedPlanRowSitsUnderTheTaskItWaitsOn(t *testing.T) {
+// A dependency names the wait but never changes the parent-drawn hierarchy.
+func TestAQueuedPlanRowStaysWithItsParent(t *testing.T) {
 	rows := []session.PlanTaskRow{
+		{ID: "t-parent", Title: "Parent", Status: "running"},
 		{ID: "t-dep", Title: "Dep", Status: "running"},
-		{ID: "t-alpha", Title: "Alpha", Status: "pending", Waits: []string{"t-dep"}},
+		{ID: "t-alpha", Title: "Alpha", Parent: "t-parent", Status: "pending", Waits: []string{"t-dep"}},
 	}
 	a, _ := planAppWith(t, rows, nil)
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a plan")
 	}
 	kin := planDrawnKin(a)
-	dep, child := kin["t-dep"], kin["t-alpha"]
-	if dep == "" || child == "" {
-		t.Fatalf("both rows must be drawn (dep %q, child %q)", dep, child)
+	dep, parent, child := kin["t-dep"], kin["t-parent"], kin["t-alpha"]
+	if dep == "" || parent == "" || child == "" {
+		t.Fatalf("both rows must be drawn (parent %q, child %q)", parent, child)
 	}
 	if !strings.HasSuffix(child, tasksKinCont) && !strings.HasSuffix(child, tasksKinLast) {
 		t.Fatalf("the held row was not drawn under the task it waits on: %q", child)
 	}
-	if ansi.StringWidth(child) <= ansi.StringWidth(dep) {
-		t.Fatalf("the held row sits at the waiting-on task's own column (dep %q, child %q)", dep, child)
+	if ansi.StringWidth(child) <= ansi.StringWidth(parent) {
+		t.Fatalf("the held row sits at its parent's own column (parent %q, child %q)", parent, child)
 	}
 	line, ok := planLine(taskSheetText(a), "Alpha")
 	if !ok {
