@@ -17,6 +17,14 @@ import (
 
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
+// ErrClosed is what every method that can refuse answers once Close has
+// released the store: each write, and each read whose answer the database
+// holds rather than this handle's memory. IT IS THE SEAM A WORKER THAT
+// OUTLIVED ITS RUN LANDS ON — the spend row, the trajectory ending and the
+// completion such a worker still owes come back as a refusal a best-effort
+// writer drops, rather than as a nil handle to dereference.
+var ErrClosed = errors.New("plan store is closed")
+
 // Store is the plan: one SQLite database, a mutex for this process, and a
 // transaction per write that every other process serializes on. Its method set
 // is the earlier port's, kept because it already answers the CLI's questions:
@@ -35,6 +43,10 @@ type Store struct {
 	path string
 	now  func() time.Time
 	data state
+	// closed is set by Close under the lock. Every method asks it there before
+	// it touches a handle Close may already have released — the nil `db` and
+	// `rdb` below, which used to be what a late write found.
+	closed bool
 	// db is the SQLite handle every read-modify-write transaction runs on. One
 	// connection per store (openDatabase), so the pragmas are set once and a
 	// transaction never races its own store for the write lock.
@@ -289,7 +301,7 @@ func (s *Store) ReadyLeaves() []*Task {
 	var tasks []*Task
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
-		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) || len(executionBlockReasons(s.data, task)) > 0 {
+		if task.Status != StatusReady || task.Composite || task.Waiting || pausedInLineage(s.data, task) || len(executionBlockReasons(s.data, task)) > 0 {
 			continue
 		}
 		tasks = append(tasks, cloneTask(task))
@@ -312,7 +324,7 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 		if !filter.admits(task.Project, task.Chat) {
 			continue
 		}
-		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) {
+		if task.Status != StatusReady || task.Composite || task.Waiting || pausedInLineage(s.data, task) {
 			continue
 		}
 		if reasons := executionBlockReasons(s.data, task); len(reasons) > 0 {
@@ -330,6 +342,9 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 func (s *Store) Show(id string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	s.refresh()
 	task := s.data.Tasks[id]
 	if task == nil {
@@ -348,6 +363,9 @@ func (s *Store) Show(id string) (*Task, error) {
 func (s *Store) RoleOf(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return "", err
+	}
 	s.refresh()
 	id = strings.TrimSpace(strings.TrimPrefix(id, "t-"))
 	task := s.data.Tasks[id]
@@ -386,6 +404,9 @@ func (s *Store) Task(id string) *Task {
 func (s *Store) Resolve(word string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	s.refresh()
 	if task := s.data.Tasks[strings.TrimPrefix(word, "t-")]; task != nil {
 		return cloneTask(task), nil
@@ -446,12 +467,22 @@ func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 
 // Done completes a task its agent owns. The root is the runtime's, exactly as
 // the earlier port had it: a worker cannot finish the run, only its own task.
+//
+// THE ONE EXCEPTION IS THE ROOT'S OWN WORKER. The run's root is handed to a
+// worker like every other task ([internal/run]'s supervisor launches it), and
+// on this belt that worker finishes by naming its task's id — which for the
+// root is `root`. It is the same act every other worker performs on its own
+// task, and refusing it would leave the root's worker with nothing to end the
+// loop on. So the root may be completed by an agent whose name IS the root id,
+// and by nothing else: the run's own completion stays [Store.CompleteRoot]'s,
+// and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if len(result) > 64<<10 {
 			return errors.New("completion result exceeds 65536 bytes")
 		}
-		if id == next.RootID {
+		rootWorker := id == next.RootID && strings.TrimSpace(agent) == id
+		if id == next.RootID && !rootWorker {
 			return errors.New("the harness owns root completion")
 		}
 		// THE ONE CASE OWNERSHIP YIELDS TO: a composite parent the store itself
@@ -462,16 +493,24 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		// worker's own done, a real ending — keeps its words and its owner.
 		placeholder := task.Status == StatusDone && strings.TrimSpace(task.Result) == "" && task.ClaimedBy == ""
 		if !placeholder {
-			if err := requireOwner(task, agent); err != nil {
-				return err
+			// THE ROOT IS NEVER CLAIMED, so its worker cannot answer the ownership
+			// check every other task's worker does. The root's own worker is named
+			// instead, above, and the finish law still holds: the root cannot close
+			// while a child or a hard dependency is open.
+			if !rootWorker {
+				if err := requireOwner(task, agent); err != nil {
+					return err
+				}
 			}
 			if ok, reason := canFinish(*next, task); !ok {
 				return errors.New(reason)
 			}
-			switch task.Status {
-			case StatusClaimed, StatusRunning:
-			default:
-				return fmt.Errorf("task %q cannot complete from status %s", id, task.Status)
+			if !rootWorker {
+				switch task.Status {
+				case StatusClaimed, StatusRunning:
+				default:
+					return fmt.Errorf("task %q cannot complete from status %s", id, task.Status)
+				}
 			}
 		}
 		if len(task.EvidenceRequirements) > 0 && len(cleanStrings(evidence)) == 0 {
@@ -534,6 +573,82 @@ func (s *Store) Release(id, agent string) (*Task, error) {
 // release — asks it rather than spelling the two words out.
 func heldStatus(status Status) bool {
 	return status == StatusClaimed || status == StatusRunning
+}
+
+// Wait parks a task whose worker cannot go on: the claim is released, the task
+// stays open and NOT done, and the runtime launches it again through its wake
+// road when one of its dependencies or its children changes. THE PARK IS A
+// WAIT ON SOMETHING, so a task with nothing open to wait on — no dependency
+// that is not done, no child that is not terminal — is refused, and a worker
+// cannot park forever on nothing. A parked task keeps a non-terminal status,
+// so it counts as open for every finish law: a parent cannot complete while a
+// parked child stands, and a dependent cannot complete while a parked
+// dependency stands.
+func (s *Store) Wait(id, agent string) (*Task, error) {
+	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		// THE ROOT IS NEVER CLAIMED, so its own worker parks it the way it
+		// finishes it — by naming the root's id — and every other caller is
+		// held to the claim it does not have.
+		rootWorker := id == next.RootID && strings.TrimSpace(agent) == id
+		if !rootWorker {
+			if err := requireOwner(task, agent); err != nil {
+				return err
+			}
+			if !heldStatus(task.Status) {
+				return fmt.Errorf("task %q is not claimed or running", id)
+			}
+		}
+		if len(openWaits(*next, task)) == 0 {
+			return fmt.Errorf("task %q has nothing to wait for — no open dependency, no open child", id)
+		}
+		task.Waiting, task.WaitedAt = true, now
+		task.ClaimedBy, task.Owner, task.SeenAt = "", "", time.Time{}
+		task.Status = StatusPending
+		promote(next, now)
+		return nil
+	})
+}
+
+// openWaits names what a task is waiting on: every dependency whose upstream is
+// not done, and every child that is not terminal. Sorted, so the reason a
+// refusal names is the same on every call.
+func openWaits(value state, task *Task) []string {
+	var out []string
+	for _, dep := range task.Dependencies {
+		upstream := value.Tasks[dep.TaskID]
+		if upstream == nil || upstream.Status != StatusDone {
+			out = append(out, dep.TaskID)
+		}
+	}
+	for _, id := range value.Order {
+		child := value.Tasks[id]
+		if child.ParentID == task.ID && !terminal(child.Status) {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Wake clears a parked task's wait flag, the other half of [Store.Wait]: the
+// runtime calls it when something the task waited on has moved, immediately
+// before it launches the task's worker again. It moves NOTHING ELSE — not the
+// status, and it does not promote. A leaf keeps the status [Wait] left it (Ready
+// where its hard dependencies are done, so the launch's claim answers the
+// ownership check, and Pending where one is still open, so the launch is
+// dropped and the ordinary frontier brings the task back once it clears). A
+// composite is launched without a claim and needs no status; promoting here
+// would let the store auto-complete a composite the instant its last child
+// landed, before the worker it is being woken for can integrate them.
+func (s *Store) Wake(id string) (*Task, error) {
+	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if !task.Waiting {
+			return nil
+		}
+		task.Waiting, task.WaitedAt = false, time.Time{}
+		task.UpdatedAt = now
+		return nil
+	})
 }
 
 // TouchClaims refreshes the seen-at stamp of every task an owner holds, so a
@@ -1127,6 +1242,9 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 func (s *Store) Archived() ([]*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	return loadArchived(s.rdb)
 }
 
@@ -1539,6 +1657,13 @@ const writeLockWait = 60 * time.Second
 // so a refusal is asked again with a short backoff — each attempt re-enters
 // the queue — until a generous bound.
 func (s *Store) beginWrite() (*sql.Tx, error) {
+	// A RELEASED STORE REFUSES HERE, once, for every writer there is: each
+	// write ends up through this one transaction opener, so a late spend row,
+	// a late completion or a late failure all answer ErrClosed rather than
+	// dereferencing the nil handle Close left behind.
+	if err := s.errIfClosed(); err != nil {
+		return nil, err
+	}
 	deadline := time.Now().Add(writeLockWait)
 	for {
 		tx, err := s.db.Begin()
@@ -1591,6 +1716,19 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 	return nil
 }
 
+// errIfClosed is the refusal every method makes on a store Close has already
+// released, and nil while the store is open. The caller holds the store's
+// lock, which is the one moment `closed` and the two database handles are in
+// a known state together: this is why the check is here rather than in each
+// writer, and why a handle released while a worker still held it answers a
+// word instead of dying.
+func (s *Store) errIfClosed() error {
+	if s.closed {
+		return ErrClosed
+	}
+	return nil
+}
+
 // refresh adopts the last committed plan from the database into the handle's
 // memory, through the read handle in a DEFERRED transaction. Every read calls
 // it before answering, so a handle's answer is the plan the database holds and
@@ -1600,9 +1738,11 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 // the write lock, so a read never waits behind an open write; and because the
 // read is one transaction, it answers a whole committed plan and never a plan
 // half-written. A refresh that cannot read keeps the memory it has: the store
-// would rather answer its last good plan than fail a read it cannot report.
+// would rather answer its last good plan than fail a read it cannot report,
+// and a read on a closed store is exactly that — the plan the handle last
+// held, answered rather than reached for.
 func (s *Store) refresh() {
-	if s.rdb == nil {
+	if s.closed || s.rdb == nil {
 		return
 	}
 	tx, err := s.rdb.Begin()
@@ -1617,12 +1757,25 @@ func (s *Store) refresh() {
 	s.data = fresh
 }
 
-// Close releases the store's database handles. A store opened for one pass —
-// the runtime opens one per pulse — must be closed when the pass is done, or
-// every pass would leave a connection and a file descriptor behind.
+// Close releases the store's database handles and marks the handle closed
+// against every later call. A store opened for one pass — the runtime opens
+// one per pulse — must be closed when the pass is done, or every pass would
+// leave a connection and a file descriptor behind.
+//
+// A CLOSED STORE REFUSES; IT NEVER PANICS. Close is what a caller does the
+// moment a run is over, and the run's own workers are the last writers to
+// reach for the handle: every method that carries an error — each write,
+// through the one transaction opener, and each read the database answers
+// rather than this handle's memory (Show, RoleOf, Resolve, Archived) —
+// answers ErrClosed afterwards, and the reads that carry none (Tasks, Notes,
+// the summaries and rollups) answer the plan the handle last held instead of
+// reaching for a handle that is gone. Closing a store twice is not an error:
+// a caller that closes in a defer and again on the ending road says the same
+// thing both times.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.closed = true
 	err := error(nil)
 	if s.rdb != nil {
 		err = s.rdb.Close()
@@ -1848,9 +2001,17 @@ func promote(value *state, now time.Time) {
 		// A COMPOSITE TASK AUTO-COMPLETES when its children are all terminal
 		// and all done — the half the doctrine's parents rely on to finish
 		// without a worker ever touching them.
+		//
+		// A COMPOSITE A WORKER IS HOLDING IS NOT THE STORE'S TO CLOSE. A parent
+		// whose own worker is claimed or running has a result still to be written
+		// — its children's landings wake it, and it reports them — so the store
+		// leaves it open and the run writes its ending (internal/run's supervisor).
+		// A composite nobody is working — a parent that never had a worker of its
+		// own — still auto-completes here, which is what lets a store-only plan
+		// finish without a seat for every coordinator.
 		for _, id := range value.Order {
 			task := value.Tasks[id]
-			if id == value.RootID || !task.Composite || terminal(task.Status) || !allChildrenTerminal(*value, id) {
+			if id == value.RootID || !task.Composite || task.Waiting || terminal(task.Status) || heldStatus(task.Status) || !allChildrenTerminal(*value, id) {
 				continue
 			}
 			task.Status = StatusDone
@@ -2210,6 +2371,9 @@ func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outT
 // carrying the dollars and the call count under that tag. A charge whose task
 // the store does not know is left out — it has no tag to be counted under.
 func (s *Store) spendTotals() (map[string]SpendTotal, map[string]SpendTotal, error) {
+	if err := s.errIfClosed(); err != nil {
+		return nil, nil, err
+	}
 	byProject := map[string]SpendTotal{}
 	byChat := map[string]SpendTotal{}
 	rows, err := s.rdb.Query(`SELECT t.project, t.chat, SUM(s.usd), COUNT(*)
@@ -2246,6 +2410,9 @@ func (s *Store) SpendSummary() SpendSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := SpendSummary{ByRole: map[string]SpendTotal{}, ByModel: map[string]SpendTotal{}}
+	if s.closed {
+		return result
+	}
 	rows, err := s.rdb.Query(`SELECT role, model, SUM(usd), COUNT(*) FROM spend GROUP BY role, model`)
 	if err != nil {
 		return result
@@ -2318,6 +2485,9 @@ func spendAxisKey(axis string) (string, bool) {
 func (s *Store) SpendBy(axis string, since time.Time) []SpendLine {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
 	keyExpr, join := spendAxisKey(axis)
 	if keyExpr == "" {
 		return nil

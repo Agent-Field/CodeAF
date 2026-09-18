@@ -206,6 +206,57 @@ func TestPlanTaskPageDrawsTheTaskAndRefusesAnotherChat(t *testing.T) {
 	}
 }
 
+// A row carries the live step the store holds for its task — the number, the
+// command and the moment — and the zero value for a task that is running
+// nothing; the page carries it through its row. This is the reading the
+// engine publishes on EventToolBegin and clears at every ending.
+func TestPlanTaskRowCarriesTheLiveStep(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a",
+		plandb.TaskSpec{ID: "alpha", Title: "Alpha"},
+		plandb.TaskSpec{ID: "beta", Title: "Beta"},
+	)
+
+	store, err := plandb.Open(path, "", planRootID, "", "")
+	if err != nil {
+		t.Fatalf("reopen the store to publish a live step: %v", err)
+	}
+	if err := store.SetLive("alpha", 7, "$ git grep -n RateLimit internal/api"); err != nil {
+		t.Fatalf("publish the live step: %v", err)
+	}
+	_ = store.Close()
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	rows := agent.PlanTasks()
+	alpha := planRowByID(t, rows, "t-alpha")
+	if alpha.Live.Step != 7 || alpha.Live.Command != "$ git grep -n RateLimit internal/api" {
+		t.Fatalf("live step = %#v, want step 7 with its command", alpha.Live)
+	}
+	if alpha.Live.Since.IsZero() {
+		t.Fatal("the live step's moment is the zero time, want when the command began")
+	}
+	if alpha.Live.Empty() {
+		t.Fatal("a running task's row reads empty")
+	}
+
+	// A task the store holds no live row for answers the zero value — the
+	// emptiness the surface draws as no line at all.
+	if beta := planRowByID(t, rows, "t-beta"); !beta.Live.Empty() {
+		t.Fatalf("a task running nothing answers %#v, want the zero value", beta.Live)
+	}
+
+	// The page carries the same reading through its own row.
+	page, ok := agent.PlanTaskPage("t-alpha")
+	if !ok {
+		t.Fatal("the chat's own task answered no page")
+	}
+	if page.Row.Live.Step != 7 || page.Row.Live.Command != alpha.Live.Command {
+		t.Fatalf("the page's live step = %#v, want the row's", page.Row.Live)
+	}
+}
+
 // rowIDs names the rows' ids for a failure message.
 func rowIDs(rows []PlanTaskRow) []string {
 	ids := make([]string, 0, len(rows))

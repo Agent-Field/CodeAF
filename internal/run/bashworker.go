@@ -9,6 +9,7 @@ package run
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -91,79 +92,220 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	defer func() { _ = agent.Close(); agent.SettleWrites() }()
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	events, err := agent.Submit(runCtx, session.BeltWorkerBrief(&task, task.ID == w.store.RootID(), len(past) > 0))
-	if err != nil {
-		_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the turn never started: " + err.Error()})
-		return Report{}, err
-	}
 	rec := stepRecorder{store: w.store, storeDir: storeDir, taskID: task.ID, children: childrenOf(w.store, task.ID)}
 	var (
-		steps   int
-		usd     float64
-		inTok   int
-		outTok  int
-		turnErr error
-		capped  bool
+		steps  int
+		usd    float64
+		inTok  int
+		outTok int
 	)
 	// THE SPEND ROW IS WRITTEN ONCE, WHATEVER THE ENDING. A turn that spent money
 	// spent it whether it finished, hit the cap or errored, so the write is
 	// deferred rather than kept to the good path: a person reading the ledger sees
 	// what the task cost even when the task did not finish.
 	defer func() { w.recordSpend(task.ID, usd, inTok, outTok) }()
-	for event := range events {
-		switch event.Kind {
-		case session.EventToolEnd, session.EventToolFailed:
-			// THE CAP IS THE LAST STEP COUNTED. stop() cancels the turn, but
-			// the agent's loop notices on its next round, and a round it had
-			// already started still ends its tool — under the race detector
-			// several do. Those late ends are drained here so the agent can
-			// close, and they are neither counted nor recorded: the report
-			// says the cap, and the trajectory ends where the cap fell.
-			if capped {
-				continue
-			}
-			steps++
-			if err := rec.record(steps, event); err != nil {
-				// A step that could not be recorded left the record shorter
-				// than the run was: that is a failure of the record itself,
-				// and the honest ending is the task failing on it.
-				_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the record failed: " + err.Error()})
-				return Report{Steps: steps}, err
-			}
-			if capSteps > 0 && steps >= capSteps {
-				// THE CAP IS A BOUND ON SPEND, not a finding about the work:
-				// the turn is stopped here rather than judged, and the ending
-				// below says where it stopped.
-				capped = true
-				stop()
-			}
-		case session.EventTurnDone:
-			usd += event.Usage.CostUSD
-			inTok += event.Usage.Input
-			outTok += event.Usage.Output
-		case session.EventError:
-			if turnErr == nil {
-				turnErr = event.Err
+
+	// THE BRIEF IS SAID ONCE, on the first round. Every round after it goes out
+	// on the harness's own note, because a round only begins again when the last
+	// one ended on words with no action.
+	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx))
+	// noAction counts replies in a row that carried no tool call. A reply that
+	// did call a tool resets the run to one — its own trailing words are the
+	// first of the new run — and the fourth in a row fails the task.
+	noAction := 0
+	for {
+		events, err := agent.Submit(runCtx, brief)
+		if err != nil {
+			// A TURN THAT NEVER STARTED RUNS NO COMMAND, so it clears any live step
+			// a predecessor left behind on this task rather than claiming a present.
+			w.clearLiveStep(task.ID)
+			_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the turn never started: " + err.Error()})
+			return Report{Steps: steps}, err
+		}
+		brief = noActionNote
+
+		var (
+			roundSteps int
+			turnErr    error
+			capped     bool
+			ending     storeEnding
+		)
+		for event := range events {
+			switch event.Kind {
+			case session.EventToolBegin:
+				// A LIVE STEP IS TRUE ONLY WHILE ITS COMMAND RUNS. The begin event is
+				// the command the moment before it runs — carrying the tool name and
+				// the rendered arguments — and it is the one chance the store is told
+				// what this task is doing now, so it is published as the task's live
+				// step: the number the step will be recorded under, the command
+				// [stepCommand] reads off the event, and the moment the store stamps.
+				// The step's own end line clears it, and so does every ending below,
+				// so a task that is not running a command never claims a present.
+				_ = w.store.SetLive(task.ID, steps+1, stepCommand(event))
+			case session.EventToolEnd, session.EventToolFailed:
+				// THE CAP IS THE LAST STEP COUNTED. stop() cancels the turn, but
+				// the agent's loop notices on its next round, and a round it had
+				// already started still ends its tool — under the race detector
+				// several do. Those late ends are drained here so the agent can
+				// close, and they are neither counted nor recorded: the report
+				// says the cap, and the trajectory ends where the cap fell.
+				if capped {
+					continue
+				}
+				steps++
+				roundSteps++
+				if err := rec.record(steps, event); err != nil {
+					// A step that could not be recorded left the record shorter
+					// than the run was: that is a failure of the record itself,
+					// and the honest ending is the task failing on it.
+					w.clearLiveStep(task.ID)
+					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the record failed: " + err.Error()})
+					return Report{Steps: steps}, err
+				}
+				// THE STEP IS NO LONGER RUNNING, so its live reading goes with it: the
+				// end-of-step append clears the live step the begin event published.
+				w.clearLiveStep(task.ID)
+				if capSteps > 0 && steps >= capSteps {
+					// THE CAP IS A BOUND ON SPEND, not a finding about the work:
+					// the turn is stopped here rather than judged, and the ending
+					// below says where it stopped.
+					capped = true
+					stop()
+					continue
+				}
+				// THE STORE'S OWN ENDING IS DETECTED AFTER THE COMMAND RUNS. A
+				// `plandb done`, or a `plandb wait`, that the worker itself just
+				// ran is the end of the loop: the shim's verb is already in the
+				// step's record, and the store is the one authority on what
+				// happened — done with its result, or parked with its claim
+				// released. A task ends no other way but these, the cap, the
+				// wall, or an errored turn.
+				//
+				// THE STORE IS READ ONCE THE ENDING IS FOUND, AND EVERY STEP THAT
+				// RAN IS STILL COUNTED. The agent runs ahead of this reader: it can
+				// call the model again and run the finish command while the step
+				// before it is still being recorded here, so the ending is often
+				// seen at an earlier step's end than the one that made it. The
+				// stop() only asks the turn to end; the ends that still arrive are
+				// commands that ran, and a task's record says what ran — unlike the
+				// cap, which is a bound and stops counting where it fell.
+				if ending.kind != endingNone {
+					continue
+				}
+				if end, ok := w.storeEnding(task.ID); ok {
+					ending = end
+					stop()
+				}
+			case session.EventTurnDone:
+				usd += event.Usage.CostUSD
+				inTok += event.Usage.Input
+				outTok += event.Usage.Output
+			case session.EventError:
+				if turnErr == nil {
+					turnErr = event.Err
+				}
 			}
 		}
+
+		// THE ROUND IS OVER, WHATEVER STOPPED IT — a store ending, the step
+		// cap, the run's wall, an error, or a reply with no action — so the live
+		// step is cleared here too: a task whose loop has stopped, or is about to
+		// go round again on the harness's note, is not running a command, and
+		// every one of those endings leaves the same emptiness behind.
+		w.clearLiveStep(task.ID)
+		switch {
+		case ending.kind == endingDone:
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {
+				return Report{Steps: steps, USD: usd}, err
+			}
+			return Report{Result: ending.result, Steps: steps, USD: usd}, nil
+		case ending.kind == endingWait:
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "waiting"}); err != nil {
+				return Report{Steps: steps, USD: usd}, err
+			}
+			return Report{Steps: steps, USD: usd, Waiting: true}, nil
+		case capped:
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "stopped at the step cap"}); err != nil {
+				return Report{Steps: steps, USD: usd}, err
+			}
+			return Report{Steps: steps, USD: usd}, fmt.Errorf("stopped at its step cap after %d steps", capSteps)
+		case ctx.Err() != nil:
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "the run's wall stopped it"}); err != nil {
+				return Report{Steps: steps, USD: usd}, err
+			}
+			return Report{Steps: steps, USD: usd}, fmt.Errorf("the run's wall stopped the worker: %w", ctx.Err())
+		case turnErr != nil:
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: "the turn errored: " + turnErr.Error()}); err != nil {
+				return Report{Steps: steps, USD: usd}, err
+			}
+			return Report{Steps: steps, USD: usd}, turnErr
+		}
+
+		// A TURN THAT ENDED CLEANLY ENDED ON A REPLY WITH NO TOOL CALL. That
+		// reply does not finish the task: the harness says so in its own voice
+		// and the loop runs again. A reply that carried a tool call resets the
+		// run to one — its own trailing words are the first of the new run —
+		// and the fourth reply in a row with no action fails the task, the same
+		// cap the belt's own invalid-action rejections use.
+		if roundSteps == 0 {
+			noAction++
+		} else {
+			noAction = 1
+		}
+		if noAction >= noActionLimit {
+			reason := fmt.Sprintf("%d replies in a row carried no action", noAction)
+			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Reason: reason}); err != nil {
+				return Report{Steps: steps, USD: usd}, err
+			}
+			return Report{Steps: steps, USD: usd}, errors.New(reason)
+		}
 	}
-	result := agent.TaskReport()
-	reason := "turn ended"
-	switch {
-	case capped:
-		reason = "stopped at the step cap"
-		err = fmt.Errorf("stopped at its step cap after %d steps", capSteps)
-	case ctx.Err() != nil:
-		reason = "the run's wall stopped it"
-		err = fmt.Errorf("the run's wall stopped the worker: %w", ctx.Err())
-	case turnErr != nil:
-		reason = "the turn errored: " + turnErr.Error()
-		err = turnErr
+}
+
+// noActionLimit is how many replies in a row may carry no tool call before the
+// task fails. It is the same four the belt's own envelope uses for consecutive
+// invalid actions ([internal/session]'s bashEnvelopeLimit), because the two are
+// the same fact: a model that is not driving the belt one action at a time.
+const noActionLimit = 4
+
+// noActionNote is the harness's own voice, sent as a user message after a reply
+// that executed no action. It is not the person's and it is not a step: it is
+// the belt saying what a worker already knows from its page, at the one moment
+// the loop can be sure it has stopped acting.
+const noActionNote = "no action executed: answer with one bash call; finish with plandb done <your id> --result '…' when the acceptance holds; wait with plandb wait when you are blocked on another task"
+
+// storeEndingKind is which of the two store endings a task reached.
+type storeEndingKind int
+
+const (
+	endingNone storeEndingKind = iota
+	endingDone
+	endingWait
+)
+
+// storeEnding is the task's store row read after a step, answering whether the
+// task has ended in the store: `plandb done` marked it done (with the result
+// the worker passed), or `plandb wait` parked it ([Task.Waiting]).
+type storeEnding struct {
+	kind   storeEndingKind
+	result string
+}
+
+// storeEnding reads the task's row and answers the ending it carries, if any.
+// A task with no row has no ending; a parked task ends as a wait; a done task
+// ends with its own result.
+func (w *BashWorker) storeEnding(id string) (storeEnding, bool) {
+	task := w.store.Task(id)
+	if task == nil {
+		return storeEnding{}, false
 	}
-	if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Steps: steps, Result: result, Reason: reason}); err != nil {
-		return Report{Steps: steps}, err
+	if task.Waiting {
+		return storeEnding{kind: endingWait}, true
 	}
-	return Report{Result: result, Steps: steps, USD: usd}, err
+	if task.Status == plandb.StatusDone {
+		return storeEnding{kind: endingDone, result: task.Result}, true
+	}
+	return storeEnding{}, false
 }
 
 // recordSpend writes the task's one spend row: the model this seat was built
@@ -317,4 +459,20 @@ func planVerbs(command string) []string {
 		}
 	}
 	return verbs
+}
+
+// clearLiveStep forgets the task's live step: the one present-tense reading
+// the store holds of this worker. It is called by the step's own end line and
+// by every ending of the loop — a turn that ended, a step cap, a wall, an
+// error, a turn that never started — so A LIVE STEP IS TRUE ONLY WHILE ITS
+// COMMAND RUNS and a stopped task never keeps claiming a present it is not in.
+//
+// EVERY REFUSAL IS DROPPED ALIKE, the one a worker the run outlived meets being
+// plandb.ErrClosed: the supervisor closes the run's store the moment the run is
+// over, and this is a worker's last act. A live row that outlives its command
+// is the one thing this must not leave, and a refusal to clear means the store
+// is already gone — nobody reads it again — so the miss is the safe answer and
+// never a second attempt at a handle that is closed.
+func (w *BashWorker) clearLiveStep(taskID string) {
+	_ = w.store.ClearLive(taskID)
 }

@@ -30,6 +30,10 @@ DATABASE for the whole run: what you add, what a sibling adds, and what the
 runtime starts are the same list of tasks, and every command below reads and
 writes it.
 
+`plandb` is already on your PATH and bound to this run's store — run it plainly,
+from any directory. Never pass `--db` and never go looking for the binary; the
+one you reach is this run's own.
+
 THE TASK LIFECYCLE IS THE RUNTIME'S. It claims every task it hands out and
 completes what lands; dispatch is automatic. Never run the lifecycle verbs
 (`task claim`, `task start`, `go`, `task fail`, `task pause`, `task approve`):
@@ -76,16 +80,36 @@ plandb search 'query'         # tasks, notes and context, best first
 plandb critical-path          # the chain to watch; plandb bottlenecks for what blocks most
 ```
 
-FINISH YOUR OWN TASK through the CLI, and only after the work holds:
+ONE OWNED OUTPUT AND NO UNKNOWN: do the work in your own steps and finish the
+way the next paragraph says. Do not run `plandb init`, `plandb status`, `plandb
+context` or `plandb task overview` for yourself first — the run opened the store
+and this task is the only one you own, so the ritual is steps not spent on the
+work.
+
+BEFORE `plandb done`, walk every requirement sentence of your work order and of
+the ask it serves, one per line, and beside each name the command or test that
+proved it in THIS run. A requirement with no proof is not done — prove it now, or
+report it undone. The walk is the last check, not a summary.
+
+THREE VERBS END OR HOLD A TASK, and none of them is a reply. You ACT with a
+bash call; you FINISH with `plandb done` on your own task, and only after the
+work holds; you WAIT with `plandb wait` when you are blocked on another task. A
+reply that executed no action runs nothing and does not end the task — the
+runtime answers it in its own voice and you go on, and four such replies in a
+row fail the task. The only ways a task ends are `plandb done`, `plandb wait`,
+the step cap, the run's wall and an errored turn.
 
 ```
 plandb done --agent <your agent> --result 'what you did and what it changed'
+plandb wait --agent <your agent>    # blocked on a dependency or a child? park here
 ```
 
 Your agent name and your task's id are in your brief, above. `plandb done`
 refuses a task that is not yours — the ownership check is what keeps one
-worker from finishing another's work. When nothing independent of what you
-handed out remains, end your turn; every landing wakes you.
+worker from finishing another's work. `plandb wait` releases your claim and
+leaves the task open and not done; the runtime runs you again, with what
+changed in your brief, once a dependency or a child you named moves — and a
+wait with nothing open to wait on is refused, so you cannot park on nothing.
 
 Parallelism lives in the shell, not in the batch:
 

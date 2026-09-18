@@ -158,13 +158,13 @@ func (a *Agent) truncatingBash(inner bare.Tool) bare.Tool {
 }
 
 // planCommandArgs returns a bash call's arguments with the plan shim's
-// directory first on the PATH the COMMAND sees, or the arguments unchanged
-// when this worker has no armed shim to reach. bare's hand takes no
-// environment of its own — the schema carries a command and a timeout and
-// nothing else — so the directory travels as an exported assignment on the
-// command string, the one spelling that reaches the one shell process this
-// call runs while leaving the process environment (plandb_plan.go's
-// [planBashPrefix]) alone.
+// directory first on the PATH the COMMAND sees and the run's store bound beside
+// it, or the arguments unchanged when this worker has no armed shim to reach.
+// bare's hand takes no environment of its own — the schema carries a command and
+// a timeout and nothing else — so the binding travels as an `export` prefix on
+// the command string, the one spelling that reaches the whole command line in
+// the one shell process this call runs while leaving the process environment
+// (plandb_plan.go's [planBashPrefix]) alone.
 //
 // THE GATE IS THE WORKER'S OWN BELT, not the run's switch: the graph is the
 // conversation's, shared with every node it admits, so a plan armed for a
@@ -189,11 +189,12 @@ func (a *Agent) planCommandArgs(args json.RawMessage) json.RawMessage {
 	return args
 }
 
-// planCommand prefixes one bash command string with the plan shim's PATH
-// assignment, or answers it unchanged when there is no prefix to carry. The
+// planCommand prefixes one bash command string with the plan shim's PATH and
+// store binding, or answers it unchanged when there is no prefix to carry. The
 // background road ([Agent.backgroundBash]) starts its job outside the inner
 // tool and reaches the same helper here, so both roads a bash-belt worker's
-// command can take agree about where `plandb` resolves.
+// command can take agree about where `plandb` resolves and which store it
+// reads.
 func (a *Agent) planCommand(command string) string {
 	if strings.TrimSpace(command) == "" || !a.config.mayBashBelt() {
 		return command

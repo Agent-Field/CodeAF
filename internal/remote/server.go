@@ -2626,6 +2626,31 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return json.Marshal(dropped)
 
+	case MethodPlanSpend:
+		// THE READ SIDE OF THE RUN'S SPEND-BY-SEAT, carried across the way
+		// [MethodRewindPoints] is. It is ASSERTED rather than called on the
+		// concrete agent for the reason every other optional door here is: this
+		// server fronts more than one kind of engine, and a scripted one may have
+		// no plan store.
+		//
+		// AND AN ENGINE WITH NO DOOR ANSWERS AN EMPTY ROLLUP, NOT AN ERROR. A
+		// conversation that seeded no plan has no workers and no seats, and the
+		// spend page draws its seat block from the lines it is handed — an empty
+		// slice is the page saying nothing, which is the honest reading and the
+		// one the emptiness law draws (the same answer a nil store gives
+		// [session.Agent.PlanSpend] itself).
+		args, err := arg[PlanSpendArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanSpend(time.Time) []session.PlanSpendLine
+		})
+		if !ok {
+			return json.Marshal([]session.PlanSpendLine(nil))
+		}
+		return json.Marshal(door.PlanSpend(args.Since))
+
 	case MethodSessionsRecent:
 		sess.mu.Lock()
 		recent := sess.engine.Recent

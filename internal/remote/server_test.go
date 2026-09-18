@@ -90,6 +90,9 @@ type fakeAgent struct {
 	panicking   bool
 	taskJournal string
 	cancelled   []string
+
+	spendLines []session.PlanSpendLine
+	spendSince time.Time
 }
 
 func (f *fakeAgent) TaskJournal(uint64) string { return f.taskJournal }
@@ -399,6 +402,13 @@ func (f *fakeAgent) RewindAt(int) ([]session.DisplayEntry, error) {
 		return nil, f.rewindBy
 	}
 	return f.dropped, nil
+}
+
+func (f *fakeAgent) PlanSpend(since time.Time) []session.PlanSpendLine {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.spendSince = since
+	return f.spendLines
 }
 
 func note(kind string, id uint64, yes bool, extra string) string {
@@ -863,6 +873,66 @@ func TestServeAnswersEveryMethod(t *testing.T) {
 	}
 	if len(agent.connected) != 1 || agent.connected[0] != "google:somebody@example.com" {
 		t.Errorf("connected notes %q", agent.connected)
+	}
+}
+
+// TestServeCarriesTheRunSpendBySeat is the wire's half of the spend page's
+// seat block: the run's rolled-up spend answers [MethodPlanSpend] exactly as
+// [session.Agent.PlanSpend] answers it, and the `since` window travels with the
+// call rather than being dropped at the door.
+func TestServeCarriesTheRunSpendBySeat(t *testing.T) {
+	since := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	lines := []session.PlanSpendLine{
+		{Seat: "worker", Model: "openai/gpt-5", USD: 1.25, Calls: 4},
+		{Seat: "planner", Model: "anthropic/claude", USD: 0.5, Calls: 1},
+	}
+	agent := &fakeAgent{spendLines: lines}
+	l := dialAgent(t, engineOn(agent))
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatalf("handshake: %s", frame.Error)
+	}
+
+	got := decode[[]session.PlanSpendLine](t, l.ok(1, MethodPlanSpend, PlanSpendArgs{Since: since}).Payload)
+	if len(got) != 2 || got[0].Seat != "worker" || got[1].USD != 0.5 {
+		t.Fatalf("PlanSpend answered %+v", got)
+	}
+	agent.mu.Lock()
+	asked := agent.spendSince
+	agent.mu.Unlock()
+	if !asked.Equal(since) {
+		t.Errorf("the since window reached the engine as %v, want %v", asked, since)
+	}
+	if err := l.end(); err != nil {
+		t.Fatalf("serve: %v", err)
+	}
+}
+
+// planlessAgent is a [WrappedAgent] with no PlanSpend behind it — the engine
+// that was built before this door existed. It embeds the INTERFACE rather than
+// the concrete fake, so the promoted method set is exactly WrappedAgent's and
+// the door is genuinely absent.
+type planlessAgent struct{ WrappedAgent }
+
+// TestServeAnswersNoRunSpendWithoutTheDoor is the emptiness law on the engine's
+// side: an engine whose agent cannot answer [MethodPlanSpend] hands back an
+// empty rollup, never an error. An error here would reach the surface as a
+// failure to report; an empty slice is the page saying nothing, which is what
+// it must draw for a conversation that seeded no plan.
+func TestServeAnswersNoRunSpendWithoutTheDoor(t *testing.T) {
+	eng := engineOn(&fakeAgent{})
+	eng.Agent = planlessAgent{eng.Agent}
+	l := dialAgent(t, eng)
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatalf("handshake: %s", frame.Error)
+	}
+
+	result := l.ok(1, MethodPlanSpend, PlanSpendArgs{})
+	got := decode[[]session.PlanSpendLine](t, result.Payload)
+	if len(got) != 0 {
+		t.Fatalf("a planless engine answered %+v, want nothing", got)
+	}
+	if err := l.end(); err != nil {
+		t.Fatalf("serve: %v", err)
 	}
 }
 
