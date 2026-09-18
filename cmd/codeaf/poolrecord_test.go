@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
+	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -816,6 +817,20 @@ func decodeSweepLast(t *testing.T, profileDir string) sweepLast {
 	return last
 }
 
+// pendingOutboxRows counts the rows still waiting in the outbox a sweep
+// recorded into: the sweep's push is pinned to a machine that does not answer,
+// so every row the sweep recorded is one still pending, and a row that left
+// for the relay is one this count is short.
+func pendingOutboxRows(t *testing.T, profileDir string) int {
+	t.Helper()
+	box, err := outbox.Open(outboxPath(config.ProfilePath(profileDir, "pool")))
+	if err != nil {
+		t.Fatalf("the outbox: %v", err)
+	}
+	defer box.Close()
+	return len(box.Pending())
+}
+
 // TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself walks two
 // waiting rows through the real sweep and reads back the record it leaves: what
 // it judged, what its budget left, and — the pending file claimed whole — that
@@ -823,6 +838,7 @@ func decodeSweepLast(t *testing.T, profileDir string) sweepLast {
 func TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
@@ -857,6 +873,12 @@ func TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself(t *testing.T
 	if _, err := os.Stat(pendingPath(config.ProfilePath(profileDir, "pool"))); !os.IsNotExist(err) {
 		t.Fatal("a completed sweep left the pending file behind")
 	}
+	// And nothing left for the relay: the push the landing ran asked the dead
+	// address the test pinned, so the four rows the sweep recorded are still
+	// in the outbox, waiting.
+	if rows := pendingOutboxRows(t, profileDir); rows != 4 {
+		t.Fatalf("the outbox holds %d rows after the sweep, want all four still pending — none sent", rows)
+	}
 }
 
 // TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo is the other end: the
@@ -866,6 +888,7 @@ func TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself(t *testing.T
 func TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
@@ -908,6 +931,11 @@ func TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo(t *testing.T) {
 	last := decodeSweepLast(t, profileDir)
 	if last.Judged != 1 || last.Left != 1 || !last.Cut {
 		t.Fatalf("a cut sweep's record says judged %d left %d cut %v, want the second row left", last.Judged, last.Left, last.Cut)
+	}
+	// And the first landing's two rows went nowhere: the push met the dead
+	// address the test pinned, so both wait in the outbox for the next one.
+	if rows := pendingOutboxRows(t, profileDir); rows != 2 {
+		t.Fatalf("the outbox holds %d rows after the cut sweep, want both still pending — none sent", rows)
 	}
 }
 
