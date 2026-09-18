@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the opening hint test names its own profile and pins the welcome contract both ways
-pr: 1151
+pr: 1153
 surface: [chat]
 invalidates:
   - "TestTheOpeningHintNamesBothDoors was believed to be a self-contained read of the welcome contract. It named no profile, so its answer came from whatever an earlier test in the same process had written into the package's one shared temporary profile — green in a package run, red alone. Both apps it builds now read a profile the test made, and the marker case is written by the test."
