@@ -298,10 +298,10 @@ named on a door or in the profile:
   this seat for the turns where it is a coordinator.
 - **`--check-model` is the check seat**: the model a check the review round
   adds reads a finished leaf against. `codeaf do` resolves it from
-  `--check-model`, then from `--plan-model` when the person typed that flag and
-  no check model, so a run pinned to two models checks on the plan seat and no
-  third model appears from the profile; with neither flag typed the check takes
-  the crew's careful row, the same row a conversation's checker rides. The
+  `--check-model`, then `CODEAF_CHECK_MODEL`, then a plan seat pinned by
+  `--plan-model` or `CODEAF_PLAN_MODEL`. A run pinned to two models checks on
+  the plan seat and no third model appears from the profile. Without those pins,
+  the check takes the crew's careful row, the same row a conversation's checker rides. The
   **probe** seat is the one the profile's own `low` row answers alone: nothing
   on a door names it, so a probe runs on the crew you set in `/crew`.
 

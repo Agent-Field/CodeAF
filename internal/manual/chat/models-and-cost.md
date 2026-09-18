@@ -629,11 +629,11 @@ whether the work is asked for here or run with nobody watching.
 Those runs seat two models, and each one is resolved the same way. The first of these that
 answers wins:
 
-1. a model named on the command line — `--model` for the work, `--plan-model` for the
-   planning, `--check-model` for the checks; a run that typed `--plan-model` and no
-   check model seats its checks on the plan seat too, so two flags mean two models
-   and a third never arrives from the profile;
-2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` in the environment;
+1. a model named on the command line: `--model` for the work, `--plan-model` for the
+   planning, and `--check-model` for the checks;
+2. `CODEAF_MODEL`, `CODEAF_PLAN_MODEL`, or `CODEAF_CHECK_MODEL` in the environment.
+   Without its own pin, a check rides a plan seat pinned by flag or environment,
+   so a third model never arrives from the profile;
 3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
    the **worker** class, the same row a task handed off in conversation rides;
 4. **your crew again, through an older class**, when your profile was set before a class
