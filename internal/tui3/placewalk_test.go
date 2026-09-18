@@ -108,8 +108,8 @@ func TestTheTasksPlaceOpensOnAChatThatHasDelegatedNothing(t *testing.T) {
 	if a.page != pageTasks || !a.at(pageTasks) {
 		t.Fatal("the tasks place did not open")
 	}
-	if _, ok := a.taskSheetChat(); !ok {
-		t.Fatalf("the main chat is absent: %s", placeFrameText(a))
+	if _, ok := a.taskSheetChat(); ok {
+		t.Fatalf("a chat with no work grew a synthetic work row: %s", placeFrameText(a))
 	}
 }
 

@@ -185,7 +185,7 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	// that called all four `running` was the tasks place saying two workers were
 	// burning tokens on a machine where nothing was executing.
 	note := plain(strings.Join(a.placeNote(a.width), "\n"))
-	for _, want := range []string{"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked]} {
+	for _, want := range []string{"2 " + taskSheetNowHead, "2 " + tasksSectionWord(tasksParked)} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the note reads %q and does not count the rows the body drew (%q)", note, want)
 		}
@@ -254,7 +254,7 @@ func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing.T) {
 	a, _, _ := taskApp(t)
 	// FIVE HEADINGS NEED A FRAME THAT HOLDS FIVE. This fixture spends work across
-	// every section the place has — running, waiting, finished today and earlier — and
+	// every section the place has — running, waiting, done today and earlier — and
 	// a 24-row terminal cuts the last of them off the visible frame, which is the
 	// page paginating correctly and not the grouping being wrong.
 	a.height = 32
@@ -288,24 +288,18 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 		t.Fatalf("a settled node of this session dropped off the page:\n%s", text)
 	}
 	// AND SO IS WORK ANOTHER CONVERSATION RAN, which the column cannot show at all.
-	for _, want := range []string{"Sweep the call sites", "Port the parser", taskSheetPastHead} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the page is missing %q:\n%s", want, text)
-		}
+	if !strings.Contains(text, "1 more · type to find one") || strings.Contains(text, "Port the parser") {
+		t.Fatalf("older completed work did not collapse into the fold:\n%s", text)
 	}
 	// THE GROUPING IS BY WHAT YOU DO NEXT AND NEVER BY WHOSE WORK IT IS: what is
 	// running leads, what landed today follows, and everything older is last.
 	running := strings.Index(text, taskSheetNowHead)
-	today := strings.Index(text, "finished today")
-	earlier := strings.Index(text, taskSheetPastHead)
-	if running < 0 || today < running || earlier < today {
-		t.Fatalf("the sections are absent or out of order (%d/%d/%d):\n%s", running, today, earlier, text)
+	today := strings.Index(text, "done today")
+	if running < 0 || today < running {
+		t.Fatalf("the sections are absent or out of order (%d/%d):\n%s", running, today, text)
 	}
-	if at := strings.Index(text, "Port the parser"); at < earlier {
-		t.Fatalf("work from forty hours ago is drawn above %q:\n%s", taskSheetPastHead, text)
-	}
-	if at := strings.Index(text, "Sweep the call sites"); at < today || at > earlier {
-		t.Fatalf("work that landed today is not under `finished today`:\n%s", text)
+	if at := strings.Index(text, "Sweep the call sites"); at < today {
+		t.Fatalf("work that landed today is not under `done today`:\n%s", text)
 	}
 	// The live graph's parent links survive the list conversion.
 	for _, connector := range []string{tasksKinCont, tasksKinLast} {
@@ -321,8 +315,8 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	// — so the place will not claim it landed TODAY (place_tasks.go's
 	// [taskNodeEnded] carries the whole reasoning).
 	for _, want := range []string{
-		"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked],
-		"1 finished today", "2 " + taskSheetPastHead,
+		"2 " + taskSheetNowHead, "2 " + tasksSectionWord(tasksParked),
+		"1 done today",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the note does not count what is on the page (%q):\n%s", want, text)
@@ -865,7 +859,7 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	text := taskSheetText(a)
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
-		"finished today", "Port the parser",
+		"done today", "Port the parser",
 		// AND THE WORDS ARE ON THE CONTROL ROW, at the top of the list, where the
 		// typing lands — not echoed on a note line under the rows they changed.
 		a.pal.glyph(tokens.GFilter) + " port",

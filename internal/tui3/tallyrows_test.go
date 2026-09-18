@@ -191,9 +191,9 @@ func TestTheTasksFootStillCountsEveryPieceByItsActualState(t *testing.T) {
 	world, win := tasksAskingWorld(now, true)
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 	want := strings.Join([]string{
-		"1 " + tasksSectionWord(tasksNeeds),
 		"3 " + tasksSectionWord(tasksRunning),
 		"1 " + tasksSectionWord(tasksParked),
+		"1 " + tasksSectionWord(tasksNeeds),
 		"1 " + tasksSectionWord(tasksToday),
 	}, railSep)
 	if got := reading.tally(); got != want {

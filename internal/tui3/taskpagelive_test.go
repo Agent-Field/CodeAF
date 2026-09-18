@@ -81,7 +81,7 @@ func TestTheOpenTaskPageDoesNotRefileWhenNothingMoved(t *testing.T) {
 // This is the same defect the whole lane is about, reached by the clock rather
 // than by a bad match. The cursor is a LINE of a layout the beat replaces whole,
 // and the sections are ordered by what you do next — so a task finishing leaves
-// `running`, joins `finished today`, and every row that was below it moves up
+// `running`, joins `done today`, and every row that was below it moves up
 // one. A cursor kept as a number is then on a different piece of work than the
 // person is looking at, and the next `enter` opens it.
 func TestTheTaskPageCursorFollowsItsRowWhenAnotherTaskLands(t *testing.T) {

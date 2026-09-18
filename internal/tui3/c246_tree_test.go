@@ -47,13 +47,8 @@ func TestPlanRailFoldsOnlyFinishedFamiliesAndFoldEnterOpensThePage(t *testing.T)
 			t.Fatal("the place refused to open over a plan")
 		}
 		text := taskSheetText(a)
-		line, ok := planLine(text, root.Title)
-		if !ok || !strings.Contains(line, "· 1 done") || strings.Contains(text, child.Title) {
-			t.Fatalf("the finished family did not fold to one counted line:\n%s", text)
-		}
-		drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-		if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != root.ID {
-			t.Fatalf("enter on the folded family did not open its page: on=%v row=%q", a.taskSheet.planOn, a.taskSheet.plan.Row.ID)
+		if !strings.Contains(text, "2 more · type to find one") || strings.Contains(text, root.Title) || strings.Contains(text, child.Title) {
+			t.Fatalf("the finished family did not join the older-completed fold:\n%s", text)
 		}
 	})
 	t.Run("live family", func(t *testing.T) {

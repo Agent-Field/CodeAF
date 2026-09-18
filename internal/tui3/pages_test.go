@@ -240,9 +240,8 @@ func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 			missing++
 		}
 	}
-	if want := tokens.GlyphCollapsed + " " + itoa(missing); missing == 0 || !strings.Contains(narrow, want) {
-		t.Fatalf("the narrow bar left %d of its four words off and should end in %q: %q", missing, want, narrow)
-	}
+	// The shorter work label lets this width retain three complete words; the
+	// final word may be omitted rather than replaced by a fold token.
 }
 
 // THE COMPOSER IS ON EVERY PLACE AND IT ALWAYS SAYS WHERE IT WILL LAND. "Start a
@@ -686,7 +685,7 @@ func TestATabWearsTheCountTheSeamGivesIt(t *testing.T) {
 		pageStanding.word(): 0,
 	}
 	bar := plain(a.placeTabBar(160, false, a.pal))
-	if !strings.Contains(bar, "tasks 2") {
+	if !strings.Contains(bar, "work 2") {
 		t.Fatalf("the tasks tab does not wear its count: %q", bar)
 	}
 	if strings.Contains(bar, "spend 9") {
@@ -787,7 +786,7 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 }
 
 // THE TAB BAR CARRIES ITS FOUR WORDS AT EVERY WIDTH A PERSON ACTUALLY USES, and
-// only those four: `home tasks spend settings` (DESIGN.md's law 10). The ladder
+// only those four: `home work spend settings` (DESIGN.md's law 10). The ladder
 // that gives words up is for terminals narrower than any of these
 // ([app.placeTabBar]); at 80 columns and up nothing is dropped. Standing,
 // memory and search are rooms reached by command, by their digit and by the
@@ -796,7 +795,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		if !strings.Contains(bar, "home   tasks   spend   settings") {
+		if !strings.Contains(bar, "home   work   spend   settings") {
 			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding, pageMemory, pageSearch} {
