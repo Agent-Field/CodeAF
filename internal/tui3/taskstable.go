@@ -152,6 +152,13 @@ func tasksStateField(line tasksLine) rowField {
 	if !line.folds || line.open || line.kids <= 0 {
 		return rowSay(word)
 	}
+	if item.plan != nil {
+		ending := "done"
+		if item.plan.Status == "failed" || item.plan.Status == "cancelled" {
+			ending = "failed"
+		}
+		return rowSay(word+railSep+itoa(line.kids)+" "+ending, word)
+	}
 	return rowSay(word+rowSep+tasksUnderWord(line.kids), word+rowSep+tasksHoldsShort(line.kids), word)
 }
 

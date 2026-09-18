@@ -3566,6 +3566,45 @@ func (a *app) railRows(height int) []string {
 	if len(view) == 0 {
 		return nil
 	}
+	// A RUN PLAN IS THE TASKS PLACE'S TREE, not a second rail renderer. The
+	// reading paints every plan row; this column only gives those fitted rows
+	// their place in its existing tasks section.
+	if plan := a.tasksFiltered().planRows(a.railRoom(), a.pal); len(plan) > 0 {
+		// THE TITLES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out
+		// of the store: this is a frame, and a frame never reads the disk. The
+		// reading is refreshed on the paint clock ([tasksPlace.regroup]).
+		titles := make(map[string]bool)
+		for _, row := range a.taskSheet.mine.plan {
+			titles[strings.TrimSpace(row.Title)] = true
+		}
+		entries := a.railEntries()
+		next := make([]railLine, 0, len(view)+len(plan))
+		inserted := false
+		for _, line := range view {
+			if !inserted && line.entry >= 0 {
+				for _, text := range plan {
+					next = append(next, railLine{text: text, entry: -1})
+				}
+				inserted = true
+			}
+			if line.entry >= 0 && line.entry < len(entries) && entries[line.entry].node != nil && titles[strings.TrimSpace(entries[line.entry].node.label)] {
+				continue
+			}
+			next = append(next, line)
+		}
+		if !inserted {
+			for at := len(plan) - 1; at >= 0; at-- {
+				next = append([]railLine{{text: plan[at], entry: -1}}, next...)
+			}
+		}
+		if len(next) > height {
+			next = next[:height]
+		}
+		for len(next) < height {
+			next = append(next, railLine{entry: -1})
+		}
+		view = next
+	}
 	// THE SEAM IS A SEAM AND NOT A BORDER, so it is drawn only where there is
 	// something on the other side of it. Over the body there is nothing to the
 	// left of the roster, and a vertical rule down the left edge of a full-width

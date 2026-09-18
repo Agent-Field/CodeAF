@@ -95,8 +95,10 @@ type tasksPlace struct {
 	// in its place: enter over a plan row opens it and esc backs out one layer to
 	// the list, exactly as the card does, because a second key for one door is a
 	// second thing to learn ([app.taskSheetPlan]).
-	plan   session.PlanTaskPage
-	planOn bool
+	plan     session.PlanTaskPage
+	planOn   bool
+	planAt   int
+	planBack []session.PlanTaskPage
 	// planNote is the note a person types on a plan task's page, and it is the
 	// [editor] every other box on this surface is rather than a string of its own
 	// (the filter is one, and so is the conversation's composer). Typing on the
@@ -262,7 +264,18 @@ func (a *app) takeTaskReading() tasksPlace {
 func (p *tasksPlace) regroup(a *app) {
 	at, stamp := a.elsewhere().Read, a.railStamp
 	selfChanged := p.mine.row.ID != "" && (p.mine.row.Presence.State != a.taskSheetSelfState() || p.mine.row.Title != strings.TrimSpace(a.title))
-	if at.Equal(p.awayAt) && stamp == p.mineAt && !selfChanged {
+	// A READING NOBODY EVER TOOK IS NOT A FRESH ONE. The chat's rail draws the
+	// run's tree out of this same reading ([app.railRows]), in a conversation
+	// whose person may never walk into the tasks place: the zero place holds the
+	// zero stamps, the stamps of a quiet window are zero too, and the two read as
+	// equal, so the rail stood empty until somebody opened the page once. So the
+	// first ask files this window's own work under the present clock. It is the
+	// light half of [app.takeTaskReading], the half with no walk of the record
+	// in it: the record is the page's, and the page takes it on the way in.
+	if p.reading.now.IsZero() {
+		p.reading.now = a.now()
+		p.reading.win = session.LastDays(p.reading.now, taskSheetDays)
+	} else if at.Equal(p.awayAt) && stamp == p.mineAt && !selfChanged {
 		return
 	}
 	// THE CURSOR IS REMEMBERED BY WHAT IT IS ON, ACROSS THE REBUILD.

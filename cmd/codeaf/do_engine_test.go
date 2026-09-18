@@ -240,6 +240,51 @@ func beltGit(t *testing.T, dir string, args ...string) {
 // in the store with the result as its words; the run lands that file on the copy's branch, and the caller reads on
 // stdout the root's own result, the landed path, and the branch the landing
 // answered — the whole of what the run road owes an envelope.
+// A ROOT FINISH THAT LANDS IN THE STORE BEFORE ITS WORKER RETURNS STILL NAMES THE ROOT RESULT.
+//
+// The finish command writes the root done row before its shell exits. Holding that
+// shell beyond the supervisor pass interval forces the store to look terminal while
+// the worker return carrying its report is still in flight; the envelope must not
+// substitute the later landing line for that report. This is the same ordering a
+// real `codeaf do --json` belt worker can reach between its plandb write and return.
+func TestDoOnTheRunEngineRootStoreFinishBeforeWorkerReturnNamesRootResult(t *testing.T) {
+	beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	workspace := beltRepoWorkspace(t)
+	seat := &beltSeat{
+		script: []func(context.Context, []ai.Message) (*ai.Response, error){
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply("printf 'written by the run' > out.txt"), nil
+			},
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply(beltFinish(beltAnswer) + "; sleep 1"), nil
+			},
+		},
+		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+				id := briefTaskID(doc)
+				return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+			}
+			return beltTextReply(beltAnswer), nil
+		},
+	}
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		newBeltCompleter: func(string) session.Completer { return seat },
+	})
+	if err != nil {
+		t.Fatalf("a brief the model completed left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if !strings.Contains(outcome.Deliverable, beltAnswer) {
+		t.Fatalf("the envelope does not carry the root's result: %q", outcome.Deliverable)
+	}
+}
+
 func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	beltRunEnv(t)
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
