@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the soft memory limit now takes the cgroup bound, not just physical memory
-pr: 1159
+pr: 1162
 surface: [chat]
 invalidates:
   - "The soft GOMEMLIMIT a surface sets was half of the machine's PHYSICAL memory. It is now half of the SMALLEST finite bound the machine and the process's cgroup give, so inside a container the limit follows the container rather than the host."
