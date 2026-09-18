@@ -675,7 +675,9 @@ Two things that are deliberately not this:
 - **Dragging a folder onto the window still refuses** with
   `<name> is a folder · attach a file`. A drop is a gesture nobody typed, and reading a
   decision about your project out of a mouse would be inferring far too much.
-- **Pasting a folder path** into the message box behaves the same way a drop does.
+- **Pasting a folder path** into the message box keeps the path as text at the cursor,
+  on home and in conversations, while showing that same notice. A failed attachment
+  does not swallow the pasted text or change the selected project.
 
 ## Folders in the @ list
 

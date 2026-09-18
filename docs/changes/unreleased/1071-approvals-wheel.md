@@ -4,6 +4,7 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Pasting a folder path used to show the attachment refusal and swallow the text. The shared paste handler now keeps the original text at the cursor in home and conversation message boxes while retaining the folder notice. A mixed file-and-folder paste falls back entirely to text without partially attaching files; successful file attachments are unchanged."
   - "Thread and task row menus replace t new chat here with n new in project, and c copy path with p copy project. Both actions still use the selected item’s project. Missing-folder and remote restrictions remain; p on a standing item still pauses it."
   - "Home stripped the organization prefix from the model on its message-box seam, while conversations retained it when service metadata was available. Both now use the same complete model identifier, such as deepseek/deepseek-v4.1-flash, including home model pins and windows without a loaded service catalog. Bold color, hover, effort styling, and model-picker click targets are unchanged."
   - "Thread and task row menus now use x close instead of a put it away, with x reopen for archived items. Matching hints and receipts use close/reopen. Closing still only hides the selected item: its history and running work remain, and filtering by name finds it again. The ctrl+e conversation shortcut is unchanged."
