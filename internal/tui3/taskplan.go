@@ -609,7 +609,7 @@ func planRailLive(line tasksLine, width int, pal palette) string {
 	if room < 1 {
 		return ""
 	}
-	if live := planLiveRow(line.item.plan.Live.Command, room, pal); live != "" {
+	if live := planLiveRow(line.item.plan.Live.Command, line.item.plan.Folder, room, pal); live != "" {
 		return lead + live
 	}
 	return ""
@@ -1315,7 +1315,7 @@ func (a *app) taskPlanBody(width int) []string {
 	if len(page.Steps) > 0 || !page.Live.Empty() {
 		section("steps")
 		for _, step := range page.Steps {
-			command := strings.TrimSpace(step.Command)
+			command := planDisplayCommand(step.Command, page.Folder)
 			if command == "" {
 				continue
 			}
@@ -1333,7 +1333,7 @@ func (a *app) taskPlanBody(width int) []string {
 		// and the next re-read draws it as an ordinary step (internal/plandb's
 		// live.go states the law, and a live step's zero value draws nothing).
 		if live := page.Live; !live.Empty() {
-			if command := strings.TrimSpace(live.Command); command != "" {
+			if command := planDisplayCommand(live.Command, page.Folder); command != "" {
 				add(pal.ink(pal.glyph(tokens.GStepRunning) + "  $ " + command))
 			}
 			if !live.Since.IsZero() {
@@ -1371,7 +1371,7 @@ func (a *app) taskPlanBody(width int) []string {
 				word += railSep + itoa(n) + " queued behind it"
 			}
 			add(pal.ink(lead + word))
-			if line := planLiveRow(kid.Live.Command, width-ansi.StringWidth(lead)-2, pal); line != "" {
+			if line := planLiveRow(kid.Live.Command, kid.Folder, width-ansi.StringWidth(lead)-2, pal); line != "" {
 				add(lead + "  " + line)
 			}
 		}
@@ -1557,4 +1557,27 @@ func planRailNow(line tasksLine, width int, pal palette, sentence string) []stri
 		out = append(out, lead+pal.dim(text))
 	}
 	return out
+}
+
+// planDisplayCommand is the one display rule for a task step on the page, rail,
+// and tree. The record remains untouched: only a leading change into the exact
+// run copy named in the page head is omitted. Every other command is returned
+// exactly as recorded apart from surrounding space already discarded by rows.
+func planDisplayCommand(command, folder string) string {
+	command = strings.TrimSpace(command)
+	folder = strings.TrimSpace(folder)
+	if command == "" || folder == "" {
+		return command
+	}
+	quotedSingle := "'" + strings.ReplaceAll(folder, "'", "'\\''") + "'"
+	quotedDouble := `"` + strings.ReplaceAll(strings.ReplaceAll(folder, `\`, `\\`), `"`, `\"`) + `"`
+	for _, path := range []string{folder, quotedSingle, quotedDouble} {
+		prefix := "cd " + path + " && "
+		if strings.HasPrefix(command, prefix) {
+			if rest := strings.TrimSpace(strings.TrimPrefix(command, prefix)); rest != "" {
+				return rest
+			}
+		}
+	}
+	return command
 }
