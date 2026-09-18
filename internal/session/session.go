@@ -1098,6 +1098,9 @@ type TaskLanding struct {
 	High        string
 	CostUSD     float64
 	Tokens      int
+	// Attempt is which run of this node the landing is, so a per-run judged
+	// marker survives a resettle (same id, re-judged) and a re-run (new attempt).
+	Attempt int
 }
 
 type Config struct {
@@ -2181,6 +2184,19 @@ type Agent struct {
 	// ([Agent.stashedWork]).
 	stashBefore     map[string]bool
 	stashBeforeRead bool
+
+	// ignoredBefore is every gitignored file the deliverable tree ALREADY HELD
+	// when the run began, by path, and ignoredBeforeRead says that reading
+	// happened — which is not the same as the set being empty, because a
+	// repository with no ignored files at all reads as none
+	// ([Agent.readIgnoredBefore]).
+	//
+	// IT IS THE SAME SUBTRACTION THE STASH GETS, FOR THE SAME REASON. Only
+	// what appeared during the run may be named a build product this run left
+	// ([Agent.ignoredBuildProducts]), and with no photograph the honest answer
+	// about the tree is silence rather than a guess.
+	ignoredBefore     map[string]bool
+	ignoredBeforeRead bool
 
 	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
 	// so one unit of work whose job somebody else did is said once rather than

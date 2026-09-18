@@ -38,6 +38,18 @@ func poolClock(t *testing.T) func() time.Time {
 	return func() time.Time { return moment }
 }
 
+// seedDay is the day the embedded seed carries. It is read from the seed rather
+// than pinned, because the seed is regenerated from the relay and its day moves
+// with the pool — an expected figure, not a constant a test should freeze.
+func seedDay(t *testing.T) string {
+	t.Helper()
+	seed, err := index.SeedIndex()
+	if err != nil {
+		t.Fatalf("the embedded seed does not parse: %v", err)
+	}
+	return seed.Generated().Format("2006-01-02")
+}
+
 // noEnv is an environment in which nothing is set, handed in the way the verb
 // reads the world, so a test's answer cannot depend on the machine's shell.
 func noEnv(string) (string, bool) {
@@ -68,6 +80,30 @@ func poolDoc() []byte {
 		"metrics": {"role_rating": {"kind": "gaussian", "dims": ["role", "model"]}},
 		"cells": [
 			{"metric": "role_rating", "role": "planner", "model": "z-ai/glm-5.3", "mean": 1312, "sd": 18, "n": 9}
+		]
+	}`)
+}
+
+// poolDocBothMetrics is the relay's wire shape: the judge's scored cells and
+// the graded shares beside them, the shares split by the source that
+// produced each. The numbers name no model; it is a fixture, and the field
+// it is read for is its shape.
+func poolDocBothMetrics() []byte {
+	return []byte(`{
+		"version": 7,
+		"schema": 1,
+		"generated": "2026-09-10",
+		"min_installs": 1,
+		"judges": ["z-ai/glm-5.3"],
+		"metrics": {
+			"role_quality": {"kind": "gaussian", "unit": "score", "dims": ["role", "model"]},
+			"acceptable": {"kind": "bernoulli", "unit": "share", "dims": ["role", "model", "source"]}
+		},
+		"cells": [
+			{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 75, "sd": 7, "n": 30},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.9, "sd": 0, "n": 20, "source": "reviewer"},
+			{"metric": "acceptable", "role": "planner", "model": "z-ai/glm-5.3", "mean": 0.8, "sd": 0, "n": 30, "source": "reviewer"},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.7, "sd": 0, "n": 15, "source": "grader"}
 		]
 	}`)
 }
@@ -108,6 +144,36 @@ func seedOutbox(t *testing.T) string {
 	return dir
 }
 
+// seedDroppedOutbox writes an outbox that holds one dropped marker per reason,
+// the way a relay's refusal or the cap leaves them, so status reads a box
+// whose measurements were thrown away. An empty reason writes the marker an
+// older build left, with no reason at all.
+func seedDroppedOutbox(t *testing.T, reasons ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for i, reason := range reasons {
+		marker := fmt.Sprintf(`{"dropped":"%032x"`, i+1)
+		if reason != "" {
+			encoded, err := json.Marshal(reason)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marker += `,"reason":` + string(encoded)
+		}
+		body.WriteString(marker + "}")
+		body.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "outbox.jsonl"), []byte(body.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // The reading form answers over the whole config, every value beside the word
 // saying where it came from — and a machine that has never read an index says
 // so in a sentence rather than printing nothing at all. An install that has
@@ -125,7 +191,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 		"mirror https://raw.githubusercontent.com/Agent-Field/CodeAF/model-pool/pool/index.json · default",
 		"submit https://codeaf.agentfield.ai/pool/v1/rows · default",
 		"ttl 1d · default",
-		"no index cached yet · built-in seed of 2026-09-17",
+		"no index cached yet · built-in seed of " + seedDay(t),
 		"own sheet: none",
 	} {
 		if !strings.Contains(body, want) {
@@ -211,6 +277,9 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	if !strings.Contains(out.String(), "pending 2 · can send yes · can read yes") {
 		t.Fatalf("status did not count the seeded rows:\n%s", out.String())
 	}
+	if strings.Contains(out.String(), "dropped") {
+		t.Fatalf("status named dropped rows when none were dropped:\n%s", out.String())
+	}
 	if !strings.Contains(out.String(), "own sheet: none") {
 		t.Fatalf("status did not say the install has recorded nothing of its own:\n%s", out.String())
 	}
@@ -244,6 +313,49 @@ func TestPoolStatusCountsPendingRowsAndNamesItsDoors(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(quiet, "pool", "outbox.jsonl")); !os.IsNotExist(err) {
 		t.Fatal("status created the outbox it was only counting")
+	}
+}
+
+// When the relay refuses a row by line, or the cap drops one, the outbox
+// retires it as dropped and keeps the reason. Status says how many and the
+// last one's reason, so a person can tell a working install from one whose
+// measurements are being thrown away — and a file that kept no reason says
+// the count alone.
+func TestPoolStatusSaysWhenTheRelayDroppedRowsAndWhy(t *testing.T) {
+	dir := seedDroppedOutbox(t, "a first reason", "role must be worker, high or mastermind")
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	want := "pending 0 · dropped 2 (last: role must be worker, high or mastermind) · can send yes · can read yes"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("status did not say the relay dropped rows and why:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Pending     int    `json:"pending"`
+		Dropped     int    `json:"dropped"`
+		DroppedLast string `json:"dropped_last"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Pending != 0 || answer.Dropped != 2 || answer.DroppedLast != "role must be worker, high or mastermind" {
+		t.Fatalf("the dropped rows did not carry: %+v", answer)
+	}
+
+	// A file written before reasons were kept says how many and no more.
+	old := seedDroppedOutbox(t, "", "")
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, old, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "pending 0 · dropped 2 · can send yes · can read yes") {
+		t.Fatalf("a reasonless dropped marker did not read as the count alone:\n%s", out.String())
 	}
 }
 
@@ -365,6 +477,176 @@ func TestPoolStatusJSONCarriesTheLastJudge(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"last_judge":null`) {
 		t.Fatalf("a missing record was not said as null:\n%s", out.String())
+	}
+}
+
+// seedPendingRows writes pending rows the way the doors leave them, by hand
+// rather than through writePendingLanding: the writer stamps the moment
+// itself, and a status test needs to hold the ages still.
+func seedPendingRows(t *testing.T, dir string, rows ...pendingLanding) {
+	t.Helper()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for _, row := range rows {
+		data, err := json.Marshal(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body.Write(data)
+		body.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, "pending.jsonl"), []byte(body.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seedJudgedMarker lays down the marker the judge leaves for a run it scored,
+// so status reads the row behind it as judged.
+func seedJudgedMarker(t *testing.T, dir string, id uint64, attempt int) {
+	t.Helper()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(judgedDir(poolDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(judgedMarkerPath(poolDir, id, attempt), []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seedSweepLast writes the sweep's record the way the sweep leaves it, so
+// status is read against what stands on disk.
+func seedSweepLast(t *testing.T, dir string, last sweepLast) {
+	t.Helper()
+	data, err := json.Marshal(last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "pool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pool", "sweep-last.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// status says what is waiting for a judge and what the last sweep did: the
+// pending file's unjudged rows with the oldest one's door and age, and the
+// sweep's own record of what it judged, what its budget left and whether the
+// deadline cut it. --json carries both records, and a row written before rows
+// carried a moment says an unknown age rather than inventing one.
+func TestPoolStatusCountsThePendingJudgeRowsAndSaysWhatTheLastSweepDid(t *testing.T) {
+	dir := t.TempDir()
+	do := poolTestLanding()
+	do.ID, do.Attempt = 7, 1
+	exec := poolTestLanding()
+	exec.ID, exec.Attempt = 9, 2
+	threeHoursAgo := poolClock(t)().Add(-3 * time.Hour)
+	seedPendingRows(t, dir,
+		pendingLanding{At: threeHoursAgo, Door: "do", Landing: do},
+		pendingLanding{Door: "exec", Landing: exec},
+	)
+	seedJudgedMarker(t, dir, 9, 2)
+	seedSweepLast(t, dir, sweepLast{
+		At: poolClock(t)().Add(-2 * time.Minute), Judged: 3, Left: 2,
+		BudgetUsed: 41, Cut: true,
+	})
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	if !strings.Contains(body, "pending judge: 1 · oldest do run 3h") {
+		t.Fatalf("status did not count the waiting rows:\n%s", body)
+	}
+	if !strings.Contains(body, "last sweep: 2m ago · judged 3 · 2 still pending · 41s of 10m") {
+		t.Fatalf("status did not say what the last sweep did:\n%s", body)
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		PendingJudge *struct {
+			Count      int        `json:"count"`
+			OldestDoor string     `json:"oldest_door"`
+			OldestAt   *time.Time `json:"oldest_at"`
+		} `json:"pending_judge"`
+		LastSweep *struct {
+			At         time.Time `json:"at"`
+			Judged     int       `json:"judged"`
+			Left       int       `json:"left"`
+			BudgetUsed int       `json:"budget_used"`
+			Cut        bool      `json:"cut"`
+		} `json:"last_sweep"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.PendingJudge == nil || answer.PendingJudge.Count != 1 || answer.PendingJudge.OldestDoor != "do" {
+		t.Fatalf("the waiting rows did not carry: %+v", answer.PendingJudge)
+	}
+	if got, err := time.Parse(time.RFC3339, "2026-09-17T21:00:00Z"); err != nil ||
+		answer.PendingJudge.OldestAt == nil || !answer.PendingJudge.OldestAt.Equal(got) {
+		t.Fatalf("the oldest row's moment is %v, want the row's own in RFC 3339", answer.PendingJudge.OldestAt)
+	}
+	if answer.LastSweep == nil || answer.LastSweep.Judged != 3 || answer.LastSweep.Left != 2 ||
+		answer.LastSweep.BudgetUsed != 41 || !answer.LastSweep.Cut {
+		t.Fatalf("the sweep's record did not carry: %+v", answer.LastSweep)
+	}
+	if got, err := time.Parse(time.RFC3339, "2026-09-17T23:58:00Z"); err != nil || !answer.LastSweep.At.Equal(got) {
+		t.Fatalf("the sweep's moment is %v, want the record's own in RFC 3339", answer.LastSweep.At)
+	}
+
+	// A row written before rows carried a moment is the oldest of them — it
+	// predates the stamp — and says so rather than inventing an age.
+	unknown := t.TempDir()
+	seedPendingRows(t, unknown,
+		pendingLanding{At: threeHoursAgo, Door: "do", Landing: do},
+		pendingLanding{Door: "exec", Landing: exec},
+	)
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, unknown, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "pending judge: 2 · oldest exec run age unknown") {
+		t.Fatalf("status did not say the oldest row's age is unknown:\n%s", out.String())
+	}
+}
+
+// An install nothing has reached — no pending file, no sweep record — says so
+// in the two sentences a nothing is said in here, and the reading form writes
+// nothing while it looks.
+func TestPoolStatusSaysWhenNothingWaitsAndNoSweepHasRun(t *testing.T) {
+	quiet := t.TempDir()
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	if !strings.Contains(body, "pending judge: none") {
+		t.Fatalf("status did not say nothing waits:\n%s", body)
+	}
+	if !strings.Contains(body, "last sweep: none yet") {
+		t.Fatalf("status did not say no sweep has run:\n%s", body)
+	}
+	if _, err := os.Stat(filepath.Join(quiet, "pool", "pending.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("status created the pending file it was only counting")
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"pending_judge":{"count":0}`) {
+		t.Fatalf("an absent pending file did not read as zero:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), `"last_sweep":null`) {
+		t.Fatalf("a missing sweep record was not said as null:\n%s", out.String())
 	}
 }
 
@@ -595,7 +877,7 @@ func TestPoolVerifyFetchesAndChecksASignedIndex(t *testing.T) {
 		&out, dir, poolClock(t), lookup); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "signature good: version 7, generated 2026-09-10, 1 metric") {
+	if !strings.Contains(out.String(), "signature good: version 7, generated 2026-09-10, metrics role_rating") {
 		t.Fatalf("verify did not read the fetched document:\n%s", out.String())
 	}
 	out.Reset()
@@ -604,6 +886,71 @@ func TestPoolVerifyFetchesAndChecksASignedIndex(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "generated 2026-09-10") {
 		t.Fatalf("a verified index did not land in the cache show reads:\n%s", out.String())
+	}
+}
+
+// verify names the metrics it verified, where it used to count them: the
+// count said how many, the names say which, and the second metric is no
+// longer invisible. --json carries the array beside the count the way the
+// reading forms do.
+func TestPoolVerifyNamesTheMetricsItVerified(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	doc := poolDocBothMetrics()
+	if err := os.WriteFile(filepath.Join(src, "index.json"), doc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sig := ed25519.Sign(priv, doc)
+	if err := os.WriteFile(filepath.Join(src, "index.json.sig"),
+		[]byte(base64.StdEncoding.EncodeToString(sig)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lookup := oneEnv("CODEAF_MODEL_POOL_URL", filepath.Join(src, "index.json"))
+	dir := t.TempDir()
+	var out strings.Builder
+	if err := runPoolWith([]string{"verify", "--key", base64.StdEncoding.EncodeToString(pub)},
+		&out, dir, poolClock(t), lookup); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "signature good: version 7, generated 2026-09-10, metrics acceptable, role_quality") {
+		t.Fatalf("verify did not name both metrics:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"verify", "--json", "--key", base64.StdEncoding.EncodeToString(pub)},
+		&out, dir, poolClock(t), lookup); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Verified   bool `json:"verified"`
+		Metrics    int  `json:"metrics"`
+		MetricList []struct {
+			Name    string   `json:"name"`
+			Kind    string   `json:"kind"`
+			Unit    string   `json:"unit"`
+			Dims    []string `json:"dims"`
+			Cells   int      `json:"cells"`
+			Sources []string `json:"sources"`
+		} `json:"metric_list"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("verify --json did not parse: %v\n%s", err, out.String())
+	}
+	if !answer.Verified || answer.Metrics != 2 || len(answer.MetricList) != 2 {
+		t.Fatalf("verify reported %+v, want both metrics beside the count", answer)
+	}
+	shares, quality := answer.MetricList[0], answer.MetricList[1]
+	if shares.Name != "acceptable" || shares.Kind != "bernoulli" || shares.Unit != "share" ||
+		strings.Join(shares.Dims, ",") != "role,model,source" || shares.Cells != 3 ||
+		strings.Join(shares.Sources, ",") != "grader,reviewer" {
+		t.Fatalf("the graded shares read as %+v", shares)
+	}
+	if quality.Name != "role_quality" || quality.Kind != "gaussian" || quality.Unit != "score" ||
+		strings.Join(quality.Dims, ",") != "role,model" || quality.Cells != 1 || len(quality.Sources) != 0 {
+		t.Fatalf("the judged scores read as %+v", quality)
 	}
 }
 
@@ -696,7 +1043,7 @@ func TestPoolIndexForIgnoresAnUnparsableCache(t *testing.T) {
 	dir := t.TempDir()
 	writePoolDoc(t, dir, "{ this is not a document")
 	held := poolIndexFor(dir, poolcfg.Resolve("", "", noEnv), poolClock(t))()
-	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-17" {
+	if held == nil || held.Generated().Format("2006-01-02") != seedDay(t) {
 		t.Fatalf("an unparsable cache did not fall back to the seed: %v", held)
 	}
 }
@@ -786,7 +1133,7 @@ func TestPoolShowJSONWithNoCacheReportsTheSeed(t *testing.T) {
 	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
 		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
 	}
-	if answer.Index == nil || answer.Index.Source != "seed" || answer.Index.Generated != "2026-09-17" {
+	if answer.Index == nil || answer.Index.Source != "seed" || answer.Index.Generated != seedDay(t) {
 		t.Fatalf("the seed was not reported: %+v", answer.Index)
 	}
 }
@@ -870,6 +1217,245 @@ func TestPoolShowSaysHowManyCellsTheBuiltInSeedHolds(t *testing.T) {
 	}
 	if want := countWord(total, "cell", "cells"); !strings.Contains(out.String(), want) {
 		t.Errorf("show did not say the seed holds %q:\n%s", want, out.String())
+	}
+	// The seed's one metric says itself the way a cached document's do:
+	// the kind and unit the document spells, its cells, and the dims a cell
+	// of it is addressed by.
+	if want := "role_quality: gaussian score · " + countWord(total, "cell", "cells") + " · dims role, model"; !strings.Contains(out.String(), want) {
+		t.Errorf("the seed's metric line did not read %q:\n%s", want, out.String())
+	}
+}
+
+// The index declares two metrics now — the judge's scores and the graded
+// shares beside them — and a count says neither which nor what. show prints
+// one line per declared metric after the index line: the kind and unit the
+// document spells, the cells counted with their noun, the dims a cell of
+// the metric is addressed by, and the distinct sources when the cells are
+// split by one. The order is the index's own, sorted.
+func TestPoolShowPrintsEachMetricAfterTheIndexLine(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, string(poolDocBothMetrics()))
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	indexAt := strings.Index(body, "index · ")
+	sharesAt := strings.Index(body, "acceptable: bernoulli share · 3 cells · dims role, model, source · sources grader, reviewer")
+	qualityAt := strings.Index(body, "role_quality: gaussian score · 1 cell · dims role, model")
+	if indexAt < 0 || sharesAt < 0 || qualityAt < 0 {
+		t.Fatalf("show did not print both metrics beside the index line:\n%s", body)
+	}
+	if sharesAt < indexAt || qualityAt < sharesAt {
+		t.Fatalf("the metric lines did not follow the index line in the index's own order:\n%s", body)
+	}
+}
+
+// A document that declares one metric prints one line, and a metric the
+// document spells no unit for says its kind alone.
+func TestPoolShowPrintsOneLineForAOneMetricDocument(t *testing.T) {
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, seedIndex(t), poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "role_rating: gaussian · 1 cell · dims role, model") {
+		t.Fatalf("the one-metric document did not print its one line:\n%s", out.String())
+	}
+}
+
+// The --json answer carries the metrics as an array beside the count it
+// already carried, so a script written against today's shape still reads
+// and a script that wants the split reads it from the array.
+func TestPoolShowJSONCarriesTheMetricsBesideTheCount(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, string(poolDocBothMetrics()))
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Index *struct {
+			Metrics    int `json:"metrics"`
+			MetricList []struct {
+				Name    string   `json:"name"`
+				Kind    string   `json:"kind"`
+				Unit    string   `json:"unit"`
+				Dims    []string `json:"dims"`
+				Cells   int      `json:"cells"`
+				Sources []string `json:"sources"`
+			} `json:"metric_list"`
+		} `json:"index"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
+	}
+	held := answer.Index
+	if held == nil {
+		t.Fatal("a seeded index was not reported")
+	}
+	if held.Metrics != 2 {
+		t.Fatalf("the count did not stay a count: %d", held.Metrics)
+	}
+	if len(held.MetricList) != 2 {
+		t.Fatalf("the array carried %d metric(s), want both: %+v", len(held.MetricList), held.MetricList)
+	}
+	shares, quality := held.MetricList[0], held.MetricList[1]
+	if shares.Name != "acceptable" || shares.Kind != "bernoulli" || shares.Unit != "share" ||
+		strings.Join(shares.Dims, ",") != "role,model,source" || shares.Cells != 3 ||
+		strings.Join(shares.Sources, ",") != "grader,reviewer" {
+		t.Fatalf("the graded shares read as %+v", shares)
+	}
+	if quality.Name != "role_quality" || quality.Kind != "gaussian" || quality.Unit != "score" ||
+		strings.Join(quality.Dims, ",") != "role,model" || quality.Cells != 1 || len(quality.Sources) != 0 {
+		t.Fatalf("the judged scores read as %+v", quality)
+	}
+}
+
+// poolDocThreeCells is a document with two metrics and three cells, every
+// cell carrying installs and one carrying the source dim its metric is split
+// by — one cell of the graded shares spells no source at all. The numbers
+// name no model; it is a fixture, and the field it is read for is its shape.
+func poolDocThreeCells() []byte {
+	return []byte(`{
+		"version": 7,
+		"schema": 1,
+		"generated": "2026-09-10",
+		"min_installs": 1,
+		"judges": ["z-ai/glm-5.3"],
+		"metrics": {
+			"role_quality": {"kind": "gaussian", "unit": "score", "dims": ["role", "model"]},
+			"acceptable": {"kind": "bernoulli", "unit": "share", "dims": ["role", "model", "source"]}
+		},
+		"cells": [
+			{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 71.2, "sd": 9.4, "n": 42, "installs": 5},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.75, "sd": 0, "n": 20, "installs": 2},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.83, "sd": 0, "n": 12, "installs": 4, "source": "grader"}
+		]
+	}`)
+}
+
+// --cells is the per-cell reading form show has lacked: one line per cell
+// under a `cells:` header, each line naming its metric, the role and model
+// it is addressed by, the dims it spells, the measurement — a share for a
+// graded metric — its rows, and the installs behind it, all in the index's
+// own order. --json carries the same cells as an array beside the summary,
+// and without the flag neither answer moves.
+func TestPoolShowCellsListsEachCellWithItsInstallsAndItsDims(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, string(poolDocThreeCells()))
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--cells"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	for _, want := range []string{
+		"cells:\n",
+		"acceptable · worker · z-ai/glm-5.3 · share 0.75 · n 20 · installs 2",
+		"acceptable · worker · z-ai/glm-5.3 · source grader · share 0.83 · n 12 · installs 4",
+		"role_quality · worker · z-ai/glm-5.3 · mean 71.2 · sd 9.4 · n 42 · installs 5",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("show --cells is missing %q:\n%s", want, body)
+		}
+	}
+	// The order is the index's own — metric, then role, model, then dims —
+	// and the table follows the metric lines it details, ahead of the own
+	// sheet, which is a different document.
+	header, shares, quality, own := strings.Index(body, "cells:\n"),
+		strings.Index(body, "acceptable · worker"), strings.Index(body, "role_quality · worker"),
+		strings.Index(body, "own sheet:")
+	if header < 0 || shares < 0 || quality < 0 || own < 0 {
+		t.Fatalf("show --cells did not print the table:\n%s", body)
+	}
+	if shares < header || quality < shares || own < quality {
+		t.Fatalf("the cells did not follow their metrics in the index's own order:\n%s", body)
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json", "--cells"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Index *struct {
+			Metrics int `json:"metrics"`
+		} `json:"index"`
+		Cells []struct {
+			Metric   string            `json:"metric"`
+			Role     string            `json:"role"`
+			Model    string            `json:"model"`
+			Dims     map[string]string `json:"dims"`
+			Mean     float64           `json:"mean"`
+			SD       float64           `json:"sd"`
+			N        int               `json:"n"`
+			Installs int               `json:"installs"`
+		} `json:"cells"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("--json --cells did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Index == nil || answer.Index.Metrics != 2 {
+		t.Fatalf("the summary did not stay beside the cells: %+v", answer.Index)
+	}
+	if len(answer.Cells) != 3 {
+		t.Fatalf("--json --cells carried %d cell(s), want three: %+v", len(answer.Cells), answer.Cells)
+	}
+	plain, graded, scored := answer.Cells[0], answer.Cells[1], answer.Cells[2]
+	if plain.Metric != "acceptable" || plain.Role != "worker" || len(plain.Dims) != 0 ||
+		plain.Mean != 0.75 || plain.N != 20 || plain.Installs != 2 {
+		t.Fatalf("the sourceless share read as %+v", plain)
+	}
+	if graded.Metric != "acceptable" || graded.Dims["source"] != "grader" ||
+		graded.Mean != 0.83 || graded.N != 12 || graded.Installs != 4 {
+		t.Fatalf("the graded share read as %+v", graded)
+	}
+	if scored.Metric != "role_quality" || scored.Mean != 71.2 || scored.SD != 9.4 ||
+		scored.N != 42 || scored.Installs != 5 {
+		t.Fatalf("the judged score read as %+v", scored)
+	}
+
+	// Without the flag the answer is the answer it has always been: no
+	// table in the words, no cells key in the object.
+	out.Reset()
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	plain0 := out.String()
+	if strings.Contains(plain0, "installs 5") || strings.Contains(plain0, "cells:\n") {
+		t.Fatalf("a show without --cells grew the table:\n%s", plain0)
+	}
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var noCells map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out.String()), &noCells); err != nil {
+		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
+	}
+	if _, has := noCells["cells"]; has {
+		t.Fatal("a show --json without --cells carried a cells array")
+	}
+}
+
+// A metric the document declares but holds no cell of — the floor held its
+// cells back, or none were ever measured — says none in the table, the way
+// every other nothing here is said.
+func TestPoolShowCellsSaysNoneForAMetricWithNoCells(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, `{
+		"version": 7,
+		"schema": 1,
+		"generated": "2026-09-10",
+		"min_installs": 1,
+		"metrics": {"role_rating": {"kind": "gaussian", "dims": ["role", "model"]}},
+		"cells": []
+	}`)
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--cells"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "role_rating · none") {
+		t.Fatalf("an empty metric did not say none:\n%s", out.String())
 	}
 }
 

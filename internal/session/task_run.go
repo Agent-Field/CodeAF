@@ -3918,6 +3918,7 @@ func (n *TaskNode) landing() TaskLanding {
 		High:        n.checkedOn,
 		CostUSD:     n.cost,
 		Tokens:      tokens,
+		Attempt:     n.attempt,
 	}
 }
 

@@ -58,7 +58,7 @@ test('aggregate pools the within-cell standard deviation from the triples', () =
     { install: 'i1', day: '2026-09-17', key: KEY, triple: { n: 4, s: 200, s2: 10000 } }, // 50 ×4
     { install: 'i2', day: '2026-09-17', key: KEY, triple: { n: 4, s: 240, s2: 14400 } }, // 60 ×4
   ];
-  const cells = aggregate(entries, { minInstalls: 3 });
+  const cells = aggregate(entries, { minInstalls: 2 });
   // sqrt((24400 - 440²/8) / 7) = sqrt((24400 - 24200)/7) = sqrt(200/7).
   assert.ok(Math.abs(cells[0].sd - Math.sqrt(200 / 7)) < 1e-9);
   assert.equal(cells[0].sd, Math.sqrt(200 / 7));
@@ -84,7 +84,7 @@ test('judge severity is removed: two judges offset by +10 agree on each model', 
     entry('a', '2026-09-17', key('z-ai/glm-5.3-flash', ja), 70),
     entry('b', '2026-09-17', key('z-ai/glm-5.3-flash', jb), 80), // +10 severity
   ];
-  const cells = aggregate(entries, { minInstalls: 3 });
+  const cells = aggregate(entries, { minInstalls: 2 });
   const byModel = new Map(cells.map((c) => [c.model, c]));
   // Both judges land on one mean per model: the +10 offset is gone.
   const base = byModel.get('z-ai/glm-5.3').mean;
@@ -94,19 +94,93 @@ test('judge severity is removed: two judges offset by +10 agree on each model', 
   assert.ok(Math.abs((flash - base) - 20) < 1e-9);
 });
 
-test('aggregate publishes judges sorted and sorts below-minInstalls cells last', () => {
+test('aggregate publishes only the cells that meet the minInstalls floor', () => {
   const thin = cellKey({ role: 'worker', model: 'a/one', judge: 'j/x', door: 'task', size: 'S' });
   const fat = cellKey({ role: 'worker', model: 'b/two', judge: 'j/y', door: 'do', size: 'L' });
   const entries = [
     entry('i1', '2026-09-17', thin, 90),
-    entry('i2', '2026-09-17', thin, 90),
     entry('i1', '2026-09-17', fat, 10),
     entry('i2', '2026-09-17', fat, 10),
     entry('i3', '2026-09-17', fat, 10),
   ];
   const cells = aggregate(entries, { minInstalls: 3 });
+  // One install's mean for a/one is below the floor: the cell never leaves
+  // the relay, so the document it feeds holds exactly b/two's cell.
+  assert.equal(cells.length, 1);
+  assert.equal(cells[0].model, 'b/two');
+});
+
+test('aggregate returns no cells when every one is below the floor', () => {
+  const thin = cellKey({ role: 'worker', model: 'a/one', judge: 'j/x', door: 'task', size: 'S' });
+  const entries = [
+    entry('i1', '2026-09-17', thin, 90),
+    entry('i2', '2026-09-17', thin, 90),
+  ];
+  const cells = aggregate(entries, { minInstalls: 3 });
+  // The document then renders with an empty cells array, still signed and
+  // published — a below-floor cell must not leave the relay either way.
+  assert.deepEqual(cells, []);
+});
+
+test('aggregate publishes judges sorted and orders cells by mean, role then model', () => {
+  // Both judges score both models, so severity removal keeps the 80-point
+  // gap and the order is the means', not a tie-break's.
+  const slow = cellKey({ role: 'worker', model: 'a/one', judge: 'j/x', door: 'task', size: 'S' });
+  const fast = cellKey({ role: 'worker', model: 'b/two', judge: 'j/y', door: 'do', size: 'L' });
+  const entries = [
+    entry('i1', '2026-09-17', slow, 10),
+    entry('i1', '2026-09-17', slow.replace('j/x', 'j/y'), 20),
+    entry('i2', '2026-09-17', slow, 10),
+    entry('i2', '2026-09-17', slow.replace('j/x', 'j/y'), 20),
+    entry('i3', '2026-09-17', slow, 10),
+    entry('i3', '2026-09-17', slow.replace('j/x', 'j/y'), 20),
+    entry('i1', '2026-09-17', fast, 90),
+    entry('i1', '2026-09-17', fast.replace('j/y', 'j/x'), 100),
+    entry('i2', '2026-09-17', fast, 90),
+    entry('i2', '2026-09-17', fast.replace('j/y', 'j/x'), 100),
+    entry('i3', '2026-09-17', fast, 90),
+    entry('i3', '2026-09-17', fast.replace('j/y', 'j/x'), 100),
+  ];
+  const cells = aggregate(entries, { minInstalls: 3 });
   const judges = judgesOf(entries);
   assert.deepEqual(judges, ['j/x', 'j/y']);
-  assert.equal(cells[0].model, 'b/two'); // 3 installs meets the floor, sorts first
-  assert.equal(cells[1].model, 'a/one'); // 2 installs falls after
+  assert.equal(cells[0].model, 'b/two'); // higher mean first
+  assert.equal(cells[1].model, 'a/one');
+});
+
+const GRADED = cellKey({
+  metric: 'acceptable',
+  role: 'worker',
+  model: 'z-ai/glm-5.3-flash',
+  judge: 'codeaf/grader',
+  door: 'task',
+  size: 'M',
+});
+
+test('cellKey leads with the metric for anything but role_quality, so stored keys never move', () => {
+  assert.equal(GRADED, 'acceptable|worker|z-ai/glm-5.3-flash|codeaf/grader|task|M');
+  assert.equal(cellKey({ metric: 'role_quality', role: 'worker', model: 'a/b', judge: 'c/d', door: 'task', size: 'S' }), 'worker|a/b|c/d|task|S');
+});
+
+test('aggregate keeps a graded cell per source beside the judged cells and removes no severity from it', () => {
+  const seeded = cellKey({ metric: 'acceptable', role: 'worker', model: 'z-ai/glm-5.3-flash', judge: 'codeaf/reviewer', door: 'task', size: 'M' });
+  const entries = [
+    entry('i1', '2026-09-17', KEY, 50),
+    entry('i1', '2026-09-17', GRADED, 100, 2),
+    entry('i2', '2026-09-17', GRADED, 0, 2),
+    entry('i1', '2026-09-17', seeded, 100, 3),
+  ];
+  const cells = aggregate(entries, { minInstalls: 1 });
+  const graded = cells.filter((c) => c.metric === 'acceptable');
+  assert.equal(graded.length, 2);
+  const byGrader = graded.find((c) => c.source === 'codeaf/grader');
+  assert.equal(byGrader.installs, 2);
+  assert.equal(byGrader.n, 4);
+  assert.equal(byGrader.mean, 50);
+  const bySeed = graded.find((c) => c.source === 'codeaf/reviewer');
+  assert.equal(bySeed.mean, 100);
+  const judged = cells.find((c) => c.metric === 'role_quality');
+  assert.equal(judged.source, undefined);
+  assert.equal(judged.mean, 50);
+  assert.deepEqual(judgesOf(entries), ['anthropic/claude-opus-5', 'codeaf/grader', 'codeaf/reviewer']);
 });
