@@ -5175,17 +5175,29 @@ sits under that, each joined to the row above it by the list's own connector
 (`├ `, `└ `). You read the shape of the run down the indentation, not a flat list
 of peers.
 
-A task **held behind named work** sits under **the task it waits on**. The store
-keeps a task `pending` until the work it depends on is done; when that work is not
-the task's own parent, the row is drawn under it, one level in, and still wears
-`queued · waits: <that task>` — the row above it is the name the row itself says.
-Where what holds a task is its own parent the row is already there and nothing
-moves.
+A task **held behind named work stays under its parent**. Waiting is a second
+kind of connection; it never changes the family or indentation. The pending row
+still wears `queued · waits: <that task>`, so the words say what holds it while
+the tree continues to say who asked for it.
 
-A task's **page** shows its children under its steps the same way, each with its
-live step while its worker is on one. Opening a row (`enter`) and leaving a note
-are unchanged by the tree.
+A task's **page** shows everything below it under its steps the same way, each
+with its live step while its worker is on one. Opening a row (`enter`) and
+leaving a note are unchanged by the tree.
 
+## Why is this group one line? — finished families fold on the rail
+
+A family becomes one rail line when every task in it is done or failed. The line
+keeps the family title and says how many settled below it — `· 3 done`, or
+`· 3 failed` when the family failed. This is a fold, not missing work: select the
+line and press `enter` to open the family's page. A family with anything running
+or queued stays open on the rail.
+
+## What does queued behind it mean? — open tasks are waiting on this one
+
+`· 2 queued behind it` on a row means two open tasks directly wait for that task
+to finish. It counts direct dependants, not every later task in the subtree, and
+nothing is printed when the count is zero. Their own rows remain under their
+parents and say `queued · waits: <title>`.
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
 On a terminal **110 columns or wider** the tasks place splits: the list keeps the left, a dim

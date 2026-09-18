@@ -701,3 +701,14 @@ A task viewed through another conversation's reading connection has no steering 
 Its editor is separate from the main draft and from any local task with the same number.
 Task corrections carry text; attachments stay in the recipient's tray and the page says
 that those files were not sent with the correction.
+
+## How do I open a task under this one? — enter on its row, escape to come back
+
+The `under it` section is the whole subtree in store order, not only the direct
+children. Its indentation and connectors show the same parent tree as the rail,
+and a running row keeps its live `$ <command>` line beneath it.
+
+Select any row there and press `enter` to open that task's page. Press `esc` to
+return to the page you came from; the breadcrumb says `esc/← <parent title>` so
+you can see where it returns. This opens a page rather than changing the rail's
+fold.
