@@ -13,7 +13,7 @@ func c263PlanRows() []session.PlanTaskRow {
 	live := livePlanRow()
 	live.ID, live.Parent, live.Title = "live", "root", "implement handler"
 	return []session.PlanTaskRow{
-		{ID: "root", Title: "rewrite the auth flow", Status: "running", Done: 2, Running: 1, Queued: 1, Total: 4},
+		{ID: "root", Title: "rewrite the auth", Status: "running", Done: 2, Running: 1, Queued: 1, Total: 4},
 		live,
 		{ID: "gate", Parent: "root", Title: "schema migration", Status: "running"},
 		{ID: "queued", Parent: "root", Title: "integration tests", Status: "pending", Waits: []string{"gate"}},
@@ -24,7 +24,10 @@ func c263PlanRows() []session.PlanTaskRow {
 
 func TestRailPlanUsesTasksReadingTree(t *testing.T) {
 	a, _ := planAppWith(t, c263PlanRows(), nil)
-	a.width, a.height = 120, 30
+	a.width, a.height, a.railWide = 120, 30, true
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("tasks place did not read the plan")
+	}
 	room := a.railRoom()
 	wantRows := a.tasksFiltered().planRows(room, a.pal)
 	if len(wantRows) == 0 {
@@ -32,7 +35,7 @@ func TestRailPlanUsesTasksReadingTree(t *testing.T) {
 	}
 	want := plain(strings.Join(wantRows, "\n"))
 	got := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
-	for _, word := range []string{"rewrite the auth flow", "implement handler", "$ git grep", "queued · waits: schema migration", "2 done", "2/4"} {
+	for _, word := range []string{"rewrite the auth", "implement handler", "$ git grep", "queued · waits: schema migration", "2 done", "2/4"} {
 		if !strings.Contains(want, word) {
 			t.Fatalf("tasks reading lacks %q:\n%s", word, want)
 		}
@@ -49,6 +52,7 @@ func TestRailPlanUsesTasksReadingTree(t *testing.T) {
 
 func TestRailPlanProjectionLeavesNoPlanReadingUnchanged(t *testing.T) {
 	a, _ := planAppWith(t, nil, nil)
+	a.showPage(pageTasks)
 	reading := a.tasksFiltered()
 	before := reading.rows(50, a.pal)
 	if got := reading.planRows(50, a.pal); got != nil {
