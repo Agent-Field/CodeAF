@@ -134,7 +134,7 @@ func hostedSurface(t *testing.T) (*app, *remote.Client) {
 	}
 	t.Cleanup(func() { _ = loop.Close() })
 	a := newApp(context.Background(), Options{
-		Agent: loop.Client.Agent(), Host: "devbox", Workspace: "/srv/app",
+		Agent: loop.Client.Agent(), Host: "devbox", Workspace: "/srv/app", ProfileDir: t.TempDir(),
 	})
 	// The same five pins [newTestApp] applies, and for its reasons: a count that
 	// depended on the developer's TERM would be a count of their terminal.
