@@ -321,6 +321,7 @@ func (a *app) detachConversation() *aside {
 // rare. It is not latent here.
 func (a *app) clearConversation() {
 	a.discussionFeeds = nil
+	a.questionReplacement = nil
 	a.entries = nil
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)

@@ -806,6 +806,8 @@ type (
 )
 
 type app struct {
+	questionReplacement *questionReplacement
+
 	discussionFeeds map[string]*discussionFeed
 
 	// ruler measures a string the way the RENDERER will draw it rather than the
@@ -4215,6 +4217,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.stream = nil
+		if a.questionReplacement != nil {
+			settled := a.settle()
+			return a, tea.Batch(settled, a.startQuestionReplacement())
+		}
 		// The turn is over, so a message that was waiting for it starts now
 		// (followup.go). Nil when nothing is queued.
 		//

@@ -108,3 +108,28 @@ func entriesText(entries []entry) string {
 	}
 	return b.String()
 }
+
+func TestQuestionConversationReplacementDrainsStoppedToolBeforeNewReply(t *testing.T) {
+	lab := newQuestionLab(t)
+	agent := &replacingQuestionScript{questionScript: lab.agent}
+	lab.a.agent = agent
+	lab.a.turn = 1
+	lab.a.stream = make(chan session.Event)
+	lab.a.ingest(session.Event{Kind: session.EventToolBegin, CallID: "old", Tool: "bash"})
+	q := consentAsk()
+	q.Subject.CallID = "old"
+	lab.raise(q)
+	head, _ := lab.a.questionHead()
+	lab.spend(lab.a.replaceQuestion(head, "explain instead"))
+	if lab.a.questionReplacement == nil {
+		t.Fatal("new stream replaced the old stream before its last events")
+	}
+	lab.a.ingest(session.Event{Kind: session.EventToolFailed, CallID: "old", Tool: "bash", Hint: "ended before an answer"})
+	drive(t, lab.a, streamClosedMsg{gen: lab.a.gen})
+	if lab.a.questionReplacement != nil {
+		t.Fatal("replacement did not start after the old stream closed")
+	}
+	if lab.a.entries[0].status != toolFailed {
+		t.Fatal("the stopped tool still claimed it needed approval")
+	}
+}

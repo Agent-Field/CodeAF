@@ -32,18 +32,35 @@ func (a *app) replaceQuestion(q questionShown, words string) tea.Cmd {
 				a.note(err.Error())
 				return nil
 			}
-			a.resolveUnfinished()
-			a.settleTurn()
-			a.stream = nil
-			a.turn++
-			a.said(entry{kind: entryUser, text: words, turn: a.turn, began: a.now()})
-			a.withdrawQuestion(q.question, "you gave an updated request")
-			if a.qroom != nil && a.qroom.head.token() == q.token() {
-				a.closeQuestionRoom()
+			a.questionReplacement = &questionReplacement{q: q, words: words, events: events}
+			if a.stream != nil {
+				return nil
 			}
-			return a.takeStream(events)
+			return a.startQuestionReplacement()
 		}
 	})
+}
+
+// The old stream must drain its tool results before the new one takes its
+// place; switching early can leave a stopped tool drawn as awaiting approval.
+type questionReplacement struct {
+	q      questionShown
+	words  string
+	events <-chan session.Event
+}
+
+func (a *app) startQuestionReplacement() tea.Cmd {
+	next := a.questionReplacement
+	if next == nil {
+		return nil
+	}
+	a.questionReplacement = nil
+	a.resolveUnfinished()
+	a.settleTurn()
+	a.turn++
+	a.said(entry{kind: entryUser, text: next.words, turn: a.turn, began: a.now()})
+	a.withdrawQuestion(next.q.question, "you gave an updated request")
+	return a.takeStream(next.events)
 }
 
 // discussionFeed keeps clarification deltas away from the original turn's live
