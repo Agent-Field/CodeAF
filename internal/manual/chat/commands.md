@@ -1288,6 +1288,11 @@ of you. Two readings then run **beside that worker**, never before it:
 The row is called by the first words you typed for a second or two, and then by a short
 name a small model gives it.
 
+When a `/task` runs on the run engine (*The worker harness* page), the row it writes to the
+tasks place carries the step its worker is on **right now** — the running glyph `◐`, the shell
+lead `$` and the command — with the task's `N steps · $0.11` under it. The line is there only
+while a step is in flight, and goes the moment the command ends.
+
 `/task` is also a live tag in the middle or at the end: `investigate the flaky test /task`
 strips the tag and takes the remaining words through this same road. Backspace
 immediately after the tag makes it plain prose.
@@ -1387,9 +1392,10 @@ bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a 
 command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
-current call, clock, tokens and spend under its name. `earlier` is a flat list, newest
-first, of everything the project has finished — one line each, the same rows the `@` list
-offers.
+current call, clock, tokens and spend under its name — and a row a run writes there carries
+the step its worker is on right now: the running glyph `◐`, the shell lead `$` and the command,
+with the task's `N steps · $0.11` beneath it. `earlier` is a flat list, newest first, of
+everything the project has finished — one line each, the same rows the `@` list offers.
 
 **Type to filter.** Any printable key, spaces included, narrows both sections at once
 against the titles, the ids and the outcomes; the bottom of the page shows what was typed
