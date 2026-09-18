@@ -24,18 +24,23 @@ func selectHomeTask(t *testing.T, a *app, id string) session.SessionRow {
 	return session.SessionRow{}
 }
 
-func TestTaskPutAwayPersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
+func TestTaskClosePersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(180, 40)
 	owner := selectHomeTask(t, a, "t1")
 	drive(t, a, key("right"))
 	frame := homeText(a)
-	for _, word := range []string{"a put it away", "t new chat here", "o open folder", "c copy path"} {
+	for _, word := range []string{"x close", "t new chat here", "o open folder", "c copy path"} {
 		if !strings.Contains(frame, word) {
 			t.Fatalf("task options are missing %q:\n%s", word, frame)
 		}
 	}
 	drive(t, a, key("a"))
+	before, err := session.LoadMeta(owner.Dir)
+	if err != nil || before.ArchivedTasks["t1"] {
+		t.Fatalf("the retired a shortcut changed task visibility: %+v, %v", before, err)
+	}
+	drive(t, a, key("x"))
 	meta, err := session.LoadMeta(owner.Dir)
 	if err != nil || !meta.ArchivedTasks["t1"] || meta.Archived {
 		t.Fatalf("task archive was not independent of its conversation: %+v, %v", meta, err)
@@ -69,10 +74,10 @@ func TestTaskPutAwayPersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
 		t.Fatal("the filter could not recover the archived task record")
 	}
 	drive(t, b, key("right"))
-	if !strings.Contains(taskSheetText(b), "a bring it back") {
+	if !strings.Contains(taskSheetText(b), "x reopen") {
 		t.Fatal("the filtered task did not offer restore")
 	}
-	drive(t, b, key("a"))
+	drive(t, b, key("x"))
 	meta, _ = session.LoadMeta(owner.Dir)
 	if meta.ArchivedTasks["t1"] {
 		t.Fatal("restore did not persist")
@@ -80,7 +85,7 @@ func TestTaskPutAwayPersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
 	selectHomeTask(t, lab.open(180, 40), "t1")
 }
 
-func TestTaskPutAwayFailureKeepsTheRowVisible(t *testing.T) {
+func TestTaskCloseFailureKeepsTheRowVisible(t *testing.T) {
 	a := newSwitchLab(t).open(180, 40)
 	owner := selectHomeTask(t, a, "t1")
 	a.putTaskAway(owner.Dir, session.TaskIndexEntry{ID: "t1", SessionID: "wrong-owner"}, true)
@@ -91,14 +96,14 @@ func TestTaskPutAwayFailureKeepsTheRowVisible(t *testing.T) {
 	}
 }
 
-func TestFinishedTasksOfferPutAwayAndFolderActions(t *testing.T) {
+func TestFinishedTasksOfferCloseAndFolderActions(t *testing.T) {
 	lab := newSwitchLab(t)
 	lab.presence("-beta", "bbbb000000000001", session.PresenceIdle, "", lab.now)
 	lab.task("-beta", session.TaskIndexEntry{ID: "t1", SessionID: "bbbb000000000001",
 		Title: "read 40 filings", Label: "read 40 filings", Status: string(session.TaskDone), EndedAt: lab.now})
 	a := lab.open(180, 40)
 	owner := selectHomeTask(t, a, "t1")
-	drive(t, a, key("right"), key("a"))
+	drive(t, a, key("right"), key("x"))
 	meta, _ := session.LoadMeta(owner.Dir)
 	if !meta.ArchivedTasks["t1"] {
 		t.Fatal("a finished task could not be put away")

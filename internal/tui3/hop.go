@@ -1554,14 +1554,10 @@ const hopClosedLabel = "closed"
 
 // hopClauses are the keys the card owns, in the order a person meets them.
 //
-// THE CLOSE CLAUSE SAYS `close tab` AND NOT `put away`, because `put away` is
-// already home's word for a different act: `ctrl+e` on a home row ARCHIVES a
-// conversation, hides it from the list until its name is typed, and says so
-// (`put away · type its name to find it again`, place_home.go). This key takes
-// a row off this window's tab row and leaves the conversation running on the
-// list — which is exactly what the receipt two lines below already says
-// ([hopAwayWord]). A legend that spelled the lighter act with the heavier act's
-// verb had the card contradicting its own answer.
+// THE CLOSE CLAUSE SAYS `close tab`, because home's `close` archives a
+// conversation and hides it from the list until its name is typed. This key
+// only removes the tab from this window and leaves the conversation on home's
+// list, as [hopAwayWord] explains after the press.
 var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " close tab"}
 
 // hopFootWords is the foot of the FRAME while the card is up — the same clauses

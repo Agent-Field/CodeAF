@@ -322,14 +322,14 @@ offers no stop at all; `enter` opens the task, and its own window can stop it.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
 
-## Put away a task from home — task row options, new chat here, open folder, copy path
+## Close or put away a task from home — task row options, new chat here, open folder, copy path
 
-**`→` offers task options just as it does for threads:** `a put it away`,
+**`→` offers task options just as it does for threads:** `x close`,
 `t new chat here`, `o open folder`, and `c copy path` when the corresponding local
 folder and action are available. On a wide home these appear beneath the description
 in the middle column. Putting a task away hides that task from home and the unfiltered
 Tasks list; it does not stop it, delete its record, or put away its conversation.
-Find it again by typing its name in Tasks, then use `→` and `a bring it back`.
+Find it again by typing its name in Tasks, then use `→` and `x reopen`.
 The choice survives closing the app. Folder actions use the task's conversation project.
 
 ## Why does only one row spin — the one spinner on home
@@ -729,21 +729,21 @@ Not being greeted is not the same as being out of reach. Once you are in a conve
 `/home` — or `space` twice on an empty box — opens the screen whenever you want it, on a
 machine with one conversation and on one with none (see *Why is the home screen empty*).
 
-## Archiving a conversation — put junk away and clean up home
+## Close or archive a conversation — put junk away and clean up home
 
 Walk the cursor onto a conversation (or point at it), then press **`ctrl+e`**, or — where
-the row's verbs are one `→` away — press **`a put it away`** on its strip. The row **leaves
+the row's verbs are one `→` away — press **`x close`** on its strip. The row **leaves
 `threads`** and home is cleaner by one line. The foot says
-`put away · type its name to find it again`.
+`closed · type its name to find it again`.
 
 Nothing is deleted and nothing moves on disk — the conversation keeps its transcript, its
-tasks and its project, and can still be opened. Putting away is a fact about home's panels
+tasks and its project, and can still be opened. Closing is a fact about home's panels
 and nothing else.
 
 **Getting one back: type its name.** A search matches put-away conversations along with
 everything else — a filter that hid a match would be lying about the machine — so the row
-comes back as an ordinary match, and `ctrl+e` on it there brings it back for good, saying
-`brought back`.
+comes back as an ordinary match. Use `→`, then `x reopen`, or `ctrl+e`, to restore it
+to the unfiltered list. The foot says `reopened`.
 
 There is no bulk gesture: rows are put away and brought back one at a time, each with one
 keystroke.
@@ -1911,7 +1911,7 @@ drawn only when it has something to say:
 7. **what is scheduled** and **news since you last looked**;
 8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
-9. one dim line naming the strip: `→ verbs: put it away, new chat here, open folder,
+9. one dim line naming the strip: `→ verbs: close, new chat here, open folder,
    copy path`.
 
 It never moves while the list lifts under your typing, and it goes empty on the
@@ -1922,7 +1922,7 @@ drawn.
 ## What do the keys on a home card do — open, new chat, folder, and copy path
 
 **The card beside a search does not list letters.** Its last dim line names the strip and
-the words instead — `→ verbs: put it away, new chat here, open folder, copy path` — because
+the words instead — `→ verbs: close, new chat here, open folder, copy path` — because
 a letter is a verb only while the strip naming it is on screen.
 
 **The chords work on any conversation row, card or no card**, and each acts on the row you
@@ -1952,7 +1952,7 @@ that column, they appear directly under the selected row. **While the options ar
 those letters are the verbs and the box is asleep**:
 
 ```
-y let it send   n not this time   a put it away   t new chat here
+y let it send   n not this time   x close   t new chat here
 esc or ← to leave · enter opens it instead
 ```
 
@@ -1961,7 +1961,7 @@ In the middle column the options leave the list in place. In the narrow layout t
 pushes the rows under it down. The options are shown only while their shortcuts are active.
 
 **The verbs are the row's own:** a question's first two option words on `y` and `n`; a
-conversation's `a put it away` and, where it has a folder, `t new chat here`,
+conversation's `x close` and, where it has a folder, `t new chat here`,
 `o open folder`, `c copy path`; a standing item's `p pause it` or `r resume it`; a task this
 window runs, `s stop`.
 
@@ -2066,7 +2066,7 @@ time, news text, task file count or cost, and answer chip remain visible. A sing
 wider than the card is still clipped. The card's place line clips from the left so the
 path's basename remains visible.
 
-**The verbs line breaks the same way** — `→ verbs: put it away, new chat here, open
+**The verbs line breaks the same way** — `→ verbs: close, new chat here, open
 folder,` / `         copy path` — keeping the comma on the row it ends and hanging the
 second row under the first word.
 

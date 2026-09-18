@@ -2724,13 +2724,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 					err = session.SetArchived(line.row.Dir, !line.row.Archived)
 				}
 				if err != nil {
-					h.say("could not put it away", "")
+					h.say("could not change conversation visibility", "")
 					return nil
 				}
 				if line.row.Archived {
-					h.say("brought back", "")
+					h.say("reopened", "")
 				} else {
-					h.say(homePutAwayWord, "")
+					h.say(homeClosedWord, "")
 				}
 				a.refreshHome()
 				a.home.build()

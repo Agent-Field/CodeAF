@@ -242,7 +242,7 @@ func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 	if !strings.Contains(joined, homeItemPauseWord) {
 		t.Fatalf("→ did not offer the previewed watch's own verbs, it offered %q", joined)
 	}
-	if strings.Contains(joined, "put it away") {
+	if strings.Contains(joined, "close") {
 		t.Fatalf("→ acted on the cursor's conversation instead of the row on the screen: %q", joined)
 	}
 }

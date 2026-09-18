@@ -763,7 +763,7 @@ task page and the rewind sheet they move the **list**, not the caret.
 ## cmd+right on home no longer puts a conversation away
 
 `ctrl+e` sets the row under the cursor aside on home — a conversation goes to the
-archive, a standing item is paused, and the card's legend says `ctrl+e put away`.
+archive, a standing item is paused, and the card's legend says `ctrl+e close`.
 `cmd+→` arrives as `ctrl+e` on a Mac, so reaching for the end of a sentence used
 to archive whatever the cursor was resting on.
 
@@ -2036,7 +2036,7 @@ draft are untouched; `→` reaches it and `enter` brings it back.
 
 **It does not put the conversation away.** Putting one away is a different act and is
 not on this card: `ctrl+e` on a home row archives it, and home says
-`put away · type its name to find it again`. A conversation whose tab you closed here
+`closed · type its name to find it again`. A conversation whose tab you closed here
 is still running, still on this list, and still on home.
 
 On the row marked `you are here`, the card closes and the window selects the most
@@ -2205,7 +2205,7 @@ the answers are on the `needs you` row itself.
 **`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
 opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
+and the box is asleep — `y`/`n` in a question's own words, `x close`, `t new chat here`,
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
 never leave home's field, and on a panel's fold line (`N more`) `enter`

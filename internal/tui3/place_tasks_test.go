@@ -54,7 +54,7 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	// sorting is a chord, and a chord nobody can find is a chord that does not
 	// exist. The filter is named beside it because nothing else on the frame says
 	// that a letter goes into the box on the control row rather than to the page.
-	const want = "enter open its room · → verbs: put it away, open folder, copy path, stop it · alt+s sort · type to filter"
+	const want = "enter open its room · → verbs: close, open folder, copy path, stop it · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -120,7 +120,7 @@ func TestTheTasksVerbsOnTheStripAreTheVerbsInTheFoot(t *testing.T) {
 	for _, v := range verbs {
 		keys += string(v.key)
 	}
-	if keys != "aocs" {
+	if keys != "xocs" {
 		t.Fatalf("the running row offers %q, want archive, folder, copy and stop", keys)
 	}
 	if !strings.Contains(a.taskSheetKeysLine(), stopActWord) {

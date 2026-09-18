@@ -21,12 +21,12 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 		dir = filepath.Dir(row.Transcript)
 	}
 	if dir != "" && row.ID != "" && row.ID == entry.SessionID && entry.ID != "" {
-		word := "put it away"
+		word := "close"
 		archived := row.ArchivedTasks[entry.ID]
 		if archived {
-			word = "bring it back"
+			word = "reopen"
 		}
-		verbs = append(verbs, verb{key: 'a', word: word, do: func() tea.Cmd {
+		verbs = append(verbs, verb{key: 'x', word: word, do: func() tea.Cmd {
 			return a.putTaskAway(dir, entry, !archived)
 		}})
 	}
@@ -83,9 +83,9 @@ func (a *app) putTaskAway(dir string, entry session.TaskIndexEntry, archived boo
 		p.reading = readTasks(p.world, p.mine, p.reading.win, p.order, p.reading.seen, a.now())
 		p.cursor = a.tasksSettle(p.cursor)
 	}
-	word := "brought task back"
+	word := "task reopened"
 	if archived {
-		word = "task put away · find it by typing its name in tasks"
+		word = "task closed · find it by typing its name in tasks"
 	}
 	a.taskRowNotice(word)
 	return a.taskPaneFollow()

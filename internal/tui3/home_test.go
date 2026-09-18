@@ -3241,7 +3241,7 @@ func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 	}
 	// AND THE SCREEN SAYS WHERE IT WENT. A row that vanished with no sentence
 	// would be the surface hiding something on a keystroke.
-	if !strings.Contains(a.home.msg, homePutAwayWord) {
+	if !strings.Contains(a.home.msg, homeClosedWord) {
 		t.Fatalf("putting a row away said %q", a.home.msg)
 	}
 

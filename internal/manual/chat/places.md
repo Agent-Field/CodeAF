@@ -350,7 +350,7 @@ p pause   s stop   n not here
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
 verbs are the row's own — a question's first two answers in its own words on
-`y` and `n`, `a put it away`, `t new chat here`, `o open folder`, `c copy path`, and
+`y` and `n`, `x close`, `t new chat here`, `o open folder`, `c copy path`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -479,7 +479,7 @@ rather than home's `› type to search or start something new`. It used to show 
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's options: `a put it away`, `t new chat here`, `o open folder`, and
+the row's options: `x close`, `t new chat here`, `o open folder`, and
 `c copy path` where the local conversation and project are available. A task this
 conversation is holding that is still queued or running also offers `s stop it`. Nothing is behind a fold; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
@@ -487,16 +487,16 @@ the list already draws, and it says `nothing matches` only when your filter has 
 page — and the foot names only what is true of the row you are on: `enter open its room ·
 → verbs: stop it`.
 
-## Put away a task, find an archived task, or bring it back
+## Close or put away a task, find an archived task, or reopen it
 
-On home or the Tasks list, select the task, press `→`, then `a put it away`.
+On home or the Tasks list, select the task, press `→`, then `x close`.
 This hides only that task from home's panels and the unfiltered Tasks list. Its work
 continues if it is running; its record, conversation, and other tasks are unchanged.
 The choice is saved with the conversation and survives reopening the app.
 
 To recover it, type its name in the Tasks filter. Search includes put-away tasks within
 the selected time window; expand that window if the task is older. Select the matching
-task and use `→`, then `a bring it back`. `enter` can still open its record.
+task and use `→`, then `x reopen`. `enter` can still open its record.
 
 `t new chat here`, `o open folder`, and `c copy path` use the project of the conversation
 that owns the selected task. A new chat is independent of the task. These folder actions

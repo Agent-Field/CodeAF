@@ -74,7 +74,7 @@ func TestListSelectionFollowsTheLatestNavigationMethod(t *testing.T) {
 	}
 }
 
-func TestHomePutAwayActsOnTheLastKeyboardSelection(t *testing.T) {
+func TestHomeCloseActsOnTheLastKeyboardSelection(t *testing.T) {
 	a := placeAppOneColumn(t)
 	placeFrameText(a)
 	first := a.home.cursor
@@ -97,6 +97,10 @@ func TestHomePutAwayActsOnTheLastKeyboardSelection(t *testing.T) {
 		t.Fatal("options did not belong to the selected row")
 	}
 	drive(t, a, key("a"))
+	if archived != "" {
+		t.Fatal("the retired a shortcut still closed a thread")
+	}
+	drive(t, a, key("x"))
 	if archived != selected.row.Dir {
 		t.Fatalf("put away acted on %q, want %q", archived, selected.row.Dir)
 	}

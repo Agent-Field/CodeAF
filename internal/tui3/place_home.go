@@ -244,7 +244,7 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 			cmd, _ := a.sendAnswer(live, question, v.answer)
 			return cmd
 		}
-	case v.key == 'a':
+	case v.key == 'x':
 		do = func() tea.Cmd { return a.homeArchiveRow(row.session) }
 	case v.key == 't':
 		do = func() tea.Cmd { return a.homeStart(homeWhere(line)) }
@@ -260,7 +260,7 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 	return verb{key: v.key, word: v.word, do: do}
 }
 
-// homeArchiveRow is `a put it away` — the same write `ctrl+e` makes, said once
+// homeArchiveRow is `x close` — the same write `ctrl+e` makes, said once
 // so the key and the strip can never mean two different things.
 func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 	err := error(nil)
@@ -270,13 +270,13 @@ func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 		err = session.SetArchived(row.Dir, !row.Archived)
 	}
 	if err != nil {
-		a.home.say("could not put it away", "")
+		a.home.say("could not change conversation visibility", "")
 		return nil
 	}
 	if row.Archived {
-		a.home.say("brought back", "")
+		a.home.say("reopened", "")
 	} else {
-		a.home.say(homePutAwayWord, "")
+		a.home.say(homeClosedWord, "")
 	}
 	a.refreshHome()
 	return nil
@@ -310,9 +310,9 @@ func (a *app) homeCopyPath(row session.SessionRow) tea.Cmd {
 	return tea.Raw(osc52(path, a.tmux))
 }
 
-// homePutAwayWord is what putting a conversation away says, in one place because
+// homeClosedWord is what closing a conversation says, in one place because
 // the key and the strip both say it.
-const homePutAwayWord = "put away · type its name to find it again"
+const homeClosedWord = "closed · type its name to find it again"
 
 // ── the place ───────────────────────────────────────────────────────────────
 

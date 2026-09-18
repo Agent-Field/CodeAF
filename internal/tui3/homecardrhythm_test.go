@@ -11,7 +11,7 @@ func rhythmBands() []cardBand {
 	bands := cardBandsOf(cardGroupIdentity, []string{"name", "place"})
 	bands = append(bands, cardBandsOf(cardGroupActivity, []string{"work"}, []string{"made for you"})...)
 	bands = append(bands, cardBandsOf(cardGroupEconomics, []string{"spent $1.63"})...)
-	bands = append(bands, cardBandsOf(cardGroupVerbs, []string{"→ verbs: put it away"})...)
+	bands = append(bands, cardBandsOf(cardGroupVerbs, []string{"→ verbs: close"})...)
 	return bands
 }
 
@@ -52,7 +52,7 @@ func TestTheCardsGapIsOneInsideAGroupAndTwoBetweenThem(t *testing.T) {
 	if at := gapsBefore(rows, "made for you"); at != homeCardGap {
 		t.Fatalf("inside the activity group the gap is %d, want %d:\n%s", at, homeCardGap, strings.Join(rows, "\n"))
 	}
-	for _, first := range []string{"work", "spent $1.63", "→ verbs: put it away"} {
+	for _, first := range []string{"work", "spent $1.63", "→ verbs: close"} {
 		if at := gapsBefore(rows, first); at != homeCardGroupGap {
 			t.Fatalf("the group beginning %q has a gap of %d, want %d:\n%s",
 				first, at, homeCardGroupGap, strings.Join(rows, "\n"))
@@ -86,7 +86,7 @@ func TestTheCardGivesUpItsAirBeforeItGivesUpABand(t *testing.T) {
 
 	// And a frame too short for even that drops from the BOTTOM, never the top.
 	cut := homeCardStack(bands, len(flat)-1)
-	if gapsBefore(cut, "→ verbs: put it away") >= 0 {
+	if gapsBefore(cut, "→ verbs: close") >= 0 {
 		t.Fatalf("the last band survived a frame with no room for it:\n%s", strings.Join(cut, "\n"))
 	}
 	if cut[0] != "name" || cut[homeCardPlaceRow] != "place" {
@@ -116,7 +116,7 @@ func TestAWrappedCommaListKeepsItsCommaAtEveryWidth(t *testing.T) {
 	// nothing to promise, and at a width where one clause fills a row to the last
 	// cell the clause keeps the cell and the comma goes — a word matters more
 	// than the punctuation after it.
-	words := []string{"→ verbs: put it away", "new chat here", "open folder", "copy path"}
+	words := []string{"→ verbs: close", "new chat here", "open folder", "copy path"}
 	for width := 30; width <= 60; width++ {
 		rows := bandClausesWithSeparator(width, 9, ", ", plain, words...)
 		for at, row := range rows[:max(0, len(rows)-1)] {

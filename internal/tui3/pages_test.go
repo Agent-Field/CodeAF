@@ -341,7 +341,7 @@ func TestALetterIsAVerbOnlyWhileTheStripIsDrawn(t *testing.T) {
 // on the key rather than a seizure of it.
 //
 // A CONVERSATION WITH AN ADDRESS HAS VERBS AND ONE WITHOUT HAS NONE. The strip's
-// verbs are the READING's — put it away, and the three doors that need a folder
+// verbs are the READING's — close, and the three doors that need a folder
 // to open (switcher.go's [switcherVerbsFor]) — so a row the world recorded no
 // workspace for offers nothing, and the arrow goes on meaning what it meant.
 func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
@@ -356,7 +356,7 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 	for _, v := range a.strip.verbs {
 		words += string(v.key) + " " + v.word + " · "
 	}
-	for _, want := range []string{"a put it away", "t new chat here", "o open folder", "c copy path"} {
+	for _, want := range []string{"x close", "t new chat here", "o open folder", "c copy path"} {
 		if !strings.Contains(words, want) {
 			t.Fatalf("the strip is missing %q: %s", want, words)
 		}
@@ -365,8 +365,12 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 	// letter safe: the strip cannot offer a verb the row has no way to perform.
 	drive(t, a, key("esc"))
 	bare := switcherRow{kind: switcherConversation, title: "Nowhere"}
-	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].word != "put it away" {
+	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].key != 'x' || got[0].word != "close" {
 		t.Fatalf("an addressless row offered %v", got)
+	}
+	bare.session.Archived = true
+	if got := switcherVerbsFor(bare); len(got) != 1 || got[0].key != 'x' || got[0].word != "reopen" {
+		t.Fatalf("an archived row offered %v", got)
 	}
 }
 
@@ -394,7 +398,7 @@ func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
 	}
 	at := -1
 	for i, row := range after {
-		if strings.Contains(row, "a put it away") && strings.Contains(row, "t new chat here") {
+		if strings.Contains(row, "x close") && strings.Contains(row, "t new chat here") {
 			at = i
 		}
 	}
