@@ -172,3 +172,12 @@ func TestCheckSectionDirectsDeclaredChecks(t *testing.T) {
 		t.Fatalf("the check section does not preserve declared commands verbatim:\n%s", checkSection)
 	}
 }
+
+// TestBashWorkerPageRequiresChecksForDelegatedTasks pins the task author's
+// half of the Checks: contract before the check seat begins.
+func TestBashWorkerPageRequiresChecksForDelegatedTasks(t *testing.T) {
+	doc := bashWorkerPage()
+	if !strings.Contains(doc, "Every delegated task has at least one `--check`.") {
+		t.Fatalf("the worker page permits a delegated task without Checks:\n%s", doc)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -495,12 +496,21 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 	if len(childIDs(s.store.Tasks(), leaf.ID)) > 0 {
 		return
 	}
+	checks := append([]string(nil), leaf.Checks...)
+	if len(checks) == 0 {
+		steps, _ := Trajectory(filepath.Dir(s.store.Path()), leaf.ID)
+		for _, step := range steps {
+			if command := strings.TrimSpace(step.Command); command != "" {
+				checks = append(checks, command)
+			}
+		}
+	}
 	id := s.store.NextID()
 	spec := plandb.TaskSpec{
 		ID:          id,
 		Title:       checkTitlePrefix + leaf.Title,
-		Description: descriptionWithChecks("Acceptance: "+leaf.Description+"\n\nResult: "+result, leaf.Checks),
-		Checks:      append([]string(nil), leaf.Checks...),
+		Description: descriptionWithChecks("Acceptance: "+leaf.Description+"\n\nResult: "+result, checks),
+		Checks:      checks,
 		ParentID:    leaf.ParentID,
 		Role:        plandb.RoleCheck,
 	}
