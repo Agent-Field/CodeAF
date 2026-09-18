@@ -95,6 +95,8 @@ type PlanTaskPage struct {
 	Row         PlanTaskRow
 	Description string
 	Result      string
+	Checks      []string
+	Folder      string
 	Notes       []PlanTaskNote
 	Steps       []PlanStep
 	// Live is the step the task is running right now — the same reading
@@ -226,6 +228,8 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Row:         pageRow,
 		Description: task.Description,
 		Result:      task.Result,
+		Checks:      append([]string(nil), task.Checks...),
+		Folder:      a.config.Workspace,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
 		Children:    children,

@@ -247,6 +247,30 @@ func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 			t.Fatalf("the plan page is missing %q:\n%s", want, page)
 		}
 	}
+	// THE HEAD OPENS ON THE TASK AS GIVEN TO THE PERSON: title, a folded brief,
+	// declared checks, and the folder once. Worker-only addressing and ids never leak.
+	a.taskSheet.plan = session.PlanTaskPage{
+		Row:         rows[0],
+		Description: "first line of the brief\nsecond line\nthird line\nfourth line with t-store-secret and node 47",
+		Checks:      []string{"go test ./internal/tui3"},
+		Folder:      "/tmp/the-run-copy",
+		Steps:       []session.PlanStep{{Step: 1, Command: "cd /tmp/the-run-copy && printf worker-bytes"}},
+	}
+	page = taskSheetText(a)
+	for _, want := range []string{"Alpha", "first line of the brief", "third line", "more lines", "checks", "go test ./internal/tui3", "folder", "/tmp/the-run-copy", "cd /tmp/the-run-copy && printf worker-bytes"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the plan page head is missing %q:\n%s", want, page)
+		}
+	}
+	for _, forbidden := range []string{"t-alpha", "t-store-secret", "node 47", "is your task in the plan"} {
+		if strings.Contains(page, forbidden) {
+			t.Fatalf("the person-facing page leaked %q:\n%s", forbidden, page)
+		}
+	}
+	if strings.Count(page, "/tmp/the-run-copy") != 2 {
+		t.Fatalf("folder count = %d, want head plus untouched command:\n%s", strings.Count(page, "/tmp/the-run-copy"), page)
+	}
+
 	// AND esc BACKS OUT ONE LAYER to the list, the card's own bargain.
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if a.taskSheet.planOn || !a.at(pageTasks) {
