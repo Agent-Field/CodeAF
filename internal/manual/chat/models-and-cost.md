@@ -3093,7 +3093,13 @@ Four things worth knowing:
   stopping on a press that changes nothing you can see.
 - **Rows that published nothing sort to the bottom, both ways round.** A model with no
   price is not the cheapest one, and reversing the column does not make it the dearest: it
-  is not in the comparison at all.
+  is not in the comparison at all. That holds for the sparse columns too — `via`, `first`
+  and `t/s` are blank on every model nobody has measured yet, and those rows sit together
+  under the ones that carry a figure.
+- **Rows a column cannot tell apart come back alphabetically.** A sparse column leaves a
+  whole block of them, and the name is the one order every row has — so the same press
+  draws the same screen twice instead of leaving the block in whatever order the press
+  before it produced.
 - **With something typed, the name column is best match first.** `gpt` puts `gpt-5-classic`
   above `anthropic/claude-gpt-echo`, because that is what you asked for; the arrow then
   decides the order inside a tier. With an empty box every row matches equally and the

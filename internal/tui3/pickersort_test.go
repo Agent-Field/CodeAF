@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/lane"
 )
 
@@ -577,4 +579,91 @@ func TestTheTackNamesARealCommand(t *testing.T) {
 		}
 	}
 	t.Fatalf("%q is not a command this surface has", slashPickerTack)
+}
+
+// ── SPARSE COLUMNS ──────────────────────────────────────────────────────────
+
+// THE SORT READS THE LANE THE ROW DRAWS, not the quickest one the ledger holds.
+// Those are different questions, and asking the wrong one gave rows whose `via`,
+// `first` and `t/s` cells were BLANK a real number to be ordered by — so the blanks
+// did not land together and the order was one the screen could not explain.
+func TestASparseLaneColumnSortsByWhatTheRowActuallyDraws(t *testing.T) {
+	laneLab(t, threeLanes())
+	for _, head := range []string{"via", "first", "t/s"} {
+		for _, back := range []bool{false, true} {
+			a := pickerApp(t, &fakeAgent{model: flash}, laneCatalog)
+			a.profileDir = t.TempDir()
+			a.routing = config.RoutingLatency
+			a.width, a.height = 130, 40
+			typeLine(t, a, "/model")
+			a.pick.sort = sortOn(modelColumns, head, back)
+			a.pick.rank()
+
+			at := 0
+			for n, col := range modelColumns {
+				if col.head == head {
+					at = n
+				}
+			}
+			// EVERY ROW WITH A CELL COMES BEFORE EVERY ROW WITHOUT ONE, whichever
+			// way round the column is read.
+			blank := false
+			for n, id := range pickerIDs(a) {
+				cell := a.pick.rowCells(a.pick.all[a.pick.hits[n]], "")[at]
+				if cell == "" {
+					blank = true
+					continue
+				}
+				if blank {
+					t.Fatalf("%s back=%v: %s has %q under %s and sits below a blank row",
+						head, back, id, cell, head)
+				}
+			}
+		}
+	}
+}
+
+// AND THE NAME BREAKS EVERY TIE, so the block a sparse column cannot tell apart
+// comes back ALPHABETICALLY rather than in whatever order the rung before it left.
+// A stable sort alone made the same press draw a different screen depending on how
+// you had walked to it — arbitrary at exactly the place a person is least sure.
+func TestASparseColumnLeavesItsBlanksInNameOrder(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := pickerApp(t, &fakeAgent{model: flash}, laneCatalog)
+	a.profileDir = t.TempDir()
+	a.routing = config.RoutingLatency
+	a.width, a.height = 130, 40
+	typeLine(t, a, "/model")
+
+	blanksUnder := func() []string {
+		out := []string{}
+		for n, id := range pickerIDs(a) {
+			if a.pick.rowCells(a.pick.all[a.pick.hits[n]], "")[1] == "" {
+				out = append(out, id)
+			}
+		}
+		return out
+	}
+	// Reached one way round...
+	a.pick.sort = sortOn(modelColumns, "first", false)
+	a.pick.rank()
+	straight := blanksUnder()
+	// ...and reached having walked through other rungs first.
+	for range len(modelColumns) * 2 {
+		drive(t, a, key(tasksSortKeyChord))
+		if at := a.pick.sort.column(); at != tableSortName &&
+			modelColumns[at].head == "first" && !a.pick.sort.back {
+			break
+		}
+	}
+	walked := blanksUnder()
+	if strings.Join(straight, ",") != strings.Join(walked, ",") {
+		t.Fatalf("the blanks are %v when set directly and %v when walked to", straight, walked)
+	}
+	if len(straight) < 2 {
+		t.Fatalf("only %d blank rows, too few to be about their order", len(straight))
+	}
+	if !sort.StringsAreSorted(straight) {
+		t.Fatalf("the blank rows are %v, want them alphabetical", straight)
+	}
 }

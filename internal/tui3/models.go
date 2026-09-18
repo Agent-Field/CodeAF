@@ -849,25 +849,51 @@ func modelFactsOf(model Model, pin, routing string) modelFacts {
 	if model.Direct {
 		return facts
 	}
-	// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
-	// milliseconds cannot change a figure rounded to a tenth of a second, and
-	// [laneAuto] asks typically — posterior means, no Thompson draw — so the
-	// clock cannot re-sample a `via` either. Threading a moment through every
-	// list on this surface to prove that would be a parameter nobody could
-	// ever see the effect of.
+	via, best, known := modelLaneReading(model, pin, routing)
+	facts.via = via
+	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why).
+	if known {
+		facts.first = laneSecondsWord(best.TTFT)
+		facts.rate = laneRateBare(best.Rate)
+	}
+	return facts
+}
+
+// modelLaneReading is the lane a model's row NAMES and the figures that row draws
+// from it: the name as `via` spells it, the view, and whether it carries timing at
+// all.
+//
+// ── ONE READING, FOR THE CELL AND FOR THE SORT ──────────────────────────────
+//
+// It is its own function because two things ask it. [modelFactsOf] draws the
+// cells; pickersort.go's [pickerRankOf] orders the rows BY those cells, and it
+// used to ask [bestLane] instead — which answers a different question. `bestLane`
+// is the fastest-feeling lane in the ledger; this is the lane the row actually
+// SAYS, which is the pin when there is one, otherwise whatever the chooser would
+// send to, and NOTHING AT ALL under a routing row where codeaf does not choose
+// ([laneAutoSaid]). So a row whose `first` cell was blank could still carry a real
+// number into the sort, and the blanks stopped landing together: the list was
+// ordered by a figure that was not on the screen.
+//
+// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
+// milliseconds cannot change a figure rounded to a tenth of a second, and
+// [laneAuto] asks typically — posterior means, no Thompson draw — so the clock
+// cannot re-sample a `via` either. Threading a moment through every list on this
+// surface to prove that would be a parameter nobody could ever see the effect of.
+func modelLaneReading(model Model, pin, routing string) (string, laneView, bool) {
+	// A CONNECTED SERVICE HAS ONE ROAD, so router lane facts do not belong on its
+	// row and are not even read for it — the same early return the cells take.
+	if model.Direct {
+		return "", laneView{}, false
+	}
 	now := timeNow()
 	views := laneViews(model.ID, now)
 	via := pin
 	if via == "" {
 		via = laneAuto(routing, model.ID, views, now)
 	}
-	facts.via = strings.ToLower(via)
-	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why).
-	if best, known := laneShown(routing, views, via); known {
-		facts.first = laneSecondsWord(best.TTFT)
-		facts.rate = laneRateBare(best.Rate)
-	}
-	return facts
+	best, known := laneShown(routing, views, via)
+	return strings.ToLower(via), best, known
 }
 
 // priceField is the price as the ranked tail's one fact, in three spellings —

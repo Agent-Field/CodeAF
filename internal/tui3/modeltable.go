@@ -87,6 +87,11 @@ type tableColumn struct {
 	// column would keep an arrow it could no longer earn (pickersort.go).
 	sorts bool
 	up    bool
+	// words says this column holds NAMES rather than figures, so it is ordered
+	// alphabetically and its empty cells are the ones that sort last. It is on the
+	// column because "word or figure" is a fact about the column and never about
+	// the pair of rows being compared.
+	words bool
 }
 
 // modelColumns are the table's columns IN RANK ORDER — the order they are drawn
@@ -110,7 +115,7 @@ type tableColumn struct {
 // has none to give. `in/M` is the half the figures cannot say: per million, and
 // which million.
 var modelColumns = []tableColumn{
-	{head: "via", sorts: true, up: true},
+	{head: "via", sorts: true, up: true, words: true},
 	{head: "first", right: true, sorts: true, up: true},
 	{head: "in/M", right: true, sorts: true, up: true},
 	{head: "out/M", right: true, sorts: true, up: true},

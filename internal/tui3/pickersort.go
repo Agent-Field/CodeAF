@@ -3,7 +3,6 @@ package tui3
 import (
 	"sort"
 	"strings"
-	"time"
 )
 
 // ── SORTING A TABLE ─────────────────────────────────────────────────────────
@@ -188,11 +187,16 @@ type pickerRank struct {
 	elo    float64
 }
 
-// pickerRankOf reads one model's sortable values. The measured ones come from the
-// lane the chooser would land on, which is the lane the `via`, `first` and `t/s`
-// cells are drawn from ([modelFactsOf]) — so the column a person sorts by is the
-// column they were looking at.
-func pickerRankOf(model Model, now time.Time) pickerRank {
+// pickerRankOf reads one model's sortable values.
+//
+// THE MEASURED THREE COME FROM THE ROW'S OWN READING OF THE LEDGER
+// ([modelLaneReading]) AND NOT FROM [bestLane]. Those are different questions:
+// `bestLane` is the quickest-feeling lane the ledger holds, while the row draws the
+// lane it NAMES — the pin, or the chooser's answer, or nothing at all under a
+// routing row where codeaf does not choose. Asking the wrong one handed rows with a
+// blank `via`, `first` and `t/s` real numbers to be sorted by, so the blanks did not
+// land together and the order was one the screen could not explain.
+func pickerRankOf(model Model, pin, routing string) pickerRank {
 	rank := pickerRank{
 		name:   strings.ToLower(model.ID),
 		in:     model.PromptPrice,
@@ -200,8 +204,10 @@ func pickerRankOf(model Model, now time.Time) pickerRank {
 		window: float64(model.ContextLength),
 		elo:    model.ArenaElo,
 	}
-	if best, known := bestLane(laneViews(model.ID, now)); known {
-		rank.via, rank.first, rank.rate = strings.ToLower(best.Name), best.TTFT, best.Rate
+	via, best, known := modelLaneReading(model, pin, routing)
+	rank.via = via
+	if known {
+		rank.first, rank.rate = best.TTFT, best.Rate
 	}
 	return rank
 }
@@ -266,10 +272,17 @@ func (p *picker) sortHits(ranked bool) {
 	if len(p.hits) < 2 {
 		return
 	}
-	now := timeNow()
+	// THE PIN IS THIS CONVERSATION'S ROW ALONE, which is [picker.tableFit]'s own
+	// rule said about order instead of about width: only the row in use draws a
+	// pinned `via`, so only that row may be ordered by one.
+	pin := p.pinnedLane()
 	ranks := make(map[int]pickerRank, len(p.hits))
 	for _, at := range p.hits {
-		rank := pickerRankOf(p.all[at], now)
+		held := ""
+		if p.all[at].ID == p.current {
+			held = pin
+		}
+		rank := pickerRankOf(p.all[at], held, p.routing)
 		if ranked {
 			rank.score = p.score[at]
 		}
@@ -300,15 +313,32 @@ func (p *picker) sortHits(ranked bool) {
 		}
 		leftNum, leftWord := modelSortsBy(first, col)
 		rightNum, rightWord := modelSortsBy(second, col)
-		if leftWord != "" || rightWord != "" {
-			// A COLUMN OF NAMES IS ORDERED AS NAMES, and an empty one is a row
-			// that published none — last, the same as an absent figure.
+		if modelColumns[col].words {
+			// A COLUMN OF NAMES IS ORDERED AS NAMES, and an empty one is a row that
+			// published none — last, the same as an absent figure. It is asked of the
+			// COLUMN and not of the two values, because a pair that both published
+			// nothing used to fall through and be compared as ZEROES — one rule for
+			// the column and a different one for some of its pairs.
 			if (leftWord == "") != (rightWord == "") {
 				return rightWord == ""
 			}
-			return tableAheadName(order.back, leftWord, rightWord)
+			if leftWord != rightWord {
+				return tableAheadName(order.back, leftWord, rightWord)
+			}
+		} else if leftNum != rightNum {
+			return tableAheadBy(order.back, modelColumns[col].up, leftNum, rightNum)
 		}
-		return tableAheadBy(order.back, modelColumns[col].up, leftNum, rightNum)
+		// ── AND THE NAME BREAKS EVERY TIE ───────────────────────────────────
+		//
+		// A sparse column leaves a BLOCK of rows it cannot tell apart — every model
+		// with no elo, every model nobody has measured — and a stable sort leaves
+		// that block in whatever order the rung before it happened to produce. So
+		// the same press gave a different arrangement of the same blanks depending
+		// on how you had walked to it, which reads as the sort being arbitrary at
+		// exactly the place a person is least sure of it. The name is the one order
+		// every row has, so the blanks come back alphabetically and the same press
+		// draws the same screen twice.
+		return first.name < second.name
 	})
 }
 
