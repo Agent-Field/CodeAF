@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/pool/grade"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/record"
@@ -66,7 +67,7 @@ func poolJudgeHook(settings config.Config, profileDir, workspace string, models 
 	}
 	return func(landing session.TaskLanding) {
 		defer guard.Recover("pool/judge")
-		poolJudgeLanding(settings, profileDir, models, ask, now, door, landing)
+		poolJudgeLanding(settings, profileDir, models, ask, now, door, workspace, landing)
 	}
 }
 
@@ -119,7 +120,7 @@ func writeJudgeLast(poolDir string, last judgeLast) {
 // order is the sheet's own law: every score is observed before the rows are
 // appended, the sheet is saved once, and the picker's own-cells seam is
 // repointed at the new cells so the very next pick in this process reads them.
-func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
+func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door, workspace string, landing session.TaskLanding) {
 	pool := config.ModelPoolAt(profileDir)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	seats := map[judge.Role]string{
@@ -128,24 +129,104 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	if landing.High != "" {
 		seats[judge.RoleHigh] = landing.High
 	}
-	candidates := judge.Candidates(models(), seats, judge.DefaultFloor)
 	// The seats are said in the crew's own order — the worker, then the high
 	// seat when the run held one — so the record reads the way the crew ran.
 	held := []string{landing.Worker}
 	if landing.High != "" {
 		held = append(held, landing.High)
 	}
+	day := now().UTC().Format("2006-01-02")
+	size := poolSize(landing.Tokens)
+
+	// THE GRADE COMES FIRST AND ASKS NO MODEL. It is the harness's own
+	// reading of what the task left behind — the tree formats, builds, vets
+	// and passes the tests of the packages the task touched — and it is the
+	// one observation the picker learns from; the judge below is a model's
+	// opinion, kept as its own evidence. A workspace the grader cannot read
+	// (none given, gone from disk, no module at its root) grades nothing, and
+	// nothing is recorded for it rather than a grade that means nothing.
+	graded, gradedOK := poolGradeLanding(poolDir, workspace, now, landing)
+
+	candidates := judge.Candidates(models(), seats, judge.DefaultFloor)
+	var judgeID string
+	var scores []judge.Score
 	if len(candidates) == 0 {
 		if trace.Enabled() {
 			log.Printf("model pool: no judge to ask about task %d", landing.ID)
 		}
 		writeJudgeLast(poolDir, judgeLast{At: now(), Task: landing.ID, Seats: held, Reason: errNoJudgeCandidate})
+	} else {
+		if len(candidates) > judgeTries {
+			candidates = candidates[:judgeTries]
+		}
+		judgeID, scores = poolAskJudges(poolDir, candidates, seats, held, ask, now, landing)
+	}
+	// Nothing to record — no grade and no score — is a terminal outcome all
+	// the same: the run is marked so the restart sweep never judges it again.
+	// The live hook writes the mark but does not read it, so a resettle still
+	// re-judges; only the sweep reads it. A sheet the process could not load
+	// or save is the one outcome that is NOT marked, because it is not the
+	// run's outcome but the box's, and the sweep should try again.
+	if !gradedOK && len(scores) == 0 {
 		markJudged(poolDir, landing.ID, landing.Attempt)
 		return
 	}
-	if len(candidates) > judgeTries {
-		candidates = candidates[:judgeTries]
+	sheet, err := record.LoadSheet(record.OwnSheetPath(poolDir))
+	if err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: own sheet: %v", err)
+		}
+		return
 	}
+	recorder := &record.Recorder{Sheet: sheet}
+	if pool.CanSend() {
+		ob, err := outbox.Open(outboxPath(poolDir))
+		if err != nil {
+			if trace.Enabled() {
+				log.Printf("model pool: outbox: %v", err)
+			}
+		} else {
+			recorder.Outbox = ob
+			defer ob.Close()
+		}
+	}
+	if gradedOK {
+		if err := recorder.RecordGrade(seats, graded.Source, graded.Pass, door, size, day); err != nil && trace.Enabled() {
+			log.Printf("model pool: record grade: %v", err)
+		}
+	}
+	if len(scores) > 0 {
+		if err := recorder.Record(scores, judgeID, door, size, day); err != nil && trace.Enabled() {
+			log.Printf("model pool: record: %v", err)
+		}
+	}
+	if err := record.SaveSheet(record.OwnSheetPath(poolDir), sheet); err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: own sheet: %v", err)
+		}
+		return
+	}
+	markJudged(poolDir, landing.ID, landing.Attempt)
+	// The next pick in this process reads the new cells at once, the same way
+	// the picker reads them at start-up (poolindex.go's poolOwnCellsFor): a
+	// closing one is the install's own evidence and is never held to the
+	// index's min_installs.
+	cells := record.Cells(sheet)
+	config.AutoOwnCells = func() []crewpick.Cell { return cells }
+	// The sheet is saved, so what the recorder appended is the install's own
+	// evidence now; the copies waiting in the outbox leave for the relay
+	// here, on this hook's own goroutine (the session runs TaskLanded on
+	// one), under the push's own bound.
+	pushCtx, cancelPush := context.WithTimeout(context.Background(), poolPushBudget)
+	defer cancelPush()
+	poolPush(pushCtx, profileDir, pool, poolPushBudget)
+}
+
+// poolAskJudges puts the landing through the candidates in order until one
+// scores a seat, and leaves the judge-last record either way. It answers the
+// judge that scored and its scores, or an empty id and no scores when none
+// did.
+func poolAskJudges(poolDir string, candidates []string, seats map[judge.Role]string, held []string, ask func(model string) judge.Ask, now func() time.Time, landing session.TaskLanding) (string, []judge.Score) {
 	rec := judge.Record{
 		Brief:       landing.Brief,
 		Deliverable: landing.Deliverable,
@@ -202,8 +283,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		if trace.Enabled() {
 			log.Printf("model pool: no judge scored task %d", landing.ID)
 		}
-		markJudged(poolDir, landing.ID, landing.Attempt)
-		return
+		return "", nil
 	}
 	scored := make([]string, 0, len(scores))
 	for _, seat := range scores {
@@ -216,52 +296,58 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 	if err != nil && trace.Enabled() {
 		log.Printf("model pool: judging task %d: %v", landing.ID, err)
 	}
-	sheet, err := record.LoadSheet(record.OwnSheetPath(poolDir))
-	if err != nil {
-		if trace.Enabled() {
-			log.Printf("model pool: own sheet: %v", err)
-		}
-		return
+	return judgeID, scores
+}
+
+// gradeLast is the small record the hook leaves after every landing it
+// graded, beside judge-last.json, for the one reading that would otherwise
+// need --debug: whether the tree passed, how deep the grade went, and where
+// it stopped when it did not.
+type gradeLast struct {
+	At       time.Time `json:"at"`
+	Task     uint64    `json:"task"`
+	Source   string    `json:"source"`
+	Pass     bool      `json:"pass"`
+	Stage    string    `json:"stage,omitempty"`
+	Detail   string    `json:"detail,omitempty"`
+	Packages []string  `json:"packages,omitempty"`
+	Seconds  float64   `json:"seconds"`
+}
+
+// gradeLastName is the file the grade record is kept as, under the pool
+// directory.
+const gradeLastName = "grade-last.json"
+
+// poolGradeLanding runs the model-free grade over the workspace the task
+// changed and leaves its record. ok is false when there is no workspace to
+// read — none given, or a path no longer on disk, which is what a landing the
+// restart sweep replays may carry — or when it is not one the grader can
+// read, and nothing is left behind then: an absent capability, not a failed
+// one. The paths graded are the ones the landing says it wrote, resolved
+// inside the workspace by the grader itself.
+func poolGradeLanding(poolDir, workspace string, now func() time.Time, landing session.TaskLanding) (grade.Result, bool) {
+	if workspace == "" {
+		return grade.Result{}, false
 	}
-	recorder := &record.Recorder{Sheet: sheet}
-	if pool.CanSend() {
-		ob, err := outbox.Open(outboxPath(poolDir))
-		if err != nil {
-			if trace.Enabled() {
-				log.Printf("model pool: outbox: %v", err)
+	if info, err := os.Stat(workspace); err != nil || !info.IsDir() {
+		return grade.Result{}, false
+	}
+	result, ok := grade.Grade(context.Background(), workspace, landing.Wrote, grade.Options{})
+	if !ok {
+		return grade.Result{}, false
+	}
+	last := gradeLast{At: now(), Task: landing.ID, Source: result.Source, Pass: result.Pass, Stage: result.Stage, Detail: result.Detail, Packages: result.Packages, Seconds: result.Elapsed.Seconds()}
+	if data, err := json.MarshalIndent(last, "", "  "); err == nil {
+		if err := os.MkdirAll(poolDir, 0o700); err == nil {
+			if err := os.WriteFile(filepath.Join(poolDir, gradeLastName), append(data, '\n'), 0o600); err != nil && trace.Enabled() {
+				log.Printf("model pool: grade record: %v", err)
 			}
-		} else {
-			recorder.Outbox = ob
-			defer ob.Close()
 		}
 	}
-	day := now().UTC().Format("2006-01-02")
-	if err := recorder.Record(scores, judgeID, door, poolSize(landing.Tokens), day); err != nil && trace.Enabled() {
-		log.Printf("model pool: record: %v", err)
+	if trace.Enabled() {
+		log.Printf("model pool: task %d graded %v by %s at %s", landing.ID, result.Pass, result.Source, result.Stage)
 	}
-	if err := record.SaveSheet(record.OwnSheetPath(poolDir), sheet); err != nil {
-		if trace.Enabled() {
-			log.Printf("model pool: own sheet: %v", err)
-		}
-		return
-	}
-	// The run is judged and its scores are saved: mark it so the restart sweep
-	// never judges it again. The live hook writes this but does not read it, so a
-	// resettle still re-judges; only the sweep reads it.
-	markJudged(poolDir, landing.ID, landing.Attempt)
-	// The next pick in this process reads the new cells at once, the same way
-	// the picker reads them at start-up (poolindex.go's poolOwnCellsFor): a
-	// closing one is the install's own evidence and is never held to the
-	// index's min_installs.
-	cells := record.Cells(sheet)
-	config.AutoOwnCells = func() []crewpick.Cell { return cells }
-	// The sheet is saved, so what the recorder appended is the install's own
-	// evidence now; the copies waiting in the outbox leave for the relay
-	// here, on this hook's own goroutine (the session runs TaskLanded on
-	// one), under the push's own bound.
-	pushCtx, cancelPush := context.WithTimeout(context.Background(), poolPushBudget)
-	defer cancelPush()
-	poolPush(pushCtx, profileDir, pool, poolPushBudget)
+	return result, true
 }
 
 // poolSize is the day-row bucket a landing's token count answers: S under
@@ -456,7 +542,9 @@ func poolJudgeSweep(settings config.Config, profileDir, tasksPath string, models
 		if alreadyJudged(poolDir, landing.ID, landing.Attempt) {
 			continue
 		}
-		poolJudgeLanding(settings, profileDir, models, ask, now, "task", landing)
+		// The restart sweep has no workspace to hand over — the tree the run
+		// changed may be gone — so the grade is skipped and the judge reads.
+		poolJudgeLanding(settings, profileDir, models, ask, now, "task", "", landing)
 	}
 }
 
@@ -504,7 +592,9 @@ func sweepClaim(settings config.Config, profileDir, poolDir, claim string, model
 		if alreadyJudged(poolDir, row.Landing.ID, row.Landing.Attempt) {
 			continue
 		}
-		poolJudgeLanding(settings, profileDir, models, ask, now, door, row.Landing)
+		// A swept row's workspace may be gone by now, so no path is passed and
+		// the grade is skipped; the judge still reads the landing it was given.
+		poolJudgeLanding(settings, profileDir, models, ask, now, door, "", row.Landing)
 	}
 	if completed {
 		_ = os.Remove(claim)

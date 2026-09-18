@@ -13,7 +13,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/crewpick"
+	"github.com/Agent-Field/codeaf/internal/pool/grade"
+	"github.com/Agent-Field/codeaf/internal/pool/tally"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -69,6 +73,118 @@ func poolTestLanding() session.TaskLanding {
 	}
 }
 
+// judgedCells reads the judge's own cells off a sheet — the 0-100 opinions
+// under record.Metric — which record.Cells no longer answers, because the
+// picker learns from the grade and keeps the opinion as evidence.
+func judgedCells(sheet *tally.Sheet) []crewpick.Cell {
+	var cells []crewpick.Cell
+	sheet.Each(record.Metric, func(role, model string, dims map[string]string, c tally.Cell) {
+		if dims == nil {
+			cells = append(cells, crewpick.Cell{Role: role, Model: model, Mean: c.Mean(), N: int(c.N)})
+		}
+	})
+	return cells
+}
+
+// gradeModule writes a Go module the grader can read: a package whose one
+// test passes, or fails to build when broken is set. It answers the workspace
+// and the path the task "wrote".
+func gradeModule(t *testing.T, broken bool) (workspace string, wrote string) {
+	t.Helper()
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("no go tool on PATH")
+	}
+	workspace = t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "go.mod"), []byte("module example.test\n\ngo 1.22\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspace, "pkg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := "package pkg\n\n// Two is two.\nfunc Two() int { return 2 }\n"
+	if broken {
+		body = "package pkg\n\nfunc Two() int { return \"two\" }\n"
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "pkg", "pkg.go"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	test := "package pkg\n\nimport \"testing\"\n\nfunc TestTwo(t *testing.T) {\n\tif Two() != 2 {\n\t\tt.Fatal(\"not two\")\n\t}\n}\n"
+	if err := os.WriteFile(filepath.Join(workspace, "pkg", "pkg_test.go"), []byte(test), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return workspace, "pkg/pkg.go"
+}
+
+// THE GRADE IS WHAT THE PICKER LEARNS FROM. A landing over a workspace the
+// grader can read lands one acceptable cell per held seat — 100 when the
+// module formats, builds, vets and passes its tests, 0 when it does not —
+// the seam answers those cells at once, and grade-last.json says how deep
+// the grade went; the judge's opinion lands beside them under its own metric.
+func TestPoolJudgeHookGradesAModuleAndTheSeamAnswersTheGrade(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		broken bool
+		want   float64
+	}{
+		{"a module that passes", false, 100},
+		{"a module that does not build", true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CODEAF_HOME", t.TempDir())
+			t.Setenv("CODEAF_MODEL_POOL", "on")
+			t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+			restoreOwnCells(t)
+			workspace, wrote := gradeModule(t, tc.broken)
+
+			profileDir := t.TempDir()
+			settings := config.Config{}
+			var asked []string
+			hook := poolJudgeHook(settings, profileDir, workspace, poolTestCatalog, poolTestAsk(settings, &asked), time.Now, "task")
+			landing := poolTestLanding()
+			landing.Wrote = []string{wrote}
+			hook(landing)
+
+			poolDir := config.ProfilePath(profileDir, "pool")
+			sheet, err := record.LoadSheet(record.OwnSheetPath(poolDir))
+			if err != nil {
+				t.Fatalf("the own sheet: %v", err)
+			}
+			graded := record.Cells(sheet)
+			if len(graded) != 2 {
+				t.Fatalf("the sheet holds %d graded cells, want one per held seat: %+v", len(graded), graded)
+			}
+			for _, cell := range graded {
+				if cell.N != 1 || cell.Mean != tc.want {
+					t.Fatalf("the %s seat's grade is %+v, want %v over 1", cell.Role, cell, tc.want)
+				}
+			}
+			if judged := judgedCells(sheet); len(judged) != 2 {
+				t.Fatalf("the judge's %d cells, want 2 beside the grade", len(judged))
+			}
+			if answered := config.AutoOwnCells(); len(answered) != 2 {
+				t.Fatalf("the seam answers %d cells, want the 2 graded ones", len(answered))
+			}
+			raw, err := os.ReadFile(filepath.Join(poolDir, gradeLastName))
+			if err != nil {
+				t.Fatalf("no grade record: %v", err)
+			}
+			var last gradeLast
+			if err := json.Unmarshal(raw, &last); err != nil {
+				t.Fatal(err)
+			}
+			if last.Task != landing.ID || last.Pass != (tc.want == 100) {
+				t.Fatalf("grade record %+v", last)
+			}
+			if tc.broken && (last.Stage != "build" || last.Source != grade.SourceBuilt) {
+				t.Fatalf("a module that does not build graded %+v, want the build stage under %s", last, grade.SourceBuilt)
+			}
+			if !tc.broken && (last.Source != grade.SourceTested || len(last.Packages) != 1) {
+				t.Fatalf("a passing module graded %+v, want %s over its one package", last, grade.SourceTested)
+			}
+		})
+	}
+}
+
 // restoreOwnCells puts the picker's own-cells seam back after a test that
 // repointed it, so no other test in the process reads this test's sheet.
 func restoreOwnCells(t *testing.T) {
@@ -101,7 +217,7 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 	if err != nil {
 		t.Fatalf("the own sheet: %v", err)
 	}
-	cells := record.Cells(sheet)
+	cells := judgedCells(sheet)
 	if len(cells) != 2 {
 		t.Fatalf("the sheet holds %d cells, want one per held seat: %+v", len(cells), cells)
 	}
@@ -121,8 +237,13 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 	if config.AutoOwnCells == nil {
 		t.Fatal("the picker's own-cells seam was not repointed after the landing")
 	}
-	if answered := config.AutoOwnCells(); len(answered) != 2 {
-		t.Fatalf("the seam answers %d cells, want the 2 the sheet now holds", len(answered))
+	// The seam answers the graded cells and not the judge's: this workspace
+	// holds no module the grader can read, so nothing was graded and the seam
+	// answers nothing — a model's opinion is kept as evidence, never learned
+	// from. TestPoolJudgeHookGradesAModuleAndTheSeamAnswersTheGrade is where
+	// the seam fills.
+	if answered := config.AutoOwnCells(); len(answered) != 0 {
+		t.Fatalf("the seam answers %d cells off the judge's opinion, want none", len(answered))
 	}
 
 	if len(asked) != 2 || asked[0] != "other/judge" || asked[1] != "other/judge" {
@@ -199,7 +320,7 @@ func TestPoolJudgeHookAppendsOutboxRowsOnlyWhenTheModeSends(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the own sheet after a read-only landing: %v", err)
 	}
-	if got := len(record.Cells(sheet)); got != 2 {
+	if got := len(judgedCells(sheet)); got != 2 {
 		t.Fatalf("the sheet holds %d cells after three landings, want 2 (one per seat, observed three times)", got)
 	}
 }
@@ -327,7 +448,7 @@ func TestPoolJudgeHookGivesEachSeatsQuestionItsOwnShareOfTheLandingTime(t *testi
 	if err != nil {
 		t.Fatalf("the own sheet: %v", err)
 	}
-	cells := record.Cells(sheet)
+	cells := judgedCells(sheet)
 	if len(cells) != 2 {
 		t.Fatalf("the sheet holds %d cells, want one per held seat: %+v", len(cells), cells)
 	}
@@ -387,7 +508,7 @@ func TestPoolJudgeHookStillScoresTheSecondSeatWhenTheFirstSeatsShareRunsOut(t *t
 	if err != nil {
 		t.Fatalf("the own sheet: %v", err)
 	}
-	cells := record.Cells(sheet)
+	cells := judgedCells(sheet)
 	if len(cells) != 1 || cells[0].Role != "high" || cells[0].Model != "crew/high" {
 		t.Fatalf("the sheet holds %+v, want the high seat scored after the worker's share ran out", cells)
 	}
@@ -608,7 +729,7 @@ func TestPoolJudgeHookMovesToTheNextCandidateWhenTheCheapestAnswersNothing(t *te
 	if err != nil {
 		t.Fatalf("the own sheet: %v", err)
 	}
-	cells := record.Cells(poolsheet)
+	cells := judgedCells(poolsheet)
 	if len(cells) != 2 {
 		t.Fatalf("the sheet holds %d cells, want one per held seat: %+v", len(cells), cells)
 	}

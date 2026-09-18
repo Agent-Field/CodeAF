@@ -664,7 +664,7 @@ func TestPoolIndexForAnswersTheSeedWithNoCache(t *testing.T) {
 		t.Fatal("no cache and no seed: the reader answered nothing")
 	}
 	worker := false
-	for _, cell := range held.Cells("role_quality") {
+	for _, cell := range held.Cells("acceptable") {
 		if cell.Role == "worker" {
 			worker = true
 		}
@@ -682,8 +682,8 @@ func TestPoolIndexForKeepsANewerCache(t *testing.T) {
 		"schema": 1,
 		"generated": "2026-09-20",
 		"min_installs": 1,
-		"metrics": {"role_quality": {"kind": "gaussian", "dims": ["role", "model"]}},
-		"cells": [{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 75, "sd": 7, "n": 30}]
+		"metrics": {"acceptable": {"kind": "bernoulli", "dims": ["role", "model", "source"]}},
+		"cells": [{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "source": "reviewer", "mean": 75, "sd": 7, "n": 30}]
 	}`)
 	held := poolIndexFor(dir, poolcfg.Resolve("", "", noEnv), poolClock(t))()
 	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-20" {
@@ -881,9 +881,10 @@ func TestPoolShowSaysHowManyCellsTheBuiltInSeedHolds(t *testing.T) {
 func seedOwnSheet(t *testing.T, dir string) {
 	t.Helper()
 	sheet := tally.New()
-	sheet.Observe("role_quality", "worker", "a/one", nil, 80)
-	sheet.Observe("role_quality", "worker", "a/one", nil, 90)
-	sheet.Observe("role_quality", "worker", "b/two", nil, 70)
+	grader := map[string]string{record.SourceDim: "grader"}
+	sheet.Observe(record.Acceptable, "worker", "a/one", grader, 100)
+	sheet.Observe(record.Acceptable, "worker", "a/one", grader, 0)
+	sheet.Observe(record.Acceptable, "worker", "b/two", grader, 100)
 	if err := record.SaveSheet(filepath.Join(dir, "pool", "own.json"), sheet); err != nil {
 		t.Fatal(err)
 	}
@@ -965,8 +966,8 @@ func TestWirePoolIndexSeatsTheOwnSheetsCells(t *testing.T) {
 	}
 	own := config.AutoOwnCells()
 	want := []crewpick.Cell{
-		{Role: "worker", Model: "a/one", Mean: 85, N: 2},
-		{Role: "worker", Model: "b/two", Mean: 70, N: 1},
+		{Role: "worker", Model: "a/one", Mean: 50, N: 2},
+		{Role: "worker", Model: "b/two", Mean: 100, N: 1},
 	}
 	if len(own) != len(want) {
 		t.Fatalf("the seated cells are %+v, want %+v", own, want)
