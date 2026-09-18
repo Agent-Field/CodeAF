@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a parked worker is handed back with a record at a third of its allowance
-pr: 0000
+pr: 1187
 surface: [engine]
 invalidates:
   - "A task worker parked on a command it started (`Agent.parkOnOwedJob`) waited the node's whole allowance before anything ended the wait, and the turn then resumed with no account of what it had been waiting for. The park now arms a bound of its own — a third of the allowance — and on that bound posts the record `the park was not settled within its bound` onto the queue before returning, so the turn comes back to the model with a sentence well before the wall."
