@@ -1876,7 +1876,7 @@ func TestPlandbCliCheckConclusionRequiresExecutedDeclaredCheck(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("make task directory: %v", err)
 	}
-	step := []byte(`{"kind":"step","step":1,"command":"go test ./internal/widget"}` + "\n")
+	step := []byte(`{"kind":"step","step":1,"command":"cd /tmp/tree && go test ./internal/widget"}` + "\n")
 	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), step, 0o600); err != nil {
 		t.Fatalf("write trajectory: %v", err)
 	}

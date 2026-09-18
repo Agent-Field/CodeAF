@@ -171,6 +171,9 @@ func TestCheckSectionDirectsDeclaredChecks(t *testing.T) {
 	if !strings.Contains(checkSection, "exactly as spelled") {
 		t.Fatalf("the check section does not preserve declared commands verbatim:\n%s", checkSection)
 	}
+	if !strings.Contains(checkSection, "check: <one sentence>") {
+		t.Fatalf("the check section has no ending when a declared command cannot run:\n%s", checkSection)
+	}
 }
 
 // TestBashWorkerPageRequiresChecksForDelegatedTasks pins the task author's

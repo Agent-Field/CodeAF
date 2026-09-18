@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // The outcome words are the exit ladder's own (cmd/codeaf/envelope.go, the
@@ -499,11 +500,11 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 	checks := append([]string(nil), leaf.Checks...)
 	if len(checks) == 0 {
 		steps, _ := Trajectory(filepath.Dir(s.store.Path()), leaf.ID)
+		recorded := make([]string, 0, len(steps))
 		for _, step := range steps {
-			if command := strings.TrimSpace(step.Command); command != "" {
-				checks = append(checks, command)
-			}
+			recorded = append(recorded, step.Command)
 		}
+		checks = session.InvocableChecks(s.workspace, recorded)
 	}
 	id := s.store.NextID()
 	spec := plandb.TaskSpec{

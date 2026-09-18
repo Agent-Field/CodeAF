@@ -1145,3 +1145,25 @@ func commandLike(text string) (string, bool) {
 	}
 	return normalized, true
 }
+
+// InvocableChecks applies the check door's shipped law to commands recorded by
+// the trajectory writer. The writer wraps worker commands in the workspace;
+// that one wrapper is execution context, not part of the declared check.
+func InvocableChecks(tree string, recorded []string) []string {
+	candidates := make([]string, 0, len(recorded))
+	for _, raw := range recorded {
+		command := strings.TrimSpace(raw)
+		if prefix, inner, ok := strings.Cut(command, " && "); ok {
+			fields := strings.Fields(prefix)
+			if len(fields) == 2 && fields[0] == "cd" {
+				command = strings.TrimSpace(inner)
+			}
+		}
+		command, ok := commandLike(command)
+		if !ok || !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
+			continue
+		}
+		candidates = append(candidates, command)
+	}
+	return invocableChecks(tree, runnableChecks(candidates, standingOn(tree)))
+}
