@@ -252,8 +252,11 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 		agent.beltMu.Unlock()
 		return task != nil && task.Status == plandb.StatusDone && landed
 	})
-	if got := completer.requests(); got != callsBeforeLanding {
-		t.Fatalf("landing made %d completer calls, want zero", got-callsBeforeLanding)
+	// THE CONVERSATION TAKES NO TURN AT A LANDING THAT OWES NO ANSWER. The one
+	// call a landing does make is the run's own summary, a small errand on the
+	// worker model that is not a turn, so it is counted out by the page it reads.
+	if got := completer.requests() - callsBeforeLanding - runSummaryRequestCount(completer); got != 0 {
+		t.Fatalf("landing made %d completer calls beside the run summary, want zero", got)
 	}
 	select {
 	case <-wakes:
@@ -477,7 +480,7 @@ func TestDriveBeltRunRefreshesSummaryOnceBeforeOutcomeNote(t *testing.T) {
 		t.Fatalf("summary requests = %d, want exactly one", got)
 	}
 	notes := beltRunNotes(t, dir, planRootID)
-	if !anyNoteCarries(notes, "done · landed on task/landing: 1 file · The fresh landing summary is stored.") {
+	if !anyNoteCarries(notes, "done · fixed · landed on task/landing: 1 file · The fresh landing summary is stored.") {
 		t.Fatalf("outcome note was written before the fresh now sentence: %v", notes)
 	}
 }
