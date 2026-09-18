@@ -61,6 +61,14 @@ shows, in order, each section left out when nothing is behind it:
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
+## Does a subtask see my original request
+
+Yes — every worker that is not the run's root reads your sentence again, word for
+word, in a section of its page headed *The ask this run serves*. The planner's work
+order is only that worker's one part of it, and where the two disagree about that
+part your words win — a worker that had to go against them says so in its report
+rather than quietly choosing.
+
 ## Steering a task: notes, pause, cancel, amend, priority
 
 The person's door onto a run's plan is six verbs, each resolving an id **inside
