@@ -704,7 +704,7 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		// THE WOKEN-PARENT LAW: every non-root launch holds the task under its
 		// own agent id, so wait and done work identically on a first turn and a wake.
 		if task.ID != rootID && task.ClaimedBy == "" {
-			claimed, err := s.store.Claim(task.ID, task.ID, s.Owner)
+			claimed, err := s.store.ClaimWake(task.ID, task.ID, s.Owner)
 			if err != nil {
 				continue
 			}
@@ -765,7 +765,7 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 			continue
 		}
 		if task.Composite && task.ID != rootID {
-			woken, err = s.store.Claim(task.ID, task.ID, s.Owner)
+			woken, err = s.store.ClaimWake(task.ID, task.ID, s.Owner)
 			if err != nil {
 				continue
 			}
