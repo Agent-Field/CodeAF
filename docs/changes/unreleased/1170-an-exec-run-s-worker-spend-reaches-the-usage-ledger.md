@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: an exec run's worker spend reaches the usage ledger
-pr: 0000
+pr: 1170
 surface: [engine]
 invalidates:
   - "A headless `codeaf exec` run's worker calls never reached `usage.jsonl`: the door ran its own agent outside `internal/session`, so no row was ever minted and the status row's spend, the run cap and the pool's own accounting all under-counted every exec run — only the pool's judge rows and the chat seats were written. The door now leaves one row per run, under the run's own id, seated and roled as the worker."
