@@ -234,6 +234,10 @@ func (s toolState) live() bool { return s == toolQueued || s == toolConsent || s
 type responseConfirmation struct{ done bool }
 
 type entry struct {
+	// Clarification entries are owned by their independent feed.
+	discussionID    string
+	discussionIndex int
+
 	kind entryKind
 	text string
 	turn int
@@ -802,6 +806,8 @@ type (
 )
 
 type app struct {
+	discussionFeeds map[string]*discussionFeed
+
 	// ruler measures a string the way the RENDERER will draw it rather than the
 	// way this package would prefer to read it. The two disagree about a
 	// variation-selector emoji and a flag, and the rail bent two cells wherever
@@ -5648,7 +5654,7 @@ func (a *app) settle() tea.Cmd {
 func (a *app) dropForming() {
 	now := a.now()
 	for i := range a.entries {
-		if e := &a.entries[i]; e.forming() {
+		if e := &a.entries[i]; e.discussionID == "" && e.forming() {
 			e.ended = now
 		}
 	}
@@ -5723,6 +5729,9 @@ func (a *app) settleTurn() {
 	a.settledTurn = a.turn
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
+		if e.discussionID != "" {
+			continue
+		}
 		if e.turn != a.turn {
 			return
 		}

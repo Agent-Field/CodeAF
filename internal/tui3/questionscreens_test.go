@@ -253,7 +253,7 @@ func TestQuestionScreens(t *testing.T) {
 			l.a.railAway = true
 			l.raise(demoQuestionReading())
 			l.tick(questionSettle)
-			l.press("o")
+			l.press(questionOpenKey)
 		})
 	}
 	// THE PAGE BESIDE THE TASK COLUMN. A hundred and twenty columns less the
@@ -264,7 +264,7 @@ func TestQuestionScreens(t *testing.T) {
 		l.a.width, l.a.height = 120, 40
 		l.raise(demoQuestionReading())
 		l.tick(questionSettle)
-		l.press("o")
+		l.press(questionOpenKey)
 	})
 	// AND THE SPLIT PAGE BESIDE THE TASK COLUMN, which is the one combination
 	// every other shot here stowed the column to avoid. A hundred and forty
@@ -277,7 +277,7 @@ func TestQuestionScreens(t *testing.T) {
 		l.a.width, l.a.height = 140, 40
 		l.raise(demoQuestionReading())
 		l.tick(questionSettle)
-		l.press("o")
+		l.press(questionOpenKey)
 	})
 	// AND A LAYOUT BLOCK ON THE PAGE, whose two panes stand side by side when
 	// each one's widest line fits its half and stack when one does not.
@@ -286,7 +286,7 @@ func TestQuestionScreens(t *testing.T) {
 		l.a.railAway = true
 		l.raise(demoQuestionLayout())
 		l.tick(questionSettle)
-		l.press("o")
+		l.press(questionOpenKey)
 	})
 }
 

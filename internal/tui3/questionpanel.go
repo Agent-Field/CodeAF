@@ -25,7 +25,7 @@ import (
 //	│   3  BoltDB        fastest reads · adds a dependency                 │
 //	│   4  something else…                                                 │
 //	│                                                                      │
-//	╰─ esc later · c other · ? clarify ───────────────────────────────────╯
+//	╰─ esc later · o other · ? clarify ───────────────────────────────────╯
 //
 // THE FIVE DECISIONS THE OWNER MADE, AND WHERE EACH ONE IS:
 //
@@ -37,7 +37,7 @@ import (
 //     right edge of the picked row, and the pointer opens on it — except where
 //     nobody but a person may answer, where the pointer opens on the answer that
 //     loses nothing and the pick keeps its mark ([questionPointerStart]).
-//   - ONE BOUNDARY OF KEYS. The bottom edge carries esc, c other and ? clarify.
+//   - ONE BOUNDARY OF KEYS. The bottom edge carries esc, o other and ? clarify.
 //     Navigation still works; no extra hint or composer stands below the frame.
 //   - YOUR OWN ANSWER IS A ROW (pick A). The last row is `something else…`, and
 //     the pointer on it turns it into a box you type in. There is no hidden

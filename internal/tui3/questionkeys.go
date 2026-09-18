@@ -213,8 +213,9 @@ const (
 const (
 	questionEnterKey   = "enter"
 	questionLaterKey   = "esc"
-	questionOpenKey    = "o"
-	questionCommentKey = "c"
+	questionOpenKey    = "O"
+	questionCommentKey = "o"
+	questionNoteKey    = "c"
 	questionCompareKey = "x"
 	questionAskBackKey = "?"
 	questionDecideKey  = "d"
@@ -332,6 +333,7 @@ var questionKeys = []questionVerb{
 	{key: questionBackKey, word: "back to the list", forms: formsCard, needs: needOther, tier: keyPrimary},
 	{key: questionOpenKey, word: "open full", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
 	{key: questionCommentKey, word: "other", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
+	{key: questionNoteKey, word: "note", forms: formsRoom, needs: needWords, giveUp: 5},
 	{key: questionCompareKey, word: "compare", forms: formsRoom, needs: needCompare, giveUp: 4},
 	// `?` IS ON THE ROW AS WELL AS THE PANEL. Asking the asker back is a way of
 	// answering any question that takes words, and a question drawn as one row is
@@ -818,7 +820,7 @@ func questionOwnsBox(q session.Question) bool {
 // wrote a rule. None of those keys was aimed at the block; each was the first
 // character of a sentence, and what stayed in the box was the rest of it.
 //
-// `c other` AND `? clarify` ARE EXPLICIT TEXT DOORS AND WORK IMMEDIATELY.
+// `o other` AND `? clarify` ARE EXPLICIT TEXT DOORS AND WORK IMMEDIATELY.
 // They open text entry rather than deciding anything. Other letter commands
 // retain the aiming rule below; an existing draft keeps all its letters.
 //

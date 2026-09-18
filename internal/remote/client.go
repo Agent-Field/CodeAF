@@ -2210,3 +2210,8 @@ func oversizeImage(path string) error {
 
 // NeedsPerson reads the pushed conversation state without a round trip.
 func (a *Agent) NeedsPerson() bool { return a.c.facts.read().NeedsPerson }
+
+// ReplaceQuestion starts a revised request after retiring the pending turn.
+func (a *Agent) ReplaceQuestion(ctx context.Context, answer session.Answer) (<-chan session.Event, error) {
+	return a.open(ctx, MethodQuestionReplace, QuestionArgs{Answer: answer})
+}

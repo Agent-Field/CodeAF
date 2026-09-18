@@ -420,6 +420,10 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 }
 
 func (a *Agent) rememberConsent(tool string, allow bool) {
+	if a.approvalParent != nil {
+		a.approvalParent.rememberConsent(tool, allow)
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.consentMemo == nil {
@@ -447,6 +451,10 @@ type grantMade struct {
 // — the same key the memo uses, because a second yes for one tool replaces the
 // first and undoing the newest is what changing your mind on a receipt means.
 func (a *Agent) rememberGrant(tool string, made grantMade) {
+	if a.approvalParent != nil {
+		a.approvalParent.rememberGrant(tool, made)
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.grants == nil {
@@ -466,6 +474,10 @@ func (a *Agent) rememberGrant(tool string, made grantMade) {
 // revision. That is the whole of what this engine cannot do, and it is named
 // here so the next reader does not conclude there are two doors.
 func (a *Agent) undoGrant(tool string) {
+	if a.approvalParent != nil {
+		a.approvalParent.undoGrant(tool)
+		return
+	}
 	a.mu.Lock()
 	delete(a.consentMemo, tool)
 	made, granted := a.grants[tool]
@@ -482,6 +494,9 @@ func (a *Agent) undoGrant(tool string) {
 }
 
 func (a *Agent) rememberedConsent(tool string) (bool, bool) {
+	if a.approvalParent != nil {
+		return a.approvalParent.rememberedConsent(tool)
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	allow, known := a.consentMemo[tool]

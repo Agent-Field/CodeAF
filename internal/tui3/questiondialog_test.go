@@ -100,7 +100,7 @@ func TestDecisionDialogEndsTheFrameWithOnlyItsThreeHints(t *testing.T) {
 		lab.raise(consentAsk())
 		rows, marks, _, _ := lab.a.chrome(width)
 		last := plain(rows[len(rows)-1])
-		for _, want := range []string{"esc later", "c other", "? clarify", tokens.Plain.Glyph(tokens.GFrameBottomRight)} {
+		for _, want := range []string{"esc later", "o other", "? clarify", tokens.Plain.Glyph(tokens.GFrameBottomRight)} {
 			if !strings.Contains(last, want) {
 				t.Fatalf("width %d: last row lacks %q: %s", width, want, last)
 			}

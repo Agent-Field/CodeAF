@@ -320,6 +320,7 @@ func (a *app) detachConversation() *aside {
 // that was gone and a cut line through it. That was latent while switching was
 // rare. It is not latent here.
 func (a *app) clearConversation() {
+	a.discussionFeeds = nil
 	a.entries = nil
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)

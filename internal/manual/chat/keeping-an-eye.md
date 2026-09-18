@@ -283,7 +283,7 @@ card says so on **home**, and the row there carries the same answers the card is
 offering — `1 yes`, `3 once` and `0 not set up`, or `1 yes` and `0 not set up` on
 a one-off reminder — so the card can be **answered or declined** from the
 dashboard without opening the conversation (home's own page has the whole rule).
-`c other` stays here, where there is a box to say the new time or
+`o other` stays here, where there is a box to say the new time or
 place into.
 
 ## I don't understand these options — what each answer on the card does, how to change the time on a standing card, and how to cancel
@@ -297,7 +297,7 @@ every decision on this screen is put, and every answer carries what it costs bes
      1  yes, set it up   it keeps happening until you stop it
      3  just once        it happens now, and nothing is kept
      0  no               nothing happens, now or later
-   esc later · c other · ? clarify
+   esc later · o other · ? clarify
 ```
 
 - **`1 yes, set it up`** — it gets set up and starts happening, and goes on until you stop

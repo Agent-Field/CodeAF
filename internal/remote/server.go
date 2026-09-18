@@ -1943,7 +1943,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmit, MethodFollowUp, MethodSteer, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmit, MethodFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2314,6 +2314,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		events, err := agent.Submit(context.Background(), args.Text)
 		return s.stream(MethodSubmit, args.Text, events, err)
 
+	case MethodQuestionReplace:
+		args, err := arg[QuestionArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ReplaceQuestion(context.Context, session.Answer) (<-chan session.Event, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot replace a pending request")
+		}
+		events, err := door.ReplaceQuestion(context.Background(), args.Answer)
+		return s.stream(MethodQuestionReplace, args.Answer.Change, events, err)
 	case MethodFollowUp:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {

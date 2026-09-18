@@ -3061,7 +3061,7 @@ func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 
 	// The box says what it is for while the question is open.
 	block, _, _, _ := a.chrome(a.width)
-	if !strings.Contains(plain(strings.Join(block, "\n")), "c other") {
+	if !strings.Contains(plain(strings.Join(block, "\n")), "o other") {
 		t.Fatalf("the input box does not offer the correction lane:\n%s", plain(strings.Join(block, "\n")))
 	}
 

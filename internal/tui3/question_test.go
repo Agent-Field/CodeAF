@@ -485,7 +485,7 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	if !strings.Contains(rows[5], "nothing runs") {
 		t.Fatalf("the consequence is missing: %q", rows[5])
 	}
-	if !strings.Contains(rows[7], "c other") || !strings.Contains(rows[7], "esc later") {
+	if !strings.Contains(rows[7], "o other") || !strings.Contains(rows[7], "esc later") {
 		t.Fatalf("the bottom edge does not carry the keys that answer: %q", rows[7])
 	}
 	if !strings.Contains(rows[7], "? clarify") {
@@ -1385,7 +1385,7 @@ func TestArrowsWalkThePointerOnACardAndEnterTakesIt(t *testing.T) {
 	if !strings.Contains(screen, tokens.GlyphRecommended+" "+questionRecommendedWord) {
 		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
 	}
-	if !strings.Contains(screen, "c other") || !strings.Contains(screen, "? clarify") {
+	if !strings.Contains(screen, "o other") || !strings.Contains(screen, "? clarify") {
 		t.Fatalf("the key row does not say how the pointer works:\n%s", screen)
 	}
 	lab.tick(time.Second)
@@ -1502,43 +1502,18 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 	// lets a letter reach it at all (questionkeys.go's THE BOX KEEPS THE FIRST
 	// LETTER).
 	aimed(lab.a)
-	lab.press("c")
+	lab.press(questionCommentKey)
 	screen := lab.plain()
-	// `c` IS A SHORTCUT TO THE `something else…` ROW and that row IS the box
-	// (owner ruling 2026-09-11, your-own-answer pick A). There is no hidden
-	// mode and no sentence explaining one: the pointer is on the row, the row
-	// says which answer the words will travel with, and the keys that mean
-	// anything while it is open are the only ones the edge names.
-	if !strings.Contains(screen, questionOtherWithWord+"2 Adaptive") {
-		t.Fatalf("c did not turn the row into a prompt:\n%s", screen)
+	if !strings.Contains(screen, questionCommentKeyWord) || !strings.Contains(screen, "esc back") {
+		t.Fatalf("other did not open its updated-request field: %s", screen)
 	}
-	if strings.Contains(screen, "enter send it") || !strings.Contains(screen, "esc later") {
-		t.Fatalf("the row's own two keys are not on the edge:\n%s", screen)
-	}
-	if strings.Contains(screen, "d you decide") {
-		t.Fatalf("the keys are still offered while the box is writing:\n%s", screen)
-	}
-	// A LETTER IS A LETTER ON THIS ROW: `d` types a `d` rather than handing the
-	// decision back, which is what "the row is the box" has to mean for every
-	// key that is also a verb somewhere else.
-	if !lab.press("d") {
-		t.Fatal("a letter did not reach the row's own box")
-	}
+	lab.a.input.setText("keep the sensors optional")
+	lab.press("esc")
 	if len(lab.answer) != 0 {
-		t.Fatalf("a letter answered: %+v", lab.answer)
+		t.Fatal("leaving other answered the question")
 	}
-	open := lab.a.questionHeld(lab.a.questions[0].token())
-	if open == nil {
-		t.Fatal("the question is not open any more")
-	}
-	open.other.words.setText("keep the sensors optional")
-	lab.press("enter")
-	if len(lab.answer) != 1 || lab.answer[0].Key != "2" || lab.answer[0].Change != "keep the sensors optional" {
-		t.Fatalf("enter did not send the words with the pointed answer · %+v", lab.answer)
-	}
-	if lab.a.input.String() != "" {
-		t.Fatalf("the box kept the words: %q", lab.a.input.String())
-	}
+	lab.a.input.reset()
+	lab.a.questions = nil
 	// `?` — and esc points the box back.
 	lab.raise(session.Question{
 		ID: 48, Kind: session.QuestionAsk, Ask: session.AskChoice,

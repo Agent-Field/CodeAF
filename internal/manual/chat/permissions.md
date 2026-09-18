@@ -19,7 +19,7 @@ answer:
 │   2  always, this command                                        │
 │ ▸ 3  deny                                           safe answer  │
 │                                                                  │
-╰─ esc later · c other · ? clarify ──────────────────────────╯
+╰─ esc later · o other · ? clarify ──────────────────────────╯
 ```
 
 The tool's own name and the wait mode are the aside in the top edge — ` · 7s`,
@@ -45,9 +45,12 @@ you are here to read.
   an error result, `denied by the person: <rule>`, and keeps going.
 - `2` — the widening yes. What it banks is a separate decision, and on a shell
   command codeaf asks you which shape to bank before it answers.
-- `c` — refuse or allow **in words**. It puts the cursor in the box (which was
-  never taken away); type your sentence and press `enter`, and the words go to
-  the model as the answer.
+- `o` — **other**. Write an updated request and press `enter`. The pending
+  call is withdrawn, the old turn stops, and the updated request starts in the
+  same conversation. This grants no permission.
+- `?` — **clarify**. Write your question and press `enter`. codeaf answers in
+  context while the original decision stays open. If the clarification needs
+  approval, that question comes first; answering it brings back the original.
 - `enter` — take the answer the pointer is on: `allow once` on an ordinary
   call, `deny` on a grave one — whichever it is, until you move it.
 - `esc` — **later**. The question folds in place to one titled rule, the chip on
@@ -64,8 +67,7 @@ a key on a permission either — it types itself into the box like any other
 letter (see **How long an answer lasts** below for why the lifetimes row is not
 offered here).
 
-**A key it does not draw belongs to your draft.** The question is not modal: the
-box below it is live, typing goes into your message, and the question is still
+**Typing belongs to the field inside the box.** The question stays visible, and the question is still
 there and still answerable the moment the box is clear. `ctrl+c` mid-turn — which
 a blocked call always is — interrupts the blocked call exactly as it always has.
 
@@ -73,11 +75,10 @@ a blocked call always is — interrupts the blocked call exactly as it always ha
 under a hand already moving would otherwise be answered by a keystroke aimed at
 the sentence you were typing.
 
-**And a letter reaches this question only once you have aimed at it.** `c` is
-the first letter of "can you check the other table first" — so `c`, `d` and the
-other letters go into an empty box until you press `↑`, `↓`, `tab` or `enter`,
-or click an answer. `1`, `2` and `3` are printed on the answers in front of you
-and always take them.
+**`o` and `?` work before you move through the options.** They open a text field
+inside the box after the initial quarter-second guard. Other letter shortcuts
+still require aiming at the question. A draft you are already typing keeps its
+letters. `1`, `2` and `3` always take the corresponding answers.
 
 `[2]` is only drawn, and only acts, when the question is one that can bank an
 answer. Every approval question is about a TOOL and can, so every one of them
@@ -131,7 +132,7 @@ answers.
 │ ▸ 1  allow all 4                                                  │
 │   2  one by one                                                   │
 │   3  deny all                                       safe answer   │
-╰─ esc later · c other · ? clarify ───────────────────────────╯
+╰─ esc later · o other · ? clarify ───────────────────────────╯
 ```
 
 - **`1 allow all 4`** gives every one of them its own `allow once`, in one go.
@@ -198,11 +199,11 @@ At about seventy columns and up it is drawn whole:
 │   2  always, this tool                                             │
 │ ▸ 3  deny                                             safe answer  │
 │                                                                    │
-╰─ esc later · c other · ? clarify ────────────────────────────╯
+╰─ esc later · o other · ? clarify ────────────────────────────╯
 ```
 
-The bottom edge carries `esc later · c other · ? clarify`. Nothing is drawn
-under the box. `c` and `?` work before you move through the answers and open their
+The bottom edge carries `esc later · o other · ? clarify`. Nothing is drawn
+under the box. `o` and `?` work before you move through the answers and open their
 text field inside it. Arrows, Tab and the wheel over the box cycle through the
 answers in both directions; Enter and the numbered answers still work. The seam
 omits its duplicate yellow decision text while the permission box is open.
@@ -427,7 +428,7 @@ shape can be written at all — and any lifetime at all on something
 **irreversible**, which is asked about every single time, the row absent rather
 than refusing.
 
-- **Once** — `1`, `3` and a typed answer under `c` answer this call and nothing
+- **Once** — `1` and `3` answer this call and nothing
   else. `esc` answers nothing at all: it puts the question off.
 - **For the session** — a "stop asking" answer is kept in memory for the rest of
   this agent's life. It is deliberately coarse: it answers for **the whole
