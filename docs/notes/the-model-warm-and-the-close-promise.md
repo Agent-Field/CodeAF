@@ -61,9 +61,11 @@ registered with it.
 ## The fix
 
 `warmV3Models` now takes a `context.Context` and waits on `Catalog.Warmed(ctx)`
-(`internal/catalog/catalog.go:501`) before it reads or writes anything
-(`cmd/codeaf/chatv3.go:2317`); a close that cancels ends the wait there and the
-function returns without writing. Both doors seat it on the tracker instead of
+(`internal/catalog/catalog.go:517`) before it reads or writes anything
+(`cmd/codeaf/chatv3.go:2321`); a close that cancels ends the wait there and the
+function returns without writing. What it reads, it reads through the catalog's
+never-waiting doors — `ContextLengthNow` and `FetchedAtNow` — so the warm itself
+never resolves the catalog. Both doors seat it on the tracker instead of
 `guard.Go` — `proc.warmModels("chatv3/models", …)` at `cmd/codeaf/chatv3.go:419`
 and `proc.warmModels("engine/models", …)` at `cmd/codeaf/engine.go:708` — through
 `v3Process.warmModels` (`cmd/codeaf/chatv3_process.go:381`) into
@@ -71,47 +73,49 @@ and `proc.warmModels("engine/models", …)` at `cmd/codeaf/engine.go:708` — th
 `stopPoolErrands` cancels and whose `WaitGroup` `closeAll` waits on at
 `cmd/codeaf/chatv3_process.go:416`.
 
-## One claim about the fix that was wrong
+## The blocked clause, and how it landed
 
 The summary this change was reported with said `warmV3Models` "no longer resolves
-the catalog via `ContextLength`". **It does**: `cmd/codeaf/chatv3.go:2320` still
-asks `models.ContextLength(started)` for the window. The sentence is false and the
-code is right, and it is worth writing down why, because the obvious way to make
-the sentence true would be a regression.
+the catalog via `ContextLength`". On the first commit it did not hold: the warm
+still asked `models.ContextLength(started)` for the window, and the pull-request
+check that reads that sentence said so. The task argued the sentence was the wrong
+one — the swap it naively suggests is a regression — and in the end both are true,
+because the follow-up made the sentence true the way the argument said it had to.
 
-The obvious way is to read the window through the non-blocking seam the launch
+The naive way is to read the window through the non-blocking seam the launch
 already uses — `v3ContextWindow(v3Models(models), started)`, which is what
-`v3Window` does (`cmd/codeaf/chatv3.go:2279`). Three reasons not to:
+`v3Window` does (`cmd/codeaf/chatv3.go:2279`). It is a regression:
 
 1. **It matches the id differently, and worse.** `Catalog.ContextLength`
-   (`catalog.go:579`) looks the id up in the rows' own index through
-   `normalizeID` (`catalog.go:1291`), which strips a reasoning-effort suffix
+   (`catalog.go:595`) looks the id up in the rows' own index through
+   `normalizeID` (`catalog.go`), which strips a reasoning-effort suffix
    (`roles.SplitEffort`) and a leading `~`. `v3ContextWindow` (`chatv3.go:2283`)
    compares raw row ids with `strings.EqualFold`, so a conversation started on
    `model:high` answers 0 and the session keeps its conservative window — the
    exact "a 1M-token model stops compacting at 128k" failure this function's own
-   comment says it exists to correct. `v3Window`'s comment already states the
-   division of labour: the launch seam guesses cheaply, and
-   "[warmV3Models] corrects it in place once the catalog resolves".
+   comment says it exists to correct.
 2. **It would not make the warm non-blocking anyway.** The very next line reads
-   `models.FetchedAt()` (`chatv3.go:2323` → `catalog.go:430`), which goes through
-   the same waiting door `ContextLength` does. Making the warm genuinely
-   non-blocking means changing `internal/catalog`'s `FetchedAt` and
-   `ContextLength` contracts — a widening this task forbids, for no behaviour
-   anybody asked for.
-3. **Neither read can wait, and that is the whole point of the ordering.**
-   `LoadLazy` closes `resolved.warmed` (`catalog.go:376`) INSIDE its
-   `sync.OnceValue` body, so an observed close means the future has resolved;
-   `Catalog.rows` (`catalog.go:439`) then answers at once. After
-   `Warmed(ctx)` says yes, the blocking door is a map lookup. The
-   context-observing wait is the ONLY wait in the function, and it is the one the
-   close can end.
+   `models.FetchedAt()`, which goes through the same waiting door
+   `ContextLength` does, so the warm would still resolve the catalog.
 
-So the accurate sentence is: the warm's *wait* moved from the blocking door to
-`Catalog.Warmed(ctx)`; its *reads* still go through the blocking door, and are
-safe because the wait already landed the rows. A cancel that arrives AFTER
-`Warmed` answered true does not stop the write — the join does, by holding
-`closeAll` until the write has returned, which is the promise the close makes.
+The follow-up does it properly: `internal/catalog` grows two never-waiting doors,
+`ContextLengthNow` (`catalog.go:614`) and `FetchedAtNow` (`catalog.go:446`), which
+read through `rowsNow` — the same door `ModelsNow` uses — answer zero/nil while a
+lazy catalog is still warming, and match ids exactly as the blocking twins do.
+The warm's reads are now those two: it never resolves the catalog, and the
+sentence is true without giving up the id matching or leaving a second blocking
+read behind it.
+
+The ordering is what makes the now-readers exactly equivalent to the old ones.
+`LoadLazy` closes `resolved.warmed` INSIDE its `sync.OnceValue` body
+(`catalog.go`), so an observed close means the future has resolved; the warm's
+only wait is `Warmed(ctx)` (`chatv3.go:2321`), the context-observing one the
+close can end. After it answers true the rows are always in hand, so
+`ContextLengthNow` and `FetchedAtNow` answer the same numbers `ContextLength`
+and `FetchedAt` would — without counting a blocking question. A cancel that
+arrives AFTER `Warmed` answered true does not stop the write — the join does, by
+holding `closeAll` until the write has returned, which is the promise the close
+makes (`chatv3_process.go:416`).
 
 ## The failing test, on this tree
 

@@ -2304,6 +2304,10 @@ func v3ContextWindow(models []tui3.Model, model string) int {
 // (FetchedAt is zero for the built-in fallbacks), which is what keeps a machine
 // that has never reached OpenRouter from caching five hardcoded names as if
 // they were the catalog.
+//
+// Its reads go through the catalog's never-waiting doors ([Catalog.Warmed]
+// first, then [Catalog.ContextLengthNow] and [Catalog.FetchedAtNow]), so the
+// only wait in the function is the context-observing one the close can end.
 func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.Agent, started string) {
 	if models == nil || agent == nil {
 		return
@@ -2317,10 +2321,10 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 	if !models.Warmed(ctx) {
 		return
 	}
-	if window := models.ContextLength(started); window > 0 && agent.Model() == started {
+	if window := models.ContextLengthNow(started); window > 0 && agent.Model() == started {
 		agent.SetContextWindow(window)
 	}
-	if models.FetchedAt().IsZero() {
+	if models.FetchedAtNow().IsZero() {
 		return
 	}
 	_ = tui3.WriteModelCache(v3Models(models))
