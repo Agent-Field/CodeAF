@@ -24,7 +24,7 @@ func TestTheProductIsNamedOnceAndItIsTheNameYouType(t *testing.T) {
 
 // TestTheWordmarkCanSpellTheProductsWholeName is the gate the letterforms need:
 // [wordmarkRows] SKIPS a letter it has no glyph for, so a missing form is not a
-// build error — it is the product's name with a hole in it, three rows tall, on
+// build error — it is the product's name with a hole in it, four rows tall, on
 // the first screen anybody sees.
 func TestTheWordmarkCanSpellTheProductsWholeName(t *testing.T) {
 	for _, letter := range product {
@@ -33,8 +33,8 @@ func TestTheWordmarkCanSpellTheProductsWholeName(t *testing.T) {
 		}
 	}
 	rows := wordmarkRows(false)
-	if len(rows) != 3 {
-		t.Fatalf("the wordmark is %d rows, want 3", len(rows))
+	if len(rows) != 4 {
+		t.Fatalf("the wordmark is %d rows, want 4", len(rows))
 	}
 	// Three cells a letter and one between them, which is what says every letter
 	// of the name is on the row rather than most of them.
@@ -99,8 +99,8 @@ func drawnWordmark(t *testing.T) string {
 // strokes, which is what this asserts and nothing more.
 func TestTheWordmarksRightEdgeIsNeverAHoleBetweenTwoStrokes(t *testing.T) {
 	rows := wordmarkRows(false)
-	if len(rows) < 3 {
-		t.Fatalf("the wordmark is %d rows, want at least 3", len(rows))
+	if len(rows) < 4 {
+		t.Fatalf("the wordmark is %d rows, want at least 4", len(rows))
 	}
 	edge := make([]rune, len(rows))
 	for i, row := range rows {
@@ -117,9 +117,10 @@ func TestTheWordmarksRightEdgeIsNeverAHoleBetweenTwoStrokes(t *testing.T) {
 				r, string(edge[r-1]), string(edge[r+1]), strings.Join(rows, "\n"))
 		}
 	}
-	// AND THE EDGE IS STILL A LETTER AND NOT A BOX. `a` closes its crossbar with
-	// `┤` and `e` must not, or the two letters of this name that differ in one
-	// cell stop differing at all.
+	// AND THE EDGE IS STILL A LETTER AND NOT A BOX. `e` closes its crossbar with
+	// the half-stroke `╴` and stands on a bowl; `a` closes its own with `┤`,
+	// stands on two legs and starts a row higher. Respell either into the other
+	// and this name has one letterform where it needs two.
 	if wordmarkGlyphs['e'] == wordmarkGlyphs['a'] {
 		t.Fatalf("`e` and `a` are now the same letterform %v — the name would read %q", wordmarkGlyphs['e'], strings.ReplaceAll(product, "e", "a"))
 	}

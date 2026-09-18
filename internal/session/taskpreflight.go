@@ -43,7 +43,6 @@ package session
 // an overlap worth a line ([hotFiles]).
 
 import (
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -153,8 +152,8 @@ func UnsavedEditsNote(root string) string {
 	if strings.TrimSpace(root) == "" {
 		return ""
 	}
-	out, err := exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=no").Output()
-	if err != nil || strings.TrimSpace(string(out)) == "" {
+	out, err := git(root, "status", "--porcelain", "--untracked-files=no")
+	if err != nil || strings.TrimSpace(out) == "" {
 		return ""
 	}
 	return unsavedEditsWord

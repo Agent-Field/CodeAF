@@ -294,6 +294,13 @@ type resultEnvelope struct {
 	Tokens envelopeTokens `json:"tokens"`
 	// Seconds is how long it took, wall clock.
 	Seconds float64 `json:"seconds"`
+	// CoreDoneSeconds is when the requested work was FIRST found done, in
+	// seconds from the run's start: the first delivery gate that passed or left
+	// only a coverage finding — the fix committed, the checks for it still to
+	// come. It is omitted when no gate ever said so, and it is the figure a
+	// person reads to see how much of the run was the work and how much came
+	// after it.
+	CoreDoneSeconds float64 `json:"core_done_seconds,omitempty"`
 	// Model is the model the work ran on, as the seat ladder resolved it.
 	Model string `json:"model"`
 	// Steps is how many pieces of work ran: `do`'s nodes, `exec`'s turns. A
@@ -333,6 +340,19 @@ type resultEnvelope struct {
 	// both because a caller reaching for a key that vanished is a caller
 	// crashing.
 	Rounds int `json:"rounds"`
+	// Redispatches is how many times one of this run's nodes was re-dispatched
+	// IN PLACE after running out of the room it was granted — sent round again
+	// to carry on from what it had banked, rather than grown around. It is
+	// counted off the journal the way Rounds is (store.NodeRedispatches), for
+	// the same reason: a run sharing a durable store with another session must
+	// not count that session's re-dispatches as its own.
+	//
+	// It is the one contract field that is ABSENT rather than zero when it never
+	// happened, which is what `omitempty` buys and why it wears it where Rounds
+	// does not: a caller of this one is asking whether the run had to send
+	// anything round again, and "never" is the key not being there. `exec` and
+	// a saved program never set it, so neither ever carries it.
+	Redispatches int `json:"redispatches,omitempty"`
 
 	// extra is what one verb carries beyond the contract, and it is two things:
 	// the OLD field names, kept readable for one release so that a tool written
@@ -392,11 +412,16 @@ type runResult struct {
 	TokensIn  int
 	TokensOut int
 	Seconds   float64
-	Model     string
-	Steps     int
-	Run       string
-	Calls     int
-	Rounds    int
+	// CoreDoneSeconds is `do`'s fact: when its gate first found the requested
+	// work done, read off the journal. `exec` and `run` have no delivery gate
+	// and leave it zero, which omits the key.
+	CoreDoneSeconds float64
+	Model           string
+	Steps           int
+	Run             string
+	Calls           int
+	Rounds          int
+	Redispatches    int
 	// Extra is this verb's own fields: its old spellings, and whatever it knows
 	// that the contract has no room for. Nil for a verb with neither.
 	Extra map[string]any
@@ -421,20 +446,22 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 		files = []string{}
 	}
 	return resultEnvelope{
-		OK:       exitFor(stop) == exitDone,
-		Stop:     stop,
-		Answer:   result.Answer,
-		Files:    files,
-		Error:    result.Error,
-		SpendUSD: result.SpendUSD,
-		Tokens:   envelopeTokens{In: result.TokensIn, Out: result.TokensOut},
-		Seconds:  result.Seconds,
-		Model:    result.Model,
-		Steps:    result.Steps,
-		Run:      result.Run,
-		Calls:    result.Calls,
-		Rounds:   result.Rounds,
-		extra:    result.Extra,
+		OK:              exitFor(stop) == exitDone,
+		Stop:            stop,
+		Answer:          result.Answer,
+		Files:           files,
+		Error:           result.Error,
+		SpendUSD:        result.SpendUSD,
+		Tokens:          envelopeTokens{In: result.TokensIn, Out: result.TokensOut},
+		Seconds:         result.Seconds,
+		CoreDoneSeconds: result.CoreDoneSeconds,
+		Model:           result.Model,
+		Steps:           result.Steps,
+		Run:             result.Run,
+		Calls:           result.Calls,
+		Rounds:          result.Rounds,
+		Redispatches:    result.Redispatches,
+		extra:           result.Extra,
 	}
 }
 

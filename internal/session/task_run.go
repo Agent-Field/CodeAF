@@ -92,6 +92,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -648,6 +649,12 @@ type TaskNode struct {
 	// reaches the project index (task_index.go) and the node's own notice on the
 	// way past.
 	cost float64
+	// checkedOn is the model the node's checking pass ran on, read off the
+	// auditor when its spend folds in (task_audit.go) and empty when there was
+	// none — a node that never reached a check, or one whose check could not
+	// start. It is a fact about the last check, not a setting, and it is read by
+	// the landing hook ([Agent.reportTaskNode]) beside the worker's own model.
+	checkedOn string
 	// input, output, cacheRead and cacheWrite are that same accumulation in
 	// TOKENS, folded in beside the dollars and kept on the checkpoint with them.
 	//
@@ -3848,6 +3855,63 @@ func (n *TaskNode) burned() int {
 
 // ── the world hearing about a node ──────────────────────────────────────────
 
+// tellTaskLanded hands one landed node to the session's own landing reader
+// (Config.TaskLanded), when a door wired one. It runs on its own goroutine
+// through guard.Go, so a reader that is slow — a call to a model outside the
+// crew takes as long as it takes — holds up nothing on the reporting path,
+// which is already answering to the note delivery beside it.
+//
+// The snapshot is taken here, on the reporting goroutine, under the node's own
+// lock discipline (graph.mu, the room's spend read outside it as notice does):
+// a landing built later on the reader's goroutine could read a node already
+// re-armed, and the record the reader judged would not be the one that landed.
+func (a *Agent) tellTaskLanded(node *TaskNode) {
+	hook := a.config.TaskLanded
+	if hook == nil {
+		return
+	}
+	// A landing is a final state only — work that ended on an answer: done,
+	// failed, or ended where nobody could check it. A node still queued or
+	// running has no record to judge yet, and its own updates already travelled
+	// the reporting path above.
+	switch node.stateNow() {
+	case TaskDone, TaskFailed, TaskUnverified:
+	default:
+		return
+	}
+	landing := node.landing()
+	guard.Go("task landed", func() { hook(landing) })
+}
+
+// landing copies the node out from under the graph's lock, shaped for a reader
+// outside this package. The spend is read BEFORE the graph lock is taken, the
+// same order [TaskNode.notice] keeps.
+func (n *TaskNode) landing() TaskLanding {
+	tokens := n.burned()
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	wrote := make([]string, len(n.wrote))
+	copy(wrote, n.wrote)
+	checks := make([]string, len(n.Checks))
+	copy(checks, n.Checks)
+	return TaskLanding{
+		ID:          n.id,
+		State:       n.state,
+		Brief:       n.spec.brief,
+		Deliverable: n.spec.deliverable,
+		Report:      n.report,
+		Claim:       n.claim,
+		Ending:      string(n.endingLocked()),
+		Wrote:       wrote,
+		Changed:     len(n.changed),
+		Checks:      checks,
+		Worker:      n.spec.model,
+		High:        n.checkedOn,
+		CostUSD:     n.cost,
+		Tokens:      tokens,
+	}
+}
+
 // reportTaskNode is the graph's report hook: one event for a surface, a row in
 // the project's index, and — on a final state — one note for the model.
 //
@@ -3876,6 +3940,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
+	a.tellTaskLanded(node)
 	transcript := taskURI(node.journalPath())
 	note := landingNoteLead(notice) + taskNote(notice, transcript, a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
@@ -6757,15 +6822,15 @@ func worktreeDirt(dir string) string { return worktreeDirtIn(context.Background(
 // worktreeDirtIn is [worktreeDirt] under a context, for a reading somebody may
 // have to stop ([treeWatch.close]).
 func worktreeDirtIn(ctx context.Context, dir string) string {
-	args := []string{"-C", dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
+	args := []string{"--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", "."}
 	for _, dropping := range taskDroppingNames() {
 		args = append(args, ":(exclude)"+dropping)
 	}
-	out, err := exec.CommandContext(ctx, "git", args...).Output()
+	out, err := gitContext(ctx, dir, nil, args...)
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(out)
+	sum := sha256.Sum256([]byte(out))
 	return string(sum[:8])
 }
 
@@ -7282,7 +7347,7 @@ func (a *Agent) spendLedger(node *TaskNode) *Agent {
 // has come back ([nodeMemory]). No store, no reflex, or a router that answered
 // nothing: the node opens with exactly the prompt it always did.
 func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
-	return a.newTaskAgentOn(ctx, dir, node, suffix, "")
+	return a.newTaskAgentOn(ctx, dir, node, suffix, "", false)
 }
 
 // newTaskAgentOn is [Agent.newTaskAgent] with the model said outright, and it
@@ -7295,7 +7360,13 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 // is recorded as a bill rather than as a retarget — a repair round is one worker
 // among several a node takes, and a node whose row started naming the repair's
 // model would be telling a person their work moved when it did not.
-func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string) (*Agent, error) {
+// AND `repair` IS THE CALLER SAYING WHICH KIND OF WORKER THIS IS, not something
+// read off the model. It seats the round's usage rows high ([Agent.agentKind]),
+// and it is stated rather than inferred from a named model because the two come
+// apart: the cascade may floor to the model the work is already on, and a node
+// that was admitted without an id has nothing to name at all — both of which
+// would leave a round the ladder really did lift billing as ordinary work.
+func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, suffix, on string, repair bool) (*Agent, error) {
 	// The model it is ACTUALLY on rather than the id it was admitted with, so a
 	// second worker built for a node that was moved is built for where the node
 	// now is ([TaskNode.runOn]). They are the same string for every node nothing
@@ -7509,6 +7580,12 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// node hears about it while it happens: a card that would otherwise show
 		// a task working says it is waiting instead.
 		pacing: node.pacing,
+		// AND THE REPAIR ROUND SAYS SO, from the caller that knows it is one
+		// (task_audit.go's [Agent.repairNode]). The marker is what seats the
+		// round's rows high ([Agent.agentKind]); the crew role is deliberately
+		// left unset, because a round is a leaf's turns of work and erranding
+		// its lane role would re-price every call in it.
+		repairRound: repair,
 		// AND THE NODE'S PULSE TRAVELS THE SAME WAY, for the same reason: the
 		// checker and each repair round are the same NODE working, so a reader
 		// outside the process must see one heartbeat across all of them rather
@@ -9210,13 +9287,22 @@ func git(dir string, args ...string) (string, error) {
 	return gitWith(dir, nil, args...)
 }
 
-// gitWith is [git] with something extra in its environment, and it exists for
-// exactly one caller: the ground ladder stages a parent's tree into AN INDEX OF
-// ITS OWN so that handing out a child never moves the parent's index
-// ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
+// gitWith is [gitContext] with [context.Background] in place of a caller's own
+// context, kept as its own name because nearly every call here is that. The
+// environment it takes exists for exactly one caller: the ground ladder stages
+// a parent's tree into AN INDEX OF ITS OWN so that handing out a child never
+// moves the parent's index ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
 // second copy of the pager and editor settings beside it would be the drift the
 // one-source-of-truth law forbids.
 func gitWith(dir string, environment []string, args ...string) (string, error) {
+	return gitContext(context.Background(), dir, environment, args...)
+}
+
+// gitContext is [gitWith] under a context, for a command somebody may have to
+// stop before git answers ([worktreeDirtIn]'s watch). The refusal of an empty
+// directory and the pinned environment live here, so there is one copy of
+// each; every other spelling of a git call in this package is a wrapper of it.
+func gitContext(ctx context.Context, dir string, environment []string, args ...string) (string, error) {
 	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE.
 	//
 	// exec.Cmd reads an empty Dir as "the calling process's working directory",
@@ -9235,7 +9321,7 @@ func gitWith(dir string, environment []string, args ...string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("git: no directory to run in")
 	}
-	command := exec.Command("git", args...)
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.

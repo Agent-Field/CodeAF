@@ -142,6 +142,10 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	seq := a.orchestrateSeq
 	named := strings.TrimSpace(model)
 	source, session := a.config.RolesSource, a.model
+	// The published tariff rides with the rest of the config: read under the
+	// same lock every other config field on this path is, installed below
+	// beside the run that meters by it.
+	priceNow := a.config.ModelPrice
 	// AND THE TANK IS HELD TO THIS SESSION'S OWN CAP. A session given a spend
 	// rail may not hand out a run larger than the rail (rail.go's [Agent.railCap]);
 	// it is read here, under the same lock every other config field on this path
@@ -197,6 +201,22 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// says which model is doing the work, and the answer must not be able to move
 	// under a `/model` switch half way through the run.
 	family.worker = worker.model()
+	// THE TANK ASKS A PUBLISHED TARIFF FIRST, and only falls back to the
+	// meter package's own table when nobody published one for the model — the
+	// same order of authority the reported cost on a call's usage already has
+	// over both. The catalog lives behind [Config.ModelPrice] because a meter
+	// must not import it: this function value is the whole seam, installed here
+	// because this is the one place an orchestrated run is built and a reader
+	// is already in hand. A nil reader installs nothing, and the table stands
+	// alone exactly as before.
+	//
+	// THE NIL CASE IS A SKIP, NOT AN INSTALL OF NOTHING. The seam is one
+	// package-level value shared by every run in the process, so passing a nil
+	// source through would not leave the table alone — it would pull whatever
+	// another session installed out from under a run still metering by it.
+	if priceNow != nil {
+		orchestrate.UsePrices(orchestrate.CatalogPrices(priceNow))
+	}
 	run := orchestrate.New(goal, planner, worker, orchestrate.Options{
 		Cap:   capDollars,
 		Lanes: orchestrateLanes,
@@ -719,7 +739,7 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 	if response == nil {
 		return "", errors.New("the planner answered with nothing")
 	}
-	p.agent.addAuxiliaryUsage(response, p.call.model, 1)
+	p.agent.addAuxiliaryUsageAs(response, p.call.model, 1, string(roles.RolePlanner))
 	p.orch.Charge(orchestrateCost(response, p.call.model))
 	return response.Text(), nil
 }

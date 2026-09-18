@@ -166,6 +166,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// then let the machine form print underneath, which said one fact twice.
 		return nil, err
 	}
+	// A tier row that says auto is answered from this catalog (config.AutoModels),
+	// so the word is wired BEFORE the seats handed in are applied — a door whose
+	// ladder answered the word before this line resolved it from nothing. The
+	// read is the same non-blocking one, never a fetch.
+	modelCatalog := catalog.LoadLazy(context.Background(), catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+	})
+	config.AutoModels = modelCatalog.ModelsNow
+	wirePoolIndex(settings.ProfileDir)
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)
 	} else {
@@ -180,9 +189,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// to a tool the user has not been able to reach yet — the surface has not
 	// been drawn. Asking it in front of the first frame buys nothing and can
 	// cost fifteen seconds of dead terminal.
-	modelCatalog := catalog.LoadLazy(context.Background(), catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-	})
 	// Every client built below shapes its requests against these rows: which
 	// knobs a model accepts is the catalog's answer, not a guess.
 	settings.Models = modelCatalog
@@ -545,9 +551,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			fanIn = store.DependencyFanIn{}
 		}
 		// Ordinary leaves retain the byte-identical headless envelope, raised by
-		// exactly what their own fan-in measures — see gatheringGrant. Reflexes use
-		// the deliberately tiny rung budget and a seconds-scale watchdog.
+		// exactly what their own fan-in measures — see gatheringGrant. A leaf
+		// re-dispatched after running out is granted more than the attempt that
+		// ran out, or it would buy the same truncated ending again — see
+		// regrantAfterRunningOut; the wall below follows the larger grant because
+		// it is arithmetic over the same number. Reflexes use the deliberately
+		// tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
+		tokens = regrantAfterRunningOut(tokens, int(node.Attempt))
 		leafRoom := exec.SubharnessFor(subharness)
 		wallLeft := remainingWall(ctx)
 		deadline := leafRoom.DeadlineWithin(tokens, wallLeft)
@@ -2567,6 +2578,13 @@ func withOpenFindings(graph *store.Store, node store.Node, brief string) string 
 // scratch instead, which for an errand working in someone's project is not
 // their directory at all.
 //
+// A root working in the person's own directory gets that same scratch. Its
+// result still reaches the person in its final message, which the delivery law
+// makes the deliverable; the file is a second copy, and a second copy filed in
+// the tree they are working in is not theirs — it is an untracked note their
+// own tools and their own eyes then have to explain. See outputClause, which
+// offers this address for the overflow a message cannot carry.
+//
 // The address is keyed on the node's own id, which is the only identity here
 // that is unique per node. It used to be keyed on the creation sequence and the
 // title, and neither is: one splice stamps its whole subtree with one sequence
@@ -3262,6 +3280,16 @@ func outcomeRecords(outcome *exec.Outcome) []string {
 func leafOutputHint(node store.Node, title string, space *exec.Workspace) (hint string, intermediate bool) {
 	suggested := exec.SuggestPathFor(node.ID, title)
 	if node.Parent == store.RootID {
+		if space != nil && space.PersonalRoot() {
+			_, shown, err := space.ScratchPath(suggested)
+			if err != nil {
+				return "", false
+			}
+			if space.DirectoryAt(shown) {
+				return "", false
+			}
+			return shown, false
+		}
 		if space != nil && space.DirectoryAt(suggested) {
 			return "", false
 		}

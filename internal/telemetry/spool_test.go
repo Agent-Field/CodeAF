@@ -77,7 +77,7 @@ func TestFlushSendsFiftyPerPostAndRemovesSentLines(t *testing.T) {
 	recorder := newRelay(t)
 	MarkNoticeShown()
 	for i := 0; i < 120; i++ {
-		if err := SpoolSync(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t))); err != nil {
+		if err := SpoolSync(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t)))); err != nil {
 			t.Fatalf("spooling event %d: %v", i, err)
 		}
 	}
@@ -115,7 +115,7 @@ func TestFlushSendsFiftyPerPostAndRemovesSentLines(t *testing.T) {
 func TestFlushIsSilentUntilTheNoticeWasShown(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
-	if err := SpoolSync(SessionStarted(ModeChat, false, "session-gated", freshClock(t))); err != nil {
+	if err := SpoolSync(stamped(SessionStarted(ModeChat, false, "session-gated", freshClock(t)))); err != nil {
 		t.Fatal(err)
 	}
 	if err := Flush(context.Background()); err != nil {
@@ -141,11 +141,11 @@ func TestFlushDropsEventsOlderThanSevenDays(t *testing.T) {
 	recorder := newRelay(t)
 	MarkNoticeShown()
 
-	fresh := SessionStarted(ModeChat, false, "session-fresh", freshClock(t))
-	ancient := SessionStarted(ModeChat, false, "session-ancient", freshClock(t))
+	fresh := stamped(SessionStarted(ModeChat, false, "session-fresh", freshClock(t)))
+	ancient := stamped(SessionStarted(ModeChat, false, "session-ancient", freshClock(t)))
 	ancient.Time = freshClock(t).Add(-8 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	// A spooled line just inside the seven days stays.
-	border := SessionStarted(ModeChat, false, "session-border", freshClock(t))
+	border := stamped(SessionStarted(ModeChat, false, "session-border", freshClock(t)))
 	border.Time = freshClock(t).Add(-7*24*time.Hour + time.Minute).UTC().Format(time.RFC3339)
 
 	if err := SpoolSync(ancient); err != nil {
@@ -195,7 +195,7 @@ func TestFlushRespectsTheCallerDeadline(t *testing.T) {
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", hanging.URL)
 	MarkNoticeShown()
 	for i := 0; i < 3; i++ {
-		if err := SpoolSync(SessionStarted(ModeChat, false, fmt.Sprintf("session-hang-%d", i), freshClock(t))); err != nil {
+		if err := SpoolSync(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("session-hang-%d", i), freshClock(t)))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -215,6 +215,110 @@ func TestFlushRespectsTheCallerDeadline(t *testing.T) {
 	}
 }
 
+// stamped re-stamps a constructor event as a build that can name itself. The
+// test binary has no revision of its own, so a constructor event carries
+// codeaf_version "unknown" and the send path drops it before any POST; a test
+// of the flush mechanics — batching, caps, retries, races — needs events that
+// survive that rule, so it spools them stamped.
+func stamped(event Event) Event {
+	event.Props["codeaf_version"] = "9f3c2a10"
+	return event
+}
+
+// spoolAsVersion writes one spool line by hand, with codeaf_version set to
+// version, or with no codeaf_version key at all when omit is true. A
+// constructor event cannot choose its version — it stamps whatever build the
+// process is, which a test binary leaves unnamed — so a line that picks a
+// version has to be written this way.
+func spoolAsVersion(t *testing.T, event Event, version string, omit bool) {
+	t.Helper()
+	if omit {
+		delete(event.Props, "codeaf_version")
+	} else {
+		event.Props["codeaf_version"] = version
+	}
+	line, err := jsonMarshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := appendLines(spoolPath(), []spoolEntry{{line: string(line)}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestFlushDropsEventsThatCannotNameTheirVersion pins the send-path rule: a
+// line whose codeaf_version is "unknown", empty, or absent is not a
+// measurement, so it never reaches the relay however the opt-out ladder was
+// switched, and the dropped line is discarded rather than kept forever.
+func TestFlushDropsEventsThatCannotNameTheirVersion(t *testing.T) {
+	cases := []struct {
+		name    string
+		version string
+		omit    bool
+	}{
+		{"unknown", "unknown", false},
+		{"empty", "", false},
+		{"missing", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testHome(t)
+			recorder := newRelay(t)
+			MarkNoticeShown()
+			event := SessionStarted(ModeChat, false, "session-"+tc.name, freshClock(t))
+			spoolAsVersion(t, event, tc.version, tc.omit)
+			if err := Flush(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if got := recorder.count(); got != 0 {
+				t.Fatalf("the relay saw %d posts for a %s version, want 0", got, tc.name)
+			}
+			if left := len(SpoolContents()); left != 0 {
+				t.Fatalf("%d lines remain after the flush, want 0", left)
+			}
+		})
+	}
+}
+
+// TestFlushSendsOnlyStampedLinesFromAMixedBatch pins the drop as per line: a
+// batch holding one unknown-version line and two stamped ones POSTs exactly
+// the stamped two, and the unknown line is gone from the spool afterwards.
+func TestFlushSendsOnlyStampedLinesFromAMixedBatch(t *testing.T) {
+	testHome(t)
+	recorder := newRelay(t)
+	MarkNoticeShown()
+	unknown := SessionStarted(ModeChat, false, "session-unknown", freshClock(t))
+	spoolAsVersion(t, unknown, "unknown", false)
+	// The two stamped lines are written by hand too: the test binary has no
+	// build stamp of its own, so a constructor event cannot stand in for one.
+	first := SessionStarted(ModeChat, false, "session-first", freshClock(t))
+	spoolAsVersion(t, first, "9f3c2a10", false)
+	second := SessionStarted(ModeChat, false, "session-second", freshClock(t))
+	spoolAsVersion(t, second, "9f3c2a10", false)
+	if err := Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.count(); got != 1 {
+		t.Fatalf("the relay saw %d posts, want 1", got)
+	}
+	events := recorder.posts[0].events
+	if len(events) != 2 {
+		t.Fatalf("the post carried %d events, want 2 (the unknown line is dropped)", len(events))
+	}
+	ids := map[string]bool{}
+	for _, event := range events {
+		if id, ok := event["event_id"].(string); ok {
+			ids[id] = true
+		}
+	}
+	if !ids[first.ID] || !ids[second.ID] || ids[unknown.ID] {
+		t.Errorf("the wrong events were sent: first %v, second %v, unknown %v", ids[first.ID], ids[second.ID], ids[unknown.ID])
+	}
+	if left := len(SpoolContents()); left != 0 {
+		t.Errorf("%d lines remain after the flush, want 0", left)
+	}
+}
+
 func TestFlushCapsAtOneThousandLinesDroppingTheOldest(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
@@ -224,7 +328,7 @@ func TestFlushCapsAtOneThousandLinesDroppingTheOldest(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	for i := 0; i < 1005; i++ {
-		line, err := jsonMarshal(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t)))
+		line, err := jsonMarshal(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t))))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -266,7 +370,7 @@ func TestFlushKeepsTheNewestThousandLines(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	for i := 0; i < 1005; i++ {
-		line, err := jsonMarshal(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t)))
+		line, err := jsonMarshal(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t))))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -305,7 +409,7 @@ func TestFlushDropsPropKeysAndEventNamesTheContractDoesNotAllow(t *testing.T) {
 
 	// A spool line carrying a prop key the contract does not name — written by
 	// an older build, or by hand. The key must not reach the wire.
-	edited := SessionStarted(ModeChat, false, "session-edited", freshClock(t))
+	edited := stamped(SessionStarted(ModeChat, false, "session-edited", freshClock(t)))
 	edited.Props["prompt"] = sentinels[5]
 	if err := SpoolSync(edited); err != nil {
 		t.Fatal(err)
@@ -373,7 +477,7 @@ func TestFlushPartialFailure(t *testing.T) {
 	const total = 120 // three batches: 50 + 50 + 20
 	ids := make([]string, total)
 	for i := 0; i < total; i++ {
-		event := SessionStarted(ModeChat, false, fmt.Sprintf("session-%03d", i), freshClock(t))
+		event := stamped(SessionStarted(ModeChat, false, fmt.Sprintf("session-%03d", i), freshClock(t)))
 		ids[i] = event.ID
 		if err := SpoolSync(event); err != nil {
 			t.Fatalf("spooling event %d: %v", i, err)
@@ -468,7 +572,7 @@ func TestFlushRacesSpool(t *testing.T) {
 	MarkNoticeShown()
 	// Warm the spool so the flush has lines to send while the spooler runs.
 	for i := 0; i < 30; i++ {
-		if err := SpoolSync(SessionStarted(ModeChat, false, fmt.Sprintf("warm-%d", i), freshClock(t))); err != nil {
+		if err := SpoolSync(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("warm-%d", i), freshClock(t)))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -480,7 +584,7 @@ func TestFlushRacesSpool(t *testing.T) {
 	go func() {
 		defer group.Done()
 		for i := 0; i < perSpooler; i++ {
-			Spool(SessionStarted(ModeChat, false, fmt.Sprintf("race-%02d", i), freshClock(t)))
+			Spool(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("race-%02d", i), freshClock(t))))
 		}
 	}()
 	group.Add(1)
@@ -494,7 +598,7 @@ func TestFlushRacesSpool(t *testing.T) {
 		// A spooler that waits for the append to land, so the race is with a
 		// flush that may already hold the mutex.
 		for i := 0; i < perSpooler; i++ {
-			if err := SpoolSync(SessionStarted(ModeChat, false, fmt.Sprintf("sync-%02d", i), freshClock(t))); err != nil {
+			if err := SpoolSync(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("sync-%02d", i), freshClock(t)))); err != nil {
 				t.Error(err)
 			}
 		}
@@ -505,7 +609,7 @@ func TestFlushRacesSpool(t *testing.T) {
 		go func(worker int) {
 			defer group.Done()
 			for i := 0; i < 10; i++ {
-				Spool(SessionStarted(ModeChat, false, fmt.Sprintf("late-%d-%d", worker, i), freshClock(t)))
+				Spool(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("late-%d-%d", worker, i), freshClock(t))))
 			}
 		}(worker)
 	}
@@ -555,7 +659,7 @@ func TestFlushAdoptsOrphanedSendingFiles(t *testing.T) {
 	}
 	orphanLines := make([]string, 3)
 	for i := range orphanLines {
-		event := SessionStarted(ModeChat, false, fmt.Sprintf("orphan-%d", i), freshClock(t))
+		event := stamped(SessionStarted(ModeChat, false, fmt.Sprintf("orphan-%d", i), freshClock(t)))
 		line, err := jsonMarshal(event)
 		if err != nil {
 			t.Fatal(err)
@@ -581,7 +685,7 @@ func TestFlushAdoptsOrphanedSendingFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Spool something so the flush has a sending cycle at all.
-	if err := SpoolSync(SessionStarted(ModeChat, false, "live", freshClock(t))); err != nil {
+	if err := SpoolSync(stamped(SessionStarted(ModeChat, false, "live", freshClock(t)))); err != nil {
 		t.Fatal(err)
 	}
 	if err := Flush(context.Background()); err != nil {
@@ -626,7 +730,7 @@ func TestAFailingRelayKeepsTheSpoolAndStaysSilent(t *testing.T) {
 	// Nothing listens here.
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "http://127.0.0.1:1/telemetry")
 	MarkNoticeShown()
-	if err := SpoolSync(SessionStarted(ModeChat, false, "session-lost", freshClock(t))); err != nil {
+	if err := SpoolSync(stamped(SessionStarted(ModeChat, false, "session-lost", freshClock(t)))); err != nil {
 		t.Fatal(err)
 	}
 	old := os.Stderr

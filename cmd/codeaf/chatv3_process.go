@@ -177,6 +177,10 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// the same non-blocking read, never a fetch, and set once at start-up.
+	config.AutoModels = models.ModelsNow
+	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
 	return &v3Process{
@@ -239,6 +243,41 @@ func (p *v3Process) track(agent *session.Agent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.agents = append(p.agents, agent)
+}
+
+// forget drops a conversation this process tracked, once that conversation has
+// been closed by whoever owns it.
+//
+// IT IS THE PAIR OF [v3Process.track] AND THE REASON TRACKING IS SAFE ON A
+// LONG-LIVED PROCESS. A surface tracks the handful of conversations one
+// terminal opens and goes away with them; an engine process outlives every
+// conversation it serves, so without this the list would grow for as long as
+// the daemon runs, and every broadcast — [v3Process.setModelSources],
+// [v3Process.setAPIKey] — would walk agents that ended hours ago.
+//
+// The match is POINTER IDENTITY, because two conversations on one workspace are
+// two agents with the same everything else. Removing is order-preserving: the
+// list is small and the boot conversation being first in it is what makes
+// [v3Process.closeAll] read in the order the person opened them.
+func (p *v3Process) forget(agent *session.Agent) {
+	if agent == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	kept := p.agents[:0]
+	for _, held := range p.agents {
+		if held != agent {
+			kept = append(kept, held)
+		}
+	}
+	// The tail is cleared rather than left pointing at what was dropped: the
+	// slice keeps its array, and a retained agent there would outlive the
+	// conversation for as long as this process holds the list.
+	for i := len(kept); i < len(p.agents); i++ {
+		p.agents[i] = nil
+	}
+	p.agents = kept
 }
 
 // setAPIKey is the key arriving after the door: the first-run screen or the

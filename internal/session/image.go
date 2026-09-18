@@ -493,7 +493,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 		provider.WithRole(ctx, lane.RoleTalk), callPurpose(roles.RoleVision),
 		[]ai.Message{live}, seer)
 	if err == nil && response != nil {
-		a.addAuxiliaryUsage(response, seer, 1)
+		a.addAuxiliaryUsageAs(response, seer, 1, string(roles.RoleVision))
 	}
 	answer := ""
 	if response != nil {

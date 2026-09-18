@@ -1147,6 +1147,19 @@ func (t taskTree) carryBranchHomeLocked() (string, error) {
 // session's own and goes with the work it carried; what furrow is told is that
 // the record may be forgotten ([taskTree.dropUniverse]).
 func (t taskTree) releaseLanded() {
+	// THE SAME DOOR [taskTree.releaseKept] closes: a tree whose ground was never
+	// made has nowhere a worktree could be registered and no repository to ask,
+	// and a command with no directory runs in the process's own directory — so
+	// the removal below would take a working copy out of somebody else's
+	// checkout and the branch deletion would name a branch in it.
+	if strings.TrimSpace(t.root) == "" || strings.TrimSpace(t.dir) == "" {
+		return
+	}
+	// THE ROOT LOCK IS THE CALLER'S. Every road that reaches here is a landing
+	// that already holds it ([taskTree.carryBranchHome]'s span, task_run.go),
+	// the same way [taskTree.releaseKeptLocked] is reached, and the lock is not
+	// re-entrant: taking it again here waited on itself for the whole of a
+	// suite's timeout.
 	if t.ownRepository() {
 		_ = os.RemoveAll(t.dir)
 	} else if _, err := git(t.root, "worktree", "remove", t.dir); err != nil {

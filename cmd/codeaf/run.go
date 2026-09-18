@@ -190,6 +190,7 @@ func runGraph(name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
 	// A graph may be loaded from disk and expanded again after an overrun, so

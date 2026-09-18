@@ -1468,8 +1468,8 @@ const setupNoMatchWord = "nothing matches · backspace widens it"
 // is deliberately NOT [config.CrewLine].
 //
 // The registry's line is written for somebody who already has the vocabulary:
-// `deepseek works, glm-flash thinks · pennies a day` names four models and makes
-// a claim about money. Both halves are wrong here. Nobody meeting codeaf for the
+// `glm-flash works, checks and thinks · pennies a day` names one model three
+// times and makes a claim about money. Both halves are wrong here. Nobody meeting codeaf for the
 // first time can rank `glm-flash` against `kimi-k3`, and — the harder rule —
 // THIS SCREEN MAKES NO CLAIM ABOUT WHAT ANYTHING COSTS. "Pennies a day" is a
 // forecast about somebody else's usage on somebody else's pricing, said on the
@@ -1495,7 +1495,7 @@ func crewChoiceWord(preset string) string {
 		return word
 	}
 	// The fallback is for a preset this screen has not been taught, and it is the
-	// open family's line: setupCrewRows runs inside the draw, so reading the profile
+	// default family's line: setupCrewRows runs inside the draw, so reading the profile
 	// here would put a profile read on the frame clock, and the seats this screen
 	// shows already take the family from a value read at the door.
 	return config.CrewLine(preset)
