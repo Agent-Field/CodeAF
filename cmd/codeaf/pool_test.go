@@ -983,12 +983,12 @@ func TestPoolShowPrintsEachMetricAfterTheIndexLine(t *testing.T) {
 	}
 	body := out.String()
 	indexAt := strings.Index(body, "index · ")
-	qualityAt := strings.Index(body, "role_quality: gaussian score · 1 cell · dims role, model")
 	sharesAt := strings.Index(body, "acceptable: bernoulli share · 3 cells · dims role, model, source · sources grader, reviewer")
-	if indexAt < 0 || qualityAt < 0 || sharesAt < 0 {
+	qualityAt := strings.Index(body, "role_quality: gaussian score · 1 cell · dims role, model")
+	if indexAt < 0 || sharesAt < 0 || qualityAt < 0 {
 		t.Fatalf("show did not print both metrics beside the index line:\n%s", body)
 	}
-	if qualityAt < indexAt || sharesAt < qualityAt {
+	if sharesAt < indexAt || qualityAt < sharesAt {
 		t.Fatalf("the metric lines did not follow the index line in the index's own order:\n%s", body)
 	}
 }
