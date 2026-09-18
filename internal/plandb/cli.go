@@ -360,7 +360,7 @@ func cliDispatch(st *Store, p *cliParsed) error {
 		return cliShow(st, p)
 	case "task":
 		if len(p.pos) < 2 {
-			return errors.New("task needs a subcommand — one of add-dep, amend, cancel, get, insert, note, notes, overview, pause, pivot, resume")
+			return errors.New("task needs a subcommand — one of add-dep, amend, cancel, get, insert, note, notes, overview, pause, pivot, resume, set-checks")
 		}
 		switch p.pos[1] {
 		case "add-dep":
@@ -626,6 +626,12 @@ func cliPrintClaimed(st *Store, task *Task, asJSON bool) error {
 		return cliPrintJSON(cliTaskObject(st, task))
 	}
 	fmt.Fprintf(cliOut, "→ %s %q %s\n", cliID(task.ID), task.Title, cliBracket(st))
+	if len(task.Checks) > 0 {
+		fmt.Fprintln(cliOut, "checks:")
+		for _, check := range task.Checks {
+			fmt.Fprintf(cliOut, "  %s\n", check)
+		}
+	}
 	if deps := cliHardDependents(st, task.ID); len(deps) > 0 {
 		fmt.Fprintln(cliOut)
 		for _, down := range deps {
@@ -2215,7 +2221,7 @@ type cliSplitPart struct {
 func cliVerbHelp(verb string) string {
 	lines := map[string]string{
 		"init":           `usage: plandb init NAME [--description TEXT] — create the run's store and its root task`,
-		"add":            `usage: plandb add TITLE [--description TEXT] [--parent TASK_ID] [--dep TASK_ID[:KIND]]... [--as ID] [--kind K] [--priority N] [--role plan|work|check|probe]`,
+		"add":            `usage: plandb add TITLE [--description TEXT] [--parent TASK_ID] [--dep TASK_ID[:KIND]]... [--as ID] [--kind K] [--priority N] [--role plan|work|check|probe] [--check COMMAND]...`,
 		"split":          `usage: plandb split TASK_ID --into SPEC   (SPEC: JSON parts, "A, B", or "A > B > C")`,
 		"go":             `usage: plandb go [--agent ID] — claim the highest-priority ready task for you`,
 		"done":           `usage: plandb done [TASK_ID] --result TEXT [--agent ID] [--next]`,
