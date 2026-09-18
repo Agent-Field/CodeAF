@@ -677,7 +677,9 @@ Two things that are deliberately not this:
   decision about your project out of a mouse would be inferring far too much.
 - **Pasting a folder path** into the message box keeps the path as text at the cursor,
   on home and in conversations, while showing that same notice. A failed attachment
-  does not swallow the pasted text or change the selected project.
+  does not swallow the pasted text or change the selected project. An empty home box
+  offers one immediate Enter to start in that folder; any other key or another paste
+  dismisses the offer. Pasting into an existing draft never activates it.
 
 ## Folders in the @ list
 

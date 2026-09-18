@@ -295,7 +295,7 @@ func TestHomesRuleShortensTheProjectAfterItsRoot(t *testing.T) {
 	a.target.where = "/tmp/" + strings.Repeat("nested/", 20)
 	narrow, drew := a.targetLegend(80, a.pal)
 	stripped := ansi.Strip(narrow)
-	if !drew || !strings.HasPrefix(stripped, "─ "+modelBase(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.Contains(stripped, "… ─") {
+	if !drew || !strings.HasPrefix(stripped, "─ "+a.modelIdentity(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.Contains(stripped, "… ─") {
 		t.Fatalf("the model or project root was lost: %q", stripped)
 	}
 }
@@ -729,13 +729,9 @@ func TestHomeSlashMentionRewritesTheTokenInPlace(t *testing.T) {
 	}
 }
 
-// TestHomeSlashDoesNotSwallowATypedPath: an absolute path begins with a slash
-// too, and a folder that exists is still a folder.
-//
-// `/tmp/alpha` has opened a conversation in that directory since long before
-// this box could dispatch anything, and the dispatch must not take the gesture
-// away. The row says which of the two it means, and enter does that one.
-func TestHomeSlashDoesNotSwallowATypedPath(t *testing.T) {
+// A folder pasted into an empty home box offers a one-use project start,
+// while recognized slash commands retain their usual meaning.
+func TestHomeSlashDoesNotSwallowAPastedPath(t *testing.T) {
 	lab := newHomeLab(t)
 	dir := t.TempDir()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
@@ -743,7 +739,7 @@ func TestHomeSlashDoesNotSwallowATypedPath(t *testing.T) {
 	a.openHome()
 	runCmd(a.openHome())
 
-	typeHome(a, dir)
+	pasteText(t, a, dir)
 	if got := a.home.runLabel(dir); got != "" {
 		t.Fatalf("a real folder was read as the command %q", got)
 	}

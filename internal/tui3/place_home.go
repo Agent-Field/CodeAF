@@ -247,7 +247,7 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 	case v.key == 'x':
 		do = func() tea.Cmd { return a.homeArchiveRow(row.session) }
 	case v.key == 'n':
-		do = func() tea.Cmd { return a.homeStart(homeWhere(line)) }
+		do = func() tea.Cmd { return a.homeStartInProject(homeWhere(line)) }
 	case v.key == 'o':
 		do = func() tea.Cmd { return a.homeOpenFolder(row.session) }
 	case v.key == 'p' && row.kind == switcherConversation:

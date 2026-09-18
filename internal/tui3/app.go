@@ -3303,6 +3303,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if taken {
 			return a, flushed
 		}
+		a.dismissProjectPaste(msg)
 		if a.pasteEdit.open && msg.String() != "ctrl+c" {
 			return a, tea.Batch(flushed, a.pasteEditorKey(msg))
 		}
@@ -8158,8 +8159,18 @@ func (a *app) paste(text string) tea.Cmd {
 		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
 		// ask the same question of the same keyboard and get the same answer.
 		box, chips := a.keyboardBox()
+		wasEmpty := len(box.value) == 0
+		if box == &a.home.box {
+			a.home.projectPaste.path = ""
+			if wasEmpty {
+				a.home.projectPaste = homeProjectPaste{}
+			}
+		}
 		if !a.pasteFilesInto(box, chips, text) {
 			box.insert(text)
+			if box == &a.home.box {
+				a.offerPastedProject(text, wasEmpty)
+			}
 		}
 		a.dropLanded(box)
 		a.touch()

@@ -420,7 +420,7 @@ opens nothing, its rows are not cursor stops — the arrows step over the whole 
 click on a row does nothing — and it offers no verbs. It used to be that `enter` on a row
 started a fresh conversation in that folder; that door is gone (owner, 2026-09-17). To start
 a chat in another folder, stand on any row of that folder's conversations and press
-**`ctrl+t`**, or type the folder's name into the box. A conversation started that way is
+**`ctrl+t`**, or paste its path into an empty box and immediately press Enter. A conversation started that way is
 built on **its own** workspace, with that project's approval rules, crew, spend
 ceiling and saved shapes of work.
 
@@ -442,8 +442,8 @@ facts keep their columns as the path shortens.
 
 **A project row offers nothing to press** — no `enter`, no strip, no cursor on it. Typing
 the project's name into the box lists every conversation in it. Five rows show, eight in a
-tall window, then `N more`; typing a folder's name or path finds the rest, and a typed path
-starts a conversation there too (*Start something new from home*).
+tall window, then `N more`; typing a folder's name or path finds the rest. Pasting a folder
+path into an empty box offers a one-use start there (*Start something new from home*).
 
 `ctrl+t` on a conversation's row still starts one in that row's folder, but the projects
 panel is the way home offers it now.
@@ -1274,13 +1274,19 @@ does applies. On a surface with no fresh-session seam it refuses in `/new`'s own
 anywhere**: on `new session failed: <error>` home closes and your words are put in the
 message box unsent — never delivered to the conversation this window was already holding.
 
-**Typing a path starts a conversation there instead.** When what you typed resolves to a
-directory on this machine — an absolute path, a `~` path, a `./` path, or a project name
-that matches exactly one project — the action row reads
-`start a new conversation in <that folder>`. `/tmp/alpha` opens a conversation in that
-directory; it is not read as a command, except for a word the command table already knows
-(`/home` is the command). **The path is resolved and never created**: a folder that does not
-exist is not a path, and the row goes back to quoting your words.
+**Pasting a folder path into an empty home box offers one Enter to start there.**
+The complete paste must name one existing local directory. The action row reads
+`start a new conversation in <that folder>`. If the next key is Enter, it opens a
+conversation there without sending the path as a message. Any other key — including
+space, an arrow, Backspace, a shortcut or Shift+Enter — cancels the offer and keeps normal
+editing behavior. A second paste also cancels it. The remaining text is an ordinary
+message for the project selected on the seam; returning to the same path does not rearm
+it. Clear the box and paste the folder path again to get a fresh offer.
+
+Pasting into existing text, including whitespace or a newline, never activates the offer.
+Typing a path or project name does not activate it either. Conversations and the `ask here`
+pane retain ordinary paste behavior. Recognized slash commands such as `/home` still run
+as commands. The folder notice may remain, but the path stays in the box.
 
 ## Running a slash command from home — can I type /settings on the home screen
 
@@ -1305,9 +1311,9 @@ box with the caret after it rather than running on the spot. A slash word in the
 sentence is a mention and never a dispatch. *Typing a slash to see the command list* has the
 whole of that behaviour.
 
-**A path is not a command.** `/tmp/alpha` is a folder, so the row goes on offering
-`start a new conversation in /tmp/alpha` — see *Start something new from home* for the
-whole of that rule, and for the one word (`/home`) where the table wins.
+**A pasted path is not a command.** A folder pasted into an empty home box offers
+`start a new conversation in <folder>` only until the next key. Enter accepts; any other
+key returns it to ordinary message text. See *Start something new from home*.
 
 **You can ask about a command instead of running it.** Type it and press `↑` then `enter`
 — the `ask here` row — and the answer comes back in the pane on the right without the

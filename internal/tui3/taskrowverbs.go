@@ -37,7 +37,7 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 				if !a.at(pageHome) {
 					opened = a.showPage(pageHome)
 				}
-				return tea.Batch(opened, a.homeStart(workspace))
+				return tea.Batch(opened, a.homeStartInProject(workspace))
 			}})
 		}
 		verbs = append(verbs,

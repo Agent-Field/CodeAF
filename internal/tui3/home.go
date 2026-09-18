@@ -631,7 +631,8 @@ type homeView struct {
 	// box — an ordinary file rides the tray and writes no token — so a screen
 	// that read the box alone would answer "nothing typed" to somebody looking at
 	// their own log file on the row above it.
-	carrying bool
+	carrying     bool
+	projectPaste homeProjectPaste
 	// picked says the person walked off the action row onto a match. It is what
 	// keeps the two readings of the box from fighting: while it is false the
 	// cursor sits on "start a new conversation" through every keystroke, so
@@ -1430,6 +1431,9 @@ func (a *app) refreshHome() {
 
 // build turns the world into lines, applying the filter when one is typed.
 func (h *homeView) build() {
+	if len(h.box.value) == 0 {
+		h.projectPaste = homeProjectPaste{}
+	}
 	previous := h.focused()
 	// AND THE ITEM UNDER THE CURSOR IS FOLLOWED THE SAME WAY. A band re-sorts
 	// when something starts firing, exactly as the conversations above it do, and
@@ -2392,6 +2396,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	if !a.at(pageHome) {
 		return nil
 	}
+	a.dismissProjectPaste(msg)
 	h := &a.home
 	// A KEY IS THE PERSON TAKING THE CURSOR BACK. Home aims at the row a move
 	// left behind on every beat until this happens, and a screen that went on
@@ -3044,6 +3049,11 @@ func (a *app) homeEnter() tea.Cmd {
 	// pressed enter inside two frames meant the drop (dropkeys.go). The net
 	// under the row below catches whatever this did not.
 	a.spendDrop()
+	if project := h.pastedProject(); project != "" {
+		h.projectPaste.path = ""
+		h.build()
+		return a.homeStartInProject(project)
+	}
 	// phone lane: enter opens the row's card as a sheet (homesheet.go).
 	if cmd, took := a.homePhoneEnter(); took {
 		return cmd
@@ -3074,12 +3084,8 @@ func (a *app) homeEnter() tea.Cmd {
 		// chat — and the conversation-scoped ones act on the conversation this
 		// window holds behind the screen, which is parity rather than a
 		// limitation: the window always holds one.
-		// AND A FOLDER THAT EXISTS IS STILL A FOLDER. An absolute path begins with
-		// a slash too, and `/tmp/alpha` is a place this row has opened a
-		// conversation in since long before it could dispatch anything. Which of
-		// the two a leading slash means is [homeView.runLabel]'s one question,
-		// asked here and by the row itself, so the screen cannot promise one
-		// meaning while the key takes the other.
+		// A pasted folder remains message text after its one-use offer ends.
+		// Only known slash commands may override that literal draft.
 		typed := strings.TrimSpace(h.box.String())
 		if h.runLabel(typed) != "" {
 			return a.homeSlash(typed)
@@ -3092,12 +3098,9 @@ func (a *app) homeEnter() tea.Cmd {
 		// somebody their screenshot does not exist. It is the same net chat's
 		// dispatcher falls into ([app.droppedLineInto]), over home's own box.
 		//
-		// IT IS ASKED AFTER THE ROW'S OTHER TWO READINGS AND NOT BEFORE THEM. A
-		// command is a command whatever the disk says (`/home` is a directory on
-		// every Linux box there is), and a path that names a FOLDER is a place to
-		// start a conversation in and never cargo — which is the same call
-		// [app.attachFilePath] makes about a directory handed to /attach.
-		if h.typedPlace(typed) == "" && a.homeDroppedLine(typed) {
+		// A dismissed folder paste stays text even if further editing leaves a
+		// different path. It must not be reinterpreted as another attachment.
+		if !h.projectPaste.literal && h.typedPlace(typed) == "" && a.homeDroppedLine(typed) {
 			return nil
 		}
 		return a.homeStart(typed)
@@ -3457,19 +3460,24 @@ func (a *app) homeRowGone(row session.SessionRow) bool {
 // the new conversation owes itself, so the submit below is talking to the new
 // agent and not to the one that just closed.
 func (a *app) homeStart(text string) tea.Cmd {
-	if (strings.TrimSpace(text) != "" || len(a.chips) > 0) && a.updateStopsTurn() {
+	return a.homeStartWithProject(text, "")
+}
+
+// homeStartInProject is an explicit project choice, from a row action or the
+// one-use folder paste offer. Ordinary draft text never enters this branch.
+func (a *app) homeStartInProject(project string) tea.Cmd {
+	return a.homeStartWithProject("", project)
+}
+
+func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	if (strings.TrimSpace(text) != "" || place != "" || len(a.chips) > 0) && a.updateStopsTurn() {
 		return nil
 	}
 	if !a.canStart() {
 		a.home.say(newUnavailableWord, "")
 		return nil
 	}
-	// A PATH IS THE OTHER THING THIS ROW CAN MEAN. What was typed either names a
-	// directory on this machine — an absolute path, a ~ path, or a project name
-	// that matches exactly one heading on the list — or it is the first sentence
-	// of a conversation in this project. The row says which before enter is
-	// pressed ([homeView.startLabel]).
-	if place := a.home.typedPlace(text); place != "" {
+	if place != "" {
 		// THE TRAY GOES WITH THE PERSON HERE TOO, and carrying it means taking
 		// it OUT of the conversation being stepped aside from before the aside
 		// is stowed. [app.detachConversation] hands the draft and the chips to
@@ -3676,7 +3684,7 @@ func (h *homeView) startLabel() string {
 	if text == "" {
 		return homeStartWord
 	}
-	if place := h.typedPlace(text); place != "" {
+	if place := h.pastedProject(); place != "" {
 		return homeStartWord + " in " + place
 	}
 	// THE SAME QUESTION IN THE SAME ORDER [app.homeEnter] ASKS IT, which is the
@@ -3700,8 +3708,8 @@ func (h *homeView) startLabel() string {
 // [app.slash]): a word the table knows is a command whatever else it might also
 // be — `/home` is the command even on a machine that has a `/home` directory,
 // because the table is a short list a person chose to learn and the disk is not
-// — and only then is a line that resolves to a real folder the path row's
-// ([homeView.typedPlace] resolves and never creates). What is neither is still a
+// — while a folder paste or a line resolving to a directory remains text
+// after the paste offer ends. What is neither is still a
 // command, so an unknown one is refused in the dispatcher's own words rather
 // than quietly becoming the first message of a conversation.
 //
@@ -3727,7 +3735,7 @@ func (h *homeView) runLabel(text string) string {
 	if at := strings.IndexAny(word, " \t"); at >= 0 {
 		word = word[:at]
 	}
-	if !knownCommand(word) && h.typedPlace(text) != "" {
+	if !knownCommand(word) && (h.projectPaste.literal || h.typedPlace(text) != "") {
 		return ""
 	}
 	return homeRunWord + " " + text

@@ -175,7 +175,9 @@ that was a file, not a command · attached
 
 A folder dropped or pasted gets the drop road's own sentence instead — `<name> is a folder ·
 attach a file` — while the original pasted text is still inserted at the cursor in
-home and conversation message boxes. The notice does not discard the path. A mixed
+home and conversation message boxes. The notice does not discard the path. Only an
+empty home box offers to start in the pasted folder: the next Enter accepts, any other
+key or another paste dismisses the offer, and the text remains an ordinary draft. A mixed
 paste containing files and a folder stays entirely as text, with nothing attached.
 An unknown command that names nothing on the disk still refuses exactly as it always did. That sentence belongs to the drop and the paste alone: `/attach
 ~/code/thing`, typed, refers the folder and answers `folder · ~/code/thing`. A drop is a

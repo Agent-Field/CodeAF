@@ -358,10 +358,10 @@ func TestAFoldOpenedInTheDraftIsNeverSpentIntoHome(t *testing.T) {
 	}
 }
 
-// ISSUE #164. A START IN A TYPED FOLDER CARRIES THE TRAY WITH THE PERSON. The
+// ISSUE #164. A START IN A PASTED FOLDER CARRIES THE TRAY WITH THE PERSON. The
 // files were dropped on HOME, for the conversation home is about to open, and
 // the aside that steps the previous one out of the way used to take them.
-func TestAStartInATypedFolderCarriesTheTrayWithThePerson(t *testing.T) {
+func TestAStartInAPastedFolderCarriesTheTrayWithThePerson(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
@@ -374,8 +374,7 @@ func TestAStartInATypedFolderCarriesTheTrayWithThePerson(t *testing.T) {
 	if want := []string{"server.log"}; !equalStrings(chipNames(a), want) {
 		t.Fatalf("the drop did not land on home's tray: %v", chipNames(a))
 	}
-	a.home.box.setText(where)
-	a.home.build()
+	pasteText(t, a, where)
 	drive(t, a, key("enter"))
 
 	if a.workspace != where {
