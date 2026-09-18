@@ -162,6 +162,12 @@ type Task struct {
 	Error       string    `json:"error,omitempty"`
 	Artifacts   []string  `json:"artifacts,omitempty"`
 	Evidence    []string  `json:"evidence,omitempty"`
+	// VerdictBasis is HOW this task's verdict was earned: whether a check on it
+	// read the work or ran the declared proof, and the recorded exit of every
+	// run. It is written when the verdict lands, by the same gate that judged
+	// it, and it persists so a later reader never has to reopen a trajectory.
+	// A task with no verdict carries the zero value.
+	VerdictBasis VerdictBasis `json:"verdict_basis,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	CompletedAt time.Time `json:"completed_at,omitempty"`

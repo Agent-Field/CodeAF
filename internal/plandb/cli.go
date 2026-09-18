@@ -2054,6 +2054,7 @@ type cliTaskJSON struct {
 	Isolation    string       `json:"isolation,omitempty"`
 	Dependencies []cliDepJSON `json:"dependencies,omitempty"`
 	Checks       []string     `json:"checks,omitempty"`
+	VerdictBasis *VerdictBasis `json:"verdict_basis,omitempty"`
 	ClaimedBy    string       `json:"claimed_by,omitempty"`
 	Result       string       `json:"result,omitempty"`
 	Error        string       `json:"error,omitempty"`
@@ -2103,6 +2104,10 @@ func cliTaskObject(st *Store, task *Task) *cliTaskJSON {
 	if !task.ArchivedAt.IsZero() {
 		archived := task.ArchivedAt
 		out.ArchivedAt = &archived
+	}
+	if task.VerdictBasis.Kind != "" {
+		basis := task.VerdictBasis
+		out.VerdictBasis = &basis
 	}
 	return out
 }

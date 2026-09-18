@@ -1253,7 +1253,7 @@ func TestTheNameCapIsTheEnginesOwnFigure(t *testing.T) {
 // the persisted basis even though the existing state and outcome remain all a
 // person sees.
 func TestTheTasksViewReadsThePersistedVerdictBasisWithoutNewWords(t *testing.T) {
-	const recorded = `{"id":"7","name":"check-the-change","label":"Check the change","title":"Check the change","status":"done","outcome":"the change holds","endedAt":"2026-09-18T16:00:00Z","sessionId":"earlier","verdictBasis":{"kind":"reading"}}`
+	const recorded = `{"id":"7","name":"check-the-change","label":"Check the change","title":"Check the change","status":"done","outcome":"the change holds","endedAt":"2026-08-14T16:00:00Z","sessionId":"earlier","verdictBasis":{"kind":"reading"}}`
 	var entry session.TaskIndexEntry
 	if err := json.Unmarshal([]byte(recorded), &entry); err != nil {
 		t.Fatalf("reading the task row: %v", err)
@@ -1277,12 +1277,23 @@ func TestTheTasksViewReadsThePersistedVerdictBasisWithoutNewWords(t *testing.T) 
 		t.Fatal("the persisted row did not reach the tasks view")
 	}
 	text := taskSheetText(a)
+	// THE ROW SAYS WHAT THE WORK IS AND WHAT STATE IT IS IN; the outcome
+	// sentence is the record's and is read ON THE CARD, one keypress away
+	// (tasksplace.go's raw-outcome law draws the word on the row and keeps the
+	// sentence for the card). Press enter and read the card.
+	if !strings.Contains(text, entry.Label) {
+		t.Fatalf("the tasks view lost %q while reading the basis:\n%s", entry.Label, text)
+	}
+	a.taskSheetEnter()
+	card := taskSheetText(a)
 	for _, want := range []string{entry.Label, entry.Outcome} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the tasks view lost %q while reading the basis:\n%s", want, text)
+		if !strings.Contains(card, want) {
+			t.Fatalf("the tasks view lost %q while reading the basis:\n%s", want, card)
 		}
 	}
-	if strings.Contains(text, "verdictBasis") || strings.Contains(text, "reading") {
-		t.Fatalf("the persisted basis coined an on-screen word:\n%s", text)
+	for _, frame := range []string{text, card} {
+		if strings.Contains(frame, "verdictBasis") || strings.Contains(frame, "reading") {
+			t.Fatalf("the persisted basis coined an on-screen word:\n%s", frame)
+		}
 	}
 }

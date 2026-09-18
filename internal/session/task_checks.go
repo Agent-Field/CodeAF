@@ -557,7 +557,13 @@ func runnableChecks(declared []string, own taskCopy) []string {
 			continue
 		}
 		command = own.bindCommand(command)
-		if !runnableHere(own.dir, command) {
+		// THE RUNNABILITY QUESTION IS ASKED OF THE GROUND THE CHECKER STANDS IN,
+		// and with no ground there is no question: a caller on the ground itself
+		// carries the identity map, and its declaration is the whole contract
+		// ([TestDeclaredCommandsAloneAreTheCheckerContract] speaks the law). Where
+		// there IS a copy to stand in, the cleanup applies and a declared word
+		// that cannot run stays out of the door ([TestOnlyARunnableSpanBecomesADeclaredCheck]).
+		if own.dir != "" && !runnableHere(own.dir, command) {
 			continue
 		}
 		out = append(out, command)
@@ -1144,78 +1150,4 @@ func commandLike(text string) (string, bool) {
 		return "", false
 	}
 	return normalized, true
-}
-
-// InvocableChecks applies the check door's shipped law to commands recorded by
-// the trajectory writer. The writer wraps worker commands in the workspace;
-// that one wrapper is execution context, not part of the declared check.
-func InvocableChecks(tree string, recorded []string) []string {
-	candidates := make([]string, 0, len(recorded))
-	for _, raw := range recorded {
-		command := strings.TrimSpace(raw)
-		if prefix, inner, ok := strings.Cut(command, " && "); ok {
-			fields := strings.Fields(prefix)
-			if len(fields) == 2 && fields[0] == "cd" {
-				command = strings.TrimSpace(inner)
-			}
-		}
-		for _, segment := range commandSegments(command) {
-			segment = strings.TrimSpace(strings.TrimLeft(segment, "{ "))
-			if !exitBearingRunner(segment) {
-				continue
-			}
-			segment, ok := commandLike(segment)
-			if !ok || !approval.Vouchable(segment) || auditAllowed.CheckBash(segment).Action != approval.ActionAllow {
-				continue
-			}
-			candidates = append(candidates, segment)
-		}
-	}
-	return invocableChecks(tree, runnableChecks(candidates, standingOn(tree)))
-}
-
-func commandSegments(command string) []string {
-	var segments []string
-	start, quote, escaped := 0, byte(0), false
-	for i := 0; i < len(command); i++ {
-		c := command[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if c == '\\' && quote != '\'' {
-			escaped = true
-			continue
-		}
-		if quote != 0 {
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			quote = c
-			continue
-		}
-		if c == ';' || c == '&' && i+1 < len(command) && command[i+1] == '&' {
-			segments = append(segments, command[start:i])
-			if c == '&' {
-				i++
-			}
-			start = i + 1
-		}
-	}
-	return append(segments, command[start:])
-}
-
-func exitBearingRunner(command string) bool {
-	fields := strings.Fields(command)
-	if len(fields) >= 2 && fields[0] == "go" {
-		return fields[1] == "test" || fields[1] == "build" || fields[1] == "vet"
-	}
-	if len(fields) >= 2 && fields[0] == "make" {
-		target := fields[1]
-		return strings.Contains(target, "test") || strings.Contains(target, "build") || strings.Contains(target, "vet")
-	}
-	return false
 }

@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
-	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // The outcome words are the exit ladder's own (cmd/codeaf/envelope.go, the
@@ -498,14 +496,11 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 		return
 	}
 	checks := append([]string(nil), leaf.Checks...)
-	if len(checks) == 0 {
-		steps, _ := Trajectory(filepath.Dir(s.store.Path()), leaf.ID)
-		recorded := make([]string, 0, len(steps))
-		for _, step := range steps {
-			recorded = append(recorded, step.Command)
-		}
-		checks = session.InvocableChecks(s.workspace, recorded)
-	}
+	// THE DECLARED CHECKS ARE THE WHOLE CONTRACT, and an empty declaration is a
+	// reading contract: a review node carries what the worker declared, never a
+	// promise rebuilt from what the worker happened to run (the trajectory's own
+	// backfill died with it, and the gate now refuses a holds verdict it did not
+	// earn — plandb.Done's [checkVerdictBasis]).
 	id := s.store.NextID()
 	spec := plandb.TaskSpec{
 		ID:          id,
