@@ -1084,8 +1084,9 @@ type Welcome struct {
 	// and not about any conversation: the draft on home and the other places
 	// draws them as the rung and the gate the NEXT conversation on that machine
 	// would run at (internal/tui3's boxseam.go), and a draft is drawn on every
-	// frame. "" is an engine with no such row or no gate, and the surface then
-	// draws no cell.
+	// frame. An empty DefaultEffort means auto when Effort is true; Effort
+	// itself distinguishes an engine without the control. An empty
+	// StandingApproval means there is no gate and draws no approval cell.
 	DefaultEffort    string `json:"defaultEffort,omitempty"`
 	StandingApproval string `json:"standingApproval,omitempty"`
 

@@ -1311,6 +1311,11 @@ so until you dial something — this conversation with `ctrl+v`, `/effort` or a 
 cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
 itself in `/settings` — every conversation reads `auto`.
 
+Home also keeps `model:auto` on the seam and `ctrl+v effort` in the bottom row.
+This applies to local engine connections and `--host` alike: an unset default is
+`auto`, not a missing control. Press the effort word or use `ctrl+v` to change the
+next conversation's effort.
+
 **To put it back to `auto`:** keep pressing `ctrl+v` or the cell — the wheel's stop after
 `max` is `auto` — or type `/effort auto` (or `/effort off`, the older name for the same
 thing), or open `/effort` and pick the top row. The typed word and the top row do it in

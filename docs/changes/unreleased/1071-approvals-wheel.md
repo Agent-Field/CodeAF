@@ -4,6 +4,7 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Home no longer hides the effort seam field and ctrl+v effort hint when the engine reports an unset default. Empty effort means auto on local engine connections and --host, matching conversations; only an engine without effort support loses the control."
   - "Shift+enter now inserts a newline in home, ask-here, conversation and task-room message boxes without sending or interrupting. The former stop-and-send gesture moves to ctrl+shift+enter; conversation alt+enter and ctrl+j newline aliases and plain Enter behavior remain available."
   - "The project returns to the right edge on home and conversation seams, after conversation telemetry where present. Model names and project paths underline on mouse-over without losing the model’s bold bright style. Approvals now uses opt+a and pending questions opt+y; project cycling uses opt+p (including the task composer) and folder previews opt+w. The prior key roles are exchanged, not retained as aliases."
   - "Home’s `project: <path>` indicator moves from the right edge to a middle-dot-separated field after approvals on the left. Conversation seams show their current workspace in the same position; only home cycles the destination. Long paths truncate on the right and the field yields to controls and telemetry on narrow frames. opt+a already opens the newest pending question and opt+p toggles the folder preview, so approvals stays on opt+y and projects on opt+w."

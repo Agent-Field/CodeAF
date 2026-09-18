@@ -119,10 +119,10 @@ func (a *app) targetEffortStanding() (string, bool) {
 	if !ok {
 		return "", false
 	}
-	// OVER --host THE ROW IS THE FAR INSTALL'S, carried once at the door
-	// (internal/remote's [Welcome.DefaultEffort]); an engine that could not say
-	// answers "", and "" from a far install is absence rather than `auto`.
-	if _, hosted := a.agent.(interface{ EffortSupported() bool }); hosted && dial.DefaultEffort() == "" {
+	// The welcome carries both the install's row and the engine's capability.
+	// An empty row means auto, just as it does in a conversation; only the
+	// capability can say the far engine has no effort control at all.
+	if host, hosted := a.agent.(interface{ EffortSupported() bool }); hosted && !host.EffortSupported() {
 		return "", false
 	}
 	turn, _ := effort.Parse(a.reasoningFor(a.targetModel()))
