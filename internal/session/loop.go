@@ -274,7 +274,7 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 		return "", false
 	}
 	if calls >= wake.ceiling {
-		return strconv.Itoa(calls) + " calls", true
+		return strconv.Itoa(calls) + " call" + plural(calls), true
 	}
 	if steward := a.steward(); steward != nil {
 		if budget := steward.Budget(); budget.USD > 0 {
