@@ -339,6 +339,9 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	if a.taskPlanReadingKey(msg.String()) {
+		return nil
+	}
 	if cmd, taken := a.pasteChipKey(msg); taken {
 		return cmd
 	}

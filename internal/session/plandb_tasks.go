@@ -25,6 +25,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // PlanTaskRow is one row of the chat's plan. It carries what a surface draws
@@ -91,8 +92,19 @@ type PlanTaskNote struct {
 // PlanTaskPage is everything a person reads when they open one task: its row,
 // the description that is its work order, every note left on it, and the steps
 // its worker recorded.
+// PlanTaskQuestion is one held task’s question with the row it belongs to.
+// Options are the question’s own accepted keys and labels, unchanged.
+type PlanTaskQuestion struct {
+	TaskID  string
+	Head    string
+	Options []AnswerOption
+}
+
 type PlanTaskPage struct {
 	Row         PlanTaskRow
+	WorkModel   string
+	PlanModel   string
+	Questions   []PlanTaskQuestion
 	Description string
 	Notes       []PlanTaskNote
 	Steps       []PlanStep
@@ -221,8 +233,13 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 			}
 		}
 	}
+	workModel, _ := roles.TierModel(roles.Source(a.config.RolesSource), roles.TierWorker)
+	planModel, _ := roles.TierModel(roles.Source(a.config.RolesSource), roles.TierMastermind)
 	return PlanTaskPage{
 		Row:         pageRow,
+		WorkModel:   workModel,
+		PlanModel:   planModel,
+		Questions:   a.planTaskQuestions(),
 		Description: task.Description,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
@@ -486,6 +503,36 @@ func planTaskNotes(store *plandb.Store, taskID string) []PlanTaskNote {
 			Person: note.From == plandb.NoteFromPerson,
 			Body:   note.Body,
 			At:     note.At,
+		})
+	}
+	return out
+}
+
+// planTaskQuestions associates the session’s existing open questions with the
+// plan rows whose live task nodes raised them. The question remains the source
+// of truth for its words and accepted answer keys.
+func (a *Agent) planTaskQuestions() []PlanTaskQuestion {
+	g := a.graph()
+	if g == nil {
+		return nil
+	}
+	byNode := make(map[uint64]string)
+	g.mu.Lock()
+	for _, node := range g.nodes {
+		if node.spec.planID != "" {
+			byNode[node.id] = planStoreID(node.spec.planID)
+		}
+	}
+	g.mu.Unlock()
+	var out []PlanTaskQuestion
+	for _, question := range a.OpenQuestions() {
+		taskID := byNode[question.Subject.ID]
+		if question.Subject.Kind != SubjectNode || taskID == "" {
+			continue
+		}
+		out = append(out, PlanTaskQuestion{
+			TaskID: taskID, Head: question.Head,
+			Options: append([]AnswerOption(nil), question.Options...),
 		})
 	}
 	return out
