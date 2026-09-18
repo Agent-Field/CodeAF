@@ -1227,6 +1227,10 @@ type userMessage struct {
 	// tree and declared no check ([TaskNode.settleCeiling]) and [settleCallCeiling]
 	// otherwise.
 	settleCeiling int
+	// settleModel and settlePrompt narrow an owed-answer landing to its cheap
+	// seat and dedicated role page; ordinary settle wakes leave both empty.
+	settleModel  string
+	settlePrompt string
 
 	// steer is THE PERSON'S WORDS TYPED INTO THIS TURN (steer.go's
 	// [Agent.Steer]): a correction to the question already being worked on,
@@ -3594,6 +3598,8 @@ const (
 // agent's lock, so it may not be made where the wake is decided under that lock.
 type settleWake struct {
 	ceiling int
+	model   string
+	prompt  string
 }
 
 type settleWakeKey struct{}
@@ -3619,19 +3625,19 @@ func settleWakeFrom(ctx context.Context) (settleWake, bool) {
 // not may want several, and a turn that has to settle both is not cut to the
 // narrowest one's share.
 func (a *Agent) settleWakeLocked() (settleWake, bool) {
-	ceiling := 0
+	wake := settleWake{}
 	for _, note := range a.steering {
 		if !note.settle {
 			continue
 		}
-		if note.settleCeiling > ceiling {
-			ceiling = note.settleCeiling
+		if note.settleCeiling > wake.ceiling {
+			wake.ceiling = note.settleCeiling
+		}
+		if note.settlePrompt != "" {
+			wake.model, wake.prompt = note.settleModel, note.settlePrompt
 		}
 	}
-	if ceiling == 0 {
-		return settleWake{}, false
-	}
-	return settleWake{ceiling: ceiling}, true
+	return wake, wake.ceiling != 0
 }
 
 // settleWindow is how long a settle turn is given before it is handed back: a
