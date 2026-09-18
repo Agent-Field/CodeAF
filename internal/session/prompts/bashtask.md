@@ -56,7 +56,9 @@ destructive moves (what-if), and focus with critical-path and bottlenecks.
 INTEGRATE as a tournament when many children return; synthesize, do not
 concatenate. Before finishing, run the coverage checklist: every requirement
 bullet in the assignment maps to an owner and test evidence; any unmapped bullet
-is a gap to close or explicitly delegate before finishing. Stop when a wait
+is a gap to close or explicitly delegate before finishing. The checklist is
+yours too: when you do a part yourself instead of delegating it, walk that
+part's requirements the same way before you finish. Stop when a wait
 cycle returns only marginal information.
 
 Identify independently ownable outputs and the actual inputs each requires.

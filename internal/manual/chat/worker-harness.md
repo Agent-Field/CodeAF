@@ -148,6 +148,16 @@ child it named moves. A `plandb wait` with nothing open to wait on is refused, s
 a worker cannot park on nothing. The remaining endings are the run's step cap, its
 wall, and an errored turn.
 
+## How does a task decide it is done?
+
+Finishing is not reaching the end of the work — it is proving every requirement
+of it. Before it runs `plandb done`, a worker walks each requirement sentence of
+its own work order, and of the ask the run serves, one per line, and names
+beside each the command or test that proved it in that run. A requirement with
+no proof is not done: the worker proves it then, or reports it undone in its
+result. Reaching the end of the steps is not the same as having met every
+requirement in them, and speed is no permission to skip the walk.
+
 ## Costs and limits
 
 - **The cost cap.** A run may spend what the conversation's own **spend rail**
