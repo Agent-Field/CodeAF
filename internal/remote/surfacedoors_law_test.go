@@ -112,6 +112,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 	"leavableRunner":                  {loses: "watching orchestration runs, which leaves the run page dark"},
 	"leavableWaker":                   {loses: "watching wakes, which leaves a woken turn unannounced"},
 	"planAgent":                       {loses: "the run's plan in the tasks place — the rows it draws, one task's page, and the six steering doors (note, pause, resume, cancel, amend, priority). The plan store lives on the machine the run is on and its remote view is a later door"},
+	"planSpendAgent":                  {loses: "the spend page's block of the run's tasks by seat; the plan store lives on the engine's disk and the wire does not carry its spend rollup yet"},
 	"promoteAgent":                    {loses: "promoting a call out of the background"},
 	"runAgent":                        {loses: "listing orchestration runs"},
 	"spellOutAgent":                   {loses: "spelling a reply out again in longer form"},
@@ -128,7 +129,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 23
+const surfaceDoorLedger = 24
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {
