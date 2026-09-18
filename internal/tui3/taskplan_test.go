@@ -28,8 +28,9 @@ import (
 // a different one.
 type planFake struct {
 	*taskFake
-	plan  []session.PlanTaskRow
-	pages map[string]session.PlanTaskPage
+	plan      []session.PlanTaskRow
+	pages     map[string]session.PlanTaskPage
+	pageReads int
 
 	// THE SIX VERBS, each recording the call it was asked for so a test can read
 	// back the id and the words a key produced. `refuse` is the sentence every one
@@ -66,6 +67,7 @@ func (f *planFake) RefreshRunSummary(context.Context, string, time.Time) (sessio
 }
 
 func (f *planFake) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	f.pageReads++
 	page, ok := f.pages[id]
 	return page, ok
 }
