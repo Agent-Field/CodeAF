@@ -362,6 +362,16 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 	if task.ParentID != "" {
 		row.Parent = planStoreID(task.ParentID)
 	}
+	// WAITS IS THE HARD EDGES, THE ONES THAT REALLY HOLD IT. `suggests` is advice
+	// the store does not gate on, so a row kept `pending` never is because of one;
+	// carrying it would name work that is not holding the task. Store order is
+	// kept, so the same dependency is named on every read.
+	for _, dep := range task.Dependencies {
+		if dep.Kind == plandb.DepSuggests {
+			continue
+		}
+		row.Waits = append(row.Waits, planStoreID(dep.TaskID))
+	}
 	return row
 }
 
