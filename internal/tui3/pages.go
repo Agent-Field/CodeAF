@@ -280,11 +280,11 @@ type place interface {
 // silently displace home.
 type placeBase struct{}
 
-func (placeBase) counted() bool                           { return false }
-func (placeBase) open(a *app) tea.Cmd                     { return nil }
-func (placeBase) close(a *app)                            {}
+func (placeBase) counted() bool                              { return false }
+func (placeBase) open(a *app) tea.Cmd                        { return nil }
+func (placeBase) close(a *app)                               {}
 func (placeBase) tick(a *app, now time.Time) (bool, tea.Cmd) { return false, nil }
-func (placeBase) body(a *app, width, room int) []placeRow { return nil }
+func (placeBase) body(a *app, width, room int) []placeRow    { return nil }
 
 // remote is NOTHING TO SAY, which is the right default in both directions: a
 // place on a local session has no other machine to name, and a place whose
@@ -298,21 +298,21 @@ func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
 func (placeBase) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
 	return nil, nil, 0, 0, false
 }
-func (placeBase) stops(a *app) []int                      { return nil }
-func (placeBase) cursorRow(a *app, rows []placeRow) int   { return -1 }
-func (placeBase) rowID(a *app) string                     { return "" }
-func (placeBase) enter(a *app) tea.Cmd                    { return nil }
-func (placeBase) verbs(a *app) []verb                     { return nil }
-func (placeBase) alt(a *app, letter rune) bool            { return false }
+func (placeBase) stops(a *app) []int                        { return nil }
+func (placeBase) cursorRow(a *app, rows []placeRow) int     { return -1 }
+func (placeBase) rowID(a *app) string                       { return "" }
+func (placeBase) enter(a *app) tea.Cmd                      { return nil }
+func (placeBase) verbs(a *app) []verb                       { return nil }
+func (placeBase) alt(a *app, letter rune) bool              { return false }
 func (placeBase) window(a *app, key string) (bool, tea.Cmd) { return false, nil }
-func (placeBase) note(a *app, width int) []string         { return nil }
-func (placeBase) resting(a *app) string                   { return "" }
-func (placeBase) changed(a *app, since time.Time) int     { return 0 }
-func (placeBase) summary(a *app) string                   { return "" }
-func (placeBase) press(a *app, y int) (tea.Cmd, bool)     { return nil, false }
-func (placeBase) hover(a *app, y int) bool                { return false }
-func (placeBase) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
-func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return nil }
+func (placeBase) note(a *app, width int) []string           { return nil }
+func (placeBase) resting(a *app) string                     { return "" }
+func (placeBase) changed(a *app, since time.Time) int       { return 0 }
+func (placeBase) summary(a *app) string                     { return "" }
+func (placeBase) press(a *app, y int) (tea.Cmd, bool)       { return nil, false }
+func (placeBase) hover(a *app, y int) bool                  { return false }
+func (placeBase) wheel(a *app, delta int) (tea.Cmd, bool)   { return nil, false }
+func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd   { return nil }
 func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
