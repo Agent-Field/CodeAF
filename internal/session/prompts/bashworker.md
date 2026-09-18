@@ -30,6 +30,10 @@ DATABASE for the whole run: what you add, what a sibling adds, and what the
 runtime starts are the same list of tasks, and every command below reads and
 writes it.
 
+`plandb` is already on your PATH and bound to this run's store — run it plainly,
+from any directory. Never pass `--db` and never go looking for the binary; the
+one you reach is this run's own.
+
 THE TASK LIFECYCLE IS THE RUNTIME'S. It claims every task it hands out and
 completes what lands; dispatch is automatic. Never run the lifecycle verbs
 (`task claim`, `task start`, `go`, `task fail`, `task pause`, `task approve`):
