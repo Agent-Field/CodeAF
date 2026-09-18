@@ -9,7 +9,7 @@ import (
 
 // ── THE FOOT OF THE FRAME: TWO ROWS, EACH WITH ONE JOB ──────────────────────
 //
-//	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash (deepinfra):high · ◇ asks · project: ~/src/parser ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
 //	 ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home
 //
@@ -494,7 +494,7 @@ func (t seamTry) on(tier seamTier) bool {
 // seamPieces is everything the identity cluster can be made of, gathered once
 // per frame so the ladder below is only ever choosing between them.
 type seamPieces struct {
-	host, name, model, rung, gate string
+	host, name, model, rung, gate, project string
 	// rider is the WHOLE rider — ` (relace)`, ` (parasail · rescued)`, or a
 	// rescue's own ` · slow · trying coreweave…` — and fit is the door that
 	// answers it for a given room, or says nothing ([app.modelRiderAt]). The
@@ -527,7 +527,8 @@ func (a *app) seamPieces(width int) seamPieces {
 	// AND A PINNED LANE RIDES THE ID AS `@lane` ([app.modelWord]), which is the
 	// one place the pin is written on the chrome: the status row and the phone
 	// deck take the same word from the same function.
-	pieces := seamPieces{host: a.host, model: a.modelWord()}
+	pieces := seamPieces{host: a.host, model: a.modelWord(),
+		project: a.hostedPath(a.placeWord(tildePath(a.workspace, a.tilde)))}
 	if pieces.model != "" {
 		// A rung with no model beside it has nothing to be about, and the ladder
 		// it belongs to is reached by name (`/effort`) rather than from a cell
@@ -652,6 +653,9 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 		return "", none, none, none, false
 	}
 	named, dial, chip := seamSpans(head, model, rider, rung, gate)
+	if model != "" {
+		cluster, _ = seamWithProject(cluster, p.project, room)
+	}
 	return cluster, named, dial, chip, true
 }
 

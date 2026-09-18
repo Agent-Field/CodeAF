@@ -4,6 +4,7 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "Home’s `project: <path>` indicator moves from the right edge to a middle-dot-separated field after approvals on the left. Conversation seams show their current workspace in the same position; only home cycles the destination. Long paths truncate on the right and the field yields to controls and telemetry on narrow frames. opt+a already opens the newest pending question and opt+p toggles the folder preview, so approvals stays on opt+y and projects on opt+w."
   - "Home’s project cycle rebuilt its order around the current pin, trapping opt+w and seam clicks between two destinations. Both now walk the projects panel’s stable order, including standing-only projects, and share a selection that survives starting a conversation and returning home for the lifetime of the window. The duplicate `next conversation opens in …` footer message is removed; the seam alone names the project."
   - "A needs-you description with a thread-title line could lose its answer buttons when the home field had few rows. The selected description now uses the available body height, so its answers remain visible on a quiet home."
   - "Home's recent-conversation and running-work panels are now named `threads` and `tasks`, with bare headings. Tasks combine live work and root tasks begun or finished in the last 24 hours, ordered newest first; selecting a task opens that task's page."

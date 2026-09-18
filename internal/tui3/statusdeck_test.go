@@ -317,7 +317,7 @@ func TestTheWideStatusRowIsByteForByteWhatItIs(t *testing.T) {
 	a.width = 120
 	a.touch()
 
-	head := "─ deepseek-v4-flash · chat-v3-task* "
+	head := "─ deepseek-v4-flash · project: ~/src/codeaf "
 	tail := "    $0.31   24k/200k · 12%   idle ─"
 	want := head + strings.Repeat("─", 120-ansi.StringWidth(head)-ansi.StringWidth(tail)) + tail
 	if got := plain(a.legend(120)); got != want {

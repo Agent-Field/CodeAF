@@ -295,7 +295,7 @@ func TestHomesRuleShortensTheProjectAfterItsRoot(t *testing.T) {
 	a.target.where = "/tmp/" + strings.Repeat("nested/", 20)
 	narrow, drew := a.targetLegend(80, a.pal)
 	stripped := ansi.Strip(narrow)
-	if !drew || !strings.HasPrefix(stripped, "─ "+modelBase(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.HasSuffix(stripped, "… ─") {
+	if !drew || !strings.HasPrefix(stripped, "─ "+modelBase(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.Contains(stripped, "… ─") {
 		t.Fatalf("the model or project root was lost: %q", stripped)
 	}
 }

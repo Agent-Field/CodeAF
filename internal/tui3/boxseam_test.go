@@ -234,15 +234,15 @@ func TestThePinsRideOntoTheConversationAndTheGateIsSpent(t *testing.T) {
 // ── 4. the ladder ───────────────────────────────────────────────────────────
 
 // A long project yields its tail before the controls, and the project door
-// follows its new position on the right of the actual rendered line.
-func TestTheDraftRuleStartsWithTheModelAndEndsWithTheProject(t *testing.T) {
+// follows its position directly after approvals on the rendered line.
+func TestTheDraftRuleKeepsTheProjectBesideApprovals(t *testing.T) {
 	_, a := drafting(t)
 	a.showPage(pageHome)
 	a.model = "moonshotai/kimi-k3"
 	a.target.where = "/tmp/landing-test"
 	line, drew := a.targetLegend(120, a.pal)
 	text := ansi.Strip(line)
-	if !drew || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
+	if !drew || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.Contains(text, a.targetApprovalChip()+" · project: /tmp/landing-test ─") {
 		t.Fatalf("the draft seam has the wrong order: %q", text)
 	}
 	if a.targetModelSpan.from != 2 || a.targetFolderSpan.from <= a.targetApprovalSpan.to {
@@ -254,7 +254,7 @@ func TestTheDraftRuleStartsWithTheModelAndEndsWithTheProject(t *testing.T) {
 	a.target.where = "/tmp/" + strings.Repeat("long-project/", 12)
 	line, drew = a.targetLegend(80, a.pal)
 	text = ansi.Strip(line)
-	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.Contains(text, "project: /tmp/") || !strings.HasSuffix(text, "… ─") {
+	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.Contains(text, "project: /tmp/") || !strings.Contains(text, "… ─") {
 		t.Fatalf("the long project displaced controls or lost its root: %q", text)
 	}
 	for width := 1; width <= 120; width++ {
@@ -262,6 +262,32 @@ func TestTheDraftRuleStartsWithTheModelAndEndsWithTheProject(t *testing.T) {
 		if ansi.StringWidth(line) > width {
 			t.Fatalf("at %d cells the seam overflowed: %q", width, ansi.Strip(line))
 		}
+	}
+}
+
+// A conversation names its own workspace in the same position as home's
+// draft destination. A pin for the next conversation must not relabel this one.
+func TestConversationProjectFollowsApprovalsOnTheSeam(t *testing.T) {
+	_, a := gated(t)
+	a.tilde, a.workspace = "/home/person", "/home/person/projects/parser"
+	a.target.where = "/tmp/next-project"
+	text := ansi.Strip(a.legend(240))
+	want := a.approvalChipText() + " · project: ~/projects/parser"
+	if !strings.Contains(text, want) || strings.Contains(text, "next-project") {
+		t.Fatalf("conversation seam does not name its own project after approvals: %q", text)
+	}
+	for width := 1; width <= 240; width++ {
+		line := ansi.Strip(a.legend(width))
+		if ansi.StringWidth(line) > width {
+			t.Fatalf("at %d cells the conversation seam overflowed: %q", width, line)
+		}
+		if strings.Contains(line, targetProjectLead) && !strings.Contains(line, targetProjectLead+"~/") {
+			t.Fatalf("at %d cells the project lost its root: %q", width, line)
+		}
+	}
+	a.workspace = ""
+	if text := ansi.Strip(a.legend(240)); strings.Contains(text, targetProjectLead) {
+		t.Fatalf("unknown project left a label behind: %q", text)
 	}
 }
 

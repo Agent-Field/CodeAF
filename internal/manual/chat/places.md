@@ -192,7 +192,7 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
+─ glm-5.3-flash:auto · ◇ asks · project: ~/src/parser
 › type to search or start something new
 alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
 ```
@@ -200,8 +200,9 @@ alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
 At the left it says **what model** answers, then a colon and **how hard it thinks**
 (the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
-on home and in conversations. At the far right, `project: <path>` names where the
-next conversation opens; long paths truncate on the right. The bottom row names the
+on home and in conversations. After approvals, ` · project: <path>` names where the
+next conversation opens; in a conversation it names that conversation's workspace.
+Long paths truncate on the right, and the field disappears if there is no room. The bottom row names the
 available project, effort and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
@@ -228,7 +229,7 @@ this process was started with it.
 
 **The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
 draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
-the model starts the seam, and the project sits at its far right. A place with something to say about its page — `nothing matches`
+the model starts the seam, and the project follows approvals on the left. A place with something to say about its page — `nothing matches`
 on tasks when a filter emptied it, a receipt on memory, the "this session is on another
 machine" line over `--host` — says it on its rule, where the box's rule would have been.
 

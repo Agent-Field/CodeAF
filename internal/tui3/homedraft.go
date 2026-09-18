@@ -10,9 +10,9 @@ import (
 // ── THE TARGET — the box at home is a draft for the conversation it opens ────
 //
 // Home and conversations start their seams with the same model, effort and
-// approvals. Home names the destination separately at the far right:
+// approvals, followed by the project in the same dotted cluster:
 //
-//	─ glm-5.3-flash:auto · ◇ asks ───── project: ~/src/parser ─
+//	─ glm-5.3-flash:auto · ◇ asks · project: ~/src/parser ─────
 //	 › type to search or start something new
 //
 // The project stays a path, so two checkouts with the same name remain
@@ -115,7 +115,7 @@ func (a *app) targetPickShowing() bool { return a.at(pageHome) && a.target.pick.
 // The sentences home's rule says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// targetProjectLead names the draft destination on the seam's right.
+	// targetProjectLead names the workspace after approvals on either seam.
 	targetProjectLead = "project: "
 	// The draft's hints name project, effort and approval controls. The model's
 	// command is `/model`, so it spends no extra shortcut on the foot.
@@ -184,9 +184,9 @@ func (a *app) targetProject() string {
 	return a.hostedPath(a.placeWord(tildePath(a.targetWhere(), a.tilde)))
 }
 
-// targetLegend starts with the model and keeps the project at the far right.
-// A long project path is cut on the right before any control is given up.
-// Spans are recorded from the rendered line so the moved project stays a door.
+// targetLegend keeps model, effort, approvals and project together at the
+// left. The project uses the remaining room and gives up its right end first.
+// Its click span is measured from that same layout, so it follows the text.
 func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	a.clearTargetSpans()
 	if width < 1 {
@@ -195,29 +195,16 @@ func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	if note := a.placeNoteLegend(width); note != "" {
 		return a.draftNoteRule(width, pal, note)
 	}
-	project := a.targetProject()
-	right, minimum := "", ""
-	if project != "" {
-		right = targetProjectLead + project
-		minimum = targetProjectLead + glyphMore
-	}
-	left, model, rung, gate := a.draftSeamLeft(legendRoom(width, minimum))
-	if right != "" {
-		room := width - 5
-		if left != "" {
-			room = legendRoom(width, "") - ansi.StringWidth(left) - 3
-		}
-		right = fit(right, max(0, room))
-	}
-	line, at, ok := a.legendLinePainted(left, right, pal.dim(right), width, a.draftSeamPaint(pal, model, rung, gate))
+	room := legendRoom(width, "")
+	left, model, rung, gate := a.draftSeamLeft(room)
+	left, project := seamWithProject(left, a.targetProject(), room)
+	line, ok := a.legendLine(left, "", width, a.draftSeamPaint(pal, model, rung, gate))
 	if !ok {
 		return "", false
 	}
 	a.targetModelSpan = shiftIntoBorder(model)
 	a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
-	if strings.HasPrefix(right, targetProjectLead) && ansi.StringWidth(right) > ansi.StringWidth(targetProjectLead) {
-		a.targetFolderSpan = hudSpan{from: at + ansi.StringWidth(targetProjectLead), to: at + ansi.StringWidth(right)}
-	}
+	a.targetFolderSpan = shiftIntoBorder(project)
 	return line, true
 }
 

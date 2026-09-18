@@ -1232,7 +1232,7 @@ quoted back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
+ ─ glm-5.3-flash:auto · ◇ asks · project: ~/codeaf
  › pricing
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · ctrl+v effort · alt+y approvals · esc clear
 ```
@@ -1241,8 +1241,8 @@ quoted back — sitting directly above the box you are typing into.
 fresh conversation and sends what you typed, however many matches are on screen.
 
 **Where it opens is on the rule above the box, and `enter` honours it.** That line reads
-`glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`: the model, effort and approvals
-start at the left, and the project the conversation will open in sits at the far right.
+`glm-5.3-flash:auto · ◇ asks · project: ~/src/parser`: the model, effort and approvals
+start at the left, followed by ` · project: <path>` naming where the conversation will open.
 The effort word follows a colon with no badge. A long project path is cut on the right.
 With nothing pinned the folder **follows the row your cursor is on** — walk onto another
 project's row and the rule re-points — and with nothing under the cursor it is this window's
@@ -1352,8 +1352,9 @@ files are still there, and the conversation you open shows them.
 ## Change the model before starting — /model on home, the seam above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
-at the left: `glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`.
-The project is right-aligned, and a long project path is truncated at its right end.
+at the left: `glm-5.3-flash:auto · ◇ asks · project: ~/src/parser`.
+The project follows approvals on the left, separated by a middle dot. A long path
+truncates at its right end before the project field disappears on narrow frames.
 With nothing pinned that is this window's own model. Two doors change it, and they are the
 same door:
 

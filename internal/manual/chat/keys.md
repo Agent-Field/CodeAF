@@ -2227,10 +2227,10 @@ readings of what you type: a search of everything home shows, or the first messa
 new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
 promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
 it says what the box is a draft *for*:
-`─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`
+`─ glm-5.3-flash:auto · ◇ asks · project: ~/codeaf`
 
 — the model, a colon and effort, then approvals at the left; the project the next
-conversation opens in at the far right. The arrow and effort badge are gone. A long
+conversation opens in follows approvals, separated by a middle dot. The arrow and effort badge are gone. A long
 project path keeps its root and truncates on the right. The chords that change them are on **the line
 under the box**, with home's own keys, because the lowest line is for keys on home as in a
 conversation: `alt+w project` walks all projects in the projects panel's order, `ctrl+v effort`
@@ -2242,6 +2242,8 @@ lifetime of this window; the seam alone shows it, with no footer announcement.
 does. The model is always bold and bright cyan on both home's and a conversation's seam.
 `alt+k chats` opens the conversation switcher and is absent when there is nowhere to go.
 **On a Mac these clauses read `opt+w project · ctrl+v effort · opt+y approvals · opt+k chats`.**
+`opt+a` remains the newest pending question's shortcut, and `opt+p` remains the
+folder browser preview toggle, so they do not replace the approvals or project keys.
 
 With all controls available the resting foot is
 `alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.

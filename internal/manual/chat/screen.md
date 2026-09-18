@@ -66,8 +66,11 @@ naming the four (and the one you stand in, when it is off the bar), a dim rule, 
 the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** Its seam starts with the model, a colon and
-its effort word, then approvals: `glm-5.3-flash:auto · ◇ asks`. The project is at the
-far right: `project: ~/codeaf`, truncated on the right when necessary. The model stays
+its effort word, then approvals and the project:
+`glm-5.3-flash:auto · ◇ asks · project: ~/codeaf`. Conversation seams use the same
+order, naming the current workspace. Home's project is clickable to cycle the draft
+destination; the conversation's is a reading. Paths truncate on the right, and the
+project field disappears if the controls and telemetry leave too little room. The model stays
 bold and bright cyan on home and in conversations, and the effort has no badge.
 The box says `› type to search or start something new`. Its bottom row carries
 `alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`
@@ -670,7 +673,7 @@ answering and where** on the left, and **the numbers** — the bill, the meter, 
 word — on the right, like the legend on a fieldset:
 
 ```
-─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks · project: ~/src/parser ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 ```
 
 **The conversation's name is not on this line.** It was, from 2026-09-09 to 2026-09-17,
@@ -1326,7 +1329,7 @@ Under 60 columns, eight things change shape:
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
    hint line is drawn instead of the bar. The rule over the box still says where the next
-   conversation goes, with the model and effort first and `project: <path>` on the right.
+   conversation goes, with model and effort first, then approvals and ` · project: <path>`.
    The path truncates on the right, and controls give way whole on narrow frames. No arrow
    or `new conversation in` lead is drawn. The phone's action bar owns the keys.
 

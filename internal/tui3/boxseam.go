@@ -17,18 +17,18 @@ import (
 // over it, in the same shape, with the same three cells and the same three
 // doors on them:
 //
-//	─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
+//	─ glm-5.3-flash (deepinfra):high · ◇ asks · project: ~/src/parser ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
 //	 › what changed in the relay this week
 //
-//	─ glm-5.3-flash: auto · ◇ asks ───────────────── project: ~/src/parser ─
+//	─ glm-5.3-flash:auto · ◇ asks · project: ~/src/parser ─────────────────
 //	 › type to search or start something new
 //
 // The first is a conversation's seam (foot.go's THE SEAM IS WHAT ANSWERS).
 // The second is the rule over the box on home — the draft for a conversation
 // that does not exist yet, and the one box on a place, because only home
 // starts things (pages.go's [place.box]). Both begin with WHAT answers,
-// HOW HARD it thinks, and WHAT IT MAY RUN WITHOUT ASKING. Home puts WHERE
-// it goes at the right. The model is a door
+// HOW HARD it thinks, WHAT IT MAY RUN WITHOUT ASKING, and WHERE it runs.
+// Home cycles the draft's project; a conversation names its workspace. The model is a door
 // onto the model list, the rung walks the thinking ladder (`ctrl+v`, or a
 // press), and the gate walks the approvals wheel (`alt+y`, or a press). One
 // shape, learned once.
@@ -378,14 +378,14 @@ func (a *app) placeNoteLegend(width int) string {
 	return strings.Join(parts, railSep)
 }
 
-// draftTry is one rung of the draft's ladder: which cells stand beside the
-// project on the right.
+// draftTry is one rung of the draft's ladder: which controls fit before the
+// project is appended.
 type draftTry struct {
 	model, rung, gate bool
 }
 
 // draftLadder gives up effort before approvals and the model last. The
-// project is laid out independently at the right by [app.targetLegend].
+// project takes the remaining room after them in [app.targetLegend].
 var draftLadder = []draftTry{
 	{true, true, true},
 	{true, false, true},
@@ -401,7 +401,7 @@ func (a *app) draftPieces() seamPieces {
 	}
 }
 
-// draftSeamLeft fits the three controls into the space left by the project.
+// draftSeamLeft fits the three controls before the project takes its space.
 func (a *app) draftSeamLeft(room int) (string, hudSpan, hudSpan, hudSpan) {
 	pieces := a.draftPieces()
 	for _, try := range draftLadder {

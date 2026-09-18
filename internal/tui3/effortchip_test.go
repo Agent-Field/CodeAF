@@ -211,7 +211,7 @@ func TestEffortAutoPutsTheCellBackToAuto(t *testing.T) {
 func TestASessionWithNoDialDrawsNoRung(t *testing.T) {
 	_, a := wired(nil)
 	a.width, a.height = 120, 24
-	if line := seamLine(t, a); strings.Contains(line, seamEffortJoin) {
+	if line := seamLine(t, a); strings.Contains(line, a.modelWord()+seamEffortJoin) {
 		t.Fatalf("a session with no dial drew a rung: %q", line)
 	}
 	if a.seamEffortSpan.pressable() {
