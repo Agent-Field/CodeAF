@@ -75,3 +75,25 @@ build, with a 45-minute wall and the same model on both arms.
   run's own CLI and the process environment is never touched
   (`internal/session/plandb_plan.go` `planBashPrefix`, armed in
   `internal/session/bashbelt.go`).
+
+## Reruns after wave 7
+
+*2026-09-17. The same tasks as the corpus runs above, rerun after the fix named
+beside each one — the same pinned model on both arms, the same pinned base
+commit, and the same 45-minute wall.*
+
+- **cattrs, partial structuring recovery** — **PASS** after the work-seat
+  effort fix: 93 calls, reasoning tokens 43,896 → 18,018, completion tokens
+  69,618 → 39,353, prompt tokens 4.70M → 3.33M, and wall 20m → 14m. THE
+  DOLLARS ARE NOT COMPARABLE ACROSS THESE TWO RUNS — different serving
+  providers and different cache rates — so only the calls, the tokens and the
+  wall are read beside each other, and the cost is not.
+- **awilix, async container initialization** — **23/24** after the parent wake:
+  8m for $0.19, against 23/24 in 37m for $0.33 before it. The root integrates
+  its children's landings now rather than being closed on them, which is where
+  the 29 minutes went. The one case still missed is `scope.initialize()`
+  without a parent initialize.
+- **bandit, interprocedural taint** — after the PATH fix the plan is written to
+  the run's own store (seven tasks), where before it went to a store the run
+  never reads. The run still ended early: a reply with no action ended a task,
+  and the fix for that is in flight.
