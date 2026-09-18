@@ -137,7 +137,7 @@ func classify(method string) callClass {
 	switch method {
 	case MethodPing,
 		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
-		MethodTranscript, MethodEarlier, MethodRewindPoints,
+		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodStandingItems, MethodStandingWatch,
