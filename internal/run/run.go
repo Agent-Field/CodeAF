@@ -608,7 +608,7 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 			// completeTree with the last report it gave; every other parent is
 			// closed here, because the store leaves a held composite open.
 			if task.ID != rootID {
-				s.closeAtCap(tasks, task)
+				s.closeAtCap(task)
 			}
 			continue
 		}
@@ -625,18 +625,20 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 }
 
 // launchWaits starts the worker of a task that parked itself with `plandb
-// wait`, once something it waited on has moved. The task called `plandb wait`;
-// the store released its claim and left it open with the moment it parked
-// ([Task.WaitedAt]), and the park flag ([Task.Waiting]) keeps it off the
-// ordinary ready frontier — so this is the one road that brings it back. When a
-// dependency or a child of it has changed since that moment ([Store.Changed]),
-// its worker is started again with a clause naming what changed, because the
-// change is the whole reason it is running again. A task whose dependency moved
-// without landing is left parked: a hard dependency that is not done is still a
-// block, and its own landing will move it. THE PARK FLAG IS CLEARED IN THE STORE
-// FIRST, so the task comes back to life through the store's own write and a
-// launch this pass cannot make — no slot, another writer took it — is made on a
-// later one.
+// wait` once ITS WAIT IS OVER — the one road that brings it back, because the
+// park flag ([Task.Waiting]) keeps the task off the ordinary ready frontier.
+//
+// A PARKED TASK WAKES ONCE, WHEN ITS WAIT IS OVER, and [waitMoved] is the one
+// definition of what that means: nothing it waited on is open any more (every
+// child terminal, every dependency done), or a child or dependency ended failed
+// or cancelled since it parked so the parent can re-plan at once. A child being
+// claimed, started or noted while a sibling still runs is not a reason, which is
+// what keying the wake on [Store.Changed] alone cost: a launch per move, each a
+// model call on the most expensive seat to read a plan that had not changed.
+//
+// THE PARK FLAG IS CLEARED IN THE STORE FIRST, so the task comes back to life
+// through the store's own write and a launch this pass cannot make — no slot,
+// another writer took it — is made on a later one.
 func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 	if s.limitHit {
 		return
@@ -671,16 +673,47 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 			continue
 		}
 		if task.Composite {
-			s.reported[task.ID] = childIDs(tasks, task.ID)
+			// A WAIT RELAUNCH OF A COMPOSITE IS A WAKE AND IS COUNTED AS ONE:
+			// it fires on the same fact [launchWakes] fires on — the children
+			// landing — so it spends the same wake budget, and the cap and the
+			// held-parent bookkeeping cannot disagree about how many times the
+			// coordinator has been run. WHAT IT RECORDS AS REPORTED IS THE CHILD
+			// SUBSET IT NAMES, not every child: a wake on one child's failure
+			// leaves the siblings still running unreported, so the parent is
+			// woken again when they land, while a wake when the whole set has
+			// settled records the whole set.
+			s.wakes[task.ID]++
+			seen := s.reported[task.ID]
+			if seen == nil {
+				seen = map[string]bool{}
+				s.reported[task.ID] = seen
+			}
+			for _, movedTask := range moved {
+				if movedTask.ParentID == task.ID {
+					seen[movedTask.ID] = true
+				}
+			}
 		}
 		s.launch(ctx, *woken, waitClause(moved))
 	}
 }
 
-// waitMoved answers the tasks a parked task waited on that have changed since
-// it parked: its dependencies and its children, filtered to what Store.Changed
-// names from the moment it parked. The order is the store's own admission
-// order, so the clause reads the same way twice.
+// waitMoved answers what a parked task's wake should carry, and nil when it
+// should stay parked. THE LAW IS THAT A PARKED TASK WAKES ONCE, WHEN ITS WAIT
+// IS OVER. "Over" is one of two facts and nothing else:
+//
+//   - nothing it waited on is open any more: every child of it is terminal and
+//     every dependency is done ([Store.OpenWaits] empty). The clause then names
+//     the whole settled set — each one's title, status and result — which is
+//     what the parent integrates; or
+//   - a child or a dependency ended failed or cancelled since it parked, so the
+//     parent can re-plan at once rather than wait for the siblings that are
+//     still running. The clause names that one.
+//
+// A child merely being claimed, started, noted or otherwise touched while a
+// sibling still runs is NOT a reason, and neither is a dependency moving
+// without landing: THE PARK IS A WAIT ON SOMETHING, and it is over when that
+// something has finished, not when it has stirred.
 func waitMoved(tasks []*plandb.Task, task *plandb.Task, store *plandb.Store) []*plandb.Task {
 	waited := map[string]bool{}
 	for _, dep := range task.Dependencies {
@@ -698,12 +731,31 @@ func waitMoved(tasks []*plandb.Task, task *plandb.Task, store *plandb.Store) []*
 	for _, candidate := range tasks {
 		all[candidate.ID] = candidate
 	}
+	// THE WAIT IS OVER WHEN NOTHING IT WAITED ON IS OPEN. The clause names the
+	// whole set, in the store's own admission order, so the parent reads every
+	// child and dependency that settled and not only the last one to land.
+	if len(store.OpenWaits(task.ID)) == 0 {
+		var moved []*plandb.Task
+		for _, candidate := range tasks {
+			if waited[candidate.ID] {
+				moved = append(moved, candidate)
+			}
+		}
+		return moved
+	}
+	// OTHERWISE ONLY A FAILURE EARNS THE EARLY RETURN: a child or dependency
+	// that ended failed or cancelled since the park, and has not been reported
+	// to the worker yet.
 	var moved []*plandb.Task
 	for _, id := range store.Changed(task.WaitedAt) {
-		if !waited[id] {
+		candidate := all[id]
+		if candidate == nil || !waited[id] {
 			continue
 		}
-		if candidate, ok := all[id]; ok {
+		if !candidate.UpdatedAt.After(task.WaitedAt) {
+			continue
+		}
+		if candidate.Status == plandb.StatusFailed || candidate.Status == plandb.StatusCancelled {
 			moved = append(moved, candidate)
 		}
 	}
@@ -711,11 +763,14 @@ func waitMoved(tasks []*plandb.Task, task *plandb.Task, store *plandb.Store) []*
 }
 
 // waitClause is the sentence a woken parked task opens on: what it waited on,
-// and what each of those has done since. It is the wait's other half — a worker
-// parked because it could not go on, and this is the fact that lets it.
+// and what each of those has done. It is the wait's other half — a worker
+// parked because it could not go on, and this names the finished work that lets
+// it. THE WAIT'S LAW IS A PARKED TASK WAKES ONCE, WHEN ITS WAIT IS OVER
+// ([waitMoved]); the clause carries every task that settled, not only the last
+// one to land, so a parent woken on the last of three children reads all three.
 func waitClause(moved []*plandb.Task) string {
 	var b strings.Builder
-	b.WriteString("something you waited on has moved, so your parked task is running again: ")
+	b.WriteString("what you waited on has finished, so your parked task is running again: ")
 	for i, task := range moved {
 		if i > 0 {
 			b.WriteString("; ")
@@ -831,17 +886,27 @@ func (s *Supervisor) waitsForWake(id string) bool {
 // closeAtCap ends a composite the run has woken its fill of times, the way the
 // store's own auto-completion would have written it: done when every child
 // finished, failed when one did not. It is reached only for a parent this run is
-// holding open, since the store leaves a held composite alone — and a parent the
-// run holds open carries NO RESULT IN THE STORE, because every return of its
-// worker was a wait that wrote nothing. What is written here is therefore the
-// parent's own last report, the one absorb kept: the cap is the run's decision to
-// stop waking it, not a reason to throw away what it said.
-func (s *Supervisor) closeAtCap(tasks []*plandb.Task, task plandb.Task) {
-	allDone := true
-	for _, child := range tasks {
-		if child.ParentID == task.ID && child.Status != plandb.StatusDone {
+// holding open, since the store leaves a held composite alone.
+//
+// A COMPOSITE WHOSE CHILDREN ALL LANDED DONE IS NEVER CLOSED FAILED. The truth
+// is read fresh from the store — not from the wake sweep's snapshot, which a
+// child may have landed past — so the cap can only close the composite the way
+// the store's own auto-completion would: done, with the parent's own last report
+// when the run kept one (a held parent carries no result in the store, because
+// every return of its worker was a wait that wrote nothing), and failed only
+// for a child that did not finish, named in the reason.
+func (s *Supervisor) closeAtCap(task plandb.Task) {
+	fresh := s.store.Tasks()
+	allDone, offender := true, (*plandb.Task)(nil)
+	for _, child := range fresh {
+		if child.ParentID != task.ID {
+			continue
+		}
+		if child.Status != plandb.StatusDone {
 			allDone = false
-			break
+			if offender == nil {
+				offender = child
+			}
 		}
 	}
 	if allDone {
@@ -852,7 +917,11 @@ func (s *Supervisor) closeAtCap(tasks []*plandb.Task, task plandb.Task) {
 		_, _ = s.store.Done(task.ID, task.ID, result, nil, nil)
 		return
 	}
-	_, _ = s.store.Fail(task.ID, task.ID, "the wake cap was reached with a child that did not finish")
+	reason := "the wake cap was reached with a child that did not finish"
+	if offender != nil {
+		reason = fmt.Sprintf("the wake cap was reached with child %q %s", offender.ID, offender.Status)
+	}
+	_, _ = s.store.Fail(task.ID, task.ID, reason)
 }
 
 // wakeClause is the resume clause a woken parent's worker opens with: what every
