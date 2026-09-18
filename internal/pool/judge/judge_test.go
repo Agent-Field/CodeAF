@@ -183,6 +183,22 @@ func TestPickExcludesCrewModelsAndTheWorkerVendor(t *testing.T) {
 	}
 }
 
+// TestCandidatesExcludesTheWorkerVendorWhenTheSeatCarriesTheAliasMarker pins
+// the exclusion through the spelling a client routes by: a seat written
+// `~vendor/worker` holds the same vendor `vendor`, and a row of that vendor is
+// no candidate whatever marker the seat's spelling carries.
+func TestCandidatesExcludesTheWorkerVendorWhenTheSeatCarriesTheAliasMarker(t *testing.T) {
+	models := []catalog.Model{
+		{ID: "vendor/cheap", PromptPrice: 0.1, CompletionPrice: 0.1, CodingIndex: 90, Parameters: []string{"tools"}},
+		{ID: "other/judge", PromptPrice: 0.5, CompletionPrice: 0.5, CodingIndex: 80, Parameters: []string{"tools"}},
+	}
+	crew := map[Role]string{RoleWorker: "~vendor/worker"}
+	got := Candidates(models, crew, DefaultFloor)
+	if len(got) != 1 || got[0] != "other/judge" {
+		t.Fatalf("Candidates named %v, want only other/judge — a tilde-spelled seat is still vendor's own", got)
+	}
+}
+
 func TestPickHonoursTheFloorAndSkipsUnpricedRows(t *testing.T) {
 	models := []catalog.Model{
 		{ID: "a/below-floor", PromptPrice: 0.01, CompletionPrice: 0.01, CodingIndex: 40, Parameters: []string{"tools"}},
