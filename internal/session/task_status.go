@@ -520,7 +520,8 @@ func taskRunningStatus(status TaskStatus, facts TaskFacts) TaskStatus {
 func taskEndingIsFault(ending TaskEnding) bool {
 	switch ending {
 	case TaskEndingStopped, TaskEndingWire, TaskEndingUpstream, TaskEndingCircling,
-		TaskEndingBlocked, TaskEndingSteps, TaskEndingNotes, TaskEndingRefused, TaskEndingStale:
+		TaskEndingBlocked, TaskEndingSteps, TaskEndingNotes, TaskEndingRefused, TaskEndingStale,
+		TaskEndingInterrupted:
 		return false
 	}
 	return true
@@ -667,6 +668,11 @@ const (
 	taskReasonNotes    = "would not write its notes down"
 	taskReasonStale    = "its brief went stale"
 	taskReasonRefused  = "would not take a step it was asked to"
+	// taskReasonInterrupted is the reason for a node MACHINERY cut where it stood
+	// ([TaskEndingInterrupted]). It names the interruption as not a person's, which
+	// is the whole of the distinction the ending draws from
+	// [TaskEndingStopped]'s `stopped`.
+	taskReasonInterrupted = "was cut short from outside the work"
 	// taskReasonGaps and taskReasonFault are the two the ending alone cannot
 	// answer: what the check found, and what broke. Both read the landing's own
 	// report, which is the only place either sentence exists.
@@ -739,6 +745,8 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 	switch ending {
 	case TaskEndingStopped:
 		return ""
+	case TaskEndingInterrupted:
+		return taskReasonInterrupted
 	case TaskEndingWire:
 		return taskReasonWire
 	case TaskEndingUpstream:

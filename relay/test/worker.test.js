@@ -149,6 +149,21 @@ test('submit folds a batch into sheets and answers 202', async () => {
   assert.equal(e.POOL.map.get(`quota/${INSTALL}/2026-09-17`), '2');
 });
 
+test('a row on the exec or run door is accepted and folded, and a row on a door outside the four is refused naming them', async () => {
+  const e = env();
+  const body = line({ door: 'exec' }) + '\n' + line({ door: 'run' }) + '\n';
+  const res = await worker.fetch(post(body, { 'X-Codeaf-Install': INSTALL }), e);
+  assert.equal(res.status, 202);
+  assert.deepEqual(await res.json(), { accepted: 2 });
+  const cell = `sheet/${INSTALL}/2026-09-17/worker|z-ai/glm-5.3-flash|anthropic/claude-opus-5|`;
+  assert.deepEqual(JSON.parse(e.POOL.map.get(`${cell}exec|M`)), { n: 1, s: 50, s2: 2500 });
+  assert.deepEqual(JSON.parse(e.POOL.map.get(`${cell}run|M`)), { n: 1, s: 50, s2: 2500 });
+
+  const refused = await worker.fetch(post(line({ door: 'shell' }), { 'X-Codeaf-Install': INSTALL }), env());
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error, /door must be task, do, exec or run/);
+});
+
 test('submit refuses a batch past the daily quota and stores nothing', async () => {
   const e = env({ ROWS_PER_INSTALL_PER_DAY: '1' });
   const body = line() + '\n' + line() + '\n';
