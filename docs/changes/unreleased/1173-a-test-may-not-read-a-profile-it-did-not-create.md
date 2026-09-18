@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: "internal/tui3: a test may not read a profile it did not create"
-pr: 1169
+pr: 1173
 surface: [chat]
 invalidates:
   - "`newTestApp` and seventeen other helpers in `internal/tui3` built their surface with no profile directory, so every test that used one read and wrote the ONE state root `TestMain` pins for the package run and an earlier test's `setup_seen_at` decided what a later one saw — this had already hidden a red for a week (TestTheOpeningHintNamesBothDoors green in the package run, red alone, from #680). Each app-building helper now gives its app a profile of its own."
