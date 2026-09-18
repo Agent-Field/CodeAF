@@ -69,12 +69,17 @@ func SeatFor(role string) string {
 // tier always fell: the profile's row for the task's tier, and the worker row
 // beneath that.
 //
-// Only these two seats travel, because only these two are a person's to name.
-// A check rides the careful work seat ([SeatFor]); the small row a probe rides has no
-// flag on any door and is the profile's, read below.
+// Only the work and plan seats climb the ladder on their own; the check seat
+// is the door's own three way answer ([config.CheckSeat]), carried here as
+// Check: the check flag the person typed, else the plan flag they typed, else
+// empty. A check rides the careful work tier ([SeatFor]), and an EMPTY Check
+// is the door having named no check model, which falls the way an empty tier
+// always fell: the profile's careful row, the crew's checker. The small row a
+// probe rides has no flag on any door and is the profile's, read below.
 type Seats struct {
-	Work string
-	Plan string
+	Work  string
+	Plan  string
+	Check string
 }
 
 // CrewFactory is the run's WorkerFactory: it seats each task in the model its
@@ -119,6 +124,8 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 			model = seats.Plan
 		case config.ModelTierWorker:
 			model = seats.Work
+		case config.ModelTierHigh:
+			model = seats.Check
 		}
 		if model == "" {
 			model = config.TierSeatAt(profileDir, tier).Model
