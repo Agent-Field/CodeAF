@@ -2,7 +2,7 @@
 kind: changed
 title: the task rail and the task page draw a belt run's plan as a tree, and the work tab is designed
 pr: 1204
-surface: [chat]
+surface: [chat, engine]
 invalidates:
   - "A held plan row was drawn under the task it waits on, out of its own family. A row sits under the task that requested it, always; a dependency shows as `queued · waits: <task>` on the row and never moves it."
   - "The rail listed every plan task at every state. A family whose every task is done or failed folds to one line with its count; a family with running or queued work stays open, and `enter` on the folded line opens its page."
