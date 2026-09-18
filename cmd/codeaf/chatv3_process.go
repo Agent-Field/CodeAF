@@ -363,6 +363,27 @@ func (p *v3Process) takeForClose() (agents []*session.Agent, recall *history.Sto
 	return agents, recall, true
 }
 
+// warmModels seats the model warm on the profile's start-up errand tracker, so
+// [v3Process.closeAll] cancels and waits for it exactly as it does the pool
+// errands (poolindex.go's [poolErrandGoCtx]).
+//
+// A WARMER IS A WRITER, AND [guard.Go] JOINS NOTHING. The warm resolves the
+// model catalog — a network round-trip on a cold cache — and then writes the
+// picker's cache through [tui3.WriteModelCache], which resolves CODEAF_HOME AT
+// THE MOMENT IT WRITES. Started fire-and-forget, a warm that outlives the
+// conversation that asked for it lands in whichever state root is current when
+// the rows arrive: in a test, the next test's own TempDir, whose clean-up then
+// fails with `directory not empty`; on a door that reopens on another profile, a
+// directory the process no longer owns. Seating it on the tracker is what makes
+// closeAll's own promise — that nothing this process started is still writing
+// under its profile once it closes — true for this writer too. The context the
+// tracker hands the errand is what lets the warm's own wait end at the close.
+func (p *v3Process) warmModels(scope string, models *catalog.Catalog, agent *session.Agent, started string) {
+	poolErrandGoCtx(p.ProfileDir, scope, func(ctx context.Context) {
+		warmV3Models(ctx, models, agent, started)
+	})
+}
+
 // closeAll closes every conversation this process opened and then the stores
 // they shared. It is IDEMPOTENT and it is the door's defer.
 //

@@ -1,0 +1,11 @@
+---
+kind: fixed
+title: the model warm stops when the process closes
+pr: 1178
+surface: [chat, engine]
+invalidates:
+  - "The model catalog warm — the goroutine a v3 door started through `guard.Go` to learn the session model's context window and refresh `~/.codeaf/v3/models.json` — was fire-and-forget, and `guard.Go` joins nothing at shutdown. It writes the picker cache through `tui3.WriteModelCache`, which resolves `CODEAF_HOME` AT THE MOMENT IT WRITES, so a warm that outlived the process that asked for it landed in whichever state root was current when the rows finally arrived: in a package run the NEXT test's own `TempDir`, whose clean-up then failed with `unlinkat …: directory not empty`, and on a door that reopened on another profile, a directory the process no longer owned. It is now seated on the profile's start-up errand tracker (`cmd/codeaf/chatv3_process.go`'s `warmModels`, through `poolindex.go`'s `poolErrandGoCtx`) and the errand observes the tracker's context, so `v3Process.closeAll` cancels the warm's wait and joins the goroutine before it closes the conversations and the stores."
+  - "The tracker's context was previously only a `Done` signal for the errand's own bookkeeping; nothing an errand waited on read it, so a close could cancel and still block on an errand stuck in a network round-trip. The warm waits on the catalog through `Catalog.Warmed(ctx)` now, so the close ends the wait instead of racing it."
+---
+
+A warmer is a writer, and the two v3 doors — `codeaf chat` and the `codeaf engine` daemon — start one per boot conversation (`cmd/codeaf/chatv3.go`, `cmd/codeaf/engine.go`). #1124 closed this exact race for the Model Pool's start-up errands; the model warm was the one start-up writer that was never seated on the tracker, so `closeAll`'s own promise — that nothing the process started is still writing under its profile once it closes — was false for it. `cmd/codeaf/chatv3_modelswarm_test.go` holds the catalog fetch open, moves `CODEAF_HOME`, closes the process, releases the fetch, and fails if the write lands in the moved root.
