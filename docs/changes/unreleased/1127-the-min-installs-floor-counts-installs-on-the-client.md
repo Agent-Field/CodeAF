@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: The pool index's min_installs floor counts a cell's installs, not its rows
-pr: 0000
+pr: 1127
 surface: [engine]
 invalidates:
   - "`internal/pool/index` held a cell against the document's `min_installs` by its `n`, the rows, so a cell one contributor filled with nine rows passed a floor of three while a cell three contributors shared over three rows was held below it. The floor is now counted on the cell's `installs` where it carries them, falling back to `n` where it does not, which is the shape the seed carries."
