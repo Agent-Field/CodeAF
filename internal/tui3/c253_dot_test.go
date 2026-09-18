@@ -63,3 +63,21 @@ func TestPlanProgressWidthTiersAndWording(t *testing.T) {
 		t.Fatalf("failed progress = %q", failed)
 	}
 }
+
+func TestTasksWideRunRowShowsPlanProgressAtWidthTier(t *testing.T) {
+	root := session.PlanTaskRow{ID: "root", Title: "rewrite the auth flow", Status: "running", Done: 6, Running: 2, Queued: 2, Total: 10}
+	item := planItem(root, "chat", planKinOf([]session.PlanTaskRow{root}))
+	item.section = tasksRunning
+	reading := tasksReading{items: []tasksItem{item}, held: 1, now: taskFixtureNow}
+	pal := palette{}
+
+	for _, width := range []int{100, 70} {
+		t.Run(itoa(width), func(t *testing.T) {
+			text := strings.Join(reading.rows(width, pal), "\n")
+			want := planProgress(root, width, pal)
+			if !strings.Contains(text, want) {
+				t.Fatalf("wide run row at %d columns lacks progress %q:\n%s", width, want, text)
+			}
+		})
+	}
+}
