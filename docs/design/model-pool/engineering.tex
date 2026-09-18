@@ -149,16 +149,29 @@ workspace.}
 \end{figure}
 
 \code{poolGradeLanding} grades first and consults no model: \code{grade.Grade}
-runs four stages in order, stopping at the first failure, formatting over the
-changed Go files, \code{go build ./...} over the module, \code{go vet} over the
-touched packages, and \code{go test -count=1} over those same packages with the
-cache defeated. The source is \code{codeaf/grader} when the tests ran and
+runs five stages in order, stopping at the first failure. The landing itself is
+the first stage and reads the list of changed paths, not the tree: a landing
+that changed no file at all fails there with the detail \code{no landing: the
+task changed no files}, because the unchanged tree building says nothing about
+work that was never done, and the first grader, which graded that case as a
+pass, taught the pool that doing nothing is acceptable; a landing that removed a
+\code{\_test.go} file fails there by name, because deleting the suite is the
+cheapest way to make it pass; and a landing that changed files but no Go file
+answers not-ok and nothing is recorded, since this grader reads Go and a build
+of the tree it did not touch is not a grade of what it did. Then formatting over
+the changed Go files, \code{go build ./...} over the module, \code{go vet} over
+the touched packages, and \code{go test -count=1} over those same packages with
+the cache defeated. The source is \code{codeaf/grader} when the tests ran and
 passed and \code{codeaf/grader-build} when they did not finish in budget or there
 were none. The package states the absence law: no \code{go.mod} at the workspace
 root answers not-ok and nothing is recorded, because a capability that cannot
-work is absent rather than broken. \code{grade-last.json} holds the moment, the task id,
-the source word, the pass bit, the failing stage and its detail, the touched
-packages and the seconds.
+work is absent rather than broken. Every result carries \code{grade.Version},
+which moves whenever the grade of the same tree can change, so a record left by
+an older grader can be told from one left by this build.
+\code{grade-last.json} holds the moment, the task id, the source word, the pass
+bit, the failing stage and its detail, the touched packages, the seconds and the
+grader version. What the grader cannot see is a test skipped in place rather
+than deleted: it takes a path list, not a diff.
 
 \code{poolAskJudges} asks the judges. \code{judge.Candidates} lists the priced
 catalog rows that can judge the crew, none of them a seat the crew already holds,
@@ -184,7 +197,25 @@ unjudged, skipping a run whose marker is there. Every sweep call site passes an
 empty workspace, \code{poolJudgeSweep} for a resumed landing and
 \code{sweepClaim} for a row it claims, because the tree the run changed may be
 gone by then: the grade is skipped, only the judge reads, and the run is recorded
-with a judge score and no grade.
+with a judge score and no grade. The sweep draws from two durable sources. The
+first is \code{pending.jsonl}, which the three headless doors leave behind: they
+build no session graph, so the landing hook never fires for them, and each
+instead appends one JSON line \code{\{door, landing\}} through
+\code{writePendingLanding} at its tail, one \code{O\_APPEND} write, and exits
+at once with nothing waiting on a judge. The landing is the same
+\code{session.TaskLanding} the chat hook receives, with an id minted from the
+run's start in nanoseconds so no two runs share one; \code{exec} writes after
+its run returns and before its envelope, skipping a run that left nothing,
+\code{run} writes where both its JSON and prose endings pass, and \code{do}
+writes after its own bill is settled, and not at all when the run was handed to
+a resident, because that work settles in another process. The sweep claims the
+file with an atomic rename, so a concurrent appender is never torn, and
+tolerates a half-written last line. The second source is the resumed session's
+own persisted task checkpoint, read back into landings whose seats and token
+bill survived the process that produced them. The whole pass is bounded by
+\code{poolSweepBudget}, so a backlog never delays the prompt, and it is gated
+on the pool being readable and a judge-capable key being present; with no key
+the rows simply wait.
 
 \subsection{The relay}
 \label{app:relay}
