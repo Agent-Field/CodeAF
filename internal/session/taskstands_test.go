@@ -576,6 +576,44 @@ func TestAConversationInTwoPlacesIsAskedWhichOne(t *testing.T) {
 	}
 }
 
+// A PROPOSAL WITH TWO REPAIRABLE PROBLEMS SAYS BOTH AT ONCE. The contract is
+// repaired before placement, so the next proposal is the last rather than another
+// round that reveals a question the first refusal already knew how to ask.
+func TestAProposalRefusalCarriesCheckAndStandProblems(t *testing.T) {
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.mu.Lock()
+	agent.messages = append(agent.messages,
+		readCallMessage("call-a", filepath.Join(first, "shared.txt")),
+		readCallMessage("call-b", filepath.Join(second, "shared.txt")))
+	agent.mu.Unlock()
+
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "fix the crash", Summary: "s", Brief: "b",
+		Deliverable: "the fix", Acceptance: "the tests pass",
+		Checks: []string{"cd parser && go test ./..."},
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if !isError {
+		t.Fatalf("a proposal with two problems was admitted: %q", result)
+	}
+	checkAt := strings.Index(result, "checks")
+	standAt := strings.Index(result, "this conversation has been working in two places")
+	if checkAt < 0 || standAt < 0 {
+		t.Fatalf("one refusal did not carry both problems: %q", result)
+	}
+	if checkAt > standAt {
+		t.Fatalf("the refusal asks for placement before repairing its check: %q", result)
+	}
+	if !strings.Contains(result[checkAt:standAt], ". ") {
+		t.Fatalf("the two problems are not their own sentences: %q", result)
+	}
+}
+
 // A PLAIN FOLDER IS MIRRORED AND LANDS BY NAME. There is no history to branch
 // from, so the isolation a repository gets for free is made by copying — and
 // what comes home is what the node wrote and nothing else it left behind.
