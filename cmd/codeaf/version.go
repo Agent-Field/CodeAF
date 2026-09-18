@@ -33,14 +33,19 @@ func versionString() string {
 // resolvedVersion has one source with presence and session metadata, so the
 // command can never name a different build from the one those files name.
 //
-// A BINARY THAT CANNOT NAME ITS SOURCE SAYS SO. Built with a bare `go build`
-// rather than `make build` there is no revision stamped and nothing to fall
-// back on, and the bare word `dev` reads like a release name — so it is written
-// out as the absence it is, and the sentence names the target that fixes it.
+// A BINARY THAT CANNOT NAME ITS SOURCE SAYS SO, and what it says has to be the
+// real reason. A bare `go build` is NOT that reason: inside a git checkout the
+// toolchain stamps `vcs.revision` itself and [buildinfo] falls back to it, so a
+// plain build prints a full pseudo-version — measured on go1.26.5,
+// `codeaf v0.2.2-0.20260918035413-2ab365d6cb3e`. What leaves a binary with
+// nothing to name is having no VCS to read: a build from a tree that is not a
+// git checkout, an archive, a vendored copy, or `-buildvcs=false`. The bare word
+// `dev` would read like a release name, so the absence is written out — and it
+// names the condition rather than a Makefile target that is not required.
 func resolvedVersion() string {
 	stamped := buildinfo.String()
 	if buildinfo.Revision() == "" {
-		return stamped + " (no revision stamped — built without `make build`)"
+		return stamped + " (no revision stamped — built outside a git checkout)"
 	}
 	return stamped
 }

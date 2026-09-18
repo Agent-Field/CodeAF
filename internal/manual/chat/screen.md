@@ -1427,9 +1427,12 @@ build  1265feda (dirty) built 2026-08-27 13:28
 `codeaf --version`, `codeaf version` and `codeaf -v` print the same identity without
 opening a conversation, on one line, with the Go toolchain and the platform after it —
 `codeaf 1265feda (dirty) built 2026-08-27 13:28 · go1.26.5 darwin/arm64` — which is what a
-defect report needs. A binary built with a bare `go build` rather than `make build` carries
-no revision at all, and says so: `codeaf dev (no revision stamped — built without `make
-build`) · go1.26.5 darwin/arm64`. On a session opened with `--host`, `/status` names the build on
+defect report needs. A bare `go build` inside a checkout carries a revision of its
+own: the toolchain stamps it and the version reads
+`codeaf v0.2.2-0.20260918035413-2ab365d6cb3e`, a pseudo-version rather than the short
+revision `make build` writes. A binary built where there is no git checkout to read — an
+archive, a vendored copy, `-buildvcs=false` — carries no revision at all, and says so:
+`codeaf dev (no revision stamped — built outside a git checkout) · go1.26.5 darwin/arm64`. On a session opened with `--host`, `/status` names the build on
 the machine holding the conversation, not the surface machine's build.
 
 If the `codeaf` file is rebuilt while this process is still open, codeaf writes one quiet

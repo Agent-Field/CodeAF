@@ -424,12 +424,19 @@ and the moment `make build` stamps, then the Go toolchain and the platform from
 the runtime. It stays ONE line because an external harness reads it to decide
 whether codeaf is installed at all.
 And a binary that cannot name its source says so rather than wearing the bare
-word `dev` like a release name: `codeaf dev (no revision stamped — built without
-`make build`) · go1.26.5 linux/arm64`. **`debug.ReadBuildInfo` was not the
-fallback row 29 assumed it was** — the tree here embeds no `vcs.revision` at all
-under a plain `go build`, and there is no `vcs.time` read anywhere, so the
-linker stamp is the only real source and the honest thing to do about its
-absence is name it.
+word `dev` like a release name: `codeaf dev (no revision stamped — built outside
+a git checkout) · go1.26.5 linux/arm64`.
+
+CORRECTED 2026-09-18: this row said **`debug.ReadBuildInfo` was not the fallback
+row 29 assumed it was** — that the tree embeds no `vcs.revision` under a plain
+`go build`. That is not true on go1.26.5. Measured on `2ab365d6`: a plain
+`go build ./cmd/codeaf` inside the checkout embeds `vcs=git`,
+`vcs.revision=2ab365d6…`, `vcs.time` and `vcs.modified`, the module version reads
+`v0.2.2-0.20260918035413-2ab365d6cb3e`, and `--version` prints that pseudo-version
+with no linker stamp anywhere. The same build from a copy of the tree with no
+`.git` embeds no vcs rows and is the case that prints the absence. So the linker
+stamp is not the only source, and the sentence names the condition — no checkout
+to read — instead of a Makefile target.
 Test: `TestVersionNamesTheBuildAndTheMachineItWasBuiltFor`. Two smoke tests that
 asserted the whole line by equality now assert the stamped revision is its
 prefix.

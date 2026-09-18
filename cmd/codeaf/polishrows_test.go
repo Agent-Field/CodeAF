@@ -236,8 +236,18 @@ func TestVersionNamesTheBuildAndTheMachineItWasBuiltFor(t *testing.T) {
 	if !strings.Contains(printed, "no revision stamped") {
 		t.Skipf("this binary carries a stamped revision (%q), so there is no absence to check here", printed)
 	}
-	if !strings.Contains(printed, "make build") {
-		t.Errorf("%q says the revision is missing without naming what puts it there", printed)
+	// WHAT IT HAS TO NAME IS THE CONDITION, AND THIS ASSERTION USED TO DEMAND A
+	// REMEDY THAT DOES NOT WORK. It required the sentence to say `make build`,
+	// on the belief that the linker stamp was the only source of a revision.
+	// It is not: inside a checkout a plain `go build` embeds `vcs.revision` and
+	// [buildinfo] falls back to it, so a plain build prints a pseudo-version
+	// (measured on go1.26.5: `codeaf v0.2.2-0.20260918035413-2ab365d6cb3e`).
+	// And `make build` cannot rescue the case where the sentence actually
+	// appears, because its own stamp comes from `git rev-parse --short HEAD`
+	// (Makefile's BUILD_REV) and there is no checkout to ask. Both roads need
+	// one, so naming the checkout is the only honest thing the line can say.
+	if !strings.Contains(printed, "git checkout") {
+		t.Errorf("%q says the revision is missing without naming the condition that leaves it missing", printed)
 	}
 }
 
