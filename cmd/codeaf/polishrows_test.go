@@ -236,8 +236,25 @@ func TestVersionNamesTheBuildAndTheMachineItWasBuiltFor(t *testing.T) {
 	if !strings.Contains(printed, "no revision stamped") {
 		t.Skipf("this binary carries a stamped revision (%q), so there is no absence to check here", printed)
 	}
-	if !strings.Contains(printed, "make build") {
-		t.Errorf("%q says the revision is missing without naming what puts it there", printed)
+	// IT HAS TO NAME THE CONDITION, and this assertion used to demand only a
+	// remedy. It required the sentence to say `make build`, on the belief that
+	// the linker stamp was the only source of a revision. It is not: in an
+	// ordinary clone a plain `go build` embeds `vcs.revision` and [buildinfo]
+	// falls back to it, so a plain build prints a pseudo-version (measured on
+	// go1.26.5: `codeaf v0.2.2-0.20260918035413-2ab365d6cb3e`).
+	//
+	// And the condition is narrower than "not in a checkout": the toolchain
+	// wants a `.git` DIRECTORY beside go.mod. In a git worktree `.git` is a
+	// file, git answers everything, `git rev-parse --is-inside-work-tree` is
+	// true — and `go build` embeds no vcs rows, even with `-buildvcs=true`, and
+	// raises no error (measured on go1.26.5, linux/arm64 and darwin/arm64).
+	// There `make build` DOES stamp, because BUILD_REV is `git rev-parse
+	// --short HEAD`, so the line names the directory and still offers the
+	// target — conditionally, since a tree with no git at all is past helping.
+	for _, want := range []string{".git", "make build"} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("%q says the revision is missing without naming %q", printed, want)
+		}
 	}
 }
 
