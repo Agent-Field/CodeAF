@@ -754,6 +754,10 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	}
 
 	go r.reap(started)
+	// AND THE SUBTREE GETS ITS OWN BOUND. A bash job is a process group with a
+	// tree under it, and nothing else bounds what that tree may burn; the watcher
+	// cuts it when it passes its ceiling and tells the run why (jobbound.go).
+	go r.watchSubtreeBound(started)
 	return started, nil
 }
 
@@ -943,6 +947,9 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
 	// The receive happens INSIDE the goroutine: written as an argument it would
 	// be evaluated here, and the adoption would block until the process exited.
 	go func() { r.settleExit(started, <-taken.Exit()) }()
+	// The adopted process is a bash subtree like any other and gets the same
+	// bound ([jobRegistry.watchSubtreeBound]).
+	go r.watchSubtreeBound(started)
 	return started, nil
 }
 
