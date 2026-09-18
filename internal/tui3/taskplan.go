@@ -193,6 +193,13 @@ func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 			Label:     row.Title,
 			Status:    planEntryStatus(row.Status),
 			SessionID: chat,
+			// THE PARENT IS WHERE THE ROW IS DRAWN. The store's own parent puts a
+			// child under the task that requested it; a row held behind work that
+			// is not its parent is drawn under what it waits on ([planAnchor]).
+			// The tasks place's existing tree walk ([tasksTreeOf]) nests on this
+			// field, so the plan gets the tree the record already draws by
+			// answering the one field the walk reads.
+			Parent:    planAnchor(&row, kin),
 			Cost:      row.USD,
 			StartedAt: row.Started,
 			EndedAt:   row.Ended,
@@ -282,18 +289,58 @@ func planKinOf(rows []session.PlanTaskRow) planKin {
 // a person has to go and follow is not a sentence. What is left is read as the
 // rail reads a held row of its own ([app.railWaits] and task.go's
 // `waits: <title>`).
+// planAnchor is the row a plan row hangs under: the parent the store gave it,
+// and, for a row held `pending` behind work that is not its parent, the task it
+// waits on. It is the id the tree walk nests on ([planItem]) and the row
+// [planWaits] names.
+//
+// A HARD DEPENDENCY OUTRANKS THE PARENT WHEN THE TWO DIFFER, because it is the
+// relation a person cannot already read off the tree: the parent is a containing
+// row, while a dependency is the piece of work actually holding this one. Only a
+// dependency that is on the page and still open can hold anything, so a
+// dependency this page has never heard of, one with no words on it, and one that
+// has landed are all skipped and the row falls back to its parent.
+func planAnchor(row *session.PlanTaskRow, kin planKin) string {
+	if row == nil {
+		return ""
+	}
+	parent := strings.TrimSpace(row.Parent)
+	if strings.TrimSpace(row.Status) == "pending" {
+		for _, id := range row.Waits {
+			id = strings.TrimSpace(id)
+			if id == "" || id == parent {
+				continue
+			}
+			dep := kin[id]
+			if dep == nil || strings.TrimSpace(dep.Title) == "" {
+				continue
+			}
+			if planStateWord(dep.Status) == "done" {
+				continue
+			}
+			return id
+		}
+	}
+	return parent
+}
+
+// planWaits is the title a held plan row names after `queued · waits:`, and ""
+// for a row that names none. A row is held behind named work only when the store
+// says `pending`; the work it hangs under is [planAnchor]'s answer, and it names
+// nothing when that row has no title or has already landed — the bare word
+// `queued`, which is the honest reading of a hold this page cannot name.
 func planWaits(row *session.PlanTaskRow, kin planKin) string {
 	if row == nil || strings.TrimSpace(row.Status) != "pending" {
 		return ""
 	}
-	parent := kin[strings.TrimSpace(row.Parent)]
-	if parent == nil || strings.TrimSpace(parent.Title) == "" {
+	anchor := kin[planAnchor(row, kin)]
+	if anchor == nil || strings.TrimSpace(anchor.Title) == "" {
 		return ""
 	}
-	if planStateWord(parent.Status) == "done" {
+	if planStateWord(anchor.Status) == "done" {
 		return ""
 	}
-	return strings.TrimSpace(parent.Title)
+	return strings.TrimSpace(anchor.Title)
 }
 
 // planFigures is the telemetry a plan task's under-block carries: the steps its
