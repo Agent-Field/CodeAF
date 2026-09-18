@@ -28,7 +28,7 @@ session. Numbers from different machines or different days do not belong in one 
   (`VmHWM`), thread count, open file descriptors, CPU from `utime+stime` deltas, and
   voluntary context switches per second.
 
-## Five rules the numbers depend on
+## Six rules the numbers depend on
 
 **Run in a real repository, not an empty directory.** Some of these CLIs index the working
 tree at startup. In an empty directory that cost is invisible, and the comparison flatters
@@ -49,6 +49,16 @@ same moment. What such a helper cost while it lived shows in peak RSS instead. B
 counts are printed, `procs` for the processes alive at the last sample and `procs_seen`
 for how many distinct processes the tree held at any sample, so a reader can tell a
 steady pair of processes from a CLI that churns short-lived helpers.
+
+**Prove the mode, and print it beside every row.** A CLI can come up in more than
+one mode, and the cheap ones are the ones that look fine. Measured on one binary and one
+checkout, changing nothing but the profile: with its credential present the program ran as two
+processes including its engine daemon and read 59.5 MB; with the credential removed it ran as
+ONE process with no daemon and read 47 MB, and both figures repeated to within a few percent
+across restores. Reproducibility did not reveal the difference, it concealed it: a wrong level
+measured twice agrees with itself. So every row carries its process count and whether the
+helper or daemon was present, and two rows are comparable only when those match. A figure
+without them is not a smaller claim, it is an unverifiable one.
 
 **Report PSS, not RSS, for anything with more than one process.** CodeAF runs a surface and
 a detached engine daemon that share one binary's text pages; RSS charges that memory to

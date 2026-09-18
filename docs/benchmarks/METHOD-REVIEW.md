@@ -348,6 +348,27 @@ correction runs against us and every competitor's row moved too, five of the six
 the column is retired and measured again rather than patched. `results-2026-09-18.md` has the
 session.
 
+### A reading, not a finding: where the 92 ms first paint probably came from
+
+A first-paint figure of about 92 ms was quoted from notes and could not be reproduced: the same
+build measured 340 to 356 ms on a working profile. Three sightings now bracket it, all on one
+binary and one checkout, differing only in the profile:
+
+| profile | processes | first paint |
+| --- | --- | --- |
+| empty HOME | 1, no daemon | 45 ms |
+| configured, credential removed | 1, no daemon | 73 to 98 ms |
+| configured, credential present | 2, with daemon | 280 to 318 ms |
+| operator's accumulated profile | 2, with daemon | 573 ms |
+
+The 92 ms sits inside the second row, which is a mode that never starts the engine daemon. So the
+likeliest explanation is that it was measured honestly, on a profile that had not reached daemon
+mode, and is therefore not a figure for a working session. **This is offered as a reading and not
+as a finding**: nobody recorded the profile that produced it, which is the same missing evidence
+this review complains about elsewhere, and no rerun can recover it. It is written down because it
+fits all three sightings and because the alternative, treating the number as fabricated, does not
+fit any of them.
+
 ### Binary identity: which binary a table names is not which binary ran
 
 Resolved as a login shell resolves them, then `readlink -f`:
