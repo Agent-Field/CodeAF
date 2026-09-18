@@ -171,17 +171,6 @@ var bashworkerPrompt string
 //go:embed prompts/bashtask.md
 var bashPolicyPrompt string
 
-// bashRulesPrompt is the few codeaf constraints that still bind a bash-belt
-// worker once the loop policy and the belt's doctrine are in front of it: where
-// it may write, what it may not do with the repository, the report it owes, the
-// one revise lane, and the settings refusal. It is the kept half of the task
-// worker's own page (prompts/worker.md), carried whole for this belt rather than
-// appended, because the pages the ordinary composition appends teach a shape the
-// bash loop does not have.
-//
-//go:embed prompts/bashrules.md
-var bashRulesPrompt string
-
 // fanLimitToken is the one thing the page above cannot spell for itself. THE
 // NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
 // that typed it would be the second place it lives (task.go's schema states the
@@ -295,6 +284,12 @@ func renderSystemAt(config Config, now time.Time) string {
 	// colleague, the batch of calls, the visible plan before every step — that
 	// the bash loop does not have, and a page that argues with its own head is
 	// worse than a page that says less. Nothing here touches any other shape.
+	//
+	// A WORKER WITH ONE HAND READS THE PAGE ABOUT THAT HAND. This is the whole of
+	// a belt worker's system prompt: the belt's two pages ([bashWorkerPage]) and
+	// the project footer, and not one byte of prompts/system.md or
+	// prompts/worker.md — the tools those pages name are the belt's own
+	// ([renderBeltFacts]) or the shell, or the pages are the wrong shape's.
 	if config.mayBashBelt() {
 		var out strings.Builder
 		out.WriteString(bashWorkerPage())
@@ -365,22 +360,29 @@ func renderSystemAt(config Config, now time.Time) string {
 // ── the bash worker's page ──────────────────────────────────────────────────
 
 // bashWorkerPage composes the page a bash-belt worker opens message[0] on: the
-// loop policy it works by, the belt's doctrine (the plan CLI and the shell
-// idioms), and the kept codeaf constraints. [renderSystemAt] appends the project
-// footer after it, so this is everything above the footer.
+// loop policy it works by and the belt's doctrine (the plan CLI and the shell
+// idioms), and nothing else. [renderSystemAt] appends the project footer after
+// it, so this is everything above the footer.
+//
+// A WORKER WITH ONE HAND READS THE PAGE ABOUT THAT HAND, AND NOTHING ELSE. The
+// belt's own pages are the policy (prompts/bashtask.md) and the doctrine
+// (prompts/bashworker.md); that is the whole of it. The chat's account of itself
+// (prompts/system.md) describes a pane, slash commands and ten tools this belt
+// does not carry, and prompts/worker.md is the TASK worker's page — the report it
+// owes, the assignment road, the settings — whose verbs a shell-only worker also
+// does not have. A page naming a hand the belt lacks is the prompt lying, and
+// every step of every worker pays for the sentences again, so neither page rides
+// this one.
 //
 // THE ORDER IS THE POINT. A task on this belt is a planner first — it frames,
 // plans, dispatches and integrates — and a page opening on the chat colleague or
 // the batch of calls would teach a shape the envelope refuses. So the policy
-// leads, the doctrine follows in the policy's own terms, and only the constraints
-// that still bind a task worker close it.
+// leads and the doctrine follows in the policy's own terms.
 func bashWorkerPage() string {
 	var out strings.Builder
 	out.WriteString(strings.TrimRight(bashPolicyPrompt, "\n"))
 	out.WriteString("\n\n")
 	out.WriteString(strings.TrimRight(bashworkerPrompt, "\n"))
-	out.WriteString("\n\n")
-	out.WriteString(strings.TrimRight(bashRulesPrompt, "\n"))
 	return out.String()
 }
 

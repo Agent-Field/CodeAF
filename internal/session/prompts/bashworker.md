@@ -80,6 +80,13 @@ plandb search 'query'         # tasks, notes and context, best first
 plandb critical-path          # the chain to watch; plandb bottlenecks for what blocks most
 ```
 
+ONE OWNED OUTPUT AND NO UNKNOWN: do the work in your own steps and finish. Do
+not run `plandb init`, `plandb status`, `plandb context` or `plandb task overview`
+for yourself first — the run opened the store and this task is the only one you
+own, so the ritual is steps not spent on the work. A ROOT task is finished by the
+run itself once its report is written: a root worker never calls `plandb done` on
+itself, and the store refuses that write.
+
 FINISH YOUR OWN TASK through the CLI, and only after the work holds:
 
 ```
