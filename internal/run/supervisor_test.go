@@ -1031,3 +1031,102 @@ func TestSupervisorLeavesALiveClaimAlone(t *testing.T) {
 		t.Fatalf("leaf = %s claimed by %q, want still running for its own worker", task.Status, task.ClaimedBy)
 	}
 }
+
+func TestWokenCompositeCanAddAChildParkAndWakeAgain(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	var parentTurns atomic.Int32
+	seat.actions["root"] = splitRoot(t, store, plandb.TaskSpec{ID: "parent", Title: "parent"})
+	seat.actions["parent"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		switch parentTurns.Add(1) {
+		case 1:
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "first", Title: "first", ParentID: task.ID}}); err != nil {
+				return run.Report{}, err
+			}
+			return run.Report{Result: "first split", Steps: 1}, nil
+		case 2:
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "second", Title: "second", ParentID: task.ID}}); err != nil {
+				return run.Report{}, err
+			}
+			if _, err := store.Wait(task.ID, task.ID); err != nil {
+				return run.Report{}, fmt.Errorf("park woken composite: %w", err)
+			}
+			return run.Report{Result: "parked again", Steps: 1}, nil
+		default:
+			if _, err := store.Done(task.ID, task.ID, "integrated twice", nil, nil); err != nil {
+				return run.Report{}, err
+			}
+			return run.Report{Result: "integrated twice", Steps: 1}, nil
+		}
+	}
+	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor)
+	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want done", outcome)
+	}
+	if got := parentTurns.Load(); got != 3 {
+		t.Fatalf("parent turns = %d, want first launch and two wakes", got)
+	}
+	if child := store.Task("second"); child == nil || child.Status != plandb.StatusDone {
+		t.Fatalf("second child = %#v, want launched and done", child)
+	}
+	if parent := store.Task("parent"); parent.Status != plandb.StatusDone || parent.Result != "integrated twice" {
+		t.Fatalf("parent = %s result %q, want worker completion", parent.Status, parent.Result)
+	}
+}
+
+func TestWokenCompositeCanFinishItsOwnTask(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	var turns atomic.Int32
+	seat.actions["root"] = splitRoot(t, store, plandb.TaskSpec{ID: "parent", Title: "parent"})
+	seat.actions["parent"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		if turns.Add(1) == 1 {
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "child", Title: "child", ParentID: task.ID}}); err != nil {
+				return run.Report{}, err
+			}
+			return run.Report{Result: "split", Steps: 1}, nil
+		}
+		if _, err := store.Done(task.ID, task.ID, "finished on wake", nil, nil); err != nil {
+			return run.Report{}, fmt.Errorf("finish woken composite: %w", err)
+		}
+		return run.Report{Result: "finished on wake", Steps: 1}, nil
+	}
+	if outcome := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{}, seat.workerFor).Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want done", outcome)
+	}
+	if parent := store.Task("parent"); parent.Status != plandb.StatusDone || parent.Result != "finished on wake" {
+		t.Fatalf("parent = %s result %q", parent.Status, parent.Result)
+	}
+}
+
+func TestSupervisorEndsAWorkerWhoseTaskAnotherWriterFailed(t *testing.T) {
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	ended := make(chan error, 1)
+	seat.actions["root"] = splitRoot(t, store, leafDone("leaf"))
+	seat.actions["leaf"] = func(ctx context.Context, _ plandb.Task) (run.Report, error) {
+		<-ctx.Done()
+		ended <- ctx.Err()
+		return run.Report{}, ctx.Err()
+	}
+	go func() {
+		for !seat.launched("leaf") {
+			time.Sleep(2 * time.Millisecond)
+		}
+		_, _ = store.Fail("leaf", "leaf", "foreign failure")
+	}()
+	started := time.Now()
+	outcome := run.NewSupervisor(store, t.TempDir(), 1, run.Limits{}, seat.workerFor).Run(runContext(t))
+	if time.Since(started) > 5*time.Second {
+		t.Fatal("worker was not stopped by the next supervisor pass")
+	}
+	if outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want incomplete", outcome)
+	}
+	if err := <-ended; !errors.Is(err, context.Canceled) {
+		t.Fatalf("worker ended with %v, want context.Canceled", err)
+	}
+	if task := store.Task("leaf"); task.Status != plandb.StatusFailed || task.Error != "foreign failure" {
+		t.Fatalf("leaf = %s error %q, want foreign terminal word", task.Status, task.Error)
+	}
+}
