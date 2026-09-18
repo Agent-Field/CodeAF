@@ -55,20 +55,25 @@ func TestChecksSchemaSaysWhereAChecksRunsAndNamesNoTool(t *testing.T) {
 	}
 }
 
-// A LEADING CHANGE INTO AN ABSOLUTE DIRECTORY IS DROPPED, NEVER REFUSED: the
-// check runs from the root of the task's own copy, and the absolute path is the
-// person's checkout, the one tree the work did not land in. A change into a
-// relative directory is still a composition and is still refused, unrepaired:
-// naming the command after the last `&&` as the repair would drop a build step
-// or a directory the check needs.
-func TestAnAbsoluteDirectoryChangeIsDroppedFromADeclaredCheck(t *testing.T) {
-	got, refusal := declaredCheckList([]string{"cd /srv/checkout && ./run.sh --all", `cd "/srv/with space" && ./run.sh`})
-	if refusal != "" || len(got) != 2 || got[0] != "./run.sh --all" || got[1] != "./run.sh" {
-		t.Fatalf("checks = %q, refusal = %q", got, refusal)
+// A CHECK THAT LEADS WITH A DIRECTORY CHANGE IS REFUSED, NEVER REPAIRED, AND THE
+// REFUSAL SAYS THE FORM THAT PASSES. Dropping the step is meaning-preserving only
+// when the directory is the ground itself, which this door does not know: a
+// check that changes into any other folder would be kept as a command run where
+// its files are not. Any other composition keeps the plain refusal.
+func TestACheckThatLeadsWithADirectoryChangeIsRefusedWithTheFormThatPasses(t *testing.T) {
+	const form = "leave the directory change out and name each file by its path"
+	for _, led := range []string{"cd /srv/checkout && ./run.sh --all", "cd /srv/elsewhere && ./run.sh report", "cd sub && ./run.sh"} {
+		got, refusal := declaredCheckList([]string{led})
+		if got != nil || !strings.Contains(refusal, "no shell composition") || !strings.HasSuffix(refusal, form) {
+			t.Fatalf("%q: checks = %q, refusal = %q", led, got, refusal)
+		}
 	}
-	for _, composed := range []string{"cd sub && ./run.sh", "./build.sh && ./run.sh", "cd /srv/checkout && ./build.sh && ./run.sh"} {
-		if _, refusal := declaredCheckList([]string{composed}); !strings.Contains(refusal, "no shell composition") || strings.Contains(refusal, "use ") {
+	for _, composed := range []string{"./build.sh && ./run.sh", "./run.sh | ./count.sh"} {
+		if _, refusal := declaredCheckList([]string{composed}); !strings.HasSuffix(refusal, " is not") {
 			t.Fatalf("%q: refusal = %q", composed, refusal)
 		}
+	}
+	if got, refusal := declaredCheckList([]string{"./run.sh /srv/elsewhere/report"}); refusal != "" || len(got) != 1 {
+		t.Fatalf("an absolute path as an argument: checks = %q, refusal = %q", got, refusal)
 	}
 }

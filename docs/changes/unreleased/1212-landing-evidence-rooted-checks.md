@@ -1,11 +1,11 @@
 ---
 kind: fixed
-title: a landing's report counts as evidence, and an absolute cd is dropped from a declared check
+title: a landing's report counts as evidence, and a check refused for its cd says the form that passes
 pr: 1212
 surface: [chat, engine]
 invalidates:
   - "After a hand-off landed and the conversation answered the question it owed, the completion check said the task's report never came back and the turn carried on once more with nothing to add. The landing's report was the turn's own message, and the check read all of it as the ask. The ask it reads is now the person's question alone, and the report is shown to it as something that came back."
-  - "A check declared as `cd <absolute directory> && <command>` was refused as shell composition and a `the call was refused` card was drawn. A check runs from the root of the task's own copy and the absolute path is the person's checkout, so that leading step is dropped and the command is kept. Any other composition is refused as before."
+  - "A check declared as `cd <folder> && <command>` was refused with a sentence that ended `… is not` and said nothing about what would pass. It is still refused (dropping the step would run the command where its files may not be), and the refusal now ends: `A check runs from the root of the task's own copy: leave the directory change out and name each file by its path`."
 ---
 
 Both were seen on the real binary on 2026-09-18, belt on, in a two-file
