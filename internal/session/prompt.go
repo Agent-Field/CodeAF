@@ -20,6 +20,12 @@ import (
 //go:embed prompts/system.md
 var systemPromptSource string
 
+// chatTaskRoutingPage is the three hand-off rules the conversation is told
+// under the bash belt, and only there: see withChatTaskRouting.
+//
+//go:embed prompts/chatrouting.md
+var chatTaskRoutingPage string
+
 // disciplinePrompt is the working discipline itself — how to spend the time —
 // and it lives in a file of its own because TWO SURFACES ARE TAUGHT IT AND ONE
 // WORDING IS ALL THERE MAY BE.
@@ -308,7 +314,7 @@ func renderSystemAt(config Config, now time.Time) string {
 	// PREDICATES (beltfacts.go). Everything below conditions a whole page on
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
-	page := strings.TrimRight(config.profilePage(promptWithBeltFacts(config)), "\n")
+	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
 	// AND THE PROFILE'S OWN CUT, WHICH IS THE ONE DOOR INTO IT. A lean prefix
 	// drops the sections [leanPageSections] names, by their `# ` heading, and
 	// gains the one line a shelved verb owes (promptprofile.go). A full prefix

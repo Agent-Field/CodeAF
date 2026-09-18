@@ -9,10 +9,16 @@ import (
 // The three-verbs page belongs to the conversation whose task door launches
 // bash-belt runs, not to a run worker. The flag-off arm pins the conversation
 // page that ships today so enabling this account cannot rewrite every chat.
+// THE RULES ARE THEIR OWN PAGE, NEVER BYTES OF system.md: inside it they sat in
+// every request's fixed prefix and broke the frontier page's identity with the
+// composed page.
 func TestChatRoleRulesFollowTheTaskBelt(t *testing.T) {
 	for _, rule := range []string{"Hand off: launch a task.", "Add to: while one runs", "Ask about: read the store rows"} {
-		if !strings.Contains(systemPrompt, rule) {
-			t.Errorf("prompts/system.md does not contain routing rule %q", rule)
+		if !strings.Contains(chatTaskRoutingPage, rule) {
+			t.Errorf("prompts/chatrouting.md does not contain routing rule %q", rule)
+		}
+		if strings.Contains(systemPromptSource, rule) {
+			t.Errorf("prompts/system.md carries routing rule %q; it belongs to prompts/chatrouting.md alone", rule)
 		}
 	}
 
