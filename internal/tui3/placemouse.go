@@ -299,7 +299,7 @@ func (a *app) placeBoxPress(x, y int) bool {
 		return false
 	}
 	box := a.placeBox()
-	if box == nil || box.empty() {
+	if box == nil || len(box.value) == 0 {
 		return false
 	}
 	at := y - a.boxRow

@@ -473,9 +473,9 @@ func standNoteWords(note standing.Note) string {
 // the caret sits. It is [app.homeFrame]'s answer at this tier and it keeps that
 // function's contract, because the press and the hover index what it returned.
 //
-// It spends FIVE rows on chrome where the wide frame spends eight: a head, one
-// rule, the box, and the action bar. A phone frame has twelve rows of list in
-// it on a good day, and three of them cannot go on air.
+// At rest it spends five rows on chrome: the head, two rules, the box and the
+// action bar. The box grows only as lines are typed, up to the home draft cap,
+// so the compact frame spends no extra rows on an untouched draft.
 func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	if a.homeSheetShowing() {
 		return a.homeSheetFrame(width, height)
@@ -493,7 +493,10 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	add(a.homePhoneHead(width, pal), -1)
 	add(pal.dim(rule(width)), -1)
 
-	const foot = 3 // the rule, the box, the bar
+	// Use the same multiline layout as the wide frame, including blank lines
+	// and the caret's actual position rather than the end of the draft.
+	draft, draftX, draftY := draftBlock(&a.home.box, pal, width-2, homeDraftRows, placeRestWord, "")
+	foot := 2 + len(draft) // The rule, the draft rows, and the bar.
 	room := height - len(lines) - foot
 	if room < 1 {
 		room = 1
@@ -518,23 +521,12 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	// the one screen with the least room the one screen that never said where a
 	// sentence would land (homedraft.go's [app.targetPhoneRule]).
 	add(a.targetPhoneRule(width, pal), -1)
-	caretX, caretY := 0, 0
-	if a.home.box.empty() {
-		add(" "+pal.dim(fit(a.placeRestWord(), width-2)), -1)
-		// Same as the wide frame: at rest there is nothing to type into, so the
-		// caret is hidden rather than blinking over the heading.
-		a.caret = false
-	} else {
-		text := a.home.box.String()
-		// THE PERSON'S OWN GLYPH IS STRUCTURE ON A PLACE, NOT AN ACCENT. It is
-		// the same cell on every frame home has ever drawn, and the design spends
-		// colour on the two live states alone (styles.go's THE ONE-ACCENT LAW),
-		// so the prompt takes the second tier and the words keep the first.
-		add(" "+pal.muted("› ")+pal.ink(fit(text, width-4)), -1)
-		caretX, caretY = 3+ansi.StringWidth(text), len(lines)-1
-		if caretX > width-1 {
-			caretX = width - 1
-		}
+	caretX, caretY := 1+draftX, len(lines)+draftY
+	for _, row := range draft {
+		add(" "+row, -1)
+	}
+	if caretX > width-1 {
+		caretX = width - 1
 	}
 	add(a.homeBar(width, a.homeInboxBar(), pal), -1)
 	a.home.barRow = len(lines) - 1

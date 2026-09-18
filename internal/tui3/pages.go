@@ -1183,7 +1183,9 @@ func placeFrameWithBar(a *app, width, height int,
 		// picker's own hint stands in while nothing is typed.
 		draftRows, draftCX, draftCY = draftBlock(&a.target.pick.filter, pal, width-2, 1,
 			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
-	case hasBox && box != nil && !box.empty():
+	case hasBox && box != nil && len(box.value) > 0:
+		// Blank lines still hold the caret. The send-time emptiness check
+		// discards whitespace, but the editor must draw everything typed.
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}
 	// THE BOX HAS A FLOOR ([boxFloor]) AND EVERY BRANCH ABOVE IS HELD TO IT, the

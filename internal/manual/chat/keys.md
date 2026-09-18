@@ -9,6 +9,11 @@ pane, and conversations, including task rooms and while an answer is running.
 In conversations, `alt+enter` and `ctrl+j` also open a line. On home, `alt+enter`
 keeps its task-composer action.
 
+On home, even a blank line hides the placeholder and moves the cursor onto the
+new line. Left/right move through the draft; up/down move between its lines,
+then return to list navigation at the top or bottom. Deleting the entire draft
+brings the placeholder back.
+
 Shift+enter requires a terminal that distinguishes it from plain enter. If your
 terminal sends plain enter instead, it has the ordinary send behavior; use
 `alt+enter` or `ctrl+j` in a conversation as a fallback.

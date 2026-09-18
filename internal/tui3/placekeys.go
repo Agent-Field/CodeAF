@@ -166,6 +166,12 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.barKey(msg); took {
 		return cmd, true
 	}
+	// A newline is a draft row even before it holds a letter. Let the caret
+	// move within home's draft before the page claims arrows for its rows.
+	if a.at(pageHome) && homeDraftMotion(&a.home.box, key) {
+		a.touch()
+		return nil, true
+	}
 
 	switch key {
 	case placeMapKey:
@@ -526,4 +532,32 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 		return tea.Batch(renewed, a.applyTargetPins(), a.submit(text)), true
 	}
 	return tea.Batch(renewed, a.submit(text)), true
+}
+
+// homeDraftMotion gives the draft its horizontal arrows whenever it has any
+// characters, and its vertical arrows while another logical line exists in
+// that direction. At the top and bottom, home's list keeps its navigation.
+func homeDraftMotion(box *editor, key string) bool {
+	if len(box.value) == 0 {
+		return false
+	}
+	switch key {
+	case "left":
+		box.left()
+	case "right":
+		box.right()
+	case "up":
+		if box.onFirstLine() {
+			return false
+		}
+		box.up()
+	case "down":
+		if box.onLastLine() {
+			return false
+		}
+		box.down()
+	default:
+		return false
+	}
+	return true
 }
