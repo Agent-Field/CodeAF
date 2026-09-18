@@ -157,13 +157,18 @@ func runPoolWith(args []string, output io.Writer, profileDir string, now func() 
 func showPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Config, now func() time.Time) error {
 	flags := commandFlags("pool show")
 	asJSON := flags.Bool("json", false, "print the answer as one JSON object")
+	// --cells, and not a fourth verb: the cells are part of what show shows —
+	// the held document read one layer deeper, under the metric lines the form
+	// already prints — so they ride show's own answer and its --json rather
+	// than a `pool cells` verb that would carry a summary of its own.
+	withCells := flags.Bool("cells", false, "list the held index's cells, one per line")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: codeaf pool show [--json]")
+		return fmt.Errorf("usage: codeaf pool show [--json] [--cells]")
 	}
-	return printPool(output, poolDir, cfg, now(), *asJSON, false, nil)
+	return printPool(output, poolDir, cfg, now(), *asJSON, *withCells, false, nil)
 }
 
 func statusPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Config, now func() time.Time) error {
@@ -177,14 +182,15 @@ func statusPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 	if flags.NArg() != 0 {
 		return fmt.Errorf("usage: codeaf pool status [--json] [--key key]")
 	}
-	return printPool(output, poolDir, cfg, now(), *asJSON, true, keys)
+	return printPool(output, poolDir, cfg, now(), *asJSON, false, true, keys)
 }
 
 // printPool is the reading form's whole answer. The config first — every value
 // beside the word saying where it came from, one of default, setting, env or
-// ci — then the cached index with its age, then the install's own sheet,
-// then, for status, the outbox and the two doors the mode opens.
-func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withStatus bool, keys []ed25519.PublicKey) error {
+// ci — then the cached index with its age, its cells under --cells, then the
+// install's own sheet, then, for status, the outbox and the two doors the
+// mode opens.
+func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withCells, withStatus bool, keys []ed25519.PublicKey) error {
 	var cached *index.Index
 	// The cache is read the way show reads everything else, as an answer and
 	// not as an argument: a document that does not parse is not there yet,
@@ -196,7 +202,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		}
 	}
 	if asJSON {
-		return printPoolJSON(output, poolDir, cfg, cached, now, withStatus, keys)
+		return printPoolJSON(output, poolDir, cfg, cached, now, withCells, withStatus, keys)
 	}
 	for _, line := range []string{
 		fmt.Sprintf("mode %s · %s", cfg.Mode, cfg.Source.Mode),
@@ -241,6 +247,16 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 	for _, line := range metricLines(held) {
 		if _, err := fmt.Fprintln(output, line); err != nil {
 			return err
+		}
+	}
+	// Under --cells the held document is said one layer deeper, one line per
+	// cell under a table header that follows the metric lines above: the
+	// count says how many, the metric lines which, these what each cell is.
+	if withCells {
+		for _, line := range cellTableLines(held) {
+			if _, err := fmt.Fprintln(output, line); err != nil {
+				return err
+			}
 		}
 	}
 	// The install's own sheet is said the way every other nothing here is
@@ -498,6 +514,7 @@ type poolAnswer struct {
 	LastJudge    *judgeLast           `json:"last_judge"`
 	LastSweep    *sweepLast           `json:"last_sweep"`
 	Index        *indexSummary        `json:"index"`
+	Cells        []cellSummary        `json:"cells,omitempty"`
 	Own          ownSummary           `json:"own"`
 }
 
@@ -534,7 +551,22 @@ type metricSummary struct {
 	Sources []string `json:"sources,omitempty"`
 }
 
-func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached *index.Index, now time.Time, withStatus bool, keys []ed25519.PublicKey) error {
+// cellSummary is one cell of the held document as --cells carries it in
+// --json: the metric it belongs to, the role and canonical model it is
+// addressed by, the dims it spells beyond them, the measurement, its rows,
+// and the installs behind it — zero where the cell spells none.
+type cellSummary struct {
+	Metric   string            `json:"metric"`
+	Role     string            `json:"role"`
+	Model    string            `json:"model"`
+	Dims     map[string]string `json:"dims,omitempty"`
+	Mean     float64           `json:"mean"`
+	SD       float64           `json:"sd"`
+	N        int               `json:"n"`
+	Installs int               `json:"installs,omitempty"`
+}
+
+func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached *index.Index, now time.Time, withCells, withStatus bool, keys []ed25519.PublicKey) error {
 	answer := poolAnswer{
 		Mode:       cfg.Mode.String(),
 		ModeSource: cfg.Source.Mode,
@@ -566,6 +598,11 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 			MinInstalls: held.MinInstalls(),
 			Source:      source,
 		}
+	}
+	// The cells ride beside the summary only when they were asked for:
+	// without --cells the object is the object it has always been.
+	if withCells && held != nil {
+		answer.Cells = indexCellSummaries(held)
 	}
 	if withStatus {
 		pending := pendingRows(poolDir)
@@ -848,6 +885,29 @@ func indexMetricSummaries(held *index.Index) []metricSummary {
 	return out
 }
 
+// indexCellSummaries is one summary per cell of the held document: metrics
+// in the index's order and, within one, the cells in the index's own order —
+// the same order the --cells table prints, never a sort by a number.
+func indexCellSummaries(held *index.Index) []cellSummary {
+	names := held.Metrics()
+	out := make([]cellSummary, 0, indexCellCount(held))
+	for _, name := range names {
+		for _, cell := range held.Cells(name) {
+			out = append(out, cellSummary{
+				Metric:   name,
+				Role:     cell.Role,
+				Model:    cell.Model,
+				Dims:     cell.Dims,
+				Mean:     cell.Mean,
+				SD:       cell.SD,
+				N:        cell.N,
+				Installs: cell.Installs,
+			})
+		}
+	}
+	return out
+}
+
 // metricLines is one line per metric the held document declares, in the
 // index's sorted order. A nothing answers nothing, the way every other
 // reading form reads what a person has.
@@ -887,6 +947,51 @@ func metricLine(summary metricSummary) string {
 		parts = append(parts, "sources "+strings.Join(summary.Sources, ", "))
 	}
 	return summary.Name + ": " + strings.Join(parts, " · ")
+}
+
+// cellTableLines is the held document said one cell per line, under a
+// `cells:` header that follows the metric lines it details: each line names
+// its metric, the role and model it is addressed by, the dims it spells in
+// the order the metric declares them, the measurement — a share for a
+// graded metric, said by the kind the document spells — its rows, and the
+// installs behind it where the document carries them. The order is the
+// index's own, a property of the document, never a sort by a number; a
+// metric with no cells says none on a line of its own, the way every other
+// nothing here is said.
+func cellTableLines(held *index.Index) []string {
+	if held == nil {
+		return nil
+	}
+	lines := []string{"cells:"}
+	for _, name := range held.Metrics() {
+		word := "mean"
+		if kind, ok := held.Kind(name); ok && kind == "bernoulli" {
+			word = "share"
+		}
+		cells := held.Cells(name)
+		if len(cells) == 0 {
+			lines = append(lines, name+" · none")
+			continue
+		}
+		for _, cell := range cells {
+			parts := []string{name, cell.Role, cell.Model}
+			for _, dim := range held.Dims(name) {
+				if value, spelled := cellDim(cell, dim); spelled {
+					parts = append(parts, dim+" "+value)
+				}
+			}
+			parts = append(parts, fmt.Sprintf("%s %v", word, cell.Mean))
+			if cell.SD != 0 {
+				parts = append(parts, fmt.Sprintf("sd %v", cell.SD))
+			}
+			parts = append(parts, fmt.Sprintf("n %d", cell.N))
+			if cell.Installs > 0 {
+				parts = append(parts, fmt.Sprintf("installs %d", cell.Installs))
+			}
+			lines = append(lines, strings.Join(parts, " · "))
+		}
+	}
+	return lines
 }
 
 // poolFold is the way the index matches a name or a value — lowercased and
