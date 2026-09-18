@@ -2620,9 +2620,9 @@ pages here take the frame — the settings panel, this one, and `/home` — and 
 them is ever up**: opening any one closes the other two.
 
 It opens on one heading saying what it is holding. A page holding conversations reads, for
-example, `tasks · 15 chats · 13 subtasks · $2.98`: chats first, then the work under them. A
+example, `work · 15 chats · 13 subtasks · $2.98`: chats first, then the work under them. A
 page holding work with no conversation on it reads, for example,
-`tasks · 148 pieces of work since aug 11 · $34.10`. The count is every row the time window
+`work · 148 pieces of work since aug 11 · $34.10`. The count is every row the time window
 holds, the date is the far edge of that window, and the money is what those rows are known
 to have cost. A window with no known start drops the `since`, and rows nobody priced drop
 the money: zero means "nobody published a price", never "free". **A frame too narrow for

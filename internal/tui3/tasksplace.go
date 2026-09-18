@@ -774,41 +774,28 @@ func (r tasksReading) lay(width int) []tasksLine {
 			continue
 		}
 		add(tasksLineWord, tasksSectionHead(section, tree.held(section), tree.shown(r, section)))
-		// THE SECTION IS DRAWN AS CONVERSATIONS AND NOT AS A FLAT LIST. A chat that
-		// split one ask into eight workers used to arrive as eight peers of
-		// everything else on the page; now the conversation is the row, the work it
-		// asked for hangs under it, and the work THAT asked for hangs under that —
-		// each fold shut or open by its own default ([tasksReading.opens]).
-		for _, g := range groups {
-			depth := 0
-			// THE RAIL IS ALREADY INSIDE THE CONVERSATION, so its projection draws
-			// no conversation row and spends no indent on one: the run's root
-			// stands at the rail's own edge ([tasksReading.kinFloor]).
-			named := g.named && r.kinFloor == 0
-			if named {
-				line := tasksLine{
-					kind: tasksLineChat, chat: g.chat, owner: len(lines),
-					folds: len(g.roots) > 0, family: g.chat.key, kids: g.chat.kids,
-					open: r.opens(g.chat.key), rank: g.chat.rank,
+		// THE PAGE'S UNIT IS A RUN, not the conversation it came from. Gather
+		// every root before ordering so activity interleaves runs from different
+		// conversations. The rail retains its established grouped projection.
+		if r.kinFloor > 0 {
+			for _, g := range groups {
+				for at, root := range g.roots {
+					work(root, 0, at == len(g.roots)-1, false, false, nil)
 				}
-				mark := tasksKinPad
-				if line.folds {
-					mark = tasksFoldShut
-				}
-				if line.folds && line.open {
-					mark = tasksFoldOpen
-				}
-				line.kin = tasksKin(0, levels, mark)
-				lines = append(lines, line)
-				if !line.open {
-					continue
-				}
-				depth = 1
 			}
-			for at, root := range g.roots {
-				work(root, depth, at == len(g.roots)-1, named, false, make([]bool, depth))
-			}
+			continue
 		}
+		roots := make([]tasksItem, 0)
+		for _, g := range groups {
+			roots = append(roots, g.roots...)
+		}
+		sort.SliceStable(roots, func(a, b int) bool {
+			return r.order.key.less(tree.rank[tasksKeyOf(roots[a].entry)], tree.rank[tasksKeyOf(roots[b].entry)], r.order.back)
+		})
+		for at, root := range roots {
+			work(root, 0, at == len(roots)-1, false, false, nil)
+		}
+
 	}
 	return lines
 }
@@ -1442,7 +1429,7 @@ func (t tasksTree) held(section tasksSection) int {
 func (t tasksTree) shown(r tasksReading, section tasksSection) int {
 	n := 0
 	for _, g := range t.in(section) {
-		if g.named && !r.opens(g.chat.key) {
+		if r.kinFloor > 0 && g.named && !r.opens(g.chat.key) {
 			continue
 		}
 		for _, root := range g.roots {
@@ -1467,15 +1454,7 @@ func (t tasksTree) rows(r tasksReading, item tasksItem) int {
 // conversation over its work, or work under work — which is what decides that
 // the family column is drawn at all.
 func (t tasksTree) column() bool {
-	if len(t.kids) > 0 {
-		return true
-	}
-	for _, g := range t.groups {
-		if g.named {
-			return true
-		}
-	}
-	return false
+	return len(t.kids) > 0
 }
 
 // tree is the shape of THIS reading, built from the rows it is holding at this
@@ -2228,10 +2207,11 @@ func workConversationTail(item tasksItem) string {
 	if strings.TrimSpace(item.row.ID) != strings.TrimSpace(item.entry.SessionID) {
 		return ""
 	}
-	if title := strings.TrimSpace(item.row.Title); title != "" {
-		return strings.TrimSpace(rowSep) + " " + title
+	title := strings.TrimSpace(item.row.Title)
+	if title == "" || strings.EqualFold(title, strings.TrimSpace(item.row.ID)) {
+		title = unnamedConversationWord
 	}
-	return ""
+	return strings.TrimSpace(rowSep) + " " + title
 }
 
 func workOlderFold(n int) string {

@@ -438,7 +438,7 @@ func TestAPlanRowWithALiveStepDrawsTheCommandAndTheFigures(t *testing.T) {
 // it.
 func TestAPlanRowWithNoLiveStepDrawsNoUnderBlock(t *testing.T) {
 	row := livePlanRow()
-	row.Status, row.Live = "done", session.PlanTaskRow{}.Live
+	row.Status, row.Live, row.Ended = "done", session.PlanTaskRow{}.Live, taskFixtureNow
 	text := planTextFor(t, []session.PlanTaskRow{row})
 	if strings.Contains(text, "$ git grep") {
 		t.Fatalf("a settled row drew the live command:\n%s", text)

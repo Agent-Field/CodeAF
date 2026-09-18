@@ -433,12 +433,12 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 	if !root.folds || root.kids != 3 || root.open {
 		t.Fatalf("the root came out as folds=%v kids=%d open=%v", root.folds, root.kids, root.open)
 	}
-	if root.kin != tasksKinStep+tasksFoldShut {
+	if root.kin != tasksFoldShut {
 		t.Fatalf("the shut root wears %q", root.kin)
 	}
 	// AND THE LONER HOLDS THE COLUMN OPEN rather than sitting two cells left of
 	// everything else.
-	if rows[1].kin != tasksKinStep+tasksKinPad {
+	if rows[1].kin != tasksKinPad {
 		t.Fatalf("the task with no family wears %q", rows[1].kin)
 	}
 	// THE SHUT FOLD SAYS WHAT IS UNDER IT.
@@ -457,10 +457,10 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 	if len(rows) != 5 {
 		t.Fatalf("an open family drew %d rows of work", len(rows))
 	}
-	if rows[0].kin != tasksKinStep+tasksFoldOpen {
+	if rows[0].kin != tasksFoldOpen {
 		t.Fatalf("the open root wears %q", rows[0].kin)
 	}
-	if rows[1].kin != tasksKinStep+tasksKinStep+tasksKinCont || rows[3].kin != tasksKinStep+tasksKinStep+tasksKinLast {
+	if rows[1].kin != tasksKinStep+tasksKinCont || rows[3].kin != tasksKinStep+tasksKinLast {
 		t.Fatalf("the connectors came out as %q … %q", rows[1].kin, rows[3].kin)
 	}
 	if !strings.Contains(strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n"), "port the lexer") {
@@ -503,14 +503,15 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 			t.Fatalf("family member %q was filed under %q, want running", item.entry.Label, tasksSectionWord(item.section))
 		}
 	}
-	// The conversation over the family is opened by hand with it; what this test
-	// is about is what stands UNDER the running parent.
-	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true, tasksFamilyOf(rows[0]): true}
+	// The family is opened by hand; what this test is about is what stands UNDER
+	// the running parent. THE RUN STANDS AT THE PAGE'S OWN EDGE (WORK-TAB.md: no
+	// conversation row over it), so its child is one level in, not two.
+	reading.open = map[tasksKey]bool{tasksFamilyOf(rows[0]): true}
 	found := false
 	for _, line := range reading.lay(120) {
 		if line.kind == tasksLineTask && line.item.entry.ID == "2" {
 			found = true
-			if line.kin != tasksKinStep+tasksKinStep+tasksKinCont && line.kin != tasksKinStep+tasksKinStep+tasksKinLast {
+			if line.kin != tasksKinStep+tasksKinCont && line.kin != tasksKinStep+tasksKinLast {
 				t.Fatalf("the refused worker is no longer under its parent: %q", line.kin)
 			}
 			if got := taskStateWord(line.item.entry, line.item.runs); got != taskRecordStoppedWord {
@@ -744,7 +745,7 @@ func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
 			kin = append(kin, line.kin)
 		}
 	}
-	if strings.Join(kin, "") != tasksKinStep+tasksFoldOpen+tasksKinStep+tasksKinStep+tasksKinCont+tasksKinStep+tasksKinStep+tasksKinCont+tasksKinStep+tasksKinStep+tasksKinLast+tasksKinStep+tasksKinPad {
+	if strings.Join(kin, "") != tasksFoldOpen+tasksKinStep+tasksKinCont+tasksKinStep+tasksKinCont+tasksKinStep+tasksKinLast+tasksKinPad {
 		t.Fatalf("an opened family came out as %q, and the three workers must stand together under their root", kin)
 	}
 }
@@ -794,7 +795,7 @@ func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
 	// ONE piece of work is one piece of work.
 	one := reading
 	one.whole, one.wholeCost = 1, 0.27
-	if got, want := one.head(120, false), "tasks · 1 piece of work · $0.27"; got != want {
+	if got, want := one.head(120, false), "work · 1 piece of work · $0.27"; got != want {
 		t.Fatalf("one row makes the head read\n  %s\nwant\n  %s", got, want)
 	}
 	if got, want := tasksUnderWord(3), "holds 3 more"; got != want {
@@ -844,8 +845,8 @@ func TestAnOpenedFamilyNamesItsConversationOnce(t *testing.T) {
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
 	page := tasksPage(reading, 120)
-	if got := strings.Count(page, "the split"); got != 1 {
-		t.Fatalf("the conversation is named %d times on\n%s\nwant once on the main chat and never on a worker", got, page)
+	if got := strings.Count(page, "the split"); got != 2 {
+		t.Fatalf("the conversation is named %d times on\n%s\nwant once on each run and never on a worker", got, page)
 	}
 	if !strings.Contains(page, "port the lexer") {
 		t.Fatalf("the opened family drew no workers:\n%s", page)
@@ -971,6 +972,7 @@ func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
 			Workspace: "/private/tmp/htw/codeaf", Project: "infra",
 			ProjectDir: "/private/tmp/htw", Open: true, Live: true, Title: title,
 		}
+		untitled.Tasks.Rows = []session.TaskIndexEntry{{ID: "1", SessionID: id, Label: "untitled run", Status: string(session.TaskRunning)}}
 		titled := session.SessionRow{
 			ID: "927d303242f9d00e", Dir: "/private/tmp/htw/infra/927d303242f9d00e",
 			Transcript: "/private/tmp/htw/infra/927d303242f9d00e/transcript.jsonl",
@@ -978,6 +980,7 @@ func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
 			ProjectDir: "/private/tmp/htw", Open: true, Live: true,
 			Title: "The Certificate Rotation",
 		}
+		titled.Tasks.Rows = []session.TaskIndexEntry{{ID: "1", SessionID: titled.ID, Label: "titled run", Status: string(session.TaskRunning)}}
 		world := session.World{Projects: []session.Project{
 			{Name: "infra", Dir: "/private/tmp/htw", Sessions: []session.SessionRow{untitled, titled}},
 		}, Read: now}
