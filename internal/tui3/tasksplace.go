@@ -1585,7 +1585,7 @@ func (r tasksReading) head(width int, edge bool) string {
 
 // tasksHeadWord names the place, in the word the switcher's own tab spells
 // (pages.go's [pageTasks]). One name for one place.
-const tasksHeadWord = "tasks"
+const tasksHeadWord = "work"
 
 func tasksWindowStart(win session.UsageWindow) string {
 	win = win.Normalized()
