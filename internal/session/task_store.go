@@ -1289,7 +1289,13 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("node %d has no title", record.ID)
 		case strings.TrimSpace(record.Brief) == "":
 			return taskDocument{}, fmt.Errorf("node %d has no brief", record.ID)
-		case !acceptanceHolds(record.Kind, record.Acceptance):
+		case !acceptanceHolds(record.Kind, record.Acceptance) && strings.TrimSpace(record.PlanID) == "":
+			// A PLAN-BORN NODE OWES THIS FILE NO ACCEPTANCE: it is a task out of the
+			// plan store, admitted with the store's id and nothing else, and what it
+			// is held to lives there. THE READER MAY NOT REFUSE WHAT THE WRITER
+			// WRITES. It did (2026-09-18): the first part a run handed to the tree
+			// made the whole file unreadable, the conversation reopened with no
+			// tasks, and its next save replaced twenty of them with nothing.
 			return taskDocument{}, fmt.Errorf("node %d has no acceptance", record.ID)
 		case !validTaskState(record.State):
 			return taskDocument{}, fmt.Errorf("node %d is in state %q", record.ID, record.State)
@@ -1611,7 +1617,11 @@ func (a *Agent) recoverTasks() {
 		return
 	}
 	document, found := loadTaskCheckpoint(a.config.checkpointFile())
-	if !found || (len(document.Nodes) == 0 && len(document.Runs) == 0) {
+	if !found {
+		a.setAsideRefusedCheckpoint()
+		return
+	}
+	if len(document.Nodes) == 0 && len(document.Runs) == 0 {
 		return
 	}
 	// THE RUN NAMES ARE CLAIMED BEFORE ANY RUN CAN BE STARTED. A run's name is a
@@ -1676,6 +1686,73 @@ func (a *Agent) recoverTasks() {
 // of resume — and so would counting a run or a quick task there, under a clause
 // that says `no branch kept` about work that never had a branch and is not
 // coming back.
+// refusedCheckpointSuffix names a checkpoint this build could not read, beside
+// the path it was read from, with the second it was set aside.
+const refusedCheckpointSuffix = ".refused-"
+
+// setAsideRefusedCheckpoint is what a conversation does with a checkpoint that
+// is THERE and that it cannot read. A REFUSED CHECKPOINT IS NEVER OVERWRITTEN:
+// the graph opens empty, and its first save used to land on the same path, so
+// one record a newer or an older build spelled differently cost the person
+// every task the conversation had run, with nothing left to recover them from.
+// The file is moved beside itself instead. AND AN ID IS NEVER REUSED: the
+// counter lived only in that file, so it is raised past every task that left a
+// journal or a working copy on disk, or the next task would answer to a number
+// the transcript already uses for another.
+func (a *Agent) setAsideRefusedCheckpoint() {
+	path := a.config.checkpointFile()
+	if strings.TrimSpace(path) == "" {
+		return
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return
+	}
+	aside := path + refusedCheckpointSuffix + strconv.FormatInt(time.Now().Unix(), 10)
+	if err := os.Rename(path, aside); err != nil {
+		log.Printf("session: could not set the refused task checkpoint aside: %v", err)
+	} else {
+		log.Printf("session: the refused task checkpoint is kept at %s", aside)
+	}
+	highest := highestTaskOnDisk(a.config.Place.NodeJournals(), a.config.Place.Trees())
+	graph := a.graph()
+	if graph == nil {
+		return
+	}
+	graph.mu.Lock()
+	if highest > graph.seq {
+		graph.seq = highest
+	}
+	graph.mu.Unlock()
+}
+
+// highestTaskOnDisk is the largest task number that left a folder or a journal
+// behind in the places a conversation keeps them, read from the names alone.
+func highestTaskOnDisk(dirs ...string) uint64 {
+	var highest uint64
+	for _, dir := range dirs {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			// A working copy is named by its number alone; a journal is
+			// `<when>_<number>.jsonl`. The number is what follows the last
+			// underscore once the extension is gone.
+			name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			if cut := strings.LastIndexByte(name, '_'); cut >= 0 {
+				name = name[cut+1:]
+			}
+			if id, err := strconv.ParseUint(name, 10, 64); err == nil && id > highest {
+				highest = id
+			}
+		}
+	}
+	return highest
+}
+
 func (r *taskRecovery) reconcile(record taskRecord, workspace string) taskRecord {
 	if !nothingIsComingBackForIt(record) {
 		r.countSettled(&record)
