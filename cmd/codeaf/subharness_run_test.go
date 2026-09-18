@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,27 +29,6 @@ func headlessRunWith(t *testing.T, registry *exec.Registry, profileDir, name, in
 		journal: &runJournal{}, stdout: io.Discard, stderr: io.Discard,
 		profileDir: profileDir, model: model, started: started,
 	}
-}
-
-// readPendingRows reads the pool's pending file back into its rows.
-func readPendingRows(t *testing.T, profileDir string) []pendingLanding {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(profileDir, "pool", "pending.jsonl"))
-	if err != nil {
-		t.Fatalf("the pool's pending file: %v", err)
-	}
-	var rows []pendingLanding
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-		if line == "" {
-			continue
-		}
-		var row pendingLanding
-		if err := json.Unmarshal([]byte(line), &row); err != nil {
-			t.Fatalf("a pending row: %v", err)
-		}
-		rows = append(rows, row)
-	}
-	return rows
 }
 
 // TestAHeadlessRunLeavesAPendingJudgeRecordForTheNextProcess is the promise: a
