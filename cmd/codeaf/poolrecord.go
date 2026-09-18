@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/record"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
@@ -115,6 +116,18 @@ func writeJudgeLast(poolDir string, last judgeLast) {
 	}
 }
 
+// poolSeatID is the spelling of a seat's model once it enters the pool's
+// records: the thinking level and the leading `~` alias marker come off — the
+// same two things internal/catalog's normaliser takes off before a lookup,
+// mirrored here because that one (normalizeID) is unexported. The pool's rows
+// and the relay's schema name a model by its bare `<vendor>/<id>`; the marker
+// is this client's own routing and rides only the paths that call the
+// provider, never the pool's copy of the id.
+func poolSeatID(seat string) string {
+	model, _ := roles.SplitEffort(seat)
+	return strings.TrimPrefix(model, "~")
+}
+
 // poolJudgeLanding scores one landed task and records what came back. The
 // order is the sheet's own law: every score is observed before the rows are
 // appended, the sheet is saved once, and the picker's own-cells seam is
@@ -122,18 +135,21 @@ func writeJudgeLast(poolDir string, last judgeLast) {
 func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
 	pool := config.ModelPoolAt(profileDir)
 	poolDir := config.ProfilePath(profileDir, "pool")
+	// A seat's id enters the pool spelled bare (poolSeatID): the sheet, the
+	// outbox and the relay read the bare `<vendor>/<id>`, and the same-vendor
+	// exclusion below must see the vendor the marker rides on.
 	seats := map[judge.Role]string{
-		judge.RoleWorker: landing.Worker,
+		judge.RoleWorker: poolSeatID(landing.Worker),
 	}
 	if landing.High != "" {
-		seats[judge.RoleHigh] = landing.High
+		seats[judge.RoleHigh] = poolSeatID(landing.High)
 	}
 	candidates := judge.Candidates(models(), seats, judge.DefaultFloor)
 	// The seats are said in the crew's own order — the worker, then the high
 	// seat when the run held one — so the record reads the way the crew ran.
-	held := []string{landing.Worker}
+	held := []string{poolSeatID(landing.Worker)}
 	if landing.High != "" {
-		held = append(held, landing.High)
+		held = append(held, poolSeatID(landing.High))
 	}
 	if len(candidates) == 0 {
 		if trace.Enabled() {
@@ -384,6 +400,10 @@ func writePendingLanding(profileDir, door string, landing session.TaskLanding) e
 	if err := os.MkdirAll(poolDir, 0o700); err != nil {
 		return err
 	}
+	// The row is what the restart sweep scores from, so the seats it carries
+	// are written spelled bare (poolSeatID), not in the door's routing spelling.
+	landing.Worker = poolSeatID(landing.Worker)
+	landing.High = poolSeatID(landing.High)
 	data, err := json.Marshal(pendingLanding{At: time.Now(), Door: door, Landing: landing})
 	if err != nil {
 		return err
