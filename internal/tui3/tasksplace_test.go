@@ -1001,3 +1001,25 @@ func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
 		}
 	}
 }
+
+func TestC279WorkHeadGroupsAndRunRow(t *testing.T) {
+	pal := newPalette(tokens.NoColor, false)
+	r := tasksReading{whole: 10, held: 10, hasRuns: true}
+	r.sectionCounts = [tasksSectionCount]int{1, 4, 3, 2, 0}
+	if got, want := r.head(120, false), "4 running · 3 queued · 1 your call · 2 done today"; got != want {
+		t.Fatalf("work head = %q, want %q", got, want)
+	}
+	if got, want := tasksRunSectionHead(tasksRunning, 3), "running · 3"; got != want {
+		t.Fatalf("group head = %q, want %q", got, want)
+	}
+	plan := session.PlanTaskRow{ID: "t-run", Title: "rewrite the auth flow", Status: "running", Done: 6, Total: 10}
+	item := planItem(plan, "room-a", nil)
+	item.row = session.SessionRow{ID: "room-a", Title: "auth rewrite"}
+	line := tasksLine{kind: tasksLineTask, item: item}
+	got := plain(tasksRow(line, 80, time.Time{}, tasksSort{}, pal, false))
+	for _, want := range []string{"rewrite the auth flow", "6/10", "auth rewrite"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("run row %q lacks %q", got, want)
+		}
+	}
+}
