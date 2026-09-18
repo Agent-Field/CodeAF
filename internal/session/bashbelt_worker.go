@@ -133,11 +133,21 @@ func workerJournalName() string {
 // the store ([planBrief]) as THE WORK, and the store's deliverables and
 // acceptance as the two sections under it.
 //
-// THE PERSON'S WORDS DO NOT RIDE A LEAF'S DOCUMENT. A store task's description
-// is the work order, and the run's own ask reached the store as the root
-// task's description — the root worker reads it the same way. There is no
-// request to quote, so the section the ordinary worker opens on is absent
-// here, which is the emptiness law applied to a document.
+// A LEAF OWNS A PART OF THE ASK, AND READS THE ASK. A store task's description
+// is the work order — the planning seat's account of one part of the run — and
+// the run's own ask reached the store as the ROOT task's description. A leaf
+// handed only the paraphrase inherits its omissions and cannot notice: on two
+// runs of one objective the planner dropped the same bullet, and only the leaf
+// that read the person's own sentence carried it. So one section of a non-root
+// worker's document carries that sentence VERBATIM — the leaf reads the whole
+// ask even though it owns one part, and where the ask and its work order
+// disagree about a requirement it owns, the ask wins and the leaf says so in
+// its report.
+//
+// THE ROOT'S OWN DOCUMENT IS UNCHANGED: its work order IS the ask, so there is
+// nothing to put beside it. The section is absent there, and absent when the
+// store carries no root row to read it from — the emptiness law applied to a
+// document, the same reason a request equal to the work is printed once.
 //
 // THE RESUME CLAUSE IS ADDED, NOT DUPLICATED, the way [childRun.open] adds it
 // to a resumed node's opening: one sentence, appended, when the task's
@@ -149,7 +159,7 @@ func workerJournalName() string {
 // of what they did — every child's title, status and result — in place of the
 // interrupted-predecessor sentence, which is a fact about a different worker
 // and not about this one. The resume flag still rides the trajectory's steps.
-func BeltWorkerBrief(task *plandb.Task, root, resume bool, wake string) string {
+func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake string) string {
 	role := planIsTask
 	if root {
 		role = planIsRoot
@@ -159,6 +169,15 @@ func BeltWorkerBrief(task *plandb.Task, root, resume bool, wake string) string {
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
 		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	// THE ASK, FOR EVERY LEAF AND ONLY A LEAF. The section is absent on the
+	// root's own document (its work order is the ask) and absent when the store
+	// holds no root row to read it from, which is the emptiness law and not a
+	// special case.
+	if !root {
+		if ask := runRootAsk(store); ask != "" {
+			doc = withReport(doc, askSection(ask))
+		}
+	}
 	switch {
 	case strings.TrimSpace(wake) != "":
 		doc = withReport(doc, wake)
@@ -166,6 +185,44 @@ func BeltWorkerBrief(task *plandb.Task, root, resume bool, wake string) string {
 		doc = withReport(doc, taskResumeClause)
 	}
 	return doc
+}
+
+// The heading, the rule and the bound over the run root's own words, carried
+// on every leaf's document ([BeltWorkerBrief]). The heading is the belt pages'
+// own Markdown voice; the rule is the one sentence that says what the section
+// is for.
+const (
+	askSectionHeading = "## The ask this run serves"
+	askSectionRule    = "Your work order above is your part; where it and the ask disagree on a requirement you own, the ask wins, and you say so in your report."
+	// askSectionLimit is the hard cap on the verbatim ask. The whole value of
+	// carrying it is that nothing was edited out, and the bound is for the
+	// pasted-log case, where an unbounded copy would put megabytes into every
+	// leaf's prompt. The cut is marked ([clip]), so a leaf given a truncated ask
+	// can see that it was.
+	askSectionLimit = 16 << 10
+)
+
+// askSection lays out the run root's own words: the heading, the one sentence
+// saying what they are for, and the description VERBATIM — unedited and
+// untrimmed, bounded only by [askSectionLimit], which marks its cut.
+func askSection(ask string) string {
+	return askSectionHeading + "\n" + askSectionRule + "\n\n" + clip(ask, askSectionLimit)
+}
+
+// runRootAsk answers the run root's description as the store keeps it — the
+// person's own ask, seeded on the root row — or "" when there is no root to
+// read (a store that never seeded one, a lost root, a nil handle). The empty
+// answer is what makes the section absent rather than empty on a document
+// ([BeltWorkerBrief]).
+func runRootAsk(store *plandb.Store) string {
+	if store == nil {
+		return ""
+	}
+	root := store.Task(store.RootID())
+	if root == nil || strings.TrimSpace(root.Description) == "" {
+		return ""
+	}
+	return root.Description
 }
 
 // TaskReport is the agent's own account of its work, composed the way a
