@@ -502,7 +502,8 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 	_, err := s.store.AddMany([]plandb.TaskSpec{{
 		ID:          id,
 		Title:       checkTitlePrefix + leaf.Title,
-		Description: "Acceptance: " + leaf.Description + "\n\nResult: " + result,
+		Description: descriptionWithChecks("Acceptance: "+leaf.Description+"\n\nResult: "+result, leaf.Checks),
+		Checks:      append([]string(nil), leaf.Checks...),
 		ParentID:    leaf.ParentID,
 		Role:        plandb.RoleCheck,
 	}})
@@ -567,6 +568,7 @@ func (s *Supervisor) recordCheckFinding(check plandb.Task, result string) {
 		ID:          id,
 		Title:       fixTitlePrefix + checked.Title,
 		Description: fixDescription(checked, sentence),
+		Checks:      append([]string(nil), checked.Checks...),
 		ParentID:    checked.ParentID,
 	}})
 }
@@ -585,7 +587,18 @@ const (
 // leaf's own result — everything a fresh worker needs to make the unmet
 // requirement hold.
 func fixDescription(leaf *plandb.Task, finding string) string {
-	return "Acceptance: " + leaf.Description + "\n\nFinding: " + finding + "\n\nResult: " + leaf.Result
+	base := "Acceptance: " + leaf.Description + "\n\nFinding: " + finding + "\n\nResult: " + leaf.Result
+	return descriptionWithChecks(base, leaf.Checks)
+}
+
+// descriptionWithChecks keeps the historical description byte-for-byte when a
+// task declares no checks. Declared checks follow the acceptance and result as
+// worker-readable lines while the same commands remain structured on the node.
+func descriptionWithChecks(base string, checks []string) string {
+	if len(checks) == 0 {
+		return base
+	}
+	return base + "\n\nChecks:\n" + strings.Join(checks, "\n")
 }
 
 // completeTree finishes the run once every task but the root has ended: the
