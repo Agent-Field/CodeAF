@@ -31,10 +31,6 @@ func TestPlanTreeNestsByParentOnlyAcrossACousinWait(t *testing.T) {
 	if aAt < 0 || alphaAt < 0 || bAt < 0 || !(aAt < alphaAt && alphaAt < bAt) {
 		t.Fatalf("the cousin wait moved Alpha out of A's family:\n%s", text)
 	}
-	line, _ := planLine(text, "Alpha")
-	if !strings.Contains(line, "queued · waits: B") {
-		t.Fatalf("Alpha reads %q, want `queued · waits: B`", line)
-	}
 }
 
 func TestPlanRailFoldsOnlyFinishedFamiliesAndFoldEnterOpensThePage(t *testing.T) {

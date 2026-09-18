@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -1941,25 +1942,46 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := tasksBareLead + pal.dim(line.kin) + glyphInk(glyph) + " "
 	cells := ansi.StringWidth(tasksBareLead+line.kin) + ansi.StringWidth(glyph) + 1
-	state, second := tasksStateField(line), tasksKeyField(by.key, line.rank, now)
-	// A PLAN ROW SHOWS ITS OWN TELEMETRY AND NOT THE SORT KEY'S COLUMN. The
-	// store carries two figures the record has no room for while the work is
-	// still turning — the steps a worker has taken and the dollars the task has
-	// cost — so they take the two cells, each omitted when it is nothing
-	// (taskplan.go).
-	if item.plan != nil {
-		state, second = planStateField(item), planSpendField(item)
+	// The work tab is grouped by state, so a run does not repeat that state in
+	// a column. Its invariant telemetry and age hold the right edge; the title
+	// yields before the conversation tail, while the ten progress cells never do.
+	if item.plan != nil && item.plan.Total >= 2 {
+		dots := workPlanDots(*item.plan, pal)
+		age := tasksAgeField(item, now).full
+		tail := workConversationTail(item)
+		room := width - cells - ansi.StringWidth(dots)
+		if age != "" {
+			room -= 2 + ansi.StringWidth(age)
+		}
+		if tail != "" {
+			room -= 2 + ansi.StringWidth(tail)
+		}
+		if room < 1 && tail != "" {
+			tailRoom := ansi.StringWidth(tail) + room - 1
+			if tailRoom < 1 {
+				tailRoom = 1
+			}
+			tail = fit(tail, tailRoom)
+			room = 1
+		}
+		name := fit(tasksLabel(item.entry), room)
+		out := lead + placeSubject(name, lit, pal) + "  " + dots
+		if tail != "" {
+			out += "  " + pal.dim(tail)
+		}
+		if age != "" {
+			out += "  " + age
+		}
+		return fit(out, width)
 	}
 	name := tasksLabel(item.entry)
-	if item.plan != nil && item.plan.Total >= 2 {
-		name += "  " + planProgress(*item.plan, width, pal)
-	}
 	if tail := workConversationTail(item); tail != "" {
-		name += " " + pal.dim(tail)
+		name += "  " + pal.dim(tail)
 	}
-	return tasksTableRow(lead, cells, name,
-		state, second,
-		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
+	if item.plan != nil {
+		return tasksTableRow(lead, cells, name, rowSay(), tasksAgeField(item, now), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
+	}
+	return tasksTableRow(lead, cells, name, tasksStateField(line), tasksKeyField(by.key, line.rank, now), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
 // tasksAgeField is HOW LONG AGO, and it is the fact this page's own headings
@@ -2195,6 +2217,23 @@ func workGrouped(items []tasksItem, now time.Time) []string {
 		out = append(out, tasksSectionWord(item.section)+":"+tasksLabel(item.entry))
 	}
 	return out
+}
+
+func workPlanDots(row session.PlanTaskRow, pal palette) string {
+	var dots strings.Builder
+	for cell := 0; cell < 10; cell++ {
+		lo, hi := cell*row.Total, (cell+1)*row.Total
+		doneAt := row.Done * 10
+		id := tokens.GEmptyCell
+		switch {
+		case hi <= doneAt:
+			id = tokens.GDoneCell
+		case lo < doneAt || (row.Running > 0 && lo <= doneAt && hi > doneAt):
+			id = tokens.GRunningCell
+		}
+		dots.WriteString(pal.glyph(id))
+	}
+	return dots.String()
 }
 
 func workConversationTail(item tasksItem) string {
