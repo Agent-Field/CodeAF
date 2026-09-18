@@ -363,13 +363,13 @@ type doRequest struct {
 	// run is the id this invocation minted at the door ([trace.Begin]). It goes
 	// out on the `--json` envelope, where it is the join to the model-call log
 	// and to the debug record's folder, both of which are named by it.
-	run       string
-	database  string
-	keep      bool
-	workspace string
-	timeout   time.Duration
-	asJSON    bool
-	yesSpend  bool
+	run        string
+	database   string
+	keep       bool
+	workspace  string
+	timeout    time.Duration
+	asJSON     bool
+	yesSpend   bool
 	model      string
 	planModel  string
 	checkModel string
@@ -484,7 +484,7 @@ func doErrand(request doRequest) error {
 	// THE CHECK SEAT RESOLVES AT THE DOOR, in the order the two model run
 	// depends on: the check flag, else the plan flag the person typed, else
 	// empty, which the crew factory reads as the profile's careful row.
-	seats.Check = config.CheckSeat(request.checkModel, request.planModel)
+	seats.Check = config.CheckSeat(request.checkModel, seats.Plan)
 	fmt.Fprintln(request.stderr, seats.Report())
 	outcome, err := errandRun(request, seats, started)
 	if err != nil {
