@@ -2574,6 +2574,13 @@ const memoryNoteOpening = "A note from the session, not from the person: what is
 // same reason: a frame that moved leaves the note that carried the older
 // numbers standing in the transcript exactly where it was said, and the model
 // has to be told which of them is current.
+// frameCatchUp bounds how long the per-step frame waits for the node room's
+// recorder to count the calls this turn already sent ([Agent.bashBeltFrame]).
+// A quarter of a second is a hundred times the funnel's ordinary lag and far
+// under a model call, so a worker never stalls on it and a loaded box never
+// draws a stale number.
+const frameCatchUp = 250 * time.Millisecond
+
 const bashBeltFrameOpening = "A note from the session, not from the person: where this work stands, step by step. Facts, not requests — and the last such note is the one that holds."
 
 // volatileBlockLocked renders the two blocks that MOVE WITH THE WORK: the state
@@ -2747,7 +2754,7 @@ func (a *Agent) mayBashBelt() bool {
 // same lock the cap is taken under and the same lock the children's own state
 // is kept under, and for the same reason the caller composes this before taking
 // a.mu: nothing under the graph's lock may run inside it.
-func (a *Agent) bashBeltFrame() string {
+func (a *Agent) bashBeltFrame(hub *eventHub) string {
 	a.mu.Lock()
 	belt, graph, id := a.config.mayBashBelt(), a.config.tasker, a.config.taskID
 	a.mu.Unlock()
@@ -2803,6 +2810,26 @@ func (a *Agent) bashBeltFrame() string {
 	// everybody but the model, and a copy of two hundred quoted lines would buy
 	// a rendering that reads none of them.
 	steps := recorder.state(0).Steps
+	// THE COUNT IS READ ONLY ONCE IT HAS COUNTED WHAT THIS TURN SENT. The
+	// recorder is fed on the runner's goroutine ([taskRoom.publish]) while this
+	// worker is already composing its next request, so the count read the
+	// instant after a tool end can be one behind the call that just finished —
+	// and a frame one step behind is the same note twice, which lands as
+	// nothing. The hub knows how many ends this turn sent and the recorder's
+	// count at the turn's opening drain, so the frame waits for their sum
+	// ([taskLive.awaitSteps]); the wait is nothing when the funnel is level, and
+	// bounded when it is not. A batch run with no hub reads the count as it is.
+	if hub != nil {
+		hub.mu.Lock()
+		finished, atOpen := hub.finishedCalls, hub.stepsAtOpen
+		if finished == 0 {
+			hub.stepsAtOpen, atOpen = steps, steps
+		}
+		hub.mu.Unlock()
+		if finished > 0 {
+			steps = recorder.awaitSteps(atOpen+finished, frameCatchUp)
+		}
+	}
 	owed, working := a.taskNewsStanding()
 
 	var lines []string
@@ -2910,7 +2937,7 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// composition is cheap on every belt but the bash belt's: the predicate is
 	// the first thing it reads, and an agent that is not on the experiment
 	// composes nothing and lands nothing.
-	frame := a.bashBeltFrame()
+	frame := a.bashBeltFrame(hub)
 	a.mu.Lock()
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
@@ -3686,6 +3713,15 @@ type eventHub struct {
 	subscribers []*eventStream
 	closed      bool
 
+	// finishedCalls is how many tool ends and tool failures this turn has sent
+	// — the same events the node room's recorder counts as steps
+	// (task_live.go) — and stepsAtOpen is the recorder's count at the turn's
+	// opening drain, before any of them. Together they are what the per-step
+	// frame ([Agent.bashBeltFrame]) knows the recorder must reach before the
+	// number it draws is the number the work is on.
+	finishedCalls int
+	stepsAtOpen   int
+
 	// backlog is every event this turn has sent, in order, kept for whoever
 	// attaches next and dropped whole when the hub closes.
 	//
@@ -3888,6 +3924,9 @@ func (h *eventHub) send(event Event) (landed bool) {
 	defer h.mu.Unlock()
 	if h.closed {
 		return false
+	}
+	if event.Kind == EventToolEnd || event.Kind == EventToolFailed {
+		h.finishedCalls++
 	}
 	// The backlog is written BEFORE the fan-out and under the same lock, so what
 	// the next attacher is handed is exactly what the subscribers already have —

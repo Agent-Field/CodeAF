@@ -379,7 +379,7 @@ func TestSpendFrameChargesTheRunAgainstTheLimit(t *testing.T) {
 
 	// THE ROLLUP WINS: $1.25 is the run's bill from the store, not this
 	// worker's $0.18, and the limit is the rail the conversation carries.
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "spent $1.25 of $2.00") || strings.Contains(frame, "so far") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "spent $1.25 of $2.00") || strings.Contains(frame, "so far") {
 		t.Fatalf("the frame does not charge the run against the limit: %q", frame)
 	}
 
@@ -389,7 +389,7 @@ func TestSpendFrameChargesTheRunAgainstTheLimit(t *testing.T) {
 	if total := uncharged.Summary().ProjectSpend; len(total) != 0 {
 		t.Fatalf("the uncharged store carried %#v", total)
 	}
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "spent $0.18 of $2.00") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "spent $0.18 of $2.00") {
 		t.Fatalf("an uncharged run does not fall back to the session figure: %q", frame)
 	}
 
@@ -402,7 +402,7 @@ func TestSpendFrameChargesTheRunAgainstTheLimit(t *testing.T) {
 	session.config.SpendRailUSD = 0
 	session.mu.Unlock()
 	wantSpend := fmt.Sprintf(" · $%.2f so far", node.spend())
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, wantSpend) || strings.Contains(frame, "of $") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, wantSpend) || strings.Contains(frame, "of $") {
 		t.Fatalf("a frame without a limit is not the clause it has always been: %q", frame)
 	}
 }
