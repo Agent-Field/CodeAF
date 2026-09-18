@@ -71,11 +71,16 @@ func TestQuestionConversationNestedInputTakesPriorityAndReturns(t *testing.T) {
 	lab := newQuestionLab(t)
 	original := consentAsk()
 	lab.raise(original)
+	originalHead, _ := lab.a.questionHead()
+	lab.a.raiseQuestionRoom(originalHead)
 	nested := consentAsk()
 	nested.Ref = "clarify-1/7"
 	nested.ClarificationDepth = 1
 	nested.Batch = "clarify-1/step"
 	lab.raise(nested)
+	if lab.a.questionRoomOpen() {
+		t.Fatal("expanded original decision covered the clarification's input")
+	}
 	head, _ := lab.a.questionHead()
 	if head.question.Ref != nested.Ref {
 		t.Fatal("original stayed ahead of clarification")

@@ -538,6 +538,11 @@ func (a *app) raiseQuestion(q questionShown) {
 	if q.question.Asked.IsZero() {
 		q.question.Asked = a.now()
 	}
+	// A clarification's prerequisite must also take the keyboard when the
+	// original decision is expanded. The original remains in the question list.
+	if a.qroom != nil && q.question.ClarificationDepth > a.qroom.head.question.ClarificationDepth {
+		a.closeQuestionRoom()
+	}
 	q.pick = questionPointerStart(q.question)
 	// THE WAY BACK IS THE ASKER'S OWN CLAIM AND NOT THIS SURFACE'S GUESS. A
 	// caller that already knows this window can put the work back says so; for
