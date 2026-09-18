@@ -112,10 +112,32 @@ reply with no action.
   (a `check` role reviewed against the leaf's acceptance) is designed and
   partly landed; the runtime does not yet refuse a root finish without it.
 - **The harness is behind `CODEAF_TASK_BELT=bash`.** With it unset the shipped
-  engine serves every road.
+  engine serves every road. That is the shape for the owner's hands-on test.
+  Once the owner is happy the default flips: the run road serves `/task` and
+  `codeaf do` with the variable unset, the variable stays for one release as
+  the way back to the shipped engine, and then it goes with the engine it
+  selected.
 - The manual pages and the prompt corpus are updated with the branch; per-task
   models (`add --model`), the project and machine dashboards, and terminal
   `attach` are later views on the same store.
+
+## Words on the screen
+
+Every word the harness shows a person was read against the chat manual before
+this body was written. On the task rail and the task page: *task*, *step*,
+*note*, *queued*, *waits*, *running*, *done*, *incomplete*, *your call*,
+*node*, *slot*, *branch*, *session* — all already the manual's. In the run's
+own sentences (a task's record, a failure reason, the `do` envelope): *run*,
+*plan*, *store*, *worker*, *root*, *landing*, *landed*, *result*, *spend*,
+*cap*, *wall*, *seat*, *parked*, *wake*, *trajectory* — all already on the
+manual's pages. Two sentences were new, and both are now quoted on the
+`worker-harness` page rather than renamed, because they are what the belt
+says to the model and the record has to show the words the model was told:
+`no action executed: …` and `4 replies in a row carried no action`.
+*Harness*, *belt*, *envelope*, *seat* and *leaf* are design and manual words
+and never drawn on a screen. The rail's live step line and the page's
+following of it (`$ <command>`, `N steps · $`, `queued · waits: <what>`) are
+spelled from the same list.
 
 ## Draft
 
