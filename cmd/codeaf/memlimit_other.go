@@ -8,3 +8,7 @@ package main
 // and the surface keeps the runtime's own default the way it did before this
 // existed.
 func readTotalMemory() int64 { return 0 }
+
+// readCgroupMemoryLimit is the zero for a platform with no cgroup hierarchy to
+// read. A zero is not a bound, so [surfaceMemoryLimit] simply does not count it.
+func readCgroupMemoryLimit() int64 { return 0 }
