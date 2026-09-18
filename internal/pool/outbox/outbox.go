@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -199,9 +200,12 @@ func (o *Outbox) Pending() []Row {
 // The whole call lives inside Budget, which is 2s when it is zero, and inside
 // ctx as well, whichever ends first. Rows whose batch arrived are marked sent
 // and leave the outbox; a row Keep declines is marked sent without being
-// transmitted and is not counted. Rows whose batch did not arrive, and every
-// row after it, stay pending, and Send returns an error that says what
-// failed.
+// transmitted and is not counted. A batch the destination refused by line —
+// a 400 naming `line N` — is refused on one row it has said it will never
+// accept: the named row is marked dropped, the rows around it are sent
+// within the same call, and Send counts the sent ones. Rows whose batch did
+// not arrive, and every row after it, stay pending, and Send returns an
+// error that says what failed.
 func (o *Outbox) Send(ctx context.Context, dest string) (int, error) {
 	if dest == "" {
 		return 0, nil
@@ -422,15 +426,22 @@ func (o *Outbox) load() []Row {
 }
 
 // sendHTTP posts the rows to dest, at most maxBatch per POST, and marks each
-// batch that came back 2xx. The first batch that fails ends the call; its
-// rows and every row after it stay pending.
+// batch that came back 2xx. A batch refused by line — a 400 whose reply names
+// `line N` — is refused on one row the destination will never take: that row
+// is marked dropped, so it stays gone across a reopen, and the rest of the
+// batch is posted again in the same call. Each retry retires a row, so a
+// batch of refused rows costs one POST per row at the most and never a spin.
+// The first batch that fails any other way ends the call, its rows and every
+// row after it staying pending: a 400 that names no line and a 413 name no
+// row at all, so retiring one would be a guess, and 429 and 5xx are about
+// the destination rather than any row.
 func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, error) {
 	client := o.Client
 	if client == nil {
 		client = defaultClient
 	}
 	n := 0
-	for start := 0; start < len(rows); start += maxBatch {
+	for start := 0; start < len(rows); {
 		end := start + maxBatch
 		if end > len(rows) {
 			end = len(rows)
@@ -438,17 +449,36 @@ func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, er
 		if err := ctx.Err(); err != nil {
 			return n, err
 		}
-		body := make([]byte, 0, (end-start)*128)
-		for _, r := range rows[start:end] {
+		sent, err := o.postBatch(ctx, client, dest, rows[start:end])
+		if err != nil {
+			return n, err
+		}
+		if len(sent) > 0 {
+			o.retire(sentMarks(rowNonces(sent)))
+			n += len(sent)
+		}
+		start = end
+	}
+	return n, nil
+}
+
+// postBatch posts one batch and answers the rows of it that arrived. A reply
+// that names a line takes that row out and the batch is posted again; a batch
+// every row of which was refused answers no rows and no error, the way a
+// Keep that declines everything does.
+func (o *Outbox) postBatch(ctx context.Context, client *http.Client, dest string, batch []Row) ([]Row, error) {
+	for len(batch) > 0 {
+		body := make([]byte, 0, len(batch)*128)
+		for _, r := range batch {
 			line, err := rowLine(r)
 			if err != nil {
-				return n, err
+				return nil, err
 			}
 			body = append(body, line...)
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, dest, bytes.NewReader(body))
 		if err != nil {
-			return n, err
+			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/x-ndjson")
 		if o.Install != "" {
@@ -456,18 +486,51 @@ func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, er
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return n, err
+			return nil, err
 		}
-		ok := resp.StatusCode >= 200 && resp.StatusCode < 300
-		io.CopyN(io.Discard, resp.Body, 1<<16)
+		reply, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		resp.Body.Close()
-		if !ok {
-			return n, fmt.Errorf("outbox: %s replied %s", dest, resp.Status)
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return batch, nil
 		}
-		o.retire(sentMarks(rowNonces(rows[start:end])))
-		n += end - start
+		if line := refusedLine(reply, batch); line >= 0 {
+			o.retire(droppedMarks([]string{batch[line].Nonce}))
+			rest := make([]Row, 0, len(batch)-1)
+			rest = append(rest, batch[:line]...)
+			rest = append(rest, batch[line+1:]...)
+			batch = rest
+			continue
+		}
+		return nil, fmt.Errorf("outbox: %s replied %s", dest, resp.Status)
 	}
-	return n, nil
+	return nil, nil
+}
+
+// refusedLine reads a refusal reply and answers which row of the batch it
+// refuses, or -1 when it names no line of the batch. The relay refuses the
+// first row that fails its schema and answers `line N`, N the 1-based number
+// of the line as posted; a batch is one row per line with no blank lines, so
+// the named line is batch[N-1].
+func refusedLine(reply []byte, batch []Row) int {
+	var refused struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(reply, &refused) != nil || refused.Error == "" {
+		return -1
+	}
+	num, ok := strings.CutPrefix(refused.Error, "line ")
+	if !ok {
+		return -1
+	}
+	colon := strings.IndexByte(num, ':')
+	if colon < 1 {
+		return -1
+	}
+	line, err := strconv.Atoi(num[:colon])
+	if err != nil || line < 1 || line > len(batch) {
+		return -1
+	}
+	return line - 1
 }
 
 // sendFile appends the rows to the file at path, creating it with mode 0600
