@@ -117,6 +117,9 @@ func (a *Agent) summaryNow() time.Time {
 }
 
 func readRunSummary(store *plandb.Store, rootID string) (storedRunSummary, bool) {
+	if store == nil {
+		return storedRunSummary{}, false
+	}
 	rows := store.Contexts(rootID, runSummaryContextKind, 1)
 	if len(rows) == 0 {
 		return storedRunSummary{}, false
