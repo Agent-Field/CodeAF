@@ -1,7 +1,7 @@
 ---
 kind: internal
 title: a diagnosis note pins the road a chat door's bash push took under --yolo
-pr: 1156
+pr: 1160
 surface: [chat, engine]
 invalidates:
   - "Nothing about behaviour changed — this entry exists because the check job
