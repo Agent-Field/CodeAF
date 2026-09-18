@@ -465,6 +465,50 @@ func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 	})
 }
 
+// AddRootCheck admits the one child a terminal root may still need: its review
+// check. A ROOT IS NOT DONE UNTIL ITS CHECK HAS LANDED, whoever wrote its
+// ending, so this one transaction preserves the root's result, moves it back
+// to waiting on the check, and adds that check beneath it. Every other child of
+// a terminal task continues to be refused by AddMany.
+func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var id string
+	err := s.transact(func(next *state, now time.Time) error {
+		spec = normalizeSpec(spec, next.RootID)
+		id = spec.ID
+		if err := validateSpec(spec); err != nil {
+			return err
+		}
+		if spec.Role != RoleCheck || spec.ParentID != next.RootID {
+			return errors.New("a root review child must have role check and the root as parent")
+		}
+		if next.Tasks[spec.ID] != nil {
+			return fmt.Errorf("duplicate task id %q", spec.ID)
+		}
+		root := next.Tasks[next.RootID]
+		if root == nil || root.Status != StatusDone {
+			return errors.New("root is not done")
+		}
+		for _, task := range next.Tasks {
+			if task.ParentID == root.ID {
+				return errors.New("root is not childless")
+			}
+		}
+		check := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+		next.Tasks[spec.ID] = check
+		next.Order = append(next.Order, spec.ID)
+		root.Status, root.Composite = StatusPending, true
+		root.CompletedAt, root.UpdatedAt = time.Time{}, now
+		promote(next, now)
+		return validateGraphs(*next)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cloneTask(s.data.Tasks[id]), nil
+}
+
 // Done completes a task its agent owns. The root is the runtime's, exactly as
 // the earlier port had it: a worker cannot finish the run, only its own task.
 //

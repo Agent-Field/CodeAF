@@ -402,14 +402,11 @@ func (s *Supervisor) absorb(ret workerReturn) {
 			s.rootFailed = true
 		} else {
 			s.rootResult = ret.report.Result
-			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other: its
-			// own check is added under the run's root before the completion is
-			// written, so the root's completion waits on it the way it waits on a
-			// child. A root with children answers plan and is not checked
-			// ([addReviewCheck] reads the shape fresh). A root whose own worker
-			// already wrote the ending is terminal, and the store refuses a child
-			// under a terminal parent — the check is then the one the run does
-			// without, and the run still completes.
+			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other. If
+			// its worker already wrote the ending, the store preserves that result
+			// and moves the root back to waiting on the check; CompleteRoot writes
+			// the final word after the check lands. A root with children answers
+			// plan and is not checked ([addReviewCheck] reads the shape fresh).
 			s.addReviewCheck(ret.task, ret.report.Result)
 		}
 	} else {
@@ -499,19 +496,23 @@ func (s *Supervisor) addReviewCheck(leaf plandb.Task, result string) {
 		return
 	}
 	id := s.store.NextID()
-	_, err := s.store.AddMany([]plandb.TaskSpec{{
+	spec := plandb.TaskSpec{
 		ID:          id,
 		Title:       checkTitlePrefix + leaf.Title,
 		Description: "Acceptance: " + leaf.Description + "\n\nResult: " + result,
 		ParentID:    leaf.ParentID,
 		Role:        plandb.RoleCheck,
-	}})
+	}
+	var err error
+	if leaf.ID == s.store.RootID() && s.store.Task(leaf.ID).Status == plandb.StatusDone {
+		_, err = s.store.AddRootCheck(spec)
+	} else {
+		_, err = s.store.AddMany([]plandb.TaskSpec{spec})
+	}
 	if err != nil {
-		// A check the store would not admit is one the run does without: the
-		// leaf has already earned its ending and an unwritable review round is
-		// not an ending to fail it on. The store refuses a child under a terminal
-		// parent, which is how a root whose own worker already wrote its ending
-		// ends up unchecked.
+		// A check the store would not admit does not replace the task's earned
+		// ending. The terminal-root case has its explicit store seam above; all
+		// other refusals keep the existing outcome and result unchanged.
 		return
 	}
 	s.checkOf[id] = leaf.ID
