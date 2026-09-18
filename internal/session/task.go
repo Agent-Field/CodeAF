@@ -775,17 +775,24 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// the transcript by now and in neither the brief nor the request.
 	spec.admission = a.admissionContext()
 
+	// AN APPROVED HAND-OFF UNDER THE BASH BELT IS A RUN, NEVER A SESSION-TREE
+	// NODE. It keeps the id the card showed, carries its acceptance in the brief
+	// and its depends_on as the store's own dependencies, and takes the person's
+	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
+	// when an answer is owed"). A refusal from the run road falls through to the
+	// shipped engine, exactly as a typed /task does.
 	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
 		a.mu.Lock()
 		question := questionAtTaskHandoff(a.owedAsks)
 		a.mu.Unlock()
-		graph.releaseChild(spec.parent)
-		admitted = true
-		id, title, _, err := a.startTaskRun(ctx, spec.brief, false, question)
-		if err != nil {
-			return "", false, err
+		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT. This context is the turn's,
+		// and the turn cancels it on its way out (agent.go, `defer cancel(nil)`);
+		// a run driven under it would be stopped the moment the model finished
+		// its sentence. The values ride along, the cancellation does not.
+		if err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, question); err == nil {
+			return taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere), false, nil
 		}
-		return fmt.Sprintf("task %d started: %s\nIt works from the brief alone, in a copy of its own. %s", id, title, taskHandoffWakeSentence), false, nil
 	}
 	state := graph.admit(p.id, spec)
 	admitted = true

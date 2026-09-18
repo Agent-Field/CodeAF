@@ -41,6 +41,9 @@ type beltRunDouble struct {
 	entered chan struct{}
 	release chan struct{}
 	ran     bool
+	// ctx is the context the engine was started under, kept so a test can ask
+	// whether the run outlived the turn that launched it.
+	ctx context.Context
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
@@ -55,6 +58,7 @@ func newBeltRunDouble(result string) *beltRunDouble {
 func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	d.mu.Lock()
 	d.ran = true
+	d.ctx = ctx
 	d.mu.Unlock()
 	if spec.CompleterFor != nil {
 		if completer := spec.CompleterFor("test/model"); completer != nil {

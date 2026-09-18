@@ -667,9 +667,9 @@ const chatTaskRoutingAnchor = "# Putting more hands on the work\n"
 // composer they cost a conversation without the belt nothing, and the render
 // still carries exactly what the composer built.
 //
-// The model's hand-off through propose_task does not reach startTaskRun under
-// the bash belt (task.go:525-529, 723-778); only a person-entered /task does
-// (task_person.go:74-88). These rules describe that road and open no new one.
+// Both doors take the run road under the belt: a typed /task through
+// StartTask, and an approved propose_task through stagedProposal.Commit. These
+// rules describe that road and open no new one.
 func withChatTaskRouting(config Config, page string) string {
 	if config.InTask || !bashBeltAsked() {
 		return page
