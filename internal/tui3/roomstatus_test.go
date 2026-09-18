@@ -33,8 +33,17 @@ func TestTaskFooterFollowsTheWorkBeingRead(t *testing.T) {
 					t.Fatalf("visible footer missing task state %q: %q", want, line)
 				}
 				a.closeRoom()
-				if got, _ := a.stateWord(); got != a.state.String() {
-					t.Fatalf("leaving task did not restore main status: %q", got)
+				// LEAVING THE ROOM RESTORES THE CONVERSATION'S OWN READING, AND IT IS
+				// NOT ALWAYS `idle` ANY MORE: while the node the room just showed is
+				// still turning, the door is at rest but the work it handed out is
+				// not, and the row says the working word (render.go's [app.stateWord],
+				// tabsignal.go's [app.frontSignal]).
+				main := a.state.String()
+				if a.frontSignal() == tabWorking {
+					main = tabWorkingWord
+				}
+				if got, _ := a.stateWord(); got != main {
+					t.Fatalf("leaving task did not restore main status: %q, want %q", got, main)
 				}
 			})
 		}
