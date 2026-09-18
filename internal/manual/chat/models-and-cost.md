@@ -630,7 +630,9 @@ Those runs seat two models, and each one is resolved the same way. The first of 
 answers wins:
 
 1. a model named on the command line — `--model` for the work, `--plan-model` for the
-   planning;
+   planning, `--check-model` for the checks; a run that typed `--plan-model` and no
+   check model seats its checks on the plan seat too, so two flags mean two models
+   and a third never arrives from the profile;
 2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` in the environment;
 3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
    the **worker** class, the same row a task handed off in conversation rides;

@@ -11,3 +11,10 @@ SeatFor maps a check to the careful work tier (config.ModelTierHigh) rather than
 the mastermind tier, so a review round runs on the model the crew seats to check.
 The work, fix, plan, and probe seats are unchanged, and the check seat stays
 read-only.
+
+The check seat is resolved at the door: `--check-model` seats the check on the
+model the person typed, a `--plan-model` typed without one pins the check to the
+plan seat (a two flag run sees no third model from the profile), and neither flag
+leaves the check on the crew's careful row, which is the checker the chat door
+and any unpinned run already promise. run.Seats carries the door's Check seat
+and CrewFactory seats the careful tier on it.
