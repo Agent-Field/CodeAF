@@ -25,6 +25,47 @@ bash. The run's session-side road is `internal/session/task_run_belt.go` (the
 (`bashbelt.go`), and the store bridge (`plandb_plan.go`). The chat, the pane,
 the room and `codeaf do` become readers of the store rather than engines.
 
+## Re-verified on this branch — 2026-09-17
+
+**Method.** Every file path and symbol this map names was read back out of the
+file with a script (each backticked span) and grepped against the working tree
+at HEAD. HEAD is off `origin/wave1` at `d24ccd2bb`; the map itself was written at
+`dc4c8340a`, an ancestor of HEAD, and nothing of the removal it describes has
+landed on this branch — which is exactly why almost everything still resolves.
+
+- **Files.** Every one of the 53 real file paths it names (all under
+  `internal/session` or `cmd/codeaf`) still exists. Two backticked entries are
+  not paths: `internal/session/*_test.go` is the glob for the test set, and
+  `prompts/bashworker.md` is the shorthand for
+  `internal/session/prompts/bashworker.md`, which exists. Nothing moved.
+- **Symbols.** Of the identifier spans it names, all but one resolve in
+  `internal/session`, `cmd/codeaf`, `internal/run`, `internal/tui3` or
+  `internal/remote`. The one that does not is **`climbingOutOfScratch`**, listed
+  as kept at `task_run.go:9153`: it is gone, and its only remaining occurrence
+  anywhere on the branch is this document itself. The git helpers it sat beside
+  are `repositoryRoot` (`task_run.go:9247`), `git` (`:9303`) and `gitWith`
+  (`:9314`).
+- **Line numbers.** Every `file:line` reference here is as of the map's commit
+  and has drifted since: `task_run.go` is 9504 lines at HEAD, where the map
+  cites symbols up to `:9385`. The references are still the right files; only
+  the lines moved.
+- **Appeared since.** Files added under `internal/session` or `cmd/codeaf`
+  between the map's commit `dc4c8340a` and HEAD whose name carries `task`:
+  `internal/session/task_landing_hook_test.go` and
+  `internal/session/task_release_landed_test.go` (both from `2fb296bf1`). They
+  are tests of the landing road this map keeps (Group 3), and neither adds a
+  symbol the deletion must account for.
+
+**The command.** `git log --stat origin/santos/dev..HEAD -- internal/session
+cmd/codeaf | grep task` is what the brief names, but this clone carries no
+`origin/santos/dev` — its remotes are wave branches. The nearest base to "since
+the map was drawn" is the map's own commit, so it was run as `git log --stat
+dc4c8340a..HEAD -- internal/session cmd/codeaf | grep task`, and the precise
+answer is the added-file listing above (`git diff --name-status
+--diff-filter=A dc4c8340a..HEAD`).
+
+---
+
 **Groups.** Every item is filed under exactly one of:
 
 - **delete whole file** — nothing outside `internal/session` names anything in
