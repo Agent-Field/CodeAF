@@ -2,8 +2,8 @@
 """Headline figure for pareto-crewing.tex: dollars per task against accepted
 fraction on the executable grade, one marker per crew arm, offline cascades
 as diamonds. Reads the DOE output tree written by issue-arm.sh:
-    <out>/i<issue>-<arm>/result.json   (arm, issue, work, check, plan, spend_usd, stop)
-    <out>/i<issue>-<arm>/grade-last.json (Pass, Stage, Source)
+    <out>/i<issue>-<arm>/result.json   (arm, issue, work, check, plan, spend_usd, by_model)
+    <out>/regrade.jsonl                (grader v2 truth per run: run, commits, pass, pkgs, ...)
     python3 make_headline.py <out-dir>          # real data
     python3 make_headline.py --synthetic        # layout check only, labelled as such
 Cascades are computed offline from the paired grades: for arms b -> b' on
@@ -40,16 +40,31 @@ def wilson(k, n, z=1.96):
     return (p, max(0.0, c - h), min(1.0, c + h))
 
 def load(out):
+    """One row per DOE run. Grade truth is <out>/regrade.jsonl (grader v2, offline,
+    keys run/commits/pass/...), keyed by the run's directory label; result.json
+    supplies arm, issue, crew and bill. A run is accepted when it landed at
+    least one commit AND the regrade passes. grade-last.json is NOT read: it is
+    the in-run grade at whatever grader the binary carried."""
+    regrade = {}
+    p = os.path.join(out, "regrade.jsonl")
+    if os.path.exists(p):
+        for line in open(p):
+            line = line.strip()
+            if not line: continue
+            g = json.loads(line)
+            if g.get("gold"): continue
+            regrade[g["run"]] = g
     rows = []
     for d in sorted(glob.glob(os.path.join(out, "i*-*"))):
-        r, g = os.path.join(d, "result.json"), os.path.join(d, "grade-last.json")
-        if not (os.path.exists(r) and os.path.exists(g)): continue
-        R, G = json.load(open(r)), json.load(open(g))
-        # A run that landed nothing is a fail here whatever the grader said
-        # (grade.go grades an empty landing on the unchanged tree).
-        landed = bool(R.get("tasks")) and any(t.get("filesChanged") for t in R["tasks"] if t)
-        rows.append(dict(issue=R["issue"], arm=R["arm"].split("-", 1)[1] if R["arm"].startswith("i") else R["arm"],
-                         spend=float(R["spend_usd"]), passed=bool(G.get("Pass")) and landed,
+        label = os.path.basename(d.rstrip("/"))
+        r = os.path.join(d, "result.json")
+        if not os.path.exists(r) or label not in regrade: continue
+        R, G = json.load(open(r)), regrade[label]
+        if G.get("graded") is False or (G.get("pkgs", None) == "" and G.get("changed", 0) > 0): continue  # absent
+        arm = R.get("arm", label)
+        arm = arm.split("-", 1)[1] if arm.startswith("i") and "-" in arm else arm
+        rows.append(dict(issue=int(R["issue"]), arm=arm, spend=float(R["spend_usd"]),
+                         passed=bool(G.get("pass")) and int(G.get("commits", 0)) > 0,
                          work=R.get("work", "auto"), check=R.get("check", "auto"),
                          by_model=R.get("by_model", {})))
     return rows
