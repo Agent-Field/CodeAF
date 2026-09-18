@@ -43,7 +43,7 @@ func seatLab(t *testing.T, seats []session.PlanSpendLine) *app {
 // TWO SEATS DRAW TWO LINES, each with its own dollars and no nought: the money
 // is this page's own column spelling ([spendMoneyWord]), so an amount under a
 // cent is a cent rather than `$0.00`.
-func TestTheSpendPageDrawsTaskSpendBySeat(t *testing.T) {
+func TestSpendPageDrawsTaskSpendBySeat(t *testing.T) {
 	a := seatLab(t, []session.PlanSpendLine{
 		{Seat: "plan", Model: "vendor/plan-seat", USD: 1.35, Calls: 3},
 		{Seat: "work", Model: "vendor/work-seat", USD: 0.40, Calls: 1},
@@ -77,7 +77,7 @@ func TestTheSpendPageDrawsTaskSpendBySeat(t *testing.T) {
 
 // WITH NOTHING UNDER IT the block keeps its heading and one dim line naming
 // what arrives there — never a sentence saying it is empty, and never a zero.
-func TestTheSeatBlockWhispersWhenNothingHasSpent(t *testing.T) {
+func TestSpendSeatBlockWhispersWhenNothingHasSpent(t *testing.T) {
 	a := seatLab(t, nil)
 	text := placeFrameText(a)
 	lines := strings.Split(text, "\n")
@@ -98,7 +98,7 @@ func TestTheSeatBlockWhispersWhenNothingHasSpent(t *testing.T) {
 // THE BLOCK SITS AFTER THE CREW BLOCK: the models table (with the role each
 // model is bound to) above it says which model ANSWERS each seat, and the seat
 // block below says what each seat has spent.
-func TestTheSeatBlockSitsAfterTheCrewBlock(t *testing.T) {
+func TestSpendSeatBlockSitsAfterTheCrewBlock(t *testing.T) {
 	a := seatLab(t, []session.PlanSpendLine{
 		{Seat: "work", Model: "vendor/work-seat", USD: 0.40, Calls: 1},
 	})
