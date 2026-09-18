@@ -22,7 +22,11 @@ func writePlan(projects map[string]*demoProject, ids map[string]string) error {
 	if project == nil || chat == "" {
 		return fmt.Errorf("seed plan: missing project %q or conversation %q", firstProjectName, roomTalkTitle)
 	}
-	storeDir := filepath.Join(project.dir, ".codeaf")
+	// THE STORE LIVES IN THE CONVERSATION'S OWN FOLDER, which is where a placed
+	// conversation's run keeps it (session's planPath) and the only place the
+	// reopened conversation looks. A store in the project's `.codeaf` is the
+	// legacy flat layout's, and the rail of this conversation would never read it.
+	storeDir := filepath.Join(project.bucket, chat)
 	if err := os.MkdirAll(storeDir, 0700); err != nil {
 		return fmt.Errorf("seed plan directory: %w", err)
 	}
@@ -103,10 +107,10 @@ func writePlan(projects map[string]*demoProject, ids map[string]string) error {
 		return fmt.Errorf("finish index: %w", err)
 	}
 
-	if err := plan.SetLive(handler, 12, "$ go test ./internal/auth/..."); err != nil {
+	if err := plan.SetLive(handler, 12, "go test ./internal/auth/..."); err != nil {
 		return err
 	}
-	if err := plan.SetLive(middleware, 4, "$ cat > internal/auth/mw.go <<'EOF'"); err != nil {
+	if err := plan.SetLive(middleware, 4, "cat > internal/auth/mw.go <<'EOF'"); err != nil {
 		return err
 	}
 	if _, err := plan.AddPersonNote(handler, "keep the middleware order"); err != nil {
@@ -150,7 +154,7 @@ func writeDemoTrajectory(storeDir, taskID string, count int) error {
 			Step        int    `json:"step"`
 			Command     string `json:"command"`
 			Observation string `json:"observation"`
-		}{"step", step, fmt.Sprintf("$ demo step %02d", step), "completed"}
+		}{"step", step, fmt.Sprintf("demo step %02d", step), "completed"}
 		if err := json.NewEncoder(writer).Encode(line); err != nil {
 			_ = file.Close()
 			return fmt.Errorf("trajectory %s: %w", taskID, err)
