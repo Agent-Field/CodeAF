@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -161,6 +162,144 @@ func endLine(t *testing.T, lines []string) run.Step {
 		t.Fatalf("the trajectory's last line is no ending: %q", lines[len(lines)-1])
 	}
 	return end
+}
+
+// THE LIVE STEP IS TRUE ONLY WHILE ITS COMMAND RUNS. The belt's begin event is
+// what the run publishes as the task's live step — the number the step will be
+// recorded under, the command, and the moment — and the step's own end line is
+// what clears it. The run is read from BESIDE itself here: a goroutine hosts it,
+// the test polls the store while the command is in flight, and a file handshake
+// lets the command finish only once that reading has been seen.
+func TestBashWorkerPublishesTheLiveStepWhileItsCommandRuns(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	workspace := t.TempDir()
+	release := filepath.Join(workspace, "release")
+	command := "while [ ! -f " + release + " ]; do sleep 0.02; done; echo done"
+	seat := &seat{script: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolReply(`{"command":` + jsonString(command) + `}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textReply("the wait is over"), nil
+		},
+	}}
+	worker := run.NewBashWorker(store, workspace, "test/model", seat)
+	ctx := run.WithStepsPerTask(runContext(t), 9)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := worker.Run(ctx, *store.Task(store.RootID()))
+		done <- err
+	}()
+
+	live := waitForLiveStep(t, store, store.RootID())
+	if live.Step != 1 {
+		t.Fatalf("the live step number = %d, want the first step", live.Step)
+	}
+	if live.Command != command {
+		t.Fatalf("the live command = %q, want the command the belt began", live.Command)
+	}
+	if live.Since.IsZero() {
+		t.Fatal("the live step's moment is the zero time")
+	}
+
+	if err := os.WriteFile(release, nil, 0o644); err != nil {
+		t.Fatalf("release the command: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("the worker's run failed: %v", err)
+	}
+	// The end line cleared it: a turn that ended is not running a command.
+	if after := store.Live(store.RootID()); !after.Empty() {
+		t.Fatalf("the live step outlived its command: %#v", after)
+	}
+}
+
+// Every ending of the loop clears the live step, so a stopped task never
+// claims a present it is not in. The step cap is one such ending: the worker
+// runs to its bound and comes home with the cap's own error, and the live row
+// it published is gone.
+func TestBashWorkerClearsTheLiveStepWhenTheCapStopsIt(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	// A WORKER THAT NEVER ENDS ITS TURN, so the only thing between it and
+	// forever is the cap on its context.
+	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolReply(`{"command":"true"}`), nil
+	}}
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+
+	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task(store.RootID())); err == nil {
+		t.Fatal("a worker that spent its step cap came home clean")
+	}
+	if after := store.Live(store.RootID()); !after.Empty() {
+		t.Fatalf("a capped worker still claims a present: %#v", after)
+	}
+}
+
+// And the wall is another: a command cut off by the run's own cancellation
+// leaves no live step behind.
+func TestBashWorkerClearsTheLiveStepWhenTheWallStopsIt(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	store := runOpenStore(t)
+	workspace := t.TempDir()
+	release := filepath.Join(workspace, "release")
+	command := "while [ ! -f " + release + " ]; do sleep 0.02; done"
+	seat := &seat{script: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolReply(`{"command":` + jsonString(command) + `}`), nil
+		},
+	}}
+	worker := run.NewBashWorker(store, workspace, "test/model", seat)
+
+	ctx, cancel := context.WithCancel(runContext(t))
+	done := make(chan error, 1)
+	go func() {
+		_, err := worker.Run(run.WithStepsPerTask(ctx, 9), *store.Task(store.RootID()))
+		done <- err
+	}()
+
+	waitForLiveStep(t, store, store.RootID())
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a worker stopped by the wall came home clean")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the wall did not stop the worker")
+	}
+	if after := store.Live(store.RootID()); !after.Empty() {
+		t.Fatalf("a worker the wall stopped still claims a present: %#v", after)
+	}
+}
+
+// waitForLiveStep polls the store from beside the run until the task publishes
+// a live step, and fails the test if it never does — the command is the file
+// handshake, so the poll is bounded by the harness rather than by luck.
+func waitForLiveStep(t *testing.T, store *plandb.Store, id string) plandb.LiveStep {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if live := store.Live(id); !live.Empty() {
+			return live
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the live step was never published while the command ran")
+	return plandb.LiveStep{}
+}
+
+// jsonString is one string as the JSON the belt's arguments carry, so a
+// scripted command with quotes or brackets in it is spelled the way a model's
+// own argument object would be.
+func jsonString(s string) string {
+	body, _ := json.Marshal(s)
+	return string(body)
 }
 
 func TestBashWorkerRecordsItsStepsAndReportsThem(t *testing.T) {
