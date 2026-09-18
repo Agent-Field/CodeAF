@@ -147,3 +147,19 @@ func TestARunOfOneTaskOnTheRailWearsNoDots(t *testing.T) {
 		}
 	}
 }
+
+// ON A NARROW RAIL A HELD ROW KEEPS ITS NAME. The tail is a sentence and the
+// rail is under thirty cells: laid first it left the title one letter, a row
+// naming neither the task nor what it waits on.
+func TestANarrowRailsHeldRowKeepsItsTitle(t *testing.T) {
+	rows := c266PlanRows()
+	rows[2].Title = "write the middleware"
+	_, rail := c266Rail(t, rows, 150, false)
+	_, held := c266RowWith(t, rail, "write the te")
+	if !strings.Contains(held, "write the tests") {
+		t.Fatalf("the held row lost its title to its tail:\n%s", held)
+	}
+	if strings.Contains(held, "w…") {
+		t.Fatalf("the held row's title is one letter:\n%s", held)
+	}
+}
