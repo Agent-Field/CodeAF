@@ -1,8 +1,8 @@
 package run_test
 
-// The crew's tests read the profile the way internal/config's own tests do -
+// The crew's tests read the profile the way internal/config's own tests do —
 // one JSON object under the profile directory, written with the keys the
-// settings sheet names: and judge the factory by the model it asks the
+// settings sheet names — and judge the factory by the model it asks the
 // completer for, since that is the model the worker's calls go out on and the
 // model its spend row carries. Nothing here runs a provider: the completerFor
 // seam records what it was asked for, and the one test that reads a spend row
@@ -25,9 +25,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// crewProfile makes a throwaway profile holding exactly these crew rows: a
+// crewProfile makes a throwaway profile holding exactly these crew rows — a
 // value for a row somebody wrote, the empty string for a row they cleared, and
-// nothing at all for a key of a vintage that never had one: and answers the
+// nothing at all for a key of a vintage that never had one — and answers the
 // directory the factory is pointed at.
 func crewProfile(t *testing.T, rows map[string]string) string {
 	t.Helper()
@@ -153,8 +153,8 @@ func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 	for _, test := range []struct {
 		task, want string
 	}{
-		// The root is a coordinator; every launch of it: the first and the
-		// wake that folds its children: rides the plan seat.
+		// The root is a coordinator; every launch of it — the first and the
+		// wake that folds its children — rides the plan seat.
 		{store.RootID(), "vendor/named-plan"},
 		// A leaf does the work itself and rides the work seat.
 		{"one", "vendor/named-work"},
@@ -240,7 +240,7 @@ type spendRow struct {
 	role  string
 }
 
-// readSpendRows opens the store read-only and reads its spend table whole -
+// readSpendRows opens the store read-only and reads its spend table whole —
 // its own connection, so the read never races the store's own handle.
 func readSpendRows(t *testing.T, storePath string) []spendRow {
 	t.Helper()
