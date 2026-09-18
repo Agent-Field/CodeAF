@@ -845,10 +845,11 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		Reconciled: call.reconciled,
 
 		Session: session,
-		// The node this agent IS, and nothing for a conversation — the same
-		// figure [TaskNotice.Parent] is registered under, spelled the way
-		// [TaskIndexEntry.ID] spells it so the two join.
-		Task: usageTaskID(a.config.taskID),
+		// The node this row belongs to: the node this agent IS, or — for a
+		// checker, which is not the node — the node it CHECKS
+		// ([Config.checksNode]). The two are never both set, and the figure is
+		// spelled the way [TaskIndexEntry.ID] spells it so the two join.
+		Task: a.usageNode(),
 		// The conversation the work is rooted in, which is nothing at all in a
 		// conversation: Session above is already that answer, and writing it
 		// twice would be the one-source-of-truth law broken on the same row.
@@ -895,6 +896,17 @@ func usageTaskID(id uint64) string {
 		return ""
 	}
 	return strconv.FormatUint(id, 10)
+}
+
+// usageNode is the node a usage row is filed under. A checker is NOT the node
+// and carries the one it reads in [Config.checksNode]; every other agent IS its
+// node, in [Config.taskID], or is a conversation with neither. The two fields
+// are never both set, so which one answers is a fact about what the agent is.
+func (a *Agent) usageNode() string {
+	if a.config.checksNode != 0 {
+		return usageTaskID(a.config.checksNode)
+	}
+	return usageTaskID(a.config.taskID)
 }
 
 // UsageCache is the ledger read the way home may call it: as often as it likes.

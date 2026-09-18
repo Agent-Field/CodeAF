@@ -1834,15 +1834,28 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		}
 		recordEffort(attemptCtx, model, rung)
 		// What this call is FOR, for the model-call log. A conversation's own
-		// turn and a task child's turn run the identical loop, and the one thing
-		// that tells them apart is whether this agent IS a node — so the word
-		// follows that, and the node it is gets named beside it.
+		// turn, a task child's turn and a checker's turn run the identical loop,
+		// and what tells them apart is what this agent IS: a checker answers for
+		// a crew role and names that role's own word, a task child IS a node and
+		// names the node's, and a conversation is neither and answers as the
+		// turn. The node beside the word follows the same fact — a child names the
+		// node it IS, a checker the node it CHECKS, a conversation none.
 		//
 		// THE WORD GOES TO THE DOOR AND THE NODE STAYS HERE. A purpose is what a
 		// request is FOR and the door is the one place it is spelled onto a call
 		// (clientdoor.go); which node made it is a fact only this line knows.
+		//
+		// A CREW ROLE WINS OVER taskID, AND THE TWO ARE NEVER BOTH SET: a checker
+		// is handed the node it checks in [Config.checksNode] and is deliberately
+		// not the node itself, so it leaves taskID at 0 (session.go's law).
 		purpose := purposeTurn
-		if a.config.taskID != 0 {
+		switch {
+		case a.config.crewRole != "":
+			purpose = callPurpose(a.config.crewRole)
+			if a.config.checksNode != 0 {
+				attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.checksNode, 10))
+			}
+		case a.config.taskID != 0:
 			purpose = purposeTask
 			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
@@ -3973,7 +3986,12 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 	if answered == "" {
 		answered = strings.TrimSpace(model)
 	}
-	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context})
+	// AND A TURN THAT ANSWERS FOR A CREW ROLE BANKS THAT ROLE'S WORD, so the
+	// ledger row says what the turn was — `auditor` — rather than nothing at all.
+	// It is the same fact the model-call log's tag carries (loop.go), read from
+	// the one config row that states it; an ordinary conversation or worker
+	// leaves it empty and the row names no role, which is what it always did.
+	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole)})
 
 	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
 	// name the row above banks, so a turn that hopped seals one usage line per
