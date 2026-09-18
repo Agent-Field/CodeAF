@@ -26,11 +26,8 @@
 **Frontier-grade coding on open models, at a fraction of the cost.**
 
 CodeAF is a coding harness built for open models, to get the most out of every
-dollar. It is also a different way to work once more than one thing is going on:
-instead of three terminals of agents with you in the middle, one window where you
-hand work off, see what is moving across every project, and step in only where
-your judgment is needed. A factory, on your own machine, and the more you hand it
-the more it does.
+dollar. A factory, on your own machine, and the more you hand it the more it
+does.
 
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
@@ -201,8 +198,6 @@ publishes a signed index the crew picker reads under `picked from = learn`. The 
 `pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
 the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
 that includes running your own.
-
-[![pool updated](https://img.shields.io/github/last-commit/Agent-Field/CodeAF/model-pool?label=pool%20updated)](https://github.com/Agent-Field/CodeAF/tree/model-pool)
 
 ## Standing orders
 
