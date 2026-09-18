@@ -232,3 +232,18 @@ card and the reply are the conversation's own sentences.
   prompt pages and the manual.
 - **answer owed** (after *no wake*): the store field, hand-off marks it, an
   owed root landing wakes the bounded reply turn, a family replies once.
+
+## Where the hand-off enters today
+
+Under `CODEAF_TASK_BELT=bash`, the model’s own `propose_task` hand-off does not
+enter `startTaskRun`. The tool is registered directly to `stageTask`
+(`internal/session/task.go:525–529`); after approval, `stagedProposal.Commit`
+admits it directly to the session graph (`internal/session/task.go:723–778`).
+That path may seed the plan store in `TaskGraph.admit`
+(`internal/session/task_run.go:1310–1327`), but it remains a session-tree node.
+
+Only the person’s `/task` takes the run-engine door: `StartTask` checks the bash
+belt and calls `startTaskRun` (`internal/session/task_person.go:74–88`). A second
+person-typed `/task` while a run is live is added as a child of that live root
+(`internal/session/task_run_belt.go:169–184`). The model path is not routed to
+that door here.
