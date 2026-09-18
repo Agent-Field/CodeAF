@@ -129,10 +129,7 @@ func poolErrandsStart(profileDir string) *poolErrands {
 // profile — is gone, which is a write into a directory nobody owns. It is
 // idempotent: a profile with no live errands is a no-op.
 func stopPoolErrands(profileDir string) {
-	poolErrandsMu.Lock()
-	held := poolErrandSet[profileDir]
-	delete(poolErrandSet, profileDir)
-	poolErrandsMu.Unlock()
+	held := takePoolErrands(profileDir)
 	if held == nil {
 		return
 	}
@@ -140,17 +137,23 @@ func stopPoolErrands(profileDir string) {
 	held.wg.Wait()
 }
 
+// takePoolErrands removes and returns the profile's tracker under the lock, so
+// the wait that follows happens with the lock released: a Wait under the lock
+// would hold every other profile's start-up behind one profile's shutdown.
+func takePoolErrands(profileDir string) *poolErrands {
+	poolErrandsMu.Lock()
+	defer poolErrandsMu.Unlock()
+	held := poolErrandSet[profileDir]
+	delete(poolErrandSet, profileDir)
+	return held
+}
+
 // poolErrandGo starts one errand on the profile's tracker, so [stopPoolErrands]
 // waits for it, through the same [poolRefreshGo] seam every pool goroutine
 // starts through. A profile wired without a tracker — a bare
 // [startPoolIndexRefresh] in a test — is the plain seam with nothing to join.
 func poolErrandGo(profileDir, scope string, fn func()) {
-	poolErrandsMu.Lock()
-	held := poolErrandSet[profileDir]
-	if held != nil {
-		held.wg.Add(1)
-	}
-	poolErrandsMu.Unlock()
+	held := joinPoolErrands(profileDir)
 	if held == nil {
 		poolRefreshGo(scope, fn)
 		return
@@ -159,6 +162,18 @@ func poolErrandGo(profileDir, scope string, fn func()) {
 		defer held.wg.Done()
 		fn()
 	})
+}
+
+// joinPoolErrands counts one more errand on the profile's tracker under the
+// lock and returns the tracker, or nil when the profile was wired without one.
+func joinPoolErrands(profileDir string) *poolErrands {
+	poolErrandsMu.Lock()
+	defer poolErrandsMu.Unlock()
+	held := poolErrandSet[profileDir]
+	if held != nil {
+		held.wg.Add(1)
+	}
+	return held
 }
 
 // startPoolIndexRefresh is the loader's own tail: it starts the background
