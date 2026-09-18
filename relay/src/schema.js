@@ -51,8 +51,11 @@ function dayError(day, now) {
 
 // validateRow reads one NDJSON line. It answers {row, error}: row is the
 // parsed envelope with its payload when the line is good, and null with a
-// message otherwise. `now` bounds how far ahead the day may be.
-export function validateRow(line, now = new Date()) {
+// message otherwise. `now` bounds how far ahead the day may be. `vendors`, when
+// it is a non-null set, is the allowed-vendor set: a model or judge whose
+// vendor is not in it is refused. Null (the default) turns that rule off, so
+// every vendor passes as it always did.
+export function validateRow(line, now = new Date(), vendors = null) {
   if (typeof line !== 'string' || line.trim() === '') {
     return fail('line is empty');
   }
@@ -91,12 +94,18 @@ export function validateRow(line, now = new Date()) {
   if (typeof payload.model !== 'string' || !MODEL_RE.test(payload.model)) {
     return fail('model must be <vendor>/<id>');
   }
+  if (vendors !== null && !vendors.has(vendorOf(payload.model))) {
+    return fail('model vendor is not allowed');
+  }
   if (typeof payload.score !== 'number' || !Number.isFinite(payload.score)
       || payload.score < 0 || payload.score > 100) {
     return fail('score must be a number in 0-100');
   }
   if (typeof payload.judge !== 'string' || !MODEL_RE.test(payload.judge)) {
     return fail('judge must be <vendor>/<id>');
+  }
+  if (vendors !== null && !vendors.has(vendorOf(payload.judge))) {
+    return fail('judge vendor is not allowed');
   }
   if (!DOORS.has(payload.door)) {
     return fail('door must be task, do, exec or run');
@@ -133,6 +142,12 @@ export function validateRow(line, now = new Date()) {
 // install id: 32 lowercase hex characters, the install's own nonce.
 export function validateInstall(header) {
   return typeof header === 'string' && HEX32_RE.test(header);
+}
+
+// vendorOf reads the vendor half of a "<vendor>/<id>" model id. An allowed
+// set is held lowercased, so the vendor is lowered before it is looked up.
+function vendorOf(id) {
+  return id.slice(0, id.indexOf('/')).toLowerCase();
 }
 
 function fail(message) {

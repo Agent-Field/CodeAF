@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import worker from '../src/worker.js';
+import { runPurge } from '../src/purge.js';
 
 // KV is the smallest store the Worker needs: get, put and one list page.
 // put honours an expirationTtl or expiration option the way the lock needs.
@@ -37,6 +38,10 @@ class KV {
     } else {
       this.expiry.delete(key);
     }
+  }
+  async delete(key) {
+    this.map.delete(key);
+    this.expiry.delete(key);
   }
   async list({ prefix = '', cursor } = {}) {
     void cursor;
@@ -374,4 +379,64 @@ test('scheduled with no cells still publishes an empty index', async () => {
   const res = await worker.fetch(new Request('https://codeaf.agentfield.ai/pool/index.json'), e);
   assert.equal(res.status, 200);
   assert.deepEqual(JSON.parse(await res.text()).cells, []);
+});
+
+test('the purge lists and deletes only the sheet keys carrying a fixture vendor, and a publish drops the judge', async () => {
+  const e = env();
+  // Six sheet keys on one day: two whose model vendor is `crew`, one whose
+  // judge vendor is `other`, and three clean ones — the last of them a graded
+  // key, so both cellKey shapes are read. Beside them the day's seen set and
+  // quota key, which a purge must leave alone.
+  const at = `sheet/${INSTALL}/2026-09-17/`;
+  const crewModel = `${at}worker|crew/worker|anthropic/claude-opus-5|task|M`;
+  const crewHigh = `${at}high|crew/high|anthropic/claude-opus-5|do|L`;
+  const otherJudge = `${at}worker|z-ai/glm-5.3-flash|other/judge|task|M`;
+  const cleanOne = `${at}worker|z-ai/glm-5.3-flash|anthropic/claude-opus-5|task|M`;
+  const cleanTwo = `${at}worker|deepseek/deepseek-v4.1-flash|anthropic/claude-opus-5|do|S`;
+  const cleanGraded = `${at}acceptable|worker|z-ai/glm-5.3-flash|codeaf/grader|task|M`;
+  const seen = `seen/${INSTALL}/2026-09-17`;
+  const quota = `quota/${INSTALL}/2026-09-17`;
+  for (const key of [crewModel, crewHigh, otherJudge, cleanOne, cleanTwo, cleanGraded]) {
+    await e.POOL.put(key, JSON.stringify({ n: 2, s: 100, s2: 5000 }));
+  }
+  await e.POOL.put(seen, 'nonce');
+  await e.POOL.put(quota, '2');
+
+  const vendors = new Set(['crew', 'other']);
+  const planned = await runPurge(e.POOL, vendors, { dryRun: true });
+  assert.deepEqual(planned, [crewHigh, crewModel, otherJudge].sort());
+  // A dry run deletes nothing.
+  for (const key of [crewModel, crewHigh, otherJudge]) {
+    assert.equal(e.POOL.map.has(key), true);
+  }
+
+  const deleted = await runPurge(e.POOL, vendors);
+  assert.deepEqual(deleted, planned);
+  for (const key of [crewModel, crewHigh, otherJudge]) {
+    assert.equal(e.POOL.map.has(key), false);
+  }
+  for (const key of [cleanOne, cleanTwo, cleanGraded]) {
+    assert.equal(e.POOL.map.has(key), true);
+  }
+  assert.equal(e.POOL.map.has(seen), true);
+  assert.equal(e.POOL.map.has(quota), true);
+
+  // The judge list is derived from the stored keys, so the purge is what
+  // removes the fixture judge on the next publish.
+  await worker.scheduled({}, e);
+  const res = await worker.fetch(new Request('https://codeaf.agentfield.ai/pool/index.json'), e);
+  const doc = JSON.parse(await res.text());
+  assert.equal(doc.judges.includes('other/judge'), false);
+  assert.equal(doc.judges.includes('anthropic/claude-opus-5'), true);
+});
+
+test('with ALLOWED_VENDORS set the relay refuses a row whose vendor is not named', async () => {
+  const e = env({ ALLOWED_VENDORS: 'z-ai, anthropic' });
+  const ok = await worker.fetch(post(line(), { 'X-Codeaf-Install': INSTALL }), e);
+  assert.equal(ok.status, 202);
+  const fixture = await worker.fetch(
+    post(line({ nonce: NONCE_B, model: 'crew/worker' }), { 'X-Codeaf-Install': INSTALL }), env({ ALLOWED_VENDORS: 'z-ai, anthropic' }),
+  );
+  assert.equal(fixture.status, 400);
+  assert.match((await fixture.json()).error, /model vendor/);
 });
