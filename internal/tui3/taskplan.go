@@ -758,6 +758,7 @@ func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
 				a.taskSheet.planBack = append(a.taskSheet.planBack, *from)
 			}
 			a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
+			a.taskSheet.planBriefFull = false
 			a.taskSheet.planAt = -1
 			a.taskSheet.detailTop = 0
 			// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
@@ -778,6 +779,7 @@ func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
 // closeTaskPlan backs out one layer to the list, which is the card's own `esc`.
 func (a *app) closeTaskPlan() {
 	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = session.PlanTaskPage{}, false, false
+	a.taskSheet.planBriefFull = false
 	a.taskSheet.detailTop, a.taskSheet.planStick = 0, false
 	// A half-typed note does not survive the page it was typed on, which is the
 	// box's own law everywhere here ([app.placeHomeGesture] resets the box it
@@ -1028,6 +1030,14 @@ func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "pgdown":
 		a.taskPlanScroll(taskSheetRows)
 		return nil
+	case "ctrl+o":
+		if len(planBriefLines(a.taskSheet.plan.Description, a.bodyWidth())) > briefFoldLines {
+			a.taskSheet.planBriefFull = !a.taskSheet.planBriefFull
+			a.taskSheet.detailTop = 0
+			a.taskSheet.planStick = false
+			a.touch()
+		}
+		return nil
 	case "enter":
 		if a.taskSheet.planNote.empty() && a.taskSheet.planAt >= 0 && a.taskSheet.planAt < len(a.taskSheet.plan.Children) {
 			old := a.taskSheet.plan
@@ -1258,8 +1268,30 @@ func (a *app) taskPlanBody(width int) []string {
 		}
 	}
 	if desc := strings.TrimSpace(page.Description); desc != "" {
-		section("description")
-		addWrapped(desc, pal.ink)
+		section("brief")
+		lines := planBriefLines(desc, width)
+		if !a.taskSheet.planBriefFull && len(lines) > briefFoldLines {
+			for _, line := range lines[:briefFoldLines] {
+				add(pal.ink(line))
+			}
+			add(pal.dim(bandFoldWord(len(lines)-briefFoldLines, briefFoldWhat, true) + railSep + briefFoldKey))
+		} else {
+			for _, line := range lines {
+				add(pal.ink(line))
+			}
+		}
+	}
+	if len(page.Checks) > 0 {
+		section("checks")
+		for _, check := range page.Checks {
+			if check = strings.TrimSpace(check); check != "" {
+				addWrapped(check, pal.ink)
+			}
+		}
+	}
+	if folder := strings.TrimSpace(page.Folder); folder != "" {
+		section("folder")
+		addWrapped(folder, pal.ink)
 	}
 	if len(page.Notes) > 0 {
 		section("notes")
@@ -1345,6 +1377,16 @@ func (a *app) taskPlanBody(width int) []string {
 		}
 	}
 	return out
+}
+
+func planBriefLines(text string, width int) []string {
+	var lines []string
+	for _, para := range strings.Split(text, "\n") {
+		if para = strings.TrimSpace(para); para != "" {
+			lines = append(lines, wrap(para, width)...)
+		}
+	}
+	return lines
 }
 
 // planChildWord is one child's own line on the task's page: its state word and

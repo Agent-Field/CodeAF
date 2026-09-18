@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -158,7 +159,10 @@ func TestPlanTaskRowCountsStepsAndSumsSpend(t *testing.T) {
 func TestPlanTaskPageDrawsTheTaskAndRefusesAnotherChat(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, planStoreFilename)
-	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha", Description: "the work order"})
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{
+		ID: "alpha", Title: "Alpha", Description: "the work order",
+		Checks: []string{"go test ./internal/tui3", "go vet ./internal/session"},
+	})
 
 	store, err := plandb.Open(path, "", planRootID, "", "")
 	if err != nil {
@@ -181,6 +185,12 @@ func TestPlanTaskPageDrawsTheTaskAndRefusesAnotherChat(t *testing.T) {
 	}
 	if page.Row.ID != "t-alpha" || page.Description != "the work order" {
 		t.Fatalf("page row = %q, description = %q", page.Row.ID, page.Description)
+	}
+	if !reflect.DeepEqual(page.Checks, []string{"go test ./internal/tui3", "go vet ./internal/session"}) {
+		t.Fatalf("page checks = %#v", page.Checks)
+	}
+	if page.Folder != agent.config.Workspace {
+		t.Fatalf("page folder = %q, want workspace %q", page.Folder, agent.config.Workspace)
 	}
 	if len(page.Steps) != 1 || page.Steps[0].Command != "$ echo one" {
 		t.Fatalf("page steps = %#v", page.Steps)
