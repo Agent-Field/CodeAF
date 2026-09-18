@@ -529,21 +529,22 @@ teardown() {
   fi
   "${TMUX[@]}" kill-server 2>/dev/null || true
   sleep 0.2
-  # Include pane descendants, workspace helpers, and every process a skipped
-  # HOME sweep would have found. Reporting must not depend on whether it was safe
-  # to send those processes a signal.
-  left=""
-  sweepable="$(home_sweep_pids)"
-  for p in $pids $helpers $sweepable; do
+  # Count pane descendants and workspace helpers as leftovers owned by this run.
+  owned_left=""
+  for p in $pids $helpers; do
     [ -d "/proc/$p" ] || continue
-    case " $left " in (*" $p "*) ;; (*) left="$left $p" ;; esac
+    case " $owned_left " in (*" $p "*) ;; (*) owned_left="$owned_left $p" ;; esac
   done
-  count="$(printf '%s' "$left" | wc -w)"
+  owned_count="$(printf '%s' "$owned_left" | wc -w)"
+  # This skipped HOME sweep advisory is machine-wide, not attributable to this measurement.
+  sweepable="$(home_sweep_pids)"
+  advisory_count="$(printf '%s' "$sweepable" | wc -w)"
   PHASE="done"
-  kv "teardown_survivors=${count:-0}"
-  if [ -n "${left// /}" ]; then
-    kv "teardown_survivor_pids=$(printf '%s' "$left" | sed 's/^ //')"
+  kv "teardown_owned_survivors=${owned_count:-0}"
+  if [ -n "${owned_left// /}" ]; then
+    kv "teardown_owned_survivor_pids=$(printf '%s' "$owned_left" | sed 's/^ //')"
   fi
+  kv "advisory_skipped_home_sweep_matches=${advisory_count:-0}"
   return 0
 }
 trap teardown EXIT
