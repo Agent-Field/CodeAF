@@ -2596,8 +2596,8 @@ cannot give: the column beside the conversation is built from *this session's* w
 nothing else, so a task you ran last week, in a session you have closed, is nowhere on the
 screen until you open this.
 
-**There is no `/tasks` command** — though `tasks` is what the PLACE this opens is called on
-the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same tasks place
+**There is no `/tasks` command** — `work` is the tab that opens the tasks place, reached with
+`alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same tasks place
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
 column — `ctrl+. earlier`, or `ctrl+. view more` where the column has merely folded a
