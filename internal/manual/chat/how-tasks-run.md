@@ -1405,10 +1405,7 @@ are what the counter catches when something is polled that nobody is waiting on.
 started with `background: true` is the other case: a server or a sweep the task deliberately
 left running holds nothing up, and the task is asked its next step straight away.
 
-**A task that repeats itself is told what the work has been doing.** Calls made side by
-side in one reply are ONE attempt, and a failure they share counts once: three proposals
-refused together for one reason are not three repeats, and a refusal whose words changed is
-not the same failure again. Before it is stopped it
+**A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
 *the work has not changed since step 12; nine results since brought nothing new*. codeaf
 knows which steps changed the deliverable — the files the task's own `write`, `edit` or
@@ -3156,6 +3153,11 @@ the command kept would run where its files may not be. The same argument is on
 `divide_work`, where each part declares what its own checker may run — and a check every
 part declares is taken off all of them and given once to the task that divided them, which
 is the only one that can honestly make it after its parts are home.
+
+Proposals refused side by side in one reply are ONE attempt, and a refusal they share
+counts once: three refused together for one reason are not three repeats, and a refusal
+whose words changed is not the same failure again, so neither earns the note about
+repeating a call.
 
 That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
 for you: the row in the conversation reads only `the call was refused`, the task's card
