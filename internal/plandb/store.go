@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 var idPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -524,8 +526,18 @@ func (s *Store) AddRootCheck(spec TaskSpec) (*Task, error) {
 // and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
-		if task.Role == RoleCheck && strings.HasPrefix(strings.TrimSpace(result), "holds:") && !s.ranEveryDeclaredCheck(task) {
-			return errors.New("holds conclusion requires every declared Checks: command")
+		text := strings.TrimSpace(result)
+		// A REVIEW CONCLUSION CARRIES ITS BASIS WITH IT, written by the same
+		// gate that judged it: a holds conclusion is refused unless every
+		// declared check has a recorded zero-exit audited run ([checkVerdictBasis]),
+		// and whatever the verdict is, its basis is recorded on the node so a
+		// later reader sees how it was earned without reopening the trajectory.
+		if task.Role == RoleCheck && isReviewConclusion(text) {
+			basis, earned := s.checkVerdictBasis(task)
+			if strings.HasPrefix(text, "holds:") && !earned {
+				return errors.New("holds conclusion requires every declared Checks: command to have a recorded zero-exit audited run")
+			}
+			task.VerdictBasis = basis
 		}
 		if len(result) > 64<<10 {
 			return errors.New("completion result exceeds 65536 bytes")
@@ -580,38 +592,122 @@ func isReviewConclusion(result string) bool {
 	return strings.HasPrefix(result, "holds:") || strings.HasPrefix(result, "does not hold:")
 }
 
-func (s *Store) ranEveryDeclaredCheck(task *Task) bool {
+// checkVerdictBasis reads HOW a review verdict was earned off the check task's
+// own record, and whether a holds conclusion is EARNED by it. With nothing
+// declared the verdict is a reading one and reading can always hold
+// ([TestReadingCanHoldAndDoesNotHoldIsUngated]); with a declaration, every
+// declared command must have a recorded zero-exit run AND must pass the same
+// read-only audit law the checker's door applies — because a command merely
+// present in some earlier record proves none of those facts. The recorded
+// exits are exactly what the persisted basis carries, runs included, so the
+// proof is on the node rather than in a file a reader would have to reopen.
+func (s *Store) checkVerdictBasis(task *Task) (VerdictBasis, bool) {
 	if len(task.Checks) == 0 {
-		return false
+		return VerdictBasis{Kind: "reading"}, true
 	}
+	recorded := s.recordedRuns(task)
+	seen := make(map[string]bool, len(task.Checks))
+	runs := make([]VerdictRun, 0, len(task.Checks))
+	earned := true
+	for _, raw := range task.Checks {
+		command := strings.TrimSpace(raw)
+		if command == "" || seen[command] {
+			continue
+		}
+		seen[command] = true
+		if !auditableDeclaredCheck(command) {
+			earned = false
+		}
+		exit, ran := recorded[command]
+		if !ran {
+			earned = false
+			continue
+		}
+		runs = append(runs, VerdictRun{Command: command, ExitCode: exit})
+		if exit != 0 {
+			earned = false
+		}
+	}
+	return VerdictBasis{Kind: "run", Runs: runs}, earned
+}
+
+// recordedRuns is the checker's own record as a map from command to exit code:
+// every `step` the trajectory holds, with the cd wrapper the belt writes around
+// a worker command stripped the same way the session's own reading stripped it.
+// The LAST exit for a command wins, because a command re-run is a later fact
+// about the same check.
+func (s *Store) recordedRuns(task *Task) map[string]int {
+	out := map[string]int{}
 	data, err := os.ReadFile(filepath.Join(TaskDir(filepath.Dir(s.path), task.ID), "trajectory.jsonl"))
 	if err != nil {
-		return false
+		return out
 	}
-	declared := make(map[string]struct{}, len(task.Checks))
-	for _, check := range task.Checks {
-		declared[strings.TrimSpace(check)] = struct{}{}
-	}
-	ran := make(map[string]struct{}, len(task.Checks))
 	for _, line := range strings.Split(string(data), "\n") {
 		var step struct {
-			Kind    string `json:"kind"`
-			Command string `json:"command"`
+			Kind     string `json:"kind"`
+			Command  string `json:"command"`
+			ExitCode int    `json:"exit_code"`
 		}
-		if json.Unmarshal([]byte(line), &step) == nil && step.Kind == "step" {
-			command := strings.TrimSpace(step.Command)
-			if prefix, inner, ok := strings.Cut(command, " && "); ok {
-				fields := strings.Fields(prefix)
-				if len(fields) == 2 && fields[0] == "cd" {
-					command = strings.TrimSpace(inner)
-				}
+		if json.Unmarshal([]byte(line), &step) != nil || step.Kind != "step" {
+			continue
+		}
+		command := strings.TrimSpace(step.Command)
+		if prefix, inner, ok := strings.Cut(command, " && "); ok {
+			fields := strings.Fields(prefix)
+			if len(fields) == 2 && fields[0] == "cd" {
+				command = strings.TrimSpace(inner)
 			}
-			if _, ok := declared[command]; ok {
-				ran[command] = struct{}{}
-			}
+		}
+		out[command] = step.ExitCode
+	}
+	return out
+}
+
+// auditableDeclaredCheck is the store's half of the check door's law, asked of
+// a persisted declared check before a holds verdict may rest on it. It is the
+// SAME three questions the proposal door asks ([declaredCheckList] in
+// internal/session): one command in shape — a first word with something in it
+// besides wildcards, nothing that starts with an option, and no shell
+// composition — that a blanket-allow gate would still let run. A second
+// reading here would be a second door, which is why every half is asked of the
+// same functions the session asks: [approval.Vouchable], the blanket-allow
+// policy whose critical table is the build's floor, and the composition
+// characters [commandLike] refuses.
+func auditableDeclaredCheck(command string) bool {
+	if !approval.Vouchable(command) || auditAllowAll.CheckBash(command).Action != approval.ActionAllow {
+		return false
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 || strings.HasPrefix(fields[0], "-") || strings.Trim(fields[0], "*?[]") == "" {
+		return false
+	}
+	for _, field := range fields {
+		if strings.ContainsAny(field, declaredCheckComposition) {
+			return false
 		}
 	}
-	return len(declared) > 0 && len(ran) == len(declared)
+	return true
+}
+
+// auditAllowAll is the read-only checker's own policy ([auditAllowed] in
+// internal/session), restated here because the store and the door must agree
+// about what a critical command is or the gate and the door drift apart.
+var auditAllowAll = approval.Policy{Default: approval.ActionAllow}
+
+// declaredCheckComposition is the same character set [commandLike] refuses in
+// internal/session — one command and no shell composition is the gate's own
+// standing law, and a persisted contract must satisfy it.
+const declaredCheckComposition = ";|&<>`$(){}\n\r\\"
+
+// SetVerdictBasis records HOW a task's verdict was earned on the task itself.
+// Done writes it by the same gate that judged the verdict; this store method
+// is the seam a reader with a basis it already holds writes through, and the
+// basis persists with the row.
+func (s *Store) SetVerdictBasis(id string, basis VerdictBasis) (*Task, error) {
+	return s.changeTask(id, func(_ *state, task *Task, _ time.Time) error {
+		task.VerdictBasis = basis
+		return nil
+	})
 }
 
 // Fail marks a task failed by its owner, with a reason the next reader sees.

@@ -68,6 +68,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // taskIndexName is the file, in the session directory. One name, shared by
@@ -274,6 +276,13 @@ type TaskIndexEntry struct {
 	// row rebuilt from a record that never carried the landing instant. Every
 	// ordering in this file is on it (see [taskIndexAt]).
 	EndedAt time.Time `json:"endedAt"`
+	// VerdictBasis is HOW this row's verdict was earned, read from the project
+	// record ([plandb.SetVerdictBasis]) and carried here so the tasks view never
+	// has to reopen a trajectory to say whether a verdict was a read or a run.
+	// It is a surface projection and is never painted: the state and outcome a
+	// person sees stay exactly as they were (taskview_test's
+	// TestTheTasksViewReadsThePersistedVerdictBasisWithoutNewWords).
+	VerdictBasis *plandb.VerdictBasis `json:"verdictBasis,omitempty"`
 	// StartedAt is when the node began running — the node's own start, which
 	// the checkpoint restores with it (task_store.go's taskRecord), so a row
 	// rebuilt tomorrow carries the real instant rather than the moment a window
