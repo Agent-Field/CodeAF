@@ -3272,6 +3272,9 @@ func (a *app) questionWritingKey(head questionShown, key string) (tea.Cmd, bool)
 		if writing == questionAskBackKey {
 			return a.askBack(*open, "", words), true
 		}
+		if writing == questionNoteKey {
+			return a.answerQuestion(*open, session.Answer{Change: words}), true
+		}
 		return a.replaceQuestion(*open, words), true
 	}
 	return nil, false
@@ -3306,6 +3309,9 @@ func (a *app) questionWriting() bool {
 // question that row instead, and the row says which answer the words go with
 // rather than a sentence three rows below the pointer.
 func (a *app) questionWritingRow(q questionShown) string {
+	if q.writing == questionNoteKey {
+		return "write your change, then enter" + questionWritingGap + "esc back"
+	}
 	if q.writing == questionCommentKey {
 		return questionCommentKeyWord + questionWritingGap + "esc back"
 	}
@@ -3661,6 +3667,15 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 		return a.questionMakeRule(head), true
 	case questionUndoKey:
 		return a.questionUndo(head), true
+	case questionNoteKey:
+		// An already completed action keeps its correction lane; it has no
+		// pending request for Other to withdraw.
+		if open := a.questionHeld(head.token()); open != nil {
+			open.writing = questionNoteKey
+			a.touch()
+			return nil, true
+		}
+		return nil, false
 	case questionCommentKey:
 		// Other collects a revised request without choosing the highlighted option.
 		open := a.questionHeld(head.token())

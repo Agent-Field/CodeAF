@@ -3023,11 +3023,11 @@ func TestHeldProposalAnswersKeepTheirMeanings(t *testing.T) {
 // on the row with their keys now, so the box is words: what a person types is a
 // correction, and a correction is a yes to the corrected version.
 func TestEveryTypedSentenceIsACorrectionAndNotAHiddenAnswer(t *testing.T) {
-	// The words are chosen not to open with a key the question DRAWS: `c` is
-	// `[c] change` and `?` is `[?] ask back` over an empty box, which is the
+	// The words are chosen not to open with a key the question DRAWS: `o` is
+	// `o other` and `?` is `? clarify` over an empty box, which is the
 	// trade every letter on this block is held to (question.go's key grammar).
 	// Everything else is a letter.
-	for _, text := range []string{"no", "nope", "stop", "don't", "yes", "ok", "sure", "no, use the flag"} {
+	for _, text := range []string{"no", "nope", "stop", "don't", "yes", "change", "sure", "no, use the flag"} {
 		t.Run(text, func(t *testing.T) {
 			a, agent, _ := taskApp(t)
 			agent.pending = []uint64{7}

@@ -332,8 +332,9 @@ var questionKeys = []questionVerb{
 	{key: questionEnterKey, word: "send it", forms: formsCard, needs: needOther, tier: keyPrimary},
 	{key: questionBackKey, word: "back to the list", forms: formsCard, needs: needOther, tier: keyPrimary},
 	{key: questionOpenKey, word: "open full", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
-	{key: questionCommentKey, word: "other", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
+	{key: questionCommentKey, word: "other", forms: formsLine | formsCard | formsRoom, needs: needWords, giveUp: 5},
 	{key: questionNoteKey, word: "note", forms: formsRoom, needs: needWords, giveUp: 5},
+	{key: questionNoteKey, word: "change", forms: formsRatify, needs: needWords, giveUp: 5},
 	{key: questionCompareKey, word: "compare", forms: formsRoom, needs: needCompare, giveUp: 4},
 	// `?` IS ON THE ROW AS WELL AS THE PANEL. Asking the asker back is a way of
 	// answering any question that takes words, and a question drawn as one row is
