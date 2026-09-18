@@ -8,18 +8,28 @@
 //
 // Everything here is pure: plain values in, plain values out. No KV, no fetch.
 
-// METRIC_ROLE_QUALITY is the one metric the sheets carry.
+// METRIC_ROLE_QUALITY is the metric the sheets carried first, and the one a
+// five-segment key (written before the metric was part of a key) belongs to.
 const METRIC_ROLE_QUALITY = 'role_quality';
+
+// METRIC_ACCEPTABLE is the harness's own grade of a task, 100 or 0 per seat.
+// Its cells are published per source — the judge column, which for this
+// metric names the grader — so a reader can fit a reliability per source and
+// never blends two graders in one cell.
+const METRIC_ACCEPTABLE = 'acceptable';
 
 // ZERO is an empty triple.
 const ZERO = Object.freeze({ n: 0, s: 0, s2: 0 });
 
-// cellKey renders the place one triple lives: the five dimensions that are
-// kept apart, in a fixed order. The day is the KV key's own segment and is not
+// cellKey renders the place one triple lives: the dimensions that are kept
+// apart, in a fixed order. The day is the KV key's own segment and is not
 // part of this key. The dimensions hold no "|" (the model pattern forbids it),
-// so the key splits back cleanly.
+// so the key splits back cleanly. A role_quality key keeps the five-segment
+// form every stored triple was written under; any other metric leads with
+// its own name, so the two never collide and nothing already stored moves.
 export function cellKey(payload) {
-  return `${payload.role}|${payload.model}|${payload.judge}|${payload.door}|${payload.size}`;
+  const tail = `${payload.role}|${payload.model}|${payload.judge}|${payload.door}|${payload.size}`;
+  return payload.metric === METRIC_ROLE_QUALITY || !payload.metric ? tail : `${payload.metric}|${tail}`;
 }
 
 // fold adds one score to a triple and answers the new triple. A missing
@@ -42,10 +52,16 @@ export function join(a, b) {
   };
 }
 
-// splitKey reads a cellKey back into its five dimensions.
+// splitKey reads a cellKey back into its dimensions: five segments are a
+// role_quality key, six lead with the metric.
 function splitKey(key) {
-  const [role, model, judge, door, size] = key.split('|');
-  return { role, model, judge, door, size };
+  const parts = key.split('|');
+  if (parts.length === 6) {
+    const [metric, role, model, judge, door, size] = parts;
+    return { metric, role, model, judge, door, size };
+  }
+  const [role, model, judge, door, size] = parts;
+  return { metric: METRIC_ROLE_QUALITY, role, model, judge, door, size };
 }
 
 // judgeSeverity fits one additive judge severity per judge over the finest
@@ -161,7 +177,7 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
     }
     cells.push({ ...dims, n, mean: entry.triple.s / n });
   }
-  const { beta } = judgeSeverity(cells);
+  const { beta } = judgeSeverity(cells.filter((c) => c.metric !== METRIC_ACCEPTABLE));
 
   // Group the adjusted entries by role and model, and keep each install's own
   // observations so its mean over them can be taken.
@@ -172,15 +188,22 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
       continue;
     }
     const dims = splitKey(entry.key);
-    const rm = `${dims.role}|${dims.model}`;
+    // A judged opinion groups by role and model with the judge's severity
+    // taken out; a grade groups by role, model and the grader that gave it,
+    // with nothing taken out — a grade is a fact about the landing, and which
+    // grader saw it is a dimension the document keeps, not a bias to remove.
+    const graded = dims.metric === METRIC_ACCEPTABLE;
+    const rm = graded
+      ? `${dims.metric}|${dims.role}|${dims.model}|${dims.judge}`
+      : `${dims.metric}|${dims.role}|${dims.model}`;
     let group = groups.get(rm);
     if (!group) {
-      group = { role: dims.role, model: dims.model, installs: new Map(), n: 0, s: 0, s2: 0 };
+      group = { metric: dims.metric, role: dims.role, model: dims.model, source: graded ? dims.judge : undefined, installs: new Map(), n: 0, s: 0, s2: 0 };
       groups.set(rm, group);
     }
     // Judge severity removal shifts each score by -beta[judge]; over a
     // triple of n scores and sum s that is a shift of n·beta in the sum.
-    const shift = beta.get(dims.judge) || 0;
+    const shift = graded ? 0 : (beta.get(dims.judge) || 0);
     const adjustedSum = entry.triple.s - n * shift;
     group.n += n;
     group.s += entry.triple.s;
@@ -213,15 +236,19 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
     const sd = group.n >= 2
       ? Math.sqrt(Math.max(0, (group.s2 - (group.s * group.s) / group.n) / (group.n - 1)))
       : 0;
-    out.push({
-      metric: METRIC_ROLE_QUALITY,
+    const cell = {
+      metric: group.metric,
       role: group.role,
       model: group.model,
       mean,
       sd,
       n: group.n,
       installs,
-    });
+    };
+    if (group.source !== undefined) {
+      cell.source = group.source;
+    }
+    out.push(cell);
   }
 
   // Cells that meet minInstalls sort first; below it they follow. Ties break on
@@ -230,6 +257,7 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
     const am = a.installs >= minInstalls ? 0 : 1;
     const bm = b.installs >= minInstalls ? 0 : 1;
     if (am !== bm) return am - bm;
+    if (a.metric !== b.metric) return a.metric < b.metric ? -1 : 1;
     if (a.mean !== b.mean) return b.mean - a.mean;
     if (a.role !== b.role) return a.role < b.role ? -1 : 1;
     if (a.model !== b.model) return a.model < b.model ? -1 : 1;
@@ -242,7 +270,7 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
 export function judgesOf(entries) {
   const judges = new Set();
   for (const entry of entries) {
-    judges.add(entry.key.split('|')[2]);
+    judges.add(splitKey(entry.key).judge);
   }
   return [...judges].sort();
 }

@@ -24,7 +24,8 @@ test('buildIndex carries an integer version and keys in the fixed order', () => 
   assert.equal(doc.generated, '2026-09-17');
   assert.equal(doc.min_installs, 3);
   assert.deepEqual(doc.judges, ['j/x']);
-  assert.deepEqual(doc.rubrics, { role_quality: 1 });
+  assert.deepEqual(doc.rubrics, { role_quality: 1, acceptable: 1 });
+  assert.deepEqual(doc.metrics.acceptable, { kind: 'bernoulli', unit: 'share', dims: ['role', 'model', 'source'] });
   assert.deepEqual(doc.aliases, {});
   assert.deepEqual(Object.keys(doc.metrics.role_quality), ['kind', 'unit', 'dims']);
   assert.deepEqual(Object.keys(doc), [
@@ -74,3 +75,14 @@ function fromBase64Url(text) {
   const base = text.replace(/-/g, '+').replace(/_/g, '/');
   return base + '='.repeat((4 - (base.length % 4)) % 4);
 }
+
+test('buildIndex writes an acceptable cell with its source label, vendor taken off', () => {
+  const doc = JSON.parse(buildIndex([
+    {
+      metric: 'acceptable', role: 'worker', model: 'z-ai/glm-5.3-flash', source: 'codeaf/grader',
+      mean: 80, sd: 40, n: 5, installs: 1,
+    },
+  ], { version: 1, generated: '2026-09-17', minInstalls: 3, judges: ['codeaf/grader'] }));
+  assert.deepEqual(Object.keys(doc.cells[0]), ['metric', 'role', 'model', 'source', 'mean', 'sd', 'n', 'installs']);
+  assert.equal(doc.cells[0].source, 'grader');
+});
