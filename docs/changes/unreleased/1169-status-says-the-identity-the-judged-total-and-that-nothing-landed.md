@@ -1,6 +1,6 @@
 ---
 kind: added
-title: `codeaf pool status` says the install identity, every landing judged in all, and that nothing has landed
+title: "pool status says the install identity, the judged total, and that nothing has landed"
 pr: 1169
 surface: [chat]
 invalidates:
