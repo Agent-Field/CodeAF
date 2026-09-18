@@ -611,9 +611,14 @@ func openWaits(value state, task *Task) []string {
 
 // Wake clears a parked task's wait flag, the other half of [Store.Wait]: the
 // runtime calls it when something the task waited on has moved, immediately
-// before it launches the task's worker again. It moves nothing else — the task
-// keeps whatever status it was left with, and promotion runs so a leaf whose
-// blocker has cleared is Ready to be claimed by the launch that follows.
+// before it launches the task's worker again. It moves NOTHING ELSE — not the
+// status, and it does not promote. A leaf keeps the status [Wait] left it (Ready
+// where its hard dependencies are done, so the launch's claim answers the
+// ownership check, and Pending where one is still open, so the launch is
+// dropped and the ordinary frontier brings the task back once it clears). A
+// composite is launched without a claim and needs no status; promoting here
+// would let the store auto-complete a composite the instant its last child
+// landed, before the worker it is being woken for can integrate them.
 func (s *Store) Wake(id string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if !task.Waiting {
@@ -621,7 +626,6 @@ func (s *Store) Wake(id string) (*Task, error) {
 		}
 		task.Waiting, task.WaitedAt = false, time.Time{}
 		task.UpdatedAt = now
-		promote(next, now)
 		return nil
 	})
 }
@@ -1948,7 +1952,7 @@ func promote(value *state, now time.Time) {
 		// finish without a seat for every coordinator.
 		for _, id := range value.Order {
 			task := value.Tasks[id]
-			if id == value.RootID || !task.Composite || terminal(task.Status) || heldStatus(task.Status) || !allChildrenTerminal(*value, id) {
+			if id == value.RootID || !task.Composite || task.Waiting || terminal(task.Status) || heldStatus(task.Status) || !allChildrenTerminal(*value, id) {
 				continue
 			}
 			task.Status = StatusDone

@@ -31,7 +31,9 @@ func TestBashWorkerATextOnlyReplyLoopsAndFourInARowFail(t *testing.T) {
 	store := runOpenStore(t)
 	storeDir := filepath.Dir(store.Path())
 	seat := &seat{script: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textReply("Now writing the taint engine:"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textReply("Now writing the taint engine:"), nil
+		},
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textReply("still writing it"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textReply("nearly there"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) {

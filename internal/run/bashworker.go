@@ -162,7 +162,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// `plandb done`, or a `plandb wait`, that the worker itself just
 				// ran is the end of the loop: the shim's verb is already in the
 				// step's record, and the store is the one authority on what
-					// happened — done with its result, or parked with its claim
+				// happened — done with its result, or parked with its claim
 				// released. A task ends no other way but these, the cap, the
 				// wall, or an errored turn.
 				if end, ok := w.storeEnding(task.ID); ok {
