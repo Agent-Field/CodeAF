@@ -960,7 +960,7 @@ func (a *app) taskPaneRunFitFrom(page session.PlanTaskPage, conversation string,
 	}
 	note := -1
 	for i, r := range rows {
-		if plain(r.text) == "notes" {
+		if ansi.Strip(r.text) == "notes" {
 			note = i
 			break
 		}
@@ -971,7 +971,7 @@ func (a *app) taskPaneRunFitFrom(page session.PlanTaskPage, conversation string,
 	for len(rows) > room {
 		cut := -1
 		for i := len(rows) - 1; i >= 0; i-- {
-			s := plain(rows[i].text)
+			s := ansi.Strip(rows[i].text)
 			if strings.Contains(s, " done") {
 				cut = i
 				break
