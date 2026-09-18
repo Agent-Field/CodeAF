@@ -5585,3 +5585,14 @@ are restored. The row disappears when you are already in the main conversation.
 Breadcrumbs still let you choose a particular ancestor; Escape can step back
 through nested task views. If the column is hidden, the header's return control
 and breadcrumbs remain available.
+
+## what are the what, since, now and next lines?
+
+These four lines are a short account of a run. **what** is your goal in your
+own words. **since** says what changed since you last looked, and is left out
+when nothing changed. **now** says what is happening now, or how the run ended.
+**next** says what comes after and whether anything needs you.
+
+The worker model writes these lines. It refreshes them only when the shape of
+the run has moved, rather than every time you look. Without a model key the
+lines are absent; the task facts remain available on their own.
