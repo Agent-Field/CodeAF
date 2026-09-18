@@ -1,0 +1,20 @@
+---
+kind: changed
+title: the pareto crewing paper picks crews by one dial in dollars, on a grade no model can move
+pr: 1123
+surface: [docs]
+invalidates:
+  - "`docs/design/model-pool/pareto-crewing.tex` presented the knee of the cost-quality front — `crewpick.knee`, the crew farthest above the chord in (ln bill, quality) — as the balanced pick, and a scale-invariance proposition as its justification. The paper now minimises `J(a;x,L) = E[B(a,x)] + L(1 - P(g=1|a,x))` over a single stake `L` in dollars, proves that sweeping `L` reaches exactly the vertices of the lower convex hull of the achievable (bill, failure) set, and retires the knee — not because it is unreachable (Proposition 4 proves it is always a hull vertex) but because the stake it implies is never shown and moves with the price scale while the user's stake does not. frugal/balanced/max become L = $1/$10/$50. No code changed; `crewpick` still ships the knee."
+  - "The paper's reward was the off-crew judge's 0-100 score per seat, under Assumption `ass:linear` (`P(clean) = sum of role qualities / 100`). The reward is now a harness-run, model-free grade on the landing — build, vet, touched-package tests, gofmt — giving one bit. The judge score, the checker's major/minor counts and a run's own account of how it stopped are auxiliary observations with a derived reliability `rho = gamma^2 p(1-p)/(q(1-q))`; measured on 202 real runs, a run's own `settled` claim is worth rho = 0.02 of one grade and an off-crew rating of 4 or 5 is worth 0.42. A session's rating of itself is never a reward."
+  - "The paper priced a crew from `crewpick.DefaultShapes` — a compiled-in input-to-output ratio, cache share and token-volume share per seat, identical for every model. It now prices from a per-(seat, model) token shape learned from the usage ledger with a shrinkage prior at the seat's default. The evidence is in the paper's Figure 1: the checker seat takes more than half the run's bill on a quarter of 68 measured runs, against a design assumption of eight percent."
+  - "Live judge scores (0-100) and the seed's `100 * [no major finding]` were both published as the metric `role_quality`, and the paper described them as one quantity. The design now carries one Bernoulli metric `acceptable` with a `source` dimension in {grader, judge-major-free, seed} whose per-source reliability the relay fits beside the judge severities, and `judge_score` as its own metric. The two scales are never summed into one cell. `internal/pool/record` and `relay/src/sheet.js` still spell the one old name."
+  - "The paper claimed a role-level Thompson sampler halves a crew-level learner's regret. A calibrated simulation in the new paper says the opposite where it matters: with every model carrying a catalog index, Thompson sampling inside `J` costs $347 of regret over 800 tasks against $195 for the posterior-mean rule that ships, robust across L in {1, 5, 20, 80}. It is indispensable only where a model carries no index — there the posterior-mean rule never finds the best model and its per-task regret does not fall at all. Exploration belongs in a small capped budget aimed at uninformative priors, not in the crew choice."
+  - "The paper described the pool's within-store merge as the componentwise-max join of its CRDT proposition. Only the BETWEEN-store merge is that join (`relay/src/sheet.js` `join`); an install's own sheet in `internal/pool/tally` accumulates by addition, which is not idempotent, and the relay bounds the double-counting a retried batch causes with its daily per-install quota. Both are now stated separately."
+---
+
+Design only. The three decisions the paper formalises — a model-free grader as
+the reward, log-price bands for pruning and pooling, and one stake `L` in place
+of the knee — are specified and not in code; `docs/design/model-pool/figures/`
+holds the generator, the text-free CSVs it reads and seven figures, two of them
+from the 202 real runs of the 2026-09-16/17 window and five from simulation or
+closed form, each labelled in its caption.
