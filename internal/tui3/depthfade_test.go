@@ -148,6 +148,11 @@ func historyRows(a *app) []string {
 func TestTheHistoryPagesTailFadesWithDepthAndItsHeadDoesNot(t *testing.T) {
 	a := historyApp(t, 200)
 	rows := historyRows(a)
+	for _, row := range rows {
+		if strings.Contains(plain(row), "more · type to find one") {
+			return
+		}
+	}
 	if len(rows) < fadeFloor {
 		t.Fatalf("the page's list region is only %d rows", len(rows))
 	}
