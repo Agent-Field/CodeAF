@@ -134,6 +134,9 @@ the ask in a test — which is what the review round now reads against the ask.
   shipped engine wins on any of pass count, cost or wall. The six-cell grid
   (n=3) still shows one cell (c5) where the shipped engine passes 3/3 to the
   harness's 2/3, measured before the review round.
+- **The review round now fires on a root that worked alone.** Until 2026-09-18 a
+  solo root that wrote its own `plandb done` was never checked, so every
+  repository number above that predates that fix measured an unreviewed run.
 - **The review round is one round deep.** A finding opens one `fix:` task and a
   finding on that fix task is a note, so a run cannot loop; a fix that changes
   a behaviour the check did not cover is not caught (bandit taint, one case).
