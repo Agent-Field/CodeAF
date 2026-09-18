@@ -115,7 +115,7 @@ func TestASettleTurnEndsAtItsCallCeilingRatherThanTheRunsWall(t *testing.T) {
 		config.AskConsent = false
 	})
 	node := settleLanding(t, agent, nil)
-	notice := waitForSettleHandback(t, node)
+	waitForSettleHandback(t, node)
 
 	if calls := scribe.callsMade(); calls != settleCallCeiling {
 		t.Fatalf("the settle turn spent %d provider calls, want the ceiling of %d", calls, settleCallCeiling)
