@@ -32,6 +32,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/pool/pull"
 	"github.com/Agent-Field/codeaf/internal/pool/record"
+	"github.com/Agent-Field/codeaf/internal/pool/shape"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -246,6 +248,7 @@ func wirePoolIndex(profileDir string) {
 	cfg := config.ModelPoolAt(profileDir)
 	config.AutoIndex = poolIndexFor(profileDir, cfg, time.Now)
 	config.AutoOwnCells = poolOwnCellsFor(profileDir, cfg)
+	config.AutoShapes = poolShapesFor(session.UsageLedgerPath())
 	// The errands below run on this profile's tracker so the process that
 	// seated them can join them when it closes ([stopPoolErrands]).
 	held := poolErrandsStart(profileDir)
@@ -257,6 +260,30 @@ func wirePoolIndex(profileDir string) {
 	if cfg.CanSend() {
 		poolErrandGo(profileDir, "pool/push", func() { poolPush(held.ctx, profileDir, cfg, poolPushBudget) })
 	}
+}
+
+// poolShapesFor builds this process's one reader of what real tasks spent on
+// each seat: the usage ledger at path is read once, here, and the seats'
+// shapes learned from it (crewpick.ShapesFrom over the defaults) are what the
+// returned function answers, so a pick prices its front on measured volumes
+// and does no disk per call. THE READ IS START-UP WORK AND NOTHING ON A RUN'S
+// PATH, the posture the own-sheet reader keeps. A ledger that cannot be read
+// is said under the debug switch and answers nil, which the seam reads as the
+// defaults: a bill priced the old way is a loss, not a fault a pick should
+// stop for.
+func poolShapesFor(path string) func() map[crewpick.Seat]crewpick.SeatShape {
+	tasks, err := shape.Tasks(path)
+	if err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: usage ledger: %v", err)
+		}
+		return nil
+	}
+	if len(tasks) == 0 {
+		return nil
+	}
+	shapes := crewpick.ShapesFrom(crewpick.DefaultShapes(), tasks)
+	return func() map[crewpick.Seat]crewpick.SeatShape { return shapes }
 }
 
 // poolOwnCellsFor builds this process's one reader of the install's own judged
