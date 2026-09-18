@@ -56,7 +56,7 @@ func TestC249BackfillKeepsExitBearingChainSegments(t *testing.T) {
 			t.Errorf("c249 backfill lacks %q: %q", want, got)
 		}
 	}
-	for _, drop := range []string{"cat ", "sed ", "git status", "git grep", "git add", "plandb done"} {
+	for _, drop := range []string{"cat ", "sed ", "nl ", "git status", "git grep", "git add", "plandb done"} {
 		if strings.Contains(joined, drop) {
 			t.Errorf("c249 backfill retained %q: %q", drop, got)
 		}
