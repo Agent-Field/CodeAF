@@ -946,7 +946,42 @@ func (a *app) taskPlanBody(width int) []string {
 			}
 		}
 	}
+	// A TASK WITH CHILDREN SHOWS THEM UNDER ITS STEPS, the way the rail draws a
+	// family: each child on its own line, indented under the parent with the tasks
+	// place's own connector ([tasksKin]), and carrying its live step under it when
+	// one is in flight. It is the same plan tree the list draws ([planAnchor]), and
+	// no new word: a child's line is its state word and its title. The note
+	// composer and its receipt below are untouched by the tree.
+	if kids := page.Children; len(kids) > 0 {
+		if len(page.Steps) == 0 && page.Live.Empty() {
+			section("steps")
+		}
+		for at, kid := range kids {
+			mark := tasksKinCont
+			if at == len(kids)-1 {
+				mark = tasksKinLast
+			}
+			add(pal.ink(mark + planChildWord(kid)))
+			if line := planLiveRow(kid.Live.Command, width-2, pal); line != "" {
+				add("  " + line)
+			}
+		}
+	}
 	return out
+}
+
+// planChildWord is one child's own line on the task's page: its state word and
+// its title, joined the way the page's own telemetry line joins two facts. The
+// word is the same [planStateWord] every row on this surface wears.
+func planChildWord(row session.PlanTaskRow) string {
+	word, title := planStateWord(row.Status), strings.TrimSpace(row.Title)
+	switch {
+	case word != "" && title != "":
+		return word + railSep + title
+	case word != "":
+		return word
+	}
+	return title
 }
 
 // taskPlanFollow re-reads the page while it stands on a task that is still

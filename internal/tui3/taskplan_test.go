@@ -861,3 +861,39 @@ func TestANoteOnAPlanChildStillLandsThroughPlanNote(t *testing.T) {
 		t.Fatalf("enter wrote %v, want one note %+v", fake.noted, wantNote)
 	}
 }
+
+// THE TASK'S PAGE SHOWS ITS CHILDREN UNDER ITS STEPS, each with its live line,
+// the way the rail draws a family — and leaves the note composer and its receipt
+// exactly where they were.
+func TestThePlanPageShowsChildrenUnderItsSteps(t *testing.T) {
+	root := session.PlanTaskRow{ID: "t-root", Title: "Root", Status: "running", Steps: 2}
+	child := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Parent: "t-root", Status: "running", Steps: 3}
+	child.Live.Step = 3
+	child.Live.Command = "go test ./internal/api"
+	rows := []session.PlanTaskRow{root, child}
+	pages := map[string]session.PlanTaskPage{
+		"t-root": {
+			Row:      root,
+			Steps:    []session.PlanStep{{Step: 1, Command: "git status"}},
+			Children: []session.PlanTaskRow{child},
+		},
+	}
+	a, _ := planAppWith(t, rows, pages)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !a.taskSheet.planOn {
+		t.Fatal("enter over the root row did not open its page")
+	}
+	text := taskSheetText(a)
+	if !strings.Contains(text, "Alpha") {
+		t.Fatalf("the page does not draw the task's child:\n%s", text)
+	}
+	if !strings.Contains(text, "$ go test ./internal/api") {
+		t.Fatalf("the page does not draw the child's live line:\n%s", text)
+	}
+	if !strings.Contains(text, taskPlanNoteWord) {
+		t.Fatalf("the tree changed the page's note composer:\n%s", text)
+	}
+}
