@@ -173,7 +173,7 @@ func TestBashBeltFrameRendersTheSourcesItReads(t *testing.T) {
 	wantStep := fmt.Sprintf("step %d/%d", 5, node.limits().maxSteps)
 	wantSpend := " · $" + strconv.FormatFloat(node.spend(), 'f', 2, 64) + " so far"
 	wantLeft := fmt.Sprintf(" · %d steps left", node.limits().maxSteps-5)
-	if frame := child.bashBeltFrame(); frame != wantStep+wantSpend+wantLeft {
+	if frame := child.bashBeltFrame(nil); frame != wantStep+wantSpend+wantLeft {
 		t.Fatalf("frame = %q, want %q", frame, wantStep+wantSpend+wantLeft)
 	}
 	// AND AN UNPRICED MODEL DRAWS NO MONEY AT ALL — the room's own zero law,
@@ -181,14 +181,14 @@ func TestBashBeltFrameRendersTheSourcesItReads(t *testing.T) {
 	child.mu.Lock()
 	child.usage = Usage{}
 	child.mu.Unlock()
-	if frame := child.bashBeltFrame(); frame != wantStep+wantLeft {
+	if frame := child.bashBeltFrame(nil); frame != wantStep+wantLeft {
 		t.Fatalf("unpriced frame = %q, want %q", frame, wantStep+wantLeft)
 	}
 	// AND A STEP COUNT OF ZERO IS NOTHING: a node that has finished no call has
 	// no step to be on, and the emptiness law renders that as no frame at all
 	// rather than as step 0.
 	room.live.steps = 0
-	if frame := child.bashBeltFrame(); frame != "" {
+	if frame := child.bashBeltFrame(nil); frame != "" {
 		t.Fatalf("frame at zero steps = %q, want nothing", frame)
 	}
 }
@@ -201,29 +201,29 @@ func TestBashBeltFrameFamilyLineFollowsTheQueue(t *testing.T) {
 	t.Parallel()
 	graph, node, child, room, _ := bashBeltFrameFixture(t, true, nil)
 	room.live.steps = 2
-	if frame := child.bashBeltFrame(); strings.Contains(frame, "family:") {
+	if frame := child.bashBeltFrame(nil); strings.Contains(frame, "family:") {
 		t.Fatalf("a node with no family drew a family line: %q", frame)
 	}
 	child.postTaskNews()
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "family: 1 report in hand") || strings.Contains(frame, "parts still working") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "family: 1 report in hand") || strings.Contains(frame, "parts still working") {
 		t.Fatalf("frame with one report owed = %q", frame)
 	}
 	kid := graph.reserve()
 	graph.admit(kid, taskSpec{title: "a part", brief: "b", acceptance: "a", parent: node.id, depth: 2})
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "family: 1 report in hand; parts still working") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "family: 1 report in hand; parts still working") {
 		t.Fatalf("frame with a part outstanding = %q", frame)
 	}
 	kidNode := graph.node(kid)
 	kidNode.graph.mu.Lock()
 	kidNode.noted = true
 	kidNode.graph.mu.Unlock()
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "family: 1 report in hand") || strings.Contains(frame, "parts still working") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "family: 1 report in hand") || strings.Contains(frame, "parts still working") {
 		t.Fatalf("frame after the part's news was handed over = %q", frame)
 	}
 	child.mu.Lock()
 	child.taskNotes = 0
 	child.mu.Unlock()
-	if frame := child.bashBeltFrame(); strings.Contains(frame, "family:") {
+	if frame := child.bashBeltFrame(nil); strings.Contains(frame, "family:") {
 		t.Fatalf("frame with an empty queue and no parts = %q, want no family line", frame)
 	}
 }
@@ -267,24 +267,24 @@ func TestBashBeltFrameShowsFreeChildSlots(t *testing.T) {
 	t.Parallel()
 	graph, node, child, room, _ := bashBeltFrameFixture(t, true, nil)
 	room.live.steps = 1
-	if frame := child.bashBeltFrame(); strings.Contains(frame, "free slots") {
+	if frame := child.bashBeltFrame(nil); strings.Contains(frame, "free slots") {
 		t.Fatalf("a node that never divided drew a slot line: %q", frame)
 	}
 	// FOUR CLAIMED SLOTS ARE FOUR TAKEN, and the frame reads the remainder.
 	setSlots(graph, node.id, 4)
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, fmt.Sprintf("free slots: %d", taskFanLimit-4)) {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, fmt.Sprintf("free slots: %d", taskFanLimit-4)) {
 		t.Fatalf("frame does not show the free child slots: %q", frame)
 	}
 	// AND A NODE AT THE CAP DRAWS NOTHING: zero renders as nothing.
 	setSlots(graph, node.id, taskFanLimit)
-	if frame := child.bashBeltFrame(); strings.Contains(frame, "free slots") {
+	if frame := child.bashBeltFrame(nil); strings.Contains(frame, "free slots") {
 		t.Fatalf("a node with no slot left drew a slot line: %q", frame)
 	}
 	// AND AN ADMITTED CHILD IS COUNTED BESIDE THE CLAIM, which is the whole of
 	// the cap's arithmetic: eighteen claimed and one admitted leaves one.
 	setSlots(graph, node.id, 18)
 	putChild(graph, node.id, TaskRunning)
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "free slots: 1") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "free slots: 1") {
 		t.Fatalf("frame does not count an admitted child against the cap: %q", frame)
 	}
 }
@@ -296,15 +296,15 @@ func TestBashBeltFrameChildNewsFollowsTheGraph(t *testing.T) {
 	t.Parallel()
 	graph, node, child, room, _ := bashBeltFrameFixture(t, true, nil)
 	room.live.steps = 2
-	if frame := child.bashBeltFrame(); strings.Contains(frame, "parts:") {
+	if frame := child.bashBeltFrame(nil); strings.Contains(frame, "parts:") {
 		t.Fatalf("a node with no children drew child news: %q", frame)
 	}
 	putChild(graph, node.id, TaskRunning)
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "parts: 1 new") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "parts: 1 new") {
 		t.Fatalf("frame with one child running = %q", frame)
 	}
 	putChild(graph, node.id, TaskDone)
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "parts: 1 new, 1 settled") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "parts: 1 new, 1 settled") {
 		t.Fatalf("frame with a new and a settled child = %q", frame)
 	}
 	// AND A CHILD THAT HAS SETTLED SINGS ITS OWN HALF ONLY: with every child
@@ -318,7 +318,7 @@ func TestBashBeltFrameChildNewsFollowsTheGraph(t *testing.T) {
 	graph.mu.Unlock()
 	// AND A QUEUED CHILD IS NEW LIKE A RUNNING ONE.
 	putChild(graph, node.id, TaskQueued)
-	if frame := child.bashBeltFrame(); !strings.Contains(frame, "parts: 1 new, 2 settled") {
+	if frame := child.bashBeltFrame(nil); !strings.Contains(frame, "parts: 1 new, 2 settled") {
 		t.Fatalf("frame with a queued child = %q", frame)
 	}
 }
