@@ -277,3 +277,46 @@ func planRowByID(t *testing.T, rows []PlanTaskRow, id string) PlanTaskRow {
 	t.Fatalf("no row %q among %v", id, rowIDs(rows))
 	return PlanTaskRow{}
 }
+
+// A run root carries progress over every task below it, not its own runtime
+// status. Ready and dependency-held work are both queued; claimed and running
+// work are both running. The figures come from one deterministic store read.
+func TestPlanTaskRootCarriesSubtreeProgress(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a",
+		plandb.TaskSpec{ID: "done", Title: "Done"},
+		plandb.TaskSpec{ID: "running", Title: "Running"},
+		plandb.TaskSpec{ID: "ready", Title: "Ready"},
+		plandb.TaskSpec{ID: "failed", Title: "Failed"},
+		plandb.TaskSpec{ID: "held", Title: "Held", ParentID: "ready", Dependencies: []plandb.Dependency{{TaskID: "running", Kind: plandb.DepBlocks}}},
+	)
+
+	store, err := plandb.Open(path, "", planRootID, "", "")
+	if err != nil {
+		t.Fatalf("reopen the store to move tasks: %v", err)
+	}
+	if _, err := store.Claim("done", "worker-done"); err != nil {
+		t.Fatalf("claim done task: %v", err)
+	}
+	if _, err := store.Done("done", "worker-done", "done", nil, nil); err != nil {
+		t.Fatalf("finish done task: %v", err)
+	}
+	if _, err := store.Claim("running", "worker-running"); err != nil {
+		t.Fatalf("claim running task: %v", err)
+	}
+	if _, err := store.Claim("failed", "worker-failed"); err != nil {
+		t.Fatalf("claim failed task: %v", err)
+	}
+	if _, err := store.Fail("failed", "worker-failed", "boom"); err != nil {
+		t.Fatalf("fail task: %v", err)
+	}
+	_ = store.Close()
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	root := planRowByID(t, agent.PlanTasks(), "t-"+planRootID)
+	if root.Done != 1 || root.Running != 1 || root.Queued != 2 || root.Failed != 1 || root.Total != 5 {
+		t.Fatalf("root progress = done %d, running %d, queued %d, failed %d, total %d; want 1, 1, 2, 1, 5", root.Done, root.Running, root.Queued, root.Failed, root.Total)
+	}
+}

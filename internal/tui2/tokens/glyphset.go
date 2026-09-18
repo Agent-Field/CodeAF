@@ -155,6 +155,10 @@ const (
 	GStepRunning
 	GStepPending
 	GStepBlocked
+	GDoneCell
+	GRunningCell
+	GEmptyCell
+	GFailedCell
 	GQueuePill
 	GDiffAdd
 	GDiffDel

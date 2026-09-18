@@ -33,11 +33,19 @@ import (
 // the span it covered, the last thing anybody said on it, and where its record
 // lives.
 type PlanTaskRow struct {
-	ID     string
-	Title  string
-	Status string
-	Seat   string
-	Parent string
+	// Done, Running, Queued, Failed and Total summarize every task below a run root.
+	// They stay zero on ordinary task rows. Claimed work is running; pending and
+	// ready work is queued. Total includes every descendant store row.
+	Done    int
+	Running int
+	Queued  int
+	Failed  int
+	Total   int
+	ID      string
+	Title   string
+	Status  string
+	Seat    string
+	Parent  string
 	// Depth is the row's level below the page task; direct children are zero.
 	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
@@ -143,6 +151,9 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	rows := make([]PlanTaskRow, 0, len(tasks))
 	for _, task := range tasks {
 		rows = append(rows, planTaskRow(store, dir, task, spend, live))
+		if task.ID == planRootID {
+			applyPlanRootProgress(&rows[len(rows)-1], tasks)
+		}
 	}
 	return rows
 }
@@ -185,6 +196,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	}
 	var waitRows []PlanTaskRow
 	pageRow := rows[task.ID]
+	if task.ID == planRootID {
+		applyPlanRootProgress(&pageRow, all)
+	}
 	for _, id := range pageRow.Waits {
 		if row, ok := rows[id]; ok && open(plandb.Status(row.Status)) {
 			waitRows = append(waitRows, row)
@@ -203,7 +217,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		}
 	}
 	return PlanTaskPage{
-		Row:         planTaskRow(store, dir, task, spend, live),
+		Row:         pageRow,
 		Description: task.Description,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
@@ -378,6 +392,27 @@ func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
 		return out[i].Seat < out[j].Seat
 	})
 	return out
+}
+
+// applyPlanRootProgress puts the run-wide subtree figures on its root row. The
+// caller supplies the store read it already made, so progress costs no second read.
+func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task) {
+	for _, task := range tasks {
+		if task.ID == planRootID {
+			continue
+		}
+		row.Total++
+		switch task.Status {
+		case plandb.StatusDone:
+			row.Done++
+		case plandb.StatusClaimed, plandb.StatusRunning:
+			row.Running++
+		case plandb.StatusPending, plandb.StatusReady:
+			row.Queued++
+		case plandb.StatusFailed:
+			row.Failed++
+		}
+	}
 }
 
 // planTaskRow builds one row from the store read and the two figures that are
