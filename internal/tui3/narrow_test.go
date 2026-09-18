@@ -72,7 +72,7 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 // reaches them is on the foot of every place.
 func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 	a := placeApp(t)
-	for _, tc := range []struct{ width int }{{28}, {24}} {
+	for _, tc := range []struct{ width int }{{22}, {20}} {
 		bar := plain(a.placeTabBar(tc.width, false, a.pal))
 		if !strings.Contains(bar, a.page.word()) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand dropped the place you are standing in (%q)", tc.width, bar, a.page.word())
