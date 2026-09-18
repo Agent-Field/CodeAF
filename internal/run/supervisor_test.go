@@ -1109,13 +1109,11 @@ func TestSupervisorEndsAWorkerWhoseTaskAnotherWriterFailed(t *testing.T) {
 		ended <- ctx.Err()
 		return run.Report{}, ctx.Err()
 	}
-	poke := storePoke(t, store.Path())
 	go func() {
 		for !seat.launched("leaf") {
 			time.Sleep(2 * time.Millisecond)
 		}
-		_, _ = poke.Exec(`UPDATE tasks SET status = 'failed', error = 'foreign failure', claimed_by = '' WHERE id = 'leaf'`)
-		adoptForeignWrite(t, store)
+		_, _ = store.Fail("leaf", "leaf", "foreign failure")
 	}()
 	started := time.Now()
 	outcome := run.NewSupervisor(store, t.TempDir(), 1, run.Limits{}, seat.workerFor).Run(runContext(t))
