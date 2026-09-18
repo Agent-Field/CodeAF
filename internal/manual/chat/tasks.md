@@ -1755,6 +1755,14 @@ neither is what the card quotes, which for a report that is nothing but a fenced
 the first line inside it. A report with no line to quote draws no quotation marks at all,
 only the start stamp.
 
+**The conversation replies only when its task was started while answering your question.**
+That task carries the question until its family lands, then one short reply answers from the
+root task’s report. A part does not reply when it finishes, and neither does a check; the
+family replies once, when the root lands. If you typed `/task` yourself, you asked for work
+rather than an answer, so finishing only shows the landing line and makes no model call.
+The same is true when a task started by the conversation carries no question: the landing
+line is the whole arrival.
+
 **Every fact on the head is joined by ` · `, the state word included.** It used to read
 `done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
 them was properly separated — so on a card asking for a hand, the word and the clock ran
