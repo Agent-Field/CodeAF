@@ -273,6 +273,9 @@ func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
 	if strings.Contains(page, "cd /tmp/the-run-copy") {
 		t.Fatalf("the page repeated its own folder in a command row:\n%s", page)
 	}
+	if got := a.taskSheet.plan.Steps[0].Command; got != "cd /tmp/the-run-copy && printf worker-bytes" {
+		t.Fatalf("drawing changed the recorded command to %q", got)
+	}
 
 	// AND esc BACKS OUT ONE LAYER to the list, the card's own bargain.
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
