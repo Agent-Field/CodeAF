@@ -1931,7 +1931,7 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 		state, second = planStateField(item), planSpendField(item)
 	}
 	name := tasksLabel(item.entry)
-	if item.plan != nil && item.plan.Total > 0 {
+	if item.plan != nil && item.plan.Total >= 2 {
 		name += "  " + planProgress(*item.plan, width, pal)
 	}
 	if tail := workConversationTail(item); tail != "" {
@@ -1998,7 +1998,7 @@ func tasksCardHead(item tasksItem, width int, pal palette, lit bool) string {
 		room = 1
 	}
 	label := tasksLabel(item.entry)
-	if item.plan != nil && item.plan.Total > 0 {
+	if item.plan != nil && item.plan.Total >= 2 {
 		label += "  " + planProgress(*item.plan, width, pal)
 	}
 	return lead + placeSubject(fit(label, room), lit, pal)
