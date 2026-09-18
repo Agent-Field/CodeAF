@@ -196,6 +196,9 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	}
 	var waitRows []PlanTaskRow
 	pageRow := rows[task.ID]
+	if task.ID == planRootID {
+		applyPlanRootProgress(&pageRow, all)
+	}
 	for _, id := range pageRow.Waits {
 		if row, ok := rows[id]; ok && open(plandb.Status(row.Status)) {
 			waitRows = append(waitRows, row)
@@ -214,7 +217,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		}
 	}
 	return PlanTaskPage{
-		Row:         planTaskRow(store, dir, task, spend, live),
+		Row:         pageRow,
 		Description: task.Description,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
@@ -391,10 +394,6 @@ func planSpendBySeat(path, chat string, since time.Time) []PlanSpendLine {
 	return out
 }
 
-// planTaskRow builds one row from the store read and the two figures that are
-// not on the task: the dollars its spend rows carry, already summed, and its
-// steps, already read. The live step is the third: the store's live rows, read
-// whole in one pass by the caller, keyed by the task's own bare id.
 // applyPlanRootProgress puts the run-wide subtree figures on its root row. The
 // caller supplies the store read it already made, so progress costs no second read.
 func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task) {
@@ -416,6 +415,10 @@ func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task) {
 	}
 }
 
+// planTaskRow builds one row from the store read and the two figures that are
+// not on the task: the dollars its spend rows carry, already summed, and its
+// steps, already read. The live step is the third: the store's live rows, read
+// whole in one pass by the caller, keyed by the task's own bare id.
 func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64, live map[string]plandb.LiveStep) PlanTaskRow {
 	seat, _ := store.RoleOf(task.ID)
 	// A HELD TASK WEARS THE HOLD'S OWN WORD. Pause is status-independent in the
