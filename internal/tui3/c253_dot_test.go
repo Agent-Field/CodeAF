@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -77,7 +78,7 @@ func TestTasksWideRunRowShowsPlanProgressAtWidthTier(t *testing.T) {
 	for _, width := range []int{100, 70} {
 		t.Run(itoa(width), func(t *testing.T) {
 			text := strings.Join(reading.rows(width, pal), "\n")
-			want := planProgress(root, width, pal)
+			want := workPlanDots(root, pal)
 			if !strings.Contains(text, want) {
 				t.Fatalf("wide run row at %d columns lacks progress %q:\n%s", width, want, text)
 			}
@@ -93,5 +94,28 @@ func TestAFailureTakesTheRowsEndAndLeavesTheFrontierItsRunningCell(t *testing.T)
 	got := planProgress(session.PlanTaskRow{Done: 8, Running: 2, Queued: 3, Failed: 1, Total: 14}, 70, pal)
 	if got != "●●●●●◐○○○✘  8/14" {
 		t.Fatalf("progress = %q", got)
+	}
+}
+
+func TestWorkRunRowKeepsTenDotsAndEndsWithConversationThenAge(t *testing.T) {
+	pal := newPalette(tokens.NoColor, false)
+	now := time.Date(2026, time.September, 18, 12, 0, 0, 0, time.UTC)
+	plan := session.PlanTaskRow{Done: 1, Running: 1, Total: 2, Status: "running"}
+	item := tasksItem{
+		entry: session.TaskIndexEntry{ID: "task", SessionID: "chat", Label: "A title that yields before telemetry", Status: string(session.TaskRunning)},
+		row:   session.SessionRow{ID: "chat", Title: "Conversation tail"}, plan: &plan, runs: true,
+	}
+	dots := strings.Repeat(pal.glyph(tokens.GDoneCell), 5) + pal.glyph(tokens.GRunningCell) + strings.Repeat(pal.glyph(tokens.GEmptyCell), 4)
+	for _, width := range []int{120, 58} {
+		got := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, width, now, tasksSort{}, pal, false))
+		if !strings.Contains(got, dots) {
+			t.Fatalf("at %d columns row %q does not keep its ten progress cells %q", width, got, dots)
+		}
+		if strings.Contains(got, "running") {
+			t.Fatalf("at %d columns row %q must keep dots and omit its group state word", width, got)
+		}
+		if width == 120 && !strings.HasSuffix(strings.TrimSpace(got), "Conversation tail  now") {
+			t.Fatalf("wide row %q must put its dim conversation tail immediately before age", got)
+		}
 	}
 }

@@ -622,15 +622,12 @@ func (r tasksReading) lay(width int) []tasksLine {
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
-	add(tasksLineWord, r.headLine(width))
+	add(tasksLineWord, r.tally())
 	phone := layoutTier(width) == tierPhone
 	// THE CONTROL ROW IS THE FIRST ROW OF THE LIST AND NOT A SECOND HEAD. It
 	// stands where the rows stand, because its labels are the rows' own columns
 	// named — and it is absent on a phone, where there are no columns to label
 	// and the box at the foot is the way in to the filter (taskphone.go).
-	if !phone {
-		add(tasksLineControl, "")
-	}
 
 	// work draws one piece of work and, while its fold is open, everything under
 	// it — to whatever depth the record goes.
@@ -773,7 +770,11 @@ func (r tasksReading) lay(width int) []tasksLine {
 			add(tasksLineFold, workOlderFold(tree.held(section)))
 			continue
 		}
-		add(tasksLineWord, tasksSectionHead(section, tree.held(section), tree.shown(r, section)))
+		runs := 0
+		for _, group := range groups {
+			runs += len(group.roots)
+		}
+		add(tasksLineWord, tasksSectionHead(section, runs))
 		// THE PAGE'S UNIT IS A RUN, not the conversation it came from. Gather
 		// every root before ordering so activity interleaves runs from different
 		// conversations. The rail retains its established grouped projection.
@@ -830,7 +831,7 @@ func (r tasksReading) headLine(width int) string {
 // way — the head carries the window control and a second painter would be a
 // second chance for the control to be drawn where it is not bound.
 func (r tasksReading) headRow(width int, pal palette) string {
-	return r.paint([]tasksLine{{kind: tasksLineWord, text: r.headLine(width), owner: -1}}, 0, width, pal, false)
+	return r.paint([]tasksLine{{kind: tasksLineWord, text: r.tally(), owner: -1}}, 0, width, pal, false)
 }
 
 // tasksKin is the family column in front of one row: one step of indent for
@@ -1584,7 +1585,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 			// →`, the control and the reading at once. Before it, this place bound
 			// all four arrow keys and drew nothing that named them, which is the
 			// exact defect verbstrip.go's law was written against.
-			return placeHeadRow(width, line.text, placeHeading(line.text, pal), r.win, pal)
+			return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 		}
 		return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 	case tasksLineChat:
@@ -1849,12 +1850,8 @@ func (r tasksReading) shown(items []tasksItem) int {
 //
 // NOTHING IS SAID WHERE NOTHING IS HELD BACK. Open the fold and the clause goes:
 // the emptiness law applied to a fact that has stopped being one.
-func tasksSectionHead(section tasksSection, held, shown int) string {
-	word := tasksSectionWord(section)
-	if held-shown <= 0 {
-		return word
-	}
-	return word + railSep + itoa(held-shown) + " folded away"
+func tasksSectionHead(section tasksSection, runs int) string {
+	return tasksSectionWord(section) + railSep + itoa(runs)
 }
 
 func tasksSectionWord(section tasksSection) string {
@@ -1947,25 +1944,59 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := tasksBareLead + pal.dim(line.kin) + glyphInk(glyph) + " "
 	cells := ansi.StringWidth(tasksBareLead+line.kin) + ansi.StringWidth(glyph) + 1
-	state, second := tasksStateField(line), tasksKeyField(by.key, line.rank, now)
-	// A PLAN ROW SHOWS ITS OWN TELEMETRY AND NOT THE SORT KEY'S COLUMN. The
-	// store carries two figures the record has no room for while the work is
-	// still turning — the steps a worker has taken and the dollars the task has
-	// cost — so they take the two cells, each omitted when it is nothing
-	// (taskplan.go).
-	if item.plan != nil {
-		state, second = planStateField(item), planSpendField(item)
+	// The work tab is grouped by state, so a run does not repeat that state in
+	// a column. Its invariant telemetry and age hold the right edge; the title
+	// yields before the conversation tail, while the ten progress cells never do.
+	if item.plan != nil && item.plan.Total >= 2 {
+		dots := workPlanDots(*item.plan, pal)
+		age := tasksAgeField(item, now).full
+		tail := workConversationTail(item)
+		room := width - cells - ansi.StringWidth(dots)
+		if age != "" {
+			room -= 2 + ansi.StringWidth(age)
+		}
+		if tail != "" {
+			room -= 2 + ansi.StringWidth(tail)
+		}
+		// THE TITLE YIELDS FIRST, THEN THE TAIL, NEVER THE DOTS. The title gives
+		// way down to the cells it needs to stay a name; only then does the
+		// conversation's tail shorten, and a tail with no room to say anything
+		// is left off rather than drawn as one letter.
+		if short := planRailKeepTitle - room; short > 0 && tail != "" {
+			left := ansi.StringWidth(tail) - short
+			if left < workTailKeep {
+				room += 2 + ansi.StringWidth(tail)
+				tail = ""
+			} else {
+				tail = fit(tail, left)
+				room = planRailKeepTitle
+			}
+		}
+		if room < 1 {
+			room = 1
+		}
+		name := fit(tasksLabel(item.entry), room)
+		out := lead + placeSubject(name, lit, pal) + "  " + dots
+		if tail != "" {
+			out += "  " + pal.dim(tail)
+		}
+		if age != "" {
+			out += "  " + age
+		}
+		return fit(out, width)
 	}
 	name := tasksLabel(item.entry)
-	if item.plan != nil && item.plan.Total >= 2 {
-		name += "  " + planProgress(*item.plan, width, pal)
-	}
 	if tail := workConversationTail(item); tail != "" {
-		name += " " + pal.dim(tail)
+		name += "  " + pal.dim(tail)
 	}
-	return tasksTableRow(lead, cells, name,
-		state, second,
-		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
+	// A RUN OF ONE TASK WEARS THE STATE WORD ALONE, and so does a task under a
+	// run: `queued · waits: <task>` is the one thing that row is there to say
+	// (WORK-TAB.md, the dot row's table; TREE.md). Only a run with parts trades
+	// the word for its dots, above.
+	if item.plan != nil {
+		return tasksTableRow(lead, cells, name, planStateField(item), planSpendField(item), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
+	}
+	return tasksTableRow(lead, cells, name, tasksStateField(line), tasksKeyField(by.key, line.rank, now), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
 // tasksAgeField is HOW LONG AGO, and it is the fact this page's own headings
@@ -2201,6 +2232,17 @@ func workGrouped(items []tasksItem, now time.Time) []string {
 		out = append(out, tasksSectionWord(item.section)+":"+tasksLabel(item.entry))
 	}
 	return out
+}
+
+// workRunCells is the work tab's dot row: ten cells, always (WORK-TAB.md law 6),
+// out of the one painter every surface shares.
+const workRunCells = 10
+
+// workTailKeep is the fewest cells a conversation tail may be cut to.
+const workTailKeep = 6
+
+func workPlanDots(row session.PlanTaskRow, pal palette) string {
+	return planCells(row, workRunCells, planFailedCells(row, workRunCells), pal)
 }
 
 func workConversationTail(item tasksItem) string {
