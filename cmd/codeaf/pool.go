@@ -262,6 +262,15 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		if _, err := fmt.Fprintln(output, judgeLastLine(last)); err != nil {
 			return err
 		}
+		// What is waiting for a judge and what the last sweep did are said
+		// beside it: the three lines together answer whether a run — a chat
+		// landing or one a headless door left — is being scored at all.
+		if _, err := fmt.Fprintln(output, pendingJudgeLine(readPendingJudge(poolDir), now)); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(output, sweepLastLine(readSweepLast(poolDir), now)); err != nil {
+			return err
+		}
 		relay, mirror := probePool(poolDir, cfg, now, keys)
 		if _, err := fmt.Fprintln(output, relayStatusLine(cfg, relay, mirror, cached)); err != nil {
 			return err
@@ -271,6 +280,76 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		return err
 	}
 	return nil
+}
+
+// pendingJudgeSummary is the pending file as status carries it: the rows no
+// judged marker retires yet, and — when any wait — the oldest one's door and
+// moment. OldestAt is nil when the oldest row was written before rows carried
+// a moment, which the line says as an unknown age rather than inventing one.
+type pendingJudgeSummary struct {
+	Count      int        `json:"count"`
+	OldestDoor string     `json:"oldest_door,omitempty"`
+	OldestAt   *time.Time `json:"oldest_at,omitempty"`
+}
+
+// readPendingJudge counts what the pending file is holding for the restart
+// sweep: the rows a judged marker does not retire. A file that is missing, or
+// a line that is torn, reads as the rows it does hold — the reading form
+// reports what a person has. The oldest row is the earliest moment among
+// them, and a row with no moment is the oldest there can be: it predates the
+// stamp.
+func readPendingJudge(poolDir string) pendingJudgeSummary {
+	var summary pendingJudgeSummary
+	data, err := os.ReadFile(pendingPath(poolDir))
+	if err != nil {
+		return summary
+	}
+	var oldestAt time.Time
+	var oldestDoor string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var row pendingLanding
+		if json.Unmarshal([]byte(line), &row) != nil {
+			continue
+		}
+		if alreadyJudged(poolDir, row.Landing.ID, row.Landing.Attempt) {
+			continue
+		}
+		summary.Count++
+		door := row.Door
+		if door == "" {
+			door = "task"
+		}
+		if summary.Count == 1 || row.At.Before(oldestAt) {
+			oldestAt, oldestDoor = row.At, door
+		}
+	}
+	if summary.Count > 0 {
+		summary.OldestDoor = oldestDoor
+		if !oldestAt.IsZero() {
+			summary.OldestAt = &oldestAt
+		}
+	}
+	return summary
+}
+
+// pendingJudgeLine is the one line status says about the pending file: how
+// many runs wait for a judge and the oldest one's door and age. A row written
+// before rows carried a moment says an unknown age — it predates the stamp —
+// and a file with nothing waiting is said in a sentence, the way every other
+// nothing here is said.
+func pendingJudgeLine(summary pendingJudgeSummary, now time.Time) string {
+	if summary.Count == 0 {
+		return "pending judge: none"
+	}
+	age := "age unknown"
+	if summary.OldestAt != nil {
+		age = reltime.Short(*summary.OldestAt, now)
+	}
+	return fmt.Sprintf("pending judge: %d · oldest %s run %s", summary.Count, summary.OldestDoor, age)
 }
 
 // poolProbeBudget is what status spends asking one address. It is short on
@@ -399,25 +478,27 @@ func ownSheetSummary(poolDir string) ownSummary {
 }
 
 // poolAnswer is the --json shape of the reading forms: the config flat, the
-// cached index under index or null. The three status fields are pointers so a
-// show carries none of them — a field a form does not answer reads as
-// not-asked rather than as zero.
+// cached index under index or null. The status fields are pointers so a show
+// carries none of them — a field a form does not answer reads as not-asked
+// rather than as zero.
 type poolAnswer struct {
-	Mode       string        `json:"mode"`
-	ModeSource string        `json:"mode_source"`
-	RelayURL   string        `json:"relay_url"`
-	IndexURL   string        `json:"index_url"`
-	MirrorURL  string        `json:"mirror_url"`
-	SubmitURL  string        `json:"submit_url"`
-	TTLSeconds int           `json:"ttl_seconds"`
-	Pending    *int          `json:"pending,omitempty"`
-	CanSend    *bool         `json:"can_send,omitempty"`
-	CanRead    *bool         `json:"can_read,omitempty"`
-	Relay      *probeSummary `json:"relay,omitempty"`
-	Mirror     *probeSummary `json:"mirror,omitempty"`
-	LastJudge  *judgeLast    `json:"last_judge"`
-	Index      *indexSummary `json:"index"`
-	Own        ownSummary    `json:"own"`
+	Mode         string               `json:"mode"`
+	ModeSource   string               `json:"mode_source"`
+	RelayURL     string               `json:"relay_url"`
+	IndexURL     string               `json:"index_url"`
+	MirrorURL    string               `json:"mirror_url"`
+	SubmitURL    string               `json:"submit_url"`
+	TTLSeconds   int                  `json:"ttl_seconds"`
+	Pending      *int                 `json:"pending,omitempty"`
+	PendingJudge *pendingJudgeSummary `json:"pending_judge,omitempty"`
+	CanSend      *bool                `json:"can_send,omitempty"`
+	CanRead      *bool                `json:"can_read,omitempty"`
+	Relay        *probeSummary        `json:"relay,omitempty"`
+	Mirror       *probeSummary        `json:"mirror,omitempty"`
+	LastJudge    *judgeLast           `json:"last_judge"`
+	LastSweep    *sweepLast           `json:"last_sweep"`
+	Index        *indexSummary        `json:"index"`
+	Own          ownSummary           `json:"own"`
 }
 
 // indexSummary is the cached index as the reading forms carry it: the
@@ -492,15 +573,20 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		answer.Pending = &pending
 		answer.CanSend = &send
 		answer.CanRead = &read
+		judged := readPendingJudge(poolDir)
+		answer.PendingJudge = &judged
 		relay, mirror := probePool(poolDir, cfg, now, keys)
 		answer.Relay = &relay
 		answer.Mirror = &mirror
 	}
 	answer.Own = ownSheetSummary(poolDir)
-	// The record is null when there is none, so a script can tell a judge
+	// The records are null when there is none, so a script can tell a judge
 	// that has not run from one that failed.
 	if last := readJudgeLast(poolDir); last != nil {
 		answer.LastJudge = last
+	}
+	if swept := readSweepLast(poolDir); swept != nil {
+		answer.LastSweep = swept
 	}
 	encoded, err := json.Marshal(answer)
 	if err != nil {
@@ -632,6 +718,22 @@ func readJudgeLast(poolDir string) *judgeLast {
 	return &last
 }
 
+// readSweepLast reads what the sweep left about its own run: what it judged,
+// what its budget left waiting, and whether the deadline ended it. A file
+// that is missing, or one that does not parse, reads as none yet — the
+// reading form reports what a person has.
+func readSweepLast(poolDir string) *sweepLast {
+	data, err := os.ReadFile(filepath.Join(poolDir, "sweep-last.json"))
+	if err != nil {
+		return nil
+	}
+	var last sweepLast
+	if json.Unmarshal(data, &last) != nil {
+		return nil
+	}
+	return &last
+}
+
 // judgeLastLine is the one line status says about the last judge: which model
 // answered and which seats it scored, or — when none did — how many were
 // asked, the first of them, and the one-line reason the last one failed. The
@@ -652,6 +754,27 @@ func judgeLastLine(last *judgeLast) string {
 		}
 	}
 	return fmt.Sprintf("last judge: %s · failed after %d candidates (%s) · %s", at, len(last.Tried), asked, last.Reason)
+}
+
+// sweepLastLine is the one line status says about the last sweep: what it
+// judged, what it left waiting when the deadline cut it, and how much of the
+// sweep's own budget it spent. The moment is the record's own, said the way
+// the surface says every when — relatively. A record with no moment is no
+// record worth reporting, the same reading a missing file takes.
+func sweepLastLine(last *sweepLast, now time.Time) string {
+	if last == nil || last.At.IsZero() {
+		return "last sweep: none yet"
+	}
+	parts := []string{
+		reltime.Short(last.At, now) + " ago",
+		fmt.Sprintf("judged %d", last.Judged),
+	}
+	if last.Left > 0 {
+		parts = append(parts, fmt.Sprintf("%d still pending", last.Left))
+	}
+	parts = append(parts, fmt.Sprintf("%s of %s",
+		reltime.Elapsed(time.Duration(last.BudgetUsed)*time.Second), reltime.Elapsed(poolSweepBudget)))
+	return "last sweep: " + strings.Join(parts, " · ")
 }
 
 // pendingRows counts what the outbox is holding. It reads the file by count
