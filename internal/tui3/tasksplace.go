@@ -292,11 +292,15 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	// [planRowShown]).
 	if len(mine.plan) > 0 {
 		names := planNamesOf(mine.rows, mine.row.ID)
+		// THE PAGE IS READ ONCE INTO NAMES, and every row off it is handed the
+		// reading: a task the store holds `pending` is held behind named work, and
+		// the name is another row's title (taskplan.go's [planWaits]).
+		kin := planKinOf(mine.plan)
 		for _, task := range mine.plan {
 			if planRowShown(names, task.Title) {
 				continue
 			}
-			item := planItem(task, mine.row.ID)
+			item := planItem(task, mine.row.ID, kin)
 			item.row = tasksRowFor(world, mine, item.entry)
 			put(tasksKeyOf(item.entry), item)
 		}
@@ -514,6 +518,12 @@ const (
 	// nothing can be replayed from it, and a synthetic row would have arrived at
 	// [tasksPlace.verbs] and at the card offering both.
 	tasksLineChat
+	// tasksLinePlanUnder is one of the rows a plan task spends under its own
+	// title while a step is in flight (task.go's [planUnderRows]): the live
+	// step's command, and the task's figures beneath it. It answers to the row
+	// above it ([tasksLine.owner]) and is never a stop of its own, the way a
+	// phone card's second line is not.
+	tasksLinePlanUnder
 )
 
 type tasksLine struct {
@@ -533,6 +543,11 @@ type tasksLine struct {
 	// and air. It is what the cursor stands on, what a press resolves to, and
 	// what stops a card's second line reading as a second row.
 	owner int
+	// planUnder is which row of a plan task's under-block this line is: 0 for
+	// the live step's command and 1 for the telemetry under it. It is meaningful
+	// only on a [tasksLinePlanUnder] and is what [tasksReading.paint] picks out
+	// of the block [planUnderRows] builds.
+	planUnder int
 	// kin is the family column: the two cells in front of a row of work that say
 	// where it sits in a tree. It is "" on a page with no families in it at all,
 	// which is most pages — the column APPEARS when there is a tree to draw, so
@@ -640,6 +655,18 @@ func (r tasksReading) lay(width int) []tasksLine {
 			lines = append(lines, tasksLine{
 				kind: tasksLineTail, item: item, owner: own,
 				kin: tasksKin(depth, levels, tasksKinPad),
+			})
+		}
+		// A PLAN ROW WITH A STEP IN FLIGHT SPENDS ITS UNDER-BLOCK on the live step
+		// and the task's own figures (task.go's [planUnderRows]), for every tier:
+		// the rows hang under the TITLE, answer to the same press as the row, and
+		// are capped at [railUnderRows]. Nothing is added for a plan row between
+		// steps or one that has landed, which is the emptiness law on the block.
+		for under := 0; under < planUnderCount(item.plan); under++ {
+			lines = append(lines, tasksLine{
+				kind: tasksLinePlanUnder, item: item, owner: own,
+				kin:       tasksKin(depth, levels, tasksKinPad),
+				planUnder: under,
 			})
 		}
 		if !line.open {
@@ -1377,6 +1404,21 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 			tail = 1
 		}
 		return lead + pal.dim(line.kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
+	case tasksLinePlanUnder:
+		// THE LIVE STEP LINE AND THE FIGURES UNDER IT, hung where the phone
+		// card's second line hangs so a plan row's block reads at the same
+		// indent whichever tier is drawing it (task.go's [planUnderRows]).
+		indent := strings.Repeat(" ", taskSheetPhoneIndent)
+		block := lead + pal.dim(line.kin) + indent
+		under := room - ansi.StringWidth(block)
+		if under < 1 {
+			under = 1
+		}
+		rows := planUnderRows(line.item, under, pal)
+		if line.planUnder >= len(rows) {
+			return ""
+		}
+		return block + rows[line.planUnder]
 	}
 	// THE FAMILY COLUMN IS CHOSEN IN THE LAYOUT AND PAINTED BY THE ROW. It is dim
 	// everywhere — a connector is the surface's own furniture, not the row's

@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // planFake is [taskFake] widened by the plan seam this place asserts: the rows a
@@ -369,5 +370,153 @@ func TestThePaneIsUnchangedWithoutAPlan(t *testing.T) {
 	}
 	if want, got := taskSheetText(before), taskSheetText(after); want != got {
 		t.Fatalf("a conversation with no plan drew a different page:\n--- without a plan ---\n%s\n--- with an empty plan ---\n%s", want, got)
+	}
+}
+
+// ── THE ROW'S LIVE STEP LINE (c185, SURFACE.md §2A / §4 Cell 2) ─────────────
+//
+// A plan store row carries the step its worker is running RIGHT NOW on
+// PlanTaskRow.Live, and a running row spends its under-block on that step's
+// command and the task's own figures. The four tests below are the four facts
+// the cell has to hold: the live line and its telemetry appear while a step is
+// in flight; a settled row draws neither; a `pending` row says the surface's own
+// word `queued`; and a narrow column drops the command's tail without ever
+// cutting a glyph or losing the step count.
+
+// livePlanRow is one plan task with a step in flight, so every test below starts
+// from the same row and changes one thing about it.
+func livePlanRow() session.PlanTaskRow {
+	row := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Status: "running", Steps: 12, USD: 0.11}
+	row.Live.Step = 12
+	row.Live.Command = "git grep -n RateLimit internal/api"
+	row.Live.Since = taskFixtureNow
+	return row
+}
+
+// planTextFor opens the tasks place over a plan and answers the whole screen, so
+// every test below reads one row without its own app plumbing ([planLine] already
+// does this walk for the wide list; this is the same walk named for these tests).
+func planTextFor(t *testing.T, rows []session.PlanTaskRow) string {
+	t.Helper()
+	a, _ := planAppWith(t, rows, nil)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	return taskSheetText(a)
+}
+
+// A RUNNING ROW DRAWS THE COMMAND ITS STEP IS RUNNING AND THE FIGURES UNDER IT.
+func TestAPlanRowWithALiveStepDrawsTheCommandAndTheFigures(t *testing.T) {
+	text := planTextFor(t, []session.PlanTaskRow{livePlanRow()})
+	if !strings.Contains(text, "$ git grep -n RateLimit internal/api") {
+		t.Fatalf("the live step's command is not drawn under the running row:\n%s", text)
+	}
+	if !strings.Contains(text, "12 steps · $0.11") {
+		t.Fatalf("the figures are not drawn under the live command:\n%s", text)
+	}
+}
+
+// A SETTLED ROW DRAWS NEITHER: no live step, so no command line and no block at
+// all — the step count stays on the row's own state cell, where every row keeps
+// it.
+func TestAPlanRowWithNoLiveStepDrawsNoUnderBlock(t *testing.T) {
+	row := livePlanRow()
+	row.Status, row.Live = "done", session.PlanTaskRow{}.Live
+	text := planTextFor(t, []session.PlanTaskRow{row})
+	if strings.Contains(text, "$ git grep") {
+		t.Fatalf("a settled row drew the live command:\n%s", text)
+	}
+	if strings.Contains(text, "12 steps · $0.11") {
+		t.Fatalf("a settled row drew the under-block telemetry, which is only the live block's line:\n%s", text)
+	}
+	line, ok := planLine(text, "Alpha")
+	if !ok {
+		t.Fatalf("the settled row was not drawn:\n%s", text)
+	}
+	if !strings.Contains(line, "12 steps") || !strings.Contains(line, "$0.11") {
+		t.Fatalf("the settled row lost its own figures: %q", line)
+	}
+}
+
+// A QUEUED ROW SAYS `queued` — the surface's own word for admitted work, never
+// the store's `pending` and never `running`.
+func TestAQueuedPlanRowSaysQueued(t *testing.T) {
+	text := planTextFor(t, []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "pending"}})
+	line, ok := planLine(text, "Alpha")
+	if !ok {
+		t.Fatalf("the queued row was not drawn:\n%s", text)
+	}
+	if !strings.Contains(line, "queued") {
+		t.Fatalf("a pending plan task reads %q, want it to wear `queued`", line)
+	}
+	if strings.Contains(line, "running") {
+		t.Fatalf("a pending plan task still reads `running`: %q", line)
+	}
+}
+
+// A QUEUED ROW BEHIND NAMED WORK READS `queued · waits: <the work>` ON THE ROW —
+// the dependency sentence the rail's own held row draws, joined to the state word
+// by the engine's own [session.TaskStatus.RowWord] and never composed twice. AND
+// THE WORK IS NAMED, NOT POINTED AT: the store's id stays off the frame, because
+// `waits: t-9c1x2` is a pointer a person has to follow ([app.taskWaitTitles]
+// states the refusal). Where the sentence will not fit the twenty-cell state
+// column the cell says the word and the reason falls to the line the cursor's row
+// grows — a dangling `waits:` with nothing after it is the one shape the row must
+// not draw.
+func TestAQueuedPlanRowNamesTheWorkItWaitsOn(t *testing.T) {
+	for _, fixture := range []struct {
+		name, parent, want string
+		dangling           bool
+	}{
+		// Twenty cells hold `queued · waits: Root` exactly, so the row says the
+		// whole of it.
+		{name: "a parent the state column can hold", parent: "Root", want: "queued · waits: Root"},
+		// The same sentence will not fit, and the cell gives up the reason whole
+		// rather than announcing it and cutting the work off underneath.
+		{name: "a parent it cannot", parent: "Add rate limiting to every handler in the API", want: "queued", dangling: true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			text := planTextFor(t, []session.PlanTaskRow{
+				{ID: "t-root", Title: fixture.parent, Status: "running"},
+				{ID: "t-alpha", Title: "Alpha", Status: "pending", Parent: "t-root"},
+			})
+			line, ok := planLine(text, "Alpha")
+			if !ok {
+				t.Fatalf("the queued row was not drawn:\n%s", text)
+			}
+			if !strings.Contains(line, fixture.want) {
+				t.Fatalf("the queued row reads %q, want it to say %q", line, fixture.want)
+			}
+			if strings.Contains(line, "t-root") {
+				t.Fatalf("the row named the work it waits on by its store id: %q", line)
+			}
+			if fixture.dangling && strings.Contains(line, "waits:") {
+				t.Fatalf("the row announced a reason it had no room to name: %q", line)
+			}
+		})
+	}
+}
+
+// A NARROW COLUMN DROPS THE COMMAND'S TAIL AND KEEPS THE STEP COUNT, and the
+// live step's lead is drawn whole — never a half glyph.
+func TestANarrowPlanRowDropsTheCommandTailButKeepsTheFigures(t *testing.T) {
+	const long = "git grep -n RateLimit internal/api/upload/handler/middleware"
+	row := livePlanRow()
+	row.Live.Command = long
+	a, _ := planAppWith(t, []session.PlanTaskRow{row}, nil)
+	a.width = 60
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	text := taskSheetText(a)
+	if strings.Contains(text, long) {
+		t.Fatalf("the command's tail survived a narrow column:\n%s", text)
+	}
+	if !strings.Contains(text, "12 steps · $0.11") {
+		t.Fatalf("the step count was dropped with the command's tail:\n%s", text)
+	}
+	// The lead is drawn outside the fitting, so both glyphs are whole.
+	if !strings.Contains(text, a.pal.glyph(tokens.GStepRunning)+" "+tokens.GlyphShell+" ") {
+		t.Fatalf("the live step's lead is not drawn whole:\n%s", text)
 	}
 }
