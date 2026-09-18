@@ -465,6 +465,27 @@ func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 	})
 }
 
+// ClaimWake restores ownership to a ready composite the supervisor is waking.
+// Ordinary Claim remains leaf-only; this narrow road exists so a coordinator
+// that released its claim with Wait can use Wait or Done on its next turn.
+func (s *Store) ClaimWake(id, agent string, owner ...string) (*Task, error) {
+	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if task.Status != StatusReady || !task.Composite {
+			return fmt.Errorf("task %q is not a ready composite", id)
+		}
+		if strings.TrimSpace(agent) == "" {
+			return errors.New("agent is required for claim")
+		}
+		who := strings.TrimSpace(agent)
+		if len(owner) > 0 && strings.TrimSpace(owner[0]) != "" {
+			who = strings.TrimSpace(owner[0])
+		}
+		task.Status, task.ClaimedBy, task.UpdatedAt = StatusRunning, strings.TrimSpace(agent), now
+		task.Owner, task.SeenAt = who, now
+		return nil
+	})
+}
+
 // AddRootCheck admits the one child a terminal root may still need: its review
 // check. A ROOT IS NOT DONE UNTIL ITS CHECK HAS LANDED, whoever wrote its
 // ending, so this one transaction preserves the root's result, moves it back
