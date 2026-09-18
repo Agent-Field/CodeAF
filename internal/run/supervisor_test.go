@@ -638,6 +638,94 @@ func TestStartCountsNothingFromAWorkerWhoseTaskWasCancelled(t *testing.T) {
 	}
 }
 
+// A RUN DOES NOT ANSWER WHILE A WORKER IT STARTED IS STILL ALIVE. The root's
+// worker is the run's coordinator: it splits the run and then keeps working
+// while its own leaf lands, so the tree completes under it — the run's row is
+// written the moment its last descendant is absorbed, and the coordinator is
+// the one worker of the run still alive at that moment, with a spend row and a
+// trajectory ending still to write. Start may not answer until it has ended:
+// the door closes the store on the line after Start returns, and a worker still
+// running at that line writes through a handle that is gone — the nil-database
+// panic a real run died on, straight out to the person as a stack trace.
+//
+// THE COORDINATOR'S SEAT IS THE PROOF. It holds its turn until its context
+// ends, and nothing but the run's own drain can end that context here: the
+// task was never cancelled, no ancestor was, and the run's own wall — ten
+// seconds off — is not what ends this run. So a closed `ended` at the moment
+// Start answers is exactly the statement that Start waited, and its absence is
+// the bug: the run would be over, its store about to close, and this worker
+// still going.
+func TestStartWaitsForAWorkerTheCompletedTreeLeftBehind(t *testing.T) {
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	ended := make(chan struct{})
+	seat.actions["root"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		if _, err := store.AddMany([]plandb.TaskSpec{{ID: "l1", Title: "the leaf", ParentID: task.ID}}); err != nil {
+			return run.Report{}, err
+		}
+		<-ctx.Done()
+		close(ended)
+		return run.Report{Result: "the coordinator's last word", Steps: 2, USD: 0.50}, nil
+	}
+	// WARM THE STORE'S TWO HANDLES before the count is taken, the way the
+	// cancelled-ancestor test does: whatever goroutine the driver costs per
+	// connection is in the baseline this comparison is against.
+	if _, err := store.Archive(time.Hour); err != nil {
+		t.Fatalf("warm the store's write handle: %v", err)
+	}
+	if _, err := store.Show(store.RootID()); err != nil {
+		t.Fatalf("warm the store's read handle: %v", err)
+	}
+	before := runtime.NumGoroutine()
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "a brief whose coordinator outlives its own leaf",
+		Slots:     2,
+		Factory:   seat.workerFor,
+	})
+
+	if outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	// The leaf landed and the run's own row was written under the coordinator,
+	// so the run could have answered here on the worker's back. It may not have.
+	select {
+	case <-ended:
+	default:
+		t.Fatal("Start answered while a worker it had launched was still alive")
+	}
+	if summary.Nodes != 2 {
+		t.Fatalf("summary nodes = %d, want the coordinator and its leaf", summary.Nodes)
+	}
+	if leaf := store.Task("l1"); leaf.Status != plandb.StatusDone || leaf.Result != "did l1" {
+		t.Fatalf("leaf l1 = %s with result %q, want the ending its worker wrote", leaf.Status, leaf.Result)
+	}
+	if root := store.Task(store.RootID()); root.Status != plandb.StatusDone {
+		t.Fatalf("root status = %s, want the run completed under its coordinator", root.Status)
+	}
+	// NOTHING OF THE RUN IS LEFT TO WRITE. The store is closed the way the door
+	// closes it — on the line after Start returns — and the goroutine count is
+	// the proof that no worker is behind the door it just shut.
+	if err := store.Close(); err != nil {
+		t.Fatalf("close the run's store: %v", err)
+	}
+	settled := false
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if runtime.NumGoroutine() <= before {
+			settled = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !settled {
+		t.Fatalf("goroutines = %d after the run, want back to the %d it started with", runtime.NumGoroutine(), before)
+	}
+}
+
 func TestSupervisorHoldsAPausedLeafBackUntilItIsResumed(t *testing.T) {
 	store := runOpenStore(t)
 	ctx := runContext(t)
