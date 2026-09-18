@@ -435,6 +435,22 @@ func (c *Catalog) FetchedAt() time.Time {
 	return resolved.fetchedAt
 }
 
+// FetchedAtNow is [Catalog.FetchedAt] for a caller that must not wait: it
+// reads the rows already in hand and answers the zero time while a lazy
+// catalog is still warming, exactly as [Catalog.ModelsNow] answers nil.
+//
+// It exists for the model warm (cmd/codeaf's warmV3Models), which gates on
+// [Catalog.Warmed] before it reads anything — so the rows are always there
+// when this answers — and must not ask a blocking question of a catalog it is
+// about to stop waiting on.
+func (c *Catalog) FetchedAtNow() time.Time {
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return time.Time{}
+	}
+	return resolved.fetchedAt
+}
+
 // rows resolves the catalog, waiting on the future when Load was lazy.
 func (c *Catalog) rows() *rows {
 	if c == nil {
@@ -578,6 +594,29 @@ func (c *Catalog) Model(modelID string) (Model, bool) {
 // forgetting material the model could have held.
 func (c *Catalog) ContextLength(modelID string) int {
 	model, ok := c.Model(modelID)
+	if !ok {
+		return 0
+	}
+	return model.ContextLength
+}
+
+// ContextLengthNow is [Catalog.ContextLength] for a caller that must not wait:
+// it reads through the rows already in hand and answers zero while a lazy
+// catalog is still warming, exactly as [Catalog.ModelsNow] answers nil, and it
+// matches ids the same way [Catalog.ContextLength] does — normalizing the
+// reasoning-effort suffix and a leading ~ ([normalizeID]) — so a conversation
+// started on `model:high` answers its window and not zero.
+//
+// It exists for the model warm (cmd/codeaf's warmV3Models), which gates on
+// [Catalog.Warmed] before it reads anything — so the rows are always there
+// when this answers — and must not ask a blocking question of a catalog it is
+// about to stop waiting on.
+func (c *Catalog) ContextLengthNow(modelID string) int {
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return 0
+	}
+	model, ok := resolved.byID[normalizeID(modelID)]
 	if !ok {
 		return 0
 	}

@@ -207,6 +207,28 @@ type headlessOutcome struct {
 	// clean envelope was "nothing is listed, so perhaps nothing checked it"
 	// (#618).
 	JudgedBy string `json:"judged_by,omitempty"`
+	// KeptBranch names the branch the errand's own work is standing on, on the
+	// runs that did not settle whole. It is the answer to "where is the work
+	// this run would not land?" — the one question a non-verified run left a
+	// reader to answer by hand. A `do` errand works in place, so this is the
+	// workspace's own branch: the work is real and it is in that tree, on that
+	// branch, and no field used to say so.
+	//
+	// It is empty on every run that settled whole, because that run's work is on
+	// the branch its caller already reads. A run whose work is on no named branch
+	// — a detached HEAD, a workspace that is not a repository, a run deferred to
+	// another process — names none, exactly as a run that kept nothing does.
+	KeptBranch string `json:"kept_branch,omitempty"`
+	// Verdict is what left the work where KeptBranch names it, in the record's
+	// own words: `failed` for a node the store settled failed or cancelled, and
+	// `unverified` for one that ran and then nothing could say the work holds.
+	//
+	// IT IS NOT A SECOND `stop` UNDER A NEW NAME. `stop` names why THIS process
+	// ended, in the envelope's one vocabulary; this names what the work's own
+	// record says became of it, in the task record's. They travel together
+	// because a script branching on either wants both — how much is wrong and
+	// what the store decided — and neither can be read off the other.
+	Verdict string `json:"verdict,omitempty"`
 	// Checklist is what became of each thing the request asked for, on exactly
 	// the runs whose journal carried a checklist. It is a field because machine
 	// callers must never parse the bounded person's account, and it is never
@@ -717,6 +739,17 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// A resident owns a different registry and cannot be spoken for here.
 	if deferredTo == nil {
 		outcome.workspace = workspaceRoot
+		// AND WHERE THE WORK IT DID NOT LAND IS STANDING, which the outcome
+		// cannot answer until there IS a workspace: it is read off the directory
+		// the errand worked in, at the moment the run is over. A `do` errand
+		// works IN PLACE — it edits the directory it was handed, on whichever
+		// branch is checked out there — so that directory's own branch is where
+		// its work is standing, and it is the only branch on this road the way a
+		// chat `/task` has its own task/<slug> worktree. A run that settled whole
+		// has no verdict and names no branch; a workspace that is not a
+		// repository, or whose HEAD is detached, names none either — there is no
+		// branch a person could check out.
+		outcome.KeptBranch = errandKeptBranch(outcome)
 		outcome = groundedAfterShutdown(outcome, produced)
 	}
 	priceErrand(graph, session, openedAt, &outcome)
@@ -768,6 +801,32 @@ func writeDoPendingLanding(request doRequest, seats config.Seats, outcome headle
 	if err := writePendingLanding(profileDir, headlessSurface, landing); err != nil && trace.Enabled() {
 		log.Printf("do: pending landing: %v", err)
 	}
+}
+
+// errandKeptBranch names the branch an errand's own work is standing on, and is
+// empty on every run that needs no such name.
+//
+// IT IS COMPUTED ONLY WHERE IT MEANS SOMETHING. A run with no verdict settled
+// whole — its work is on the branch its caller already reads, and a second name
+// for it would be a fact dressed as a finding. And a directory that is not a
+// repository, or whose HEAD is detached (`git rev-parse --abbrev-ref HEAD`
+// answers the bare word `HEAD`), names no branch a person could check out, so
+// it answers empty rather than a placeholder. Both are ordinary states and
+// neither is an error: this decides how a run is described, and a git that
+// cannot answer is not evidence about the work.
+func errandKeptBranch(outcome headlessOutcome) string {
+	if strings.TrimSpace(outcome.Verdict) == "" || strings.TrimSpace(outcome.workspace) == "" {
+		return ""
+	}
+	out, err := gitIn(outcome.workspace, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return ""
+	}
+	branch := strings.TrimSpace(out)
+	if branch == "" || branch == "HEAD" {
+		return ""
+	}
+	return branch
 }
 
 // priceErrand puts the journal's own answer on the outcome.
@@ -2494,6 +2553,26 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			} else {
 				outcome.Deliverable = strings.TrimSpace(outcome.Deliverable) + "\n\n" + reason
 			}
+		}
+		// WHAT LEFT THE WORK WHERE IT IS, in the record's own word. It is read
+		// here, after the roads have joined and `stop` has had its last word, so
+		// the verdict and the stop cannot disagree: a node the store settled
+		// failed or cancelled is `failed`, and any other ending that ran and did
+		// not settle whole is `unverified` — nobody could say the work holds.
+		//
+		// A run that settled whole takes NEITHER word: its work is on the branch
+		// its caller already reads and nothing left it anywhere else. A run that
+		// never started (error), did nothing (question, price) says nothing
+		// either, because there is no work to account for. And the word is
+		// `TaskFailed`/`TaskUnverified` and not a string typed here: these are the
+		// same words the task record carries, and a reader comparing the envelope
+		// against `tasks.json` must read one vocabulary, not two.
+		switch {
+		case final.Status == store.Failed || final.Status == store.Cancelled:
+			outcome.Verdict = string(session.TaskFailed)
+		case outcome.stop == stopIncomplete, outcome.stop == stopUnchecked,
+			outcome.stop == stopBudget, outcome.stop == stopTurnCap, outcome.stop == stopDeadline:
+			outcome.Verdict = string(session.TaskUnverified)
 		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
 		// One list, once. Grounding has had its look at the narration as the
