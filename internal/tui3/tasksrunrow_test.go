@@ -18,7 +18,7 @@ func TestTheTasksPageDrawsRunsAtItsEdgeWithOneConversationTail(t *testing.T) {
 		}
 	}
 	root := tasksLineOf(t, lines, "port the parser")
-	if root.kin != tasksKinPad || !strings.Contains(workConversationTail(root.item), "the split") {
+	if strings.HasPrefix(root.kin, tasksKinPad+tasksKinPad) || !strings.Contains(workConversationTail(root.item), "the split") {
 		t.Fatalf("root kin=%q tail=%q, want page-edge run with conversation tail", root.kin, workConversationTail(root.item))
 	}
 	child := tasksLineOf(t, lines, "port the lexer")

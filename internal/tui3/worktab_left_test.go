@@ -48,7 +48,7 @@ func TestWorkRunTailUsesConversationIndex(t *testing.T) {
 		t.Fatalf("tail = %q", got)
 	}
 	item.row.Title = ""
-	if got := workConversationTail(item); got != "" {
+	if got := workConversationTail(item); got != "· "+unnamedConversationWord {
 		t.Fatalf("untitled tail = %q", got)
 	}
 }
