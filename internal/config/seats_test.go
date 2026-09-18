@@ -961,3 +961,36 @@ func TestThePickRungsSayTheirWords(t *testing.T) {
 		t.Errorf("the learned rung reads %q, want crew %s, learned", got, CrewBalanced)
 	}
 }
+
+// A BARE `auto` ROW IS COMPUTED UNDER THE PICK TOO, and its rung names the word
+// that ran. The pool's measurements reach the auto row through the same prior
+// the pick carries — [AutoPick] wraps [autoPrior] — so a row computed under the
+// learn word is a learned seat and must say so, not the catalog word's
+// `computed from the catalog`. [autoRow] is the one seam both ladders resolve an
+// auto row through, so the conversation's row and the headless work seat must
+// name the same rung: a row that meant one thing in chat and another headless is
+// the divergence the seam exists to prevent.
+func TestAnAutoRowUnderLearnReadsTheLearnRung(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	restore := AutoModels
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	defer func() { AutoModels = restore }()
+
+	dir := writeProfileRows(t, map[string]string{
+		KeyCrewPick:                 CrewPickLearn,
+		tierKeyFor(ModelTierWorker): AutoValue,
+	})
+	want := "crew " + CrewBalanced + ", learned"
+	for name, seat := range map[string]Seat{
+		"conversation": TierSeatAt(dir, ModelTierWorker),
+		"headless":     ResolveSeats(dir, "", "").Work,
+	} {
+		if got := seat.Rung(); got != want {
+			t.Errorf("%s: a bare auto row under %s reads rung %q, want %q", name, CrewPickLearn, got, want)
+		}
+		if strings.TrimSpace(seat.Model) == "" || IsAuto(seat.Model) {
+			t.Errorf("%s: the auto seat reads model %q, want a computed id", name, seat.Model)
+		}
+	}
+}
