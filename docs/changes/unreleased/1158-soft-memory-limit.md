@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a chat surface now runs under a soft memory limit drawn from the machine
-pr: 1151
+pr: 1158
 surface: [chat]
 invalidates:
   - "The surface launch raised GOGC to 400 with nothing bounding it. A surface now also sets a soft GOMEMLIMIT of half the machine's physical memory, and carries it to the engine host the way GOMAXPROCS is carried."
