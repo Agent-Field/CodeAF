@@ -62,11 +62,27 @@ func (r *recordingCompleter) forModel(model string) session.Completer {
 	return &seat{script: r.script}
 }
 
+// TestSeatForMapsBeltRolesToCrewSeats keeps the work, fix, and plan seats in
+// place while a check takes the careful work seat.
+func TestSeatForMapsBeltRolesToCrewSeats(t *testing.T) {
+	for _, test := range []struct {
+		role, want string
+	}{
+		{plandb.RoleWork, config.ModelTierWorker},
+		{plandb.RoleCheck, config.ModelTierHigh},
+		{"fix", config.ModelTierWorker},
+		{plandb.RolePlan, config.ModelTierMastermind},
+	} {
+		if got := run.SeatFor(test.role); got != test.want {
+			t.Errorf("SeatFor(%q) = %q, want %q", test.role, got, test.want)
+		}
+	}
+}
+
 // TestCrewFactorySeatsEachRoleInItsTier is the shape rule the factory exists
 // for: a task with children is a coordinator and takes the mastermind row, a
 // leaf takes the worker row, and check and probe are read off the role they were
-// declared with — the check rides the plan tier (it is planning work), and the
-// probe takes the small row.
+// declared with.
 func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 	store := runOpenStore(t)
 	if _, err := store.AddMany([]plandb.TaskSpec{
@@ -92,7 +108,7 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 	}{
 		{store.RootID(), "vendor/thinking"},
 		{"one", "vendor/worker"},
-		{"review", "vendor/thinking"},
+		{"review", "vendor/careful"},
 		{"discriminate", "vendor/small"},
 	} {
 		recorder.models = nil
@@ -110,7 +126,7 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 // so a factory that fell back to the profile for those seats would seat the
 // wrong model and this would see it.
 //
-// The check rides the plan tier, so it takes the door's plan seat; the probe row
+// The check rides the careful work tier from the profile; the probe row
 // is the profile's still, since no door names it.
 func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 	store := runOpenStore(t)
@@ -142,9 +158,9 @@ func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 		{store.RootID(), "vendor/named-plan"},
 		// A leaf does the work itself and rides the work seat.
 		{"one", "vendor/named-work"},
-		// A check is planning work and rides the door's plan seat; the probe row
+		// A check rides the profile's careful work seat; the probe row
 		// is the profile's own.
-		{"review", "vendor/named-plan"},
+		{"review", "vendor/profile-careful"},
 		{"discriminate", "vendor/profile-small"},
 	} {
 		recorder.models = nil
@@ -157,16 +173,16 @@ func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
 
 // TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier: a row cleared on purpose
 // reads empty, and a tier with no model falls to the worker row rather than
-// seating the task on nothing. The check rides the plan tier, whose row is
-// cleared here.
+// seating the task on nothing. The check rides the careful work tier, whose
+// row is cleared here.
 func TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier(t *testing.T) {
 	store := runOpenStore(t)
 	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "Review", Role: plandb.RoleCheck}}); err != nil {
 		t.Fatalf("add the review: %v", err)
 	}
 	dir := crewProfile(t, map[string]string{
-		config.KeyTierMastermindModel: "",
-		config.KeyTierWorkerModel:     "vendor/worker",
+		config.KeyTierHighModel:   "",
+		config.KeyTierWorkerModel: "vendor/worker",
 	})
 	recorder := &recordingCompleter{}
 	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
@@ -286,5 +302,77 @@ func TestBashWorkerChargesTheSeatModelToTheTaskSpendRow(t *testing.T) {
 	}
 	if rows[0].role != plandb.RoleWork {
 		t.Fatalf("the spend row carries the role %q, want the seat the task ran in", rows[0].role)
+	}
+}
+
+// A CHECK RIDES THE SEAT THE DOOR NAMED, when the door named one. [SeatFor]
+// puts a check on the careful work tier, and the factory seats that tier on the
+// door's check seat where the door carried one, so a run that typed
+// `--check-model` checks on that model and no other seat moves.
+func TestCrewFactorySeatsACheckOnTheCheckSeat(t *testing.T) {
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "one", Title: "One"},
+		{ID: "review", Title: "Review", Role: plandb.RoleCheck},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dir := crewProfile(t, map[string]string{
+		config.KeyTierLowModel:        "vendor/profile-small",
+		config.KeyTierHighModel:       "vendor/profile-careful",
+		config.KeyTierMastermindModel: "vendor/profile-thinking",
+	})
+	recorder := &recordingCompleter{}
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{
+		Work:  "vendor/named-work",
+		Plan:  "vendor/named-plan",
+		Check: "vendor/named-check",
+	}, recorder.forModel)
+
+	for _, test := range []struct {
+		task, want string
+	}{
+		{store.RootID(), "vendor/named-plan"},
+		{"one", "vendor/named-work"},
+		{"review", "vendor/named-check"},
+	} {
+		recorder.models = nil
+		factory(*store.Task(test.task))
+		if len(recorder.models) != 1 || recorder.models[0] != test.want {
+			t.Errorf("task %s was seated on %v, want %q", test.task, recorder.models, test.want)
+		}
+	}
+}
+
+// THE CHAT DOOR NAMES NO CHECK SEAT. The belt door carries only the work and
+// plan seats it read off the conversation's ladder, so its check seat arrives
+// empty and the factory seats the check on the profile's careful row, which is
+// the crew's checker and what the manual promises: one model that works, one
+// that checks, one that thinks.
+func TestCrewFactorySeatsTheChatDoorsCheckOnTheCrewsChecker(t *testing.T) {
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "Review", Role: plandb.RoleCheck}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := crewProfile(t, map[string]string{
+		config.KeyTierHighModel:       "vendor/profile-careful",
+		config.KeyTierWorkerModel:     "vendor/profile-worker",
+		config.KeyTierMastermindModel: "vendor/profile-thinking",
+	})
+	for _, seats := range []run.Seats{
+		// The belt door's own shape: the conversation's work and plan seats,
+		// and no check seat.
+		{Work: "vendor/chat-work", Plan: "vendor/chat-plan"},
+		// A door that named nothing at all.
+		{},
+	} {
+		recorder := &recordingCompleter{}
+		factory := run.CrewFactory(store, t.TempDir(), dir, seats, recorder.forModel)
+		recorder.models = nil
+		factory(*store.Task("review"))
+		if len(recorder.models) != 1 || recorder.models[0] != "vendor/profile-careful" {
+			t.Errorf("seats %+v seated the review on %v, want the profile's careful row",
+				seats, recorder.models)
+		}
 	}
 }
