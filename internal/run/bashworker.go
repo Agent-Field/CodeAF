@@ -93,6 +93,9 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	defer stop()
 	events, err := agent.Submit(runCtx, session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx)))
 	if err != nil {
+		// A TURN THAT NEVER STARTED RUNS NO COMMAND, so it clears any live step
+		// a predecessor left behind on this task rather than claiming a present.
+		w.clearLiveStep(task.ID)
 		_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the turn never started: " + err.Error()})
 		return Report{}, err
 	}
@@ -112,6 +115,16 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	defer func() { w.recordSpend(task.ID, usd, inTok, outTok) }()
 	for event := range events {
 		switch event.Kind {
+		case session.EventToolBegin:
+			// A LIVE STEP IS TRUE ONLY WHILE ITS COMMAND RUNS. The begin event is
+			// the command the moment before it runs — carrying the tool name and
+			// the rendered arguments — and it is the one chance the store is told
+			// what this task is doing now, so it is published as the task's live
+			// step: the number the step will be recorded under, the command
+			// [stepCommand] reads off the event, and the moment the store stamps.
+			// The step's own end line clears it, and so does every ending below,
+			// so a task that is not running a command never claims a present.
+			_ = w.store.SetLive(task.ID, steps+1, stepCommand(event))
 		case session.EventToolEnd, session.EventToolFailed:
 			// THE CAP IS THE LAST STEP COUNTED. stop() cancels the turn, but
 			// the agent's loop notices on its next round, and a round it had
@@ -127,9 +140,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 				// A step that could not be recorded left the record shorter
 				// than the run was: that is a failure of the record itself,
 				// and the honest ending is the task failing on it.
+				w.clearLiveStep(task.ID)
 				_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the record failed: " + err.Error()})
 				return Report{Steps: steps}, err
 			}
+			// THE STEP IS NO LONGER RUNNING, so its live reading goes with it: the
+			// end-of-step append clears the live step the begin event published.
+			w.clearLiveStep(task.ID)
 			if capSteps > 0 && steps >= capSteps {
 				// THE CAP IS A BOUND ON SPEND, not a finding about the work:
 				// the turn is stopped here rather than judged, and the ending
@@ -147,6 +164,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 			}
 		}
 	}
+	// THE LOOP IS OVER, WHATEVER STOPPED IT — a turn that ended, the step cap,
+	// the run's wall, an error — so the live step is cleared here too: a task
+	// whose loop has stopped is not running a command, and every one of those
+	// endings leaves the same emptiness behind.
+	w.clearLiveStep(task.ID)
 	result := agent.TaskReport()
 	reason := "turn ended"
 	switch {
@@ -164,6 +186,22 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 		return Report{Steps: steps}, err
 	}
 	return Report{Result: result, Steps: steps, USD: usd}, err
+}
+
+// clearLiveStep forgets the task's live step: the one present-tense reading
+// the store holds of this worker. It is called by the step's own end line and
+// by every ending of the loop — a turn that ended, a step cap, a wall, an
+// error, a turn that never started — so A LIVE STEP IS TRUE ONLY WHILE ITS
+// COMMAND RUNS and a stopped task never keeps claiming a present it is not in.
+//
+// EVERY REFUSAL IS DROPPED ALIKE, the one a worker the run outlived meets being
+// plandb.ErrClosed: the supervisor closes the run's store the moment the run is
+// over, and this is a worker's last act. A live row that outlives its command
+// is the one thing this must not leave, and a refusal to clear means the store
+// is already gone — nobody reads it again — so the miss is the safe answer and
+// never a second attempt at a handle that is closed.
+func (w *BashWorker) clearLiveStep(taskID string) {
+	_ = w.store.ClearLive(taskID)
 }
 
 // recordSpend writes the task's one spend row: the model this seat was built
