@@ -172,20 +172,28 @@ type SeatTokens struct {
 const ShapeWeightAt = 30
 
 // ShapesFrom learns the seats' shapes from what real tasks spent: each seat's
-// Volume moves from the default towards the mean share of a task's tokens the
-// seat took, and its InOut towards the seat's input tokens per output token
-// over every task, each by N/(N+ShapeWeightAt) with N the tasks that carried
-// the seat. Everything else about a shape — its weights, its needs, its cache
-// share, which no ledger row can see — is the default's. A task with no
-// tokens teaches nothing, and no tasks at all leaves the defaults untouched.
-// The shipped defaults put eight percent of a task on the high seat; on the
-// bench's 133 task-door runs the seat's mean share was thirteen percent with
-// a long tail, and the bill that difference hid is what this exists to see.
+// Volume moves from the default towards the share of a task's tokens the seat
+// typically took, and its InOut towards the seat's input tokens per output
+// token over every task, each by N/(N+ShapeWeightAt) with N the tasks that
+// carried the seat. Everything else about a shape — its weights, its needs,
+// its cache share, which no ledger row can see — is the default's. A task
+// with no tokens teaches nothing, and no tasks at all leaves the defaults
+// untouched.
+//
+// THE SHARE IS LEARNED ON THE LOG SCALE — the geometric mean of the seat's
+// shares, shrunk towards the default in log space — and not as an arithmetic
+// mean. The split is heavy-tailed: the high seat takes a few percent of the
+// tokens on most tasks and most of them on a few, so the arithmetic mean is
+// not the typical task, and a bill priced from it is wrong on nearly every
+// task. On 132 measured runs the arithmetic shape predicted bills no better
+// than the fixed default (median error a factor of 2.9 against 3.4) while the
+// log-scale shape brought it to 1.5 (docs/design/model-pool/pareto-crewing.tex,
+// the cost experiment).
 func ShapesFrom(defaults map[Seat]SeatShape, tasks []TaskUsage) map[Seat]SeatShape {
 	type tally struct {
-		n       int
-		share   float64
-		in, out float64
+		n        int
+		logShare float64
+		in, out  float64
 	}
 	tallies := map[Seat]*tally{}
 	for _, task := range tasks {
@@ -206,7 +214,7 @@ func ShapesFrom(defaults map[Seat]SeatShape, tasks []TaskUsage) map[Seat]SeatSha
 				tallies[seat] = ty
 			}
 			ty.n++
-			ty.share += float64(t.In+t.Out) / total
+			ty.logShare += math.Log(float64(t.In+t.Out) / total)
 			ty.in += float64(t.In)
 			ty.out += float64(t.Out)
 		}
@@ -214,12 +222,12 @@ func ShapesFrom(defaults map[Seat]SeatShape, tasks []TaskUsage) map[Seat]SeatSha
 	shapes := make(map[Seat]SeatShape, len(defaults))
 	for seat, shape := range defaults {
 		ty := tallies[seat]
-		if ty == nil || ty.n == 0 {
+		if ty == nil || ty.n == 0 || shape.Volume <= 0 {
 			shapes[seat] = shape
 			continue
 		}
 		w := float64(ty.n) / float64(ty.n+ShapeWeightAt)
-		shape.Volume = (1-w)*shape.Volume + w*ty.share/float64(ty.n)
+		shape.Volume = math.Exp((1-w)*math.Log(shape.Volume) + w*ty.logShare/float64(ty.n))
 		if ty.out > 0 {
 			shape.InOut = (1-w)*shape.InOut + w*ty.in/ty.out
 		}

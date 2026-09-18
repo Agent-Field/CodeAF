@@ -885,7 +885,9 @@ func TestTheStakeIsWhatBuysTheDearerChecker(t *testing.T) {
 
 // No tasks leave the defaults untouched; one task barely moves them; many
 // tasks that all seat the high seat at a third of the tokens pull its volume
-// most of the way there, and a seat no task carried keeps its default.
+// most of the way there, and a seat no task carried keeps its default. The
+// share is learned on the log scale, so one task that put everything on the
+// high seat cannot drag the typical share the way an arithmetic mean would.
 func TestShapesFromShrinksTowardsWhatTasksSpent(t *testing.T) {
 	defaults := DefaultShapes()
 	if got := ShapesFrom(defaults, nil); got[High] != defaults[High] || got[Worker] != defaults[Worker] {
@@ -894,7 +896,7 @@ func TestShapesFromShrinksTowardsWhatTasksSpent(t *testing.T) {
 	one := []TaskUsage{{Worker: {In: 660_000, Out: 6_600}, High: {In: 330_000, Out: 3_300}}}
 	got := ShapesFrom(defaults, one)
 	w := 1.0 / (1 + ShapeWeightAt)
-	wantHigh := (1-w)*defaults[High].Volume + w*(333_300.0/999_900)
+	wantHigh := math.Exp((1-w)*math.Log(defaults[High].Volume) + w*math.Log(333_300.0/999_900))
 	if math.Abs(got[High].Volume-wantHigh) > 1e-6 {
 		t.Fatalf("one task moved the high volume to %f, want %f", got[High].Volume, wantHigh)
 	}
@@ -906,7 +908,11 @@ func TestShapesFromShrinksTowardsWhatTasksSpent(t *testing.T) {
 		many[i] = one[0]
 	}
 	got = ShapesFrom(defaults, many)
-	if got[High].Volume < 0.30 || got[High].Volume > 0.3333 {
+	// In log space the default's tenth of the weight still pulls the share a
+	// little below a third — 0.293 — where an arithmetic blend would sit at
+	// 0.31; both are most of the way there, and the tail test below is why
+	// the log scale is the one kept.
+	if got[High].Volume < 0.28 || got[High].Volume > 0.3333 {
 		t.Fatalf("three hundred tasks left the high volume at %f, want close to a third", got[High].Volume)
 	}
 	if math.Abs(got[High].InOut-(100*300.0/(300+ShapeWeightAt)+defaults[High].InOut*ShapeWeightAt/(300+ShapeWeightAt))) > 1e-6 {
@@ -933,5 +939,27 @@ func TestPriorFromCellsFoldsTwoSourcesOfOneSeat(t *testing.T) {
 	reversed := PriorFromCells([]Cell{cells[1], cells[0]}, 1, nil)
 	if reversed[Worker]["a/b"] != got {
 		t.Fatal("order changed the fold")
+	}
+}
+
+// A single task that put nearly everything on the high seat moves the
+// learned share far less than an arithmetic mean would: the shape is learned
+// on the log scale, where a tail task is one vote and not most of the sum.
+func TestShapesFromLearnsTheShareOnTheLogScale(t *testing.T) {
+	defaults := DefaultShapes()
+	typical := TaskUsage{Worker: {In: 970_000, Out: 9_700}, High: {In: 30_000, Out: 300}}
+	tail := TaskUsage{Worker: {In: 50_000, Out: 500}, High: {In: 950_000, Out: 9_500}}
+	tasks := make([]TaskUsage, 0, 40)
+	for i := 0; i < 39; i++ {
+		tasks = append(tasks, typical)
+	}
+	tasks = append(tasks, tail)
+	got := ShapesFrom(defaults, tasks)[High].Volume
+	arithmetic := (1-40.0/70)*defaults[High].Volume + 40.0/70*((39*0.03+0.95)/40)
+	if got >= arithmetic {
+		t.Fatalf("the log-scale share %f is not below the arithmetic %f", got, arithmetic)
+	}
+	if got < 0.03 || got > 0.06 {
+		t.Fatalf("thirty-nine typical tasks and one tail task learned a high share of %f, want close to the typical 0.03", got)
 	}
 }
