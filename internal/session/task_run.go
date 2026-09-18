@@ -7394,38 +7394,14 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// than the node's: what is being inherited is the person's depth, and their
 	// dial is a fact about the conversation they turned it in.
 	inherited := a.effortLocked(a.model)
-	// A TASK WITHOUT TOOLS CANNOT START. The catalog's supported-parameter row
-	// is the same capability fact the picker filters on. Swap once to the
-	// worker tier; if that is the same incapable model, refuse here rather than
-	// spending a request to discover it mid-run.
-	if parent.SupportsParameter != nil {
-		if supported, known := parent.SupportsParameter(model, "tools"); known && !supported {
-			fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
-			if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
-				a.mu.Unlock()
-				return nil, fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
-			}
-			if ok, fallbackKnown := parent.SupportsParameter(fallback, "tools"); fallbackKnown && !ok {
-				a.mu.Unlock()
-				return nil, fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
-			}
-			// THE ROW IS ONLY MOVED FOR THE NODE'S OWN WORKER. A named model
-			// belongs to one round and not to the node (see [Agent.newTaskAgentOn]),
-			// so a rescue inside a repair round swaps the model it is about to call
-			// and says nothing on the card: the sentence would be about a worker the
-			// person was never told existed, and it would overwrite the one line the
-			// repair loop legitimately owns there — the gap being closed.
-			if on == "" {
-				node.graph.mu.Lock()
-				node.mend = taskModelRescueNote(model, fallback)
-				// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
-				// on: the sentence above and [TaskNode.notice]'s model are two halves of
-				// one card, and until this line they named different models.
-				node.ran = fallback
-				node.graph.mu.Unlock()
-			}
-			model = fallback
-		}
+	// A TASK THAT CANNOT CALL A TOOL CANNOT START, and [Agent.seatTaskModelLocked]
+	// is the whole of that question: it answers the model this worker may run on,
+	// and a model the catalog says cannot use tools is refused here rather than
+	// spending a request to discover the same thing mid-run.
+	model, err := a.seatTaskModelLocked(node, parent, model, on)
+	if err != nil {
+		a.mu.Unlock()
+		return nil, err
 	}
 	// A WINDOW MEASURED FOR ANOTHER MODEL IS NOT A FACT ABOUT THIS ONE, so a node
 	// running elsewhere is not handed the conversation's figure. It is handed the
@@ -7745,6 +7721,47 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// opens with exactly the prompt it always did.
 	nodeMemoryOn(ctx, node).handTo(child)
 	return child, nil
+}
+
+// seatTaskModelLocked answers the model a task worker may actually start on,
+// given the model it was admitted with: A TASK WITHOUT TOOLS CANNOT START. The
+// catalog's supported-parameter row is the same capability fact the picker
+// filters on, so a model the row says cannot call a tool is swapped once to the
+// worker tier, and where that tier resolves to the same incapable model the work
+// is refused rather than a request being spent to discover it mid-run.
+//
+// THE ROW IS ONLY MOVED FOR THE NODE'S OWN WORKER. A named model belongs to one
+// round and not to the node (see [Agent.newTaskAgentOn]), so a rescue inside a
+// repair round swaps the model it is about to call and says nothing on the card:
+// the sentence would be about a worker the person was never told existed, and it
+// would overwrite the one line the repair loop legitimately owns there — the gap
+// being closed. The caller holds a.mu, so the tier fallback and the session's
+// own model are read as one fact.
+func (a *Agent) seatTaskModelLocked(node *TaskNode, parent Config, model, on string) (string, error) {
+	if parent.SupportsParameter == nil {
+		return model, nil
+	}
+	supported, known := parent.SupportsParameter(model, "tools")
+	if !known || supported {
+		return model, nil
+	}
+	fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
+	if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
+		return "", fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
+	}
+	if ok, fallbackKnown := parent.SupportsParameter(fallback, "tools"); fallbackKnown && !ok {
+		return "", fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
+	}
+	if on == "" {
+		node.graph.mu.Lock()
+		node.mend = taskModelRescueNote(model, fallback)
+		// AND THE ROW SAYS WHAT IT IS RUNNING ON, not what it was asked to run
+		// on: the sentence above and [TaskNode.notice]'s model are two halves of
+		// one card, and until this line they named different models.
+		node.ran = fallback
+		node.graph.mu.Unlock()
+	}
+	return fallback, nil
 }
 
 // sessionID names the conversation a node's journal belongs under. A session
