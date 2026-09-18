@@ -2649,8 +2649,13 @@ open and read. The assembled brief is not in it; it is rebuilt from the prerequi
 reports when a task starts.
 
 It is written after **every** transition, atomically, never only at exit. On load it is
-schema-checked, and **any** violation drops the file whole and starts the session with no
-graph rather than refusing to start.
+schema-checked, and **any** violation starts the session with no graph rather than refusing
+to start. **The file that could not be read is kept, never overwritten**: it is moved beside
+itself as `tasks.json.refused-<seconds>` before anything is saved, and the id counter is
+raised past every task that left a transcript or a working copy in the conversation's
+folder, so a new task never takes a number an old one used. A task that came out of a run's
+plan carries no acceptance of its own in this file (what it is held to is in the plan's
+store), and that is not a violation.
 
 A conversation with **no session file on disk** gets no checkpoint at all, and runs tasks
 anyway.
