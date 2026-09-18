@@ -161,3 +161,14 @@ func TestBeltWorkerBriefRendersNoAskSectionWithoutARoot(t *testing.T) {
 		t.Fatalf("a root with no description grew an ask section:\n%s", doc)
 	}
 }
+
+// TestCheckSectionDirectsDeclaredChecks pins the checker contract to the
+// store-backed declaration the review description renders under Checks:.
+func TestCheckSectionDirectsDeclaredChecks(t *testing.T) {
+	if !strings.Contains(checkSection, "Checks:") {
+		t.Fatalf("the check section does not direct the worker to the declared Checks: block:\n%s", checkSection)
+	}
+	if !strings.Contains(checkSection, "exactly as spelled") {
+		t.Fatalf("the check section does not preserve declared commands verbatim:\n%s", checkSection)
+	}
+}
