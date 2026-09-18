@@ -35,8 +35,8 @@
 # Teardown runs from a trap on EXIT, INT, HUP and TERM and is idempotent: it
 # signals the pane's process group and every pid the walk ever saw, then sweeps
 # for a helper that detached from the pane, then kills the private tmux server and
-# reports what survived. See sweep_home for why the sweep cannot reach a process
-# that was already running.
+# reports what survived. A helper whose command line names this workspace is
+# reaped specifically; HOME matching is retained only for isolated profiles.
 #
 # This script measures. It draws no conclusion, ranks nothing and names no CLI:
 # whoever runs it supplies the commands and owns the comparison.
@@ -66,8 +66,9 @@
 #                     quantised to roughly this, and each poll is a tmux client.
 #   TRUST             auto (default) | never | always — whether to answer a
 #                     folder-trust gate. answer_trust_gate says how narrow auto is.
-#   SWEEP             auto (default) | never | always — whether to sweep for a
-#                     detached helper by its HOME.
+#   SWEEP             auto (default) | never | always: legacy fallback for
+#                     detached processes in an isolated HOME. always is refused
+#                     when <home> is the invoking user's HOME.
 #   SOCKET            tmux socket name. Always a private one: the run must not
 #                     touch the tmux server a person is working in.
 #   BENCH_ENV         space-separated names of variables to pass through from the
@@ -137,6 +138,7 @@ SESSION="bench-${SAFE_NAME}-$$"
 [ -n "$SOCKET" ] || SOCKET="benchcli-${SAFE_NAME}-$$"
 TMUX=(tmux -L "$SOCKET")
 INVOKER_HOME="${HOME:-}"
+CLI_EXE="$(readlink -f -- "${CMD[0]}" 2>/dev/null || command -v -- "${CMD[0]}" 2>/dev/null || printf '%s' "${CMD[0]}")"
 # tmux resolves a target differently by what the command wants. A pane command
 # (capture-pane, send-keys) and a window option need the trailing colon: the bare
 # exact-match form `=name` is rejected with "can't find pane", and a run that
@@ -406,7 +408,48 @@ count_fds() {
   return 0
 }
 
-# ── teardown ─────────────────────────────────────────────────────────────────
+# ── process ownership and teardown ───────────────────────────────────────────
+
+# own_pids applies one rule to every CLI: a process is its own when /proc reports
+# the same executable as the command being measured. This includes a detached
+# helper implemented by the same executable and excludes wrappers and shells.
+own_pids() {
+  local p exe
+  for p in /proc/[0-9]*; do
+    p=${p#/proc/}
+    [ "$p" = "$$" ] && continue
+    exe="$(readlink -f -- "/proc/$p/exe" 2>/dev/null)" || continue
+    [ "$exe" = "$CLI_EXE" ] && printf '%s\n' "$p"
+  done
+}
+
+# workspace_helper_pids identifies only this run's detached codeaf helper. The
+# workspace argument is the ownership boundary, never HOME.
+workspace_helper_pids() {
+  local p cl
+  for p in $(own_pids); do
+    [ -r "/proc/$p/cmdline" ] || continue
+    cl="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)"
+    case " $cl " in
+      (*" engine --daemon --workspace $WORKDIR "*) printf '%s\n' "$p" ;;
+    esac
+  done
+}
+
+# home_sweep_pids reports exactly what the legacy HOME sweep would select. It is
+# retained for truthful survivor accounting, not as the helper ownership rule.
+home_sweep_pids() {
+  local p
+  for p in /proc/[0-9]*; do
+    p=${p#/proc/}
+    [ "$p" = "$$" ] && continue
+    [ -r "/proc/$p/environ" ] || continue
+    LC_ALL=C grep -qzxF "HOME=$HOMEDIR" "/proc/$p/environ" 2>/dev/null || continue
+    read_stat "$p" || continue
+    [ "$P_START" -ge "$START_JIF" ] || continue
+    printf '%s\n' "$p"
+  done
+}
 
 SESSION_LIVE=0
 TEARDOWN_DONE=0
@@ -427,13 +470,7 @@ sweep_home() {
     (always) ;;
     (*) [ "$HOMEDIR" != "$INVOKER_HOME" ] || return 0 ;;
   esac
-  for p in /proc/[0-9]*; do
-    p=${p#/proc/}
-    [ "$p" = "$$" ] && continue
-    [ -r "/proc/$p/environ" ] || continue
-    LC_ALL=C grep -qzxF "HOME=$HOMEDIR" "/proc/$p/environ" 2>/dev/null || continue
-    read_stat "$p" || continue
-    [ "$P_START" -ge "$START_JIF" ] || continue
+  for p in $(home_sweep_pids); do
     kill "-$sig" "$p" 2>/dev/null || true
   done
   return 0
@@ -443,8 +480,9 @@ sweep_home() {
 teardown() {
   [ "$TEARDOWN_DONE" = 1 ] && return 0
   TEARDOWN_DONE=1
-  local pids p pgid left count
+  local pids helpers sweepable p pgid left count
   pids="$(tree_pids "$(pane_pid)")"
+  helpers="$(workspace_helper_pids)"
   pgid=""
   for p in $pids; do
     read_stat "$p" || continue
@@ -461,8 +499,17 @@ teardown() {
     # shellcheck disable=SC2086  # a pid list, one word each
     kill -TERM $pids 2>/dev/null || true
   fi
+  for p in $helpers; do
+    [ -r "/proc/$p/cmdline" ] || continue
+    case " $(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null) " in
+      (*" engine --daemon --workspace $WORKDIR "*) kill -TERM "$p" 2>/dev/null || true ;;
+    esac
+  done
   sweep_home TERM
   sleep 0.4
+  # A helper can detach while the pane is handling TERM, so discover again
+  # before the final signal rather than relying only on the first snapshot.
+  helpers="$helpers $(workspace_helper_pids)"
   if [ -n "$pgid" ]; then
     kill -KILL -- "-$pgid" 2>/dev/null || true
   fi
@@ -470,16 +517,26 @@ teardown() {
     # shellcheck disable=SC2086  # a pid list, one word each
     kill -KILL $pids 2>/dev/null || true
   fi
+  for p in $helpers; do
+    [ -r "/proc/$p/cmdline" ] || continue
+    case " $(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null) " in
+      (*" engine --daemon --workspace $WORKDIR "*) kill -KILL "$p" 2>/dev/null || true ;;
+    esac
+  done
   sweep_home KILL
   if [ "$SESSION_LIVE" = 1 ]; then
     "${TMUX[@]}" kill-session -t "$SESS_T" 2>/dev/null || true
   fi
   "${TMUX[@]}" kill-server 2>/dev/null || true
   sleep 0.2
-  # prove nothing is left instead of assuming it
+  # Include pane descendants, workspace helpers, and every process a skipped
+  # HOME sweep would have found. Reporting must not depend on whether it was safe
+  # to send those processes a signal.
   left=""
-  for p in $pids; do
-    [ -d "/proc/$p" ] && left="$left $p"
+  sweepable="$(home_sweep_pids)"
+  for p in $pids $helpers $sweepable; do
+    [ -d "/proc/$p" ] || continue
+    case " $left " in (*" $p "*) ;; (*) left="$left $p" ;; esac
   done
   count="$(printf '%s' "$left" | wc -w)"
   PHASE="done"
@@ -502,6 +559,12 @@ SAMPLE_SLEEP="$(sec_of "$SAMPLE_MS")"
 POLL_SLEEP="$(sec_of "$FRAME_POLL_MS")"
 
 # ── run context ──────────────────────────────────────────────────────────────
+if [ "$SWEEP" = always ] && [ "$HOMEDIR" = "$INVOKER_HOME" ]; then
+  # Disable the trap's sweep before refusing, otherwise refusal itself would
+  # perform the unsafe operation it exists to prevent.
+  SWEEP=never
+  fail sweep-always-refused-because-home-is-the-invoking-users
+fi
 WORKDIR_IS_REPO=no
 if [ -d "$WORKDIR/.git" ] || git -C "$WORKDIR" rev-parse --git-dir >/dev/null 2>&1; then
   WORKDIR_IS_REPO=yes
@@ -530,6 +593,10 @@ kvq "tmux_socket" "$SOCKET"
 kvq "pane_term" "$PANE_TERM"
 kvq "bench_env" "${BENCH_ENV:-none}"
 kv "env_isolated=yes"
+PRIOR_OWN_PIDS="$(own_pids)"
+PRIOR_OWN_COUNT="$(printf '%s\n' "$PRIOR_OWN_PIDS" | awk 'NF { n++ } END { print n+0 }')"
+kv "prior_own_processes=$PRIOR_OWN_COUNT"
+[ -z "$PRIOR_OWN_PIDS" ] || kvq prior_own_pids "$(printf '%s' "$PRIOR_OWN_PIDS" | tr '\n' ' ')"
 
 # ── phase 1: startup ─────────────────────────────────────────────────────────
 # Best-of-N wall clock for `--version`, run in WORKDIR under the run's HOME so it
