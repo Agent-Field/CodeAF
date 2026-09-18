@@ -17,6 +17,7 @@ package run_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,6 +105,18 @@ func toolReply(arguments string) *ai.Response {
 		}}},
 		Usage: &ai.Usage{PromptTokens: 20, CompletionTokens: 7, TotalTokens: 27},
 	}
+}
+
+// finishCommand is the bash call a worker ends on: `plandb done` on its own
+// task, spelled the way the plan line teaches it. Paired with realPlandbDoor
+// the real CLI writes the store, and the worker detects the completion after
+// the command runs (storeEnding) and ends the loop on it.
+func finishCommand(id, result string) string {
+	command := fmt.Sprintf("plandb done %s --agent %s --result %q", id, id, result)
+	args, _ := json.Marshal(struct {
+		Command string `json:"command"`
+	}{command})
+	return string(args)
 }
 
 func messageContent(message ai.Message) string {
@@ -304,15 +317,18 @@ func jsonString(s string) string {
 
 func TestBashWorkerRecordsItsStepsAndReportsThem(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)
 	storeDir := filepath.Dir(store.Path())
+	// THE LOOP ENDS IN THE STORE NOW. The first reply acts, the second finishes
+	// with `plandb done` — the only clean ending a task has — and the worker
+	// detects the completion after that command runs.
 	seat := &seat{script: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolReply(`{"command":"echo hi"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textReply("the greeting is in place"), nil
+			return toolReply(finishCommand("root", "the greeting is in place")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
@@ -322,18 +338,21 @@ func TestBashWorkerRecordsItsStepsAndReportsThem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
 	}
-	if report.Steps != 1 {
-		t.Fatalf("report steps = %d, want the one command the script ran", report.Steps)
+	if report.Steps != 2 {
+		t.Fatalf("report steps = %d, want the command and the finish the script ran", report.Steps)
 	}
-	// THE TRAJECTORY IS THE RECORD. One step line — the command as the model
-	// spelled it, the observation it brought back — and the ending line under
-	// it, which carries the worker's own account of the turn.
+	if report.Result != "the greeting is in place" {
+		t.Fatalf("report result = %q, want the result the finish command carried", report.Result)
+	}
+	// THE TRAJECTORY IS THE RECORD. Two step lines — the command as the model
+	// spelled it, and the finish — and the ending line under them, which names
+	// the store's own completion.
 	steps, err := run.Trajectory(storeDir, store.RootID())
 	if err != nil {
 		t.Fatalf("read the trajectory: %v", err)
 	}
-	if len(steps) != 1 {
-		t.Fatalf("the trajectory reads %d steps, want the one the worker took", len(steps))
+	if len(steps) != 2 {
+		t.Fatalf("the trajectory reads %d steps, want the two the worker took", len(steps))
 	}
 	if steps[0].Command != "echo hi" {
 		t.Fatalf("the recorded command = %q, want what the model asked for", steps[0].Command)
@@ -342,18 +361,18 @@ func TestBashWorkerRecordsItsStepsAndReportsThem(t *testing.T) {
 		t.Fatalf("the recorded observation = %q, want the command's output in it", steps[0].Observation)
 	}
 	lines := rawTrajectory(t, storeDir, store.RootID())
-	if len(lines) != 2 {
-		t.Fatalf("the trajectory holds %d lines, want the step and the ending", len(lines))
+	if len(lines) != 3 {
+		t.Fatalf("the trajectory holds %d lines, want the two steps and the ending", len(lines))
 	}
 	end := endLine(t, lines)
-	if end.Steps != 1 || end.Result == "" {
-		t.Fatalf("the ending reads %d steps with %q, want the turn's own count and account", end.Steps, end.Result)
+	if end.Steps != 2 || end.Reason != "finished in the store" {
+		t.Fatalf("the ending reads %d steps with reason %q, want the store's completion", end.Steps, end.Reason)
 	}
 }
 
 func TestBashWorkerOpensOnARecordedPredecessorWithTheResumeSentence(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)
 	storeDir := filepath.Dir(store.Path())
 	// THE PREDECESSOR'S ONE STEP, already in the file: whatever it did is in
@@ -361,7 +380,7 @@ func TestBashWorkerOpensOnARecordedPredecessorWithTheResumeSentence(t *testing.T
 	writeStep(t, storeDir, store.RootID(), run.Step{Kind: "step", Step: 1, Command: "mkdir -p out", Observation: ""})
 	seat := &seat{script: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textReply("resumed, inspected, and satisfied"), nil
+			return toolReply(finishCommand("root", "resumed, inspected, and satisfied")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
@@ -395,7 +414,7 @@ func TestBashWorkerOpensOnARecordedPredecessorWithTheResumeSentence(t *testing.T
 // REFUSAL never came back.)
 func TestBashWorkerInANonRepositoryWorkspaceRunsGitClone(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	t.Setenv("CODEAF_PLANDB_BIN", stubCLI(t))
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)
 	storeDir := filepath.Dir(store.Path())
 	workspace := t.TempDir()
@@ -409,7 +428,7 @@ func TestBashWorkerInANonRepositoryWorkspaceRunsGitClone(t *testing.T) {
 			return toolReply(`{"command":"git clone /does/not/exist vendored"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textReply("the clone was the first step"), nil
+			return toolReply(finishCommand("root", "the clone was the first step")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, workspace, "test/model", seat)
@@ -422,8 +441,8 @@ func TestBashWorkerInANonRepositoryWorkspaceRunsGitClone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the trajectory: %v", err)
 	}
-	if len(steps) != 1 || steps[0].Command != "git clone /does/not/exist vendored" {
-		t.Fatalf("the trajectory reads %d steps, want the one command the script ran", len(steps))
+	if len(steps) < 1 || steps[0].Command != "git clone /does/not/exist vendored" {
+		t.Fatalf("the trajectory reads %d steps, want the clone as the first", len(steps))
 	}
 	if strings.Contains(steps[0].Observation, "not yours to run") {
 		t.Fatalf("git clone was refused in a workspace that is not a repository: %q", steps[0].Observation)

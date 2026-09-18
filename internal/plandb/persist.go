@@ -101,7 +101,9 @@ var schemaStatements = []string{
 		chat                  TEXT    NOT NULL DEFAULT '',
 		paused                INTEGER NOT NULL DEFAULT 0,
 		owner                 TEXT    NOT NULL DEFAULT '',
-		seen_at               TEXT    NOT NULL DEFAULT ''
+		seen_at               TEXT    NOT NULL DEFAULT '',
+		waiting               INTEGER NOT NULL DEFAULT 0,
+		waited_at             TEXT    NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS deps (
 		downstream TEXT    NOT NULL,
@@ -148,6 +150,8 @@ var schemaStatements = []string{
 		paused                INTEGER NOT NULL DEFAULT 0,
 		owner                 TEXT    NOT NULL DEFAULT '',
 		seen_at               TEXT    NOT NULL DEFAULT '',
+		waiting               INTEGER NOT NULL DEFAULT 0,
+		waited_at             TEXT    NOT NULL DEFAULT '',
 		archived_at           TEXT    NOT NULL
 	)`,
 	`CREATE TABLE IF NOT EXISTS notes (
@@ -326,6 +330,17 @@ func migrateColumns(tx *sql.Tx) error {
 			return err
 		}
 	}
+	// THE PARK COLUMNS arrived with `plandb wait`: a file written before them
+	// still opens, its old tasks reading back as not waiting. Both the live
+	// table and the archive carry them.
+	for _, table := range []string{"tasks", "archived_tasks"} {
+		if err := ensureColumn(tx, table, "waiting", "INTEGER", "0"); err != nil {
+			return err
+		}
+		if err := ensureColumn(tx, table, "waited_at", "TEXT", "''"); err != nil {
+			return err
+		}
+	}
 	return ensureColumn(tx, "notes", "from", "TEXT", "'worker'")
 }
 
@@ -433,7 +448,8 @@ func loadState(tx *sql.Tx) (state, error) {
 const taskColumns = `id, title, description, kind, parent_id, priority, effect,
 	parallel, isolation, role, agent, acceptance, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
-	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at`
+	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at,
+	waiting, waited_at`
 
 // rowQuerier is the read half both the database handle and a transaction
 // carry, so the archive reader can share the task scan with the loader
@@ -453,7 +469,8 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		composite, paused                                    int
 		createdAt, updatedAt, completedAt                    string
 		effect, parallel, isolation                          string
-		seenAt                                               string
+		seenAt, waitedAt                                     string
+		waiting                                              int
 	)
 	dest := []any{
 		&task.ID, &task.Title, &task.Description, &task.Kind, &task.ParentID,
@@ -461,7 +478,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		&capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
 		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
-		&task.Owner, &seenAt,
+		&task.Owner, &seenAt, &waiting, &waitedAt,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -471,6 +488,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 	task.Parallel, task.Isolation = parallel, isolation
 	task.Composite = composite != 0
 	task.Paused = paused != 0
+	task.Waiting = waiting != 0
 	if err := decodeJSON(capabilities, &task.Capabilities); err != nil {
 		return nil, err
 	}
@@ -503,6 +521,9 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		return nil, err
 	}
 	if task.SeenAt, err = parseTime(seenAt); err != nil {
+		return nil, err
+	}
+	if task.WaitedAt, err = parseTime(waitedAt); err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -558,8 +579,8 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, archived_at) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -599,7 +620,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat,
-			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), formatTime(now)); err != nil {
+			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), formatTime(now)); err != nil {
 			return err
 		}
 	}
@@ -706,8 +727,8 @@ func saveTasks(tx *sql.Tx, value state) error {
 		id, ord, title, description, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at) VALUES (
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -748,7 +769,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused),
-			task.Owner, formatTime(task.SeenAt)); err != nil {
+			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt)); err != nil {
 			return err
 		}
 	}

@@ -16,10 +16,17 @@ import (
 // task's own account of itself and lands in the store verbatim; Steps and USD
 // feed the run's counters, and USD in particular feeds the shared cost
 // counter the Limits govern.
+//
+// WAITING IS NOT A RESULT. A worker that called `plandb wait` has not finished
+// its task: it parked it, the store released its claim, and it is owed a wake
+// when a dependency or a child moves. Such a worker comes home with Waiting
+// set and no Result, and the supervisor leaves the task open rather than
+// writing a completion.
 type Report struct {
-	Result string
-	Steps  int
-	USD    float64
+	Result  string
+	Steps   int
+	USD     float64
+	Waiting bool
 }
 
 // Worker is one task's executor. The supervisor never talks to a model

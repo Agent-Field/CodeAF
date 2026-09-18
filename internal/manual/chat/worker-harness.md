@@ -132,6 +132,22 @@ answered it answers by **re-planning**. The verbs a node worker has for handing
 work out — the task graph's own — are off this belt for the same reason: a belt
 carrying both would teach two ways to say one thing.
 
+## How does a task finish, and what if it is blocked?
+
+A worker ends a task one of three ways, and **a reply is not one of them**. It
+acts with a bash call; it **finishes** with `plandb done --agent <name> --result
+'…'` on its own task, and only once the acceptance holds; or it **parks** with
+`plandb wait` when it is blocked on a dependency or a child. A reply that runs no
+command — "now writing the parser:" — changes nothing and does not end the task:
+the harness answers it in the belt's own voice and the worker goes on, and four
+such replies in a row fail the task.
+
+A parked task stays open and not done, and its claim is released: the runtime runs
+its worker again, with what changed in front of it, the moment a dependency or a
+child it named moves. A `plandb wait` with nothing open to wait on is refused, so
+a worker cannot park on nothing. The remaining endings are the run's step cap, its
+wall, and an errored turn.
+
 ## Costs and limits
 
 - **The cost cap.** A run may spend what the conversation's own **spend rail**
