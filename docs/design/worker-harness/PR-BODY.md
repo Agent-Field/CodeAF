@@ -34,6 +34,15 @@ body describes what is on the branch now, at product height.
   `TestBashWorkerPublishesTheLiveStepWhileItsCommandRuns`,
   `TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult` and
   `TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession`.
+- **A parked task comes back once, when its wait is over.** A worker that
+  parks with `plandb wait` is launched again only when everything it waited on
+  has finished, or at once when a child failed or was cancelled; a child being
+  claimed, started or noted while a sibling still runs is not a reason. A root
+  whose children all landed done is never closed failed.
+- **The seat a person named is the seat every launch takes.** `--model` seats
+  every leaf and `--plan-model` every planning task, wakes included; only the
+  check and probe rows still come from the profile. Before this, every wake of
+  a root ran on the profile's mastermind row whatever the flags said.
 - **The spend block.** Every model call a run makes lands one row in the store's
   ledger tagged with the task, the model and the seat it ran on. The spend page
   draws the run's task spend by seat, and reads it back with `plandb spend --by
