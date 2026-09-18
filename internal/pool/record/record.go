@@ -99,7 +99,8 @@ const rowSchema = 1
 // Row is one judged seat score as it leaves the install: what was scored —
 // the metric, the seat and the model that held it, the score on the 0-100
 // scale — and the facts of the run it was read from, the judge that answered,
-// the door the run came in by, the size of the crew, and the day.
+// the door the run came in by (task, do, exec or run), the size of the crew,
+// and the day.
 type Row struct {
 	Schema int     `json:"schema"`
 	Metric string  `json:"metric"`
