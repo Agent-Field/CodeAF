@@ -995,12 +995,9 @@ func TestAnAutoRowUnderLearnReadsTheLearnRung(t *testing.T) {
 	}
 }
 
-// THE CHECK SEAT IS RESOLVED AT THE DOOR, and this is the order it resolves in:
-// the check flag when the person typed one; the plan flag when they typed only
-// that, so a pinned two model run keeps its two models and no third model
-// appears from the profile; and empty when they typed neither, which seats a
-// check on the profile's careful row at the crew factory rather than here,
-// because an empty seat is the profile's to answer.
+// THE CHECK SEAT IS RESOLVED AT THE DOOR, rung by rung: its flag, its
+// environment, a plan seat pinned by flag or environment, then empty for the
+// crew factory's careful row. A plan filled by the crew does not answer.
 func TestCheckSeatClimbsItsOwnLadder(t *testing.T) {
 	planFlag := Seat{Role: SeatPlan, Model: "vendor/named-plan-flag", Source: SeatFlag}
 	planEnv := Seat{Role: SeatPlan, Model: "vendor/named-plan-env", Source: SeatEnv}

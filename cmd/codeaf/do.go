@@ -481,9 +481,8 @@ func doErrand(request doRequest) error {
 		useAutoSeats(settings)
 	}
 	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
-	// THE CHECK SEAT RESOLVES AT THE DOOR, in the order the two model run
-	// depends on: the check flag, else the plan flag the person typed, else
-	// empty, which the crew factory reads as the profile's careful row.
+	// THE CHECK SEAT RESOLVES AT THE DOOR: its flag, its environment, a plan
+	// seat pinned by flag or environment, then the crew's careful row.
 	seats.Check = config.CheckSeat(request.checkModel, seats.Plan)
 	fmt.Fprintln(request.stderr, seats.Report())
 	outcome, err := errandRun(request, seats, started)
