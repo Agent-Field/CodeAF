@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: pool status's index line says what this run's own fetch did to the cache
-pr: 0000
+pr: 1161
 surface: [chat]
 invalidates:
   - "`codeaf pool status` read the cache, printed the index line, and only then ran the probe that fetches and stores the index — so on a fresh profile the line said `no index cached yet · built-in seed of …` underneath a fetch that had just cached one, and a person had to run status twice to learn it landed. Status runs the probe before the index line now: the line describes the document this run holds, tailed with what the probe displaced — `index · … · cached now (was built-in seed)`, or `(was <old generated day>)` when it replaced a cached document."
