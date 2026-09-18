@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
@@ -193,6 +194,16 @@ func runExec(args []string) error {
 		}
 	}
 
+	// AN EXEC RUN'S WORKER SPEND REACHES THE LEDGER, under the run's own root,
+	// the way a chat seat's calls do — so the status row, the run cap and the
+	// pool's accounting see what this run spent instead of a machine that looks
+	// to have spent nothing. The row is minted HERE and not inside the runner,
+	// and that is forced rather than chosen: internal/session imports
+	// internal/exec (beltfacts.go), so internal/exec cannot reach the ledger's
+	// package without a cycle. The row's shape is a seat's exactly; only its
+	// grain differs, one row per run where a seat writes one per call.
+	recordExecUsage(settings.Model, outcome, trace.RunFrom(traced), space.Root())
+
 	envelope := buildExecEnvelope(outcome, runErr, settings.Model, trace.RunFrom(traced))
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
@@ -233,6 +244,49 @@ func runExec(args []string) error {
 		return code
 	}
 	return nil
+}
+
+// recordExecUsage puts one exec run's worker spend on this machine's ledger,
+// under the run's own root.
+//
+// THE TWO NAMES ARE THE WORKER'S, because that is what this run is: one leaf
+// doing the work, like a task node's own turns. The role says so in the
+// ledger's own vocabulary ([roles.RoleWorker]) and the seat is the one that does
+// the work ([session.SeatWorker]) rather than the role's registered tier — the
+// low seat an adaptive run's many small nodes sit on — because the seat names
+// the chair this run actually ran in.
+//
+// AND THE CALLS ARE THE RUN'S OWN REQUEST COUNT, not one. The row is one per
+// run rather than one per call (the row is minted at the door because
+// internal/session imports internal/exec, so the runner cannot reach the
+// ledger's package without a cycle), so [session.UsageLine.Calls] carries the
+// whole run's requests and the tokens and dollars beside it are the whole run's
+// spend: a reader summing the Calls column gets the run's true request count
+// instead of the count of rows.
+//
+// A RUN THAT MADE NO CALL LEAVES NOTHING. [session.RecordUsage] refuses a row
+// whose cost and tokens are all zero — a row that looks measured and is not —
+// so the empty outcome of a run that priced nothing, and the nil outcome of one
+// that never started, both write no line.
+//
+// THE WRITER IS ASYNC ([session.RecordUsage]), so the flush is what makes the
+// row outlive the process: exec exits the moment this returns, exactly as the
+// chat surface waits on its way out ([v3Process.closeAll]).
+func recordExecUsage(model string, outcome *exec.Outcome, root, workspace string) {
+	if outcome == nil {
+		return
+	}
+	line := session.UsageLine{
+		Model:     model,
+		Calls:     outcome.Usage.Calls,
+		Input:     outcome.Usage.PromptTokens,
+		Output:    outcome.Usage.CompletionTokens,
+		USD:       outcome.Usage.Cost,
+		Root:      root,
+		Workspace: workspace,
+	}
+	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.RoleWorker, session.SeatWorker))
+	session.FlushUsage()
 }
 
 // execEnvFallbacks are the three exec walls a wrapper can set once, in the
