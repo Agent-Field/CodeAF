@@ -273,6 +273,9 @@ type Meta struct {
 	// person's own act (home's `e`) and its own undoing — nothing automatic
 	// ever sets or clears it, and nothing else about the session changes.
 	Archived bool `json:"archived,omitempty"`
+	// ArchivedTasks hides individual task rows without changing their execution
+	// or putting away the conversation that owns them. IDs are local to this session.
+	ArchivedTasks map[string]bool `json:"archivedTasks,omitempty"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable
@@ -308,8 +311,6 @@ func LoadMeta(dir string) (Meta, error) {
 	return meta, nil
 }
 
-// SaveMeta writes the identity whole, temp-and-rename, never partially: a
-// picker that reads a half-written meta.json would draw a phantom row.
 // SetArchived marks or unmarks one conversation as put away, through the same
 // meta file every other fact about the session rides. A folder with no
 // conversation in it is refused rather than given a meta that claims one.
@@ -330,6 +331,35 @@ func SetArchived(dir string, archived bool) error {
 	})
 }
 
+// SetTaskArchived changes one task's visibility under the conversation's metadata
+// lock. It never changes the task index, execution state, or conversation archive.
+func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
+	sessionID, taskID = strings.TrimSpace(sessionID), strings.TrimSpace(taskID)
+	if sessionID == "" || taskID == "" {
+		return fmt.Errorf("put away task: missing conversation or task id")
+	}
+	return withMetaLock(dir, func() error {
+		meta, err := LoadMeta(dir)
+		if err != nil {
+			return err
+		}
+		if meta.ID != sessionID {
+			return fmt.Errorf("put away task: conversation does not match %s", dir)
+		}
+		if archived {
+			if meta.ArchivedTasks == nil {
+				meta.ArchivedTasks = make(map[string]bool)
+			}
+			meta.ArchivedTasks[taskID] = true
+		} else {
+			delete(meta.ArchivedTasks, taskID)
+		}
+		return SaveMeta(dir, meta)
+	})
+}
+
+// SaveMeta writes the identity whole, temp-and-rename, never partially: a
+// picker that reads a half-written meta.json would draw a phantom row.
 func SaveMeta(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")

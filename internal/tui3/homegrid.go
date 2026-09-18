@@ -1480,7 +1480,9 @@ func (a *app) homeRowOffer(line homeLine) string {
 // beside the cursor's). The description column already drew it only for the
 // selected row ([app.homeDescNote]); this makes the second-line shape agree.
 func (a *app) homeRowAnswers(line homeLine, at int) string {
-	if line.cell == nil {
+	// The option menu owns the letters while open; normal answer hints would
+	// promise a different action for the same key.
+	if line.cell == nil || a.strip.open {
 		return ""
 	}
 	if words := a.homeRowOffer(line); words != "" {

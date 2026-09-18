@@ -81,6 +81,9 @@ func (runningPanel) rows(in *homeGridInput) homePanelRows {
 			continue
 		}
 		for _, task := range row.session.Presence.RunningTasks {
+			if row.session.ArchivedTasks[task.ID] {
+				continue
+			}
 			entry := runningEntry(row, task)
 			seen[taskLedgerKey(entry)] = true
 			items = append(items, runningItem{at: task.StartedAt, running: true,
@@ -97,7 +100,7 @@ func (runningPanel) rows(in *homeGridInput) homePanelRows {
 				row = switcherRow{kind: switcherConversation, session: session, title: homeName(session), project: project.Name}
 			}
 			for _, entry := range session.Tasks.Rows {
-				if entry.Parent != "" {
+				if entry.Parent != "" || session.ArchivedTasks[entry.ID] {
 					continue
 				}
 				if strings.TrimSpace(entry.SessionID) == "" {
@@ -280,27 +283,19 @@ func (a *app) openTaskDoor(entry *session.TaskIndexEntry) tea.Cmd {
 
 // ── stopping one ────────────────────────────────────────────────────────────
 
-// runningVerbs is `→` on a running row: `s` stops a task THIS WINDOW HOLDS,
-// through the one door every other stop takes (stop.go's card, which asks first
-// and defaults to keep going).
-//
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. The stop door is this
-// window's own engine, and another window's task — or one of this window's
-// conversations running behind the front one — has an id that engine does not
-// hold, so the row offers no verb rather than one that would end the wrong work
-// or fail (DESIGN §6 ruling 5). A row another window holds already says
-// `another window`, and enter brings it here, where it can be stopped.
-//
-// THE VERB IS SPELLED AS THE TASKS PLACE SPELLS IT ([stopActWord]), because it
-// is the same act on the same work and reaches the same card; a row that said
-// `stop` on home and `stop it` one `tab` away would be two verbs to a person.
-// `ctrl+x` reaches it without the strip too, from any column.
+// runningVerbs combines task row options with the stop action when this window
+// holds the running task. Putting work away changes visibility, never execution;
+// stopping still uses the existing confirmation card.
 func (a *app) runningVerbs(line homeLine) []verb {
+	var verbs []verb
+	if line.cell != nil && line.cell.row != nil && line.cell.row.task != nil {
+		verbs = a.taskRowVerbs(line.cell.row.session, *line.cell.row.task)
+	}
 	target := a.runningStopTarget(line)
 	if target.empty() {
-		return nil
+		return verbs
 	}
-	return []verb{{key: 's', word: stopActWord, do: func() tea.Cmd {
+	return append(verbs, verb{key: 's', word: stopActWord, do: func() tea.Cmd {
 		// HOME STEPS ASIDE FOR THE CARD. The block draws every question above the
 		// conversation's box (question.go), and home's frame has no such block —
 		// so a card raised over home was a question nobody could see, holding the
@@ -309,7 +304,7 @@ func (a *app) runningVerbs(line homeLine) []verb {
 		a.closeHome()
 		a.raiseStop(target)
 		return nil
-	}}}
+	}})
 }
 
 // runningStopTarget is the task a running row names, when this window's engine

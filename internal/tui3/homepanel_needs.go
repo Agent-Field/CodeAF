@@ -303,7 +303,7 @@ func needsCallOf(row session.SessionRow, entry session.TaskIndexEntry) (session.
 	// WORK IN A CONVERSATION SOMEBODY PUT AWAY IS NOT WAITING ON THEM. Archiving
 	// is the decision to stop being asked about it, and every other panel already
 	// reads it that way ([machineCounts] skips an archived row outright).
-	if row.Archived {
+	if row.Archived || row.ArchivedTasks[entry.ID] {
 		return session.TaskStatus{}, false
 	}
 	status := taskEntryStatus(entry, row.Runs(entry))

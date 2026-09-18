@@ -479,12 +479,29 @@ rather than home's `› type to search or start something new`. It used to show 
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's verbs, and this place has one — `s stop it`, over a task this conversation is
-holding that is still queued or running. Nothing is behind a fold; the list scrolls and its
+the row's options: `a put it away`, `t new chat here`, `o open folder`, and
+`c copy path` where the local conversation and project are available. A task this
+conversation is holding that is still queued or running also offers `s stop it`. Nothing is behind a fold; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
 the list already draws, and it says `nothing matches` only when your filter has emptied the
 page — and the foot names only what is true of the row you are on: `enter open its room ·
 → verbs: stop it`.
+
+## Put away a task, find an archived task, or bring it back
+
+On home or the Tasks list, select the task, press `→`, then `a put it away`.
+This hides only that task from home's panels and the unfiltered Tasks list. Its work
+continues if it is running; its record, conversation, and other tasks are unchanged.
+The choice is saved with the conversation and survives reopening the app.
+
+To recover it, type its name in the Tasks filter. Search includes put-away tasks within
+the selected time window; expand that window if the task is older. Select the matching
+task and use `→`, then `a bring it back`. `enter` can still open its record.
+
+`t new chat here`, `o open folder`, and `c copy path` use the project of the conversation
+that owns the selected task. A new chat is independent of the task. These folder actions
+and per-task put-away are local capabilities; a connected remote window does not offer
+them. Its existing stop action remains available when that engine supports it.
 
 ## standing — what runs without being asked, and where to type on the standing page
 

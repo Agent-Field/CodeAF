@@ -315,12 +315,22 @@ place's to show — the `tasks` heading opens it.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
 conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
-from any column with no strip. `→` on the row opens its verbs under it; the foot under
+from any column with no strip. `→` on the row opens its options; the foot under
 every row of the field is the one resting sentence and does not name the stop, which is on
 the `alt+.` map. **A task another window runs cannot be stopped from here** — the row
 offers no stop at all; `enter` opens the task, and its own window can stop it.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
+
+## Put away a task from home — task row options, new chat here, open folder, copy path
+
+**`→` offers task options just as it does for threads:** `a put it away`,
+`t new chat here`, `o open folder`, and `c copy path` when the corresponding local
+folder and action are available. On a wide home these appear beneath the description
+in the middle column. Putting a task away hides that task from home and the unfiltered
+Tasks list; it does not stop it, delete its record, or put away its conversation.
+Find it again by typing its name in Tasks, then use `→` and `a bring it back`.
+The choice survives closing the app. Folder actions use the task's conversation project.
 
 ## Why does only one row spin — the one spinner on home
 

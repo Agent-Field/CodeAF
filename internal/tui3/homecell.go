@@ -194,37 +194,7 @@ func (a *app) homeStripInDescription(width, room int) bool {
 // homeDescriptionVerbs wraps whole choices within the description column.
 // It reads the same captured verbs as the inline strip, preserving their keys.
 func (a *app) homeDescriptionVerbs(width int, pal palette) []string {
-	room := max(1, width-homeDescLeadCells)
-	var out []string
-	line, used := "", 0
-	for _, v := range a.strip.verbs {
-		word := string(v.key) + " " + v.word
-		cells := ansi.StringWidth(word)
-		if used > 0 && used+len(verbGap)+cells > room {
-			out = append(out, homeDescLeadBlank+line)
-			line, used = "", 0
-		}
-		if cells > room {
-			for i, part := range wrap(word, room) {
-				painted := pal.dim(part)
-				if i == 0 {
-					painted = pal.data(string(v.key)) + pal.dim(strings.TrimPrefix(part, string(v.key)))
-				}
-				out = append(out, homeDescLeadBlank+painted)
-			}
-			continue
-		}
-		if used > 0 {
-			line += verbGap
-			used += len(verbGap)
-		}
-		line += pal.data(string(v.key)) + pal.dim(" "+v.word)
-		used += cells
-	}
-	if used > 0 {
-		out = append(out, homeDescLeadBlank+line)
-	}
-	return out
+	return verbChoiceLines(a.strip.verbs, width, homeDescLeadBlank, pal)
 }
 
 // homeDescNote is one row's note as the lines it takes: the thread's title

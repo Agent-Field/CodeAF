@@ -2751,8 +2751,12 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// which asks first — the same verb the row's strip offers
 		// (homepanel_running.go's [app.runningVerbs]), reached where `→` crosses
 		// columns instead of opening the strip.
-		if verbs := a.runningVerbs(line); ok && len(verbs) > 0 {
-			return verbs[0].do()
+		if ok {
+			for _, v := range a.runningVerbs(line) {
+				if v.key == 's' {
+					return v.do()
+				}
+			}
 		}
 		return nil
 

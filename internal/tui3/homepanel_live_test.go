@@ -474,7 +474,7 @@ func TestRunningSaysThePhaseWhenThereIsNoActivity(t *testing.T) {
 }
 
 // `s` STOPS ONLY WHAT THIS WINDOW HOLDS: a task of this window's own
-// conversation offers it, and one in another window offers nothing.
+// conversation offers it, and another window's task offers only its row options.
 func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
 	l := newLiveLab(t)
 	l.live("-alpha", "aaaa000000000001", session.SessionPresence{RunningTasks: []session.PresenceTask{
@@ -495,14 +495,21 @@ func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
 			theirs = line
 		}
 	}
-	if verbs := a.runningVerbs(theirs); len(verbs) != 0 {
-		t.Fatalf("another conversation's task offered a stop: %+v", verbs)
+	for _, v := range a.runningVerbs(theirs) {
+		if v.key == 's' {
+			t.Fatal("another conversation's task offered a stop")
+		}
 	}
-	verbs := a.runningVerbs(mine)
-	if len(verbs) != 1 || verbs[0].key != 's' {
-		t.Fatalf("this window's own task offered no stop: %+v", verbs)
+	stopped := false
+	for _, v := range a.runningVerbs(mine) {
+		if v.key == 's' {
+			v.do()
+			stopped = true
+		}
 	}
-	verbs[0].do()
+	if !stopped {
+		t.Fatal("this window's own task offered no stop")
+	}
 	if !a.stopping() || a.at(pageHome) || !strings.Contains(plain(mustFrame(a)), "Stop this task?") {
 		t.Fatalf("s did not raise the stop card where it can be read:\n%s", plain(mustFrame(a)))
 	}
@@ -530,8 +537,12 @@ func TestAThreeColumnRunningRowRestsOnTheOneFootAndStillStops(t *testing.T) {
 	if got := a.home.columnOf(mine); got != 0 {
 		t.Fatalf("tasks has rows and stands in column %d of a three-column home, want the field at 0", got)
 	}
-	if verbs := a.runningVerbs(a.home.lines[mine]); len(verbs) != 1 || verbs[0].word != stopActWord {
-		t.Fatalf("the row's strip offers %+v, want the tasks place's `%s`", verbs, stopActWord)
+	stop := false
+	for _, v := range a.runningVerbs(a.home.lines[mine]) {
+		stop = stop || (v.key == 's' && v.word == stopActWord)
+	}
+	if !stop {
+		t.Fatal("the row's options omitted stop it")
 	}
 	if foot := a.homeHint(); foot != restingFoot(a) {
 		t.Fatalf("the foot on a running row this window holds is %q, want the resting sentence and draft controls", foot)

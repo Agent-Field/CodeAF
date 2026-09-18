@@ -37,8 +37,10 @@ import (
 // cursor is a line of that walk rather than a count of items the frame would
 // have to re-derive.
 type tasksPlace struct {
-	cursor int
-	top    int
+	// actionNote reports the last explicit row action, including write failures.
+	actionNote string
+	cursor     int
+	top        int
 	// opened is what a person has SET about this page's folds, keyed by the row's
 	// own identity — a piece of work's (SessionID, ID) pair, or a conversation's
 	// ([tasksChatKey], which cannot collide with the other).
@@ -311,6 +313,24 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	// untrimmed text, so a person who has typed a space sees the caret move.
 	r.query = p.query.String()
 	if needle == "" {
+		var kept []tasksItem
+		for i, item := range r.items {
+			if item.row.ArchivedTasks[item.entry.ID] {
+				if kept == nil {
+					kept = make([]tasksItem, 0, len(r.items))
+					kept = append(kept, r.items[:i]...)
+				}
+				continue
+			}
+			if kept != nil {
+				kept = append(kept, item)
+			}
+		}
+		if kept != nil {
+			r.items = kept
+			tree := tasksTreeOf(kept, r.now, r.order, r.chats...)
+			r.shape = &tree
+		}
 		return r
 	}
 	// A QUERY OPENS EVERY FOLD ON THE PAGE. A row that matched and is sitting
@@ -1435,6 +1455,9 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 // ([tasksControlRow]). What survives is the half the row cannot say: that
 // the query matched nothing, over a body that is blank rather than teaching.
 func (p *tasksPlace) note(a *app, width int) []string {
+	if p.actionNote != "" {
+		return []string{" " + a.pal.dim(fit(p.actionNote, width-2))}
+	}
 	if p.detailOn || p.reading.held == 0 {
 		return nil
 	}
@@ -1569,23 +1592,24 @@ func (p *tasksPlace) verbs(a *app) []verb {
 	if !ok {
 		return nil
 	}
+	verbs := a.taskRowVerbs(item.row, item.entry)
 	entry := item.entry
 	node := a.taskSheetNodeFor(&entry)
 	if node == nil {
-		return nil
+		return verbs
 	}
 	target := a.stopTaskTarget(node)
 	if target.empty() {
-		return nil
+		return verbs
 	}
 	// THE BUILD GUARD, ASKED BEFORE THE VERB IS NAMED. A surface driven by an
 	// agent with no door onto cancelling says so when `x` is pressed
 	// ([stopUnavailableWord]); a NAMED verb that could only ever answer with that
 	// sentence would be this place advertising a key it has not got.
 	if _, ok := a.stopDoors(); !ok {
-		return nil
+		return verbs
 	}
-	return []verb{{key: 's', word: stopActWord, do: func() tea.Cmd { return a.tasksStop(target) }}}
+	return append(verbs, verb{key: 's', word: stopActWord, do: func() tea.Cmd { return a.tasksStop(target) }})
 }
 
 // tasksStop ends one piece of work from the strip, and says what the engine
@@ -1639,7 +1663,7 @@ func (p *tasksPlace) changed(a *app, since time.Time) int {
 	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			for _, entry := range row.Tasks.Rows {
-				if !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
+				if !row.ArchivedTasks[entry.ID] && !entry.EndedAt.IsZero() && entry.EndedAt.After(since) {
 					count++
 				}
 			}
@@ -1859,6 +1883,7 @@ func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
 func (placeTasks) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	a.taskSheet.actionNote = ""
 	cmd, _ := a.taskSheetKeyPress(msg)
 	// AND THE PANE FOLLOWS THE CURSOR WHATEVER MOVED IT. This is the one door
 	// every key to this place comes through, which is the only place the arming

@@ -54,7 +54,7 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	// sorting is a chord, and a chord nobody can find is a chord that does not
 	// exist. The filter is named beside it because nothing else on the frame says
 	// that a letter goes into the box on the control row rather than to the page.
-	const want = "enter open its room · → verbs: stop it · alt+s sort · type to filter"
+	const want = "enter open its room · → verbs: put it away, open folder, copy path, stop it · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -116,10 +116,14 @@ func TestTheTasksVerbsOnTheStripAreTheVerbsInTheFoot(t *testing.T) {
 	a, _ := tasksFootApp(t)
 
 	verbs := a.taskSheet.verbs(a)
-	if len(verbs) != 1 || verbs[0].word != stopActWord || verbs[0].key != 's' {
-		t.Fatalf("the running row offers %+v, want one `s %s`", verbs, stopActWord)
+	keys := ""
+	for _, v := range verbs {
+		keys += string(v.key)
 	}
-	if !strings.Contains(a.taskSheetKeysLine(), tasksVerbsWord+stopActWord) {
+	if keys != "aocs" {
+		t.Fatalf("the running row offers %q, want archive, folder, copy and stop", keys)
+	}
+	if !strings.Contains(a.taskSheetKeysLine(), stopActWord) {
 		t.Fatalf("the foot does not name the verb the row has: %q", a.taskSheetKeysLine())
 	}
 
@@ -183,28 +187,30 @@ func TestTheTasksStripOffersNoVerbOverWorkItCannotStop(t *testing.T) {
 	}
 }
 
-// AND A SESSION WITH NO DOOR ONTO STOPPING NAMES NO VERB AT ALL. The build guard
+// AND A SESSION WITH NO DOOR ONTO STOPPING NAMES NO STOP VERB. The build guard
 // is asked before the word is drawn, because a named key that could only ever
 // answer with "stopping work is unavailable" is the place advertising something
 // it has not got.
-func TestTheTasksFootNamesNoVerbWithoutTheEnginesDoor(t *testing.T) {
+func TestTheTasksFootNamesNoStopWithoutTheEnginesDoor(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open")
 	}
-	if verbs := a.taskSheet.verbs(a); len(verbs) != 0 {
-		t.Fatalf("a session with no cancel door offered %+v", verbs)
+	for _, v := range a.taskSheet.verbs(a) {
+		if v.key == 's' {
+			t.Fatal("a session with no cancel door offered stop")
+		}
 	}
 	// The cursor's row is a family, and [openTaskPlaceWithRows] has opened it —
 	// so the fold clause is the `←` half. What this test is about is what is NOT
-	// here: no verb at all, on a session with no door onto stopping.
-	const want = "enter open its room · ← fold it back up · alt+s sort · type to filter"
+	// here: no stop verb, on a session with no door onto stopping.
+	const want = "enter open its room · ← fold it back up · → verbs: open folder, copy path · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
-	if strings.Contains(a.taskSheetKeysLine(), tasksVerbsWord) {
-		t.Fatalf("a session with no cancel door named a verb: %q", a.taskSheetKeysLine())
+	if strings.Contains(a.taskSheetKeysLine(), stopActWord) {
+		t.Fatalf("a session with no cancel door named stop: %q", a.taskSheetKeysLine())
 	}
 }
 
