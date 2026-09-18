@@ -116,7 +116,7 @@ func TestAWrappedCommaListKeepsItsCommaAtEveryWidth(t *testing.T) {
 	// nothing to promise, and at a width where one clause fills a row to the last
 	// cell the clause keeps the cell and the comma goes — a word matters more
 	// than the punctuation after it.
-	words := []string{"→ verbs: close", "new chat here", "open folder", "copy path"}
+	words := []string{"→ verbs: close", "new in project", "open folder", "copy project"}
 	for width := 30; width <= 60; width++ {
 		rows := bandClausesWithSeparator(width, 9, ", ", plain, words...)
 		for at, row := range rows[:max(0, len(rows)-1)] {

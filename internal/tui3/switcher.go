@@ -518,7 +518,7 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 	}
 	verbs = append(verbs, switcherVerb{key: 'x', word: word})
 	if strings.TrimSpace(row.session.Workspace) != "" || strings.TrimSpace(row.session.ProjectDir) != "" {
-		verbs = append(verbs, switcherVerb{key: 't', word: "new chat here"}, switcherVerb{key: 'o', word: "open folder"}, switcherVerb{key: 'c', word: "copy path"})
+		verbs = append(verbs, switcherVerb{key: 'n', word: "new in project"}, switcherVerb{key: 'o', word: "open folder"}, switcherVerb{key: 'p', word: "copy project"})
 	}
 	return verbs
 }

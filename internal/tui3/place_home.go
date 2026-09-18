@@ -209,7 +209,7 @@ func (a *app) homeRowVerbs() []verb {
 func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 	var verbs []verb
 	for _, v := range switcherVerbsFor(row) {
-		if a.hosted() && (v.key == 'o' || v.key == 'c' || v.key == 't') {
+		if a.hosted() && row.kind == switcherConversation && v.answer == "" && (v.key == 'o' || v.key == 'p' || v.key == 'n') {
 			continue
 		}
 		// A VERB THAT CANNOT WORK IS ABSENT, NOT BROKEN. Two of the doors want a
@@ -218,7 +218,7 @@ func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 		// would offer two keystrokes it has already decided against. It is the
 		// place that drops them and not the reading: the reading is pure and has
 		// no disk, and this is what the cached stat map is for.
-		if row.gone && (v.key == 't' || v.key == 'o') {
+		if row.gone && v.answer == "" && (v.key == 'n' || v.key == 'o') {
 			continue
 		}
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
@@ -246,11 +246,11 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 		}
 	case v.key == 'x':
 		do = func() tea.Cmd { return a.homeArchiveRow(row.session) }
-	case v.key == 't':
+	case v.key == 'n':
 		do = func() tea.Cmd { return a.homeStart(homeWhere(line)) }
 	case v.key == 'o':
 		do = func() tea.Cmd { return a.homeOpenFolder(row.session) }
-	case v.key == 'c':
+	case v.key == 'p' && row.kind == switcherConversation:
 		do = func() tea.Cmd { return a.homeCopyPath(row.session) }
 	case v.key == 'p':
 		do = func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }
@@ -282,7 +282,7 @@ func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 	return nil
 }
 
-// homeOpenFolder is `o open folder`, and homeCopyPath is `c copy path` — the
+// homeOpenFolder is `o open folder`, and homeCopyPath is `p copy project` — the
 // same two doors ctrl+o and ctrl+y are.
 func (a *app) homeOpenFolder(row session.SessionRow) tea.Cmd {
 	return a.homeOpenPath(row.Workspace)

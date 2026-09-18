@@ -322,10 +322,10 @@ offers no stop at all; `enter` opens the task, and its own window can stop it.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
 
-## Close or put away a task from home — task row options, new chat here, open folder, copy path
+## Close or put away a task from home — task row options, new in project, open folder, copy project
 
 **`→` offers task options just as it does for threads:** `x close`,
-`t new chat here`, `o open folder`, and `c copy path` when the corresponding local
+`n new in project`, `o open folder`, and `p copy project` when the corresponding local
 folder and action are available. On a wide home these appear beneath the description
 in the middle column. Putting a task away hides that task from home and the unfiltered
 Tasks list; it does not stop it, delete its record, or put away its conversation.
@@ -1019,9 +1019,9 @@ Home says so **on the row**, at every width: `folder gone` in the right margin, 
 age would be.
 
 `enter`, `ctrl+t new chat here` and `ctrl+o open folder` all want that directory, so each of
-them refuses rather than pretending. The row's verb strip drops `t new chat here` and
+them refuses rather than pretending. The row's verb strip drops `n new in project` and
 `o open folder` for the same reason: a strip only ever names letters that work.
-`ctrl+y copy path` and `c copy path` still do, because a path is a string.
+`ctrl+y copy path` and `p copy project` still do, because a path is a string.
 
 **On enter.** Nothing is opened, home stays up, the conversation you were in is untouched,
 and `that folder is gone · <path>` appears on home's message line at the foot of the screen.
@@ -1913,8 +1913,8 @@ drawn only when it has something to say:
 7. **what is scheduled** and **news since you last looked**;
 8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
-9. one dim line naming the strip: `→ verbs: close, new chat here, open folder,
-   copy path`.
+9. one dim line naming the strip: `→ verbs: close, new in project, open folder,
+   copy project`.
 
 It never moves while the list lifts under your typing, and it goes empty on the
 `start a new conversation` row, because that chat does not exist yet. A frame too short for
@@ -1924,7 +1924,7 @@ drawn.
 ## What do the keys on a home card do — open, new chat, folder, and copy path
 
 **The card beside a search does not list letters.** Its last dim line names the strip and
-the words instead — `→ verbs: close, new chat here, open folder, copy path` — because
+the words instead — `→ verbs: close, new in project, open folder, copy project` — because
 a letter is a verb only while the strip naming it is on screen.
 
 **The chords work on any conversation row, card or no card**, and each acts on the row you
@@ -1954,7 +1954,7 @@ that column, they appear directly under the selected row. **While the options ar
 those letters are the verbs and the box is asleep**:
 
 ```
-y let it send   n not this time   x close   t new chat here
+1 let it send   2 not this time   x close   n new in project
 esc or ← to leave · enter opens it instead
 ```
 
@@ -1962,9 +1962,9 @@ esc or ← to leave · enter opens it instead
 In the middle column the options leave the list in place. In the narrow layout the strip
 pushes the rows under it down. The options are shown only while their shortcuts are active.
 
-**The verbs are the row's own:** a question's first two option words on `y` and `n`; a
-conversation's `x close` and, where it has a folder, `t new chat here`,
-`o open folder`, `c copy path`; a standing item's `p pause it` or `r resume it`; a task this
+**The verbs are the row's own:** a question's first two option words on its own answer keys; a
+conversation's `x close` and, where it has a folder, `n new in project`,
+`o open folder`, `p copy project`; a standing item's `p pause it` or `r resume it`; a task this
 window runs, `s stop`.
 
 **`→` opens the strip on every row of the field, at every width** — the arrows never
@@ -2068,8 +2068,8 @@ time, news text, task file count or cost, and answer chip remain visible. A sing
 wider than the card is still clipped. The card's place line clips from the left so the
 path's basename remains visible.
 
-**The verbs line breaks the same way** — `→ verbs: close, new chat here, open
-folder,` / `         copy path` — keeping the comma on the row it ends and hanging the
+**The verbs line breaks the same way** — `→ verbs: close, new in project, open
+folder,` / `         copy project` — keeping the comma on the row it ends and hanging the
 second row under the first word.
 
 A **panel row** on a narrow column gives way in its own order: the project tag goes first,

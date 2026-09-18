@@ -284,10 +284,10 @@ func TestARowSaysWhenItsDoorWillRefuseWithoutACardToSayIt(t *testing.T) {
 		for _, v := range a.homeRowVerbs() {
 			words += string(v.key) + " " + v.word + " · "
 		}
-		if strings.Contains(words, "new chat here") || strings.Contains(words, "open folder") {
+		if strings.Contains(words, "new in project") || strings.Contains(words, "open folder") {
 			t.Fatalf("a gone row offered a door that cannot open: %s", words)
 		}
-		if !strings.Contains(words, "copy path") {
+		if !strings.Contains(words, "copy project") {
 			t.Fatalf("a gone row lost the door that asks nothing of the disk: %s", words)
 		}
 		return

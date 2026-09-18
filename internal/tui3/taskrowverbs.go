@@ -32,7 +32,7 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 	}
 	if workspace := strings.TrimSpace(row.Workspace); workspace != "" {
 		if a.canStart() {
-			verbs = append(verbs, verb{key: 't', word: "new chat here", do: func() tea.Cmd {
+			verbs = append(verbs, verb{key: 'n', word: "new in project", do: func() tea.Cmd {
 				var opened tea.Cmd
 				if !a.at(pageHome) {
 					opened = a.showPage(pageHome)
@@ -49,7 +49,7 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 				}
 				return nil
 			}},
-			verb{key: 'c', word: "copy path", do: func() tea.Cmd {
+			verb{key: 'p', word: "copy project", do: func() tea.Cmd {
 				a.taskRowNotice("copied " + workspace)
 				return tea.Raw(osc52(workspace, a.tmux))
 			}},

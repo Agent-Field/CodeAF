@@ -349,8 +349,7 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers in its own words on
-`y` and `n`, `x close`, `t new chat here`, `o open folder`, `c copy path`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `n new in project`, `o open folder`, `p copy project`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -479,8 +478,8 @@ rather than home's `› type to search or start something new`. It used to show 
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's options: `x close`, `t new chat here`, `o open folder`, and
-`c copy path` where the local conversation and project are available. A task this
+the row's options: `x close`, `n new in project`, `o open folder`, and
+`p copy project` where the local conversation and project are available. A task this
 conversation is holding that is still queued or running also offers `s stop it`. Nothing is behind a fold; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
 the list already draws, and it says `nothing matches` only when your filter has emptied the
@@ -498,7 +497,7 @@ To recover it, type its name in the Tasks filter. Search includes put-away tasks
 the selected time window; expand that window if the task is older. Select the matching
 task and use `→`, then `x reopen`. `enter` can still open its record.
 
-`t new chat here`, `o open folder`, and `c copy path` use the project of the conversation
+`n new in project`, `o open folder`, and `p copy project` use the project of the conversation
 that owns the selected task. A new chat is independent of the task. These folder actions
 and per-task put-away are local capabilities; a connected remote window does not offer
 them. Its existing stop action remains available when that engine supports it.
@@ -836,8 +835,8 @@ honest dim sentence instead of falling through to this computer's files.
 
 ## Can I put away a conversation on the other machine from home
 
-Yes. `a` or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
-`enter` on a far conversation opens it in this window. `o open folder`, `c copy path`, and
+Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
+`enter` on a far conversation opens it in this window. `o open folder`, `p copy project`, and
 starting a new conversation in that folder are absent on far rows because those paths do not
 name folders on the computer holding your file manager and clipboard.
 

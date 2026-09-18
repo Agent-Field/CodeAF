@@ -54,7 +54,7 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	// sorting is a chord, and a chord nobody can find is a chord that does not
 	// exist. The filter is named beside it because nothing else on the frame says
 	// that a letter goes into the box on the control row rather than to the page.
-	const want = "enter open its room · → verbs: close, open folder, copy path, stop it · alt+s sort · type to filter"
+	const want = "enter open its room · → verbs: close, open folder, copy project, stop it · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -120,7 +120,7 @@ func TestTheTasksVerbsOnTheStripAreTheVerbsInTheFoot(t *testing.T) {
 	for _, v := range verbs {
 		keys += string(v.key)
 	}
-	if keys != "xocs" {
+	if keys != "xops" {
 		t.Fatalf("the running row offers %q, want archive, folder, copy and stop", keys)
 	}
 	if !strings.Contains(a.taskSheetKeysLine(), stopActWord) {
@@ -205,7 +205,7 @@ func TestTheTasksFootNamesNoStopWithoutTheEnginesDoor(t *testing.T) {
 	// The cursor's row is a family, and [openTaskPlaceWithRows] has opened it —
 	// so the fold clause is the `←` half. What this test is about is what is NOT
 	// here: no stop verb, on a session with no door onto stopping.
-	const want = "enter open its room · ← fold it back up · → verbs: open folder, copy path · alt+s sort · type to filter"
+	const want = "enter open its room · ← fold it back up · → verbs: open folder, copy project · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}

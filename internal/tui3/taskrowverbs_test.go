@@ -30,7 +30,7 @@ func TestTaskClosePersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
 	owner := selectHomeTask(t, a, "t1")
 	drive(t, a, key("right"))
 	frame := homeText(a)
-	for _, word := range []string{"x close", "t new chat here", "o open folder", "c copy path"} {
+	for _, word := range []string{"x close", "n new in project", "o open folder", "p copy project"} {
 		if !strings.Contains(frame, word) {
 			t.Fatalf("task options are missing %q:\n%s", word, frame)
 		}
@@ -110,27 +110,45 @@ func TestFinishedTasksOfferCloseAndFolderActions(t *testing.T) {
 	}
 }
 
-func TestTaskFolderActionsUseTheTasksProject(t *testing.T) {
-	a := newSwitchLab(t).open(180, 40)
-	owner := selectHomeTask(t, a, "t1")
-	if owner.Workspace == a.workspace {
-		t.Fatal("the fixture needs a task from a different project")
-	}
-	var started string
-	a.start = func(workspace string) (Conversation, error) {
-		started = workspace
-		return Conversation{}, errors.New("test captured the requested project")
-	}
-	for _, v := range a.homeRowVerbs() {
-		if v.key == 'c' {
-			if cmd := v.do(); cmd == nil || !reflect.DeepEqual(cmd(), tea.Raw(osc52(owner.Workspace, a.tmux))()) {
-				t.Fatal("copy path did not use the task's project")
-			}
+func TestProjectMenuShortcutsUseTheSelectedItemsProject(t *testing.T) {
+	for _, task := range []bool{false, true} {
+		name := "thread"
+		if task {
+			name = "task"
 		}
-	}
-	drive(t, a, key("right"), key("t"))
-	if started != owner.Workspace {
-		t.Fatalf("new chat started in %q, want task project %q", started, owner.Workspace)
+		t.Run(name, func(t *testing.T) {
+			var a *app
+			var owner session.SessionRow
+			if task {
+				a = newSwitchLab(t).open(180, 40)
+				owner = selectHomeTask(t, a, "t1")
+			} else {
+				a = placeAppOneColumn(t)
+				placeFrameText(a)
+				line, ok := a.home.focusedLine()
+				if !ok || line.kind != homeSession {
+					t.Fatal("fixture did not select a thread")
+				}
+				owner = line.row
+			}
+			var started string
+			a.start = func(workspace string) (Conversation, error) {
+				started = workspace
+				return Conversation{}, errors.New("test captured the requested project")
+			}
+			drive(t, a, key("right"), key("t"), key("c"))
+			if !a.strip.open || started != "" {
+				t.Fatal("a retired menu shortcut still acted")
+			}
+			cmd, handled := a.stripKey(key("p"))
+			if !handled || cmd == nil || !reflect.DeepEqual(cmd(), tea.Raw(osc52(owner.Workspace, a.tmux))()) {
+				t.Fatal("p copy project did not copy the selected item's project")
+			}
+			drive(t, a, key("right"), key("n"))
+			if started != owner.Workspace {
+				t.Fatalf("n new in project started in %q, want %q", started, owner.Workspace)
+			}
+		})
 	}
 }
 

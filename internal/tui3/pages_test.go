@@ -356,7 +356,7 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 	for _, v := range a.strip.verbs {
 		words += string(v.key) + " " + v.word + " · "
 	}
-	for _, want := range []string{"x close", "t new chat here", "o open folder", "c copy path"} {
+	for _, want := range []string{"x close", "n new in project", "o open folder", "p copy project"} {
 		if !strings.Contains(words, want) {
 			t.Fatalf("the strip is missing %q: %s", want, words)
 		}
@@ -398,7 +398,7 @@ func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
 	}
 	at := -1
 	for i, row := range after {
-		if strings.Contains(row, "x close") && strings.Contains(row, "t new chat here") {
+		if strings.Contains(row, "x close") && strings.Contains(row, "n new in project") {
 			at = i
 		}
 	}
