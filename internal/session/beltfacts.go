@@ -416,19 +416,7 @@ var beltFacts = []beltFact{{
 // that the work is yours, so open it. Both verbs are on a belt together or on
 // neither ([Config.mayQuickTask]), which is what lets one fragment name them
 // both and be true wherever it renders.
-// This rule describes the run-engine road available to the conversation, not a
-// new route for the model’s own hand-off. Under the bash belt, `propose_task`
-// still stages and admits directly to the session graph (task.go:525–529,
-// :723–778); only the person’s `/task` enters `startTaskRun`
-// (task_person.go:74–88).
 var handoffFacts = []beltFact{{
-	tools: []string{"propose_task", "tasks"},
-	holds: func(c Config) bool { return !c.InTask && bashBeltAsked() },
-	present: "Hand off: launch a task.\n" +
-		"Add to: while one runs, a second `/task` joins the live root.\n" +
-		"Ask about: read the store rows and the task steps and answer from them; never redo the work.",
-	absent: "",
-}, {
 	tools: []string{"propose_task", quickTaskToolName},
 	holds: Config.mayProposeTask,
 	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +

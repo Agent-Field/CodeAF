@@ -10,6 +10,12 @@ import (
 // bash-belt runs, not to a run worker. The flag-off arm pins the conversation
 // page that ships today so enabling this account cannot rewrite every chat.
 func TestChatRoleRulesFollowTheTaskBelt(t *testing.T) {
+	for _, rule := range []string{"Hand off: launch a task.", "Add to: while one runs", "Ask about: read the store rows"} {
+		if !strings.Contains(systemPrompt, rule) {
+			t.Errorf("prompts/system.md does not contain routing rule %q", rule)
+		}
+	}
+
 	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.FixedZone("EDT", -4*60*60))
 	config := Config{Workspace: t.TempDir(), Model: "test/model"}
 
