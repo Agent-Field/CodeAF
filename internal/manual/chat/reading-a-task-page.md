@@ -275,7 +275,7 @@ Every word it draws:
 box in the conversation while your turn is being handed to a task — before the task, and its
 page, exist at all.
 
-## The line above the box on a task's page — which model is serving this task, the task's thinking rung, `◇ on its own`, why alt+y does nothing in a task, the seam inside a task room
+## The line above the box on a task's page — which model is serving this task, the task's thinking rung, `◇ on its own`, why alt+a does nothing in a task, the seam inside a task room
 
 The rule over a task page's message box is the same seam a conversation has over its own
 box, with the task's facts on it and the way out where the conversation's name would be:
@@ -300,7 +300,7 @@ run keeps both words as facts that do not react.
 
 **`◇ on its own` is a reading, not a wheel.** A task runs every tool without asking — a
 dangerous command is refused rather than asked about — and there is no posture you can walk
-a task to. So `alt+y` inside a task's page changes nothing and says so: `approvals · a task
+a task to. So `alt+a` inside a task's page changes nothing and says so: `approvals · a task
 runs on its own — its tools do not ask · what this conversation runs without asking is on
 the conversation's own seam · esc`. Your conversation's `◇ asks` / `◇ YOLO` cell is one `esc`
 away, on its own line, and the status line inside a task's page never draws the `YOLO`

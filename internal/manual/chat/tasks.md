@@ -1519,8 +1519,8 @@ be thirteen secret answers, none of them drawn anywhere; the answers are on the 
 their keys now, and the box is words. **To decline, press `2`.**
 
 **`esc` does not decline either.** It is *later*: the rows fold to the chip
-`? 1 question · alt+a`, the proposal stays open, the engine stays waiting, and nothing is
-decided. `alt+a` brings it back.
+`? 1 question · alt+y`, the proposal stays open, the engine stays waiting, and nothing is
+decided. `alt+y` brings it back.
 
 Once answered, the block collapses to its head and one foot line that keeps both halves —
 what you reached for and what it came to, joined by ` · `:
@@ -5300,7 +5300,7 @@ changes with the cursor:
   naming where it is.
 - `→ verbs: stop it` **only while the row has that verb** — see below.
 - A row whose work has raised something for you answers on the same line, behind the door:
-  the foot reads `enter open its room · hello.txt · waiting in this conversation · alt+a`,
+  the foot reads `enter open its room · hello.txt · waiting in this conversation · alt+y`,
   with the page's own clauses — the fold, the verbs, the filter, the way out — giving way
   first when the width runs short. The row keeps its door, and the question keeps its way
   in, on the one line the foot draws them on.

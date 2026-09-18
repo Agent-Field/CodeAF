@@ -53,7 +53,7 @@ come from what codeaf has already seen, in layers, best first.
 1. the folders **this conversation is already about** — ones you have named here, and ones
    a task's ground resolved to and the conversation wrote down
 2. the directories **this conversation has been reading and writing in**, most recent first
-3. every **project on this machine** — the same list `alt+w` cycles on the task composer
+3. every **project on this machine** — the same list `alt+p` cycles on the task composer
 4. **repositories and ordinary folders under your home directory**, from an index built quietly in the
    background and refreshed about once a day. That walk is **bounded** — six levels below
    your home directory, two thousand folders, three seconds — so on a very large home
@@ -126,7 +126,7 @@ Three things are different on that sheet, and they all come from the same fact:
 because a sheet takes the whole frame. Files chosen on that sheet still go where files go:
 onto the tray, which rides into the conversation home opens next.
 
-**`alt+w` is the same pin without the browser** — it walks the target round the projects this
+**`alt+p` is the same pin without the browser** — it walks the target round the projects this
 machine knows, one press at a time. The browser is what you want when the folder is not one
 of those.
 
@@ -203,7 +203,7 @@ the breadcrumb drops levels from the left — `… › tui3` — rather than shr
 | `←` | walk out to the folder above, cursor left on the one you came from |
 | `tab` | complete the highlighted name into the box, whole — the columns follow, so a folder lands where `→` does |
 | `alt+m` | choose the thing under the cursor, or unchoose it. Chosen things gather on a tray above the action row |
-| `alt+p` | hide the preview, and show it again |
+| `alt+w` | hide the preview, and show it again |
 | `alt+o` | give the preview the whole sheet, and give the sheet back. With the preview alone, `↑↓` scroll it and `←→` slide it sideways |
 | `shift+↑` `shift+↓` | scroll the preview beside the list, without moving the cursor |
 | `shift+←` `shift+→` | slide the preview sideways, to read past the end of a long line |
@@ -765,7 +765,7 @@ wall of shortcuts.
   `alt+o wide` on one that is already showing it.
 - The **box's own placeholder**, on screen whenever the box is empty, says what typing does
   and carries the two remaining chords: `search folders and files · or type a path ·
-  alt+p preview · alt+h hidden`.
+  alt+w preview · alt+h hidden`.
 
 A terminal with too few rows gives the foot row back to the file list, and `esc · cancel`
 stays on the sheet's bottom edge either way.

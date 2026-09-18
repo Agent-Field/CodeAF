@@ -49,7 +49,7 @@ is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The resting foot reads
-`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
+`alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`.
 The project, approvals and chats hints appear only where those controls can act.
 The controls stay the same as the cursor walks between rows. `→` opens the selected
 row's verbs; `←` closes them.
@@ -788,7 +788,7 @@ straight back to it, for the same reason: it is alive, so there is nothing to re
 The resting foot reads, when all its controls are available:
 
 ```
-alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
+alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
 ```
 
 (the box above it says `› type to search or start something new`, which is where that
@@ -1232,21 +1232,21 @@ quoted back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ─ glm-5.3-flash:auto · ◇ asks · project: ~/codeaf
+ ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
  › pricing
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · ctrl+v effort · alt+y approvals · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · ctrl+v effort · alt+a approvals · esc clear
 ```
 
 **The cursor rests on the action row by default.** So typing and pressing `enter` starts a
 fresh conversation and sends what you typed, however many matches are on screen.
 
 **Where it opens is on the rule above the box, and `enter` honours it.** That line reads
-`glm-5.3-flash:auto · ◇ asks · project: ~/src/parser`: the model, effort and approvals
-start at the left, followed by ` · project: <path>` naming where the conversation will open.
+`glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`: the model, effort and approvals
+start at the left, with `project: <path>` at the far right naming where the conversation will open.
 The effort word follows a colon with no badge. A long project path is cut on the right.
 With nothing pinned the folder **follows the row your cursor is on** — walk onto another
 project's row and the rule re-points — and with nothing under the cursor it is this window's
-own project. `alt+w` pins it, `/model` pins the model, `ctrl+v` walks the rung and `alt+y`
+own project. `alt+p` pins it, `/model` pins the model, `ctrl+v` walks the rung and `alt+a`
 walks the gate; *Change the model before starting* has the whole of all four.
 
 One `↑` steps off that row **up** onto `ask here: "…"`, which answers the same sentence in
@@ -1352,8 +1352,8 @@ files are still there, and the conversation you open shows them.
 ## Change the model before starting — /model on home, the seam above the box
 
 **The model the next conversation will answer on is written on the rule above home's box**,
-at the left: `glm-5.3-flash:auto · ◇ asks · project: ~/src/parser`.
-The project follows approvals on the left, separated by a middle dot. A long path
+at the left: `glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser`.
+The project sits at the right edge of the seam. A long path
 truncates at its right end before the project field disappears on narrow frames.
 With nothing pinned that is this window's own model. Two doors change it, and they are the
 same door:
@@ -1376,19 +1376,19 @@ on the pin — at which point it is an ordinary model switch, note and all.
 conversation, returning home, moving the cursor or clearing the box does not reset the
 selected project. A new window starts with its own default.
 
-**`alt+w` is the same gesture for the folder** — press it, or press the path on the rule, and
+**`alt+p` is the same gesture for the folder** — press it, or press the path on the rule, and
 the target walks through the projects in the panel's order, including projects with only
 standing work, and wraps after the last. Both controls share one selection, shown only
 as `project: <path>` on the seam. If `/folder` selected a destination outside the panel,
 the next cycle starts at its first project. With just one destination already selected,
-`alt+w project` is absent.
+`alt+p project` is absent.
 
-**`ctrl+v` and `alt+y` are the same gesture for the two cells after the model.** `auto`
+**`ctrl+v` and `alt+a` are the same gesture for the two cells after the model.** `auto`
 is how hard the next conversation will think — with nothing pinned, the `thinking` row in
 `/settings` folded with any level set on the model — and `ctrl+v`, or a press on the cell,
 walks it one rung: home says `thinking · high · for the next conversation you start here`.
 `◇ asks` is what it will run without asking — with nothing pinned, the `ask before running`
-row, or `YOLO` under `--yolo` — and `alt+y`, or a press, walks asks → guardian → YOLO →
+row, or `YOLO` under `--yolo` — and `alt+a`, or a press, walks asks → guardian → YOLO →
 asks, never onto `refuses`: home says `approvals · YOLO · every tool runs without asking ·
 dangerous commands still ask · for the next conversation you start here`, and the cell
 wears the warning hue while the gate is open. Both are carried onto the conversation

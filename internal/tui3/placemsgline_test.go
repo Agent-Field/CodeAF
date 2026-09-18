@@ -11,7 +11,7 @@ import (
 //
 // #840 measured a foot where the note had taken the door's place: a task that
 // raised a question while its row was selected drew `hello.txt · waiting in
-// this conversation · alt+a` on the one line `enter open its room` lived on,
+// this conversation · alt+y` on the one line `enter open its room` lived on,
 // and the row lost its door. These pin the line that replaced that choice: the
 // door FIRST, the note BEHIND it, and the page's own clauses the ones that go
 // when the width runs short — never the door, never the note.

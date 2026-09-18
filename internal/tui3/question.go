@@ -2816,7 +2816,7 @@ func (a *app) questionPutOff() (questionShown, bool) {
 // THE RULE PRINTS THE KEY AND NOTHING ROUTED IT. `── ? which store · 3 answers ·
 // ◆ SQLite ──── space open ──` is what a folded question leaves behind, and
 // `internal/manual/chat/questions.md` says the same thing in a person's words —
-// and pressing space over the empty box did nothing at all. `alt+a` reopened it,
+// and pressing space over the empty box did nothing at all. `alt+y` reopened it,
 // so the way out existed; what was missing was the one the screen offered.
 //
 // THREE GUARDS, AND EACH IS A WAY THIS KEY COULD BE WRONG:
@@ -3965,8 +3965,8 @@ func (a *app) questionRowMark(i int) chromeRow {
 
 // ── the chip ────────────────────────────────────────────────────────────────
 
-// questionSegment is the status line's chip: `? allow this? · alt+a`, and
-// `? 3 questions · alt+a` when there is more than one.
+// questionSegment is the status line's chip: `? allow this? · alt+y`, and
+// `? 3 questions · alt+y` when there is more than one.
 //
 // IT IS REACHABLE FROM EVERY PAGE, which is the whole reason it is on the
 // status row rather than in the block: the block is above the box in a
@@ -3993,7 +3993,7 @@ func (a *app) questionSegment() string {
 	// THE CHORD IS SPELLED FOR THIS KEYBOARD, through the one door every
 	// person-facing sentence about a chord goes through (chords.go's
 	// [chordSpelling.say]). It was drawn straight out of its constant, so a Mac
-	// that says `opt+1…opt+7` on the map and `opt+t` on the roster said `alt+a` on
+	// that says `opt+1…opt+7` on the map and `opt+t` on the roster said `alt+y` on
 	// this chip — one modifier under two names, on screens a person moves between
 	// in one keystroke.
 	key := a.chords.say(questionChipKey)
@@ -4044,7 +4044,7 @@ func (a *app) questionChipKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.closeExpand()
 	a.closeHome()
 	// The tasks place and the record card over it are places too, and the
-	// chip's promise held from neither ("5 questions · alt+a" on a page that
+	// chip's promise held from neither ("5 questions · alt+y" on a page that
 	// did nothing with the key).
 	a.closeTaskSheet()
 	a.raiseFolded()

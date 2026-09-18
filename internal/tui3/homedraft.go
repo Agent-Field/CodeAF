@@ -10,9 +10,9 @@ import (
 // ── THE TARGET — the box at home is a draft for the conversation it opens ────
 //
 // Home and conversations start their seams with the same model, effort and
-// approvals, followed by the project in the same dotted cluster:
+// approvals at the left, with the project at the right:
 //
-//	─ glm-5.3-flash:auto · ◇ asks · project: ~/src/parser ─────
+//	─ glm-5.3-flash:auto · ◇ asks ───── project: ~/src/parser ─
 //	 › type to search or start something new
 //
 // The project stays a path, so two checkouts with the same name remain
@@ -33,7 +33,7 @@ import (
 //
 // A target is that reading with a pin on it. With nothing pinned it IS the
 // reading — [app.scopeWorkspace], the cursor's own row — and `enter` honours it,
-// which is what closes the disagreement. `alt+w` and `/model` pin it, and a pin
+// which is what closes the disagreement. `alt+p` and `/model` pin it, and a pin
 // is a decision a person made.
 //
 // ── OWNER RULING: WHAT PERSISTS AND WHAT IS SPENT ───────────────────────────
@@ -67,7 +67,7 @@ type homeTarget struct {
 	// (boxseam.go).
 	effort string
 	// approval is the posture the next conversation opens at, "" for the rows
-	// as they stand ([app.targetApprovalStanding]). It is pinned by `alt+y` and
+	// as they stand ([app.targetApprovalStanding]). It is pinned by `alt+a` and
 	// a press on the cell, and — unlike the model — it is SPENT by the
 	// conversation that takes it, because an open gate is a safety claim about
 	// one conversation and never a default for the next.
@@ -115,13 +115,14 @@ func (a *app) targetPickShowing() bool { return a.at(pageHome) && a.target.pick.
 // The sentences home's rule says. Each is quoted in the manual exactly as it is
 // spelled here.
 const (
-	// targetProjectLead names the workspace after approvals on either seam.
+	// targetProjectLead names the workspace at the right of either seam.
 	targetProjectLead = "project: "
 	// The draft's hints name project, effort and approval controls. The model's
 	// command is `/model`, so it spends no extra shortcut on the foot.
-	targetFolderKeyWord   = "alt+w project"
+	projectKey            = "alt+p"
+	targetFolderKeyWord   = projectKey + " project"
 	targetEffortKeyWord   = effortKey + " effort"
-	targetApprovalKeyWord = "alt+y approvals"
+	targetApprovalKeyWord = approvalKey + " approvals"
 	// The switcher reaches conversations this machine already has (hop.go).
 	targetSwitcherKeyWord = "alt+k chats"
 	// targetPinnedModelWord is what home's message line says when a model has
@@ -184,8 +185,8 @@ func (a *app) targetProject() string {
 	return a.hostedPath(a.placeWord(tildePath(a.targetWhere(), a.tilde)))
 }
 
-// targetLegend keeps model, effort, approvals and project together at the
-// left. The project uses the remaining room and gives up its right end first.
+// targetLegend keeps model, effort and approvals at the left, with the
+// project at the right. A long project gives up its right end first.
 // Its click span is measured from that same layout, so it follows the text.
 func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	a.clearTargetSpans()
@@ -195,16 +196,18 @@ func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	if note := a.placeNoteLegend(width); note != "" {
 		return a.draftNoteRule(width, pal, note)
 	}
-	room := legendRoom(width, "")
-	left, model, rung, gate := a.draftSeamLeft(room)
-	left, project := seamWithProject(left, a.targetProject(), room)
-	line, ok := a.legendLine(left, "", width, a.draftSeamPaint(pal, model, rung, gate))
+	left, model, rung, gate := a.draftSeamLeft(legendRoom(width, ""))
+	right, project := seamProjectRight(left, "", a.targetProject(), width)
+	painted := a.paintSeamProject(right, project, a.targetHover == hoverSeamProject)
+	line, at, ok := a.legendLinePainted(left, right, painted, width, a.draftSeamPaint(pal, model, rung, gate))
 	if !ok {
 		return "", false
 	}
 	a.targetModelSpan = shiftIntoBorder(model)
 	a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
-	a.targetFolderSpan = shiftIntoBorder(project)
+	if project.pressable() {
+		a.targetFolderSpan = hudSpan{from: at + project.from, to: at + project.to}
+	}
 	return line, true
 }
 
@@ -241,7 +244,7 @@ func (a *app) clearTargetSpans() {
 
 // ── the chords ──────────────────────────────────────────────────────────────
 //
-// `alt+w`, `ctrl+v`, `alt+y` and every key the model list over the
+// `alt+p`, `ctrl+v`, `alt+a` and every key the model list over the
 // target takes are [app.placeTargetKey] (boxseam.go), read from
 // [placeHome.owns] before the router claims a single chord and from
 // [app.placeKeyPress] on the other places.

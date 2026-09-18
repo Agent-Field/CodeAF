@@ -37,7 +37,7 @@ import (
 // posture a person picks from the wheel — there is no stop on it a task can
 // be walked to — so the cell says what the composer layer already promises
 // when the work leaves: `it will run on its own`. It is drawn dim, is not a
-// door, and `alt+y` inside a room says so ([approvalRoomWord]) rather than
+// door, and `alt+a` inside a room says so ([approvalRoomWord]) rather than
 // moving a gate that is not on the screen. The conversation's own gate is on
 // its own seam, one esc away.
 //
@@ -50,7 +50,7 @@ import (
 // promise about a task, in the two words the chip has room for.
 const approvalTaskWord = "on its own"
 
-// approvalRoomWord is what `alt+y` answers inside a room.
+// approvalRoomWord is what `alt+a` answers inside a room.
 const approvalRoomWord = "approvals · a task runs on its own — its tools do not ask · what this conversation runs without asking is on the conversation's own seam · esc"
 
 // effortScopeRoom names the room's rung in [effortMoved]'s namespace, beside

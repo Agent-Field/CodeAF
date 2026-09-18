@@ -192,25 +192,25 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ glm-5.3-flash:auto · ◇ asks · project: ~/src/parser
+─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
 › type to search or start something new
-alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
+alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands
 ```
 
 At the left it says **what model** answers, then a colon and **how hard it thinks**
 (the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
-on home and in conversations. After approvals, ` · project: <path>` names where the
+on home and in conversations. At the far right, `project: <path>` names where the
 next conversation opens; in a conversation it names that conversation's workspace.
 Long paths truncate on the right, and the field disappears if there is no room. The bottom row names the
 available project, effort and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
 |---|---|---|
-| the folder | `alt+w` walks to the next project | press the path |
+| the folder | `alt+p` walks to the next project | press the path |
 | the model | `/model` opens the model list | press the name |
 | the rung | `ctrl+v` walks auto → low → … → max → auto | press the cell |
-| the gate | `alt+y` walks asks → guardian → YOLO → asks | press the cell |
+| the gate | `alt+a` walks asks → guardian → YOLO → asks | press the cell |
 
 Each one changes **the draft** — the next conversation you start from home — and says so
 on the line under the box: `thinking · high · for the next conversation you start here`,
@@ -229,7 +229,7 @@ this process was started with it.
 
 **The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
 draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
-the model starts the seam, and the project follows approvals on the left. A place with something to say about its page — `nothing matches`
+the model starts the seam, and the project sits at the far right. A place with something to say about its page — `nothing matches`
 on tasks when a filter emptied it, a receipt on memory, the "this session is on another
 machine" line over `--host` — says it on its rule, where the box's rule would have been.
 
@@ -244,7 +244,7 @@ execution model and spending cap. Press `alt+enter` again to send it off. `enter
 talks about the sentence in a conversation instead; `esc` returns to home with the
 sentence still in the box. Other places have no message box and do not start tasks.
 
-## The composer layer — `alt+w` and `alt+o`, what does alt+w do, set which project, pick the model and set a spend limit before starting a task
+## The composer layer — `alt+p` and `alt+o`, what does alt+p do, set which project, pick the model and set a spend limit before starting a task
 
 Press **`alt+enter`** with something typed into home's box, and the layer opens. It is not
 a new screen: **the page behind dims to the faintest tier instead of being covered**, the
@@ -254,7 +254,7 @@ home alone — no other place has a box to send from.
 ```
 › cut the opus spend in half without losing the sweep
  it will run on its own and tell you when it lands                                    a task
- · in ~/codeaf, on master                                                alt+w to move it
+ · in ~/codeaf, on master                                                alt+p to move it
  · execution runs on opus 4.1                                                alt+o to change
  · it may spend up to $100.00 before it asks                                    type a number
  alt+enter send it off · enter talk about it first · esc back to home
@@ -264,9 +264,9 @@ Those three are the only facts a task needs before it leaves: **where, on what, 
 Each one is edited on the line that shows it.
 
 - **`in ~/codeaf, on master`** — the project the task will work in, and the branch that
-  tree is on right now; it is the folder home's rule names. **`alt+w`** cycles it through the
+  tree is on right now; it is the folder home's rule names. **`alt+p`** cycles it through the
   projects codeaf knows, this window's own first, and round again from the last. A machine
-  with one project has nowhere to move a task to, so the `alt+w to move it` clause is not on
+  with one project has nowhere to move a task to, so the `alt+p to move it` clause is not on
   the line and the key does nothing. A folder that is not a repository, or one on a detached
   head, draws the project and stops there rather than trailing a comma.
 - **`execution runs on opus 4.1`** — the model the WORK will run on. That is the *execution*
@@ -312,12 +312,12 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) | jump straight to a place |
 | `ctrl+1` … `ctrl+7` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
-| `alt+w` `alt+o` | inside the composer layer only: move the task, change its model |
+| `alt+p` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
 `alt+o` changes a model only inside the task composer layer; on home use `/model`
-or press the model name instead. `alt+w` also works on home, where it moves the draft
+or press the model name instead. `alt+p` also works on home, where it moves the draft
 to the next project. Other places bind neither chord.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
@@ -840,3 +840,11 @@ A local home stats every project directory it is about to draw and marks the mis
 `/srv/code/api` is almost certainly not on your laptop — so a stat here would mark **every**
 remote row as deleted. It is not made at all, and nothing is claimed: a row whose folder was
 never asked about is not a row with a missing folder.
+
+## What does alt+w do now — folder preview, project selection moved to alt+p
+
+`alt+w` (`opt+w` on a Mac) hides or shows the preview in the folder browser. When
+walking the conversation's task roster it still widens that roster. Project selection
+on home and in the task composer now uses `alt+p` (`opt+p`), and clicking home's
+project path takes the same step through the same list. The selected project remains
+set when you start a conversation and return home.

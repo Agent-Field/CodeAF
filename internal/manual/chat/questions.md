@@ -669,7 +669,7 @@ to the status line and leaves a gap:
 ── ? Which storage for the session index? · 3 answers · ◆ SQLite ──── space open ──
 ```
 
-`space` opens it again (while the box is empty), and `alt+a` opens it from
+`space` opens it again (while the box is empty), and `alt+y` opens it from
 anywhere.
 
 This is what changed about the approval question, where `esc` used to deny, and
@@ -677,7 +677,7 @@ about the standing card, where `esc` used to be the outright no. Nothing is ever
 decided by making something go away — which is why both of those grew a visible
 answer for the refusal (`3 deny`, `0 no`) on the way here.
 
-To bring it back, press `alt+a`.
+To bring it back, press `alt+y`.
 
 ## The chip — what is waiting, from anywhere
 
@@ -686,17 +686,17 @@ open, however you got away from it — put away with `esc`, or raised while you
 were on home or in a room:
 
 ```
-  ? Which storage for the session index? · alt+a
+  ? Which storage for the session index? · alt+y
 ```
 
-With more than one waiting it counts them instead — `? 3 questions · alt+a`. A
+With more than one waiting it counts them instead — `? 3 questions · alt+y`. A
 ratify line is never counted: nothing is waiting on it.
 
 The chip never takes the keys off the page you are standing on. A task that
 raised a question while you were on the tasks place says so at the right of the
 foot, and the row's own `enter open its room` stays where it was.
 
-**`alt+a` brings the newest one back** and takes you to the conversation it
+**`alt+y` brings the newest one back** and takes you to the conversation it
 belongs to. The newest rather than the oldest, because if you are pressing it
 you are usually asking about the thing that just changed the count.
 

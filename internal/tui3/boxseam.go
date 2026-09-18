@@ -17,10 +17,10 @@ import (
 // over it, in the same shape, with the same three cells and the same three
 // doors on them:
 //
-//	─ glm-5.3-flash (deepinfra):high · ◇ asks · project: ~/src/parser ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle ─
+//	─ glm-5.3-flash (deepinfra):high · ◇ asks ─── $0.27 · 58% cached   66.8k/1.3M · 5%   idle   project: ~/src/parser ─
 //	 › what changed in the relay this week
 //
-//	─ glm-5.3-flash:auto · ◇ asks · project: ~/src/parser ─────────────────
+//	─ glm-5.3-flash:auto · ◇ asks ───────────────── project: ~/src/parser ─
 //	 › type to search or start something new
 //
 // The first is a conversation's seam (foot.go's THE SEAM IS WHAT ANSWERS).
@@ -30,13 +30,13 @@ import (
 // HOW HARD it thinks, WHAT IT MAY RUN WITHOUT ASKING, and WHERE it runs.
 // Home cycles the draft's project; a conversation names its workspace. The model is a door
 // onto the model list, the rung walks the thinking ladder (`ctrl+v`, or a
-// press), and the gate walks the approvals wheel (`alt+y`, or a press). One
+// press), and the gate walks the approvals wheel (`alt+a`, or a press). One
 // shape, learned once.
 //
 // ── WHY THE DRAFT CARRIES THE RUNG AND THE GATE ────────────────────────────
 //
 // Until this file the rule on home said the folder and the model and nothing
-// else; `alt+y` and `ctrl+v` did nothing outside a conversation; and the
+// else; `alt+a` and `ctrl+v` did nothing outside a conversation; and the
 // `YOLO` word was a chip on one screen and a badge on another. A person who
 // learned the seam in a conversation arrived on home and found nothing they
 // knew. (The six other places had a box of their own then, under a note or a
@@ -223,7 +223,7 @@ func (a *app) targetApprovalChip() string {
 	return a.approvalChip(word)
 }
 
-// cycleTargetApproval is `alt+y` on a place with a draft, and the press on the
+// cycleTargetApproval is `alt+a` on a place with a draft, and the press on the
 // cell: one stop round the same wheel the conversation's cell walks
 // (approvalchip.go's [approvalNext]), so `deny` is never landed on by a press
 // here either.
@@ -307,8 +307,8 @@ func (a *app) applyTargetPins() tea.Cmd {
 // chords.
 func (a *app) placeHasDraft() bool { return a.at(pageHome) }
 
-// placeTargetKey edits the draft on home: `alt+w` moves the project,
-// `ctrl+v` walks the rung and `alt+y` walks the gate. The model list opens
+// placeTargetKey edits the draft on home: `alt+p` moves the project,
+// `ctrl+v` walks the rung and `alt+a` walks the gate. The model list opens
 // through `/model` or a press on the model, not a separate shortcut.
 //
 // It is read from home's [placeHome.owns], after the phone sheet and before
@@ -327,7 +327,7 @@ func (a *app) placeTargetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.targetPickKey(msg), true
 	}
 	switch msg.String() {
-	case "alt+w":
+	case projectKey:
 		a.moveTarget()
 		return nil, true
 	case effortKey:
@@ -420,7 +420,9 @@ func (a *app) draftSeamLeft(room int) (string, hudSpan, hudSpan, hudSpan) {
 func (a *app) draftSeamPaint(pal palette, model, rung, gate hudSpan) func(string) string {
 	return func(text string) string {
 		return paintSpans(text, pal.dim,
-			spanLift{span: model, lift: pal.seamModel, on: true},
+			spanLift{span: model, lift: func(text string) string {
+				return seamModelPaint(pal, text, a.targetHover == hoverStatusModel)
+			}, on: true},
 			spanLift{span: rung, lift: a.paintDraftEffortChip, on: a.draftEffortLit()},
 			spanLift{span: gate, lift: a.paintDraftApprovalChip, on: a.draftApprovalLit()})
 	}

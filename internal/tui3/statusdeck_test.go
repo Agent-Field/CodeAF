@@ -317,8 +317,8 @@ func TestTheWideStatusRowIsByteForByteWhatItIs(t *testing.T) {
 	a.width = 120
 	a.touch()
 
-	head := "─ deepseek-v4-flash · project: ~/src/codeaf "
-	tail := "    $0.31   24k/200k · 12%   idle ─"
+	head := "─ deepseek-v4-flash "
+	tail := "    $0.31   24k/200k · 12%   idle   project: ~/src/codeaf ─"
 	want := head + strings.Repeat("─", 120-ansi.StringWidth(head)-ansi.StringWidth(tail)) + tail
 	if got := plain(a.legend(120)); got != want {
 		t.Fatalf("the wide seam changed:\n got %q\nwant %q", got, want)

@@ -9,9 +9,9 @@ import (
 
 // ── THE FOOT OF THE FRAME: TWO ROWS, EACH WITH ONE JOB ──────────────────────
 //
-//	─ glm-5.3-flash (deepinfra):high · ◇ asks · project: ~/src/parser ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+//	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s   project: ~/src/parser ─
 //	 › your sentence
-//	 ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home
+//	 ctrl+v effort · alt+a approvals · alt+k chats · / commands · space space home
 //
 // THE SEAM IS WHAT ANSWERS AND HOW MUCH. The rule above the box carries the
 // model answering the conversation on the left, and the numbers on the right
@@ -653,9 +653,6 @@ func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, hudSpa
 		return "", none, none, none, false
 	}
 	named, dial, chip := seamSpans(head, model, rider, rung, gate)
-	if model != "" {
-		cluster, _ = seamWithProject(cluster, p.project, room)
-	}
 	return cluster, named, dial, chip, true
 }
 

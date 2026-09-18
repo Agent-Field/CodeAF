@@ -117,28 +117,28 @@ func TestTheDraftsCellsAreTheSeamsOwnSpelling(t *testing.T) {
 
 // ── 2. the chords, on every place ───────────────────────────────────────────
 
-// `alt+y` AND `ctrl+v` WALK THE DRAFT'S GATE AND RUNG ON HOME, one stop per
+// `alt+a` AND `ctrl+v` WALK THE DRAFT'S GATE AND RUNG ON HOME, one stop per
 // press, on the conversation's own wheels: the gate never lands on `refuses`,
 // and the rung comes back to `auto` off the top.
 func TestTheDraftsChordsWalkTheRungAndTheGateOnHome(t *testing.T) {
 	for _, id := range draftPlaces {
 		_, a := drafting(t)
 		a.showPage(id)
-		if hint := a.homeHint(); !strings.Contains(hint, "ctrl+v effort · alt+y approvals") {
+		if hint := a.homeHint(); !strings.Contains(hint, "ctrl+v effort · alt+a approvals") {
 			t.Fatalf("home does not name its approval control: %q", hint)
 		}
-		drive(t, a, key("alt+y"))
+		drive(t, a, key("alt+a"))
 		if got, _ := a.targetApproval(); got != session.PostureGuardian {
-			t.Fatalf("%s: one alt+y from ask lands on %q, want guardian", id.word(), got)
+			t.Fatalf("%s: one alt+a from ask lands on %q, want guardian", id.word(), got)
 		}
-		drive(t, a, key("alt+y"))
+		drive(t, a, key("alt+a"))
 		if got, _ := a.targetApproval(); got != session.PostureAllow {
-			t.Fatalf("%s: two alt+y from ask land on %q, want allow", id.word(), got)
+			t.Fatalf("%s: two alt+a from ask land on %q, want allow", id.word(), got)
 		}
 		if text := placeFrameText(a); !strings.Contains(text, a.approvalChip(session.PostureAllow)) {
 			t.Fatalf("%s: the rule does not say the open gate:\n%s", id.word(), text)
 		}
-		drive(t, a, key("alt+y"))
+		drive(t, a, key("alt+a"))
 		if got, _ := a.targetApproval(); got != session.PostureAsk {
 			t.Fatalf("%s: the wheel went to %q past YOLO, want ask and never refuses", id.word(), got)
 		}
@@ -150,7 +150,7 @@ func TestTheDraftsChordsWalkTheRungAndTheGateOnHome(t *testing.T) {
 }
 
 // AND THE CELLS ARE DOORS UNDER THE POINTER, at the columns the frame drew
-// them — a press on the rung is `ctrl+v` and a press on the gate is `alt+y`.
+// them — a press on the rung is `ctrl+v` and a press on the gate is `alt+a`.
 func TestTheDraftsCellsAreDoorsUnderThePointer(t *testing.T) {
 	_, a := drafting(t)
 	a.showPage(pageHome)
@@ -185,10 +185,10 @@ func TestADraftWithNoDialDrawsNoRungAndNoGate(t *testing.T) {
 	if !strings.Contains(text, targetProjectLead) {
 		t.Fatalf("the folder and the model still belong on the rule:\n%s", text)
 	}
-	if hint := a.homeHint(); strings.Contains(hint, "alt+y") {
+	if hint := a.homeHint(); strings.Contains(hint, "alt+a") {
 		t.Fatalf("home advertises an unavailable approval control: %q", hint)
 	}
-	drive(t, a, key("alt+y"), key("ctrl+v"))
+	drive(t, a, key("alt+a"), key("ctrl+v"))
 	if a.target.approval != "" || a.target.effort != "" {
 		t.Fatalf("a chord pinned something the rule never offered: gate %q, rung %q", a.target.approval, a.target.effort)
 	}
@@ -205,7 +205,7 @@ func TestThePinsRideOntoTheConversationAndTheGateIsSpent(t *testing.T) {
 	a.start = func(workspace string) (Conversation, error) {
 		return Conversation{Agent: next, SessionFile: workspace + "/next/transcript.jsonl", Workspace: workspace}, nil
 	}
-	drive(t, a, key("alt+y"), key("alt+y"), key("ctrl+v"))
+	drive(t, a, key("alt+a"), key("alt+a"), key("ctrl+v"))
 	rung, _ := a.targetEffort()
 
 	typeHome(a, "why is the lexer allocating")
@@ -234,15 +234,15 @@ func TestThePinsRideOntoTheConversationAndTheGateIsSpent(t *testing.T) {
 // ── 4. the ladder ───────────────────────────────────────────────────────────
 
 // A long project yields its tail before the controls, and the project door
-// follows its position directly after approvals on the rendered line.
-func TestTheDraftRuleKeepsTheProjectBesideApprovals(t *testing.T) {
+// follows its position at the right edge of the rendered line.
+func TestTheDraftRuleKeepsTheProjectAtTheRight(t *testing.T) {
 	_, a := drafting(t)
 	a.showPage(pageHome)
 	a.model = "moonshotai/kimi-k3"
 	a.target.where = "/tmp/landing-test"
 	line, drew := a.targetLegend(120, a.pal)
 	text := ansi.Strip(line)
-	if !drew || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.Contains(text, a.targetApprovalChip()+" · project: /tmp/landing-test ─") {
+	if !drew || !strings.HasPrefix(text, "─ kimi-k3:high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
 		t.Fatalf("the draft seam has the wrong order: %q", text)
 	}
 	if a.targetModelSpan.from != 2 || a.targetFolderSpan.from <= a.targetApprovalSpan.to {
@@ -267,14 +267,14 @@ func TestTheDraftRuleKeepsTheProjectBesideApprovals(t *testing.T) {
 
 // A conversation names its own workspace in the same position as home's
 // draft destination. A pin for the next conversation must not relabel this one.
-func TestConversationProjectFollowsApprovalsOnTheSeam(t *testing.T) {
+func TestConversationProjectStaysAtTheRightOfTheSeam(t *testing.T) {
 	_, a := gated(t)
 	a.tilde, a.workspace = "/home/person", "/home/person/projects/parser"
 	a.target.where = "/tmp/next-project"
 	text := ansi.Strip(a.legend(240))
-	want := a.approvalChipText() + " · project: ~/projects/parser"
-	if !strings.Contains(text, want) || strings.Contains(text, "next-project") {
-		t.Fatalf("conversation seam does not name its own project after approvals: %q", text)
+	want := " project: ~/projects/parser ─"
+	if !strings.HasSuffix(text, want) || strings.Contains(text, "next-project") {
+		t.Fatalf("conversation seam does not name its own project at the right: %q", text)
 	}
 	for width := 1; width <= 240; width++ {
 		line := ansi.Strip(a.legend(width))
@@ -325,7 +325,7 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 	a.chords.meta = chordMetaWord
 	a.notices.enabled = false
 	a.branch = "dev"
-	want := "ctrl+v effort · opt+y approvals · opt+k chats · / commands · space space home"
+	want := "ctrl+v effort · opt+a approvals · opt+k chats · / commands · space space home"
 	if got := a.footHint(200); got != want {
 		t.Fatalf("conversation controls = %q, want %q", got, want)
 	}

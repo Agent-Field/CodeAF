@@ -194,7 +194,7 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case "alt+w", "alt+o":
+	case "alt+p", "alt+o":
 		// Home takes the project chord before the router. Other places swallow
 		// it, and `alt+o` no longer opens a model list outside the task layer.
 		return nil, true

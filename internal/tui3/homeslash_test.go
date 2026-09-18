@@ -331,13 +331,13 @@ func TestEnterAtHomeOpensTheConversationInTheRowsFolder(t *testing.T) {
 	}
 	// AND A PIN IS THAT READING HELD. The action row takes the cursor the moment
 	// a letter lands — it is the last line of the drop-up — so a person who wants
-	// to carry a sentence somewhere else pins it, which is what `alt+w` is for.
-	runCmd(a.key(key("alt+w")))
+	// to carry a sentence somewhere else pins it, which is what `alt+p` is for.
+	runCmd(a.key(key("alt+p")))
 	for i := 0; i < len(a.composerDestinations()) && a.targetWhere() != theirs; i++ {
-		runCmd(a.key(key("alt+w")))
+		runCmd(a.key(key("alt+p")))
 	}
 	if got := a.targetWhere(); got != theirs {
-		t.Fatalf("alt+w never reached %q; it stopped on %q", theirs, got)
+		t.Fatalf("alt+p never reached %q; it stopped on %q", theirs, got)
 	}
 
 	typeHome(a, "why is the lexer allocating")
@@ -496,7 +496,7 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 	// could not see a cycle rebuilding its order around the current pin.
 	for i := 1; i <= 2*len(paths); i++ {
 		if i%2 == 1 {
-			runCmd(a.key(key("alt+w")))
+			runCmd(a.key(key("alt+p")))
 		} else {
 			homeText(a)
 			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.targetRow); !took {
@@ -536,7 +536,7 @@ func TestResumeAnswersOnHomesOwnLineAndFolderOpensTheBrowser(t *testing.T) {
 	}
 
 	// /folder is the other half of this test's original claim and it moved: it
-	// used to answer in one line — `alt+w moves the next conversation · or type
+	// used to answer in one line — `alt+p moves the next conversation · or type
 	// a path` — which named two gestures and drew neither. It opens the browser
 	// now, aimed at the target (folderplace.go), and the browser takes the frame.
 	typeHome(a, "/folder")

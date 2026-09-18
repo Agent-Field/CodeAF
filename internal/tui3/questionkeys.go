@@ -531,17 +531,9 @@ func questionKeyWord(key string) string {
 // wherever a person is standing — the status line's chip says it, and it works
 // on every page.
 //
-// IT IS `alt+a` AND THE CHOICE IS ARITHMETIC RATHER THAN TASTE. Every ctrl
-// letter on this surface is already bound (`ctrl+g` is the rail's stow,
-// `alt+k` the switcher, `ctrl+q` the follow-up), and the two chords that read
-// best on paper are the two that do not survive a real terminal: `ctrl+?` is
-// DEL on most of them and `ctrl+/` arrives as `ctrl+_`. `alt+a` is free in this
-// surface's whole table, it is the initial of the thing it does, and alt is
-// already this surface's own modifier for reaching a place (`alt+1`…`alt+7`) —
-// with chords.go already holding the Mac option-as-meta question open, so the
-// one terminal that would send `å` instead is the one this surface already
-// watches for.
-const questionChipKey = "alt+a"
+// The owner assigned `alt+a` to approvals and moved this door to `alt+y`.
+// It still works on every page, including while the draft has text in it.
+const questionChipKey = "alt+y"
 
 // questionAnswerKeys is which keys a question of this shape actually offers, in
 // the table's order, with the emptiness law applied.

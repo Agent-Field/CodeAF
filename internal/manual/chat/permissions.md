@@ -295,10 +295,10 @@ A question the asker took back says so once instead, and the chip's count drops:
 chip for as long as anything is open:
 
 ```
-? 1 question · alt+a
+? 1 question · alt+y
 ```
 
-`alt+a` raises the newest open question from **any page** — home, a room, the
+`alt+y` raises the newest open question from **any page** — home, a room, the
 tasks place — and takes you back to the conversation it belongs to. The count
 includes the ones you folded: `esc` is later and not cancelled, so a question you
 put off is still a question the work is waiting on.
@@ -395,7 +395,7 @@ nowhere, it is one of these:
 - **A question is up.** The most common one. The answers row under the call
   reads `allow?`; the call is blocked until you answer, and the countdown is held
   while you are away rather than answering for you. If you pressed `esc` on it,
-  it is folded to the chip — `? 1 question · alt+a` on the status line — and the
+  it is folded to the chip — `? 1 question · alt+y` on the status line — and the
   work is still waiting on it.
 - **A call was already denied while you were gone** on a build from before
   silence stopped answering no. The row says `denied · no answer`. Say so and
@@ -574,7 +574,7 @@ keystroke, the `◇` cell on the legend moves with them (and the `YOLO` badge on
 the status line, where the legend has no cell — never on the welcome box), and `/status` says the posture
 in words under `approvals`. There is no turn to wait for.
 
-**A conversation that set its own posture keeps it.** `alt+y` and `/approvals`
+**A conversation that set its own posture keeps it.** `alt+a` and `/approvals`
 give this conversation a posture of its own (the next section); while it has
 one, the rows are what every *other* conversation follows, and `/approvals
 auto` is how this one goes back to following them too.
@@ -669,14 +669,14 @@ on `allow` — so the badge stays up, because it reports the posture in force.
 inside a running conversation — see the next section — and `codeaf resume
 --yolo` outranks whatever that conversation last set, for that launch.
 
-## Turning YOLO on or off mid-conversation — stop asking me for this chat, run without asking from now on, the approvals chip, `alt+y`, `/approvals`
+## Turning YOLO on or off mid-conversation — stop asking me for this chat, run without asking from now on, the approvals chip, `alt+a`, `/approvals`
 
 "Stop asking me for this chat" is one keystroke, and so is asking again. Every
 conversation has its own posture on the gate, moved from inside it. The
 legend above the message box names it after the thinking rung — `◇ asks`,
 `◇ guardian`, `◇ YOLO` or `◇ refuses` — and three doors move it:
 
-- **`alt+y`** walks `asks → guardian → YOLO → asks`. It never lands on
+- **`alt+a`** walks `asks → guardian → YOLO → asks`. It never lands on
   `refuses`.
 - **a press on the cell** is the same step.
 - **`/approvals <word>`** sets one outright: `ask`, `guardian`, `yolo`, `deny`,

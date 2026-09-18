@@ -73,15 +73,15 @@ func TestCtrlVInARoomWalksTheNodesRungAndTheSeamSaysSo(t *testing.T) {
 	}
 }
 
-// `alt+y` INSIDE A ROOM MOVES NOTHING AND SAYS WHY: a node runs on its own,
+// `alt+a` INSIDE A ROOM MOVES NOTHING AND SAYS WHY: a node runs on its own,
 // and the conversation's gate is not on this page.
 func TestAltYInARoomSaysATaskRunsOnItsOwn(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
 	a.width = 160
 	before := a.approval
-	drive(t, a, key("alt+y"))
+	drive(t, a, key("alt+a"))
 	if a.approval != before {
-		t.Fatalf("alt+y in a room moved the conversation's gate to %q", a.approval)
+		t.Fatalf("alt+a in a room moved the conversation's gate to %q", a.approval)
 	}
 	found := false
 	for _, e := range a.entries {
@@ -90,7 +90,7 @@ func TestAltYInARoomSaysATaskRunsOnItsOwn(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("alt+y in a room did not say that a task runs on its own")
+		t.Fatal("alt+a in a room did not say that a task runs on its own")
 	}
 }
 

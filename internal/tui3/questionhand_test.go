@@ -20,7 +20,7 @@ import (
 // A QUESTION RAISED WHILE NOBODY WAS AT THE WINDOW IS STILL ON THE BLOCK.
 //
 // Away used to REPLACE the block with a note and a bell: nothing was pinned,
-// the chip counted nothing, `alt+a` refused, and nothing re-delivered when the
+// the chip counted nothing, `alt+y` refused, and nothing re-delivered when the
 // person came back. A ten-minute turn that ends in a question is exactly the
 // case, and it left a stopped screen with nothing on it to work.
 func TestAQuestionRaisedWhileNobodyWasThereIsStillOnTheBlock(t *testing.T) {

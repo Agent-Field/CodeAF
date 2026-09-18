@@ -22,11 +22,11 @@ import (
 //
 //	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
-//	 ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home
+//	 ctrl+v effort · alt+a approvals · alt+k chats · / commands · space space home
 //
 //	─ glm-5.3-flash:auto · ◇ asks ───────────────── project: ~/codeaf ─
 //	 › type to search or start something new
-//	 alt+w project · ctrl+v effort · alt+y approvals · / commands
+//	 alt+p project · ctrl+v effort · alt+a approvals · / commands
 //
 // THE SEAM IS WHAT ANSWERS AND HOW MUCH. Everything on it is a fact about the
 // conversation — its model and the machine serving it, its rung, its gate,

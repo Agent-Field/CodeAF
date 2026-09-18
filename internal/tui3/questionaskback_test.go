@@ -108,7 +108,7 @@ func TestAskingBackOnAConsentDoesNotAnswerIt(t *testing.T) {
 // [session.Question.Waiting] — and the SHAPE half of it is
 // [session.AskKind.Waits]: a ratify waits on nobody by definition, whatever else
 // it carries. The status chip was counting rows instead, so a standing ratify
-// put `? 1 question · alt+a` on every page and the key took the person to a
+// put `? 1 question · alt+y` on every page and the key took the person to a
 // screen with nothing on it for them to decide.
 
 func TestTheChipDoesNotCountAQuestionNobodyIsWaitingOn(t *testing.T) {

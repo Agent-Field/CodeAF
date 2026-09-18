@@ -195,6 +195,8 @@ const (
 	// where the press would do nothing, the render records no span and this
 	// answers nothing (room.go's [app.roomModelMovable]).
 	hoverStatusModel
+	// hoverSeamProject is the project path on the message-box seam.
+	hoverSeamProject
 	// hoverEffort is the THINKING RUNG on the seam, the cell drawn immediately
 	// after the model's name (effortchip.go). It is a kind of its own rather than
 	// a second reading of [hoverStatusModel] for [hoverKeeping]'s reason: two
@@ -628,6 +630,9 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// [app.hoverHomeDoor]).
 			if a.copy.on || a.pick.open {
 				return hoverAt{}
+			}
+			if a.seamProjectSpan.holds(x) {
+				return hoverAt{kind: hoverSeamProject}
 			}
 			if a.seamModelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}

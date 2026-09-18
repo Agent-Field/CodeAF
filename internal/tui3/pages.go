@@ -1922,13 +1922,13 @@ func hintFit(hint string, room int) string {
 // everywhere else.
 //
 // THE NOTE IS ONE SENTENCE AND NOT A CLAUSE LIST. A question's note arrives
-// assembled (`allow rm -rf build? · waiting in this conversation · alt+a`),
+// assembled (`allow rm -rf build? · waiting in this conversation · alt+y`),
 // and it can arrive already opening with the separator — a question with no
 // head leaves the rail's own ` · ` at the front — so the join strips a leading
 // one rather than adding a second: [railSep] is the one joiner down this whole
 // column, and a doubled ` · · ` is a line lying about its own shape. The note's
 // own clauses are never dropped one by one, because the note is the thing the
-// person is being told and a note that lost its `alt+a` would be a question
+// person is being told and a note that lost its `alt+y` would be a question
 // with no way left to reach it.
 //
 // A FRAME TOO NARROW FOR THE DOOR AND THE NOTE ALONE is the one case left, and

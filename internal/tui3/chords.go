@@ -294,6 +294,7 @@ var chordDeadKeys = map[rune]string{
 	'∞': "alt+5", '§': "alt+6", '¶': "alt+7",
 	'≥': "alt+.",
 	'©': "alt+g", 'œ': "alt+q", 'ß': "alt+s",
+	'π': "alt+p", '¥': "alt+y",
 	'∑': "alt+w", 'ø': "alt+o", '∫': "alt+b", 'ƒ': "alt+f",
 	// AND THE ROSTER'S OWN HAND-OFF, which took this modifier when ctrl+t became
 	// the new-tab chord (task.go's [railHoldChord]). Option+t composes to `†` on

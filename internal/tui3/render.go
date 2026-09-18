@@ -1884,7 +1884,7 @@ const (
 	// doing, and this one says how the machine it is doing it on answers.
 	segLink
 	// segQuestions is how many decisions are waiting on this person, and the
-	// chord that raises the newest one: `? 3 questions · alt+a` (question.go).
+	// chord that raises the newest one: `? 3 questions · alt+y` (question.go).
 	// It sits beside [segLink] and is not in [dropOrder] for the same reason:
 	// a narrow frame gives up a number rather than the one segment saying that
 	// the session has stopped and is waiting for them.
@@ -3237,6 +3237,7 @@ func (a *app) legend(width int) string {
 	// decides whether the door is drawn at all ([app.legendLine] says why it is
 	// not cleared down there).
 	a.homeDoor = hudSpan{}
+	a.seamProjectSpan = hudSpan{}
 	a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 	a.doors = a.doors[:0]
 	a.moneySpan, a.moneyRow = hudSpan{}, 0
@@ -3272,7 +3273,9 @@ func (a *app) legend(width int) string {
 	seam, dial, gate := hudSpan{}, hudSpan{}, hudSpan{}
 	lift := func(text string) string {
 		return paintSpans(text, paint,
-			spanLift{span: seam, lift: a.pal.seamModel, on: true},
+			spanLift{span: seam, lift: func(text string) string {
+				return seamModelPaint(a.pal, text, a.hoveringStatusModel())
+			}, on: true},
 			spanLift{span: dial, lift: a.paintEffortChip, on: a.effortSeamLit()},
 			spanLift{span: gate, lift: a.paintApprovalChip, on: a.approvalSeamLit()})
 	}
@@ -3295,10 +3298,29 @@ func (a *app) legend(width int) string {
 			ledger, alive = a.seamRungParts(parts, rung.steps)
 			painted, right = a.seamTelemetryLabel(ledger, alive)
 		}
+		// The project is the final right-hand field, after the numbers. Its
+		// extra columns never move the ledger's doors relative to that label.
+		projectSpan := hudSpan{}
+		if !a.roomOpen() {
+			original := right
+			right, projectSpan = seamProjectRight(left, right, pieces.project, width)
+			if projectSpan.pressable() {
+				if painted == "" && original != "" {
+					painted = paintHint(original, a.pal, a.pal.dim)
+				}
+				start := ansi.StringWidth(original)
+				tail := ansi.Cut(right, start, ansi.StringWidth(right))
+				span := hudSpan{from: projectSpan.from - start, to: projectSpan.to - start}
+				painted += a.paintSeamProject(tail, span, a.hot.kind == hoverSeamProject)
+			}
+		}
 		line, at, ok := a.legendLinePainted(left, right, painted, width, lift)
 		if !ok {
 			a.seamModelSpan, a.seamEffortSpan, a.seamApprovalSpan = hudSpan{}, hudSpan{}, hudSpan{}
 			return "", false
+		}
+		if projectSpan.pressable() {
+			a.seamProjectSpan = hudSpan{from: at + projectSpan.from, to: at + projectSpan.to}
 		}
 		if len(ledger) > 0 {
 			a.markDoors(ledger, at, legendDoorRow)

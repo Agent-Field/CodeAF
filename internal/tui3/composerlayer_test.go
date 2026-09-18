@@ -114,7 +114,7 @@ func TestTheComposerLayerDimsThePageBehindRatherThanCoveringIt(t *testing.T) {
 	}
 }
 
-// `alt+w` CYCLES THE DESTINATION and comes back round to where it started. The
+// `alt+p` CYCLES THE DESTINATION and comes back round to where it started. The
 // list is this window's own project first, then every project home has read.
 func TestAltWCyclesTheDestinationAndComesBackRound(t *testing.T) {
 	a := layerApp(t, pageHome, 120)
@@ -127,12 +127,12 @@ func TestAltWCyclesTheDestinationAndComesBackRound(t *testing.T) {
 		t.Fatalf("the layer opened on %q rather than on the first destination %q", first, places[0])
 	}
 	for i := 1; i < len(places); i++ {
-		a.placeKeyPress(key("alt+w"))
+		a.placeKeyPress(key("alt+p"))
 		if got := a.composerWhere(); got != places[i] {
-			t.Fatalf("the %d%s alt+w reached %q, wanted %q", i, "th", got, places[i])
+			t.Fatalf("the %d%s alt+p reached %q, wanted %q", i, "th", got, places[i])
 		}
 	}
-	a.placeKeyPress(key("alt+w"))
+	a.placeKeyPress(key("alt+p"))
 	if got := a.composerWhere(); got != first {
 		t.Fatalf("the cycle did not come back round: %q, wanted %q", got, first)
 	}
@@ -270,7 +270,7 @@ func TestAltOOpensTheOneModelListScopedToTheExecutionSlot(t *testing.T) {
 }
 
 // A KEY IS DRAWN ONLY WHERE IT DOES SOMETHING. With one destination there is
-// nowhere to move a task to, so the clause naming `alt+w` is absent — and the
+// nowhere to move a task to, so the clause naming `alt+p` is absent — and the
 // key does nothing rather than something undrawn.
 func TestTheMoveClauseIsAbsentWhereThereIsNowhereToMoveTo(t *testing.T) {
 	a := layerApp(t, pageHome, 120)
@@ -282,6 +282,6 @@ func TestTheMoveClauseIsAbsentWhereThereIsNowhereToMoveTo(t *testing.T) {
 		t.Fatalf("the layer named a key with nothing to do:\n%s", layerText(a))
 	}
 	if _, moved := a.composerMove(); moved {
-		t.Fatal("alt+w moved a task with nowhere to move it to")
+		t.Fatal("alt+p moved a task with nowhere to move it to")
 	}
 }

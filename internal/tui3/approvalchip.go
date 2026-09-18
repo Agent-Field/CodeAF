@@ -72,16 +72,11 @@ import (
 // never by a press. `auto` — hand the conversation back to the settings rows —
 // is by name too, for [session.ApprovalWheel]'s stated reason.
 //
-// ── THE CHORD IS alt+y, AND WHY NOT THE OBVIOUS TWO ────────────────────────
+// ── THE CHORD IS alt+a ────────────────────────────────────────────────────
 //
-// `ctrl+y` is the copy-a-path key on home and in `/files`, and one chord means
-// one verb on this surface (effortscope.go): a key that copies a path on one
-// screen and opens the gate on another is two things to remember for one
-// motion. `shift+tab` walks backwards through the fields of every question
-// card and place, and on the terminals that cannot tell it from `tab` it would
-// move the field instead of the gate. `alt+y` is bound nowhere, arrives on the
-// terminals that already deliver `alt+o` and `alt+i` to this box, and the
-// letter is the one on the flag.
+// Approvals takes `alt+a` at the owner's request; the pending-question door
+// moves to `alt+y`. The router, hints and manual exchange the roles together
+// so a question waiting in the background cannot intercept the approval key.
 //
 // ── OVER A CONNECTION THE DIAL IS THE FAR MACHINE'S, AND IT CROSSES ────────
 //
@@ -95,7 +90,7 @@ import (
 
 // approvalKey is the chord that walks the wheel, written down once: the router
 // binds it, the manual prints it and the command row names it.
-const approvalKey = "alt+y"
+const approvalKey = "alt+a"
 
 // The words a PERSON reads for each posture. `YOLO` is the flag's own word and
 // the manual's; the other three are the permissions panel's vocabulary

@@ -571,7 +571,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
-| `alt+y` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
+| `alt+a` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -1220,7 +1220,7 @@ without looking away from what you are typing, and then it goes quiet again. Wal
 back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
 
-## The approvals chip above the message box — `alt+y`, `/approvals`, `/yolo`, turning YOLO on inside a chat, stop asking me for this conversation
+## The approvals chip above the message box — `alt+a`, `/approvals`, `/yolo`, turning YOLO on inside a chat, stop asking me for this conversation
 
 After the thinking rung, the legend names what this conversation runs **without asking**:
 
@@ -1240,7 +1240,7 @@ control. The word is what is in force, whichever setting decided it:
 | `YOLO` | every tool runs without asking — the posture `--yolo` opens. Painted in the warning hue for as long as it is true |
 | `refuses` | every call the rules do not name is refused. Also painted as a warning |
 
-**`alt+y` walks it**: asks → guardian → YOLO → asks. Three stops, each more autonomy than
+**`alt+a` walks it**: asks → guardian → YOLO → asks. Three stops, each more autonomy than
 the last, and **the wheel never lands on `refuses`** — a press past YOLO that refused every
 call would break the session you are in. It works with a sentence half typed and leaves
 your draft and caret where they were. **Pressing the cell walks it too**, one stop per
@@ -1251,11 +1251,11 @@ chord means one thing on this surface; `shift+tab` walks backwards through the f
 every question card, and on some terminals arrives as a plain `tab`.
 
 **Inside a task's page the cell reads `◇ on its own`** — a task runs every tool without
-asking and has no wheel — and `alt+y` there says so instead of moving anything (the task
+asking and has no wheel — and `alt+a` there says so instead of moving anything (the task
 page's "The line above the box on a task's page"). **On home and every other place, the same
 `◇` cell sits on the rule above that box** and
 says what the conversation you are about to start will run without asking — the settings
-rows' answer, or `YOLO` if this process was started with `--yolo`. `alt+y` or a press walks
+rows' answer, or `YOLO` if this process was started with `--yolo`. `alt+a` or a press walks
 it there on the same wheel, the pin is carried onto the conversation `enter` opens, and it
 is **spent** by that conversation: back on home the cell says the rows' word again, so an
 open gate is never quietly the default for the one after. *The rule above the box on every
@@ -1281,7 +1281,7 @@ What it changes and what it does not:
 - **It works on a `--host` conversation.** The posture is set on the engine machine, where
   the gate is, and the word on your legend is the one that machine resolved. An engine
   too old to have the door says so when the connection opens: the cell is then a reading
-  of the far machine's own row, and `alt+y`, the press and `/approvals` all answer:
+  of the far machine's own row, and `alt+a`, the press and `/approvals` all answer:
   *what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings*.
 
 The cell flashes for about two seconds after it changes and writes one line —
@@ -1591,7 +1591,7 @@ box, where it quits codeaf. On the second
 beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
 while that beat is up the digits are the shapes', not the answers'.
 
-`alt+a` raises the newest question you put off, from any page.
+`alt+y` raises the newest question you put off, from any page.
 
 **A task proposal** is answered on that same block, in that same grammar: `1` start
 it · `2` no · `c` answer in words · `esc` **later**, which folds it to the chip and
@@ -1857,7 +1857,7 @@ own line, so you can read it.
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
 else — and says so by not being there: no card, and the keys row under the box does not
-name it. Everywhere else that row reads `ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home` — `opt` in place of `alt` on a Mac. Effort and approvals appear only when the session
+name it. Everywhere else that row reads `ctrl+v effort · alt+a approvals · alt+k chats · / commands · space space home` — `opt` in place of `alt` on a Mac. Effort and approvals appear only when the session
 has those controls. As the frame narrows, controls give way from the left, keeping
 `/ commands · space space home`, then `/ commands` on its own.
 
@@ -2051,10 +2051,10 @@ second conversation is open, `alt+k chats` whenever there is anywhere at all to 
 place the switcher is named on the map (`alt+.`) instead, because a place's foot is four
 fixed clauses the design sets word for word.
 
-## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
+## Keys in the composer layer — `alt+enter`, `alt+p`, `alt+o`, and typing a number
 
-On macOS every `alt+` below is drawn `opt+` — `alt+enter` is `opt+enter`, `alt+w` is
-`opt+w`, `alt+o` is `opt+o`. Same key, same chord, named the way the keycap names it.
+On macOS every `alt+` below is drawn `opt+` — `alt+enter` is `opt+enter`, `alt+p` is
+`opt+p`, `alt+o` is `opt+o`. Same key, same chord, named the way the keycap names it.
 
 `alt+enter` with something typed into home's box opens the **composer layer**: the page
 behind dims, the box stays where it is, and the three facts a task needs appear under it.
@@ -2064,7 +2064,7 @@ these are its keys.
 | Key | What it does |
 | --- | --- |
 | `alt+enter` | first press opens the layer; second press sends the task off |
-| `alt+w` | move the task to the next project codeaf knows, and round again |
+| `alt+p` | move the task to the next project codeaf knows, and round again |
 | `alt+o` | open the model list for the **execution** slot — what the work runs on |
 | a digit, or `.` | type the spend cap; the figure changes as you type |
 | `backspace` | take one character off the cap |
@@ -2072,7 +2072,7 @@ these are its keys.
 | `esc` | back to the place you were on, sentence still in the box |
 
 `alt+o` changes a model only inside this task layer. On home, `/model` or a press on
-the model name opens the draft's model list instead. `alt+w` also works on home to move
+the model name opens the draft's model list instead. `alt+p` also works on home to move
 the draft to the next project; other places bind neither chord.
 
 While the layer is up it has the whole keyboard: `tab` does not walk to the next place, and
@@ -2227,33 +2227,33 @@ readings of what you type: a search of everything home shows, or the first messa
 new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
 promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
 it says what the box is a draft *for*:
-`─ glm-5.3-flash:auto · ◇ asks · project: ~/codeaf`
+`─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`
 
 — the model, a colon and effort, then approvals at the left; the project the next
-conversation opens in follows approvals, separated by a middle dot. The arrow and effort badge are gone. A long
+conversation opens in sits at the far right. The arrow and effort badge are gone. A long
 project path keeps its root and truncates on the right. The chords that change them are on **the line
 under the box**, with home's own keys, because the lowest line is for keys on home as in a
-conversation: `alt+w project` walks all projects in the projects panel's order, `ctrl+v effort`
-cycles auto → low → medium → high → xhigh → max → auto, and `alt+y approvals`
+conversation: `alt+p project` walks all projects in the projects panel's order, `ctrl+v effort`
+cycles auto → low → medium → high → xhigh → max → auto, and `alt+a approvals`
 walks asks → guardian → YOLO → asks. Pressing the project or approvals cell does the
 same. The project choice survives starting a conversation and returning home for the
 lifetime of this window; the seam alone shows it, with no footer announcement.
 `/model`, or pressing the model name, opens home's model list; `alt+o` no longer
 does. The model is always bold and bright cyan on both home's and a conversation's seam.
 `alt+k chats` opens the conversation switcher and is absent when there is nowhere to go.
-**On a Mac these clauses read `opt+w project · ctrl+v effort · opt+y approvals · opt+k chats`.**
-`opt+a` remains the newest pending question's shortcut, and `opt+p` remains the
-folder browser preview toggle, so they do not replace the approvals or project keys.
+**On a Mac these clauses read `opt+p project · ctrl+v effort · opt+a approvals · opt+k chats`.**
+`opt+y` raises the newest pending question, and `opt+w` toggles the folder browser
+preview. These exchanged roles with approvals and projects respectively.
 
 With all controls available the resting foot is
-`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
+`alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`.
 The project and approvals hints are absent where those controls cannot act. `ctrl+o`
 still opens the selected row's folder and `tab` still moves to the next place, but neither
 has a hint in home's bottom row. `esc` still closes home; `alt+.` draws the whole map.
 
 Every ordinary grid row keeps the same list keys as the cursor walks. A fold or action
 row names its own keys, with the available draft controls before `esc`. For example:
-`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · ctrl+v effort · alt+y approvals · esc clear`.
+`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+p project · ctrl+v effort · alt+a approvals · esc clear`.
 Typing a slash command changes the first clause to `enter runs this command`.
 
 **With nothing typed home is the panels**, hanging from the top. **While anything is typed
@@ -3329,3 +3329,10 @@ input, just as it does during tool permission. `alt+k` opens the chats card and 
 opens another conversation without answering the question. Cancel leaves the
 pending input untouched. Stop work cancels this conversation's pending question;
 reopening it does not restart the work.
+
+## What does alt+y do — reopen pending questions
+
+`alt+y` (`opt+y` on a Mac) brings the newest open question back from any page and
+returns to its conversation. It leaves approvals alone. `alt+a` (`opt+a`) now cycles
+approvals; the two shortcuts exchanged roles. A question with no answer remains open
+when you put it off with `esc`.

@@ -1197,6 +1197,8 @@ type app struct {
 	// now (foot.go's [app.seamIdentity]). modelSpan above is the room chip's
 	// door on the status row; the two are never both drawn.
 	seamModelSpan hudSpan
+	// seamProjectSpan is the current workspace path at the rule’s right edge.
+	seamProjectSpan hudSpan
 	// seamEffortSpan is the thinking rung's own columns on that same line, drawn
 	// immediately after the model and pressed to walk the ladder one step
 	// (effortchip.go). It is a second span rather than a wider one because the
@@ -2232,6 +2234,7 @@ type app struct {
 	// [app.homeDoor]'s own bargain: a press resolves against what was PAINTED,
 	// never against a second computation of what should have been.
 	targetRow        int
+	targetHover      hoverKind
 	targetFolderSpan hudSpan
 	targetModelSpan  hudSpan
 	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
@@ -4129,6 +4132,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// press's own reason: the bar is the router's row and means the same thing
 		// on all seven places, so the word under the pointer lifts wherever a
 		// person is standing (placemouse.go's [app.placeTabHover]).
+		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
 		if a.placeTabHover(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}

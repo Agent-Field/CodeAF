@@ -201,7 +201,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
-| `/approvals` | `/yolo` | — | prints this conversation's approval postures — asks, guardian, YOLO, refuses — with the one in force marked; `alt+y` walks them |
+| `/approvals` | `/yolo` | — | prints this conversation's approval postures — asks, guardian, YOLO, refuses — with the one in force marked; `alt+a` walks them |
 | `/approvals` | `/yolo` | `<posture>` | sets it outright: `ask`, `guardian`, `yolo`, `deny` or `auto` |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
@@ -713,7 +713,7 @@ cell, `◇ on its own`, and the badge stays off. A page has room for the whole a
 names the posture whichever it is.
 
 The cell, the badge and the line always agree, because all three read one posture. Walk
-it with `alt+y` and all three move on the keystroke; change "ask before running" in
+it with `alt+a` and all three move on the keystroke; change "ask before running" in
 `/settings` and they move together for a conversation that follows the rows, or the panel
 says `saved · from the next session`.
 
@@ -1092,7 +1092,7 @@ holding the cursor, so type-and-enter still starts a chat. **A line that starts 
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The box says `› type to search or start something new` and the foot
 names the available draft controls:
-`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
+`alt+p project · ctrl+v effort · alt+a approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
 keys still work, without hints on this row.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
@@ -1134,7 +1134,7 @@ sets that posture for **this conversation** straight away: `/approvals yolo` ope
 to the settings rows. `prompt`, `allow`, `refuse` and `off` are accepted spellings of the
 same five.
 
-The wheel — `alt+y`, or a press on the cell — walks `asks → guardian → YOLO` and never onto
+The wheel — `alt+a`, or a press on the cell — walks `asks → guardian → YOLO` and never onto
 `deny`; the command is the only way to that one. The keys page covers the chip, and the
 permissions page covers what each posture means for the floors.
 

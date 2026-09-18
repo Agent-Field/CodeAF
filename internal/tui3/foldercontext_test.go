@@ -504,11 +504,11 @@ func TestThePreviewHidesAndTakesTheWholeSheet(t *testing.T) {
 	if wide.pane <= 0 || wide.here <= 0 {
 		t.Fatalf("a %d-cell sheet drew %+v", a.width, wide)
 	}
-	drive(t, a, key(folderPaneKey))
+	drive(t, a, key("alt+w"))
 	if off := folderDivide(a.width, a.folder.pane); off.pane != 0 {
 		t.Fatalf("%s left the pane %d cells wide", folderPaneKey, off.pane)
 	}
-	drive(t, a, key(folderPaneKey))
+	drive(t, a, key("alt+w"))
 	if back := folderDivide(a.width, a.folder.pane); back.pane != wide.pane {
 		t.Fatalf("%s did not put the pane back: %d", folderPaneKey, back.pane)
 	}
