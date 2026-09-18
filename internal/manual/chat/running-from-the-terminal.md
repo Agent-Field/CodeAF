@@ -574,7 +574,10 @@ and the addresses in force with the word saying where each came from
 (`default`, `setting`, `env` or `ci`), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of our own scored runs,
-read until a fresher signed one is cached. Your install also keeps
+read until a fresher signed one is cached. `--cells` lists the held
+index's cells, one per line — the role, the model, the dims the cell
+spells, the measurement and the installs behind it — and `--json
+--cells` carries them as an array. Your install also keeps
 the scores its judge gave in `own.json`
 under the pool directory — `show` and `status` say what that sheet holds — and
 the crew reads them beside the index. `status` adds what is waiting to be sent
