@@ -594,6 +594,9 @@ than fighting your shell.
                        replans, working methods and the delivery gate on a
                        stronger model while a smaller one does the steps;
                        --model and --plan-model do the same per run.
+  CODEAF_CHECK_MODEL   unset: a check follows a plan seat pinned by flag or
+                       environment, otherwise it uses the crew careful row.
+                       Set it to choose the check model independently.
   CODEAF_MODELS        unset: one model, exactly as above. Set it to a panel
                        and calls cascade — cheapest model first, escalating
                        when a verifier catches a failure. Either a
@@ -1202,12 +1205,11 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 const (
 	workLadderHelp    = "flag › CODEAF_MODEL › crew › default"
 	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew mastermind › the work model"
-	checkLadderHelp   = "flag › --plan-model › crew careful"
+	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › pinned plan seat › crew careful"
 	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
 	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
-	// The check seat's ladder names the plan flag rather than a variable
-	// because it has no variable of its own: the check flag, else the plan
-	// flag the person typed, else the crew's careful row.
+	// The check seat's ladder names its environment rung and the resolved
+	// plan seat fallback before the crew's careful row.
 	checkModelFlagHelp = "model that checks finished work (" + checkLadderHelp + ")"
 )
 

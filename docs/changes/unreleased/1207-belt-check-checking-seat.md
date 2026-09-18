@@ -12,9 +12,9 @@ the mastermind tier, so a review round runs on the model the crew seats to check
 The work, fix, plan, and probe seats are unchanged, and the check seat stays
 read-only.
 
-The check seat is resolved at the door: `--check-model` seats the check on the
-model the person typed, a `--plan-model` typed without one pins the check to the
-plan seat (a two flag run sees no third model from the profile), and neither flag
-leaves the check on the crew's careful row, which is the checker the chat door
-and any unpinned run already promise. run.Seats carries the door's Check seat
-and CrewFactory seats the careful tier on it.
+The check seat is resolved at the door: `--check-model`, then
+`CODEAF_CHECK_MODEL`, then a plan seat pinned by `--plan-model` or
+`CODEAF_PLAN_MODEL`, then the crew's careful row. A pinned run sees no third
+model from the profile. run.Seats carries the door's Check seat and CrewFactory
+seats the careful tier on it. `CHECKER_CAP_USD=2` is now live, so a cell can end
+on the checker cap.
