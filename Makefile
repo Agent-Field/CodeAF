@@ -91,6 +91,7 @@ furrow:
 # then to PATH — which is what it does here.
 build: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
+	go build -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o bin/plandb ./cmd/plandb
 
 debug: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/codeaf
@@ -185,6 +186,9 @@ test-touched-preflight:
 		exit 2; \
 	fi
 
+# A directory under its own go.mod is another module — a bench fixture the
+# task door edits, not a package of this one — and `go test ./that/dir` from
+# here answers "does not contain package". The walk skips those.
 test-touched: test-touched-preflight
 	@set -eu; \
 	base="$${BASE:-origin/dev}"; \
@@ -197,6 +201,12 @@ test-touched: test-touched-preflight
 		done | sort -u)"; \
 		pkgs=""; \
 		for dir in $$dirs; do \
+			nested=0; walk="$$dir"; \
+			while test "$$walk" != "." && test "$$walk" != "/"; do \
+				if test -f "$$walk/go.mod"; then nested=1; break; fi; \
+				walk="$$(dirname "$$walk")"; \
+			done; \
+			if test "$$nested" = 1; then continue; fi; \
 			if ls "$$dir"/*.go >/dev/null 2>&1; then pkgs="$$pkgs ./$$dir"; fi; \
 		done; \
 	fi; \

@@ -278,7 +278,7 @@ func (a *Agent) freezeFamilyWorld(node *TaskNode) (frozen, checkpoint, problem s
 		return "", "", ""
 	}
 	if ledger := node.rememberedWrites(); len(ledger) > 0 {
-		_, commit, _, err := commitTaskWorkAs(dir, wipCheckpointMessage(node.title()), ledger, a.signsGitWork())
+		_, commit, _, err := commitTaskWorkAs(dir, wipCheckpointMessage(node.title()), ledger, a.signsGitWork(), a.config.mayBashBelt())
 		if err != nil {
 			return "", "", err.Error()
 		}

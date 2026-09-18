@@ -96,8 +96,10 @@ func (a *Agent) imageTools() []bare.Tool {
 	return []bare.Tool{a.generateImageTool(client, model)}
 }
 
-// generateImageArguments is the wire form.
-type generateImageArguments struct {
+// GenerateImageArgs is the wire form, and the road's argument shape in one:
+// the belt decodes into it, and the command line's image door fills it
+// directly, so the two doors cannot disagree about what one call carries.
+type GenerateImageArgs struct {
 	Prompt         string   `json:"prompt"`
 	ReferencePaths []string `json:"reference_paths"`
 	AspectRatio    string   `json:"aspect_ratio"`
@@ -106,92 +108,136 @@ type generateImageArguments struct {
 	Model          string   `json:"model"`
 }
 
+// ImageGen is everything one generation needs from the surface it runs in:
+// the client, the default model its resolver answers, the picker for a call's
+// own word, where unnamed pictures land, and the two hooks the belt adds —
+// the bill and the artifacts row. Account and Record are optional: a caller
+// with no session passes neither, and the picture still lands.
+type ImageGen struct {
+	Client       MediaGenerator
+	DefaultModel string
+	Pick         func(modality, word string) (string, error)
+	Workspace    string
+	Directory    string
+	Account      func(model string, usage *ai.Usage)
+	Record       func(path, prompt string)
+}
+
+// generateImageTool wraps the shared road ([generateImage]) in the belt's
+// argument decode and its own two hooks.
 func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) bare.Tool {
 	return bare.Tool{
 		Name:        "generate_image",
 		Description: generateImageDescription,
 		Schema:      a.mediaSchema(generateImageSchemaJSON, "image"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			var parsed generateImageArguments
+			var parsed GenerateImageArgs
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
-			prompt := strings.TrimSpace(parsed.Prompt)
-			if prompt == "" {
-				return "Invalid arguments: prompt is required", true, nil
-			}
-			// The call's own choice, resolved before anything is paid for, so a
-			// word that matches nothing costs nothing. From here down `model`
-			// is the model that actually draws, wherever it is named — the
-			// request, the failure strings, the accounting, the result line.
-			model, refusal := a.mediaPick(modalityImage, parsed.Model, defaultModel)
-			if refusal != "" {
-				return "Invalid arguments: " + refusal, true, nil
-			}
-			// The references are read BEFORE the request is sent, so a picture
-			// that cannot be read costs nothing: a refusal here is a typo the
-			// model can fix, and paying for a generation that was going to be
-			// wrong about its own inputs helps nobody.
-			references, refusal := a.mediaReferences(parsed.ReferencePaths)
-			if refusal != "" {
-				return "Invalid arguments: reference " + refusal, true, nil
-			}
-
-			// Every failure below is a TOOL ERROR and never a Go error, by
-			// tools_search.go's rule: a refused prompt, an expired key, a model
-			// having a bad minute are all things the model can act on, and none
-			// of them is a reason to fail the turn.
-			response, err := client.GenerateImage(ctx, provider.ImageRequest{
-				Model: model, Prompt: prompt, N: 1, OutputFormat: "png",
-				AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
-				Size:            strings.TrimSpace(parsed.Size),
-				InputReferences: references,
-			})
-			if err != nil {
-				return "Image generation failed (" + model + "): " + err.Error(), true, nil
-			}
-			if response == nil || len(response.Data) == 0 {
-				return "Image generation returned no image (" + model + ")", true, nil
-			}
-			data, decodeErr := base64.StdEncoding.DecodeString(response.Data[0].Base64)
-			if decodeErr != nil || len(data) == 0 {
-				return "Image generation returned an unreadable image (" + model + ")", true, nil
-			}
-			// The picture is paid for whether or not it is any good, so the
-			// accounting lands before the write can fail. It folds into the
-			// SESSION total and not the turn's, exactly as the title call does:
-			// no turn asked for a picture at this price,
-			// and charging one turn for it would make an ordinary question read
-			// as the cost of a rendering (see [Agent.addAuxiliaryUsage]).
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
-
-			path, err := a.mediaDestination(parsed.Path, prompt,
-				imageExtension(response.Data[0].MediaType),
-				ImagesDir(a.config.Place, a.config.Workspace))
-			if err != nil {
-				return "Could not save the generated image: " + err.Error(), true, nil
-			}
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				return "Could not save the generated image: " + err.Error(), true, nil
-			}
-			if err := os.WriteFile(path, data, 0o644); err != nil {
-				return "Could not save the generated image: " + err.Error(), true, nil
-			}
-			// A picture the harness made is a DELIVERABLE, so it earns a row in
-			// the index a person finds their work again by (artifacts.go). The
-			// recording is silent in both directions: it happens after the bytes
-			// are safely down, and a failure to write the lookup file is not news
-			// the model can act on.
-			RecordArtifact(a.config.ArtifactsIndex, Artifact{
-				Path:    path,
-				Session: a.journalID(),
-				Title:   mediaTitle(prompt, path),
-				Kind:    "image",
-				Created: time.Now(),
-			})
-			return describeGeneratedImage(path, data, model), false, nil
+			text, failed := GenerateImage(ctx, ImageGen{
+				Client:       client,
+				DefaultModel: defaultModel,
+				Pick:         a.config.MediaPick,
+				Workspace:    a.config.Workspace,
+				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
+				Account:      a.accountImageRung,
+				Record:       a.recordImageArtifact,
+			}, parsed)
+			return text, failed, nil
 		},
 	}
+}
+
+// accountImageRung is the road's bill door: the picture is paid for whether or
+// not it is any good, so the accounting lands before the write can fail, and
+// it folds into the SESSION total and not the turn's, exactly as the title
+// call does — no turn asked for a picture at this price, and charging one turn
+// for it would make an ordinary question read as the cost of a rendering (see
+// [Agent.addAuxiliaryUsage]).
+func (a *Agent) accountImageRung(model string, usage *ai.Usage) {
+	a.addAuxiliaryUsage(&ai.Response{Usage: usage}, model, 1)
+}
+
+// recordImageArtifact is the road's artifacts hook: a picture the harness made
+// is a DELIVERABLE, so it earns a row in the index a person finds their work
+// again by (artifacts.go). The recording is silent in both directions: it
+// happens after the bytes are safely down, and a failure to write the lookup
+// file is not news the model can act on.
+func (a *Agent) recordImageArtifact(path, prompt string) {
+	RecordArtifact(a.config.ArtifactsIndex, Artifact{
+		Path:    path,
+		Session: a.journalID(),
+		Title:   mediaTitle(prompt, path),
+		Kind:    "image",
+		Created: time.Now(),
+	})
+}
+
+// GenerateImage is the whole road behind generate_image, as a plain function
+// the command line's image door runs too: pick the model, read the
+// references, send the request, decode, account, write, describe. It exists
+// so the belt's tool and the command line's door cannot drift.
+//
+// Every failure is the tool error the belt returns and the command line
+// prints, never a Go error: a refused prompt, an expired key, a model having
+// a bad minute are all things a caller can act on, and none of them is a
+// reason to crash anything.
+func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) (string, bool) {
+	// The call's own choice, resolved before anything is paid for, so a word
+	// that matches nothing costs nothing. From here down `model` is the model
+	// that actually draws, wherever it is named — the request, the failure
+	// strings, the accounting, the result line.
+	model, refusal := mediaPickWith(gen.Pick, modalityImage, parsed.Model, gen.DefaultModel)
+	if refusal != "" {
+		return "Invalid arguments: " + refusal, true
+	}
+	// The references are read BEFORE the request is sent, so a picture that
+	// cannot be read costs nothing: a refusal here is a typo the model can
+	// fix, and paying for a generation that was going to be wrong about its
+	// own inputs helps nobody.
+	references, refusal := mediaReferencesFrom(gen.Workspace, parsed.ReferencePaths)
+	if refusal != "" {
+		return "Invalid arguments: reference " + refusal, true
+	}
+
+	response, err := gen.Client.GenerateImage(ctx, provider.ImageRequest{
+		Model: model, Prompt: strings.TrimSpace(parsed.Prompt), N: 1, OutputFormat: "png",
+		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
+		Size:            strings.TrimSpace(parsed.Size),
+		InputReferences: references,
+	})
+	if err != nil {
+		return "Image generation failed (" + model + "): " + err.Error(), true
+	}
+	if response == nil || len(response.Data) == 0 {
+		return "Image generation returned no image (" + model + ")", true
+	}
+	data, decodeErr := base64.StdEncoding.DecodeString(response.Data[0].Base64)
+	if decodeErr != nil || len(data) == 0 {
+		return "Image generation returned an unreadable image (" + model + ")", true
+	}
+	// The picture is paid for whether or not it is any good, so the accounting
+	// lands before the write can fail (see [imageGen.Account]).
+	if gen.Account != nil {
+		gen.Account(model, response.Usage)
+	}
+
+	path, err := mediaDestinationFrom(gen.Workspace, parsed.Path, parsed.Prompt,
+		imageExtension(response.Data[0].MediaType), gen.Directory)
+	if err != nil {
+		return "Could not save the generated image: " + err.Error(), true
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "Could not save the generated image: " + err.Error(), true
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "Could not save the generated image: " + err.Error(), true
+	}
+	if gen.Record != nil {
+		gen.Record(path, parsed.Prompt)
+	}
+	return describeGeneratedImage(path, data, model), false
 }
 
 // imageExtension maps what the provider says it sent onto a file suffix. png is

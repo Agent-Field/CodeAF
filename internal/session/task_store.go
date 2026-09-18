@@ -183,8 +183,14 @@ type taskRecord struct {
 	// the builder leaves it out on purpose (task_quick.go's [Agent.newQuickSpec]).
 	// [acceptanceHolds] is that rule, asked of the KIND rather than of this
 	// field alone; it stays a refusal for ordinary work.
-	Acceptance string   `json:"acceptance"`
-	DependsOn  []uint64 `json:"depends_on,omitempty"`
+	Acceptance string `json:"acceptance"`
+	// PlanID is the task's id in the plan store (internal/session, planID on
+	// [taskSpec]), carried so a resumed node still knows which plan task it is:
+	// the pulse's writeback and the store-side dispatch both key on it. Absent
+	// in every checkpoint written before the plandb loop existed, which resumes
+	// as it always did: no plan task, no plan lines, nothing dispatched.
+	PlanID    string   `json:"plan_id,omitempty"`
+	DependsOn []uint64 `json:"depends_on,omitempty"`
 
 	// Ground is the repository or folder the work IS ABOUT and Mode is how the
 	// node stands on it ([TaskMode]). Where says which directory the worker typed
@@ -1164,6 +1170,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		ChecksRevision: n.checksRevision,
 		FamilyWas:      n.FamilyWas,
 		Acceptance:     n.spec.acceptance,
+		PlanID:         n.spec.planID,
 		DependsOn:      dependsOn,
 		Parent:         n.parent,
 		Depth:          n.depth,
@@ -1927,6 +1934,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			deliverable: record.Deliverable,
 			where:       record.Where,
 			acceptance:  record.Acceptance,
+			planID:      record.PlanID,
 			dependsOn:   record.DependsOn,
 			model:       record.Model,
 			effort:      restoredRung(record.Effort),

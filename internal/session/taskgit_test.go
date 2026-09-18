@@ -183,7 +183,16 @@ func TestTheGitGuardRefusesOnTheSeamAndOnlyInsideATask(t *testing.T) {
 		t.Fatal("the guard refused a person's own session; it answers for work inside a task and nothing else")
 	}
 
-	worker, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.InTask = true })
+	// THE WORKER STANDS IN A REPOSITORY, because the guard's refusals are about
+	// the copy a task works in and there is no copy to answer for in a folder
+	// that is not one ([TestATaskOutsideAnyRepositoryRunsEveryGitVerb] is the
+	// other half of that).
+	repo := t.TempDir()
+	mustGit(t, repo, "init", "-q", "-b", "main")
+	worker, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.InTask = true
+		config.Workspace = repo
+	})
 	_, refused, allowed := (taskGitGuard{agent: worker}).PreAction(context.Background(), nil, nil, call)
 	if allowed {
 		t.Fatal("a worker's git merge passed the seam")
@@ -205,6 +214,91 @@ func TestTheGitGuardRefusesOnTheSeamAndOnlyInsideATask(t *testing.T) {
 		if _, _, allowed := (taskGitGuard{agent: worker}).PreAction(context.Background(), nil, nil, fine); !allowed {
 			t.Fatalf("the guard refused %s %s", fine.Function.Name, fine.Function.Arguments)
 		}
+	}
+}
+
+// C7 — THE GUARD PROTECTS THE PERSON'S COPY, AND A WORKSPACE THAT IS NOT A
+// REPOSITORY HAS NONE.
+//
+// A run worker on the bash belt is handed the run's `-w` folder, which may be
+// empty; a task may be briefed to "clone repository X, check out commit Y, then
+// implement Z". In both the first step is `git clone`, and in both there is no
+// copy of the person's work for the refusal to be true about. Every git verb
+// passes, and the decision is read off the workspace ROOT so that a repository
+// the task clones into a subfolder does not switch the guard back on.
+func TestATaskOutsideAnyRepositoryRunsEveryGitVerb(t *testing.T) {
+	worker, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.InTask = true
+	})
+	// THE PREMISE IS THE TEST. A t.TempDir() sits inside a checkout whenever
+	// GOTMPDIR or TMPDIR names one, and then this workspace IS in a repository
+	// and the test would be asserting the opposite of what it says.
+	if rootInsideGitWorkTree(workspace) {
+		t.Skipf("the temp workspace %s sits inside a git work tree, so it is not the empty folder this test is about", workspace)
+	}
+	for _, command := range []string{
+		"git clone https://example.invalid/project.git",
+		"git clone --depth 1 https://example.invalid/project.git vendored",
+		"git checkout 1a2b3c4",
+		"git checkout -b fix/thing",
+		"git fetch --all",
+		"git pull --rebase origin main",
+		"git merge --ff-only main",
+		"git switch main",
+		"git stash",
+	} {
+		_, refusal, allowed := (taskGitGuard{agent: worker}).PreAction(context.Background(), nil, nil, bashGitCall(command))
+		if !allowed {
+			t.Errorf("%q was refused with %q; a workspace that is not a repository holds none of the person's work to protect", command, refusal.text)
+		}
+	}
+}
+
+// C8 — A TASK ROOTED INSIDE A REPOSITORY ANSWERS TO THE WHOLE LIST, with the
+// exact sentence it always had. This is the ordinary case the guard exists for,
+// and the new rule must not have narrowed it.
+func TestATaskInsideARepositoryStillAnswersToTheGitList(t *testing.T) {
+	repo := t.TempDir()
+	mustGit(t, repo, "init", "-q", "-b", "main")
+	worker, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.InTask = true
+		config.Workspace = repo
+	})
+	for _, one := range []struct {
+		command string
+		want    string
+	}{
+		{"git clone https://example.invalid/project.git", "git clone is not yours to run: it would bring in work this task did not do, and this task reports what it writes as its own. " + taskGitInstead},
+		{"git checkout main", "git checkout is not yours to run: it would put work this task did not do into your copy, and only what you write here comes home. " + taskGitInstead},
+	} {
+		_, refusal, allowed := (taskGitGuard{agent: worker}).PreAction(context.Background(), nil, nil, bashGitCall(one.command))
+		if allowed {
+			t.Errorf("%q passed from inside a repository, want it refused", one.command)
+			continue
+		}
+		if refusal.text != one.want {
+			t.Errorf("refusal for %q = %q, want the existing sentence %q", one.command, refusal.text, one.want)
+		}
+	}
+}
+
+// C9 — AND THE RULE IS A TASK'S ALONE. A session carrying its own work answers
+// to the same git list whatever folder it stands in, because the question it is
+// asked is whether the session decides on its own word that the work is done —
+// never whether the folder is a repository.
+func TestASessionInAFolderThatIsNotARepositoryIsStillRefused(t *testing.T) {
+	steward, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Unattended = true
+		config.Budget = Budget{Wall: time.Hour}
+	})
+	if steward.steward() == nil {
+		t.Fatal("an unattended session with a ceiling did not get a Steward")
+	}
+	if rootInsideGitWorkTree(workspace) {
+		t.Skipf("the temp workspace %s sits inside a git work tree", workspace)
+	}
+	if _, _, allowed := (taskGitGuard{agent: steward}).PreAction(context.Background(), nil, nil, bashGitCall("git checkout main")); allowed {
+		t.Fatal("a steward-headed session in a folder that is not a repository was allowed a checkout; the repo rule is a task's")
 	}
 }
 

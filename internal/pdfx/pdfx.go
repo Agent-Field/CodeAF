@@ -118,6 +118,60 @@ func Extract(path string) (string, error) {
 	return text.String(), nil
 }
 
+// ExtractPages returns the text of the pages named, first through last
+// inclusive and one-based, with Extract's own page markers between them. The
+// document is parsed whole — a PDF has no random access into its pages without
+// one — and only the pages named are rendered, so a caller asking for two
+// pages of a scanned manual still pays the parse but reads three pages and not
+// four hundred.
+//
+// A range that names no page this document has is an error that says how many
+// pages there are, and pages that parse to nothing at all are the same
+// scanned-file outcome Extract reports.
+func ExtractPages(path string, first, last int) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("%s is a directory", path)
+	}
+
+	document, err := load(path, info.Size())
+	if err != nil {
+		return "", err
+	}
+	if len(document.Pages) == 0 {
+		return "", errors.New("the file parsed but contains no pages")
+	}
+
+	var text strings.Builder
+	multiPage := len(document.Pages) > 1
+	anyText := false
+	atFirst := true
+	for _, page := range document.Pages {
+		if page.PageNumber < first || page.PageNumber > last {
+			continue
+		}
+		if !atFirst && multiPage {
+			text.WriteString("\n── page " + strconv.Itoa(page.PageNumber) + " ──\n")
+		}
+		atFirst = false
+		content := strings.Trim(page.Content, "\n")
+		text.WriteString(content)
+		if strings.TrimSpace(content) != "" {
+			anyText = true
+		}
+	}
+	if atFirst {
+		return "", fmt.Errorf("no page falls in %d-%d (the document has %d pages)", first, last, len(document.Pages))
+	}
+	if !anyText {
+		return "", &NoTextLayerError{Pages: len(document.Pages)}
+	}
+	return text.String(), nil
+}
+
 // load runs the engine, wide or narrow by file size, with the two hazards of
 // calling a third-party parser on a stranger's bytes handled in one place.
 //

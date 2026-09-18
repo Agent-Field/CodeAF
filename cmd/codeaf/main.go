@@ -31,6 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -299,6 +300,12 @@ func run() error {
 		// edges, a frontier) and stays inside the engine, where it is the right
 		// word and where nobody reads it.
 		return runPlanCommand(os.Args[2:])
+	case "plandb":
+		// The plan store's CLI, through the same Main cmd/plandb builds into
+		// bin/plandb (docs/design/plandb-cli/DESIGN.md). This door is the
+		// fallback road when the sibling binary is not where a bash-belt
+		// worker's shell can find it; Main answers the exit code directly.
+		return exitStatus(plandb.Main(os.Args[2:]))
 	case "revise":
 		// The old top-level spelling of `codeaf plan revise`, kept working for
 		// one release (rename.go).
@@ -354,6 +361,22 @@ func run() error {
 		// because the questions people ask most are the ones they ask before
 		// there is a key to make a model call with.
 		return runManual(os.Args[2:])
+	case "patch":
+		// The edit hand's exact-match replacement (patch.go). One old text in,
+		// one file with it replaced out, a count in the refusal when the text is
+		// not there exactly once.
+		return runPatch(os.Args[2:])
+	case "doc":
+		// The billed document parse the read_document tool runs, printed
+		// straight (doc.go) — free on a plain file, billed on a scan.
+		return runDoc(os.Args[2:])
+	case "web":
+		// The search and fetch pair the belt's web verbs run (web.go).
+		return runWeb(os.Args[2:])
+	case "image":
+		// The generator the generate_image tool runs, with the same spend
+		// accounting (image.go).
+		return runImage(os.Args[2:])
 	// Three spellings for one question, because three different callers ask it
 	// and none of them should have to know which one this build prefers: the
 	// agentfield Python doctor runs `codeaf version`, the Go doctor runs
@@ -443,15 +466,13 @@ Talk to it — a surface you sit in front of
       --no-host runs the conversation in this process rather than on this
       workspace's session host; --debug keeps the whole record of the run
   codeaf resume
-      pick an earlier conversation by name and open it — the same list is
-      /resume inside the chat
+      pick an earlier conversation by name and open it — /resume inside the chat
 
 Hand it work — nobody is watching, the answer is on stdout
   codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
               [--json] [--yes-spend] [--model slug] [--plan-model slug]
               [--context-fill 60] [--completion-reserve 65536] [--debug]
-      do one task and exit — the same living agent the chat runs, with nobody
-      watching. What you type is the goal, and it is run verbatim
+      do one task and exit — the same living agent the chat runs, unwatched
   codeaf exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
               [--token-budget N] [--timeout 15m] [--model slug]
               [--context-fill N] [--completion-reserve N] [--json]
@@ -492,8 +513,7 @@ Housekeeping — changes state on disk or on the network
   codeaf cache
       what the shared build cache holds, and how big it is
   codeaf cache clean [--yes]
-      delete ~/.codeaf/cache to free disk. It prints the size and path, then
-      asks you to type "` + cacheCleanWord + `" — --yes skips that. Conversations are untouched
+      delete the build cache; you type "` + cacheCleanWord + `" to confirm, --yes skips it
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
   codeaf serve [--workspace path] [--relay url]
@@ -513,6 +533,9 @@ Housekeeping — changes state on disk or on the network
   codeaf services stop <name> [--db path]
   codeaf wake [--db path] [--timeout 2m]
       run one full background pass by hand and exit
+  codeaf patch FILE --old TEXT --new TEXT | codeaf doc PATH [--pages A-B]
+  codeaf web fetch URL | web search QUERY | codeaf image "PROMPT" --out PATH
+  codeaf plandb <verb> [--db path] [--json]
   codeaf help env
       the environment table: every variable and its default
 

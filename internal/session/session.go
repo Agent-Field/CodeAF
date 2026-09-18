@@ -1,4 +1,4 @@
-// Package session is the v3 conversational agent: a pi-shaped working loop
+// Package session is the v3 conversational agent: a working loop
 // you talk to, not a dispatcher. It owns one conversation against one
 // workspace: the person submits messages, the agent works (read, bash, edit,
 // write, grep, find, ls, todo) and streams what it does as events.
@@ -10,7 +10,7 @@
 // ones, and nothing in this file changes.
 //
 // The loop's wire behavior — message assembly, stop condition, retry
-// schedule, tool parallelism — follows internal/exec/bare (pi 0.82.1), with
+// schedule, tool parallelism — follows internal/exec/bare, with
 // three deliberate differences: it is interactive (Submit between turns, not
 // one task to the end), interruptible (Interrupt cancels the in-flight turn
 // and keeps the partial), and its compaction follows docs/CHAT-V3.md
@@ -1218,6 +1218,14 @@ type Config struct {
 	// without a lock.
 	ApprovalPolicy *approval.Policy
 
+	// completer is the request road this session is built on when the caller has
+	// already resolved one, and nil when [New] should build it from the settings
+	// above. It is the seam the bash-belt worker seat takes: the run hands the
+	// seat this conversation's account-aware completer ([Agent.beltRunCompleter]),
+	// and the worker is born through [New] like any other standalone seat rather
+	// than through the scripted-completer seam the tests keep for themselves.
+	completer Completer
+
 	// auditWindow overrides how long a second look at finished work gets, and it
 	// is UNEXPORTED AND FOR TESTS ONLY (pending.go's [Agent.auditWindowFor]). The
 	// product's answer is the door's own, which turns on whether there is a check
@@ -1909,6 +1917,17 @@ type Config struct {
 	//
 	// It is private for InTask's reason: no surface sets it, the executor does.
 	roomThread bool
+
+	// bashBelt is THE EXPERIMENT'S ONE SWITCH, and it is unexported for
+	// pacing's reason: it is not a caller's choice but a fact about the task
+	// worker this package built. It is set only by the executor, at
+	// newTaskAgentOn, from CODEAF_TASK_BELT, and read only through
+	// [Config.mayBashBelt], so no road can hand the bash belt to a
+	// conversation — the conversation and every subharness leaf keep the
+	// seven file tools whatever the variable says, which is what lets both
+	// arms of the comparison run from one binary
+	// (docs/design/bash-task-loop/DESIGN.md).
+	bashBelt bool
 
 	// reviseDesign is the one extra hand a design thread has, and the whole of
 	// what puts revise_design on its belt (tools_harness.go). It carries the
@@ -3102,6 +3121,15 @@ type Agent struct {
 	// lock is taken by goroutines that finish minutes later, and a session lock
 	// held across one of those is the lock Interrupt could not take.
 	tasks *TaskGraph
+	// beltMu guards beltRun, the bash-belt run this conversation started
+	// (task_run_belt.go). It is held on the Agent and nowhere else, because
+	// ownership of a running run is this process's — a second `/task` while one
+	// is live adds to the same store rather than opening another, so a
+	// conversation has at most one run going at a time. The beltRun's own
+	// plandb handle has its own lock; nothing here is read with another lock
+	// held.
+	beltMu  sync.Mutex
+	beltRun *beltRun
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active
