@@ -81,9 +81,15 @@ func TestThePackageFloorClearsAProfileTheEnvironmentNamed(t *testing.T) {
 }
 
 // TestTheFloorLeftThisProcessNoInheritedProfile is the child half of the guard
-// above, and never runs in the suite's own process: its parent starts this
-// binary with CODEAF_PROFILE_DIR exported at a stand-in profile, and the floor
-// under TestMain is what stands between this test and that export.
+// above: its parent starts this binary with CODEAF_PROFILE_DIR exported at a
+// stand-in profile, and the floor under TestMain is what stands between this
+// test and that export.
+//
+// IT ALSO RUNS IN THE ORDINARY SUITE, as any Test function does, and that pass
+// is worth having rather than suppressing: on a machine with nothing to inherit
+// it reads the floor's own clear, so the suite says the floor holds here, and
+// the child run above says it holds against an export. Neither writes outside
+// the state root the floor provides.
 func TestTheFloorLeftThisProcessNoInheritedProfile(t *testing.T) {
 	// The road first, so a floor that leaks leaves its evidence in the stand-in
 	// for the parent to read back even though the assertions below fail this
