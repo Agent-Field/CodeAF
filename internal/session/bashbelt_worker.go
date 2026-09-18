@@ -42,9 +42,11 @@ import (
 // spill files land in, which is the task's own record folder beside the store
 // ([plandb.TaskDir]), where the trajectory the run records lives too.
 //
-// THE COMPLETER IS THE SEAT'S PROVIDER. Nil builds the real client the way
-// [New] does — the road a run goes through — and a non-nil one is the seam
-// the tests take, the same one [Agent.newChildAgent] sits beside.
+// THE COMPLETER IS THE SEAT'S PROVIDER, carried into the worker through the
+// public door ([Config.completer], read by [New]). A run hands the
+// conversation's account-aware view ([Agent.beltRunCompleter]) and a test hands
+// a scripted one; nil is the road where nobody handed one and [New] builds the
+// real client itself.
 func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath string) (*Agent, error) {
 	if !bashBeltAsked() {
 		return nil, errors.New("the bash belt is off: CODEAF_TASK_BELT is not bash")
@@ -75,13 +77,16 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	}
 	config.SessionFile = filepath.Join(taskDir, workerJournalName())
 	config.droppings = Place{Dir: taskDir}
-	var agent *Agent
-	var err error
-	if completer != nil {
-		agent, err = newAgent(config, completer)
-	} else {
-		agent, err = New(config)
-	}
+	// AND THE WORKER IS BORN THROUGH THE PUBLIC DOOR, on the seat's provider. A
+	// run worker stands alone — the run builds it, and it is not a node of this
+	// conversation's own tree — so it takes the door a standalone seat takes
+	// ([New]) rather than the scripted-completer seam the tests keep for
+	// themselves. Handing New the seat's provider ([Agent.beltRunCompleter], the
+	// conversation's account-aware view) is what gives the worker a managed
+	// account pool the same way every other production agent gets one; a nil
+	// provider builds the real client the way New always does.
+	config.completer = completer
+	agent, err := New(config)
 	if err != nil {
 		return nil, err
 	}
