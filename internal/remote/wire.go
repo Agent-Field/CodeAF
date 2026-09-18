@@ -522,6 +522,20 @@ const (
 	MethodEarlier       = "EarlierHistory"    // nothing → session.EarlierHistory
 	MethodRewindPoints  = "RewindPoints"      // nothing → []session.RewindPoint
 	MethodRewindAt      = "RewindAt"          // int → []session.DisplayEntry
+	// MethodPlanSpend CARRIES THE RUN'S SPEND-BY-SEAT ACROSS THE WIRE, and it
+	// is the spend page's other reading beside the machine's own ledger above.
+	// A conversation that seeded a plan writes its workers' calls into the plan
+	// store's spend ledger, and the page draws those rolled up by SEAT
+	// ([session.PlanSpendLine]); over a connection that store lives on the
+	// engine's disk, so a surface that could not ask the engine drew no block
+	// at all ([session.Agent.PlanSpend]).
+	//
+	// IT RIDES [Version] RATHER THAN MOVING IT, under the rule stated there: an
+	// engine that does not know it answers "no such method", the surface reads
+	// that as the block being absent HERE — which is exactly what it drew before
+	// this door existed — and the emptiness law is kept. Nothing that was drawn
+	// goes dark, so nothing is refused at the door.
+	MethodPlanSpend = "PlanSpend" // PlanSpendArgs → []session.PlanSpendLine
 	// The conversation's own place on the thinking ladder (internal/session's
 	// effort.go). Three doors and not one, because the stored rung and the
 	// resolved rung are two different answers: the dial DRAWS the resolved one
@@ -1639,6 +1653,17 @@ type ConnectArgs struct {
 type ConnectedArgs struct {
 	Service string `json:"service"`
 	Account string `json:"account"`
+}
+
+// PlanSpendArgs is how far back the spend page's seat rollup is looking.
+//
+// SINCE IS THE SAME FLOOR [LedgerArgs.Since] IS, and it is a plain time.Time
+// for the same reason: it is a moment the wire already knows how to encode, cut
+// in Go on the far side against the ledger's own RFC3339Nano stamps
+// ([session.Agent.PlanSpend]). A zero Since is the whole rollup, which is what
+// a caller with no window yet means and what a test means.
+type PlanSpendArgs struct {
+	Since time.Time `json:"since,omitempty"`
 }
 
 // EventWire is a session.Event that survives JSON. Err is an interface and

@@ -142,6 +142,37 @@ var shapePrompt string
 //go:embed prompts/divide.md
 var dividePrompt string
 
+// bashworkerPrompt is the branch belt's doctrine page (bashbelt.go): how to
+// work when the six file tools have come off and the one hand is the shell.
+//
+// IT REPLACES THE FILE-TOOL GUIDANCE FOR ITS WORKERS rather than sitting beside
+// it, and that is a law and not a preference: a page naming a tool the belt
+// lacks is the prompt lying, and a second convention beside an existing one is
+// prohibited — so the composition below swaps this page in WHERE the embedded
+// page teaches the file tools, and rewrites the few sentences outside that
+// section that name one of them. A bash worker reading its page reads one
+// account of how to read, write, edit and search, not two.
+//
+//go:embed prompts/bashworker.md
+var bashworkerPrompt string
+
+// bashPolicyPrompt is the loop policy a bash-belt worker opens on: the FRAME →
+// PLAN → DISPATCH → WAIT → INTEGRATE shape it works by, carried ahead of every
+// other page so it is the thing the worker reads first and the thing its reading
+// is measured against. It is a whole page rather than a paragraph inside one
+// because the composition it leads REPLACES the chat colleague page for this
+// belt (bashtask.md's own words are the authority; this is only where it rides).
+//
+// THE ONLY TRANSLATIONS ARE THE THREE VERBS THE LOOP NAMES, and they are named
+// here rather than in the page so a drifted source is a red test and never a
+// stale sentence: the act is the belt's own one bash call, the finish is the
+// plan CLI's own `plandb done --agent`, and the wait is the plan CLI's own
+// `plandb wait --agent` — the task parks, the claim is released, and the
+// runtime runs it again when a dependency or a child moves.
+//
+//go:embed prompts/bashtask.md
+var bashPolicyPrompt string
+
 // fanLimitToken is the one thing the page above cannot spell for itself. THE
 // NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
 // that typed it would be the second place it lives (task.go's schema states the
@@ -246,7 +277,27 @@ func renderSystem(config Config) string { return renderSystemAt(config, time.Now
 // rendered more than once in a long conversation and a caller that can say when
 // is a caller a test can hold still.
 func renderSystemAt(config Config, now time.Time) string {
-	workspace := config.Workspace
+	// THE BASH BELT'S WORKER OPENS ON THE LOOP POLICY. A task on the experiment's
+	// belt is handed a page of its own rather than the composed one: the policy
+	// leads, the belt's doctrine follows (the shell idioms and the plan CLI),
+	// then the few codeaf constraints that still bind a task worker, and the
+	// project footer closes it. It is a whole page rather than a swap inside the
+	// composed one because the page it replaces teaches a shape — the chat
+	// colleague, the batch of calls, the visible plan before every step — that
+	// the bash loop does not have, and a page that argues with its own head is
+	// worse than a page that says less. Nothing here touches any other shape.
+	//
+	// A WORKER WITH ONE HAND READS THE PAGE ABOUT THAT HAND. This is the whole of
+	// a belt worker's system prompt: the belt's two pages ([bashWorkerPage]) and
+	// the project footer, and not one byte of prompts/system.md or
+	// prompts/worker.md — the tools those pages name are the belt's own
+	// ([renderBeltFacts]) or the shell, or the pages are the wrong shape's.
+	if config.mayBashBelt() {
+		var out strings.Builder
+		out.WriteString(bashWorkerPage())
+		out.WriteString(workerFooter(config, now))
+		return out.String()
+	}
 	var out strings.Builder
 	// THE PAGE, WITH ITS TOOL-NAMING FACTS COMPOSED FROM THIS BELT'S OWN
 	// PREDICATES (beltfacts.go). Everything below conditions a whole page on
@@ -280,8 +331,12 @@ func renderSystemAt(config Config, now time.Time) string {
 	// A node that may hand work out is told how to decide; a node standing on
 	// the floor of the tree is not, because it has no propose_task to decide
 	// with and a prompt promising one is a prompt that lies (the law is in
-	// CLAUDE.md and the belt is built from the same predicate).
-	if config.mayFanOut() {
+	// CLAUDE.md and the belt is built from the same predicate). ON THE
+	// EXPERIMENT'S BELT the page is lies twice over — the verbs it teaches are
+	// not on the belt, and the bashworker page above already carries the same
+	// loop (plan, automatic dispatch, wait, integrate) in the plan's words —
+	// so the fan-out page stays off this belt.
+	if config.mayFanOut() && !config.mayBashBelt() {
 		out.WriteString("\n\n")
 		out.WriteString(fanoutPage(config))
 	}
@@ -300,6 +355,47 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
 	}
 
+	out.WriteString(workerFooter(config, now))
+	return out.String()
+}
+
+// ── the bash worker's page ──────────────────────────────────────────────────
+
+// bashWorkerPage composes the page a bash-belt worker opens message[0] on: the
+// loop policy it works by and the belt's doctrine (the plan CLI and the shell
+// idioms), and nothing else. [renderSystemAt] appends the project footer after
+// it, so this is everything above the footer.
+//
+// A WORKER WITH ONE HAND READS THE PAGE ABOUT THAT HAND, AND NOTHING ELSE. The
+// belt's own pages are the policy (prompts/bashtask.md) and the doctrine
+// (prompts/bashworker.md); that is the whole of it. The chat's account of itself
+// (prompts/system.md) describes a pane, slash commands and ten tools this belt
+// does not carry, and prompts/worker.md is the TASK worker's page — the report it
+// owes, the assignment road, the settings — whose verbs a shell-only worker also
+// does not have. A page naming a hand the belt lacks is the prompt lying, and
+// every step of every worker pays for the sentences again, so neither page rides
+// this one.
+//
+// THE ORDER IS THE POINT. A task on this belt is a planner first — it frames,
+// plans, dispatches and integrates — and a page opening on the chat colleague or
+// the batch of calls would teach a shape the envelope refuses. So the policy
+// leads and the doctrine follows in the policy's own terms.
+func bashWorkerPage() string {
+	var out strings.Builder
+	out.WriteString(strings.TrimRight(bashPolicyPrompt, "\n"))
+	out.WriteString("\n\n")
+	out.WriteString(strings.TrimRight(bashworkerPrompt, "\n"))
+	return out.String()
+}
+
+// workerFooter is the closing footer every page ends on: the facts true of this
+// machine, this workspace and this minute, and the project's own instruction
+// files under this profile's bound. It is one function because two pages render
+// it now — the composed page and the bash belt's own — and a footer written
+// twice is a footer that will one day disagree with itself.
+func workerFooter(config Config, now time.Time) string {
+	workspace := config.Workspace
+	var out strings.Builder
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", workspace)

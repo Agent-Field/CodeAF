@@ -19,6 +19,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plan"
 )
 
+// machineryVocabulary is the words COMMANDS.md §3 rules out of anything a
+// person reads — the same list the flag-help law below checks. It lives in one
+// place so a usage page itself can be checked against it too (the belt doors'
+// help test), rather than against a second copy that could drift from this one.
+var machineryVocabulary = []string{
+	"leaf", "leaves", "spine", "seat", "sheet", "rail", "brain",
+	"charter", "verdict", "errand", "ensemble", "contract", "panel",
+}
+
 // ── THE RENAME'S OWN CONTRACT ───────────────────────────────────────────────
 //
 // `run` used to mean two unrelated commands, and `--budget` used to mean tokens
@@ -480,13 +489,9 @@ func TestOneConceptIsSpelledOneWayOnEveryDoor(t *testing.T) {
 	// carries the word is `codeaf logs --node`, whose whole contract is that it
 	// filters the call log's own recorded field, printed back byte-for-byte
 	// under `--json`. A filter named after the field it filters is not a leak.
-	machinery := []string{
-		"leaf", "leaves", "spine", "seat", "sheet", "rail", "brain",
-		"charter", "verdict", "errand", "ensemble", "contract", "panel",
-	}
 	for _, found := range declared {
 		lower := strings.ToLower(found.usage)
-		for _, word := range machinery {
+		for _, word := range machineryVocabulary {
 			if !strings.Contains(lower, word) {
 				continue
 			}
@@ -702,8 +707,8 @@ func TestTheHelpPageIsGroupedCommandsAndExamplesAndNotTheEnvironmentTable(t *tes
 	if strings.Contains(usageText, "CODEAF_CALL_LOG_BODIES") {
 		t.Error("the environment table is back on `codeaf --help`; it belongs at `codeaf help env`")
 	}
-	if lines := strings.Count(usageText, "\n") + 1; lines > 110 {
-		t.Errorf("`codeaf --help` is %d lines; it was cut down to fit a screen and a bit", lines)
+	if lines := strings.Count(usageText, "\n") + 1; lines > helpLineCap {
+		t.Errorf("`codeaf --help` is %d lines; it was cut down to fit a screen and a bit (the cap is %d)", lines, helpLineCap)
 	}
 	if !strings.Contains(usageText, "an agent you talk to, and hand work to when you walk away") {
 		t.Error("`codeaf --help` no longer opens with what this product is")

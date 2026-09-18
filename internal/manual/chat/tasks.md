@@ -2009,6 +2009,13 @@ When two or more workers are running anywhere in the live work, the section labe
 the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
 zero or one running worker there is no tail at all, so the label remains `tasks`.
 
+**A run's rows are not on this column.** The column draws this conversation's own tree and
+nothing else, so the plan rows a run writes to the store — including the root's children — are
+drawn in the tasks place instead (the page `/history`, `ctrl+.` and `alt+2` open). A run's row
+there spends one line under its title while a step is in flight — the running glyph `◐`, the
+shell lead `$` and the command its worker is on right now — with the task's `N steps · $0.11`
+under it. *The tasks place* below has it whole.
+
 ## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
 **On the column at the right there is no diamond.** A task's row there opens with one cell,
@@ -5097,6 +5104,23 @@ for three additions that belong in that cell:
   question a shut fold raises.
 - work **another window is running** says `another window` here instead.
 
+**A run's row carries its live step while its worker is on one.** A run's rows are rows of
+the store rather than this session's own tree, and while a step is in flight the row spends
+one more line under the title — the running glyph `◐`, the shell lead `$` and the command the
+step is running — with the task's own figures beneath it: how many steps its worker has taken
+and what it has cost, joined ` · ` and each half left out when it is nothing:
+
+```
+ ◐ Add rate limiter to /api/upload
+   $ git grep -n RateLimit internal/api
+   12 steps · $0.11
+```
+
+The line is there only while a step is in flight, so a row between steps, one held behind
+named work and one that has landed draw their ordinary row and no live line. A run row the
+store holds admitted-and-not-started wears `queued` rather than `running`, and one held behind
+named work names what holds it after the word: `queued · waits: <the work>`.
+
 **A main chat's row names its folder only where that folder is news.** A conversation in the
 folder this window is already sitting in wears no tag — the tag would be the same word on
 every row — and neither does one whose workspace is your home directory or a scratch folder
@@ -5142,6 +5166,25 @@ days to weeks and then months; `shift+↓` zooms back in. The window is re-group
 reading already in hand — nothing goes back to disk for it. On a phone the bottom line
 remains the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing
 empty headings, and says no count beside that prose.
+
+## Why is this task indented under that one? — the plan drawn as a tree
+
+The plan is a **graph, and the list draws it as one**. A task sits under the task
+that requested it — the parent the worker wrote to the store — and a deeper task
+sits under that, each joined to the row above it by the list's own connector
+(`├ `, `└ `). You read the shape of the run down the indentation, not a flat list
+of peers.
+
+A task **held behind named work** sits under **the task it waits on**. The store
+keeps a task `pending` until the work it depends on is done; when that work is not
+the task's own parent, the row is drawn under it, one level in, and still wears
+`queued · waits: <that task>` — the row above it is the name the row itself says.
+Where what holds a task is its own parent the row is already there and nothing
+moves.
+
+A task's **page** shows its children under its steps the same way, each with its
+live step while its worker is on one. Opening a row (`enter`) and leaving a note
+are unchanged by the tree.
 
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 

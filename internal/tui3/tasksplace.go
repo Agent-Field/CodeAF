@@ -102,6 +102,11 @@ type tasksItem struct {
 	// rather than another terminal. It is a fact about THE WINDOW, not about the
 	// door: what the door is is decided once, in [app.taskOwnerOf].
 	here bool
+	// plan is the STORE ROW this piece of work is, when it is one of the run's
+	// plan tasks rather than a row of the record (taskplan.go). It is nil on
+	// every other row, and the row's own steps and dollars — the figures the
+	// record has no room for while the work is still turning — come off it.
+	plan *session.PlanTaskRow
 }
 
 // pick reports whether the CURSOR may stand on this row, and EVERY ROW OF WORK
@@ -145,6 +150,10 @@ type tasksMine struct {
 	// across the desk — and the difference decides whether the row's door is a
 	// switch or a second view onto the engine.
 	here map[string]bool
+	// plan is the run's own store read for the conversation this page was opened
+	// in, when it has a plan at all ([planAgent]). Nil is a conversation with no
+	// plan, which draws exactly the page this place has always drawn.
+	plan []session.PlanTaskRow
 	// tilde is this machine's home directory, which is what tells a folder
 	// somebody WORKS in from the one they stand in ([chatProjectWord]). It is
 	// read once at boot and handed in like every other fact, because the reading
@@ -275,6 +284,26 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 		put(tasksKeyOf(row.entry), tasksItem{
 			entry: row.entry, row: tasksRowFor(world, mine, row.entry), runs: row.runs, live: row.live,
 		})
+	}
+	// THE RUN'S PLAN COMES AFTER THIS WINDOW'S OWN WORK, which is the order a
+	// person reads them in: the work of this chat, then the store the run is
+	// coordinating through. A row a node already carries is left out — a
+	// plan-born node and its store task are one piece of work (taskplan.go's
+	// [planRowShown]).
+	if len(mine.plan) > 0 {
+		names := planNamesOf(mine.rows, mine.row.ID)
+		// THE PAGE IS READ ONCE INTO NAMES, and every row off it is handed the
+		// reading: a task the store holds `pending` is held behind named work, and
+		// the name is another row's title (taskplan.go's [planWaits]).
+		kin := planKinOf(mine.plan)
+		for _, task := range mine.plan {
+			if planRowShown(names, task.Title) {
+				continue
+			}
+			item := planItem(task, mine.row.ID, kin)
+			item.row = tasksRowFor(world, mine, item.entry)
+			put(tasksKeyOf(item.entry), item)
+		}
 	}
 	for _, task := range mine.away {
 		// A TASK NOTHING NAMED IS LEFT OFF. A row with no words on it says
@@ -489,6 +518,12 @@ const (
 	// nothing can be replayed from it, and a synthetic row would have arrived at
 	// [tasksPlace.verbs] and at the card offering both.
 	tasksLineChat
+	// tasksLinePlanUnder is one of the rows a plan task spends under its own
+	// title while a step is in flight (task.go's [planUnderRows]): the live
+	// step's command, and the task's figures beneath it. It answers to the row
+	// above it ([tasksLine.owner]) and is never a stop of its own, the way a
+	// phone card's second line is not.
+	tasksLinePlanUnder
 )
 
 type tasksLine struct {
@@ -508,6 +543,11 @@ type tasksLine struct {
 	// and air. It is what the cursor stands on, what a press resolves to, and
 	// what stops a card's second line reading as a second row.
 	owner int
+	// planUnder is which row of a plan task's under-block this line is: 0 for
+	// the live step's command and 1 for the telemetry under it. It is meaningful
+	// only on a [tasksLinePlanUnder] and is what [tasksReading.paint] picks out
+	// of the block [planUnderRows] builds.
+	planUnder int
 	// kin is the family column: the two cells in front of a row of work that say
 	// where it sits in a tree. It is "" on a page with no families in it at all,
 	// which is most pages — the column APPEARS when there is a tree to draw, so
@@ -592,6 +632,22 @@ func (r tasksReading) lay(width int) []tasksLine {
 			rank: tree.rank[key]}
 		mark := ""
 		switch {
+		case len(kids) > 0 && item.plan != nil:
+			// A PLAN ROW IS A NODE OF THE PLAN'S OWN TREE AND NOT A FOLD. A record
+			// row with work under it wears the fold and opens shut
+			// ([tasksReading.opens] says why); a plan row's children are the store's
+			// own graph — the parent the worker wrote and the task a held row waits
+			// on — so they always follow it and the tree a person came to read is on
+			// screen without a keypress. The mark is the tasks place's own connector
+			// ([tasksKin]) and never a second scheme.
+			line.open = true
+			mark = tasksKinPad
+			if nested {
+				mark = tasksKinCont
+				if last {
+					mark = tasksKinLast
+				}
+			}
 		case len(kids) > 0:
 			line.folds, line.family, line.kids = true, key, len(kids)
 			line.open = r.opens(key)
@@ -615,6 +671,18 @@ func (r tasksReading) lay(width int) []tasksLine {
 			lines = append(lines, tasksLine{
 				kind: tasksLineTail, item: item, owner: own,
 				kin: tasksKin(depth, levels, tasksKinPad),
+			})
+		}
+		// A PLAN ROW WITH A STEP IN FLIGHT SPENDS ITS UNDER-BLOCK on the live step
+		// and the task's own figures (task.go's [planUnderRows]), for every tier:
+		// the rows hang under the TITLE, answer to the same press as the row, and
+		// are capped at [railUnderRows]. Nothing is added for a plan row between
+		// steps or one that has landed, which is the emptiness law on the block.
+		for under := 0; under < planUnderCount(item.plan); under++ {
+			lines = append(lines, tasksLine{
+				kind: tasksLinePlanUnder, item: item, owner: own,
+				kin:       tasksKin(depth, levels, tasksKinPad),
+				planUnder: under,
 			})
 		}
 		if !line.open {
@@ -1352,6 +1420,21 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 			tail = 1
 		}
 		return lead + pal.dim(line.kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
+	case tasksLinePlanUnder:
+		// THE LIVE STEP LINE AND THE FIGURES UNDER IT, hung where the phone
+		// card's second line hangs so a plan row's block reads at the same
+		// indent whichever tier is drawing it (task.go's [planUnderRows]).
+		indent := strings.Repeat(" ", taskSheetPhoneIndent)
+		block := lead + pal.dim(line.kin) + indent
+		under := room - ansi.StringWidth(block)
+		if under < 1 {
+			under = 1
+		}
+		rows := planUnderRows(line.item, under, pal)
+		if line.planUnder >= len(rows) {
+			return ""
+		}
+		return block + rows[line.planUnder]
 	}
 	// THE FAMILY COLUMN IS CHOSEN IN THE LAYOUT AND PAINTED BY THE ROW. It is dim
 	// everywhere — a connector is the surface's own furniture, not the row's
@@ -1694,8 +1777,17 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := tasksBareLead + pal.dim(line.kin) + glyphInk(glyph) + " "
 	cells := ansi.StringWidth(tasksBareLead+line.kin) + ansi.StringWidth(glyph) + 1
+	state, second := tasksStateField(line), tasksKeyField(by.key, line.rank, now)
+	// A PLAN ROW SHOWS ITS OWN TELEMETRY AND NOT THE SORT KEY'S COLUMN. The
+	// store carries two figures the record has no room for while the work is
+	// still turning — the steps a worker has taken and the dollars the task has
+	// cost — so they take the two cells, each omitted when it is nothing
+	// (taskplan.go).
+	if item.plan != nil {
+		state, second = planStateField(item), planSpendField(item)
+	}
 	return tasksTableRow(lead, cells, tasksLabel(item.entry),
-		tasksStateField(line), tasksKeyField(by.key, line.rank, now),
+		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
 
@@ -1845,6 +1937,16 @@ func tasksMiddle(item tasksItem) string {
 		return activity
 	}
 	var parts []string
+	// A PLAN ROW CARRIES WHAT THE STORE KNOWS: its steps and its money
+	// (taskplan.go), the two figures a phone card otherwise has no room for.
+	if item.plan != nil {
+		if steps := planStepWords(item.plan.Steps); steps != "" {
+			parts = append(parts, steps)
+		}
+		if usd := planSpendWord(item.plan.USD); usd != "" {
+			parts = append(parts, usd)
+		}
+	}
 	if entry.FilesChanged > 0 {
 		parts = append(parts, itoa(entry.FilesChanged)+plural(" file", entry.FilesChanged))
 	}

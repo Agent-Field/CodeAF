@@ -4712,6 +4712,11 @@ func (a *app) paint() tea.Cmd {
 	if a.room != nil {
 		a.room.dirty = true
 	}
+	// AND THE PLAN PAGE'S OWN READING IS TAKEN ON THE SAME CLOCK, for the same
+	// reason: a page left open on a running task follows its newest step
+	// ([app.taskPlanFollow]), and a page on a settled task is not read at all —
+	// the clock stops with the task, one row down.
+	a.taskPlanFollow()
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
 	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
@@ -4889,7 +4894,12 @@ func (a *app) paint() tea.Cmd {
 		// with a lump still walking onto the page, and without this the last
 		// paragraph would freeze mid-word until something unrelated asked
 		// for a frame (reveal.go).
-		a.liveRevealing() {
+		a.liveRevealing() ||
+		// AND A PLAN PAGE ON A RUNNING TASK IS THE SEVENTEENTH, and it is the
+		// fourth that can be the whole of what is happening: the page follows a
+		// live edge the store writes from another process, and no turn of ours
+		// runs while it moves (taskplan.go's [app.taskPlanFollow]).
+		a.taskPlanRunning() {
 		return tea.Batch(kick, a.frameTick())
 	}
 	a.painting = false

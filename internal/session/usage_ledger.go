@@ -886,6 +886,15 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 	// absent, which is the true sentence "nobody said" rather than a zero
 	// somebody reads as a figure.
 	RecordUsage(path, usageFromResponse(line, call.lane.Lane, call.lane.TTFT, call.lane.Gen, call.lane.Output, call.lane.Hedged, call.lane.Waste))
+
+	// BESIDE THE LEDGER ROW, the plan store's own charge: a bash-belt worker
+	// with a plan task writes the same call into the run's spend ledger
+	// (plandb_plan.go), so the store's per-project rollup is the whole run's
+	// bill and this ledger row only ever one worker's share of it. The gate is
+	// the belt's, and the write is best-effort and off the call's road.
+	if a.config.mayBashBelt() {
+		a.recordPlanSpend(used, call.model)
+	}
 }
 
 // usageTaskID spells a node's id the way the task index spells it, and answers
