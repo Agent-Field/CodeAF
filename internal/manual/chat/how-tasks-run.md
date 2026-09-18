@@ -58,8 +58,10 @@ lives in the conversation's own folder, so closing the terminal does not lose it
 A folder **you named** stays until you say otherwise. Before conversation evidence is
 weighed, the task's own brief gets a rung: when all the existing places its contract writes
 down have exactly one containing folder, that folder is where the task stands. This is a
-rule of properties — existence, containment, and uniqueness — not of a particular tool,
-kind of artifact, or spelling. Several descendants of one folder are one answer; an aside
+rule of properties (existence, containment, uniqueness), not of a particular tool,
+kind of artifact, or spelling. A named folder that is inside no repository is where output
+goes and does not vote when another named folder is inside one, so a brief that works in
+one repository and writes its report to a scratch folder beside it still has one answer. Several descendants of one folder are one answer; an aside
 that introduces an unrelated folder makes the brief ambiguous instead of silently winning.
 
 One folder the conversation merely worked out **decays**: if every call since has been in

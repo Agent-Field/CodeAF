@@ -367,7 +367,30 @@ func groundPlainlyNamedByBrief(spec taskSpec, workspace string) (string, bool) {
 	if len(refs) == 0 {
 		return "", false
 	}
-	return uniqueContainingGround(refs, candidates)
+	return uniqueContainingGround(placesTheWorkIsAbout(refs), candidates)
+}
+
+// placesTheWorkIsAbout drops, from the folders a contract names, the ones that
+// are only WHERE OUTPUT GOES. The property: when any named folder is inside a
+// repository, a named folder inside no repository does not vote on where the
+// task stands. A brief that works in one repository and writes its report to a
+// scratch folder beside it names one place the work is about and one place the
+// result lands, and read as two rivals they cancelled each other out: measured
+// 2026-09-18, where the scratch folder did not exist for the first round of
+// proposals (so the rung answered) and did for the second (so it fell silent
+// and the person was asked a question every brief had already answered). With
+// no repository named at all, every named folder votes as before.
+func placesTheWorkIsAbout(refs []string) []string {
+	var versioned []string
+	for _, ref := range refs {
+		if _, ok := repositoryRoot(ref); ok {
+			versioned = append(versioned, ref)
+		}
+	}
+	if len(versioned) == 0 {
+		return refs
+	}
+	return versioned
 }
 
 // briefGroundReferents collects existing directory referents and the meaningful

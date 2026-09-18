@@ -376,3 +376,31 @@ func TestTheWorldCarriesTheFoldersAConversationIsAbout(t *testing.T) {
 		}
 	}
 }
+
+// A FOLDER OUTSIDE EVERY REPOSITORY IS WHERE OUTPUT GOES, AND IT DOES NOT VOTE
+// when the brief also names a folder inside one. The owner's proposals worked in
+// one repository and wrote their reports to a scratch folder beside it: while
+// that folder did not exist the brief had one answer, and once the first round
+// of tasks had made it, the two read as rivals and the person was asked a
+// question every brief had already answered. With no repository named at all,
+// a plain folder still decides.
+func TestAnOutputFolderOutsideEveryRepositoryDoesNotRivalTheRepositoryTheBriefNames(t *testing.T) {
+	ground, first, second := newTestRepo(t), newTestRepo(t), newTestRepo(t)
+	scratch := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	brief := "Work in " + ground + " and write the report to " + filepath.Join(scratch, "report.md")
+	stand := agent.resolveTaskGround(taskSpec{brief: brief, deliverable: filepath.Join(scratch, "report.md"), acceptance: "the report exists"})
+	if stand.ask != "" || stand.refusal != "" || stand.dir != canonicalPath(ground) || stand.rung != taskGroundBrief {
+		t.Fatalf("stand = %+v, want the repository the brief names, on the brief's rung", stand)
+	}
+
+	alone := agent.resolveTaskGround(taskSpec{brief: "Collect the notes under " + scratch, deliverable: "the notes", acceptance: "they exist"})
+	if alone.dir != canonicalPath(scratch) || alone.rung != taskGroundBrief {
+		t.Fatalf("stand = %+v, want the one plain folder the brief names", alone)
+	}
+}
