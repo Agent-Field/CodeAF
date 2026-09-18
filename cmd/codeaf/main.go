@@ -1205,7 +1205,7 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 const (
 	workLadderHelp    = "flag › CODEAF_MODEL › crew › default"
 	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew mastermind › the work model"
-	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › pinned plan seat › crew careful"
+	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › plan pinned by flag or environment › crew careful"
 	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
 	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
 	// The check seat's ladder names its environment rung and the resolved
