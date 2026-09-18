@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // armPlanStore points a test agent's graph at a store path and chat tag the way
@@ -254,6 +255,44 @@ func TestPlanTaskRowCarriesTheLiveStep(t *testing.T) {
 	}
 	if page.Row.Live.Step != 7 || page.Row.Live.Command != alpha.Live.Command {
 		t.Fatalf("the page's live step = %#v, want the row's", page.Row.Live)
+	}
+}
+
+// A task page carries the two run seat models and associates a held question
+// with the plan row whose live node raised it. The question keeps the exact
+// options the engine already accepts.
+func TestPlanTaskPageCarriesSeatModelsAndHeldQuestionFacts(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"})
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.config.RolesSource = tierSettings(map[string]string{
+		roles.TierKey(roles.TierWorker):     "test/work",
+		roles.TierKey(roles.TierMastermind): "test/plan",
+	})
+	armPlanStore(t, agent, path, "chat-a")
+
+	const nodeID = uint64(91)
+	g := agent.graph()
+	g.mu.Lock()
+	g.nodes[nodeID] = &TaskNode{id: nodeID, graph: g, spec: taskSpec{title: "Alpha", planID: "alpha"}}
+	g.mu.Unlock()
+	agent.mu.Lock()
+	agent.taskAnswers = map[uint64]*taskQuestion{nodeID: {notice: TaskNotice{ID: nodeID, Title: "Alpha", Summary: "choose now"}}}
+	agent.mu.Unlock()
+
+	page, ok := agent.PlanTaskPage("t-alpha")
+	if !ok {
+		t.Fatal("the task page was not answered")
+	}
+	if page.WorkModel != "test/work" || page.PlanModel != "test/plan" {
+		t.Fatalf("seat models = work %q, plan %q; want test/work and test/plan", page.WorkModel, page.PlanModel)
+	}
+	if len(page.Questions) != 1 || page.Questions[0].TaskID != "t-alpha" {
+		t.Fatalf("held questions = %#v, want alpha's question", page.Questions)
+	}
+	if page.Questions[0].Head == "" || len(page.Questions[0].Options) == 0 {
+		t.Fatalf("held question lost its words or answer keys: %#v", page.Questions[0])
 	}
 }
 
