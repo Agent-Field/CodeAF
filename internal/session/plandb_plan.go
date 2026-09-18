@@ -687,13 +687,27 @@ func (p *planState) shimDir() string {
 	return filepath.Join(filepath.Dir(p.path), "bin")
 }
 
-// planBashPrefix is the exported assignment that puts the shim's directory
-// FIRST on the PATH of ONE command — the assignment a bash-belt worker's
-// command is prefixed with, and the whole of the mechanism: the process
-// environment is never touched, and the shell expands $PATH inside the
-// assignment, so the command sees the shim first and everything else exactly
-// where the worker's own environment put it. The prefix is empty when this
-// run has no armed plan, which is every worker outside the experiment.
+// planBashPrefix is the assignment that puts the shim's directory FIRST on the
+// PATH of ONE command and binds that same command to the run's store — the
+// prefix a bash-belt worker's command carries, and the whole of the mechanism.
+// THE LAW IT CARRIES: THE ONLY `plandb` A WORKER CAN REACH IS THE RUN'S OWN.
+//
+// IT IS AN `export`, NOT A BARE COMMAND-PREFIX ASSIGNMENT, and that is the fix,
+// not decoration: `PATH=x:$PATH cmd` binds only the FIRST simple command of the
+// line, so `cd elsewhere && plandb add` — or any step whose plandb call is not
+// the first word — left `plandb` to resolve on the host's PATH and write a store
+// this run never reads, the exact fault this exists to stop. An `export` reaches
+// the whole command line in the one shell process the call runs. It still moves
+// nothing in the process environment, which every session in this process shares
+// and none may grow.
+//
+// THE STORE IS BOUND WITH IT. The shim's directory makes the run's CLI the one
+// on PATH, and PLANDB_DB lets that CLI read this run's plan from ANY working
+// directory, so a worker that cd's outside the run's tree still writes the run's
+// store rather than failing to find one. The CLI honours PLANDB_DB ahead of its
+// walk-up (internal/plandb's cliStore), so no `--db` is ever the worker's to
+// pass. The prefix is empty when this run has no armed plan, which is every
+// worker outside the experiment.
 func (g *TaskGraph) planBashPrefix() string {
 	plan := g.planIfArmed()
 	if plan == nil {
@@ -705,7 +719,7 @@ func (g *TaskGraph) planBashPrefix() string {
 	if bin == "" {
 		return ""
 	}
-	return "PATH=" + quoteShWord(bin) + ":$PATH "
+	return "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path) + "; "
 }
 
 // planCLIBinEnv is the resolver's one override: it names a binary that

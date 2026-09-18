@@ -27,6 +27,10 @@ seams: every part independently verifiable. Every unknown named in the plan gets
 its own probe task. Size rule: split until describing a part costs as much as
 doing it.
 
+The plan lives in `plandb`, already on your PATH and bound to this run's store:
+run it plainly, from any directory, and never pass `--db` or hunt the filesystem
+for the binary — the one you reach is this run's own.
+
 DISPATCH is automatic: every ready task you create is executed by a fresh
 worker. Your FIRST action is the FRAME/PLAN of the assignment — recon and
 component work belong to workers, not to you.
