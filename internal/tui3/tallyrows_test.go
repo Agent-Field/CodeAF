@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/manual"
-	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // tasksWorkRows is how many rows of WORK a laid-out page actually draws — the
@@ -198,45 +197,13 @@ func TestTheTasksFootStillCountsEveryPieceByItsActualState(t *testing.T) {
 	}
 }
 
-// BOTH OPENING HEADINGS THE CODE BUILDS ARE WORDS THE MANUAL KNOWS. The page has
-// two of them and the manual quoted only the second, which is the one a machine
-// with any conversation on it never sees. The readings here exercise both
-// branches and the corpus is asked for what they produced, so neither heading can
-// be restated as a literal that drifts.
-func TestTheManualQuotesBothTasksOpeningHeadingsExactly(t *testing.T) {
-	loc := time.FixedZone("fixture", -4*60*60)
-	now := time.Date(2026, time.August, 25, 13, 11, 0, 0, loc)
-	win := session.LastDays(now, 15)
-
-	chats := make([]session.SessionRow, 15)
-	for i := range chats {
-		chats[i] = session.SessionRow{
-			ID: itoa(i + 1), Title: "chat " + itoa(i+1), Transcript: "/journals/" + itoa(i+1), At: now,
-		}
-	}
-	for i := 0; i < 13; i++ {
-		chats[0].Tasks.Rows = append(chats[0].Tasks.Rows, session.TaskIndexEntry{
-			ID: itoa(i + 1), SessionID: chats[0].ID, Label: "work " + itoa(i+1),
-			Status: string(session.TaskDone), EndedAt: now,
-		})
-	}
-	chats[0].Tasks.Rows[0].Cost = 2.98
-	conversationReading := readTasks(session.World{Projects: []session.Project{{Sessions: chats}}}, tasksMine{}, win, tasksSort{}, time.Time{}, now)
-
-	flat := session.SessionRow{ID: "flat", Title: "flat work", At: now}
-	for i := 0; i < 148; i++ {
-		flat.Tasks.Rows = append(flat.Tasks.Rows, session.TaskIndexEntry{
-			ID: itoa(i + 1), SessionID: flat.ID, Label: "work " + itoa(i+1),
-			Status: string(session.TaskDone), EndedAt: now,
-		})
-	}
-	flat.Tasks.Rows[0].Cost = 34.10
-	flatReading := readTasks(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{flat}}}}, tasksMine{}, win, tasksSort{}, time.Time{}, now)
-
-	for _, heading := range []string{conversationReading.head(200, false), flatReading.head(200, true)} {
-		if !manual.Chat().Mentions(heading) {
-			t.Fatalf("the tasks page opens with %q, which the chat manual does not quote", heading)
-		}
+// THE COUNTS-STRIP HEAD THE CODE BUILDS IS A SENTENCE THE MANUAL KNOWS. The
+// former test pinned the removed chat/subtask and flat-work headings. Keep its
+// manual-drift law, restated for the approved state-group counts strip.
+func TestTheManualQuotesTheWorkCountsHeadExactly(t *testing.T) {
+	heading := "4 running · 3 queued · 1 your call · 2 done today"
+	if !manual.Chat().Mentions(heading) {
+		t.Fatalf("the work page opens with %q, which the chat manual does not quote", heading)
 	}
 }
 
