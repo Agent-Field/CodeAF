@@ -417,6 +417,13 @@ var beltFacts = []beltFact{{
 // neither ([Config.mayQuickTask]), which is what lets one fragment name them
 // both and be true wherever it renders.
 var handoffFacts = []beltFact{{
+	tools: []string{"propose_task", "tasks"},
+	holds: func(c Config) bool { return !c.InTask && bashBeltAsked() },
+	present: "Hand off: launch a task.\n" +
+		"Add to: while one runs, a second `/task` joins the live root.\n" +
+		"Ask about: read the store rows and the task steps and answer from them; never redo the work.",
+	absent: "",
+}, {
 	tools: []string{"propose_task", quickTaskToolName},
 	holds: Config.mayProposeTask,
 	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +
