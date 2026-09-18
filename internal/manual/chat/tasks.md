@@ -5167,6 +5167,21 @@ reading already in hand — nothing goes back to disk for it. On a phone the bot
 remains the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing
 empty headings, and says no count beside that prose.
 
+## what are the dots next to a task?
+
+The dots show how far the whole task family has moved. `●` is done, `◐` is running
+or a share that is partly done, `○` is not started, and `✘` is a share holding a
+failure. The running cell is the first cell that is not full, so the moving edge is
+always the first unfinished part.
+
+A family with one task has no dots and says its state word instead. From two through
+ten tasks, each cell is one task. With eleven or more, ten cells divide the family
+into tenths. The widest row shows all ten cells and words such as `6 of 10 · 2
+running · $0.41`; the next tier keeps ten cells and shortens the count to `6/10`;
+the rail uses five cells and `6/10`; the narrowest tier shows `6/10` alone. A family
+that is entirely finished says `done`, never `10 of 10`, and failures read like `8
+of 10 · 2 failed`.
+
 ## Why is this task indented under that one? — the plan drawn as a tree
 
 The plan is a **graph, and the list draws it as one**. A task sits under the task
@@ -5185,6 +5200,11 @@ with its live step while its worker is on one. Opening a row (`enter`) and
 leaving a note are unchanged by the tree.
 
 ## Why is this group one line? — finished families fold on the rail
+
+The rail puts families with running work first, newest activity on top, then queued
+families, then done families folded with their age. Inside a family it keeps store
+order, except that running rows float to the top and its done rows fold into one
+`✔ N done` line at the bottom.
 
 A family becomes one rail line when every task in it is done or failed. The line
 keeps the family title and says how many settled below it — `· 3 done`, or
