@@ -72,10 +72,9 @@ key.
    seen set), and one read and one write per day it has fresh rows on (that
    day's seen set and its quota counter) — neither scaling with the row count,
    so a 200-row batch over ten cells on one day is 12 writes where one write per
-   row was 200. The relay is deployed on Cloudflare Workers' `plan: <operator
-   fills in>` plan; neither this runbook nor `wrangler.toml` names one, so fill
-   it in. Cloudflare's free tier allows 1,000 KV writes and 100,000 KV reads per
-   day (a paid plan is metered, not capped). The day's seen set is at most
+   row was 200. The relay is deployed on a plan whose KV is metered, not capped, so the
+   free tier's daily ceilings (1,000 KV writes and 100,000 KV reads) do not
+   apply; the operator keeps the plan's name and price out of this file. The day's seen set is at most
    `ROWS_PER_INSTALL_PER_DAY` nonces of 32 hex characters plus a separator —
    16,500 bytes at the default 500, against KV's 25 MiB value limit — so a plan
    that raises the quota past what one value holds is refused rather than

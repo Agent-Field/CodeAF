@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE ESCAPE HATCH'S OWN TABLE, pinned to the numbers it exists to restore.
@@ -77,7 +78,7 @@ func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 		Elapsed: 1234 * time.Millisecond,
 	}
 
-	encoded, err := json.Marshal(buildExecEnvelope(outcome, nil, "openai/gpt-5", ""))
+	encoded, err := json.Marshal(buildExecEnvelope(outcome, nil, "openai/gpt-5", "", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 }
 
 func TestBuildExecEnvelopeToleratesNilOutcome(t *testing.T) {
-	encoded, err := json.Marshal(buildExecEnvelope(nil, nil, "", ""))
+	encoded, err := json.Marshal(buildExecEnvelope(nil, nil, "", "", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestBuildExecEnvelopeToleratesNilOutcome(t *testing.T) {
 	if fields["stop"] != string(stopError) || fields["ok"] != false {
 		t.Fatalf("a nil outcome is not reported as unrunnable:\n%s", encoded)
 	}
-	if code := exitFor(buildExecEnvelope(nil, nil, "", "").Stop); code != exitCannotRun {
+	if code := exitFor(buildExecEnvelope(nil, nil, "", "", "").Stop); code != exitCannotRun {
 		t.Fatalf("exit code for a nil outcome = %d, want 1", code)
 	}
 }
@@ -391,7 +392,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 		{"a run that could not be started", nil, "error"},
 		{"a run that broke after it started", &exec.Outcome{Stop: exec.StopError, Turns: 3}, envelopeIncomplete},
 	} {
-		envelope := buildExecEnvelope(door.outcome, runErr, "", "")
+		envelope := buildExecEnvelope(door.outcome, runErr, "", "", "")
 		fields := envelopeFields(t, envelope)
 		said, _ := fields[door.field].(string)
 		if said == "" {
@@ -412,7 +413,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	}
 
 	// AND THE `error` KEY IS EMPTY, NOT MISSING, ON THE RUN THAT STARTED.
-	ran := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError, Turns: 3}, runErr, "", "")
+	ran := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError, Turns: 3}, runErr, "", "", "")
 	encoded, err := json.Marshal(ran)
 	if err != nil {
 		t.Fatal(err)
@@ -423,7 +424,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	// A run that worked says nothing. The KEY IS STILL THERE and empty, which is
 	// the envelope's guarantee: a field is never absent, so a caller reading
 	// `.error` on an older or newer run is never handed null.
-	clean := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "ok"}, nil, "", "")
+	clean := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "ok"}, nil, "", "", "")
 	if clean.Error != "" {
 		t.Fatalf("a run that worked reported an error: %q", clean.Error)
 	}
@@ -467,6 +468,108 @@ func TestAWallUnderASecondIsNotRoundedAwayOnAnyDoor(t *testing.T) {
 				t.Errorf("%s folds a wall through whole seconds (%s); a duration flag is a duration all the way down",
 					source, shape)
 			}
+		}
+	}
+}
+
+// A NON-VERIFIED EXEC RUN NAMES WHERE ITS WORK IS STANDING AND THE WORD THAT
+// LEFT IT THERE, ON THE SAME TERMS #1182 GAVE `do`. An exec run works IN PLACE
+// in the directory it was pointed at, owns no session graph and leaves its
+// landing for the pool's judge to score on the next process — so until that
+// judge reads it, nothing on the envelope said where the run's work was or what
+// verdict stood on it. Both words are the record's own: `failed` for a run that
+// broke with nothing to show — the same condition that suppresses the pending
+// landing — and `unverified` for one that produced work nobody has judged.
+//
+// The branch is the workspace's own, and only where a person could check one
+// out: a workspace that is no repository or a detached HEAD names none, and
+// still says its verdict, because the word does not depend on git.
+func TestANonVerifiedExecRunNamesItsKeptBranchAndVerdict(t *testing.T) {
+	workspace := gitWorkspaceOn(t, "work-branch")
+	detached := gitWorkspaceOn(t, "detached-branch")
+	if out, err := gitIn(detached, "checkout", "-q", "--detach", "HEAD"); err != nil {
+		t.Fatalf("detaching the head: %v\n%s", err, out)
+	}
+	broke := errors.New("node " + execNodeKey + ": the provider refused the call")
+
+	for _, ending := range []struct {
+		what string
+		// outcome is nil for the run that never started.
+		outcome     *exec.Outcome
+		runErr      error
+		workspace   string
+		wantVerdict string
+		// wantBranch "" means the key must be ABSENT, not empty.
+		wantBranch string
+	}{
+		{
+			what:        "a run that produced work nobody has judged",
+			outcome:     &exec.Outcome{Stop: exec.StopDone, Text: "the note is written", Artifacts: []string{"NOTE.md"}},
+			workspace:   workspace,
+			wantVerdict: string(session.TaskUnverified),
+			wantBranch:  "work-branch",
+		},
+		{
+			what:        "a run that could not be started",
+			runErr:      broke,
+			workspace:   workspace,
+			wantVerdict: string(session.TaskFailed),
+			wantBranch:  "work-branch",
+		},
+		{
+			what:        "a run that broke after running and produced nothing",
+			outcome:     &exec.Outcome{Stop: exec.StopError, Turns: 3},
+			runErr:      broke,
+			workspace:   workspace,
+			wantVerdict: string(session.TaskFailed),
+			wantBranch:  "work-branch",
+		},
+		{
+			what:        "a workspace that is no repository",
+			outcome:     &exec.Outcome{Stop: exec.StopDone, Text: "the note is written"},
+			workspace:   t.TempDir(),
+			wantVerdict: string(session.TaskUnverified),
+		},
+		{
+			what:        "a detached head",
+			outcome:     &exec.Outcome{Stop: exec.StopDone, Text: "the note is written"},
+			workspace:   detached,
+			wantVerdict: string(session.TaskUnverified),
+		},
+	} {
+		envelope := buildExecEnvelope(ending.outcome, ending.runErr, "openai/gpt-5", "", ending.workspace)
+		fields := envelopeFields(t, envelope)
+		if got := fields["verdict"]; got != ending.wantVerdict {
+			t.Fatalf("%s: verdict = %v, want %q\n%v", ending.what, got, ending.wantVerdict, fields)
+		}
+		got, present := fields["kept_branch"]
+		if ending.wantBranch == "" {
+			if present {
+				t.Fatalf("%s: named a kept branch it does not have: %v\n%v", ending.what, got, fields)
+			}
+			continue
+		}
+		if !present {
+			t.Fatalf("%s: names no branch, want %q, so a recoverer has nowhere to look\n%v",
+				ending.what, ending.wantBranch, fields)
+		}
+		if got != ending.wantBranch {
+			t.Fatalf("%s: kept_branch = %v, want %q\n%v", ending.what, got, ending.wantBranch, fields)
+		}
+	}
+}
+
+// THE SEAM KEEPS ITS MOUTH SHUT WHERE THERE IS NOTHING TO SAY. A run that
+// settled whole — `do`'s ordinary ending, through the same builder — names
+// neither key: its work is on the branch its caller already reads, and the
+// presence of either key is itself the answer to "did this work land?".
+func TestARunThatNamesNoVerdictCarriesNeitherKey(t *testing.T) {
+	fields := envelopeFields(t, buildResultEnvelope(runResult{
+		Stop: stopDone, Answer: "the note is written",
+	}))
+	for _, key := range []string{"verdict", "kept_branch"} {
+		if got, present := fields[key]; present {
+			t.Fatalf("a settled run carries %s = %v; a settled run names neither", key, got)
 		}
 	}
 }

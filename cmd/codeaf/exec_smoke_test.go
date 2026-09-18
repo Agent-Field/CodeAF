@@ -306,3 +306,28 @@ func TestSmokeBinaryNeverSendsUsageCounts(t *testing.T) {
 		t.Fatalf("status printed %q, want it to report telemetry off", stdout)
 	}
 }
+
+// THE KEPT BRANCH AND THE VERDICT SURVIVE THE DOOR. An exec run works in the
+// directory it was pointed at, in place, and leaves its landing for the pool's
+// judge — so the envelope it hands back names the workspace's own branch and
+// the record's word for what left the work there, end to end, exactly as #1182
+// gave `codeaf do --json`.
+func TestExecBinaryNamesItsKeptBranchAndVerdict(t *testing.T) {
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	server := fakeOpenRouter(t)
+	env, _ := smokeEnv(t, server.URL)
+	workspace := gitWorkspaceOn(t, "work-branch")
+
+	stdout, stderr, code := runSmoke(t, binary, env, "say hello\n",
+		"exec", "--json", "-w", workspace, "--turns", "3", "--budget", "20000", "--timeout", "120")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	fields := errandJSONFields(t, stdout)
+	if got := fields["verdict"]; got != "unverified" {
+		t.Fatalf("verdict = %v, want unverified — nobody has judged this landing\n%s", got, fields)
+	}
+	if got := fields["kept_branch"]; got != "work-branch" {
+		t.Fatalf("kept_branch = %v, want work-branch\n%s", got, fields)
+	}
+}

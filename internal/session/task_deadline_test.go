@@ -62,57 +62,61 @@ func TestFinishingAWorkerDisarmsItsDeadline(t *testing.T) {
 	}
 }
 
-func TestAParkedCommandReachesItsDeadlineAndCanRenewOnce(t *testing.T) {
+// AND A PARKED COMMAND IS NOT WHAT THE DEADLINE IS FOR ANY MORE. The deadline is
+// a bound on how long a node may WORK, and the runner watches it for the case
+// where nothing else will notice ([childRun.drain]) — but a worker parked on a
+// command it started is not working, it is WAITING, and its wait has a bound of
+// its own ([jobParkBoundShare], a third of the allowance, well before the wall).
+// So the deadline checkpoint never fires for a parked command: the park hands the
+// turn back with its own record first, and the command is left running. The law
+// this replaces — a parked worker reaching the deadline and renewing it — was
+// exactly the silent hour the park's own bound exists to cut short.
+func TestAParkedCommandIsHandedBackAtItsOwnBoundBeforeItsDeadline(t *testing.T) {
 	clock := newFakeClock()
 	record := &askLog{}
 	suite := holdACommand(t, "checking", "finished")
 	defer suite.release(t)
 	completer := &scriptedCompleter{steps: []step{
 		bashStep(record, "held-check", suite.text),
-		sayStep(record, "The check did not finish; work remains unverified."),
+		sayStep(record, "The check is still running; here is where I got to."),
 	}}
 	here := jobNest(t, completer)
 	here.node.taskNow = clock.now
-	armed := make(chan time.Duration, 8)
-	here.node.taskTimer = func(after time.Duration) (<-chan time.Time, func()) {
-		ch, stop := clock.timer(after)
-		armed <- after
-		return ch, stop
-	}
+	here.node.taskTimer = clock.timer
 	checks := 0
 	here.session.config.TaskProgressCheck = func(string, []string) (bool, string) {
 		checks++
-		return checks == 1, "the check has exhausted its allowance"
+		return false, "the check has exhausted its allowance"
 	}
-	done, stopped := runParent(t, here, taskLimits{
-		maxSteps: 200, noProgress: 6, deadline: time.Minute,
-	})
+
+	const allowance = time.Minute
+	done, stopped := runParent(t, here, taskLimits{maxSteps: 200, noProgress: 6, deadline: allowance})
+
 	waitPromoted(t, here.node)
-	waitParkedOnItsCommand(t, here.node, completer, 1)
-	waitTimer := func() {
-		t.Helper()
-		select {
-		case after := <-armed:
-			if after != time.Minute {
-				t.Fatalf("deadline allowance = %v, want one minute", after)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("the worker did not arm its deadline")
-		}
-	}
-	waitTimer()
-	clock.advance(time.Minute)
-	waitTimer() // The extension must arm another bounded allowance.
-	if record.asks() != 1 {
-		t.Fatal("renewing the wait asked the worker to poll its unfinished command")
-	}
-	clock.advance(time.Minute)
+	waitParkedOnItsCommand(t, here.node, completer, theCallAlone)
+	// Advancing only the park's share of the wall hands the turn back; the whole
+	// allowance, where the deadline sits, is never reached.
+	clock.advance(allowance / jobParkBoundShare)
+
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the parked worker did not stop when renewal was refused")
+	case <-time.After(10 * time.Second):
+		t.Fatal("the parked worker never came back at the park's own bound")
 	}
-	if checks != 2 || !strings.Contains(*stopped, "deadline checkpoint") {
-		t.Fatalf("checks = %d; stopped = %q", checks, *stopped)
+	if checks != 0 {
+		t.Fatalf("the deadline checkpoint ran %d times while the worker was parked, want the park's own bound to end the wait first", checks)
+	}
+	if *stopped != "" {
+		t.Fatalf("the worker was stopped with %q, want the park's bound to hand the turn back rather than the deadline", *stopped)
+	}
+	if got := completer.requests(); got != 2 {
+		t.Fatalf("the worker was asked %d times, want the call and the turn that reads the park's record", got)
+	}
+	if read := userTextIn(completer.request(1)); !strings.Contains(read, jobParkBoundReason) {
+		t.Fatalf("the turn after the park's bound reads %q, want the bound's own reason", read)
+	}
+	// AND THE COMMAND IS STILL RUNNING: the bound ended the wait, not the work.
+	if one := here.node.jobs.find(1); one == nil || !one.running() {
+		t.Fatal("the park's bound cut a command that was still running")
 	}
 }
