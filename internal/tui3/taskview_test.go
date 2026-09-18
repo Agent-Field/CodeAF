@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1244,5 +1245,44 @@ func TestTheNameCapIsTheEnginesOwnFigure(t *testing.T) {
 	const long = "Cut every list on the task surface over to the shared row fitter"
 	if got := taskTitleOf(long, "", 4); got != long {
 		t.Fatalf("the surface cut a name to %q before any width was known; it should carry %q", got, long)
+	}
+}
+
+// THE TASKS VIEW KEEPS HOW A VERDICT WAS EARNED WITHOUT ADDING A ROW WORD.
+// The project record is the view's input, so its surface projection must retain
+// the persisted basis even though the existing state and outcome remain all a
+// person sees.
+func TestTheTasksViewReadsThePersistedVerdictBasisWithoutNewWords(t *testing.T) {
+	const recorded = `{"id":"7","name":"check-the-change","label":"Check the change","title":"Check the change","status":"done","outcome":"the change holds","endedAt":"2026-09-18T16:00:00Z","sessionId":"earlier","verdictBasis":{"kind":"reading"}}`
+	var entry session.TaskIndexEntry
+	if err := json.Unmarshal([]byte(recorded), &entry); err != nil {
+		t.Fatalf("reading the task row: %v", err)
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("writing the task row: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatalf("reading the written task row: %v", err)
+	}
+	if _, ok := fields["verdictBasis"]; !ok {
+		t.Fatalf("the tasks view dropped the persisted verdict basis: %s", data)
+	}
+
+	a, _, _ := taskApp(t)
+	pinFixtureClock(a)
+	a.comp.tasks = []session.TaskIndexEntry{entry}
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the persisted row did not reach the tasks view")
+	}
+	text := taskSheetText(a)
+	for _, want := range []string{entry.Label, entry.Outcome} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the tasks view lost %q while reading the basis:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "verdictBasis") || strings.Contains(text, "reading") {
+		t.Fatalf("the persisted basis coined an on-screen word:\n%s", text)
 	}
 }
