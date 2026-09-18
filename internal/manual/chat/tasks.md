@@ -5201,10 +5201,10 @@ leaving a note are unchanged by the tree.
 
 ## Why is this group one line? — finished families fold on the rail
 
-The rail puts families with running work first, newest activity on top, then queued
-families, then done families folded with their age. Inside a family it keeps store
-order, except that running rows float to the top and its done rows fold into one
-`✔ N done` line at the bottom.
+The rail shows the run\x27s tree. It puts families with running work first, newest
+activity on top, then queued families, then done families folded with their age.
+Inside a family it keeps store order, except that running rows float to the top and
+its done rows fold into one `✔ N done` line at the bottom.
 
 A family becomes one rail line when every task in it is done or failed. The line
 keeps the family title and says how many settled below it — `· 3 done`, or
