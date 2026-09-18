@@ -111,20 +111,19 @@ Median output tokens per call: **476 shipped, 217 harness**.
 Each task was handed a repository at a pinned base commit and a feature to build,
 with a 45-minute wall and the same model on both arms.
 
-| task | harness | shipped |
+| task | harness (3585556b4) | shipped (7231347eb) |
 | --- | --- | --- |
-| bandit, incremental cache | **PASS** — 358 existing + 89 new tests green, $0.44, 41m, 195 calls | **FAIL** — hit the wall at 45m with 83/89 new tests and the task still running |
-| awilix, async container initialization | **23/24** — one case missed, $0.33, 37m | **FAIL** — the worker left an unterminated import block and the build never ran again before the wall |
-| bandit, interprocedural taint | ended after 6m with 19/85 — its plan writes went to a store the run does not read | in progress |
-| cattrs, partial structuring recovery | in progress | in progress |
+| bandit, incremental cache | 88/89, $0.15, 11m | 82/89, $0.24, 45m (wall) |
+| bandit, interprocedural taint | **PASS** 85/85, $0.23, 13m | 83/85, $0.19, 41m |
+| awilix, async container initialization | 23/24, $0.07, 7m | 23/24, $0.27, 45m (wall) |
+| cattrs, partial structuring recovery | 66/69, $0.03, 3m | **PASS**, $0.21, 45m |
 
-The three gaps this table exposed are fixed on the branch, and the reruns after
-them are in docs/design/worker-harness/BENCHMARKS.md, § *Reruns after wave 7*:
-cattrs **PASSes** (93 calls, wall 20m → 14m, prompt tokens 4.70M → 3.33M);
-awilix holds at **23/24** but in 8m for $0.19 against 37m for $0.33, with the
-root integrating its children now; and bandit interprocedural taint writes its
-plan to the run's own store (seven tasks) though its run still ended early on a
-reply with no action.
+Cost and wall are three to ten times lower on every task, every harness root
+finished cleanly, and no call went to a seat the flags did not name. Pass rate
+is one in four on both arms and not on the same task, so the bar is not met:
+every miss is a result nobody read against the ask, which is the review round
+named under the gaps. The earlier runs and what each exposed are in
+docs/design/worker-harness/BENCHMARKS.md.
 
 ## Known gaps
 
