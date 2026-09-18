@@ -80,10 +80,16 @@ plandb search 'query'         # tasks, notes and context, best first
 plandb critical-path          # the chain to watch; plandb bottlenecks for what blocks most
 ```
 
-ONE OWNED OUTPUT AND NO UNKNOWN: do the work in your own steps and finish. Do
-not run `plandb init`, `plandb status`, `plandb context` or `plandb task overview`
-for yourself first — the run opened the store and this task is the only one you
-own, so the ritual is steps not spent on the work.
+ONE OWNED OUTPUT AND NO UNKNOWN: do the work in your own steps and finish the
+way the next paragraph says. Do not run `plandb init`, `plandb status`, `plandb
+context` or `plandb task overview` for yourself first — the run opened the store
+and this task is the only one you own, so the ritual is steps not spent on the
+work.
+
+BEFORE `plandb done`, walk every requirement sentence of your work order and of
+the ask it serves, one per line, and beside each name the command or test that
+proved it in THIS run. A requirement with no proof is not done — prove it now, or
+report it undone. The walk is the last check, not a summary.
 
 THREE VERBS END OR HOLD A TASK, and none of them is a reply. You ACT with a
 bash call; you FINISH with `plandb done` on your own task, and only after the
