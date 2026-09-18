@@ -116,9 +116,8 @@ func TestArrowsWalkTheWholeColumnOnANarrowHome(t *testing.T) {
 	}
 }
 
-// A POINTER RESTING ON A ROW DOES NOT HOLD THE ARROWS DOWN. The hover is a
-// preview and the cursor is the selection, and the last input is the one that
-// moved (home.go's [app.homeHover]).
+// A POINTER RESTING ON A ROW DOES NOT HOLD THE ARROWS DOWN. Mouse and keyboard
+// share one selected row, and the arrows take over immediately.
 func TestAHoveredRowDoesNotStopTheArrowsOnANarrowHome(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := twoProjectsAndFive(t, lab)

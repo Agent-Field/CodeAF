@@ -2012,7 +2012,7 @@ func (a *app) exchangeRowLine(line homeLine, at, width int, pal palette) string 
 	// so its tail turns only when this row is the one the page gave the spinner
 	// to and holds the still `●` otherwise (homespinner.go).
 	return overlayRowTinted(label, a.exchangeTail(line.ex, a.homeSpins(at)), exchangeTailInk(line.ex),
-		at == a.home.cursor, markNone, at == a.home.hover, width, pal)
+		at == a.home.cursor, markNone, at == a.home.hover && at == a.home.cursor, width, pal)
 }
 
 // exchangeTail is that trailing fact. spins is whether this row is the ONE the

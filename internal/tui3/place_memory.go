@@ -126,7 +126,7 @@ type memoryPlace struct {
 	// top and shown are the WINDOW the last draw put over the reading, and hover
 	// the line the pointer is over (-1 for none) — the same three fields every
 	// promoted place keeps, meaning the same thing on each: the window follows
-	// the cursor ([placeTop]), and the pointer previews where the cursor selects.
+	// cursor ([placeTop]), which mouse and keyboard navigation both move.
 	top, shown int
 	hover      int
 	// expanded is the one line whose card is up, and origins is where each such
@@ -694,7 +694,7 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 	case p.reading.bare():
 		return placeWhisperRows(pageMemory, width, room, a.pal)
 	default:
-		body = p.reading.paint(width, a.pal, func(i int) bool { return i == p.cursor || i == p.hover })
+		body = p.reading.paint(width, a.pal, func(i int) bool { return i == p.cursor })
 	}
 	// THE WINDOW FOLLOWS THE CURSOR, and a card standing open is not a list:
 	// it is one line's provenance, drawn from its top, so it has no cursor to
@@ -710,7 +710,7 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 			break
 		}
 		text := body[i]
-		if _, stop := p.reading.at(i); stop && p.expanded == "" && (i == p.cursor || i == p.hover) {
+		if _, stop := p.reading.at(i); stop && p.expanded == "" && i == p.cursor {
 			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
@@ -943,7 +943,7 @@ func (placeMemory) hover(a *app, y int) bool {
 			next = at
 		}
 	}
-	return placeHoverMoved(&a.mem.hover, next, a)
+	return placeHoverMoved(&a.mem.hover, &a.mem.cursor, next, next, a)
 }
 
 func (placeMemory) wheel(a *app, delta int) (tea.Cmd, bool) {

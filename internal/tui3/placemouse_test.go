@@ -12,7 +12,7 @@ import (
 //
 // Three gestures, one law each, and every one of them was reported broken by
 // the owner against the real binary: a tab word is a door, the wheel moves the
-// list under the pointer, and the pointer previews while the cursor selects.
+// list under the pointer, and mouse and keyboard share the selected row.
 
 // searchPlaceWithHits is the search place standing over real results — the one
 // promoted place a test can fill without a store on disk, and therefore the one
@@ -186,9 +186,8 @@ func TestTheWheelWalksTheStandingPlacesCursor(t *testing.T) {
 
 // ── the hover ───────────────────────────────────────────────────────────────
 
-// THE POINTER PREVIEWS AND THE CURSOR SELECTS — home's own law, owed to every
-// place the router promoted.
-func TestHoveringARowOfAPlaceLightsItAndLeavesTheCursor(t *testing.T) {
+// Pointer motion selects the same row that the keyboard acts on.
+func TestHoveringARowOfAPlaceMovesTheSelection(t *testing.T) {
 	a := searchPlaceWithHits(t)
 	_, hits, _, _ := a.searchFrame(a.width, a.height)
 	// The second stop on the page, which is not where the cursor opened.
@@ -203,18 +202,16 @@ func TestHoveringARowOfAPlaceLightsItAndLeavesTheCursor(t *testing.T) {
 	}
 	other := stops[1]
 	y := placeBodyRowOf(t, hits, other)
-	cursor := a.search.cursor
 	before, _, _, _ := a.searchFrame(a.width, a.height)
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
-	if a.search.cursor != cursor {
-		t.Fatalf("the pointer moved the cursor from %d to %d", cursor, a.search.cursor)
+	if a.search.cursor != other {
+		t.Fatalf("the pointer selected %d, want %d", a.search.cursor, other)
 	}
 	after, _, _, _ := a.searchFrame(a.width, a.height)
 	if before[y] == after[y] {
 		t.Fatalf("the hovered row is painted exactly as it was: %q", plain(after[y]))
 	}
-	// AND A PRESS ON IT MOVES THE CURSOR THERE, which is the second half of the
-	// same law: the pointer previews, and a press is what selects.
+	// A press opens the row that mouse navigation already selected.
 	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
 	if a.search.cursor != other {
 		t.Fatalf("clicking body line %d left the cursor on %d", other, a.search.cursor)
@@ -238,11 +235,10 @@ func TestHoveringARowOfTheStandingPlaceLightsIt(t *testing.T) {
 		t.Fatal("the standing place drew no row that is not the cursor")
 	}
 	y := placeBodyRowOf(t, hits, other)
-	cursor := a.orders.cursor
 	before, _, _, _ := a.standingPlaceFrame(a.width, a.height)
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
-	if a.orders.cursor != cursor {
-		t.Fatalf("the pointer moved the standing cursor from %d to %d", cursor, a.orders.cursor)
+	if a.orders.cursor != other {
+		t.Fatalf("the pointer selected standing row %d, want %d", a.orders.cursor, other)
 	}
 	after, _, _, _ := a.standingPlaceFrame(a.width, a.height)
 	if before[y] == after[y] {

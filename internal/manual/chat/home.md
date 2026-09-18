@@ -1868,8 +1868,11 @@ stopped on is its `needs you` row, what is in flight is its `tasks` rows, what i
 a `made <file>` line in `since you left`, and where you left off is the line under the
 `here` row. The facts line is gone — a number is on the row where it is not zero.
 
-**Hovering lights the row under the pointer and moves nothing else**: the cursor stays where
-you put it, and there is no right side for the hover to change.
+**Mouse and keyboard navigation share one selected row.** Moving the mouse onto a row
+selects it; the next arrow key takes over and removes the mouse highlight. A stationary
+pointer cannot override that choice. `→` and its options always act on the latest
+selection. Leaving the list keeps that selection, and there is no separate right-hand
+preview at rest.
 
 **The one card left is beside a search.** On a frame 136 columns or wider, while you are
 typing, the match under the cursor has a card to the right of the list (*The card beside a

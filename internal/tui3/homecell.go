@@ -217,7 +217,7 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading, h
 	if line.stop() {
 		hit = at
 	}
-	lit := at == h.cursor || at == h.hover
+	lit := at == h.cursor
 	if line.cell == nil {
 		if line.kind == homeExchangeRow {
 			return []homeCellLine{{text: a.exchangeRowLine(line, at, width, pal), at: hit, head: -1}}

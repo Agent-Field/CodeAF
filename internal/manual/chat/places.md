@@ -128,7 +128,7 @@ pointer off the word puts the ink back, and moving it into the gap between two w
 nothing, because the gap belongs to no room.
 
 **Hovering moves nothing else at all.** No cursor, no page, no window — the pointer
-previews and the cursor selects, which is the same law the rows underneath keep. If the
+previews the tab words; list rows instead share one selection with the keyboard. If the
 keyboard cursor is standing on the bar as well you will see both marks at once: the band on
 the word the cursor is on, the lifted ink on the word the pointer is on.
 
@@ -143,9 +143,11 @@ a press on the word you are already standing on does nothing.
 
 Three gestures, the same on all seven places:
 
-- **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
-  what the card beside the list is about, and on home the row it lights.
-  Moving the pointer moves nothing else — the cursor stays where you put it.
+- **List rows have one selection.** On home, tasks, standing, memory, spend and search,
+  moving the mouse onto a row selects it. Keyboard navigation immediately takes over
+  and clears the old mouse highlight. A parked pointer cannot reclaim the selection;
+  move it again to switch back. Leaving the list keeps the latest selection. Settings
+  retains its separate hover preview.
 - **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
   search the first press puts the cursor there and opens what the row names. **A click
   never spends**: on memory, where `enter` on a line asks the model about it, the press
@@ -156,6 +158,10 @@ Three gestures, the same on all seven places:
 - **the wheel walks the list**, three rows a turn, on every place. There is no separate
   scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
   Walking off the bottom with `↓` scrolls the same way.
+
+`→` opens options for the selected row, and a letter such as `a` acts on that row.
+Moving to another row closes the old options, so they cannot affect the previous row.
+The chat switcher uses the same mouse/keyboard handoff.
 
 The **tab bar** answers all three too, and it answers them as itself rather than as a row of
 the list: the pointer lifts the word it is on, the wheel walks the places one room a turn,

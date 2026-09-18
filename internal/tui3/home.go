@@ -2251,36 +2251,12 @@ func (h *homeView) focusedLine() (homeLine, bool) {
 	return h.lines[h.cursor], true
 }
 
-// previewLine is the line THE CARD IS ABOUT, which is not always the line the
-// cursor is on: it is the row under the POINTER while the pointer is resting on
-// one, and the cursor's row every other moment.
-//
-// THE POINTER PREVIEWS AND THE CURSOR SELECTS, and the two are allowed to
-// disagree. Reading about a neighbouring conversation should cost nothing —
-// moving the pointer down the column swaps the card without moving the
-// selection, so the hand that was about to press enter is still aimed at the
-// same chat when it gets there. The cursor keeps its selected look on the left
-// while this happens and the hovered row keeps its hover look, which is the
-// screen saying plainly that they are two different things.
-//
-// The pointer's row is only ever a line the cursor could stop on
-// ([app.homeHover] refuses everything else), so a hover this finds always has a
-// card; and the moment the pointer leaves the column the hover is dropped and
-// the card is the cursor's again, with nothing to remember on either side.
-func (h *homeView) previewLine() (homeLine, bool) {
-	if h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
-		return h.lines[h.hover], true
-	}
-	return h.focusedLine()
-}
+// previewLine is the single selected row, shared by the card and its actions.
+// Mouse navigation moves this cursor too; a stale hover never chooses a verb.
+func (h *homeView) previewLine() (homeLine, bool) { return h.focusedLine() }
 
-// previewAt is [homeView.previewLine]'s line NUMBER, for the readers that need
-// to find where that line was drawn rather than what it holds
-// ([homeDescTop]).
+// previewAt is the selected line number for readers that need its position.
 func (h *homeView) previewAt() int {
-	if h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
-		return h.hover
-	}
 	if _, ok := h.focusedLine(); !ok {
 		return homeNoLine
 	}
@@ -2632,7 +2608,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// chord can never be the first letter of somebody's sentence — so none of
 	// them needs a gate: not the pick, not the hover, not an empty box. Each
 	// acts on THE CARD A PERSON IS LOOKING AT ([homeView.previewLine] — the row
-	// under the pointer while there is one, the cursor's row otherwise),
+	// selected by the most recent mouse or keyboard navigation),
 	// exactly as the card's fold lines and its chips do, and the card's own
 	// legend names them (homeband_keys.go). The mnemonic letters survived the
 	// move: e, o and y kept themselves under ctrl, and `n new chat here`
@@ -4212,6 +4188,7 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 		at := a.homeHitAt(x, y, hits)
 		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
+			a.selectPlaceRow(&a.home.cursor, at)
 		}
 	}
 	if a.home.hover != was {
@@ -4547,7 +4524,7 @@ func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 	// SPARED FOR THE SAME REASON — it wears the cursor step too, and a ground with
 	// a gradient run over it is a ground that reads as a smudge (homesection.go).
 	for i := range drawn {
-		if drawn[i].hit == h.cursor || drawn[i].hit == h.hover || h.marksSection(drawn[i].hit) {
+		if drawn[i].hit == h.cursor || h.marksSection(drawn[i].hit) {
 			continue
 		}
 		if stop := tailStop(i, len(drawn), at < end); stop >= 0 {
@@ -4598,17 +4575,17 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 				mark = glyphOpenASCII
 			}
 		}
-		return overlayRow(mark+" "+homeQuietWord(line, h.world.Read), "", at == h.cursor, false, at == h.hover, width, pal)
+		return overlayRow(mark+" "+homeQuietWord(line, h.world.Read), "", at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
 	case homeProject:
 		// THE SAME FOLD MARK AS EVERYTHING ELSE THAT HIDES ROWS, at the scale of
 		// a whole project: `▸` while it is one line, `▾` once it is a block.
 		return overlayRowTinted(homeFoldMark(line.folded, pal)+" "+line.project,
 			h.projectNote(line.proj, h.world.Read, pal.ascii), h.projectInk(line.proj),
-			at == h.cursor, markNone, at == h.hover, width, pal)
+			at == h.cursor, markNone, at == h.hover && at == h.cursor, width, pal)
 	case homeItem:
 		// ONE ITEM, ONE ROW, drawn by the renderer home's errand box shares
 		// (homestanding.go's [StandingItemRow]).
-		return StandingItemRow(a, line.view, width, h.world.Read, at == h.cursor, at == h.hover)
+		return StandingItemRow(a, line.view, width, h.world.Read, at == h.cursor, at == h.hover && at == h.cursor)
 	case homeItemFold:
 		// THE SAME FOLD MARK AS THE QUIET TAIL, over the same kind of thing: a
 		// line standing for rows you cannot see, and an arrow saying which way it
@@ -4624,7 +4601,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 			}
 		}
 		return overlayRow(mark+" "+standFoldWord(line.quiet, line.folded), "",
-			at == h.cursor, false, at == h.hover, width, pal)
+			at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
 	case homeExchangeRow:
 		// ONE ERRAND, ONE ROW, wearing what it is doing (homeexchange.go's
 		// [app.exchangeRowLine]).
@@ -4644,14 +4621,14 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 		if text := strings.TrimSpace(h.box.String()); text != "" {
 			label += ": " + strconv.Quote(text)
 		}
-		return overlayRow(homeAskHereGlyph+" "+label, "", at == h.cursor, false, at == h.hover, width, pal)
+		return overlayRow(homeAskHereGlyph+" "+label, "", at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
 	case homeAction:
 		// It carries the words back at the person, cut to fit. The box at the
 		// foot holds them too, but the box is where you are typing and this is
 		// what enter will DO with it — and on a screen where enter has two
 		// possible meanings, the one it currently has must be legible without
 		// looking away from the list.
-		return overlayRow(homeStartGlyph+" "+h.startLabel(), "", at == h.cursor, false, at == h.hover, width, pal)
+		return overlayRow(homeStartGlyph+" "+h.startLabel(), "", at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
 	}
 	// OUR OWN ROWS ARE READ FROM THE AGENT AND NOT FROM THE PRESENCE FILE. The
 	// file is written on a five-second heartbeat and believed for fifteen, which
@@ -4671,7 +4648,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// brought up out of the dim, because a screen whose whole job is triage
 	// cannot render its most urgent fact in the same grey as an age.
 	return overlayRowTinted(label, note, homeNoteInk(row, a.homeHeld(row) || a.homeRowGone(row)),
-		at == h.cursor, a.homeMark(row), at == h.hover, width, pal)
+		at == h.cursor, a.homeMark(row), at == h.hover && at == h.cursor, width, pal)
 }
 
 // homeHeadingWord is the heading's word. The home directory's project is named

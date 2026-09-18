@@ -62,8 +62,7 @@ type searchPage struct {
 	// top and shown are the WINDOW the last draw put over the reading, and hover
 	// the line the pointer is over (-1 for none). They are the same three fields
 	// every promoted place keeps and they mean the same thing on each: the
-	// window follows the cursor ([placeTop]), and the pointer previews where the
-	// cursor selects.
+	// window follows the cursor ([placeTop]), which mouse and keyboard both move.
 	top, shown int
 	hover      int
 	read       time.Time
@@ -425,7 +424,7 @@ func (placeSearch) remote(a *app) string {
 }
 
 func (placeSearch) body(a *app, width, room int) []placeRow {
-	lit := func(i int) bool { return i == a.search.cursor || i == a.search.hover }
+	lit := func(i int) bool { return i == a.search.cursor }
 	body := a.search.reading.paint(width, a.pal, lit)
 	rows := make([]placeRow, 0, room)
 	// THE QUERY IS THE FIRST ROW OF THE BODY, over the results it found, the
@@ -521,7 +520,7 @@ func (placeSearch) hover(a *app, y int) bool {
 			next = at
 		}
 	}
-	return placeHoverMoved(&a.search.hover, next, a)
+	return placeHoverMoved(&a.search.hover, &a.search.cursor, next, next, a)
 }
 
 func (placeSearch) wheel(a *app, delta int) (tea.Cmd, bool) {

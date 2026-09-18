@@ -1177,7 +1177,7 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 
 // taskSheetHover records which row the pointer is over, repainting only when the
 // answer changed (hover.go's rule, applied to this place).
-func (a *app) taskSheetHover(y int) {
+func (a *app) taskSheetHover(y int) tea.Cmd {
 	if a.taskSheet.detailOn {
 		// THE CARD LIGHTS ITS EDGES AND NOTHING ELSE. They are the way back and its
 		// body is read, so a hover step over a paragraph would be the surface
@@ -1192,7 +1192,7 @@ func (a *app) taskSheetHover(y int) {
 			a.hot = next
 			a.touch()
 		}
-		return
+		return nil
 	}
 	width, height := a.size()
 	// phone lane: no hover on glass, the rule home keeps at this tier
@@ -1203,18 +1203,23 @@ func (a *app) taskSheetHover(y int) {
 			a.hot = hoverAt{}
 			a.touch()
 		}
-		return
+		return nil
 	}
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	next := hoverAt{}
 	if y >= 0 && y < len(hits) && hits[y].kind == taskSheetHitRow {
 		next = hoverAt{kind: hoverTaskSheet, index: hits[y].index}
 	}
-	if next == a.hot {
-		return
+	moved := next.kind == hoverTaskSheet && a.selectPlaceRow(&a.taskSheet.cursor, next.index)
+	if next == a.hot && !moved {
+		return nil
 	}
 	a.hot = next
 	a.touch()
+	if moved {
+		return a.taskPaneFollow()
+	}
+	return nil
 }
 
 // taskSheetScroll is the wheel: it walks the cursor rather than an offset of its
@@ -1345,7 +1350,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 				// the subject bold inside it — no accent mark in the lead, which was
 				// a second accent on a screen whose one accent is the live thing
 				// (placeprose.go's THE FIVE-LEVEL SCALE).
-				lit = owner == p.cursor || (a.hot.kind == hoverTaskSheet && a.hot.index == owner)
+				lit = owner == p.cursor
 			}
 		}
 		text := r.paint(lines, at, width, a.pal, lit)

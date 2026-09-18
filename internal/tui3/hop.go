@@ -871,6 +871,9 @@ func runningTasks(agent Agent) int {
 // modal on this surface — leaving is never modal — and it puts the card away on
 // its way through.
 func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.hopShowing() {
+		a.keyboardPlaceSelection()
+	}
 	key := msg.String()
 	if !a.hop.open {
 		forward, backward := a.hopOpens(key), a.hopBacks(key)
@@ -1434,7 +1437,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 			}
 		}
 		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines) + topEdge, at: at})
-		hovered := a.hot.kind == hoverHop && a.hot.index == at
+		hovered := a.hot.kind == hoverHop && a.hot.index == at && a.hop.at == at
 		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
 	}
 	if footWord != "" && len(lines)+topEdge+1+verticalPad < height {

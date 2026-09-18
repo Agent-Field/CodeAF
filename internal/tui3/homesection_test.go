@@ -135,22 +135,15 @@ func TestASearchingHomeMarksNoHeading(t *testing.T) {
 	}
 }
 
-// THE POINTER MOVES NOTHING. A hover previews a card without moving the
-// selection ([homeView.previewLine]), and the marked heading answers "where is
-// my keyboard" — so a pointer resting in another block must leave it exactly
-// where the cursor put it.
-func TestAHoverDoesNotMoveTheMarkedHeading(t *testing.T) {
+// Mouse selection moves the marked heading to the same panel as its row.
+func TestMouseSelectionMovesTheMarkedHeading(t *testing.T) {
 	a := sectionLab(t)
 	hovered := standInPanel(t, a, panelNeeds)
+	want := strings.Join(markedHeadings(a), "|")
 	standInPanel(t, a, panelRecent)
-	want := markedHeadings(a)
-	if len(want) != 1 {
-		t.Fatalf("the cursor marks %v to begin with, so the hover proves nothing", want)
-	}
-	// The pointer goes to a row in ANOTHER panel.
-	a.home.hover = hovered
-	if got := markedHeadings(a); strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("the pointer moved the marked heading from %v to %v:\n%s", want, got, homeText(a))
+	a.selectPlaceRow(&a.home.cursor, hovered)
+	if got := strings.Join(markedHeadings(a), "|"); got != want {
+		t.Fatalf("mouse selection marked %q, want %q", got, want)
 	}
 }
 

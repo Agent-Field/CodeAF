@@ -2247,11 +2247,8 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	return pl.press(a, y)
 }
 
-// placeBodyHover is the pointer resting over one place's rows: THE POINTER
-// PREVIEWS AND THE CURSOR SELECTS, which is home's own law owed to every place
-// the router promoted. A place repaints only when the row under the pointer
-// actually changed, exactly as [app.setHover] does, because motion is the
-// commonest message this surface gets.
+// placeBodyHover selects the row reached by the pointer. The same cursor
+// drives keyboard actions, and a place repaints only when that row changes.
 func (a *app) placeBodyHover(y int) bool {
 	pl := a.showing()
 	return pl != nil && !a.composer.open && pl.hover(a, y)

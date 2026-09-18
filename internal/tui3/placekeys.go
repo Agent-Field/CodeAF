@@ -71,6 +71,7 @@ import (
 // was five copies of the same two lines — a place added later that forgot them
 // would be a room `tab` could not leave.
 func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
+	a.keyboardPlaceSelection()
 	pl := a.showing()
 	if pl == nil {
 		return nil

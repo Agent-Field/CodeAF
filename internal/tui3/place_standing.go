@@ -166,7 +166,7 @@ func (p *standingPlace) body(a *app, width, room int) []placeRow {
 		return placeWhisperRows(pageStanding, width, room, a.pal)
 	}
 	lines, owner, top, shown := standingLines(
-		p.rows, p.win, p.cursor, p.top, width, room, p.hover, a.pal, a.now())
+		p.rows, p.win, p.cursor, p.top, width, room, -1, a.pal, a.now())
 	p.top, p.shown, p.owner = top, shown, owner
 	rows := make([]placeRow, 0, room)
 	for i, text := range lines {
@@ -938,7 +938,11 @@ func (placeStanding) hover(a *app, y int) bool {
 	if at := y - placeHeadRows; at >= 0 && at < len(a.orders.owner) && a.orders.owner[at] >= 0 {
 		next = at
 	}
-	return placeHoverMoved(&a.orders.hover, next, a)
+	row := -1
+	if next >= 0 {
+		row = a.orders.owner[next]
+	}
+	return placeHoverMoved(&a.orders.hover, &a.orders.cursor, next, row, a)
 }
 
 func (placeStanding) wheel(a *app, delta int) (tea.Cmd, bool) {

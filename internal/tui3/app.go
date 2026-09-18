@@ -1373,7 +1373,8 @@ type app struct {
 	// ptr is the pointer's fold: the sweep's newest position and the notches of
 	// a wheel run, kept so that a burst of them costs the surface one answer per
 	// frame instead of one per cell (coalesce.go).
-	ptr pointerFold
+	ptr          pointerFold
+	placePointer placePointer
 
 	// drop is the keystroke-shaped drop's fold: where in the draft a run of
 	// characters that might spell a dropped file's path began, kept so that a
@@ -3526,6 +3527,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		a.clearPlaceRowHover()
+		a.placePointer.suspended = true
 		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
 		// the WHOLE screen: the conversation under a modal is not live, so a wheel
 		// turned over it must move nothing at all (contextmodal.go).
@@ -3719,6 +3722,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		a.clearPlaceRowHover()
 		a.sawAPerson()
 		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
 		// press that fell through a modal would switch a tab, open a tool call or
@@ -4100,6 +4104,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.hopShowing() {
 			a.setHover(msg.Mouse().X, msg.Mouse().Y)
 			if a.hot.kind == hoverHop {
+				if at := a.hot.index; at >= 0 && at != a.hop.at {
+					a.hopWalk(at - a.hop.at)
+				}
 				// Reading a row with the pointer keeps the quick-switch card open.
 				a.hop.live = false
 			}
@@ -4141,17 +4148,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if a.at(pageTasks) {
-			a.taskSheetHover(msg.Mouse().Y)
-			return a, nil
+			return a, a.taskSheetHover(msg.Mouse().Y)
 		}
 		if a.at(pageHome) {
 			return a, a.homeHover(msg.Mouse().X, msg.Mouse().Y)
 		}
-		// AND THE FOUR PLACES THE ROUTER PROMOTED, on home's own law: THE POINTER
-		// PREVIEWS AND THE CURSOR SELECTS (pages.go's [app.placeBodyHover]). They
-		// had no hover at all — the standing list's map answered -1 and the other
-		// three had none — so a pointer crossing them lit nothing, on the four
-		// screens whose whole shape is a list of rows to aim at.
+		// The other list pages share home's single selection: pointer motion
+		// selects the row that keyboard actions use.
 		if a.placeBodyHover(msg.Mouse().Y) {
 			return a, nil
 		}

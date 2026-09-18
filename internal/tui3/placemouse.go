@@ -102,9 +102,8 @@ func (a *app) placeTabPress(x, y int) (tea.Cmd, bool) {
 // hovered word look like the room a person is standing in, and a bar with two
 // grounds on it says nothing clearly.
 //
-// AND IT MOVES NOTHING. No cursor, no place, no window: the pointer previews and
-// the cursor selects, which is the law home wrote and every place inherited
-// (pages.go's [app.placeBodyHover]). Leaving the bar puts the ink back.
+// Hovering a tab changes no cursor, place or window. Clicking opens the place;
+// leaving the bar puts the ink back.
 func (a *app) placeTabHover(x, y int) bool {
 	if !a.pageShowing() || a.tabRow < 1 || y != a.tabRow {
 		// THE POINTER LEAVING THE ROW IS NEWS TOO, and it is the half that is easy
@@ -190,8 +189,8 @@ func placeTop(top, cursor, rows, room int) int {
 	return top
 }
 
-// placeHoverMoved records where the pointer is and reports whether that is
-// news, repainting only when it is.
+// placeHoverMoved selects the pointed row and records its pointer styling,
+// repainting only when either changes.
 //
 // MOTION IS THE CHEAPEST AND COMMONEST MESSAGE THIS SURFACE GETS — a pointer
 // crossing the window sends one per cell — so a hover that repainted on every
@@ -199,7 +198,8 @@ func placeTop(top, cursor, rows, room int) int {
 // not move (hover.go states the same rule for the conversation). The answer is
 // always true: the place TOOK the motion either way, and what is being reported
 // is whether anything has to be drawn again.
-func placeHoverMoved(at *int, next int, a *app) bool {
+func placeHoverMoved(at, cursor *int, next, row int, a *app) bool {
+	a.selectPlaceRow(cursor, row)
 	if *at == next {
 		return true
 	}

@@ -91,7 +91,7 @@ func (a *app) homeCommandRow(line homeLine, at, width int, pal palette) string {
 	h := &a.home
 	label := line.cmd.typed()
 	return overlayRow(label, commandMargin(label, *line.cmd, width, a.chords),
-		at == h.cursor, false, at == h.hover, width, pal)
+		at == h.cursor, false, at == h.hover && at == h.cursor, width, pal)
 }
 
 // commandMargin is that margin: the fate, and the note if there is room for a

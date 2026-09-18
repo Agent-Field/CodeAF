@@ -249,7 +249,7 @@ func TestTheNeedsYouQuestionIsInTheColumnOnlyWhileItsRowIsRead(t *testing.T) {
 	}
 	// AND UNDER THE POINTER IT IS BACK, in the column: its thread's title line
 	// on its row's line, a blank, then the question two lines under.
-	a.home.hover = question
+	a.home.hover, a.home.cursor = question, question
 	frame = homeText(a)
 	row, at := homeRowOf(frame, homeThreadWord+line.cell.title)
 	if row < 0 {
