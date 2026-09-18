@@ -3338,7 +3338,10 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 		Brief:     request.task,
 		Slots:     request.slotsOrDefault(),
 		Limits:    limits,
-		Factory:   runengine.CrewFactory(store, workspace, settings.ProfileDir, completerFor),
+		Factory: runengine.CrewFactory(store, workspace, settings.ProfileDir, runengine.Seats{
+			Work: seats.Work.Model,
+			Plan: seats.Plan.Model,
+		}, completerFor),
 	})
 	errand := headlessOutcome{
 		Artifacts: []string{},
