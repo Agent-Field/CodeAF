@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,6 +84,13 @@ func TestOwedRootLandingWakesOnceWithOnlyQuestionAndResult(t *testing.T) {
 	beltRunWaitFor(t, "the owed landing reply", func() bool { return completer.requests() == 1 })
 
 	request := completer.request(0)
+	var promptSeen bool
+	for _, message := range request {
+		promptSeen = promptSeen || strings.Contains(messageText(message), strings.TrimSpace(landingAnswerPrompt))
+	}
+	if !promptSeen {
+		t.Fatal("owed landing request omitted its dedicated answer-from-result prompt")
+	}
 	if got := messageText(request[len(request)-1]); got != wantDocument {
 		t.Fatalf("owed landing request document = %q, want only question and result note %q", got, wantDocument)
 	}
