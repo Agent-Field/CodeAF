@@ -567,6 +567,9 @@ type tasksLine struct {
 	// of them a row wears is a fact about the layout — how many rows are under
 	// it and whether they are drawn — and the paint may not re-derive it.
 	kin string
+	// underKin is the family column of the lines that stand UNDER this row: the
+	// same indent, with the stroke carried through where a sibling is to come.
+	underKin string
 	// folds says this line is a family root that can be opened and shut, and
 	// open says it is open. They are what `→` and `←` act on, and what the row's
 	// own clause reports (place_tasks.go's [app.taskSheetFold]).
@@ -648,8 +651,13 @@ func (r tasksReading) lay(width int) []tasksLine {
 		}
 		return true
 	}
-	var work func(item tasksItem, depth int, last, named, nested bool)
-	work = func(item tasksItem, depth int, last, named, nested bool) {
+	// rails says, for every step of indent in front of a row, whether the
+	// family line runs through it ([tasksKinTree]). A row's descendants and the
+	// lines under it carry the rule of every ancestor that still has a sibling
+	// to come, so a family's line is one unbroken stroke from its first row to
+	// its last, however many live lines and grandchildren stand between them.
+	var work func(item tasksItem, depth int, last, named, nested bool, rails []bool)
+	work = func(item tasksItem, depth int, last, named, nested bool, rails []bool) {
 		key := tasksKeyOf(item.entry)
 		kids := tree.kids[key]
 		if item.plan != nil && len(kids) > 0 {
@@ -713,14 +721,22 @@ func (r tasksReading) lay(width int) []tasksLine {
 		case column:
 			mark = tasksKinPad
 		}
-		line.kin = tasksKin(depth, levels, mark)
+		line.kin = tasksKinTree(rails, depth, levels, mark)
+		// THE ROW'S OWN COLUMN CARRIES ON UNDER IT while a sibling is still to
+		// come: the lines under a row, and the rows under those, stand inside
+		// the family's stroke and never break it.
+		through := tasksKinPad
+		if nested && !last {
+			through = tasksKinRule
+		}
+		line.underKin = tasksKinTree(rails, depth, levels, through)
 		lines = append(lines, line)
 		// phone lane: a row becomes a two-line card a thumb goes into
 		// (taskphone.go), and the second line belongs to the first.
 		if phone && tasksCardTail(item, r.now) != "" {
 			lines = append(lines, tasksLine{
 				kind: tasksLineTail, item: item, owner: own,
-				kin: tasksKin(depth, levels, tasksKinPad),
+				kin: line.underKin,
 			})
 		}
 		// A PLAN ROW WITH A STEP IN FLIGHT SPENDS ITS UNDER-BLOCK on the live step
@@ -731,15 +747,16 @@ func (r tasksReading) lay(width int) []tasksLine {
 		for under := 0; under < planUnderCount(item.plan); under++ {
 			lines = append(lines, tasksLine{
 				kind: tasksLinePlanUnder, item: item, owner: own,
-				kin:       tasksKin(depth, levels, tasksKinPad),
+				kin:       line.underKin,
 				planUnder: under,
 			})
 		}
 		if !line.open {
 			return
 		}
+		below := append(append([]bool(nil), rails...), nested && !last)
 		for at, kid := range kids {
-			work(kid, depth+1, at == len(kids)-1, named, true)
+			work(kid, depth+1, at == len(kids)-1, named, true, below)
 		}
 	}
 
@@ -789,7 +806,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 				depth = 1
 			}
 			for at, root := range g.roots {
-				work(root, depth, at == len(g.roots)-1, named, false)
+				work(root, depth, at == len(g.roots)-1, named, false, make([]bool, depth))
 			}
 		}
 	}
@@ -842,6 +859,27 @@ func tasksKin(depth, levels int, mark string) string {
 	return strings.Repeat(tasksKinStep, depth) + mark
 }
 
+// tasksKinTree is [tasksKin] with the family's stroke drawn through it: one
+// step for every ancestor, a rule where that ancestor still has a sibling to
+// come and a blank where it was the last of its family.
+func tasksKinTree(rails []bool, depth, levels int, mark string) string {
+	if depth > levels {
+		depth = levels
+	}
+	if depth <= 0 {
+		return mark
+	}
+	var lead strings.Builder
+	for step := 0; step < depth; step++ {
+		if step < len(rails) && rails[step] {
+			lead.WriteString(tasksKinRule)
+			continue
+		}
+		lead.WriteString(tasksKinStep)
+	}
+	return lead.String() + mark
+}
+
 // tasksKinRoom is how many levels of indent this frame can afford.
 //
 // THE COLUMN MAY NEVER TAKE THE CELLS THE NAME NEEDS (rowfit.go's law 1). Work
@@ -876,6 +914,9 @@ const (
 	tasksFoldOpen = "▾ "
 	// tasksKinCont and tasksKinLast are the connectors under an open piece of
 	// work, on the rows that hold nothing themselves.
+	// tasksKinRule is the family's stroke passing a line that is not a row of
+	// it: the live line under a task, or the rows of the task under that.
+	tasksKinRule = "│ "
 	tasksKinCont = "├ "
 	tasksKinLast = "└ "
 )
@@ -1526,6 +1567,9 @@ func (r tasksReading) planRows(width int, pal palette) []string {
 			continue
 		}
 		out = append(out, planRailRow(lines[i], width, pal, r.now))
+		if dots := planRailDots(lines[i], width, pal); dots != "" {
+			out = append(out, dots)
+		}
 		if live := planRailLive(lines[i], width, pal); live != "" {
 			out = append(out, live)
 		}
