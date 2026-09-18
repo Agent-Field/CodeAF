@@ -150,7 +150,7 @@ type beltRun struct {
 // the engine in a goroutine the moment the run is new. Every refusal falls back
 // to the legacy road rather than inventing a sentence of its own, so a
 // conversation the run road cannot serve gets exactly the door it always had.
-func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
+func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, question string) (uint64, string, string, error) {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil {
@@ -186,6 +186,12 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief)
 	if err != nil {
 		return a.startTaskLegacy(ctx, brief, solo)
+	}
+	if question = strings.TrimSpace(question); question != "" {
+		if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+			_ = store.Close()
+			return a.startTaskLegacy(ctx, brief, solo)
+		}
 	}
 	run := &beltRun{plan: plan, store: store, root: store.RootID(), row: id, title: title}
 	a.installBeltRun(g, run)
@@ -311,12 +317,14 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 }
 
 // deliverBeltRunLanding writes the run's digest into the conversation record.
-// A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED. The owed case is the next cell's
-// work; its named seam keeps the wake road present but unreachable here.
+// A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED.
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
 	line := beltRunOutcomeNote(summary, landing)
-	if landingOwesAnswer(run.store.Task(run.root)) {
-		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: wakeNote(line)})
+	if task := run.store.Task(run.root); landingOwesAnswer(task) {
+		document := owedLandingDocument(task, line)
+		note := wakeNote(document.text())
+		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
+		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
 		return
 	}
 	note := userText(line)
@@ -326,11 +334,26 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	a.mu.Unlock()
 }
 
-// landingOwesAnswer is the seam for the next cell: an owed root landing wakes
-// one bounded reply turn. This cell records no debt, so no landing owes one.
+// landingOwesAnswer admits only an owed work root to the one bounded reply turn.
 func landingOwesAnswer(task *plandb.Task) bool {
-	return false
+	return task != nil && strings.TrimSpace(task.Question) != "" && task.ParentID == "" && task.Role != plandb.RoleCheck
 }
+
+func questionAtTaskHandoff(owed []owedAsk) string {
+	for index := len(owed) - 1; index >= 0; index-- {
+		if owed[index].from == owedByPerson {
+			return strings.TrimSpace(owed[index].text)
+		}
+	}
+	return ""
+}
+
+func owedLandingDocument(task *plandb.Task, result string) userMessage {
+	return userText(strings.TrimSpace(task.Question) + "\n\n" + strings.TrimSpace(result))
+}
+
+func owedLandingCallCeiling() int { return settleCallCeiling }
+func owedLandingTier() string     { return "low" }
 
 // settleBeltRun ends the row the run was published under: done when the run
 // finished whole, failed on every other ending, with the result and the branch
