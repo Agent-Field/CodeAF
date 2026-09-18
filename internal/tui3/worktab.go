@@ -62,6 +62,13 @@ func (a *app) openWorkTab() {
 	if len(rows) == 0 {
 		return
 	}
+	// THE READING IS TAKEN AT THE OPENING, ONCE, the way the tasks place takes
+	// it ([app.showTaskPlace]): the disk is walked here and the frames that
+	// follow draw what the place holds, refreshed on the paint clock through
+	// [tasksPlace.regroup]. A frame that took its own reading would read the
+	// disk on every paint (framedisk_law_test.go).
+	a.refreshElsewhere()
+	a.taskSheet = a.takeTaskReading()
 	a.workTabOn, a.taskSheet.planOn, a.taskSheet.detailOn = true, true, true
 	if page, found := p.PlanTaskPage(rows[0].ID); found {
 		a.taskSheet.plan = page
@@ -86,11 +93,15 @@ func (a *app) workTabKey(msg tea.KeyPressMsg) tea.Cmd {
 	return a.taskPlanKey(msg)
 }
 
-// workTabFrame reuses the tasks place reading and painter; there is no second work-row renderer.
+// workTabFrame reuses the tasks place reading and painter; there is no second
+// work-row renderer. THE FRAME NEVER TAKES THE READING: [app.takeTaskReading]
+// walks the disk and stamps the look, which is an opening's work, so the frame
+// draws the reading the place already holds through [app.tasksFiltered], the
+// one door the rail and the tasks place read through (framedisk_law_test.go).
 func (a *app) workTabFrame(width, height int) []string {
 	a.workTabStable()
 	out := a.headRows(width, a.tabsRow(width), a.pal)
-	reading := a.takeTaskReading().reading
+	reading := a.tasksFiltered()
 	reading.unfolded = true
 	rows := reading.rows(width, a.pal)
 	room := height - len(out) - 3
