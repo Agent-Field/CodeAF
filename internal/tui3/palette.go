@@ -2270,6 +2270,15 @@ func (a *app) cycleReasoning() {
 	a.setLevel(chosen.ID, nextReasoning(a.reasoningFor(chosen.ID)))
 }
 
+// slashPickerTack is the command left standing in the box while the model list is
+// open ([draftBlockTacked]). It is spelled once, here, rather than at the doors
+// that draw this box, and it carries its slash because that is how a person typed
+// it and how the command list spells it.
+//
+// A test asserts this names a command the surface actually has, since a chip for a
+// command nobody can type would be the box teaching a gesture that does not exist.
+const slashPickerTack = "/model"
+
 // pickerHint is the placeholder in the empty filter box, and it names the box
 // and the one key that is not about walking the list.
 //
@@ -2342,30 +2351,30 @@ const (
 	// THE EFFORT KEY IS NAMED HERE BECAUSE THE BOX STOPPED NAMING IT
 	// ([pickerHint]), and this is the row it works on: inside a fold the cursor
 	// is on a machine and `ctrl+t` has no model to dial.
-	pickerKeysModel = "→ providers · " + effortKeyWord + " · " + sortKeyWord + " · enter switch · esc"
+	pickerKeysModel = "→ providers · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 	// pickerKeysModelTab is the same row with the caret somewhere inside what is
 	// typed, where `→` steps over a character instead ([picker.foldKey]) and
 	// only `tab` opens.
-	pickerKeysModelTab = "tab providers · " + effortKeyWord + " · " + sortKeyWord + " · enter switch · esc"
+	pickerKeysModelTab = "tab providers · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 	// pickerKeysFold is a row inside an open fold: enter chooses that provider,
 	// `←` walks back out to the model.
-	pickerKeysFold = "enter choose · ← back · esc"
+	pickerKeysFold = "← back · " + sortKeyWord + " · enter choose · esc"
 	// pickerKeysFoldTab is the same with characters before the caret, where
 	// `←` edits the box and `tab` is the way out.
-	pickerKeysFoldTab = "enter choose · tab back · esc"
+	pickerKeysFoldTab = "tab back · " + sortKeyWord + " · enter choose · esc"
 	// pickerKeysUnpin is the row inside the fold that the requests are ALREADY
 	// going to: the same enter takes the pin off there (lanes.go's
 	// [app.applyLaneChoice]), and the hint is the only place that gesture
 	// announces itself.
-	pickerKeysUnpin = "enter unpin · ← back · esc"
+	pickerKeysUnpin = "← back · " + sortKeyWord + " · enter unpin · esc"
 	// pickerKeysUnpinTab is that row with characters before the caret.
-	pickerKeysUnpinTab = "enter unpin · tab back · esc"
+	pickerKeysUnpinTab = "tab back · " + sortKeyWord + " · enter unpin · esc"
 	// pickerKeysSwitch is a list with no fold at all and no cursor on anything:
 	// the two keys every list has. pickerKeysSwitchEffort is that list where the
 	// rung can still be dialled, which is every model list a door holds a level
 	// for even when no machine stands behind the row.
 	pickerKeysSwitch       = "enter switch · esc"
-	pickerKeysSwitchEffort = effortKeyWord + " · enter switch · esc"
+	pickerKeysSwitchEffort = sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 )
 
 // keysHint is what the hint slot says this list's keys do RIGHT NOW, read off
@@ -2387,6 +2396,22 @@ func (p *picker) keysHint() string {
 // keysParts is that same reading in its three pieces: whatever is said before
 // enter, the one word that says what enter DOES on the row the cursor is on,
 // and whatever is said after it.
+//
+// ── THE ORDER OF THE WHOLE LINE ──────────────────────────────────────────────
+//
+//	↑↓ pick · ← back · → providers · alt+s sort · enter <verb> · ctrl+t effort · esc
+//
+// The walk and the way out are the DOOR's (home adds `↑↓ pick` and ends `esc
+// back`); everything between is this list's and comes back from here.
+//
+// IT IS GROUPED BY WHAT THE KEY MOVES, not by how often it is pressed. The first
+// two move the CURSOR — `← back` walks out of a fold exactly as `↑↓` walks the
+// rows, so it belongs beside it rather than stranded after enter, which is where
+// it used to sit. The next two change the LIST: `→` opens a row, `alt+s` reorders
+// it. Then `enter`, which is the one key that DECIDES something, so it stands
+// where the eye stops. `ctrl+t` comes after it because it is the one key here
+// that is not about the list at all — it dials a setting on the row and leaves
+// the list exactly as it was.
 //
 // IT IS SPLIT BECAUSE THE DOORS END THE SENTENCE DIFFERENTLY. /model switches a
 // conversation and says `enter switch · esc`; home pins the NEXT one and says
@@ -2431,19 +2456,28 @@ func (p *picker) keysParts() (string, string, string) {
 		// A LIST WITH NO FOLD STILL DIALS THE RUNG, because the level is the
 		// door's and not the router's: a task's model list holds one, and the
 		// foot is the only place the key is named.
-		return dotted(effortKeyWord, sorts), "switch", ""
+		return sorts, "switch", effortKeyWord
 	case unpin:
-		return "", "unpin", back
-	case row.lane == laneRoutAt && !p.machines && len(p.lanes) > 0:
+		return dotted(back, sorts), "unpin", ""
+	case row.lane == laneRoutAt && !p.machines:
 		// THE SECOND FOLD SAYS SO ON ITS OWN ROW. `openrouter` opens the
 		// machines it routes to, and the key that opens them is the key that
 		// opened this fold — said again, because a row that can be opened and
 		// does not say so is a row nobody opens.
-		return open, "choose", back
+		//
+		// IT SAYS SO WITH NOTHING MEASURED TOO. This asked for at least one
+		// believed machine, which was true when an unmeasured fold refused to
+		// open — and stopped being true the moment `default` became a row inside
+		// it ([picker.unfoldHere]), leaving `→` working on a row that did not
+		// name it. A key that does something is named where it does it.
+		return dotted(back, open, sorts), "choose", ""
 	case row.lane != laneNone:
-		return "", "choose", back
+		// A MACHINE'S ROW NAMES THE SORT TOO, because the sort key orders the
+		// PROVIDERS from in here (pickersort.go's [picker.sortNext]) and a table a
+		// person is reading down is exactly where they want to reorder it.
+		return dotted(back, sorts), "choose", ""
 	}
-	return dotted(open, effortKeyWord, sorts), "switch", ""
+	return dotted(open, sorts), "switch", effortKeyWord
 }
 
 // ── the app's side of the overlay ───────────────────────────────────────────

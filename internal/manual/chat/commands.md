@@ -924,9 +924,12 @@ falls back to `filter`.
 
 **The keys are named on the foot and not in the box**, because a placeholder disappears the
 moment you type — which is exactly when you have found your model and want its providers.
-The foot follows the cursor: `→ providers · ctrl+t effort · enter switch · esc` on a model,
-`enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc` on the
-provider you are already pinned to, where the same key takes the pin off again. While you are
+The foot follows the cursor and always reads in one order — the keys that move the **cursor**,
+then the ones that change the **list**, then `enter`, then the one key that is about neither:
+`→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model,
+`← back · alt+s sort · enter choose · esc` inside its providers — and `← back · alt+s sort ·
+enter unpin · esc` on the provider you are already pinned to, where the same key takes the pin
+off again. While you are
 mid-typing and the arrow would step over a character, those read `tab providers` and `tab
 back` — the foot names whichever key actually works at that moment. What is left in
 the box is the name of the box and the one key that is about the LIST rather than about the

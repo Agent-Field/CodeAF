@@ -200,6 +200,11 @@ remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
 tried only when the one above it came back empty after filtering.
 
+**The `/model` you typed stays in the box**, drawn as the chip it was, with the filter after
+it: `› /model filter by name`. The list is a different box from the one you typed the command
+into, and without the chip the line was a `›` and a grey phrase that could have belonged to
+any list on this surface. What you type goes after the chip and the chip cannot be edited.
+
 The placeholder in the empty filter box is the only place the overlay explains itself:
 `filter by name · ctrl+r refresh` — it says `by name` because that is the whole scope of the
 box, and on a frame too narrow for it the words fall back to `filter`. The keys themselves are named on the foot under the list,

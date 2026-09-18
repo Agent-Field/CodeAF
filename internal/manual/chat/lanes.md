@@ -241,8 +241,8 @@ its providers — the machines serving it — open under it, the cursor **moves 
 onto the provider you pinned or onto `auto` when you have not, and the list scrolls so the
 model and every provider are in view. `enter` pins the provider under the cursor — every request
 for that model goes there until you say otherwise — and `←` (or `tab`) walks back out.
-The hint slot says which: `→ providers · enter switch · esc` on a model,
-`enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
+The hint slot says which: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a
+model, `← back · alt+s sort · enter choose · esc` inside. On the default service, the `openrouter` row means
 "no opinion from me — let the router balance it".
 
 ## What enter on the openrouter row does — it chooses default and opens the list under it

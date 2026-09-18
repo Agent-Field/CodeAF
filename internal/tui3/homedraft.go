@@ -122,10 +122,12 @@ func (a *app) targetModelPinned() bool {
 // two of them did nothing whatever anybody typed ([app.openTargetPicker] arms
 // the fold now, and [targetDraft.levels] holds the rung).
 //
-// `enter use it` and not `enter switch`, because nothing switches here: a
-// choice made on this list is a pin on the NEXT conversation
-// ([app.pinTargetModel]). The picker's own middle says `enter switch`, so it is
-// cut off and home's own ending put back on.
+// `enter choose` and not `enter switch`, because nothing switches here: a choice
+// made on this list is a pin on the NEXT conversation ([app.pinTargetModel]). The
+// picker's own middle says `enter switch`, so the verb is swapped and home's own
+// ending put back on. It said `use it` until the owner asked for one verb across
+// the levels — every other row of this same fold already said `choose`, so `use
+// it` was a second word for one gesture on one rung of it.
 func (a *app) targetPickFoot() string {
 	before, enter, after := a.target.pick.keysParts()
 	// `use it` AND NOT `switch`, because nothing switches here: a choice made on
@@ -133,7 +135,7 @@ func (a *app) targetPickFoot() string {
 	// other two words enter can take — `choose` a provider, `unpin` the one the
 	// requests already go to — mean the same at either door and are kept.
 	if enter == "switch" {
-		enter = "use it"
+		enter = "choose"
 	}
 	return dotted(targetPickWalkWord, before, "enter "+enter, after, targetPickLeaveWord)
 }
@@ -175,11 +177,6 @@ const (
 	// The conversation's legend is a list of VERBS in the same slot (`tab last`,
 	// `space space home`), which is why the same door is `alt+k switch` there.
 	targetSwitcherKeyWord = "alt+k chats"
-	// targetPinnedModelWord is what home's message line says when a model has
-	// been pinned onto the draft. It names the slug and then the SCOPE of what
-	// just happened, because "did that change the conversation behind home"
-	// is the exact question the old silent `/model` left a person holding.
-	targetPinnedModelWord = " · for the next conversation you start here"
 	// targetMovedWord is what the same line says when `alt+w` moved the folder.
 	targetMovedWord = "next conversation opens in "
 	// targetPickWord is the foot while the model list is open, in the hint
@@ -187,7 +184,7 @@ const (
 	// it is the same list answering the same keys ([composerPickWord]). It is
 	// the WALK and the two ways out; what the keys in the middle do depends on
 	// the row the cursor is on, and [app.targetPickFoot] puts them between.
-	targetPickWord = "↑↓ pick · enter use it · esc back"
+	targetPickWord = "↑↓ pick · enter choose · esc back"
 	// targetPickWalkWord and targetPickLeaveWord are that sentence's two ends,
 	// so the middle can be spliced in without a second spelling of either.
 	targetPickWalkWord  = "↑↓ pick"
@@ -593,7 +590,13 @@ func (a *app) pinTargetModel(id string) {
 		return
 	}
 	a.target.model = id
-	a.home.say("model · "+modelBase(id)+targetPinnedModelWord, "")
+	// NO NOTE. This used to say `model · <name> · for the next conversation you
+	// start here` on the line under the box, and the line it was answering —
+	// "did that change the conversation behind home?" — is answered better by the
+	// SEAM, which carries the pinned model beside the folder and carries it for as
+	// long as the pin lasts rather than until the next note replaces it. A
+	// sentence that repeats what is already on the screen is a sentence that costs
+	// the row something else could have used (the owner's ruling).
 	a.touch()
 }
 

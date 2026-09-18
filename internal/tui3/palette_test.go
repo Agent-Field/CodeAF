@@ -203,8 +203,13 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	if !strings.Contains(box, rowAll(pickerHintFieldsBare)) {
 		t.Fatalf("the filter box is %q, want the hint", box)
 	}
-	if caretY != a.height-2-len(pickerCatalog) || caretX != len(inputPad)+2 {
-		t.Fatalf("the caret is at %d,%d — it belongs in the filter box", caretX, caretY)
+	// THE CARET SITS AFTER THE TACK, which is the one thing the sticky `/model`
+	// chip costs the text ([draftBlockTacked]): the chip is not editable, so the
+	// first character a person types goes to its right.
+	wantX := len(inputPad) + 2 + ansi.StringWidth(slashPickerTack) + 1
+	if caretY != a.height-2-len(pickerCatalog) || caretX != wantX {
+		t.Fatalf("the caret is at %d,%d — it belongs in the filter box after the tack (x=%d)",
+			caretX, caretY, wantX)
 	}
 	// Windows are shown where they are known and nowhere else. The rows are looked
 	// up by NAME rather than by index, because what order the list is in is the

@@ -68,13 +68,14 @@ func boxLine(t *testing.T, a *app) string {
 // typed character ([pickerHint] has the whole of it); what is left is the name
 // of the box and the one key that belongs to the LIST rather than to the row
 // the cursor is on. So it fits whole at sixty cells now, where it used to be
-// one key short.
+// one key short — and it still does with the sticky `/model` tack in front of it
+// ([draftBlockTacked]), which is what `tacked` below adds to the expectation.
 func TestTheRefreshKeyIsNamedInThePlaceholderAndTheEmptyList(t *testing.T) {
 	a := refreshApp(t, &fakeRefresh{})
 	typeLine(t, a, "/model")
 
-	if got := boxLine(t, a); got != pickerHint {
-		t.Fatalf("on sixty cells the box reads %q, want the whole line %q", got, pickerHint)
+	if got, want := boxLine(t, a), tacked(pickerHint); got != want {
+		t.Fatalf("on sixty cells the box reads %q, want the whole line %q", got, want)
 	}
 	if !strings.Contains(pickerHint, refreshModelsHint) {
 		t.Fatalf("the placeholder %q has to name the refresh key", pickerHint)
@@ -86,8 +87,8 @@ func TestTheRefreshKeyIsNamedInThePlaceholderAndTheEmptyList(t *testing.T) {
 		t.Fatalf("the foot does not name the rung key: %q", got)
 	}
 	a.width = 80
-	if got := boxLine(t, a); got != pickerHint {
-		t.Fatalf("on eighty cells the box reads %q, want the whole line %q", got, pickerHint)
+	if got, want := boxLine(t, a), tacked(pickerHint); got != want {
+		t.Fatalf("on eighty cells the box reads %q, want the whole line %q", got, want)
 	}
 	a.width = 60
 
@@ -103,8 +104,8 @@ func TestADoorWithNoRefreshHasNoKey(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: "openai/gpt-4.1-mini"}, pickerCatalog)
 	typeLine(t, a, "/model")
 
-	if got := boxLine(t, a); got != rowAll(pickerHintFieldsBare) {
-		t.Fatalf("with no refresh the box reads %q, want the whole bare line", got)
+	if got, want := boxLine(t, a), tacked(rowAll(pickerHintFieldsBare)); got != want {
+		t.Fatalf("with no refresh the box reads %q, want the whole bare line %q", got, want)
 	}
 	if cmd := pressRefresh(a); cmd != nil || a.pick.fetching || !a.pick.open {
 		t.Fatalf("the key did something on a door with no refresh (cmd %v, fetching %v)", cmd != nil, a.pick.fetching)
@@ -209,3 +210,8 @@ func TestAFailedFetchKeepsTheListAndSaysWhy(t *testing.T) {
 		t.Fatalf("the note reads %q, want %q — one line, as the door said it", got, want)
 	}
 }
+
+// tacked is a placeholder as the box actually draws it: behind the command that
+// opened the list ([slashPickerTack]), which is not part of the hint and is not
+// fitted with it.
+func tacked(hint string) string { return slashPickerTack + " " + hint }

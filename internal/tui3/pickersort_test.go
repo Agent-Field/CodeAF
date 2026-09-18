@@ -3,7 +3,9 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -409,4 +411,170 @@ func reversedOf(in []string) []string {
 		out[len(in)-1-at] = one
 	}
 	return out
+}
+
+// ── THE FOOT'S ORDER, AND THE TACK ──────────────────────────────────────────
+
+// THE WHOLE LINE READS IN ONE ORDER AT EVERY LEVEL:
+//
+//	↑↓ pick · ← back · → providers · alt+s sort · enter <verb> · ctrl+t effort · esc
+//
+// grouped by what each key MOVES — the cursor, then the list, then the one key
+// that decides, then the one key that is not about the list at all.
+func TestTheFootReadsInOneOrderAtEveryLevel(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width, a.height = 140, 40
+	typeLine(t, a, "/model")
+
+	for _, probe := range []struct {
+		where string
+		walk  []tea.Msg
+		want  []string
+	}{
+		{"a model row", nil,
+			[]string{"→ providers", sortKeyWord, "enter switch", effortKeyWord}},
+		{"the auto row", []tea.Msg{key("right")},
+			[]string{"← back", sortKeyWord, "enter choose"}},
+		{"the openrouter row", []tea.Msg{key("right"), key("down")},
+			[]string{"← back", "→ providers", sortKeyWord, "enter choose"}},
+		{"a machine", []tea.Msg{key("right"), key("down"), key("right")},
+			[]string{"← back", sortKeyWord, "enter choose"}},
+	} {
+		t.Run(probe.where, func(t *testing.T) {
+			b := laneApp(t)
+			b.width, b.height = 140, 40
+			typeLine(t, b, "/model")
+			drive(t, b, probe.walk...)
+			got := b.hintWord()
+			at := -1
+			for _, want := range probe.want {
+				next := strings.Index(got, want)
+				if next < 0 {
+					t.Fatalf("on %s the foot does not name %q: %q", probe.where, want, got)
+				}
+				if next < at {
+					t.Fatalf("on %s the foot has %q out of order: %q", probe.where, want, got)
+				}
+				at = next
+			}
+			// AND `esc` IS LAST WHEREVER IT IS, because it is the way out.
+			if esc := strings.Index(got, "esc"); esc < at {
+				t.Fatalf("on %s `esc` is not last: %q", probe.where, got)
+			}
+		})
+	}
+}
+
+// AND `← back` STANDS BESIDE THE WALK rather than after enter, because walking out
+// of a fold is a move of the CURSOR exactly as `↑↓` is. Home is where both are on
+// the line, so home is where the adjacency can be read.
+func TestBackStandsBesideThePickAtHome(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "a session", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+	typeHome(a, "/model")
+	runCmd(a.key(key("enter")))
+	drive(t, a, key("right")) // into the fold, where there is a way back
+
+	foot := a.targetPickFoot()
+	want := targetPickWalkWord + " · ← back"
+	if !strings.Contains(foot, want) {
+		t.Fatalf("home's foot reads %q, want %q in it", foot, want)
+	}
+	// AND THE VERB IS `choose` AT THIS DOOR TOO. It said `use it`, which was a
+	// second word for the gesture every other row of this same fold called
+	// `choose`.
+	if !strings.Contains(foot, "enter choose") || strings.Contains(foot, "use it") {
+		t.Fatalf("home's foot reads %q, want it to say enter choose", foot)
+	}
+}
+
+// PINNING A MODEL AT HOME SAYS NOTHING UNDER THE BOX. The line used to read
+// `model · <name> · for the next conversation you start here`, which is what the
+// SEAM already carries — and carries for as long as the pin lasts, rather than
+// until the next note replaces it.
+func TestPinningAModelAtHomeLeavesTheLineAlone(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "a session", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	a.pinTargetModel("zhipu/glm-5.3")
+	if a.home.msg != "" {
+		t.Fatalf("home's line reads %q, want nothing", a.home.msg)
+	}
+	// AND THE PIN IS STILL VISIBLE, on the rule, which is the point of dropping
+	// the sentence rather than the answer.
+	if text := homeText(a); !strings.Contains(text, modelBase("zhipu/glm-5.3")) {
+		t.Fatalf("the rule does not carry the pinned model:\n%s", text)
+	}
+}
+
+// THE COMMAND THAT OPENED THE LIST STAYS IN THE BOX, with the placeholder after
+// it. The box used to read `› filter by name` alone — a prompt and a grey phrase
+// that could have belonged to any list on this surface.
+func TestTheModelCommandStaysTackedInTheFilterBox(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width, a.height = 130, 40
+	typeLine(t, a, "/model")
+
+	box := ""
+	for _, line := range strings.Split(plain(frame(a)), "\n") {
+		if strings.Contains(line, pickerHint) || strings.Contains(line, "filter") {
+			box = strings.TrimRight(line, " ")
+		}
+	}
+	if box == "" {
+		t.Fatalf("the filter box is not on the frame:\n%s", plain(frame(a)))
+	}
+	if !strings.Contains(box, slashPickerTack) {
+		t.Fatalf("the box does not keep the command: %q", box)
+	}
+	// THE TACK COMES FIRST AND THE PLACEHOLDER AFTER IT, which is the order they
+	// were typed in.
+	if tack, hint := strings.Index(box, slashPickerTack), strings.Index(box, "filter"); tack > hint {
+		t.Fatalf("the placeholder is before the tack: %q", box)
+	}
+	// AND IT IS DRAWN AS A CHIP and not as text, so it reads as the command it is.
+	painted := ""
+	for _, line := range strings.Split(mustFrame(a), "\n") {
+		if strings.Contains(ansi.Strip(line), slashPickerTack) {
+			painted = line
+		}
+	}
+	if !strings.Contains(painted, a.pal.chip(slashPickerTack)) {
+		t.Fatalf("the tack is not chipped: %q", painted)
+	}
+
+	// AND TYPING GOES AFTER IT, leaving the tack whole.
+	typeInto(t, a, "deep")
+	if got := string(a.pick.filter.value); got != "deep" {
+		t.Fatalf("the filter holds %q — the tack is not part of the text", got)
+	}
+	typed := ""
+	for _, line := range strings.Split(plain(frame(a)), "\n") {
+		if strings.Contains(line, slashPickerTack) {
+			typed = strings.TrimRight(line, " ")
+		}
+	}
+	if !strings.Contains(typed, slashPickerTack+" deep") {
+		t.Fatalf("what was typed does not follow the tack: %q", typed)
+	}
+}
+
+// AND THE TACK NAMES A COMMAND THIS SURFACE ACTUALLY HAS. A chip for a command
+// nobody can type would be the box teaching a gesture that does not exist.
+func TestTheTackNamesARealCommand(t *testing.T) {
+	name := strings.TrimPrefix(slashPickerTack, "/")
+	for _, cmd := range commands {
+		if cmd.name == name {
+			return
+		}
+	}
+	t.Fatalf("%q is not a command this surface has", slashPickerTack)
 }
