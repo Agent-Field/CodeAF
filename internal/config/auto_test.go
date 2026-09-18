@@ -386,19 +386,19 @@ func mustIndex(t *testing.T, doc string) *index.Index {
 }
 
 // priorDocument is the smallest index document that rates one catalog row on
-// the worker seat: a gaussian role_quality metric and a cell well above the
+// the worker seat: a bernoulli acceptable metric and a cell well above the
 // document's min_installs.
 const priorDocument = `{
 	"schema": 1,
 	"generated": "2026-09-17",
 	"min_installs": 5,
-	"metrics": {"role_quality": {"kind": "gaussian", "dims": ["role", "model"]}},
+	"metrics": {"acceptable": {"kind": "bernoulli", "dims": ["role", "model"]}},
 	"cells": [
-		{"metric": "role_quality", "role": "worker", "model": "a/cheap", "mean": 95, "sd": 5, "n": 1000}
+		{"metric": "acceptable", "role": "worker", "model": "a/cheap", "mean": 95, "sd": 5, "n": 1000}
 	]
 }`
 
-// THE INDEX REACHES THE PICK THROUGH THE PRIOR. An index whose role_quality
+// THE INDEX REACHES THE PICK THROUGH THE PRIOR. An index whose acceptable metric
 // metric rates one catalog row well above its published worker quality moves
 // AutoPick's worker answer to that row, and with no index the pick answers
 // exactly what the front answers, as before.
@@ -574,7 +574,7 @@ func TestANilOwnCellsSeamLeavesThePriorAlone(t *testing.T) {
 
 // The own sheet's scores are on the 0-100 scale a judge answers on whatever
 // the index's metric says, so they are read even beside an index whose
-// role_quality is not gaussian — while the index's own cells are not.
+// acceptable is not bernoulli — while the index's own cells are not.
 func TestAutoPriorReadsTheOwnCellsBesideANonGaussianIndex(t *testing.T) {
 	restoreIndex, restoreOwn := AutoIndex, AutoOwnCells
 	defer func() { AutoIndex, AutoOwnCells = restoreIndex, restoreOwn }()
@@ -583,15 +583,15 @@ func TestAutoPriorReadsTheOwnCellsBesideANonGaussianIndex(t *testing.T) {
 		"schema": 1,
 		"generated": "2026-09-17",
 		"min_installs": 1,
-		"metrics": {"role_quality": {"kind": "tally", "dims": ["role", "model"]}},
-		"cells": [{"metric": "role_quality", "role": "worker", "model": "a/cheap", "mean": 5, "n": 900}]
+		"metrics": {"acceptable": {"kind": "tally", "dims": ["role", "model"]}},
+		"cells": [{"metric": "acceptable", "role": "worker", "model": "a/cheap", "mean": 5, "n": 900}]
 	}`)
 	}
 	AutoOwnCells = ownCells
 
 	prior := autoPrior(AutoIndex())
 	if r, ok := prior[crewpick.Worker]["a/cheap"]; !ok || r.Mean != 90 || r.N != 3 {
-		t.Fatalf("the own cell was not read beside a non-gaussian index: %v ok %v", prior[crewpick.Worker]["a/cheap"], ok)
+		t.Fatalf("the own cell was not read beside a non-bernoulli index: %v ok %v", prior[crewpick.Worker]["a/cheap"], ok)
 	}
 	if _, ok := prior[crewpick.Worker]["b/only"]; !ok {
 		t.Fatalf("the second own cell did not survive: %v", prior)
