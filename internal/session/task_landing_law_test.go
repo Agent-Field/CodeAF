@@ -17,13 +17,15 @@ import (
 // liveLandingEndedAtWriters names every function allowed to derive a row's
 // EndedAt from time.Now. Each is a LIVE LANDING TRANSITION: recordTaskIndex is
 // the node landing backstop, closeInflightTaskIndexRows closes work abandoned by
-// this process, recordNode and recordRoot settle adaptive-run rows, and
-// interrupt settles the two kinds for which a process exit IS an ending.
+// this process, recordNode and recordRoot settle adaptive-run rows, settleBeltRun
+// settles the row a run on the bash belt was published under, and interrupt
+// settles the two kinds for which a process exit IS an ending.
 var liveLandingEndedAtWriters = map[string]string{
 	"recordTaskIndex":            "a node has just landed through the graph's report hook",
 	"closeInflightTaskIndexRows": "this process is closing a row whose live owner is gone",
 	"recordNode":                 "an adaptive run's node has just landed",
 	"recordRoot":                 "an adaptive run's root has just landed",
+	"settleBeltRun":              "a run on the bash belt has just landed and the row it was published under ends here",
 	"interrupt":                  "a design or run that settles on interruption is ending here",
 	"settleBeltRun":              "a run has just landed and the row it was published under is settling",
 }
