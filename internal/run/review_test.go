@@ -534,33 +534,36 @@ func TestSupervisorAddsNoCheckWithTheReviewRoundOff(t *testing.T) {
 	}
 }
 
-// TestReviewConclusionRequiresAnExecutedDeclaredCheck proves a check cannot
-// land either conclusion until its trajectory records a declared Checks:
-// command. Reading alone is not command evidence.
-func TestReviewConclusionRequiresAnExecutedDeclaredCheck(t *testing.T) {
-	for _, conclusion := range []string{"holds: the handler returns 200", "does not hold: the handler returns 500"} {
-		t.Run(strings.SplitN(conclusion, ":", 2)[0], func(t *testing.T) {
+// TestReviewConclusionUsesTheEndingSpecificCheckGate proves holds needs every
+// declared command while does not hold can land from reading an empty contract.
+func TestReviewConclusionUsesTheEndingSpecificCheckGate(t *testing.T) {
+	tests := []struct {
+		name       string
+		checks     []string
+		conclusion string
+		ranFirst   bool
+		wantDone   bool
+	}{
+		{name: "holds needs every declared check", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, conclusion: "holds: the handler returns 200", ranFirst: true},
+		{name: "does not hold needs no declared check", conclusion: "does not hold: reading found the handler returns 500", wantDone: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			store := runOpenStore(t)
-			ctx := runContext(t)
 			seat := newFakeSeat()
 			seat.actions["root"] = splitRoot(t, store, plandb.TaskSpec{
-				ID: "l1", Title: "the leaf", Description: "the handler returns 200",
-				Checks: []string{"go test ./internal/widget"},
+				ID: "l1", Title: "the leaf", Description: "the handler returns 200", Checks: tt.checks,
 			})
-			seat.actions[plandb.RoleCheck] = func(context.Context, plandb.Task) (run.Report, error) {
-				return run.Report{Result: conclusion, Steps: 1}, nil
+			seat.actions[plandb.RoleCheck] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+				if tt.ranFirst {
+					recordDeclaredCheck(t, store, task)
+				}
+				return run.Report{Result: tt.conclusion, Steps: 1}, nil
 			}
 			supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, seat.workerFor)
-
-			if outcome := supervisor.Run(ctx); outcome == run.OutcomeDone {
-				t.Fatalf("outcome = %q, want the empty command trajectory to refuse %q", outcome, conclusion)
-			}
-			checks := tasksWithRole(store, plandb.RoleCheck)
-			if len(checks) != 1 {
-				t.Fatalf("check tasks = %d, want one", len(checks))
-			}
-			if checks[0].Status == plandb.StatusDone {
-				t.Fatalf("check status = %s, want conclusion refused", checks[0].Status)
+			outcome := supervisor.Run(runContext(t))
+			if (outcome == run.OutcomeDone) != tt.wantDone {
+				t.Fatalf("outcome = %q, want done %v for %q", outcome, tt.wantDone, tt.conclusion)
 			}
 		})
 	}
