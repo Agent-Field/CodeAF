@@ -468,7 +468,7 @@ func TestSupervisorChecksAChildlessRootThatCompletedItselfInTheStore(t *testing.
 	}
 }
 
-func TestSupervisorRefusesARootsUncheckedDoesNotHoldConclusion(t *testing.T) {
+func TestSupervisorAcceptsARootsReadingDoesNotHoldConclusion(t *testing.T) {
 	store := runOpenStore(t)
 	seat := newFakeSeat()
 	seat.actions["root"] = rootDoneAction(store, "the root wrote its own ending")
@@ -481,12 +481,17 @@ func TestSupervisorRefusesARootsUncheckedDoesNotHoldConclusion(t *testing.T) {
 		return seat.workerFor(task)
 	}
 	supervisor := run.NewSupervisor(store, t.TempDir(), 2, run.Limits{ReviewRound: true}, factory)
-	if outcome := supervisor.Run(runContext(t)); outcome == run.OutcomeDone {
-		t.Fatalf("outcome = %q, want the unchecked conclusion refused", outcome)
+	if outcome := supervisor.Run(runContext(t)); outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want the reading conclusion accepted", outcome)
 	}
 	checks := tasksWithRole(store, plandb.RoleCheck)
-	if len(checks) != 1 || checks[0].Status == plandb.StatusDone {
-		t.Fatalf("checks = %#v, want one refused check", checks)
+	if len(checks) == 0 {
+		t.Fatal("reading conclusion created no landed check")
+	}
+	for _, check := range checks {
+		if check.Status != plandb.StatusDone {
+			t.Fatalf("check %q status = %s, want done", check.ID, check.Status)
+		}
 	}
 }
 
