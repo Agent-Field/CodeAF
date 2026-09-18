@@ -513,8 +513,14 @@ func TestTheDemoHomeSeedsTheBeltRuns(t *testing.T) {
 			t.Errorf("missing task %q", title)
 			continue
 		}
-		if row.Status != expected.status || row.Role != expected.role || row.Result != expected.result {
-			t.Errorf("task %q = status %q role %q result %q; want %q %q %q", title, row.Status, row.Role, row.Result, expected.status, expected.role, expected.result)
+		if row.Status != expected.status {
+			t.Errorf("task %q status = %q, want %q", title, row.Status, expected.status)
+		}
+		if expected.role != "" && row.Role != expected.role {
+			t.Errorf("task %q role = %q, want %q", title, row.Role, expected.role)
+		}
+		if expected.result != "" && row.Result != expected.result {
+			t.Errorf("task %q result = %q, want %q", title, row.Result, expected.result)
 		}
 		if expected.parent != "" && (byTitle[expected.parent] == nil || row.ParentID != byTitle[expected.parent].ID) {
 			t.Errorf("task %q parent = %q, want %q", title, row.ParentID, expected.parent)
