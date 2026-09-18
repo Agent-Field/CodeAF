@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -672,13 +673,30 @@ func TestStartWaitsForAWorkerTheCompletedTreeLeftBehind(t *testing.T) {
 	ctx := runContext(t)
 	seat := newFakeSeat()
 	ended := make(chan struct{})
+	// THE COORDINATOR ANSWERS ITS WAKE, the way a real one does since a parent
+	// is woken with its children's landings: the first launch dispatches the
+	// leaf and ends its turn, the wake says the last word. It is the LEAF that
+	// lingers — it writes its own ending through the store and then sits in
+	// its goroutine until the run cancels it, which is the shape a worker has
+	// when `plandb done` ran mid-step — so the tree is complete while a worker
+	// it launched is still alive, and Start may not answer over its head.
+	var rootLaunches atomic.Int32
 	seat.actions["root"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
-		if _, err := store.AddMany([]plandb.TaskSpec{{ID: "l1", Title: "the leaf", ParentID: task.ID}}); err != nil {
+		if rootLaunches.Add(1) == 1 {
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "l1", Title: "the leaf", ParentID: task.ID}}); err != nil {
+				return run.Report{}, err
+			}
+			return run.Report{Result: "dispatched the leaf", Steps: 1, USD: 0.25}, nil
+		}
+		return run.Report{Result: "the coordinator's last word", Steps: 2, USD: 0.50}, nil
+	}
+	seat.actions["l1"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		if _, err := store.Done("l1", "l1", "did l1", nil, nil); err != nil {
 			return run.Report{}, err
 		}
 		<-ctx.Done()
 		close(ended)
-		return run.Report{Result: "the coordinator's last word", Steps: 2, USD: 0.50}, nil
+		return run.Report{Result: "did l1", Steps: 1}, nil
 	}
 	// WARM THE STORE'S TWO HANDLES before the count is taken, the way the
 	// cancelled-ancestor test does: whatever goroutine the driver costs per
@@ -710,8 +728,10 @@ func TestStartWaitsForAWorkerTheCompletedTreeLeftBehind(t *testing.T) {
 	default:
 		t.Fatal("Start answered while a worker it had launched was still alive")
 	}
-	if summary.Nodes != 2 {
-		t.Fatalf("summary nodes = %d, want the coordinator and its leaf", summary.Nodes)
+	// Three launches: the coordinator's first turn, its leaf, and the wake the
+	// leaf's landing earned it — a woken parent is a launch the summary counts.
+	if summary.Nodes != 3 {
+		t.Fatalf("summary nodes = %d, want the coordinator twice and its leaf once", summary.Nodes)
 	}
 	if leaf := store.Task("l1"); leaf.Status != plandb.StatusDone || leaf.Result != "did l1" {
 		t.Fatalf("leaf l1 = %s with result %q, want the ending its worker wrote", leaf.Status, leaf.Result)
