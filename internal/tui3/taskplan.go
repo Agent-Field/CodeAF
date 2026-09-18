@@ -261,7 +261,7 @@ func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 		failedLo, failedHi := row.Done*cells, (row.Done+row.Failed)*cells
 		id := tokens.GEmptyCell
 		switch {
-		case lo < failedHi && hi > failedLo:
+		case row.Failed > 0 && lo < failedHi && hi > failedLo:
 			id = tokens.GFailedCell
 		case hi <= doneAt:
 			id = tokens.GDoneCell
