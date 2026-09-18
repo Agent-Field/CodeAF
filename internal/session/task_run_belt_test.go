@@ -9,6 +9,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -321,4 +322,45 @@ func anyNoteCarries(notes []string, phrase string) bool {
 		}
 	}
 	return false
+}
+
+func TestLandingDigestCarriesTheStoredNowSentence(t *testing.T) {
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "run", planRootID, "The run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	payload, err := json.Marshal(storedRunSummary{Summary: RunPlanSummary{
+		What: "repair the landing digest",
+		Now:  "The focused landing tests pass.",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddContext(planRootID, runSummaryContextKind, string(payload)); err != nil {
+		t.Fatalf("store summary: %v", err)
+	}
+
+	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
+		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
+	})
+	want := "done · landed on task/landing-digest: 1 file · The focused landing tests pass."
+	if got != want {
+		t.Fatalf("landing digest = %q, want %q", got, want)
+	}
+}
+
+func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "run", planRootID, "The run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
+		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
+	})
+	want := "done · landed on task/landing-digest: 1 file"
+	if got != want {
+		t.Fatalf("landing digest = %q, want byte-for-byte legacy digest %q", got, want)
+	}
 }
