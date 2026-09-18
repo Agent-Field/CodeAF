@@ -84,7 +84,7 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 		config.KeyTierMastermindModel: "vendor/thinking",
 	})
 	recorder := &recordingCompleter{}
-	factory := run.CrewFactory(store, t.TempDir(), dir, recorder.forModel)
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
 
 	for _, test := range []struct {
 		task, want string
@@ -102,6 +102,56 @@ func TestCrewFactorySeatsEachRoleInItsTier(t *testing.T) {
 	}
 }
 
+// TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays is the defect this
+// file exists for: the seat a door resolved is the seat EVERY launch takes,
+// including the root woken again to fold its children and every leaf a planner
+// adds mid-run. The profile's own mastermind and worker rows name OTHER models,
+// so a factory that fell back to the profile for those seats would seat the
+// wrong model and this would see it.
+//
+// The check and probe rows are the profile's still: no door names them.
+func TestCrewFactoryRunsTheDoorsSeatsWhateverTheProfileSays(t *testing.T) {
+	store := runOpenStore(t)
+	if _, err := store.AddMany([]plandb.TaskSpec{
+		{ID: "one", Title: "One", ParentID: store.RootID()},
+		{ID: "two", Title: "Two", ParentID: store.RootID()},
+		{ID: "review", Title: "Review", Role: plandb.RoleCheck},
+		{ID: "discriminate", Title: "Discriminate", Role: plandb.RoleProbe},
+	}); err != nil {
+		t.Fatalf("add the leaves: %v", err)
+	}
+	dir := crewProfile(t, map[string]string{
+		config.KeyTierLowModel:        "vendor/profile-small",
+		config.KeyTierWorkerModel:     "vendor/profile-worker",
+		config.KeyTierHighModel:       "vendor/profile-careful",
+		config.KeyTierMastermindModel: "vendor/profile-thinking",
+	})
+	recorder := &recordingCompleter{}
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{
+		Work: "vendor/named-work",
+		Plan: "vendor/named-plan",
+	}, recorder.forModel)
+
+	for _, test := range []struct {
+		task, want string
+	}{
+		// The root is a coordinator; every launch of it — the first and the
+		// wake that folds its children — rides the plan seat.
+		{store.RootID(), "vendor/named-plan"},
+		// A leaf does the work itself and rides the work seat.
+		{"one", "vendor/named-work"},
+		// The check and probe rows are the profile's own.
+		{"review", "vendor/profile-careful"},
+		{"discriminate", "vendor/profile-small"},
+	} {
+		recorder.models = nil
+		factory(*store.Task(test.task))
+		if len(recorder.models) != 1 || recorder.models[0] != test.want {
+			t.Errorf("task %s was seated on %v, want %q", test.task, recorder.models, test.want)
+		}
+	}
+}
+
 // TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier: a row cleared on purpose
 // reads empty, and a tier with no model falls to the worker row rather than
 // seating the task on nothing.
@@ -115,7 +165,7 @@ func TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier(t *testing.T) {
 		config.KeyTierWorkerModel: "vendor/worker",
 	})
 	recorder := &recordingCompleter{}
-	factory := run.CrewFactory(store, t.TempDir(), dir, recorder.forModel)
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
 
 	factory(*store.Task("review"))
 
@@ -130,7 +180,7 @@ func TestCrewFactoryFallsBackToTheWorkerRowForAnEmptyTier(t *testing.T) {
 func TestCrewFactoryRefusesATaskTheCrewCannotSeat(t *testing.T) {
 	store := runOpenStore(t)
 	dir := crewProfile(t, map[string]string{config.KeyTierWorkerModel: ""})
-	factory := run.CrewFactory(store, t.TempDir(), dir, (&recordingCompleter{}).forModel)
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, (&recordingCompleter{}).forModel)
 
 	worker := factory(*store.Task(store.RootID()))
 	_, err := worker.Run(runContext(t), *store.Task(store.RootID()))
@@ -151,7 +201,7 @@ func TestCrewFactoryReadsTheCrewAgainAtEachLaunch(t *testing.T) {
 	store := runOpenStore(t)
 	dir := crewProfile(t, map[string]string{config.KeyTierWorkerModel: "vendor/first"})
 	recorder := &recordingCompleter{}
-	factory := run.CrewFactory(store, t.TempDir(), dir, recorder.forModel)
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
 
 	factory(*store.Task(store.RootID()))
 	writeCrew(t, dir, map[string]string{config.KeyTierWorkerModel: "vendor/second-longer"})
@@ -213,7 +263,7 @@ func TestBashWorkerChargesTheSeatModelToTheTaskSpendRow(t *testing.T) {
 			return toolReply(finishCommand("root", "the work is done")), nil
 		},
 	}}
-	factory := run.CrewFactory(store, t.TempDir(), dir, recorder.forModel)
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{}, recorder.forModel)
 
 	worker := factory(*store.Task(store.RootID()))
 	if len(recorder.models) != 1 || recorder.models[0] != "vendor/seat-model" {

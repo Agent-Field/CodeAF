@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // RunSpec is one run as the door hands it to the engine: the store to drive,
@@ -67,6 +68,20 @@ type RunSpec struct {
 	// ProfileDir is the person's profile directory, read by the engine's crew
 	// factory to seat a task on the model its role rides.
 	ProfileDir string
+	// WorkModel and PlanModel are the two seats the conversation resolved for
+	// this run: the work seat every leaf rides and the plan seat every planner
+	// rides. The engine's crew factory seats those two roles on them rather
+	// than asking the profile again, so the seat a conversation's task runs in
+	// is the seat the conversation's own ladder says. They are read off the
+	// conversation's role ladder ([roles.TierModel] through Config.RolesSource)
+	// — the same rows its own planner and worker calls resolve through — and
+	// empty means the ladder holds no row for that tier, which falls to the
+	// profile's tier the way an empty seat always has.
+	//
+	// Only these two travel: the careful row a check rides and the small row a
+	// probe rides are named by no door and stay the profile's.
+	WorkModel string
+	PlanModel string
 	// CompleterFor answers the provider a worker is seated on. The door hands
 	// the conversation's own — a run worker's calls go out the way the
 	// conversation's do — and a nil one lets the engine build each worker's
@@ -177,6 +192,14 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 	a.installBeltRun(g, run)
 	a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, StartedAt: time.Now()})
 
+	// THE CONVERSATION'S OWN SEATS, read off its role ladder so the engine's
+	// crew factory seats the work and plan roles on what this conversation's
+	// planner and worker calls already resolve through, rather than asking the
+	// profile again for a row the conversation's crew has moved.
+	source := roles.Source(a.config.RolesSource)
+	workSeat, _ := roles.TierModel(source, roles.TierWorker)
+	planSeat, _ := roles.TierModel(source, roles.TierMastermind)
+
 	spec := RunSpec{
 		Store:     store,
 		Workspace: a.config.Workspace,
@@ -188,6 +211,8 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 		// worker and a node worker stop at the same figure.
 		StepsPerTask: taskMaxSteps,
 		ProfileDir:   a.config.ProfileDir,
+		WorkModel:    workSeat,
+		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 	}
 	go a.driveBeltRun(ctx, engine, run, spec)

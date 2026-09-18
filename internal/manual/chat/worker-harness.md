@@ -199,6 +199,29 @@ requirement in them, and speed is no permission to skip the walk.
   round of the run. The seat is a floor and not a cap: a rung set on the task, on
   the conversation or on the turn still wins.
 
+## Which model does my task use?
+
+Every task a run launches sits in one of two **seats**, and each seat is a model
+named on a door or in the profile:
+
+- **`--model` is the work seat** — the model a leaf that does the work itself
+  runs on. `codeaf do` reads it from `--model`, then `CODEAF_MODEL`, then the
+  profile's crew, then this build's default; a `/task` in a conversation reads it
+  from the conversation's own worker row. A root is born a leaf, so its first
+  launch rides this seat, and so does every task the plan adds under it.
+- **`--plan-model` is the plan seat** — the model the root and every task that
+  has children run their coordinating turns on. `codeaf do` resolves it the same
+  way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then the crew; a
+  conversation takes it from its mastermind row. A leaf that splits moves onto
+  this seat for the turns where it is a coordinator.
+- **The profile's own rows answer the two seats no flag names**: the **check**
+  seat (the `high` row) and the **probe** seat (the `low` row). Nothing on a door
+  moves them, so a review round and a probe run on the crew you set in `/crew`.
+
+The seat a person names is the seat **every** launch takes — a task launched
+after the door resolved the seats still runs on them, not on whichever row the
+profile happens to hold. Read it back with `plandb spend --by seat`.
+
 ## Headless: codeaf do — the exit code it leaves with
 
 `codeaf do "<task>"` runs one job with nobody watching, then exits. On this road it

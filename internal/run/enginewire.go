@@ -32,7 +32,15 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// THE CREW IS THE PROFILE'S, read again at each launch, and the seat's
 		// provider is the door's own completer through the one seam a test
 		// scripts ([CrewFactory]).
-		Factory: CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, spec.CompleterFor),
+		//
+		// THE DOOR'S TWO SEATS RIDE WITH THE SPEC. The conversation resolved
+		// them itself (the enginewire spec's WorkModel and PlanModel), so the
+		// factory seats the work and plan roles on the door's answer rather than
+		// asking the profile again for a row the door already moved.
+		Factory: CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
+			Work: spec.WorkModel,
+			Plan: spec.PlanModel,
+		}, spec.CompleterFor),
 	})
 	return session.RunSummary{
 		Outcome: string(outcome),
