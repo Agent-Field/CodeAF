@@ -323,7 +323,10 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	if task := run.store.Task(run.root); landingOwesAnswer(task) {
 		document := owedLandingDocument(task, line)
 		note := wakeNote(document.text())
+		note.batch = false
 		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
+		note.settlePrompt = landingAnswerPrompt
+		note.settleModel, _ = roles.TierModel(roles.Source(a.config.RolesSource), owedLandingTier())
 		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
 		return
 	}
@@ -353,7 +356,7 @@ func owedLandingDocument(task *plandb.Task, result string) userMessage {
 }
 
 func owedLandingCallCeiling() int { return settleCallCeiling }
-func owedLandingTier() string     { return "low" }
+func owedLandingTier() roles.Tier { return roles.TierLow }
 
 // settleBeltRun ends the row the run was published under: done when the run
 // finished whole, failed on every other ending, with the result and the branch
