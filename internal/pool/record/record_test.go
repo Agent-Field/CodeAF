@@ -223,8 +223,10 @@ func TestABadRoleIsSkippedAndNamedAndTheOthersLand(t *testing.T) {
 			t.Fatalf("the error does not say what was skipped: %v", err)
 		}
 		// The good score landed in both records; the bad one in neither.
-		if cells := Cells(sheet); len(cells) != 1 {
-			t.Fatalf("the sheet holds %d cells, want the good score's one: %+v", len(cells), cells)
+		judged := 0
+		sheet.Each(Metric, func(string, string, map[string]string, tally.Cell) { judged++ })
+		if judged != 1 {
+			t.Fatalf("the sheet holds %d judged cells, want the good score's one", judged)
 		}
 		if cell, ok := sheet.Cell(Metric, "worker", "a/one", nil); !ok || cell.N != 1 || cell.Mean() != 80 {
 			t.Fatalf("the good score did not land: %+v ok %v", cell, ok)
@@ -299,30 +301,81 @@ func TestARecorderWithoutASheetRefuses(t *testing.T) {
 	}
 }
 
-// The own sheet's cells answer sorted by seat then model, each carrying the
-// mean of its observations and the count behind it, and a cell recorded under
-// dim labels is not one of them — the prior reads the sheet's plain cells.
+// The own sheet's cells answer sorted by seat then model then source, each
+// carrying the share accepted and the count behind it, one per source; a
+// judged score under the judge's own metric is not one of them — the prior
+// reads the graded cells and nothing else.
 func TestCellsAnswerSortedAndCarryTheMeanAndCount(t *testing.T) {
 	sheet := tally.New()
+	grader := map[string]string{SourceDim: "grader"}
+	seed := map[string]string{SourceDim: "reviewer"}
 	// Observed deliberately out of the order they must answer in.
-	sheet.Observe(Metric, "worker", "b/later", nil, 60)
-	sheet.Observe(Metric, "worker", "a/first", nil, 90)
-	sheet.Observe(Metric, "worker", "a/first", nil, 80)
-	sheet.Observe(Metric, "high", "c/top", nil, 70)
-	sheet.Observe(Metric, "high", "a/first", map[string]string{"quant": "fp8"}, 40)
+	sheet.Observe(Acceptable, "worker", "b/later", grader, 0)
+	sheet.Observe(Acceptable, "worker", "a/first", grader, 100)
+	sheet.Observe(Acceptable, "worker", "a/first", grader, 0)
+	sheet.Observe(Acceptable, "worker", "a/first", seed, 100)
+	sheet.Observe(Acceptable, "high", "c/top", grader, 100)
+	sheet.Observe(Metric, "high", "c/top", nil, 40)
 
 	got := Cells(sheet)
-	if len(got) != 3 {
-		t.Fatalf("%d cells answered, want the three plain ones: %+v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("%d cells answered, want the four graded ones: %+v", len(got), got)
 	}
 	want := []crewpick.Cell{
-		{Role: "high", Model: "c/top", Mean: 70, N: 1},
-		{Role: "worker", Model: "a/first", Mean: 85, N: 2},
-		{Role: "worker", Model: "b/later", Mean: 60, N: 1},
+		{Role: "high", Model: "c/top", Mean: 100, N: 1},
+		{Role: "worker", Model: "a/first", Mean: 50, N: 2},
+		{Role: "worker", Model: "a/first", Mean: 100, N: 1},
+		{Role: "worker", Model: "b/later", Mean: 0, N: 1},
 	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("cell %d is %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// A graded task lands once per seat the crew held, under the source that
+// graded it, as 100 for a pass and 0 for a fail, in the sheet and in the
+// outbox with the source in the judge column; a seat with no model is skipped
+// and named, and the others land.
+func TestRecordGradeLandsOncePerSeatUnderItsSource(t *testing.T) {
+	sheet := tally.New()
+	box, err := outbox.Open(filepath.Join(t.TempDir(), "outbox.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &Recorder{Sheet: sheet, Outbox: box}
+	seats := map[judge.Role]string{judge.RoleWorker: "a/one", judge.RoleHigh: "b/two", judge.RoleMastermind: ""}
+	err = recorder.RecordGrade(seats, "codeaf/grader", false, "task", "S", "2026-09-17")
+	if err == nil || !strings.Contains(err.Error(), "mastermind") {
+		t.Fatalf("the empty mastermind seat was not named: %v", err)
+	}
+	if err := recorder.RecordGrade(map[judge.Role]string{judge.RoleWorker: "a/one"}, "codeaf/grader", true, "task", "S", "2026-09-17"); err != nil {
+		t.Fatal(err)
+	}
+	box.Close()
+	cells := Cells(sheet)
+	want := []crewpick.Cell{
+		{Role: "high", Model: "b/two", Mean: 0, N: 1},
+		{Role: "worker", Model: "a/one", Mean: 50, N: 2},
+	}
+	if len(cells) != len(want) {
+		t.Fatalf("cells %+v, want %+v", cells, want)
+	}
+	for i := range want {
+		if cells[i] != want[i] {
+			t.Fatalf("cell %d is %+v, want %+v", i, cells[i], want[i])
+		}
+	}
+	pending := box.Pending()
+	if len(pending) != 3 {
+		t.Fatalf("%d rows pending, want 3", len(pending))
+	}
+	var row Row
+	if err := json.Unmarshal(pending[0].Payload, &row); err != nil {
+		t.Fatal(err)
+	}
+	if row.Metric != Acceptable || row.Judge != "codeaf/grader" || row.Score != 0 || row.Role != "high" {
+		t.Fatalf("first row %+v, want the high seat's fail under the grader", row)
 	}
 }
