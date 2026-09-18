@@ -188,7 +188,7 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool) (uint
 		// worker and a node worker stop at the same figure.
 		StepsPerTask: taskMaxSteps,
 		ProfileDir:   a.config.ProfileDir,
-		CompleterFor: func(string) Completer { return a.client },
+		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 	}
 	go a.driveBeltRun(ctx, engine, run, spec)
 	return id, title, "", nil
