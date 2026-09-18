@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/run"
@@ -208,5 +209,253 @@ func TestSupervisorStopsWakingAParentAtTheCap(t *testing.T) {
 	}
 	if root := store.Task(store.RootID()); root.Status != plandb.StatusDone {
 		t.Fatalf("root status = %s, want done once the cap closed it", root.Status)
+	}
+}
+
+// waitLanded blocks until every task named has landed done, and fails the test
+// on the way to its wall. It is how a test makes the ordinary shape of a split
+// deterministic: children go out into free slots and are shorter than the turn
+// that dispatched them, so they are terminal BEFORE their parent's own worker
+// returns — the case a wait in absorb has to answer without asking whether any
+// child is still open.
+func waitLanded(t *testing.T, store *plandb.Store, ids ...string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		landed := true
+		for _, id := range ids {
+			if task := store.Task(id); task == nil || task.Status != plandb.StatusDone {
+				landed = false
+				break
+			}
+		}
+		if landed {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("tasks %v never landed", ids)
+}
+
+// TestSupervisorWakesACoordinatorBelowTheRootAgainWhenItAddsAChild is the law
+// under the root: a coordinator of its own — a leaf that split, which is what a
+// planning seat below the root is — is woken with what its children reported,
+// the report it gives then is its result, and a wake that adds a child waits
+// again and is woken again for it. THE STORE HAS TO LEAVE THE PARENT OPEN FOR
+// BOTH GENERATIONS: a composite its own worker holds is not the store's to
+// close, so the second wake can add a child at all instead of meeting
+// AddMany's "terminal parent" refusal.
+func TestSupervisorWakesACoordinatorBelowTheRootAgainWhenItAddsAChild(t *testing.T) {
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	seat := newFakeSeat()
+
+	var mu sync.Mutex
+	rootCalls, midCalls := 0, 0
+	clauses := []string{}
+	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		rootCalls++
+		if rootCalls == 1 {
+			_, err := store.AddMany([]plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
+			return run.Report{Result: "split into a coordinator", Steps: 1}, err
+		}
+		return run.Report{Result: "root integrated: " + store.Task("m").Result, Steps: 1}, nil
+	}
+	seat.actions["m"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		midCalls++
+		switch midCalls {
+		case 1:
+			_, err := store.AddMany([]plandb.TaskSpec{
+				{ID: "c1", Title: "child one", ParentID: task.ID},
+				{ID: "c2", Title: "child two", ParentID: task.ID},
+			})
+			return run.Report{Result: "the coordinator split", Steps: 1}, err
+		case 2:
+			// THE FIRST WAKE OPENS ON BOTH CHILDREN, and adds the child their
+			// reports showed up as missing — which the store only lets it do
+			// because it left the parent open.
+			clauses = append(clauses, run.WakeClause(ctx))
+			_, err := store.AddMany([]plandb.TaskSpec{{ID: "c3", Title: "the gap child", ParentID: task.ID}})
+			if err != nil {
+				t.Errorf("a woken coordinator could not add a child: %v", err)
+			}
+			return run.Report{Result: "integrated two, added a third", Steps: 1}, err
+		default:
+			clauses = append(clauses, run.WakeClause(ctx))
+			return run.Report{Result: "integrated all three", Steps: 1}, nil
+		}
+	}
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "split twice over",
+		Slots:     4,
+		Factory:   seat.workerFor,
+	})
+
+	if outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if midCalls != 3 {
+		t.Fatalf("the coordinator ran %d times, want three — a split and two wakes", midCalls)
+	}
+	for _, want := range []string{"c1", "child one", "did c1", "c2", "child two", "did c2", "Integrate"} {
+		if !strings.Contains(clauses[0], want) {
+			t.Fatalf("first wake clause = %q, want it to carry %q", clauses[0], want)
+		}
+	}
+	if strings.Contains(clauses[0], "the gap child") {
+		t.Fatalf("first wake clause = %q, want it to know nothing of the child added after it", clauses[0])
+	}
+	if !strings.Contains(clauses[1], "c3") || !strings.Contains(clauses[1], "did c3") {
+		t.Fatalf("second wake clause = %q, want the child the first wake added and what it did", clauses[1])
+	}
+	// THE COORDINATOR'S RESULT IS ITS LAST REPORT, and the root's wake reads it.
+	if mid := store.Task("m"); mid.Status != plandb.StatusDone || mid.Result != "integrated all three" {
+		t.Fatalf("the coordinator is %s with result %q, want done with its last wake's report", mid.Status, mid.Result)
+	}
+	if summary.Result != "root integrated: integrated all three" {
+		t.Fatalf("summary result = %q, want the root's wake reading the coordinator's result", summary.Result)
+	}
+}
+
+// TestSupervisorWakesAParentWhoseChildrenLandedFirst is the race the law lives
+// for. Children are dispatched into free slots and land when they land, so a
+// coordinator whose children are all done BEFORE its own turn ends still owes
+// itself a wake: their landings are not in the report it is writing, and a wait
+// that asked only whether any child was still open would make its first word
+// its result — the parent's own version of the root's bug, with nobody having
+// integrated anything.
+func TestSupervisorWakesAParentWhoseChildrenLandedFirst(t *testing.T) {
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	seat := newFakeSeat()
+
+	var mu sync.Mutex
+	rootCalls, midCalls := 0, 0
+	clause := ""
+	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		rootCalls++
+		if rootCalls == 1 {
+			_, err := store.AddMany([]plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
+			return run.Report{Result: "split into a coordinator", Steps: 1}, err
+		}
+		return run.Report{Result: "root integrated: " + store.Task("m").Result, Steps: 1}, nil
+	}
+	seat.actions["m"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		midCalls++
+		if midCalls == 1 {
+			_, err := store.AddMany([]plandb.TaskSpec{
+				{ID: "c1", Title: "child one", ParentID: task.ID},
+				{ID: "c2", Title: "child two", ParentID: task.ID},
+			})
+			if err != nil {
+				return run.Report{}, err
+			}
+			// THE COORDINATOR KEEPS WORKING while its children run, and they
+			// finish first: not one of them is open when this turn ends.
+			waitLanded(t, store, "c1", "c2")
+			return run.Report{Result: "a first report, written before it saw anything", Steps: 1}, nil
+		}
+		clause = run.WakeClause(ctx)
+		return run.Report{Result: "integrated both children", Steps: 1}, nil
+	}
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "split twice over",
+		Slots:     4,
+		Factory:   seat.workerFor,
+	})
+
+	if outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	if midCalls != 2 {
+		t.Fatalf("the coordinator ran %d times, want twice — its children landing first is not an ending", midCalls)
+	}
+	for _, want := range []string{"c1", "did c1", "c2", "did c2", "Integrate"} {
+		if !strings.Contains(clause, want) {
+			t.Fatalf("wake clause = %q, want it to carry %q", clause, want)
+		}
+	}
+	if mid := store.Task("m"); mid.Result != "integrated both children" {
+		t.Fatalf("the coordinator's result = %q, want its woken report and not its first word", mid.Result)
+	}
+	if summary.Result != "root integrated: integrated both children" {
+		t.Fatalf("summary result = %q, want the run to carry the integrated report", summary.Result)
+	}
+}
+
+// TestSupervisorKeepsACappedParentsOwnReport holds the cap's other half. The cap
+// stops the run from waking a parent that keeps spawning, and what it writes then
+// is the store's own auto-completion — but a parent the run holds open has NO
+// RESULT IN THE STORE, because every return of its worker was a wait that wrote
+// nothing. So the ending carries the report the parent last gave: the cap is the
+// run's decision to stop waking it, not a reason to throw away what it said.
+func TestSupervisorKeepsACappedParentsOwnReport(t *testing.T) {
+	store := startOpenStore(t, "the run's own title")
+	ctx := runContext(t)
+	seat := newFakeSeat()
+
+	var mu sync.Mutex
+	midCalls := 0
+	seat.actions["root"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if store.Task("m") == nil {
+			_, err := store.AddMany([]plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
+			return run.Report{Result: "split into a coordinator", Steps: 1}, err
+		}
+		return run.Report{Result: "root integrated: " + store.Task("m").Result, Steps: 1}, nil
+	}
+	seat.actions["m"] = func(_ context.Context, task plandb.Task) (run.Report, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		midCalls++
+		// One more child every turn: without the cap this coordinator would
+		// never stop being woken.
+		id := fmt.Sprintf("c%d", midCalls)
+		_, err := store.AddMany([]plandb.TaskSpec{{ID: id, Title: "child " + id, ParentID: task.ID}})
+		return run.Report{Result: "the coordinator's report " + fmt.Sprint(midCalls), Steps: 1}, err
+	}
+
+	outcome, summary := run.Start(ctx, run.Spec{
+		Store:     store,
+		Workspace: t.TempDir(),
+		Title:     "the run's own title",
+		Brief:     "keep adding children",
+		Slots:     8,
+		Factory:   seat.workerFor,
+	})
+
+	if outcome != run.OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeDone)
+	}
+	// The first turn plus four wakes, and no fifth.
+	if midCalls != 5 {
+		t.Fatalf("the coordinator ran %d times, want the first turn and four wakes at the cap", midCalls)
+	}
+	mid := store.Task("m")
+	if mid.Status != plandb.StatusDone {
+		t.Fatalf("the coordinator's status = %s, want done once the cap closed it", mid.Status)
+	}
+	if mid.Result != "the coordinator's report 5" {
+		t.Fatalf("the coordinator's result = %q, want the last report it gave and not an empty one", mid.Result)
+	}
+	if summary.Result != "root integrated: the coordinator's report 5" {
+		t.Fatalf("summary result = %q, want the capped parent's own last report carried up to the run", summary.Result)
 	}
 }

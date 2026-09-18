@@ -102,10 +102,15 @@ type Supervisor struct {
 	// wakes counts how many times each composite task's worker has been launched
 	// again to integrate a landing of its children, and reported names the child
 	// ids a task's worker has already been woken with, so a wake fires once per
-	// landing generation (and once more only when a wake adds children). Both
-	// belong to the loop goroutine like the counters beside them.
-	wakes    map[string]int
-	reported map[string]map[string]bool
+	// landing generation (and once more only when a wake adds children).
+	// lastReport keeps the report of a parent whose ending is being held for a
+	// wake: absorb writes nothing into the store for such a return, so without
+	// it the parent's own words would exist nowhere and the ending the run
+	// writes at the cap would carry an empty result. All three belong to the
+	// loop goroutine like the counters beside them.
+	wakes      map[string]int
+	reported   map[string]map[string]bool
+	lastReport map[string]string
 	// checkOf maps a check task's id to the leaf it reads, for the review
 	// round: a check whose result does not hold leaves its sentence as a note
 	// on the leaf it names here. It is written when the check is added and read
@@ -168,6 +173,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.checkOf = make(map[string]string)
 	s.wakes = make(map[string]int)
 	s.reported = make(map[string]map[string]bool)
+	s.lastReport = make(map[string]string)
 	s.staleAfter = s.limits.StaleAfter
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
@@ -326,17 +332,27 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		}
 	} else {
 		switch {
-		case ret.err == nil && hasOpenChildren(s.store.Tasks(), ret.task.ID):
+		case ret.err == nil && s.waitsForWake(ret.task.ID):
 			// A PARENT'S RESULT IS WRITTEN AFTER ITS CHILDREN LAND, NOT BEFORE.
 			// The worker dispatched and ended its turn to wait on what it handed
 			// out; this return is not an ending, so nothing is written and the
 			// task stays with the run — held by this process's own claim — to be
 			// woken once every child it dispatched has landed.
+			//
+			// THE WAIT DOES NOT TURN ON THE CHILDREN STILL BEING OPEN. Children
+			// go out into slots and land when they land, so a set of short
+			// children is often terminal before their own parent's turn ends;
+			// writing this report would make the parent's first word its result
+			// with nobody having integrated anything, which is the one bug this
+			// law exists for. A landing the parent has not been woken with is
+			// not in its report yet, so the ending waits either way.
+			s.lastReport[ret.task.ID] = ret.report.Result
 		case ret.err == nil:
 			// THE REVIEW ROUND: a work-seat leaf that lands done is checked
 			// once. The check is added BEFORE the completion is written, so the
 			// leaf's parent cannot auto-complete past it in the same write and
 			// the run's root waits on the open check like on any other child.
+			delete(s.lastReport, ret.task.ID)
 			s.addReviewCheck(ret.task, ret.report.Result)
 			_, err := s.store.Done(ret.task.ID, ret.task.ID, ret.report.Result, nil, nil)
 			if err == nil {
@@ -589,21 +605,54 @@ func childrenAllTerminal(tasks []*plandb.Task, id string) bool {
 	return has && all
 }
 
-// hasOpenChildren answers whether a task has at least one child that has not
-// ended — the state in which a worker's return is a wait, not an ending.
-func hasOpenChildren(tasks []*plandb.Task, id string) bool {
+// waitsForWake answers whether a worker's return is a WAIT rather than an
+// ending: its task is a composite the store has not ended, and either a child of
+// it has not landed yet, or a child has landed that its worker has not been woken
+// with. The second half is the one a race needs: children are dispatched into
+// slots and land whenever they land, so asking only whether any of them is still
+// open lets a set of short children finish before their parent's own turn ends —
+// and the parent's first word becomes its result with nobody having integrated
+// anything, which is the bug the woken-parent law exists for. The root needs no
+// such help at its own ending, because completeTree asks rootAwaitingWake before
+// it writes; every other parent is written here, so here is where the law has to
+// hold.
+//
+// THE ANSWER IS A SUBSET OF WHAT launchWakes FIRES ON, which is what keeps the
+// run from holding a task open that no wake will close: a task the store already
+// ended is not waiting, a task whose every landing has been reported is writing
+// its ending now, and a task at the cap is closed by closeAtCap on the pass its
+// last child lands in.
+func (s *Supervisor) waitsForWake(id string) bool {
+	// ONE READ OF THE PLAN, the way the wake sweep reads it: the task and its
+	// children come out of the same snapshot, so the two halves of the question
+	// cannot be answered about two different moments.
+	tasks := s.store.Tasks()
+	var task *plandb.Task
+	for _, candidate := range tasks {
+		if candidate.ID == id {
+			task = candidate
+			break
+		}
+	}
+	if task == nil || !task.Composite || terminalStatus(task.Status) {
+		return false
+	}
 	for _, child := range tasks {
 		if child.ParentID == id && !terminalStatus(child.Status) {
 			return true
 		}
 	}
-	return false
+	return needsWake(tasks, task, s.cancels, s.wakes, s.reported)
 }
 
 // closeAtCap ends a composite the run has woken its fill of times, the way the
 // store's own auto-completion would have written it: done when every child
 // finished, failed when one did not. It is reached only for a parent this run is
-// holding open, since the store leaves a held composite alone.
+// holding open, since the store leaves a held composite alone — and a parent the
+// run holds open carries NO RESULT IN THE STORE, because every return of its
+// worker was a wait that wrote nothing. What is written here is therefore the
+// parent's own last report, the one absorb kept: the cap is the run's decision to
+// stop waking it, not a reason to throw away what it said.
 func (s *Supervisor) closeAtCap(tasks []*plandb.Task, task plandb.Task) {
 	allDone := true
 	for _, child := range tasks {
@@ -613,7 +662,11 @@ func (s *Supervisor) closeAtCap(tasks []*plandb.Task, task plandb.Task) {
 		}
 	}
 	if allDone {
-		_, _ = s.store.Done(task.ID, task.ID, task.Result, nil, nil)
+		result := task.Result
+		if kept := s.lastReport[task.ID]; strings.TrimSpace(kept) != "" {
+			result = kept
+		}
+		_, _ = s.store.Done(task.ID, task.ID, result, nil, nil)
 		return
 	}
 	_, _ = s.store.Fail(task.ID, task.ID, "the wake cap was reached with a child that did not finish")
