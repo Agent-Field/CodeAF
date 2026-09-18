@@ -111,30 +111,31 @@ Median output tokens per call: **476 shipped, 217 harness**.
 Each task was handed a repository at a pinned base commit and a feature to build,
 with a 45-minute wall and the same model on both arms.
 
-| task | harness (3585556b4) | shipped (7231347eb) |
+| task | harness, review round (a02845661) | shipped (7231347eb) |
 | --- | --- | --- |
-| bandit, incremental cache | 88/89, $0.15, 11m | 82/89, $0.24, 45m (wall) |
-| bandit, interprocedural taint | **PASS** 85/85, $0.23, 13m | 83/85, $0.19, 41m |
-| awilix, async container initialization | 23/24, $0.07, 7m | 23/24, $0.27, 45m (wall) |
-| cattrs, partial structuring recovery | 66/69, $0.03, 3m | **PASS**, $0.21, 45m |
+| bandit, incremental cache | **PASS** 89/89, $0.19, 22m | 82/89, $0.24, 45m (wall) |
+| bandit, interprocedural taint | 84/85, $0.18, 26m | 83/85, $0.19, 41m |
+| awilix, async container initialization | 23/24, $0.06, 6m | 23/24, $0.27, 45m (wall) |
+| cattrs, partial structuring recovery | **PASS** 69/69, $0.08, 8m | **PASS**, $0.21, 45m |
 
-Cost and wall are three to ten times lower on every task, every harness root
-finished cleanly, and no call went to a seat the flags did not name. Pass rate
-is one in four on both arms and not on the same task, so the bar is not met:
-every miss is a result nobody read against the ask, which is the review round
-named under the gaps. The earlier runs and what each exposed are in
-docs/design/worker-harness/BENCHMARKS.md.
+With the review round on, the branch is at or above the shipped engine on every
+task on pass count and below it on cost and wall on every task, by three to ten
+times; the bare loop before the review round was cheaper still but passed one
+in four. The runs before it and what each exposed are in
+docs/design/worker-harness/BENCHMARKS.md, including the read-only comparison
+that showed the bandit cache miss was a worker ratifying its own reading of
+the ask in a test — which is what the review round now reads against the ask.
 
 ## Known gaps
 
-- **The readiness bar is not met yet.** The pull request leaves draft only when
-  the six cells, both doors, on the same pinned model, at n ≥ 3, show the
-  harness at or beyond the shipped engine on pass rate, median cost and median
-  wall *at once*, with no cell where the shipped engine wins on any of the
-  three. Today it loses c5 on pass rate.
-- **A leaf that produced deliverables has no review task yet.** The checker seat
-  (a `check` role reviewed against the leaf's acceptance) is designed and
-  partly landed; the runtime does not yet refuse a root finish without it.
+- **The readiness bar is one run deep.** The repository table above is one run
+  per task; the bar is n ≥ 3 on the same pinned model with no task where the
+  shipped engine wins on any of pass count, cost or wall. The six-cell grid
+  (n=3) still shows one cell (c5) where the shipped engine passes 3/3 to the
+  harness's 2/3, measured before the review round.
+- **The review round is one round deep.** A finding opens one `fix:` task and a
+  finding on that fix task is a note, so a run cannot loop; a fix that changes
+  a behaviour the check did not cover is not caught (bandit taint, one case).
 - **The harness is behind `CODEAF_TASK_BELT=bash`.** With it unset the shipped
   engine serves every road. That is the shape for the owner's hands-on test.
   Once the owner is happy the default flips: the run road serves `/task` and

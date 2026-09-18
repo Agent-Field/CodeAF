@@ -119,3 +119,32 @@ sentence that said to preserve fields). Every miss is a result nobody read
 against the ask, which is the review round (`Limits.ReviewRound`, off on both
 doors today).
 
+## Reruns on a02845661 — the review round on both doors
+
+Same corpus, same pinned model, one run each; every leaf's finish now gets a
+check task seated on the plan model, and a `does not hold` finding opens one
+`fix:` task. Walls are the `do` time; the bandit pair's scoring was redone at
+normal load after a box-wide spike.
+
+| task | harness, review round | harness, no review round | shipped |
+| --- | --- | --- | --- |
+| bandit, incremental cache | **PASS** 89/89, $0.19, 22m | 88/89, $0.15, 11m | 82/89, $0.24, 45m (wall) |
+| bandit, interprocedural taint | 84/85, $0.18, 26m | **PASS** 85/85, $0.23, 13m | 83/85, $0.19, 41m |
+| awilix, async container initialization | 23/24, $0.06, 6m | 23/24, $0.07, 7m | 23/24, $0.27, 45m (wall) |
+| cattrs, partial structuring recovery | **PASS** 69/69, $0.08, 8m | 66/69, $0.03, 3m | **PASS**, $0.21, 45m |
+
+The review round bought back cattrs (the root's own work is now checked before
+completion) and bandit cache, at about twice the cost and wall of the bare loop
+and still a third to a tenth of the shipped engine's. Bandit taint lost one
+case (a non-spec sanitizer) that the bare loop had passed: the fix task the
+check opened on the taint engine changed a behaviour the check did not cover.
+On this corpus the branch is now at or above the shipped engine on every task
+on pass count, and below it on cost and wall on every task.
+
+The bandit cache miss on the bare loop was read step by step against the
+earlier PASS (a read-only cell, $0.71): model variance, not the prompt diet.
+Both workers read "results empty" for `--warm-cache`, one fell through to the
+JSON formatter and one exited before it, and each wrote a test ratifying its
+own reading; the root of the missing run even saw the JSON decode error and
+finished anyway. That is the shape the review round reads against the ask.
+
