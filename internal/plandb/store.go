@@ -289,7 +289,7 @@ func (s *Store) ReadyLeaves() []*Task {
 	var tasks []*Task
 	for _, id := range s.data.Order {
 		task := s.data.Tasks[id]
-		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) || len(executionBlockReasons(s.data, task)) > 0 {
+		if task.Status != StatusReady || task.Composite || task.Waiting || pausedInLineage(s.data, task) || len(executionBlockReasons(s.data, task)) > 0 {
 			continue
 		}
 		tasks = append(tasks, cloneTask(task))
@@ -312,7 +312,7 @@ func (s *Store) ReadySet(filters ...Filter) ReadySet {
 		if !filter.admits(task.Project, task.Chat) {
 			continue
 		}
-		if task.Status != StatusReady || task.Composite || pausedInLineage(s.data, task) {
+		if task.Status != StatusReady || task.Composite || task.Waiting || pausedInLineage(s.data, task) {
 			continue
 		}
 		if reasons := executionBlockReasons(s.data, task); len(reasons) > 0 {
@@ -446,12 +446,22 @@ func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 
 // Done completes a task its agent owns. The root is the runtime's, exactly as
 // the earlier port had it: a worker cannot finish the run, only its own task.
+//
+// THE ONE EXCEPTION IS THE ROOT'S OWN WORKER. The run's root is handed to a
+// worker like every other task ([internal/run]'s supervisor launches it), and
+// on this belt that worker finishes by naming its task's id — which for the
+// root is `root`. It is the same act every other worker performs on its own
+// task, and refusing it would leave the root's worker with nothing to end the
+// loop on. So the root may be completed by an agent whose name IS the root id,
+// and by nothing else: the run's own completion stays [Store.CompleteRoot]'s,
+// and a worker that is not the root's own is still refused.
 func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if len(result) > 64<<10 {
 			return errors.New("completion result exceeds 65536 bytes")
 		}
-		if id == next.RootID {
+		rootWorker := id == next.RootID && strings.TrimSpace(agent) == id
+		if id == next.RootID && !rootWorker {
 			return errors.New("the harness owns root completion")
 		}
 		// THE ONE CASE OWNERSHIP YIELDS TO: a composite parent the store itself
@@ -462,16 +472,24 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		// worker's own done, a real ending — keeps its words and its owner.
 		placeholder := task.Status == StatusDone && strings.TrimSpace(task.Result) == "" && task.ClaimedBy == ""
 		if !placeholder {
-			if err := requireOwner(task, agent); err != nil {
-				return err
+			// THE ROOT IS NEVER CLAIMED, so its worker cannot answer the ownership
+			// check every other task's worker does. The root's own worker is named
+			// instead, above, and the finish law still holds: the root cannot close
+			// while a child or a hard dependency is open.
+			if !rootWorker {
+				if err := requireOwner(task, agent); err != nil {
+					return err
+				}
 			}
 			if ok, reason := canFinish(*next, task); !ok {
 				return errors.New(reason)
 			}
-			switch task.Status {
-			case StatusClaimed, StatusRunning:
-			default:
-				return fmt.Errorf("task %q cannot complete from status %s", id, task.Status)
+			if !rootWorker {
+				switch task.Status {
+				case StatusClaimed, StatusRunning:
+				default:
+					return fmt.Errorf("task %q cannot complete from status %s", id, task.Status)
+				}
 			}
 		}
 		if len(task.EvidenceRequirements) > 0 && len(cleanStrings(evidence)) == 0 {
@@ -534,6 +552,78 @@ func (s *Store) Release(id, agent string) (*Task, error) {
 // release — asks it rather than spelling the two words out.
 func heldStatus(status Status) bool {
 	return status == StatusClaimed || status == StatusRunning
+}
+
+// Wait parks a task whose worker cannot go on: the claim is released, the task
+// stays open and NOT done, and the runtime launches it again through its wake
+// road when one of its dependencies or its children changes. THE PARK IS A
+// WAIT ON SOMETHING, so a task with nothing open to wait on — no dependency
+// that is not done, no child that is not terminal — is refused, and a worker
+// cannot park forever on nothing. A parked task keeps a non-terminal status,
+// so it counts as open for every finish law: a parent cannot complete while a
+// parked child stands, and a dependent cannot complete while a parked
+// dependency stands.
+func (s *Store) Wait(id, agent string) (*Task, error) {
+	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		// THE ROOT IS NEVER CLAIMED, so its own worker parks it the way it
+		// finishes it — by naming the root's id — and every other caller is
+		// held to the claim it does not have.
+		rootWorker := id == next.RootID && strings.TrimSpace(agent) == id
+		if !rootWorker {
+			if err := requireOwner(task, agent); err != nil {
+				return err
+			}
+			if !heldStatus(task.Status) {
+				return fmt.Errorf("task %q is not claimed or running", id)
+			}
+		}
+		if len(openWaits(*next, task)) == 0 {
+			return fmt.Errorf("task %q has nothing to wait for — no open dependency, no open child", id)
+		}
+		task.Waiting, task.WaitedAt = true, now
+		task.ClaimedBy, task.Owner, task.SeenAt = "", "", time.Time{}
+		task.Status = StatusPending
+		promote(next, now)
+		return nil
+	})
+}
+
+// openWaits names what a task is waiting on: every dependency whose upstream is
+// not done, and every child that is not terminal. Sorted, so the reason a
+// refusal names is the same on every call.
+func openWaits(value state, task *Task) []string {
+	var out []string
+	for _, dep := range task.Dependencies {
+		upstream := value.Tasks[dep.TaskID]
+		if upstream == nil || upstream.Status != StatusDone {
+			out = append(out, dep.TaskID)
+		}
+	}
+	for _, id := range value.Order {
+		child := value.Tasks[id]
+		if child.ParentID == task.ID && !terminal(child.Status) {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Wake clears a parked task's wait flag, the other half of [Store.Wait]: the
+// runtime calls it when something the task waited on has moved, immediately
+// before it launches the task's worker again. It moves nothing else — the task
+// keeps whatever status it was left with, and promotion runs so a leaf whose
+// blocker has cleared is Ready to be claimed by the launch that follows.
+func (s *Store) Wake(id string) (*Task, error) {
+	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
+		if !task.Waiting {
+			return nil
+		}
+		task.Waiting, task.WaitedAt = false, time.Time{}
+		task.UpdatedAt = now
+		promote(next, now)
+		return nil
+	})
 }
 
 // TouchClaims refreshes the seen-at stamp of every task an owner holds, so a

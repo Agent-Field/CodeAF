@@ -433,8 +433,8 @@ func TestPlandbCliLoopThroughBash(t *testing.T) {
 	if !strings.Contains(rootBrief, "YOUR TASK IN THE PLAN IS t-root, claimed by agent root") {
 		t.Error("the root worker's brief does not carry its own plan line")
 	}
-	if !strings.Contains(rootBrief, "The runtime completes the run itself") {
-		t.Error("the root worker's brief does not say the runtime completes the run")
+	if !strings.Contains(rootBrief, "plandb done t-root --agent root") {
+		t.Error("the root worker's brief does not teach the finish under the root's own agent")
 	}
 	aBrief := planE2ELaneText(completer, "t-a")
 	if !strings.Contains(aBrief, "YOUR TASK IN THE PLAN IS t-a, claimed by agent a") {
