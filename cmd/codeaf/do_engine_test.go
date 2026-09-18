@@ -449,7 +449,6 @@ func TestDoOnTheRunEngineChecksALeafAndExitsZeroWhenItHolds(t *testing.T) {
 	}
 }
 
-// A CEILING OF NOTHING IS A LIMIT THAT STOPPED THE RUN, before any worker.
 // A CHILDLESS ROOT THAT FINISHES THROUGH THE PLANDB BELT IS CHECKED ONCE.
 //
 // This is the do road real runs take most often: the root does the work itself
@@ -502,6 +501,8 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 	}
 }
 
+// A CEILING OF NOTHING IS A LIMIT THAT STOPPED THE RUN, before any worker.
+//
 // The run road has no cost flag, and this is why the ceiling lives on the
 // request: a caller holding a run to a price says so, and a price of zero
 // admits no work at all. Exit 3 is the ladder's rung for a limit, and
