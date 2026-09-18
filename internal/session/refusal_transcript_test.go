@@ -21,7 +21,7 @@ import (
 // transcript": the belt's own sentence for a composed check, unclipped and
 // unrewritten, carried in the result the model's next turn reads.
 func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
-	refusal := `Invalid arguments: checks must each be ONE command with no shell composition — "cd 1-check && ./run.sh" is not`
+	refusal := `Invalid arguments: checks must each be ONE rerunnable command: "&" joins, redirects or expands commands in "cd 1-check && ./run.sh". Such a character may stand only inside a single-quoted argument, where it is text. A check runs from the root of the task's own copy: leave the directory change out and name each file by its path`
 
 	// The direct answer the belt gives is the sentence whole.
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
@@ -30,9 +30,8 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 	if !isError {
 		t.Fatalf("a composed check was accepted:\n%s", composed)
 	}
-	if !strings.Contains(composed, `composition character "&" is outside quotes`) ||
-		!strings.Contains(composed, "A valid check is one rerunnable command") {
-		t.Fatalf("the refusal does not name the repair:\n%s", composed)
+	if composed != refusal {
+		t.Fatalf("the refusal is not the belt's own sentence, whole:\n got %s\nwant %s", composed, refusal)
 	}
 
 	// The same sentence, sent back through a refused call's result, is still
@@ -48,9 +47,10 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 }
 
 // A CHECK IS JUDGED BY ITS SHAPE, AND THE SCHEMA SAYS THE SHAPE IN ANY SETUP: one
-// rerunnable command, no leading cd, no composition. It names no tool and no language.
+// rerunnable command, no leading cd, and the characters the shell acts on only
+// where the shell reads them as text. It names no tool and no language.
 func TestChecksSchemaSaysWhereAChecksRunsAndNamesNoTool(t *testing.T) {
-	for _, want := range []string{"ONE rerunnable command", "composition characters", "only inside quoted arguments"} {
+	for _, want := range []string{"Optional", "ONE rerunnable command", "no leading cd", "only inside single quotes"} {
 		if !strings.Contains(checksSchemaJSON, want) {
 			t.Errorf("checks schema does not say %q:\n%s", want, checksSchemaJSON)
 		}
@@ -66,12 +66,12 @@ func TestACheckThatLeadsWithADirectoryChangeIsRefusedWithTheFormThatPasses(t *te
 	const form = "leave the directory change out and name each file by its path"
 	for _, led := range []string{"cd /srv/checkout && ./run.sh --all", "cd /srv/elsewhere && ./run.sh report", "cd sub && ./run.sh"} {
 		got, refusal := declaredCheckList([]string{led})
-		if got != nil || !strings.Contains(refusal, "no shell composition") || !strings.HasSuffix(refusal, form) {
+		if got != nil || !strings.Contains(refusal, `"&" joins, redirects or expands commands`) || !strings.HasSuffix(refusal, form) {
 			t.Fatalf("%q: checks = %q, refusal = %q", led, got, refusal)
 		}
 	}
 	for _, composed := range []string{"./build.sh && ./run.sh", "./run.sh | ./count.sh"} {
-		if _, refusal := declaredCheckList([]string{composed}); !strings.HasSuffix(refusal, " is not") {
+		if _, refusal := declaredCheckList([]string{composed}); !strings.HasSuffix(refusal, "where it is text") {
 			t.Fatalf("%q: refusal = %q", composed, refusal)
 		}
 	}
@@ -111,5 +111,37 @@ func TestCommandLikePreservesQuotedArgumentSpacing(t *testing.T) {
 	got, ok := commandLike(check)
 	if !ok || got != check {
 		t.Fatalf("commandLike(%q) = %q, %v", check, got, ok)
+	}
+}
+
+// THE SHAPE IS READ THE WAY THE SHELL READS IT. A character the shell hands to
+// the one program as text is an argument, and the check reaches the checker byte
+// for byte; a character the shell would ACT on is composition wherever it
+// stands, and that includes a dollar or a backtick inside double quotes, which
+// the shell still expands there. The fixtures are the owner's own refused checks
+// of 2026-09-18 beside the forms that must never start passing.
+func TestACheckIsOneCommandAsTheShellWouldReadItsQuotes(t *testing.T) {
+	for _, one := range []string{
+		`grep -iE 'handoff|vault|wall' /tmp/wisp-ideation/walls.md`,
+		`grep -c '^## (one)  {two}; $three' notes.md`,
+		`./count.sh "a | b ; c  (d)" report.txt`,
+	} {
+		got, refusal := declaredCheckList([]string{one})
+		if refusal != "" || len(got) != 1 || got[0] != one {
+			t.Errorf("%s: checks = %q, refusal = %q; want it kept byte for byte", one, got, refusal)
+		}
+	}
+	for said, offending := range map[string]string{
+		`test -s walls.md && grep -c '^## ' walls.md | awk '$1>=6'`: `"&"`,
+		`grep "$(./anything.sh)" notes.md`:                          `"$"`,
+		"grep \"`./anything.sh`\" notes.md":                         "\"`\"",
+		`grep "a\"; ./anything.sh; \"" notes.md`:                    `"\\"`,
+		`grep 'unclosed notes.md`:                                   `"'"`,
+		`./run.sh > out.txt`:                                        `">"`,
+	} {
+		got, refusal := declaredCheckList([]string{said})
+		if got != nil || !strings.Contains(refusal, offending+" joins, redirects or expands commands") {
+			t.Errorf("%s: checks = %q, refusal = %q; want it refused naming %s", said, got, refusal, offending)
+		}
 	}
 }
