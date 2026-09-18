@@ -1406,6 +1406,20 @@ Being stopped as stuck says **nothing** about the deliverable: a stopped task is
 checked against its acceptance, and when the check passes it lands finished and merges with
 the `stopped:` line gone. The section below is that whole rule.
 
+## Does the planner see what its subtasks did — a task reads its own parts' reports, who joins the pieces back up, where a parent's result comes from
+
+**Yes, and that report is where the task's own result comes from.** A task that handed parts of
+its work out is **run again once every part it dispatched has landed**, and that turn opens on
+what each part reported — its title, whether it landed, and its result, one after another. The
+report that turn gives is the parent's result; on a run's root it is the result the run answers
+with, not whatever the first turn said when the work was still in pieces.
+
+Joining the parts is that turn's work, and it is the task's, not yours: read the parts together,
+check the combined result in the working copy, add a part if something is missing, and report. A
+task woken this way that hands out a further part **waits again** and is woken once that one
+lands too. The waking is bounded — a task is run again at most a fixed few times — so a task that
+keeps splitting cannot hold a run open forever.
+
 ## A task stopped as stuck that had already finished its work
 
 Being stopped is a statement about the **trajectory**, never about the deliverable. One of

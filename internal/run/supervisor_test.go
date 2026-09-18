@@ -142,12 +142,21 @@ func adoptForeignWrite(t *testing.T, store *plandb.Store) {
 	}
 }
 
-// splitRootAction is the root worker of every test here: it adds three leaves
-// under the root through the store, the way a real worker splits, and
-// reports its own account of the split.
+// splitRoot is the root worker of every test here. Its FIRST turn adds leaves
+// under the root through the store, the way a real worker splits, and reports
+// its own account of the split. Its SECOND turn is the wake — the root is run
+// again once every leaf it dispatched has landed — and it reports the
+// integrated result, which is the one the run carries. A root action that
+// split on every call would fail the wake with a duplicate-id refusal, which
+// is not the law under test.
 func splitRoot(t *testing.T, store *plandb.Store, leaves ...plandb.TaskSpec) func(context.Context, plandb.Task) (run.Report, error) {
 	t.Helper()
+	split := false
 	return func(_ context.Context, task plandb.Task) (run.Report, error) {
+		if split {
+			return run.Report{Result: fmt.Sprintf("integrated %d leaves", len(leaves)), Steps: 1, USD: 0.05}, nil
+		}
+		split = true
 		specs := make([]plandb.TaskSpec, len(leaves))
 		for i, leaf := range leaves {
 			leaf.ParentID = task.ID
@@ -185,14 +194,16 @@ func TestSupervisorSplitsARootAndCompletesItAfterItsLeaves(t *testing.T) {
 	if root.Status != plandb.StatusDone {
 		t.Fatalf("root status = %s, want done", root.Status)
 	}
-	if root.Result != "split into 3 leaves" {
-		t.Fatalf("root result = %q, want the root worker's own result", root.Result)
+	// THE RUN'S RESULT IS THE ROOT'S SECOND REPORT — the one it gives after its
+	// leaves land — not its first turn's account of the split.
+	if root.Result != "integrated 3 leaves" {
+		t.Fatalf("root result = %q, want the report the woken root gave", root.Result)
 	}
-	// Three leaves, three workers, and every one of them finished before the
-	// root's own completion was written.
+	// Three leaves, three workers, the root before them and the root again to
+	// integrate once they all landed.
 	launches := seat.launches()
-	if len(launches) != 4 || launches[0] != "root" {
-		t.Fatalf("launch order = %v, want the root first and three leaves after it", launches)
+	if len(launches) != 5 || launches[0] != "root" || launches[4] != "root" {
+		t.Fatalf("launch order = %v, want the root first, its three leaves, then the root again", launches)
 	}
 	for _, id := range []string{"l1", "l2", "l3"} {
 		leaf := store.Task(id)
@@ -622,16 +633,17 @@ func TestStartCountsNothingFromAWorkerWhoseTaskWasCancelled(t *testing.T) {
 	if outcome != run.OutcomeIncomplete {
 		t.Fatalf("outcome = %q, want %q", outcome, run.OutcomeIncomplete)
 	}
-	// The root worker's own figures are the whole account: two workers went
-	// out, and the cancelled one's 0.30 and four steps counted for nothing.
-	if summary.Nodes != 2 {
-		t.Fatalf("summary nodes = %d, want the root and the cancelled leaf", summary.Nodes)
+	// The root worker's own figures and the wake's are the whole account: three
+	// workers went out (the root, the cancelled leaf, and the root's wake), and
+	// the cancelled one's 0.30 and four steps counted for nothing.
+	if summary.Nodes != 3 {
+		t.Fatalf("summary nodes = %d, want the root, the cancelled leaf, and the root's wake", summary.Nodes)
 	}
-	if summary.USD != 0.10 {
-		t.Fatalf("summary usd = %v, want the root's 0.1 alone", summary.USD)
+	if !usdClose(summary.USD, 0.15) {
+		t.Fatalf("summary usd = %v, want the root's 0.1 and the wake's 0.05 alone", summary.USD)
 	}
-	if summary.Steps != 1 {
-		t.Fatalf("summary steps = %d, want the root's 1 alone", summary.Steps)
+	if summary.Steps != 2 {
+		t.Fatalf("summary steps = %d, want the root's 1 and the wake's 1 alone", summary.Steps)
 	}
 	if leaf := store.Task("l1"); leaf.Status != plandb.StatusCancelled || leaf.Result != "" {
 		t.Fatalf("leaf l1 = %s with result %q, want cancelled with the late completion unwritten", leaf.Status, leaf.Result)

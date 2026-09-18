@@ -91,7 +91,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (Report, error) 
 	defer func() { _ = agent.Close(); agent.SettleWrites() }()
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	events, err := agent.Submit(runCtx, session.BeltWorkerBrief(&task, task.ID == w.store.RootID(), len(past) > 0))
+	events, err := agent.Submit(runCtx, session.BeltWorkerBrief(&task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx)))
 	if err != nil {
 		_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, Reason: "the turn never started: " + err.Error()})
 		return Report{}, err
