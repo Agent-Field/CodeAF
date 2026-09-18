@@ -708,14 +708,19 @@ func TestTheWaitingLinesElapsedNeverGoesBackwards(t *testing.T) {
 // printed nothing. So the clock belongs to this errand's own nodes, and events
 // that are nobody's business here may not silence it.
 func startUsageNoise(parent context.Context, record func()) func() {
-	noise, stop := context.WithCancel(parent)
+	noise, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for noise.Err() == nil {
 			record()
 			time.Sleep(5 * time.Millisecond)
 		}
 	}()
-	return stop
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func TestUsageNoiseStopWaitsForTheWriter(t *testing.T) {
