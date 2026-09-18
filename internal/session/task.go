@@ -720,7 +720,7 @@ func (p *stagedProposal) Withdraw() {
 // batch would have read. The answer may already be in: a person who said no, or
 // a clock that ran out, while the message was still arriving, is read here in
 // the order it happened ([Agent.openTask]).
-func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
+func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	a, spec, graph, elsewhere := p.agent, p.spec, p.graph, p.elsewhere
 	admitted := false
 	defer func() {
@@ -775,6 +775,12 @@ func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
 	// the transcript by now and in neither the brief nor the request.
 	spec.admission = a.admissionContext()
 
+	if bashBeltAsked() {
+		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+		if err := a.startKnownTaskRun(ctx, p.id, spec.title, description, spec.dependsOn); err == nil {
+			return taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere), false, nil
+		}
+	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
