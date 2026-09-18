@@ -104,6 +104,26 @@ the platform's retention period. That record is the one place a row can be
 tied to an address. A relay that should keep none sets `persist = false` or
 `head_sampling_rate = 0` in both blocks.
 
+Judge severity and the primed rows. The index's `role_quality` cells come
+out of a per-judge severity fit (`relay/src/sheet.js`): every judge's scores
+are shifted by a fitted β before they are pooled, so a judge who scores high
+or low on everything is taken out of the published means. The priming script
+(`relay/tools/prime.py`) posts every seat as exactly 0 or 100 under one judge
+id, so in that fit the primed judge's rows carry only the two ends of the
+rubric. For a judge whose rows are all primed, with `n_prime` rows on cells
+the other judges hold `n_other` rows of at weighted mean `c`, the stationary
+fit puts its severity at `β = n_other · (x̄ − c) / (n_prime + n_other)`, where
+`x̄` is the primed rows' own mean (100 × the pass rate), and moves the centre
+of every cell it shares by `n_prime / (n_prime + n_other)` of the gap toward
+`x̄`. As a worked number: `n_prime = 385` rows, all failures (`x̄ = 0`),
+against `n_other = 600` rows at `c = 88` gives
+`β = 600 · (0 − 88) / 985 ≈ −53.6` — and the fit holds every severity inside
+±10 (a judge further off than a tenth of the rubric's width is a different
+rubric, not a severity), with each adjusted score clamped back into
+[0, 100], so a cell that judge scores alone shifts by at most 10 points
+either way. An operator weighing a purge can read the size of the pull from
+the same formula with their own `n_prime` and `n_other`.
+
 ## Run your own relay
 
 Generate your own keypair with the same openssl lines as step 4, then
