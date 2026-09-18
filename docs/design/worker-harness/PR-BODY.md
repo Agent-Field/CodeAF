@@ -68,6 +68,22 @@ A run worker's belt is one shell hand. It coordinates through `plandb`
 hands through the binary — `codeaf patch`, `codeaf doc`, `codeaf web fetch`,
 `codeaf web search`, `codeaf image` — each on the same code path its tool runs.
 
+**What to try.** Set `CODEAF_TASK_BELT=bash` and open `codeaf`. First, type
+`/task <a brief with two or three parts>`: the task rail lists the run's tasks
+and, under the one that is running, its live step — the running glyph, `$` and
+the command the worker is executing at that moment, with `N steps · $` beneath
+it; open the task page and it follows the newest step as it lands until you
+scroll up, and resumes following when you reach the bottom again. Second, steer
+it: on the task page type a note and press enter; the page confirms it and the
+note is read at the worker's next step, and the task's record shows the step
+that picked it up. Notes, pause, resume and cancel all ride the plan store, so
+a task steered from the page and a task steered from `plandb` on the command
+line are the same task. Third, the door with nobody attached:
+`CODEAF_TASK_BELT=bash codeaf do "<the same brief>" --json` runs the same loop
+headless and prints the envelope — the root's result, the landed files and
+branch, the node count and `spend_usd`; `plandb spend --by seat` reads the same
+run's ledger back.
+
 ## Measured — the six calibrated cells
 
 One seat per arm, the same model on both, a $5 cap per run, on the shared build
@@ -143,8 +159,8 @@ manual's pages. Two sentences were new, and both are now quoted on the
 `worker-harness` page rather than renamed, because they are what the belt
 says to the model and the record has to show the words the model was told:
 `no action executed: …` and `4 replies in a row carried no action`.
-*Harness*, *belt*, *envelope*, *seat* and *leaf* are design and manual words
-and never drawn on a screen. The rail's live step line and the page's
+*Harness*, *belt*, *envelope* and *leaf* are design and manual words and
+never drawn on a screen. The rail's live step line and the page's
 following of it (`$ <command>`, `N steps · $`, `queued · waits: <what>`) are
 spelled from the same list.
 
