@@ -290,8 +290,10 @@ The verdict above is "fair with caveat". The rerun does not support it. **Every 
 seven CLIs measured `procs=1`**, where the September-17 table has CodeAF at 2 processes and
 cursor-agent at 5. Seven products did not simultaneously stop spawning helpers.
 
-The consequence runs in both directions, which is why this is not a CodeAF win: CodeAF's
-PSS came out **38.7 MB against the table's 66.4**, and cursor-agent's **194.4 MB against
+The consequence runs in both directions, which is why this is not a codeaf win: codeaf's
+PSS figure of **38.7 MB** was a defective orphan-attached measurement, not a footprint.
+The two-process **66.4 MB** remains the figure of record until the fixed script reruns.
+Cursor-agent's **194.4 MB against
 412.7**. The same artefact halves both numbers.
 
 Three explanations were tested and killed rather than argued:
