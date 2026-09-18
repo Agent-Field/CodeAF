@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a fault test writes its crash fixture only into a profile it owns
-pr: 0
+pr: 1145
 surface: [chat, build]
 invalidates:
   - "Tests in cmd/codeaf moved HOME and CODEAF_HOME to directories of their own but left CODEAF_PROFILE_DIR alone, and reportFault appends through config.ProfilePath(config.ProfileDir(), \"chat.log\"). A harness that exports CODEAF_PROFILE_DIR at a live profile therefore sent the fixture — `slice bounds out of range [:-1]` — into somebody's real chat.log, where it read as a genuine crash. Every test and helper that writes through a profile path now pins CODEAF_PROFILE_DIR as well."
@@ -40,5 +40,3 @@ Clearing CODEAF_PROFILE_DIR unconditionally in that helper, the way
 package at once instead of one at a time. It is not in this change: it alters
 what every test here inherits, which is a wider claim than the leak needs.
 
-The `pr:` number is a placeholder and needs the real pull-request number before
-this lands.
