@@ -110,3 +110,63 @@ func lineContaining(text, needle string) string {
 	}
 	return ""
 }
+
+// A run filter asks the same fuzzy matcher as home about every durable run
+// fact. The winning field is retained so the pane can quote the line that made
+// the run the top answer rather than merely moving the cursor without saying
+// why.
+func TestWorkRunFilterRanksEveryRunFactAndKeepsTheMatchingLine(t *testing.T) {
+	pages := []session.PlanTaskPage{
+		{Row: session.PlanTaskRow{ID: "t-first", Title: "rotate certificates"}, Description: "replace the expiring edge key", Notes: []session.PlanTaskNote{{Body: "canary stayed green"}}},
+		{Row: session.PlanTaskRow{ID: "t-second", Title: "audit storage"}, Description: "inspect retention", Notes: []session.PlanTaskNote{{Body: "edge key appears in the archive"}}},
+	}
+	for _, tc := range []struct {
+		name, query, wantID, wantLine string
+	}{
+		{"run title", "rot cert", "t-first", "rotate certificates"},
+		{"task brief", "exp edge", "t-first", "replace the expiring edge key"},
+		{"notes", "can grn", "t-first", "canary stayed green"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hits := filterPlanRuns(pages, nil, tc.query)
+			if len(hits) == 0 || hits[0].page.Row.ID != tc.wantID || hits[0].line != tc.wantLine {
+				t.Fatalf("filterPlanRuns(%q) = %#v, want %s quoted as %q", tc.query, hits, tc.wantID, tc.wantLine)
+			}
+		})
+	}
+}
+
+// Conversation title and transcript snippets come from the search place's
+// existing store answer. They are merged as facts, never re-indexed here.
+func TestWorkRunFilterUsesTheHomeConversationIndexAndEscClearIsEmptyQuery(t *testing.T) {
+	pages := []session.PlanTaskPage{{Row: session.PlanTaskRow{ID: "t-run", Title: "ship parser"}}}
+	indexed := []searchHit{{sessionID: "t-run", title: "payments cleanup", snippet: "the cobalt handshake failed"}}
+	for query, wantLine := range map[string]string{
+		"pay cln": "payments cleanup",
+		"cob hnd": "the cobalt handshake failed",
+	} {
+		hits := filterPlanRuns(pages, indexed, query)
+		if len(hits) != 1 || hits[0].line != wantLine {
+			t.Fatalf("indexed filter %q = %#v, want matching line %q", query, hits, wantLine)
+		}
+	}
+	if hits := filterPlanRuns(pages, indexed, ""); len(hits) != len(pages) || hits[0].line != "" {
+		t.Fatalf("cleared filter = %#v, want every run and no matching line", hits)
+	}
+}
+
+func TestWorkRunPaneQuotesTheLineThatMatched(t *testing.T) {
+	page := session.PlanTaskPage{
+		Row:         session.PlanTaskRow{ID: "t-run", Title: "ship parser"},
+		Description: "replace the expiring edge key",
+	}
+	a, _ := planAppWith(t, []session.PlanTaskRow{page.Row}, map[string]session.PlanTaskPage{page.Row.ID: page})
+	a.taskSheet.plan, a.taskSheet.planOn = page, true
+	for _, r := range "exp edge" {
+		a.taskSheet.query.insert(string(r))
+	}
+	text := ansi.Strip(strings.Join(a.taskPlanBody(100), "\n"))
+	if !strings.Contains(text, "replace the expiring edge key") {
+		t.Fatalf("the pane did not quote its matching line:\n%s", text)
+	}
+}

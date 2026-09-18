@@ -18,6 +18,7 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -191,6 +192,7 @@ func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 			ID:        row.ID,
 			Title:     row.Title,
 			Label:     row.Title,
+			Outcome:   row.Note,
 			Status:    planEntryStatus(row.Status),
 			SessionID: chat,
 			// THE PARENT IS WHERE THE ROW IS DRAWN. The store's own parent puts a
@@ -901,6 +903,14 @@ func (a *app) taskPlanBody(width int) []string {
 	if row := planPageTelemetryLine(page); row != "" {
 		add(pal.dim(row))
 	}
+	// When the list moved this pane to its top fuzzy match, quote the exact
+	// durable line that answered. The transcript half is supplied by the home
+	// search index before selection; a task page only owns its plan facts.
+	if query := a.taskSheetFilter(); query != "" {
+		if hits := filterPlanRuns([]session.PlanTaskPage{page}, nil, query); len(hits) > 0 && hits[0].line != "" {
+			add(pal.dim(hits[0].line))
+		}
+	}
 	if waits := page.WaitRows; len(waits) > 0 {
 		section("waits")
 		own := map[string]bool{}
@@ -1137,4 +1147,83 @@ func planPageTelemetryLine(page session.PlanTaskPage) string {
 		segs = append(segs, itoa(queued)+" queued")
 	}
 	return strings.Join(segs, railSep)
+}
+
+// planRunHit is one run retained by the work-tab filter and the one physical
+// line that answered the query. Keeping the line with the rank lets the pane
+// explain why its top run moved without building another transcript index.
+type planRunHit struct {
+	page session.PlanTaskPage
+	line string
+	rank int
+	at   int
+}
+
+// filterPlanRuns ranks run pages with home's shared fuzzy matcher. Conversation
+// title and body lines arrive only as hits from the search place's durable
+// index; this function never opens or indexes a transcript.
+func filterPlanRuns(pages []session.PlanTaskPage, indexed []searchHit, query string) []planRunHit {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		out := make([]planRunHit, 0, len(pages))
+		for at, page := range pages {
+			out = append(out, planRunHit{page: page, at: at})
+		}
+		return out
+	}
+	byRun := make(map[string][]string)
+	for _, hit := range indexed {
+		id := strings.TrimSpace(hit.sessionID)
+		if id == "" {
+			continue
+		}
+		byRun[id] = append(byRun[id], hit.title, hit.snippet)
+	}
+	var out []planRunHit
+	for at, page := range pages {
+		lines := []string{page.Row.Title, page.Description}
+		for _, child := range page.Children {
+			lines = append(lines, child.Title, child.Note)
+		}
+		for _, note := range page.Notes {
+			lines = append(lines, note.Body)
+		}
+		for _, step := range page.Steps {
+			lines = append(lines, step.Observation)
+		}
+		lines = append(lines, byRun[strings.TrimSpace(page.Row.ID)]...)
+		best, bestLine, ok := 0, "", false
+		for _, line := range lines {
+			line = searchOneLine(line)
+			if line == "" {
+				continue
+			}
+			rank, matches := planRunLineRank(line, query)
+			if matches && (!ok || rank < best) {
+				best, bestLine, ok = rank, line, true
+			}
+		}
+		if ok {
+			out = append(out, planRunHit{page: page, line: bestLine, rank: best, at: at})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].rank != out[j].rank {
+			return out[i].rank < out[j].rank
+		}
+		return out[i].at < out[j].at
+	})
+	return out
+}
+
+func planRunLineRank(line, query string) (int, bool) {
+	total := 0
+	for _, word := range strings.Fields(query) {
+		quality, ok := session.MatchQuality(line, word)
+		if !ok {
+			return 0, false
+		}
+		total += quality
+	}
+	return total, true
 }
