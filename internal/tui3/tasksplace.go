@@ -1467,10 +1467,14 @@ func (r tasksReading) rows(width int, pal palette) []string {
 	return out
 }
 
-// planRows draws only this reading's store-backed plan rows, through the same
-// layout and paint pass that owns their tree on the tasks page. Page chrome is
-// not part of the projection: the rail already owns its section label and
-// controls, while task rows and their live under-lines remain one tree.
+// planRows draws only this reading's store-backed plan rows — the rail's own
+// projection of the tree, through the same layout pass that owns it on the
+// tasks page. ONE LINE PER TASK: the rail is a narrow column beside a
+// conversation somebody is reading, and the page's own row at this width is a
+// two-line card with the steps and the money under the title, so a run of four
+// tasks would spend eleven of the rail's rows saying what four lines say
+// ([planRailRow]). Page chrome is not part of the projection: the rail already
+// owns its section label and controls, while the task rows remain one tree.
 func (r tasksReading) planRows(width int, pal palette) []string {
 	if width <= 0 {
 		return nil
@@ -1496,9 +1500,12 @@ func (r tasksReading) planRows(width int, pal palette) []string {
 	lines := plan.lay(width)
 	out := make([]string, 0, len(lines))
 	for i := range lines {
-		switch lines[i].kind {
-		case tasksLineTask, tasksLineTail, tasksLinePlanUnder:
-			out = append(out, plan.paint(lines, i, width, pal, false))
+		if lines[i].kind != tasksLineTask || lines[i].item.plan == nil {
+			continue
+		}
+		out = append(out, planRailRow(lines[i], width, pal, r.now))
+		if live := planRailLive(lines[i], width, pal); live != "" {
+			out = append(out, live)
 		}
 	}
 	return out

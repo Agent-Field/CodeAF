@@ -1969,12 +1969,15 @@ When two or more workers are running anywhere in the live work, the section labe
 the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
 zero or one running worker there is no tail at all, so the label remains `tasks`.
 
-**A run's rows are not on this column.** The column draws this conversation's own tree and
-nothing else, so the plan rows a run writes to the store — including the root's children — are
-drawn in the tasks place instead (the page `/history`, `ctrl+.` and `alt+2` open). A run's row
-there spends one line under its title while a step is in flight — the running glyph `◐`, the
-shell lead `$` and the command its worker is on right now — with the task's `N steps · $0.11`
-under it. *The tasks place* below has it whole.
+**A run's rows are on this column too.** The column draws this conversation's own tree, and
+under the conversation that started a run it draws that run's tree out of the same reading:
+one line per task — the connector, the state mark and the fitted title — with
+`waits: <that task>` at the end of a line held behind named work, and the run's own row
+ending in the dot row (*what are the dots next to a task?* has the cells). While a task's
+worker is on a step, its row spends one line under it — the running glyph `◐`, the shell
+lead `$` and the command its worker is on right now — and nothing else, because the steps
+and the cost are the tasks place's own rows. That page (the page `/history`, `ctrl+.` and
+`alt+2` open) has the run whole.
 
 ## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
