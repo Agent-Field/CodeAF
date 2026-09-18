@@ -720,7 +720,7 @@ func (p *stagedProposal) Withdraw() {
 // batch would have read. The answer may already be in: a person who said no, or
 // a clock that ran out, while the message was still arriving, is read here in
 // the order it happened ([Agent.openTask]).
-func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
+func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	a, spec, graph, elsewhere := p.agent, p.spec, p.graph, p.elsewhere
 	admitted := false
 	defer func() {
@@ -775,6 +775,18 @@ func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
 	// the transcript by now and in neither the brief nor the request.
 	spec.admission = a.admissionContext()
 
+	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
+		a.mu.Lock()
+		question := questionAtTaskHandoff(a.owedAsks)
+		a.mu.Unlock()
+		graph.releaseChild(spec.parent)
+		admitted = true
+		id, title, _, err := a.startTaskRun(ctx, spec.brief, false, question)
+		if err != nil {
+			return "", false, err
+		}
+		return fmt.Sprintf("task %d started: %s\nIt works from the brief alone, in a copy of its own. %s", id, title, taskHandoffWakeSentence), false, nil
+	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
