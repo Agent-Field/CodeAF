@@ -19,6 +19,10 @@ package verify
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -51,8 +55,25 @@ func Photograph(ctx context.Context, root string, wall time.Duration, focus Focu
 	// half can only report. igel s11's own suite came back BETTER on the tree
 	// that had just lost eight public attributes.
 	surface := PublicSurface(root)
-	plan := Discover(root)
-	ladder, ok := ReadingStrategies(root, plan, focus)
+	// A PROJECT IS NOT ALWAYS AT THE WORKSPACE ROOT, AND THE READING HAS TO BE
+	// TAKEN WHERE THE PROJECT IS. A corpus task clones its project into a
+	// SUBDIRECTORY of the errand's workspace — awilix under ./repo, bandit under
+	// ./bandit — and discovery at the bare root opens no manifest, no Makefile
+	// and no script, so the reading came back "this project declares no way of
+	// checking itself" and NOTHING RAN: awilix shipped a src/awilix.ts that a
+	// build would have caught. So when the root declares no check and an
+	// immediate subdirectory declares one, the reading is taken there.
+	project, plan := locateProject(root)
+	base := projectBase(root, project)
+	focus = focus.Within(base)
+	ladder, ok := ReadingStrategies(project, plan, focus)
+	// THE EFFECTIVE ROOT RIDES ON THE STRATEGY'S WORKDIR, WORKSPACE-RELATIVE, so
+	// every reader that hands a command the workspace root — the second reading,
+	// the journal, the delivery gate — runs it at the discovered project without
+	// rediscovering it. This is the same spelling placeStrategies already uses
+	// for a monorepo package: where a command runs is ONE fact and Workdir is
+	// where it is kept.
+	plan, ladder = rerootPlan(plan, base), rerootLadder(ladder, base)
 	if !ok {
 		return Reading{Plan: plan, Surface: surface,
 			Unread: "this project declares no way of checking itself, " +
@@ -78,6 +99,94 @@ func Photograph(ctx context.Context, root string, wall time.Duration, focus Focu
 	reading := photograph(ctx, root, plan, ladder, budget)
 	reading.Surface = surface
 	return reading
+}
+
+// locateProject is where a reading is taken: the workspace root when it declares
+// a way of checking itself, and otherwise the single immediate subdirectory that
+// does.
+//
+// The plan it returns is Discover's, taken AT that root, so the reading is
+// exactly the one the project would have had if it had been the workspace. A
+// subdirectory is a candidate only because its own files declare a check — the
+// same evidence the root is held to — and never because of its name.
+func locateProject(root string) (string, Plan) {
+	plan := Discover(root)
+	if len(plan.Entrypoints) > 0 {
+		return root, plan
+	}
+	if project, ok := subdirectoryProject(root); ok {
+		return project, Discover(project)
+	}
+	return root, plan
+}
+
+// subdirectoryProject is the immediate subdirectory that declares its own way of
+// checking itself, when one does: the directory carrying the manifest, the
+// Makefile or the script whose discovery finds an entrypoint.
+//
+// Directories a build writes and the ones this program knows are somebody
+// else's files are not projects and are skipped (skipBuilt, SkipTree). The walk
+// is sorted so two readings of one workspace choose the same directory.
+func subdirectoryProject(root string) (string, bool) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", false
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() && !SkipTree(entry.Name()) && !skipBuilt(entry.Name()) {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		project := filepath.Join(root, name)
+		if len(Discover(project).Entrypoints) > 0 {
+			return project, true
+		}
+	}
+	return "", false
+}
+
+// projectBase is the discovered project as a workspace-relative path: empty when
+// the project IS the workspace root, and the subdirectory's own name otherwise.
+// It is what a rung's workdir is prefixed with, so a command discovered at a
+// subdirectory runs there while every path this program records stays
+// workspace-relative — which is what the artifact record, the surface and the
+// baseline key are all spelled in.
+func projectBase(root, project string) string {
+	if project == root {
+		return ""
+	}
+	relative, err := filepath.Rel(root, project)
+	if err != nil || relative == "." || strings.HasPrefix(relative, "..") {
+		return ""
+	}
+	return filepath.ToSlash(relative)
+}
+
+// rerootPlan and rerootLadder put the discovered project's directory in front of
+// every workdir, so a command found at a subdirectory runs there when it is
+// handed the workspace root. Both are the identity when the project is the root
+// itself, which is the path every project at the root has always taken.
+func rerootPlan(plan Plan, base string) Plan {
+	if base == "" {
+		return plan
+	}
+	for index := range plan.Entrypoints {
+		plan.Entrypoints[index].Workdir = joinWorkdir(base, plan.Entrypoints[index].Workdir)
+	}
+	return plan
+}
+
+func rerootLadder(ladder []Strategy, base string) []Strategy {
+	if base == "" {
+		return ladder
+	}
+	for index := range ladder {
+		ladder[index].Workdir = joinWorkdir(base, ladder[index].Workdir)
+	}
+	return ladder
 }
 
 // photograph is the ladder walk, with the budget already decided. It is
