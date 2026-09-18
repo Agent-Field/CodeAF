@@ -732,6 +732,11 @@ type runRecord struct {
 	Report  string    `json:"report,omitempty"`
 	Model   string    `json:"model,omitempty"`
 	CostUSD float64   `json:"costUsd,omitempty"`
+	// StartedAt and EndedAt are when the row's work began and ended. A row that
+	// came back without them drew a finished run with no age, and the places
+	// that order work by activity had nothing to order it by.
+	StartedAt time.Time `json:"startedAt,omitzero"`
+	EndedAt   time.Time `json:"endedAt,omitzero"`
 
 	// ElapsedMS is whatever age the row was last published with, frozen. A run's
 	// rows do not carry one today — the family publishes no Elapsed — so it is
@@ -1049,6 +1054,8 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Model:     notice.Model,
 		CostUSD:   notice.CostUSD,
 		ElapsedMS: notice.Elapsed.Milliseconds(),
+		StartedAt: notice.StartedAt,
+		EndedAt:   notice.EndedAt,
 	}
 }
 
@@ -1081,6 +1088,9 @@ func runRowNotice(record runRecord) TaskNotice {
 		Model:   record.Model,
 		CostUSD: record.CostUSD,
 		Elapsed: time.Duration(record.ElapsedMS) * time.Millisecond,
+
+		StartedAt: record.StartedAt,
+		EndedAt:   record.EndedAt,
 	}
 	if !notice.State.settled() {
 		notice.State, notice.Stopped = TaskFailed, true

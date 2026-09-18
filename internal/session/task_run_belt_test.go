@@ -290,6 +290,13 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if got := conversationJournalLines(reopened, wantDigest); got != 1 {
 		t.Fatalf("reopened conversation carries digest %d times, want one", got)
 	}
+	// AND THE REOPENED CONVERSATION KNOWS THE RUN ENDED. The ending used to reach
+	// the surface and never the checkpoint, so a finished run came back with a
+	// spinner and was counted as moving for ever.
+	kept := reopened.graph().runRows(id)
+	if len(kept) != 1 || kept[0].State != TaskDone || kept[0].StartedAt.IsZero() || kept[0].EndedAt.IsZero() {
+		t.Fatalf("the reopened conversation's row for the run = %+v, want one done row with its start and its end", kept)
+	}
 	// the run's row settled too, on the surface's own lane
 	if row := planRowFor(agent.PlanTasks(), planStoreID(rootID)); row == nil || row.Status != string(plandb.StatusDone) {
 		t.Fatalf("the plan does not show the run done: %+v", agent.PlanTasks())

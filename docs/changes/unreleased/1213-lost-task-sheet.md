@@ -6,6 +6,7 @@ surface: [chat, engine]
 invalidates:
   - "A checkpoint that failed its schema check was dropped whole and the session's next save landed on the same path, so the unreadable file was replaced by an empty one. It is now moved beside itself as `tasks.json.refused-<seconds>` first, and the id counter is raised past every task that left a transcript or a working copy on disk."
   - "Every node in `tasks.json` had to carry an acceptance or the whole file was refused. A task that came out of a run's plan is admitted with the plan store's id and no acceptance of its own, so with the belt on the first such task made the file unreadable on the next open. A plan-born node now reads back without one."
+  - "A belt run's ending reached the screen and never the checkpoint, so `tasks.json` said `running` for a run that had finished; a conversation closed and reopened drew it with a spinner and counted it as moving. The ending is saved with the row, and a run's row now keeps when it started and ended."
 ---
 
 The owner closed and reopened a conversation that had run twenty tasks and the
