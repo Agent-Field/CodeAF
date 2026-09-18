@@ -404,3 +404,93 @@ func TestAnOutputFolderOutsideEveryRepositoryDoesNotRivalTheRepositoryTheBriefNa
 		t.Fatalf("stand = %+v, want the one plain folder the brief names", alone)
 	}
 }
+
+// A FOLDER INSIDE A REPOSITORY IS THAT REPOSITORY, on this rung as on the said
+// one. A brief that names a repository's subfolder and only files under it has
+// two folders holding everything it wrote down, the subfolder and the
+// repository around it, and they are ONE ground: the rung answers the
+// repository and never the deeper of two nested rivals.
+func TestABriefThatNamesOnlyASubfolderStandsOnTheRepositoryAroundIt(t *testing.T) {
+	ground := newTestRepo(t)
+	first := newTestRepo(t)
+	second := newTestRepo(t)
+	inner := filepath.Join(ground, "inner", "deep")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	for _, place := range []string{first, second} {
+		if _, err := agent.ReferPlace(place, PlaceSaid); err != nil {
+			t.Fatalf("ReferPlace: %v", err)
+		}
+	}
+	stand := agent.resolveTaskGround(taskSpec{
+		brief:       "Everything is under " + inner + "; change " + filepath.Join(inner, "one.txt") + " and " + filepath.Join(inner, "two.txt"),
+		deliverable: "the two files, changed", acceptance: "both read differently",
+	})
+	if stand.ask != "" || stand.refusal != "" || stand.rung != taskGroundBrief || stand.dir != canonicalPath(ground) {
+		t.Fatalf("stand = %+v, want the repository %s on the brief rung", stand, canonicalPath(ground))
+	}
+}
+
+// EXACTLY ONE, OTHERWISE NOT THIS RUNG. Two holding candidates that are still
+// two grounds once each is read as the ground it would become are two answers,
+// and the rung never picks between them: it reports nothing and the ladder
+// climbs on to the evidence and the question below.
+func TestTwoGroundsThatBothHoldTheBriefsPlacesAreNoAnswer(t *testing.T) {
+	outer := canonicalPath(newTestRepo(t))
+	inner := filepath.Join(outer, "inner")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, inner, "init", "-q")
+	inner = canonicalPath(inner)
+	refs := []string{filepath.Join(inner, "a")}
+	if err := os.MkdirAll(refs[0], 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if dir, ok := theOneGroundHolding(refs, []string{outer, inner}); ok {
+		t.Fatalf("two grounds hold the brief's places and the rung answered %q; it must answer nothing", dir)
+	}
+	if dir, ok := theOneGroundHolding(refs, []string{inner, filepath.Join(inner, "a")}); !ok || dir != inner {
+		t.Fatalf("nested candidates inside one repository = %q, %v; want the repository %q", dir, ok, inner)
+	}
+	if dir, ok := theOneGroundHolding(refs, nil); ok {
+		t.Fatalf("no candidate answered %q", dir)
+	}
+}
+
+// THE RECEIPT SAYS THE FOLDER, IN A PERSON'S WORDS. Which rung of the ladder
+// answered is a log's word; what the receipt owes is where the work went and
+// whose word put it there, so a ground nobody offered is seen at once.
+func TestTheReceiptSaysWhereATaskWorksInWordsAndNeverTheRungsName(t *testing.T) {
+	spec := taskSpec{title: "the fix"}
+	for _, c := range []struct {
+		stand taskStand
+		want  string
+	}{
+		{taskStand{dir: "/work/one", rung: taskGroundBrief}, "It works in /work/one, the one folder its brief names the work in."},
+		{taskStand{dir: "/work/two", rung: taskGroundSaid}, "It works in /work/two, the folder this proposal gave as its ground."},
+		{taskStand{dir: "/work/three", rung: taskGroundSaid, kept: true}, ""},
+		{taskStand{dir: "/work/four", rung: taskGroundTouched}, ""},
+		{taskStand{dir: "/work/five", rung: taskGroundStandingIn}, ""},
+	} {
+		for _, state := range []TaskState{TaskRunning, TaskQueued} {
+			receipt := taskReceipt(7, spec, state, c.stand, "")
+			if c.want == "" {
+				if strings.Contains(receipt, "It works in /") {
+					t.Fatalf("rung %q: the receipt names a folder nobody's proposal chose:\n%s", c.stand.rung, receipt)
+				}
+				continue
+			}
+			if !strings.Contains(receipt, c.want) {
+				t.Fatalf("rung %q: the receipt does not say %q:\n%s", c.stand.rung, c.want, receipt)
+			}
+			for _, word := range []string{"rung", "provenance", "`brief`", "`said`"} {
+				if strings.Contains(receipt, word) {
+					t.Fatalf("the receipt spells the ladder's own word %q:\n%s", word, receipt)
+				}
+			}
+		}
+	}
+}

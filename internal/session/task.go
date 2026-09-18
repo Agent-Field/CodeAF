@@ -843,10 +843,34 @@ func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, els
 	}
 	if state == TaskQueued {
 		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
-		return withElsewhere(withReport(result, stand.redirect), elsewhere)
+		return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
 	}
 	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
-	return withElsewhere(withReport(result, stand.redirect), elsewhere)
+	return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
+}
+
+// taskStandSentence says WHERE the task works whenever that was read from the
+// proposal itself, and says nothing otherwise.
+//
+// IT IS SAID IN A PERSON'S WORDS AND NEVER AS A RUNG'S NAME. `brief` and `said`
+// are how a log spells which step of the ladder answered; the receipt is read
+// by the model in front of the person and is theirs to open, so it names the
+// folder and whose word put the work there. A `ground` the refusal never
+// offered is accepted (it is somebody saying where the work is), and this line
+// is what makes a wrong one visible in the same breath rather than when the
+// work lands somewhere nobody looked. The rungs that read the conversation
+// instead are silent here, as they always were: the work went where the
+// conversation already is.
+func taskStandSentence(stand taskStand) string {
+	switch {
+	case stand.dir == "":
+		return ""
+	case stand.rung == taskGroundBrief:
+		return "It works in " + stand.dir + ", the one folder its brief names the work in."
+	case stand.rung == taskGroundSaid && !stand.kept:
+		return "It works in " + stand.dir + ", the folder this proposal gave as its ground."
+	}
+	return ""
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one

@@ -358,16 +358,18 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	return taskStand{dir: workspace, rung: taskGroundNothing}
 }
 
-// groundPlainlyNamedByBrief reports the unique existing folder the contract
-// names as containing all of its written absolute places. The rule is about
-// properties: existence, containment, and uniqueness. A spelling convention,
+// groundPlainlyNamedByBrief reports the one ground that holds every existing
+// absolute place the contract writes down: the repository they are all inside,
+// or, where none is in a repository, the one named folder that holds them all.
+// The rule is about properties: existence, containment, and there being exactly
+// one such ground. A spelling convention,
 // a particular kind of artifact, or a path-shaped word alone is not evidence.
 func groundPlainlyNamedByBrief(spec taskSpec, workspace string) (string, bool) {
 	refs, candidates := briefGroundReferents(spec.brief+"\n"+spec.deliverable+"\n"+spec.acceptance, workspace)
 	if len(refs) == 0 {
 		return "", false
 	}
-	return uniqueContainingGround(placesTheWorkIsAbout(refs), candidates)
+	return theOneGroundHolding(placesTheWorkIsAbout(refs), candidates)
 }
 
 // placesTheWorkIsAbout drops, from the folders a contract names, the ones that
@@ -423,8 +425,20 @@ func briefGroundReferents(text, workspace string) ([]string, []string) {
 	return refs, candidates
 }
 
-func uniqueContainingGround(refs, candidates []string) (string, bool) {
-	var answers []string
+// theOneGroundHolding answers the ONE ground that holds every place the work is
+// about, and reports false when there is none or more than one.
+//
+// A CANDIDATE IS READ AS THE GROUND IT WOULD BECOME, which is what the said rung
+// does with a folder somebody names ([groundRoot]): a folder inside a repository
+// is that repository, because a branch is cut from a repository and not from a
+// directory inside one. So a brief that names a repository's subfolder and only
+// files under it has ONE answer, the repository, and not two nested rivals of
+// which the deeper silently wins. Two candidates that are still two grounds
+// after that are two answers, and this rung says nothing: the rungs below weigh
+// the conversation's own evidence and, failing that, ask the person. EXACTLY
+// ONE, OTHERWISE NOT THIS RUNG; it never picks.
+func theOneGroundHolding(refs, candidates []string) (string, bool) {
+	answer := ""
 	for _, candidate := range candidates {
 		holds := true
 		for _, ref := range refs {
@@ -433,17 +447,16 @@ func uniqueContainingGround(refs, candidates []string) (string, bool) {
 				break
 			}
 		}
-		if holds {
-			answers = append(answers, candidate)
+		if !holds {
+			continue
 		}
+		ground := groundRoot(candidate)
+		if answer != "" && ground != answer {
+			return "", false
+		}
+		answer = ground
 	}
-	if len(answers) == 0 {
-		return "", false
-	}
-	// Nested candidates describe the same answer; retain the deepest written
-	// boundary. Unrelated candidates cannot both contain every referent.
-	sort.Slice(answers, func(i, j int) bool { return len(answers[i]) > len(answers[j]) })
-	return answers[0], true
+	return answer, answer != ""
 }
 
 // groundFromTouched weighs the repositories this conversation has actually been
@@ -908,6 +921,33 @@ func groundHolds(ground, token string) bool {
 	return err == nil && info.IsDir()
 }
 
+// groundAnsweredByTheProposal reports whether where this task stands was
+// answered by the proposal itself, which [groundLint] does not second-guess. It
+// is a question with its own name because the lint is a road already as long as
+// its ledger row allows (complexityDebt).
+//
+// A GROUND THE CONVERSATION MERELY REMEMBERED IS NOT SOMEBODY SAYING IT. A
+// referred place answers at SAID ([Agent.groundFromPlaces]) so that nobody is
+// asked twice, but a cached answer has no authority over a brief that names a
+// repository; only a person's own word does ([taskStand.kept]).
+//
+// AND THE BRIEF'S OWN RUNG HAS ANSWERED THIS QUESTION TOO. It stands only when
+// exactly one ground holds what the contract names, so there is no second one to
+// move to, and the folder outside every repository that its deliverable names
+// is the place it said its output goes, in the same contract and the same
+// breath. Refusing that would hand the proposer a new refusal in place of the
+// question this rung exists to spare them; a ground said out loud is already
+// trusted with exactly this, and the work is judged where it lands.
+func groundAnsweredByTheProposal(stand taskStand) bool {
+	switch stand.rung {
+	case taskGroundSaid:
+		return !stand.kept
+	case taskGroundNamed, taskGroundHere, taskGroundBrief:
+		return true
+	}
+	return false
+}
+
 // groundLint holds the brief up against the ground, and it is the second half of
 // the law this file states: A TASK NEVER WRITES OUTSIDE ITS GROUND.
 //
@@ -942,22 +982,7 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 	if stand.dir == "" || spec.parent != 0 {
 		return "", ""
 	}
-	// AND A GROUND THE CONVERSATION MERELY REMEMBERED IS NOT SOMEBODY SAYING IT.
-	// A referred place answers at SAID ([Agent.groundFromPlaces]) so that nobody
-	// is asked twice, but a cached answer has no authority over a brief that
-	// names a repository — only a person's own word does ([taskStand.kept]).
-	if (stand.rung == taskGroundSaid && !stand.kept) ||
-		stand.rung == taskGroundNamed || stand.rung == taskGroundHere {
-		return "", ""
-	}
-	// AND THE BRIEF'S OWN RUNG HAS ANSWERED THIS QUESTION TOO. It stands only
-	// when the contract names exactly one repository, so there is no second one
-	// to move to, and the folder outside every repository that its deliverable
-	// names is the place it said its output goes, in the same contract and the
-	// same breath. Refusing that would hand the proposer a new refusal in place
-	// of the question this rung exists to spare them; a ground said out loud is
-	// already trusted with exactly this, and the work is judged where it lands.
-	if stand.rung == taskGroundBrief {
+	if groundAnsweredByTheProposal(stand) {
 		return "", ""
 	}
 	var outside []string
