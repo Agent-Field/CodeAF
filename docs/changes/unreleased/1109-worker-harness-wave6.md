@@ -10,6 +10,9 @@ invalidates:
   - "`codeaf do` dispatched a task through the node engine's own door. It is a run with no chat attached over the same plan store, and its exit ladder, JSON envelope and usage ledger are unchanged."
   - "A task node was judged by a second model that read its worktree and answered VERIFIED or REFUTED. There is no auditor call; a task cannot finish while a child or a dependency is open, and the action that asks to finish must exit 0."
   - "A worker handed its parts to `divide_work` and each ran in a worktree of its own. Parts are `plandb split` tasks in the run's one working copy, and the run's landing is a single commit on its root."
+  - "The belt refused `git clone` in a workspace that was not a repository. The task's git guard reads the workspace root now: where the folder is not inside a git work tree every git verb — clone, checkout, fetch, pull — passes, and inside a repository the refusals stand."
+  - "A parent was not woken when its children landed: the plan pulse ran only after a bash call or a landing. It also fires at a bash-belt worker's turn end and when a fan slot goes back, so a task that became ready is dispatched instead of waiting on some worker's next bash call."
+  - "The run's `plandb` was not on the worker's PATH. Every belt command is now prefixed with the run's armed shim directory, so the worker reaches the run's own plan CLI and the process environment is never touched."
 ---
 
 The node engine was `internal/session`'s `TaskGraph`: a frontier that admitted
