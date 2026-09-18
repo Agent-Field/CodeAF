@@ -1,0 +1,184 @@
+# seven-CLI rerun, one session
+started 2026-09-18T13:42:06Z  host spark  cores 20
+build under test: codeaf 4f002ca2 built 2026-09-18 08:34 · go1.26.5 linux/arm64
+tree: 4f002ca2a99fd315761d3b5d801e1f37d9cf1b4d
+workdir: /home/santosh/src/benchhead   HOME for every CLI: /home/santosh (the authenticated profiles)
+bars: 1-min load must be <= 2.0 at the start of a CLI; memory columns tolerate <= 4.0
+
+=== codeaf ===
+load_1min_before=1.28
+binary=./bin/codeaf
+realpath=/home/santosh/src/benchhead/bin/codeaf
+name=codeaf phase=startup tool=shell-loop
+name=codeaf phase=startup runs=20
+name=codeaf phase=startup warmup=2
+name=codeaf phase=startup min_ms=13
+name=codeaf phase=startup median_ms=16.0
+name=codeaf phase=startup mean_ms=17.6
+name=codeaf phase=startup stddev_ms=3.5
+name=codeaf phase=startup exit=0
+name=codeaf phase=frame first_paint_ms=92
+name=codeaf phase=frame frame_ms=92
+name=codeaf phase=frame painted=yes
+name=codeaf phase=frame trust_gate=absent
+name=codeaf phase=frame gate_handling_ms=0
+name=codeaf phase=frame procs_at_frame=1
+name=codeaf phase=proc pid=4108189 comm=codeaf rss_kb=53648 pss_kb=38025 peak_rss_kb=53648 threads=14 fds=11 cmd=./bin/codeaf chat 
+name=codeaf phase=summary startup_tool=shell-loop startup_ms=13 first_paint_ms=92 frame_ms=92 trust_gate=absent procs=1 rss_kb=53648 rss_kb_median=53084.0 rss_kb_max=53648 pss_kb=38025 peak_rss_kb=53648 threads=14 fds=11 cpu_pct_of_one_core=0.69 voluntary_ctxsw_per_s=22.59 window_ms=30462
+name=codeaf phase=done ok=1
+name=codeaf phase=done elapsed_ms=35060
+name=codeaf phase=done teardown_survivors=0
+load_1min_after=1.07
+
+=== codex ===
+load_1min_before=1.07
+binary=/home/santosh/.local/bin/codex
+realpath=/home/santosh/.codex/packages/standalone/releases/0.154.0-aarch64-unknown-linux-musl/bin/codex
+name=codex phase=startup tool=shell-loop
+name=codex phase=startup runs=20
+name=codex phase=startup warmup=2
+name=codex phase=startup min_ms=5
+name=codex phase=startup median_ms=6.0
+name=codex phase=startup mean_ms=6.5
+name=codex phase=startup stddev_ms=0.9
+name=codex phase=startup exit=0
+name=codex phase=frame first_paint_ms=144
+name=codex phase=frame frame_ms=144
+name=codex phase=frame painted=yes
+name=codex phase=frame trust_gate=absent
+name=codex phase=frame gate_handling_ms=0
+name=codex phase=frame procs_at_frame=1
+name=codex phase=proc pid=4111494 comm=codex rss_kb=77264 pss_kb=50739 peak_rss_kb=77264 threads=33 fds=38 cmd=/home/santosh/.local/bin/codex 
+name=codex phase=summary startup_tool=shell-loop startup_ms=5 first_paint_ms=144 frame_ms=144 trust_gate=absent procs=1 rss_kb=77264 rss_kb_median=77264.0 rss_kb_max=77264 pss_kb=50739 peak_rss_kb=77264 threads=33 fds=38 cpu_pct_of_one_core=0.00 voluntary_ctxsw_per_s=0.00 window_ms=30483
+name=codex phase=done ok=1
+name=codex phase=done elapsed_ms=34901
+name=codex phase=done teardown_survivors=0
+load_1min_after=0.80
+
+=== claude ===
+load_1min_before=0.80
+binary=/home/santosh/.local/bin/claude
+realpath=/home/santosh/.local/share/claude/versions/2.1.274
+name=claude phase=startup tool=shell-loop
+name=claude phase=startup runs=20
+name=claude phase=startup warmup=2
+name=claude phase=startup min_ms=8
+name=claude phase=startup median_ms=10.5
+name=claude phase=startup mean_ms=10.4
+name=claude phase=startup stddev_ms=1.5
+name=claude phase=startup exit=0
+name=claude phase=frame first_paint_ms=429
+name=claude phase=frame frame_ms=429
+name=claude phase=frame painted=yes
+name=claude phase=frame trust_gate=detected-no-accept-option
+name=claude phase=frame gate_handling_ms=0
+name=claude phase=frame gate_selected_option=' ❯ No, exit'
+name=claude phase=frame procs_at_frame=1
+name=claude phase=proc pid=4114571 comm=claude rss_kb=216388 pss_kb=214499 peak_rss_kb=221380 threads=21 fds=32 cmd=/home/santosh/.local/bin/claude 
+name=claude phase=summary startup_tool=shell-loop startup_ms=8 first_paint_ms=429 frame_ms=429 trust_gate=detected-no-accept-option procs=1 rss_kb=216388 rss_kb_median=215652.0 rss_kb_max=217812 pss_kb=214499 peak_rss_kb=221380 threads=21 fds=32 cpu_pct_of_one_core=0.49 voluntary_ctxsw_per_s=14.25 window_ms=30454
+name=claude phase=done ok=1
+name=claude phase=done elapsed_ms=35357
+name=claude phase=done teardown_survivors=0
+load_1min_after=0.88
+
+=== pi ===
+load_1min_before=0.88
+binary=/home/santosh/.local/bin/pi
+realpath=/home/santosh/.local/lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js
+name=pi phase=startup tool=shell-loop
+name=pi phase=startup runs=20
+name=pi phase=startup warmup=2
+name=pi phase=startup min_ms=146
+name=pi phase=startup median_ms=156.5
+name=pi phase=startup mean_ms=156.9
+name=pi phase=startup stddev_ms=6.9
+name=pi phase=startup exit=0
+name=pi phase=frame first_paint_ms=232
+name=pi phase=frame frame_ms=232
+name=pi phase=frame painted=yes
+name=pi phase=frame trust_gate=absent
+name=pi phase=frame gate_handling_ms=0
+name=pi phase=frame procs_at_frame=1
+name=pi phase=proc pid=4118000 comm=pi rss_kb=140960 pss_kb=130165 peak_rss_kb=157916 threads=11 fds=25 cmd=pi                               
+name=pi phase=summary startup_tool=shell-loop startup_ms=146 first_paint_ms=232 frame_ms=232 trust_gate=absent procs=1 rss_kb=140960 rss_kb_median=141004.0 rss_kb_max=141024 pss_kb=130165 peak_rss_kb=157916 threads=11 fds=25 cpu_pct_of_one_core=0.00 voluntary_ctxsw_per_s=0.30 window_ms=30441
+name=pi phase=done ok=1
+name=pi phase=done elapsed_ms=38281
+name=pi phase=done teardown_survivors=0
+load_1min_after=0.72
+
+=== omp ===
+load_1min_before=0.72
+binary=/home/santosh/.local/bin/omp
+realpath=/home/santosh/.local/bin/omp
+name=omp phase=startup tool=shell-loop
+name=omp phase=startup runs=20
+name=omp phase=startup warmup=2
+name=omp phase=startup min_ms=306
+name=omp phase=startup median_ms=322.5
+name=omp phase=startup mean_ms=323.1
+name=omp phase=startup stddev_ms=10.7
+name=omp phase=startup exit=0
+name=omp phase=frame first_paint_ms=1254
+name=omp phase=frame frame_ms=1254
+name=omp phase=frame painted=yes
+name=omp phase=frame trust_gate=absent
+name=omp phase=frame gate_handling_ms=0
+name=omp phase=frame procs_at_frame=1
+name=omp phase=proc pid=4121573 comm=omp rss_kb=351448 pss_kb=344372 peak_rss_kb=661680 threads=61 fds=42 cmd=/home/santosh/.local/bin/omp 
+name=omp phase=summary startup_tool=shell-loop startup_ms=306 first_paint_ms=1254 frame_ms=1254 trust_gate=absent procs=1 rss_kb=351448 rss_kb_median=360620.0 rss_kb_max=382716 pss_kb=344372 peak_rss_kb=661680 threads=61 fds=42 cpu_pct_of_one_core=0.82 voluntary_ctxsw_per_s=14.09 window_ms=30520
+name=omp phase=done ok=1
+name=omp phase=done elapsed_ms=43106
+name=omp phase=done teardown_survivors=0
+load_1min_after=1.06
+
+=== opencode ===
+load_1min_before=1.06
+binary=/home/santosh/.opencode/bin/opencode
+realpath=/home/santosh/.opencode/bin/opencode
+name=opencode phase=startup tool=shell-loop
+name=opencode phase=startup runs=20
+name=opencode phase=startup warmup=2
+name=opencode phase=startup min_ms=302
+name=opencode phase=startup median_ms=322.0
+name=opencode phase=startup mean_ms=320.4
+name=opencode phase=startup stddev_ms=11.6
+name=opencode phase=startup exit=0
+name=opencode phase=frame first_paint_ms=2419
+name=opencode phase=frame frame_ms=2419
+name=opencode phase=frame painted=yes
+name=opencode phase=frame trust_gate=absent
+name=opencode phase=frame gate_handling_ms=0
+name=opencode phase=frame procs_at_frame=1
+name=opencode phase=proc pid=4125753 comm=opencode rss_kb=697592 pss_kb=694368 peak_rss_kb=995832 threads=37 fds=40 cmd=/home/santosh/.opencode/bin/opencode 
+name=opencode phase=summary startup_tool=shell-loop startup_ms=302 first_paint_ms=2419 frame_ms=2419 trust_gate=absent procs=1 rss_kb=697604 rss_kb_median=697766.0 rss_kb_max=823968 pss_kb=694380 peak_rss_kb=995832 threads=37 fds=40 cpu_pct_of_one_core=2.40 voluntary_ctxsw_per_s=13.92 window_ms=30470
+name=opencode phase=done ok=1
+name=opencode phase=done elapsed_ms=44237
+name=opencode phase=done teardown_survivors=0
+load_1min_after=1.26
+
+=== cursor-agent ===
+load_1min_before=1.26
+binary=/home/santosh/.local/bin/cursor-agent
+realpath=/home/santosh/.local/share/cursor-agent/versions/2026.09.15-d2fe57e/cursor-agent
+name=cursor-agent phase=startup tool=shell-loop
+name=cursor-agent phase=startup runs=20
+name=cursor-agent phase=startup warmup=2
+name=cursor-agent phase=startup min_ms=266
+name=cursor-agent phase=startup median_ms=290.0
+name=cursor-agent phase=startup mean_ms=288.5
+name=cursor-agent phase=startup stddev_ms=9.0
+name=cursor-agent phase=startup exit=0
+name=cursor-agent phase=frame first_paint_ms=592
+name=cursor-agent phase=frame frame_ms=592
+name=cursor-agent phase=frame painted=yes
+name=cursor-agent phase=frame trust_gate=absent
+name=cursor-agent phase=frame gate_handling_ms=0
+name=cursor-agent phase=frame procs_at_frame=1
+name=cursor-agent phase=proc pid=4130339 comm=MainThread rss_kb=197804 pss_kb=194433 peak_rss_kb=286436 threads=51 fds=38 cmd=/home/santosh/.local/bin/cursor-agent --use-system-ca /home/santosh/.local/share/cursor-agent/versions/2026.09.15-d2fe57
+name=cursor-agent phase=summary startup_tool=shell-loop startup_ms=266 first_paint_ms=592 frame_ms=592 trust_gate=absent procs=1 rss_kb=197804 rss_kb_median=197796.0 rss_kb_max=288480 pss_kb=194433 peak_rss_kb=286436 threads=51 fds=38 cpu_pct_of_one_core=0.72 voluntary_ctxsw_per_s=1.44 window_ms=30494
+name=cursor-agent phase=done ok=1
+name=cursor-agent phase=done elapsed_ms=41761
+name=cursor-agent phase=done teardown_survivors=0
+load_1min_after=1.53
+
+finished 2026-09-18T13:46:43Z  final load 1.53

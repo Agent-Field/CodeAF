@@ -241,3 +241,116 @@ solved before its rows mean anything.
 - **First-frame geometry fairness**: a re-measure at a second geometry (e.g. 80x24),
   comparing orderings.
 - **The one-turn column**: the sampler, committed, or its raw output archived.
+
+## The rerun, 2026-09-18, and what it settles
+
+The review above was taken by reading. This section was taken by measuring: all seven CLIs
+again, one session, on a quiet box, at one build, with the load recorded beside every
+figure. It confirms one verdict above, and it moves another.
+
+**Conditions.** Started 13:42:06Z, finished 13:46:43Z. Build under test
+`codeaf 4f002ca2 built 2026-09-18 08:34 · go1.26.5 linux/arm64`, tree
+`4f002ca2a99fd315761d3b5d801e1f37d9cf1b4d` — one build for every column, which is what
+removes the September-17 header's own split (its `--version` figure was taken after the
+package-init changes and its other figures before; those changes have since landed, so the
+split no longer exists rather than needing a caveat). Workdir the repository, `HOME` the
+operator's own authenticated profiles. The one-minute load was sampled six times across a
+full minute before the run began — 1.30, 1.33, 1.27, 1.16, 1.52, 1.51 — and recorded before
+and after each CLI; it stayed between 0.72 and 1.53 throughout. No CLI was aborted.
+Log: `~/src/bench-rerun/rerun-20260918T134206Z.log` on the measuring host.
+
+### Startup and first frame: these stand
+
+| CLI | startup, min of 20 | first frame | load 1m before |
+| --- | --- | --- | --- |
+| codex | 5 ms | 144 ms | 1.07 |
+| claude | 8 ms | 429 ms | 0.80 |
+| **CodeAF** | **13 ms** | **92 ms** | 1.28 |
+| pi | 146 ms | 232 ms | 0.88 |
+| cursor-agent | 266 ms | 592 ms | 1.26 |
+| opencode | 302 ms | 2,419 ms | 1.06 |
+| omp | 306 ms | 1,254 ms | 0.72 |
+
+Several figures move a long way from 2026-09-17: claude's first frame 572 → 429 ms,
+cursor-agent's 1,298 → 592 ms, pi's startup 330–360 → 146 ms, and omp's first frame
+400 → 1,254 ms in the other direction. **Those swings, on a box measured quiet this time
+and unrecorded last time, are the load finding demonstrated rather than argued.**
+
+### Publish the spread, not only the minimum
+
+The script computes four statistics per CLI and the table publishes one. CodeAF's twenty
+runs give min 13 ms, median 16.0, mean 17.6, stddev 3.5. Best-of-N is the most flattering
+statistic available; applying it uniformly makes it fair, but a competitor's engineer will
+ask why the three numbers that show spread were computed and discarded. **Fix, and it is
+free: publish median and stddev beside the minimum. The script already has them.**
+
+### The idle memory column: not reproducible, and the verdict moves
+
+The verdict above is "fair with caveat". The rerun does not support it. **Every one of the
+seven CLIs measured `procs=1`**, where the September-17 table has CodeAF at 2 processes and
+cursor-agent at 5. Seven products did not simultaneously stop spawning helpers.
+
+The consequence runs in both directions, which is why this is not a CodeAF win: CodeAF's
+PSS came out **38.7 MB against the table's 66.4**, and cursor-agent's **194.4 MB against
+412.7**. The same artefact halves both numbers.
+
+Three explanations were tested and killed rather than argued:
+
+- **Not the sweep, and not the choice of HOME.** `sweep_home` is teardown only — it signals
+  survivors, it never counts. Counting is `tree_pids "$(pane_pid)"`, the pane's process
+  tree. A controlled pair confirms it: cursor-agent measured once under a dedicated
+  `/tmp/bench-ca` (sweep active) and once under the operator's own HOME (sweep skipped by
+  `SWEEP=auto`) returned **`procs=1` both times**.
+- **Not a product change.** The table names cursor-agent `2026.09.15-d2fe57e`; the binary on
+  the box today resolves to `versions/2026.09.15-d2fe57e`. Same version, different
+  process count.
+- **Not a different script.** `measure-cli.sh` was committed at 09-17 21:22 and the results
+  file at 21:38, so the published script predates the published table.
+
+What is left is the invocation. **The commands that produced the September-17 table were
+never recorded**, and a helper process that leaves the pane's tree — the shape
+`sweep_home`'s own comment describes, a helper that called `setsid` — is invisible to the
+count unless it is still a descendant when the window opens. Which invocation was used
+decides that, and nothing committed says.
+
+**Verdict on idle memory, revised: cannot decide — and not reproducible as it stands.** The
+column stays out of any published table until a run records its own invocations and finds
+helper processes for the CLIs that have them. Its figures are not withdrawn; they are
+unverifiable, which is a different and more fixable thing.
+
+### Binary identity: which binary a table names is not which binary ran
+
+Resolved as a login shell resolves them, then `readlink -f`:
+
+| CLI | on PATH | what it really is |
+| --- | --- | --- |
+| codex | `~/.local/bin/codex` | musl standalone, `~/.codex/packages/standalone/releases/0.154.0-aarch64-unknown-linux-musl/bin/codex` |
+| claude | `~/.local/bin/claude` | `~/.local/share/claude/versions/2.1.274` |
+| pi | `~/.local/bin/pi` | **a JavaScript bundle** — `.../pi-coding-agent/dist/bundle/cli.js`, so `pi --version` is node running a bundle |
+| cursor-agent | `~/.local/bin/cursor-agent` | `~/.local/share/cursor-agent/versions/2026.09.15-d2fe57e/cursor-agent` |
+| omp | `~/.local/bin/omp` | itself |
+| opencode | **not on a login `PATH` at all** | two installs, see below |
+
+Two findings here, both about what a reader can check:
+
+**`opencode` is not resolvable from a login `bash`** — `bash -lc 'command -v opencode'`
+finds nothing, because its `PATH` entry lives in `.zshrc`. It exists twice: a 184 MB static
+binary at `~/.opencode/bin/opencode`, and an npm install symlinked from
+`~/.npm-global/bin/opencode` to `opencode.exe`. **Those are two different products**, and
+nothing records which one was measured. The table's on-disk figure of 184,534,520 bytes is
+close to the static binary's 184,068,240 but not equal to it.
+
+**Two CLIs resolve differently depending on how the shell started.** Non-interactively
+`codex` is `/usr/local/bin/codex` and in a login shell it is `~/.local/bin/codex`; the same
+for `cursor-agent`. So which binary gets measured depends on how the measuring shell was
+invoked, and the run records neither. **Fix: the script should record `command -v` and
+`readlink -f` for the command it is given, in `phase=meta`, beside the version string.**
+
+### What this says about the review's lead finding
+
+The reproducibility gap is not theoretical. This section is what happened when someone with
+the script, the README, the same machine and the same seven CLIs tried to reproduce the
+table three weeks later: the startup columns came back close enough to believe, and one
+column came back systematically different for reasons the committed material cannot settle.
+A competitor's engineer doing the same thing gets the same result, and reaches for the
+simplest explanation available to them, which is not a charitable one.
