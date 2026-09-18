@@ -7,6 +7,7 @@ package main
 // door, worker, report, changed count, tokens and state together.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -172,5 +173,123 @@ func TestAHeadlessRunLeavesNoPendingJudgeRecordWhenThePoolCannotRead(t *testing.
 
 	if _, err := os.Stat(filepath.Join(profileDir, "pool", "pending.jsonl")); !os.IsNotExist(err) {
 		t.Fatalf("a pool that forbids reading was written to: %v", err)
+	}
+}
+
+// A NON-VERIFIED RUN-DOOR RUN NAMES WHERE ITS WORK IS STANDING AND THE WORD
+// THAT LEFT IT THERE, on the same terms #1182 gave `do` and #1184 gave the chat
+// tasks text. The run door edits the directory it was pointed at in place and
+// leaves its landing for the pool's judge on every ending that ran, so both the
+// finished and the stopped road say `unverified`; the road that could not be
+// made to happen writes no landing and says `failed`.
+func TestARunDoorsRunNamesItsKeptBranchAndVerdict(t *testing.T) {
+	t.Setenv("CODEAF_MODEL_POOL", "off")
+	workspace := gitWorkspaceOn(t, "work-branch")
+	program := &scriptedRunner{
+		manifest: testManifest("tidy-notes", "file loose notes under the right headings"),
+	}
+	for _, ending := range []struct {
+		what string
+		body func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error)
+	}{
+		{
+			what: "a finished run",
+			body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+				return exec.RunResult{
+					Output: json.RawMessage(`{"filed":3}`),
+					Report: "three notes filed, none left over",
+				}, nil
+			},
+		},
+		{
+			what: "a run that stopped part way",
+			body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+				return exec.RunResult{
+					Report:     "two of the three notes filed",
+					Incomplete: "it ran out of room before it was finished",
+				}, nil
+			},
+		},
+	} {
+		program.body = ending.body
+		run := headlessRunWith(t, headlessRegistry(t, program), t.TempDir(), "tidy-notes",
+			`{"folder":"inbox"}`, "crew/worker", time.Date(2026, 9, 18, 4, 0, 0, 0, time.UTC))
+		run.workspace = workspace
+		run.asJSON = true
+		stdout := &bytes.Buffer{}
+		run.stdout = stdout
+		err := runSubharness(context.Background(), run)
+		if ending.what == "a finished run" {
+			if err != nil {
+				t.Fatalf("%s left with %v", ending.what, err)
+			}
+		} else {
+			var status exitStatus
+			if !errors.As(err, &status) || status != exitIncomplete {
+				t.Fatalf("%s left with %v, want %d", ending.what, err, int(exitIncomplete))
+			}
+		}
+		fields := errandJSONFields(t, stdout.String())
+		if got := fields["verdict"]; got != string(session.TaskUnverified) {
+			t.Fatalf("%s: verdict = %v, want %q\n%s", ending.what, got, session.TaskUnverified, fields)
+		}
+		if got := fields["kept_branch"]; got != "work-branch" {
+			t.Fatalf("%s: kept_branch = %v, want work-branch\n%s", ending.what, got, fields)
+		}
+	}
+}
+
+// A WORKSPACE THAT IS NO REPOSITORY NAMES THE VERDICT ALONE: the word is the
+// record's and does not depend on git, and there is no branch a person could
+// check out.
+func TestARunDoorRunInAWorkspaceThatIsNoRepositoryNamesTheVerdictAlone(t *testing.T) {
+	t.Setenv("CODEAF_MODEL_POOL", "off")
+	program := &scriptedRunner{
+		manifest: testManifest("tidy-notes", "file loose notes under the right headings"),
+		body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
+			return exec.RunResult{Report: "three notes filed, none left over"}, nil
+		},
+	}
+	run := headlessRunWith(t, headlessRegistry(t, program), t.TempDir(), "tidy-notes",
+		`{"folder":"inbox"}`, "crew/worker", time.Date(2026, 9, 18, 4, 0, 0, 0, time.UTC))
+	run.workspace = t.TempDir()
+	run.asJSON = true
+	stdout := &bytes.Buffer{}
+	run.stdout = stdout
+	if err := runSubharness(context.Background(), run); err != nil {
+		t.Fatalf("a finished run left with %v", err)
+	}
+	fields := errandJSONFields(t, stdout.String())
+	if got := fields["verdict"]; got != string(session.TaskUnverified) {
+		t.Fatalf("verdict = %v, want %q\n%s", got, session.TaskUnverified, fields)
+	}
+	if got, present := fields["kept_branch"]; present {
+		t.Fatalf("a folder named a kept branch it does not have: %v", got)
+	}
+}
+
+// THE ROAD THAT COULD NOT BE MADE TO HAPPEN SAYS `failed`, and nothing else on
+// this door does: a run that produced no landing left no work for a judge to
+// score, and the record's word for that is the no.
+func TestARunDoorRunThatCouldNotBeMadeToHappenIsSaidFailed(t *testing.T) {
+	t.Setenv("CODEAF_MODEL_POOL", "off")
+	workspace := gitWorkspaceOn(t, "work-branch")
+	run := subharnessRun{
+		name: "nosuch", journal: &runJournal{}, model: "crew/worker",
+		asJSON: true, workspace: workspace,
+	}
+	stdout := &bytes.Buffer{}
+	run.stdout = stdout
+	err := run.sayFailedEnvelope(noSuchSubharnessNamed("nosuch", nil))
+	var status exitStatus
+	if !errors.As(err, &status) || status != exitCannotRun {
+		t.Fatalf("a run that could not happen left with %v, want %d", err, int(exitCannotRun))
+	}
+	fields := errandJSONFields(t, stdout.String())
+	if got := fields["verdict"]; got != string(session.TaskFailed) {
+		t.Fatalf("verdict = %v, want %q\n%s", got, session.TaskFailed, fields)
+	}
+	if got := fields["kept_branch"]; got != "work-branch" {
+		t.Fatalf("kept_branch = %v, want work-branch\n%s", got, fields)
 	}
 }
