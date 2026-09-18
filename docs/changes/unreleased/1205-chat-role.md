@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: a belt run's landing no longer wakes the chat, the conversation gains a work tab, and the chat's pages say when it hands work off
+title: a belt landing no longer wakes the chat, the conversation gains a work tab, three hand-off rules
 pr: 1205
 surface: [chat, engine]
 invalidates:
