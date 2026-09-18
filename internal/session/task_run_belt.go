@@ -134,8 +134,11 @@ func RegisterRunEngine(engine RunEngine) { chatRunEngine = engine }
 const beltRunOutcomeDone = "done"
 
 // beltRunSummaryDeadline is the most a landing waits for its one final
-// summary refresh before preserving the outcome note it already knows.
-const beltRunSummaryDeadline = 500 * time.Millisecond
+// summary refresh before preserving the outcome note it already knows. IT IS
+// SIZED TO A REAL CALL: four short lines on the worker model come back in two
+// to four seconds, and a deadline under that would make the refresh a thing
+// that never happens outside a test. A variable only so a test can shorten it.
+var beltRunSummaryDeadline = 6 * time.Second
 
 // beltRun is one live run this conversation started: the store it drives, the
 // root it was seeded under, and the row the conversation knows it by. It is held

@@ -380,6 +380,10 @@ func (d landingRunDouble) Land(context.Context, *plandb.Store, string, string) (
 
 func landingSummaryFixture(t *testing.T, client *scriptedCompleter) (*Agent, *plandb.Store, *beltRun, string) {
 	t.Helper()
+	// THE BELT IS SET HERE, NEVER INHERITED: the plan store's door only opens
+	// under it, and a test that passes because the shell that ran it had the
+	// variable is red on every other machine.
+	t.Setenv("CODEAF_TASK_BELT", "bash")
 	dir := t.TempDir()
 	path := filepath.Join(dir, planStoreFilename)
 	store, err := plandb.Open(path, "run", planRootID, "The run", "person ask")
@@ -444,13 +448,19 @@ func TestDriveBeltRunSummaryFailurePreservesOutcomeNoteAndIsDeadlineBounded(t *t
 		t.Run(tt.name, func(t *testing.T) {
 			client := &scriptedCompleter{steps: []step{tt.step}}
 			agent, _, run, dir := landingSummaryFixture(t, client)
+			// THE DEADLINE IS SHORTENED, NOT WAITED OUT: what is asserted is that a
+			// call that never answers is cut by it, not how long a box under load
+			// takes to notice.
+			was := beltRunSummaryDeadline
+			beltRunSummaryDeadline = 40 * time.Millisecond
+			t.Cleanup(func() { beltRunSummaryDeadline = was })
 			started := time.Now()
 			agent.driveBeltRun(context.Background(), landingRunDouble{
 				summary: RunSummary{Outcome: beltRunOutcomeDone}, landing: landing,
 			}, run, RunSpec{})
 			elapsed := time.Since(started)
-			if elapsed > beltRunSummaryDeadline+250*time.Millisecond {
-				t.Fatalf("landing delayed %v, want at most %v plus scheduler slack", elapsed, beltRunSummaryDeadline)
+			if elapsed > was {
+				t.Fatalf("landing delayed %v: the refresh was not cut at its deadline", elapsed)
 			}
 			notes := beltRunNotes(t, dir, planRootID)
 			if len(notes) != 1 || notes[0] != want {

@@ -2553,6 +2553,7 @@ type app struct {
 	// attempt stamp provides the named once-a-minute ceiling even on refusal.
 	runSummaryRefreshing  bool
 	runSummaryRefreshedAt time.Time
+	runSummaryShape       string
 	runSummaryNow         string
 
 	// setup is the first-run screen, which precedes the box below on the one
