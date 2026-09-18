@@ -535,7 +535,7 @@ const (
 	// that as the block being absent HERE — which is exactly what it drew before
 	// this door existed — and the emptiness law is kept. Nothing that was drawn
 	// goes dark, so nothing is refused at the door.
-	MethodPlanSpend     = "PlanSpend"         // PlanSpendArgs → []session.PlanSpendLine
+	MethodPlanSpend = "PlanSpend" // PlanSpendArgs → []session.PlanSpendLine
 	// The conversation's own place on the thinking ladder (internal/session's
 	// effort.go). Three doors and not one, because the stored rung and the
 	// resolved rung are two different answers: the dial DRAWS the resolved one
