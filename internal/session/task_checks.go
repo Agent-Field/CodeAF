@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Commands that re-establish the result, each one simple command safe to run again. ` +
+	`"description":"Optional. Commands that re-establish the result, each one simple command safe to run again; every check runs from the repository root, so no cd and no &&. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
@@ -588,8 +588,15 @@ func declaredCheckList(raw []string) ([]string, string) {
 		}
 		command, ok := commandLike(said)
 		if !ok {
-			return nil, "Invalid arguments: checks must each be ONE command with no shell composition — " +
+			refusal := "Invalid arguments: checks must each be ONE command with no shell composition — " +
 				strconv.Quote(clip(said, auditCommandLimit)) + " is not"
+			if last := strings.LastIndex(said, "&&"); last >= 0 {
+				tail := strings.TrimSpace(said[last+len("&&"):])
+				if repair, legal := commandLike(tail); legal && approval.Vouchable(repair) && auditAllowed.CheckBash(repair).Action == approval.ActionAllow {
+					refusal += "; use " + strconv.Quote(repair)
+				}
+			}
+			return nil, refusal
 		}
 		if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
 			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +
