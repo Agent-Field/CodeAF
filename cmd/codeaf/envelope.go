@@ -422,6 +422,20 @@ type runResult struct {
 	Calls           int
 	Rounds          int
 	Redispatches    int
+	// KeptBranch names the branch the run's own work is standing on, on the
+	// runs that did not settle whole. It is the answer to "where is the work
+	// this run would not land?" — the workspace's own branch, read off the
+	// tree once the run is over, because all three headless doors work in
+	// place. Empty — and the key with it — when the workspace is no repository
+	// or its HEAD is detached, there being no branch a person could check out,
+	// and on every run that names no verdict.
+	KeptBranch string
+	// Verdict is what left the work where KeptBranch names it, in the record's
+	// own word: `failed` for a run that broke with nothing to show,
+	// `unverified` for one that produced work nobody has judged. Empty only
+	// where the door has no such word to say — a `do` run that settled whole —
+	// and both keys then stay off the object together.
+	Verdict string
 	// Extra is this verb's own fields: its old spellings, and whatever it knows
 	// that the contract has no room for. Nil for a verb with neither.
 	Extra map[string]any
@@ -445,7 +459,7 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 	if files == nil {
 		files = []string{}
 	}
-	return resultEnvelope{
+	envelope := resultEnvelope{
 		OK:              exitFor(stop) == exitDone,
 		Stop:            stop,
 		Answer:          result.Answer,
@@ -463,6 +477,27 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 		Redispatches:    result.Redispatches,
 		extra:           result.Extra,
 	}
+	// WHERE A NON-VERIFIED RUN'S WORK IS STANDING, AND WHAT LEFT IT THERE.
+	// Both ride the omitempty spirit of `unjudged` and `judged_by`: a run that
+	// settled whole names neither, so the presence of either is itself the
+	// answer to "was this work landed?". Each stands on its own — a workspace
+	// that is no repository still knows its verdict, and says so with no branch
+	// beside it — which is why a script reads them apart and not as one pair.
+	// One merge, here, is what keeps `do`, `exec` and `run` saying the same two
+	// facts the same way (#1182).
+	for name, said := range map[string]string{
+		"kept_branch": result.KeptBranch,
+		"verdict":     result.Verdict,
+	} {
+		if strings.TrimSpace(said) == "" {
+			continue
+		}
+		if envelope.extra == nil {
+			envelope.extra = map[string]any{}
+		}
+		envelope.extra[name] = said
+	}
+	return envelope
 }
 
 // envelopeIncomplete is the ONE name for "the reason it did not finish", and it
@@ -539,18 +574,9 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 		fields["judged_by"] = outcome.JudgedBy
 	}
 	// WHERE A NON-VERIFIED RUN'S WORK IS STANDING, AND WHAT LEFT IT THERE.
-	// Both ride the omitempty spirit of `unjudged` and `judged_by` above: a run
-	// that settled whole carries neither, so the presence of either is itself
-	// the answer to "was this work landed?". Each stands on its own — a
-	// workspace that is no repository still knows its verdict, and says so with
-	// no branch beside it — which is why a script reads them apart and not as
-	// one pair.
-	if strings.TrimSpace(outcome.KeptBranch) != "" {
-		fields["kept_branch"] = outcome.KeptBranch
-	}
-	if strings.TrimSpace(outcome.Verdict) != "" {
-		fields["verdict"] = outcome.Verdict
-	}
+	// These two moved to the contract's own builder ([buildResultEnvelope]) so
+	// that one merge covers all three verbs; they are set on the runResult and
+	// ride the same omitempty spirit as `unjudged` and `judged_by` above.
 	if len(outcome.Checklist) > 0 {
 		fields["checklist"] = outcome.Checklist
 	}

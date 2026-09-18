@@ -247,7 +247,7 @@ func TestARunDoorRunInAWorkspaceThatIsNoRepositoryNamesTheVerdictAlone(t *testin
 	program := &scriptedRunner{
 		manifest: testManifest("tidy-notes", "file loose notes under the right headings"),
 		body: func(context.Context, json.RawMessage, exec.Env) (exec.RunResult, error) {
-			return exec.RunResult{Report: "three notes filed, none left over"}, nil
+			return exec.RunResult{Output: json.RawMessage(`{"filed":3}`), Report: "three notes filed, none left over"}, nil
 		},
 	}
 	run := headlessRunWith(t, headlessRegistry(t, program), t.TempDir(), "tidy-notes",
@@ -274,12 +274,12 @@ func TestARunDoorRunInAWorkspaceThatIsNoRepositoryNamesTheVerdictAlone(t *testin
 func TestARunDoorRunThatCouldNotBeMadeToHappenIsSaidFailed(t *testing.T) {
 	t.Setenv("CODEAF_MODEL_POOL", "off")
 	workspace := gitWorkspaceOn(t, "work-branch")
+	stdout := &bytes.Buffer{}
 	run := subharnessRun{
 		name: "nosuch", journal: &runJournal{}, model: "crew/worker",
 		asJSON: true, workspace: workspace,
+		stdout: stdout, stderr: io.Discard,
 	}
-	stdout := &bytes.Buffer{}
-	run.stdout = stdout
 	err := run.sayFailedEnvelope(noSuchSubharnessNamed("nosuch", nil))
 	var status exitStatus
 	if !errors.As(err, &status) || status != exitCannotRun {

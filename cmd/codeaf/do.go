@@ -774,7 +774,22 @@ func errandKeptBranch(outcome headlessOutcome) string {
 	if strings.TrimSpace(outcome.Verdict) == "" || strings.TrimSpace(outcome.workspace) == "" {
 		return ""
 	}
-	out, err := gitIn(outcome.workspace, "rev-parse", "--abbrev-ref", "HEAD")
+	return keptBranchIn(outcome.workspace)
+}
+
+// keptBranchIn names the branch a directory's own work is standing on, and is
+// empty on every directory that names no branch a person could check out.
+// It is the ONE reading of that question, shared by the three headless doors
+// (#1182): a directory that is not a repository, and one whose HEAD is
+// detached (`git rev-parse --abbrev-ref HEAD` answers the bare word `HEAD`),
+// answer empty rather than a placeholder. Both are ordinary states and neither
+// is an error: this decides how a run is described, and a git that cannot
+// answer is not evidence about the work.
+func keptBranchIn(dir string) string {
+	if strings.TrimSpace(dir) == "" {
+		return ""
+	}
+	out, err := gitIn(dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return ""
 	}
@@ -3228,6 +3243,8 @@ func errandEnvelope(outcome headlessOutcome) resultEnvelope {
 		Calls:           outcome.calls,
 		Rounds:          outcome.rounds,
 		Redispatches:    outcome.redispatches,
+		KeptBranch:      outcome.KeptBranch,
+		Verdict:         outcome.Verdict,
 		Extra:           legacyErrandFields(outcome),
 	})
 }
