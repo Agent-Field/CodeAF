@@ -91,7 +91,7 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 	profileDir := t.TempDir()
 	settings := config.Config{}
 	var asked []string
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, poolTestAsk(settings, &asked), time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, poolTestAsk(settings, &asked), time.Now, "task")
 	if hook == nil {
 		t.Fatal("a pool whose mode allows reading built no hook")
 	}
@@ -165,7 +165,7 @@ func TestPoolJudgeHookAppendsOutboxRowsOnlyWhenTheModeSends(t *testing.T) {
 	models := poolTestCatalog
 
 	hook := func() func(session.TaskLanding) {
-		return poolJudgeHook(settings, profileDir, t.TempDir(), models, poolTestAsk(settings, &asked), time.Now)
+		return poolJudgeHook(settings, profileDir, t.TempDir(), models, poolTestAsk(settings, &asked), time.Now, "task")
 	}
 
 	// A pool that sends: one row per seat question, outbox beside the sheet.
@@ -215,7 +215,7 @@ func TestPoolJudgeHookDoesNothingUnderModeOff(t *testing.T) {
 	profileDir := t.TempDir()
 	settings := config.Config{}
 	var asked []string
-	if hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, poolTestAsk(settings, &asked), time.Now); hook != nil {
+	if hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, poolTestAsk(settings, &asked), time.Now, "task"); hook != nil {
 		t.Fatal("a pool whose mode forbids reading built a hook anyway")
 	}
 	if _, err := os.Stat(record.OwnSheetPath(config.ProfilePath(profileDir, "pool"))); !os.IsNotExist(err) {
@@ -297,7 +297,7 @@ func TestPoolJudgeHookGivesEachSeatsQuestionItsOwnShareOfTheLandingTime(t *testi
 			return `{"score": 88, "reason": "the delivered work does what the brief asked"}`, nil
 		}
 	}
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, ask, time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, ask, time.Now, "task")
 	if hook == nil {
 		t.Fatal("a pool whose mode allows reading built no hook")
 	}
@@ -370,7 +370,7 @@ func TestPoolJudgeHookStillScoresTheSecondSeatWhenTheFirstSeatsShareRunsOut(t *t
 			return `{"score": 88, "reason": "the delivered work does what the brief asked"}`, nil
 		}
 	}
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, ask, time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, ask, time.Now, "task")
 	if hook == nil {
 		t.Fatal("a pool whose mode allows reading built no hook")
 	}
@@ -421,7 +421,7 @@ func TestPoolJudgeHookRecordsTheJudgeThatScoredTheLanding(t *testing.T) {
 	profileDir := t.TempDir()
 	settings := config.Config{}
 	var asked []string
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, poolTestAsk(settings, &asked), time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTestCatalog, poolTestAsk(settings, &asked), time.Now, "task")
 	hook(poolTestLanding())
 
 	last := decodeJudgeLast(t, profileDir)
@@ -464,7 +464,7 @@ func TestPoolJudgeHookRecordsTheCandidatesAndReasonWhenEveryJudgeFails(t *testin
 			return "", errors.New("the model answered with a 429")
 		}
 	}
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, ask, time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, ask, time.Now, "task")
 	hook(poolTestLanding())
 
 	last := decodeJudgeLast(t, profileDir)
@@ -493,7 +493,7 @@ func TestPoolJudgeHookRecordsTheDeclineWhenThereIsNoCandidate(t *testing.T) {
 	crewOnly := func() []catalog.Model {
 		return poolTestCatalog()[:2]
 	}
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), crewOnly, poolTestAsk(settings, &asked), time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), crewOnly, poolTestAsk(settings, &asked), time.Now, "task")
 	hook(poolTestLanding())
 
 	if len(asked) != 0 {
@@ -585,7 +585,7 @@ func TestPoolJudgeHookMovesToTheNextCandidateWhenTheCheapestAnswersNothing(t *te
 	profileDir := t.TempDir()
 	settings := config.Config{}
 	var asked []string
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, poolTwoJudgeAsk(settings, &asked), time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, poolTwoJudgeAsk(settings, &asked), time.Now, "task")
 	if hook == nil {
 		t.Fatal("a pool whose mode allows reading built no hook")
 	}
@@ -669,7 +669,7 @@ func TestPoolJudgeHookWritesNothingWhenEveryCandidateAnswersNothing(t *testing.T
 			return "", errors.New("the model answered with a 429")
 		}
 	}
-	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, ask, time.Now)
+	hook := poolJudgeHook(settings, profileDir, t.TempDir(), poolTwoJudgeCatalog, ask, time.Now, "task")
 	if hook == nil {
 		t.Fatal("a pool whose mode allows reading built no hook")
 	}

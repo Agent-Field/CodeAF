@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -59,13 +60,13 @@ const judgeTries = 3
 // poolJudgeHook builds the session's landing reader. Nil is off, for the pool
 // index's reason: a mode that forbids reading runs no judge and writes
 // nothing, and the door then hands the engine no hook at all.
-func poolJudgeHook(settings config.Config, profileDir, workspace string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) func(session.TaskLanding) {
+func poolJudgeHook(settings config.Config, profileDir, workspace string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string) func(session.TaskLanding) {
 	if !config.ModelPoolAt(profileDir).CanRead() {
 		return nil
 	}
 	return func(landing session.TaskLanding) {
 		defer guard.Recover("pool/judge")
-		poolJudgeLanding(settings, profileDir, models, ask, now, landing)
+		poolJudgeLanding(settings, profileDir, models, ask, now, door, landing)
 	}
 }
 
@@ -118,7 +119,7 @@ func writeJudgeLast(poolDir string, last judgeLast) {
 // order is the sheet's own law: every score is observed before the rows are
 // appended, the sheet is saved once, and the picker's own-cells seam is
 // repointed at the new cells so the very next pick in this process reads them.
-func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, landing session.TaskLanding) {
+func poolJudgeLanding(settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
 	pool := config.ModelPoolAt(profileDir)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	seats := map[judge.Role]string{
@@ -139,6 +140,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 			log.Printf("model pool: no judge to ask about task %d", landing.ID)
 		}
 		writeJudgeLast(poolDir, judgeLast{At: now(), Task: landing.ID, Seats: held, Reason: errNoJudgeCandidate})
+		markJudged(poolDir, landing.ID, landing.Attempt)
 		return
 	}
 	if len(candidates) > judgeTries {
@@ -200,6 +202,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		if trace.Enabled() {
 			log.Printf("model pool: no judge scored task %d", landing.ID)
 		}
+		markJudged(poolDir, landing.ID, landing.Attempt)
 		return
 	}
 	scored := make([]string, 0, len(scores))
@@ -233,7 +236,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		}
 	}
 	day := now().UTC().Format("2006-01-02")
-	if err := recorder.Record(scores, judgeID, "task", poolSize(landing.Tokens), day); err != nil && trace.Enabled() {
+	if err := recorder.Record(scores, judgeID, door, poolSize(landing.Tokens), day); err != nil && trace.Enabled() {
 		log.Printf("model pool: record: %v", err)
 	}
 	if err := record.SaveSheet(record.OwnSheetPath(poolDir), sheet); err != nil {
@@ -242,6 +245,10 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 		}
 		return
 	}
+	// The run is judged and its scores are saved: mark it so the restart sweep
+	// never judges it again. The live hook writes this but does not read it, so a
+	// resettle still re-judges; only the sweep reads it.
+	markJudged(poolDir, landing.ID, landing.Attempt)
 	// The next pick in this process reads the new cells at once, the same way
 	// the picker reads them at start-up (poolindex.go's poolOwnCellsFor): a
 	// closing one is the install's own evidence and is never held to the
@@ -337,4 +344,169 @@ func recordPoolUsage(settings config.Config, model string, used *ai.Usage) {
 		}
 	}
 	session.RecordUsage(session.UsageLedgerPath(), line)
+}
+
+// poolSweepBudget bounds the whole restart-time sweep, checked between landings,
+// so a backlog of unjudged runs cannot hold the sweep's own goroutine open past a
+// few landings' worth of the per-landing bound. It is generous because the sweep
+// runs on its own goroutine and nobody waits on it.
+const poolSweepBudget = 10 * time.Minute
+
+// pendingLanding is one row of the pool's pending file: a landing a door recorded
+// for the restart sweep to judge, under the door it ran on. The optional fields
+// are forward room for a later grader (an acceptable/source verdict, a role->model
+// map, a lease propensity); this build writes only Door and Landing, and the sweep
+// ignores fields it does not know rather than refusing a row.
+type pendingLanding struct {
+	Door       string              `json:"door"`
+	Landing    session.TaskLanding `json:"landing"`
+	ByModel    map[string]string   `json:"by_model,omitempty"`
+	Propensity *float64            `json:"propensity,omitempty"`
+	Acceptable *bool               `json:"acceptable,omitempty"`
+	Source     string              `json:"source,omitempty"`
+}
+
+func pendingPath(poolDir string) string { return filepath.Join(poolDir, "pending.jsonl") }
+
+// writePendingLanding appends one landing to the pool's pending file for the
+// restart sweep to judge later, under the door it ran on. It is the seam the
+// headless doors (do, exec, run) use: they have no session graph and so no live
+// landing hook, and the chat door judges live and does not write here. The write
+// is ONE O_APPEND of one line, so concurrent doors sharing a profile never tear
+// each other's rows.
+func writePendingLanding(profileDir, door string, landing session.TaskLanding) error {
+	poolDir := config.ProfilePath(profileDir, "pool")
+	if err := os.MkdirAll(poolDir, 0o700); err != nil {
+		return err
+	}
+	data, err := json.Marshal(pendingLanding{Door: door, Landing: landing})
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	f, err := os.OpenFile(pendingPath(poolDir), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(data)
+	return err
+}
+
+// The judged markers record, per run, that a landing was judged, so the restart
+// sweep never judges the same run twice. The key is id AND attempt because a
+// re-audit (resettle) re-judges the same node id and a re-run lands a new attempt
+// of it — a per-id-only marker would swallow either.
+func judgedDir(poolDir string) string { return filepath.Join(poolDir, "judged") }
+
+func judgedMarkerPath(poolDir string, id uint64, attempt int) string {
+	return filepath.Join(judgedDir(poolDir), fmt.Sprintf("%d-%d", id, attempt))
+}
+
+func alreadyJudged(poolDir string, id uint64, attempt int) bool {
+	_, err := os.Stat(judgedMarkerPath(poolDir, id, attempt))
+	return err == nil
+}
+
+func markJudged(poolDir string, id uint64, attempt int) {
+	defer guard.Recover("pool/judged-mark")
+	if err := os.MkdirAll(judgedDir(poolDir), 0o700); err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: judged marker: %v", err)
+		}
+		return
+	}
+	if err := os.WriteFile(judgedMarkerPath(poolDir, id, attempt), []byte{}, 0o600); err != nil && trace.Enabled() {
+		log.Printf("model pool: judged marker: %v", err)
+	}
+}
+
+// poolJudgeSweep judges, at chat start, every landed run that never was: the
+// headless doors' pending rows, and the resumed session's own final-state nodes
+// that a process death left unjudged. It runs on its own goroutine, so the
+// session's checkpoint already reflects whatever recovery made of it and a node
+// that will run again is no longer in a final state. It is a no-op when the pool
+// cannot read or no judge-capable key is present — with no key the rows simply
+// wait. The whole sweep is bounded by poolSweepBudget, checked between landings.
+func poolJudgeSweep(settings config.Config, profileDir, tasksPath string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) {
+	defer guard.Recover("pool/judge-sweep")
+	if !config.ModelPoolAt(profileDir).CanRead() {
+		return
+	}
+	if strings.TrimSpace(settings.APIKey) == "" {
+		return
+	}
+	poolDir := config.ProfilePath(profileDir, "pool")
+	deadline := now().Add(poolSweepBudget)
+	sweepPending(settings, profileDir, poolDir, models, ask, now, deadline)
+	if strings.TrimSpace(tasksPath) == "" {
+		return
+	}
+	landed, err := session.LoadLandedForJudge(tasksPath)
+	if err != nil {
+		if trace.Enabled() {
+			log.Printf("model pool: sweep load: %v", err)
+		}
+		return
+	}
+	for _, landing := range landed {
+		if !now().Before(deadline) {
+			return
+		}
+		if alreadyJudged(poolDir, landing.ID, landing.Attempt) {
+			continue
+		}
+		poolJudgeLanding(settings, profileDir, models, ask, now, "task", landing)
+	}
+}
+
+// sweepPending claims the pending file with an atomic rename so concurrent doors
+// keep appending to a fresh one, then judges each row it claimed under that row's
+// own door. A leftover claim from a sweep a process death cut short is taken
+// first.
+func sweepPending(settings config.Config, profileDir, poolDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) {
+	claim := pendingPath(poolDir) + ".sweeping"
+	sweepClaim(settings, profileDir, poolDir, claim, models, ask, now, deadline)
+	if err := os.Rename(pendingPath(poolDir), claim); err != nil {
+		return
+	}
+	sweepClaim(settings, profileDir, poolDir, claim, models, ask, now, deadline)
+}
+
+// sweepClaim judges the rows of one claimed batch. A torn last line (a row
+// half-written when the rename landed) is skipped, not fatal; unknown future
+// fields are ignored; a row already judged is skipped. The claim is removed only
+// when every row was reached, so a deadline cut leaves the rest for the next
+// start, where the markers keep the already-judged rows from being scored twice.
+func sweepClaim(settings config.Config, profileDir, poolDir, claim string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) {
+	data, err := os.ReadFile(claim)
+	if err != nil {
+		return
+	}
+	completed := true
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !now().Before(deadline) {
+			completed = false
+			break
+		}
+		var row pendingLanding
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			continue
+		}
+		door := row.Door
+		if door == "" {
+			door = "task"
+		}
+		if alreadyJudged(poolDir, row.Landing.ID, row.Landing.Attempt) {
+			continue
+		}
+		poolJudgeLanding(settings, profileDir, models, ask, now, door, row.Landing)
+	}
+	if completed {
+		_ = os.Remove(claim)
+	}
 }

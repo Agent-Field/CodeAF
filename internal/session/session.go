@@ -1098,6 +1098,9 @@ type TaskLanding struct {
 	High        string
 	CostUSD     float64
 	Tokens      int
+	// Attempt is which run of this node the landing is, so a per-run judged
+	// marker survives a resettle (same id, re-judged) and a re-run (new attempt).
+	Attempt int
 }
 
 type Config struct {
