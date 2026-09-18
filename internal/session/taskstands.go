@@ -950,6 +950,16 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 		stand.rung == taskGroundNamed || stand.rung == taskGroundHere {
 		return "", ""
 	}
+	// AND THE BRIEF'S OWN RUNG HAS ANSWERED THIS QUESTION TOO. It stands only
+	// when the contract names exactly one repository, so there is no second one
+	// to move to, and the folder outside every repository that its deliverable
+	// names is the place it said its output goes, in the same contract and the
+	// same breath. Refusing that would hand the proposer a new refusal in place
+	// of the question this rung exists to spare them; a ground said out loud is
+	// already trusted with exactly this, and the work is judged where it lands.
+	if stand.rung == taskGroundBrief {
+		return "", ""
+	}
 	var outside []string
 	for _, token := range pathTokens(spec.brief + "\n" + spec.deliverable + "\n" + spec.acceptance) {
 		if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
