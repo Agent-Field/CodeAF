@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -40,8 +39,7 @@ func TestNoDeclarationLeavesAReadingOnlyCheckerDoor(t *testing.T) {
 }
 
 func TestSessionContainsNoTrajectoryToContractInference(t *testing.T) {
-	path := filepath.Join("task_checks.go")
-	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	packages, err := parser.ParseDir(token.NewFileSet(), ".", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +48,14 @@ func TestSessionContainsNoTrajectoryToContractInference(t *testing.T) {
 		"commandSegments":   true,
 		"exitBearingRunner": true,
 	}
-	for _, declaration := range file.Decls {
-		function, ok := declaration.(*ast.FuncDecl)
-		if ok && forbidden[function.Name.Name] {
-			t.Errorf("trajectory inference function remains: %s", function.Name.Name)
+	for _, pkg := range packages {
+		for _, file := range pkg.Files {
+			for _, declaration := range file.Decls {
+				function, ok := declaration.(*ast.FuncDecl)
+				if ok && forbidden[function.Name.Name] {
+					t.Errorf("trajectory inference function remains: %s", function.Name.Name)
+				}
+			}
 		}
 	}
 }
