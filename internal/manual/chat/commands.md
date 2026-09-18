@@ -258,7 +258,7 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+1…7        go to a place · in the tab bar's own order: home work standing memory spend search settings
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```

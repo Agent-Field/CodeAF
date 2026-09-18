@@ -217,8 +217,8 @@ var tuiWords = map[string]tuiWord{
 		why:    "the first of the four words on the tab bar",
 	},
 	"barTasksWord": {
-		screen: "tasks",
-		why:    "the second word on the bar, and the place `running` and `needs you` fold into",
+		screen: "work",
+		why:    "the second word on the bar, and the tab `running` and `needs you` fold into",
 	},
 	"barSettingsWord": {
 		screen: "settings",
