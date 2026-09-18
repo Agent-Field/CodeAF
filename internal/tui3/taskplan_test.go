@@ -14,6 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -58,7 +59,22 @@ func (f *planFake) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
 
 func (f *planFake) PlanNote(id, text string) error {
 	f.noted = append(f.noted, planCall{id: id, text: text})
+	if f.refuse == nil {
+		f.addNote(id, text)
+	}
 	return f.refuse
+}
+
+// addNote writes a person's note back over the store page, the way the store's
+// note verb does: the next read carries it with its author and its moment, which
+// is the receipt the page draws and the store cannot draw itself.
+func (f *planFake) addNote(id, text string) {
+	page, ok := f.pages[id]
+	if !ok {
+		return
+	}
+	page.Notes = append(page.Notes, session.PlanTaskNote{Person: true, Body: text, At: taskFixtureNow})
+	f.pages[id] = page
 }
 
 func (f *planFake) PlanPause(id string) error {
@@ -518,5 +534,168 @@ func TestANarrowPlanRowDropsTheCommandTailButKeepsTheFigures(t *testing.T) {
 	// The lead is drawn outside the fitting, so both glyphs are whole.
 	if !strings.Contains(text, a.pal.glyph(tokens.GStepRunning)+" "+tokens.GlyphShell+" ") {
 		t.Fatalf("the live step's lead is not drawn whole:\n%s", text)
+	}
+}
+
+// ── the page follows its live edge (SURFACE.md §4, Cell 3) ──────────────────
+
+// planStepCommand is the command the n-th step of a fixture ran. It is unique
+// per step so a test can tell whether that one line is on the screen, which is
+// the whole question a page that follows a live edge is asked.
+func planStepCommand(n int) string { return "cmd-" + itoa(n) }
+
+// planPageWithSteps is a page on one task holding n recorded steps, the shape
+// the store answers — one line each, no observation, so a test can count what it
+// sees against what it appended.
+func planPageWithSteps(row session.PlanTaskRow, n int) session.PlanTaskPage {
+	page := session.PlanTaskPage{Row: row, Description: "the work order"}
+	for i := 1; i <= n; i++ {
+		page.Steps = append(page.Steps, session.PlanStep{Step: i, Command: planStepCommand(i)})
+	}
+	return page
+}
+
+// appendPlanStep records one more step on the fake's page, as the worker's own
+// CLI writes to the store between two frames of somebody reading it.
+func appendPlanStep(fake *planFake, id string, n int) {
+	page := fake.pages[id]
+	page.Steps = append(page.Steps, session.PlanStep{Step: n, Command: planStepCommand(n)})
+	fake.pages[id] = page
+}
+
+// openPlanPage opens the tasks place over the fixture and enters the plan page
+// under the cursor, the two keys a person presses.
+func openPlanPage(t *testing.T, a *app) {
+	t.Helper()
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !a.taskSheet.planOn {
+		t.Fatal("enter over a plan row did not open its page")
+	}
+}
+
+// A PAGE OPEN ON A RUNNING TASK FOLLOWS ITS LIVE EDGE: a step the worker takes
+// while somebody reads is at the bottom of the page at the next frame, exactly
+// as the room follows its own live edge. It is that same reading-on-the-beat,
+// spent on the store rather than a journal ([app.taskPlanFollow]).
+func TestThePlanPageFollowsAStepAppendedWhileItIsOpen(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	pages := map[string]session.PlanTaskPage{"t-alpha": planPageWithSteps(rows[0], 30)}
+	a, fake := planAppWith(t, rows, pages)
+	openPlanPage(t, a)
+
+	if !strings.Contains(taskSheetText(a), planStepCommand(30)) {
+		t.Fatalf("a page stuck to the live edge did not draw its newest step:\n%s", taskSheetText(a))
+	}
+	// THE STORE MOVES UNDER IT, the way it does while a worker runs.
+	appendPlanStep(fake, "t-alpha", 31)
+	drive(t, a, frameMsg{})
+	if !strings.Contains(taskSheetText(a), planStepCommand(31)) {
+		t.Fatalf("the page did not follow the step appended while it was open:\n%s", taskSheetText(a))
+	}
+}
+
+// AND A SCROLL UP RELEASES THE PIN, so the newest step no longer walks in from
+// under the reader — until they reach the bottom again, which takes the pin
+// back. It is the room's own bargain ([app.roomScroll], [app.taskPlanScroll]).
+func TestScrollUpOnThePlanPageStopsTheFollow(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	pages := map[string]session.PlanTaskPage{"t-alpha": planPageWithSteps(rows[0], 30)}
+	a, fake := planAppWith(t, rows, pages)
+	openPlanPage(t, a)
+
+	for i := 0; i < 3; i++ {
+		drive(t, a, key("up"))
+	}
+	if a.taskSheet.planStick {
+		t.Fatal("scrolling up left the page pinned to the live edge")
+	}
+	appendPlanStep(fake, "t-alpha", 31)
+	drive(t, a, frameMsg{})
+	if strings.Contains(taskSheetText(a), planStepCommand(31)) {
+		t.Fatalf("the page followed a step after somebody scrolled up off the edge:\n%s", taskSheetText(a))
+	}
+	// AND REACHING THE BOTTOM AGAIN RESUMES IT.
+	for i := 0; i < 16; i++ {
+		drive(t, a, key("down"))
+	}
+	if !a.taskSheet.planStick {
+		t.Fatal("scrolling back to the bottom did not take the pin again")
+	}
+	appendPlanStep(fake, "t-alpha", 32)
+	drive(t, a, frameMsg{})
+	if !strings.Contains(taskSheetText(a), planStepCommand(32)) {
+		t.Fatalf("the page did not resume following at the bottom:\n%s", taskSheetText(a))
+	}
+}
+
+// A NOTE LEFT ON THE PAGE IS THE PAGE'S OWN RECEIPT: the words go to the store,
+// the page is read again, and the note is drawn under `notes` with its author —
+// `you` for the person — and its moment. It starts no chat turn (it is not a
+// message to the model), which the note test next door already holds.
+func TestANoteLeftOnThePlanPageAppearsWithYouAndItsMoment(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	pages := map[string]session.PlanTaskPage{"t-alpha": {Row: rows[0], Description: "the work order"}}
+	a, fake := planAppWith(t, rows, pages)
+	openPlanPage(t, a)
+
+	for _, r := range "a longer sleep" {
+		drive(t, a, key(string(r)))
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if len(fake.noted) != 1 || fake.noted[0] != (planCall{id: "t-alpha", text: "a longer sleep"}) {
+		t.Fatalf("enter wrote %v, want one note on t-alpha", fake.noted)
+	}
+	page := taskSheetText(a)
+	for _, want := range []string{"notes", "you", "now", "a longer sleep"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the note's receipt is missing %q:\n%s", want, page)
+		}
+	}
+}
+
+// THE PAGE ALSO SAYS WHEN A NOTE IS READ — the worker is a separate loop, so a
+// note waits in the store until the worker asks for its next step. That sentence
+// is on the page, not only in the manual, because the page is where the box is.
+func TestThePlanPageSaysWhenANoteIsRead(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
+	pages := map[string]session.PlanTaskPage{"t-alpha": {Row: rows[0], Description: "the work order"}}
+	a, _ := planAppWith(t, rows, pages)
+	openPlanPage(t, a)
+	if !strings.Contains(taskSheetText(a), taskPlanPickupWord) {
+		t.Fatalf("the page does not say when a note is read:\n%s", taskSheetText(a))
+	}
+}
+
+// THE LIVE STEP IS DRAWN ONE STEP EARLY and leaves the page when the task ends:
+// the running glyph in place of the number, the command in ink, and the call's
+// own clock dim under it — and the next read after the store cleared the live
+// row draws none of it (taskPlanBody, internal/plandb's live.go).
+func TestTheLiveStepLeavesThePlanPageWhenTheTaskEnds(t *testing.T) {
+	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed", Steps: 3}}
+	page := planPageWithSteps(rows[0], 3)
+	page.Live = plandb.LiveStep{Step: 4, Command: "go test ./...", Since: taskFixtureNow.Add(-41 * time.Second)}
+	pages := map[string]session.PlanTaskPage{"t-alpha": page}
+	a, fake := planAppWith(t, rows, pages)
+	openPlanPage(t, a)
+
+	text := taskSheetText(a)
+	if !strings.Contains(text, "$ go test ./...") {
+		t.Fatalf("the live step's command is not on the page:\n%s", text)
+	}
+	if !strings.Contains(text, "running 41s") {
+		t.Fatalf("the live step's clock is not under it:\n%s", text)
+	}
+	// THE TASK ENDS: the store clears the live row and the root lands.
+	ended := fake.pages["t-alpha"]
+	ended.Live = plandb.LiveStep{}
+	ended.Row.Status = "done"
+	fake.pages["t-alpha"] = ended
+	drive(t, a, frameMsg{})
+	text = taskSheetText(a)
+	if strings.Contains(text, "go test ./...") {
+		t.Fatalf("the live step outlived the task that was running it:\n%s", text)
 	}
 }
