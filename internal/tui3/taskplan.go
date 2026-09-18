@@ -62,13 +62,20 @@ func (a *app) planReader() (planAgent, bool) {
 //
 // THE STORE'S VOCABULARY IS NOT THE SURFACE'S. `ready` and `claimed` are the
 // store saying a task is deliverable and a worker has it — the same fact this
-// surface calls work in flight, so both wear `running`. `failed` and `cancelled`
-// are the engine's; the person reads `incomplete` for either, because nothing
-// was judged and the word must not send them looking for a fault. `paused` is a
-// task held at a gate, which is the person's call and nothing else's.
+// surface calls work in flight, so both wear `running`. A `pending` task is
+// ADMITTED AND NOT STARTED, which is not running at all: it wears the surface's
+// own word for admitted work with only a slot in its way, `queued`
+// ([session.TaskQueued], [app.railWaits]) — the one word on the row that was not
+// true of the moment while `pending` was folded into `running`. `failed` and
+// `cancelled` are the engine's; the person reads `incomplete` for either,
+// because nothing was judged and the word must not send them looking for a
+// fault. `paused` is a task held at a gate, which is the person's call and
+// nothing else's.
 func planStateWord(status string) string {
 	switch strings.TrimSpace(status) {
-	case "pending", "ready", "claimed", "running":
+	case "pending":
+		return "queued"
+	case "ready", "claimed", "running":
 		return "running"
 	case "done":
 		return "done"
@@ -88,7 +95,16 @@ func planStateWord(status string) string {
 // cell, the phone card — draws a plan row the one way it draws every other.
 func planStatus(store string) session.TaskStatus {
 	switch strings.TrimSpace(store) {
-	case "pending", "ready", "claimed", "running":
+	case "pending":
+		// ADMITTED, NOT STARTED — the queued presence, and the moving tier
+		// because nothing waits on the person ([session.TaskStatus] reads the
+		// same pair off a queued node).
+		return session.TaskStatus{
+			Tier:     session.TaskTierMoving,
+			Presence: session.TaskPresenceQueued,
+			Word:     planStateWord(store),
+		}
+	case "ready", "claimed", "running":
 		return session.TaskStatus{
 			Tier:     session.TaskTierMoving,
 			Presence: session.TaskPresenceWorking,
@@ -150,8 +166,25 @@ func planRunning(store string) bool {
 // IT IS KEYED UNDER THE CHAT AND ITS STORE ID, which is the pair that identifies
 // a plan row: the store's ids are unique machine-wide but a row of this place is
 // still labelled with the conversation that seeded the plan ([tasksKey]).
-func planItem(row session.PlanTaskRow, chat string) tasksItem {
+//
+// AND IT IS HANDED THE PAGE THE ROW CAME OFF, because one fact about a row is a
+// fact about another: a task the store holds `pending` is held behind named work,
+// and the name is the title of the row it hangs under ([planWaits]). Read on its
+// own a row could only point at an id, and `waits: t-9c1x2` has told nobody
+// anything ([app.taskWaitTitles] states that law for the column's own
+// dependencies).
+func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 	status := planStatus(row.Status)
+	// A ROW HELD BEHIND NAMED WORK SAYS SO ON THE ROW, and the reason rides the
+	// READING rather than being composed at each draw (SURFACE.md §3's second
+	// correction). [session.TaskStatus.RowWord] is the one place this surface
+	// joins a word and its reason, so the state cell, the line the cursor's row
+	// grows and the phone card all read `queued · waits: <the work>` by
+	// construction rather than by agreement — which is the property
+	// [tasksMiddle] exists to keep.
+	if waits := planWaits(&row, kin); waits != "" {
+		status.On, status.Reason = session.TaskWaitWork, "waits: "+waits
+	}
 	return tasksItem{
 		entry: session.TaskIndexEntry{
 			ID:        row.ID,
@@ -193,12 +226,111 @@ func planSpendWord(usd float64) string {
 // planStateField is the state cell of a plan row: the word every row wears, with
 // the step count beside it — the one figure on a running task that changes while
 // somebody watches it.
+//
+// THE WORD IS [session.TaskStatus.RowWord] AND NOT THE BARE WORD, because a row
+// held behind named work carries its reason on the reading ([planItem]) and this
+// cell is the first place that reads it: `queued · waits: Add rate limiting`.
+// What follows is law 2's degradation and never a truncation — twenty cells
+// ([tasksStateCells]) hold that sentence only where the work it names is short,
+// and where it is not the cell says the word and the reason falls to the line the
+// cursor's row grows ([tasksReasonLine]), which has the width of the list. A
+// dangling `waits:` with nothing after it is the one shape this cell must not
+// draw, and a spelling that does not fit is a spelling that is not drawn.
 func planStateField(item tasksItem) rowField {
-	word := item.status().Word
-	if steps := planStepWords(item.plan.Steps); steps != "" {
-		return rowSay(word+railSep+steps, word)
+	status := item.status()
+	said := status.RowWord()
+	if said == "" {
+		said = status.Word
 	}
-	return rowSay(word)
+	if steps := planStepWords(item.plan.Steps); steps != "" {
+		return rowSay(said+railSep+steps, said, status.Word)
+	}
+	return rowSay(said, status.Word)
+}
+
+// planKin is the page's own answer to which row is which: the store's id onto the
+// row it names. It is built once per reading ([planKinOf]) and handed to every
+// [planItem] off it, so a row that has to name another does not walk the page
+// once per row on it.
+type planKin map[string]*session.PlanTaskRow
+
+func planKinOf(rows []session.PlanTaskRow) planKin {
+	kin := make(planKin, len(rows))
+	for i := range rows {
+		if id := strings.TrimSpace(rows[i].ID); id != "" {
+			kin[id] = &rows[i]
+		}
+	}
+	return kin
+}
+
+// planWaits is the named work a plan row is held behind, or "" for a row nothing
+// is holding.
+//
+// THE STORE'S `pending` IS NOT "WAITING FOR ITS TURN". A task stays `pending`
+// until its own hard dependencies and every ancestor's are done — that is
+// internal/plandb's `promote`, the one definition of who is ready, and the reason
+// `ready` and not `pending` is the store's word for dispatchable. So a pending row
+// IS a row held behind named work, and the name this surface can give it is the
+// row it hangs under (PlanTaskRow.Parent): the one piece of named work a store row
+// carries, and the ancestor whose own dependencies gate this one.
+//
+// AND IT IS A TITLE OR IT IS NOTHING. A parent this page has never heard of, one
+// with no words on it, and one that has already landed are all skipped rather than
+// named as an id — the same refusal [app.taskWaitTitles] makes, because a pointer
+// a person has to go and follow is not a sentence. What is left is read as the
+// rail reads a held row of its own ([app.railWaits] and task.go's
+// `waits: <title>`).
+func planWaits(row *session.PlanTaskRow, kin planKin) string {
+	if row == nil || strings.TrimSpace(row.Status) != "pending" {
+		return ""
+	}
+	parent := kin[strings.TrimSpace(row.Parent)]
+	if parent == nil || strings.TrimSpace(parent.Title) == "" {
+		return ""
+	}
+	if planStateWord(parent.Status) == "done" {
+		return ""
+	}
+	return strings.TrimSpace(parent.Title)
+}
+
+// planFigures is the telemetry a plan task's under-block carries: the steps its
+// worker has taken and what it has cost, joined the way every row on this
+// surface joins two facts. Each half is omitted when it is nothing, so a task
+// that has run no step and spent nothing draws no line at all — the emptiness
+// law, and the reason [planUnderCount] asks before it spends a row.
+func planFigures(row *session.PlanTaskRow) string {
+	if row == nil {
+		return ""
+	}
+	var segs []string
+	if steps := planStepWords(row.Steps); steps != "" {
+		segs = append(segs, steps)
+	}
+	if usd := planSpendWord(row.USD); usd != "" {
+		segs = append(segs, usd)
+	}
+	return strings.Join(segs, railSep)
+}
+
+// planUnderCount is how many rows a plan task's under-block spends: none for a row
+// with no step in flight, one for the live command alone when the task carries no
+// figures, and two when the telemetry stands under it. It is asked at LAYOUT,
+// where a row is added per line, and [planUnderRows] draws them; both read the
+// same emptiness so the two cannot disagree about how tall the block is.
+//
+// A HELD ROW SPENDS NOTHING HERE. What it waits on is on the row's own reading
+// ([planWaits], drawn by [planStateField] and [tasksReasonLine]), and a block
+// that repeated it would be a page saying one fact twice.
+func planUnderCount(row *session.PlanTaskRow) int {
+	if row == nil || row.Live.Step <= 0 {
+		return 0
+	}
+	if planFigures(row) == "" {
+		return 1
+	}
+	return railUnderRows
 }
 
 // planSpendField is the second column of a plan row: what the task has cost.
