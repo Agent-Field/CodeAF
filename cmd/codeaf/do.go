@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/lease"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/revision"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
@@ -674,7 +676,54 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		outcome = groundedAfterShutdown(outcome, produced)
 	}
 	priceErrand(graph, session, openedAt, &outcome)
+	// THE ERRAND LEAVES A PENDING JUDGE RECORD AND NOTHING WAITS ON ONE. It is
+	// written here, after priceErrand, so the run's own bill is settled first;
+	// the judge that picks the row up later bills its own seat's row in the
+	// usage ledger and never this envelope — the receipt above is a read of
+	// SpendSinceSeq and may not disagree with it. A run this process handed to a
+	// resident settles in that process instead, so it leaves no row here: the
+	// work is not ours to describe, and the model and deliverable would be wrong.
+	if deferredTo == nil {
+		writeDoPendingLanding(request, seats, outcome)
+	}
 	return outcome, nil
+}
+
+// writeDoPendingLanding leaves the pending record `codeaf do` owns, for the
+// Model Pool's judge to score on the next process that holds a live key — the
+// way a chat task's landing reaches the live judge through
+// session.Config.TaskLanded. The do door is not the chat door: it runs the
+// resident's brain over a store journal and builds no session.Agent, so that
+// seam never fires for it and the row is written by hand here instead.
+//
+// Nothing waits on the judge. The write is one append (poolrecord.go's
+// writePendingLanding), the process exits at once, and a failure to write is
+// debug-only — a landing nobody could score is an ordinary state and must not
+// cost the run its result.
+func writeDoPendingLanding(request doRequest, seats config.Seats, outcome headlessOutcome) {
+	profileDir := config.ProfileDir()
+	if !config.ModelPoolAt(profileDir).CanRead() {
+		return
+	}
+	landing := session.TaskLanding{
+		// THE ID IS MINTED FROM THE RUN'S START IN NANOSECONDS so two runs never
+		// share one: the restart sweep dedups on it (poolrecord.go's judged
+		// markers, keyed id-and-attempt), and a repeated id would swallow the
+		// second run's judgement. The value is well past any node id this store
+		// hands out, so a headless landing never collides with a chat one.
+		ID:          uint64(outcome.started.UnixNano()),
+		State:       session.TaskUnverified,
+		Brief:       request.task,
+		Deliverable: outcome.Deliverable,
+		Wrote:       outcome.Artifacts,
+		Changed:     len(outcome.Artifacts),
+		Worker:      seats.Work.Model,
+		Tokens:      outcome.tokensIn + outcome.tokensOut,
+		CostUSD:     outcome.Spend,
+	}
+	if err := writePendingLanding(profileDir, headlessSurface, landing); err != nil && trace.Enabled() {
+		log.Printf("do: pending landing: %v", err)
+	}
 }
 
 // priceErrand puts the journal's own answer on the outcome.
