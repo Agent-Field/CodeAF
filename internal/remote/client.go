@@ -1949,6 +1949,27 @@ func (a *Agent) RewindPoints() []session.RewindPoint {
 	return points
 }
 
+// PlanSpend is the run's spending rolled up by seat, over the wire. It is the
+// engine door internal/tui3's spend page asserts ([session.Agent.PlanSpend]),
+// carried here so the block draws on a remote conversation exactly as it does
+// on a local one.
+//
+// THE EMPTINESS LAW DECIDES ITS ERROR, and it is the whole of why this returns
+// a slice and no error. The seat block is DRAWN FROM the lines it is handed, so
+// a conversation with no plan and a link that cannot answer must both read as
+// the same thing: nothing drawn. An engine older than this door answers "no
+// such method", which lands here as a nil slice — the block is simply absent,
+// which is what a remote conversation drew before the door existed.
+func (a *Agent) PlanSpend(since time.Time) []session.PlanSpendLine {
+	payload, err := a.c.call(nil, MethodPlanSpend, PlanSpendArgs{Since: since})
+	if err != nil {
+		return nil
+	}
+	var lines []session.PlanSpendLine
+	_ = json.Unmarshal(payload, &lines)
+	return lines
+}
+
 // RewindAt cuts at one of them. Its error is SHOWN — the mode stays up and
 // prints the sentence — so a dead connection lands there like any other refusal.
 func (a *Agent) RewindAt(index int) ([]session.DisplayEntry, error) {
