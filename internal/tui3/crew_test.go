@@ -608,7 +608,13 @@ func TestStatusSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
 // crew off /status, off the status line and out of the picker's hint on every
 // one of those launches (#315).
 func TestAnEmptyProfileDirectoryIsTheOrdinaryProfileAndStillHasACrew(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
+	// THE SURFACE IS OPENED THE WAY A BARE `codeaf` OPENS IT — NO PROFILE
+	// DIRECTORY NAMED — which is the very fact this test is about. It is
+	// [ordinaryLaunch] and not [newTestApp] for that reason: [newTestApp] now gives
+	// every app a profile of its own, and this test means the launch that names
+	// none. [ordinaryLaunch] still gives it a state root of this test's own, so the
+	// profile it resolves is this test's and not the run's.
+	a := ordinaryLaunch(t, Options{}, nil)
 	a.model = "m"
 	if a.profileDir != "" {
 		t.Fatalf("this app names a profile at %q and cannot test the ordinary launch", a.profileDir)
