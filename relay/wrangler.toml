@@ -1,0 +1,52 @@
+name = "codeaf-pool"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# A route on the path prefix, not a custom domain: the Worker owns only
+# codeaf.agentfield.ai/pool/* and the host can carry other services.
+routes = [
+  { pattern = "codeaf.agentfield.ai/pool/*", zone_name = "agentfield.ai" }
+]
+
+[[kv_namespaces]]
+binding = "POOL"
+# The runbook fills this id: `cd relay && wrangler kv namespace create POOL`.
+id = "4b5cf70bed444ceb84a23ebf2be692e9"
+
+# Observability as set in the dashboard, kept here so a redeploy does not
+# silently change it. The Worker itself logs nothing; what these persist are
+# the platform's own invocation records (route, status, timing, request
+# metadata). Turn persistence off, or lower the sampling, for a relay that
+# should keep no record of who called it.
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
+
+[triggers]
+crons = ["17 * * * *"]
+
+[vars]
+# The public half of the index signing key built into the binary. The private
+# half is the POOL_SIGNING_KEY secret, set by the runbook and never stored here.
+POOL_PUBLIC_KEY = "WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0="
+MIN_INSTALLS = "3"
+ROWS_PER_INSTALL_PER_DAY = "500"
+# The vendors the relay accepts on a row's model and judge, comma-separated,
+# like ALLOWED_VENDORS = "z-ai,anthropic". Unset or blank, every vendor passes.
+# Set it to refuse a row whose model or judge vendor is not named; the fixture
+# vendors `crew` and `other` are what relay/tools/purge.js removes the stored
+# keys for. Nothing in this directory names the vendors the pool serves, so
+# RUNBOOK.md says where to read them before setting this.
+# Set 2026-09-18 from the OpenRouter catalog's vendor prefixes plus codeaf (the
+# model-free grader's judge ids); a new vendor in the catalog needs a line here.
+ALLOWED_VENDORS = "aion-labs,amazon,anthracite-org,anthropic,arcee-ai,baidu,bytedance,bytedance-seed,codeaf,cognitivecomputations,cohere,deepseek,dots-studio,google,gryphe,ibm-granite,inception,inclusionai,inference-net,kwaipilot,liquid,mancer,meituan,meta,meta-llama,microsoft,minimax,mistralai,moonshotai,morph,nex-agi,nousresearch,nvidia,openai,openrouter,perceptron,perplexity,poolside,qwen,rekaai,relace,sakana,sao10k,stepfun,tencent,thedrummer,thinkingmachines,unbiased,undi95,upstage,writer,x-ai,xiaomi,z-ai"
+# How long a published index stays fresh: the first read past this age
+# republishes in the background and serves what is stored meanwhile.
+PUBLISH_EVERY = "3600"

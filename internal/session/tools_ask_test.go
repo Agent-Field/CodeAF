@@ -56,6 +56,49 @@ func TestAskToolRoundTripsTheWholeAnswer(t *testing.T) {
 	}
 }
 
+// A CARD UNDER --yolo TAKES ITS OWN DEFAULT AND SAYS SO. yolo says nobody is
+// watching, so a card that waits is a run that hangs until something times it
+// out. A card that carries a default must resolve to it without waiting, the
+// turn must carry on past it, and the record must say the default was taken
+// rather than chosen — a choice made on somebody's behalf is not the same event
+// as a choice they made, and a reader has to be able to tell them apart.
+func TestACardUnderYoloTakesItsDefaultAndSaysSo(t *testing.T) {
+	a := askTestAgent(t, true)
+	// THE yolo POSTURE: a surface exists (--yolo is Interactive) and nobody is
+	// expected at it (Unattended is the flag's own setting).
+	a.config.Unattended = true
+	raw := json.RawMessage(`{"head":"Which storage shape?","kind":"choice","reason":"both shapes fit and the record does not choose","options":[{"key":"1","label":"sqlite"},{"key":"2","label":"jsonl"}],"pick":{"key":"1","reason":"existing readers use it"},"stakes":"reversible"}`)
+	done := make(chan string, 1)
+	go func() {
+		text, _, _ := a.executeAsk(context.Background(), raw)
+		done <- text
+	}()
+	var text string
+	select {
+	case text = <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the card waited under --yolo instead of taking its default")
+	}
+	if open := a.OpenQuestions(); len(open) != 0 {
+		t.Fatalf("the card was left standing on their screen: %v", open)
+	}
+	answer := askAnswerRead(t, text)
+	if answer.FirstKey() != "1" {
+		t.Fatalf("the card did not resolve to its default: %+v", answer)
+	}
+	// THE RECORD SAYS IT WAS TAKEN. The same value is read off the decision
+	// record the gate and the model carry, which is where a reader months later
+	// asks whether this was theirs or the program's.
+	records := a.Decisions()
+	if len(records) == 0 {
+		t.Fatal("the taken default left no decision in the record")
+	}
+	last := records[len(records)-1]
+	if last.By == DecidedByPerson || last.By == "" {
+		t.Fatalf("the record reads as a choice somebody made rather than one taken for them: %+v", last)
+	}
+}
+
 func TestAskToolReturnsTheQuestionGatesRefusal(t *testing.T) {
 	a := askTestAgent(t, true)
 	text, failed, err := a.executeAsk(context.Background(), json.RawMessage(`{"head":"Which?","kind":"choice","options":[{"key":"1","label":"one"},{"key":"2","label":"two"}],"stakes":"reversible"}`))

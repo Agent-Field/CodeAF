@@ -33,7 +33,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -444,7 +443,7 @@ var managerExec = map[string]string{
 var (
 	// A segment's leading environment assignments, which belong to the command
 	// and must survive in front of whatever prefix is added.
-	envAssignments = regexp.MustCompile(`^(?:[A-Z_][A-Z0-9_]*=(?:'[^']*'|"[^"]*"|[^[:space:]]*)[[:space:]]+)+`)
+	envAssignments = lazyRegexp(`^(?:[A-Z_][A-Z0-9_]*=(?:'[^']*'|"[^"]*"|[^[:space:]]*)[[:space:]]+)+`)
 	// The runner-launcher prefixes a script body may already carry. A segment
 	// that has one needs none added.
 	//
@@ -457,12 +456,12 @@ var (
 	// pytest tests/ ...`, and a reader that could not see past `poetry` did not
 	// find pytest at all — it fell through to a whole-repository invocation
 	// that collected 3,422 tests and was killed at its ceiling.
-	execPrefixes = regexp.MustCompile(`^(?:npx|pnpm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+exec|yarn[[:space:]]+dlx|npm[[:space:]]+exec|bun[[:space:]]+x|poetry[[:space:]]+run|pdm[[:space:]]+run|hatch[[:space:]]+run|uv[[:space:]]+run|pipenv[[:space:]]+run|rye[[:space:]]+run)[[:space:]]+(?:--[[:space:]]+)?`)
+	execPrefixes = lazyRegexp(`^(?:npx|pnpm[[:space:]]+exec|pnpm[[:space:]]+dlx|yarn[[:space:]]+exec|yarn[[:space:]]+dlx|npm[[:space:]]+exec|bun[[:space:]]+x|poetry[[:space:]]+run|pdm[[:space:]]+run|hatch[[:space:]]+run|uv[[:space:]]+run|pipenv[[:space:]]+run|rye[[:space:]]+run)[[:space:]]+(?:--[[:space:]]+)?`)
 	// `<manager> run <script>` and `<manager> test`, which is how discovery.go
 	// spells a package script and therefore what has to be expanded back into a
 	// body before a runner can be found in it.
-	managerScript = regexp.MustCompile(`^(npm|pnpm|yarn|bun)[[:space:]]+(?:run[[:space:]]+)?([A-Za-z0-9_:.-]+)[[:space:]]*$`)
-	segmentBreak  = regexp.MustCompile(`&&|\|\||;`)
+	managerScript = lazyRegexp(`^(npm|pnpm|yarn|bun)[[:space:]]+(?:run[[:space:]]+)?([A-Za-z0-9_:.-]+)[[:space:]]*$`)
+	segmentBreak  = lazyRegexp(`&&|\|\||;`)
 )
 
 // scriptExpansions bounds how far a `<manager> run x` is followed into
@@ -496,7 +495,7 @@ func ReadingStrategy(workspace string, plan Plan, focus Focus) (Strategy, bool) 
 func expandScript(root, command string) (body, source string) {
 	body = strings.TrimSpace(command)
 	for hop := 0; hop < scriptExpansions; hop++ {
-		if match := managerScript.FindStringSubmatch(body); match != nil {
+		if match := managerScript().FindStringSubmatch(body); match != nil {
 			scripts, ok := packageScripts(root)
 			if !ok {
 				return body, source
@@ -508,7 +507,7 @@ func expandScript(root, command string) (body, source string) {
 			body, source = strings.TrimSpace(next), "package.json#scripts."+match[2]
 			continue
 		}
-		if match := recipeInvocation.FindStringSubmatch(body); match != nil {
+		if match := recipeInvocation().FindStringSubmatch(body); match != nil {
 			next, file, ok := recipeBody(root, match[1], match[2])
 			if !ok {
 				return body, source
@@ -523,7 +522,7 @@ func expandScript(root, command string) (body, source string) {
 
 // recipeInvocation is `make <target>` or `just <target>`, which is how
 // discovery.go spells a Makefile or Justfile target.
-var recipeInvocation = regexp.MustCompile(`^(make|just)[[:space:]]+([A-Za-z0-9_.-]+)[[:space:]]*$`)
+var recipeInvocation = lazyRegexp(`^(make|just)[[:space:]]+([A-Za-z0-9_.-]+)[[:space:]]*$`)
 
 // recipeBody is the commands a make or just target runs, joined into one body.
 //
@@ -544,7 +543,7 @@ func recipeBody(root, tool, target string) (body, file string, ok bool) {
 		}
 		lines := strings.Split(text, "\n")
 		for index, line := range lines {
-			header := recipeHeader.FindStringSubmatch(line)
+			header := recipeHeader().FindStringSubmatch(line)
 			if header == nil || header[1] != target {
 				continue
 			}
@@ -568,13 +567,13 @@ func recipeBody(root, tool, target string) (body, file string, ok bool) {
 }
 
 // recipeHeader is a target's own line: a name, a colon, and its prerequisites.
-var recipeHeader = regexp.MustCompile(`^([A-Za-z0-9_.-]+)[[:space:]]*:(?:[^=]|$)`)
+var recipeHeader = lazyRegexp(`^([A-Za-z0-9_.-]+)[[:space:]]*:(?:[^=]|$)`)
 
 var (
 	// A file-scope assignment: `run := poetry run`, `PYTEST = python -m pytest`.
-	variableAssignment = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*[:?+]?=[[:space:]]*(.*)$`)
+	variableAssignment = lazyRegexp(`^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*[:?+]?=[[:space:]]*(.*)$`)
 	// A reference to one, in either spelling a recipe may use.
-	variableReference = regexp.MustCompile(`\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]`)
+	variableReference = lazyRegexp(`\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]`)
 )
 
 // expandVariables substitutes a recipe's own variables from the file it lives
@@ -596,15 +595,15 @@ func expandVariables(body string, lines []string) string {
 		if line == "" || line[0] == '\t' || line[0] == ' ' || line[0] == '#' {
 			continue
 		}
-		if match := variableAssignment.FindStringSubmatch(strings.TrimSpace(line)); match != nil {
+		if match := variableAssignment().FindStringSubmatch(strings.TrimSpace(line)); match != nil {
 			table[match[1]] = strings.TrimSpace(match[2])
 		}
 	}
 	// Bounded for the reason scriptExpansions is: a variable that names itself
 	// would otherwise never settle.
 	for hop := 0; hop < scriptExpansions; hop++ {
-		expanded := variableReference.ReplaceAllStringFunc(body, func(reference string) string {
-			name := variableReference.FindStringSubmatch(reference)[1]
+		expanded := variableReference().ReplaceAllStringFunc(body, func(reference string) string {
+			name := variableReference().FindStringSubmatch(reference)[1]
 			return table[name]
 		})
 		if expanded == body {
@@ -873,12 +872,12 @@ func packageScripts(root string) (map[string]string, bool) {
 // script lints and typechecks on its way to the suite, and the suite is what
 // this is a reading of.
 func runnerSegment(body string) (segment string, chosen runner, ok bool) {
-	for _, raw := range segmentBreak.Split(body, -1) {
+	for _, raw := range segmentBreak().Split(body, -1) {
 		candidate := strings.TrimSpace(raw)
 		if candidate == "" {
 			continue
 		}
-		bare := execPrefixes.ReplaceAllString(envAssignments.ReplaceAllString(candidate, ""), "")
+		bare := execPrefixes().ReplaceAllString(envAssignments().ReplaceAllString(candidate, ""), "")
 		fields := strings.Fields(bare)
 		if len(fields) == 0 {
 			continue
@@ -979,7 +978,7 @@ func packageDependencies(root string) map[string]string {
 // launcher prefixed where the runner lives in a directory that is not on PATH.
 func machineReadable(root, invocation string, chosen runner) string {
 	invocation = strings.TrimSpace(invocation)
-	environment := envAssignments.FindString(invocation)
+	environment := envAssignments().FindString(invocation)
 	command := strings.TrimPrefix(invocation, environment)
 	if len(chosen.runArgs) > 0 && !carriesAny(command, chosen.runArgs) {
 		// Inserted after the binary rather than appended, because a runner
@@ -1000,7 +999,7 @@ func machineReadable(root, invocation string, chosen runner) string {
 			}
 		}
 	}
-	if needsLauncher(chosen) && execPrefixes.FindString(command) == "" {
+	if needsLauncher(chosen) && execPrefixes().FindString(command) == "" {
 		command = managerExec[packageManager(root)] + " " + command
 	}
 	return strings.TrimSpace(environment + command)

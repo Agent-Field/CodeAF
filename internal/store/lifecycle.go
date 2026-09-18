@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -401,6 +402,80 @@ func (s *Store) release(claim Claim, reason string, recorded int) error {
 		return fmt.Errorf("release %q: %w", claim.ID, err)
 	}
 	return nil
+}
+
+// ReleasedTurnsFor is how many recorded turns the newest hand-on release left
+// waiting for the next claim, or that no release of this node ever handed work
+// on. It exists because the release is where the count the attempt before
+// banked is written down — the settle that re-dispatched the node journaled it
+// in the same breath as the reason — and the settle that has to COMPARE against
+// it (a re-dispatch deciding whether it moved) cannot compose that comparison
+// from its own memory across processes.
+//
+// Releases that took a claim back without handing work on are not it: they say
+// nothing about how much the attempt before banked, and the newest count that
+// does say is the one a re-dispatch is compared against.
+func (s *Store) ReleasedTurnsFor(nodeID string) (int, bool, error) {
+	rows, err := s.db.Query(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq DESC`, strings.TrimSpace(nodeID), EventNodeReleased)
+	if err != nil {
+		return 0, false, fmt.Errorf("read the handed-on turns: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			return 0, false, fmt.Errorf("read the handed-on turns: %w", err)
+		}
+		var release releasePayload
+		if err := json.Unmarshal([]byte(payload), &release); err != nil {
+			return 0, false, fmt.Errorf("read the handed-on turns: %w", err)
+		}
+		if release.Recorded > 0 {
+			return release.Recorded, true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, false, fmt.Errorf("read the handed-on turns: %w", err)
+	}
+	return 0, false, nil
+}
+
+// NodeRedispatches is how many times this node has been re-dispatched in place
+// after running out of the room it was granted: the count of its releases that
+// handed recorded turns on. It is read from the journal rather than counted
+// anywhere in a process for the same reason every run figure is — a durable
+// store outlives the binary that wrote it, and a re-dispatch a resident made is
+// as much a re-dispatch as one this process made.
+func (s *Store) NodeRedispatches(nodeID string) (int, error) {
+	rows, err := s.db.Query(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq`, strings.TrimSpace(nodeID), EventNodeReleased)
+	if err != nil {
+		return 0, fmt.Errorf("read the re-dispatches: %w", err)
+	}
+	defer rows.Close()
+	redispatches := 0
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			return 0, fmt.Errorf("read the re-dispatches: %w", err)
+		}
+		var release releasePayload
+		if err := json.Unmarshal([]byte(payload), &release); err != nil {
+			return 0, fmt.Errorf("read the re-dispatches: %w", err)
+		}
+		if release.Recorded > 0 {
+			redispatches++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("read the re-dispatches: %w", err)
+	}
+	return redispatches, nil
 }
 
 // ── the claim reaper reads EVIDENCE OF LIFE, never a clock ──────────────────

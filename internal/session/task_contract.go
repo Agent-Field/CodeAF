@@ -243,6 +243,16 @@ type TaskEnding string
 const (
 	// TaskEndingStopped says a person ended it ([Agent.Cancel]).
 	TaskEndingStopped TaskEnding = "stopped"
+	// TaskEndingInterrupted says MACHINERY ended it — the session closing under the
+	// node, the engine going away — without anybody marking it stopped. It is the
+	// other half of [TaskEndingStopped]'s distinction, and it exists because the
+	// two used to be told apart only by one of them saying nothing at all: a node a
+	// person stopped reads `stopped` and settles failed, and a node machinery cut
+	// stays RUNNING and resumable ([Agent.settleUnfinished]'s paused road) — so a
+	// reader with no word for the second could not tell an interruption they had
+	// caused from machinery that cut the work. It is NOT a finding about the work,
+	// and [taskEndingIsFault] answers so.
+	TaskEndingInterrupted TaskEnding = "interrupted"
 	// TaskEndingWire says the run ended on the connection to the model rather
 	// than on the work — a stream that reset, a socket that closed — after the
 	// retries and the second worker (task_run.go) were spent too.
@@ -636,6 +646,25 @@ type TaskNotice struct {
 	// run across a restart, so a restored row comes back settled and never paused
 	// (task_store.go's [runRecord]).
 	Paused bool
+	// Settling names the RESOLUTION IN FLIGHT over a landed node, in the plain
+	// words the claim was taken in — "your accept", "your refute", "a
+	// re-audit" (task_audit.go's [Agent.ResolveUnverified]) — or "a merge
+	// round" while a conflict round runs (task_merge_round.go's
+	// [TaskNode.claimResolving]). It is "" at every other moment.
+	//
+	// A SURFACE DRAWS NOTHING FROM IT. It rides the notice so the question
+	// machinery can hold a landed node's question down while the answer's own
+	// work is still running — the accept whose merge is still deciding, the
+	// re-audit still spending its window — rather than ask it again with no
+	// new fact (task_landing_question.go's [Agent.publishLandingQuestion]).
+	//
+	// IT IS A REPORT OF RIGHT NOW, like Mending and Waiting: the graph's own
+	// claim fields, copied onto the notice at the one place node-update
+	// notices are built (task_run.go's [TaskNode.noticeLocked]), never stored
+	// beside them. And it is A FACT OF THIS PROCESS AND NOT OF THE CHECKPOINT:
+	// a restored session has no resolution in flight, so a zero value after a
+	// restore is the truth and not a gap.
+	Settling string
 	// Stopped says a PERSON ended this node ([Agent.Cancel]) rather than the
 	// work ending on its own. It rides beside State rather than replacing it —
 	// a stopped node still settles as `failed`, because nothing merged and its
@@ -649,8 +678,10 @@ type TaskNotice struct {
 	// failure afterwards.
 	Stopped bool
 	// Ending is WHY a node that did not finish stopped where it did, in one word
-	// a surface can draw a row from ([TaskEnding]). It is set only on a node
-	// that settled `failed` and is "" on every other — and on every failed node
+	// a surface can draw a row from ([TaskEnding]). It is set on a node that
+	// settled `failed` — and on a node MACHINERY CUT where it stood, which stays
+	// running for recovery to resume and carries [TaskEndingInterrupted] so the cut
+	// is not silent — and is "" on every other state, and on every failed node
 	// checkpointed before the field existed, which a surface draws exactly as it
 	// always did. It exists because every ending that keeps a branch used to wear
 	// the one sentence "stopped — branch kept", and six rows of that on a rail

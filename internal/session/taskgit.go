@@ -52,6 +52,15 @@ package session
 // posture. The other posture is read from [Agent.steward], the one existing
 // answer to whether the session decides that its own work is done.
 //
+// AND ONE NARROW EXCEPTION STANDS BESIDE IT. An UNATTENDED run — a `--yolo`
+// launch, which the door records as [Config.Unattended] — that is standing on a
+// branch it did not cut may not PUSH that branch or move it with a merge or
+// rebase, however quiet the door was about the push. Nothing is taken from the
+// person's own conversation: the exception fires only for an unattended run
+// standing on a branch it did not create, so a session somebody is steering
+// keeps its whole terminal. [taskGitGuard.refusedUnattendedBranchMovement]
+// argues the register and the three acts it refuses.
+//
 // AND THE READING HALF IS NOT NARROWED BY ONE COMMAND. Every refusal below is a
 // verb that WRITES; a worker that wants to know what is on main still runs
 // `git log main`, `git show main:file` and `git diff HEAD main` and gets the whole
@@ -88,10 +97,6 @@ func (g taskGitGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call
 	if call.Function.Name != "bash" {
 		return call, toolResult{}, true
 	}
-	voice, guarded := g.whoseCopy()
-	if !guarded {
-		return call, toolResult{}, true
-	}
 	var parsed struct {
 		Command string `json:"command"`
 	}
@@ -101,7 +106,17 @@ func (g taskGitGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &parsed); err != nil {
 		return call, toolResult{}, true
 	}
-	if why := refusedTaskGit(parsed.Command, voice); why != "" {
+	voice, guarded := g.whoseCopy()
+	var why string
+	if guarded {
+		why = refusedTaskGit(parsed.Command, voice)
+	} else {
+		// THE THIRD REGISTER, and it is reached only for a session no principal
+		// gate answered for: an unattended run standing on a branch it did not
+		// create may not move that branch.
+		why = g.refusedUnattendedBranchMovement(parsed.Command)
+	}
+	if why != "" {
 		return call, toolResult{text: why, isError: true}, false
 	}
 	return call, toolResult{}, true
@@ -113,7 +128,9 @@ func (g taskGitGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call
 // THE PRINCIPAL IS THE GATE. A task has a copy that lands on somebody else's
 // word, while a steward-headed session has a copy it will judge on its own word;
 // both need the same verbs and different reasons. A [Person] keeps the terminal's
-// authority whether the session is attended or merely has no ceiling.
+// authority whether the session is attended or merely has no ceiling — with the
+// one exception [taskGitGuard.refusedUnattendedBranchMovement] draws, which is
+// narrower than this gate and reads the branch rather than the principal.
 func (g taskGitGuard) whoseCopy() (gitVoice, bool) {
 	if g.agent == nil {
 		return gitVoice{}, false
@@ -125,6 +142,148 @@ func (g taskGitGuard) whoseCopy() (gitVoice, bool) {
 		return sessionGitVoice, true
 	}
 	return gitVoice{}, false
+}
+
+// ── the third register: an unattended run and a branch it did not cut ────────
+
+// unattendedBranchMovers are the verbs that MOVE A BRANCH rather than read it
+// or save into the working copy it is on: they SEND a branch to a remote, or
+// they REWRITE the commits it points at. They are the three acts an unattended
+// run may make only to a branch it cut itself.
+//
+// IT IS A SHORT LIST AND NOT THE WHOLE SESSION LIST ON PURPOSE. The line this
+// register draws is between a run KNOWING and a run MOVING a branch that is not
+// its own; reading a ref, committing into the working copy, unstaging or even
+// creating a fresh branch stay somebody's business here, and the wider
+// [sessionGitVoice] belongs to the session that will judge its own work.
+var unattendedBranchMovers = map[string]bool{"push": true, "merge": true, "rebase": true}
+
+// refusedUnattendedBranchMovement is the guard's third register: AN UNATTENDED
+// RUN MAY MOVE A BRANCH IT CUT ITSELF, AND NO OTHER.
+//
+// ── THE BREACH THIS WAS WRITTEN FROM ──
+//
+// An unattended `codeaf chat --yolo` run was hosted in a clone checked out on a
+// local branch named `santos/dev` — the same name as the shared remote branch.
+// The consent gate answered allow (`--yolo` replaces the default), so no card
+// was drawn; the run kept a [Person], so [taskGitGuard.whoseCopy] left its git
+// unguarded; and its own bash pushed two commits straight onto the shared branch
+// with no pull request and nobody's word but its own.
+//
+// ── WHY OWNERSHIP AND NOT A NAME ──
+//
+// The branch a run found its checkout on when it began is NOT one it created,
+// whatever it is called. That is what covers `santos/dev` without growing the
+// fixed list of protected names ([protectedBranchNames],
+// task_branch_protection.go) — a name merely CONTAINING a protected word is not
+// protected there, and teaching that list to catch `santos/dev` would refuse a
+// person's own branch the moment it was called something similar. The ownership
+// question is answered from the two places a run records the branches it cut:
+// the standing copies it made ([StandingTree.Branch], standingtree.go's
+// [Agent.cutStandingTree]) and the task branches its graph cut (task_run.go's
+// [prepareTaskTree], read back through [TaskNode.branch]).
+//
+// ── WHY NOT A BASH PATTERN FLOOR ──
+//
+// The other candidate was a `git push` entry on the critical-command table
+// (internal/approval/bash.go), which the gate consults before an allow can
+// short-circuit it. It loses on two counts and neither is close: it refuses an
+// INTERACTIVE session's own push too — the very act taskgit.go's header says is
+// deliberately the person's — and it matches command TEXT, so it can say
+// nothing about which branch a push would move, which is the whole question
+// here.
+//
+// IT IS REACHED ONLY WHEN NO PRINCIPAL HAS ANSWERED (whoseCopy said so), so a
+// task and a steward keep their wider registers above.
+func (g taskGitGuard) refusedUnattendedBranchMovement(command string) string {
+	if g.agent == nil || !g.agent.config.Unattended || g.agent.config.InTask {
+		return ""
+	}
+	// THE CHEAP READING COMES FIRST. Most bash a run makes moves no branch, so a
+	// scan for one of the three verbs runs before anything touches the disk and
+	// the branch is read only when a mover is really there.
+	verb := firstBranchMover(command)
+	if verb == "" {
+		return ""
+	}
+	branch, foreign := g.agent.standingOnABranchItDidNotCreate()
+	if !foreign {
+		return ""
+	}
+	return "git " + verb + " is not yours to run here: this run is standing on " + branch +
+		", a branch it did not create, and pushing, merging or rebasing a branch that is not this run's own is not its to do. " +
+		sessionGitInstead
+}
+
+// standingOnABranchItDidNotCreate answers whether this session's own checkout is
+// standing on a branch this run did not cut, and which branch that is.
+//
+// IT READS THE BRANCH OFF THE SESSION'S OWN WORKSPACE and not off the command:
+// the guard refuses the ACT of moving a branch, and which branch a run is on is
+// a fact about the checkout it was launched in, not about the directory a chain
+// happens to `cd` into. A detached HEAD, a workspace that is not a repository,
+// and a session with no workspace all answer "not foreign": there is no branch
+// to be wrong about, and a guard that refused on an absent reading would refuse
+// a run sitting in a plain folder.
+func (a *Agent) standingOnABranchItDidNotCreate() (string, bool) {
+	branch := currentBranch(strings.TrimSpace(a.config.Workspace))
+	if branch == "" {
+		return "", false
+	}
+	if a.branchesThisRunCut()[branch] {
+		return "", false
+	}
+	return branch, true
+}
+
+// branchesThisRunCut is every branch this run made, and it is read from the two
+// records a cut makes: the conversation's standing copies and the graph's task
+// branches. An empty set is the ordinary case for a run that cut nothing — a
+// chat door hosted in the person's own checkout — and then whatever branch it
+// stands on is a branch it did not create.
+func (a *Agent) branchesThisRunCut() map[string]bool {
+	cut := map[string]bool{}
+	for _, tree := range a.StandingTrees() {
+		if branch := strings.TrimSpace(tree.Branch); branch != "" {
+			cut[branch] = true
+		}
+	}
+	if graph := a.tasker(); graph != nil {
+		graph.mu.Lock()
+		for _, id := range graph.order {
+			node := graph.nodes[id]
+			if node == nil {
+				continue
+			}
+			if branch := strings.TrimSpace(node.branch); branch != "" {
+				cut[branch] = true
+			}
+		}
+		graph.mu.Unlock()
+	}
+	return cut
+}
+
+// firstBranchMover reads the first branch-moving verb a bash line runs, or "".
+// It reuses the guard's own scan ([gitWord], [endsASegment], [gitSubcommand]) so
+// a branch move hidden inside a chain or behind git's global options is read the
+// same way every other refused verb is — `git -C x push` and
+// `cd x && git merge main` are both found.
+func firstBranchMover(command string) string {
+	words := strings.Fields(command)
+	for index, word := range words {
+		if gitWord(word) != "git" {
+			continue
+		}
+		if index > 0 && !endsASegment(words[index-1]) {
+			continue
+		}
+		verb, _ := gitSubcommand(words[index+1:])
+		if unattendedBranchMovers[verb] {
+			return verb
+		}
+	}
+	return ""
 }
 
 // gitVoice is the half of a refusal that says WHOSE COPY THIS IS. There is one

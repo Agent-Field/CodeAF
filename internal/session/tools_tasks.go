@@ -1201,14 +1201,7 @@ func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
 	}
 	out := "  " + strings.Join(parts, " · ") + "\n"
 	if withURI {
-		var where []string
-		if entry.ArtifactURI != "" {
-			where = append(where, "artifact "+entry.ArtifactURI)
-		}
-		if entry.TranscriptURI != "" {
-			where = append(where, "transcript "+entry.TranscriptURI)
-		}
-		if len(where) > 0 {
+		if where := taskWhereClauses(entry); len(where) > 0 {
 			out += "    " + strings.Join(where, " · ") + "\n"
 		}
 	}
@@ -1253,17 +1246,56 @@ func taskRowText(entry TaskIndexEntry) string {
 	if entry.Activity != "" {
 		out += "\n  live: " + entry.Activity
 	}
+	if where := taskWhereClauses(entry); len(where) > 0 {
+		out += "\n  " + strings.Join(where, " · ")
+	}
+	return out + "\n"
+}
+
+// taskWhereClauses is the trailing line a row may carry: where the work IS, the
+// record's own verdict when the work did not settle whole, and where the STORY
+// is. It is ONE builder for a root row and a queried child, so the two can never
+// name a kept branch or a verdict differently for the same work.
+//
+// THE KEPT BRANCH IS NAMED BEFORE THE ARTIFACT, and the bare artifact is dropped
+// when it only repeats it: a row whose work did not land spells the same branch
+// as `git:<b>` in its artifact URI, and the explicit `kept branch` clause is the
+// one a reader told "1 incomplete" can act on.
+//
+// THE VERDICT IS THE RECORD'S OWN WORD — `failed` or `unverified`
+// (task_contract.go's [TaskFailed]/[TaskUnverified]), read off the row's own
+// [TaskIndexEntry.Status] — the SAME word #1182 put on the headless envelope, so
+// a reader joining the two reads one vocabulary and not two. It is shown even
+// when no branch was kept, because the word is the record's and does not depend
+// on git.
+func taskWhereClauses(entry TaskIndexEntry) []string {
 	var where []string
-	if entry.ArtifactURI != "" {
+	branch := strings.TrimSpace(entry.Branch)
+	if branch != "" {
+		where = append(where, "kept branch "+branch)
+	}
+	if entry.ArtifactURI != "" && entry.ArtifactURI != "git:"+branch {
 		where = append(where, "artifact "+entry.ArtifactURI)
+	}
+	if word := taskVerdictWord(entry); word != "" {
+		where = append(where, "verdict "+word)
 	}
 	if entry.TranscriptURI != "" {
 		where = append(where, "transcript "+entry.TranscriptURI)
 	}
-	if len(where) > 0 {
-		out += "\n  " + strings.Join(where, " · ")
+	return where
+}
+
+// taskVerdictWord is the record's own word for a row that did not settle whole,
+// or "" for one that did or has not settled. Its two words are the engine's own
+// states and not a second vocabulary: [TaskFailed] and [TaskUnverified] are
+// exactly what #1182's envelope carries as `verdict`.
+func taskVerdictWord(entry TaskIndexEntry) string {
+	switch TaskState(entry.Status) {
+	case TaskFailed, TaskUnverified:
+		return entry.Status
 	}
-	return out + "\n"
+	return ""
 }
 
 // taskWhenWord says when, in the tense the row is in: a live task has been

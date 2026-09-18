@@ -48,12 +48,51 @@ package session
 
 import (
 	"context"
+	"strconv"
 	"time"
 )
 
+const (
+	// jobParkBoundReason is what a park hands the model when its OWN bound trips:
+	// the same family the settle turn's bound speaks in ([taskAskSettleReason]),
+	// said about the wait rather than about the landing. The wait did not settle
+	// within the stretch it was given, so the turn comes back with that said out
+	// loud — never as a silent stop.
+	jobParkBoundReason = "the park was not settled within its bound"
+
+	// jobParkBoundRule is the one clause a park's handback carries about ITSELF.
+	// A bound that ended the wait is not a bound that ended the command, and a
+	// model told only that its command has not finished would reach for the log a
+	// second time — the exact polling the park exists to remove.
+	jobParkBoundRule = "— the wait ended, not the command: it is still running and will report its own ending. Do not poll for it and do not kill it."
+
+	// jobParkBoundShare divides the run's allowance into the stretch ONE wait for a
+	// promoted command may take before the turn is handed back to the model with
+	// the record above.
+	//
+	// ── WHY A SHARE, AND WHY THIS ONE ──
+	//
+	// A share is what scales: whatever wall the node was given, the park takes a
+	// third of it and no more, so the handback is always strictly inside the
+	// allowance and never the allowance itself — which is the wedge this answers,
+	// where the only stop was the whole wall. Two thirds of the run are still ahead
+	// of the model when it hears that the wait ran long, which is what "well
+	// before" has to mean for it to be able to act on.
+	//
+	// AND A THIRD IS SAFE FOR A COMMAND THAT IS HONESTLY WORKING, because this bound
+	// ends the WAIT and never the WORK. The promoted command is left exactly as it
+	// was — the registry is not touched, its process is not signalled, its log goes
+	// on filling — so a job that is still producing output keeps producing it, and
+	// its own ending still lands as a note in front of the model. A job that never
+	// ends no longer holds the turn for the whole allowance; a job that is still
+	// working is never cut.
+	jobParkBoundShare = 3
+)
+
 // armJobPark makes this worker one that waits for the commands it started. The
-// bound is the whole allowance the run was given, and [Agent.parkOnOwedJob] says
-// why it is that number and not a smaller one of its own.
+// bound handed here is the whole allowance the run was given;
+// [Agent.parkOnOwedJob] takes the smaller share of it it waits under and says
+// why.
 //
 // It is called by [runTaskChild], which is what makes this a task worker's law
 // rather than every session's — and once more, with a zero, by
@@ -63,6 +102,32 @@ func (a *Agent) armJobPark(bound time.Duration) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.jobParkBound = bound
+}
+
+// owedJob is the command this park is waiting for, or nil when nothing is owed
+// any more. It is read only when the park's own bound trips, to name the job in
+// the record the model is handed; it is the same predicate [jobRegistry.owedRunning]
+// answers with, asked for the job itself rather than for a yes or no.
+func owedJob(jobs *jobRegistry) *job {
+	if jobs == nil {
+		return nil
+	}
+	for _, candidate := range jobs.all() {
+		if candidate.stillOwed() {
+			return candidate
+		}
+	}
+	return nil
+}
+
+// parkBoundNote is the record a park hands back when its own bound trips. It
+// rides the ending lane ([jobNote]) because that is the one lane a parked worker
+// is reading, and the parked turn is the one turn that is waiting for it. The
+// sentence names the job so the model knows which command is still running, and
+// the clause beside it says the command was not cut.
+func parkBoundNote(one *job) userMessage {
+	text := jobParkBoundReason + ": job " + strconv.Itoa(one.id) + " is still running\n" + jobParkBoundRule
+	return jobNote(text)
 }
 
 // parkOnOwedJob holds this worker at a step boundary while a command it started
@@ -81,15 +146,19 @@ func (a *Agent) armJobPark(bound time.Duration) {
 // build runs would be the room going silent on them — the rule [childRun.park]
 // already states for a node holding parts.
 //
-// NO SINGLE WAIT MAY OUTLAST THE WHOLE ALLOWANCE THE RUN WAS GIVEN. The bound is
-// one timer for the whole park rather than one per piece of news, so unrelated
-// news cannot renew it. The runner independently watches its current deadline
-// in childRun.drain, so a command started late in an allowance cannot postpone
-// that checkpoint by parking for another whole allowance. This local timer is
-// a backstop; renewal and cancellation remain the runner's decisions.
+// A SINGLE WAIT HAS A BOUND OF ITS OWN, AND IT IS A SHARE OF THE ALLOWANCE
+// RATHER THAN THE ALLOWANCE. The runner hands this park the run's whole
+// allowance, and the park waits under [jobParkBoundShare] of it: a wait that is
+// never settled within that stretch is handed back to the model with a record
+// ([parkBoundNote]) instead of sitting silent until the whole wall is spent. It
+// is one timer for the whole park rather than one per piece of news, so unrelated
+// news cannot renew it. The runner independently watches its current deadline in
+// childRun.drain, and renewal and cancellation remain the runner's decisions;
+// this local timer is the backstop that keeps a never-ending command from being
+// the stop itself.
 func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	a.mu.Lock()
-	bound, jobs := a.jobParkBound, a.jobs
+	allowance, jobs := a.jobParkBound, a.jobs
 	a.mu.Unlock()
 	// THE CHEAP QUESTION IS ASKED BEFORE ANYTHING IS BUILT. This runs at every
 	// step boundary of every worker, and the overwhelmingly common answer is that
@@ -98,11 +167,21 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	// read inside the loop and must not be deleted as one: that read is taken
 	// after the generation and is what carries the correctness, while this one is
 	// only the early out.
-	if bound <= 0 || jobs == nil || !jobs.owedRunning() {
+	if allowance <= 0 || jobs == nil || !jobs.owedRunning() {
 		return
 	}
-	timer := time.NewTimer(bound)
-	defer timer.Stop()
+	// THE PARK'S OWN BOUND, taken from the allowance rather than being it. A run
+	// given a sliver of wall still gets a bound shorter than the sliver; a bound
+	// that rounds to nothing falls back to the allowance so a wait is never made
+	// instantaneous by an arithmetic accident.
+	bound := allowance / jobParkBoundShare
+	if bound <= 0 {
+		bound = allowance
+	}
+	// IT IS THE RUN'S CLOCK ([Agent.taskClockTimer]), which is what lets a test
+	// drive the bound without a sleep standing in for causality.
+	timer, stop := a.taskClockTimer(bound)
+	defer stop()
 	for {
 		news := a.taskNewsWait()
 		if !jobs.owedRunning() {
@@ -115,7 +194,17 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 		case <-news:
 		case <-ctx.Done():
 			return
-		case <-timer.C:
+		case <-timer:
+			// THE BOUND ENDS THE WAIT AND NOT THE COMMAND. The ending has not come,
+			// so the turn goes back to the model with the record of the wait rather
+			// than sitting silent to the allowance. The command is left running: the
+			// registry is not touched and its own ending will still arrive as a note
+			// ([jobRegistry.settleExit]). Only if the debt was cleared in the instant
+			// the timer fired is there nothing to name — and then that ending's note
+			// is already on its way, so the wait is answered all the same.
+			if one := owedJob(jobs); one != nil {
+				a.enqueueNote(parkBoundNote(one))
+			}
 			return
 		}
 	}

@@ -44,7 +44,6 @@ package verify
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -349,28 +348,28 @@ var (
 	// unboundPythonSelf finds a `self.name` reference. The leading class keeps
 	// `myself.name` and `not_self.name` out of it; Go has no lookbehind, so the
 	// character before is captured and thrown away.
-	unboundPythonSelf = regexp.MustCompile(`(^|[^A-Za-z0-9_.])self\.([A-Za-z_][A-Za-z0-9_]*)`)
+	unboundPythonSelf = lazyRegexp(`(^|[^A-Za-z0-9_.])self\.([A-Za-z_][A-Za-z0-9_]*)`)
 	// unboundPythonAttrTarget finds every attribute an assignment writes into,
 	// which is how `self.a, self.b = x` and `obj.name = 1` both read as
 	// bindings without this reader parsing a target list.
-	unboundPythonAttrTarget = regexp.MustCompile(`\.([A-Za-z_][A-Za-z0-9_]*)`)
+	unboundPythonAttrTarget = lazyRegexp(`\.([A-Za-z_][A-Za-z0-9_]*)`)
 	// unboundPythonSelfAnnotation is an annotated instance attribute with no
 	// value beside it, which is a declaration and not a read.
-	unboundPythonSelfAnnotation = regexp.MustCompile(`^\s*self\.([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\S`)
+	unboundPythonSelfAnnotation = lazyRegexp(`^\s*self\.([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\S`)
 	// unboundPythonAnnotation is a bare annotated declaration — `count: int` —
 	// which is how a dataclass, an attrs class and a plain annotated field all
 	// spell a binding with no value beside it.
-	unboundPythonAnnotation = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\S`)
+	unboundPythonAnnotation = lazyRegexp(`^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\S`)
 	// unboundPythonQuoted is one quoted identifier, which is how `__slots__`
 	// spells the names it binds.
-	unboundPythonQuoted = regexp.MustCompile(`["']([A-Za-z_][A-Za-z0-9_]*)["']`)
+	unboundPythonQuoted = lazyRegexp(`["']([A-Za-z_][A-Za-z0-9_]*)["']`)
 	// unboundPythonFrom is a `from module import ...` statement's two halves.
-	unboundPythonFrom = regexp.MustCompile(`^\s*from\s+(\.*)([A-Za-z_][A-Za-z0-9_.]*)?\s+import\s+(.*)$`)
+	unboundPythonFrom = lazyRegexp(`^\s*from\s+(\.*)([A-Za-z_][A-Za-z0-9_.]*)?\s+import\s+(.*)$`)
 	// unboundPythonImport is a plain `import a.b.c` or `import a as b`.
-	unboundPythonImport = regexp.MustCompile(`^\s*import\s+(.*)$`)
+	unboundPythonImport = lazyRegexp(`^\s*import\s+(.*)$`)
 	// unboundPythonBare is an identifier used as a call or as the base of an
 	// attribute reach — the only two shapes check three reads.
-	unboundPythonBare = regexp.MustCompile(`(^|[^A-Za-z0-9_.'"])([A-Za-z_][A-Za-z0-9_]*)\s*[.(]`)
+	unboundPythonBare = lazyRegexp(`(^|[^A-Za-z0-9_.'"])([A-Za-z_][A-Za-z0-9_]*)\s*[.(]`)
 )
 
 // pythonDynamic is the set of constructs that bind names this reader cannot
@@ -403,11 +402,11 @@ func pythonBindings(body string, into, classes map[string]bool) {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if match := pythonDef.FindStringSubmatch(line); match != nil {
+		if match := pythonDef().FindStringSubmatch(line); match != nil {
 			into[match[2]] = true
 			continue
 		}
-		if match := pythonClass.FindStringSubmatch(line); match != nil {
+		if match := pythonClass().FindStringSubmatch(line); match != nil {
 			into[match[2]] = true
 			classes[match[2]] = true
 			continue
@@ -416,7 +415,7 @@ func pythonBindings(body string, into, classes map[string]bool) {
 		// WeakKeyDictionary[` opening a type that runs over four more — is a
 		// DECLARATION, and reading it as a use of something undeclared is the
 		// one shape that got past the first sweep of this reader.
-		if match := unboundPythonSelfAnnotation.FindStringSubmatch(line); match != nil {
+		if match := unboundPythonSelfAnnotation().FindStringSubmatch(line); match != nil {
 			into[match[1]] = true
 			continue
 		}
@@ -424,23 +423,23 @@ func pythonBindings(body string, into, classes map[string]bool) {
 		// may run over several lines; the brackets say where it ends.
 		if strings.Contains(line, "__slots__") || slots > 0 {
 			slots = openBrackets(line, slots)
-			for _, quoted := range unboundPythonQuoted.FindAllStringSubmatch(lineText(raw, at), -1) {
+			for _, quoted := range unboundPythonQuoted().FindAllStringSubmatch(lineText(raw, at), -1) {
 				into[quoted[1]] = true
 			}
 			continue
 		}
 		if left, assigns := pythonAssignedTo(line); assigns {
-			if match := pythonAssign.FindStringSubmatch(line); match != nil {
+			if match := pythonAssign().FindStringSubmatch(line); match != nil {
 				into[match[2]] = true
 			}
-			for _, attribute := range unboundPythonAttrTarget.FindAllStringSubmatch(left, -1) {
+			for _, attribute := range unboundPythonAttrTarget().FindAllStringSubmatch(left, -1) {
 				into[attribute[1]] = true
 			}
 			continue
 		}
 		// A bare annotation is a declaration with no value — the shape a
 		// dataclass field, an attrs field and a class-level type hint all take.
-		if match := unboundPythonAnnotation.FindStringSubmatch(line); match != nil &&
+		if match := unboundPythonAnnotation().FindStringSubmatch(line); match != nil &&
 			!strings.HasSuffix(strings.TrimSpace(line), ":") {
 			into[match[1]] = true
 		}
@@ -572,7 +571,7 @@ func pythonUnboundAttributes(file string, lines, raw []string, index *bindings) 
 			if left, assigns := pythonAssignedTo(line); assigns {
 				read = strings.Repeat(" ", len(left)) + line[len(left):]
 			}
-			for _, match := range unboundPythonSelf.FindAllStringSubmatch(read, -1) {
+			for _, match := range unboundPythonSelf().FindAllStringSubmatch(read, -1) {
 				name := match[2]
 				if seen[name] || index.attributes[name] || dunder(name) {
 					continue
@@ -607,7 +606,7 @@ type pythonScope struct {
 func pythonClassBodies(lines []string) []pythonScope {
 	var scopes []pythonScope
 	for index, line := range lines {
-		match := pythonClass.FindStringSubmatch(line)
+		match := pythonClass().FindStringSubmatch(line)
 		if match == nil || len(match[1]) != 0 {
 			continue
 		}
@@ -654,7 +653,7 @@ func lineText(raw []string, index int) string {
 func pythonUnboundImports(file string, lines, raw []string, index *bindings) []UnboundName {
 	var found []UnboundName
 	for number, line := range lines {
-		match := unboundPythonFrom.FindStringSubmatch(line)
+		match := unboundPythonFrom().FindStringSubmatch(line)
 		if match == nil {
 			continue
 		}
@@ -687,7 +686,7 @@ func pythonUnboundImports(file string, lines, raw []string, index *bindings) []U
 // reference — which is the same silence a module with a star import gets when it
 // is on the other end.
 func pythonImportedNames(lines []string, at int) []string {
-	match := unboundPythonFrom.FindStringSubmatch(lines[at])
+	match := unboundPythonFrom().FindStringSubmatch(lines[at])
 	if match == nil {
 		return nil
 	}
@@ -706,7 +705,7 @@ func pythonImportedNames(lines []string, at int) []string {
 			continue
 		}
 		// `x as y` asks the module for x; y is what this file calls it.
-		if name := fields[0]; unboundPythonAnnotation.MatchString(name + ": x") {
+		if name := fields[0]; unboundPythonAnnotation().MatchString(name + ": x") {
 			names = append(names, name)
 		}
 	}
@@ -836,7 +835,7 @@ func pythonModuleNames(body string, into *moduleBindings) {
 			} else {
 				all = openBrackets(line, all)
 			}
-			for _, quoted := range unboundPythonQuoted.FindAllStringSubmatch(lineText(raw, index), -1) {
+			for _, quoted := range unboundPythonQuoted().FindAllStringSubmatch(lineText(raw, index), -1) {
 				into.names[quoted[1]] = true
 			}
 			if strings.Contains(line, "__all__") {
@@ -846,12 +845,12 @@ func pythonModuleNames(body string, into *moduleBindings) {
 		if nested >= 0 {
 			continue
 		}
-		if match := pythonDef.FindStringSubmatch(line); match != nil {
+		if match := pythonDef().FindStringSubmatch(line); match != nil {
 			into.names[match[2]] = true
 			nested = indent
 			continue
 		}
-		if match := pythonClass.FindStringSubmatch(line); match != nil {
+		if match := pythonClass().FindStringSubmatch(line); match != nil {
 			into.names[match[2]] = true
 			nested = indent
 			continue
@@ -860,7 +859,7 @@ func pythonModuleNames(body string, into *moduleBindings) {
 			slots = openBrackets(line, slots)
 			continue
 		}
-		if match := unboundPythonFrom.FindStringSubmatch(line); match != nil {
+		if match := unboundPythonFrom().FindStringSubmatch(line); match != nil {
 			for _, name := range pythonImportedNames(lines, index) {
 				into.names[name] = true
 			}
@@ -870,7 +869,7 @@ func pythonModuleNames(body string, into *moduleBindings) {
 			}
 			continue
 		}
-		if match := unboundPythonImport.FindStringSubmatch(line); match != nil &&
+		if match := unboundPythonImport().FindStringSubmatch(line); match != nil &&
 			!strings.HasPrefix(trimmed, "import *") {
 			for _, part := range strings.Split(match[1], ",") {
 				fields := strings.Fields(part)
@@ -892,7 +891,7 @@ func pythonModuleNames(body string, into *moduleBindings) {
 			}
 			continue
 		}
-		if match := unboundPythonAnnotation.FindStringSubmatch(line); match != nil &&
+		if match := unboundPythonAnnotation().FindStringSubmatch(line); match != nil &&
 			!strings.HasSuffix(trimmed, ":") {
 			into.names[match[1]] = true
 		}
@@ -916,22 +915,22 @@ func importedAs(text string) []string {
 var (
 	// unboundScriptThis finds a `this.name` reference, with the same leading
 	// class the python one has and for the same reason.
-	unboundScriptThis = regexp.MustCompile(`(^|[^A-Za-z0-9_$.])this\.([A-Za-z_$][A-Za-z0-9_$]*)`)
+	unboundScriptThis = lazyRegexp(`(^|[^A-Za-z0-9_$.])this\.([A-Za-z_$][A-Za-z0-9_$]*)`)
 	// unboundScriptMember is a class or interface member declaration in any of
 	// the shapes typescript spells one: a field, a method, an accessor, an
 	// optional, a readonly.
-	unboundScriptMember = regexp.MustCompile(
+	unboundScriptMember = lazyRegexp(
 		`^\s*(?:public\s+|private\s+|protected\s+|readonly\s+|static\s+|abstract\s+|` +
 			`declare\s+|override\s+|async\s+|get\s+|set\s+)*` +
 			`([A-Za-z_$][A-Za-z0-9_$]*)\s*[?!]?\s*[(:=;<]`)
 	// unboundScriptImport is a named-import statement and the module it comes
 	// from. Only the braced form is read: a default import binds whatever the
 	// module's default is, whatever it is called here.
-	unboundScriptImport = regexp.MustCompile(
+	unboundScriptImport = lazyRegexp(
 		`^\s*import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]`)
 	// unboundScriptClass opens a class body, exported or not — this reader is
 	// about references and not about what a module publishes.
-	unboundScriptClass = regexp.MustCompile(
+	unboundScriptClass = lazyRegexp(
 		`^(\s*)(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+` +
 			`([A-Za-z_$][A-Za-z0-9_$]*)`)
 )
@@ -966,12 +965,12 @@ func scriptBindings(body string, into map[string]bool) {
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "*") {
 			continue
 		}
-		if match := unboundScriptMember.FindStringSubmatch(line); match != nil &&
+		if match := unboundScriptMember().FindStringSubmatch(line); match != nil &&
 			!scriptKeyword(match[1]) {
 			into[match[1]] = true
 		}
 		if left, assigns := pythonAssignedTo(line); assigns {
-			for _, attribute := range unboundPythonAttrTarget.FindAllStringSubmatch(left, -1) {
+			for _, attribute := range unboundPythonAttrTarget().FindAllStringSubmatch(left, -1) {
 				into[attribute[1]] = true
 			}
 		}
@@ -994,7 +993,7 @@ func scriptUnbound(file, body string, index *bindings) []UnboundName {
 func scriptUnboundMembers(file string, lines []string, index *bindings) []UnboundName {
 	var found []UnboundName
 	for at, line := range lines {
-		match := unboundScriptClass.FindStringSubmatch(line)
+		match := unboundScriptClass().FindStringSubmatch(line)
 		if match == nil {
 			continue
 		}
@@ -1014,7 +1013,7 @@ func scriptUnboundMembers(file string, lines []string, index *bindings) []Unboun
 			if left, assigns := pythonAssignedTo(text); assigns {
 				read = strings.Repeat(" ", len(left)) + text[len(left):]
 			}
-			for _, reference := range unboundScriptThis.FindAllStringSubmatch(read, -1) {
+			for _, reference := range unboundScriptThis().FindAllStringSubmatch(read, -1) {
 				name := reference[2]
 				if seen[name] || index.members[name] || scriptOwned[name] {
 					continue
@@ -1058,7 +1057,7 @@ func scriptScopeIsDynamic(lines []string) bool {
 func scriptUnboundImports(file string, lines []string, index *bindings) []UnboundName {
 	var found []UnboundName
 	for number, line := range lines {
-		match := unboundScriptImport.FindStringSubmatch(line)
+		match := unboundScriptImport().FindStringSubmatch(line)
 		if match == nil || !strings.HasPrefix(match[2], ".") {
 			continue
 		}
@@ -1144,8 +1143,8 @@ func (b *bindings) scriptExports(path string) (map[string]bool, bool) {
 		}
 		// An export line the surface reader could not name a declaration out of
 		// is an export this cannot enumerate.
-		if !scriptExport.MatchString(line) && !scriptExportList.MatchString(line) &&
-			!scriptClass.MatchString(line) && !strings.HasPrefix(trimmed, "export default") {
+		if !scriptExport().MatchString(line) && !scriptExportList().MatchString(line) &&
+			!scriptClass().MatchString(line) && !strings.HasPrefix(trimmed, "export default") {
 			return nil, false
 		}
 	}
@@ -1210,7 +1209,7 @@ var pythonBuiltins = map[string]bool{
 // bound everywhere in it, because a scope analysis that got one comprehension
 // wrong would invent a finding, and a scope analysis this reader skips only
 // costs it one.
-var unboundPythonBinder = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+var unboundPythonBinder = lazyRegexp(`[A-Za-z_][A-Za-z0-9_]*`)
 
 // pythonUnboundBare is a name used as a call or as the base of an attribute
 // reach that nothing in the file binds, nothing imports, and the language does
@@ -1228,7 +1227,7 @@ func pythonUnboundBare(file string, lines, raw []string, index *bindings) []Unbo
 	}
 	inReach := map[string]bool{}
 	for index, line := range lines {
-		if match := unboundPythonFrom.FindStringSubmatch(line); match != nil {
+		if match := unboundPythonFrom().FindStringSubmatch(line); match != nil {
 			for _, name := range pythonImportedNames(lines, index) {
 				inReach[name] = true
 			}
@@ -1237,7 +1236,7 @@ func pythonUnboundBare(file string, lines, raw []string, index *bindings) []Unbo
 			}
 			continue
 		}
-		if match := unboundPythonImport.FindStringSubmatch(line); match != nil {
+		if match := unboundPythonImport().FindStringSubmatch(line); match != nil {
 			for _, part := range strings.Split(match[1], ",") {
 				fields := strings.Fields(part)
 				switch {
@@ -1249,21 +1248,21 @@ func pythonUnboundBare(file string, lines, raw []string, index *bindings) []Unbo
 			}
 			continue
 		}
-		if match := pythonDef.FindStringSubmatch(line); match != nil {
+		if match := pythonDef().FindStringSubmatch(line); match != nil {
 			inReach[match[2]] = true
 			// Every word of a signature is a parameter, a default or an
 			// annotation, and all three are names in reach of the body.
-			for _, word := range unboundPythonBinder.FindAllString(line, -1) {
+			for _, word := range unboundPythonBinder().FindAllString(line, -1) {
 				inReach[word] = true
 			}
 			continue
 		}
-		if match := pythonClass.FindStringSubmatch(line); match != nil {
+		if match := pythonClass().FindStringSubmatch(line); match != nil {
 			inReach[match[2]] = true
 			continue
 		}
 		if left, assigns := pythonAssignedTo(line); assigns {
-			for _, word := range unboundPythonBinder.FindAllString(left, -1) {
+			for _, word := range unboundPythonBinder().FindAllString(left, -1) {
 				inReach[word] = true
 			}
 			continue
@@ -1275,7 +1274,7 @@ func pythonUnboundBare(file string, lines, raw []string, index *bindings) []Unbo
 		for _, opener := range []string{"for ", "with ", "except ", "global ", "nonlocal ", "lambda "} {
 			if strings.HasPrefix(trimmed, opener) || strings.Contains(line, " as ") ||
 				strings.Contains(line, "lambda ") {
-				for _, word := range unboundPythonBinder.FindAllString(line, -1) {
+				for _, word := range unboundPythonBinder().FindAllString(line, -1) {
 					inReach[word] = true
 				}
 				break
@@ -1288,10 +1287,10 @@ func pythonUnboundBare(file string, lines, raw []string, index *bindings) []Unbo
 		// An import statement spells a module path, not a reference: the `igel`
 		// of `from igel.configs import configs` is the name of a package this
 		// file is reaching THROUGH, and nothing in this file binds it.
-		if unboundPythonFrom.MatchString(line) || unboundPythonImport.MatchString(line) {
+		if unboundPythonFrom().MatchString(line) || unboundPythonImport().MatchString(line) {
 			continue
 		}
-		for _, match := range unboundPythonBare.FindAllStringSubmatch(line, -1) {
+		for _, match := range unboundPythonBare().FindAllStringSubmatch(line, -1) {
 			name := match[2]
 			if seen[name] || inReach[name] || pythonBuiltins[name] ||
 				index.attributes[name] || dunder(name) {
@@ -1315,14 +1314,14 @@ func pythonUnboundBare(file string, lines, raw []string, index *bindings) []Unbo
 func pythonImportsAreInTree(file string, lines []string, index *bindings) bool {
 	imports := 0
 	for _, line := range lines {
-		if match := unboundPythonFrom.FindStringSubmatch(line); match != nil {
+		if match := unboundPythonFrom().FindStringSubmatch(line); match != nil {
 			imports++
 			if index.pythonModulePath(file, match[1], match[2]) == "" {
 				return false
 			}
 			continue
 		}
-		if match := unboundPythonImport.FindStringSubmatch(line); match != nil {
+		if match := unboundPythonImport().FindStringSubmatch(line); match != nil {
 			for _, part := range strings.Split(match[1], ",") {
 				fields := strings.Fields(part)
 				if len(fields) == 0 {

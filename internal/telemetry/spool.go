@@ -331,6 +331,21 @@ func sendBatch(ctx context.Context, deadline time.Time, batch []spoolEntry) bool
 	if underGoTest() && Endpoint() == DefaultEndpoint {
 		return false
 	}
+	// An event that cannot name its build is not a measurement, so it never
+	// leaves the machine: a line whose codeaf_version prop is missing, empty or
+	// "unknown" is dropped here, on the send path itself, rather than trusted
+	// to the opt-out ladder above. When nothing in the batch survives there is
+	// nothing to POST, and the batch answers as confirmed so that Flush removes
+	// the dead lines and stays silent.
+	sendable := make([]spoolEntry, 0, len(batch))
+	for _, entry := range batch {
+		if version, ok := entry.event.Props["codeaf_version"].(string); ok && version != "" && version != "unknown" {
+			sendable = append(sendable, entry)
+		}
+	}
+	if len(sendable) == 0 {
+		return true
+	}
 	remaining := time.Until(deadline)
 	if remaining <= 0 {
 		return false
@@ -339,7 +354,7 @@ func sendBatch(ctx context.Context, deadline time.Time, batch []spoolEntry) bool
 	defer cancel()
 	body, err := jsonMarshal(map[string]any{
 		"schema_version": schemaVersion,
-		"events":         batchEvents(batch),
+		"events":         batchEvents(sendable),
 	})
 	if err != nil {
 		return false

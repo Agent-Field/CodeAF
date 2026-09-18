@@ -113,6 +113,14 @@ const (
 	// is not a cap and not a count: it is this job's OWN measured pace read
 	// against the clock it is actually running under.
 	CauseOutOfWall = "out-of-wall"
+
+	// CauseSpendShare is the round refused because growth has already spent more
+	// than the requested work itself cost, measured from the moment a gate first
+	// found that work done. It is a bound against the bill rather than against a
+	// count of rounds, and it exists because a count could not stop a run whose
+	// named fix landed at minute eleven from spending the rest of its wall and
+	// most of its bill on growth.
+	CauseSpendShare = "spend-share"
 )
 
 // The refusals in the words a person reads. They are constants because two of
@@ -142,7 +150,18 @@ const (
 	// it was going to end with: a judgement on what it did. So the job stops
 	// growing while there is still time to finish and be judged.
 	RefusedOutOfWall = "there is not enough time left on this run to finish another round of work, so this is handed over while there is still time to check it"
+
+	// The refusal that bounds growth against the bill. Once the requested work
+	// is done, a round that would take the total past twice what that work cost
+	// is refused and the job is handed over: the work the person asked for is
+	// finished, and what is left is growth they did not ask for.
+	RefusedSpendShare = "the requested work is done and growth has already doubled what it cost — handing over what's done"
 )
+
+// growthSpendShare bounds how much a job may spend on growth after its
+// requested work is first found done: one means growth may at most double the
+// bill that got the work done.
+const growthSpendShare = 1.0
 
 // GrowthStopped reports whether a refusal cause is one of the two the governor
 // reaches by READING THE WORLD rather than by counting — the round before this
@@ -494,12 +513,21 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		round = growthRound(rounds, lineage)
 	}
 	// How near the wall is, read ONCE, because two rules below turn on it and a
-	// pair of reads taken a model call apart could disagree. Zero pace is a job
-	// that has not shown one, and no deadline is a run with no wall at all;
-	// both answer "not near", which refuses nothing.
+	// pair of reads taken a model call apart could disagree. A job that has
+	// shown its pace is judged by it. A job that has not is read against the
+	// leaf that just overran: it has been running for its elapsed life, and a
+	// round replanning the same remainder on the same machine can hardly cost
+	// less. A job with nothing run and nothing measured has no such estimate
+	// ([roundFloor] answers zero), so its first round is admitted — refusing a
+	// round that cannot be costed produces nothing. No deadline is a run with no
+	// wall at all, which refuses nothing.
 	wallNear := false
 	if deadline, ok := ctx.Deadline(); ok {
-		if pace := jobPace(graph, rounds, journal); pace > 0 && time.Until(deadline) < pace {
+		pace := jobPace(graph, rounds, journal)
+		if pace == 0 {
+			pace = roundFloor(req.Node)
+		}
+		if pace > 0 && time.Until(deadline) < pace {
 			wallNear = true
 		}
 	}
@@ -609,9 +637,14 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	//
 	//     The bound is DERIVED and not typed: how long a round of this job
 	//     takes is the job's own journal read against the clock it is actually
-	//     running under. A job with no measured round yet is never refused
-	//     here, which is the fail-safe direction — see SETTLEMENT.md §3 for
-	//     what stopping early costs. PERF.md carries the derivation.
+	//     running under. A job with no measured round yet is read against the
+	//     elapsed life of the leaf that just overran, so a round the wall cannot
+	//     hold is handed over rather than killed mid-flight. A job with nothing
+	//     run and nothing measured has no estimate at all, and its first round
+	//     is admitted rather than refused — a round that cannot be costed buys
+	//     nothing by being refused, and refusing it took the do door's own first
+	//     round with it. See PERF.md for the derivation and SETTLEMENT.md §3 for
+	//     what stopping early costs.
 	if wallNear {
 		return refuse(CauseOutOfWall, RefusedOutOfWall)
 	}
@@ -650,6 +683,20 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 		if rail.Reached {
 			return refuse(CauseRail, "")
 		}
+	}
+
+	// 3b. Share of spend. Once the requested work is first found done, growth is
+	//     bounded against the bill: a round is refused when more than
+	//     [growthSpendShare] times the spend that got the work done has gone on
+	//     growth since. The moment is the delivery gate's own first "done" — a
+	//     pass or a coverage finding — and not this round's, so the rail holds
+	//     across every later round. A job whose gate has never found its core
+	//     work done, and a job with no session to bill, have no anchor and the
+	//     rail does not apply: it refuses nothing it cannot measure.
+	if reach, err := growthShareReached(graph, req); err != nil {
+		return GrowVerdict{Round: round}, err
+	} else if reach {
+		return refuse(CauseSpendShare, RefusedSpendShare)
 	}
 
 	// 4. The only question that can say "there is nothing left to do".
@@ -713,6 +760,45 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 	}
 
 	return GrowVerdict{Allow: true, Round: round, CoveredDespite: covered, Spent: req.spent}, nil
+}
+
+// growthShareReached answers whether a job has already spent more on growth
+// than [growthSpendShare] times what the requested work cost, measured from the
+// moment a gate first found that work done. The read is the one the daily rail
+// uses — SpendSinceSeq over the errand's session — so the two rails bill the
+// same rows and a run cannot read cheap here and dear there. A job with no gate
+// that found its work done, or with no session to bill, has no anchor and the
+// rail does not apply; a read that fails is returned rather than guessed at.
+func growthShareReached(graph *store.Store, req GrowRequest) (bool, error) {
+	if graph == nil {
+		return false, nil
+	}
+	jobRoot := strings.TrimSpace(req.JobRoot)
+	if jobRoot == "" {
+		jobRoot = req.Node.ID
+	}
+	session := strings.TrimSpace(req.Node.Provenance.SessionID)
+	if session == "" {
+		return false, nil
+	}
+	anchor, _, ok, err := graph.DeliveryGateAnchor(jobRoot)
+	if err != nil || !ok {
+		return false, err
+	}
+	// The share is read against the spend UP TO the anchor: the total billed so
+	// far minus what has been billed since the gate. One query per window, both
+	// off the rail's own read, so the two halves cannot come from two different
+	// readings of the same journal.
+	total, err := graph.SpendSinceSeq(session, 0)
+	if err != nil {
+		return false, err
+	}
+	after, err := graph.SpendSinceSeq(session, anchor)
+	if err != nil {
+		return false, err
+	}
+	before := total.Cost() - after.Cost()
+	return after.Cost() > growthSpendShare*before, nil
 }
 
 // admitGrowth journals a round that actually landed. It is called after the
@@ -1208,6 +1294,37 @@ func readingPace(graph *store.Store, jobRoot string) time.Duration {
 		}
 	}
 	return longest
+}
+
+// roundFloor is how long a round of a job that has not shown its pace takes —
+// the conservative estimate the wall is read against when [jobPace] answers
+// zero. It answers zero itself when there is nothing to estimate from, and a
+// round with no estimate is never refused (see below).
+//
+// ds1 bought a first replan round at 40m22s of a 45m wall and awilix bought one
+// the same way. Both ran long, both were killed by the clock mid-round, and
+// both were released with their root unlanded and no gate ever cut, so broken
+// work shipped. Zero pace used to mean "never refuse", which is right about a
+// job nobody has measured and wrong about one this near its wall.
+//
+// The estimate is the leaf that just overran and its elapsed runtime: it has
+// been working for that long and has not finished, and the round that replaces
+// it replans the same remainder on the same machine, so it can hardly cost
+// less. Where the leaf carries no start — a job's genuine FIRST round, with
+// nothing run and nothing measured — there is no evidence a round would
+// overrun, and a round that cannot be costed is admitted rather than refused:
+// refusing a first round buys nothing and produces nothing, and it took the do
+// door's own first round with it (every do and headless run is under a wall
+// shorter than any fixed floor). The wall still refuses the moment there IS
+// evidence — a measured pace, or an overrun leaf whose elapsed life the wall
+// cannot hold.
+func roundFloor(node store.Node) time.Duration {
+	if !node.StartedAt.IsZero() {
+		if elapsed := time.Since(node.StartedAt); elapsed > 0 {
+			return elapsed
+		}
+	}
+	return 0
 }
 
 // growthRound is the next round number for a lineage, counted from the
