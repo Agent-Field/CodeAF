@@ -64,10 +64,14 @@ type Limits struct {
 	// (defaultStaleAfter) rather than meaning "no stale claim ever".
 	StaleAfter time.Duration
 	// ReviewRound turns the review round on. When it is set, a work-seat leaf
-	// that lands done spawns one check task under its parent, and a check whose
+	// that lands done spawns one check task under its parent — whether the leaf's
+	// own `plandb done` wrote the ending or this run did — and a check whose
 	// result begins "does not hold" leaves its sentence as a note on the leaf it
-	// read. It is a bool defaulting false so every caller that does not ask for
-	// it keeps the run it had — no check tasks, nothing new on the plan.
+	// read AND adds a `fix:` task under that leaf's parent which the run waits on.
+	// A `fix:` task is checked in turn, but a finding on one is a note and no
+	// second fix task, so a run cannot loop. It is a bool defaulting false so
+	// every caller that does not ask for it keeps the run it had — no check
+	// tasks, nothing new on the plan.
 	ReviewRound bool
 }
 
