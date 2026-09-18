@@ -609,6 +609,23 @@ var tuiWords = map[string]tuiWord{
 			"PlanTaskPage.Steps). THE PAGE DOES NOT SPELL IT — the worker runs it — so the gate looks where " +
 			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish",
 	},
+	"planLiveGlyph": {
+		screen: tokens.GlyphStepRunning,
+		pkg:    tokensPkg,
+		why: "the mark the plan page leads the step it is running RIGHT NOW with, where the recorded " +
+			"steps lead with their number (taskplan.go's taskPlanBody, drawn through palette.glyph so the " +
+			"tier picks the rune rather than a literal in the surface). It is tokens.GStepRunning — one " +
+			"shape for one state, the same rune `working` wears — so the gate looks where the rune is " +
+			"spelled, and this suite sees the plain tier its throwaway profile pins",
+	},
+	"planLiveClockWord": {
+		screen: "running ",
+		source: "running ",
+		why: "the call's own clock, said under the live step on the plan page: the same ten-second " +
+			"count the rail keeps (taskplan.go's taskPlanBody reads PlanTaskPage.Live and taskToolFloor " +
+			"gates it, the 10-second clock the rail already keeps). It is the page's word, so the gate " +
+			"looks for it in the surface",
+	},
 
 	// ── the run's plan row, on the live edge (c185, SURFACE.md §2A/§3) ────────
 	//

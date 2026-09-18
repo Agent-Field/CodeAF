@@ -81,6 +81,13 @@ type PlanTaskPage struct {
 	Description string
 	Notes       []PlanTaskNote
 	Steps       []PlanStep
+	// Live is the step the task is running right now — the same reading
+	// [PlanTaskRow.Live] carries, lifted onto the page so a surface can draw the
+	// step ONE STEP EARLY, before its end line reaches the trajectory. The zero
+	// value is the honest answer for a task that is running nothing, and
+	// [plandb.LiveStep.Empty] is the one question a surface asks before it draws
+	// the line (the emptiness law, as the live step's own file states it).
+	Live plandb.LiveStep
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and

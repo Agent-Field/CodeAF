@@ -104,6 +104,15 @@ type tasksPlace struct {
 	// ([app.taskPlanNoteSend]); the row's own keys are read over an EMPTY box, so
 	// a note that starts with `p` or `x` is a letter the moment it has one.
 	planNote editor
+	// planStick is whether the page is pinned to its live edge — the bottom of
+	// the trajectory, where the newest step arrives. It is the SAME mechanism the
+	// room follows its own live edge with ([app.roomOffsetFor] resolves
+	// [tasksPlace.detailTop] here, [app.taskPlanTopFor] is its twin at this
+	// offset): a scroll up releases the pin and a scroll back to the bottom takes
+	// it again. It is beside the offset and not inside it because the bottom moves
+	// as the body grows, and a pinned page resolves to wherever the bottom now is
+	// rather than to the number it was last drawn at.
+	planStick bool
 	// tail is the last thing the node said, read off its journal once when the
 	// card opened, and tailRead says the read has happened — an empty tail with
 	// tailRead false is a read still in flight, and one with tailRead true is a
