@@ -632,6 +632,22 @@ func (r tasksReading) lay(width int) []tasksLine {
 			rank: tree.rank[key]}
 		mark := ""
 		switch {
+		case len(kids) > 0 && item.plan != nil:
+			// A PLAN ROW IS A NODE OF THE PLAN'S OWN TREE AND NOT A FOLD. A record
+			// row with work under it wears the fold and opens shut
+			// ([tasksReading.opens] says why); a plan row's children are the store's
+			// own graph — the parent the worker wrote and the task a held row waits
+			// on — so they always follow it and the tree a person came to read is on
+			// screen without a keypress. The mark is the tasks place's own connector
+			// ([tasksKin]) and never a second scheme.
+			line.open = true
+			mark = tasksKinPad
+			if nested {
+				mark = tasksKinCont
+				if last {
+					mark = tasksKinLast
+				}
+			}
 		case len(kids) > 0:
 			line.folds, line.family, line.kids = true, key, len(kids)
 			line.open = r.opens(key)

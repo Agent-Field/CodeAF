@@ -38,6 +38,11 @@ type PlanTaskRow struct {
 	Status string
 	Seat   string
 	Parent string
+	// Waits is the tasks this row is held behind that are not its parent: the ids
+	// of its hard dependencies (feeds_into/blocks), in store order, and empty
+	// when it waits on nothing but its own parent. A row still `pending` because
+	// of one of these hangs under it and names it ([planWaits]).
+	Waits []string
 	// Steps is the count of the task's own trajectory lines — the steps its
 	// worker recorded, which is what the row's "14 steps" counts.
 	Steps int
@@ -88,6 +93,10 @@ type PlanTaskPage struct {
 	// [plandb.LiveStep.Empty] is the one question a surface asks before it draws
 	// the line (the emptiness law, as the live step's own file states it).
 	Live plandb.LiveStep
+	// Children is the task's own children — the rows whose Parent is this task —
+	// in store order, so a page can draw the tree under the task the way the
+	// plan list draws it. Empty for a leaf, which is the ordinary case.
+	Children []PlanTaskRow
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -150,11 +159,22 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
 	live := store.LiveSteps()
+	// THE CHILDREN ARE THE TASK'S OWN SUBTREE, ONE LEVEL DEEP: every row the store
+	// holds under this task, in store order, built the same way the top row is so
+	// a page can draw them with the same words ([PlanTaskRow]).
+	var children []PlanTaskRow
+	for _, child := range store.Tasks(plandb.Filter{Chat: plan.chat}) {
+		if child.ParentID != task.ID {
+			continue
+		}
+		children = append(children, planTaskRow(store, dir, child, spend, live))
+	}
 	return PlanTaskPage{
 		Row:         planTaskRow(store, dir, task, spend, live),
 		Description: task.Description,
 		Notes:       planTaskNotes(store, task.ID),
 		Steps:       planTrajectory(dir, task.ID),
+		Children:    children,
 	}, true
 }
 
@@ -356,6 +376,16 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 	}
 	if task.ParentID != "" {
 		row.Parent = planStoreID(task.ParentID)
+	}
+	// WAITS IS THE HARD EDGES, THE ONES THAT REALLY HOLD IT. `suggests` is advice
+	// the store does not gate on, so a row kept `pending` never is because of one;
+	// carrying it would name work that is not holding the task. Store order is
+	// kept, so the same dependency is named on every read.
+	for _, dep := range task.Dependencies {
+		if dep.Kind == plandb.DepSuggests {
+			continue
+		}
+		row.Waits = append(row.Waits, planStoreID(dep.TaskID))
 	}
 	return row
 }

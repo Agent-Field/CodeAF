@@ -69,8 +69,9 @@ hands through the binary — `codeaf patch`, `codeaf doc`, `codeaf web fetch`,
 `codeaf web search`, `codeaf image` — each on the same code path its tool runs.
 
 **What to try.** Set `CODEAF_TASK_BELT=bash` and open `codeaf`. First, type
-`/task <a brief with two or three parts>`: the task rail lists the run's tasks
-and, under the one that is running, its live step — the running glyph, `$` and
+`/task <a brief with two or three parts>`: the task rail draws the run's plan
+as a tree — each task indented under the one that requested it, a held task
+under what it waits on — and, under the one that is running, its live step — the running glyph, `$` and
 the command the worker is executing at that moment, with `N steps · $` beneath
 it; open the task page and it follows the newest step as it lands until you
 scroll up, and resumes following when you reach the bottom again. Second, steer

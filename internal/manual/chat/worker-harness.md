@@ -64,6 +64,23 @@ shows, in order, each section left out when nothing is behind it:
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
+## Why is this task indented under that one?
+
+The pane draws the run's **plan as a tree, not a flat list**. A task sits under the
+task that requested it — the parent the worker wrote to the store — and a deeper
+task sits under that, each joined to the row above it by the pane's own connector
+(`├ `, `└ `). The shape of the run reads down the indentation.
+
+A task the store keeps **held behind named work** sits under **what it waits on**.
+`pending` means admitted and not started, waiting on a hard dependency to finish;
+when that dependency is not the task's own parent, the row is drawn under it, one
+level in, and still wears `queued · waits: <that task>`. Where the thing holding a
+task is its own parent the row is already there and nothing moves.
+
+A task's **page** shows its children under its steps the same way, each with its
+live step while its worker is on one. Notes, pause, cancel and the rest of steering
+are unchanged by the tree.
+
 ## What step is a run task on?
 
 A run's task row carries the step its worker is on **right now**, under its title:
