@@ -2,11 +2,13 @@ package session
 
 import (
 	"context"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 func TestLandingOwesAnswerOnlyAtAnOwedWorkRoot(t *testing.T) {
@@ -54,17 +56,54 @@ func TestPersonTypedTaskCarriesNoQuestion(t *testing.T) {
 
 func TestOwedRootLandingWakesOnceWithOnlyQuestionAndResult(t *testing.T) {
 	question := "What did the repair find?"
-	result := "The parser now preserves quoted commas."
-	task := &plandb.Task{TaskSpec: plandb.TaskSpec{Question: question}}
-	doc := owedLandingDocument(task, result)
-	if got := doc.text(); got != question+"\n\n"+result {
-		t.Fatalf("owed landing document = %q, want only question and result", got)
+	summary := RunSummary{Outcome: beltRunOutcomeDone, Result: "The parser now preserves quoted commas."}
+	landing := RunLanding{}
+	wantDocument := question + "\n\n" + beltRunOutcomeNote(summary, landing)
+
+	completer := &scriptedCompleter{steps: []step{finalText("The repair preserved quoted commas.")}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = false
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierLow): "test/cheap-model",
+		})
+	})
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the run", "1", "Repair", "repair the parser")
+	if err != nil {
+		t.Fatalf("open owed run store: %v", err)
+	}
+	defer store.Close()
+	if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+		t.Fatalf("mark root answer owed: %v", err)
+	}
+	run := &beltRun{store: store, root: store.RootID()}
+
+	wakes, stopWakes := agent.WatchWakes()
+	defer stopWakes()
+	agent.deliverBeltRunLanding(run, summary, landing)
+	beltRunWaitFor(t, "the owed landing reply", func() bool { return completer.requests() == 1 })
+
+	request := completer.request(0)
+	if got := messageText(request[len(request)-1]); got != wantDocument {
+		t.Fatalf("owed landing request document = %q, want only question and result note %q", got, wantDocument)
+	}
+	if got := completer.model(0); got != "test/cheap-model" {
+		t.Fatalf("owed landing model = %q, want low-tier model", got)
+	}
+	if got := completer.requests(); got != 1 {
+		t.Fatalf("owed landing made %d model requests, want one reply turn", got)
+	}
+	select {
+	case <-wakes:
+	default:
+		t.Fatal("owed landing published no wake")
+	}
+	select {
+	case <-wakes:
+		t.Fatal("owed landing published more than one wake")
+	default:
 	}
 	if got := owedLandingCallCeiling(); got != settleCallCeiling {
 		t.Fatalf("owed landing ceiling = %d, want settleCallCeiling %d", got, settleCallCeiling)
-	}
-	if got := owedLandingTier(); got != "low" {
-		t.Fatalf("owed landing tier = %q, want low", got)
 	}
 }
 
