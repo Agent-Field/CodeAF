@@ -51,7 +51,7 @@ func runAskFixture(t *testing.T, script ...step) (*Agent, *runAskRecorder, strin
 	}
 	var lines []string
 	for i := 1; i <= 14; i++ {
-		lines = append(lines, `{"kind":"end","step":`+itoa(i)+`,"command":"cmd `+itoa(i)+`","observation":"observation `+itoa(i)+`"}`)
+		lines = append(lines, `{"kind":"step","step":`+runAskItoa(i)+`,"command":"cmd `+runAskItoa(i)+`","observation":"observation `+runAskItoa(i)+`"}`)
 	}
 	writePlanTrajectory(t, dir, "child", lines...)
 	rec := &runAskRecorder{inner: &scriptedCompleter{steps: script}}
@@ -59,7 +59,7 @@ func runAskFixture(t *testing.T, script ...step) (*Agent, *runAskRecorder, strin
 	armPlanStore(t, agent, path, "ask-chat")
 	return agent, rec, path
 }
-func itoa(n int) string {
+func runAskItoa(n int) string {
 	const digits = "0123456789"
 	if n < 10 {
 		return string(digits[n])
@@ -73,7 +73,7 @@ func TestAskRunExactReadTaskBeltAndBoundedPage(t *testing.T) {
 			return toolResponse("c1", "read_task", `{"id":"t-child"}`), nil
 		},
 		func(_ context.Context, m []ai.Message) (*ai.Response, error) {
-			transcript := messagesText(m)
+			transcript := runAskMessagesText(m)
 			for _, want := range []string{"replace the lookup", "Changed lookup and refresh.", "use token checks", "cmd 3", "cmd 14"} {
 				if !strings.Contains(transcript, want) {
 					t.Errorf("tool page missing %q", want)
@@ -99,7 +99,7 @@ func TestAskRunExactReadTaskBeltAndBoundedPage(t *testing.T) {
 			t.Fatalf("belt=%#v, want exactly read_task", req.Tools)
 		}
 	}
-	first := messagesText(rec.inner.request(0))
+	first := runAskMessagesText(rec.inner.request(0))
 	if strings.Contains(first, "old 1") || !strings.Contains(first, "old 4") {
 		t.Fatalf("earlier exchange bound not applied: %s", first)
 	}
@@ -120,7 +120,7 @@ func TestAskRunRefusesMissingSourceOnce(t *testing.T) {
 	if got.Text != "still unknown" || len(got.From) != 0 || len(rec.requests) != 2 {
 		t.Fatalf("got=%#v requests=%d", got, len(rec.requests))
 	}
-	if !strings.Contains(messagesText(rec.inner.request(1)), "source") {
+	if !strings.Contains(runAskMessagesText(rec.inner.request(1)), "source") {
 		t.Fatal("retry did not demand a source")
 	}
 }
@@ -159,7 +159,7 @@ func runAskNotes(t *testing.T, path string) []plandb.Note {
 	defer s.Close()
 	return s.Notes("root", 0)
 }
-func messagesText(ms []ai.Message) string {
+func runAskMessagesText(ms []ai.Message) string {
 	var b strings.Builder
 	for _, m := range ms {
 		for _, p := range m.Content {
