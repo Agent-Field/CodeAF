@@ -103,13 +103,19 @@ var (
 )
 
 // poolErrandsStart seats the tracker for a profile and answers it, so the
-// errands wired below register on one context and one WaitGroup.
+// errands wired below register on one context and one WaitGroup. A profile
+// wired twice — the host road assembles its options once per launch on the
+// same profile — keeps the tracker it has: replacing it would orphan the first
+// wiring's errands, which is the leak this tracker exists to close.
 func poolErrandsStart(profileDir string) *poolErrands {
+	poolErrandsMu.Lock()
+	defer poolErrandsMu.Unlock()
+	if held := poolErrandSet[profileDir]; held != nil {
+		return held
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	held := &poolErrands{ctx: ctx, cancel: cancel}
-	poolErrandsMu.Lock()
 	poolErrandSet[profileDir] = held
-	poolErrandsMu.Unlock()
 	return held
 }
 
