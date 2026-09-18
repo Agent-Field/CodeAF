@@ -128,6 +128,11 @@ func carriesAll(parts []hudPart, kinds []hudSeg) bool {
 // so.
 func (a *app) seamParts(width int) []hudPart {
 	parts := a.telemetry(width)
+	if _, up := a.questionDialog(width); up {
+		// The visible decision already says what is waiting and who must answer.
+		dropKind(&parts, segQuestions)
+		dropKind(&parts, segState)
+	}
 	if a.statusQuiet() {
 		parts = quietParts(parts)
 	}

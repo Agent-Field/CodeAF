@@ -1311,7 +1311,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | The words on the row | What you type | What happens |
 | --- | --- | --- |
 | **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; enter says `model · glm-5.3 · for the next conversation you start here`. Nothing behind home is touched. |
-| **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — home says `next conversation opens in ~/src/parser` and the rule above the box says it too. |
+| **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — `project: ~/src/parser` on the seam above the box shows the selection, with no duplicate footer message. |
 | **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
 | **`onto home's tray`** | `/attach <path>` · `/image <path>` | The file rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` says `type the path after /attach · or drop the file here`. |
@@ -1371,14 +1371,16 @@ Either way home says, on the line under the box:
 home keeps the model it had, and nothing is written down until a conversation actually opens
 on the pin — at which point it is an ordinary model switch, note and all.
 
-**The model pin lasts as long as this window does.** **The folder pin is spent** once the
-conversation has opened there, and the rule goes back to following the row under your
-cursor.
+**The model and project selections last as long as this window does.** Starting a
+conversation, returning home, moving the cursor or clearing the box does not reset the
+selected project. A new window starts with its own default.
 
 **`alt+w` is the same gesture for the folder** — press it, or press the path on the rule, and
-the target walks to the next project on this machine, round again from the last. Home says
-`next conversation opens in ~/work/beta`. On a machine with one project there is nowhere to
-move to, and `alt+w project` is simply not on the line under the box.
+the target walks through the projects in the panel's order, including projects with only
+standing work, and wraps after the last. Both controls share one selection, shown only
+as `project: <path>` on the seam. If `/folder` selected a destination outside the panel,
+the next cycle starts at its first project. With just one destination already selected,
+`alt+w project` is absent.
 
 **`ctrl+v` and `alt+y` are the same gesture for the two cells after the model.** `auto`
 is how hard the next conversation will think — with nothing pinned, the `thinking` row in

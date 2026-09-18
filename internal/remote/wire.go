@@ -423,11 +423,12 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
-	MethodSubmit      = "Submit"      // SubmitArgs → StreamRef, then "event" frames
-	MethodSubmitImage = "SubmitImage" // SubmitImageArgs → StreamRef, then "event" frames
-	MethodSubmitFiles = "SubmitFiles" // SubmitFilesArgs → StreamRef, then "event" frames
-	MethodFollowUp    = "FollowUp"    // SubmitArgs → StreamRef, then "event" frames
-	MethodSteer       = "Steer"       // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
+	MethodSubmitFiles     = "SubmitFiles"     // SubmitFilesArgs → StreamRef, then "event" frames
+	MethodFollowUp        = "FollowUp"        // SubmitArgs → StreamRef, then "event" frames
+	MethodQuestionReplace = "ReplaceQuestion" // QuestionArgs → StreamRef
+	MethodSteer           = "Steer"           // SubmitArgs → StreamRef, then "event" frames
 	// MethodTyping is a person having started writing, and it is the only frame
 	// on this wire that nobody waits for ([Agent.Typing]).
 	//

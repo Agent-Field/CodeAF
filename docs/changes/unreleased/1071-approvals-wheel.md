@@ -4,6 +4,8 @@ title: UX changes — clearer home panels and consistent message-box controls
 pr: 1071
 surface: [chat]
 invalidates:
+  - "A decision box stopped at the ends of its options, required navigation before its text shortcuts worked, and left hints and a composer below its frame. Options now wrap both ways, `c other` and `? clarify` work before navigation, and the lower boundary carries only esc and those two available actions. Text entry appears inside the box, nothing follows its lower edge, and the seam omits duplicate yellow decision status while the box is open."
+  - "Home’s project cycle rebuilt its order around the current pin, trapping opt+w and seam clicks between two destinations. Both now walk the projects panel’s stable order, including standing-only projects, and share a selection that survives starting a conversation and returning home for the lifetime of the window. The duplicate `next conversation opens in …` footer message is removed; the seam alone names the project."
   - "A needs-you description with a thread-title line could lose its answer buttons when the home field had few rows. The selected description now uses the available body height, so its answers remain visible on a quiet home."
   - "Home's recent-conversation and running-work panels are now named `threads` and `tasks`, with bare headings. Tasks combine live work and root tasks begun or finished in the last 24 hours, ordered newest first; selecting a task opens that task's page."
   - "Home's arrows used to cross into projects and spend, and Up could leave the field for the tab bar. Arrows now stay in the field, Right opens the selected row's actions, and Left closes them. Projects and spend rows are read-only; the project control above the message box remains interactive."

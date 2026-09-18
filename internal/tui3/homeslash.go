@@ -392,7 +392,6 @@ func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
 		if path := a.resolvePath(rest); path != "" {
 			if info, err := os.Stat(path); err == nil && info.IsDir() {
 				a.target.where = path
-				a.home.say(targetMovedWord+a.hostedPath(shortPath(path, a.tilde, 0)), "")
 				a.touch()
 				return nil
 			}

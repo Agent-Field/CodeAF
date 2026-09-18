@@ -1967,6 +1967,7 @@ func (a *Agent) InterruptNamed(door StopDoor, name string) {
 }
 
 func (a *Agent) interruptNamed(door StopDoor, name string) {
+	a.interruptDiscussions()
 	// ONE GENERATION FOR THIS STOP, minted before the turn context dies so a
 	// leftover handler that has not yet entered callRole shares the same
 	// "what changed" decision as the redirect that follows (interrupt_fan.go).
@@ -2278,6 +2279,7 @@ func (a *Agent) Close() error {
 	// that has already earned a name owes the journal one line, and cutting the
 	// process between the answer and the append would lose it (title.go).
 	a.waitForTitle()
+	a.closeDiscussions()
 	if done != nil {
 		timer := time.NewTimer(closeGrace)
 		select {
@@ -2744,6 +2746,15 @@ func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
 // become one authored user-role message; control guidance and a person's steer
 // remain their own messages.
 func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool) {
+	for _, message := range a.discussionHistory {
+		a.recordLocked(message)
+	}
+	a.discussionHistory = nil
+	for _, id := range a.discussionPending {
+		a.discussionRecorded[id] = true
+	}
+	a.discussionPending = nil
+	a.forgetRecordedDiscussionsLocked()
 	queued := a.steering
 	a.steering = nil
 	if includeAmbient {

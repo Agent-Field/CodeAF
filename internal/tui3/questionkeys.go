@@ -213,8 +213,9 @@ const (
 const (
 	questionEnterKey   = "enter"
 	questionLaterKey   = "esc"
-	questionOpenKey    = "o"
-	questionCommentKey = "c"
+	questionOpenKey    = "O"
+	questionCommentKey = "o"
+	questionNoteKey    = "c"
 	questionCompareKey = "x"
 	questionAskBackKey = "?"
 	questionDecideKey  = "d"
@@ -331,13 +332,15 @@ var questionKeys = []questionVerb{
 	{key: questionEnterKey, word: "send it", forms: formsCard, needs: needOther, tier: keyPrimary},
 	{key: questionBackKey, word: "back to the list", forms: formsCard, needs: needOther, tier: keyPrimary},
 	{key: questionOpenKey, word: "open full", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
-	{key: questionCommentKey, word: "change", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
+	{key: questionCommentKey, word: "other", forms: formsLine | formsCard | formsRoom, needs: needWords, giveUp: 5},
+	{key: questionNoteKey, word: "note", forms: formsRoom, needs: needWords, giveUp: 5},
+	{key: questionNoteKey, word: "change", forms: formsRatify, needs: needWords, giveUp: 5},
 	{key: questionCompareKey, word: "compare", forms: formsRoom, needs: needCompare, giveUp: 4},
 	// `?` IS ON THE ROW AS WELL AS THE PANEL. Asking the asker back is a way of
 	// answering any question that takes words, and a question drawn as one row is
 	// still a question somebody may not understand — the row gave `c change` and
 	// withheld `? ask back`, which is half a door.
-	{key: questionAskBackKey, word: "ask back", forms: formsLine | formsCard | formsRoom, needs: needWords, giveUp: 4},
+	{key: questionAskBackKey, word: "clarify", forms: formsLine | formsCard | formsRoom, needs: needWords, giveUp: 4},
 	{key: questionDecideKey, word: "you decide", forms: formsCard | formsRoom, needs: needHands, giveUp: 4},
 	{key: questionDialKey, word: "decide these from now on", forms: formsCard | formsRoom, needs: needDial, giveUp: 7},
 	// THE RULE OFFER IS THE LAST THING GIVEN UP AFTER THE WAY OUT, because it
@@ -487,6 +490,10 @@ const questionKeyGap = " · "
 // and what `esc` actually does on a confirmation.
 func questionVerbWord(q questionShown, verb questionVerb) string {
 	switch verb.key {
+	case questionCommentKey:
+		if q.question.Ask == session.AskRatify {
+			return "change"
+		}
 	case questionRuleKey:
 		return questionRuleWord(q.question)
 	case questionLaterKey:
@@ -814,7 +821,11 @@ func questionOwnsBox(q session.Question) bool {
 // wrote a rule. None of those keys was aimed at the block; each was the first
 // character of a sentence, and what stayed in the box was the rest of it.
 //
-// THE RULE, AND IT IS WRITTEN HERE BECAUSE THIS IS THE TABLE THE KEYS IT IS
+// `o other` AND `? clarify` ARE EXPLICIT TEXT DOORS AND WORK IMMEDIATELY.
+// They open text entry rather than deciding anything. Other letter commands
+// retain the aiming rule below; an existing draft keeps all its letters.
+//
+// THE RULE FOR THOSE OTHER COMMANDS, AND IT IS WRITTEN HERE BECAUSE THIS IS THE TABLE THE KEYS IT IS
 // ABOUT LIVE IN: A VERB ON THIS TABLE BELONGS TO THE BOX UNTIL THE QUESTION HAS
 // THE HAND. `d`, `c`, `o`, `r`, `u`, `x`, `?`, `D`, `s`, `g` are every one of
 // them the first letter of a word somebody types into a chat box, and the block

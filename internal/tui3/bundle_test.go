@@ -2386,20 +2386,16 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	a.cost = 0.20 // a figure that moved THIS INSTANT, and still may not glow
 
 	line := a.legend(200)
-	if !strings.Contains(line, a.pal.askBold(waitingWord)) {
-		t.Fatalf("the state cluster is not the question hue:\n%q", line)
+	if strings.Contains(line, waitingWord) {
+		t.Fatalf("the seam repeats the open decision:\n%q", line)
 	}
 	if !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("a number is competing with a question:\n%q", line)
 	}
-	// AND THE SEAM IS THE HUE'S SECOND HOME AGAIN. While a person is being
-	// asked something the whole left label — the model, since the name came
-	// off the seam on 2026-09-17 — goes violet with the state word: the
-	// question is bottom-anchored and so is this border, which is the surface
-	// pointing at it with both hands (render.go's [app.legend]).
+	// The model keeps its ordinary seam presentation while the box owns attention.
 	legend := a.legend(120)
-	if !strings.Contains(legend, a.pal.ask("m")) {
-		t.Fatalf("the seam's label is not the question hue:\n%q", legend)
+	if strings.Contains(plain(legend), waitingWord) {
+		t.Fatalf("the seam still repeats the question: %q", legend)
 	}
 
 	// Working, the paint is spent on ALIVENESS and on nothing else: the spinner
@@ -3027,11 +3023,11 @@ func TestHeldProposalAnswersKeepTheirMeanings(t *testing.T) {
 // on the row with their keys now, so the box is words: what a person types is a
 // correction, and a correction is a yes to the corrected version.
 func TestEveryTypedSentenceIsACorrectionAndNotAHiddenAnswer(t *testing.T) {
-	// The words are chosen not to open with a key the question DRAWS: `c` is
-	// `[c] change` and `?` is `[?] ask back` over an empty box, which is the
+	// The words are chosen not to open with a key the question DRAWS: `o` is
+	// `o other` and `?` is `? clarify` over an empty box, which is the
 	// trade every letter on this block is held to (question.go's key grammar).
 	// Everything else is a letter.
-	for _, text := range []string{"no", "nope", "stop", "don't", "yes", "ok", "sure", "no, use the flag"} {
+	for _, text := range []string{"no", "nope", "stop", "don't", "yes", "change", "sure", "no, use the flag"} {
 		t.Run(text, func(t *testing.T) {
 			a, agent, _ := taskApp(t)
 			agent.pending = []uint64{7}
@@ -3065,7 +3061,7 @@ func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 
 	// The box says what it is for while the question is open.
 	block, _, _, _ := a.chrome(a.width)
-	if !strings.Contains(plain(strings.Join(block, "\n")), taskRedirectLane) {
+	if !strings.Contains(plain(strings.Join(block, "\n")), "o other") {
 		t.Fatalf("the input box does not offer the correction lane:\n%s", plain(strings.Join(block, "\n")))
 	}
 

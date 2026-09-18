@@ -5,8 +5,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE TARGET — the box at home is a draft for the conversation it opens ────
@@ -44,12 +42,9 @@ import (
 // screen's: "let me set the model before I start" is worth nothing if walking
 // into a conversation and back out forgets it.
 //
-// THE FOLDER PIN IS SPENT WHEN A CONVERSATION STARTS FROM HOME and the model
-// pin is not. They are different kinds of decision: a folder is where THIS
-// sentence goes, and once it has gone there the pin is a stale answer to a
-// question nobody asked again — the cursor's own row is the honest reading from
-// then on. A model is a preference about how you work, and a person who set it
-// once meant it for the next one too.
+// THE PROJECT PIN LASTS AS LONG AS THE WINDOW, just like the model and effort.
+// Starting a conversation must not undo an explicit choice, nor may a cursor
+// move or a return to home silently change the destination of the next one.
 
 // homeTarget is the draft the box at home is for: where the next conversation
 // opens, what it runs on, and the model list opened over it.
@@ -63,13 +58,12 @@ type homeTarget struct {
 	where string
 	// model is the model the next conversation opens on, and "" is this
 	// window's own ([app.model]). It is pinned by `/model` at home and by
-	// a press on its cell, and it survives the conversation that spends the
-	// folder pin (the owner's ruling above).
+	// a press on its cell, and it lasts as long as this window.
 	model string
 	// effort is the rung the next conversation thinks at, "" for what the
 	// install would do anyway ([app.targetEffortStanding]). It is pinned by
 	// `ctrl+v` and a press on the cell, and — like the model — it survives the
-	// conversation that spends the folder: how hard you think is how you work
+	// conversation that uses it: how hard you think is how you work
 	// (boxseam.go).
 	effort string
 	// approval is the posture the next conversation opens at, "" for the rows
@@ -116,12 +110,6 @@ func (a *app) targetModelPinned() bool {
 // [app.composerShowing]'s reason.
 func (a *app) targetPickShowing() bool { return a.at(pageHome) && a.target.pick.open }
 
-// spendTargetWhere is the folder pin being SPENT: a conversation started from
-// home has used it, and what is honest from the next frame on is the cursor's
-// own row again (the owner's ruling in this file's header). The model pin is
-// deliberately not touched.
-func (a *app) spendTargetWhere() { a.target.where = "" }
-
 // ── the rule ────────────────────────────────────────────────────────────────
 
 // The sentences home's rule says. Each is quoted in the manual exactly as it is
@@ -141,8 +129,6 @@ const (
 	// just happened, because "did that change the conversation behind home"
 	// is the exact question the old silent `/model` left a person holding.
 	targetPinnedModelWord = " · for the next conversation you start here"
-	// targetMovedWord is what the same line says when `alt+w` moved the folder.
-	targetMovedWord = "next conversation opens in "
 	// targetPickWord is the foot while the model list is open, in the hint
 	// grammar — the same sentence the composer layer's own list says, because
 	// it is the same list answering the same keys ([composerPickWord]).
@@ -273,45 +259,44 @@ func (a *app) clearTargetSpans() {
 // [placeHome.owns] before the router claims a single chord and from
 // [app.placeKeyPress] on the other places.
 
-// targetMovable is whether `alt+w` has anywhere to go, ASKED BY THE DRAW.
-//
-// IT MAY NOT WALK THE DISK. [app.composerDestinations] falls back to
-// [app.readWorld] when the projects have not been read yet, and a walk is a
-// thing a keystroke may do and a draw may not (ARCHITECTURE.md's fourth law) —
-// so this counts what home has already read and never asks for more. The chord
-// itself uses the full list, because a keystroke may pay for it.
-func (a *app) targetMovable() bool {
+// targetDestinations uses the projects panel's order, including projects known
+// only through standing work. The selected path never moves to the front: doing
+// that on each press traps the cycle between the pin and the launch folder.
+// Everything comes from home's caches, so the hint can ask without disk I/O.
+func (a *app) targetDestinations() []string {
+	world := a.home.world
+	world.Projects = a.home.everyProject()
+	launch := a.home.launch
+	if launch == "" {
+		launch = a.workspace
+	}
+	in := homeGridInput{world: world, launch: launch, bucket: a.home.bucket}
+	out := make([]string, 0, len(world.Projects)+1)
 	seen := map[string]bool{}
-	for _, path := range append([]string{a.targetWhere(), a.workspace}, projectPaths(a.home.world)...) {
-		if path = strings.TrimSpace(path); path != "" {
+	add := func(path string) {
+		path = strings.TrimSpace(path)
+		if path != "" && !seen[path] {
 			seen[path] = true
-		}
-		if len(seen) > 1 {
-			return true
+			out = append(out, path)
 		}
 	}
-	return false
-}
-
-// projectPaths is the world's projects as bare paths, for the count above.
-func projectPaths(world session.World) []string {
-	out := make([]string, 0, len(world.Projects))
-	for _, project := range world.Projects {
-		out = append(out, project.Path)
+	for _, project := range projectsOrdered(&in) {
+		add(project.Path)
 	}
 	return out
 }
 
-// moveTarget is `alt+w`: the next folder on the list, round again from the
-// last, said on home's own message line.
-//
-// IT IS [app.composerMove]'S OWN WALK over the same list, and it is the same
-// list on purpose ([app.composerDestinations]): "everywhere a thing this window
-// starts can go" is one question, and two answers to it would be two cycles a
-// person has to learn separately on one screen.
+// targetMovable asks the same list the key and seam click walk.
+func (a *app) targetMovable() bool {
+	places := a.targetDestinations()
+	return len(places) > 1 || len(places) == 1 && places[0] != a.targetWhere()
+}
+
+// moveTarget walks the projects once in panel order and wraps at the end.
+// Both the keyboard and the seam press use this one persistent selection.
 func (a *app) moveTarget() bool {
-	places := a.composerDestinations()
-	if len(places) < 2 {
+	places := a.targetDestinations()
+	if len(places) == 0 || len(places) == 1 && places[0] == a.targetWhere() {
 		return false
 	}
 	here := a.targetWhere()
@@ -323,7 +308,6 @@ func (a *app) moveTarget() bool {
 		}
 	}
 	a.target.where = next
-	a.home.say(targetMovedWord+a.hostedPath(shortPath(next, a.tilde, 0)), "")
 	a.touch()
 	return true
 }

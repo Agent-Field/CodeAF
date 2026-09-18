@@ -53,12 +53,9 @@ import (
 //
 // ── WHAT STICKS AND WHAT IS SPENT ──────────────────────────────────────────
 //
-// homedraft.go's ruling stands: the FOLDER pin is spent by the conversation
-// that uses it and the MODEL pin survives, because one is where this sentence
-// goes and the other is how a person works. The rung follows the model — how
-// hard you think is how you work. The GATE is spent, like the folder: an open
-// gate is the one pin on this line that is a safety claim, and a claim made
-// about one conversation must not quietly become the default for every one
+// The project, model and rung survive the conversation that uses them: they
+// are preferences about where and how a person works. The GATE alone is spent:
+// it is a safety claim about one conversation, never a default for every one
 // after it. The cell is drawn always, so opening it again is one chord.
 //
 // ── WHAT THE UNPINNED CELLS SAY ────────────────────────────────────────────
@@ -267,11 +264,10 @@ const targetPinnedTail = targetPinnedModelWord
 // THE RUNG AND THE GATE ARE SET OFF THE LOOP (offloop.go's law), through the
 // same doors [app.setEffortRung] and [app.setApprovalPosture] use: the engine
 // rebuilds the gate and, over a connection, a far machine does, and neither is
-// a thing this window may wait on under a keystroke. The pins are spent HERE,
+// a thing this window may wait on under a keystroke. The gate pin is spent HERE,
 // on the loop, so a door that is slow or refuses still leaves the draft honest
 // on the next frame.
 func (a *app) applyTargetPins() tea.Cmd {
-	a.spendTargetWhere()
 	a.applyTargetModel()
 	rung, posture := strings.TrimSpace(a.target.effort), strings.TrimSpace(a.target.approval)
 	a.target.approval = ""

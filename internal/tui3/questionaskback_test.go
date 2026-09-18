@@ -97,8 +97,8 @@ func TestAskingBackOnAConsentDoesNotAnswerIt(t *testing.T) {
 	if cmd := lab.a.askBack(head, "", "what is this command going to touch?"); cmd != nil {
 		cmd()
 	}
-	if len(lab.answer) != 0 {
-		t.Fatalf("asking back about a permission ANSWERED it: %+v", lab.answer)
+	if len(lab.answer) != 1 || !lab.answer[0].Clarify || session.AnswerResolves(lab.answer[0]) {
+		t.Fatalf("clarification did not preserve the permission: %+v", lab.answer)
 	}
 }
 

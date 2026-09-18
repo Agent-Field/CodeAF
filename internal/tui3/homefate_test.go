@@ -121,8 +121,8 @@ func TestFolderAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatal("the pick did not land back on home")
 	}
-	if want := targetMovedWord + a.hostedPath(shortPath(inner, a.tilde, 0)); a.home.msg != want {
-		t.Fatalf("home said %q, want %q", a.home.msg, want)
+	if a.home.msg != "" {
+		t.Fatalf("the project selection added a footer message: %q", a.home.msg)
 	}
 	// THE RULE ABOVE THE BOX SAYS IT ON THE VERY NEXT FRAME.
 	if text := homeText(a); !strings.Contains(text, targetPathWord(a)) {
@@ -244,8 +244,8 @@ func TestAttachAFolderAtHomePinsTheTarget(t *testing.T) {
 	if len(a.chips) != 0 {
 		t.Fatalf("a folder reached the tray: %+v", a.chips)
 	}
-	if want := targetMovedWord + a.hostedPath(shortPath(inner, a.tilde, 0)); a.home.msg != want {
-		t.Fatalf("home said %q, want %q", a.home.msg, want)
+	if a.home.msg != "" {
+		t.Fatalf("the project selection added a footer message: %q", a.home.msg)
 	}
 }
 

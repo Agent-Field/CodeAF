@@ -229,6 +229,9 @@ func (a *Agent) RebuildApprovalGate() error {
 // the conversation's own posture where one has been set, and the launch's
 // config where none has.
 func (a *Agent) guardianOn() bool {
+	if a.approvalParent != nil {
+		return a.approvalParent.guardianOn()
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.guardianOverride != nil {

@@ -199,8 +199,8 @@ the list`, with the card's own answers in front of it when a card is up and
 
 **The answers in that line are the ones the card actually drew, and never one more.** A
 card that offers all three reads
-`1 yes, set it up · 3 just once · 0 no · c change`; a one-off reminder's card,
-which has no `just once` to give, reads `1 yes, set it up · 0 no · c change`.
+`1 yes, set it up · 3 just once · 0 no · o other`; a one-off reminder's card,
+which has no `just once` to give, reads `1 yes, set it up · 0 no · o other`.
 The line is built from the question rather than written out, so it cannot name a digit that
 would do nothing.
 
@@ -275,7 +275,7 @@ window is in no project at all. A reminder belongs to no repository; a watch on 
 row is drawn at the top of the list whichever project it ended up in, and the project it
 belongs to is what the errand's own record says.
 
-## How do I answer the card, or say no to it — 1 yes, c change when or where, 3 just once, 0 no
+## How do I answer the card, or say no to it — 1 yes, o other when or where, 3 just once, 0 no
 
 When the exchange gets far enough to propose something that keeps working, a card appears in
 the pane with your own words, when it would wake, and what it would cost per run. Nothing is

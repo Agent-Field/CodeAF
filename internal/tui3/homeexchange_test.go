@@ -452,10 +452,10 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 		// A one-off reminder. "Do it once, now" says the wrong thing at the
 		// wrong moment for a line that was meant for six o'clock, so the card
 		// draws two numbered chips and the hint may name two digits.
-		{"a one-off reminder", standReminder(), "1 yes, set it up · 0 no · c change", 2},
+		{"a one-off reminder", standReminder(), "1 yes, set it up · 0 no · o other", 2},
 		// A watch is a thing a person may reasonably want done once, now — the
 		// third answer is drawn, so the third digit is named.
-		{"a watch", standItem(), "1 yes, set it up · 3 just once · 0 no · c change", 3},
+		{"a watch", standItem(), "1 yes, set it up · 3 just once · 0 no · o other", 3},
 	} {
 		lab := newErrandLab(t)
 		mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -1066,7 +1066,7 @@ func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) 
 }
 
 // TestAChangedCardIsReplacedByTheOneThatFollowsIt is the one case where a card
-// leaves the pane: `c change`, a correction typed, and the model proposing
+// leaves the pane: `o other`, a correction typed, and the model proposing
 // again. Two cards about one proposal would be one question asked twice.
 func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	lab := newErrandLab(t)

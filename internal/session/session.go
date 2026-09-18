@@ -625,6 +625,8 @@ const (
 	// in the middle renumbers every kind under it, and a window and an engine
 	// on two builds would then disagree about what each other's events were.
 	EventRowNews
+	// EventQuestionDiscussion carries a reply beside a pending decision.
+	EventQuestionDiscussion
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -661,6 +663,8 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
+	Discussion *QuestionDiscussion `json:",omitempty"`
+
 	Kind          EventKind
 	Text          string
 	ShortTitle    string `json:"ShortTitle,omitempty"`
@@ -2067,6 +2071,19 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// Clarification streams and their deferred history share the agent lock.
+	// questionParent is installed before a child becomes reachable.
+	questionParent     func(Event)
+	approvalParent     *Agent
+	discussionEvents   []Event
+	discussionEventSeq uint64
+	discussionRecorded map[string]bool
+
+	discussions       map[string]*questionDiscussion
+	discussionSeq     uint64
+	discussionHistory []ai.Message
+	discussionPending []string
+
 	config Config
 	client Completer
 	// managedClient distinguishes the provider adapter built by New from a test

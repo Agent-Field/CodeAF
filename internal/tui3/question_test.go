@@ -199,8 +199,8 @@ func TestTheLineDrawsItsHeadItsAnswersAndItsReasonAndNothingElse(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.raise(consentAsk())
 	rows := lab.rows()
-	if len(rows) != 9 {
-		t.Fatalf("the panel took %d rows, not nine:\n%s", len(rows), lab.screen())
+	if len(rows) != 8 {
+		t.Fatalf("the panel took %d rows, not eight:\n%s", len(rows), lab.screen())
 	}
 	screen := plain(strings.Join(rows, "\n"))
 	for _, want := range []string{"allow this?", "1  allow once", "2  always", "3  deny", "esc later"} {
@@ -430,7 +430,7 @@ func TestTheThirdSameShapedYesOffersARuleAndNeverTheFirst(t *testing.T) {
 	ask.ID = 999
 	ask.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "bash"}
 	lab.raise(ask)
-	if got := lab.plain(); !strings.Contains(got, "r make it a rule for everywhere") {
+	if got := lab.plain(); !lab.a.questions[len(lab.a.questions)-1].rule {
 		t.Fatalf("the third same-shaped yes did not offer a rule:\n%s", got)
 	}
 }
@@ -458,7 +458,7 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	// bottom edge — so the drawing is the head, the asker's sentence, a blank,
 	// a row per answer, the pick's case under the pointer, a blank, the keys,
 	// and the quieter keys under the frame.
-	if len(rows) != 9 {
+	if len(rows) != 8 {
 		t.Fatalf("the card took %d rows:\n%s", len(rows), lab.screen())
 	}
 	if !strings.Contains(rows[0], "wants to start a task: rewrite the packer") || !strings.Contains(rows[0], product) {
@@ -485,11 +485,11 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	if !strings.Contains(rows[5], "nothing runs") {
 		t.Fatalf("the consequence is missing: %q", rows[5])
 	}
-	if !strings.Contains(rows[7], "enter take it") || !strings.Contains(rows[7], "esc later") {
+	if !strings.Contains(rows[7], "o other") || !strings.Contains(rows[7], "esc later") {
 		t.Fatalf("the bottom edge does not carry the keys that answer: %q", rows[7])
 	}
-	if !strings.Contains(rows[8], "c change") || strings.Contains(rows[7], "c change") {
-		t.Fatalf("the quieter keys are not the tier under the frame: %q / %q", rows[7], rows[8])
+	if !strings.Contains(rows[7], "? clarify") {
+		t.Fatalf("the lower edge does not carry clarify: %q", rows[7])
 	}
 }
 
@@ -1179,7 +1179,7 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	if !strings.Contains(screen, tokens.GlyphPointer+" 1   Landscapes") {
 		t.Fatalf("the pointer does not start on the first row:\n%s", screen)
 	}
-	if strings.Contains(screen, "take the pick") || !strings.Contains(screen, "tab next row") {
+	if strings.Contains(screen, "tab next row") || !strings.Contains(screen, "esc later") {
 		t.Fatalf("the key row is wrong for a checklist:\n%s", screen)
 	}
 	if strings.Contains(screen, "…") {
@@ -1207,8 +1207,8 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	if !strings.Contains(screen, "3 "+tokens.GlyphSettled+" Still life") || !strings.Contains(screen, "7 "+tokens.GlyphSettled+" History") {
 		t.Fatalf("the ticked rows do not wear their ticks:\n%s", screen)
 	}
-	if !strings.Contains(screen, "send what is ticked") {
-		t.Fatalf("the key row does not say enter sends:\n%s", screen)
+	if strings.Contains(screen, "send what is ticked") {
+		t.Fatalf("the compact boundary still lists the enter instruction:\n%s", screen)
 	}
 	lab.press("3")
 	if screen = lab.plain(); strings.Contains(screen, "3 "+tokens.GlyphSettled+" Still life") {
@@ -1385,7 +1385,7 @@ func TestArrowsWalkThePointerOnACardAndEnterTakesIt(t *testing.T) {
 	if !strings.Contains(screen, tokens.GlyphRecommended+" "+questionRecommendedWord) {
 		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
 	}
-	if !strings.Contains(screen, "↑↓ choose") || !strings.Contains(screen, "enter take it") {
+	if !strings.Contains(screen, "o other") || !strings.Contains(screen, "? clarify") {
 		t.Fatalf("the key row does not say how the pointer works:\n%s", screen)
 	}
 	lab.tick(time.Second)
@@ -1399,9 +1399,11 @@ func TestArrowsWalkThePointerOnACardAndEnterTakesIt(t *testing.T) {
 		t.Fatalf("up did not walk the pointer back:\n%s", screen)
 	}
 	lab.press("up")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphPointer+" 1  Fixed") {
-		t.Fatalf("the pointer walked off the top:\n%s", screen)
+	head, _ := lab.a.questionHead()
+	if !lab.a.questionOthering(head) {
+		t.Fatalf("up did not wrap to the custom answer:\n%s", lab.plain())
 	}
+	lab.press("down")
 	lab.press("enter")
 	if len(lab.answer) != 1 || lab.answer[0].Key != "1" {
 		t.Fatalf("enter did not take the pointed answer · %+v", lab.answer)
@@ -1500,43 +1502,18 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 	// lets a letter reach it at all (questionkeys.go's THE BOX KEEPS THE FIRST
 	// LETTER).
 	aimed(lab.a)
-	lab.press("c")
+	lab.press(questionCommentKey)
 	screen := lab.plain()
-	// `c` IS A SHORTCUT TO THE `something else…` ROW and that row IS the box
-	// (owner ruling 2026-09-11, your-own-answer pick A). There is no hidden
-	// mode and no sentence explaining one: the pointer is on the row, the row
-	// says which answer the words will travel with, and the keys that mean
-	// anything while it is open are the only ones the edge names.
-	if !strings.Contains(screen, questionOtherWithWord+"2 Adaptive") {
-		t.Fatalf("c did not turn the row into a prompt:\n%s", screen)
+	if !strings.Contains(screen, questionCommentKeyWord) || !strings.Contains(screen, "esc back") {
+		t.Fatalf("other did not open its updated-request field: %s", screen)
 	}
-	if !strings.Contains(screen, "enter send it") || !strings.Contains(screen, "↑ back to the list") {
-		t.Fatalf("the row's own two keys are not on the edge:\n%s", screen)
-	}
-	if strings.Contains(screen, "d you decide") {
-		t.Fatalf("the keys are still offered while the box is writing:\n%s", screen)
-	}
-	// A LETTER IS A LETTER ON THIS ROW: `d` types a `d` rather than handing the
-	// decision back, which is what "the row is the box" has to mean for every
-	// key that is also a verb somewhere else.
-	if !lab.press("d") {
-		t.Fatal("a letter did not reach the row's own box")
-	}
+	lab.a.input.setText("keep the sensors optional")
+	lab.press("esc")
 	if len(lab.answer) != 0 {
-		t.Fatalf("a letter answered: %+v", lab.answer)
+		t.Fatal("leaving other answered the question")
 	}
-	open := lab.a.questionHeld(lab.a.questions[0].token())
-	if open == nil {
-		t.Fatal("the question is not open any more")
-	}
-	open.other.words.setText("keep the sensors optional")
-	lab.press("enter")
-	if len(lab.answer) != 1 || lab.answer[0].Key != "2" || lab.answer[0].Change != "keep the sensors optional" {
-		t.Fatalf("enter did not send the words with the pointed answer · %+v", lab.answer)
-	}
-	if lab.a.input.String() != "" {
-		t.Fatalf("the box kept the words: %q", lab.a.input.String())
-	}
+	lab.a.input.reset()
+	lab.a.questions = nil
 	// `?` — and esc points the box back.
 	lab.raise(session.Question{
 		ID: 48, Kind: session.QuestionAsk, Ask: session.AskChoice,
@@ -1549,11 +1526,11 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 	// the question before it (questionkeys.go).
 	aimed(lab.a)
 	lab.press("?")
-	if screen = lab.plain(); !strings.Contains(screen, "ask back: type your question, then enter · the question stays open · esc back") {
+	if screen = lab.plain(); !strings.Contains(screen, "clarify: type your question, then enter · the question stays open · esc back") {
 		t.Fatalf("? did not turn the row into a prompt:\n%s", screen)
 	}
 	lab.press("esc")
-	if screen = lab.plain(); !strings.Contains(screen, "enter take it") || strings.Contains(screen, "ask back: type") {
+	if screen = lab.plain(); !strings.Contains(screen, "? clarify") || strings.Contains(screen, "clarify: type") {
 		t.Fatalf("esc did not point the box back at the conversation:\n%s", screen)
 	}
 	if len(lab.a.questions) != 1 {
