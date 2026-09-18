@@ -1,7 +1,7 @@
 ---
 kind: added
 title: pool status says what is waiting for a judge and what the last sweep did
-pr: 0000
+pr: 1142
 surface: [engine]
 invalidates:
   - "`codeaf pool status` counted only the outbox's rows and named the last live judge. It now also counts the unjudged rows in the pending file the headless doors leave — `pending judge: 1 · oldest do run 3h` — prints the restart sweep's own record — `last sweep: 2m ago · judged 3 · 2 still pending · 41s of 10m` — and carries both as `pending_judge` and `last_sweep` in --json beside the outbox and judge records. An install with nothing waiting and no sweep yet says `pending judge: none` and `last sweep: none yet`."
