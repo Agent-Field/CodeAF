@@ -185,16 +185,11 @@ func statusPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 // install's own sheet, then, for status, the outbox and the two doors the
 // mode opens.
 func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Time, asJSON, withCells, withStatus bool, keys []ed25519.PublicKey) error {
-	var cached *index.Index
 	// The cache is read the way show reads everything else, as an answer and
 	// not as an argument: a document that does not parse is not there yet,
 	// and the line below says so. The signature and the puller's version mark
 	// are verify's business; show reports what a person has.
-	if doc, err := os.ReadFile(filepath.Join(poolDir, "doc.json")); err == nil {
-		if parsed, err := index.Parse(doc); err == nil {
-			cached = parsed
-		}
-	}
+	cached := readCachedIndex(poolDir)
 	if asJSON {
 		return printPoolJSON(output, poolDir, cfg, cached, now, withCells, withStatus, keys)
 	}
@@ -211,29 +206,52 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		}
 	}
 	held := cached
+	// For status the probe runs BEFORE the index line, because the probe is
+	// what fetches and caches: the line below must describe the document this
+	// run now holds, not the one it held before the fetch. show asks nothing,
+	// so its line is the cache's own. prior is the cache as it stood before
+	// the fetch, read to name what a stored document replaced.
+	prior := cached
+	var relay, mirror probeSummary
+	if withStatus {
+		relay, mirror = probePool(poolDir, cfg, now, keys)
+		if relay.stored || mirror.stored {
+			cached = readCachedIndex(poolDir)
+			held = cached
+		}
+	}
+	var indexLine string
 	if held == nil {
 		// A nothing is said in a sentence, the way an empty cache is:
 		// silence and a bare header both read as a command that broke. And the
 		// index the build carries is named beside it, so a person knows there
 		// are numbers before any fetch: the seed is what a pick reads until a
 		// fresher signed one is cached.
-		line := "no index cached yet"
+		indexLine = "no index cached yet"
 		if seed, err := index.SeedIndex(); err == nil {
-			line = fmt.Sprintf("no index cached yet · built-in seed of %s, %s", seed.Generated().Format("2006-01-02"), countWord(indexCellCount(seed), "cell", "cells"))
+			indexLine = fmt.Sprintf("no index cached yet · built-in seed of %s, %s", seed.Generated().Format("2006-01-02"), countWord(indexCellCount(seed), "cell", "cells"))
 			held = seed
 		}
-		if _, err := fmt.Fprintln(output, line); err != nil {
-			return err
-		}
 	} else {
-		generated := cached.Generated()
-		if _, err := fmt.Fprintf(output,
-			"index · generated %s · %s old · schema %d · %s · %s · %s · min installs %d\n",
+		generated := held.Generated()
+		indexLine = fmt.Sprintf("index · generated %s · %s old · schema %d · %s · %s · %s · min installs %d",
 			generated.Format("2006-01-02"), reltime.Elapsed(now.Sub(generated)),
-			cached.Schema(), countWord(len(cached.Metrics()), "metric", "metrics"),
-			countWord(len(cached.Judges()), "judge", "judges"), countWord(indexCellCount(cached), "cell", "cells"), cached.MinInstalls()); err != nil {
-			return err
+			held.Schema(), countWord(len(held.Metrics()), "metric", "metrics"),
+			countWord(len(held.Judges()), "judge", "judges"), countWord(indexCellCount(held), "cell", "cells"), held.MinInstalls())
+		// The tail says what THIS run's probe did to the cache: a document it
+		// stored is named as cached now, beside what stood there before — the
+		// built-in seed, or the day of the document it replaced. A probe that
+		// stored nothing leaves the line as it has always been.
+		if withStatus && (relay.stored || mirror.stored) {
+			was := "built-in seed"
+			if prior != nil {
+				was = prior.Generated().Format("2006-01-02")
+			}
+			indexLine += fmt.Sprintf(" · cached now (was %s)", was)
 		}
+	}
+	if _, err := fmt.Fprintln(output, indexLine); err != nil {
+		return err
 	}
 	// One line per declared metric, after the index line: the count above
 	// says how many, these say which — and which of them are judged scores
@@ -278,10 +296,9 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		if _, err := fmt.Fprintln(output, pendingJudgeLine(readPendingJudge(poolDir), now)); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintln(output, sweepLastLine(readSweepLast(poolDir), now)); err != nil {
+		if _, err := fmt.Fprintln(output, sweepLastLine(readSweepLast(poolDir), judgedTotal(poolDir), now)); err != nil {
 			return err
 		}
-		relay, mirror := probePool(poolDir, cfg, now, keys)
 		if _, err := fmt.Fprintln(output, relayStatusLine(cfg, relay, mirror, cached)); err != nil {
 			return err
 		}
@@ -366,15 +383,34 @@ func pendingJudgeLine(summary pendingJudgeSummary, now time.Time) string {
 // longer than this to answer has not answered.
 const poolProbeBudget = 3 * time.Second
 
+// readCachedIndex reads the document under the profile's pool directory the
+// way every reading form reads it: a file that does not parse is not there
+// yet. The signature and the puller's version mark are verify's business; a
+// reading reports what a person has.
+func readCachedIndex(poolDir string) *index.Index {
+	doc, err := os.ReadFile(filepath.Join(poolDir, "doc.json"))
+	if err != nil {
+		return nil
+	}
+	parsed, err := index.Parse(doc)
+	if err != nil {
+		return nil
+	}
+	return parsed
+}
+
 // probeSummary is one address's answer under status: whether it answered, the
 // index version it served when it did, and — when it did not — the one-line
 // reason. fromCache says the document was the copy already on disk, which the
-// relay line words differently; it is not part of the JSON shape.
+// relay line words differently; it is not part of the JSON shape. stored says
+// this pull wrote a document the cache did not hold before, which is what the
+// index line's tail reports.
 type probeSummary struct {
 	Reachable bool   `json:"reachable"`
 	Version   int64  `json:"version"`
 	Reason    string `json:"reason"`
 	fromCache bool
+	stored    bool
 }
 
 // probePool asks the relay for the index, and the mirror when the relay does
@@ -429,7 +465,7 @@ func probeAddress(url, poolDir string, keys []ed25519.PublicKey, now func() time
 	if err != nil {
 		return probeSummary{Reason: oneLine(err.Error())}
 	}
-	return probeSummary{Reachable: true, Version: result.Version, fromCache: result.FromCache}
+	return probeSummary{Reachable: true, Version: result.Version, fromCache: result.FromCache, stored: result.Changed}
 }
 
 // relayStatusLine is the one line status says about the addresses: whether the
@@ -504,13 +540,20 @@ type poolAnswer struct {
 	PendingJudge *pendingJudgeSummary `json:"pending_judge,omitempty"`
 	CanSend      *bool                `json:"can_send,omitempty"`
 	CanRead      *bool                `json:"can_read,omitempty"`
-	Relay        *probeSummary        `json:"relay,omitempty"`
-	Mirror       *probeSummary        `json:"mirror,omitempty"`
-	LastJudge    *judgeLast           `json:"last_judge"`
-	LastSweep    *sweepLast           `json:"last_sweep"`
-	Index        *indexSummary        `json:"index"`
-	Cells        []cellSummary        `json:"cells,omitempty"`
-	Own          ownSummary           `json:"own"`
+	// Identity is status's own: whether the install has minted the nonce it
+	// sends under, a pointer like every other status field so a show carries
+	// none of it.
+	Identity  *bool         `json:"identity,omitempty"`
+	Relay     *probeSummary `json:"relay,omitempty"`
+	Mirror    *probeSummary `json:"mirror,omitempty"`
+	LastJudge *judgeLast    `json:"last_judge"`
+	LastSweep *sweepLast    `json:"last_sweep"`
+	// JudgedTotal is every landing this install has had judged, counted from
+	// the markers; nil off status, so a show's shape is the one it always had.
+	JudgedTotal *int          `json:"judged_total,omitempty"`
+	Index       *indexSummary `json:"index"`
+	Cells       []cellSummary `json:"cells,omitempty"`
+	Own         ownSummary    `json:"own"`
 }
 
 // indexSummary is the cached index as the reading forms carry it: the
@@ -530,6 +573,9 @@ type indexSummary struct {
 	Cells       int             `json:"cells"`
 	MinInstalls int             `json:"min_installs"`
 	Source      string          `json:"source"`
+	// CachedNow is true on the one status whose probe stored this document,
+	// and left out otherwise so a reader sees it only when it happened.
+	CachedNow bool `json:"cached_now,omitempty"`
 }
 
 // metricSummary is one declared metric as the reading forms carry it: the
@@ -571,6 +617,18 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		SubmitURL:  cfg.SubmitURL,
 		TTLSeconds: int(cfg.TTL / time.Second),
 	}
+	// The probe runs BEFORE the index is summarized, for the same reason
+	// status's line waits for it: the summary is about the document this run
+	// holds after the fetch, and cached_now says this run stored it.
+	relay, mirror := probeSummary{}, probeSummary{}
+	cachedNow := false
+	if withStatus {
+		relay, mirror = probePool(poolDir, cfg, now, keys)
+		if relay.stored || mirror.stored {
+			cached = readCachedIndex(poolDir)
+			cachedNow = true
+		}
+	}
 	// A cached document is reported as itself; with no cache the build's seed
 	// stands in, so a script reading `index` sees the index a pick would read
 	// and the source field says which one it was.
@@ -592,6 +650,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 			Cells:       indexCellCount(held),
 			MinInstalls: held.MinInstalls(),
 			Source:      source,
+			CachedNow:   cachedNow,
 		}
 	}
 	// The cells ride beside the summary only when they were asked for:
@@ -605,6 +664,8 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		answer.Pending = &pending
 		answer.CanSend = &send
 		answer.CanRead = &read
+		identity := installIdentitySet(poolDir)
+		answer.Identity = &identity
 		dropped, last := droppedRows(poolDir)
 		answer.Dropped = &dropped
 		if last != "" {
@@ -612,7 +673,8 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 		}
 		judged := readPendingJudge(poolDir)
 		answer.PendingJudge = &judged
-		relay, mirror := probePool(poolDir, cfg, now, keys)
+		total := judgedTotal(poolDir)
+		answer.JudgedTotal = &total
 		answer.Relay = &relay
 		answer.Mirror = &mirror
 	}
@@ -774,10 +836,12 @@ func readSweepLast(poolDir string) *sweepLast {
 // judgeLastLine is the one line status says about the last judge: which model
 // answered and which seats it scored, or — when none did — how many were
 // asked, the first of them, and the one-line reason the last one failed. The
-// moment is the record's own, said in local hours and minutes.
+// moment is the record's own, said in local hours and minutes. A record only a
+// landed task ever writes, so no record at all is said for what it means —
+// nothing has landed to be judged — rather than as a judge that never ran.
 func judgeLastLine(last *judgeLast) string {
 	if last == nil {
-		return "last judge: none yet"
+		return "last judge: none yet (no landing judged)"
 	}
 	at := last.At.Format("15:04")
 	if last.Judge != "" {
@@ -795,23 +859,30 @@ func judgeLastLine(last *judgeLast) string {
 
 // sweepLastLine is the one line status says about the last sweep: what it
 // judged, what it left waiting when the deadline cut it, and how much of the
-// sweep's own budget it spent. The moment is the record's own, said the way
+// sweep's own budget it spent. Beside them stands the total every landing this
+// install has ever had judged, folded on when there is a marker to count —
+// what THIS sweep judged is the record's own, and the two together say whether
+// judging is happening at all. The moment is the record's own, said the way
 // the surface says every when — relatively. A record with no moment is no
 // record worth reporting, the same reading a missing file takes.
-func sweepLastLine(last *sweepLast, now time.Time) string {
-	if last == nil || last.At.IsZero() {
-		return "last sweep: none yet"
+func sweepLastLine(last *sweepLast, total int, now time.Time) string {
+	line := "last sweep: none yet"
+	if last != nil && !last.At.IsZero() {
+		parts := []string{
+			reltime.Short(last.At, now) + " ago",
+			fmt.Sprintf("judged %d", last.Judged),
+		}
+		if last.Left > 0 {
+			parts = append(parts, fmt.Sprintf("%d still pending", last.Left))
+		}
+		parts = append(parts, fmt.Sprintf("%s of %s",
+			reltime.Elapsed(time.Duration(last.BudgetUsed)*time.Second), reltime.Elapsed(poolSweepBudget)))
+		line = "last sweep: " + strings.Join(parts, " · ")
 	}
-	parts := []string{
-		reltime.Short(last.At, now) + " ago",
-		fmt.Sprintf("judged %d", last.Judged),
+	if total > 0 {
+		line += fmt.Sprintf(" · judged %d in all", total)
 	}
-	if last.Left > 0 {
-		parts = append(parts, fmt.Sprintf("%d still pending", last.Left))
-	}
-	parts = append(parts, fmt.Sprintf("%s of %s",
-		reltime.Elapsed(time.Duration(last.BudgetUsed)*time.Second), reltime.Elapsed(poolSweepBudget)))
-	return "last sweep: " + strings.Join(parts, " · ")
+	return line
 }
 
 // pendingRows counts what the outbox is holding. It reads the file by count
@@ -854,9 +925,10 @@ func droppedRows(poolDir string) (int, string) {
 
 // pendingRowsLine is the one line status says about the outbox: how many rows
 // wait to be sent, how many the relay or the cap dropped and the most recent
-// reason, and the two doors the mode opens. The dropped segment is left out
-// entirely when nothing was dropped, so a working install reads the way it
-// always did, and a file that kept no reason says the count alone.
+// reason, the two doors the mode opens, and — when it has been minted — the
+// install's own identity. The dropped segment is left out entirely when
+// nothing was dropped, and the identity segment when no nonce has been drawn,
+// so a working install reads the way it always did.
 func pendingRowsLine(poolDir string, cfg poolcfg.Config) string {
 	line := fmt.Sprintf("pending %d", pendingRows(poolDir))
 	if dropped, last := droppedRows(poolDir); dropped > 0 {
@@ -865,7 +937,38 @@ func pendingRowsLine(poolDir string, cfg poolcfg.Config) string {
 			line += fmt.Sprintf(" (last: %s)", oneLine(last))
 		}
 	}
-	return line + fmt.Sprintf(" · can send %s · can read %s", yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
+	line += fmt.Sprintf(" · can send %s · can read %s", yesNo(cfg.CanSend()), yesNo(cfg.CanRead()))
+	if installIdentitySet(poolDir) {
+		line += " · identity set"
+	}
+	return line
+}
+
+// installIdentitySet says whether this install has minted its nonce: a reading
+// form may not call [installNonce], which DRAWS one on the first read, so
+// status asks the file's presence alone — [installFile] is there or it is not,
+// and the word inside it never leaves the file.
+func installIdentitySet(poolDir string) bool {
+	_, err := os.Stat(filepath.Join(poolDir, installFile))
+	return err == nil
+}
+
+// judgedTotal counts the markers under [judgedDir] — every landing this
+// install has ever had judged, one file per landing-and-attempt. A directory
+// that is missing, or an entry that is not a file, counts nothing, the way
+// every other nothing here reads.
+func judgedTotal(poolDir string) int {
+	entries, err := os.ReadDir(judgedDir(poolDir))
+	if err != nil {
+		return 0
+	}
+	total := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			total++
+		}
+	}
+	return total
 }
 
 // orNowhere is an empty submit address said rather than printed empty: the

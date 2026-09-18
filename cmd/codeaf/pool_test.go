@@ -516,6 +516,21 @@ func seedJudgedMarker(t *testing.T, dir string, id uint64, attempt int) {
 	}
 }
 
+// seedInstallFile writes the install's nonce file where a sending install
+// leaves it, so status is read against what stands on disk. The bytes are a
+// fixture in the accepted shape; a reading form asks only whether the file is
+// there, never what it holds.
+func seedInstallFile(t *testing.T, dir string) {
+	t.Helper()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, installFile), []byte(strings.Repeat("a", nonceHexLen)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // seedSweepLast writes the sweep's record the way the sweep leaves it, so
 // status is read against what stands on disk.
 func seedSweepLast(t *testing.T, dir string, last sweepLast) {
@@ -647,6 +662,158 @@ func TestPoolStatusSaysWhenNothingWaitsAndNoSweepHasRun(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"last_sweep":null`) {
 		t.Fatalf("a missing sweep record was not said as null:\n%s", out.String())
+	}
+}
+
+// A fresh install that has minted its nonce says so at the end of the outbox
+// line, and one that has not says the line it always did — and looking never
+// mints the file, because a reading form writes nothing.
+func TestPoolStatusSaysTheInstallIdentityIsSetAndNeverMintsIt(t *testing.T) {
+	dir := t.TempDir()
+	seedInstallFile(t, dir)
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "can read yes · identity set") {
+		t.Fatalf("status did not say the install's identity is set:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Identity *bool `json:"identity"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Identity == nil || !*answer.Identity {
+		t.Fatalf("--json did not carry the identity: %+v", answer.Identity)
+	}
+
+	// No nonce yet: the line is the line it has always been, and the reading
+	// form did not mint one.
+	quiet := t.TempDir()
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "pending 0 · can send yes · can read yes") {
+		t.Fatalf("an install with no nonce did not print the line as it was:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "identity set") {
+		t.Fatalf("an install with no nonce claimed an identity:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(quiet, "pool", installFile)); !os.IsNotExist(err) {
+		t.Fatal("status minted the install nonce it was only reading")
+	}
+
+	// The JSON form says false rather than absent, so a script reads a
+	// not-yet-sending install from one that is.
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"identity":false`) {
+		t.Fatalf("an install with no nonce did not say false:\n%s", out.String())
+	}
+}
+
+// status counts every landing that has ever been judged, from the markers the
+// judge leaves, and folds the total into the sweep line; a line with no marker
+// to count reads as it always did, and --json carries the total beside the
+// sweep's record.
+func TestPoolStatusCountsTheJudgedInAllAndFoldsItIntoTheSweepLine(t *testing.T) {
+	dir := t.TempDir()
+	for _, id := range []uint64{3, 5, 8} {
+		seedJudgedMarker(t, dir, id, 1)
+	}
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last sweep: none yet · judged 3 in all") {
+		t.Fatalf("status did not count the judged landings in all:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		JudgedTotal *int `json:"judged_total"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.JudgedTotal == nil || *answer.JudgedTotal != 3 {
+		t.Fatalf("--json carried %v, want 3 judged in all", answer.JudgedTotal)
+	}
+
+	// No marker at all: the sweep line is the one it has always been.
+	quiet := t.TempDir()
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last sweep: none yet") {
+		t.Fatalf("status did not say no sweep has run:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "in all") {
+		t.Fatalf("status counted landings in all with no marker to count:\n%s", out.String())
+	}
+}
+
+// With no judge record the judge line says what the absence means — nothing
+// has landed to be judged, rather than the pool being off — and --json keeps
+// last_judge null.
+func TestPoolStatusSaysNoLandingWasJudgedWhenThereIsNoRecord(t *testing.T) {
+	quiet := t.TempDir()
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last judge: none yet (no landing judged)") {
+		t.Fatalf("status did not say no landing was judged:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"last_judge":null`) {
+		t.Fatalf("a missing record was not said as null:\n%s", out.String())
+	}
+}
+
+// None of the three reaches show: the reading form's words and its --json are
+// the ones they always were, so a person reading the config reads no status.
+func TestPoolShowIsUnchangedByTheIdentityTheJudgedTotalAndTheLandingSentence(t *testing.T) {
+	dir := seedIndex(t)
+	seedInstallFile(t, dir)
+	for _, id := range []uint64{1, 2, 3} {
+		seedJudgedMarker(t, dir, id, 1)
+	}
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{"identity set", "in all", "no landing judged"} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("show carried status's %q:\n%s", unwanted, out.String())
+		}
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{`"identity"`, `"judged_total"`} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("show --json carried status's %s:\n%s", unwanted, out.String())
+		}
 	}
 }
 
@@ -1753,6 +1920,144 @@ func TestPoolStatusSaysTheRelayAnswered(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "relay: reachable · index version 7") {
 		t.Fatalf("status did not say the relay answered:\n%s", out.String())
+	}
+}
+
+// indexLineIn is the index line of a reading form's answer — the line that
+// begins with "index ·", or the sentence a form with no cache prints.
+func indexLineIn(t *testing.T, body string) string {
+	t.Helper()
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "index ·") || strings.HasPrefix(line, "no index cached yet") {
+			return line
+		}
+	}
+	t.Fatalf("no index line in:\n%s", body)
+	return ""
+}
+
+// status FETCHES the index as part of saying it, so the index line must
+// describe the document this run now holds and not the one it held before the
+// fetch. On a fresh profile the first status says so — the line is the cached
+// document's, tailed with what the fetch replaced — and a second status, cache
+// already in hand, says the plain cached line.
+func TestPoolStatusSaysWhenThisRunCachedTheIndex(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := poolServer(t, priv, signedPoolDoc(7))
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "",
+	})
+	key := base64.StdEncoding.EncodeToString(pub)
+	dir := t.TempDir()
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--key", key}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("a reachable relay failed status: %v", err)
+	}
+	first := indexLineIn(t, out.String())
+	if !strings.Contains(first, "index · generated 2026-09-10") {
+		t.Fatalf("status did not describe the cached document:\n%s", first)
+	}
+	if !strings.Contains(first, "· cached now (was built-in seed)") {
+		t.Fatalf("the index line did not say this run cached the index:\n%s", first)
+	}
+	if strings.Contains(out.String(), "no index cached yet") {
+		t.Fatalf("status said there was no cache while it cached one:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--key", key}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("a second status failed: %v", err)
+	}
+	second := indexLineIn(t, out.String())
+	if strings.Contains(second, "cached now") {
+		t.Fatalf("the second status said the cache was written again:\n%s", second)
+	}
+	if !strings.Contains(second, "index · generated 2026-09-10") {
+		t.Fatalf("the second status did not describe the cached document:\n%s", second)
+	}
+}
+
+// A cache the probe REPLACES is named the same way, tailed with the day of
+// the document it displaced rather than the built-in seed.
+func TestPoolStatusSaysWhenThisRunReplacedTheCachedIndex(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := poolServer(t, priv, signedPoolDoc(7))
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "",
+	})
+	dir := t.TempDir()
+	writePoolDoc(t, dir, `{"version": 5, "schema": 1, "generated": "2026-08-01", "min_installs": 1, "judges": [], "metrics": {}, "cells": []}`)
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--key", base64.StdEncoding.EncodeToString(pub)}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("a reachable relay failed status: %v", err)
+	}
+	line := indexLineIn(t, out.String())
+	if !strings.Contains(line, "index · generated 2026-09-10") {
+		t.Fatalf("status did not describe the replacing document:\n%s", line)
+	}
+	if !strings.Contains(line, "· cached now (was 2026-08-01)") {
+		t.Fatalf("the index line did not name the document it replaced:\n%s", line)
+	}
+}
+
+// The --json answer carries what the text says: on the status that cached the
+// document, index.cached_now is true beside a source of "cache" — and only on
+// that status, since a later status stores nothing.
+func TestPoolStatusJSONSaysWhenThisRunCachedTheIndex(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := poolServer(t, priv, signedPoolDoc(7))
+	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
+		"CODEAF_MODEL_POOL_MIRROR_URL": "",
+	})
+	key := base64.StdEncoding.EncodeToString(pub)
+	dir := t.TempDir()
+
+	var out strings.Builder
+	if err := runPoolWith([]string{"status", "--json", "--key", key}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("a reachable relay failed status --json: %v", err)
+	}
+	var first struct {
+		Index *struct {
+			Source    string `json:"source"`
+			CachedNow bool   `json:"cached_now"`
+		} `json:"index"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &first); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if first.Index == nil || first.Index.Source != "cache" || !first.Index.CachedNow {
+		t.Fatalf("the first status did not say it cached the index: %+v", first.Index)
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json", "--key", key}, &out, dir, poolClock(t), lookup); err != nil {
+		t.Fatalf("a second status --json failed: %v", err)
+	}
+	var second struct {
+		Index *struct {
+			Source    string `json:"source"`
+			CachedNow bool   `json:"cached_now"`
+		} `json:"index"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &second); err != nil {
+		t.Fatalf("the second status --json did not parse: %v\n%s", err, out.String())
+	}
+	if second.Index == nil || second.Index.Source != "cache" || second.Index.CachedNow {
+		t.Fatalf("the second status claimed it cached the index: %+v", second.Index)
 	}
 }
 

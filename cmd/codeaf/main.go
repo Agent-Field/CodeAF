@@ -93,6 +93,45 @@ const surfaceMaxProcs = 8
 // AN EXPLICIT GOMAXPROCS STILL DECIDES, exactly as an explicit GOGC does just
 // below: this is a default, not a policy. And a machine no bigger than the cap
 // is left completely alone — not even the variable is set.
+//
+// ── AND A SOFT LIMIT IS THE OTHER HALF OF THE HEAP BARGAIN ──────────────────
+//
+// GOMAXPROCS caps a resource the runtime SPENDS. The raised GOGC below uncaps
+// one it KEEPS: a heap target five times the live heap is a bargain with no
+// ceiling of its own, and a surface left open for a day is exactly the shape
+// that finds the ceiling by exhausting the machine instead. debug.SetMemoryLimit
+// is the missing half — a SOFT limit over ALL runtime-managed memory, not the
+// heap alone, that the collector works to stay under by running continuously
+// rather than crossing it.
+//
+// THE LIMIT IS DERIVED FROM THE SMALLEST REAL BOUND, NOT FROM TASTE.
+// [surfaceMemoryLimit] takes HALF of the tightest bound the machine and the
+// process's cgroup give, under an absolute floor, and both halves of that are
+// there because the failure this must never cause is a limit BELOW the live
+// heap: a limit under the working set makes the collector thrash continuously,
+// which is a worse failure than the unbounded growth it was added to prevent.
+// Half a bound that can run a surface at all is far clear of the roughly 104 MB
+// a surface's resident set was measured at, and the floor refuses the small
+// machines where half of the bound would not be.
+//
+// PHYSICAL MEMORY ALONE IS THE WRONG BOUND INSIDE A CONTAINER, which is the
+// usual reason to set GOMEMLIMIT at all. The machine's physical memory there is
+// the HOST's, so a limit drawn from it lands far above what the process may
+// actually use: it never binds, and the kernel OOM-kills instead of the
+// collector working. So the cgroup the process runs in is read as well, and the
+// SMALLEST finite bound wins. A fixed generous ceiling still loses — one number
+// written by hand is wrong on a small machine and a large one at once. And a
+// bound that cannot be read (physical memory unreadable, no cgroup files, every
+// cgroup file `max`, or the cgroup v1 "no limit" sentinel) is not counted at
+// all; if none is readable the surface sets nothing, exactly as it did before
+// the cgroup read existed.
+//
+// AN EXPLICIT GOMEMLIMIT STILL DECIDES, exactly as an explicit GOGC and
+// GOMAXPROCS do above — this is a default, not a policy. A machine whose memory
+// cannot be read, or whose half would fall under the floor, has NOTHING set
+// rather than a dangerous limit. And like the scheduler cap this crosses to the
+// engine host as the variable: the child process reads GOMEMLIMIT at its own
+// startup.
 func tuneForTheSurface() {
 	if os.Getenv("GOMAXPROCS") == "" {
 		if n := surfaceProcs(runtime.NumCPU()); n < runtime.NumCPU() {
@@ -102,6 +141,12 @@ func tuneForTheSurface() {
 	}
 	if os.Getenv("GOGC") == "" {
 		debug.SetGCPercent(400)
+	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		if limit := surfaceMemoryLimit(hostTotalMemory(), hostCgroupMemoryLimit()); limit > 0 {
+			debug.SetMemoryLimit(limit)
+			os.Setenv("GOMEMLIMIT", strconv.FormatInt(limit, 10))
+		}
 	}
 }
 

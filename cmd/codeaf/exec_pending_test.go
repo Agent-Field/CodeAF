@@ -49,9 +49,14 @@ func execPendingHome(t *testing.T) (model, profileDir string) {
 // back for the two facts the landing has to echo: the answer and the tokens.
 type execPendingEnvelope struct {
 	Answer string `json:"answer"`
-	Usage  struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
+	// Run is the id this invocation minted at the door, which every row the run
+	// wrote down joins on — the pending landing's own id is a wall clock and not
+	// this one, so it is read from the contract field that carries it.
+	Run   string `json:"run"`
+	Usage struct {
+		PromptTokens     int     `json:"prompt_tokens"`
+		CompletionTokens int     `json:"completion_tokens"`
+		Cost             float64 `json:"cost"`
 	} `json:"usage"`
 }
 

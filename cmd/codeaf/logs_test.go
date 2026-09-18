@@ -33,6 +33,18 @@ func TestMain(m *testing.M) {
 	if _, pinned := os.LookupEnv(calllog.EnvVar); !pinned {
 		os.Setenv(calllog.EnvVar, calllog.OffValue)
 	}
+	// AND THE POOL'S SUBMIT ADDRESS IS PINNED, to a machine that does not
+	// answer, unless this process was deliberately started with one. The
+	// resolver holds the relay's own address when nothing says otherwise, so a
+	// test that records pool rows and pins no destination of its own hands
+	// them — the judge's scores of a fixture, under an install's own nonce —
+	// to the public pool, which is exactly what the sweep tests did before
+	// their pins. Rows a test built never reach the pool; t.Setenv still wins
+	// for a test that means it, and pool_guard_test.go is the proof the floor
+	// holds for the one that forgets.
+	if _, pinned := os.LookupEnv("CODEAF_MODEL_POOL_SUBMIT_URL"); !pinned {
+		os.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
+	}
 	restore := isolateTestEnvironment()
 	code := m.Run()
 	restore()

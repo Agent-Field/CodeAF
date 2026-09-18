@@ -38,6 +38,13 @@ crons = ["17 * * * *"]
 POOL_PUBLIC_KEY = "WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0="
 MIN_INSTALLS = "3"
 ROWS_PER_INSTALL_PER_DAY = "500"
+# The vendors the relay accepts on a row's model and judge, comma-separated,
+# like ALLOWED_VENDORS = "z-ai,anthropic". Unset or blank, every vendor passes.
+# Set it to refuse a row whose model or judge vendor is not named; the fixture
+# vendors `crew` and `other` are what relay/tools/purge.js removes the stored
+# keys for. Nothing in this directory names the vendors the pool serves, so
+# RUNBOOK.md says where to read them before setting this.
+# ALLOWED_VENDORS = ""
 # How long a published index stays fresh: the first read past this age
 # republishes in the background and serves what is stored meanwhile.
 PUBLISH_EVERY = "3600"
