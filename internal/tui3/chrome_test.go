@@ -558,6 +558,7 @@ func welcomeApp(t *testing.T, recent []Session) (*app, *[]string) {
 	a := newApp(t.Context(), Options{
 		Agent:          &fakeAgent{model: "openai/gpt-4.1-mini"},
 		Workspace:      "/tmp/lab",
+		ProfileDir:     t.TempDir(),
 		RecentSessions: func() []Session { return recent },
 		Resume: func(file string) (Agent, error) {
 			resumed = append(resumed, file)

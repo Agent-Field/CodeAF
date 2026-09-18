@@ -38,6 +38,15 @@ crons = ["17 * * * *"]
 POOL_PUBLIC_KEY = "WOAo+g/oKxAV9vVqv2Q14w1TyyyiouwFO2fC0zgcps0="
 MIN_INSTALLS = "3"
 ROWS_PER_INSTALL_PER_DAY = "500"
+# The vendors the relay accepts on a row's model and judge, comma-separated,
+# like ALLOWED_VENDORS = "z-ai,anthropic". Unset or blank, every vendor passes.
+# Set it to refuse a row whose model or judge vendor is not named; the fixture
+# vendors `crew` and `other` are what relay/tools/purge.js removes the stored
+# keys for. Nothing in this directory names the vendors the pool serves, so
+# RUNBOOK.md says where to read them before setting this.
+# Set 2026-09-18 from the OpenRouter catalog's vendor prefixes plus codeaf (the
+# model-free grader's judge ids); a new vendor in the catalog needs a line here.
+ALLOWED_VENDORS = "aion-labs,amazon,anthracite-org,anthropic,arcee-ai,baidu,bytedance,bytedance-seed,codeaf,cognitivecomputations,cohere,deepseek,dots-studio,google,gryphe,ibm-granite,inception,inclusionai,inference-net,kwaipilot,liquid,mancer,meituan,meta,meta-llama,microsoft,minimax,mistralai,moonshotai,morph,nex-agi,nousresearch,nvidia,openai,openrouter,perceptron,perplexity,poolside,qwen,rekaai,relace,sakana,sao10k,stepfun,tencent,thedrummer,thinkingmachines,unbiased,undi95,upstage,writer,x-ai,xiaomi,z-ai"
 # How long a published index stays fresh: the first read past this age
 # republishes in the background and serves what is stored meanwhile.
 PUBLISH_EVERY = "3600"

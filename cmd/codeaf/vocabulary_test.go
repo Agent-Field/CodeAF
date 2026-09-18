@@ -373,6 +373,13 @@ func TestNoOldSpellingIsPrintedByHelp(t *testing.T) {
 // in the wild.
 func TestASingleLetterShorthandKeepsWorkingAndSaysNothing(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	// AND THE PROFILE, WHICH OUTRANKS THE STATE ROOT. Two of these four doors
+	// seat a launch, and a launch starts the pool's own errands: the install id
+	// it mints and the outbox it opens are written through config.ProfilePath
+	// with the directory CODEAF_PROFILE_DIR names, so moving CODEAF_HOME alone
+	// left them in the profile the environment handed this process — measured,
+	// not guessed: pool/install and pool/outbox.jsonl.
+	t.Setenv("CODEAF_PROFILE_DIR", "")
 	planFile := writeTestPlan(t)
 	for _, letter := range []struct {
 		name string

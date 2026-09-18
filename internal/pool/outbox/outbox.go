@@ -11,6 +11,13 @@
 // is what keeps the file append-only while a cap on pending rows still drops
 // from the old end and a mark outlives closing the outbox and opening the same
 // path again.
+//
+// Append-only also means the file grows a line for every row ever judged, and
+// a long-lived run would read the whole of that back on every Send and every
+// Pending. So a Send whose file has grown mostly into rows it can no longer
+// need rewrites it to the pending rows alone — through a temporary file in the
+// same directory, never in place — and the markers for rows that are gone go
+// with the rows.
 package outbox
 
 import (
@@ -25,6 +32,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,11 +42,23 @@ import (
 // or below.
 const DefaultMaxPending = 5000
 
+// compactFloor is the number of lines below which a Send does not bother to
+// rewrite the file: a handful of lines costs less to read than to copy, and
+// the markers of a run that has judged a few thousand rows are what a rewrite
+// is worth. See [Outbox.compactLocked] for what a rewrite does and when.
+const compactFloor = 1024
+
 const (
 	rowSchema  = 1
 	nonceLen   = 16
 	maxPayload = 64 << 10 // 64 KiB, measured on the compacted payload
 	maxBatch   = 200      // rows per POST
+	// maxReason caps the reason a dropped marker carries, so one refusal
+	// cannot grow a marker past a short line.
+	maxReason = 200
+	// capDropReason is the reason a cap drop carries: the row was refused by
+	// no destination, it simply aged out.
+	capDropReason = "over cap"
 	// defaultBudget bounds one Send when Outbox.Budget is zero.
 	defaultBudget = 2 * time.Second
 	dirMode       = 0700
@@ -54,11 +74,24 @@ type Row struct {
 }
 
 // mark retires rows: a retired row is no longer pending, either because its
-// batch arrived or because the pending cap dropped it. A marker is a line of
-// its own in the same file, which is what keeps the outbox append-only.
+// batch arrived or because a drop retired it — the pending cap, or a
+// destination that refused it by line. A marker is a line of its own in the
+// same file, which is what keeps the outbox append-only. Reason is written
+// only on a drop, so a file written before reasons were kept still parses and
+// reads back with the reason empty.
 type mark struct {
 	Sent    string `json:"sent,omitempty"`
 	Dropped string `json:"dropped,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// Drop is one row a dropped marker retired without sending it: the row's nonce
+// and the reason it was dropped — a destination's refusal text, or the cap's
+// own word. A file written before reasons were kept answers with the reason
+// empty.
+type Drop struct {
+	Nonce  string
+	Reason string
 }
 
 // Outbox keeps rows in one append-only file until they are sent. The six
@@ -115,7 +148,7 @@ func Open(path string) (*Outbox, error) {
 	o := &Outbox{path: path, f: f}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	rows := o.load()
+	rows, _ := o.load()
 	o.pend = make([]string, 0, len(rows))
 	for _, r := range rows {
 		o.pend = append(o.pend, r.Nonce)
@@ -183,7 +216,20 @@ func (o *Outbox) Append(payload json.RawMessage) error {
 func (o *Outbox) Pending() []Row {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.load()
+	rows, _ := o.load()
+	return rows
+}
+
+// Dropped answers the rows a dropped marker retired without sending them, in
+// the order they were dropped — oldest first, so the last is the most recent
+// drop and the reason beside it is the one a reading form shows. It never
+// fails: a line that does not parse is skipped, and a file that cannot be read
+// answers as no drops at all. A file that has been compacted holds only its
+// pending rows, so the dropped markers of rows a rewrite took go with them.
+func (o *Outbox) Dropped() []Drop {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.loadDropped()
 }
 
 // Send hands the pending rows to dest and answers with how many rows it
@@ -199,9 +245,12 @@ func (o *Outbox) Pending() []Row {
 // The whole call lives inside Budget, which is 2s when it is zero, and inside
 // ctx as well, whichever ends first. Rows whose batch arrived are marked sent
 // and leave the outbox; a row Keep declines is marked sent without being
-// transmitted and is not counted. Rows whose batch did not arrive, and every
-// row after it, stay pending, and Send returns an error that says what
-// failed.
+// transmitted and is not counted. A batch the destination refused by line —
+// a 400 naming `line N` — is refused on one row it has said it will never
+// accept: the named row is marked dropped, the rows around it are sent
+// within the same call, and Send counts the sent ones. Rows whose batch did
+// not arrive, and every row after it, stay pending, and Send returns an
+// error that says what failed.
 func (o *Outbox) Send(ctx context.Context, dest string) (int, error) {
 	if dest == "" {
 		return 0, nil
@@ -214,12 +263,24 @@ func (o *Outbox) Send(ctx context.Context, dest string) (int, error) {
 		o.mu.Unlock()
 		return 0, errors.New("outbox: outbox is closed")
 	}
-	rows := o.load()
+	rows, lines := o.load()
 	pend := make([]string, len(rows))
 	for i, r := range rows {
 		pend[i] = r.Nonce
 	}
 	o.pend = pend
+	// The file carried every row the outbox ever judged, so a run that sends
+	// often grows it without bound and every Send reads the whole of it. Send is
+	// where that is worth undoing: it is the read that would pay for the whole
+	// file, sendMu holds every other Send out while this one runs its first
+	// POST, and the file is rewritten only once it is mostly dead — more lines
+	// than twice the rows still pending — so each rewrite is paid for by the
+	// rows it drops and a run's own path meets one at most once per floor's
+	// worth of rows. A rewrite that fails is not a failed Send: the rows stay
+	// pending and the next Send tries again.
+	if lines > compactFloor && lines > 2*len(pend) {
+		_ = o.compactLocked(rows)
+	}
 	o.mu.Unlock()
 
 	if len(rows) == 0 {
@@ -291,7 +352,7 @@ func (o *Outbox) trimLocked() {
 	}
 	dropped := make([]string, drop)
 	copy(dropped, o.pend[:drop])
-	if o.writeMarksLocked(droppedMarks(dropped)) != nil {
+	if o.writeMarksLocked(droppedMarks(dropped, capDropReason)) != nil {
 		// The cap is kept by the markers on disk, so a cap this Append could
 		// not record is a cap that is not kept. The rows stay pending and the
 		// next Append tries the trim again, which is the same answer the
@@ -368,22 +429,26 @@ func (o *Outbox) dropPendingLocked(marks []mark) {
 }
 
 // load reads the outbox file and answers the rows still pending, in file
-// order. A line that does not parse, or that is not a row, is skipped, and a
-// file that cannot be read answers as no rows at all. The caller holds mu.
+// order, and the number of lines the file held — rows, markers and lines that
+// parsed as neither. A line that does not parse, or that is not a row, is
+// skipped, and a file that cannot be read answers as no rows and no lines at
+// all. The caller holds mu.
 //
 // EACH MARKER RETIRES ONE ROW, oldest first, wherever the marker sits — see
 // [Outbox.dropPendingLocked] for why the count rather than the name: a nonce
 // is what the caller's own [Outbox.Rand] made of sixteen bytes, and a reader
 // that took a marker as a name would answer that a file holding two rows under
 // one nonce and one marker holds nothing at all.
-func (o *Outbox) load() []Row {
+func (o *Outbox) load() ([]Row, int) {
 	b, err := os.ReadFile(o.path)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 	var rows []Row
 	retired := make(map[string]int)
+	lines := 0
 	for len(b) > 0 {
+		lines++
 		line := b
 		if i := bytes.IndexByte(b, '\n'); i >= 0 {
 			line, b = b[:i], b[i+1:]
@@ -418,19 +483,116 @@ func (o *Outbox) load() []Row {
 		}
 		kept = append(kept, r)
 	}
-	return kept
+	return kept, lines
+}
+
+// loadDropped reads the outbox file and answers its dropped markers, in file
+// order, oldest first. A line that does not parse, or that is not a dropped
+// marker, is skipped, and a file that cannot be read answers as no drops at
+// all. A reason is absent in a file written before reasons were kept, which
+// the reading leaves empty. The caller holds mu.
+func (o *Outbox) loadDropped() []Drop {
+	b, err := os.ReadFile(o.path)
+	if err != nil {
+		return nil
+	}
+	var drops []Drop
+	for len(b) > 0 {
+		line := b
+		if i := bytes.IndexByte(b, '\n'); i >= 0 {
+			line, b = b[:i], b[i+1:]
+		} else {
+			b = nil
+		}
+		if len(line) == 0 {
+			continue
+		}
+		var m mark
+		if json.Unmarshal(line, &m) == nil && m.Dropped != "" {
+			drops = append(drops, Drop{Nonce: m.Dropped, Reason: m.Reason})
+		}
+	}
+	return drops
+}
+
+// compactLocked rewrites the outbox file to hold exactly the pending rows,
+// dropping every marker and every row a marker retired with them — a marker
+// means nothing once its row is gone. It writes a temporary file in the same
+// directory, fsyncs it, and renames it over the original before reopening the
+// handle, never truncating in place: a crash before the rename leaves the old
+// file whole, and a crash after it leaves a file holding the same pending
+// rows, so a row is never lost and a retired row never comes back to be sent
+// twice. The caller holds mu, and Send calls it before its first POST, so no
+// Send of this process is between a POST and its markers. Its error is Send's
+// to ignore — the file is either untouched or already compacted.
+//
+// A codeaf that already holds the old file keeps writing to the inode the
+// rename unlinked, and those appends are lost. The profile is one writer's to
+// hold across processes, which is the assumption the append-only file already
+// rests on; nothing here reaches past it.
+func (o *Outbox) compactLocked(rows []Row) error {
+	tmp, err := os.CreateTemp(filepath.Dir(o.path), filepath.Base(o.path)+".compact-")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			tmp.Close()
+			os.Remove(tmpName)
+		}
+	}()
+	for _, r := range rows {
+		line, err := rowLine(r)
+		if err != nil {
+			return err
+		}
+		if _, err := tmp.Write(line); err != nil {
+			return err
+		}
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, o.path); err != nil {
+		return err
+	}
+	renamed = true
+	nf, err := os.OpenFile(o.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, fileMode)
+	if err != nil {
+		// The file on disk is the compacted one and holds every pending row, so
+		// the work is done; only the handle cannot be had. Refuse writes rather
+		// than write to the inode the rename unlinked.
+		o.f.Close()
+		o.f = nil
+		return err
+	}
+	o.f.Close()
+	o.f = nf
+	return nil
 }
 
 // sendHTTP posts the rows to dest, at most maxBatch per POST, and marks each
-// batch that came back 2xx. The first batch that fails ends the call; its
-// rows and every row after it stay pending.
+// batch that came back 2xx. A batch refused by line — a 400 whose reply names
+// `line N` — is refused on one row the destination will never take: that row
+// is marked dropped, so it stays gone across a reopen, and the rest of the
+// batch is posted again in the same call. Each retry retires a row, so a
+// batch of refused rows costs one POST per row at the most and never a spin.
+// The first batch that fails any other way ends the call, its rows and every
+// row after it staying pending: a 400 that names no line and a 413 name no
+// row at all, so retiring one would be a guess, and 429 and 5xx are about
+// the destination rather than any row.
 func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, error) {
 	client := o.Client
 	if client == nil {
 		client = defaultClient
 	}
 	n := 0
-	for start := 0; start < len(rows); start += maxBatch {
+	for start := 0; start < len(rows); {
 		end := start + maxBatch
 		if end > len(rows) {
 			end = len(rows)
@@ -438,17 +600,36 @@ func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, er
 		if err := ctx.Err(); err != nil {
 			return n, err
 		}
-		body := make([]byte, 0, (end-start)*128)
-		for _, r := range rows[start:end] {
+		sent, err := o.postBatch(ctx, client, dest, rows[start:end])
+		if err != nil {
+			return n, err
+		}
+		if len(sent) > 0 {
+			o.retire(sentMarks(rowNonces(sent)))
+			n += len(sent)
+		}
+		start = end
+	}
+	return n, nil
+}
+
+// postBatch posts one batch and answers the rows of it that arrived. A reply
+// that names a line takes that row out and the batch is posted again; a batch
+// every row of which was refused answers no rows and no error, the way a
+// Keep that declines everything does.
+func (o *Outbox) postBatch(ctx context.Context, client *http.Client, dest string, batch []Row) ([]Row, error) {
+	for len(batch) > 0 {
+		body := make([]byte, 0, len(batch)*128)
+		for _, r := range batch {
 			line, err := rowLine(r)
 			if err != nil {
-				return n, err
+				return nil, err
 			}
 			body = append(body, line...)
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, dest, bytes.NewReader(body))
 		if err != nil {
-			return n, err
+			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/x-ndjson")
 		if o.Install != "" {
@@ -456,18 +637,63 @@ func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, er
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return n, err
+			return nil, err
 		}
-		ok := resp.StatusCode >= 200 && resp.StatusCode < 300
-		io.CopyN(io.Discard, resp.Body, 1<<16)
+		reply, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		resp.Body.Close()
-		if !ok {
-			return n, fmt.Errorf("outbox: %s replied %s", dest, resp.Status)
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return batch, nil
 		}
-		o.retire(sentMarks(rowNonces(rows[start:end])))
-		n += end - start
+		if line, reason := refusedText(reply, batch); line >= 0 {
+			o.retire([]mark{{Dropped: batch[line].Nonce, Reason: reason}})
+			rest := make([]Row, 0, len(batch)-1)
+			rest = append(rest, batch[:line]...)
+			rest = append(rest, batch[line+1:]...)
+			batch = rest
+			continue
+		}
+		return nil, fmt.Errorf("outbox: %s replied %s", dest, resp.Status)
 	}
-	return n, nil
+	return nil, nil
+}
+
+// refusedText reads a refusal reply and answers which row of the batch it
+// refuses and the reason it gives, or -1 and "" when it names no line of the
+// batch. The relay refuses the first row that fails its schema and answers
+// `line N: <why>`, N the 1-based number of the line as posted; a batch is one
+// row per line with no blank lines, so the named line is batch[N-1] and the
+// reason is what followed the colon.
+func refusedText(reply []byte, batch []Row) (int, string) {
+	var refused struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(reply, &refused) != nil || refused.Error == "" {
+		return -1, ""
+	}
+	num, ok := strings.CutPrefix(refused.Error, "line ")
+	if !ok {
+		return -1, ""
+	}
+	colon := strings.IndexByte(num, ':')
+	if colon < 1 {
+		return -1, ""
+	}
+	line, err := strconv.Atoi(num[:colon])
+	if err != nil || line < 1 || line > len(batch) {
+		return -1, ""
+	}
+	return line - 1, dropReason(num[colon+1:])
+}
+
+// dropReason is a refusal's reason as a dropped marker stores it: the text
+// after `line N:` trimmed of the space around it, and capped at maxReason so
+// one destination cannot grow a marker past a short line.
+func dropReason(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) > maxReason {
+		text = text[:maxReason]
+	}
+	return text
 }
 
 // sendFile appends the rows to the file at path, creating it with mode 0600
@@ -534,21 +760,19 @@ func rowNonces(rows []Row) []string {
 }
 
 func sentMarks(nonces []string) []mark {
-	return nonceMarks(nonces, true)
-}
-
-func droppedMarks(nonces []string) []mark {
-	return nonceMarks(nonces, false)
-}
-
-func nonceMarks(nonces []string, sent bool) []mark {
 	marks := make([]mark, len(nonces))
 	for i, n := range nonces {
-		if sent {
-			marks[i] = mark{Sent: n}
-		} else {
-			marks[i] = mark{Dropped: n}
-		}
+		marks[i] = mark{Sent: n}
+	}
+	return marks
+}
+
+// droppedMarks retires rows the outbox will not send again, each carrying the
+// reason it was dropped: a destination's refusal text, or the cap's own word.
+func droppedMarks(nonces []string, reason string) []mark {
+	marks := make([]mark, len(nonces))
+	for i, n := range nonces {
+		marks[i] = mark{Dropped: n, Reason: reason}
 	}
 	return marks
 }

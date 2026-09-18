@@ -8,18 +8,28 @@
 //
 // Everything here is pure: plain values in, plain values out. No KV, no fetch.
 
-// METRIC_ROLE_QUALITY is the one metric the sheets carry.
+// METRIC_ROLE_QUALITY is the metric the sheets carried first, and the one a
+// five-segment key (written before the metric was part of a key) belongs to.
 const METRIC_ROLE_QUALITY = 'role_quality';
+
+// METRIC_ACCEPTABLE is the harness's own grade of a task, 100 or 0 per seat.
+// Its cells are published per source — the judge column, which for this
+// metric names the grader — so a reader can fit a reliability per source and
+// never blends two graders in one cell.
+const METRIC_ACCEPTABLE = 'acceptable';
 
 // ZERO is an empty triple.
 const ZERO = Object.freeze({ n: 0, s: 0, s2: 0 });
 
-// cellKey renders the place one triple lives: the five dimensions that are
-// kept apart, in a fixed order. The day is the KV key's own segment and is not
+// cellKey renders the place one triple lives: the dimensions that are kept
+// apart, in a fixed order. The day is the KV key's own segment and is not
 // part of this key. The dimensions hold no "|" (the model pattern forbids it),
-// so the key splits back cleanly.
+// so the key splits back cleanly. A role_quality key keeps the five-segment
+// form every stored triple was written under; any other metric leads with
+// its own name, so the two never collide and nothing already stored moves.
 export function cellKey(payload) {
-  return `${payload.role}|${payload.model}|${payload.judge}|${payload.door}|${payload.size}`;
+  const tail = `${payload.role}|${payload.model}|${payload.judge}|${payload.door}|${payload.size}`;
+  return payload.metric === METRIC_ROLE_QUALITY || !payload.metric ? tail : `${payload.metric}|${tail}`;
 }
 
 // fold adds one score to a triple and answers the new triple. A missing
@@ -42,10 +52,16 @@ export function join(a, b) {
   };
 }
 
-// splitKey reads a cellKey back into its five dimensions.
+// splitKey reads a cellKey back into its dimensions: five segments are a
+// role_quality key, six lead with the metric.
 function splitKey(key) {
-  const [role, model, judge, door, size] = key.split('|');
-  return { role, model, judge, door, size };
+  const parts = key.split('|');
+  if (parts.length === 6) {
+    const [metric, role, model, judge, door, size] = parts;
+    return { metric, role, model, judge, door, size };
+  }
+  const [role, model, judge, door, size] = parts;
+  return { metric: METRIC_ROLE_QUALITY, role, model, judge, door, size };
 }
 
 // judgeSeverity fits one additive judge severity per judge over the finest
@@ -53,7 +69,9 @@ function splitKey(key) {
 // taken out of every score. It alternates beta_j = weighted mean over cells
 // scored by j of (cellMean - mu_rm) with mu_rm = weighted mean over judges of
 // (cellMean - beta_j), weights n, five sweeps, re-centring beta to weighted
-// mean zero each sweep. It answers {beta, judges}.
+// mean zero each sweep, and holds each beta inside ±10: the rubric's own
+// width is 100, and a judge further off than a tenth of it is not a severity,
+// it is a different rubric. It answers {beta, judges}.
 function judgeSeverity(cells) {
   const judges = [...new Set(cells.map((c) => c.judge))].sort();
   const beta = new Map(judges.map((j) => [j, 0]));
@@ -84,6 +102,13 @@ function judgeSeverity(cells) {
     const centre = bden ? bnum / bden : 0;
     for (const j of judges) {
       beta.set(j, beta.get(j) - centre);
+    }
+    // Hold each severity inside ±10 after the re-centring, before the next
+    // sweep reads it: the rubric is 100 points wide, and a tenth of it is
+    // the most a judge's taste can be worth before it is a different
+    // rubric rather than a severity.
+    for (const j of judges) {
+      beta.set(j, Math.max(-10, Math.min(10, beta.get(j))));
     }
     // mu_rm from the fresh beta_j.
     const mnum = new Map();
@@ -121,7 +146,10 @@ function huberMean(values) {
   const mad = median(values.map((v) => Math.abs(v - centre)));
   const scale = 1.4826 * mad;
   if (!(scale > 0)) {
-    return values.reduce((a, b) => a + b, 0) / values.length;
+    // A zero MAD says half the values sit at the median, so the data's own
+    // centre is the median; the plain mean would let the far half drag the
+    // estimate below (or above) every repeated value.
+    return centre;
   }
   const c = 1.345 * scale;
   let mu = centre;
@@ -146,11 +174,15 @@ function huberMean(values) {
 //
 // entries are {install, day, key, triple}: one install's running total for one
 // cellKey on one day. Cells group by (role, model); each install's mean over
-// its triples is taken after judge severity is removed, and the cell mean is
-// the Huber M-estimate over those install means once there are at least five
-// installs, the n-weighted mean of them otherwise. A cell whose installs are
-// below minInstalls is still published, but sorted after the cells that meet
-// it.
+// its triples is taken after judge severity is removed — bounded, and with
+// every adjusted score clamped back into the rubric before it is folded —
+// and the cell mean is the Huber M-estimate over those install means once
+// there are at least five installs, the n-weighted mean of them otherwise.
+// The sd is pooled from the same adjusted triples, so the published mean and
+// sd describe one scale. A cell whose installs are below minInstalls is
+// dropped: the floor keeps any single install's numbers from being
+// published, and the cells have no reader but the publish path that renders
+// them into the document.
 export function aggregate(entries, { minInstalls = 0 } = {}) {
   const cells = [];
   for (const entry of entries) {
@@ -161,7 +193,7 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
     }
     cells.push({ ...dims, n, mean: entry.triple.s / n });
   }
-  const { beta } = judgeSeverity(cells);
+  const { beta } = judgeSeverity(cells.filter((c) => c.metric !== METRIC_ACCEPTABLE));
 
   // Group the adjusted entries by role and model, and keep each install's own
   // observations so its mean over them can be taken.
@@ -172,19 +204,47 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
       continue;
     }
     const dims = splitKey(entry.key);
-    const rm = `${dims.role}|${dims.model}`;
+    // A judged opinion groups by role and model with the judge's severity
+    // taken out; a grade groups by role, model and the grader that gave it,
+    // with nothing taken out — a grade is a fact about the landing, and which
+    // grader saw it is a dimension the document keeps, not a bias to remove.
+    const graded = dims.metric === METRIC_ACCEPTABLE;
+    const rm = graded
+      ? `${dims.metric}|${dims.role}|${dims.model}|${dims.judge}`
+      : `${dims.metric}|${dims.role}|${dims.model}`;
     let group = groups.get(rm);
     if (!group) {
-      group = { role: dims.role, model: dims.model, installs: new Map(), n: 0, s: 0, s2: 0 };
+      group = { metric: dims.metric, role: dims.role, model: dims.model, source: graded ? dims.judge : undefined, installs: new Map(), n: 0, s: 0, s2: 0 };
       groups.set(rm, group);
     }
-    // Judge severity removal shifts each score by -beta[judge]; over a
-    // triple of n scores and sum s that is a shift of n·beta in the sum.
-    const shift = beta.get(dims.judge) || 0;
-    const adjustedSum = entry.triple.s - n * shift;
+    // Judge severity removal shifts each score by -beta[judge], and the
+    // rubric holds every score in [0, 100]: a shift can carry a triple past
+    // either end, so the adjusted scores are clamped back into the rubric
+    // before they are folded. Over a triple the shift itself is exact —
+    // Sum(x - beta) = s - n*beta and Sum((x - beta)^2) = s2 - 2*beta*s +
+    // n*beta^2, from expanding (x - beta)^2 — but the store holds {n, s, s2}
+    // and not the scores, so the clamp acts on what the triple still knows:
+    // its mean. An adjusted mean outside [0, 100] says the scores as adjusted
+    // lie past the rubric, and the nearest triple inside it is every score at
+    // the bound it crossed — sums n*b and n*b^2, which is also the case the
+    // exact shift cannot express.
+    const shift = graded ? 0 : (beta.get(dims.judge) || 0);
+    const adjustedMean = entry.triple.s / n - shift;
+    let adjustedSum;
+    let adjustedSum2;
+    if (adjustedMean > 100) {
+      adjustedSum = 100 * n;
+      adjustedSum2 = 100 * 100 * n;
+    } else if (adjustedMean < 0) {
+      adjustedSum = 0;
+      adjustedSum2 = 0;
+    } else {
+      adjustedSum = entry.triple.s - n * shift;
+      adjustedSum2 = entry.triple.s2 - 2 * shift * entry.triple.s + n * shift * shift;
+    }
     group.n += n;
-    group.s += entry.triple.s;
-    group.s2 += entry.triple.s2;
+    group.s += adjustedSum;
+    group.s2 += adjustedSum2;
     const install = group.installs.get(entry.install);
     if (install) {
       install.n += n;
@@ -209,40 +269,45 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
     const mean = installs >= 5
       ? huberMean(installMeans)
       : (weightSum ? weightedSum / weightSum : 0);
-    // Pooled within-cell standard deviation from the raw triples.
+    // Pooled within-cell standard deviation from the adjusted triples, the
+    // same ones the mean is taken over.
     const sd = group.n >= 2
       ? Math.sqrt(Math.max(0, (group.s2 - (group.s * group.s) / group.n) / (group.n - 1)))
       : 0;
-    out.push({
-      metric: METRIC_ROLE_QUALITY,
+    const cell = {
+      metric: group.metric,
       role: group.role,
       model: group.model,
       mean,
       sd,
       n: group.n,
       installs,
-    });
+    };
+    if (group.source !== undefined) {
+      cell.source = group.source;
+    }
+    out.push(cell);
   }
 
-  // Cells that meet minInstalls sort first; below it they follow. Ties break on
-  // mean then role then model, so the document is a property of its entries.
-  out.sort((a, b) => {
-    const am = a.installs >= minInstalls ? 0 : 1;
-    const bm = b.installs >= minInstalls ? 0 : 1;
-    if (am !== bm) return am - bm;
+  // Cells below minInstalls never leave the sheet, so every cell here meets
+  // it. Ties break on metric, then mean, role and model, so the document is
+  // a property of its entries.
+  const kept = out.filter((c) => c.installs >= minInstalls);
+  kept.sort((a, b) => {
+    if (a.metric !== b.metric) return a.metric < b.metric ? -1 : 1;
     if (a.mean !== b.mean) return b.mean - a.mean;
     if (a.role !== b.role) return a.role < b.role ? -1 : 1;
     if (a.model !== b.model) return a.model < b.model ? -1 : 1;
     return 0;
   });
-  return out;
+  return kept;
 }
 
 // judgesOf answers the sorted judge ids the entries name.
 export function judgesOf(entries) {
   const judges = new Set();
   for (const entry of entries) {
-    judges.add(entry.key.split('|')[2]);
+    judges.add(splitKey(entry.key).judge);
   }
   return [...judges].sort();
 }

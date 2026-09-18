@@ -356,7 +356,11 @@ type taskRecord struct {
 	// Model is the model this node was admitted to run on, and empty when it
 	// simply took the conversation's — including on every checkpoint written
 	// before a task could carry one, which resumes exactly as it always did.
-	Model      string  `json:"model,omitempty"`
+	Model string `json:"model,omitempty"`
+	// CheckedOn is the model the checking pass ran on. It is additive: a record
+	// written before it decodes with it empty, so a restarted node judged from the
+	// checkpoint scores the worker seat and simply has no high seat to score.
+	CheckedOn  string  `json:"checkedOn,omitempty"`
 	NextModel  string  `json:"next_model,omitempty"`
 	NextEffort *string `json:"next_effort,omitempty"`
 
@@ -1185,6 +1189,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Journal:        n.journal,
 		Beat:           beat,
 		Model:          n.spec.model,
+		CheckedOn:      n.checkedOn,
 		NextModel:      n.nextModel,
 		NextEffort:     n.nextEffort,
 		Effort:         n.spec.effort.String(),
@@ -1411,6 +1416,14 @@ type taskRecovery struct {
 	// are the whole reason the summary is worth reading: a kept branch is work
 	// the person still has.
 	branches []string
+	// failedBranches and unverifiedBranches are the same fact for the two states
+	// that settle rather than resume: a node that ended failed or unverified kept
+	// its deliverable on its own `task/<slug>` branch and did NOT merge it home
+	// ([keptWork]), and the note that counts it must name that branch or a person
+	// told "1 incomplete" has nowhere to go and look. They are the chat-side half
+	// of the `kept_branch` and `verdict` #1182 put on the headless envelope.
+	failedBranches     []string
+	unverifiedBranches []string
 	// notes are the completion notes that were never handed over, in the shape
 	// [taskNote] would have produced for them.
 	notes []string
@@ -1483,13 +1496,16 @@ func (r taskRecovery) note() string {
 	// `unverified` was the machinery describing itself; the counts are the same
 	// counts, said in the words every other place a task is drawn now uses.
 	if r.failed > 0 {
-		parts = append(parts, strconv.Itoa(r.failed)+" "+taskWordIncomplete)
+		clause := strconv.Itoa(r.failed) + " " + taskWordIncomplete
+		clause = withKeptBranches(clause, r.failedBranches)
+		parts = append(parts, clause)
 	}
 	if r.unverified > 0 {
 		clause := strconv.Itoa(r.unverified) + " " + taskWordYourCall
 		if word := cutRoundsWord(r.unverified, r.cutRounds); word != "" {
 			clause += " (" + word + ")"
 		}
+		clause = withKeptBranches(clause, r.unverifiedBranches)
 		parts = append(parts, clause)
 	}
 	if r.interrupted > 0 {
@@ -1542,6 +1558,45 @@ func keptBranches(branches []string) string {
 	default:
 		return "branches " + strings.Join(branches, ", ") + " kept"
 	}
+}
+
+// withKeptBranches hangs the "(branch <b> kept)" clause on a counted category
+// that kept work, and leaves the clause alone when it kept none: a failed node
+// that never reached a repository has no branch to name, and a clause saying so
+// would send a person looking for work that was never there. It reuses
+// [keptBranches] so a category that kept several wears the same plural clause an
+// interrupt does.
+func withKeptBranches(clause string, branches []string) string {
+	if len(branches) == 0 {
+		return clause
+	}
+	return clause + " (" + keptBranches(branches) + ")"
+}
+
+// appendKeptBranch adds the branch a settled node's work was kept on, or nothing
+// for a node whose work came home, was laid in place, or never had a branch.
+func appendKeptBranch(branches []string, record taskRecord) []string {
+	if branch := keptBranchOf(record.Branch, record.Merge); branch != "" {
+		branches = append(branches, branch)
+	}
+	return branches
+}
+
+// keptBranchOf names the branch a node's work was KEPT on, or "" for work that
+// came home or was laid in place. The three merge words that keep a branch are
+// task_run.go's own: [mergeAborted] for work kept instead of merged
+// ([keptWork], the ending a failure, a stop or a refused gate takes),
+// [mergeConflicted] for a merge that would not go cleanly, and [mergeKept] for a
+// landing deliberately left on a protected, moved or detached checkout.
+func keptBranchOf(branch, merge string) string {
+	if branch = strings.TrimSpace(branch); branch == "" {
+		return ""
+	}
+	switch merge {
+	case mergeAborted, mergeConflicted, mergeKept:
+		return branch
+	}
+	return ""
 }
 
 // recoverTasks is the whole resume: load, reconcile, continue.
@@ -1661,6 +1716,7 @@ func (r *taskRecovery) countSettled(record *taskRecord) {
 		r.done++
 	case TaskFailed:
 		r.failed++
+		r.failedBranches = appendKeptBranch(r.failedBranches, *record)
 	case TaskUnverified:
 		// Counted apart from both: it is not work that failed and it is not work
 		// still to come, it is work waiting on a person (task_contract.go's
@@ -1668,6 +1724,7 @@ func (r *taskRecovery) countSettled(record *taskRecord) {
 		// be telling somebody the scheduler will get to it, and the scheduler
 		// never will.
 		r.unverified++
+		r.unverifiedBranches = appendKeptBranch(r.unverifiedBranches, *record)
 		// AND A ROUND THAT WAS IN FLIGHT IS SAID OUT LOUD. The person pressed
 		// `resolve it`, a worker opened in the working copy, and the process died
 		// under it — so the card is back offering the same three answers it
@@ -1922,6 +1979,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		ending:         record.Ending,
 		kind:           record.Kind,
 		claim:          record.Claim,
+		checkedOn:      record.CheckedOn,
 		produced:       resultFromRecord(record.Result),
 		changed:        record.Changed,
 		wrote:          record.Wrote,
@@ -2138,6 +2196,13 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	// A process exit pauses ordinary work; it does not make a finding about it.
 	// Put the node back on the frontier so the next session resumes it once.
 	record.State = TaskQueued
+	// AND THE CUT ATTEMPT'S REASON DOES NOT RIDE INTO THE NEXT ONE. A node
+	// machinery cut where it stood carries [TaskEndingInterrupted] on its record
+	// (task_run.go's paused road), and [TaskNode.end] writes only the FIRST cause —
+	// so a resumed attempt that failed for a reason of its own would still read as
+	// the interruption that never was its. The node is about to run again and the
+	// ending belongs to the attempt that just ended, so it is cleared here with it.
+	record.Ending = ""
 
 	if record.Merge == mergeInPlace {
 		// There was no repository to branch from, so its edits are already in the
@@ -2193,4 +2258,46 @@ func restoredRung(word string) effort.Rung {
 		return effort.None
 	}
 	return rung
+}
+
+// LoadLandedForJudge reads a session's persisted task checkpoint at tasksPath and
+// returns one TaskLanding per node in a final state (Done, Failed or Unverified),
+// rebuilt from the record so a reader that arrives after the process that ran the
+// node is gone can still judge it. It mirrors (*TaskNode).landing() with two
+// differences forced by reading off disk: High is the persisted CheckedOn (empty
+// on older records), and Tokens is the record's own Input+Output, because the
+// live room's usage a landing also counts is gone with the process. A missing or
+// unreadable checkpoint yields no landings and no error, the same nothing
+// recoverTasks reads it as.
+func LoadLandedForJudge(tasksPath string) ([]TaskLanding, error) {
+	document, ok := loadTaskCheckpoint(tasksPath)
+	if !ok {
+		return nil, nil
+	}
+	var landed []TaskLanding
+	for _, record := range document.Nodes {
+		switch record.State {
+		case TaskDone, TaskFailed, TaskUnverified:
+		default:
+			continue
+		}
+		landed = append(landed, TaskLanding{
+			ID:          record.ID,
+			State:       record.State,
+			Brief:       record.Brief,
+			Deliverable: record.Deliverable,
+			Report:      record.Report,
+			Claim:       record.Claim,
+			Ending:      string(record.Ending),
+			Wrote:       record.Wrote,
+			Changed:     len(record.Changed),
+			Checks:      record.Checks,
+			Worker:      record.Model,
+			High:        record.CheckedOn,
+			CostUSD:     record.CostUSD,
+			Tokens:      record.Input + record.Output,
+			Attempt:     record.Attempt,
+		})
+	}
+	return landed, nil
 }

@@ -175,7 +175,11 @@ type job struct {
 	started time.Time
 	logPath string
 	cmd     *exec.Cmd
-	sink    *jobSink
+	// group is the process group recorded at launch, so a kill is checked
+	// against the identity the leader had then and a recycled pid is never
+	// signalled (internal/processgroup).
+	group processgroup.Group
+	sink  *jobSink
 	// stop ends a watch's timer loop. It is nil for a bash job, whose end is a
 	// signal to a process group instead. See [job.signal].
 	stop func()
@@ -433,10 +437,10 @@ func (j *job) signal(sig syscall.Signal) {
 		return
 	}
 	if sig == syscall.SIGKILL {
-		_ = processgroup.Kill(j.cmd.Process.Pid)
+		_ = j.group.Kill()
 		return
 	}
-	_ = processgroup.Terminate(j.cmd.Process.Pid)
+	_ = j.group.Terminate()
 }
 
 // ── the registry ────────────────────────────────────────────────────────────
@@ -733,6 +737,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 		return nil, fmt.Errorf("could not start the command: %w", err)
 	}
 	started.cmd = process
+	started.group = processgroup.CaptureGroup(process.Process.Pid)
 	// A JOB REFUSED AT THE DOOR TAKES ITS PROCESS WITH IT. This one is already
 	// forked, so simply returning the error would leave exactly the orphan the
 	// refusal exists to prevent — a process running for a session that has
@@ -744,11 +749,15 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// that is `kill(-pid)` against the session this job leads, and on Windows
 	// it is `taskkill /T` against the process group it was given.
 	if err := r.add(started); err != nil {
-		_ = processgroup.Kill(process.Process.Pid)
+		_ = started.group.Kill()
 		return nil, err
 	}
 
 	go r.reap(started)
+	// AND THE SUBTREE GETS ITS OWN BOUND. A bash job is a process group with a
+	// tree under it, and nothing else bounds what that tree may burn; the watcher
+	// cuts it when it passes its ceiling and tells the run why (jobbound.go).
+	go r.watchSubtreeBound(started)
 	return started, nil
 }
 
@@ -918,6 +927,7 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
 	// started it with Setpgid, so a kill still reaches the whole tree exactly as
 	// it does for a job this registry forked itself.
 	started.cmd = taken.Process()
+	started.group = processgroup.CaptureGroup(started.cmd.Process.Pid)
 	// The provenance is written before the job joins the registry, which is the
 	// last instant this goroutine is the only one that can see it.
 	started.owed = how.owed
@@ -937,6 +947,9 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
 	// The receive happens INSIDE the goroutine: written as an argument it would
 	// be evaluated here, and the adoption would block until the process exited.
 	go func() { r.settleExit(started, <-taken.Exit()) }()
+	// The adopted process is a bash subtree like any other and gets the same
+	// bound ([jobRegistry.watchSubtreeBound]).
+	go r.watchSubtreeBound(started)
 	return started, nil
 }
 

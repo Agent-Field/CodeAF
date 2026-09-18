@@ -32,15 +32,18 @@ var ErrSchema = errors.New("document schema is newer than this reader")
 
 // Cell is one measurement from the document. Dims carries the declared dims
 // beyond role and model that the cell spelled, and is nil for a cell that
-// carried none.
+// carried none. Installs is the contributor count the cell spells — the one
+// the floor reads it on; a cell that spells none, the shape the seed
+// carries, reads zero, its rows being the only count the document gives.
 type Cell struct {
-	Metric string
-	Role   string
-	Model  string
-	Mean   float64
-	SD     float64
-	N      int
-	Dims   map[string]string
+	Metric   string
+	Role     string
+	Model    string
+	Mean     float64
+	SD       float64
+	N        int
+	Installs int
+	Dims     map[string]string
 }
 
 // Want is one row of the document's wanted list, with the role normalised and
@@ -60,10 +63,11 @@ type Index struct {
 	minInstalls int
 	judges      []string
 	rubrics     map[string]int
-	// metrics holds the declared names as spelled; kinds and dims are keyed by
-	// the folded name every lookup arrives under.
+	// metrics holds the declared names as spelled; kinds, units and dims are
+	// keyed by the folded name every lookup arrives under.
 	metrics map[string]string
 	kinds   map[string]string
+	units   map[string]string
 	dims    map[string]map[string]bool
 	// aliases maps a folded, ~-stripped id to the canonical id as the document
 	// spells it. The canonical id is in the map under its own folded form.
@@ -124,6 +128,7 @@ type document struct {
 
 type metricDecl struct {
 	Kind string   `json:"kind"`
+	Unit string   `json:"unit"`
 	Dims []string `json:"dims"`
 }
 
@@ -137,7 +142,8 @@ type wantEntry struct {
 // of these could never be read off a cell, so the name is reserved rather than
 // resolved twice.
 var reservedCellFields = map[string]bool{
-	"metric": true, "role": true, "model": true, "mean": true, "sd": true, "n": true,
+	"metric": true, "role": true, "model": true, "mean": true, "sd": true,
+	"n": true, "installs": true,
 }
 
 // The separators are unprintable so no dim key or value can contain one and
@@ -166,6 +172,7 @@ func parse(data []byte) (*Index, error) {
 		rubrics:     d.Rubrics,
 		metrics:     map[string]string{},
 		kinds:       map[string]string{},
+		units:       map[string]string{},
 		dims:        map[string]map[string]bool{},
 		aliases:     map[string]string{},
 		cells:       map[string]map[string]Cell{},
@@ -195,6 +202,9 @@ func parse(data []byte) (*Index, error) {
 		}
 		if _, seen := x.kinds[folded]; !seen {
 			x.kinds[folded] = fold(decl.Kind)
+		}
+		if _, seen := x.units[folded]; !seen {
+			x.units[folded] = fold(decl.Unit)
 		}
 		dimset := map[string]bool{}
 		for _, dim := range decl.Dims {
@@ -250,9 +260,10 @@ func (x *Index) addAlias(id, canonical string) {
 
 // addCell reads one raw cell into the index, or drops it. A cell whose metric
 // is not declared is skipped — a measurement with no metric behind it has no
-// units, and guessing is worse than dropping it. A cell whose N is below the
-// document's min_installs is skipped too: too few observations is not a
-// measurement.
+// units, and guessing is worse than dropping it. A cell below the document's
+// min_installs is skipped too: the floor counts installs, the contributors
+// behind a measurement, and a cell that carries none meets it on rows, the
+// only count it has.
 func (x *Index) addCell(raw map[string]any) {
 	metricName, _ := raw["metric"].(string)
 	mk := fold(metricName)
@@ -262,7 +273,17 @@ func (x *Index) addCell(raw map[string]any) {
 	role, _ := raw["role"].(string)
 	model, _ := raw["model"].(string)
 	n := int(number(raw["n"]))
-	if n < x.minInstalls {
+	// The floor means the same thing on both sides of the wire: the relay
+	// counts installs, so the cell's installs are counted where it carries
+	// them and its rows where it does not. The count is kept on the cell
+	// either way, so a reader says what stood behind the measurement.
+	installs := 0
+	if _, carries := raw["installs"]; carries {
+		installs = int(number(raw["installs"]))
+		if installs < x.minInstalls {
+			return
+		}
+	} else if n < x.minInstalls {
 		return
 	}
 	dims := map[string]string{}
@@ -279,12 +300,13 @@ func (x *Index) addCell(raw map[string]any) {
 	}
 	canon := x.resolve(model)
 	c := Cell{
-		Metric: metricName,
-		Role:   role,
-		Model:  canon,
-		Mean:   number(raw["mean"]),
-		SD:     number(raw["sd"]),
-		N:      n,
+		Metric:   metricName,
+		Role:     role,
+		Model:    canon,
+		Mean:     number(raw["mean"]),
+		SD:       number(raw["sd"]),
+		N:        n,
+		Installs: installs,
 	}
 	if len(dims) > 0 {
 		c.Dims = dims
@@ -349,7 +371,8 @@ func (x *Index) Schema() int { return x.schema }
 // date is the zero time, which sorts as the oldest thing there is.
 func (x *Index) Generated() time.Time { return x.generated }
 
-// MinInstalls is the document's floor on observations per measurement.
+// MinInstalls is the document's floor on the installs behind a measurement,
+// which a cell that carries none meets on its rows.
 func (x *Index) MinInstalls() int { return x.minInstalls }
 
 // Judges answers with a copy of the document's judges.
@@ -384,6 +407,27 @@ func (x *Index) Metrics() []string {
 func (x *Index) Kind(metric string) (string, bool) {
 	kind, ok := x.kinds[fold(metric)]
 	return kind, ok
+}
+
+// Unit answers with the unit word the document spells for the metric,
+// lowercased, whether or not this build knows it. A metric that spells no
+// unit, and a name the document does not declare, answer empty.
+func (x *Index) Unit(metric string) string {
+	return x.units[fold(metric)]
+}
+
+// Dims answers with the metric's declared dims beyond role and model,
+// sorted. Role and model are the address of every cell and are never
+// repeated here. A metric that declares no dim beyond them, and a name the
+// document does not declare, answer empty.
+func (x *Index) Dims(metric string) []string {
+	set := x.dims[fold(metric)]
+	out := make([]string, 0, len(set))
+	for dim := range set {
+		out = append(out, dim)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Canonical answers with the canonical id the document spells for a model id,

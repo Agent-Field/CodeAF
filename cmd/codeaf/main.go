@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -42,8 +43,15 @@ func main() {
 	os.Exit(execute())
 }
 
-// tuneForTheSurface raises the heap target for a command that is about to draw
-// one, and IT IS CALLED FROM THE DISPATCH BELOW rather than from main.
+// surfaceMaxProcs is the GOMAXPROCS a surface runs under on a machine bigger
+// than this. It is not the machine's core count, and the number was chosen by
+// counting what the runtime does with the ones above it, not by taste — see
+// [tuneForTheSurface] for the census.
+const surfaceMaxProcs = 8
+
+// tuneForTheSurface caps the scheduler and raises the heap target for a command
+// that is about to draw one, and IT IS CALLED FROM THE DISPATCH BELOW rather
+// than from main.
 //
 // The default heap target collects several times before the surface is even
 // drawn, and none of those collections free anything worth the pause: the launch
@@ -58,10 +66,100 @@ func main() {
 // cost paid to shorten a pause no one can see. Those commands keep the Go
 // default. An explicit GOGC still decides for both — this is a default, not a
 // policy.
+//
+// ── AND THE SCHEDULER IS THE SAME BARGAIN IN A DIFFERENT UNIT ───────────────
+//
+// GOMAXPROCS is the number of Ps the scheduler runs, and the Go runtime spends
+// the machine's cores on that number whether or not a surface uses them: an idle
+// session's engine host was measured holding ONE runtime GC-worker goroutine PER
+// P. On a 20-core machine that was 20 of the process's 33 goroutines; at
+// GOMAXPROCS=8 the same process held 8 workers and 21 goroutines, with its OS
+// threads falling 13 to 11 (measured Sep 2026, `engine --daemon`, an empty
+// workspace, before and after, two runs each side).
+//
+// A surface draws one conversation and waits on a network, and the parallelism
+// that DOES want the whole machine is subprocesses — the tools a session runs,
+// each with its own Ps — so the cores above the cap buy a waiting surface
+// nothing and cost it a pool of idle runtime workers. Capping at 8 rather than
+// lower is measured too: 20->8 removes 12 of the idle goroutines, and 8->4
+// removes 4 more while halving what any in-process work may use.
+//
+// THE CAP HAS TO CROSS A PROCESS BOUNDARY, because a surface's far half is a
+// SEPARATE `engine --daemon` this launch starts (enginehost.Spawn from
+// chatv3_local.go) — its own process, so it inherits the environment and not
+// this process's scheduler, and reads GOMAXPROCS at its own startup. Setting the
+// variable is what carries the cap to it.
+//
+// AN EXPLICIT GOMAXPROCS STILL DECIDES, exactly as an explicit GOGC does just
+// below: this is a default, not a policy. And a machine no bigger than the cap
+// is left completely alone — not even the variable is set.
+//
+// ── AND A SOFT LIMIT IS THE OTHER HALF OF THE HEAP BARGAIN ──────────────────
+//
+// GOMAXPROCS caps a resource the runtime SPENDS. The raised GOGC below uncaps
+// one it KEEPS: a heap target five times the live heap is a bargain with no
+// ceiling of its own, and a surface left open for a day is exactly the shape
+// that finds the ceiling by exhausting the machine instead. debug.SetMemoryLimit
+// is the missing half — a SOFT limit over ALL runtime-managed memory, not the
+// heap alone, that the collector works to stay under by running continuously
+// rather than crossing it.
+//
+// THE LIMIT IS DERIVED FROM THE SMALLEST REAL BOUND, NOT FROM TASTE.
+// [surfaceMemoryLimit] takes HALF of the tightest bound the machine and the
+// process's cgroup give, under an absolute floor, and both halves of that are
+// there because the failure this must never cause is a limit BELOW the live
+// heap: a limit under the working set makes the collector thrash continuously,
+// which is a worse failure than the unbounded growth it was added to prevent.
+// Half a bound that can run a surface at all is far clear of the roughly 104 MB
+// a surface's resident set was measured at, and the floor refuses the small
+// machines where half of the bound would not be.
+//
+// PHYSICAL MEMORY ALONE IS THE WRONG BOUND INSIDE A CONTAINER, which is the
+// usual reason to set GOMEMLIMIT at all. The machine's physical memory there is
+// the HOST's, so a limit drawn from it lands far above what the process may
+// actually use: it never binds, and the kernel OOM-kills instead of the
+// collector working. So the cgroup the process runs in is read as well, and the
+// SMALLEST finite bound wins. A fixed generous ceiling still loses — one number
+// written by hand is wrong on a small machine and a large one at once. And a
+// bound that cannot be read (physical memory unreadable, no cgroup files, every
+// cgroup file `max`, or the cgroup v1 "no limit" sentinel) is not counted at
+// all; if none is readable the surface sets nothing, exactly as it did before
+// the cgroup read existed.
+//
+// AN EXPLICIT GOMEMLIMIT STILL DECIDES, exactly as an explicit GOGC and
+// GOMAXPROCS do above — this is a default, not a policy. A machine whose memory
+// cannot be read, or whose half would fall under the floor, has NOTHING set
+// rather than a dangerous limit. And like the scheduler cap this crosses to the
+// engine host as the variable: the child process reads GOMEMLIMIT at its own
+// startup.
 func tuneForTheSurface() {
+	if os.Getenv("GOMAXPROCS") == "" {
+		if n := surfaceProcs(runtime.NumCPU()); n < runtime.NumCPU() {
+			runtime.GOMAXPROCS(n)
+			os.Setenv("GOMAXPROCS", strconv.Itoa(n))
+		}
+	}
 	if os.Getenv("GOGC") == "" {
 		debug.SetGCPercent(400)
 	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		if limit := surfaceMemoryLimit(hostTotalMemory(), hostCgroupMemoryLimit()); limit > 0 {
+			debug.SetMemoryLimit(limit)
+			os.Setenv("GOMEMLIMIT", strconv.FormatInt(limit, 10))
+		}
+	}
+}
+
+// surfaceProcs is the GOMAXPROCS a surface should run under on a machine with
+// ncpu cores: the cap, or the machine's own count when it is no bigger than the
+// cap. The caller reads it as "is this smaller than what we have" — on a machine
+// that is already at or under the cap the answer is the machine, so nothing is
+// capped and not even the variable is set.
+func surfaceProcs(ncpu int) int {
+	if ncpu <= surfaceMaxProcs {
+		return ncpu
+	}
+	return surfaceMaxProcs
 }
 
 // execute is the last line of defense. Everything below it absorbs its own

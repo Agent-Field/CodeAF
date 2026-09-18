@@ -19,20 +19,29 @@ export function buildIndex(cells, { version, generated, minInstalls, judges }) {
     generated,
     min_installs: minInstalls,
     judges,
-    rubrics: { role_quality: 1 },
+    rubrics: { role_quality: 1, acceptable: 1 },
     aliases: {},
     metrics: {
       role_quality: { kind: 'gaussian', unit: 'score', dims: ['role', 'model'] },
+      acceptable: { kind: 'bernoulli', unit: 'share', dims: ['role', 'model', 'source'] },
     },
-    cells: cells.map((c) => ({
-      metric: c.metric,
-      role: c.role,
-      model: c.model,
-      mean: c.mean,
-      sd: c.sd,
-      n: c.n,
-      installs: c.installs,
-    })),
+    cells: cells.map((c) => {
+      const cell = {
+        metric: c.metric,
+        role: c.role,
+        model: c.model,
+      };
+      if (c.source !== undefined) {
+        // The reader folds a source label without its vendor: the wire says
+        // codeaf/grader, the document says grader.
+        cell.source = c.source.slice(c.source.lastIndexOf('/') + 1);
+      }
+      cell.mean = c.mean;
+      cell.sd = c.sd;
+      cell.n = c.n;
+      cell.installs = c.installs;
+      return cell;
+    }),
   };
   return JSON.stringify(doc);
 }

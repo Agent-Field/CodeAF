@@ -520,7 +520,8 @@ func taskRunningStatus(status TaskStatus, facts TaskFacts) TaskStatus {
 func taskEndingIsFault(ending TaskEnding) bool {
 	switch ending {
 	case TaskEndingStopped, TaskEndingWire, TaskEndingUpstream, TaskEndingCircling,
-		TaskEndingBlocked, TaskEndingSteps, TaskEndingNotes, TaskEndingRefused, TaskEndingStale:
+		TaskEndingBlocked, TaskEndingSteps, TaskEndingNotes, TaskEndingRefused, TaskEndingStale,
+		TaskEndingInterrupted:
 		return false
 	}
 	return true
@@ -611,8 +612,10 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 // — is a negative answer rather than the absence of one.
 //
 // A record row knows less than a live one. The index carries no merge word,
-// branch, hold, gap or prerequisite, so a row read from it can say what state it
-// is in and why it ended, and never where its edits are or what is holding it.
+// hold, gap or prerequisite, and it carries only the KEPT branch
+// ([TaskIndexEntry.Branch]) rather than the merge that left the work there — so a
+// row read from it can say what state it is in, why it ended, and where its
+// edits were kept, and never what is holding it.
 func (e TaskIndexEntry) StatusFacts(held bool) TaskFacts {
 	facts := TaskFacts{
 		State:  TaskState(e.Status),
@@ -667,6 +670,11 @@ const (
 	taskReasonNotes    = "would not write its notes down"
 	taskReasonStale    = "its brief went stale"
 	taskReasonRefused  = "would not take a step it was asked to"
+	// taskReasonInterrupted is the reason for a node MACHINERY cut where it stood
+	// ([TaskEndingInterrupted]). It names the interruption as not a person's, which
+	// is the whole of the distinction the ending draws from
+	// [TaskEndingStopped]'s `stopped`.
+	taskReasonInterrupted = "was cut short from outside the work"
 	// taskReasonGaps and taskReasonFault are the two the ending alone cannot
 	// answer: what the check found, and what broke. Both read the landing's own
 	// report, which is the only place either sentence exists.
@@ -715,6 +723,16 @@ const (
 	// differs, and it names the checker rather than the work (#941).
 	taskAskTimeReason = "the check ran out of time"
 
+	// taskAskSettleReason is the THIRD ROAD TO THE CHECK'S QUESTION, and the one a
+	// person reads after the turn that was to decide the landing ran past its own
+	// bound — its call ceiling, its share of the run's money, or the window it was
+	// told ([settleWake], task_run.go's [Agent.markSettleBound]). The question and
+	// its two answers are the check's, because nothing merges on a non-answer
+	// whatever stopped the turn; only the reason differs, and it names why the
+	// decision came back rather than the work. The count rides the report's lead
+	// after this sentence (taskCheckReason reads it back).
+	taskAskSettleReason = "it was not settled within its bound"
+
 	taskAskStartYes    = "start"
 	taskAskStartNo     = "don't"
 	taskAskApproveYes  = "approve"
@@ -739,6 +757,8 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 	switch ending {
 	case TaskEndingStopped:
 		return ""
+	case TaskEndingInterrupted:
+		return taskReasonInterrupted
 	case TaskEndingWire:
 		return taskReasonWire
 	case TaskEndingUpstream:
@@ -908,6 +928,12 @@ func taskAskOf(facts TaskFacts) TaskAsk {
 // here as "nobody could check it" whatever the clock did; checkwindow_test.go's
 // TestTheClockLeadIsWrittenOnceAndReadBack is where that is held.
 func taskCheckReason(report string) string {
+	// A SETTLE TURN THAT RAN PAST ITS BOUND LEADS ITS OWN REPORT, and it is read
+	// before the clock's sentence because it is a different fact: not that the
+	// check ran out of time, but that the turn which was to decide the landing did.
+	if strings.HasPrefix(strings.TrimSpace(report), taskAskSettleReason) {
+		return taskAskSettleReason
+	}
 	if strings.HasPrefix(strings.TrimSpace(report), taskAskTimeReason) {
 		return taskAskTimeReason
 	}

@@ -62,11 +62,57 @@ key.
    (expect 200 and an ETag), then `codeaf pool verify`, then `codeaf pool
    status`.
 9. Know what the store holds — one running total per install, cell and day; a
-   per-install per-day quota counter; and the last index document and its
-   signature — and how to wipe it: `wrangler kv key list` to see the keys and
-   `wrangler kv key delete <key>` to drop one.
+   per-install per-day quota counter; the nonces it has folded for that install
+   and day (`seen/<install>/<day>`, one week's TTL); and the last index document
+   and its signature — and how to wipe it: `wrangler kv key list` to see the
+   keys and `wrangler kv key delete <key>` to drop one.
+
+   What a batch costs the meter: one KV read and one KV write for each distinct
+   (day, cell) it folds into, one read per day the batch carries (that day's
+   seen set), and one read and one write per day it has fresh rows on (that
+   day's seen set and its quota counter) — neither scaling with the row count,
+   so a 200-row batch over ten cells on one day is 12 writes where one write per
+   row was 200. The relay is deployed on a plan whose KV is metered, not capped, so the
+   free tier's daily ceilings (1,000 KV writes and 100,000 KV reads) do not
+   apply; the operator keeps the plan's name and price out of this file. The day's seen set is at most
+   `ROWS_PER_INSTALL_PER_DAY` nonces of 32 hex characters plus a separator —
+   16,500 bytes at the default 500, against KV's 25 MiB value limit — so a plan
+   that raises the quota past what one value holds is refused rather than
+   allowed to drop nonces.
 10. Rotating the signing key: generate a new seed, add the new public key to the
     binary's trusted key list, then redeploy with the new secret.
+11. Keep the seed index the binary carries faithful to the relay. Before a
+    release, run `go run ./internal/pool/index/cmd/seedgen -check` from the
+    repository root: it fetches the signed index, verifies it, and diffs it
+    against `internal/pool/index/seed.json` and
+    `docs/design/model-pool/data/seed-cells.csv`, exiting non-zero when either
+    has drifted. Review the diff, then re-run without `-check` to write both,
+    and let the regenerated files ride the release's pull request and change
+    note. The command checks signatures under the key the build carries; pass
+    `-key <base64>` (repeatable) for a relay of your own, and `-url`/`-mirror`
+    to point it elsewhere.
+12. Refuse a fixture vendor at the door: set `ALLOWED_VENDORS` in `[vars]` to a
+    comma-separated list of the vendors the relay accepts on a row's `model` and
+    `judge` (for example `ALLOWED_VENDORS = "z-ai,anthropic"`). Unset or blank,
+    every vendor passes as it always did. Set it, and a row whose model or judge
+    vendor is not named is refused, with a message naming the field, before
+    anything is stored. Nothing in `relay/` names the vendors the pool serves,
+    so read them off the smallest source of truth there is: the published index
+    itself, whose cells' `model` vendors and `judges` vendors are exactly the
+    vendors the pool has served.
+13. Purge fixture-vendor rows already stored. `relay/tools/purge.js` lists the
+    `sheet/` keys whose model or judge vendor is named and deletes them, driving
+    `wrangler kv key list` and `wrangler kv key delete` against the `POOL`
+    binding. Dry-run it first, then delete, then trigger a publish (step 7a) so
+    the index drops the purged judge:
+
+        cd relay
+        node tools/purge.js --vendor crew --vendor other --dry-run   # prints the keys
+        node tools/purge.js --vendor crew --vendor other             # deletes them, prints the count
+
+    The purge reads only the `sheet/` prefix, so every `seen/` and quota key is
+    left alone, and the published judge list is derived from the stored keys —
+    deleting them is what removes a judge from the next publish.
 
 ## Observability
 
@@ -78,6 +124,26 @@ includes the caller's network address and the `X-Codeaf-Install` header for
 the platform's retention period. That record is the one place a row can be
 tied to an address. A relay that should keep none sets `persist = false` or
 `head_sampling_rate = 0` in both blocks.
+
+Judge severity and the primed rows. The index's `role_quality` cells come
+out of a per-judge severity fit (`relay/src/sheet.js`): every judge's scores
+are shifted by a fitted β before they are pooled, so a judge who scores high
+or low on everything is taken out of the published means. The priming script
+(`relay/tools/prime.py`) posts every seat as exactly 0 or 100 under one judge
+id, so in that fit the primed judge's rows carry only the two ends of the
+rubric. For a judge whose rows are all primed, with `n_prime` rows on cells
+the other judges hold `n_other` rows of at weighted mean `c`, the stationary
+fit puts its severity at `β = n_other · (x̄ − c) / (n_prime + n_other)`, where
+`x̄` is the primed rows' own mean (100 × the pass rate), and moves the centre
+of every cell it shares by `n_prime / (n_prime + n_other)` of the gap toward
+`x̄`. As a worked number: `n_prime = 385` rows, all failures (`x̄ = 0`),
+against `n_other = 600` rows at `c = 88` gives
+`β = 600 · (0 − 88) / 985 ≈ −53.6` — and the fit holds every severity inside
+±10 (a judge further off than a tenth of the rubric's width is a different
+rubric, not a severity), with each adjusted score clamped back into
+[0, 100], so a cell that judge scores alone shifts by at most 10 points
+either way. An operator weighing a purge can read the size of the pull from
+the same formula with their own `n_prime` and `n_other`.
 
 ## Run your own relay
 
