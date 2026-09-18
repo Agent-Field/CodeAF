@@ -1,0 +1,149 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+)
+
+// c266PlanRows is one run mid-flight: the run's root wearing its counts, a
+// worker with a step in flight, one held behind a sibling it can name, one
+// running with nothing to say, and two finished rows the family has folded.
+func c266PlanRows() []session.PlanTaskRow {
+	live := livePlanRow()
+	live.ID, live.Parent, live.Title = "live", "root", "write the handler"
+	return []session.PlanTaskRow{
+		{ID: "root", Title: "rewrite the auth flow", Status: "running", Done: 2, Running: 1, Queued: 1, Total: 4},
+		live,
+		{ID: "gate", Parent: "root", Title: "the gate", Status: "running"},
+		{ID: "held", Parent: "root", Title: "write the tests", Status: "pending", Waits: []string{"gate"}},
+		{ID: "done-a", Parent: "root", Title: "old fixture", Status: "done"},
+		{ID: "done-b", Parent: "root", Title: "old helper", Status: "done"},
+	}
+}
+
+// c266Rail draws the rail of a conversation holding these plan rows and never
+// opening the tasks place — the shape the rail exists for ([app.refreshElsewhere]
+// is the clock that moves the reading the projection hangs on).
+func c266Rail(t *testing.T, rows []session.PlanTaskRow, width int, wide bool) (*app, []string) {
+	t.Helper()
+	a, _ := planAppWith(t, rows, nil)
+	a.width, a.height, a.railWide = width, 30, wide
+	a.refreshElsewhere()
+	return a, a.railRows(a.viewHeight())
+}
+
+// c266RowWith finds the rail row a word rides on.
+func c266RowWith(t *testing.T, rows []string, word string) (int, string) {
+	t.Helper()
+	for i, row := range rows {
+		if strings.Contains(plain(row), word) {
+			return i, plain(row)
+		}
+	}
+	t.Fatalf("no rail row carries %q:\n%s", word, plain(strings.Join(rows, "\n")))
+	return 0, ""
+}
+
+// THE RAIL DRAWS ONE LINE PER PLAN TASK. The tasks page's row is a card at this
+// tier and its stats wrapped under the title, and a second copy of the same
+// figures followed the live command — so a run of four tasks spent eleven of
+// the rail's rows. The rail's own row is the connector, the state mark, the
+// title, and the state's tail at the end of the line; the steps and the money
+// are the page's own rows, which have the room for them.
+func TestTheRailGivesEveryPlanTaskOneLine(t *testing.T) {
+	_, rows := c266Rail(t, c266PlanRows(), 120, true)
+	paint := plain(strings.Join(rows, "\n"))
+	for _, word := range []string{"rewrite the auth flow", "write the handler", "the gate", "write the tests"} {
+		if !strings.Contains(paint, word) {
+			t.Fatalf("a plan task is missing from the rail:\n%s", paint)
+		}
+	}
+	if strings.Contains(paint, "steps") || strings.Contains(paint, "$0.") {
+		t.Fatalf("the rail drew a plan row's figures, which are the page's own rows:\n%s", paint)
+	}
+	// A HELD ROW SAYS WHAT IT WAITS ON, at the end of its own line — never cut
+	// short of the name of the work it is held behind.
+	at, held := c266RowWith(t, rows, "write the tests")
+	if !strings.HasSuffix(held, "waits: the gate") {
+		t.Fatalf("the held row does not end in what it waits on:\n%s", held)
+	}
+	// UNDER A ROW WITH A STEP IN FLIGHT, ONE LIVE LINE AND NEVER A STATS ONE.
+	i, live := c266RowWith(t, rows, "write the handler")
+	if strings.Contains(live, "$") {
+		t.Fatalf("the live command rode the task's own row:\n%s", live)
+	}
+	if i+1 >= len(rows) {
+		t.Fatalf("the running row has no line under it:\n%s", paint)
+	}
+	under := plain(rows[i+1])
+	if !strings.Contains(under, "$ git grep") {
+		t.Fatalf("the one line under a running row is not its live command:\n%s", under)
+	}
+	if strings.Contains(under, "steps") {
+		t.Fatalf("a stats line followed the live command:\n%s", under)
+	}
+	if i+2 >= len(rows) || !strings.Contains(plain(rows[i+2]), "the gate") {
+		t.Fatalf("a second under-line followed the live command:\n%s", paint)
+	}
+	_ = at
+}
+
+// A FAMILY'S FINISHED ROWS ARE ONE LINE: the settled mark from the vocabulary
+// and the count — never the finished rows themselves, which is the fold that
+// keeps a ten-task run's live rows on screen.
+func TestTheRailFoldsAFinishedFamilyToOneLine(t *testing.T) {
+	a, rows := c266Rail(t, c266PlanRows(), 120, true)
+	paint := plain(strings.Join(rows, "\n"))
+	if strings.Contains(paint, "old fixture") || strings.Contains(paint, "old helper") {
+		t.Fatalf("the rail drew a finished family's own rows:\n%s", paint)
+	}
+	_, folded := c266RowWith(t, rows, "2 done")
+	mark := plain(a.pal.glyph(tokens.GSettled))
+	if !strings.Contains(folded, mark+" 2 done") {
+		t.Fatalf("the folded line is not the vocabulary's own mark beside its count:\n%s", folded)
+	}
+}
+
+// THE RUN'S ROW ENDS IN THE DOT ROW, at the rail's own width tier: five cells
+// and `N/M` on the widened column, `N/M` alone under 40 columns — and a run of
+// one task shows no dots at all, because one task is not a series.
+func TestTheRunsRowOnTheRailWearsTheDotRow(t *testing.T) {
+	a, rows := c266Rail(t, c266PlanRows(), 120, true)
+	_, run := c266RowWith(t, rows, "rewrite the auth flow")
+	if !strings.HasSuffix(run, "2/4") {
+		t.Fatalf("the run's row does not end in its count:\n%s", run)
+	}
+	if !strings.Contains(run, plain(a.pal.glyph(tokens.GEmptyCell))) {
+		t.Fatalf("the run's row wears no dot row:\n%s", run)
+	}
+	narrow, short := c266Rail(t, c266PlanRows(), 150, false)
+	_, slim := c266RowWith(t, short, "rewrite the aut")
+	if !strings.HasSuffix(slim, "2/4") {
+		t.Fatalf("the narrow rail's run row does not end in its count:\n%s", slim)
+	}
+	for _, cell := range []tokens.GlyphID{tokens.GDoneCell, tokens.GFailedCell, tokens.GEmptyCell} {
+		if strings.Contains(slim, plain(narrow.pal.glyph(cell))) {
+			t.Fatalf("the narrow rail drew dot cells beside the count:\n%s", slim)
+		}
+	}
+}
+
+// A RUN OF ONE TASK SHOWS NO DOTS: the store's row carries no series, and a
+// dot row on it would say there was one.
+func TestARunOfOneTaskOnTheRailWearsNoDots(t *testing.T) {
+	a, rows := c266Rail(t, []session.PlanTaskRow{
+		{ID: "solo", Title: "migrate the ledger", Status: "running", Total: 1},
+	}, 120, true)
+	_, run := c266RowWith(t, rows, "migrate the ledger")
+	if strings.Contains(run, "/") {
+		t.Fatalf("a one-task run's row carries a count:\n%s", run)
+	}
+	for _, cell := range []tokens.GlyphID{tokens.GDoneCell, tokens.GFailedCell, tokens.GEmptyCell} {
+		if strings.Contains(run, plain(a.pal.glyph(cell))) {
+			t.Fatalf("a one-task run's row carries dot cells:\n%s", run)
+		}
+	}
+}
