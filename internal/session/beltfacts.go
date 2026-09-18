@@ -649,7 +649,37 @@ func promptWithBeltFacts(config Config) string {
 	for strings.Contains(page, "\n\n\n") {
 		page = strings.ReplaceAll(page, "\n\n\n", "\n\n")
 	}
-	return page
+	return withChatTaskRouting(config, page)
+}
+
+// chatTaskRoutingAnchor is the heading the conversation's three hand-off rules
+// sit under when the bash belt is on.
+const chatTaskRoutingAnchor = "# Putting more hands on the work\n"
+
+// withChatTaskRouting joins the three hand-off rules to the conversation's page
+// under the bash belt, and is the identity everywhere else.
+//
+// A CONDITIONAL RULE IS A BELT FACT, COMPOSED HERE, AND NEVER BYTES OF
+// system.md. The rules first lived inside the page between two markers and a
+// profile door cut them when the belt was off: their bytes then sat in every
+// request's fixed prefix (prefixbudget_test.go went over its budget by 231) and
+// a frontier page stopped being the composed page byte for byte. Joined by the
+// composer they cost a conversation without the belt nothing, and the render
+// still carries exactly what the composer built.
+//
+// The model's hand-off through propose_task does not reach startTaskRun under
+// the bash belt (task.go:525-529, 723-778); only a person-entered /task does
+// (task_person.go:74-88). These rules describe that road and open no new one.
+func withChatTaskRouting(config Config, page string) string {
+	if config.InTask || !bashBeltAsked() {
+		return page
+	}
+	at := strings.Index(page, chatTaskRoutingAnchor)
+	if at < 0 {
+		return page
+	}
+	at += len(chatTaskRoutingAnchor)
+	return page[:at] + chatTaskRoutingPage + page[at:]
 }
 
 // promptNamesBeyondTheBelt is the DEBT LEDGER, and it exists so that the
