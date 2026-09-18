@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: cmd/codeaf's test floor clears CODEAF_PROFILE_DIR, covering the whole package
-pr: 1146
+pr: 1150
 surface: [chat, build]
 invalidates:
   - "The cmd/codeaf test floor was believed to isolate every variable that decides where a test writes. It moved HOME and CODEAF_HOME but answered an exported CODEAF_PROFILE_DIR as a deliberate pin and left it alone; the floor now clears it unconditionally, so no test in the package inherits a profile the environment named."
