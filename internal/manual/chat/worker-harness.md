@@ -139,8 +139,11 @@ acts with a bash call; it **finishes** with `plandb done --agent <name> --result
 '…'` on its own task, and only once the acceptance holds; or it **parks** with
 `plandb wait` when it is blocked on a dependency or a child. A reply that runs no
 command — "now writing the parser:" — changes nothing and does not end the task:
-the harness answers it in the belt's own voice and the worker goes on, and four
-such replies in a row fail the task.
+the harness answers it in the belt's own voice — `no action executed: answer with
+one bash call; finish with plandb done <your id> --result '…' when the acceptance
+holds; wait with plandb wait when you are blocked on another task` — and the
+worker goes on. Four such replies in a row fail the task, and the task's record
+ends with the reason `4 replies in a row carried no action`.
 
 A parked task stays open and not done, and its claim is released: the runtime runs
 its worker again, with what changed in front of it, the moment a dependency or a
