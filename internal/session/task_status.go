@@ -721,6 +721,16 @@ const (
 	// differs, and it names the checker rather than the work (#941).
 	taskAskTimeReason = "the check ran out of time"
 
+	// taskAskSettleReason is the THIRD ROAD TO THE CHECK'S QUESTION, and the one a
+	// person reads after the turn that was to decide the landing ran past its own
+	// bound — its call ceiling, its share of the run's money, or the window it was
+	// told ([settleWake], task_run.go's [Agent.markSettleBound]). The question and
+	// its two answers are the check's, because nothing merges on a non-answer
+	// whatever stopped the turn; only the reason differs, and it names why the
+	// decision came back rather than the work. The count rides the report's lead
+	// after this sentence (taskCheckReason reads it back).
+	taskAskSettleReason = "it was not settled within its bound"
+
 	taskAskStartYes    = "start"
 	taskAskStartNo     = "don't"
 	taskAskApproveYes  = "approve"
@@ -916,6 +926,12 @@ func taskAskOf(facts TaskFacts) TaskAsk {
 // here as "nobody could check it" whatever the clock did; checkwindow_test.go's
 // TestTheClockLeadIsWrittenOnceAndReadBack is where that is held.
 func taskCheckReason(report string) string {
+	// A SETTLE TURN THAT RAN PAST ITS BOUND LEADS ITS OWN REPORT, and it is read
+	// before the clock's sentence because it is a different fact: not that the
+	// check ran out of time, but that the turn which was to decide the landing did.
+	if strings.HasPrefix(strings.TrimSpace(report), taskAskSettleReason) {
+		return taskAskSettleReason
+	}
 	if strings.HasPrefix(strings.TrimSpace(report), taskAskTimeReason) {
 		return taskAskTimeReason
 	}

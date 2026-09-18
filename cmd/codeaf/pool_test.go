@@ -1385,10 +1385,11 @@ func TestPoolShowSaysHowManyCellsTheBuiltInSeedHolds(t *testing.T) {
 	if want := countWord(total, "cell", "cells"); !strings.Contains(out.String(), want) {
 		t.Errorf("show did not say the seed holds %q:\n%s", want, out.String())
 	}
-	// The seed's one metric says itself the way a cached document's do:
-	// the kind and unit the document spells, its cells, and the dims a cell
-	// of it is addressed by.
-	if want := "role_quality: gaussian score · " + countWord(total, "cell", "cells") + " · dims role, model"; !strings.Contains(out.String(), want) {
+	// The seed's score metric says itself the way a cached document's do:
+	// the kind and unit the document spells, ITS OWN cells — the seed carries
+	// the graded shares beside it now, so the metric's count is not the
+	// total's — and the dims a cell of it is addressed by.
+	if want := "role_quality: gaussian score · " + countWord(len(seed.Cells("role_quality")), "cell", "cells") + " · dims role, model"; !strings.Contains(out.String(), want) {
 		t.Errorf("the seed's metric line did not read %q:\n%s", want, out.String())
 	}
 }

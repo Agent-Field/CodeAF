@@ -254,18 +254,26 @@ func TestATaskNodeSeatsItsTurnsWorkerAndItsErrandsByTheirRole(t *testing.T) {
 }
 
 // The checker is the node as far as everybody watching is concerned, and its
-// bill is the gate's: high.
-func TestTheAuditorsTurnsRowSeatsHigh(t *testing.T) {
+// bill is the gate's: high. AND ITS ROW NAMES WHAT IT WAS AND WHAT IT READ —
+// the role's own word, `auditor`, and the node it checked. Neither could come
+// from [Config.taskID], which the checker deliberately leaves at zero because
+// it is NOT the node it reads (#941's seat, and the call's purpose beside it).
+func TestTheAuditorsRowNamesItsRoleAndTheNodeItCheckedOnTheHighSeat(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
 	agent, _ := ledgerAgent(t, ledger, func(config *Config) {
 		config.InTask = true
 		config.crewRole = roles.RoleAuditor
+		config.checksNode = 42
 	})
 
 	var turn Usage
 	bankCall(agent, &turn, "deepseek/deepseek-v4-flash", 900, 232, 0.31, laneFacts{})
 
-	wantRowFields(t, sealRow(t, ledger), map[string]any{"seat": "high"})
+	rows := rawUsageRows(t, ledger)
+	if len(rows) != 1 {
+		t.Fatalf("wrote %d rows, want the checker's one turn: %v", len(rows), rows)
+	}
+	wantRowFields(t, rows[0], map[string]any{"role": "auditor", "task": "42", "seat": "high"})
 }
 
 // A repair round's fresh worker escalates onto the careful tier, and its rows
