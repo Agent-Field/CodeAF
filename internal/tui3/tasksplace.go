@@ -36,7 +36,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -1956,12 +1955,21 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 		if tail != "" {
 			room -= 2 + ansi.StringWidth(tail)
 		}
-		if room < 1 && tail != "" {
-			tailRoom := ansi.StringWidth(tail) + room - 1
-			if tailRoom < 1 {
-				tailRoom = 1
+		// THE TITLE YIELDS FIRST, THEN THE TAIL, NEVER THE DOTS. The title gives
+		// way down to the cells it needs to stay a name; only then does the
+		// conversation's tail shorten, and a tail with no room to say anything
+		// is left off rather than drawn as one letter.
+		if short := planRailKeepTitle - room; short > 0 && tail != "" {
+			left := ansi.StringWidth(tail) - short
+			if left < workTailKeep {
+				room += 2 + ansi.StringWidth(tail)
+				tail = ""
+			} else {
+				tail = fit(tail, left)
+				room = planRailKeepTitle
 			}
-			tail = fit(tail, tailRoom)
+		}
+		if room < 1 {
 			room = 1
 		}
 		name := fit(tasksLabel(item.entry), room)
@@ -1978,8 +1986,15 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if tail := workConversationTail(item); tail != "" {
 		name += "  " + pal.dim(tail)
 	}
-	if item.plan != nil {
+	if item.plan != nil && item.plan.Parent == "" {
+		// A RUN'S OWN ROW SAYS NO STATE WORD: the group it stands in and the mark
+		// it wears are its state. A TASK UNDER A RUN KEEPS ITS WORD, because
+		// `queued · waits: <task>` is the one thing that row is there to say
+		// (TREE.md).
 		return tasksTableRow(lead, cells, name, rowSay(), tasksAgeField(item, now), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
+	}
+	if item.plan != nil {
+		return tasksTableRow(lead, cells, name, planStateField(item), planSpendField(item), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 	}
 	return tasksTableRow(lead, cells, name, tasksStateField(line), tasksKeyField(by.key, line.rank, now), tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
@@ -2219,21 +2234,15 @@ func workGrouped(items []tasksItem, now time.Time) []string {
 	return out
 }
 
+// workRunCells is the work tab's dot row: ten cells, always (WORK-TAB.md law 6),
+// out of the one painter every surface shares.
+const workRunCells = 10
+
+// workTailKeep is the fewest cells a conversation tail may be cut to.
+const workTailKeep = 6
+
 func workPlanDots(row session.PlanTaskRow, pal palette) string {
-	var dots strings.Builder
-	for cell := 0; cell < 10; cell++ {
-		lo, hi := cell*row.Total, (cell+1)*row.Total
-		doneAt := row.Done * 10
-		id := tokens.GEmptyCell
-		switch {
-		case hi <= doneAt:
-			id = tokens.GDoneCell
-		case lo < doneAt || (row.Running > 0 && lo <= doneAt && hi > doneAt):
-			id = tokens.GRunningCell
-		}
-		dots.WriteString(pal.glyph(id))
-	}
-	return dots.String()
+	return planCells(row, workRunCells, planFailedCells(row, workRunCells), pal)
 }
 
 func workConversationTail(item tasksItem) string {

@@ -169,6 +169,38 @@ func planLine(text, title string) (string, bool) {
 // A TASK THAT HAS RUN NO STEP AND SPENT NOTHING SAYS SO BY DRAWING NOTHING. The
 // emptiness law is the whole of the `0 steps` half of this: a row that wrote
 // `0 steps · $0.00` would be telling a person a fact as though it were news.
+func TestThePaneDrawsThisChatsPlanRowsWithTheirStateWords(t *testing.T) {
+	rows := []session.PlanTaskRow{
+		{ID: "t-alpha", Title: "Alpha", Status: "claimed", Steps: 3, USD: 0.11},
+		{ID: "t-beta", Title: "Beta", Status: "done"},
+	}
+	a, _ := planAppWith(t, rows, nil)
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	text := taskSheetText(a)
+
+	alpha, ok := planLine(text, "Alpha")
+	if !ok {
+		t.Fatalf("the plan's first row was not drawn:\n%s", text)
+	}
+	if !strings.Contains(alpha, "running") {
+		t.Fatalf("a claimed plan task reads %q, want it to wear `running`", alpha)
+	}
+	if !strings.Contains(alpha, "3 steps") || !strings.Contains(alpha, "$0.11") {
+		t.Fatalf("a plan row's steps and spend were not drawn: %q", alpha)
+	}
+	beta, ok := planLine(text, "Beta")
+	if !ok {
+		t.Fatalf("the plan's second row was not drawn:\n%s", text)
+	}
+	if !strings.Contains(beta, "done") {
+		t.Fatalf("a done plan task reads %q, want it to wear `done`", beta)
+	}
+	if strings.Contains(text, "$0.00") || strings.Contains(text, "0 steps") {
+		t.Fatalf("the pane drew a zero as though it were a figure:\n%s", text)
+	}
+}
 
 // ENTER OPENS THE PAGE THE STORE KEEPS: the description, the notes with their
 // author and moment, and the trajectory's steps — each command on its own line.
@@ -414,10 +446,30 @@ func TestAPlanRowWithNoLiveStepDrawsNoUnderBlock(t *testing.T) {
 	if strings.Contains(text, "12 steps · $0.11") {
 		t.Fatalf("a settled row drew the under-block telemetry, which is only the live block's line:\n%s", text)
 	}
+	line, ok := planLine(text, "Alpha")
+	if !ok {
+		t.Fatalf("the settled row was not drawn:\n%s", text)
+	}
+	if !strings.Contains(line, "12 steps") || !strings.Contains(line, "$0.11") {
+		t.Fatalf("the settled row lost its own figures: %q", line)
+	}
 }
 
 // A QUEUED ROW SAYS `queued` — the surface's own word for admitted work, never
 // the store's `pending` and never `running`.
+func TestAQueuedPlanRowSaysQueued(t *testing.T) {
+	text := planTextFor(t, []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "pending"}})
+	line, ok := planLine(text, "Alpha")
+	if !ok {
+		t.Fatalf("the queued row was not drawn:\n%s", text)
+	}
+	if !strings.Contains(line, "queued") {
+		t.Fatalf("a pending plan task reads %q, want it to wear `queued`", line)
+	}
+	if strings.Contains(line, "running") {
+		t.Fatalf("a pending plan task still reads `running`: %q", line)
+	}
+}
 
 // A QUEUED ROW BEHIND NAMED WORK READS `queued · waits: <the work>` ON THE ROW —
 // the dependency sentence the rail's own held row draws, joined to the state word
@@ -428,6 +480,39 @@ func TestAPlanRowWithNoLiveStepDrawsNoUnderBlock(t *testing.T) {
 // column the cell says the word and the reason falls to the line the cursor's row
 // grows — a dangling `waits:` with nothing after it is the one shape the row must
 // not draw.
+func TestAQueuedPlanRowNamesTheWorkItWaitsOn(t *testing.T) {
+	for _, fixture := range []struct {
+		name, parent, want string
+		dangling           bool
+	}{
+		// Twenty cells hold `queued · waits: Root` exactly, so the row says the
+		// whole of it.
+		{name: "a parent the state column can hold", parent: "Root", want: "queued · waits: Root"},
+		// The same sentence will not fit, and the cell gives up the reason whole
+		// rather than announcing it and cutting the work off underneath.
+		{name: "a parent it cannot", parent: "Add rate limiting to every handler in the API", want: "queued", dangling: true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			text := planTextFor(t, []session.PlanTaskRow{
+				{ID: "t-root", Title: fixture.parent, Status: "running"},
+				{ID: "t-alpha", Title: "Alpha", Status: "pending", Parent: "t-root"},
+			})
+			line, ok := planLine(text, "Alpha")
+			if !ok {
+				t.Fatalf("the queued row was not drawn:\n%s", text)
+			}
+			if !strings.Contains(line, fixture.want) {
+				t.Fatalf("the queued row reads %q, want it to say %q", line, fixture.want)
+			}
+			if strings.Contains(line, "t-root") {
+				t.Fatalf("the row named the work it waits on by its store id: %q", line)
+			}
+			if fixture.dangling && strings.Contains(line, "waits:") {
+				t.Fatalf("the row announced a reason it had no room to name: %q", line)
+			}
+		})
+	}
+}
 
 // A NARROW COLUMN DROPS THE COMMAND'S TAIL AND KEEPS THE STEP COUNT, and the
 // live step's lead is drawn whole — never a half glyph.
@@ -695,6 +780,13 @@ func TestAQueuedPlanRowStaysWithItsParent(t *testing.T) {
 	}
 	if ansi.StringWidth(child) <= ansi.StringWidth(parent) {
 		t.Fatalf("the held row sits at its parent's own column (parent %q, child %q)", parent, child)
+	}
+	line, ok := planLine(taskSheetText(a), "Alpha")
+	if !ok {
+		t.Fatal("the held row was not drawn")
+	}
+	if !strings.Contains(line, "queued · waits: Dep") {
+		t.Fatalf("the held row reads %q, want `queued · waits: Dep`", line)
 	}
 }
 
