@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a headless exec run leaves a pending judge record at its tail for the pool's sweep
-pr: 0000
+pr: 1137
 surface: [engine]
 invalidates:
   - "A headless `codeaf exec` run was invisible to the Model Pool: `pool/pending.jsonl` carried no row for it, so no later start had anything to judge. The door now appends one row at its tail, under the `exec` door, and the restart-time sweep scores it like any other landing."
