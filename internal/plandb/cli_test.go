@@ -1177,3 +1177,24 @@ func TestPlandbCliSpendSinceBoundsTheWindow(t *testing.T) {
 	code = h.run("--db", h.db, "spend", "--by", "model", "--since", "yesterday")
 	cliWantError(t, h, code, `--since "yesterday"`)
 }
+
+func TestPlandbCliAddSetChecksAndShow(t *testing.T) {
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	code := h.run("--db", h.db, "add", "Checked", "--as", "checked", "--check", "go test ./x", "--check", "go vet ./x")
+	cliWantCode(t, code, 0)
+	code = h.run("--db", h.db, "show", "t-checked")
+	cliWantCode(t, code, 0)
+	for _, want := range []string{"checks:\n  go test ./x\n  go vet ./x", "next:", "checks:"} {
+		if !strings.Contains(h.out.String(), want) {
+			t.Fatalf("show misses %q:\n%s", want, h.out.String())
+		}
+	}
+	code = h.run("--db", h.db, "task", "set-checks", "t-checked", "--check", "make test-focus")
+	cliWantCode(t, code, 0)
+	code = h.run("--db", h.db, "show", "t-checked")
+	cliWantCode(t, code, 0)
+	if got := h.out.String(); !strings.Contains(got, "checks:\n  make test-focus") || strings.Contains(got, "go test ./x") {
+		t.Fatalf("replacement checks:\n%s", got)
+	}
+}

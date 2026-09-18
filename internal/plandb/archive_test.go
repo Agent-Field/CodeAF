@@ -156,3 +156,28 @@ func TestPlandbCliArchiveAndListArchived(t *testing.T) {
 	code = h.run("--db", h.db, "archive", "--older-than", "soon")
 	cliWantError(t, h, code, "--older-than needs a duration")
 }
+
+func TestPlandbCliArchivePreservesChecks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	store := planOpen(t, path)
+	clock := time.Now().UTC()
+	store.now = func() time.Time { return clock }
+	planAdd(t, store, TaskSpec{ID: "checked", Title: "Checked", Checks: []string{"go test ./internal/plandb"}})
+	planFinish(t, store, "checked", "w", "done")
+	clock = clock.Add(73 * time.Hour)
+	if _, err := store.Archive(72 * time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	got, err := reopened.Archived()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[0].Checks) != 1 || got[0].Checks[0] != "go test ./internal/plandb" {
+		t.Fatalf("archived checks = %#v", got)
+	}
+}
