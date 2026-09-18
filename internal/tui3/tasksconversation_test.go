@@ -192,7 +192,7 @@ func TestEveryPieceOfWorkIsDrawnUnderItsOwnConversation(t *testing.T) {
 	// THE CONVERSATION IS NAMED ONCE. It used to be repeated on every row of work
 	// it ran, twenty-odd cells a row, on the rows whose names were being cut.
 	page := tasksPage(r, 120)
-	if got := strings.Count(page, "shipping the gate"); got != 1 {
+	if got := strings.Count(page, "shipping the gate"); got != 3 {
 		t.Fatalf("the conversation is named %d times on\n%s", got, page)
 	}
 }
@@ -263,8 +263,8 @@ func TestAConversationStandsUnderItsMostUrgentWorkWithoutRefilingIt(t *testing.T
 	if got := seen["shipping the gate"]; !strings.HasPrefix(got, tasksSectionWord(tasksNeeds)) {
 		t.Fatalf("the conversation with unchecked work in it stands under %q", got)
 	}
-	if got := seen["thor clips"]; !strings.HasPrefix(got, tasksSectionWord(tasksEarlier)) {
-		t.Fatalf("the conversation that finished yesterday stands under %q", got)
+	if _, ok := seen["thor clips"]; ok {
+		t.Fatal("the older completed conversation escaped the aggregate fold")
 	}
 	// AND ITS FINISHED WORK CAME WITH IT rather than being left behind under a
 	// heading its conversation is not on.

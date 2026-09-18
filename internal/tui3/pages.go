@@ -486,6 +486,10 @@ func (p page) counted() bool {
 // prefix offers nothing, and the person types one more letter.
 func parsePageWord(s string) (page, bool) {
 	word := strings.ToLower(strings.TrimSpace(s))
+	// /tasks remains the durable command even though the tab is called work.
+	if word == "tasks" {
+		return pageTasks, true
+	}
 	if word == "" {
 		return 0, false
 	}

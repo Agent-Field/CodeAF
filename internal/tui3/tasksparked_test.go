@@ -82,16 +82,12 @@ func TestWorkParkedOnAPersonIsNotFiledUnderRunning(t *testing.T) {
 	}
 }
 
-// TestTheTasksPlaceAndTheColumnCallParkedWorkOneWord is the law under the fix:
-// one source of truth for a word two surfaces draw. The column has said `parked`
-// since it grew its five headings; the place reads that word rather than
-// spelling a second one, so the two can never drift apart again.
-func TestTheTasksPlaceAndTheColumnCallParkedWorkOneWord(t *testing.T) {
-	place := tasksSectionWord(tasksParked)
-	column := railGroupWords[railParked]
-	if place != column {
-		t.Fatalf("the tasks place calls this work %q and the column calls it %q — one fact, two surfaces, two words",
-			place, column)
+// TestTheTasksPlaceCallsParkedWorkQueued keeps this tab on its approved word.
+// The pre-c253 rail still distinguishes blocked work as waiting; c259 does not
+// rewrite that independently-owned surface.
+func TestTheTasksPlaceCallsParkedWorkQueued(t *testing.T) {
+	if place := tasksSectionWord(tasksParked); place != "queued" {
+		t.Fatalf("the tasks place calls parked work %q, want queued", place)
 	}
 	// AND THE WORD IS NOT THE MACHINERY'S. The place's own headings are the
 	// vocabulary a person reads, and every one of them is a plain word about

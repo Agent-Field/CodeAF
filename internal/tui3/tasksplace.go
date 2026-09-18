@@ -501,6 +501,8 @@ const (
 	// tasksLineAir is the blank line between two sections. GROUPS ARE SEPARATED
 	// BY WHITESPACE AND NEVER BY A DIVIDER on this surface.
 	tasksLineAir
+	// tasksLineFold stands for older completed runs without drawing them.
+	tasksLineFold
 	// tasksLineTask is one piece of work.
 	tasksLineTask
 	// tasksLineTail is the second line of a phone card — the same row continued
@@ -739,6 +741,10 @@ func (r tasksReading) lay(width int) []tasksLine {
 			continue
 		}
 		add(tasksLineAir, "")
+		if section == tasksEarlier && r.query == "" && workAllOlderDone(groups) {
+			add(tasksLineFold, workOlderFold(tree.held(section)))
+			continue
+		}
 		add(tasksLineWord, tasksSectionHead(section, tree.held(section), tree.shown(r, section)))
 		// THE SECTION IS DRAWN AS CONVERSATIONS AND NOT AS A FLAT LIST. A chat that
 		// split one ask into eight workers used to arrive as eight peers of
@@ -1525,6 +1531,8 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 	switch line.kind {
 	case tasksLineAir:
 		return ""
+	case tasksLineFold:
+		return placeLead + pal.dim(fit(line.text, room))
 	case tasksLineControl:
 		return tasksControlRow(r.query, r.order, width, pal)
 	case tasksLineWord:
@@ -1696,7 +1704,7 @@ func (r tasksReading) head(width int, edge bool) string {
 
 // tasksHeadWord names the place, in the word the switcher's own tab spells
 // (pages.go's [pageTasks]). One name for one place.
-const tasksHeadWord = "tasks"
+const tasksHeadWord = "work"
 
 func tasksWindowStart(win session.UsageWindow) string {
 	win = win.Normalized()
@@ -1750,17 +1758,11 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 // the sections' filing because conversation grouping must never turn a
 // conversation's finished siblings into more decisions for a person to make.
 func (r tasksReading) tally() string {
-	counts := [tasksSectionCount]int{}
+	counts := make(map[tasksSection]int, tasksSectionCount)
 	for _, item := range r.items {
 		counts[item.section]++
 	}
-	var segs []string
-	for _, section := range tasksSectionOrder {
-		if n := counts[section]; n > 0 {
-			segs = append(segs, itoa(n)+" "+tasksSectionWord(section))
-		}
-	}
-	return strings.Join(segs, railSep)
+	return workCounts(counts)
 }
 
 // shown is how many rows of work the section these items were taken from
@@ -1832,13 +1834,13 @@ func tasksSectionWord(section tasksSection) string {
 		// word for both halves. The rail says `queued` for work with nothing in its
 		// way but a slot and `waiting` for work blocked behind other work; this
 		// section holds both, and every row in it is waiting for something.
-		return railGroupWords[railParked]
+		return "queued"
 	case tasksToday:
 		// `done today` HELD FAILURES. Three rows under it, one of them `× install
 		// the render toolchain · failed` — and `done` is the word this surface uses
 		// for work that came off. What is actually true of every row here is that
 		// it ENDED today, whatever it ended as, and each row still says which.
-		return "finished today"
+		return "done today"
 	default:
 		return taskSheetPastHead
 	}
@@ -1912,11 +1914,14 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if item.plan != nil {
 		state, second = planStateField(item), planSpendField(item)
 	}
-	label := tasksLabel(item.entry)
+	name := tasksLabel(item.entry)
 	if item.plan != nil && item.plan.Total > 0 {
-		label += "  " + planProgress(*item.plan, width, pal)
+		name += "  " + planProgress(*item.plan, width, pal)
 	}
-	return tasksTableRow(lead, cells, label,
+	if tail := workConversationTail(item); tail != "" {
+		name += " " + pal.dim(tail)
+	}
+	return tasksTableRow(lead, cells, name,
 		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
@@ -2126,4 +2131,67 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 // step keeps the four time keys in one grammar shared with spend.
 func (r tasksReading) step(win session.UsageWindow, key string) session.UsageWindow {
 	return placeWindowStep(win, key)
+}
+
+// workCounts is the work tab's state strip. Zero is silence.
+func workCounts(counts map[tasksSection]int) string {
+	order := []tasksSection{tasksRunning, tasksParked, tasksNeeds, tasksToday}
+	var out []string
+	for _, section := range order {
+		if n := counts[section]; n > 0 {
+			out = append(out, itoa(n)+" "+tasksSectionWord(section))
+		}
+	}
+	return strings.Join(out, railSep)
+}
+
+// workGrouped exposes the reading's state/activity order without drawing it.
+func workGrouped(items []tasksItem, now time.Time) []string {
+	copyItems := append([]tasksItem(nil), items...)
+	sort.SliceStable(copyItems, func(i, j int) bool {
+		if copyItems[i].section != copyItems[j].section {
+			return copyItems[i].section < copyItems[j].section
+		}
+		return tasksNewer(copyItems[i], copyItems[j], now)
+	})
+	var out []string
+	for _, item := range copyItems {
+		out = append(out, tasksSectionWord(item.section)+":"+tasksLabel(item.entry))
+	}
+	return out
+}
+
+func workConversationTail(item tasksItem) string {
+	if strings.TrimSpace(item.entry.Parent) != "" {
+		return ""
+	}
+	if strings.TrimSpace(item.row.ID) != strings.TrimSpace(item.entry.SessionID) {
+		return ""
+	}
+	if title := strings.TrimSpace(item.row.Title); title != "" {
+		return strings.TrimSpace(rowSep) + " " + title
+	}
+	return ""
+}
+
+func workOlderFold(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return itoa(n) + " more" + rowSep + "type to find one"
+}
+
+func workAllOlderDone(groups []tasksGroup) bool {
+	if len(groups) == 0 {
+		return false
+	}
+	for _, group := range groups {
+		for _, root := range group.roots {
+			status := strings.TrimSpace(root.entry.Status)
+			if status != string(session.TaskDone) && status != string(session.TaskFailed) && status != "cancelled" {
+				return false
+			}
+		}
+	}
+	return true
 }

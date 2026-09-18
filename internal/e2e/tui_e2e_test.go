@@ -1425,7 +1425,7 @@ func panelColumn(screen, heading string, edge int) string {
 }
 
 // barWords is the tab bar's words: the first row holding both its first and its
-// last word, with any count a tab wears (`tasks 1`) left out.
+// last word, with any count a tab wears (`work 1`) left out.
 func barWords(screen, first, last string) []string {
 	for _, line := range strings.Split(screen, "\n") {
 		fields := strings.Fields(line)
@@ -1608,7 +1608,7 @@ func testOneSpendFigure(t *testing.T) {
 	// as esc-then-3, which is what internal/tui3's placeDigit reads.
 	//
 	// THE DIGIT IS THE PLACE'S RANK IN internal/tui3's placeOrder, and the bar of
-	// four (`home tasks spend settings`) made spend the third. It was `alt+5` on
+	// four (`home work spend settings`) made spend the third. It was `alt+5` on
 	// the seven-word bar, and on the four-word one `alt+5` opens standing — which
 	// this subtest then read as a spend place with no figure on it.
 	r.lit("\x1b3")

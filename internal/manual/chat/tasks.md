@@ -2588,6 +2588,15 @@ does nothing, rather than closing the task page you are reading.
 **A second click on the selected row keeps its task open**, with the same draft and
 reading position. Press `esc` or the back control to return to the conversation.
 
+## where do I see everything that is running?
+
+Open the **work** tab. It puts every run under `your call`, `running`, `queued`, or
+`done today`, in that order; a group with nothing in it is left out. Inside each group,
+the run with the newest activity comes first.
+
+Below the `done today` rows, older done work folds into one dim line —
+`N more · type to find one`. Type to find one of those older runs.
+
 ## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
 
 This is where **task history** lives — every **old and past task**, and **work from other
@@ -2599,8 +2608,8 @@ cannot give: the column beside the conversation is built from *this session's* w
 nothing else, so a task you ran last week, in a session you have closed, is nowhere on the
 screen until you open this.
 
-**There is no `/tasks` command** — though `tasks` is what the PLACE this opens is called on
-the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same tasks place
+**There is no `/tasks` command** — `work` is the tab that opens the tasks place, reached with
+`alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same tasks place
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
 column — `ctrl+. earlier`, or `ctrl+. view more` where the column has merely folded a

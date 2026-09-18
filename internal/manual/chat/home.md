@@ -8,7 +8,7 @@ answering one question you would ask walking up to a colleague's desk:
 
 ```
  codeaf                                                      $0.14 / $20 · thu 9:49am
-  home   tasks   spend   settings
+  home   work   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
  needs you                                       projects · folders you've opened
@@ -62,7 +62,7 @@ whole map over the cells you are already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`.
+Home is the **first of the four places on the tab bar** — `home  work  spend  settings`.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
 
@@ -642,7 +642,7 @@ cent — one reading of one file, wherever you are standing.
 ## Where did standing, memory and search go — the four places on the tab bar
 
 **They are still places; they are just off the bar.** The tab bar under the top line is four
-words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
+words — `home  work  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
 memory and search open exactly as they did:
 
 - **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `scheduled` row;
@@ -1933,7 +1933,7 @@ On the resting panels the same work is a row of `running` while it runs and a li
 
 **On the card beside a search, `▸ N more tasks` names the tasks place** out at the right
 margin rather than unfolding, because a card is not the place that holds them; `ctrl+.`, or
-`tab` onto `tasks`, is the way there. A band of files or folders with more behind it says
+`tab` onto `work`, is the way there. A band of files or folders with more behind it says
 `▸ …3 more files`, and a click on that line — or `→` with the strip closed — opens it, and
 `▾ …3 fewer` folds it back. The fold always cuts between tasks, never through one.
 

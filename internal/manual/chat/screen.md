@@ -47,7 +47,7 @@ the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once th
 session has tasks to come back to and no running-turn line owns that slot.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
+standing, memory, spend, search and settings. Four are on the tab bar — `home  work
 spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) jump
 straight to any of the seven from wherever you are standing — a place or a conversation —
 and each

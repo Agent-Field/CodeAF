@@ -266,7 +266,7 @@ func TestSortingByCostOrdersEveryLevelAndSaysSo(t *testing.T) {
 	}
 
 	// AND THE CONVERSATIONS INSIDE ONE SECTION GO BY THEIR TOTALS. The sweep cost
-	// $4.80 altogether and the clips cost ten cents, and both finished today.
+	// $4.80 altogether and the clips cost ten cents, and both done today.
 	roots := []string{}
 	for _, line := range reading.lay(122) {
 		if line.kind == tasksLineChat && line.chat.state == tasksToday {

@@ -8,13 +8,13 @@ their command:
 
 `home` · `tasks` · `spend` · `settings` · `standing` · `memory` · `search`
 
-**The tab bar draws four:** `home  tasks  spend  settings`. Standing, memory and search are
+**The tab bar draws four:** `home  work  spend  settings`. Standing, memory and search are
 places all the same — `/standing`, `/memory`, `/search`, their digit, the map and the typed
 box all reach them — and while you are standing in one its word is on the bar after the
 four, so the bar always says where you are.
 
 They are drawn as a **tab bar** on the second row of every place, under the top line — the
-row of words at the top of the screen, `home  tasks  spend  settings`, is this bar. The
+row of words at the top of the screen, `home  work  spend  settings`, is this bar. The
 one you are standing in wears a filled band; the rest are dim. Nothing else on the surface
 looks like that bar, so "which place am I in" is one glance.
 
@@ -391,7 +391,7 @@ Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
-- the tab bar's words grow their numbers — `1 home`, `2 tasks`, `3 spend`, `4 settings` —
+- the tab bar's words grow their numbers — `1 home`, `2 work`, `3 spend`, `4 settings` —
   and the three places off the bar are drawn after them with theirs: `5 standing`,
   `6 memory`, `7 search`
 - the hint line becomes the chord list
@@ -603,7 +603,7 @@ padding each chip carries and the air between them are 34 cells; under that the 
 the *air between the chips* before it gives up a place, so a 31-column pane draws
 
 ```
-  home  tasks  spend  settings
+  home  work  spend  settings
 ```
 
 with two cells between the words instead of three. Nothing else changes: the band under the
@@ -617,7 +617,7 @@ bar's words that are not on the row (standing, memory and search are never count
 are not the bar's to give up):
 
 ```
-  home  tasks  ▸ 2
+  home  work  ▸ 2
 ```
 
 `▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
@@ -796,7 +796,7 @@ what is in there now, which belongs to the machine the place describes, and when
 looked, which belongs to the terminal you are sitting at. Those are two different machines
 over a connection, so **the look stamps for a remote session are kept on this computer in a
 folder of their own** — `~/.codeaf/v3/looks/<machine>` — beside the local ones rather than in
-them. Glancing at the server's tasks does not clear the number over your laptop's tasks tab,
+them. Glancing at the server's tasks does not clear the number over your laptop's work tab,
 and your laptop's own windows do not overwrite the origin a remote one measures from.
 
 ## Why doesn't home say folder gone over --host

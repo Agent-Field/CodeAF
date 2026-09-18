@@ -13,20 +13,11 @@ func TestTasksIncludesMainChatsBeforeTheyDelegateWork(t *testing.T) {
 	row := session.SessionRow{ID: "main-chat", Title: "Investigate parser failures", Transcript: "/chat/main/transcript.jsonl", At: now}
 	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}
 	r := readTasks(world, tasksMine{}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
-	line := tasksLineOf(t, r.lay(80), row.Title)
-	if line.kind != tasksLineChat || line.folds || len(r.items) != 0 {
-		t.Fatalf("a main chat with no children became a worker or a dead fold: %+v", line)
+	if strings.Contains(strings.Join(r.rows(80, palette{}), "\n"), row.Title) || len(r.items) != 0 {
+		t.Fatal("a conversation with no run grew a synthetic work row")
 	}
 	if !strings.Contains(r.head(80, false), "1 chat") {
-		t.Fatalf("the heading lost the main chat: %s", r.head(80, false))
-	}
-	a := tasksChatApp(t)
-	a.taskSheet.reading = r
-	a.taskSheet.query.setText("Investigate")
-	filtered := a.tasksFiltered()
-	tasksLineOf(t, filtered.lay(80), row.Title)
-	if note := strings.Join(a.taskSheet.note(a, 80), ""); strings.Contains(note, "nothing matches") {
-		t.Fatalf("a matching main chat is called no match: %s", note)
+		t.Fatalf("the heading lost the conversation count: %s", r.head(80, false))
 	}
 }
 
