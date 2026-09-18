@@ -139,6 +139,10 @@ carrying both would teach two ways to say one thing.
   Read it back with `plandb spend`, by role and by model, or rolled up under one
   axis: `plandb spend --by seat` (also `chat`, `project`, `model`, `task`), with
   `--since 7d` to bound the window.
+- **Thinking level.** A run worker answers at **low** reasoning. Its belt is one
+  action per response, so the depth you configured would be paid again on every
+  round of the run. The seat is a floor and not a cap: a rung set on the task, on
+  the conversation or on the turn still wins.
 
 ## Headless: codeaf do — the exit code it leaves with
 
