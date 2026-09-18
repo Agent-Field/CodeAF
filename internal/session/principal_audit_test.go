@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1534,4 +1535,221 @@ func TestANonRepositoryWorkspaceSaysNothingAboutStashes(t *testing.T) {
 			t.Fatalf("a plain directory was told about a stash: %q", line)
 		}
 	}
+}
+
+// AN IGNORED BUILD PRODUCT A SUBPROCESS WROTE IS NAMED, AND NEVER SWEPT.
+//
+// The created-file ledger holds only files the session's own tools wrote, so a
+// build product a SUBPROCESS left behind — pdflatex writing .aux/.log/.out —
+// never reaches [reconcile]; and [treeRecordFromGit] reads the tree as the
+// project sees itself (`ls-files --others --exclude-standard`), which
+// deliberately leaves out what .gitignore covers. A latex landing that was
+// otherwise complete was refused, because the leftover .log/.aux/.out were
+// there for the reviewer's eyes but invisible to the audit, and nobody could
+// prove the tree was clean. `git status --porcelain --ignored` is the one
+// signal that sees them, so the reconciliation names what appeared during the
+// run under a heading of its own — build products, ignored by git, not in the
+// landing — and never lets one reach scratch, removed or failed, and never
+// deletes one: removing an ignored target/ or node_modules/ a build made is a
+// separate decision with its own risks.
+func TestAnIgnoredBuildProductIsNamedAndNeverSwept(t *testing.T) {
+	tree := t.TempDir()
+	revertRepo(t, tree)
+	if err := os.WriteFile(filepath.Join(tree, ".gitignore"), []byte("*.log\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's .gitignore: %v", err)
+	}
+	revertCommit(t, tree, "the project as it was")
+	// AND A GITIGNORED FILE THE REPOSITORY ALREADY HELD, from a build of
+	// somebody's last week, is not this run's news either. The baseline
+	// photograph is what separates the two, the same way the stash reading's
+	// does.
+	stale := filepath.Join(tree, "stale.log")
+	if err := os.WriteFile(stale, []byte("last week\n"), 0o644); err != nil {
+		t.Fatalf("writing the repository's own ignored file: %v", err)
+	}
+
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+		c.SessionFile = journal
+	})
+	agent.steward().setAcceptance("the suite passes")
+	agent.openBaseline(context.Background())
+
+	// THE BUILD PRODUCT, written during the run by a subprocess. It is in no
+	// ledger: the created-file ledger is fed by the session's own tools, and a
+	// subprocess writes through none of them.
+	left := filepath.Join(tree, "foo.log")
+	if err := os.WriteFile(left, []byte("pdflatex noise\n"), 0o644); err != nil {
+		t.Fatalf("writing the build product: %v", err)
+	}
+	// The work itself, in the ledger, so the landing under test is complete
+	// and the question is only what the tree holds beside it.
+	parser := filepath.Join(tree, "parser.go")
+	if err := os.WriteFile(parser, []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("writing the deliverable: %v", err)
+	}
+	agent.rememberChange(fileChange{path: parser, shown: "parser.go", created: true})
+
+	_, found, _ := agent.terminalAudit(context.Background())
+	// (a) NAMED, as a person reads the path, and the repository's own ignored
+	// file is not named with it: only what appeared during the run.
+	if len(found.ignored) != 1 || found.ignored[0] != "foo.log" {
+		t.Fatalf("the ignored build product was not named: %+v", found.ignored)
+	}
+	// (b) AND IN NO SET THE TIDY ACTS ON, so nothing about it can make a
+	// landing incomplete.
+	for name, set := range map[string][]string{"scratch": found.scratch, "removed": found.removed, "failed": found.failed} {
+		if len(set) != 0 {
+			t.Fatalf("an ignored build product reached %s, where it would gate the landing: %+v", name, set)
+		}
+	}
+
+	// AND A COMPLETE LANDING STAYS COMPLETE OVER THEM. The work is made and
+	// the reader has said done; the ignored build product beside it must not
+	// turn that into a carry on, the way a stashed fix does.
+	reader := readerLine{answered: true, nothingLeft: true}
+	remains := agent.remainsFor("fixed", reader)
+	if !remains.Made || !remains.ReaderSaysDone {
+		t.Fatalf("the fixture is not the case under test: %+v", remains)
+	}
+	decision, found := agent.decideOverTheChecks(context.Background(), remains)
+	if decision.Verb != DecideDone {
+		t.Fatalf("a complete landing with ignored build products present was decided %+v", decision)
+	}
+
+	// AND THE SWEEP NEVER TOUCHES THEM. Report only: the file is still there
+	// after the tidy, and so is the one the repository already held.
+	found = agent.sweepSession(found)
+	for _, path := range []string{left, stale} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("the tidy removed an ignored file nobody asked it to: %v", err)
+		}
+	}
+
+	// AND THE ROW SAYS WHAT THE TREE HOLDS, so a reviewer reading the journal
+	// afterwards can see the landing was clean apart from them.
+	rows := principalRows(t, journal)
+	var reconciled *journalPrincipal
+	for index, row := range rows {
+		if row.Event == "reconciled" {
+			reconciled = &rows[index]
+		}
+	}
+	if reconciled == nil {
+		t.Fatalf("no reconciled row was written: %+v", rows)
+	}
+	if strings.Join(reconciled.Ignored, ",") != "foo.log" {
+		t.Fatalf("the reconciled row does not name the ignored build product: %+v", reconciled)
+	}
+	// The ledger's own file is kept, and no set the tidy acts on carries an
+	// ignored path: what the row holds beside `kept` is the report, not work
+	// for the sweep.
+	if strings.Join(reconciled.Kept, ",") != "parser.go" {
+		t.Fatalf("the reconciled row lost the deliverable: %+v", reconciled)
+	}
+	for _, set := range [][]string{reconciled.Removed, reconciled.Failed} {
+		if len(set) != 0 {
+			t.Fatalf("the reconciled row carries a set the tidy acts on: %+v", reconciled)
+		}
+	}
+}
+
+// AND THE ROW IS WRITTEN FOR THEM ALONE. A landing whose created ledger is
+// empty and whose scratch is empty used to write no reconciled row at all, so
+// the one fact a reviewer needed — what the tree holds that no ledger
+// explains — was nowhere on disk. An ignored build product is that fact, and
+// the row exists to hold it.
+func TestAnIgnoredBuildProductAloneStillWritesItsRow(t *testing.T) {
+	tree := t.TempDir()
+	revertRepo(t, tree)
+	if err := os.WriteFile(filepath.Join(tree, ".gitignore"), []byte("*.log\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's .gitignore: %v", err)
+	}
+	revertCommit(t, tree, "the project as it was")
+
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+		c.SessionFile = journal
+	})
+	agent.steward().setAcceptance("the suite passes")
+	agent.openBaseline(context.Background())
+	if err := os.WriteFile(filepath.Join(tree, "foo.log"), []byte("pdflatex noise\n"), 0o644); err != nil {
+		t.Fatalf("writing the build product: %v", err)
+	}
+
+	_, found, _ := agent.terminalAudit(context.Background())
+	if len(found.kept) != 0 || len(found.scratch) != 0 || len(found.ignored) != 1 {
+		t.Fatalf("the reading is not the case under test: %+v", found)
+	}
+	agent.sweepSession(found)
+
+	var reconciled *journalPrincipal
+	for index, row := range principalRows(t, journal) {
+		if row.Event == "reconciled" {
+			reconciled = &principalRows(t, journal)[index]
+		}
+	}
+	if reconciled == nil {
+		t.Fatal("a landing with only an ignored build product to report wrote no reconciled row")
+	}
+	if strings.Join(reconciled.Ignored, ",") != "foo.log" {
+		t.Fatalf("the row does not name the ignored build product: %+v", reconciled)
+	}
+	for _, set := range [][]string{reconciled.Kept, reconciled.Removed, reconciled.Failed} {
+		if len(set) != 0 {
+			t.Fatalf("the row carries more than the ignored build product: %+v", reconciled)
+		}
+	}
+}
+
+// AND A WORKSPACE THAT IS NOT A REPOSITORY SAYS NOTHING ABOUT IGNORED FILES.
+// There is nobody to ask, so the honest answer is silence rather than a list
+// of files nobody's .gitignore ever covered — and the same answer covers a
+// machine with no git.
+func TestANonRepositoryWorkspaceSaysNothingAboutIgnoredFiles(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, "thing.log"), []byte("noise\n"), 0o644); err != nil {
+		t.Fatalf("writing the log: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.openBaseline(context.Background())
+
+	_, found, _ := agent.terminalAudit(context.Background())
+	if len(found.ignored) != 0 {
+		t.Fatalf("a plain directory was reported as holding ignored build products: %+v", found.ignored)
+	}
+}
+
+// principalRows reads a test session's journal back as the principal moments
+// it holds ([wallDecisions]' shape, for every event).
+func principalRows(t *testing.T, path string) []journalPrincipal {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the session journal: %v", err)
+	}
+	var rows []journalPrincipal
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry sessionEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Principal != nil {
+			rows = append(rows, *entry.Principal)
+		}
+	}
+	return rows
 }
