@@ -93,8 +93,19 @@ func configureDetachedCommand(cmd *exec.Cmd, dir string, output io.Writer) {
 
 // StopServiceProcess terminates the whole detached session, preserving the
 // job registry's TERM-then-KILL contract without requiring its waiter channel.
-func StopServiceProcess(pid int) error {
+//
+// IT REFUSES A RECYCLED PID. A service is addressed by a pid recorded at start;
+// under pid pressure that number can name somebody else by the time a stop runs,
+// and signalling it would tear down an unrelated process group. So the recorded
+// start time is checked against the live process first, and a process that is no
+// longer the one that was started — or whose identity cannot be read — is left
+// alone. A missed stop leaks one service; a wrong stop destroys someone else's
+// work.
+func StopServiceProcess(pid int, startedAt time.Time) error {
 	if pid <= 0 {
+		return nil
+	}
+	if matched, err := ProcessIdentityMatches(pid, startedAt); err != nil || !matched {
 		return nil
 	}
 	if err := processgroup.Terminate(pid); err != nil {
