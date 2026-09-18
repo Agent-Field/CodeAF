@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a landing's report counts as something that came back, and an absolute cd is dropped from a declared check
+title: a landing's report counts as evidence, and an absolute cd is dropped from a declared check
 pr: 1212
 surface: [chat, engine]
 invalidates:
