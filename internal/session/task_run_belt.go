@@ -357,6 +357,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	if task := run.store.Task(run.root); landingOwesAnswer(task) {
 		document := owedLandingDocument(task, line)
 		note := wakeNote(document.text())
+		note.landingQuestion, note.landingOutcome = document.landingQuestion, document.landingOutcome
 		note.batch = false
 		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
 		note.settlePrompt = landingAnswerPrompt
@@ -386,7 +387,10 @@ func questionAtTaskHandoff(owed []owedAsk) string {
 }
 
 func owedLandingDocument(task *plandb.Task, result string) userMessage {
-	return userText(strings.TrimSpace(task.Question) + "\n\n" + strings.TrimSpace(result))
+	question, outcome := strings.TrimSpace(task.Question), strings.TrimSpace(result)
+	document := userText(question + "\n\n" + outcome)
+	document.landingQuestion, document.landingOutcome = question, outcome
+	return document
 }
 
 func owedLandingCallCeiling() int { return settleCallCeiling }
