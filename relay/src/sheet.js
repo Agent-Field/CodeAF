@@ -165,8 +165,9 @@ function huberMean(values) {
 // its triples is taken after judge severity is removed, and the cell mean is
 // the Huber M-estimate over those install means once there are at least five
 // installs, the n-weighted mean of them otherwise. A cell whose installs are
-// below minInstalls is still published, but sorted after the cells that meet
-// it.
+// below minInstalls is dropped: the floor keeps any single install's numbers
+// from being published, and the cells have no reader but the publish path
+// that renders them into the document.
 export function aggregate(entries, { minInstalls = 0 } = {}) {
   const cells = [];
   for (const entry of entries) {
@@ -251,19 +252,18 @@ export function aggregate(entries, { minInstalls = 0 } = {}) {
     out.push(cell);
   }
 
-  // Cells that meet minInstalls sort first; below it they follow. Ties break on
-  // mean then role then model, so the document is a property of its entries.
-  out.sort((a, b) => {
-    const am = a.installs >= minInstalls ? 0 : 1;
-    const bm = b.installs >= minInstalls ? 0 : 1;
-    if (am !== bm) return am - bm;
+  // Cells below minInstalls never leave the sheet, so every cell here meets
+  // it. Ties break on metric, then mean, role and model, so the document is
+  // a property of its entries.
+  const kept = out.filter((c) => c.installs >= minInstalls);
+  kept.sort((a, b) => {
     if (a.metric !== b.metric) return a.metric < b.metric ? -1 : 1;
     if (a.mean !== b.mean) return b.mean - a.mean;
     if (a.role !== b.role) return a.role < b.role ? -1 : 1;
     if (a.model !== b.model) return a.model < b.model ? -1 : 1;
     return 0;
   });
-  return out;
+  return kept;
 }
 
 // judgesOf answers the sorted judge ids the entries name.
