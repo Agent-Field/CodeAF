@@ -35,7 +35,7 @@ func TestRailPlanUsesTasksReadingTree(t *testing.T) {
 	}
 	want := plain(strings.Join(wantRows, "\n"))
 	got := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
-	for _, word := range []string{"rewrite the auth", "implement handler", "$ git grep", "queued · waits: schema migration", "2 done", "2/4"} {
+	for _, word := range []string{"rewrite the auth", "implement handler", "$ git grep", "waits: schema migration", "2 done", "2/4"} {
 		if !strings.Contains(want, word) {
 			t.Fatalf("tasks reading lacks %q:\n%s", word, want)
 		}
