@@ -1795,7 +1795,11 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if item.plan != nil {
 		state, second = planStateField(item), planSpendField(item)
 	}
-	return tasksTableRow(lead, cells, tasksLabel(item.entry),
+	name := tasksLabel(item.entry)
+	if tail := workConversationTail(item); tail != "" {
+		name += " " + pal.dim(tail)
+	}
+	return tasksTableRow(lead, cells, name,
 		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
@@ -2036,7 +2040,7 @@ func workConversationTail(item tasksItem) string {
 		return ""
 	}
 	if title := strings.TrimSpace(item.row.Title); title != "" {
-		return rowSep + title
+		return strings.TrimSpace(rowSep) + " " + title
 	}
 	return ""
 }
