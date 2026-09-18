@@ -213,7 +213,17 @@ func (a *Agent) tasksTool() bare.Tool {
 				if parsed.Stop {
 					return "Invalid arguments: stop needs an id — it ends one running task, not a search", true, nil
 				}
+				if rows := a.runPlanTasks(); rows != nil {
+					return markTaskLook(ctx, a.planTasksText(rows, parsed.Query)), false, nil
+				}
 				return markTaskLook(ctx, a.taskSearchText(parsed.Query, parsed.Limit, scope)), false, nil
+			}
+			if rows := a.runPlanTasks(); rows != nil && !parsed.Continue && !parsed.Forward && !parsed.Stop && strings.TrimSpace(parsed.Say) == "" && strings.TrimSpace(parsed.Resolve) == "" {
+				answer, ok := a.planTaskText(rows, token)
+				if !ok {
+					return fmt.Sprintf("No task %q in this run. Call tasks with no arguments to see them.", token), true, nil
+				}
+				return markTaskLook(ctx, answer), false, nil
 			}
 			// THE SAME ANSWER TWICE IN ONE TURN SAYS SO (tasklook.go). It is the
 			// half of the polling fix that reaches a model already mid-poll: the
@@ -1360,4 +1370,82 @@ func TaskAgeWord(d time.Duration) string {
 	default:
 		return strconv.Itoa(int(d/(30*24*time.Hour))) + "mo"
 	}
+}
+
+func (a *Agent) runPlanTasks() []PlanTaskRow {
+	g := a.graph()
+	if g == nil {
+		return nil
+	}
+	plan := g.planIfArmed()
+	if plan == nil || plan.chat == "" {
+		return nil
+	}
+	return a.PlanTasks()
+}
+
+func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	var b strings.Builder
+	for i, row := range rows {
+		page, _ := a.PlanTaskPage(row.ID)
+		if query != "" && !strings.Contains(strings.ToLower(row.Title+" "+row.Status+" "+page.Result), query) {
+			continue
+		}
+		fmt.Fprintf(&b, "#%d · %s · %s", i+1, cutChars(row.Title, runAskLineChars), row.Status)
+		if line := summaryFirstLine(page.Result, runAskLineChars); line != "" {
+			fmt.Fprintf(&b, " · %s", line)
+		}
+		b.WriteByte('\n')
+	}
+	if b.Len() == 0 {
+		if query == "" {
+			return "No tasks have run in this project yet."
+		}
+		return fmt.Sprintf("No task matches %q. Try fewer words, or call tasks with no query to see the run.", query)
+	}
+	return b.String()
+}
+
+func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
+	clean := strings.TrimSpace(strings.TrimPrefix(token, "#"))
+	id := clean
+	if n, err := strconv.Atoi(clean); err == nil && n > 0 && n <= len(rows) {
+		id = rows[n-1].ID
+	}
+	page, ok := a.PlanTaskPage(id)
+	if !ok {
+		return "", false
+	}
+	n := 0
+	for i := range rows {
+		if rows[i].ID == page.Row.ID {
+			n = i + 1
+			break
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "#%d · %s · %s\n\nbrief:\n%s\n", n, cutChars(page.Row.Title, runAskLineChars), page.Row.Status, cutChars(page.Description, runAskBodyChars))
+	if page.Result != "" {
+		fmt.Fprintf(&b, "\nresult:\n%s\n", cutChars(page.Result, runAskBodyChars))
+	}
+	for i, row := range rows {
+		if row.Seat == "check" {
+			check, _ := a.PlanTaskPage(row.ID)
+			if check.Result != "" {
+				fmt.Fprintf(&b, "\ncheck #%d · %s:\n%s\n", i+1, cutChars(row.Title, runAskLineChars), cutChars(check.Result, runAskBodyChars))
+			}
+		}
+	}
+	steps := page.Steps
+	if len(steps) > 12 {
+		steps = steps[len(steps)-12:]
+	}
+	if len(steps) > 0 {
+		b.WriteString("\nlast steps:\n")
+	}
+	for _, step := range steps {
+		fmt.Fprintf(&b, "%d · %s\n%s\n", step.Step, cutChars(step.Command, runAskLineChars), cutChars(step.Observation, runAskLineChars))
+	}
+	return b.String(), true
 }
