@@ -145,25 +145,21 @@ The task request keeps its existing three-line preview and clickable disclosure;
 that request. Completed work keeps its existing `ctrl+e` disclosure. The sidebar
 does not repeat the request or change the transcript's presentation.
 
-## A run task's page follows the newest step, and when its note is read
+## Reading a note on a run task's page — and the page following the newest step
 
 A run's task page — the one `enter` opens on a run's row in the tasks place — keeps up with
-the work: it follows its newest step and stays stuck to that live edge until you scroll up.
-Scrolling back to the bottom resumes the follow without your pressing anything, and a page on
-a task that has settled is a still page. The step being run right now is drawn one step early,
-the running glyph beside the command and, past ten seconds, the call's own clock under it.
-
-The page's foot is a **note box**, under the placeholder `a note for this task`. Type in it
-and press `enter`, and the words go to the task's store — not to a model. Under the box the
-page says when they are read:
+its newest step and follows it until you scroll up; scrolling back to the bottom resumes the
+follow, and a page on a settled task is a still page. Its foot is a **note box**, under the
+placeholder `a note for this task`: type in it and press `enter`, and the words go to the
+task's store rather than to a model. The page says when they are read:
 
 ```
 the worker reads a note at its next step
 ```
 
-A worker is a separate loop, so a note waits in the store until the worker asks for its next
-step, and that is when it reads what you wrote. `x stop it` and `p pause` are read only over an
-empty box: the moment there is a note to type, a letter is a letter.
+A worker is a separate loop, so a note waits until the worker asks for its next step, and that
+is when it reads what you wrote. `x stop it` and `p pause` are read only over an empty box: the
+moment there is a note to type, a letter is a letter.
 
 ## Task setup through the session host
 

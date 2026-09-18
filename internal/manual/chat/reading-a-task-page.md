@@ -366,6 +366,13 @@ the page says it in one dim line, above whatever else it already knows:
 - a read that came back with an error says `couldn't read this task's conversation ·
   retrying`, which is a different fact from either of the two above and keeps its beat
 
+**A run's task page follows its newest step the same way.** The page `enter` opens on a run's
+row — a row drawn in the tasks place — keeps up with the work: the newest step walks in at the
+bottom, and the page stays stuck to that live edge until you scroll up, which releases it.
+Scrolling back to the bottom resumes the follow, and a page on a task that has settled is a
+still page, never re-read. The step being run right now is drawn one step early, the running
+glyph beside its command.
+
 ## Why is a task I just started showing an empty page
 
 It should not, and if it does the version you are on is older than this page. A task
@@ -541,25 +548,6 @@ main conversation or to ask for the work to be started again. Nothing is sent an
 until you answer it. A task that is still running is never refused: if nobody is inside it
 to read you — it is being checked, or its worker has just closed — the line is held on the
 task's record instead, which the clause above says out loud.
-
-## Does the task page keep up with the work — it follows the newest step until you scroll
-
-While a task is running, its page keeps up with it: the newest step walks in at the bottom as
-the worker takes it, and the page stays stuck to that live edge until you scroll up, which
-releases it. Scrolling back to the bottom takes the follow up again without your pressing
-anything. A page on a task that has settled is a still page — nothing re-reads it.
-
-**A run task's page says when a note is read.** The page a run's row opens has a note box at
-its foot, under the placeholder `a note for this task`: type in it and press `enter`, and the
-words go to the task's store rather than to a model. Under the box the page says the one thing
-you cannot see for yourself:
-
-```
-the worker reads a note at its next step
-```
-
-A worker is a separate loop, so a note waits until the worker asks for its next step and reads
-it then — the page says so rather than pretending the words have already been answered.
 
 ## Task page says finished but the work is still running
 

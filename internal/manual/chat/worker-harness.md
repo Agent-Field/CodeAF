@@ -64,7 +64,7 @@ shows, in order, each section left out when nothing is behind it:
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
-## What is my task doing right now?
+## What step is a run task on?
 
 A run's task row carries the step its worker is on **right now**, under its title:
 the running glyph `◐`, the shell lead `$` and the command that step is running; under
@@ -87,7 +87,7 @@ store clears the step the moment its command ends. These rows are a run's **plan
 in the tasks place (`/history`, `ctrl+.`, `alt+2`, and the roster raised over the frame), not
 on the always-on column, which draws this conversation's own tree.
 
-## Does a task's page follow the work as it runs?
+## What a run task's page shows while it runs
 
 `enter` on a run's row opens the task's page, and while the task is running the page follows
 its newest step: it re-reads itself on the clock and stays stuck to the bottom — the newest
