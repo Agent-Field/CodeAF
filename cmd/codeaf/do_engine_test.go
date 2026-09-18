@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -251,6 +252,107 @@ func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	}
 	if !strings.Contains(outcome.Deliverable, "landed on work") {
 		t.Fatalf("the answer never named the branch the landing answered:\n%s", outcome.Deliverable)
+	}
+}
+
+// THE DOOR'S SEATS REACH EVERY LAUNCH, THE WAKE INCLUDED.
+//
+// `codeaf do --model <w> --plan-model <p>` must run every launch on those two
+// models and no other. A root is born a leaf — it does the work itself — so its
+// first launch rides the work seat; once it splits and is woken again to fold
+// its child it is a coordinator and rides the plan seat. The profile names OTHER
+// models on both rows, so a factory that fell back to the profile for either
+// seat would ask the completer for those and this would see them.
+//
+// The one seat is served to every launch in the order they arrive, and slots=1
+// makes that order the store's own: the root's first turn adds one child under a
+// known id and parks on it, the child finishes, and the woken root folds it.
+func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
+	home := beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	profileDir := filepath.Join(home, "profile")
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := json.Marshal(map[string]string{
+		config.KeyTierWorkerModel:     "vendor/profile-worker",
+		config.KeyTierMastermindModel: "vendor/profile-thinking",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	workspace := beltRepoWorkspace(t)
+	const (
+		workModel = "vendor/do-work"
+		planModel = "vendor/do-plan"
+	)
+	// ONE SEAT, DISPATCHED ON WHICH TASK IS ASKING. A root's own document carries
+	// no ask section (its work order IS the ask); every leaf's does, so the seat
+	// can tell the two apart and give each the turn it needs without a script
+	// whose order the supervisor's own launches would have to match. The root
+	// adds one child under a known id and parks on it; the child finishes; the
+	// woken root, now a coordinator, folds it.
+	rootTurns := 0
+	seat := &beltSeat{ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+		var b strings.Builder
+		for _, m := range msgs {
+			for _, part := range m.Content {
+				b.WriteString(part.Text)
+			}
+		}
+		if strings.Contains(b.String(), "## The ask this run serves") {
+			return beltToolReply("plandb done c1 --agent c1 --result 'the child is done'"), nil
+		}
+		rootTurns++
+		switch rootTurns {
+		case 1:
+			return beltToolReply("plandb add 'the child' --as c1"), nil
+		case 2:
+			return beltToolReply("plandb wait root --agent root"), nil
+		default:
+			return beltToolReply(beltFinish(beltAnswer)), nil
+		}
+	}}
+
+	var mu sync.Mutex
+	built := map[string]int{}
+	newBelt := func(model string) session.Completer {
+		mu.Lock()
+		built[model]++
+		mu.Unlock()
+		return seat
+	}
+
+	var stdout, stderr strings.Builder
+	err = doErrand(doRequest{
+		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: 1, model: workModel, planModel: planModel,
+		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
+	})
+	if err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+
+	mu.Lock()
+	models := make([]string, 0, len(built))
+	for model := range built {
+		models = append(models, model)
+	}
+	mu.Unlock()
+	for _, model := range models {
+		if model != workModel && model != planModel {
+			t.Fatalf("the completer was asked for the model %q; the door named only %q and %q",
+				model, workModel, planModel)
+		}
+	}
+	if built[workModel] == 0 || built[planModel] == 0 {
+		t.Fatalf("the completer was asked for %v, want both the work seat %q and the plan seat %q",
+			models, workModel, planModel)
 	}
 }
 
