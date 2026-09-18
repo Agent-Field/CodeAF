@@ -147,6 +147,10 @@ func TestThePersonsTaskDoorAsksNoModel(t *testing.T) {
 // worker nothing is read beside one, which is the runtime half of the law above:
 // a door that still asked the shaper or the judge would be seen asking here.
 func TestAPersonsTaskIsAdmittedOnTheirOwnWords(t *testing.T) {
+	// This law covers the legacy task tree. An ambient bash-belt setting takes
+	// StartTask through the plan-backed road, whose worker brief also carries
+	// the plan identity and lifecycle instructions.
+	t.Setenv("CODEAF_TASK_BELT", "")
 	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
 		return textResponse(shapedAnswer), nil
 	}}}

@@ -150,10 +150,9 @@ type tasksMine struct {
 	// across the desk — and the difference decides whether the row's door is a
 	// switch or a second view onto the engine.
 	here map[string]bool
-	// plan is the run's own store read for the conversation this page was opened
-	// in, when it has a plan at all ([planAgent]). Nil is a conversation with no
-	// plan, which draws exactly the page this place has always drawn.
+	// plan and now are one store reading carried to the frame as plain data.
 	plan []session.PlanTaskRow
+	now  string
 	// tilde is this machine's home directory, which is what tells a folder
 	// somebody WORKS in from the one they stand in ([chatProjectWord]). It is
 	// read once at boot and handed in like every other fact, because the reading
@@ -198,11 +197,12 @@ type tasksReading struct {
 	// empty — `work codeaf ran on its own. nothing.` across the top of a machine
 	// that had run ten pieces of work. The news that nothing matches already has
 	// its own home on the note line ([taskSheetFilterLine]).
-	whole     int
-	wholeCost float64
-	win       session.UsageWindow
-	seen      time.Time
-	now       time.Time
+	whole      int
+	wholeCost  float64
+	win        session.UsageWindow
+	seen       time.Time
+	now        time.Time
+	summaryNow string
 	// open is what a person has SET about the folds on this page, and it is the
 	// PLACE'S state handed in rather than the reading's own: a snapshot is
 	// replaced whole every time a node lands (place_tasks.go), and a fold that
@@ -261,7 +261,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, summaryNow: strings.TrimSpace(mine.now), tilde: mine.tilde, order: by}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -1548,6 +1548,9 @@ func (r tasksReading) planRows(width int, pal palette) []string {
 		out = append(out, planRailRow(lines[i], width, pal, r.now))
 		if dots := planRailDots(lines[i], width, pal); dots != "" {
 			out = append(out, dots)
+			if lines[i].item.plan.Parent == "" {
+				out = append(out, planRailNow(lines[i], width, pal, r.summaryNow)...)
+			}
 		}
 		if live := planRailLive(lines[i], width, pal); live != "" {
 			out = append(out, live)

@@ -720,7 +720,7 @@ func (p *stagedProposal) Withdraw() {
 // batch would have read. The answer may already be in: a person who said no, or
 // a clock that ran out, while the message was still arriving, is read here in
 // the order it happened ([Agent.openTask]).
-func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
+func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	a, spec, graph, elsewhere := p.agent, p.spec, p.graph, p.elsewhere
 	admitted := false
 	defer func() {
@@ -775,6 +775,25 @@ func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
 	// the transcript by now and in neither the brief nor the request.
 	spec.admission = a.admissionContext()
 
+	// AN APPROVED HAND-OFF UNDER THE BASH BELT IS A RUN, NEVER A SESSION-TREE
+	// NODE. It keeps the id the card showed, carries its acceptance in the brief
+	// and its depends_on as the store's own dependencies, and takes the person's
+	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
+	// when an answer is owed"). A refusal from the run road falls through to the
+	// shipped engine, exactly as a typed /task does.
+	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
+		a.mu.Lock()
+		question := questionAtTaskHandoff(a.owedAsks)
+		a.mu.Unlock()
+		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT. This context is the turn's,
+		// and the turn cancels it on its way out (agent.go, `defer cancel(nil)`);
+		// a run driven under it would be stopped the moment the model finished
+		// its sentence. The values ride along, the cancellation does not.
+		if err := a.startKnownTaskRun(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, question); err == nil {
+			return taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere), false, nil
+		}
+	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil

@@ -119,7 +119,7 @@ Parallelism lives in the shell, not in the batch:
 
 ```
 cmd1 & cmd2 & wait        # two commands at once, both waited for
-find . -name '*.go' | xargs -P 4 grep -l pattern
+find . -type f -name '<name pattern>' | xargs -P 4 grep -l <text>
 git grep -n "theSymbol"   # one search instead of three
 ```
 

@@ -7,6 +7,7 @@ package tui3
 // worker; the place is driven by the same fake agent its neighbours use.
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -52,6 +53,17 @@ type planCall struct {
 }
 
 func (f *planFake) PlanTasks() []session.PlanTaskRow { return f.plan }
+
+// PlanRunSummary and RefreshRunSummary keep this general plan fixture on the
+// local-store door while answering that it has no stored summary. Summary tests
+// widen the fixture and override both methods with their scripted answers.
+func (f *planFake) PlanRunSummary(string) (session.RunPlanSummary, bool) {
+	return session.RunPlanSummary{}, false
+}
+
+func (f *planFake) RefreshRunSummary(context.Context, string, time.Time) (session.RunPlanSummary, bool) {
+	return session.RunPlanSummary{}, false
+}
 
 func (f *planFake) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
 	page, ok := f.pages[id]
