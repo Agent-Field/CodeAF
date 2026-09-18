@@ -52,7 +52,7 @@ orphan branch.
 \draw[arr] (relay) -- (kv);
 \draw[arr] (kv) -- (doc);
 \draw[arr] (doc) -- (pick);
-\draw[arr] (pick) -- (run);
+\draw[arr] (pick) -- node[above, font=\scriptsize, sloped] {next task} (run);
 \draw[arr] (doc) -- (mirror);
 \end{tikzpicture}
 \caption{\textbf{As built.} One install, end to end: a chat landing graded
@@ -174,9 +174,11 @@ grader version. What the grader cannot see is a test skipped in place rather
 than deleted: it takes a path list, not a diff.
 
 \code{poolAskJudges} asks the judges. \code{judge.Candidates} lists the priced
-catalog rows that can judge the crew, none of them a seat the crew already holds,
-and \code{judge.Judge} puts at most three of them in turn to one question per
-seat the landing held, reading each answer as one JSON object with a 0-100 score
+catalog rows that can judge the crew, none of them a seat the crew already
+holds, none below a coding-index floor and none without tool support, which is
+why a cheap chat-only model never judges; \code{poolAskJudges} tries at most
+\code{judgeTries} of them, three, in turn, and \code{judge.Judge} puts one
+judge to one question per seat the landing held, reading each answer as one JSON object with a 0-100 score
 and letting a failing seat fail alone. \code{judge-last.json} holds the
 moment, the task id, and either the judge that answered with the seats it scored
 or the candidates tried and the last error's line.
@@ -207,8 +209,7 @@ at once with nothing waiting on a judge. The landing is the same
 run's start in nanoseconds so no two runs share one; \code{exec} writes after
 its run returns and before its envelope, skipping a run that left nothing,
 \code{run} writes where both its JSON and prose endings pass, and \code{do}
-writes after its own bill is settled, and not at all when the run was handed to
-a resident, because that work settles in another process. The sweep claims the
+writes after its own bill is settled, when the pool is readable. The sweep claims the
 file with an atomic rename, so a concurrent appender is never torn, and
 tolerates a half-written last line. The second source is the resumed session's
 own persisted task checkpoint, read back into landings whose seats and token
@@ -232,17 +233,20 @@ the triple already at that key.
 
 \code{handleRows} in \code{relay/src/worker.js} keeps only the rows the relay has
 not stored: a nonce repeated inside one batch is collapsed by a set, and a nonce
-already stored under its per-install seen key is skipped, so a replayed outbox is
-not folded twice; the seen key carries a time to live of one week.
+already stored under its seen key, one key per install and day holding that
+day's set of nonces and written once per batch, is skipped, so a replayed outbox
+is not folded twice; the seen key carries a time to live of one week.
 
-The publication floor is \code{min\_installs}, three by default, and the relay
-withholds no thin cell: it sorts the cells that meet the floor ahead of the ones
-that do not. \code{internal/pool/index/index.go}
-enforces the floor where the document is read, dropping a cell below it on the
-\code{installs} field or on the row count when it carries none, and
-\code{internal/crewpick} floors again on row counts for cells that never carried
-an install count, on purpose, since rows cannot be fewer than the installs behind
-them.
+The publication floor is \code{min\_installs}, three by default, and it is
+applied three times. The relay's \code{aggregate} in \code{relay/src/sheet.js}
+drops a cell whose distinct installs are below the floor before the document is
+built, so no single install's numbers ever leave the relay, and a document whose
+every cell is thin still renders, signed, with an empty cell list.
+\code{internal/pool/index/index.go} floors again where the document is read,
+on the \code{installs} field or on the row count when a cell carries none, and
+\code{internal/crewpick} floors a third time on row counts for cells built
+outside a document, on purpose, since rows cannot be fewer than the installs
+behind them.
 
 A cron trigger in \code{wrangler.toml} fires hourly, and a read republishes in
 the background when the stored version is missing or older than
@@ -289,18 +293,26 @@ and commits both to the orphan branch \code{model-pool} under \code{pool/}.
 \subsection{How an install learns and contributes}
 \label{app:install}
 
-\begingroup\emergencystretch=2em
-One install writes, under the profile's pool directory:
-\code{own.json}, the tally sheet \code{record.SaveSheet} writes;
-\code{outbox.jsonl}, the rows waiting to leave, appended by
-\code{outbox.Append}; \code{install}, the 32-character nonce that is the
-install's whole identity at the relay; \code{doc.json} with its signature, the
-puller's cache; \code{grade-last.json} and \code{judge-last.json}; and
-\code{pending.jsonl} and the judged markers. Elsewhere on the machine,
-\code{session.RecordUsage} appends every provider call to \code{usage.jsonl},
-which \code{poolShapesFor} reads once at start-up through \code{shape.Tasks} and
-\code{crewpick.ShapesFrom}, so a seat is priced on what real tasks spent on it.
-\par\endgroup
+One install writes the files in Table~\ref{tab:eng-files}, all but one under
+the profile's pool directory; the exception is \code{usage.jsonl}, which
+\code{session.RecordUsage} appends every provider call to elsewhere in the
+profile and which \code{poolShapesFor} reads once at start-up through
+\code{shape.Tasks} and \code{crewpick.ShapesFrom}, so a seat is priced on what
+real tasks spent on it.
+\begin{table}[h]\centering\small
+\begin{tabular}{p{2.6cm}p{5.4cm}p{5.4cm}}\toprule
+file & written by & read by\\\midrule
+\code{own.json} & \code{record.SaveSheet}, one row per graded or judged seat & \code{poolOwnCellsFor}, the picker's own prior; \code{ownSheetSummary}\\
+\code{outbox.jsonl} & \code{outbox.Append}, the rows waiting to leave & \code{poolPush}, which posts and retires them\\
+\code{install} & the first push, 32 hex characters drawn once & every push, as the \code{X-Codeaf-Install} header\\
+\code{doc.json} and its signature & the puller, after the signature verifies & \code{poolIndexFor}, before the embedded seed\\
+\code{grade-last.json}, \code{judge-last.json} & the landing hook & a person, and \code{codeaf pool show}\\
+\code{pending.jsonl}, \code{judged/} & the headless doors; \code{markJudged} & \code{poolJudgeSweep} at chat start\\
+\code{usage.jsonl} & \code{session.RecordUsage} & \code{poolShapesFor} at start-up\\
+\bottomrule\end{tabular}
+\caption{What one install writes, and who reads it.}
+\label{tab:eng-files}
+\end{table}
 
 What leaves the machine is the outbox, and only when the pool's mode allows
 sending: \code{poolPush} posts the pending rows to the relay with the install
