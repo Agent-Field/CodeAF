@@ -203,7 +203,6 @@ type tasksReading struct {
 	seen       time.Time
 	now        time.Time
 	summaryNow string
-	plan       []session.PlanTaskRow
 	// open is what a person has SET about the folds on this page, and it is the
 	// PLACE'S state handed in rather than the reading's own: a snapshot is
 	// replaced whole every time a node lands (place_tasks.go), and a fold that
@@ -262,7 +261,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, summaryNow: strings.TrimSpace(mine.now), plan: mine.plan, tilde: mine.tilde, order: by}
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, summaryNow: strings.TrimSpace(mine.now), tilde: mine.tilde, order: by}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -1540,12 +1539,6 @@ func (r tasksReading) planRows(width int, pal palette) []string {
 	for _, item := range r.items {
 		if item.plan != nil {
 			items = append(items, item)
-		}
-	}
-	if len(items) == 0 && len(r.plan) > 0 {
-		kin := planKinOf(r.plan)
-		for _, row := range r.plan {
-			items = append(items, planItem(row, "", kin))
 		}
 	}
 	if len(items) == 0 {

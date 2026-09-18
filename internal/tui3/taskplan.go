@@ -71,33 +71,45 @@ type runSummaryRefreshedMsg struct {
 	ok      bool
 }
 
+// refreshRunSummary asks for the run's four lines OFF THE LOOP, and decides
+// whether to ask from what the loop already holds. THIS RUNS AFTER EVERY
+// MESSAGE, so it may not open the store: the run's rows are the ones the task
+// sheet already carries ([tasksMine.plan]), and their ids and states are the
+// same shape the stored stamp is made of. Nothing moved since the last look
+// means no command; something moved means one command, never two at once, and
+// never more often than [runSummaryRefreshEvery]. The command does the store
+// read and, only when the stored lines are stale, the one model call.
 func (a *app) refreshRunSummary() tea.Cmd {
 	agent, ok := a.planReader()
 	if !ok || a.runSummaryRefreshing {
 		return nil
 	}
-	rows := agent
-	plan := rows.PlanTasks()
-	root := ""
-	for _, row := range plan {
-		if row.Parent == "" {
+	root, shape := "", ""
+	for _, row := range a.taskSheet.mine.plan {
+		if row.Parent == "" && root == "" {
 			root = row.ID
-			break
 		}
+		shape += row.ID + ":" + row.Status + ";"
 	}
-	if root == "" {
+	if root == "" || shape == a.runSummaryShape {
 		return nil
 	}
-	stored, stale := agent.PlanRunSummary(root)
-	a.runSummaryNow = strings.TrimSpace(stored.Now)
 	now := a.now()
-	if !stale || (!a.runSummaryRefreshedAt.IsZero() && now.Sub(a.runSummaryRefreshedAt) < runSummaryRefreshEvery) {
+	if !a.runSummaryRefreshedAt.IsZero() && now.Sub(a.runSummaryRefreshedAt) < runSummaryRefreshEvery {
 		return nil
 	}
 	a.runSummaryRefreshing = true
 	a.runSummaryRefreshedAt = now
+	a.runSummaryShape = shape
+	ctx := a.ctx
 	return func() tea.Msg {
-		summary, kept := agent.RefreshRunSummary(a.ctx, root, now)
+		// NOBODY RECORDS A LOOK AT A RUN YET (the run pane will), so the last
+		// look is the zero time and the page's `since` line reads "never".
+		stored, stale := agent.PlanRunSummary(root)
+		if !stale && strings.TrimSpace(stored.What) != "" {
+			return runSummaryRefreshedMsg{summary: stored, ok: true}
+		}
+		summary, kept := agent.RefreshRunSummary(ctx, root, time.Time{})
 		return runSummaryRefreshedMsg{summary: summary, ok: kept}
 	}
 }
