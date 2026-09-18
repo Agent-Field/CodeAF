@@ -153,6 +153,17 @@ func conversationNotes(agent *Agent, phrase string) int {
 	return count
 }
 
+// conversationJournalLines counts display entries in the durable conversation record.
+func conversationJournalLines(agent *Agent, phrase string) int {
+	count := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, phrase) {
+			count++
+		}
+	}
+	return count
+}
+
 // waitFor polls a condition to a bounded deadline, failing with what it was
 // waiting on rather than hanging.
 func beltRunWaitFor(t *testing.T, what string, ok func() bool) {
@@ -189,11 +200,16 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	registerBeltRunEngine(t, double)
 
 	dir := t.TempDir()
-	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run fixed the nil map"}, func(config *Config) {
+	completer := &scriptedCompleter{steps: []step{finalText("the run fixed the nil map")}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = newTestRepo(t)
 		config.Place = Place{Dir: dir}
+		config.SessionFile = filepath.Join(dir, placeTranscript)
 		config.AskConsent = false
 	})
+
+	clock := &fakeClock{at: time.Date(2026, time.September, 18, 12, 0, 0, 0, time.UTC)}
+	agent.taskNow = clock.now
 
 	id, title, _, err := agent.StartTask(context.Background(), "fix the nil map crash", false)
 	if err != nil {
@@ -220,11 +236,25 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 		t.Fatalf("PlanTasks does not show the run running: %+v", agent.PlanTasks())
 	}
 
+	wakes, stopWakes := agent.WatchWakes()
+	defer stopWakes()
+	callsBeforeLanding := completer.requests()
 	close(double.release)
 	beltRunWaitFor(t, "the run's landing", func() bool {
 		task := beltRunTaskAt(t, dir, rootID)
-		return task != nil && task.Status == plandb.StatusDone && conversationNotes(agent, "landed on ") == 1
+		agent.beltMu.Lock()
+		landed := agent.beltRun == nil
+		agent.beltMu.Unlock()
+		return task != nil && task.Status == plandb.StatusDone && landed
 	})
+	if got := completer.requests(); got != callsBeforeLanding {
+		t.Fatalf("landing made %d completer calls, want zero", got-callsBeforeLanding)
+	}
+	select {
+	case <-wakes:
+		t.Fatal("done landing published a wake")
+	default:
+	}
 
 	if task := beltRunTaskAt(t, dir, rootID); task == nil || task.Status != plandb.StatusDone {
 		t.Fatalf("the run's root did not read done")
@@ -232,8 +262,25 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on task/fix-the-nil-map-crash") {
 		t.Fatalf("no note on the root carries the branch: %v", beltRunNotes(t, dir, rootID))
 	}
-	if got := conversationNotes(agent, "landed on task/fix-the-nil-map-crash"); got != 1 {
-		t.Fatalf("the conversation received %d landing notes, want one", got)
+	wantDigest := beltRunOutcomeNote(double.summary, double.landing)
+	if !strings.Contains(wantDigest, "done") || !strings.Contains(wantDigest, "the run fixed the nil map") ||
+		!strings.Contains(wantDigest, "landed on task/fix-the-nil-map-crash") {
+		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
+	}
+	if got := conversationJournalLines(agent, wantDigest); got != 1 {
+		t.Fatalf("the conversation journal carries digest %d times, want one", got)
+	}
+	journal := agent.file.journalPath()
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	reopened, err := newAgent(Config{Workspace: agent.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: journal}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+	if got := conversationJournalLines(reopened, wantDigest); got != 1 {
+		t.Fatalf("reopened conversation carries digest %d times, want one", got)
 	}
 	// the run's row settled too, on the surface's own lane
 	if row := planRowFor(agent.PlanTasks(), planStoreID(rootID)); row == nil || row.Status != string(plandb.StatusDone) {
