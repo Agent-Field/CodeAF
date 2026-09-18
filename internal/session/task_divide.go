@@ -1607,9 +1607,10 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		}
 		return unanswered(why)
 	}
-	// The person pays for it, out of the pocket every auxiliary call comes from,
-	// against the model that actually answered.
-	a.addAuxiliaryUsage(response, reviewer, 1)
+	// The person pays for it, out of the pocket every auxiliary call comes
+	// from, against the model that actually answered — and names itself on the
+	// row for the seat's sake.
+	a.addAuxiliaryUsageAs(response, reviewer, 1, string(roles.RoleDivision))
 
 	raw, err := subharness.Salvage(response.Text())
 	if err != nil {

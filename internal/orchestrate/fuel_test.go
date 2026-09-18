@@ -10,17 +10,17 @@ import (
 )
 
 func TestMeter(t *testing.T) {
-	if got, want := MeterCall(1_000_000, 0, "openai/gpt-5"), 1.25; math.Abs(got-want) > 1e-9 {
+	if got, want := MeterCall(1_000_000, 0, "google/gemini-2.5-flash"), 0.30; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("input tokens: got %v want %v", got, want)
 	}
-	if got, want := MeterCall(0, 1_000_000, "anthropic/claude-opus"), 75.0; math.Abs(got-want) > 1e-9 {
+	if got, want := MeterCall(0, 1_000_000, "anthropic/claude-fable-5.1"), 50.0; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("output tokens: got %v want %v", got, want)
 	}
 	// Meter has one number and charges it at the dear rate on purpose.
-	if Meter(1_000, "z-ai/glm-5.2") != MeterCall(0, 1_000, "z-ai/glm-5.2") {
+	if Meter(1_000, "z-ai/glm-5.3") != MeterCall(0, 1_000, "z-ai/glm-5.3") {
 		t.Fatalf("Meter is the output rate")
 	}
-	if _, known := PriceOf("z-ai/glm-5.2:free"); !known {
+	if _, known := PriceOf("z-ai/glm-5.3:free"); !known {
 		t.Fatalf("an endpoint suffix is not a different model")
 	}
 	if _, known := PriceOf("kimi-k3"); known {
@@ -284,4 +284,136 @@ func waitForEnd(t *testing.T, ended chan Snapshot) Snapshot {
 		t.Fatalf("the run never ended")
 		return Snapshot{}
 	}
+}
+
+// TestInstalledSourceAnswersBeforeTheTable: the source is asked first, with
+// the name this package normalised, and a source that knows the model is the
+// answer even where the table holds a row of its own.
+func TestInstalledSourceAnswersBeforeTheTable(t *testing.T) {
+	var asked []string
+	UsePrices(func(model string) (Price, bool) {
+		asked = append(asked, model)
+		if model == "z-ai/glm-5.3" {
+			return Price{In: 3, Out: 9}, true
+		}
+		return Price{}, false
+	})
+	defer UsePrices(nil)
+
+	price, known := PriceOf(" Z-Ai/GLM-5.3:free ")
+	if !known || price != (Price{In: 3, Out: 9}) {
+		t.Fatalf("the installed source is the answer: %+v, %v", price, known)
+	}
+	// THE SOURCE SEES THE NORMALISED NAME, not the raw one the caller passed:
+	// a source would otherwise have to repeat this package's trimming and
+	// suffix-cutting to agree with the table it sits above.
+	if len(asked) != 1 || asked[0] != "z-ai/glm-5.3" {
+		t.Fatalf("the source was asked %q", asked)
+	}
+}
+
+// TestASourceThatDoesNotKnowFallsThroughToTheTable: false from the source is
+// "ask somebody else", and the table's row for that model is what meters.
+func TestASourceThatDoesNotKnowFallsThroughToTheTable(t *testing.T) {
+	UsePrices(func(string) (Price, bool) { return Price{}, false })
+	defer UsePrices(nil)
+
+	price, known := PriceOf("z-ai/glm-5.3")
+	if !known || price != (Price{In: 1.40, Out: 4.40}) {
+		t.Fatalf("a refusing source leaves the table in charge: %+v, %v", price, known)
+	}
+	if _, known := PriceOf("somebody/new-model"); known {
+		t.Fatalf("a refusing source does not invent a row")
+	}
+}
+
+// TestUsePricesNilLeavesTheTableAlone: removing the source is the state the
+// package started in.
+func TestUsePricesNilLeavesTheTableAlone(t *testing.T) {
+	UsePrices(func(string) (Price, bool) { return Price{In: 99, Out: 99}, true })
+	UsePrices(nil)
+	if price, known := PriceOf("moonshotai/kimi-k3"); !known || price != (Price{In: 3.00, Out: 15.00}) {
+		t.Fatalf("a removed source unmasks the table: %+v, %v", price, known)
+	}
+}
+
+// TestCatalogPricesConvertsPerTokenToPerMillion: the catalog publishes per
+// token, this package meters per million, and the doubling of that conversion
+// stops here.
+func TestCatalogPricesConvertsPerTokenToPerMillion(t *testing.T) {
+	if CatalogPrices(nil) != nil {
+		t.Fatalf("no reader is no source, not a source that never answers")
+	}
+	src := CatalogPrices(func(model string) (float64, float64, bool) {
+		if model == "vendored/big-model" {
+			return 0.0000035, 0.0000150, true
+		}
+		if model == "vendored/free-model" {
+			return 0, 0, true
+		}
+		return 0, 0, false
+	})
+	price, known := src("vendored/big-model")
+	if !known || price != (Price{In: 3.5, Out: 15.0}) {
+		t.Fatalf("per-token became per-million: %+v, %v", price, known)
+	}
+	if price, known := src("vendored/free-model"); !known || (price != Price{}) {
+		t.Fatalf("a published zero is a published price: %+v, %v", price, known)
+	}
+	if _, known := src("vendored/unpublished"); known {
+		t.Fatalf("an unpublished model is not a free model")
+	}
+}
+
+// TestTheMeterRidesTheInstalledSource: MeterCall prices through whatever is
+// installed, so the whole tank — not just PriceOf — follows the tariff.
+func TestTheMeterRidesTheInstalledSource(t *testing.T) {
+	UsePrices(CatalogPrices(func(model string) (float64, float64, bool) {
+		return 0.0000010, 0.0000030, true
+	}))
+	defer UsePrices(nil)
+
+	if got, want := MeterCall(1_000_000, 1_000_000, "any/model"), 4.0; math.Abs(got-want) > 1e-9 {
+		t.Fatalf("the meter followed the source: got %v want %v", got, want)
+	}
+}
+
+// TestRetiredIdsAreStrangers: an id the table no longer holds meters at the
+// unpriced rate, exactly as one it never had.
+func TestRetiredIdsAreStrangers(t *testing.T) {
+	for _, id := range []string{
+		"z-ai/glm-5.2", "deepseek/deepseek-v4-flash",
+		"anthropic/claude-opus", "openai/gpt-5",
+	} {
+		price, known := PriceOf(id)
+		if known || price != unpriced {
+			t.Fatalf("PriceOf(%q) = %+v, %v; want %+v, false", id, price, known, unpriced)
+		}
+	}
+}
+
+// TestMeteringSurvivesASwap: sources are swapped while runs meter, and every
+// call sees one whole source.
+func TestMeteringSurvivesASwap(t *testing.T) {
+	odd := func(string) (Price, bool) { return Price{In: 1, Out: 2}, true }
+	even := func(string) (Price, bool) { return Price{In: 2, Out: 4}, true }
+	UsePrices(odd)
+	defer UsePrices(nil)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 1000; i++ {
+			if i%2 == 0 {
+				UsePrices(odd)
+			} else {
+				UsePrices(even)
+			}
+		}
+	}()
+	for i := 0; i < 1000; i++ {
+		if _, known := PriceOf("any/model"); !known {
+			t.Fatalf("a swap lost the source mid-flight")
+		}
+	}
+	<-done
 }

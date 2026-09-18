@@ -1934,7 +1934,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 		read.ownerGone = owner.Err() != nil
 		return read
 	}
-	a.addAuxiliaryUsage(response, reader, 1)
+	a.addAuxiliaryUsageAs(response, reader, 1, string(roles.RoleMarkReader))
 	if response.Usage != nil {
 		read.costUSD = costOf(response.Usage)
 	}
@@ -3810,7 +3810,7 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	if err != nil || response == nil {
 		return readerLine{unreachable: true}
 	}
-	a.addAuxiliaryUsage(response, reader, 1)
+	a.addAuxiliaryUsageAs(response, reader, 1, string(roles.RoleMarkReader))
 	said := strings.TrimSpace(response.Text())
 	if declaresNothingLeft(said) {
 		// THE READER SAYING NOTHING IS LEFT IS A FACT, NOT A SILENCE. It used to

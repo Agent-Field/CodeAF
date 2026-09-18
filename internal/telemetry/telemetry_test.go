@@ -573,7 +573,7 @@ func TestNewRelayAfterTestHomeOverridesTheDeadLoopback(t *testing.T) {
 		t.Fatalf("after newRelay Endpoint() answers %q but the override is %q", Endpoint(), override)
 	}
 	MarkNoticeShown()
-	event := SessionStarted(ModeChat, false, "session-relay", freshClock(t))
+	event := stamped(SessionStarted(ModeChat, false, "session-relay", freshClock(t)))
 	if err := SpoolSync(event); err != nil {
 		t.Fatalf("SpoolSync returned %v; a spool that is sent answers nil", err)
 	}

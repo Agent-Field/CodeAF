@@ -614,6 +614,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	}
 	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// the same non-blocking read, never a fetch, and set once at start-up.
+	config.AutoModels = models.ModelsNow
+	// The pool's index is seated beside it, read once here and refreshed in the
+	// background, against the same profile the catalog was read from.
+	wirePoolIndex(profileDir)
 	// The refresh key in /model asks the same router THIS machine's list came
 	// from, and refills the same shelf — the list is this laptop's list of
 	// names on both doors (chatv3_modelshelf.go).
@@ -638,8 +644,15 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	memory := newHostMemory(far)
 	memory.prime()
 
+	// The counting gate is here and not on the roads: a session this window
+	// only watches through its link is counted from the events it receives
+	// (telemetry_events.go), and hostOptions is the one place the surface's
+	// boot agent is assembled on all of them. IT IS WRAPPED ONCE, because the
+	// shared door below hands the same handle back from Resume and Fresh and
+	// the surface holds it to that (chatv3_host_shared_test.go).
+	counted := countedAgent(agent)
 	options := tui3.Options{
-		Agent:     agent,
+		Agent:     counted,
 		Build:     welcome.Build,
 		Host:      dest,
 		Workspace: welcome.Workspace,
@@ -840,14 +853,14 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 			if _, err := client.OpenSession(file); err != nil {
 				return nil, err
 			}
-			return agent, nil
+			return counted, nil
 		}
 		options.Fresh = func() (tui3.Agent, string, error) {
 			next, err := client.NewSession()
 			if err != nil {
 				return nil, "", err
 			}
-			return agent, next.SessionFile, nil
+			return counted, next.SessionFile, nil
 		}
 		return options, settings
 	}
@@ -1274,7 +1287,7 @@ func runHostOnce(agent *remote.Agent, text string) error {
 	}, nil)
 	defer stopLeaving()
 
-	events, err := agent.Submit(ctx, text)
+	events, err := countedAgent(agent).Submit(ctx, text)
 	if err != nil {
 		return reported(err)
 	}

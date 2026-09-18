@@ -2512,6 +2512,19 @@ func (e *APIError) FromUpstream() bool {
 	return e != nil && strings.TrimSpace(e.Provider) != ""
 }
 
+// UpstreamFault reports that THE NAMED ENDPOINT FAILED ON ITS OWN ACCOUNT: it
+// was asked, it answered, and its answer was a fault of its own (5xx). It is the
+// one relayed refusal that names a lane worth steering the SAME request away
+// from on its next attempt: a relayed 4xx is that endpoint's reading of the
+// request, which the next endpoint may read the same way, and a 429 is pacing
+// with its own patience (retry.go).
+//
+// It lives here because a status is a fact only this package and the taxonomy
+// may read; a caller asks the question and never the number.
+func (e *APIError) UpstreamFault() bool {
+	return e.FromUpstream() && e.Status >= 500
+}
+
 // OurRequest reports that THE REQUEST IS WHAT IS WRONG, so no endpoint will do
 // better with it.
 //

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // DeliveryGate is the final judge's evidence about one job. Pass is the first
@@ -441,6 +442,36 @@ func (g DeliveryGate) Whole() bool {
 	return g.Pass || g.PolishClosed || g.Overturned
 }
 
+// Done is whether this gate's own row reports the requested work as done: the
+// judgement passed, or its only shortfall was behaviours the request states
+// that no check exercises or asserts — the work is there, the checks for it are
+// not.
+//
+// It is the positive fact a delivery gate had no way to state before, and two
+// readers turn on it rather than on their own reading of the fields. The
+// envelope's `core_done_seconds` is the moment it first became true for a run,
+// and the share-of-spend rail measures growth from the same moment — one
+// definition, because a rail and a receipt that disagreed about when the work
+// was done would be two answers to one question.
+func (g DeliveryGate) Done() bool {
+	if g.Pass {
+		return true
+	}
+	// A COVERAGE FINDING BESIDE ANOTHER SHORTFALL IS NOT DONE. The work is
+	// there only when the checks for it are the whole of what is missing; a
+	// gate that also names a consumer left unbound, a check of the work's own
+	// that fails, a constraint unmet or a mechanical failure has found the work
+	// itself short, and anchoring "done" there would measure growth from before
+	// the work was finished.
+	if g.Mechanical || g.Unreadable || g.Unjudged {
+		return false
+	}
+	if len(g.Consumers) > 0 || len(g.Unbound) > 0 || len(g.OwnFailing) > 0 || len(g.Constraint) > 0 {
+		return false
+	}
+	return len(g.Unexercised) > 0 || len(g.Unasserted) > 0
+}
+
 // Cited is the gate's citations however they were written down. A row recorded
 // before the list existed carries only the joined line, and reading it as one
 // citation is the honest reading of it: that is exactly what it was when it was
@@ -655,6 +686,59 @@ func (s *Store) DeliveryGateLineage(baseID string) ([]DeliveryGate, error) {
 		return nil, fmt.Errorf("read delivery gate lineage %q: %w", baseID, err)
 	}
 	return gates, nil
+}
+
+// DeliveryGateAnchor returns where in the journal — and when — a job's
+// requested work was FIRST found done: the oldest gate recorded for the node
+// and everything spliced beneath its id whose verdict passed or left only a
+// coverage finding. ok is false while no such gate has been recorded, which is
+// a job whose core work has not been found done.
+//
+// The SEQUENCE is the point and not the payload. A spend rail measured from the
+// moment the work was done reads the journal by sequence (SpendSinceSeq), and a
+// caller given the payload alone would have to walk the whole event log to get
+// back to the row it came from.
+func (s *Store) DeliveryGateAnchor(baseID string) (seq int64, at time.Time, ok bool, err error) {
+	baseID = strings.TrimSpace(baseID)
+	if baseID == "" {
+		return 0, time.Time{}, false, nil
+	}
+	namespace := baseID + SplitNamespace
+	ceiling, ordered := idPrefixCeiling(namespace)
+	if !ordered {
+		return 0, time.Time{}, false, fmt.Errorf("read delivery gate anchor %q: %w: prefix has no ordered ceiling", baseID, ErrInvalid)
+	}
+	rows, err := s.db.Query(`
+		SELECT seq, ts, payload FROM events
+		WHERE kind = ? AND (node_id = ? OR (node_id >= ? AND node_id < ?))
+		ORDER BY seq`, EventDeliveryGate, baseID, namespace, ceiling)
+	if err != nil {
+		return 0, time.Time{}, false, fmt.Errorf("read delivery gate anchor %q: %w", baseID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rowSeq int64
+		var stamp, payload string
+		if err := rows.Scan(&rowSeq, &stamp, &payload); err != nil {
+			return 0, time.Time{}, false, fmt.Errorf("read delivery gate anchor %q: %w", baseID, err)
+		}
+		var gate DeliveryGate
+		if err := json.Unmarshal([]byte(payload), &gate); err != nil {
+			return 0, time.Time{}, false, fmt.Errorf("read delivery gate anchor %q: %w", baseID, err)
+		}
+		if !gate.Done() {
+			continue
+		}
+		when, err := parseTime(stamp)
+		if err != nil {
+			return 0, time.Time{}, false, fmt.Errorf("read delivery gate anchor %q: %w", baseID, err)
+		}
+		return rowSeq, when, true, nil
+	}
+	if err := rows.Err(); err != nil {
+		return 0, time.Time{}, false, fmt.Errorf("read delivery gate anchor %q: %w", baseID, err)
+	}
+	return 0, time.Time{}, false, nil
 }
 
 // EventAcceptance is the acceptance checklist journaled against the piece of

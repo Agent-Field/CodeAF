@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
@@ -44,7 +43,7 @@ var (
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
 	revision := surfaceRevision()
-	client := surfaceUpdateClient(revision, 3*time.Second)
+	client := surfaceUpdateClient(revision, codeupdate.CheckTimeout)
 	restart := options.Restart
 	if restart == nil {
 		restart = &codeupdate.Plan{}
