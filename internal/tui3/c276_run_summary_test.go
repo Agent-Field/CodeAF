@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // summaryPlanFake is the store-backed plan seam with every call counted. The
@@ -88,15 +89,50 @@ func TestPlanRowsDrawStoredNowUnderDotsAndRespectAbsenceAndWidth(t *testing.T) {
 	mine := tasksMine{plan: rows, now: "reviewing the deterministic summary contract across a rail that has only two lines to spare and must cut the rest"}
 	reading := readTasks(session.World{}, mine, session.UsageWindow{}, tasksSort{}, time.Time{}, taskFixtureNow)
 
-	got := reading.planRows(planRailDotsUnder-1, palette{})
+	width := planRailDotsUnder - 1
+	pal := newPalette(tokens.ANSI256, false)
+	got := reading.planRows(width, pal)
 	text := plain(strings.Join(got, "\n"))
 	if !strings.Contains(text, "reviewing the deterministic") {
 		t.Fatalf("plan rows lack the stored now sentence:\n%s", text)
 	}
-	if lines := strings.Count(text, "\n") + 1; lines > len(rows)*3+2 {
-		t.Fatalf("now spent more than two rail lines: %d rows\n%s", lines, text)
+
+	// The summary belongs beneath the root's dot row, wearing that row's pad
+	// kin rather than a fresh tree connector, exactly as planRailLive does.
+	plan := reading
+	plan.items = nil
+	for _, row := range rows {
+		plan.items = append(plan.items, planItem(row, "", planKinOf(rows)))
 	}
-	if !strings.Contains(text, "…") {
+	plan.held, plan.whole, plan.unfolded, plan.kinFloor = len(plan.items), len(plan.items), true, planRailLevels
+	laid := plan.lay(width)
+	var root tasksLine
+	for _, line := range laid {
+		if line.item.plan != nil && line.item.plan.Parent == "" {
+			root = line
+			break
+		}
+	}
+	wantLead := planRailLead + pal.dim(root.underKin) + strings.Repeat(" ", taskSheetPhoneIndent)
+	var nowRows []string
+	for _, row := range got {
+		if strings.Contains(plain(row), "reviewing") || len(nowRows) == 1 {
+			nowRows = append(nowRows, row)
+		}
+	}
+	if len(nowRows) != 2 {
+		t.Fatalf("now rows = %d, want exactly two\n%s", len(nowRows), text)
+	}
+	for _, row := range nowRows {
+		if !strings.HasPrefix(row, wantLead) {
+			t.Fatalf("now row does not sit under root kin: %q, want prefix %q", row, wantLead)
+		}
+		body := strings.TrimPrefix(row, wantLead)
+		if body == plain(body) || body != pal.dim(plain(body)) {
+			t.Fatalf("now body is not wholly dim: %q", row)
+		}
+	}
+	if !strings.Contains(plain(nowRows[1]), "…") {
 		t.Fatalf("the second now line was not cut with the rail ellipsis:\n%s", text)
 	}
 
