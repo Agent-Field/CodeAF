@@ -95,10 +95,11 @@ type tasksPlace struct {
 	// in its place: enter over a plan row opens it and esc backs out one layer to
 	// the list, exactly as the card does, because a second key for one door is a
 	// second thing to learn ([app.taskSheetPlan]).
-	plan     session.PlanTaskPage
-	planOn   bool
-	planAt   int
-	planBack []session.PlanTaskPage
+	plan          session.PlanTaskPage
+	planOn        bool
+	planBriefFull bool
+	planAt        int
+	planBack      []session.PlanTaskPage
 	// planNote is the note a person types on a plan task's page, and it is the
 	// [editor] every other box on this surface is rather than a string of its own
 	// (the filter is one, and so is the conversation's composer). Typing on the
