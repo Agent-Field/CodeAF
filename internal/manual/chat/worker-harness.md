@@ -331,6 +331,17 @@ it was (`done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`,
 `deadline`, `price`, `question`), and `ok` is true on exactly the runs that leave
 with 0.
 
+## How do I tell the check what to run?
+
+Declare each proof command when the task is created: add `--check '<the command
+that proves it>'` to `plandb add`, and repeat `--check` when the task has more than
+one command to run. The check runs every command exactly as declared before it
+probes any acceptance sentence those commands do not cover.
+
+A task with **no declared check** is checked by reading its result and by the
+acceptance alone. Commands mentioned only in the task's prose are not declarations,
+so put every command the check must run on the task with `--check`.
+
 ## Who checks a task's work?
 
 Every leaf that lands **done** is checked, at both doors — `/task` and `codeaf
