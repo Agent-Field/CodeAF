@@ -19,6 +19,7 @@ package plandb
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1857,30 +1858,46 @@ func TestPlandbCliChecksRoundTripAndMigrate(t *testing.T) {
 	}
 }
 
-func TestPlandbCliCheckConclusionRequiresExecutedDeclaredCheck(t *testing.T) {
-	store := planOpen(t, filepath.Join(t.TempDir(), "plan.json"))
-	_, err := store.AddMany([]TaskSpec{{
-		ID: "review", Title: "check: leaf", Role: RoleCheck,
-		Checks: []string{"go test ./internal/widget"},
-	}})
-	if err != nil {
-		t.Fatalf("add check task: %v", err)
+func TestPlandbCliCheckConclusionRequiresTheRightDeclaredChecks(t *testing.T) {
+	tests := []struct {
+		name       string
+		checks     []string
+		ran        []string
+		conclusion string
+		wantErr    bool
+	}{
+		{name: "holds empty contract", conclusion: "holds: it works", wantErr: true},
+		{name: "holds no checks run", checks: []string{"go test ./internal/widget"}, conclusion: "holds: it works", wantErr: true},
+		{name: "holds partial contract", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, ran: []string{"go test ./internal/widget"}, conclusion: "holds: it works", wantErr: true},
+		{name: "holds whole contract", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, ran: []string{"go test ./internal/widget", "go vet ./internal/widget"}, conclusion: "holds: it works"},
+		{name: "does not hold empty contract", conclusion: "does not hold: reading found a defect"},
+		{name: "does not hold no checks run", checks: []string{"go test ./internal/widget"}, conclusion: "does not hold: reading found a defect"},
+		{name: "does not hold partial contract", checks: []string{"go test ./internal/widget", "go vet ./internal/widget"}, ran: []string{"go test ./internal/widget"}, conclusion: "does not hold: the first check failed"},
 	}
-	if _, err := store.Claim("review", "review"); err != nil {
-		t.Fatalf("claim check task: %v", err)
-	}
-	if _, err := store.Done("review", "review", "holds: it works", nil, nil); err == nil {
-		t.Fatal("empty command trajectory accepted a holds: conclusion")
-	}
-	dir := TaskDir(filepath.Dir(store.Path()), "review")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatalf("make task directory: %v", err)
-	}
-	step := []byte(`{"kind":"step","step":1,"command":"cd /tmp/tree && go test ./internal/widget"}` + "\n")
-	if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), step, 0o600); err != nil {
-		t.Fatalf("write trajectory: %v", err)
-	}
-	if _, err := store.Done("review", "review", "holds: it works", nil, nil); err != nil {
-		t.Fatalf("executed declared check refused: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := planOpen(t, filepath.Join(t.TempDir(), "plan.json"))
+			planAdd(t, store, TaskSpec{ID: "review", Title: "check: leaf", Role: RoleCheck, Checks: tt.checks})
+			if _, err := store.Claim("review", "review"); err != nil {
+				t.Fatalf("claim check task: %v", err)
+			}
+			if len(tt.ran) > 0 {
+				dir := TaskDir(filepath.Dir(store.Path()), "review")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatalf("make task directory: %v", err)
+				}
+				var trajectory strings.Builder
+				for i, command := range tt.ran {
+					trajectory.WriteString(fmt.Sprintf("{\"kind\":\"step\",\"step\":%d,\"command\":\"cd /tmp/tree && %s\"}\n", i+1, command))
+				}
+				if err := os.WriteFile(filepath.Join(dir, "trajectory.jsonl"), []byte(trajectory.String()), 0o600); err != nil {
+					t.Fatalf("write trajectory: %v", err)
+				}
+			}
+			_, err := store.Done("review", "review", tt.conclusion, nil, nil)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Done() error = %v, want error %v", err, tt.wantErr)
+			}
+		})
 	}
 }
