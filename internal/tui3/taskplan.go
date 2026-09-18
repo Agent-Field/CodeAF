@@ -430,6 +430,12 @@ func planSpendField(item tasksItem) rowField {
 const (
 	planRailGap      = 2
 	planRailMinTitle = 2
+	// planRailMinTail is the least a held row's tail is worth drawing: `waits: `
+	// and enough of a name to tell one task from another.
+	planRailMinTail = 14
+	// planRailKeepTitle is the least a title keeps beside a whole tail before
+	// the title is laid first instead: enough cells to tell two tasks apart.
+	planRailKeepTitle = 10
 )
 
 // planRailRow is one plan task on the rail: the connector, the state mark from
@@ -462,17 +468,35 @@ func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
 	if tail == "" {
 		return lead + placeSubject(fit(planRailLabel(item), room), false, pal)
 	}
+	label := planRailLabel(item)
 	tailWidth := ansi.StringWidth(tail)
 	titleRoom := room - tailWidth - planRailGap
-	if titleRoom < planRailMinTitle {
-		tail = fit(tail, room-planRailGap-planRailMinTitle)
-		tailWidth = ansi.StringWidth(tail)
-		titleRoom = room - tailWidth - planRailGap
+	// THE RUN'S ROW KEEPS ITS PROGRESS AND EVERY OTHER ROW KEEPS ITS NAME. The
+	// dot row is short and is the one thing the run's row is read for, so its
+	// title is fitted beside it. A held row's tail is a sentence (`waits: <the
+	// task>`), and on a rail of under thirty cells it took the line and left the
+	// title one letter, `w…  waits: write the…`, a row naming neither task. So
+	// there the title is laid first, the tail is fitted into what is left, and a
+	// remainder too short to name anything ([planRailMinTail]) draws no tail at
+	// all: the row's mark already says it is held, and its page says behind what.
+	if item.plan == nil || item.plan.Total == 0 {
+		// A title that still reads beside the whole tail ([planRailKeepTitle])
+		// yields to it, because the name of what a row waits on is worth more
+		// than the last word of its own.
+		if want := ansi.StringWidth(label); titleRoom < want && titleRoom < planRailKeepTitle {
+			left := room - want - planRailGap
+			if left < planRailMinTail {
+				return lead + placeSubject(fit(label, room), false, pal)
+			}
+			tail = fit(tail, left)
+			tailWidth = ansi.StringWidth(tail)
+			titleRoom = room - tailWidth - planRailGap
+		}
 	}
-	if tailWidth < 1 || titleRoom < 1 {
-		return lead + placeSubject(fit(planRailLabel(item), room), false, pal)
+	if tailWidth < 1 || titleRoom < planRailMinTitle {
+		return lead + placeSubject(fit(label, room), false, pal)
 	}
-	title, titleWidth := fitWidth(planRailLabel(item), titleRoom)
+	title, titleWidth := fitWidth(label, titleRoom)
 	return lead + placeSubject(title, false, pal) +
 		strings.Repeat(" ", room-titleWidth-tailWidth) + pal.dim(tail)
 }
