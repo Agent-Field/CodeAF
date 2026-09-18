@@ -1522,15 +1522,20 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 // THE EMPTINESS LAW HOLDS HERE TOO. A section with nothing in it is not counted
 // as zero — it is not mentioned — and the line is empty when the page is.
 //
+// IT IS NOT DRAWN ANY MORE. It was the rule's legend on the tasks place —
+// `9 finished today · 191 earlier` — until 2026-09-17, when it came off
+// because the section headings a few rows up say the same numbers
+// (place_tasks.go's [tasksPlace.note]). It is kept as the reading's own count
+// of the work by state, which the headings are held against in the tests, so
+// a heading and the partition it draws from cannot be made to disagree.
+//
 // AND IT COUNTS THE WORK AND NEVER THE ROWS. It read `7 done today` over a
 // section drawing four rows once, and the four were right — three of the seven
 // were workers folded under a root — but the SEVEN is the number that belongs
-// here: this line is what the PLACE is holding (place_tasks.go's
-// [tasksPlace.note] says so), it is the per-section split of the head's own
-// `10 pieces of work`, and 7 + 3 is that ten. A tally counting drawn rows would
-// trade this disagreement for a larger one with the head, and would change under
-// somebody opening a fold, which is a fact about the screen and not about the
-// work.
+// here: it is the per-section split of the head's own `10 pieces of work`,
+// and 7 + 3 is that ten. A tally counting drawn rows would trade this
+// disagreement for a larger one with the head, and would change under somebody
+// opening a fold, which is a fact about the screen and not about the work.
 //
 // THE SECTIONS AND THIS LINE ARE TWO DIFFERENT PARTITIONS OF THE SAME ROWS. The
 // sections file a conversation and all its work under where the CONVERSATION

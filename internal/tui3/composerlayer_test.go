@@ -50,7 +50,7 @@ func layerText(a *app) string {
 // design's own claim about why this is a layer (SCREEN 2e).
 func TestTheComposerLayerDrawsTheLeadTheThreeFactsAndTheFootAtEveryWidth(t *testing.T) {
 	for _, width := range []int{80, 120, 200} {
-		a := layerApp(t, pageSpend, width)
+		a := layerApp(t, pageHome, width)
 		if !a.composerShowing() {
 			t.Fatalf("at %d alt+enter over a typed composer opened no layer", width)
 		}
@@ -61,7 +61,7 @@ func TestTheComposerLayerDrawsTheLeadTheThreeFactsAndTheFootAtEveryWidth(t *test
 			tokens.GlyphProseBullet + " " + composerWhereInWord,
 			composerCapSaysWord + dollars(composerCapDefault) + composerCapAsksWord,
 			composerCapEditWord,
-			composerFootSendWord + pageSpend.word(),
+			composerFootSendWord + pageHome.word(),
 		} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("at %d the layer is missing %q:\n%s", width, want, text)
@@ -87,7 +87,7 @@ func TestTheComposerLayerDrawsTheLeadTheThreeFactsAndTheFootAtEveryWidth(t *test
 func TestTheComposerLayerDimsThePageBehindRatherThanCoveringIt(t *testing.T) {
 	a := placeApp(t)
 	a.width, a.height = 120, 30
-	a.showPage(pageSpend)
+	a.showPage(pageHome)
 	before, _, _ := a.frame()
 	box := a.placeBox()
 	for _, r := range "cut the opus spend in half" {
@@ -117,7 +117,7 @@ func TestTheComposerLayerDimsThePageBehindRatherThanCoveringIt(t *testing.T) {
 // `alt+w` CYCLES THE DESTINATION and comes back round to where it started. The
 // list is this window's own project first, then every project home has read.
 func TestAltWCyclesTheDestinationAndComesBackRound(t *testing.T) {
-	a := layerApp(t, pageSpend, 120)
+	a := layerApp(t, pageHome, 120)
 	places := a.composerPlaces()
 	if len(places) < 2 {
 		t.Fatalf("this lab has %d destinations and the cycle needs two", len(places))
@@ -188,13 +188,13 @@ func TestTypingANumberEditsTheCapAndTheCapIsWhatLeaves(t *testing.T) {
 // `esc` PUTS YOU BACK ON THE SAME PLACE, with the sentence still in the box.
 // Nothing was applied on the way in, so nothing has to be undone.
 func TestEscFromTheLayerReturnsToTheSamePlaceWithTheSentenceIntact(t *testing.T) {
-	a := layerApp(t, pageSpend, 120)
+	a := layerApp(t, pageHome, 120)
 	a.placeKeyPress(key("esc"))
 	if a.composerShowing() {
 		t.Fatal("esc left the layer up")
 	}
-	if !a.at(pageSpend) {
-		t.Fatalf("esc walked off the spend place onto %q", a.page.word())
+	if !a.at(pageHome) {
+		t.Fatalf("esc walked off home onto %q", a.page.word())
 	}
 	if got := a.placeBox().String(); got != "cut the opus spend in half" {
 		t.Fatalf("esc lost the sentence: %q", got)
@@ -207,7 +207,7 @@ func TestEscFromTheLayerReturnsToTheSamePlaceWithTheSentenceIntact(t *testing.T)
 // `enter` TALKS ABOUT IT INSTEAD, which is the existing door: the layer goes and
 // a conversation opens carrying the sentence.
 func TestEnterFromTheLayerTalksAboutItInstead(t *testing.T) {
-	a := layerApp(t, pageSpend, 120)
+	a := layerApp(t, pageHome, 120)
 	a.placeKeyPress(key("enter"))
 	if a.composerShowing() {
 		t.Fatal("enter left the layer up")
@@ -217,35 +217,21 @@ func TestEnterFromTheLayerTalksAboutItInstead(t *testing.T) {
 	}
 }
 
-// THE ERRAND LANDS ON HOME, from whichever place it was sent. Home's column is
-// the only surface that draws an errand's answer, and this is the behaviour the
-// manual states out loud (places.md) until a place-independent errands band
-// lands.
-func TestSendingFromAnotherPlaceCarriesYouToHomeWhereTheAnswerIsDrawn(t *testing.T) {
-	lab := newErrandLab(t)
-	a := lab.app(lab.session("-tmp-alpha", "aaaa000000000001", "pricing research",
-		lab.workspace("alpha"), time.Now()))
+// ONLY HOME STARTS THINGS: `alt+enter` on another place opens no layer and
+// sends nothing, because the box that would carry the sentence is home's alone
+// (pages.go's [place.box]).
+func TestAltEnterOnAnotherPlaceOpensNoLayer(t *testing.T) {
+	a := placeApp(t)
 	a.width, a.height = 120, 30
-	a.openHome()
-	typeHome(a, "watch the relay")
-	a.showPage(pageSpend)
-	// The sentence stays in home's own box, which is the composer home types
-	// into — so it is typed again into the box the spend place has.
-	box := a.placeBox()
-	box.reset()
-	for _, r := range "watch the relay" {
-		box.insert(string(r))
-	}
-	drive(t, a, key("alt+enter"))
-	if !a.composerShowing() {
-		t.Fatal("alt+enter opened no layer on the spend place")
-	}
-	drive(t, a, key("alt+enter"))
-	if !a.at(pageHome) {
-		t.Fatalf("the errand was minted on %q rather than carrying to home", a.page.word())
-	}
-	if theExchange(a) == nil {
-		t.Fatal("the send left no errand on home")
+	for _, id := range []page{pageSpend, pageTasks, pageStanding, pageSearch} {
+		a.showPage(id)
+		drive(t, a, key("alt+enter"))
+		if a.composerShowing() {
+			t.Fatalf("alt+enter on %s opened the layer", id.word())
+		}
+		if !a.at(id) {
+			t.Fatalf("alt+enter on %s moved to %s", id.word(), a.page.word())
+		}
 	}
 }
 
@@ -254,7 +240,7 @@ func TestSendingFromAnotherPlaceCarriesYouToHomeWhereTheAnswerIsDrawn(t *testing
 // and the settings panel use — and enter on a row binds the EXECUTION slot for
 // this task only.
 func TestAltOOpensTheOneModelListScopedToTheExecutionSlot(t *testing.T) {
-	a := layerApp(t, pageSpend, 120)
+	a := layerApp(t, pageHome, 120)
 	a.placeKeyPress(key("alt+o"))
 	if !a.composer.pick.open {
 		t.Fatal("alt+o opened no model list")
@@ -287,7 +273,7 @@ func TestAltOOpensTheOneModelListScopedToTheExecutionSlot(t *testing.T) {
 // nowhere to move a task to, so the clause naming `alt+w` is absent — and the
 // key does nothing rather than something undrawn.
 func TestTheMoveClauseIsAbsentWhereThereIsNowhereToMoveTo(t *testing.T) {
-	a := layerApp(t, pageSpend, 120)
+	a := layerApp(t, pageHome, 120)
 	a.composer.places = a.composer.places[:1]
 	if got := len(a.composerPlaces()); got != 1 {
 		t.Fatalf("this window has %d destinations, wanted one", got)

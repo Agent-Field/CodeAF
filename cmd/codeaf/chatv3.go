@@ -405,6 +405,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if saved := strings.TrimSpace(v3SavedEffort(cfg.Place)); saved != "" {
 		agent.SetConversationEffort(saved)
 	}
+	// AND THE POSTURE THIS CONVERSATION LEFT ITS GATE AT, for the same reason
+	// (internal/session's approvalposture.go). THE FLAG OUTRANKS THE FOLDER:
+	// `codeaf resume --yolo` is a person saying so again, on this launch, and
+	// the word written down last week is not louder than that. A rebuild that
+	// fails leaves the launch's gate standing and says nothing, on the rung's
+	// own terms — the word is a convenience and the session is the record.
+	if saved := strings.TrimSpace(v3SavedApproval(cfg.Place)); saved != "" && !*yolo {
+		_ = agent.SetApprovalPosture(saved)
+	}
 	proc.track(agent)
 	// EVERY CONVERSATION THIS PROCESS OPENED, CLOSED HOWEVER THE SURFACE RETURNS.
 	// Close is the surface's to call — /quit and ctrl+c both go through it — but
@@ -1133,6 +1142,21 @@ func v3SavedEffort(place session.Place) string {
 	return meta.Effort
 }
 
+// v3SavedApproval is the posture this conversation last set on its own gate,
+// read back off its folder on [v3SavedEffort]'s terms: "" for a fresh
+// conversation, a build before the field existed, or a file that does not read.
+func v3SavedApproval(place session.Place) string {
+	dir := strings.TrimSpace(place.Dir)
+	if dir == "" {
+		return ""
+	}
+	meta, err := session.LoadMeta(dir)
+	if err != nil {
+		return ""
+	}
+	return meta.Approval
+}
+
 // v3TalkModel is which model this conversation opens on, and the order is the
 // whole content: what the person named on the command line, then what they
 // last chose and it was written down (internal/config's chatmodel.go), then
@@ -1419,6 +1443,15 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// a repository may state are still the rules — it can say what to ask about;
 	// it cannot say who answers.
 	cfg.Guardian = config.GuardianEnabledAt(profileDir)
+	// AND THE DOOR THE CONVERSATION MOVES ITS OWN GATE THROUGH, over the same
+	// rows (chatv3_approval.go's [v3ApprovalGate]). --yolo is handed down as the
+	// posture an untouched conversation starts at rather than only as the
+	// policy it starts on, so the seam can say what it is and the wheel can
+	// walk away from it (internal/session's approvalposture.go).
+	cfg.ApprovalGate = v3ApprovalGate{workspace: workspace, profileDir: profileDir}
+	if yolo {
+		cfg.ApprovalPosture = session.PostureAllow
+	}
 	cfg.TaskAutoApproveSeconds = config.TaskAutoApproveAt(profileDir)
 	cfg.BashBackgroundAfterSeconds = config.BashBackgroundAfterAt(profileDir)
 	// Which model the work that leaves this conversation runs on, PROFILE-ONLY
@@ -1638,12 +1671,25 @@ func v3SurfacePosture(yolo bool) string {
 // `bash:prompt` still gets asked about bash: the flag is "stop asking me about
 // the ordinary things", not "forget what I wrote down".
 func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error) {
-	mode, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovalMode)
-	if err != nil {
-		return nil, err
-	}
 	if yolo {
-		mode = string(approval.ActionAllow)
+		return v3PolicyMode(workspace, profileDir, string(approval.ActionAllow))
+	}
+	return v3PolicyMode(workspace, profileDir, "")
+}
+
+// v3PolicyMode is [v3Policy] with the blanket answer named outright: mode
+// replaces the `tools.approvalMode` row for this build and "" reads the row.
+// It is the one function every posture goes through — the flag's forced allow,
+// a conversation's own wheel (chatv3_approval.go's [v3ApprovalGate]) and the
+// ordinary launch — so the exceptions, the shell rules and the floor cannot
+// differ between them.
+func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) {
+	if mode == "" {
+		row, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovalMode)
+		if err != nil {
+			return nil, err
+		}
+		mode = row
 	}
 	raw := map[string]any{"default": mode}
 	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovals)

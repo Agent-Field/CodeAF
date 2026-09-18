@@ -41,6 +41,21 @@ type effortDoor interface {
 // an engine with one of the three would light a cell nothing could turn.
 func effortKnown(agent any) bool { _, ok := agent.(effortDoor); return ok }
 
+// installEffort is the far install's own `thinking` row, read once at the
+// door for [Welcome.DefaultEffort]; "" where the engine cannot say.
+func installEffort(agent any) string {
+	door, ok := agent.(interface{ DefaultEffort() string })
+	if !ok {
+		return ""
+	}
+	return door.DefaultEffort()
+}
+
+// DefaultEffort is the far install's row as the welcome carried it — a memory
+// read, for [Agent.ResolvedEffort]'s reason: the draft on home draws it on
+// every frame, and a View over --host issues zero far calls.
+func (a *Agent) DefaultEffort() string { return a.c.Welcome().DefaultEffort }
+
 // EffortSupported answers for THE MACHINE AT THE OTHER END, off what it said at
 // the door — a fact this end could not otherwise learn without setting a rung
 // and reading the refusal, which is after the person has pressed the key.

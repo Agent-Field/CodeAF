@@ -1192,6 +1192,18 @@ type Config struct {
 	// without a lock.
 	ApprovalPolicy *approval.Policy
 
+	// ApprovalGate is the door onto the settings rows the gate is built from,
+	// so this conversation can move its own posture from inside itself
+	// (approvalposture.go). Nil is a session with no such dial — a test, a
+	// worker, a headless run — and the surface then draws no control for it.
+	ApprovalGate ApprovalGate
+	// ApprovalPosture is the posture the LAUNCH handed down — `--yolo` says
+	// [PostureAllow] here — for a conversation nobody has moved yet. It is in
+	// memory only and is never written to the folder, because a flag typed on
+	// a command line is a fact about this run; the moment a person moves the
+	// wheel the conversation's own word replaces it.
+	ApprovalPosture string
+
 	// auditWindow overrides how long a second look at finished work gets, and it
 	// is UNEXPORTED AND FOR TESTS ONLY (pending.go's [Agent.auditWindowFor]). The
 	// product's answer is the door's own, which turns on whether there is a check
@@ -3157,6 +3169,14 @@ type Agent struct {
 	// and never again, which is what lets task_run.go copy the whole config
 	// without a lock and still be right.
 	approvalPolicy *approval.Policy
+	// approvalPosture is the posture THIS conversation was set to
+	// (approvalposture.go), kept in the session folder's meta.json so it
+	// survives a restart the way the rung below does. "" is nobody has set one.
+	approvalPosture string
+	// guardianOverride is whether the small model stands in, as the
+	// conversation's own posture decided it; nil leaves Config.Guardian to
+	// answer. It is set only by [Agent.SetApprovalPosture].
+	guardianOverride *bool
 
 	// phase is the one stage this agent is holding open and the beat that keeps
 	// saying it while it lasts (phasenews.go). It has a lock of its own rather

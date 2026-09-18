@@ -406,7 +406,7 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	if got := a.notices.current[slotHint]; got != "task-page-after-first-task" {
 		t.Fatalf("a task starting armed %q", got)
 	}
-	if got := a.legendRight(a.width); got != taskPageTip {
+	if got := a.footHint(a.width); got != taskPageTip {
 		t.Fatalf("the hint slot reads %q, want the tip", got)
 	}
 	if !strings.Contains(plain(frame(a)), taskPageTip) {
@@ -416,16 +416,16 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	// LOWEST RUNG. A running turn's own key outranks it, and so does a box with
 	// words in it.
 	a.state = stateWorking
-	if got := a.legendRight(a.width); got != "esc interrupt" {
+	if got := a.footHint(a.width); got != "esc interrupt" {
 		t.Fatalf("a tip outranked a running turn's key: %q", got)
 	}
 	a.state = stateIdle
 	a.input.setText("half a sentence")
-	if got := a.legendRight(a.width); strings.Contains(got, taskPageTip) {
+	if got := a.footHint(a.width); strings.Contains(got, taskPageTip) {
 		t.Fatalf("a tip drew over a box with words in it: %q", got)
 	}
 	a.input.reset()
-	if got := a.legendRight(a.width); got != taskPageTip {
+	if got := a.footHint(a.width); got != taskPageTip {
 		t.Fatalf("the tip did not come back over an empty box: %q", got)
 	}
 
@@ -567,7 +567,7 @@ func TestTheCompactHintFollowsTheContextReading(t *testing.T) {
 func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 	a, dir := sheetApp(t)
 	startTask(t, a)
-	if got := a.legendRight(a.width); got != taskPageTip {
+	if got := a.footHint(a.width); got != taskPageTip {
 		t.Fatalf("the hint slot reads %q before the toggle", got)
 	}
 
@@ -590,7 +590,7 @@ func TestTheHintsRowSilencesTheSlot(t *testing.T) {
 	if a.notices.enabled {
 		t.Fatal("the turn end did not re-read the row")
 	}
-	if got := a.legendRight(a.width); got == taskPageTip {
+	if got := a.footHint(a.width); got == taskPageTip {
 		t.Fatal("a silenced slot still draws the tip")
 	}
 	// The next surface over this profile is quiet from the start.

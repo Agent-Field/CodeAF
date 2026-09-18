@@ -141,8 +141,10 @@ func TestARoomDrawsItsNodesRateWhileTheConversationIsIdle(t *testing.T) {
 		Subject: nodeSubject(a, 9), TTFT: 600 * time.Millisecond, Rate: 38, At: now,
 	})
 	line := statusText(a)
-	if !strings.Contains(line, roomModelLead+"glm-5.2 · via friendli") {
-		t.Fatalf("the room's identity cluster does not name the node's machine:\n%q", line)
+	// The rider rides after the node's cells, as the conversation's rides after
+	// its own (roomseam.go).
+	if seam := plain(a.legend(a.width)); !strings.Contains(seam, roomModelLead+"glm-5.2 (friendli)") {
+		t.Fatalf("the room's seam does not name the node's machine:\n%q", seam)
 	}
 	// The figures stay at the right edge and are not said twice: `via friendli ·
 	// 0.6s · 38 t/s` beside the model is the LAST answer's average, which is the

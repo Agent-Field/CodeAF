@@ -175,7 +175,11 @@ func (a *app) composerWhere() string {
 // different places, and it is the reading a person acts on — the whole promise
 // of the chip is that a verb always in reach always says where it goes.
 func (a *app) composerOpensAt() string {
-	if where := a.scopeWorkspace(); where != "" {
+	// THE DRAFT'S FOLDER, PIN AND ALL. The rule over the box says where the next
+	// conversation opens, and a task sent from the same box with `alt+enter`
+	// opening somewhere else would be one frame with two answers to "where"
+	// (boxseam.go).
+	if where := a.targetWhere(); where != "" {
 		return where
 	}
 	workspace, _ := a.errandPlace()

@@ -2063,10 +2063,10 @@ session's spend and tokens are on the status row instead; there is no `Σ` line 
 anything stands over this project, a separate `◦ 2 standing orders` line follows and opens
 `/standing`.
 
-Below those are up to three door lines: `ctrl+. earlier` or `ctrl+. view more` when the
+Below those are up to two door lines: `ctrl+. earlier` or `ctrl+. view more` when the
 full-screen page holds something this column does not, `alt+w widen · click seam` when a
-wider column would stop cutting a title, and, always, the column's own way out. That last
-line reads `❯ ctrl+g hide` when no foreground command can be kept and only `❯ hide` while
+wider column would stop cutting a title. The column’s own way out sits immediately
+above `+ /task`, after the visible task rows. It reads `❯ ctrl+g hide` when no foreground command can be kept and only `❯ hide` while
 a command owns that key. Click either form and the column goes away. The `❯` is in ink and
 the words are dim, because the chevron is what the pointer presses and the words name only
 the keyboard action available now.
@@ -2432,7 +2432,7 @@ finished while it was gone — nothing here is a snapshot; the column is redrawn
 tasks every frame. While a foreground command can be kept, that command takes the key
 instead and the column stays exactly where it was.
 
-**The pointer can do the whole cycle on its own.** The last line of the column reads
+**The pointer can do the whole cycle on its own.** The line immediately above `+ /task` reads
 `❯ ctrl+g hide` with no foreground command to keep and `❯ hide` while one owns the
 key. The chevron is in ink: click either form and the column closes. What is left
 behind is a thin edge carrying `❮`: click that and the column comes back. One control, two
@@ -2449,7 +2449,7 @@ With the column closed, work is still visible:
 - Anything **running** draws the task strip along the top — `⠙ Fix nil-map · ◆ Auth tests
   · +2` — because the strip stands up wherever the roster stands down. Click a chip for
   that task's room, or the `+N` for the whole roster.
-- The legend above the message box carries `ctrl+g tasks` in its hint slot for as long as
+- The keys row under the message box carries `ctrl+g tasks` for as long as
   this session has any tasks at all, running or not. A session that has run nothing says
   nothing there — the column you closed was empty, and `ctrl+g` still brings it back.
 - `alt+t` still works: asking for the roster brings the column back and gives it the
@@ -2479,7 +2479,7 @@ whenever no foreground command can be kept.
 - Under the pointer the handle brightens further and the whole two-cell strip takes a
   background, which is how everything pressable on this screen says so.
 - **The chevron points the way the column goes**, and it is the same control in its other
-  state: `❮` while the column is away, `❯` on the final door line while it stands.
+  state: `❮` while the column is away, `❯` above `+ /task` while it stands.
   That line says `ctrl+g hide` only when the key is available, and says `hide` otherwise.
   Clicking one gives you the other, so the pointer goes round the full cycle. On a terminal
   that cannot draw them they are `<` and `>`.
@@ -3378,7 +3378,7 @@ local conversation the same page tails that log live.
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; a dim `+N` at the strip's right end counts the tabs it could not spell, and `alt+k` opens the chats card | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
-| legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
+| legend word | the model, effort and approvals, with the remote machine when connected | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next request — and does nothing at all once the task has landed |

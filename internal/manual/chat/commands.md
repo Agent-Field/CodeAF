@@ -201,6 +201,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
+| `/approvals` | `/yolo` | — | prints this conversation's approval postures — asks, guardian, YOLO, refuses — with the one in force marked; `alt+y` walks them |
+| `/approvals` | `/yolo` | `<posture>` | sets it outright: `ask`, `guardian`, `yolo`, `deny` or `auto` |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
@@ -695,19 +697,25 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 ## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
-the words the `/settings` row **"ask before running"** uses for it: `prompt` (it asks you),
-`allow` (it runs things without asking) or `deny` (it refuses). `/status --json` carries the
-same fact under the `approvals` key, and the phone's status sheet has the same row.
+the words `/approvals` takes: `ask` (it asks you), `guardian` (a small model answers the
+plainly safe ones first), `allow` (it runs things without asking) or `deny` (it refuses).
+It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
+setting decided it. `/status --json` carries the same fact under the `approvals` key, and
+the phone's status sheet has the same row.
 
-The status line spells that fact differently. It draws `YOLO` only while the gate is open,
-and nothing at all otherwise, because a permanent badge is a badge nobody reads — the
-absence IS the claim that you will be asked first. A page has room for the whole answer, so
-it names the posture whichever of the three it is.
+The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ refuses`. The
+status line draws `YOLO` only while the gate is open **and** the legend has no cell — a
+conversation whose engine has no approvals door — because there a permanent badge is a badge
+nobody reads. The welcome box draws neither the cell nor the badge: the legend and its cell come up the
+moment the greeting goes — the first keystroke, or on the very first conversation the first
+message. Inside a task's page the legend carries the task's own
+cell, `◇ on its own`, and the badge stays off. A page has room for the whole answer, so it
+names the posture whichever it is.
 
-The badge and the line always agree, because both read one posture: the one this
-conversation's gate was built from. Change "ask before running" in `/settings` and both
-move together on the keystroke, or neither does and the panel says
-`saved · from the next session`.
+The cell, the badge and the line always agree, because all three read one posture. Walk
+it with `alt+y` and all three move on the keystroke; change "ask before running" in
+`/settings` and they move together for a conversation that follows the rows, or the panel
+says `saved · from the next session`.
 
 The one session with no `approvals` line is a remote one whose engine carried no posture
 over the wire. The gate there is the far machine's, and a line drawn from this laptop's
@@ -910,7 +918,7 @@ The placeholder in the empty filter box reads:
 filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
 
-and the hint slot above the box follows the cursor: `→ providers · enter switch · esc` on a
+and the keys row under the box follows the cursor: `→ providers · enter switch · esc` on a
 model, `enter choose · ← back · esc` inside its providers — and `enter unpin · ← back · esc`
 on the provider you are already pinned to, where the same key takes the pin off again.
 
@@ -983,8 +991,8 @@ If it fails, the list stays exactly as it was and the note says why in one line 
 `ctrl+r` is offered again.
 
 Where it is absent: only `/model` (and the model word in a task's status line, which opens
-the same list) has the key. Every other model list — the settings panel's rows, home's, the
-`alt+o model` one — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
+the same list) has the key. Every other model list — the settings panel's rows, home's `/model` list, and the
+task composer's `alt+o` list — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
 machine, whose list of names the picker shows.
 
 ## /resume — open an earlier conversation
@@ -1067,9 +1075,9 @@ other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
 always in one order: `needs you` (every question waiting on you, a digit answers the top one
-from anywhere), `where you were` (this window's conversation, then the most recent, then a
+from anywhere), `threads` (this window's conversation, then the most recent, then a
 `N more` fold that opens the rest), `projects` (every folder, `enter` starts a chat there),
-`running` (every task, job and firing watch), `since you left` (what landed while you were
+`tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
 away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
 at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
@@ -1082,8 +1090,10 @@ conversation waiting to be sent AND a live search over every project on the mach
 panels give way to the matches, with `start a new conversation: "…"` directly above the box
 holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
-the command list*). The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`.
+the command list*). The box says `› type to search or start something new` and the foot
+names the available draft controls:
+`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`. The arrow, `enter`, `ctrl+o` and `tab`
+keys still work, without hints on this row.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
@@ -1110,8 +1120,26 @@ fresh-session seam exists. The last is `enter` on a row whose folder has been de
 moved since its last conversation: home stays up and nothing is opened. **How many
 conversations this terminal already holds is never a refusal.** Past twelve, a quiet
 one left alone may be let go of; that is not a refusal of the one you asked for.
-A task another window is running cannot be stopped from home: its `running` row says
+A task another window is running cannot be stopped from home: its `tasks` row says
 `another window` and offers no stop.
+
+## /approvals and /yolo — what this conversation runs without asking, YOLO from inside a chat
+
+`/approvals` (or `/yolo`) is the typed door onto the approvals chip on the legend above the
+message box. Bare, it prints four lines — `ask`, `guardian`, `yolo`, `deny` — each with what
+it buys, the one in force marked, and a last line naming `auto`. With a word after it, it
+sets that posture for **this conversation** straight away: `/approvals yolo` opens the gate,
+`/approvals ask` closes it, `/approvals guardian` puts the small model in front of you,
+`/approvals deny` refuses every unnamed call, `/approvals auto` hands the conversation back
+to the settings rows. `prompt`, `allow`, `refuse` and `off` are accepted spellings of the
+same five.
+
+The wheel — `alt+y`, or a press on the cell — walks `asks → guardian → YOLO` and never onto
+`deny`; the command is the only way to that one. The keys page covers the chip, and the
+permissions page covers what each posture means for the floors.
+
+Over `--host` the posture is set on the engine machine. An engine too old to have the door
+gets the answer that the far machine's rules decide, and nothing changes.
 
 ## /permissions — what runs without asking
 
@@ -1155,7 +1183,7 @@ own approval rules, that project's row replaces yours wholesale at launch — so
 line here changes what you carry everywhere and nothing inside that repository.
 
 **Over `--host`, this page still reads this machine's saved rows, not the other machine's.**
-The badge on the chat is the far session's actual approval posture, but `/permissions` has
+The `◇` cell on the legend is the far session's actual approval posture, but `/permissions` has
 no way to list or remove the far profile's individual rules yet. The page does not print a
 host-specific warning in this build, so do not treat its rows as the rules governing the
 remote conversation.

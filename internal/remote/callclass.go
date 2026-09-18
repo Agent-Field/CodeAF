@@ -138,7 +138,7 @@ func classify(method string) callClass {
 	case MethodPing,
 		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
 		MethodTranscript, MethodEarlier, MethodRewindPoints,
-		MethodReasoningFor, MethodEffort, MethodResolvedEffort,
+		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodStandingItems, MethodStandingWatch,
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,

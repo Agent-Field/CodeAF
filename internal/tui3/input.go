@@ -960,6 +960,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// guard: there is no rung on that frame either.
 		return a.cycleEffort()
 
+	case approvalKey:
+		// WALK THE GATE'S WHEEL (approvalchip.go), bound here for the reason the
+		// chord above is: it survives a draft, and the chip on the seam is its
+		// visible door. On a session with no dial — a `--host` connection, whose
+		// gate is the far machine's — it says so rather than doing nothing.
+		return a.cycleApproval()
+
 	case "pgup":
 		return a.scroll(-a.scrollPage())
 	case "pgdown":

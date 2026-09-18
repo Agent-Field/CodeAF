@@ -174,21 +174,15 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	}
 	a.closeTaskSheet()
 
-	// Work behind it: the body draws rows and the note counts exactly them, and
-	// the teaching prose is gone.
+	// Work behind it: the body draws rows, the teaching prose is gone, and THE
+	// RULE STILL SAYS NOTHING — the counts are on the section headings the body
+	// draws, and the rule saying them again was one figure on one frame twice.
 	railRun(a)
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over this window's own work")
 	}
-	// TWO OF THE FOUR ARE RUNNING AND TWO ARE PARKED, and the note counts them
-	// apart: [railRun] starts two nodes and admits two behind them, and a foot
-	// that called all four `running` was the tasks place saying two workers were
-	// burning tokens on a machine where nothing was executing.
-	note := plain(strings.Join(a.placeNote(a.width), "\n"))
-	for _, want := range []string{"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked]} {
-		if !strings.Contains(note, want) {
-			t.Fatalf("the note reads %q and does not count the rows the body drew (%q)", note, want)
-		}
+	if note := a.placeNote(a.width); len(note) != 0 {
+		t.Fatalf("the rule repeats the body's counts: %q", plain(strings.Join(note, "\n")))
 	}
 	if text := taskSheetText(a); strings.Contains(text, whisperOf(pageTasks)) {
 		t.Fatalf("a place with rows on it kept its whisper:\n%s", text)
@@ -198,7 +192,7 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	// the words hid it. The note says so and the body stays blank rather than
 	// teaching somebody who did not ask.
 	drive(t, a, key("z"), key("z"))
-	note = plain(strings.Join(a.placeNote(a.width), "\n"))
+	note := plain(strings.Join(a.placeNote(a.width), "\n"))
 	if !strings.Contains(note, taskSheetFilterNone) {
 		t.Fatalf("a query that matched nothing said nothing: %q", note)
 	}
@@ -313,23 +307,25 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 			t.Fatalf("the expanded live family lost its connector %q:\n%s", connector, text)
 		}
 	}
-	// And the note counts every section it drew, in the same words they are
-	// headed with, with none of them written as a zero.
-	// `Read the law` is counted under `earlier` and not under `done today`: the
+	// And every section is on the page under its own heading — and NOT counted
+	// again on the rule: the tally came off it on 2026-09-17 because the body
+	// already says what it holds (place_tasks.go's [tasksPlace.note]).
+	// `Read the law` is filed under `earlier` and not under `done today`: the
 	// fixture announces it already settled, which is how a node replayed out of a
 	// checkpoint arrives, and nothing anywhere records when work like that landed
 	// — so the place will not claim it landed TODAY (place_tasks.go's
 	// [taskNodeEnded] carries the whole reasoning).
-	for _, want := range []string{
-		"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked],
-		"1 finished today", "2 " + taskSheetPastHead,
-	} {
+	// (`waiting` is a state the tally named and the page draws no heading for —
+	// the sections file by where the CONVERSATION stands, tasksplace.go says why.)
+	for _, want := range []string{taskSheetNowHead, "finished today", taskSheetPastHead} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("the note does not count what is on the page (%q):\n%s", want, text)
+			t.Fatalf("the page lost the %q section:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "0 "+taskSheetNowHead) || strings.Contains(text, "0 "+taskSheetPastHead) {
-		t.Fatalf("the note wrote a section as a zero:\n%s", text)
+	for _, counted := range []string{"2 " + taskSheetNowHead, "1 finished today", "2 " + taskSheetPastHead} {
+		if strings.Contains(text, counted) {
+			t.Fatalf("the rule still counts the page (%q):\n%s", counted, text)
+		}
 	}
 }
 
@@ -734,13 +730,11 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 		!strings.Contains(painted, a.pal.dim(" "+taskSheetPastHead)) {
 		t.Fatalf("the page door does not use the shared hint palette:\n%q", painted)
 	}
-	// IT SITS ABOVE THE COLUMN'S OWN DOOR. The way out of anything is the last
-	// line of it, and this one is a way further in.
-	lines := strings.Split(strings.TrimRight(rail, "\n"), "\n")
-	last := strings.TrimSpace(lines[len(lines)-1])
-	if !strings.Contains(last, railStowHint) {
-		t.Fatalf("the column's own door is no longer its last line: %q", last)
+	// The history door stays in the footer after the task actions and hide control.
+	if hide, history := strings.Index(rail, railStowHint), strings.Index(rail, taskSheetPastHint); hide < 0 || history <= hide {
+		t.Fatalf("history does not follow the hide control:\n%s", rail)
 	}
+
 }
 
 // A FOLDED FAMILY EARNS IT TOO, because a folded root is one row standing for

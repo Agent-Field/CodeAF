@@ -378,7 +378,7 @@ func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 		t.Fatalf("a surface with the ambient side off grew a segment: %q", got)
 	}
 	// AND IT IS NOT ON THE STATUS ROW AT ANY WIDTH ANY MORE (foot.go's [groupOff]).
-	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+	if line := plain(a.legend(200)); strings.Contains(line, homeKeepingWord) {
 		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
@@ -395,7 +395,7 @@ func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	if got := a.keepingSegment(); got != want {
 		t.Fatalf("the count reads %q, want %q", got, want)
 	}
-	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+	if line := plain(a.legend(200)); strings.Contains(line, homeKeepingWord) {
 		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
@@ -582,7 +582,7 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 // A WATCH ASKED FOR IN ANOTHER PROJECT STILL OPENS FROM HERE. It used to refuse
 // any origin outside the window's own bucket — `elsewhere · <path>` on the foot
 // — which meant a watch answered nothing at all from every window not launched
-// inside the folder that made it. A `where you were` row in another project has
+// inside the folder that made it. A `threads` row in another project has
 // opened from here for as long as the grid has existed; this path was the last
 // one holding the repealed rule (owner, 2026-09-15).
 func TestAWatchAskedForInAnotherProjectStillOpensFromHere(t *testing.T) {

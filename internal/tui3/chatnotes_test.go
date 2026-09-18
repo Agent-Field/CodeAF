@@ -143,9 +143,9 @@ func TestTheNarrowLegendStillNamesTheCommandsDoor(t *testing.T) {
 	a.gitProbe = func(string) (string, bool, bool) { return "master", true, true }
 
 	for _, width := range []int{hudTight - 1, 60, 44, 30} {
-		line := plain(a.legend(width))
+		line := plain(a.hintRow(width))
 		if !strings.Contains(line, microcopy) {
-			t.Fatalf("at %d columns the legend says nothing at all:\n%q", width, line)
+			t.Fatalf("at %d columns the keys row says nothing at all:\n%q", width, line)
 		}
 		if w := ansi.StringWidth(line); w > width {
 			t.Fatalf("at %d columns the legend is %d cells wide:\n%q", width, w, line)
@@ -157,8 +157,8 @@ func TestTheNarrowLegendStillNamesTheCommandsDoor(t *testing.T) {
 	if line := plain(a.legend(hudTight - 1)); strings.Contains(line, "master") {
 		t.Fatalf("the tight legend kept the branch: %q", line)
 	}
-	if line := plain(a.legend(hudTight)); !strings.Contains(line, "master") {
-		t.Fatalf("the legend lost the branch at a width that has room for it: %q", line)
+	if line := plain(a.legend(hudTight)); strings.Contains(line, "master") {
+		t.Fatalf("the legend kept the branch at a width that has room for it: %q", line)
 	}
 }
 

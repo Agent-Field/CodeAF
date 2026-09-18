@@ -207,12 +207,16 @@ const (
 	// ITS subjects with one kind: what lights has to be what the press acts on,
 	// and two doors on one row open two different things.
 	hoverMoney
-	// hoverMeter and hoverPosture are two more doors the status row grew when it
-	// became a ledger (foot.go): the context meter onto /status, the YOLO badge
-	// onto /permissions. The open count was a third and is off the row entirely;
-	// the standing count was a fourth and is [hoverRailStanding] now.
+	// hoverMeter is the context meter's door onto /status, one more the status
+	// row grew when it became a ledger (foot.go). The open count was another
+	// and is off the row entirely; the standing count is [hoverRailStanding]
+	// now; and the YOLO badge was a fourth until the gate's posture moved to
+	// the seam as a control, where it lights as [hoverApproval].
 	hoverMeter
-	hoverPosture
+	// hoverApproval is the APPROVALS CHIP on the seam, the cell after the
+	// thinking rung (approvalchip.go), its own kind for [hoverEffort]'s reason:
+	// a press on it walks the gate and not the ladder.
+	hoverApproval
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is a kind of its own rather
@@ -618,10 +622,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverJump}
 			}
 		case chromeLegend:
-			// THE MODEL'S NAME ON THE SEAM, out of a room (foot.go). The home door
-			// at the other end of the same line lights through its own reading
-			// (home.go's [app.hoverHomeDoor]).
-			if a.roomOpen() || a.copy.on || a.pick.open {
+			// THE MODEL'S NAME ON THE SEAM — the conversation's, or the node's
+			// inside a room (roomseam.go). The home door at the other end of the
+			// same line lights through its own reading (home.go's
+			// [app.hoverHomeDoor]).
+			if a.copy.on || a.pick.open {
 				return hoverAt{}
 			}
 			if a.seamModelSpan.holds(x) {
@@ -633,6 +638,15 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// one light.
 			if a.seamEffortSpan.holds(x) {
 				return hoverAt{kind: hoverEffort}
+			}
+			// AND THE APPROVALS CHIP AFTER THAT, on the same terms.
+			if a.seamApprovalSpan.holds(x) {
+				return hoverAt{kind: hoverApproval}
+			}
+			// AND THE NUMBERS' DOORS AT THE OTHER END — the bill and the meter,
+			// recorded where the seam drew them (footswap.go's [legendDoorRow]).
+			if door, ok := a.doorAt(x, legendDoorRow); ok {
+				return hoverAt{kind: doorHover(door.kind)}
 			}
 		case chromeStatus:
 			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,
@@ -652,17 +666,9 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// The doors on this row, in the order [app.press] reads them (app.go):
-			// the ledger's table first (foot.go), then the room chip's model.
-			if door, ok := a.doorAt(x, mark.index); ok {
-				if door.kind == segKeeping && a.at(pageStanding) {
-					return hoverAt{}
-				}
-				return hoverAt{kind: doorHover(door.kind)}
-			}
-			if a.roomOpen() && mark.index == 0 && a.modelSpan.holds(x) {
-				return hoverAt{kind: hoverStatusModel}
-			}
+			// THE LAST ROW IS THE KEYS and lights nothing: the home door on it
+			// answers through its own reading (home.go's [app.homeDoorPress]),
+			// and the numbers' doors are on the seam (footswap.go).
 		}
 	}
 	return hoverAt{}

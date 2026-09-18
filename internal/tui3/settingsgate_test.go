@@ -52,9 +52,9 @@ func gateSheet(t *testing.T, mode string) (*app, string) {
 // and not at the next launch, which is what the row's hint used to promise.
 func TestTheGateRowReachesTheRunningGateAndTheBadgeOnTheSameKeystroke(t *testing.T) {
 	a, dir := gateSheet(t, "allow")
-	if a.approval != "allow" || a.yoloSegment() != "YOLO" {
+	if a.approval != "allow" || a.approvalSegment() != "YOLO" {
 		t.Fatalf("a session launched with the asking off reads %q and draws %q",
-			a.approval, a.yoloSegment())
+			a.approval, a.approvalSegment())
 	}
 	told := 0
 	a.applyApprovals = func() error {
@@ -77,7 +77,7 @@ func TestTheGateRowReachesTheRunningGateAndTheBadgeOnTheSameKeystroke(t *testing
 	if a.approval != "prompt" {
 		t.Fatalf("the badge still reads %q while the gate asks first", a.approval)
 	}
-	if got := a.yoloSegment(); got != "" {
+	if got := a.approvalSegment(); got != "" {
 		t.Fatalf("the status line drew %q over a gate that asks before it runs anything", got)
 	}
 	if a.sheet.msg != "" {
@@ -93,8 +93,8 @@ func TestTheGateRowReachesTheRunningGateAndTheBadgeOnTheSameKeystroke(t *testing
 	if told != 3 {
 		t.Fatalf("the running gate was rebuilt %d times, want 3", told)
 	}
-	if a.approval != "allow" || a.yoloSegment() != "YOLO" {
-		t.Fatalf("the gate is open and the line reads %q · drew %q", a.approval, a.yoloSegment())
+	if a.approval != "allow" || a.approvalSegment() != "YOLO" {
+		t.Fatalf("the gate is open and the line reads %q · drew %q", a.approval, a.approvalSegment())
 	}
 }
 
@@ -172,9 +172,9 @@ func TestAGateRowThatCouldNotBeRebuiltNamesTheNextSession(t *testing.T) {
 			// AND THE BADGE FOLLOWS THE GATE, NOT THE FILE. The gate this
 			// conversation is behind is still the open one, so the claim on the
 			// line has to stay the open one too.
-			if a.approval != "allow" || a.yoloSegment() != "YOLO" {
+			if a.approval != "allow" || a.approvalSegment() != "YOLO" {
 				t.Fatalf("the badge read %q · drew %q over a gate that is still open",
-					a.approval, a.yoloSegment())
+					a.approval, a.approvalSegment())
 			}
 		})
 	}
@@ -218,9 +218,12 @@ func statusObject(t *testing.T, a *app) map[string]string {
 // states the posture in the `ask before running` row's own words, whichever of
 // the three it is, under the label the phone's sheet already gives the segment.
 func TestStatusNamesTheGateThisConversationIsBehind(t *testing.T) {
-	for _, posture := range []string{"prompt", "allow", "deny"} {
+	// THE PAGE SAYS THE LADDER'S WORD — `ask`, `allow`, `deny` — which is what
+	// `/approvals` takes, rather than the row's `prompt` (approvalchip.go's
+	// [app.approvalPostureWord]); the row's word is what this surface was handed.
+	for row, posture := range map[string]string{"prompt": "ask", "allow": "allow", "deny": "deny"} {
 		a := newTestApp(&fakeAgent{model: "m"})
-		a.approval = posture
+		a.approval = row
 
 		a.slash("/status")
 		text := lastNote(t, a)

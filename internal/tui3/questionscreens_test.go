@@ -300,10 +300,11 @@ func TestTheChipIsDrawnOnTheStatusRowWhereEveryPageCanSeeIt(t *testing.T) {
 	lab.tick(questionSettle)
 	lab.rows()
 	lab.press("esc")
-	got := plain(strings.Join(lab.a.statusRows(lab.a.width), "\n"))
-	// ONE QUESTION IS SAID IN ITS OWN WORDS, and only a queue is counted.
+	got := plain(lab.a.legend(lab.a.width))
+	// ONE QUESTION IS SAID IN ITS OWN WORDS, and only a queue is counted. The
+	// chip rides the seam with the rest of the numbers (footswap.go).
 	if !strings.Contains(got, "allow this? · "+questionChipKey) {
-		t.Fatalf("the chip is not on the status row:\n%s", got)
+		t.Fatalf("the chip is not on the seam:\n%s", got)
 	}
 	if dir := strings.TrimSpace(os.Getenv("CODEAF_SCREENS")); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

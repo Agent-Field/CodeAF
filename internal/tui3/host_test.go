@@ -60,12 +60,13 @@ func TestThePlaceNamesTheMachineInFrontOfThePath(t *testing.T) {
 // TestTheLegendNamesTheMachineAsItsOwnSegment pins how a connection reaches the
 // border under the input now that the path has left it: the machine LEADS the
 // cluster, with the legend's own separator rather than with the path's colon,
-// and the conversation's name and model follow it (foot.go's [app.seamIdentity]).
+// and the model follows it (foot.go's [app.seamIdentity]). The conversation's
+// name is not on the seam since 2026-09-17 — the tab strip says it.
 func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
 	a, _ := hostLab(t)
 	a.title = "porting the parser"
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · porting the parser · model" {
-		t.Fatalf("the remote legend = %q, want the machine leading the identity", got)
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · model" {
+		t.Fatalf("the remote legend = %q, want the machine leading the model", got)
 	}
 	line := plain(a.legend(a.width))
 	if strings.Contains(line, "devbox:") {
@@ -74,11 +75,11 @@ func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
 	if strings.Contains(line, "/s/c/app") {
 		t.Fatalf("the legend is still carrying the path: %q", line)
 	}
-	// AND THE MACHINE IS NAMED ONCE. Unnamed, the folder stands in for the
-	// conversation's name — and [app.place] is written `devbox:app` for the row
-	// that had no host segment of its own, so the stand-in is the folder alone.
+	// AND THE MACHINE IS NAMED ONCE. An unnamed conversation draws the same
+	// line: nothing stands in for a name the seam does not carry, and
+	// [app.place]'s `devbox:app` spelling never reaches it.
 	a.title = ""
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · app · model" {
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · model" {
 		t.Fatalf("an unnamed remote legend = %q", got)
 	}
 }
@@ -110,11 +111,11 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 		t.Fatalf("place = %q", a.place)
 	}
 	a.title = "porting the parser"
-	// The seam carries the conversation's name and model (foot.go), and a local
-	// session with no machine says nothing about one: no host segment, and no
-	// colon that would read as scp syntax.
+	// The seam carries the model (foot.go), and a local session with no
+	// machine says nothing about one: no host segment, and no colon that would
+	// read as scp syntax.
 	got, _ := a.legendLeft(a.width, legendRoom(a.width, ""))
-	if got != "porting the parser · model" {
+	if got != "model" {
 		t.Fatalf("a local legend = %q — nothing about a machine belongs on it", got)
 	}
 }
@@ -146,7 +147,7 @@ func TestTheBranchProbeDoesNotRunAgainstAPathOnAnotherMachine(t *testing.T) {
 	// probe would read this machine's repository at the other one's path, so
 	// nothing is shown rather than something possibly wrong.
 	got, _ := a.legendLeft(a.width, legendRoom(a.width, ""))
-	if got != "devbox · porting the parser · model" {
+	if got != "devbox · model" {
 		t.Fatalf("the remote legend = %q", got)
 	}
 	if strings.Contains(got, "*") || strings.Contains(got, "main") {

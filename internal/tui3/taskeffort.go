@@ -150,6 +150,9 @@ func (a *app) cycleNodeEffort(node *taskNode) bool {
 	a.noteFacts(word, taskIDWord(node.id), label)
 	if a.room != nil && a.room.id == node.id {
 		a.roomNote(word)
+		// AND THE CELL ON THE ROOM'S SEAM WEARS THE CHANGE (roomseam.go), on
+		// the conversation's own two-second terms.
+		a.effortLit = effortMoved{where: effortScopeRoom, at: a.now()}
 	}
 	a.touch()
 	return true

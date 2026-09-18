@@ -8,12 +8,12 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
 ```
  ? ask here: "remind me at 6 to leave"
  + start a new conversation: "remind me at 6 to leave"
- ─ → new conversation in ~/codeaf · glm-5.3-flash ────────── alt+w folder · alt+o model ─
+ ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
  › remind me at 6 to leave
- enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · ctrl+v effort · alt+y approvals · esc clear
 ```
 
-What you get is **a row at the top of home's `where you were` panel and a pane holding the exchange**. The row
+What you get is **a row at the top of home's `threads` panel and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is
 finished and you have read what it came to. The pane is the exchange itself: what you said,
 the reply as it streams, one line per tool call, and the card when one arrives. On an
@@ -42,7 +42,7 @@ Every `ask here` is one row, marked `?`, named with the first line of what you a
 - **`∙ answered`** — it finished and nothing standing came of it.
 
 The rows sort among themselves: **what wants you first, then what is moving, then what is
-done**. They sit at the very **top of home's `where you were` panel**, above every
+done**. They sit at the very **top of home's `threads` panel**, above every
 conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:

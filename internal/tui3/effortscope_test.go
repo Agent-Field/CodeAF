@@ -82,15 +82,14 @@ func TestHomeNeverMovesTheInstallsRungBecauseTheMachineCardIsGone(t *testing.T) 
 	a.openHome()
 	a.width, a.height = 200, 30
 
-	// THE CURSOR IS ON A ROW, AND WALKING UP OFF THE TOP DOES NOT TAKE IT OFF
-	// ONE. It reaches the bar, which is a row of the FRAME rather than of the
-	// list, and home's own cursor stays exactly where it was.
+	// THE CURSOR IS ON A ROW, AND RAISING THE BAR DOES NOT TAKE IT OFF ONE. The
+	// bar is a row of the FRAME rather than of the list (raised here as a press
+	// on it would — `↑` on home stays in the field), and home's own cursor stays
+	// exactly where it was.
 	a.frame()
-	for i := 0; i < len(a.home.lines)+2; i++ {
-		drive(t, a, key("up"))
-	}
+	a.barRaise()
 	if !a.bar.on {
-		t.Fatal("walking up off the top row did not reach the tab bar")
+		t.Fatal("the bar did not rise")
 	}
 	if _, ok := a.home.focusedLine(); !ok {
 		t.Fatal("home's own cursor came off its list, which is the state this wave retired")

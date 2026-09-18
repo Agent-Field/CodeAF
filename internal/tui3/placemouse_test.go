@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -84,10 +83,12 @@ func TestClickingATabWordGoesToThatPlace(t *testing.T) {
 	if !ok {
 		t.Fatal("the spend tab left the bar it is banded on")
 	}
-	typeInto(t, a, "keep")
+	// The spend place has no box, so what a reopen would reset is its cursor.
+	a.moveSpend(1)
+	was := a.spend.cursor
 	drive(t, a, tea.MouseClickMsg{X: x, Y: placeTabRow, Button: tea.MouseLeft})
-	if got := strings.TrimSpace(a.compose.String()); got != "keep" {
-		t.Fatalf("pressing the tab you are on reopened the place: the box says %q", got)
+	if a.spend.cursor != was {
+		t.Fatalf("pressing the tab you are on reopened the place: the cursor moved from %d to %d", was, a.spend.cursor)
 	}
 }
 

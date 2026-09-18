@@ -1178,10 +1178,10 @@ func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
 	if !ex.focused {
 		t.Fatal("`ask here` did not put the keyboard in the pane")
 	}
-	// THE ROW IS THE FIRST ROW OF `where you were`, over every conversation:
+	// THE ROW IS THE FIRST ROW OF `threads`, over every conversation:
 	// it is the thing this window asked for a minute ago (homepanel_recent.go).
 	if first, ok := firstRowOf(a, panelRecent); !ok || first != at {
-		t.Fatalf("the errand is on line %d and not the first row of where you were:\n%s", at, homeText(a))
+		t.Fatalf("the errand is on line %d and not the first row of threads:\n%s", at, homeText(a))
 	}
 	rows := 0
 	for _, line := range a.home.lines {

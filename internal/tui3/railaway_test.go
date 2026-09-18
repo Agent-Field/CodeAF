@@ -88,7 +88,7 @@ func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
 	}
 }
 
-// THE BOTTOM OF THE COLUMN NAMES THE KEY, AND THE LINE IS A BUTTON. A door that
+// THE CONTROL ABOVE + /task NAMES THE KEY, AND THE LINE IS A BUTTON. A door that
 // only the keyboard can open is a door half this surface cannot find.
 func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 	a, _, _ := taskApp(t)
@@ -113,17 +113,19 @@ func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 		!strings.Contains(painted, a.pal.dim(" hide")) {
 		t.Fatalf("the close door does not use the shared hint palette:\n%q", painted)
 	}
-	// It is the LAST line of the column: the way out of anything is at the bottom
-	// of it, under the aggregate and under the width offer alike.
-	last := ""
-	for _, row := range rows {
-		if strings.TrimSpace(row) != "" {
-			last = strings.TrimSpace(row)
+	// Hiding is the action immediately above + /task, not a footer after totals.
+	lines, _ := a.railView(a.viewHeight())
+	door, task := -1, -1
+	for i, line := range lines {
+		if line.stow {
+			door = i
+		}
+		if line.door == marginTaskType {
+			task = i
 		}
 	}
-	// The seam runs through it like every other line in the column.
-	if !strings.HasSuffix(last, railStowHint) {
-		t.Fatalf("the door is not the column's last line: %q", last)
+	if door < 0 || task != door+1 {
+		t.Fatalf("hide row %d is not immediately above task action %d", door, task)
 	}
 
 	pressed := false

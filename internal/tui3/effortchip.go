@@ -14,7 +14,7 @@ import (
 // THE THINKING CHIP — how hard this conversation thinks, said beside the model
 // that is doing the thinking.
 //
-//	─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
+//	─ glm-5.3-flash (deepinfra): high · ◇ asks · main* ────
 //	› what changed in the relay this week
 //
 // internal/effort landed the ladder and internal/session landed the dial, and
@@ -39,11 +39,8 @@ import (
 // serving it are one sentence about the next turn, and a person reads them
 // left to right on the line their eye already crosses on the way into the box.
 //
-// AND IT IS ANCHORED TO THE MODEL, NOT TO THE END OF THE LINE. The `via` rider
-// comes and goes on a sighting's own clock ([app.modelRiderAt]) and the branch
-// comes and goes with the width, so a rung drawn after either of them would
-// slide sideways under a hand that had just learned where it was. It is drawn
-// immediately after the model's name, which moves only when the name does.
+// The effort follows the model and its provider after a colon. It stays in
+// the same cell relative to that identity, with no separate effort badge.
 //
 // ── WHAT THE CHIP SAYS IS WHAT WILL HAPPEN ─────────────────────────────────
 //
@@ -54,7 +51,7 @@ import (
 // the number the machine is running at, so the chip is drawn from the resolver
 // and the scope that decided it is nobody's business up here.
 //
-// ── AND ABSENCE IS A STATE, SO IT IS SAID: `⠿ auto` ────────────────────────
+// ── AND ABSENCE IS A STATE, SO IT IS SAID: `auto` ────────────────────────
 //
 // THE SHIPPED SETTING IS ABSENCE — [effort.Ship] is [effort.None], nothing is
 // asked for and the model thinks however it thinks — so on an install nobody
@@ -67,7 +64,7 @@ import (
 // be built.
 //
 // A CONTROL THAT IS INVISIBLE UNTIL YOU HAVE ALREADY USED IT IS NOT A CONTROL
-// (CLAUDE.md's discoverability law). So absence is drawn, by name — `⠿ auto`,
+// (CLAUDE.md's discoverability law). So absence is drawn, by name — `auto`,
 // the word the `thinking` settings row has offered for this state since the
 // ladder landed ([effortAutoWord]).
 //
@@ -92,7 +89,7 @@ import (
 // changes once a week. So the cell is dim, like the rest of the seam. The
 // exception is the moment it CHANGES, when it is briefly the one live thing on
 // the frame and takes THE EMPHASIS LAW's two moves — the selected ground and the
-// accent on its leading glyph — and then settles back, the same shape the copied
+// accent on its effort word — and then settles back, the same shape the copied
 // rows keep for three seconds after a sweep (dragselect.go).
 //
 // ── THE PRESS WALKS IT, THE WAY THE PRESS ON A TASK WALKS THAT TASK'S ──────
@@ -126,20 +123,6 @@ import (
 // chord reaches this application only on the terminals that decline to spend it
 // themselves, and on those it was doing nothing at all.
 const effortKey = "ctrl+v"
-
-// glyphEffort marks the thinking chip, and it is [glyphThought] rather than a
-// new symbol on purpose: the reasoning block already opens with the full
-// braille cell, and what this chip says is how deep THAT block will go. One
-// mark for one subject. The diamond the tray's other chip wears is spoken for
-// (styles.go's [glyphHarness]) and two diamonds on one row meaning two things is
-// a mark that has to be read twice to learn which one it is.
-//
-// The linear tier gets a name rather than a shape, on styles.go's terms: `~` is
-// one byte, is not announced as a codepoint nobody chose, and reads as "about".
-const (
-	glyphEffort      = glyphThought
-	glyphEffortASCII = "~"
-)
 
 // effortAutoWord is what this surface calls absence: the dial left alone, with
 // nothing asked for and the model thinking however it thinks.
@@ -230,12 +213,12 @@ func (a *app) effortWord() string {
 	return dial.ResolvedEffort()
 }
 
-// effortChipText is the chip unpainted — the mark and the word beside it, which
+// effortChipText is the chip unpainted — the effort word, which
 // is what docs/DESIGN-LANGUAGE.md's refusal of icon-only minimalism demands of
 // every mark on this surface.
 //
 // "" ONLY WHERE THERE IS NO DIAL, never where there is a dial nobody has turned:
-// that one says `⠿ auto`, for the reason the header gives at length. The two
+// that one says `auto`, for the reason the header gives at length. The two
 // states were one string until 2026-09-09 and the cell was therefore missing on
 // every conversation of a shipped install, which is the whole defect.
 func (a *app) effortChipText() string {
@@ -243,15 +226,16 @@ func (a *app) effortChipText() string {
 	if !ok {
 		return ""
 	}
-	word := dial.ResolvedEffort()
+	return a.effortChip(dial.ResolvedEffort())
+}
+
+// effortChip is the resolved rung's word, with absence named auto. Both seams
+// use this spelling after the model's colon, without a separate badge.
+func (a *app) effortChip(word string) string {
 	if word == "" {
-		word = effortAutoWord
+		return effortAutoWord
 	}
-	mark := glyphEffort
-	if a.pal.ascii || a.pal.linear {
-		mark = glyphEffortASCII
-	}
-	return mark + " " + word
+	return word
 }
 
 // paintEffortChip is the chip's one cell of colour, in the two states that are
@@ -264,15 +248,26 @@ func (a *app) effortChipText() string {
 // ground ladder's cursor step behind exactly its own cells, for hover.go's law:
 // what lights is what the press acts on. And in the moment after a change it
 // takes THE EMPHASIS LAW's two moves and no third — the selected ground, and the
-// accent on the leading glyph — because that is the one moment this cell is the
+// accent on the leading word or mark — because that is the one moment this cell is the
 // live thing on the screen.
 func (a *app) paintEffortChip(text string) string {
 	if a.effortFlashing() {
-		mark, word, _ := strings.Cut(text, " ")
-		lit := a.pal.accent(mark) + a.pal.ink(" "+word)
-		return a.pal.background(lit, 0, a.pal.ramp.selected)
+		return a.paintChipFlash(text)
 	}
 	return a.pal.cursor(a.pal.dim(text), 0)
+}
+
+// paintChipFlash is THE EMPHASIS LAW's two moves on one cell — the selected
+// ground, and the accent on the leading word or mark — which is what every chip on a
+// seam wears for the two seconds after it moves (this one, the approvals chip,
+// and both of their draft twins in boxseam.go).
+func (a *app) paintChipFlash(text string) string {
+	mark, word, hasWord := strings.Cut(text, " ")
+	lit := a.pal.accent(mark)
+	if hasWord {
+		lit += a.pal.ink(" " + word)
+	}
+	return a.pal.background(lit, 0, a.pal.ramp.selected)
 }
 
 // effortSeamLit reports whether the seam's rung is wearing anything other than
@@ -297,8 +292,21 @@ func (a *app) hoveringEffort() bool { return a.hot.kind == hoverEffort }
 // ([app.effortLit]), so a rung moved on a task or on home since takes the
 // emphasis off this chip on the same frame it lights that card — one answer on
 // the screen to "what just changed", which is what [effortMoved] is for.
-func (a *app) effortFlashing() bool {
-	if a.effortLit.where != effortScopeConversation || a.effortLit.at.IsZero() {
+func (a *app) effortFlashing() bool { return a.effortFlashingIn(a.seamEffortScope()) }
+
+// seamEffortScope is whose rung the seam is drawing this frame: the node's
+// inside a room, the conversation's everywhere else (roomseam.go).
+func (a *app) seamEffortScope() string {
+	if a.roomOpen() {
+		return effortScopeRoom
+	}
+	return effortScopeConversation
+}
+
+// effortFlashingIn is that question for any scope the window records a move
+// on — the conversation's rung here, the draft's on a place (boxseam.go).
+func (a *app) effortFlashingIn(where string) bool {
+	if a.effortLit.where != where || a.effortLit.at.IsZero() {
 		return false
 	}
 	return a.now().Sub(a.effortLit.at) < effortFlashFor

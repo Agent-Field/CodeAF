@@ -1003,6 +1003,9 @@ type app struct {
 	// tray's chip (effortchip.go) records itself here too, so lighting a task's
 	// card is the same act as taking the emphasis off the chip.
 	effortLit effortMoved
+	// approvalLit is when the approvals chip last moved, for its own two-second
+	// emphasis (approvalchip.go). Zero is never.
+	approvalLit time.Time
 
 	state runState
 	model string
@@ -1155,9 +1158,12 @@ type app struct {
 	// existed.
 	tilde string
 	// approval is the tool gate's blanket posture — "prompt", "allow", "deny" —
-	// as the profile last said. It is on this surface for exactly one reason:
-	// "allow" means nothing will ever be asked, and that is the one posture a
-	// person must not be able to forget they are in (render.go's YOLO segment).
+	// as the profile last said, or as the launch handed it down. It is what the
+	// approvals chip falls back to on a session with no dial of its own — a
+	// hosted one, whose gate is the far machine's (approvalchip.go's
+	// [app.approvalPostureWord]) — because "allow" means nothing will ever be
+	// asked, and that is the one posture a person must not be able to forget
+	// they are in.
 	approval string
 	// mouse is whether the surface reports the mouse at all (config's ui.mouse
 	// row): on buys hover and click, off hands every drag back to the
@@ -1197,6 +1203,10 @@ type app struct {
 	// two cells do two different things, and hover.go's law is that what lights
 	// is what the press acts on.
 	seamEffortSpan hudSpan
+	// seamApprovalSpan is the approvals chip's own columns on that line, drawn
+	// after the rung and pressed to walk the gate's wheel one stop
+	// (approvalchip.go), a third span on the same terms as the second.
+	seamApprovalSpan hudSpan
 	// doors is every pressable segment of the status row, recorded as the row
 	// is laid out and cleared before it (foot.go).
 	doors []statusDoor
@@ -2149,12 +2159,10 @@ type app struct {
 	// not now that a conversation draws it too (pulsebeat.go). Every figure in it
 	// is read from the MACHINE, never from what a screen was holding (#525).
 	machine machineFacts
-	// compose is the composer on the places that have no box of their own — the
-	// standing place, spend and search. It is app-level rather than per-place on
-	// purpose: a sentence half typed on one place is still there after `tab`,
-	// which is what makes a permanent bottom line a composer rather than seven
-	// boxes that each forget.
-	compose editor
+	// placeSpaceArmed is the first of the two spaces that open home from a
+	// place with no box — spend, standing — held until the second lands or any
+	// other key disarms it (placekeys.go's [app.placeHomeGesture]).
+	placeSpaceArmed bool
 	// pageMsg is the one refusal a place that is not home has to say, drawn where
 	// the hint would be. It is one field for [homeView.msg]'s reason: pressing a
 	// door twice says the same thing once.
@@ -2226,6 +2234,11 @@ type app struct {
 	targetRow        int
 	targetFolderSpan hudSpan
 	targetModelSpan  hudSpan
+	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
+	// columns on that same line — the draft's twins of [app.seamEffortSpan] and
+	// [app.seamApprovalSpan] (boxseam.go), recorded on the same bargain.
+	targetEffortSpan   hudSpan
+	targetApprovalSpan hudSpan
 	// homeRoot is where that screen looks for the projects, and "" means the
 	// state root under this machine's home ([app.placesRoot]). It exists for
 	// tests, which build a projects directory in a temp dir; nothing on the door
@@ -3913,6 +3926,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.legendEffortPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE APPROVALS CHIP AFTER IT IS THE SIXTH, on its own columns:
+			// pressing it walks the gate's wheel one stop (approvalchip.go).
+			if cmd, took := a.legendApprovalPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
 			// the right end of the room's pinned header with a hit box three rows
@@ -4058,6 +4076,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The thinking chip's change expiring on an idle frame: one repaint, so
 		// the emphasis comes down and the dial goes back to being furniture
 		// (effortchip.go). It is the message above read for the other flash.
+		a.touch()
+		return a, nil
+
+	case approvalFlashMsg:
+		// And the approvals chip's, on the same terms (approvalchip.go).
 		a.touch()
 		return a, nil
 
@@ -6570,26 +6593,11 @@ func (a *app) statusPress(x, y int) bool {
 	if width, _ := a.size(); layoutTier(width) == tierPhone {
 		return a.deckPress(x, mark.index)
 	}
-	// Index zero is the chip's row in both status layouts — the shared row, and
-	// the first of the two when the right edge wraps onto its own (render.go).
-	// OUT OF A ROOM THERE IS NO NAME ON THIS ROW AT ALL: the conversation's
-	// model is on the seam, and its door is [app.legendModelPress].
-	if !a.roomOpen() || mark.index != 0 || !a.modelSpan.holds(x) {
-		return false
-	}
-	// A ROOM POINTS THE SAME DOOR AT THE NODE THE ROW NAMES, and it does so
-	// through the span rather than through a second gesture: the segment in there
-	// is the task's model, so the picker it opens moves the task's model and
-	// nothing else. Which nodes may be moved at all is settled by the render, in
-	// the columns it recorded — a node past being moved has no span, so this never
-	// sees the press (render.go's [app.identityParts], room.go's
-	// [app.roomModelMovable]). One esc puts the door back on the conversation.
-	if a.roomOpen() {
-		a.openTaskPicker(a.room.id)
-		return true
-	}
-	a.openPicker()
-	return true
+	// THERE IS NO MODEL ON THIS ROW ANY MORE, in or out of a room: the
+	// conversation's is on the seam and so is the node's while a room is open
+	// (roomseam.go), and both doors are [app.legendModelPress]. What is left of
+	// the row's press is the ledger's table, already answered above.
+	return false
 }
 
 // selectTool moves the selection through the tool calls that are actually on
@@ -7032,6 +7040,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// outright. An unknown word shows the five and changes nothing, which is
 		// the shape every choice row on this surface refuses in.
 		return a.runEffort(rest)
+
+	case "approvals":
+		// What THIS conversation runs without asking (approvalchip.go). Bare it
+		// prints the postures with what each buys; a word after it sets that
+		// posture outright, through the path the chord and the press share.
+		return a.runApprovals(rest)
 
 	case "task":
 		return a.runTaskCommand(rest)

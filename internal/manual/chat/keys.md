@@ -570,7 +570,8 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
-| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed |
+| `ctrl+v` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
+| `alt+y` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -681,8 +682,8 @@ letter you aimed at, at the row's end when you click past the end of a line, and
 at the start of the text when you click on the prompt's side of it. It works on
 a wrapped, multi-line draft — the row you click is the row the caret lands on.
 
-It is the ordinary text-field gesture, and **the box on every place answers it
-too** — home, tasks, standing, memory, spend, search, settings. Holding the button
+It is the ordinary text-field gesture, and **home's box at the foot of the screen answers
+it too** — the one place with a box (the Places page, *Typing on a place*). Holding the button
 down and sweeping selects instead, and releasing copies what is lit (see "how do I
 select text in the message box" above). While a picker's
 filter box is standing in the box's place — the model picker, `/resume`,
@@ -761,16 +762,16 @@ So one press is never destructive, and the way back out of the archive still
 works: type the name of a row you put away, the list finds it, and `ctrl+e` from
 there brings it back.
 
-## Click the box to put the caret there — on home and on every place
+## Click the box to put the caret there — in the conversation and on home
 
 A click on the box puts the caret under the pointer: on the letter you aimed at,
 at the row's end when you click past the end of a line, and at the start of the
 text when you click on the prompt's side of it. It works on a wrapped, multi-line
 draft.
 
-It answers **on every place as well as in the conversation** — home, tasks,
-standing, memory, spend, search, settings. Until this wave only the conversation's
-message box answered it, so a click in home's box moved nothing.
+It answers **on home as well as in the conversation** — home is the one place with
+a box at its foot (the Places page, *Typing on a place*); the filters on tasks,
+memory and search are rows of their own bodies.
 
 Two things it does not do. With **nothing typed** there is no caret to place, so
 the click falls through to the place underneath — the row is carrying a dim
@@ -1133,9 +1134,11 @@ meanings.
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
+The effort follows a colon with no space: `model:effort`. The model stays bold and
+bright; effort keeps its own styling. The old six-dot badge is no longer shown.
 
 ```
-─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks ──── $0.27   66.8k/1.3M · 5%   idle ─
 › what changed in the relay this week
 ```
 
@@ -1145,8 +1148,14 @@ chose: it is the rung the next turn will ask for, whichever setting decided it. 
 *Making the model think harder, deeper, or less* on the "Models and cost" page for the
 whole ladder and for what each rung asks the provider for.
 
-**A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
+**A conversation nobody has dialled reads `auto`**, which is what a shipped install
 says on every fresh conversation. See *What `auto` means beside the model* below.
+
+**The same cell is on the rule above the box on home**, where it
+says how hard the conversation you are about to start will think, and `ctrl+v` or a press
+walks it there too. A rung set there is carried onto the conversation `enter` opens and
+lasts as long as this window does. *The rule above home's box* on the Places
+page has all four cells of that rule.
 
 **`ctrl+v` walks it.** Each press moves one rung up, and off the top it comes back to
 `auto`: auto → low → medium → high → xhigh → max → auto. It works with a sentence half
@@ -1192,7 +1201,7 @@ What it changes and what it does not:
   row in `/settings`, which ships at `auto` (the provider default).
 - **`auto` is on the legend, it is the ladder's top row, and it is a stop on the wheel.**
   With thinking at `auto` and no more specific level chosen — which is what a shipped
-  install is — the cell reads `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+  install is — the cell reads `auto`, it is pressable, and `ctrl+v` walks it onto `low`.
   One more press past `max` brings it back to `auto`.
 - **It works on a `--host` conversation.** The rung is set on the engine machine, where
   the conversation lives, and the word on your legend is the one that machine resolved.
@@ -1206,14 +1215,86 @@ model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation'
 /model changes it*. Clear that level and the rung moves again.
 
 The rung is dim, like the rest of that line. It brightens for about two seconds after it
-changes — the cell takes a lit ground and its `⠿` goes cyan — so you can see the new word
+changes — the cell takes a lit ground and its effort word goes cyan — so you can see the new word
 without looking away from what you are typing, and then it goes quiet again. Walking it
 back onto `auto` flashes the same way and writes one line: *thinking · auto · the model
 decides*.
 
+## The approvals chip above the message box — `alt+y`, `/approvals`, `/yolo`, turning YOLO on inside a chat, stop asking me for this conversation
+
+After the thinking rung, the legend names what this conversation runs **without asking**:
+
+```
+─ glm-5.3-flash (deepinfra):high · ◇ asks ─── $0.27   66.8k/1.3M · 5%   idle ─
+› what changed in the relay this week
+```
+
+The cell is the permissions panel's own mark for "a whole tool" and one word, and it is
+there **at every posture** — a control you cannot see until you have used it is not a
+control. The word is what is in force, whichever setting decided it:
+
+| word | what it means |
+|---|---|
+| `asks` | every call the rules say to ask about is asked about |
+| `guardian` | a small model answers the plainly safe ones first; you get the rest |
+| `YOLO` | every tool runs without asking — the posture `--yolo` opens. Painted in the warning hue for as long as it is true |
+| `refuses` | every call the rules do not name is refused. Also painted as a warning |
+
+**`alt+y` walks it**: asks → guardian → YOLO → asks. Three stops, each more autonomy than
+the last, and **the wheel never lands on `refuses`** — a press past YOLO that refused every
+call would break the session you are in. It works with a sentence half typed and leaves
+your draft and caret where they were. **Pressing the cell walks it too**, one stop per
+press; it brightens under the pointer over exactly its own cells first.
+
+Why not `ctrl+y` or `shift+tab`: `ctrl+y` copies a path on home and in `/files`, and one
+chord means one thing on this surface; `shift+tab` walks backwards through the fields of
+every question card, and on some terminals arrives as a plain `tab`.
+
+**Inside a task's page the cell reads `◇ on its own`** — a task runs every tool without
+asking and has no wheel — and `alt+y` there says so instead of moving anything (the task
+page's "The line above the box on a task's page"). **On home and every other place, the same
+`◇` cell sits on the rule above that box** and
+says what the conversation you are about to start will run without asking — the settings
+rows' answer, or `YOLO` if this process was started with `--yolo`. `alt+y` or a press walks
+it there on the same wheel, the pin is carried onto the conversation `enter` opens, and it
+is **spent** by that conversation: back on home the cell says the rows' word again, so an
+open gate is never quietly the default for the one after. *The rule above the box on every
+place* on the Places page has the whole rule.
+
+**`/approvals` prints the stops** with what each one buys and the one in force marked, and
+**`/approvals <word>`** sets one outright: `ask` (or `prompt`), `guardian`, `yolo` (or
+`allow`), `deny` (or `refuse`), and `auto`, which hands the conversation back to whatever
+the settings rows say. `/yolo` is the same command. A word that is none of those changes
+nothing and prints them all.
+
+What it changes and what it does not:
+
+- It sets **this conversation's** posture, live — the very next tool call is decided under
+  it. It is sticky, kept in this session's own `meta.json`, so it is still there after you
+  close codeaf and `/resume`. `codeaf resume --yolo` outranks the saved word for that
+  launch.
+- It does **not** change other conversations. Their answer is the **"ask before running"**
+  row and the **guardian** row on `/settings`' Safety tab — `/approvals auto` is how this
+  conversation goes back to following them.
+- **Neither floor moves.** Dangerous shell commands and anything sent in your name are
+  asked about at every stop, `YOLO` included, exactly as under `--yolo`.
+- **It works on a `--host` conversation.** The posture is set on the engine machine, where
+  the gate is, and the word on your legend is the one that machine resolved. An engine
+  too old to have the door says so when the connection opens: the cell is then a reading
+  of the far machine's own row, and `alt+y`, the press and `/approvals` all answer:
+  *what runs without asking is decided on the machine the conversation runs on — its engine has no dial for this window · change it in that machine's /settings*.
+
+The cell flashes for about two seconds after it changes and writes one line —
+*approvals · YOLO · every tool runs without asking · dangerous commands still ask* — and
+then settles. While the welcome box is on screen there is no legend and no badge either —
+the cell arrives with the legend the moment the greeting goes (the first keystroke, or on the
+very first conversation the first message). The status line carries the old
+`YOLO` badge only on a frame whose legend has no cell, over an engine with no approvals
+door, and only while the gate is open.
+
 ## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
 
-`⠿ auto` on the line above the message box means **nobody has asked this conversation to
+`auto` on the line above the message box means **nobody has asked this conversation to
 think any particular amount**. codeaf sends no reasoning field on the request at all, and
 the model thinks however it thinks — its own published default. It is not "think as little
 as possible": that is a different request, and `low` is the rung for it.
@@ -1221,7 +1302,7 @@ as possible": that is a different request, and `low` is the rung for it.
 **It is what a fresh install says.** The **thinking** row in `/settings` ships at `auto`,
 so until you dial something — this conversation with `ctrl+v`, `/effort` or a press on the
 cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
-itself in `/settings` — every conversation reads `⠿ auto`.
+itself in `/settings` — every conversation reads `auto`.
 
 **To put it back to `auto`:** keep pressing `ctrl+v` or the cell — the wheel's stop after
 `max` is `auto` — or type `/effort auto` (or `/effort off`, the older name for the same
@@ -1233,7 +1314,7 @@ at as the one thing the control in front of you could not say.
 Clearing it does not always change the word on the line, and codeaf says why in a note
 either way:
 
-- Nothing else is set: the cell reads `⠿ auto` and the note is *thinking · auto · the
+- Nothing else is set: the cell reads `auto` and the note is *thinking · auto · the
   model decides*.
 - The **thinking** row in `/settings` is set on this machine: a cleared conversation
   falls back to that row, so the cell keeps its word and the note is *thinking · auto for
@@ -1634,7 +1715,7 @@ chosen · `esc` leaves with nothing changed.
 `up`/`ctrl+p`, `down`/`ctrl+n` walk the six rows — `auto` and the five rungs · `ctrl+v`
 moves down one · `enter` applies the row under the cursor. Clicking a row applies it;
 clicking either of the two sentences around them does nothing. Its foot reads
-`↑↓ · enter apply · esc · ctrl+v next rung`. Pressing the `⠿` cell above the message box
+`↑↓ · enter apply · esc · ctrl+v next rung`. Pressing the effort word after the colon above the message box
 does **not** open this list — it walks the rung one step.
 
 **Permissions panel:** `esc` — which drops an armed confirmation first, then closes ·
@@ -1658,12 +1739,9 @@ All of these are modal: while one is up, every chord except `ctrl+c` belongs to 
 were in before this one.** Press it again and you are back. It is `cd -`.
 
 It **does nothing at all** when there is nowhere to go: one conversation open, or none this
-terminal has been in before. A key that cannot act says so by not being advertised — and
-when it can, the legend line above the box says `space space home · tab last · / commands`.
-
-With **three or more** open, that slot says `alt+k chats` instead, and `alt+k` opens the
-card of all of them — see *Switch between open conversations*. `tab` still works and still
-goes to the last one.
+terminal has been in before. The bottom row no longer advertises `tab`, but the key still
+works. `alt+k` opens the card of conversations whenever there is another to switch to —
+see *Switch between open conversations*.
 
 It works while either conversation is running, over every door: the one you leave keeps
 streaming into its own transcript and is all there when you come back.
@@ -1778,9 +1856,10 @@ that does not move you is a door that refuses: the place stays up with the refus
 own line, so you can read it.
 
 **It does nothing on a machine with one conversation on it** — a first run, and nothing
-else — and says so by not being there: no card, and the legend above the box does not name
-it. Everywhere else the legend reads `space space home · tab last · alt+k chats ·
-/ commands` — `opt+k chats` on a Mac — dropping clauses from the left as the frame narrows.
+else — and says so by not being there: no card, and the keys row under the box does not
+name it. Everywhere else that row reads `ctrl+v effort · alt+y approvals · alt+k chats · / commands · space space home` — `opt` in place of `alt` on a Mac. Effort and approvals appear only when the session
+has those controls. As the frame narrows, controls give way from the left, keeping
+`/ commands · space space home`, then `/ commands` on its own.
 
 **Taking a row is never refused for having too many open.** The card draws the first twelve
 rows and hands a digit to the first nine; past that the cursor is the way, and home is the
@@ -1977,9 +2056,10 @@ fixed clauses the design sets word for word.
 On macOS every `alt+` below is drawn `opt+` — `alt+enter` is `opt+enter`, `alt+w` is
 `opt+w`, `alt+o` is `opt+o`. Same key, same chord, named the way the keycap names it.
 
-`alt+enter` with something typed into the composer on any place opens the **composer
-layer**: the page behind dims, the box stays where it is, and the three facts a task needs
-appear under it. The places page has the layer in full; these are its keys.
+`alt+enter` with something typed into home's box opens the **composer layer**: the page
+behind dims, the box stays where it is, and the three facts a task needs appear under it.
+It opens from home alone — only home starts things. The places page has the layer in full;
+these are its keys.
 
 | Key | What it does |
 | --- | --- |
@@ -1991,9 +2071,9 @@ appear under it. The places page has the layer in full; these are its keys.
 | `enter` | talk about it instead — an ordinary conversation carrying the same sentence |
 | `esc` | back to the place you were on, sentence still in the box |
 
-`alt+w` and `alt+o` are bound **only** inside this layer. No place binds either of them, so
-neither can move a view while you are aiming at a destination, and pressing them with no
-layer up does nothing at all.
+`alt+o` changes a model only inside this task layer. On home, `/model` or a press on
+the model name opens the draft's model list instead. `alt+w` also works on home to move
+the draft to the next project; other places bind neither chord.
 
 While the layer is up it has the whole keyboard: `tab` does not walk to the next place, and
 letters do not reach the composer — what you typed is already written and is on the screen
@@ -2051,10 +2131,10 @@ spaces. A machine with one conversation, or none, opens an empty home; so does a
 over `--host`, where what opens is the **far machine's** home.
 
 **It answers from every place as well as from a conversation.** Wherever a place is
-standing, the two spaces are read against that place's own box — the tasks filter, the
-memory filter, the search and spend composers — and open home just as they do from a
-draft. On home itself the door is a no-op: the page is already open, and two spaces type
-into home's own filter. It also does not answer from under a layer that owns the
+standing, the two spaces are read against that place's own filter — tasks, memory, search —
+and open home just as they do from a draft; on spend and standing, which have nothing to
+type into, two bare spaces open it and any key between them disarms it. On home itself the
+door is a no-op: the page is already open, and two spaces type into home's own filter. It also does not answer from under a layer that owns the
 keyboard: on the settings panel space is the drawn verb on a row (`activate`),
 memory's card editor keeps every key while it is open, and inside a task's
 record — the room the roster opens on `enter` — `space` pages the card the way
@@ -2072,9 +2152,9 @@ wherever the foot advertises `space space home`, two spaces open it.
 It works while a turn is running; the answer keeps streaming underneath and `esc` puts you
 back in it.
 
-When the box is empty, the legend line above the box says so:
-`space space home · / commands`. Clicking those words opens home. It vanishes as soon as
-you type.
+When the box is empty, the keys row under the box says so:
+`/ commands · space space home`, after any effort, approvals and chats hints. Clicking
+`space space home` opens home; that clause vanishes as soon as you type.
 
 **The door does not ask what the machine holds.** It is open on a machine with only this
 conversation and on one with none, from the first minute, and starting a second
@@ -2087,10 +2167,10 @@ what each holds), and its keys are a small grammar:
 
 | Key | On home |
 | --- | --- |
-| `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the column you are in, from one panel into the next; `↑` off the top of a column reaches **the tab bar** (*The tab bar is a row the cursor can stand on*) |
+| `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the field, from one panel into the next, and stop at both ends: `↑` off the top row stays there and does not climb onto the tab bar (reach the bar with a click, `tab`, or a place's chord) |
 | `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
-| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a spend or `scheduled` row opens spend or standing, a fold line opens or shuts its panel |
+| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a `scheduled` row opens standing, a fold line opens or shuts its panel. `spend`'s lines are not stops, so the cursor never reaches them |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
 | `esc` | clears the box if anything is in it, and closes home otherwise |
@@ -2110,8 +2190,8 @@ opens the row's verbs** on a strip drawn **directly under that row**, pushing th
 of the list down by its own height, and while that strip is drawn its letters are the verbs
 and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
-`←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
-with no verbs the arrows cross home's columns, and on a panel's fold line (`N more`) `enter`
+`←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
+never leave home's field, and on a panel's fold line (`N more`) `enter`
 opens the panel and shows the rest; on `N fewer` it folds them again.
 While something is typed the two arrows move the caret in the box instead.
 
@@ -2119,12 +2199,12 @@ While something is typed the two arrows move the caret in the box instead.
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.
 Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
 actions otherwise ride chords, which can never begin a word, and they work from any column:
-**`ctrl+e` puts the conversation away** — it leaves `where you were`, and typing its name is
+**`ctrl+e` puts the conversation away** — it leaves `threads`, and typing its name is
 how you find it again, with `ctrl+e` on the found row bringing it back. **`ctrl+o`** opens
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
 starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
-`running` while it fires — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
+`scheduled` otherwise, firing or not — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
 **`ctrl+v` raises how hard that item thinks** one rung. Each chord acts on the row under
 your pointer when there is one, the cursor's row otherwise. The machine's own default is
 not on this chord — it is the `thinking` row of `/settings`, and *ctrl+v — how hard the
@@ -2142,33 +2222,35 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The box row reads `› say what you want done`. **The rule above it is a legend on home and
-nowhere else**, and it says what the box is a draft *for*:
-`─ → new conversation in ~/codeaf · glm-5.3-flash ── alt+w folder · alt+o model · alt+k chats · / commands ─`
+The box row reads `› type to search or start something new` — the promise itself, both
+readings of what you type: a search of everything home shows, or the first message of a
+new conversation. (Until 2026-09-17 the box said `› say what you want done` and the
+promise opened the foot.) **The rule above it is a legend on home and nowhere else**, and
+it says what the box is a draft *for*:
+`─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`
 
-— the folder the next conversation opens in, the model it will answer on, and the chords
-that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
-opens the model list in home's own body; pressing either label does the same as its chord.
-`alt+k chats` is the conversation switcher, named here for the same reason it is named on
-the conversation's own legend, and it is absent when there is nowhere to go.
-**On a Mac the right-hand side reads `opt+w folder · opt+o model · opt+k chats · / commands`** —
-the same keys, drawn with the modifier your keycaps wear.
-The line under the box is the foot, and **at rest it is exactly**
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`. `esc`
-still closes home from anywhere; the resting foot does not spend a cell naming it, and
-`alt+.` draws the whole map when you want it.
+— the model, a colon and effort, then approvals at the left; the project the next
+conversation opens in at the far right. The arrow and effort badge are gone. A long
+project path keeps its root and truncates on the right. The chords that change them are on **the line
+under the box**, with home's own keys, because the lowest line is for keys on home as in a
+conversation: `alt+w project` walks the projects on this machine, `ctrl+v effort`
+cycles auto → low → medium → high → xhigh → max → auto, and `alt+y approvals`
+walks asks → guardian → YOLO → asks. Pressing the project or approvals cell does the
+same. `/model`, or pressing the model name, opens home's model list; `alt+o` no longer
+does. The model is always bold and bright cyan on both home's and a conversation's seam.
+`alt+k chats` opens the conversation switcher and is absent when there is nowhere to go.
+**On a Mac these clauses read `opt+w project · ctrl+v effort · opt+y approvals · opt+k chats`.**
 
-On the grid every row under a moving heading — a conversation, a question, a running task,
-a `scheduled` order, a `since you left` line — rests on the one sentence,
-`type to search or start something new · ↑↓ pick · enter open · ctrl+o open folder · tab next place`,
-and it does not change as the cursor walks. Elsewhere, on a row with keys of its own, the
-foot says what THAT row's keys do and gains the two that are true everywhere —
-`enter opens the place this happened in · alt+. map · tab next place · esc close` on a
-`since you left` line or a standing order's row of the phone's list, on a spend row, or on a fold door, and
-`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
-on the action row — and
-`enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
-on that same row when what is typed is a slash command.
+With all controls available the resting foot is
+`alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands`.
+The project and approvals hints are absent where those controls cannot act. `ctrl+o`
+still opens the selected row's folder and `tab` still moves to the next place, but neither
+has a hint in home's bottom row. `esc` still closes home; `alt+.` draws the whole map.
+
+Every ordinary grid row keeps the same list keys as the cursor walks. A fold or action
+row names its own keys, with the available draft controls before `esc`. For example:
+`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+w project · ctrl+v effort · alt+y approvals · esc clear`.
+Typing a slash command changes the first clause to `enter runs this command`.
 
 **With nothing typed home is the panels**, hanging from the top. **While anything is typed
 it is one list, a drop-up**: the action row — `start a new conversation: "…"` — is the LAST
@@ -2178,7 +2260,7 @@ one `↑` reaches `ask here` and a second lands on the strongest match. Clearing
 the panels back. On a frame 136 columns or wider a card about the match under the cursor
 stands to the right of the list while you type; at rest there is no card.
 
-**On an `ask here` row** — the `?` rows an errand leaves at the top of `where you were` —
+**On an `ask here` row** — the `?` rows an errand leaves at the top of `threads` —
 the line under the box reads
 `↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
 keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
@@ -2363,7 +2445,7 @@ instruction and made the page count turns nobody opened.
 interrupts the running turn; inside a room the first `esc` leaves the room and the next
 one interrupts. Ending the task itself is `x` and its card. The legend's left end always
 names what the next `esc` does: `room · esc/←← main`, and `room · esc your line back`
-while a history walk is on. The hint at the legend's right end reads `x stop` while there
+while a history walk is on. The keys row under the box reads `x stop` while there
 is work here to stop and `↑↓ history` during a walk — it never reads `esc interrupt`
 inside a room, because in here that is not what the key does.
 
@@ -2895,7 +2977,7 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 | The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
-| Home, with the cursor on a standing item's row — in `needs you` or `running` | That item's rung |
+| Home, with the cursor on a standing item's row — in `needs you` or `scheduled` | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
@@ -2904,8 +2986,8 @@ by `/effort`.
 
 **The machine's own default is not one of the scopes.** It used to be — home had a state
 where the cursor stood on no row at all and the right-hand side became a card about the
-machine, and this chord moved the install's rung from there. `↑` off the top of a column on home
-reaches the **tab bar** now, so that card is gone. To change how hard this machine thinks by
+machine, and this chord moved the install's rung from there. That state is gone: `↑` off the
+top of the column on home stays on the top row, and there is no machine card. To change how hard this machine thinks by
 default, open `/settings` and walk to the **`thinking`** row, which is the setting both
 roads always wrote.
 
@@ -2948,7 +3030,7 @@ answer:
 | `alt+k` | **The switcher**: the card of every conversation this terminal has open. On a Mac it is `opt+k`, and it needs "use option as meta" turned on in your terminal — see "Why alt+k and not ctrl+k or ctrl+tab" |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before codeaf ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
-| `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `running` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
+| `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |

@@ -45,8 +45,13 @@ func (a *app) roomPanelView(height int) ([]railLine, int) {
 	// Column navigation retains its existing doors and their exact hit targets.
 	footer := make([]railLine, len(foot))
 	for i, s := range foot {
-		footer[i] = railLine{text: s, entry: -1, hint: i == marks.hint, stow: i == marks.door,
+		footer[i] = railLine{text: s, entry: -1, hint: i == marks.hint,
 			more: i == marks.more, keeping: i == marks.keeping}
+	}
+	// The task room keeps its own footer exit; the conversation places this
+	// control above its + /task action instead (railContentView).
+	if ansi.StringWidth(a.railDoorHint())+2 <= width {
+		footer = append(footer, railLine{text: a.railDoorLine(), entry: -1, stow: true})
 	}
 	available := height - len(controls) - len(footer)
 	detailHeight := min(roomDetailsMax, max(available/3, 3))

@@ -1414,32 +1414,30 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 	return top
 }
 
-// note is the one line the place says about what it is HOLDING, drawn under the
-// rule and above the composer (pages.go's [placeFrame] states the law).
+// note is the one line the place says on its rule, and it says ONE THING: that
+// the query has emptied the page.
 //
-// THE EMPTINESS LAW DECIDES WHETHER IT IS THERE AT ALL. A place with nothing in
-// it says NOTHING — the body is spending the frame teaching what this place is,
-// and a count beside that prose would be the surface saying both "there is
-// nothing here" and "here is how much of it there is" on one screen.
+// THE COUNT IS OFF THE RULE. It used to read `9 finished today · 191 earlier`
+// there, and the body already says every one of those numbers on its section
+// headings — the same partition, a few rows up, on a page a person is looking
+// at (the owner's ruling, 2026-09-17). A figure said twice on one frame is the
+// defect the model's colon suffix made once (effortchip.go).
+//
+// THE FILTER IS NOT SAID BACK HERE EITHER. This line used to carry `filter ·
+// zzz` because the box a person was typing into was invisible, so the only
+// place their own words could appear was UNDER the rows those words had just
+// removed. The words are on the control row at the top of the list now
+// ([tasksControlRow]). What survives is the half the row cannot say: that
+// the query matched nothing, over a body that is blank rather than teaching.
 func (p *tasksPlace) note(a *app, width int) []string {
 	if p.detailOn || p.reading.held == 0 {
 		return nil
 	}
 	r := a.tasksFiltered()
-	var note []string
-	if tally := r.tally(); tally != "" {
-		note = append(note, " "+a.pal.dim(fit(tally, width-2)))
-	}
-	// THE FILTER IS NO LONGER SAID BACK HERE. This line used to carry `filter ·
-	// zzz` because the box a person was typing into was invisible, so the only
-	// place their own words could appear was UNDER the rows those words had just
-	// removed — a correction printed below the thing it was correcting. The box is
-	// the first row of the list now ([tasksControlRow]). What survives is the half
-	// the box cannot say: that the query has emptied the place.
 	if a.taskSheetFiltering() && len(r.items)+len(r.chats) == 0 {
-		note = append(note, " "+a.pal.dim(fit(taskSheetFilterNone, width-2)))
+		return []string{" " + a.pal.dim(fit(taskSheetFilterNone, width-2))}
 	}
-	return note
+	return nil
 }
 
 // hint is SCREEN 1e's foot, assembled from the clauses that are TRUE of the row
@@ -1745,31 +1743,13 @@ func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }
 
 // box is the filter, exactly as it has always been: every printable key on this
-// place goes into it and the list narrows as it fills.
-//
-// WHAT MOVED IS WHERE IT IS DRAWN ([placeTasks.boxOnBody]). The router used to
-// put this editor's letters two rows UNDER the list they were narrowing; they
-// are on the first row of the list now, over the rows they changed
-// ([tasksControlRow]). The editor itself stays the place's box because a box is
-// more than a row of letters — the two-space door home is armed from it
-// ([app.placeHomeGesture]), a press in the foot puts the caret in it, and a
-// place that answered `nil` here would silently lose all of that.
+// place goes into it and the list narrows as it fills. Its letters are drawn on
+// the first row of the list, over the rows they changed ([tasksControlRow]);
+// the foot draws no box here ([place.box]). The editor stays the place's box
+// because a box is more than a row of letters — the two-space door home is
+// armed from it ([app.placeHomeGesture]).
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 
-// boxOnBody says THIS PLACE DRAWS WHAT IS TYPED INTO ITS BOX ITSELF, in a row of
-// its own body, so the foot must not draw it a second time. The foot keeps the
-// invitation ([placeTasks.resting]) and loses the echo; one person's letters on
-// screen twice is the defect this page's own title row was removed for.
-func (placeTasks) boxOnBody() bool { return true }
-
-// resting is what that box says when nothing is typed in it, and it is THIS
-// PLACE'S sentence rather than the router's (pages.go's [place.resting]).
-//
-// `say what you want done` stood here for as long as the place has existed, two
-// rows under a list the same keystrokes filter — an invitation to give an
-// instruction, over a box that cannot take one. The words are the FOOT's, moved
-// into the slot they are about: one sentence, in the place a person is looking
-// when they wonder what typing here will do.
 // alt is `alt+s`: WHICH COLUMN THIS LIST IS ORDERED BY, one key at a time.
 //
 // IT IS HERE AND NOT IN [app.taskSheetKeyPress] BECAUSE THE ROUTER OWNS THE
@@ -1787,8 +1767,6 @@ func (placeTasks) alt(a *app, letter rune) bool {
 	a.taskSheetSortBy(a.taskSheet.order.key.next())
 	return true
 }
-
-func (placeTasks) resting(a *app) string { return tasksTypeWord }
 
 // tasksFilterHint is the short spelling of that invitation. It is the control
 // row's own placeholder ([tasksControlRow]) and it is repeated on the FOOT'S KEY

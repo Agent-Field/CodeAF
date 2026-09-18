@@ -302,14 +302,6 @@ const homeDraftFloor = 3
 // The sentences this surface says. Each is quoted in the manual exactly as it
 // is spelled here.
 const (
-	// homeFootWord is the three verbs, and it stays three. A footer that grew a
-	// key for everything this screen can do would be the cockpit this is
-	// deliberately not.
-	homeFootWord = "type to search or start something new · ↑↓ pick · enter open"
-	// homeRestHint is that sentence as the whole foot of the resting screen, with
-	// the one key that leaves it. It is composed rather than spelled a second
-	// time, so the box's prompt and the foot can never drift apart.
-	homeRestHint = homeFootWord + " · tab next place"
 	// homeEmptyWord is a machine that has not held a conversation yet. It is
 	// drawn where the first project's rows will be, under the zones
 	// ([homeEmptyRow]), so an empty home keeps the shape of a full one.
@@ -602,6 +594,13 @@ type homeView struct {
 	top    int
 	// hover is the line the pointer is over, or -1.
 	hover int
+	// headHover is the heading line the pointer is over WHEN THAT HEADING IS A
+	// DOOR — a panel whose heading names a place ([homeHeadAt],
+	// [app.homeHeadDoor]) — or -1. A heading is no cursor stop, so [hover] never
+	// lands on one; this is the one fact the pointer adds to a heading, and it
+	// is drawn as an underline under the word rather than a ground (owner,
+	// 2026-09-17: a clickable heading should say so under the mouse).
+	headHover int
 	// says is what each place answers about WHAT IS IN IT, cached on the same
 	// beat the bands are read on so that building the typed drop-up costs no
 	// seam at all ([app.readPlaceSummaries], homeplaces.go).
@@ -1264,6 +1263,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		gridWidth: a.homeGridWidthNow(),
 		tilde:     a.tilde,
 		hover:     -1,
+		headHover: -1,
 		last:      map[string]session.Summary{},
 		news:      map[string]homeNewsCache{},
 		expanded:  map[string]bool{},
@@ -1565,7 +1565,7 @@ func (h *homeView) pointItem(id string) {
 		return
 	}
 	h.pointAt(func(line homeLine) bool {
-		return line.kind == homeItem && line.item.ID == id
+		return line.standsForItem() && line.item.ID == id
 	})
 }
 
@@ -2023,8 +2023,10 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.project != "" && l.project == other.project
 	case homeCommand:
 		return l.cmd != nil && l.cmd == other.cmd
-	// the switcher's and the phone's own rows (place_home.go, homephone.go).
-	case homeLedger, homePhoneNews, homePhoneMore:
+	// the switcher's and the phone's own rows (place_home.go, homephone.go),
+	// and spend's readouts, which are told apart the same way though the
+	// cursor never rests on one (homepanel_spend.go).
+	case homeLedger, homeReadout, homePhoneNews, homePhoneMore:
 		return l.project != "" && l.project == other.project && l.dir == other.dir
 	case homeAction, homeAskHere:
 		return true
@@ -2334,8 +2336,10 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 // everything else on the column answers enter.
 func (l homeLine) stop() bool {
 	switch l.kind {
+	// A PROJECT'S ROW IS READ AND NOT STOOD ON (owner, 2026-09-17), like spend's
+	// lines: the rail holds nothing a cursor may rest on (homepanel_projects.go).
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow, homeProjectRow, homeFold:
+		homeProject, homeExchangeRow, homeFold:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -2345,7 +2349,8 @@ func (l homeLine) stop() bool {
 	case homePhoneNews, homePhoneMore:
 		return true
 	// the switcher's own: a `since you left` line is a door into the place that
-	// owns it. Its headings are not, for [homeHeading]'s reason (place_home.go).
+	// owns it. Its headings are not, for [homeHeading]'s reason (place_home.go),
+	// and neither is a [homeReadout] — spend's lines are read, not stood on.
 	case homeLedger:
 		return true
 	}
@@ -2665,16 +2670,15 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.say("folders on the other machine do not open here", "")
 			return nil
 		}
-		// EVERY ROW WITH A FOLDER OPENS IT — a conversation's workspace, a
-		// project's path, the workspace a standing order stands over, the
-		// conversation a `since you left` line happened in — because the foot
-		// names this chord on every row of the field and a key the foot names
-		// must work (homegrid.go's [app.homeCrossChord] and [homeRowFolder]). A
+		// EVERY FIELD ROW WITH A FOLDER OPENS IT — a conversation's workspace,
+		// the workspace a standing order stands over, the
+		// conversation a `since you left` line happened in ([homeRowFolder]).
+		// The chord keeps working even though the foot no longer names it. A
 		// row with no folder says nothing, which is the emptiness law on a key.
 		if line, ok := h.previewLine(); ok {
 			path := homeRowFolder(line)
 			if path == "" {
-				if line.kind == homeSession || line.kind == homeProjectRow {
+				if line.kind == homeSession {
 					h.say("could not open "+path, "")
 				}
 				return nil
@@ -2759,7 +2763,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// AND CTRL+X STOPS A STANDING ITEM FOR GOOD, the stronger form of the
 		// key above it on this list and on the item card's own legend.
 		line, ok := h.previewLine()
-		if ok && line.kind == homeItem {
+		if ok && line.standsForItem() {
 			return a.homeItemWrite(line, standing.StatusRetired)
 		}
 		// AND IT STOPS A PIECE OF WORK THIS WINDOW HOLDS, through the stop card,
@@ -3165,9 +3169,6 @@ func (a *app) homeEnter() tea.Cmd {
 		// design: you learn a place exists on the day it has something to tell
 		// you, and enter takes you to it.
 		return a.homeLedgerEnter(line)
-	case homeProjectRow:
-		// A PROJECT ON THE GRID STARTS A CONVERSATION THERE (homepanel_projects.go).
-		return a.homeProjectEnter(line)
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
 		// get this?" opens the conversation that asked for it
@@ -3579,10 +3580,8 @@ func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
 			a.home.say(refusal, "")
 			return nil, false
 		}
-		a.spendTargetWhere()
 		a.closeHome()
-		a.applyTargetModel()
-		return cmd, true
+		return tea.Batch(cmd, a.applyTargetPins()), true
 	}
 	a.closeHome()
 	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
@@ -3592,9 +3591,7 @@ func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
 	if !started {
 		return nil, false
 	}
-	a.spendTargetWhere()
-	a.applyTargetModel()
-	return renewed, true
+	return tea.Batch(renewed, a.applyTargetPins()), true
 }
 
 // applyTargetModel puts the pinned model onto the conversation that has just
@@ -3945,7 +3942,7 @@ func (a *app) homeDoorOpen() bool {
 // homeDoorShowing reports whether the foot of the conversation should advertise
 // it: the door is open, and the box is EMPTY. It vanishes on the first
 // character typed, because it is a door and not chrome — the space it takes is
-// the hint slot's, which the frame already has (render.go's [app.legendRight]).
+// the keys row's, which the frame already has (render.go's [app.footHint]).
 func (a *app) homeDoorShowing() bool {
 	return a.homeDoorOpen() && a.input.empty() && !a.copy.on && !a.rew.on
 }
@@ -3956,7 +3953,7 @@ func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
 		return nil, false
 	}
 	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeLegend {
+	if !ok || mark.kind != a.hintRowKind() {
 		return nil, false
 	}
 	return a.openHome(), true
@@ -4189,6 +4186,16 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 	a.exchangeHover(row)
 	was := a.home.hover
 	a.home.hover = -1
+	// A HEADING THAT IS A DOOR SAYS SO UNDER THE POINTER. It is resolved against
+	// the headings the last frame drew, the same map a press reads
+	// ([app.homeHeadPress]), so the word that underlines is the word a click
+	// would open — and a heading that names no place (`projects`, `threads`)
+	// never underlines, because a link that goes nowhere is a lie.
+	wasHead := a.home.headHover
+	a.home.headHover = -1
+	if at, ok := a.homeHeadAt(x, y); ok && a.homeHeadDoor(at) {
+		a.home.headHover = at
+	}
 	// THE LIST'S HOVER BELONGS TO THE LIST'S COLUMN. The hover is what the card
 	// previews ([homeView.previewLine]), so a pointer resting on the CARD must
 	// not count as a hover on the list row that happens to share its screen line
@@ -4212,6 +4219,9 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 		asked := a.refreshHomeCard(time.Now())
 		a.touch()
 		return asked
+	}
+	if a.home.headHover != wasHead {
+		a.touch()
 	}
 	return nil
 }
@@ -4273,7 +4283,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// wide frame would be a press answered by a door this frame never drew
 		// (homedraft.go, placemouse.go's [app.placeTargetPress]).
 		a.targetRow = -1
-		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
+		a.clearTargetSpans()
 		return a.homePhoneFrame(width, height)
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
@@ -5156,7 +5166,7 @@ func (a *app) homeCardRows(width, room int, pal palette) []string {
 		// the screen until home was closed (homeexchange.go's [app.exchangePane]).
 		return a.exchangePane(line.ex, width, room, pal)
 	}
-	if ok && line.kind == homeItem {
+	if ok && line.standsForItem() {
 		// THE OTHER KIND OF CARD, in the same column and the same bands
 		// (homestanding.go's [StandingItemCard]). It is a card about an item
 		// rather than about a conversation, and it is assembled by the same
@@ -5330,15 +5340,8 @@ func homeFilesTouched(row session.SessionRow) int {
 	return total
 }
 
-// homeHint is the whole line under the foot — the router's keys included, which
-// is why pages.go hands this place its own hint rather than tailing it.
-//
-// AT REST IT IS THE DESIGN'S SENTENCE, WORD FOR WORD (SCREEN 1a): `type to
-// search or start something new · ↑↓ pick · enter open · tab next place`. That
-// is the whole foot of the resting screen and it names four things and no more —
-// a footer that grew a key for everything this screen can do would be the cockpit
-// this is deliberately not. Every other row says what ITS keys do and takes the
-// router's two on the end.
+// homeHint is the whole line under home's box. At rest it names only the
+// available draft controls; ordinary list navigation needs no reminder.
 func (a *app) homeHint() string {
 	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
 	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
@@ -5347,18 +5350,34 @@ func (a *app) homeHint() string {
 	if a.targetPickShowing() {
 		return targetPickWord
 	}
-	hint := a.homeHintWords()
-	if hint == homeFootWord {
-		return homeRestHint
+	// AND THE DRAFT'S CHORDS RIDE THIS LINE, before the way out (footswap.go:
+	// the lowest line is for keys, on home as in a conversation). They are the
+	// cheapest clauses on it — [hintFit] gives up the clause nearest the tail
+	// first — because the rule above says what they change, and a person who
+	// has found the rule has found the cells to press.
+	return withChords(a.homeHintWords(), a.targetChordWords())
+}
+
+// withChords puts the draft's chords on a foot sentence BEFORE ITS WAY OUT:
+// every hint on this surface ends with `esc` where it has one, and [hintFit]
+// gives up the clause nearest the tail first — so the chords sit just inside
+// the tail, where they are the first thing a narrow frame drops and the way
+// out is never behind them.
+func withChords(hint, chords string) string {
+	if chords == "" {
+		return hint
 	}
-	return placeTailed(hint)
+	if at := strings.LastIndex(hint, railSep); at >= 0 && strings.HasPrefix(hint[at+len(railSep):], "esc") {
+		return hint[:at] + railSep + chords + hint[at:]
+	}
+	return dotted(hint, chords)
 }
 
 // homeVerbsWord is how the CARD advertises the strip. It names the key and the
 // noun, in the hint slot's own grammar (render.go's [app.hintWord]), and never
 // the letters themselves — those are drawn on the strip and nowhere else, which
 // is SCREEN 3a's whole clause. The foot does not say it: `alt+.` draws the map
-// that does ([placeMapWords]), and the resting foot is four keys exactly.
+// that does ([placeMapWords]); the resting foot keeps the list and draft keys.
 const homeVerbsWord = "→ verbs"
 
 // homeHintWords is that line before the tier's own key is put on it.
@@ -5422,10 +5441,9 @@ func (a *app) homeHintWords() string {
 		// step of the cursor. The owner ruled (2026-09-15) that the rows under
 		// the moving headings all rest on the resting sentence, so the foot is
 		// something a person reads once and then stops reading; `enter open` is
-		// true of every one of them, and the chord the tail adds is the one true
-		// on all of them too ([app.homeCrossChord]). The rows' own sentences
-		// below still serve the phone and the filtered list, where there is no
-		// grid to be consistent across.
+		// true of every one of them. The rows' own sentences below still serve
+		// the phone and the filtered list, where there is no grid to be
+		// consistent across.
 	case line.kind == homeFold:
 		// The panel's fold is a toggle and the foot says which way it will go;
 		// the words are the ones every fold door on every place uses
@@ -5450,22 +5468,13 @@ func (a *app) homeHintWords() string {
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
-		// [homeItemActions]) — except on a grid row whose `→` crosses columns,
-		// where the strip is not one arrow away and its chord is named instead.
-		if chord := a.homeCrossChord(line); chord != "" {
-			return homeItemEnterWord + " · " + chord + " · esc close"
-		}
+		// [homeItemActions]). Grid rows already took the resting sentence above.
 		return homeItemActions + " · esc close"
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
-	// AT REST THE FOOT IS THE PROMISE THE BOX MAKES, and [app.homeHint] turns it
-	// into the design's whole sentence. Every other row said its own thing above,
-	// and a row whose verbs `→` cannot reach adds the one chord that can.
-	if chord := a.homeCrossChord(line); chord != "" {
-		return homeFootWord + " · " + chord
-	}
-	return homeFootWord
+	// At rest only the draft controls are added by homeHint.
+	return ""
 }
 
 // ── the small arithmetic ────────────────────────────────────────────────────
@@ -5513,6 +5522,12 @@ func (a *app) homeSubject() (bandSubject, bool) {
 		return bandSubject{kind: bandKindSession, row: line.row, project: line.project, dir: strings.TrimSpace(line.row.ProjectDir), world: a.home.world}, true
 	case homeItem:
 		return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
+	case homeLedger:
+		// A STANDING ITEM'S ROW ON `scheduled` IS THE ITEM'S SUBJECT, as its row
+		// on the tasks panel was ([homeLine.standsForItem]).
+		if line.standsForItem() {
+			return bandSubject{kind: bandKindItem, item: line.view, project: line.project, dir: strings.TrimSpace(line.item.Workspace), world: a.home.world}, true
+		}
 	case homeProject:
 		// A WHOLE PROJECT IS A SUBJECT TOO ([bandKindProject]). The dir is the
 		// workspace the sessions recorded rather than the bucket, which is what

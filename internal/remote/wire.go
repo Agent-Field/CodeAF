@@ -534,6 +534,14 @@ const (
 	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
 	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
 
+	// The conversation's own posture on the tool gate (internal/session's
+	// approvalposture.go), the dial above one door over: the resolved posture
+	// rides [session.Facts] unasked for the frame, and these are the keystroke's
+	// doors (approval.go). The set answers the refusal as a sentence rather than
+	// a bool because the local door answers an error and the surface prints it.
+	MethodResolvedApproval = "ResolvedApproval" // nothing → string (the posture in force)
+	MethodSetApproval      = "SetApproval"      // string → string ("" took, else the refusal)
+
 	// MethodAnswerLaneOffer answers the one question the phase seam can raise:
 	// the machine a person PINNED has gone quiet, there is somewhere else to
 	// go, and a pin is asked rather than overridden ([provider] offer.go). The
@@ -1061,6 +1069,26 @@ type Welcome struct {
 	// has never heard of.
 	Effort bool `json:"effort,omitempty"`
 
+	// Approval says this engine HAS A DIAL ON THE CONVERSATION'S OWN POSTURE ON
+	// THE TOOL GATE — that its agent answers [MethodResolvedApproval] and
+	// [MethodSetApproval] rather than refusing them (approval.go). It is
+	// carried for [Welcome.Effort]'s reason, and false is the safe reading for
+	// the same reason: the surface then draws the chip as a reading of
+	// [Welcome.ApprovalMode] and says the far machine's rules decide.
+	Approval bool `json:"approval,omitempty"`
+
+	// DefaultEffort is the far install's own `thinking` row, and
+	// StandingApproval is what a conversation nobody has touched opens at on
+	// that install (the rows as they stand, or the launch's `--yolo`). Both
+	// are carried ONCE, at the door, because they are facts about the install
+	// and not about any conversation: the draft on home and the other places
+	// draws them as the rung and the gate the NEXT conversation on that machine
+	// would run at (internal/tui3's boxseam.go), and a draft is drawn on every
+	// frame. "" is an engine with no such row or no gate, and the surface then
+	// draws no cell.
+	DefaultEffort    string `json:"defaultEffort,omitempty"`
+	StandingApproval string `json:"standingApproval,omitempty"`
+
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
 	// than refusing them (wire_places.go).
@@ -1526,14 +1554,19 @@ type PhaseWire struct {
 // which one finished it, and whether a rescue went out while somebody was
 // waiting ([session.LaneNews]).
 //
-// It carries no moment at all, for [PhaseWire]'s reason one step further: a
-// sighting is drawn for ten minutes after it was taken (internal/tui3's
-// servedWindow) and the only clock that reading can be taken against is the
-// surface's own, so the surface stamps it when the frame lands. What is lost is
-// the pipe's own latency, which on the road this exists for — a surface and an
-// engine host on one machine — is a fraction of a millisecond against ten
-// minutes.
+// It carries no moment, for [PhaseWire]'s reason one step further: the sheet's
+// `served` row draws a sighting for ten minutes after it was taken
+// (internal/tui3's servedWindow) and the only clock that reading can be taken
+// against is the surface's own, so the surface stamps it when the frame lands.
+// What it carries instead is an AGE, and only when it has one: a sighting
+// replayed to a window that arrived after the answer (news.go's
+// [Session.watchNews]) says how long ago the answer landed, so the surface
+// files it as the old sighting it is. A live sighting's age is nothing, and
+// an older peer that does not know the field reads it as nothing.
 type LaneWire struct {
+	// AgeMS is how long before this frame was sent the answer landed — zero
+	// for a sighting that is crossing as it happens.
+	AgeMS int64 `json:"ageMs,omitempty"`
 	// Model is the model the answer came back on. A news with no model belongs
 	// to nobody and is dropped on both sides of the wire.
 	Model string `json:"model"`

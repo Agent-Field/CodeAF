@@ -394,7 +394,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// forty-five seconds while looking at a perfectly live one. `needs you` is
 	// drawn on every desktop home, whatever it holds: an empty panel keeps its
 	// heading.
-	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"),
+	if hit, _ := r.waitForAny(45*time.Second, say(t, "placeRestWord"),
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
 		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading")); hit == "" {

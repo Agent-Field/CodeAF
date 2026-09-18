@@ -565,15 +565,13 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	if !strings.Contains(text, tokens.GlyphNeedsHuman+" Pricing Research") {
 		t.Fatalf("the row does not wear the needs-you mark:\n%s", text)
 	}
-	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF, not one keystroke away in
-	// a pane: the `needs you` panel draws the question on the line under the
-	// title (homepanel_needs.go), with the cursor nowhere near it.
-	lines := strings.Split(text, "\n")
-	for y, line := range lines {
-		if strings.Contains(line, tokens.GlyphNeedsHuman+" Pricing Research") &&
-			(y+1 >= len(lines) || !strings.Contains(lines[y+1], "can I run: rm -rf build/")) {
-			t.Fatalf("the row does not show what it is stopped on:\n%s", text)
-		}
+	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF while the row is being
+	// read — under the pointer or the cursor (owner, 2026-09-17) — not one
+	// keystroke away in a pane: the `needs you` panel draws the question on the
+	// line under the title (homepanel_needs.go).
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Pricing Research" })
+	if under := homeLineBelow(homeText(a), tokens.GlyphNeedsHuman+" Pricing Research", 3); !strings.Contains(under, "can I run: rm -rf build/") {
+		t.Fatalf("the row does not show what it is stopped on under its thread title:\n%s", homeText(a))
 	}
 	// And it really is the first row of home — asserted on the lines the grid
 	// is built from rather than on where the words land in the frame. ONE ROW
@@ -793,7 +791,7 @@ func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 	// AND THE FOOT THAT IS DRAWN IS STILL WHOLE CLAUSES OF THAT SENTENCE, never a
 	// word with its end sliced off.
 	for _, clause := range strings.Split(strings.TrimSpace(rows[len(rows)-1]), railSep) {
-		if !strings.Contains(placeTailed(a.homeHintWords()), clause) {
+		if !strings.Contains(a.homeHint(), clause) {
 			t.Fatalf("the foot drew %q, which is not a clause of the hint:\n%s",
 				clause, rows[len(rows)-1])
 		}
@@ -943,17 +941,17 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // one that carries the sentence.
 //
 // THE LAW THAT DIED IS `esc close` ON THE RESTING ROW. Home used to end every
-// hint it drew with the way out, and the box row used to say [homeFootWord]
+// hint it drew with the way out, and the box row used to carry the resting promise
 // instead of the shared prompt. The design's foot names four keys and no more,
 // so the fifth clause left the resting row — and only the resting row: `esc`
 // still closes home, and every other row's hint still ends with it, which is the
 // second half of this test.
+//
+// AND THE PROMISE MOVED INTO THE BOX ON 2026-09-17. `type to search or start
+// something new` opened this foot until the owner ruled that the one box
+// left on a place says what it is for, and the lowest line is for keys
+// (footswap.go): the box row is the promise, the foot is the keys.
 func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
-	const design = "type to search or start something new · ↑↓ pick · enter open · tab next place"
-	if homeRestHint != design {
-		t.Fatalf("home's resting foot reads %q, want the design's own sentence %q", homeRestHint, design)
-	}
-
 	a, _ := homeRestLab(t, 120)
 	width, height := a.size()
 	lines, _, _, _ := a.homeFrame(width, height)
@@ -963,29 +961,25 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	// The last row is the hint and the row above it is the box, which is the
 	// order pages.go assembles every place's foot in.
 	//
-	// THE RESTING ROW CARRIES ONE CHORD BESIDE THE DESIGN'S FOUR KEYS, and it is
-	// the door §6.6 refuses to leave invisible: the rail is a column with rows in
-	// it (projects is pinned there and is never empty), so `→` on a field row
-	// crosses columns rather than opening the row's verbs, and the foot names the
-	// one key that still reaches them ([app.homeCrossChord]). It was already on
-	// this row on any machine whose right column had rows; what the 2026-09-15
-	// ruling changed is that the right column now always does.
+	// The resting row adds the available draft controls without navigation hints.
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
-	want := strings.Replace(design, " · tab next place", rowSep+homeFolderChordWord+" · tab next place", 1)
-	if rest != want {
+	want := hintFit(a.targetChordWords(), a.width-2)
+	if rest != want || strings.Contains(rest, "↑↓ pick") || strings.Contains(rest, "enter open") {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)
 	}
-	if !strings.HasPrefix(rest, "type to search or start something new · ↑↓ pick · enter open") {
-		t.Fatalf("the resting hint no longer opens with the design's own words: %q", rest)
+	if !strings.HasPrefix(rest, a.chords.say(targetFolderKeyWord)) {
+		t.Fatalf("the resting hint does not start with the project control: %q", rest)
 	}
-	// THE BOX ROW IS THE SAME SENTENCE AS EVERY OTHER PLACE'S (SCREEN 2b). What
-	// home's box ALSO does — filter the list — is said on the hint above, which is
-	// where the design puts it; the box says only what enter will do with what is
-	// typed into it. The scope chip rides the right edge of the same row, so the
-	// prompt is demanded as a prefix.
+	if strings.Contains(rest, "type to search") {
+		t.Fatalf("the foot repeats the box's promise: %q", rest)
+	}
+	// THE BOX ROW IS THE PROMISE — both readings of what is typed into it, the
+	// search and the start. The prompt is demanded as a prefix rather than as
+	// the whole row, so a row that grows a tail later does not turn this into
+	// a test about the tail.
 	box := strings.TrimSpace(ansi.Strip(lines[len(lines)-2]))
-	if !strings.HasPrefix(box, "› "+placeRestWord) {
-		t.Fatalf("the box row reads %q, want the design's prompt", box)
+	if !strings.HasPrefix(box, "› type to search or start something new") {
+		t.Fatalf("the box row reads %q, want the promise", box)
 	}
 	// AND THE CLAUSE THAT LEFT IS REALLY GONE from the foot — not merely absent
 	// from the constant this test already compared.
@@ -1482,9 +1476,9 @@ func TestHomeOpensAnotherProjectAndTheOneYouLeaveGoesOnRunning(t *testing.T) {
 	}
 }
 
-// A row this terminal is holding says `open`, never `another window` — the flock
-// it would meet is our own.
-func TestARowThisTerminalHoldsSaysOpenAndNeverAnotherWindow(t *testing.T) {
+// A row this terminal is holding keeps its age, never `another window`: the
+// lock it would meet is our own, and Enter returns to that held conversation.
+func TestARowThisTerminalHoldsKeepsItsAgeAndNeverAnotherWindow(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", lab.project("-tmp-alpha"), now)
@@ -1501,11 +1495,14 @@ func TestARowThisTerminalHoldsSaysOpenAndNeverAnotherWindow(t *testing.T) {
 	if strings.Contains(text, homeHeldShort) {
 		t.Fatalf("a conversation this terminal holds was called another window:\n%s", text)
 	}
-	if !strings.Contains(text, " "+homeOpenWord) {
-		t.Fatalf("the row this terminal holds does not say open:\n%s", text)
+	if !a.holding(mine) {
+		t.Fatal("the previous conversation is no longer held")
 	}
 	for at, line := range a.home.lines {
 		if line.kind == homeSession && line.row.Transcript == mine {
+			if line.cell == nil || line.cell.right != line.cell.row.age {
+				t.Fatalf("the held row does not keep its age: %+v", line.cell)
+			}
 			a.home.cursor = at
 		}
 	}
@@ -1857,17 +1854,10 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatal("a bare launch did not open on home")
 	}
-	// THE FRAME IS RECOGNISED BY HOME'S OWN FOOT, WHICH IS NOW THE DESIGN'S
-	// SENTENCE. It used to be recognised by `esc close`, and that clause is not
-	// on the resting foot any more: SCREEN 1a spells the whole line as four keys
-	// — `type to search or start something new · ↑↓ pick · enter open · tab next
-	// place` — and the owner ordered the design followed exactly (FIDELITY.md
-	// item 3). The old law ("every hint this screen draws ends with `esc`,
-	// because the way out is the first thing a person looks for") died on the
-	// RESTING row only; [TestHomesRestingFootIsTheDesignsSentence] pins both
-	// halves of what replaced it.
+	// The box's promise and the list's two keys identify home. Navigation
+	// chords still work but no longer appear in the resting foot.
 	frame, _, _ := a.frame()
-	if !strings.Contains(ansi.Strip(frame), homeRestHint) {
+	if !strings.Contains(ansi.Strip(frame), microcopy) || !strings.Contains(ansi.Strip(frame), placeRestWord) {
 		t.Fatalf("the first frame is not home:\n%s", ansi.Strip(frame))
 	}
 	// AND THE CURSOR IS VISIBLY ON THE CONVERSATION THE DOOR PICKED: home opens
@@ -2437,7 +2427,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	if !a.homeDoorOpen() || !a.homeDoorShowing() {
 		t.Fatal("the door is shut on a machine whose only conversation is this one")
 	}
-	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q on a one-conversation machine", got)
 	}
 	a.key(key(" "))
@@ -2453,7 +2443,7 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	// The row wears its title cased the way every row does ([homeName]), so
 	// the look is case-blind: the claim is that the conversation is there.
 	text := strings.ToLower(homeText(a))
-	for _, want := range []string{"alpha", "the only one", homeFootWord} {
+	for _, want := range []string{strings.ToLower(ansi.Cut(lab.workspace("alpha"), 0, 12)), "the only one", microcopy} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
 		}
@@ -2472,7 +2462,7 @@ func TestTheDoorIsOpenOnAMachineThatHoldsNothing(t *testing.T) {
 	if !a.homeDoorOpen() || !a.homeDoorShowing() {
 		t.Fatal("the door is shut on an empty machine")
 	}
-	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q on an empty machine", got)
 	}
 	a.key(key(" "))
@@ -2518,20 +2508,18 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		// the design's own foot does not name it (FIDELITY.md item 3) — so what is
 		// demanded instead is the pair of sentences the design does spell, which
 		// is a stricter claim than the two fragments this asked for before.
-		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, homeRestHint)
+		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, microcopy)
 		for _, want := range want {
 			if !strings.Contains(text, want) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
 			}
 		}
-		// AND THE ONE ROW AN EMPTY HOME HAS TO STAND ON IS THE FOLDER IT WAS
-		// OPENED IN: `projects` is never empty (DESIGN.md §4), and enter there
-		// starts the first conversation. Every other panel whispers, and a
-		// whisper names what arrives rather than a thing to open.
-		for _, at := range (placeHome{}).stops(a) {
-			if kind := a.home.lines[at].kind; kind != homeProjectRow {
-				t.Fatalf("at %d columns an empty home offered a row of kind %v to stand on", tc.width, kind)
-			}
+		// AND AN EMPTY HOME HAS NO ROW TO STAND ON AT ALL: `projects` is never
+		// empty (DESIGN.md §4) but its rows are read and not stood on (owner,
+		// 2026-09-17), and every other panel whispers — a whisper names what
+		// arrives rather than a thing to open.
+		if stops := (placeHome{}).stops(a); len(stops) != 0 {
+			t.Fatalf("at %d columns an empty home offered rows of kind %v to stand on", tc.width, a.home.lines[stops[0]].kind)
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))
@@ -2574,7 +2562,7 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 	// The row wears the title the way every row does ([homeName] cases it), so
 	// the comparison is case-blind: the claim is that the title is there.
 	text := strings.ToLower(homeText(a))
-	for _, want := range []string{"alpha", "first thing"} {
+	for _, want := range []string{strings.ToLower(ansi.Cut(alpha, 0, 12)), "first thing"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home opened from a fresh conversation does not list it (%q):\n%s", want, text)
 		}
@@ -2737,7 +2725,7 @@ func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	if !a.homeDoorShowing() {
 		t.Fatal("the door is not advertised at rest")
 	}
-	if got := a.legendRight(a.width); got != homeDoorWord+" · "+microcopy {
+	if got := a.footHint(a.width); got != microcopy+" · "+homeDoorWord {
 		t.Fatalf("the hint slot reads %q", got)
 	}
 	frame, _, _ := a.frame()
@@ -2749,7 +2737,7 @@ func TestTheDoorIsAdvertisedWhileIdleAndEmpty(t *testing.T) {
 	if a.homeDoorShowing() {
 		t.Fatal("the door is still advertised while something is being typed")
 	}
-	if got := a.legendRight(a.width); got != microcopy {
+	if got := a.footHint(a.width); got != microcopy {
 		t.Fatalf("the slot reads %q while typing", got)
 	}
 }
@@ -2769,14 +2757,15 @@ func TestClickingTheDoorGoesHome(t *testing.T) {
 	if !a.homeDoor.pressable() {
 		t.Fatalf("laying out the frame recorded no columns for the door:\n%s", ansi.Strip(frame))
 	}
+	// THE DOOR IS ON THE KEYS ROW — the last row of the frame (footswap.go).
 	row := -1
 	for y := 0; y < a.height; y++ {
-		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeLegend {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == a.hintRowKind() {
 			row = y
 		}
 	}
 	if row < 0 {
-		t.Fatal("no legend row on the frame")
+		t.Fatal("no keys row on the frame")
 	}
 	if _, took := a.homeDoorPress(a.homeDoor.from, row); !took {
 		t.Fatal("a click on the door did nothing")
@@ -2785,11 +2774,11 @@ func TestClickingTheDoorGoesHome(t *testing.T) {
 		t.Fatal("the click did not open home")
 	}
 
-	// A press on the rule beside it is a press on a rule.
+	// A press on the row past the door is a press on nothing.
 	a.closeHome()
 	a.frame()
-	if _, took := a.homeDoorPress(1, row); took {
-		t.Fatal("a click on the bare rule opened home")
+	if _, took := a.homeDoorPress(a.width-2, row); took {
+		t.Fatal("a click on the empty end of the keys row opened home")
 	}
 }
 
@@ -3406,11 +3395,12 @@ func driveToPlace(t *testing.T, lab *homeLab, where page) (*app, *editor) {
 }
 
 // TWO SPACES IN A PLACE'S OWN EMPTY BOX GO HOME — every place that types into
-// that box. The first space types itself into the place's own filter, exactly
-// as it does into a conversation's draft, and the second opens home and leaves
-// nothing behind in the box.
+// a box: tasks, memory and search, whose boxes are their filters. The first
+// space types itself into the place's own filter, exactly as it does into a
+// conversation's draft, and the second opens home and leaves nothing behind
+// in the box.
 func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
-	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
+	for _, where := range []page{pageTasks, pageMemory, pageSearch} {
 		lab := newHomeLab(t)
 		a, box := driveToPlace(t, lab, where)
 		if box == nil {
@@ -3433,23 +3423,29 @@ func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
 	}
 }
 
-// AND ON THE PLACES THE DOOR ALREADY READS, WALKING THERE KEEPS IT WORKING.
-// Standing's box is the one place box the place's own keys never type into, so
-// the test drives the box to the armed state the way an earlier room leaves it
-// — one space behind the caret — and holds the door open from there.
-func TestDoubleSpaceFromStandingGoesHome(t *testing.T) {
-	lab := newHomeLab(t)
-	a, box := driveToPlace(t, lab, pageStanding)
-	if box == nil {
-		t.Fatal("standing has no box to type into")
-	}
-	box.insert(" ")
-	a.key(key(" "))
-	if !a.at(pageHome) {
-		t.Fatal("two spaces did not open home from the standing place")
-	}
-	if got := box.String(); got != "" {
-		t.Fatalf("the gesture left %q behind in the box", got)
+// AND FROM A PLACE WITH NO BOX AT ALL — spend, standing — TWO BARE SPACES GO
+// HOME, and a letter between them disarms the door (placekeys.go's
+// [app.placeHomeGesture]).
+func TestDoubleSpaceFromABoxlessPlaceGoesHome(t *testing.T) {
+	for _, where := range []page{pageSpend, pageStanding} {
+		lab := newHomeLab(t)
+		a, box := driveToPlace(t, lab, where)
+		if box != nil {
+			t.Fatalf("%v has a box, and only home starts things", where)
+		}
+		a.key(key(" "))
+		if a.at(pageHome) {
+			t.Fatalf("%v: one space opened home", where)
+		}
+		a.key(key("x"))
+		a.key(key(" "))
+		if a.at(pageHome) {
+			t.Fatalf("%v: a letter between two spaces did not disarm the door", where)
+		}
+		a.key(key(" "))
+		if !a.at(pageHome) {
+			t.Fatalf("%v: two spaces did not open home", where)
+		}
 	}
 }
 
@@ -3475,7 +3471,7 @@ func TestSpaceStaysTheVerbOnSettings(t *testing.T) {
 // place types into and no other: a sentence aimed at a filter is nobody's way
 // of asking for home.
 func TestASingleSpaceThenALetterTypesNormallyOnAPlace(t *testing.T) {
-	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
+	for _, where := range []page{pageTasks, pageMemory, pageSearch} {
 		lab := newHomeLab(t)
 		a, box := driveToPlace(t, lab, where)
 		a.key(key(" "))

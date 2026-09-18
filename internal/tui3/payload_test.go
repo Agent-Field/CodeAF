@@ -201,9 +201,9 @@ func TestTheLegendsChordReadsAboveItsExplanation(t *testing.T) {
 	a.width = 80
 	a.state = stateWorking
 
-	line := a.legend(a.width)
+	line := a.hintRow(a.width)
 	if !lifted(a.pal, line, "esc") {
-		t.Fatalf("the legend draws its chord at the weight of the rule it sits in:\n%q", line)
+		t.Fatalf("the keys row draws its chord at the weight of its prose:\n%q", line)
 	}
 	if !dimmed(a.pal, line, " interrupt") {
 		t.Fatalf("the verb beside the chord was lifted with it:\n%q", line)
@@ -272,8 +272,8 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		// chip the card is actually drawing.
 		{"a accept · n not right · s tell it · esc", []string{"a", "n", "s", "esc"}},
 		{"esc stops and sends", []string{"esc"}},
-		{"space space home · tab last · / commands",
-			[]string{"space", "space", "tab", "/"}},
+		{"ctrl+v effort · opt+y approvals · opt+k chats · / commands · space space home",
+			[]string{"ctrl+v", "opt+y", "opt+k", "/", "space", "space"}},
 		{"enter open where it was asked · p pause · s stop · n not here · esc",
 			[]string{"enter", "p", "s", "n", "esc"}},
 		{"enter open · ctrl+r reveal · ctrl+y copy · esc",

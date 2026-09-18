@@ -482,13 +482,21 @@ func (a *app) runHint() string {
 	return strings.Join(parts, hintSegment)
 }
 
-// hintShorter is the running slot said in fewer cells, or "" where there is no
-// shorter true form — which is every other state and its one-clause floor.
-//
-// THE LADDER DROPS FROM THE RIGHT. That preserves the fixed priority of the
-// full sentence and guarantees forward progress: one clause is the floor and
-// returns nothing, so [app.legend] can never loop on an unshortenable rung.
+// hintShorter gives up whole clauses so a narrow frame keeps a useful door.
+// Idle controls yield from the left to commands and home; running hints keep
+// their existing priority from the left. Every step removes at least one clause.
 func (a *app) hintShorter(slot string) string {
+	idle := a.idleHint()
+	if slot != "" && (slot == idle || strings.HasSuffix(idle, hintSegment+slot)) {
+		parts := strings.Split(slot, hintSegment)
+		if len(parts) <= 1 {
+			return ""
+		}
+		if parts[0] == microcopy {
+			return microcopy
+		}
+		return strings.Join(parts[1:], hintSegment)
+	}
 	full := a.runHint()
 	if slot == "" || slot != full && !strings.HasPrefix(full, slot+hintSegment) {
 		return ""

@@ -5,9 +5,11 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE SEARCH PLACE ────────────────────────────────────────────────────────
@@ -65,6 +67,15 @@ type searchPage struct {
 	top, shown int
 	hover      int
 	read       time.Time
+	// query is the box: what is typed on this place, drawn on the control row
+	// at the head of the body ([searchControlRow]) and read by [app.searchAsked].
+	// It is the place's own rather than a shared composer because typing here
+	// SEARCHES, and only home's box sends anything ([place.box]).
+	query editor
+	// lead is how many rows of the body the last draw spent above the reading —
+	// one for the control row while there is a query, none while the whisper
+	// is teaching what to type — so a press resolves against the rows drawn.
+	lead int
 	// waiting says a read is out. It is held so that the place can tell "nothing
 	// on this machine says that" from "nobody has answered yet" — two very
 	// different sentences to be looking at.
@@ -114,7 +125,7 @@ func (a *app) rebuildSearch() {
 // interval. It is called from the key handler after the character has landed,
 // so the generation it carries is the generation of the words now on screen.
 func (a *app) searchAsked() tea.Cmd {
-	query := strings.TrimSpace(a.compose.String())
+	query := strings.TrimSpace(a.search.query.String())
 	if query == a.search.ask.query {
 		return nil
 	}
@@ -268,7 +279,9 @@ func (a *app) searchKey(msg tea.KeyPressMsg) tea.Cmd {
 		if hit, ok := a.search.reading.at(a.search.cursor); ok {
 			return a.openSearchHit(hit)
 		}
-		return a.placeTalk()
+		// NOTHING UNDER THE CURSOR OPENS NOTHING: only home starts things
+		// ([place.box]).
+		return nil
 	}
 	if box := a.placeBox(); box != nil {
 		listNavigate(msg, box, a.moveSearch, func() {}, searchShown)
@@ -372,6 +385,9 @@ func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
 // the contract and why the handle holds no state of its own).
 type placeSearch struct{ placeBase }
 
+// box is the query ([searchPage.query]).
+func (placeSearch) box(a *app) *editor { return &a.search.query }
+
 func init() { registerPlace(placeSearch{}) }
 
 func (placeSearch) id() page     { return pageSearch }
@@ -411,10 +427,23 @@ func (placeSearch) remote(a *app) string {
 func (placeSearch) body(a *app, width, room int) []placeRow {
 	lit := func(i int) bool { return i == a.search.cursor || i == a.search.hover }
 	body := a.search.reading.paint(width, a.pal, lit)
+	rows := make([]placeRow, 0, room)
+	// THE QUERY IS THE FIRST ROW OF THE BODY, over the results it found, the
+	// way the tasks filter stands over the list it narrows ([tasksControlRow]):
+	// the foot draws no box on this place ([place.box]), so the letters a
+	// person types have to be where their eye already is. It is not a stop,
+	// and it is not drawn while there is nothing typed: the whisper under it
+	// already says what to type, and a page that said it twice would be the
+	// tasks page's old title row.
+	a.search.lead = 0
+	if query := strings.TrimSpace(a.search.query.String()); query != "" {
+		rows = append(rows, placeRow{text: searchControlRow(query, width, a.pal), hit: -1})
+		a.search.lead = 1
+		room = max(room-1, 0)
+	}
 	// THE WINDOW FOLLOWS THE CURSOR, which is what makes `↓` past the last
 	// visible result scroll rather than walking the selection off the screen.
 	a.search.top = placeTop(a.search.top, a.search.cursor, len(body), room)
-	rows := make([]placeRow, 0, room)
 	for i := a.search.top; i < len(body); i++ {
 		if len(rows) >= room {
 			break
@@ -425,11 +454,19 @@ func (placeSearch) body(a *app, width, room int) []placeRow {
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
 	}
-	a.search.shown = len(rows)
-	for len(rows) < room {
+	a.search.shown = len(rows) - a.search.lead
+	for len(rows) < room+a.search.lead {
 		rows = append(rows, placeRow{text: "", hit: -1})
 	}
 	return rows
+}
+
+// searchControlRow is the query as the body's head row: the search mark, then
+// the words typed, in ink.
+func searchControlRow(query string, width int, pal palette) string {
+	mark := pal.glyph(tokens.GFilter)
+	room := max(width-len(placeLead)-ansi.StringWidth(mark)-1, 1)
+	return placeLead + pal.dim(mark) + " " + pal.ink(fit(query, room))
 }
 
 // stops is every row of the reading that is a conversation. The facet legend and
@@ -465,7 +502,9 @@ func (placeSearch) enter(a *app) tea.Cmd {
 }
 
 func (placeSearch) press(a *app, y int) (tea.Cmd, bool) {
-	if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
+	// The control row, while there is one, is the body's first row and answers
+	// to nothing ([searchPage.lead]).
+	if at, ok := placeBodyLine(y-a.search.lead, a.search.top, a.search.shown); ok {
 		if a.search.reading.stop(at) {
 			a.search.cursor = at
 			a.touch()
@@ -477,7 +516,7 @@ func (placeSearch) press(a *app, y int) (tea.Cmd, bool) {
 
 func (placeSearch) hover(a *app, y int) bool {
 	next := -1
-	if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
+	if at, ok := placeBodyLine(y-a.search.lead, a.search.top, a.search.shown); ok {
 		if a.search.reading.stop(at) {
 			next = at
 		}

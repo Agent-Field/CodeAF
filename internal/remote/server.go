@@ -430,6 +430,17 @@ type Session struct {
 	// a status line may not be able to stall the turn it is measuring.
 	newsfeeds map[*server]*newsFeed
 
+	// lastLane is the last finished answer's sighting this conversation
+	// produced — which machine answered — kept so that a window arriving
+	// AFTER the answer is told who answered (news.go's [Session.watchNews]).
+	// Without it a window attached to a conversation the host had been
+	// holding for an hour drew the model and no machine until the next
+	// answer, which the owner read as the provider having gone missing
+	// (2026-09-17). Rescues in flight and withdrawals are not kept: they are
+	// claims about a moment, and only a landed answer is a fact about the
+	// conversation.
+	lastLane *session.LaneNews
+
 	// lanes is the same arrangement for the harness subscription version 11
 	// added, keyed by lane and then by the surface holding it
 	// (standinglane.go). It is a map by lane rather than one field because
@@ -1150,8 +1161,13 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
 		// engine without a dial from a conversation whose dial is off.
-		Effort:     effortKnown(sess.agent),
-		TaskSettle: taskSettleKnown(sess.agent),
+		Effort:   effortKnown(sess.agent),
+		Approval: approvalKnown(sess.agent),
+		// AND THE TWO FACTS ABOUT THE INSTALL THE DRAFT READS, carried once
+		// (effort.go's [installEffort], approval.go's [standingApproval]).
+		DefaultEffort:    installEffort(sess.agent),
+		StandingApproval: standingApproval(sess.agent),
+		TaskSettle:       taskSettleKnown(sess.agent),
 		// Whether this conversation's news reaches the surface at all, asked the
 		// way the newsroom files it ([Session.fileNews]): an engine that cannot
 		// name its conversation fans nothing out, and says so here.
@@ -2488,6 +2504,30 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			s.session.announce()
 		}
 		return json.Marshal(took)
+
+	case MethodResolvedApproval, MethodSetApproval:
+		door, ok := agent.(approvalDoor)
+		if !ok || !door.ApprovalDial() {
+			// A surface reading [Welcome.Approval] never gets here, and one that
+			// asked anyway is told the fact (approval.go).
+			return nil, errors.New("engine: this conversation has no dial onto what runs without asking; update the engine and reconnect")
+		}
+		if call.Method == MethodResolvedApproval {
+			return json.Marshal(door.ResolvedApprovalPosture())
+		}
+		posture, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		refusal := ""
+		if err := door.SetApprovalPosture(posture); err != nil {
+			refusal = err.Error()
+		} else {
+			// AND EVERY SURFACE IS TOLD, on [MethodSetEffort]'s terms: the posture
+			// rides the fact set every window on this conversation draws from.
+			s.session.announce()
+		}
+		return json.Marshal(refusal)
 
 	case MethodConsent:
 		args, err := arg[ConsentArgs](call)

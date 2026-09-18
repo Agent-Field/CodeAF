@@ -191,15 +191,12 @@ func (a *app) homeRowVerbs() []verb {
 	if line.cell != nil && line.cell.row != nil {
 		return a.homeReadingVerbs(line, *line.cell.row)
 	}
-	if line.kind == homeProjectRow {
-		return a.homeProjectVerbs(line)
-	}
 	// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a query
 	// the column is [homeRank]'s drop-up and a standing item's row is the one
 	// thing on it with verbs — the two actions home has been ADVERTISING on such
 	// a row without binding (`homeItemActions`, homestanding.go), bound to ctrl+e
 	// and ctrl+x, which the line never named, and whose bare `p` and `s` typed.
-	if line.kind != homeItem {
+	if !line.standsForItem() {
 		return nil
 	}
 	return []verb{
@@ -531,25 +528,22 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd, true
 	}
-	// THE TARGET IS READ NEXT, and it is read here rather than in [app.placeKey]
-	// because the router SWALLOWS its two chords for every place (placekeys.go's
-	// `case "alt+w", "alt+o"`). Home is the one place with something for them to
-	// do — the rule above its box states exactly the two facts they change — and
-	// the model list one of them opens has the whole keyboard while it is up
-	// (homedraft.go's [app.homeTargetKey]).
+	// THE TARGET IS READ NEXT, before the router swallows unclaimed chords.
+	// Home owns the draft's project, thinking and approval controls, and the
+	// model list opened by `/model` owns the keyboard while it is up.
 	//
 	// IT LOSES TO THE PHONE SHEET AND WINS OVER EVERYTHING ELSE. The sheet is a
 	// full-frame card a thumb is in the middle of, and the phone's rule names no
 	// chord at all — there is no `alt` on a phone to press.
-	if cmd, took := a.homeTargetKey(msg); took {
+	if cmd, took := a.placeTargetKey(msg); took {
 		return cmd, true
 	}
 	a.settleExchangeFocus()
 	ex := a.paneExchange()
 	if ex == nil || !ex.focused {
-		// AND THE GRID'S TWO ARROWS, read before the router claims `→` for a
-		// row's verbs (homegrid.go's [app.homeGridCross] says why).
-		return nil, a.homeGridCross(msg)
+		// THE ARROWS ARE THE ROUTER'S: `→` opens the row's verbs and `←` closes
+		// them, on every column (homegrid.go, "the arrows stay in their column").
+		return nil, false
 	}
 	a.home.say("", "")
 	cmd := a.exchangeKey(ex, msg)
@@ -559,54 +553,4 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.sweepExchanges()
 	a.touch()
 	return cmd, true
-}
-
-// ── a project's doors ───────────────────────────────────────────────────────
-
-// homeProjectEnter is enter on a project of the grid: A FRESH CONVERSATION IN
-// THAT FOLDER, down the road `ctrl+t` has always taken — the folder is pinned as
-// the target and home's own start door opens there, stepping the conversation in
-// front aside into the keeper when the folder is somewhere else (keeper.go's
-// [app.startBeside]).
-func (a *app) homeProjectEnter(line homeLine) tea.Cmd {
-	where := strings.TrimSpace(line.proj.Path)
-	if where == "" {
-		return nil
-	}
-	if !homeFolderThere(where) {
-		a.home.say(homeGoneWord+rowSep+where, "")
-		return nil
-	}
-	a.target.where = where
-	return a.homeStart("")
-}
-
-// The two verbs a project offers. `its chats` puts the project's name in the box,
-// where the live query answers with every conversation in it.
-const (
-	homeProjectChatsWord  = "its chats"
-	homeProjectFolderWord = "open folder"
-)
-
-// homeProjectVerbs is `→` on a project: its chats, and its folder in the
-// machine's file manager — the second absent where the folder is on another
-// machine or not recorded at all, for [app.homeRowVerbs]' reason.
-func (a *app) homeProjectVerbs(line homeLine) []verb {
-	verbs := []verb{{key: 'c', word: homeProjectChatsWord, do: func() tea.Cmd {
-		a.home.box.setText(line.project)
-		a.home.build()
-		return nil
-	}}}
-	where := strings.TrimSpace(line.proj.Path)
-	if where == "" || a.hosted() || a.home.gone[where] {
-		return verbs
-	}
-	return append(verbs, verb{key: 'o', word: homeProjectFolderWord, do: func() tea.Cmd {
-		if processOpener(where) != nil {
-			a.home.say("could not open "+where, "")
-			return nil
-		}
-		a.home.say("opened "+where, where)
-		return nil
-	}})
 }

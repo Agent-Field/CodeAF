@@ -155,7 +155,7 @@ func TestCtrlCInterruptsAWorkingTurnAndQuitsAtRest(t *testing.T) {
 	// than of the whole frame, which is what this assertion always meant to say:
 	// the stop's own note is in the transcript on the same frame, so a search
 	// over the frame passed on the note whatever the status segment said.
-	if !strings.Contains(plain(a.status(a.width)), stoppingWord) {
+	if !strings.Contains(plain(a.legend(a.width)), stoppingWord) {
 		t.Fatalf("the status line has to say %q:\n%s", stoppingWord, plain(frame(a)))
 	}
 
@@ -372,9 +372,14 @@ func TestALongDraftScrollsInsideTheBoxAndLeavesTheChromeAlone(t *testing.T) {
 	// not push it anywhere (view.go). It is asked for by the state word rather
 	// than by the model: the model came off this row on 2026-09-09 and is on the
 	// seam above the box (foot.go).
+	// The state word is on the seam, two rows above the keys row that closes
+	// the frame (footswap.go).
 	painted := strings.Split(plain(frame(a)), "\n")
-	if len(painted) != a.height || !strings.Contains(painted[len(painted)-1], "idle") {
-		t.Fatalf("the frame lost its status line:\n%s", strings.Join(painted, "\n"))
+	if len(painted) != a.height || !strings.Contains(strings.Join(painted, "\n"), "idle") {
+		t.Fatalf("the frame lost its seam:\n%s", strings.Join(painted, "\n"))
+	}
+	if last := painted[len(painted)-1]; strings.Contains(last, "idle") || strings.Contains(last, "$") {
+		t.Fatalf("the last row is not the keys:\n%s", last)
 	}
 }
 

@@ -1280,6 +1280,10 @@ func (p palette) money(s string) string { return p.paint(s, p.ramp.money) }
 // KIND and not merely a loudness. See [hueData] for why ink could not do this.
 func (p palette) data(s string) string { return p.paint(s, p.ramp.data) }
 
+// seamModel makes the current model easy to find on both message-box seams.
+// It keeps the payload hue and adds weight even when the pointer is elsewhere.
+func (p palette) seamModel(s string) string { return p.bold(p.data(s)) }
+
 // violet is the shell operator's tier and nothing else on this surface — see
 // [hueViolet] for why it is not the question hue.
 func (p palette) violet(s string) string { return p.paint(s, p.ramp.violet) }

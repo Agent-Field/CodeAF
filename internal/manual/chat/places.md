@@ -161,79 +161,113 @@ The **tab bar** answers all three too, and it answers them as itself rather than
 the list: the pointer lifts the word it is on, the wheel walks the places one room a turn,
 and a click opens. Its own section is above.
 
-## The composer — typing on any place, and how to start a task from any page
+## Typing on a place — only home starts things, how to start a task from any page, why is there no message box on tasks or spend, where did the box go
 
-Every place has one box at the foot, and **every printable key goes into it, always**. There
-is no mode to enter and no key to press first.
+**Only home has a message box.** Type a sentence on home and `enter` starts a conversation
+carrying it; `alt+enter` sends it off as a task instead (the composer layer, below). No
+other place starts anything: there is no box under tasks, standing, memory, spend or
+search, `enter` on those pages opens the row under the cursor and nothing else, and
+`alt+enter` does nothing there. `tab` to home, or `alt+1`, when you want to start something
+— its rule already says where the conversation will land and what it will run on.
 
-The box has two readings at once, with no switch between them:
+There used to be a box at the foot of every place, reading `› say what you want done`,
+whose `enter` "talked about it" in a new conversation and whose `alt+enter` sent a task. On
+six of the seven places that box was a lie in a slot: `enter` opened rows, typing on tasks
+went to the filter at the top of the list, and on spend the words went nowhere at all. It
+is gone (2026-09-17).
 
-- what you type **filters** what the place is showing — the conversations on home, the runs
-  on tasks, the rows in settings;
-- and it is also the **first sentence** of something new.
+**Typing still filters where a list is worth filtering.** On **tasks** every printable key
+narrows the list, and the letters draw on the control row at the top of it beside the `⌕`
+mark. On **search** the words you type are the query, drawn on the first row of the body the
+same way, and `esc` clears them. On **memory** the head row echoes the filter in place of
+`type to filter`. Spend and standing take no text.
 
-Two keys tell those apart:
+**Two spaces still open home from every place.** On a place with a filter they are typed
+into the empty filter and taken back out; on spend and standing, which have nothing to type
+into, the two bare spaces are counted, and any other key between them disarms the door.
 
-- **`enter`** — talk about it. On a row, it opens that row. With something typed and no row
-  chosen, it starts a conversation carrying what you wrote. However many conversations this
-  terminal already holds, it starts another: nothing refuses one for being the ninth. Where
-  the door itself fails — `/new is unavailable here`, or a session
-  folder that could not be made — your sentence is not sent anywhere at all, and never into
-  the conversation that was behind the place.
-- **`alt+enter`** — send it off as a task. It runs on its own and tells you when it lands.
-  The first press opens the composer layer, where the three facts a task needs are settled;
-  the second press is the send. The next section is that layer in full.
+## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
 
-**What the empty box SAYS is the place's own sentence where the two readings are not both
-true.** With nothing typed it reads `› say what you want done` on home and on every place
-you can start something from. On the **tasks** place it reads `› type to filter this list`,
-because there is nothing to send from there — `enter` opens the row under the cursor and
-nothing else — so the shared prompt was inviting an instruction into a slot that could only
-ever narrow a list. The moment you type, the box is your text on every place alike, and a
-click puts the caret where you clicked — **except on tasks**, where the letters draw on the
-control row at the top of the list instead, beside the `⌕` mark, so that what you typed is
-above the rows it changed rather than two lines below them.
+The line over home's box is the same shape as the line over a conversation's own message
+box:
 
-## The scope chip — what is the here ~/codeaf thing next to the box
+```
+─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
+› type to search or start something new
+alt+w project · ctrl+v effort · alt+y approvals · alt+k chats · / commands
+```
 
-At the right of the box is the **scope chip** — the `here ~/codeaf` next to the box. It is where what you type
-will land — the project the cursor is on, or this window's own project. It is drawn even
-with nothing typed, because a verb that is always in reach has to always say where it goes.
-The path is shortened the same way every path on this surface is: `~` for your home
-directory, and a first letter for each folder above the last when the whole thing will not
-fit. Home used to draw it in full while every other place shortened it; both are short now.
+At the left it says **what model** answers, then a colon and **how hard it thinks**
+(the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
+approvals chip uses inside a conversation). The model is always bold and bright cyan,
+on home and in conversations. At the far right, `project: <path>` names where the
+next conversation opens; long paths truncate on the right. The bottom row names the
+available project, effort and approval controls; the cells can also be pressed:
 
-**Home has no chip.** It says the same thing one row up, on its rule, and says more:
-`→ new conversation in ~/src/parser · glm-5.3-flash` is where a sentence will land *and*
-what it will answer on, with `alt+w folder · alt+o model · alt+k chats` naming the chords that change
-either. The chip on home was a reading nothing acted on — `enter` opened a conversation in
-this window's folder whatever the chip said — and the rule is that reading with `enter`
-honouring it. Home's own page has the whole gesture.
+| cell | chord | or |
+|---|---|---|
+| the folder | `alt+w` walks to the next project | press the path |
+| the model | `/model` opens the model list | press the name |
+| the rung | `ctrl+v` walks auto → low → … → max → auto | press the cell |
+| the gate | `alt+y` walks asks → guardian → YOLO → asks | press the cell |
+
+Each one changes **the draft** — the next conversation you start from home — and says so
+on the line under the box: `thinking · high · for the next conversation you start here`,
+`approvals · YOLO · every tool runs without asking · dangerous commands still ask · for the
+next conversation you start here`. The conversation behind home is not touched. The model is always bold and bright. A pinned
+rung that differs from what this window would have used is drawn in the accent; an
+open gate is painted in the warning hue, exactly as it is inside a conversation.
+
+**Which pins last:** the model and the rung last as long as this window does. The folder and
+the gate are **spent** by the conversation that uses them — the rule goes back to following
+the row under the cursor, and back to `asks` (or whatever the settings rows say) — so an
+open gate is never quietly the default for the conversation after the one you opened it
+for. With nothing pinned the rung and the gate are what a fresh conversation on this install
+would run at: the `thinking` and `ask before running` rows in `/settings`, or `--yolo` if
+this process was started with it.
+
+**The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
+draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
+the model starts the seam, and the project sits at its far right. A place with something to say about its page — `nothing matches`
+on tasks when a filter emptied it, a receipt on memory, the "this session is on another
+machine" line over `--host` — says it on its rule, where the box's rule would have been.
+
+**Over `--host`, and on a session with no dial**, the rung and the gate are simply not on
+home's rule — the folder and the model still are. The far machine's rows decide what a
+conversation there runs without asking.
+
+## Why did pressing alt+enter not send my task straight away
+
+On home, the first `alt+enter` opens the task composer so you can check the project,
+execution model and spending cap. Press `alt+enter` again to send it off. `enter`
+talks about the sentence in a conversation instead; `esc` returns to home with the
+sentence still in the box. Other places have no message box and do not start tasks.
 
 ## The composer layer — `alt+w` and `alt+o`, what does alt+w do, set which project, pick the model and set a spend limit before starting a task
 
-Press **`alt+enter`** with something typed into the composer, on any place, and the layer
-opens. It is not a new screen: **the page behind dims to the faintest tier instead of being
-covered**, the box stays exactly where it was, and three lines appear in the air under it.
+Press **`alt+enter`** with something typed into home's box, and the layer opens. It is not
+a new screen: **the page behind dims to the faintest tier instead of being covered**, the
+box stays exactly where it was, and three lines appear in the air under it. It opens from
+home alone — no other place has a box to send from.
 
 ```
-› cut the opus spend in half without losing the sweep                       here ~/codeaf
+› cut the opus spend in half without losing the sweep
  it will run on its own and tell you when it lands                                    a task
  · in ~/codeaf, on master                                                alt+w to move it
  · execution runs on opus 4.1                                                alt+o to change
  · it may spend up to $100.00 before it asks                                    type a number
- alt+enter send it off · enter talk about it first · esc back to spend
+ alt+enter send it off · enter talk about it first · esc back to home
 ```
 
 Those three are the only facts a task needs before it leaves: **where, on what, how much.**
 Each one is edited on the line that shows it.
 
 - **`in ~/codeaf, on master`** — the project the task will work in, and the branch that
-  tree is on right now. **`alt+w`** cycles it through the projects codeaf knows, this
-  window's own first, and round again from the last. A machine with one project has nowhere
-  to move a task to, so the `alt+w to move it` clause is not on the line and the key does
-  nothing. A folder that is not a repository, or one on a detached head, draws the project
-  and stops there rather than trailing a comma.
+  tree is on right now; it is the folder home's rule names. **`alt+w`** cycles it through the
+  projects codeaf knows, this window's own first, and round again from the last. A machine
+  with one project has nowhere to move a task to, so the `alt+w to move it` clause is not on
+  the line and the key does nothing. A folder that is not a repository, or one on a detached
+  head, draws the project and stops there rather than trailing a comma.
 - **`execution runs on opus 4.1`** — the model the WORK will run on. That is the *execution*
   slot, which is a different thing from the model you are talking to: the errand still talks
   on this window's own model, and only the work it hands out moves. **`alt+o`** opens the
@@ -248,23 +282,19 @@ Each one is edited on the line that shows it.
 
 The foot names everything that is live: **`alt+enter` sends it off**, **`enter` talks about
 it first** (which is the ordinary conversation, carrying the same sentence), and **`esc`
-goes back to the place you were on** with your sentence still in the box. Nothing was
-applied on the way in, so `esc` has nothing to undo.
+goes back to home** with your sentence still in the box. Nothing was applied on the way in,
+so `esc` has nothing to undo.
 
 While the layer is up it has the whole keyboard. `tab` does not walk to the next place and
-letters do not reach the composer — the sentence is already written and is on the screen
-above you.
+letters do not reach the box — the sentence is already written and is on the screen above
+you.
 
-## Where the task appears after you send it — `alt+enter` takes you to home
+## Where the task appears after you send it — the errand is drawn on home
 
-**`alt+enter` from a place that is not home takes you to home**, because home's column is
-the only surface that draws an errand's answer. You are left looking at the thing you just
-started rather than on the page you typed it from.
-
-That is a deliberate limit and not a finished design. The right answer is for the errand to
-be drawn on the place you sent it from — a small band the frame draws above the composer on
-any place — and until that lands, the surface carries you to where the answer will arrive
-rather than starting work somewhere you cannot watch it.
+The task you send from the layer is drawn on home's own column, which is the one surface
+that draws an errand's answer, and you are already standing there: the layer only opens
+from home. Its row says what the errand is doing until it lands, and the pane beside it
+holds the exchange (*Asking from home* has the whole of it).
 
 ## The keys, and the one law behind them
 
@@ -285,9 +315,9 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `shift+←` `→` `↑` `↓` | move this place's time window |
 | `→` then a letter | act on the row — letters are verbs only here |
 
-`alt+w` and `alt+o` belong to the composer layer and to nothing else. No place binds either
-of them, so they can never move a view out from under you while you are aiming at a
-destination; pressed with no layer up, they do nothing.
+`alt+o` changes a model only inside the task composer layer; on home use `/model`
+or press the model name instead. `alt+w` also works on home, where it moves the draft
+to the next project. Other places bind neither chord.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
 `alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
@@ -413,8 +443,8 @@ being held down — it only reports what arrived.
 ## home — what wants you, as seven panels
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
-project, as **seven panels** in one, two or three columns — `needs you`, `where you were`,
-`projects`, `running`, `since you left`, `spend`, `scheduled`, always in that order. Which
+project, as **seven panels** in one, two or three columns — `needs you`, `threads`,
+`projects`, `tasks`, `since you left`, `spend`, `scheduled`, always in that order. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
@@ -439,15 +469,16 @@ branch stays available to inspect and does not, by itself, ask you to merge it.
 **Typing here narrows the list.** While this place is up every printable key goes to its
 filter — the one exception being `1` and `2` over a row the record pane beside the list is
 offering those two answers for, which answer it — and **the box at the foot says so itself** — it rests on `› type to filter this list`
-rather than the `› say what you want done` every other place shows. It used to show the
+rather than home's `› type to search or start something new`. It used to show the
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
 the row's verbs, and this place has one — `s stop it`, over a task this conversation is
 holding that is still queued or running. Nothing is behind a fold; the list scrolls and its
-tail fades. The count of what is on the page is written into the rule just above the
-composer — `─ 9 finished today · 191 earlier ───` — and the foot names
-only what is true of the row you are on: `enter open its room · → verbs: stop it`.
+tail fades. The rule under the list is a bare line — the counts are on the section headings
+the list already draws, and it says `nothing matches` only when your filter has emptied the
+page — and the foot names only what is true of the row you are on: `enter open its room ·
+→ verbs: stop it`.
 
 ## standing — what runs without being asked, and where to type on the standing page
 

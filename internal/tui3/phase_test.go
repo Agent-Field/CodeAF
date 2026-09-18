@@ -748,7 +748,7 @@ func TestThePhaseWordsAreDrawnOnOneRowAndNeverTwice(t *testing.T) {
 	if !strings.Contains(pulse, words) {
 		t.Fatalf("the pulse does not carry the phase: %q", pulse)
 	}
-	if line := plain(a.status(160)); strings.Contains(line, "paced") {
+	if line := plain(a.legend(160)); strings.Contains(line, "paced") {
 		t.Fatalf("the phase is on the status line as well as the pulse — one fact on two rows:\npulse  %q\nstatus %q", pulse, line)
 	}
 
@@ -759,7 +759,7 @@ func TestThePhaseWordsAreDrawnOnOneRowAndNeverTwice(t *testing.T) {
 	if _, on := a.ellipsis(); on {
 		t.Fatal("the pulse is still drawn under a streaming answer, so this case tests nothing")
 	}
-	if line := plain(a.status(160)); !strings.Contains(line, words) {
+	if line := plain(a.legend(160)); !strings.Contains(line, words) {
 		t.Fatalf("with the pulse gone the phase is on no row at all: %q", line)
 	}
 }
