@@ -1,0 +1,40 @@
+% NARRATIVE-PATCH.tex (codeaf-04). Three blocks to splice into pareto-crewing.tex.
+% Every number below is measured today (E1, 132 runs with a per-role split) or is a
+% placeholder in angle brackets to be filled from the Phase B DOE. No em dashes.
+
+% ---- 1. Title block: keep the name, make the subtitle the fact. ----
+\title{\textbf{One Dial}\\[6pt]
+\large Price a failed task in dollars and let the harness choose which model writes,\\
+which reviews, and which plans}
+
+% ---- 2. Directly after \maketitle, before the abstract. ----
+\begin{center}
+\begin{minipage}{0.92\textwidth}
+\small
+\noindent\textbf{What this means for you.}
+You tell the harness one number: what a failed task costs you, in dollars. It picks the
+model for every role from a public catalog of several hundred, prices the run from a
+token shape it has measured on your own past runs, and learns from an executable grade
+(does the change format, build, vet, and pass the tests it touched) that no model in the
+crew can influence. Two facts from 132 production runs decide most of the bill. The
+model that only reads the code takes a median 2.6\% of the tokens and 44\% of the
+dollars, so the reviewing seat is where the money is. And a bill predicted from who
+actually spent the tokens is within a factor of 1.6 of the real one, against 3.4 for the
+fixed split most harnesses assume. On \textlangle N\textrangle{} real issues from this
+repository, running the cheap crew first and escalating only when the grade fails
+accepted \textlangle X\textrangle\% of tasks at \textlangle Y\textrangle{} dollars each; the
+expensive crew alone accepted \textlangle X'\textrangle\% at \textlangle Y'\textrangle{}
+dollars. What the dial cannot yet do, and why, is stated in Section~\ref{sec:exp}.
+\end{minipage}
+\end{center}
+
+% ---- 3. Abstract, first four sentences (replace the current opening through
+%         "measured or learned."). The rest of the abstract stands. ----
+% A multi-role agent harness spends its money in a place few people look: on the
+% model that reads the code, not the one that writes it. On 132 production runs the
+% reviewing role takes a median 2.6% of a run's tokens and 44% of its dollars. We give
+% a decision-theoretic account of the assignment problem, which model occupies which
+% role, and a learner for it whose only user-facing parameter is a scalar L >= 0, the
+% dollar cost of a failed task. Every other quantity, prices, token volumes, acceptance
+% probabilities, the weight of a published catalog, the reliability of each grading
+% source, is measured or learned.
