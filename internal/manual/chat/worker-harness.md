@@ -227,9 +227,11 @@ ends with the reason `4 replies in a row carried no action`.
 
 A parked task stays open and not done, and its claim is released: the runtime runs
 its worker again **once, when its wait is over** (see the next section), with the
-finished work in front of it. A `plandb wait` with nothing open to wait on is
-refused, so a worker cannot park on nothing. The remaining endings are the run's
-step cap, its wall, and an errored turn.
+finished work in front of it. The woken task is claimed under its own agent name
+again, so it can re-plan, add another child and park again, or finish with `done`
+exactly as it could on its first launch. A `plandb wait` with nothing open to wait
+on is refused, so a worker cannot park on nothing. The remaining endings are the
+run's step cap, its wall, and an errored turn.
 
 ## When does a waiting task come back?
 
