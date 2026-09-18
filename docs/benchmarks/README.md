@@ -2,7 +2,7 @@
 
 `measure-cli.sh` measures one command-line agent and prints `key=value` lines. It takes a
 name, a HOME to run under and the command to run, so it measures any CLI rather than this
-one. The README's table is its output.
+one. The table in `results-2026-09-17.md` is its output.
 
 ```bash
 docs/benchmarks/measure-cli.sh --name codeaf --home /tmp/bench-home -- ./bin/codeaf chat
