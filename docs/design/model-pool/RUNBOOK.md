@@ -92,6 +92,28 @@ key.
     note. The command checks signatures under the key the build carries; pass
     `-key <base64>` (repeatable) for a relay of your own, and `-url`/`-mirror`
     to point it elsewhere.
+12. Refuse a fixture vendor at the door: set `ALLOWED_VENDORS` in `[vars]` to a
+    comma-separated list of the vendors the relay accepts on a row's `model` and
+    `judge` (for example `ALLOWED_VENDORS = "z-ai,anthropic"`). Unset or blank,
+    every vendor passes as it always did. Set it, and a row whose model or judge
+    vendor is not named is refused, with a message naming the field, before
+    anything is stored. Nothing in `relay/` names the vendors the pool serves,
+    so read them off the smallest source of truth there is: the published index
+    itself, whose cells' `model` vendors and `judges` vendors are exactly the
+    vendors the pool has served.
+13. Purge fixture-vendor rows already stored. `relay/tools/purge.js` lists the
+    `sheet/` keys whose model or judge vendor is named and deletes them, driving
+    `wrangler kv key list` and `wrangler kv key delete` against the `POOL`
+    binding. Dry-run it first, then delete, then trigger a publish (step 7a) so
+    the index drops the purged judge:
+
+        cd relay
+        node tools/purge.js --vendor crew --vendor other --dry-run   # prints the keys
+        node tools/purge.js --vendor crew --vendor other             # deletes them, prints the count
+
+    The purge reads only the `sheet/` prefix, so every `seen/` and quota key is
+    left alone, and the published judge list is derived from the stored keys —
+    deleting them is what removes a judge from the next publish.
 
 ## Observability
 

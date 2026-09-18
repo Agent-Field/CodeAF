@@ -102,3 +102,18 @@ test('refuses a metric that is neither the judge\'s nor the grader\'s', () => {
   const { error } = validateRow(goodLine({ payload: { metric: 'role_rating' } }), NOW);
   assert.match(error, /metric must be role_quality or acceptable/);
 });
+
+test('an allowed-vendor set refuses a model or judge vendor it does not name, naming the field', () => {
+  const allowed = new Set(['z-ai', 'anthropic']);
+  assert.equal(validateRow(goodLine(), NOW, allowed).error, null);
+  const badModel = validateRow(goodLine({ payload: { model: 'crew/worker' } }), NOW, allowed);
+  assert.match(badModel.error, /model vendor/);
+  const badJudge = validateRow(goodLine({ payload: { judge: 'other/judge' } }), NOW, allowed);
+  assert.match(badJudge.error, /judge vendor/);
+});
+
+test('with no allowed-vendor set configured every vendor passes', () => {
+  const fixture = goodLine({ payload: { model: 'crew/worker', judge: 'other/judge' } });
+  assert.equal(validateRow(fixture, NOW).error, null);
+  assert.equal(validateRow(fixture, NOW, null).error, null);
+});
