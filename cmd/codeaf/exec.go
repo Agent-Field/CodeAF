@@ -204,7 +204,7 @@ func runExec(args []string) error {
 	// grain differs, one row per run where a seat writes one per call.
 	recordExecUsage(settings.Model, outcome, trace.RunFrom(traced), space.Root())
 
-	envelope := buildExecEnvelope(outcome, runErr, settings.Model, trace.RunFrom(traced))
+	envelope := buildExecEnvelope(outcome, runErr, settings.Model, trace.RunFrom(traced), space.Root())
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		return err
@@ -485,7 +485,7 @@ func execLegacyExitCode(stop exec.StopReason, text string) int {
 // already the name `codeaf run` publishes "the reason it did not finish" under
 // ([subharnessRun.sayEnvelope]), so the two verbs say one thing one way rather
 // than growing a second word for it.
-func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run string) resultEnvelope {
+func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run, workspace string) resultEnvelope {
 	// THE STOP IS READ OFF THE OUTCOME BEFORE THE OUTCOME IS INVENTED. A nil
 	// outcome is the one thing that means "it never ran", so substituting an
 	// empty one first would erase the fact the rung is about.
@@ -504,24 +504,59 @@ func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run string) r
 	case said != "":
 		extra[envelopeIncomplete] = said
 	}
+	// THE WORK'S ADDRESS AND ITS VERDICT, in the one vocabulary #1182 gave
+	// `do`. The branch is named wherever a verdict is: the workspace is the
+	// only address this door's work can have, and a run whose git cannot answer
+	// names none without losing the word beside it.
+	verdict := execVerdict(outcome, runErr)
+	branch := ""
+	if verdict != "" {
+		branch = keptBranchIn(workspace)
+	}
 	return buildResultEnvelope(runResult{
-		Stop:      stop,
-		Answer:    outcome.Text,
-		Files:     artifacts,
-		Error:     failure,
-		SpendUSD:  outcome.Usage.Cost,
-		TokensIn:  outcome.Usage.PromptTokens,
-		TokensOut: outcome.Usage.CompletionTokens,
-		Seconds:   outcome.Elapsed.Seconds(),
-		Model:     model,
-		Steps:     outcome.Turns,
-		Run:       run,
+		Stop:       stop,
+		Answer:     outcome.Text,
+		Files:      artifacts,
+		Error:      failure,
+		SpendUSD:   outcome.Usage.Cost,
+		TokensIn:   outcome.Usage.PromptTokens,
+		TokensOut:  outcome.Usage.CompletionTokens,
+		Seconds:    outcome.Elapsed.Seconds(),
+		Model:      model,
+		Steps:      outcome.Turns,
+		Run:        run,
+		KeptBranch: branch,
+		Verdict:    verdict,
 		// `exec` does not plan and cannot grow, so `rounds` is left at the zero
 		// the contract documents as an absent measurement — the key is there
 		// for a caller that reads one object shape across all three verbs.
 		Calls: calllog.CallsFor(run),
 		Extra: extra,
 	})
+}
+
+// execVerdict says the record's own word for where this run's work stands, in
+// the vocabulary #1182 gave `do` and #1184 gave the chat tasks text: `failed`
+// for a run that broke with nothing to show, `unverified` for one that produced
+// work nobody has judged.
+//
+// THE WORD IS THE LANDING'S WORD, decided by the same condition. An exec run
+// leaves a pending judge record whenever it ran and has anything to show — the
+// ordinary end — and that record's state is `session.TaskUnverified`, because
+// nobody has judged it. A run the condition refuses — one that never started,
+// or broke with no text and no artifacts — leaves no landing and no work, and
+// the record's word for that is `session.TaskFailed`. Reading the word off the
+// condition the landing already uses is what keeps the two from ever
+// disagreeing: a caller that sees `verdict: unverified` knows the pending file
+// holds this run's row.
+func execVerdict(outcome *exec.Outcome, runErr error) string {
+	if outcome == nil {
+		return string(session.TaskFailed)
+	}
+	if runErr != nil && strings.TrimSpace(outcome.Text) == "" && len(outcome.Artifacts) == 0 {
+		return string(session.TaskFailed)
+	}
+	return string(session.TaskUnverified)
 }
 
 // execFailureWords is one failure said once, in words a person can act on.

@@ -212,6 +212,7 @@ func runSubharnessCommand(args []string) error {
 		registry: registry, name: name, input: material, journal: journal,
 		stdout: os.Stdout, stderr: os.Stderr,
 		asJSON: *asJSON, model: settings.Model, started: time.Now(),
+		workspace:  space.Root(),
 		profileDir: settings.ProfileDir,
 		env: func(manifest exec.Manifest) exec.Env {
 			return newHeadlessEnv(client, tools, *policy, manifest, journal, os.Stderr)
@@ -252,6 +253,13 @@ type subharnessRun struct {
 	// nothing about them rather than guessing.
 	model   string
 	started time.Time
+	// workspace is the directory this run edited in place, and the address the
+	// envelope names its kept branch from: the door resolves it the way `do`
+	// resolves its own, and a run whose work did not land points the recoverer
+	// at the branch it is standing on (#1182). Empty in a test driving the
+	// endings alone, and the envelope then names no branch rather than asking
+	// git about a directory nobody gave it.
+	workspace string
 	// profileDir is the install this run reads its pool from, resolved at the
 	// door the same way every other profile read there resolves it. Empty is the
 	// ordinary answer — the state root — and a landing the pool's mode forbids
@@ -517,10 +525,18 @@ func (run subharnessRun) sayEnvelope(stop stopReason, result exec.RunResult, inc
 	if !run.started.IsZero() {
 		seconds = time.Since(run.started).Seconds()
 	}
+	// THE WORK'S ADDRESS AND ITS VERDICT, in the one vocabulary #1182 gave
+	// `do`. Every ending this builder sees is one the pending judge record was
+	// written for — the landing is left before anything is drawn, whatever the
+	// stop — so the word is `unverified` on all of them: nobody has judged what
+	// this run made. The branch is the workspace's own, named wherever git can
+	// answer.
 	envelope := buildResultEnvelope(runResult{
 		Stop: stop, Answer: answer, Files: files,
 		SpendUSD: spend.CostUSD, TokensIn: spend.Input, TokensOut: spend.Output,
 		Seconds: seconds, Model: run.model,
+		KeptBranch: keptBranchIn(run.workspace),
+		Verdict:    string(session.TaskUnverified),
 		// A saved program is one call to one function and does not count steps
 		// the way `do` counts nodes or `exec` counts turns. Nothing renders as
 		// nothing everywhere a person reads; this is a machine contract, where
@@ -555,10 +571,17 @@ func (run subharnessRun) sayFailedEnvelope(err error) error {
 		seconds = time.Since(run.started).Seconds()
 	}
 	spend := run.journal.Ledger()
+	// THE RECORD'S WORD FOR A RUN THAT NEVER PRODUCED A LANDING: this ending
+	// leaves through [runSubharness] before any judge record is written, so the
+	// work this run was asked for stands nowhere — the word is `failed`, and
+	// the workspace it was pointed at still names its branch where git can
+	// answer, in case something did land there before the door refused.
 	envelope := buildResultEnvelope(runResult{
 		Stop: stopError, Error: plainWords(err.Error()),
 		SpendUSD: spend.CostUSD, TokensIn: spend.Input, TokensOut: spend.Output,
 		Seconds: seconds, Model: run.model,
+		KeptBranch: keptBranchIn(run.workspace),
+		Verdict:    string(session.TaskFailed),
 	})
 	encoded, marshalErr := json.MarshalIndent(envelope, "", "  ")
 	if marshalErr != nil {
