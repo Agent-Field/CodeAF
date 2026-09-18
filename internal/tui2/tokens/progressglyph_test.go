@@ -5,6 +5,9 @@ import "testing"
 // TestProgressCellGlyphs pins the four meanings in the run progress row to
 // their geometric floor, Font Awesome spelling, and one-byte ASCII floor.
 func TestProgressCellGlyphs(t *testing.T) {
+	if NFFailedCell != "nf-fa-times_circle_o" {
+		t.Fatalf("failed Font Awesome spelling = %q, want nf-fa-times_circle_o", NFFailedCell)
+	}
 	cases := []struct {
 		name      string
 		id        GlyphID
