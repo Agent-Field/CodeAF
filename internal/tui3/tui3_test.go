@@ -815,7 +815,7 @@ func newTestApp(agent Agent) *app {
 func newTestAppWithProfile(profileDir string, agent Agent) *app {
 	a := newApp(context.Background(), Options{
 		Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger(),
-		ProfileDir: profileDir,
+		ProfileDir:                 profileDir,
 		BashBackgroundAfterSeconds: config.DefaultBashBackgroundAfter,
 		// AND IT PINS THE TERMINAL, which is the second and third pin in one
 		// table, for exactly the reason the palette is pinned below: [newApp]
