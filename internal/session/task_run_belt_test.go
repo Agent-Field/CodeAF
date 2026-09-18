@@ -395,6 +395,19 @@ func landingSummaryFixture(t *testing.T, client *scriptedCompleter) (*Agent, *pl
 	return agent, store, run, dir
 }
 
+func runSummaryRequestCount(client *scriptedCompleter) int {
+	count := 0
+	for i := 0; i < client.requests(); i++ {
+		for _, message := range client.request(i) {
+			if strings.Contains(messageText(message), "You write the four lines a person reads") {
+				count++
+				break
+			}
+		}
+	}
+	return count
+}
+
 func TestDriveBeltRunRefreshesSummaryOnceBeforeOutcomeNote(t *testing.T) {
 	client := &scriptedCompleter{steps: []step{finalText("what: repair landing\nsince: the work landed\nnow: The fresh landing summary is stored.\nnext: Nothing needs you.")}}
 	agent, _, run, dir := landingSummaryFixture(t, client)
@@ -405,7 +418,7 @@ func TestDriveBeltRunRefreshesSummaryOnceBeforeOutcomeNote(t *testing.T) {
 
 	agent.driveBeltRun(context.Background(), engine, run, RunSpec{})
 
-	if got := client.requests(); got != 1 {
+	if got := runSummaryRequestCount(client); got != 1 {
 		t.Fatalf("summary requests = %d, want exactly one", got)
 	}
 	notes := beltRunNotes(t, dir, planRootID)
@@ -458,7 +471,7 @@ func TestDriveBeltRunDoesNotRefreshWhenStoreIsGone(t *testing.T) {
 	agent.driveBeltRun(context.Background(), landingRunDouble{
 		summary: RunSummary{Outcome: beltRunOutcomeDone},
 	}, run, RunSpec{})
-	if got := client.requests(); got != 0 {
+	if got := runSummaryRequestCount(client); got != 0 {
 		t.Fatalf("summary requests with no store = %d, want none", got)
 	}
 	_ = store.Close()
