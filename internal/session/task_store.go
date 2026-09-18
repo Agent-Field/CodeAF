@@ -2138,6 +2138,13 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	// A process exit pauses ordinary work; it does not make a finding about it.
 	// Put the node back on the frontier so the next session resumes it once.
 	record.State = TaskQueued
+	// AND THE CUT ATTEMPT'S REASON DOES NOT RIDE INTO THE NEXT ONE. A node
+	// machinery cut where it stood carries [TaskEndingInterrupted] on its record
+	// (task_run.go's paused road), and [TaskNode.end] writes only the FIRST cause —
+	// so a resumed attempt that failed for a reason of its own would still read as
+	// the interruption that never was its. The node is about to run again and the
+	// ending belongs to the attempt that just ended, so it is cleared here with it.
+	record.Ending = ""
 
 	if record.Merge == mergeInPlace {
 		// There was no repository to branch from, so its edits are already in the

@@ -452,6 +452,55 @@ func TestAutoPickWithCarriesThePriorItIsGiven(t *testing.T) {
 	}
 }
 
+// ── the two seams ───────────────────────────────────────────────────────────
+
+// A BARE AUTO ROW AND THE PICK WORD'S OWN SEAT ANSWER ONE CATALOG THE SAME
+// WAY. Under `picked from = catalog` both read the catalog's published
+// figures alone — the Model Pool's measurements enter neither seat — and
+// under `learn` both carry them, on the learned rung. The fixture still
+// splits the two answers, asserted rather than assumed, so rows or a prior
+// that stop moving the worker pick fail here saying so instead of pinning
+// nothing.
+func TestABareAutoRowAnswersTheCatalogThePickWordNames(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	restoreModels, restoreIndex := AutoModels, AutoIndex
+	defer func() { AutoModels, AutoIndex = restoreModels, restoreIndex }()
+	AutoModels = func() []catalog.Model { return autoTestRows() }
+	AutoIndex = func() *index.Index { return mustIndex(t, priorDocument) }
+
+	published, ok := AutoPickWith(ModelTierWorker, DefaultCrewSource, DefaultCrew, autoTestRows(), nil)
+	if !ok || published == "a/cheap" {
+		t.Fatalf("the fixture does not split the two answers: the published pick reads %q (ok %t), so the assertions below cannot tell them apart", published, ok)
+	}
+
+	dir := writeProfileRows(t, map[string]string{
+		KeyTierWorkerModel: AutoValue,
+		KeyCrewPick:        CrewPickCatalog,
+	})
+	model, source, preset := autoRow(dir, DefaultCrewSource, ModelTierWorker)
+	want, _ := pickedModel(ModelTierWorker, DefaultCrewSource, preset, CrewPickCatalog)
+	if model != want {
+		t.Fatalf("under picked from = catalog the bare auto row answers %q and the pick word's own seat answers %q — the two seams disagreed about what the catalog means", model, want)
+	}
+	if source != SeatComputed {
+		t.Errorf("under picked from = catalog the bare row's rung reads %q, want computed", source)
+	}
+
+	dir = writeProfileRows(t, map[string]string{
+		KeyTierWorkerModel: AutoValue,
+		KeyCrewPick:        CrewPickLearn,
+	})
+	model, source, preset = autoRow(dir, DefaultCrewSource, ModelTierWorker)
+	want, _ = pickedModel(ModelTierWorker, DefaultCrewSource, preset, CrewPickLearn)
+	if model != want || model != "a/cheap" {
+		t.Errorf("under picked from = learn the bare auto row answers %q and the pick word's own seat answers %q, want the measured pick a/cheap", model, want)
+	}
+	if source != SeatLearned {
+		t.Errorf("under picked from = learn the bare row's rung reads %q, want learned", source)
+	}
+}
+
 // ── the install's own sheet ─────────────────────────────────────────────────
 
 // ownCells is the install's own evidence for the prior tests: one cell the
