@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the pool spells a seat by its bare model id
-pr: 0000
+pr: 1163
 surface: [engine]
 invalidates:
   - "A seat's model id reached the pool's records spelled the way the client routes it — the `~` alias marker on the front, a thinking level on the back — and the relay's wire schema admits only `<vendor>/<id>`, so a fresh install's first measurement rows were refused and dropped. The pool's copy of a seat's id is now the bare `<vendor>/<id>` at every entry: the landing's seat map and its judge-last record, and the pending rows the headless doors leave. The client's own routing path keeps the tilde."
