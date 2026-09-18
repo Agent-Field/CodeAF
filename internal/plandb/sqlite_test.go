@@ -8,6 +8,7 @@ package plandb
 // belongs to somebody else.
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -609,4 +610,229 @@ func TestPlandbCliReadsAnswerBesideAnOpenWrite(t *testing.T) {
 	if got := reader.Task("a").Description; !strings.Contains(got, heldText) {
 		t.Fatalf("the reader never saw the committed write: %q", got)
 	}
+}
+
+// The number of hands that open the same store at once in the schema-race
+// test below.
+const plandbConcurrentOpens = 20
+
+// TestPlandbCliConcurrentOpensNeverLeaveAReaderWithoutATable drives one store
+// file from many hands at once: one store is held open and read in a tight
+// loop — Tasks, RoleOf and ReadySet — while twenty further Open calls on the
+// same file come and go from other goroutines, one of them the built CLI
+// running `list` as a separate process. Not one read fails, and the schema
+// cookie barely moves: the schema is created once and every later open
+// rewrites it to itself, so no reader is ever handed a database without the
+// table it asked for.
+func TestPlandbCliConcurrentOpensNeverLeaveAReaderWithoutATable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens twenty stores and runs the CLI against one file")
+	}
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	defer seed.Close()
+	planAdd(t, seed, planSpec("kept", "Kept"))
+
+	// The schema cookie the run starts from. An open of a store that is already
+	// current commits no change, so no number of opens below may move it; over
+	// the whole run it advances at most once, which is the one build of the
+	// schema and never a second.
+	before := planSchemaVersion(t, seed.db)
+
+	// The reader runs until stop closes, two seconds later: every reading verb
+	// over the store that is held open, over and over, while the opens come and
+	// go beside it.
+	stop := make(chan struct{})
+	readErrs := make(chan error, 1)
+	var reading sync.WaitGroup
+	reading.Add(1)
+	go func() {
+		defer reading.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if seed.Task("kept") == nil {
+				readErrs <- errors.New("a read lost the task the store holds")
+				return
+			}
+			if _, err := seed.RoleOf("kept"); err != nil {
+				readErrs <- fmt.Errorf("RoleOf failed: %w", err)
+				return
+			}
+			if ready := seed.ReadySet(); len(ready.Runnable)+len(ready.Blocked) == 0 {
+				readErrs <- errors.New("ReadySet answered neither runnable nor blocked")
+				return
+			}
+		}
+	}()
+
+	binary := planBuildCLI(t)
+	openErrs := make(chan error, plandbConcurrentOpens)
+	var opening sync.WaitGroup
+	for i := 0; i < plandbConcurrentOpens; i++ {
+		opening.Add(1)
+		go func(i int) {
+			defer opening.Done()
+			first := true
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if first {
+					first = false
+					// One hand's first open is the built CLI through its own main,
+					// so the cross-process road is exercised and not just the
+					// in-process one.
+					command := exec.Command(binary, "--db", path, "list")
+					if output, err := command.CombinedOutput(); err != nil {
+						openErrs <- fmt.Errorf("the CLI's list failed: %v\n%s", err, output)
+						return
+					}
+					continue
+				}
+				store, err := Open(path, "", "", "", "")
+				if err != nil {
+					openErrs <- fmt.Errorf("open while reading: %w", err)
+					return
+				}
+				if store.Task("kept") == nil {
+					openErrs <- errors.New("an open did not see the plan the store holds")
+					_ = store.Close()
+					return
+				}
+				if err := store.Close(); err != nil {
+					openErrs <- fmt.Errorf("close: %w", err)
+					return
+				}
+			}
+		}(i)
+	}
+
+	time.Sleep(2 * time.Second)
+	close(stop)
+	reading.Wait()
+	opening.Wait()
+
+	select {
+	case err := <-readErrs:
+		t.Fatal(err)
+	default:
+	}
+	for i := 0; i < plandbConcurrentOpens; i++ {
+		select {
+		case err := <-openErrs:
+			t.Fatal(err)
+		default:
+		}
+	}
+
+	if after := planSchemaVersion(t, seed.db); after > before+1 {
+		t.Fatalf("the schema cookie advanced %d times across the run, want at most once", after-before)
+	}
+}
+
+// TestPlandbCliOpenFinishesAHalfBuiltSchema opens the file an interrupted
+// first build leaves behind: the meta table was committed and the tables
+// beside it were not. The open must finish the schema rather than trust that
+// meta's presence means the rest is there — one transaction over the whole
+// schema is what makes a half-built file impossible to hand a reader, and this
+// is the moment that names it. The earlier step checked only for meta, so a
+// file in exactly this state opened into a missing table and refused.
+func TestPlandbCliOpenFinishesAHalfBuiltSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	// A lone meta table, the shape an interrupted build leaves: the first
+	// commit landed and the tables it creates beside it did not.
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatalf("open the half-built file: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE meta (
+		id      INTEGER PRIMARY KEY CHECK (id = 1),
+		project TEXT    NOT NULL,
+		root_id TEXT    NOT NULL,
+		next_id INTEGER NOT NULL,
+		version INTEGER NOT NULL
+	)`); err != nil {
+		t.Fatalf("build the half-built file: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close the half-built file: %v", err)
+	}
+
+	// The open finishes the schema and seeds the run: the meta table it found
+	// held no row, so this is a new store built the same way a fresh one is.
+	store := planOpen(t, path)
+	defer store.Close()
+	planAdd(t, store, planSpec("kept", "Kept"))
+	if store.Task("kept") == nil {
+		t.Fatal("the finished store does not hold the task it was given")
+	}
+
+	// The store it wrote is whole: a second process opens it cleanly.
+	reopened := planReopen(t, path)
+	defer reopened.Close()
+	if reopened.Task("kept") == nil {
+		t.Fatalf("the finished store did not survive a reopen: %#v", reopened.Tasks())
+	}
+}
+
+// TestPlandbCliOpenOfACurrentStoreWritesNothing proves the schema step is a
+// no-op on a store that is already current. PRAGMA data_version answers it
+// without watching the file's mtime, which a WAL write does not move: a
+// connection's counter changes only when ANOTHER connection commits, so a
+// watching handle that reads the same number before and after an Open proves
+// that Open committed no change.
+func TestPlandbCliOpenOfACurrentStoreWritesNothing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plandb.db")
+	seed := planOpen(t, path)
+	planAdd(t, seed, planSpec("kept", "Kept"))
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close the seeded store: %v", err)
+	}
+
+	// The watching handle only reads, so its data_version moves only if some
+	// other connection commits a change to the file.
+	watcher, err := openReadDatabase(path)
+	if err != nil {
+		t.Fatalf("open the watching handle: %v", err)
+	}
+	defer watcher.Close()
+	before := planDataVersion(t, watcher)
+
+	reopened := planReopen(t, path)
+	if err := reopened.Close(); err != nil {
+		t.Fatalf("close the reopened store: %v", err)
+	}
+
+	if after := planDataVersion(t, watcher); after != before {
+		t.Fatalf("opening a current store moved data_version from %d to %d — it wrote", before, after)
+	}
+}
+
+// planSchemaVersion reads PRAGMA schema_version through a handle: SQLite
+// advances it when the schema changes and leaves it when a statement rewrites
+// the schema to itself.
+func planSchemaVersion(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var version int
+	if err := db.QueryRow("PRAGMA schema_version").Scan(&version); err != nil {
+		t.Fatalf("read schema_version: %v", err)
+	}
+	return version
+}
+
+// planDataVersion reads PRAGMA data_version through a handle that does not
+// write, so the number moves only when another connection commits a change.
+func planDataVersion(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var version int
+	if err := db.QueryRow("PRAGMA data_version").Scan(&version); err != nil {
+		t.Fatalf("read data_version: %v", err)
+	}
+	return version
 }
