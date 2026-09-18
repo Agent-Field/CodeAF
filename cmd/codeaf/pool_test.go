@@ -1268,6 +1268,13 @@ func stubPoolRefresh(t *testing.T) *int {
 func TestWirePoolIndexStartsTheRefreshAndThePush(t *testing.T) {
 	started := stubPoolRefresh(t)
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
+	// A CI environment answers the mode when neither the environment word nor
+	// the stored setting does: GitHub Actions exports CI=true, the resolver reads
+	// that as read-only, the push never starts, and the count below read one on
+	// every pull-request run while passing on every laptop. This test is about
+	// the DEFAULT mode, so the CI word is emptied for its duration; t.Setenv
+	// restores the runner's own value afterwards.
+	t.Setenv("CI", "")
 
 	// The default mode is on: the refresh and the push both start.
 	wirePoolIndex(t.TempDir())
