@@ -294,6 +294,13 @@ type resultEnvelope struct {
 	Tokens envelopeTokens `json:"tokens"`
 	// Seconds is how long it took, wall clock.
 	Seconds float64 `json:"seconds"`
+	// CoreDoneSeconds is when the requested work was FIRST found done, in
+	// seconds from the run's start: the first delivery gate that passed or left
+	// only a coverage finding — the fix committed, the checks for it still to
+	// come. It is omitted when no gate ever said so, and it is the figure a
+	// person reads to see how much of the run was the work and how much came
+	// after it.
+	CoreDoneSeconds float64 `json:"core_done_seconds,omitempty"`
 	// Model is the model the work ran on, as the seat ladder resolved it.
 	Model string `json:"model"`
 	// Steps is how many pieces of work ran: `do`'s nodes, `exec`'s turns. A
@@ -333,6 +340,19 @@ type resultEnvelope struct {
 	// both because a caller reaching for a key that vanished is a caller
 	// crashing.
 	Rounds int `json:"rounds"`
+	// Redispatches is how many times one of this run's nodes was re-dispatched
+	// IN PLACE after running out of the room it was granted — sent round again
+	// to carry on from what it had banked, rather than grown around. It is
+	// counted off the journal the way Rounds is (store.NodeRedispatches), for
+	// the same reason: a run sharing a durable store with another session must
+	// not count that session's re-dispatches as its own.
+	//
+	// It is the one contract field that is ABSENT rather than zero when it never
+	// happened, which is what `omitempty` buys and why it wears it where Rounds
+	// does not: a caller of this one is asking whether the run had to send
+	// anything round again, and "never" is the key not being there. `exec` and
+	// a saved program never set it, so neither ever carries it.
+	Redispatches int `json:"redispatches,omitempty"`
 
 	// extra is what one verb carries beyond the contract, and it is two things:
 	// the OLD field names, kept readable for one release so that a tool written
@@ -392,11 +412,30 @@ type runResult struct {
 	TokensIn  int
 	TokensOut int
 	Seconds   float64
-	Model     string
-	Steps     int
-	Run       string
-	Calls     int
-	Rounds    int
+	// CoreDoneSeconds is `do`'s fact: when its gate first found the requested
+	// work done, read off the journal. `exec` and `run` have no delivery gate
+	// and leave it zero, which omits the key.
+	CoreDoneSeconds float64
+	Model           string
+	Steps           int
+	Run             string
+	Calls           int
+	Rounds          int
+	Redispatches    int
+	// KeptBranch names the branch the run's own work is standing on, on the
+	// runs that did not settle whole. It is the answer to "where is the work
+	// this run would not land?" — the workspace's own branch, read off the
+	// tree once the run is over, because all three headless doors work in
+	// place. Empty — and the key with it — when the workspace is no repository
+	// or its HEAD is detached, there being no branch a person could check out,
+	// and on every run that names no verdict.
+	KeptBranch string
+	// Verdict is what left the work where KeptBranch names it, in the record's
+	// own word: `failed` for a run that broke with nothing to show,
+	// `unverified` for one that produced work nobody has judged. Empty only
+	// where the door has no such word to say — a `do` run that settled whole —
+	// and both keys then stay off the object together.
+	Verdict string
 	// Extra is this verb's own fields: its old spellings, and whatever it knows
 	// that the contract has no room for. Nil for a verb with neither.
 	Extra map[string]any
@@ -420,22 +459,45 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 	if files == nil {
 		files = []string{}
 	}
-	return resultEnvelope{
-		OK:       exitFor(stop) == exitDone,
-		Stop:     stop,
-		Answer:   result.Answer,
-		Files:    files,
-		Error:    result.Error,
-		SpendUSD: result.SpendUSD,
-		Tokens:   envelopeTokens{In: result.TokensIn, Out: result.TokensOut},
-		Seconds:  result.Seconds,
-		Model:    result.Model,
-		Steps:    result.Steps,
-		Run:      result.Run,
-		Calls:    result.Calls,
-		Rounds:   result.Rounds,
-		extra:    result.Extra,
+	envelope := resultEnvelope{
+		OK:              exitFor(stop) == exitDone,
+		Stop:            stop,
+		Answer:          result.Answer,
+		Files:           files,
+		Error:           result.Error,
+		SpendUSD:        result.SpendUSD,
+		Tokens:          envelopeTokens{In: result.TokensIn, Out: result.TokensOut},
+		Seconds:         result.Seconds,
+		CoreDoneSeconds: result.CoreDoneSeconds,
+		Model:           result.Model,
+		Steps:           result.Steps,
+		Run:             result.Run,
+		Calls:           result.Calls,
+		Rounds:          result.Rounds,
+		Redispatches:    result.Redispatches,
+		extra:           result.Extra,
 	}
+	// WHERE A NON-VERIFIED RUN'S WORK IS STANDING, AND WHAT LEFT IT THERE.
+	// Both ride the omitempty spirit of `unjudged` and `judged_by`: a run that
+	// settled whole names neither, so the presence of either is itself the
+	// answer to "was this work landed?". Each stands on its own — a workspace
+	// that is no repository still knows its verdict, and says so with no branch
+	// beside it — which is why a script reads them apart and not as one pair.
+	// One merge, here, is what keeps `do`, `exec` and `run` saying the same two
+	// facts the same way (#1182).
+	for name, said := range map[string]string{
+		"kept_branch": result.KeptBranch,
+		"verdict":     result.Verdict,
+	} {
+		if strings.TrimSpace(said) == "" {
+			continue
+		}
+		if envelope.extra == nil {
+			envelope.extra = map[string]any{}
+		}
+		envelope.extra[name] = said
+	}
+	return envelope
 }
 
 // envelopeIncomplete is the ONE name for "the reason it did not finish", and it
@@ -511,6 +573,10 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 	if strings.TrimSpace(outcome.JudgedBy) != "" {
 		fields["judged_by"] = outcome.JudgedBy
 	}
+	// WHERE A NON-VERIFIED RUN'S WORK IS STANDING, AND WHAT LEFT IT THERE.
+	// These two moved to the contract's own builder ([buildResultEnvelope]) so
+	// that one merge covers all three verbs; they are set on the runResult and
+	// ride the same omitempty spirit as `unjudged` and `judged_by` above.
 	if len(outcome.Checklist) > 0 {
 		fields["checklist"] = outcome.Checklist
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strconv"
@@ -19,6 +20,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
@@ -113,6 +116,7 @@ func runExec(args []string) error {
 	// that took the flag and then resolved it differently from every other door
 	// would be the parity it claims in name only. Only the work seat is printed,
 	// because only the work seat runs anything.
+	useAutoSeats(settings)
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
 	fmt.Fprintln(os.Stderr, seats.Work.Report())
@@ -160,7 +164,47 @@ func runExec(args []string) error {
 		fmt.Fprintln(os.Stderr, "error:", execFailureWords(runErr))
 	}
 
-	envelope := buildExecEnvelope(outcome, runErr, settings.Model, trace.RunFrom(traced))
+	// THE RUN LEAVES A PENDING JUDGE RECORD AT ITS TAIL. A headless run builds
+	// no session graph and so has no live landing hook; the pool's restart-time
+	// sweep is what scores it, and this one line is the only thing that survives
+	// the process to reach that sweep. NOTHING WAITS ON A JUDGE: the write is one
+	// O_APPEND of one line and the process exits at once, exactly as a chat
+	// task's landing is judged off the turn's own road. A pool that forbids
+	// reading is asked for nothing, and a run that never ran — or broke with
+	// nothing to show — leaves no record, because a landing with no report is a
+	// question with nothing to score.
+	if outcome != nil && (runErr == nil || strings.TrimSpace(outcome.Text) != "" || len(outcome.Artifacts) > 0) &&
+		config.ModelPoolAt(settings.ProfileDir).CanRead() {
+		landing := session.TaskLanding{
+			// The restart sweep dedups on the id (pool/judged/<id>-<attempt>), so
+			// it has to be unique per run: the wall clock in nanoseconds is the
+			// one thing two runs of this process cannot share.
+			ID:      uint64(time.Now().UnixNano()),
+			State:   session.TaskUnverified,
+			Brief:   prompt,
+			Report:  outcome.Text,
+			Wrote:   outcome.Artifacts,
+			Changed: len(outcome.Artifacts),
+			Worker:  settings.Model,
+			CostUSD: outcome.Usage.Cost,
+			Tokens:  outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens,
+		}
+		if err := writePendingLanding(settings.ProfileDir, "exec", landing); err != nil && trace.Enabled() {
+			log.Printf("exec: pending landing: %v", err)
+		}
+	}
+
+	// AN EXEC RUN'S WORKER SPEND REACHES THE LEDGER, under the run's own root,
+	// the way a chat seat's calls do — so the status row, the run cap and the
+	// pool's accounting see what this run spent instead of a machine that looks
+	// to have spent nothing. The row is minted HERE and not inside the runner,
+	// and that is forced rather than chosen: internal/session imports
+	// internal/exec (beltfacts.go), so internal/exec cannot reach the ledger's
+	// package without a cycle. The row's shape is a seat's exactly; only its
+	// grain differs, one row per run where a seat writes one per call.
+	recordExecUsage(settings.Model, outcome, trace.RunFrom(traced), space.Root())
+
+	envelope := buildExecEnvelope(outcome, runErr, settings.Model, trace.RunFrom(traced), space.Root())
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		return err
@@ -200,6 +244,49 @@ func runExec(args []string) error {
 		return code
 	}
 	return nil
+}
+
+// recordExecUsage puts one exec run's worker spend on this machine's ledger,
+// under the run's own root.
+//
+// THE TWO NAMES ARE THE WORKER'S, because that is what this run is: one leaf
+// doing the work, like a task node's own turns. The role says so in the
+// ledger's own vocabulary ([roles.RoleWorker]) and the seat is the one that does
+// the work ([session.SeatWorker]) rather than the role's registered tier — the
+// low seat an adaptive run's many small nodes sit on — because the seat names
+// the chair this run actually ran in.
+//
+// AND THE CALLS ARE THE RUN'S OWN REQUEST COUNT, not one. The row is one per
+// run rather than one per call (the row is minted at the door because
+// internal/session imports internal/exec, so the runner cannot reach the
+// ledger's package without a cycle), so [session.UsageLine.Calls] carries the
+// whole run's requests and the tokens and dollars beside it are the whole run's
+// spend: a reader summing the Calls column gets the run's true request count
+// instead of the count of rows.
+//
+// A RUN THAT MADE NO CALL LEAVES NOTHING. [session.RecordUsage] refuses a row
+// whose cost and tokens are all zero — a row that looks measured and is not —
+// so the empty outcome of a run that priced nothing, and the nil outcome of one
+// that never started, both write no line.
+//
+// THE WRITER IS ASYNC ([session.RecordUsage]), so the flush is what makes the
+// row outlive the process: exec exits the moment this returns, exactly as the
+// chat surface waits on its way out ([v3Process.closeAll]).
+func recordExecUsage(model string, outcome *exec.Outcome, root, workspace string) {
+	if outcome == nil {
+		return
+	}
+	line := session.UsageLine{
+		Model:     model,
+		Calls:     outcome.Usage.Calls,
+		Input:     outcome.Usage.PromptTokens,
+		Output:    outcome.Usage.CompletionTokens,
+		USD:       outcome.Usage.Cost,
+		Root:      root,
+		Workspace: workspace,
+	}
+	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.RoleWorker, session.SeatWorker))
+	session.FlushUsage()
 }
 
 // execEnvFallbacks are the three exec walls a wrapper can set once, in the
@@ -398,7 +485,7 @@ func execLegacyExitCode(stop exec.StopReason, text string) int {
 // already the name `codeaf run` publishes "the reason it did not finish" under
 // ([subharnessRun.sayEnvelope]), so the two verbs say one thing one way rather
 // than growing a second word for it.
-func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run string) resultEnvelope {
+func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run, workspace string) resultEnvelope {
 	// THE STOP IS READ OFF THE OUTCOME BEFORE THE OUTCOME IS INVENTED. A nil
 	// outcome is the one thing that means "it never ran", so substituting an
 	// empty one first would erase the fact the rung is about.
@@ -417,24 +504,59 @@ func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run string) r
 	case said != "":
 		extra[envelopeIncomplete] = said
 	}
+	// THE WORK'S ADDRESS AND ITS VERDICT, in the one vocabulary #1182 gave
+	// `do`. The branch is named wherever a verdict is: the workspace is the
+	// only address this door's work can have, and a run whose git cannot answer
+	// names none without losing the word beside it.
+	verdict := execVerdict(outcome, runErr)
+	branch := ""
+	if verdict != "" {
+		branch = keptBranchIn(workspace)
+	}
 	return buildResultEnvelope(runResult{
-		Stop:      stop,
-		Answer:    outcome.Text,
-		Files:     artifacts,
-		Error:     failure,
-		SpendUSD:  outcome.Usage.Cost,
-		TokensIn:  outcome.Usage.PromptTokens,
-		TokensOut: outcome.Usage.CompletionTokens,
-		Seconds:   outcome.Elapsed.Seconds(),
-		Model:     model,
-		Steps:     outcome.Turns,
-		Run:       run,
+		Stop:       stop,
+		Answer:     outcome.Text,
+		Files:      artifacts,
+		Error:      failure,
+		SpendUSD:   outcome.Usage.Cost,
+		TokensIn:   outcome.Usage.PromptTokens,
+		TokensOut:  outcome.Usage.CompletionTokens,
+		Seconds:    outcome.Elapsed.Seconds(),
+		Model:      model,
+		Steps:      outcome.Turns,
+		Run:        run,
+		KeptBranch: branch,
+		Verdict:    verdict,
 		// `exec` does not plan and cannot grow, so `rounds` is left at the zero
 		// the contract documents as an absent measurement — the key is there
 		// for a caller that reads one object shape across all three verbs.
 		Calls: calllog.CallsFor(run),
 		Extra: extra,
 	})
+}
+
+// execVerdict says the record's own word for where this run's work stands, in
+// the vocabulary #1182 gave `do` and #1184 gave the chat tasks text: `failed`
+// for a run that broke with nothing to show, `unverified` for one that produced
+// work nobody has judged.
+//
+// THE WORD IS THE LANDING'S WORD, decided by the same condition. An exec run
+// leaves a pending judge record whenever it ran and has anything to show — the
+// ordinary end — and that record's state is `session.TaskUnverified`, because
+// nobody has judged it. A run the condition refuses — one that never started,
+// or broke with no text and no artifacts — leaves no landing and no work, and
+// the record's word for that is `session.TaskFailed`. Reading the word off the
+// condition the landing already uses is what keeps the two from ever
+// disagreeing: a caller that sees `verdict: unverified` knows the pending file
+// holds this run's row.
+func execVerdict(outcome *exec.Outcome, runErr error) string {
+	if outcome == nil {
+		return string(session.TaskFailed)
+	}
+	if runErr != nil && strings.TrimSpace(outcome.Text) == "" && len(outcome.Artifacts) == 0 {
+		return string(session.TaskFailed)
+	}
+	return string(session.TaskUnverified)
 }
 
 // execFailureWords is one failure said once, in words a person can act on.

@@ -48,12 +48,12 @@ func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
 		ID: custom.ID, Written: "localhost", Address: directHost.URL(), Key: "direct-key", Order: 1,
 	}, custom, nil)
 	if err != nil || outcome.Kind != modelsource.OutcomeConnected || outcome.Models != 2 {
-		t.Fatalf("Something else connection = %+v, %v", outcome, err)
+		t.Fatalf("Custom OpenAI-compatible API connection = %+v, %v", outcome, err)
 	}
 	sources := config.ResolveSources(dir, defaultService.Key, defaultHost.URL())
 	directService, ok := sources.ByID("custom")
 	if !ok {
-		t.Fatal("the persisted Something else service did not resolve")
+		t.Fatal("the persisted Custom OpenAI-compatible API service did not resolve")
 	}
 	shelf.setSources(sources)
 	seed := make([]tui3.Model, 0, len(outcome.ModelIDs))

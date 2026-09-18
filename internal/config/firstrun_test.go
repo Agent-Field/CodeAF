@@ -148,3 +148,26 @@ func TestTheAPIKeyRowMasksReadsTheShellFirstAndWritesTheProfile(t *testing.T) {
 		t.Fatal("a pinned row must refuse a write")
 	}
 }
+
+// THE FAMILY IS AN OPINION TOO. A person who chose a family and never pinned a
+// tier has still answered the crew, so the setup must not paper over it with a
+// preset: the law the tier rows already carry, extended to the row above them.
+// And a family nobody chose is the default, which is NOT an answer.
+func TestTheFamilyRowCountsAsAnAnsweredCrew(t *testing.T) {
+	dir := t.TempDir()
+	if CrewConfigured(dir) {
+		t.Fatal("a profile nobody has touched must read as unanswered")
+	}
+	if got := CrewSourceAt(dir); got != DefaultCrewSource {
+		t.Fatalf("an untouched profile reads the family as %q, want the default", got)
+	}
+	if err := SetCrewSource(dir, CrewSourceAll); err != nil {
+		t.Fatal(err)
+	}
+	if !CrewConfigured(dir) {
+		t.Fatal("a profile whose family was chosen must read as answered")
+	}
+	if got := CrewSourceAt(dir); got != CrewSourceAll {
+		t.Fatalf("the family row reads %q after it was written", got)
+	}
+}

@@ -92,7 +92,7 @@ func asyncApp(t *testing.T) (*app, *asyncDoor, *asyncAgent) {
 	first := newAsyncAgent()
 	door := &asyncDoor{t: t}
 	a := newApp(context.Background(), Options{
-		Agent: first, Workspace: "/tmp/lab",
+		Agent: first, Workspace: "/tmp/lab", ProfileDir: t.TempDir(),
 		Start: door.start, Open: door.open,
 	})
 	a.width, a.height = 120, 30

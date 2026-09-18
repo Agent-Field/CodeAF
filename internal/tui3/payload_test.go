@@ -251,7 +251,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{pickerKeysSwitchEffort, []string{"alt+s", "enter", "ctrl+t", "esc"}},
 		{pickerKeysFold, []string{"←", "alt+s", "enter", "esc"}},
 		{pickerKeysFoldTab, []string{"tab", "alt+s", "enter", "esc"}},
-		{"↑↓ · enter apply · esc", []string{"↑↓", "enter", "esc"}},
+		{"↑↓ · ←→ family · enter apply · esc", []string{"↑↓", "←→", "enter", "esc"}},
 		{"enter open · esc", []string{"enter", "esc"}},
 		{"v select · a block · y yank · esc", []string{"v", "a", "y", "esc"}},
 		{"esc again to rewind", []string{"esc"}},

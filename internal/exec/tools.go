@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -1568,8 +1569,8 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	defer cancel()
 	var environment []string
 	// The login shell may rewrite inherited PATH while reading its profile.
-	// Export inside that shell so a shelf is added without changing the
-	// benchmarked bare command path, which still runs with no Env set at all.
+	// Export inside that shell so a shelf is added without changing the rest of
+	// the environment; the bare path still runs without a shelf.
 	if t.history != nil {
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
@@ -1586,12 +1587,15 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 		environment = replaceEnv(environment, env.Legacy("CODEAF_RTK_BIN"), filepath.Dir(rtkBin))
 		command = "export PATH=\"${CODEAF_RTK_BIN:?}:$PATH\"\n" + command
 	}
+	// A COMMAND THE MODEL RUNS MUST NOT REACH THE TMUX SERVER HOSTING CODEAF,
+	// and here the bare path used to hand the child its parent's whole
+	// environment by leaving cmd.Env nil. JobShellEnv strips TMUX/TMUX_PANE and
+	// names a private socket directory even in that nil case (tools.go).
+	environment = JobShellEnv(environment)
 
 	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)
 	cmd.Dir = t.workspace.Root()
-	if environment != nil {
-		cmd.Env = environment
-	}
+	cmd.Env = environment
 	// A command that leaves a background child sharing its stdout used to hang
 	// the whole run: killing bash at the timeout is not enough, because Wait
 	// blocks until every inherited pipe writer exits, and a scheduler goroutine
@@ -1907,6 +1911,67 @@ func replaceEnv(environment []string, key, value string) []string {
 		}
 	}
 	return append(replaced, prefix+value)
+}
+
+// JobShellEnv is the environment every shell a model's command runs in must
+// receive: with TMUX and TMUX_PANE removed, and TMUX_TMPDIR pointed at a socket
+// directory codeaf owns.
+//
+// A bash call the model runs inherits this process's environment, TMUX and
+// TMUX_PANE included, so a bare `tmux` it runs targets the very server hosting
+// the chat. That is how `tmux kill-server` once took down the chat that ran it
+// (issue #576), and on a shared socket it reached every run on the box. A
+// person running codeaf inside tmux has the same exposure.
+//
+// THE FLOOR IS BOTH HALVES, NOT EITHER. Unsetting TMUX/TMUX_PANE alone lets a
+// bare `tmux` land on the user's default socket — the host server is safe, but
+// the user's own tmux is still reachable, and a job that meant to reach its own
+// server cannot. A private TMUX_TMPDIR alone leaves the inherited TMUX/TMUX_PANE
+// pointing straight at the host server. Together they name a namespace a job's
+// `tmux` reaches, and nothing outside it. A test that needs its own tmux still
+// works: it gets that private TMUX_TMPDIR rather than a stripped-to-broken env.
+//
+// A NIL SLICE IS THE PARENT'S ENVIRONMENT. runShell and the background-job
+// registry leave cmd.Env unset on the benchmarked bare path, which inherits
+// everything; the caller must now hand a real, TMUX-stripped environment, so a
+// nil here is read as os.Environ() and stripped the same way.
+func JobShellEnv(environment []string) []string {
+	if environment == nil {
+		environment = os.Environ()
+	}
+	environment = withoutEnv(environment, "TMUX", "TMUX_PANE")
+	return replaceEnv(environment, "TMUX_TMPDIR", jobTmuxDir())
+}
+
+// withoutEnv drops the named variables from an environment slice. It is
+// internal/env's EnvironWithout for a slice a caller built rather than the
+// process environment, which is all EnvironWithout reads.
+func withoutEnv(environment []string, names ...string) []string {
+	drop := make(map[string]bool, len(names))
+	for _, name := range names {
+		drop[name] = true
+	}
+	kept := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		if name, _, _ := strings.Cut(entry, "="); !drop[name] {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
+}
+
+// jobTmuxDir is the private socket namespace a job's `tmux` command sees: the
+// profile's own tmux directory, which is config.ProfilePath's "<profile>/tmux"
+// — CODEAF_PROFILE_DIR's tmux directory when that is set, the state root's
+// otherwise. It is per profile and not per process so two windows on one
+// profile share a namespace and two profiles never do.
+func jobTmuxDir() string {
+	dir := config.ProfilePath(config.ProfileDir(), "tmux")
+	// tmux creates its own socket directory, but making it here means the
+	// variable a job's shell reads always names a directory that exists, and
+	// that a job which stops before reaching tmux leaves nothing half-made.
+	_ = os.MkdirAll(dir, 0o700)
+	return dir
 }
 
 func intArg(args map[string]any, key string, fallback int) int {

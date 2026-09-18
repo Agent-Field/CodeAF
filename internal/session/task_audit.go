@@ -1112,6 +1112,12 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// landing quotes is the figure the checking actually had.
 	pace := newAuditPace(a.auditWindowFor(door), a.now())
 	if len(door.checks) == 0 {
+		// AND THE NODE KEEPS THE FACT. "Nothing this work declares is re-runnable"
+		// is known only here and dies with the audit, and it is half of what makes
+		// settling the landing one call's work (task_run.go's
+		// [TaskNode.settleCeiling]); the other half is the clean tree the packet
+		// reads ([auditQuestion]).
+		node.sawNoDeclaredCheck()
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
 			pace.window)
 	}
@@ -1241,6 +1247,14 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	}
 	defer func() {
 		_ = auditor.Close()
+		// The model the check ran on is read beside the spend it folds in, for
+		// the same pocket's reason: a landing that later reports who checked the
+		// work names the model that actually answered, failover included, and
+		// not the one that was asked for. The auditor's model is read from the
+		// agent itself rather than from `on`, which is the asked-for id.
+		node.graph.mu.Lock()
+		node.checkedOn = auditor.Model()
+		node.graph.mu.Unlock()
 		// The audit is part of what the node cost, so it lands in the same
 		// pocket the node's own spend does (task_run.go's foldTaskUsage): the
 		// person asked for a task, not for a task and separately for a judge.
@@ -1572,7 +1586,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// through the rounds this is, and what the check said that sent it back.
 	defer a.enterPhase(node, taskBeatRepairing, round, a.config.TaskRepairRounds, taskFindingLine(verdict.evidence))()
 
-	child, err := a.newTaskAgentOn(ctx, taskGroundDir(node, tree), node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
+	child, err := a.newTaskAgentOn(ctx, taskGroundDir(node, tree), node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift), true)
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""
@@ -1849,6 +1863,12 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	// a repository.
 	if manifest := groundManifest(ground.dir); manifest != "" {
 		out.WriteString("\n" + manifest)
+		// AND A TREE GIT REPORTS NOTHING ABOUT IS A FACT THE NODE KEEPS, beside
+		// the no-check fact above: a landing nobody could check on a tree nothing
+		// moved is the one a settle turn reads in a single call.
+		if strings.Contains(manifest, groundManifestClean) {
+			node.sawCleanGround()
+		}
 	}
 	out.WriteString(checkGroundBlock(checks))
 	out.WriteString("\n" + door.line())
@@ -2634,8 +2654,12 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	// back when the model's turn ends without an answer (agent.go).
 	node.holdsDecision(TaskAskOwnerModel)
 	notice := node.notice()
-	a.enqueueSteering(handOverLead + "\n" +
-		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
+	// AND IT IS A SETTLE WAKE. A person handing a decision over is exactly what
+	// `task.settle = auto` does at the landing, so the turn this line wakes runs
+	// under the checker's own bound for the same reason ([settleWake], agent.go's
+	// [Agent.enqueueSettleSteering]).
+	a.enqueueSettleSteering(handOverLead+"\n"+
+		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()), node.settleCeiling())
 	a.emitTaskUpdate(notice)
 	return nil
 }
@@ -2771,10 +2795,11 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// `git rev-parse` and a merge — long enough for a second accept in the same
 	// tool batch, or for a re-audit landing REFUTED, to walk straight through a
 	// state that was read and not held (task_run.go's [TaskNode.claimSettle]).
-	if err := node.claimSettle(claimAccept); err != nil {
+	gen, err := node.claimSettle(claimAccept)
+	if err != nil {
 		return err
 	}
-	defer node.releaseSettle()
+	defer node.releaseSettle(gen)
 	tree, err := node.workingCopy(a.familyPlace(node), a.config.Workspace)
 	if err != nil {
 		return err
@@ -2835,10 +2860,11 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 // has already answered it. Here the auditor answered nothing, so what the node
 // said is still the only account of the work there is.
 func (a *Agent) refuteTask(node *TaskNode, why string, by TaskAskOwner) error {
-	if err := node.claimSettle(claimRefute); err != nil {
+	gen, err := node.claimSettle(claimRefute)
+	if err != nil {
 		return err
 	}
-	defer node.releaseSettle()
+	defer node.releaseSettle(gen)
 	// The same fact in the negative, and it is evidence of exactly the same
 	// weight: a person doing the check's job and finding the work does not hold.
 	node.checkSaid(provider.ReadingSemanticFailure, 0)
@@ -2873,7 +2899,8 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if err != nil {
 		return err
 	}
-	if err := node.claimSettle(claimReaudit); err != nil {
+	gen, err := node.claimSettle(claimReaudit)
+	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2886,13 +2913,13 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	listed, err := a.jobs.startTask(node.id, "re-audit · "+node.title(), cancel)
 	if err != nil {
 		cancel()
-		node.releaseSettle()
+		node.releaseSettle(gen)
 		return fmt.Errorf("the re-audit could not be started: %w — accept it or refute it instead", err)
 	}
 	_, changed, _, _ := node.leavings()
 	go func() {
 		defer cancel()
-		defer node.releaseSettle()
+		defer node.releaseSettle(gen)
 		defer listed.settle(0)
 		// The node supplies its worker's kept conclusion at the common check
 		// boundary. No earlier checker's decision is passed as a claim.
@@ -2901,6 +2928,16 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 			// KILLED IS NOT A VERDICT. The node is left exactly as it was —
 			// unverified, waiting on somebody — because a re-audit that was
 			// stopped is a re-audit that never happened.
+			//
+			// AND THE QUESTION IS HANDED BACK, not held down: a notice built
+			// while the claim stands carries it and would suppress the raise
+			// (task_landing_question.go's [Agent.publishLandingQuestion]), so
+			// the release comes first and the deferred one below hands back
+			// only this claim's own generation. The re-raised card carries the
+			// answer's fate — `asked for a re-check 18:20 · nobody could check
+			// it` (#1077).
+			node.releaseSettle(gen)
+			a.emitTaskUpdate(node.notice())
 			return
 		}
 		a.landAudit(node, tree, verdict, changed)
@@ -3163,6 +3200,11 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// was planned on a leaf's patience, which never acts on a silent machine
 		// inside a thirty-second share (#941).
 		crewRole: roles.RoleAuditor,
+		// AND IT CHECKS A NODE IT IS NOT. The checker's whole finding is about
+		// this node, so its records name it — the model-call log's node and the
+		// usage row's task ([Config.checksNode]) — while taskID above stays 0,
+		// because the auditor is not the node it reads.
+		checksNode: node.id,
 		// The auditor is the node too, as far as anybody watching is concerned:
 		// it runs on the node's clock, in the node's worktree, and a card whose
 		// audit is parked on a provider's pacing is a card whose task is not

@@ -23,7 +23,6 @@ package verify
 // door downstream is allowed to act on.
 
 import (
-	"regexp"
 	"strings"
 )
 
@@ -177,13 +176,13 @@ func openBrackets(line string, depth int) int {
 // ── Python ───────────────────────────────────────────────────────────────────
 
 var (
-	pythonAssert = regexp.MustCompile(`^\s*assert(\s|\()`)
+	pythonAssert = lazyRegexp(`^\s*assert(\s|\()`)
 	// The shapes a python suite spells an assertion in that are not the
 	// statement: pytest's context manager, and unittest's own methods. Both are
 	// matched where they are WRITTEN rather than by a list of method names, so a
 	// project's own assertFoo helper counts as one.
-	pythonRaises = regexp.MustCompile(`\bpytest\.raises\s*\(|\bself\.assert[A-Za-z_]*\s*\(|\bassert_[A-Za-z_]*\s*\(`)
-	pythonClassM = regexp.MustCompile(`^(\s*)class\s+[A-Za-z_][A-Za-z0-9_]*\s*[(:]`)
+	pythonRaises = lazyRegexp(`\bpytest\.raises\s*\(|\bself\.assert[A-Za-z_]*\s*\(|\bassert_[A-Za-z_]*\s*\(`)
+	pythonClassM = lazyRegexp(`^(\s*)class\s+[A-Za-z_][A-Za-z0-9_]*\s*[(:]`)
 )
 
 // pythonAssertions reads a python file's checks and the statements that weigh
@@ -210,7 +209,7 @@ func pythonAssertions(body string) Assertions {
 			continue
 		}
 		indent := indentOf(line)
-		if match := pythonClassM.FindStringSubmatch(line); match != nil {
+		if match := pythonClassM().FindStringSubmatch(line); match != nil {
 			// A class at or outside the open definition ends it. A class INSIDE
 			// one is a fixture the check declares for itself and changes nothing.
 			if ownerIndent < 0 || indent <= ownerIndent {
@@ -219,7 +218,7 @@ func pythonAssertions(body string) Assertions {
 			}
 			continue
 		}
-		if match := pythonDef.FindStringSubmatch(line); match != nil {
+		if match := pythonDef().FindStringSubmatch(line); match != nil {
 			// A definition at or outside the class header closes the class: the
 			// body ended where the indentation came back.
 			if classIndent >= 0 && indent <= classIndent {
@@ -236,7 +235,7 @@ func pythonAssertions(body string) Assertions {
 		if ownerIndent < 0 || indent <= ownerIndent {
 			continue
 		}
-		if pythonAssert.MatchString(line) || pythonRaises.MatchString(line) {
+		if pythonAssert().MatchString(line) || pythonRaises().MatchString(line) {
 			read.add(line)
 			depth = openBrackets(line, 0)
 		}
@@ -247,13 +246,13 @@ func pythonAssertions(body string) Assertions {
 // ── Go ───────────────────────────────────────────────────────────────────────
 
 var (
-	goFunc = regexp.MustCompile(`^func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
+	goFunc = lazyRegexp(`^func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
 	// The two ways a go check says something failed: the testing type's own
 	// reporting methods, and the assertion libraries every go project reaches
 	// for. Both are matched on the CALL and never on a list of check names.
-	goReport = regexp.MustCompile(`(?i)\b[a-z_][a-z0-9_]*\.(?:errorf?|fatalf?|fail|failnow)\s*\(`)
-	goAssert = regexp.MustCompile(`(?i)\b(?:assert|require|is)\.[a-z_][a-z0-9_]*\s*\(`)
-	goIf     = regexp.MustCompile(`^\s*if\s`)
+	goReport = lazyRegexp(`(?i)\b[a-z_][a-z0-9_]*\.(?:errorf?|fatalf?|fail|failnow)\s*\(`)
+	goAssert = lazyRegexp(`(?i)\b(?:assert|require|is)\.[a-z_][a-z0-9_]*\s*\(`)
+	goIf     = lazyRegexp(`^\s*if\s`)
 )
 
 // goAssertions reads a go file's functions and what each of them asserts.
@@ -277,23 +276,23 @@ func goAssertions(body string) Assertions {
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 			continue
 		}
-		if match := goFunc.FindStringSubmatch(line); match != nil {
+		if match := goFunc().FindStringSubmatch(line); match != nil {
 			read.declare(match[1])
 			lastIf = ""
 			continue
 		}
-		if goIf.MatchString(line) {
+		if goIf().MatchString(line) {
 			lastIf = line
 			// An `if` is not itself an assertion — it is a condition, and it
 			// becomes one only where the branch under it reports a failure.
 			continue
 		}
-		if goAssert.MatchString(line) {
+		if goAssert().MatchString(line) {
 			read.add(line)
 			depth = openBrackets(line, 0)
 			continue
 		}
-		if goReport.MatchString(line) {
+		if goReport().MatchString(line) {
 			if lastIf != "" {
 				read.add(lastIf)
 				lastIf = ""
@@ -312,11 +311,11 @@ var (
 	// the first argument. `describe` is deliberately absent — it groups checks
 	// and asserts nothing itself, and a group's name owning its children's
 	// assertions would let one assertion anywhere in a file answer for the group.
-	scriptCase = regexp.MustCompile(
+	scriptCase = lazyRegexp(
 		"^\\s*(?:it|test)(?:\\.\\w+)*\\s*\\(\\s*[`'\"]([^`'\"]+)[`'\"]")
 	// expect(...) is vitest, jest and chai; assert.* is node's own and chai's
 	// second face; t.something(...) is ava and node:test.
-	scriptAssert = regexp.MustCompile(
+	scriptAssert = lazyRegexp(
 		`(?i)\bexpect\s*\(|\bassert\s*[.(]|\bt\.(?:is|not|deepequal|notdeepequal|true|false|throws|regex|like)\s*\(`)
 )
 
@@ -339,11 +338,11 @@ func scriptAssertions(body string) Assertions {
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "*") {
 			continue
 		}
-		if match := scriptCase.FindStringSubmatch(line); match != nil {
+		if match := scriptCase().FindStringSubmatch(line); match != nil {
 			read.declare(match[1])
 			continue
 		}
-		if scriptAssert.MatchString(line) {
+		if scriptAssert().MatchString(line) {
 			read.add(line)
 			depth = openBrackets(line, 0)
 		}
@@ -354,8 +353,8 @@ func scriptAssertions(body string) Assertions {
 // ── Rust ─────────────────────────────────────────────────────────────────────
 
 var (
-	rustFn        = regexp.MustCompile(`^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	rustAssertMac = regexp.MustCompile(`\b(?:debug_)?assert(?:_eq|_ne|_matches)?!\s*[(\[]|\.unwrap_err\s*\(|\bpanic!\s*\(`)
+	rustFn        = lazyRegexp(`^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	rustAssertMac = lazyRegexp(`\b(?:debug_)?assert(?:_eq|_ne|_matches)?!\s*[(\[]|\.unwrap_err\s*\(|\bpanic!\s*\(`)
 )
 
 // rustAssertions reads a rust file's functions and the macros in each that weigh
@@ -374,11 +373,11 @@ func rustAssertions(body string) Assertions {
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 			continue
 		}
-		if match := rustFn.FindStringSubmatch(line); match != nil {
+		if match := rustFn().FindStringSubmatch(line); match != nil {
 			read.declare(match[1])
 			continue
 		}
-		if rustAssertMac.MatchString(line) {
+		if rustAssertMac().MatchString(line) {
 			read.add(line)
 			depth = openBrackets(line, 0)
 		}

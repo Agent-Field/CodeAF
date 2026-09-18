@@ -184,8 +184,9 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) (shapedBrief, bo
 			return shapedBrief{}, false
 		}
 		// The person pays for it out of the same pocket the title and the
-		// guardian come out of, and no turn asked for it.
-		a.addAuxiliaryUsage(response, call.Model, 1)
+		// guardian come out of, and no turn asked for it. The call names itself
+		// a shaper, so the row is seated by the shaper's own tier.
+		a.addAuxiliaryUsageAs(response, call.Model, 1, string(roles.RoleShaper))
 		if shaped, ok := parseShapedBrief(response.Text()); ok {
 			return shaped, true
 		}

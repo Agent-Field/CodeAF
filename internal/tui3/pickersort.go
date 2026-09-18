@@ -175,6 +175,10 @@ func tableAheadName(back bool, first, second string) bool {
 // safe to sort on.
 type pickerRank struct {
 	name string
+	// group is the row's service in the order those services are held
+	// ([Model.GroupOrder]), and it is the OUTER key of every sort — see the
+	// comparator in [picker.sortHits] for why a column may not reorder services.
+	group int
 	// score is how well this row matched what was typed ([queryScore], lower is
 	// better) and is meaningless with an empty box, where every row scores zero.
 	score  int
@@ -199,10 +203,16 @@ type pickerRank struct {
 func pickerRankOf(model Model, pin, routing string) pickerRank {
 	rank := pickerRank{
 		name:   strings.ToLower(model.ID),
-		in:     model.PromptPrice,
-		out:    model.CompletionPrice,
+		group:  model.GroupOrder,
 		window: float64(model.ContextLength),
 		elo:    model.ArenaElo,
+	}
+	// BOTH HALVES OR NEITHER, the same reading [modelFactsOf] makes of a price:
+	// a catalog row that published one side of it draws NO price at all, and a
+	// sort that took the half it had ordered the list by a figure that is not on
+	// the screen — the row would sit among the cheap ones with a blank cell.
+	if model.PromptPrice > 0 && model.CompletionPrice > 0 {
+		rank.in, rank.out = model.PromptPrice, model.CompletionPrice
 	}
 	via, best, known := modelLaneReading(model, pin, routing)
 	rank.via = via
@@ -261,13 +271,13 @@ func (p *picker) sortableColumn(at int) bool {
 
 // sortHits puts the filter's hits in the order the sort asks for.
 //
-// IT IS STABLE AND IT IGNORES THE SERVICE GROUPS. Stable so that rows a column
+// IT IS STABLE AND IT SORTS INSIDE EACH SERVICE. Stable so that rows a column
 // cannot tell apart — every model with no elo, every model at the same price —
 // keep the order they already had, which is the name ranking's and is the only
-// order a person has any expectation about. And across groups because "the
-// cheapest model" is a question about the catalog and not about one service: the
-// group HEADINGS come off ([picker.groupBefore]), since a heading over rows that
-// are no longer grouped by it is a claim about the structure that is not true.
+// order a person has any expectation about. Inside each service because the
+// headings are the shape of the page rather than a column of it; the comparator
+// says why, and on the ordinary door with one service there is no difference to
+// see.
 func (p *picker) sortHits(ranked bool) {
 	if len(p.hits) < 2 {
 		return
@@ -291,6 +301,21 @@ func (p *picker) sortHits(ranked bool) {
 	order, col := p.sort, p.sort.column()
 	sort.SliceStable(p.hits, func(i, j int) bool {
 		first, second := ranks[p.hits[i]], ranks[p.hits[j]]
+		// ── A SERVICE IS THE SPINE AND NOT A COLUMN ──────────────────────────
+		//
+		// The list is drawn under one heading per service, written where the
+		// service changes from the row before ([picker.groupBefore]) — so the
+		// service order is not a preference this table may express, it is the
+		// shape of the page. A sort that ignored it moved a lonely connection
+		// above `openrouter` because its one row had no price, and interleaving
+		// two services' rows would have drawn the same heading twice.
+		//
+		// SO EVERY COLUMN ORDERS ROWS INSIDE A SERVICE, never the services, and
+		// the arrow on a heading-less list (one service, which is nearly every
+		// door) means exactly what it says.
+		if first.group != second.group {
+			return first.group < second.group
+		}
 		if col == tableSortName {
 			// ── THE NAME COLUMN IS RELEVANCE FIRST WHILE SOMETHING IS TYPED ───
 			//

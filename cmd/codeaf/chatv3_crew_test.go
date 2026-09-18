@@ -32,8 +32,9 @@ func TestAMidSessionCrewChangeIsHonoredByTheNextCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before != "z-ai/glm-5.3" {
-		t.Fatalf("the planner started on %q", before)
+	shipped, _ := roles.SplitEffort(config.DefaultMastermindModel)
+	if before != shipped {
+		t.Fatalf("the planner started on %q, want the shipped mastermind's %q", before, shipped)
 	}
 
 	if err := config.ApplyCrew(dir, config.CrewFrugal); err != nil {
@@ -121,7 +122,7 @@ func TestABrokenRowLeavesTheLastGoodCrewInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	want, _ := config.CrewModels(config.CrewMax)
-	if model, _ := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation"); model != "moonshotai/kimi-k3" {
+	if model, _ := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation"); model != want[config.ModelTierMastermind] {
 		t.Fatalf("after the row parsed again the planner resolves to %q, want the max crew's %q",
 			model, want[config.ModelTierMastermind])
 	}

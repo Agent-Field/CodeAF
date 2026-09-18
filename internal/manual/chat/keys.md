@@ -728,9 +728,10 @@ above, those are the keys.
 
 The caret keys are one vocabulary and every box on the surface answers it: the
 message box, **home's box at the foot of the screen**, the errand pane on home,
-the settings filter and its value editor, the task page's filter, the rewind
-search, and every filterable overlay — the model picker, `/resume`, `/files`, the
-memory panel, the connect key box, the connections panel.
+the `something else…` box on a question's own answer row, the settings filter and
+its value editor, the task page's filter, the rewind search, and every filterable
+overlay — the model picker, `/resume`, `/files`, the memory panel, the connect key
+box, the connections panel.
 
 | Chord | Everywhere |
 |---|---|

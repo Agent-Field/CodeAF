@@ -667,3 +667,79 @@ func TestASparseColumnLeavesItsBlanksInNameOrder(t *testing.T) {
 		t.Fatalf("the blank rows are %v, want them alphabetical", straight)
 	}
 }
+
+// A SERVICE HEADING IS NOT A COLUMN. With a connection of your own the list is
+// drawn under one dim heading per service, in the order the services are held,
+// and no column may reorder them: a sort that ignored the headings put a lonely
+// local box above `openrouter` because its one row had no price, and two
+// services' rows interleaved would have drawn the same heading twice. So every
+// column orders the rows INSIDE a service.
+func TestASortOrdersRowsInsideAServiceAndNeverTheServices(t *testing.T) {
+	a := customConnectionApp(t, map[string][]Model{
+		"custom": {
+			{ID: "z-cheap", PromptPrice: 1e-7, CompletionPrice: 2e-7},
+			{ID: "a-dear", PromptPrice: 9e-6, CompletionPrice: 9e-5},
+		},
+		"custom-studio": {
+			{ID: "y-cheap", PromptPrice: 2e-7, CompletionPrice: 3e-7},
+			{ID: "b-dear", PromptPrice: 8e-6, CompletionPrice: 8e-5},
+		},
+	})
+	a.width, a.height = 120, 40
+	typeLine(t, a, "/model")
+	// Two presses off the name column is `in/M` ascending: this list measures no
+	// provider, so the cycle steps over `via`, `first` and `t/s`.
+	drive(t, a, key(tasksSortKeyChord))
+	drive(t, a, key(tasksSortKeyChord))
+	if got := sortWord(a.pick.sort); got != "in/M "+tasksSortDown {
+		t.Fatalf("two presses landed on %q, want in/M ascending", got)
+	}
+	// The cheapest row of each service, under that service — and never the
+	// cheapest row of the catalog at the top of it.
+	want := []string{
+		"openai/gpt-4.1-mini",
+		"homelab/z-cheap", "homelab/a-dear",
+		"studio/y-cheap", "studio/b-dear",
+	}
+	if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("the sorted list is\n  %v\nwant\n  %v", got, want)
+	}
+	// AND EVERY HEADING IS STILL DRAWN ONCE, in the order the services are held.
+	lines := groupPickerLines(a)
+	homelabAt, studioAt := lineIndex(lines, func(l string) bool { return l == "homelab" }),
+		lineIndex(lines, func(l string) bool { return l == "studio" })
+	if homelabAt < 0 || studioAt < 0 || homelabAt > studioAt {
+		t.Fatalf("the sorted list drew its headings out of order:\n%s", strings.Join(lines, "\n"))
+	}
+	for _, group := range []string{"homelab", "studio"} {
+		if got := headingLines(lines, group); got != 1 {
+			t.Fatalf("the sorted list drew the %q heading %d times, want once:\n%s",
+				group, got, strings.Join(lines, "\n"))
+		}
+	}
+}
+
+// HALF A PRICE IS NO PRICE, IN THE ORDER AS WELL AS IN THE CELL. A catalog row
+// that published a prompt price and no completion price draws no price at all
+// ([modelFactsOf]'s "both halves or neither"), and the sort used to take the half
+// it had — so that row sat among the cheapest ones with a blank cell, which is
+// the list ordered by a figure nobody can see.
+func TestAPriceWithOneHalfMissingSortsWithTheBlanks(t *testing.T) {
+	half := append([]Model(nil), sortCatalog...)
+	half = append(half, Model{ID: "e/halfpriced", PromptPrice: 1e-9})
+	a := pickerApp(t, &fakeAgent{model: "c/middle"}, half)
+	a.width, a.height = 120, 40
+	typeLine(t, a, "/model")
+	for _, head := range []string{"in/M", "out/M"} {
+		for _, back := range []bool{false, true} {
+			a.pick.sort = sortOn(modelColumns, head, back)
+			a.pick.rank()
+			got := pickerIDs(a)
+			// The two rows with no price of their own, alphabetically, under every
+			// row that has one — whichever way round the column is read.
+			if tail := strings.Join(got[len(got)-2:], ","); tail != "d/silent,e/halfpriced" {
+				t.Fatalf("%s back=%v ended %v, want the priceless rows last", head, back, got)
+			}
+		}
+	}
+}

@@ -1934,7 +1934,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 		read.ownerGone = owner.Err() != nil
 		return read
 	}
-	a.addAuxiliaryUsage(response, reader, 1)
+	a.addAuxiliaryUsageAs(response, reader, 1, string(roles.RoleMarkReader))
 	if response.Usage != nil {
 		read.costUSD = costOf(response.Usage)
 	}
@@ -3612,7 +3612,7 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 	// and neither of those goes anywhere near the reading above. The tidy is owed
 	// to whoever comes to look at the tree afterwards, however the run ended.
 	if decision.Verb == DecideStop {
-		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+		a.sweepSession(a.reconcileNow())
 	}
 	a.journalDecision(decision)
 	return decision
@@ -3810,7 +3810,7 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	if err != nil || response == nil {
 		return readerLine{unreachable: true}
 	}
-	a.addAuxiliaryUsage(response, reader, 1)
+	a.addAuxiliaryUsageAs(response, reader, 1, string(roles.RoleMarkReader))
 	said := strings.TrimSpace(response.Text())
 	if declaresNothingLeft(said) {
 		// THE READER SAYING NOTHING IS LEFT IS A FACT, NOT A SILENCE. It used to
@@ -4698,7 +4698,7 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 		// A DONE THAT SEALED IS FINISHED WITH WHAT IT MADE, so the tidy the
 		// stopped-turn road takes with its second reading is taken here, now that
 		// the turn is known to end ([Agent.decideHandover]).
-		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+		a.sweepSession(a.reconcileNow())
 	}
 	hub.send(Event{Kind: EventNotice, Text: note})
 	a.record(textMessage("assistant", note))
@@ -4883,7 +4883,7 @@ func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said stri
 		decision, _ = a.decideOverTheChecks(ctx, remains)
 	}
 	if decision.Verb == DecideStop {
-		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+		a.sweepSession(a.reconcileNow())
 	}
 	return decision
 }

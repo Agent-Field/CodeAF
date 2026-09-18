@@ -112,6 +112,7 @@ type setupFlow struct {
 	crewOpen   bool
 	crewAt     int
 	crewPick   string
+	crewSource string
 	reviewOpen bool
 	example    int
 	seeded     bool

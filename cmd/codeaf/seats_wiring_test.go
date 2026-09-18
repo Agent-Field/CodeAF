@@ -148,7 +148,10 @@ func TestAnErrandWithNoFlagsRunsTheProfilesCrewAndSaysSo(t *testing.T) {
 		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
 	}
 
-	work := config.TierModelAt(script.dir, config.ModelTierLow)
+	// THE WORK SEAT IS THE WORKER ROW, which is what [config.ResolveSeats] fills
+	// it from. It used to be read off the small-work row here and pass anyway,
+	// because the frugal preset happened to put one id on both.
+	work := config.TierModelAt(script.dir, config.ModelTierWorker)
 	plan := config.TierModelAt(script.dir, config.ModelTierMastermind)
 	for _, model := range []string{work, plan} {
 		found := false

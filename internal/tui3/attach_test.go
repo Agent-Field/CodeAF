@@ -63,7 +63,7 @@ func attachLab(t *testing.T, files map[string]int) (*app, *imageAgent, string) {
 		}
 	}
 	agent := &imageAgent{fakeAgent: &fakeAgent{model: "vendor/sees"}}
-	a := newApp(context.Background(), Options{Agent: agent, Workspace: dir})
+	a := newApp(context.Background(), Options{Agent: agent, Workspace: dir, ProfileDir: t.TempDir()})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.entries = nil

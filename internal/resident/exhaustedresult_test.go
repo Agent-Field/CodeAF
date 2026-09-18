@@ -139,3 +139,65 @@ func TestAnExhaustedResultWithNothingRecordedFails(t *testing.T) {
 		t.Fatalf("the failure %q does not name the exhaustion", final.Error)
 	}
 }
+
+// AND A RE-DISPATCH THAT BANKED NOTHING ITS PREDECESSOR HAD NOT IS REFUSED, so
+// the node fails rather than buying the same truncated ending a third time. The
+// grant moves with the attempt now (see cmd/codeaf's regrantAfterRunningOut),
+// which makes the comparison honest: a re-dispatch given more room that
+// reaches the same recorded count has been paid to move and did not.
+func TestAnExhaustedRedispatchThatBankedNothingNewFails(t *testing.T) {
+	graph := openRunnerStore(t)
+	spliceOneLeaf(t, graph, "task-2")
+	recordTurns(t, graph, "task-2", 3)
+
+	starts := make(chan struct{}, 8)
+	runner := NewRunner(graph, func(ctx context.Context, node store.Node) (ExecResult, error) {
+		starts <- struct{}{}
+		// The same truncated ending both times: nothing new is recorded between
+		// the two attempts, so the re-dispatch reaches exactly what the attempt
+		// before it had already banked.
+		return ExecResult{
+			Summary: "All 722 tests pass. Let me verify the dry-run tests specifically:",
+			Stop:    executor.StopBudget,
+			Meter:   executor.Meter{Name: "cost", Reached: 178086, Allowed: 176834, Unit: "tokens of billed work"},
+		}, nil
+	}, "chat-runner", 1)
+
+	ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- runner.Serve(ctx) }()
+
+	waitFor(t, starts, "the leaf never started")
+	waitFor(t, starts, "the re-dispatch never started — the exhausted node was not sent round again")
+	deadline := time.Now().Add(8 * time.Second)
+	var final store.Node
+	for time.Now().Before(deadline) {
+		node, found, err := graph.Node("task-2")
+		if err != nil {
+			t.Fatalf("read the node: %v", err)
+		}
+		if found && node.Status == store.Failed {
+			final = node
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	stop()
+	<-served
+	runner.Wait()
+
+	if final.Status != store.Failed {
+		t.Fatalf("a re-dispatch that banked nothing new settled %q, want failed — it must not "+
+			"be sent round to buy the same truncated ending again", final.Status)
+	}
+	if final.Attempt != 2 {
+		t.Fatalf("the node was claimed %d times, want the two of a first attempt and one refused re-dispatch",
+			final.Attempt)
+	}
+	for _, want := range []string{"refused", "added nothing"} {
+		if !contains(final.Error, want) {
+			t.Fatalf("the failure %q does not say the re-dispatch was refused for adding nothing", final.Error)
+		}
+	}
+}
