@@ -24,6 +24,16 @@ body describes what is on the branch now, at product height.
   are writes to the plan, and a run worker reads them in its next frame. Hard
   verbs (cancel cascades to descendants and dependents; pause holds a subtree
   out of the frontier) are enforced by the runtime whatever the model does.
+- **A text reply no longer ends a task; the task ends when `plandb` says
+  done.** A worker that answers in words with no command is told `no action
+  executed: answer with one bash call; finish with plandb done <your id>
+  --result '…' when the acceptance holds; wait with plandb wait when you are
+  blocked on another task` and goes round again; four such replies in a row
+  fail the task; `plandb wait` parks it with its claim released. Three tests
+  that scripted the old text ending were rewritten to finish in the store:
+  `TestBashWorkerPublishesTheLiveStepWhileItsCommandRuns`,
+  `TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult` and
+  `TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession`.
 - **The spend block.** Every model call a run makes lands one row in the store's
   ledger tagged with the task, the model and the seat it ran on. The spend page
   draws the run's task spend by seat, and reads it back with `plandb spend --by
@@ -98,8 +108,6 @@ reply with no action.
   harness at or beyond the shipped engine on pass rate, median cost and median
   wall *at once*, with no cell where the shipped engine wins on any of the
   three. Today it loses c5 on pass rate.
-- **A reply with no action still ends a task.** It is what ended the bandit
-  interprocedural-taint rerun early; the fix is in flight.
 - **A leaf that produced deliverables has no review task yet.** The checker seat
   (a `check` role reviewed against the leaf's acceptance) is designed and
   partly landed; the runtime does not yet refuse a root finish without it.
