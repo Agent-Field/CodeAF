@@ -516,6 +516,21 @@ func seedJudgedMarker(t *testing.T, dir string, id uint64, attempt int) {
 	}
 }
 
+// seedInstallFile writes the install's nonce file where a sending install
+// leaves it, so status is read against what stands on disk. The bytes are a
+// fixture in the accepted shape; a reading form asks only whether the file is
+// there, never what it holds.
+func seedInstallFile(t *testing.T, dir string) {
+	t.Helper()
+	poolDir := filepath.Join(dir, "pool")
+	if err := os.MkdirAll(poolDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(poolDir, installFile), []byte(strings.Repeat("a", nonceHexLen)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // seedSweepLast writes the sweep's record the way the sweep leaves it, so
 // status is read against what stands on disk.
 func seedSweepLast(t *testing.T, dir string, last sweepLast) {
@@ -647,6 +662,158 @@ func TestPoolStatusSaysWhenNothingWaitsAndNoSweepHasRun(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"last_sweep":null`) {
 		t.Fatalf("a missing sweep record was not said as null:\n%s", out.String())
+	}
+}
+
+// A fresh install that has minted its nonce says so at the end of the outbox
+// line, and one that has not says the line it always did — and looking never
+// mints the file, because a reading form writes nothing.
+func TestPoolStatusSaysTheInstallIdentityIsSetAndNeverMintsIt(t *testing.T) {
+	dir := t.TempDir()
+	seedInstallFile(t, dir)
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "can read yes · identity set") {
+		t.Fatalf("status did not say the install's identity is set:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Identity *bool `json:"identity"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.Identity == nil || !*answer.Identity {
+		t.Fatalf("--json did not carry the identity: %+v", answer.Identity)
+	}
+
+	// No nonce yet: the line is the line it has always been, and the reading
+	// form did not mint one.
+	quiet := t.TempDir()
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "pending 0 · can send yes · can read yes") {
+		t.Fatalf("an install with no nonce did not print the line as it was:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "identity set") {
+		t.Fatalf("an install with no nonce claimed an identity:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(quiet, "pool", installFile)); !os.IsNotExist(err) {
+		t.Fatal("status minted the install nonce it was only reading")
+	}
+
+	// The JSON form says false rather than absent, so a script reads a
+	// not-yet-sending install from one that is.
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"identity":false`) {
+		t.Fatalf("an install with no nonce did not say false:\n%s", out.String())
+	}
+}
+
+// status counts every landing that has ever been judged, from the markers the
+// judge leaves, and folds the total into the sweep line; a line with no marker
+// to count reads as it always did, and --json carries the total beside the
+// sweep's record.
+func TestPoolStatusCountsTheJudgedInAllAndFoldsItIntoTheSweepLine(t *testing.T) {
+	dir := t.TempDir()
+	for _, id := range []uint64{3, 5, 8} {
+		seedJudgedMarker(t, dir, id, 1)
+	}
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last sweep: none yet · judged 3 in all") {
+		t.Fatalf("status did not count the judged landings in all:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, dir, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		JudgedTotal *int `json:"judged_total"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("status --json did not parse: %v\n%s", err, out.String())
+	}
+	if answer.JudgedTotal == nil || *answer.JudgedTotal != 3 {
+		t.Fatalf("--json carried %v, want 3 judged in all", answer.JudgedTotal)
+	}
+
+	// No marker at all: the sweep line is the one it has always been.
+	quiet := t.TempDir()
+	out.Reset()
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last sweep: none yet") {
+		t.Fatalf("status did not say no sweep has run:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "in all") {
+		t.Fatalf("status counted landings in all with no marker to count:\n%s", out.String())
+	}
+}
+
+// With no judge record the judge line says what the absence means — nothing
+// has landed to be judged, rather than the pool being off — and --json keeps
+// last_judge null.
+func TestPoolStatusSaysNoLandingWasJudgedWhenThereIsNoRecord(t *testing.T) {
+	quiet := t.TempDir()
+	var out strings.Builder
+	if err := runPoolWith([]string{"status"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "last judge: none yet (no landing judged)") {
+		t.Fatalf("status did not say no landing was judged:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"status", "--json"}, &out, quiet, poolClock(t), deadEnv()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"last_judge":null`) {
+		t.Fatalf("a missing record was not said as null:\n%s", out.String())
+	}
+}
+
+// None of the three reaches show: the reading form's words and its --json are
+// the ones they always were, so a person reading the config reads no status.
+func TestPoolShowIsUnchangedByTheIdentityTheJudgedTotalAndTheLandingSentence(t *testing.T) {
+	dir := seedIndex(t)
+	seedInstallFile(t, dir)
+	for _, id := range []uint64{1, 2, 3} {
+		seedJudgedMarker(t, dir, id, 1)
+	}
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{"identity set", "in all", "no landing judged"} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("show carried status's %q:\n%s", unwanted, out.String())
+		}
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{`"identity"`, `"judged_total"`} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("show --json carried status's %s:\n%s", unwanted, out.String())
+		}
 	}
 }
 
