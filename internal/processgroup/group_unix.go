@@ -53,12 +53,14 @@ func (g Group) Kill() error {
 
 // Alive reports whether the recorded group is still there AND still this job's.
 // A group that cannot be attributed is not alive for our purposes: there is
-// nothing of ours left to wait on and nothing of ours to escalate against. It
-// records no refusal because it is polled in a loop; the signals below, sent at
-// most a few times, are what carry the reason.
+// nothing of ours left to wait on and nothing of ours to escalate against, and
+// neither is a group whose only remaining member is a zombie (members_linux.go
+// says why that case is asked about at all). It records no refusal because it
+// is polled in a loop; the signals above, sent at most a few times, are what
+// carry the reason.
 func (g Group) Alive() bool {
 	if ok, _ := g.owned(); !ok {
 		return false
 	}
-	return Alive(g.pid)
+	return groupHasLiveMember(g.pid)
 }
