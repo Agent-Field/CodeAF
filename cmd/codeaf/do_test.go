@@ -707,6 +707,44 @@ func TestTheWaitingLinesElapsedNeverGoesBackwards(t *testing.T) {
 // one node for its whole life while the journal grew steadily beside it, and it
 // printed nothing. So the clock belongs to this errand's own nodes, and events
 // that are nobody's business here may not silence it.
+func startUsageNoise(parent context.Context, record func()) func() {
+	noise, stop := context.WithCancel(parent)
+	go func() {
+		for noise.Err() == nil {
+			record()
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+	return stop
+}
+
+func TestUsageNoiseStopWaitsForTheWriter(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	stop := startUsageNoise(context.Background(), func() {
+		close(entered)
+		<-release
+	})
+	<-entered
+
+	returned := make(chan struct{})
+	go func() {
+		stop()
+		close(returned)
+	}()
+	var returnedBeforeRelease bool
+	select {
+	case <-returned:
+		returnedBeforeRelease = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	<-returned
+	if returnedBeforeRelease {
+		t.Fatal("usage noise stop returned while its writer was still running")
+	}
+}
+
 func TestTheWaitingLineSurvivesAJournalThatIsMovingElsewhere(t *testing.T) {
 	root := t.TempDir()
 	graph, err := store.Open(filepath.Join(root, "graph.db"))
@@ -738,17 +776,13 @@ func TestTheWaitingLineSurvivesAJournalThatIsMovingElsewhere(t *testing.T) {
 	}
 	// The journal grows the whole time the watcher is waiting, and not one row
 	// of it is a node changing state.
-	noise, stop := context.WithCancel(context.Background())
+	stop := startUsageNoise(context.Background(), func() {
+		_ = graph.RecordUsage(store.NodeUsage{
+			NodeID: "task-2", PromptTokens: 10, CompletionTokens: 1,
+			Cost: 0.0001, Model: "z-ai/glm-5.3-flash",
+		})
+	})
 	defer stop()
-	go func() {
-		for noise.Err() == nil {
-			_ = graph.RecordUsage(store.NodeUsage{
-				NodeID: "task-2", PromptTokens: 10, CompletionTokens: 1,
-				Cost: 0.0001, Model: "z-ai/glm-5.3-flash",
-			})
-			time.Sleep(5 * time.Millisecond)
-		}
-	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 700*time.Millisecond)
 	defer cancel()
