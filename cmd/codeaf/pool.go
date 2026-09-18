@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -209,7 +210,8 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 			return err
 		}
 	}
-	if cached == nil {
+	held := cached
+	if held == nil {
 		// A nothing is said in a sentence, the way an empty cache is:
 		// silence and a bare header both read as a command that broke. And the
 		// index the build carries is named beside it, so a person knows there
@@ -218,6 +220,7 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 		line := "no index cached yet"
 		if seed, err := index.SeedIndex(); err == nil {
 			line = fmt.Sprintf("no index cached yet · built-in seed of %s, %s", seed.Generated().Format("2006-01-02"), countWord(indexCellCount(seed), "cell", "cells"))
+			held = seed
 		}
 		if _, err := fmt.Fprintln(output, line); err != nil {
 			return err
@@ -229,6 +232,14 @@ func printPool(output io.Writer, poolDir string, cfg poolcfg.Config, now time.Ti
 			generated.Format("2006-01-02"), reltime.Elapsed(now.Sub(generated)),
 			cached.Schema(), countWord(len(cached.Metrics()), "metric", "metrics"),
 			countWord(len(cached.Judges()), "judge", "judges"), countWord(indexCellCount(cached), "cell", "cells"), cached.MinInstalls()); err != nil {
+			return err
+		}
+	}
+	// One line per declared metric, after the index line: the count above
+	// says how many, these say which — and which of them are judged scores
+	// and which are graded shares.
+	for _, line := range metricLines(held) {
+		if _, err := fmt.Fprintln(output, line); err != nil {
 			return err
 		}
 	}
@@ -415,14 +426,31 @@ type poolAnswer struct {
 // "cache" for the one under the profile, "seed" for the one the build carries
 // when there is no cache.
 type indexSummary struct {
-	Generated   string `json:"generated"`
-	AgeSeconds  int    `json:"age_seconds"`
-	Schema      int    `json:"schema"`
-	Metrics     int    `json:"metrics"`
-	Judges      int    `json:"judges"`
-	Cells       int    `json:"cells"`
-	MinInstalls int    `json:"min_installs"`
-	Source      string `json:"source"`
+	Generated  string `json:"generated"`
+	AgeSeconds int    `json:"age_seconds"`
+	Schema     int    `json:"schema"`
+	// Metrics stays the count readers of today's shape already read;
+	// metric_list is the per-metric detail beside it, not instead of it.
+	Metrics     int             `json:"metrics"`
+	MetricList  []metricSummary `json:"metric_list"`
+	Judges      int             `json:"judges"`
+	Cells       int             `json:"cells"`
+	MinInstalls int             `json:"min_installs"`
+	Source      string          `json:"source"`
+}
+
+// metricSummary is one declared metric as the reading forms carry it: the
+// words the document spells for it, its cells counted, and — when its cells
+// are split by the source that produced each measurement — the distinct
+// sources beside them. A metric whose cells are not split by one carries no
+// sources.
+type metricSummary struct {
+	Name    string   `json:"name"`
+	Kind    string   `json:"kind"`
+	Unit    string   `json:"unit"`
+	Dims    []string `json:"dims"`
+	Cells   int      `json:"cells"`
+	Sources []string `json:"sources,omitempty"`
 }
 
 func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached *index.Index, now time.Time, withStatus bool, keys []ed25519.PublicKey) error {
@@ -451,6 +479,7 @@ func printPoolJSON(output io.Writer, poolDir string, cfg poolcfg.Config, cached 
 			AgeSeconds:  int(now.Sub(generated) / time.Second),
 			Schema:      held.Schema(),
 			Metrics:     len(held.Metrics()),
+			MetricList:  indexMetricSummaries(held),
 			Judges:      len(held.Judges()),
 			Cells:       indexCellCount(held),
 			MinInstalls: held.MinInstalls(),
@@ -563,19 +592,27 @@ func verifyPool(args []string, output io.Writer, poolDir string, cfg poolcfg.Con
 	generated := held.Generated().Format("2006-01-02")
 	if *asJSON {
 		encoded, err := json.Marshal(struct {
-			Verified  bool   `json:"verified"`
-			Version   int64  `json:"version"`
-			Generated string `json:"generated"`
-			Metrics   int    `json:"metrics"`
-		}{true, result.Version, generated, len(held.Metrics())})
+			Verified   bool            `json:"verified"`
+			Version    int64           `json:"version"`
+			Generated  string          `json:"generated"`
+			Metrics    int             `json:"metrics"`
+			MetricList []metricSummary `json:"metric_list"`
+		}{true, result.Version, generated, len(held.Metrics()), indexMetricSummaries(held)})
 		if err != nil {
 			return err
 		}
 		_, err = fmt.Fprintf(output, "%s\n", encoded)
 		return err
 	}
-	_, err = fmt.Fprintf(output, "signature good: version %d, generated %s, %d metrics\n",
-		result.Version, generated, len(held.Metrics()))
+	// The names where the count was: a count said how many, the names say
+	// which. A document that declares none still says so, with the count's
+	// own word for a nothing.
+	said := "none"
+	if names := held.Metrics(); len(names) > 0 {
+		said = strings.Join(names, ", ")
+	}
+	_, err = fmt.Fprintf(output, "signature good: version %d, generated %s, metrics %s\n",
+		result.Version, generated, said)
 	return err
 }
 
@@ -650,6 +687,101 @@ func indexCellCount(held *index.Index) int {
 		total += len(held.Cells(metric))
 	}
 	return total
+}
+
+// indexMetricSummaries is one summary per declared metric, in the index's
+// sorted order: the words the document spells for it, its cells counted,
+// and the distinct sources gathered off the cells of a metric whose cells
+// are split by one. The reader keeps the spellings a cell carried, so a
+// dim key and a source value are matched and said the way the index folds
+// a name — lowercased, trimmed.
+func indexMetricSummaries(held *index.Index) []metricSummary {
+	names := held.Metrics()
+	out := make([]metricSummary, 0, len(names))
+	for _, name := range names {
+		kind, _ := held.Kind(name)
+		summary := metricSummary{
+			Name:  name,
+			Kind:  kind,
+			Unit:  held.Unit(name),
+			Dims:  append([]string{"role", "model"}, held.Dims(name)...),
+			Cells: len(held.Cells(name)),
+		}
+		seen := map[string]bool{}
+		for _, cell := range held.Cells(name) {
+			source, spelled := cellDim(cell, "source")
+			if !spelled {
+				continue
+			}
+			folded := poolFold(source)
+			if folded != "" && !seen[folded] {
+				seen[folded] = true
+				summary.Sources = append(summary.Sources, folded)
+			}
+		}
+		sort.Strings(summary.Sources)
+		out = append(out, summary)
+	}
+	return out
+}
+
+// metricLines is one line per metric the held document declares, in the
+// index's sorted order. A nothing answers nothing, the way every other
+// reading form reads what a person has.
+func metricLines(held *index.Index) []string {
+	if held == nil {
+		return nil
+	}
+	summaries := indexMetricSummaries(held)
+	lines := make([]string, 0, len(summaries))
+	for _, summary := range summaries {
+		lines = append(lines, metricLine(summary))
+	}
+	return lines
+}
+
+// metricLine is one declared metric said on one line: `role_quality:
+// gaussian score · 12 cells · dims role, model` — the kind and unit the
+// document spells (an absent word is left out rather than printed empty),
+// the cells counted with their noun, the dims a cell of the metric is
+// addressed by, and the distinct sources beside them when the cells are
+// split by one.
+func metricLine(summary metricSummary) string {
+	parts := make([]string, 0, 4)
+	if summary.Kind != "" || summary.Unit != "" {
+		words := make([]string, 0, 2)
+		if summary.Kind != "" {
+			words = append(words, summary.Kind)
+		}
+		if summary.Unit != "" {
+			words = append(words, summary.Unit)
+		}
+		parts = append(parts, strings.Join(words, " "))
+	}
+	parts = append(parts, countWord(summary.Cells, "cell", "cells"),
+		"dims "+strings.Join(summary.Dims, ", "))
+	if len(summary.Sources) > 0 {
+		parts = append(parts, "sources "+strings.Join(summary.Sources, ", "))
+	}
+	return summary.Name + ": " + strings.Join(parts, " · ")
+}
+
+// poolFold is the way the index matches a name or a value — lowercased and
+// trimmed — spelled here because the reader keeps the spellings a cell
+// carried and the display says what matches.
+func poolFold(word string) string {
+	return strings.ToLower(strings.TrimSpace(word))
+}
+
+// cellDim reads one dim off a cell, under the way the index matches a dim
+// key: the declared spelling wins over the case the cell happened to spell.
+func cellDim(cell index.Cell, dim string) (string, bool) {
+	for key, value := range cell.Dims {
+		if poolFold(key) == dim {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 // countWord is a count with its noun: one metric, three metrics, no judges.

@@ -59,6 +59,9 @@ func TestTheDocumentReadsBack(t *testing.T) {
 	if kind, ok := x.Kind("role_rating"); !ok || kind != "gaussian" {
 		t.Errorf("kind is %q, %v", kind, ok)
 	}
+	if got := x.Unit("role_rating"); got != "elo" {
+		t.Errorf("unit is %q, want elo", got)
+	}
 	c, ok := x.Cell("role_rating", "planner", "z-ai/glm-5.3", nil)
 	if !ok {
 		t.Fatal("the example cell was not found")
@@ -188,6 +191,41 @@ func TestMetricsAreSortedAndCellsOfUndeclaredMetricsAreSkipped(t *testing.T) {
 	}
 	if _, ok := x.Kind("undeclared"); ok {
 		t.Error("an undeclared metric answered a kind")
+	}
+}
+
+func TestMetricUnitAndDeclaredDimsReadBack(t *testing.T) {
+	x := mustParse(t, `{
+		"metrics": {
+			"role_quality": {"kind": "gaussian", "unit": "score", "dims": ["role", "model"]},
+			"acceptable": {"kind": "bernoulli", "unit": "share", "dims": ["source", "role", "model"]},
+			"tiered": {"kind": "a", "dims": ["tier", "region"]},
+			"bare": {"kind": "a"}
+		}
+	}`)
+	if got := x.Unit("role_quality"); got != "score" {
+		t.Errorf("role_quality's unit is %q, want score", got)
+	}
+	if got := x.Unit(" ACCEPTABLE "); got != "share" {
+		t.Errorf("a unit lookup did not fold the metric name: %q", got)
+	}
+	if got := x.Unit("bare"); got != "" {
+		t.Errorf("a metric with no unit answered %q", got)
+	}
+	if got := x.Unit("undeclared"); got != "" {
+		t.Errorf("an undeclared metric's unit is %q, want empty", got)
+	}
+	if got := strings.Join(x.Dims("acceptable"), ","); got != "source" {
+		t.Errorf("acceptable's dims are %q, want source alone", got)
+	}
+	if got := strings.Join(x.Dims("tiered"), ","); got != "region,tier" {
+		t.Errorf("tiered's dims are %q, want region,tier sorted", got)
+	}
+	if got := x.Dims("role_quality"); len(got) != 0 {
+		t.Errorf("role_quality answered dims %v, want none beyond role and model", got)
+	}
+	if got := x.Dims("undeclared"); len(got) != 0 {
+		t.Errorf("an undeclared metric answered dims %v", got)
 	}
 }
 
