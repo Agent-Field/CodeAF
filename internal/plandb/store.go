@@ -449,8 +449,8 @@ func (s *Store) Resolve(word string) (*Task, error) {
 // empty.
 func (s *Store) Claim(id, agent string, owner ...string) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
-		if task.Status != StatusReady || task.Composite {
-			return fmt.Errorf("task %q is not a runnable ready leaf", id)
+		if task.Status != StatusReady {
+			return fmt.Errorf("task %q is not ready", id)
 		}
 		if strings.TrimSpace(agent) == "" {
 			return errors.New("agent is required for claim")

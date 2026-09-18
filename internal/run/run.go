@@ -701,6 +701,15 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		if s.inFlight >= s.slots {
 			return
 		}
+		// THE WOKEN-PARENT LAW: every non-root launch holds the task under its
+		// own agent id, so wait and done work identically on a first turn and a wake.
+		if task.ID != rootID && task.ClaimedBy == "" {
+			claimed, err := s.store.Claim(task.ID, task.ID, s.Owner)
+			if err != nil {
+				continue
+			}
+			task = *claimed
+		}
 		s.wakes[task.ID]++
 		s.reported[task.ID] = childIDs(tasks, task.ID)
 		s.launch(ctx, task, wakeClause(tasks, task))
@@ -754,6 +763,12 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 		woken, err := s.store.Wake(task.ID)
 		if err != nil {
 			continue
+		}
+		if task.Composite && task.ID != rootID {
+			woken, err = s.store.Claim(task.ID, task.ID, s.Owner)
+			if err != nil {
+				continue
+			}
 		}
 		if task.Composite {
 			// A WAIT RELAUNCH OF A COMPOSITE IS A WAKE AND IS COUNTED AS ONE:
@@ -1079,17 +1094,15 @@ func (s *Supervisor) releaseStale() {
 }
 
 // endCancelledWorkers ends the context of every running worker whose task
-// the store has ended out from under it. The store's cancel writes the
-// ending under the task and everything under it and releases the claim in
-// the same write — ClaimedBy goes with the cancelled row, and a Release
-// against a cancelled task is refused — so the part left to the loop is the
-// context: cancelled here, the worker stops at its next step, and the return
-// it makes afterwards is dropped whole in absorb. The ancestor walk is the
-// belt over a row this handle read before the ending landed.
+// the store has ended out from under it. A failure or cancellation written by
+// somebody else is the task's terminal word; the loop cancels the context on
+// its next pass, frees the slot when the worker returns, and absorb preserves
+// that word instead of writing the late return over it. The ancestor walk is
+// the belt over a row this handle read before a cancellation landed.
 func (s *Supervisor) endCancelledWorkers() {
 	for id, cancel := range s.cancels {
 		task := s.store.Task(id)
-		if task == nil || task.Status == plandb.StatusCancelled || s.hasCancelledAncestor(*task) {
+		if task == nil || terminalStatus(task.Status) || s.hasCancelledAncestor(*task) {
 			cancel()
 			delete(s.cancels, id)
 		}
