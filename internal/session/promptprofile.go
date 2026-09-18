@@ -337,6 +337,27 @@ func leanDropsSection(heading string) bool {
 	return false
 }
 
+const chatTaskRoutingStart = "<!-- CHAT_TASK_ROUTING_START -->"
+const chatTaskRoutingEnd = "<!-- CHAT_TASK_ROUTING_END -->"
+
+// profilePage conditionally removes profile-owned text before the lean profile
+// removes whole sections. The rules themselves live under tasks in system.md.
+func (c Config) profilePage(page string) string {
+	start := strings.Index(page, chatTaskRoutingStart)
+	end := strings.Index(page, chatTaskRoutingEnd)
+	if start < 0 || end < start {
+		return page
+	}
+	end += len(chatTaskRoutingEnd)
+	if !c.InTask && bashBeltAsked() {
+		// The model hand-off through propose_task does not reach startTaskRun under
+		// the bash belt (task.go:525-529, 723-778); only a person-entered /task
+		// does (task_person.go:74-88). This seam does not create a new route.
+		return page[:start] + page[start+len(chatTaskRoutingStart)+1:end-len(chatTaskRoutingEnd)] + page[end+1:]
+	}
+	return page[:start] + page[end+1:]
+}
+
 // ── the shelf ───────────────────────────────────────────────────────────────
 
 // questionsGroup is the group `ask` is in, spelled once because two places need

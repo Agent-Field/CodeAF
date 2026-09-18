@@ -303,7 +303,7 @@ func renderSystemAt(config Config, now time.Time) string {
 	// PREDICATES (beltfacts.go). Everything below conditions a whole page on
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
-	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	page := strings.TrimRight(config.profilePage(promptWithBeltFacts(config)), "\n")
 	// AND THE PROFILE'S OWN CUT, WHICH IS THE ONE DOOR INTO IT. A lean prefix
 	// drops the sections [leanPageSections] names, by their `# ` heading, and
 	// gains the one line a shelved verb owes (promptprofile.go). A full prefix
