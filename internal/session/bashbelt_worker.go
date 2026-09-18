@@ -234,7 +234,9 @@ Answer with exactly one of these, as your whole result:
 - "holds: <one sentence saying why>" only when every declared check exits 0 and every sentence holds.
 - "does not hold: <the one unmet requirement, and the command that showed it>" otherwise.
 
-If no declared command can be run, answer "check: <one sentence>" instead.\n\nOne line. A requirement you could not test is one you did not prove.
+If no declared command can be run, answer "check: <one sentence>" instead.
+
+One line. A requirement you could not test is one you did not prove.
 `
 
 // runRootAsk answers the run root's description as the store keeps it — the
