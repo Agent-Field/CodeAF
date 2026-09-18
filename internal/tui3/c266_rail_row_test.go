@@ -119,15 +119,18 @@ func TestTheRunsRowOnTheRailWearsTheDotRow(t *testing.T) {
 	if !strings.Contains(run, plain(a.pal.glyph(tokens.GEmptyCell))) {
 		t.Fatalf("the run's row wears no dot row:\n%s", run)
 	}
+	// ON THE NARROW RAIL THE DOT ROW TAKES THE LINE UNDER THE TITLE. The cells are
+	// the thing seen without reading, so where they cannot share the title's
+	// line they stand under it, and the title keeps its line whole (the owner,
+	// 2026-09-18: "i also thought we had like multiple circles for progress").
 	narrow, short := c266Rail(t, c266PlanRows(), 150, false)
-	_, slim := c266RowWith(t, short, "rewrite the aut")
-	if !strings.HasSuffix(slim, "2/4") {
-		t.Fatalf("the narrow rail's run row does not end in its count:\n%s", slim)
+	at, slim := c266RowWith(t, short, "rewrite the auth flow")
+	if strings.Contains(slim, "2/4") {
+		t.Fatalf("the narrow rail's run row still carries the count the dot line carries:\n%s", slim)
 	}
-	for _, cell := range []tokens.GlyphID{tokens.GDoneCell, tokens.GFailedCell, tokens.GEmptyCell} {
-		if strings.Contains(slim, plain(narrow.pal.glyph(cell))) {
-			t.Fatalf("the narrow rail drew dot cells beside the count:\n%s", slim)
-		}
+	under := plain(short[at+1])
+	if !strings.HasSuffix(under, "2/4") || !strings.Contains(under, plain(narrow.pal.glyph(tokens.GEmptyCell))) {
+		t.Fatalf("the line under the narrow rail's run row is not its dot row:\n%s\n%s", slim, under)
 	}
 }
 
@@ -175,5 +178,27 @@ func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 	_, child := c266RowWith(t, rail, "write the fixtures")
 	if strings.Index(child, "write") <= strings.Index(parent, "write") {
 		t.Fatalf("the task under a task is not indented under it:\n%s\n%s", parent, child)
+	}
+}
+
+// A FAMILY'S LINE IS ONE UNBROKEN STROKE. The live line under a running task and
+// the task under a task both stand between two siblings, and each used to leave
+// a blank in the family's column, so the tree read as loose pieces.
+func TestTheFamilysLineRunsThroughTheLinesUnderARow(t *testing.T) {
+	rows := c266PlanRows()
+	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
+	rows = append(rows, session.PlanTaskRow{ID: "after", Parent: "root", Title: "update the manual", Status: "pending"})
+	_, rail := c266Rail(t, rows, 150, false)
+	at, handler := c266RowWith(t, rail, "write the handler")
+	column := strings.Index(handler, "├")
+	if column < 0 {
+		t.Fatalf("the running row has no connector:\n%s", handler)
+	}
+	if live := plain(rail[at+1]); !strings.HasPrefix(live[column:], "│") {
+		t.Fatalf("the live line breaks the family's stroke:\n%s\n%s", handler, live)
+	}
+	_, kid := c266RowWith(t, rail, "write the fixtures")
+	if !strings.HasPrefix(kid[column:], "│") {
+		t.Fatalf("the task under a task breaks its parent's family stroke:\n%s", kid)
 	}
 }

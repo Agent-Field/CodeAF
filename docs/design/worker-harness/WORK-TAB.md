@@ -53,7 +53,12 @@ Width tiers, so the row never wraps:
 | under 40 | `6/10` |
 
 A run that is entirely done reads `done`, never `10 of 10`; one with
-failures reads `8 of 10 · 2 failed`.
+failures keeps its dots and says so in words, `●●●●●●●●✘✘  8 of 10 · 2
+failed`. On a rail under 40 columns the dot row takes the line under the run's
+title, ten cells and `N/M`, because the cells are what is seen without
+reading and the title keeps its own line whole (the owner, 2026-09-18).
+A family's connector line runs unbroken through the live line under a task
+and through the tasks under a task.
 
 ## The tab
 

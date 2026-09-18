@@ -5181,9 +5181,11 @@ A family with one task has no dots and says its state word instead. From two thr
 ten tasks, each cell is one task. With eleven or more, ten cells divide the family
 into tenths. The widest row shows all ten cells and words such as `6 of 10 · 2
 running · $0.41`; the next tier keeps ten cells and shortens the count to `6/10`;
-the rail uses five cells and `6/10`; the narrowest tier shows `6/10` alone. A family
-that is entirely finished says `done`, never `10 of 10`, and failures read like `8
-of 10 · 2 failed`.
+a widened rail uses five cells and `6/10` at the end of the run's row. On the rail at
+its ordinary narrow width the dots take **the line under the run's title**, all ten
+cells and `6/10`, so the title keeps its own line. A family that is entirely
+finished says `done`, never `10 of 10`. A failure is drawn in its cell as `✘` and
+said in words too: `●●●●●●●●✘✘  8 of 10 · 2 failed`.
 
 ## Why is this task indented under that one? — the plan drawn as a tree
 
