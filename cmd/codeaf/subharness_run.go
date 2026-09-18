@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/substore"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // `codeaf run <program> --input <file.json|->` is one program, run once, with
@@ -26,8 +29,12 @@ import (
 // no ✕. The PRD says why in one sentence: the task surface is a PRESENTATION of
 // a run, not its definition, so a headless door that reached for it would make
 // the presentation part of the definition and there would stop being a way to
-// run a program without a conversation around it. Nothing in this file or in
-// subharness_env.go beside it touches internal/session.
+// run a program without a conversation around it. THE ONE THING THIS FILE
+// REACHES internal/session FOR is the landing the pool's judge reads
+// ([session.TaskLanding]): a run with nobody watching records what it made
+// where the restart sweep will score it. It reaches no task surface — no
+// roster, no room, no node — and subharness_env.go beside it touches
+// internal/session at all.
 //
 // A subharness is a FUNCTION (PRD §4), so this command is shaped like one: typed
 // input in, typed output on stdout, and an ending that a script can read off the
@@ -205,6 +212,7 @@ func runSubharnessCommand(args []string) error {
 		registry: registry, name: name, input: material, journal: journal,
 		stdout: os.Stdout, stderr: os.Stderr,
 		asJSON: *asJSON, model: settings.Model, started: time.Now(),
+		profileDir: settings.ProfileDir,
 		env: func(manifest exec.Manifest) exec.Env {
 			return newHeadlessEnv(client, tools, *policy, manifest, journal, os.Stderr)
 		},
@@ -244,6 +252,11 @@ type subharnessRun struct {
 	// nothing about them rather than guessing.
 	model   string
 	started time.Time
+	// profileDir is the install this run reads its pool from, resolved at the
+	// door the same way every other profile read there resolves it. Empty is the
+	// ordinary answer — the state root — and a landing the pool's mode forbids
+	// reading is never written.
+	profileDir string
 	// record is told how the run went, once, the moment it lands. Nil is a build
 	// that keeps no history — a test driving the endings, a store that could not
 	// be opened — and a run then simply leaves no note, which is not an error and
@@ -328,10 +341,7 @@ func (run subharnessRun) note(result exec.RunResult, runErr error) {
 	if run.record == nil {
 		return
 	}
-	spend := result.Spend
-	if !spend.Reported() {
-		spend = run.journal.Ledger()
-	}
+	spend := run.spent(result)
 	note := substore.RunNote{
 		At: time.Now(), Finished: result.Finished(),
 		Why: result.Incomplete, CostUSD: spend.CostUSD,
@@ -340,6 +350,75 @@ func (run subharnessRun) note(result exec.RunResult, runErr error) {
 		note.Finished, note.Why = false, runErr.Error()
 	}
 	run.record(run.name, note)
+}
+
+// spent asks the one thing that can say what a run cost, in the order every
+// reader here asks it: a runner that journals its own host calls has already
+// summed them into [exec.RunResult.Spend], and adding this command's journal to
+// that would be counting one run twice. A runner that reports nothing — the
+// fronted leaf workers, which spend through their own clients — is measured by
+// the journal instead, which for those is honestly empty.
+func (run subharnessRun) spent(result exec.RunResult) exec.Spend {
+	spend := result.Spend
+	if !spend.Reported() {
+		spend = run.journal.Ledger()
+	}
+	return spend
+}
+
+// pendingJudgeRecord leaves this run's landing in the pool's pending file, for
+// the restart sweep to score on the next chat start (poolrecord.go). The chat
+// door judges a task the moment it lands, through a live hook; a headless run
+// owns no session graph and the process is gone before any sweep reaches it, so
+// this one append at the tail is the only moment its landing can be recorded.
+// Nothing waits on the judge: the process leaves at once, and a pool whose mode
+// forbids reading writes nothing at all.
+//
+// A STOPPED RUN STILL GETS ITS ROW, with whatever report it managed: the judge
+// is owed what was made even when the run did not finish. State is unverified —
+// nobody has judged this landing yet, which is the whole reason the row is here
+// — and the door's own seat is the worker, because a headless run has no high
+// seat to name.
+func (run subharnessRun) pendingJudgeRecord(result exec.RunResult) {
+	if !config.ModelPoolAt(run.profileDir).CanRead() {
+		return
+	}
+	files := make([]string, 0, len(result.Artifacts))
+	for _, artifact := range result.Artifacts {
+		files = append(files, artifact.Path)
+	}
+	spend := run.spent(result)
+	landing := session.TaskLanding{
+		ID:      run.landingID(),
+		State:   session.TaskUnverified,
+		Brief:   string(run.input),
+		Report:  result.Report,
+		Wrote:   files,
+		Changed: len(files),
+		Worker:  run.model,
+		CostUSD: spend.CostUSD,
+		Tokens:  spend.Input + spend.Output,
+	}
+	// A pool that will not write is said under the debug switch and nothing
+	// else: the row is beside the work, not part of it, and a landing nobody
+	// could file must never cost the run its account.
+	if err := writePendingLanding(run.profileDir, "run", landing); err != nil && trace.Enabled() {
+		log.Printf("model pool: pending landing: %v", err)
+	}
+}
+
+// landingID is this run's identity in the pool's ledgers. The restart sweep
+// dedups on it and marks pool/judged/<id>-<attempt>, so two runs must never
+// share one: it is the moment the run began, in nanoseconds, which differs for
+// every run. A run nobody stamped a start on — a test driving the ending —
+// still gets a moment of its own rather than a constant every such run would
+// collide on.
+func (run subharnessRun) landingID() uint64 {
+	started := run.started
+	if started.IsZero() {
+		started = time.Now()
+	}
+	return uint64(started.UnixNano())
 }
 
 // reportSubharnessRun writes what happened and decides what the process leaves
@@ -351,6 +430,11 @@ func (run subharnessRun) note(result exec.RunResult, runErr error) {
 // progress, the files, the ledger, the reason a run did not finish — goes to
 // stderr, which is where a run's own words have gone since `codeaf do`.
 func reportSubharnessRun(run subharnessRun, result exec.RunResult) error {
+	// The landing is left for the pool's judge before anything is drawn. This is
+	// the one place both the --json and the prose paths pass through, so every
+	// ending below leaves exactly one row, and a pool that will not write can
+	// never cost the run its account.
+	run.pendingJudgeRecord(result)
 	sayArtifacts(run.stderr, result.Artifacts)
 	sayLedger(run.stderr, run.journal.Ledger())
 	if result.Finished() {
@@ -405,13 +489,8 @@ func (run subharnessRun) sayEnvelope(stop stopReason, result exec.RunResult, inc
 		files = append(files, artifact.Path)
 	}
 	// WHAT IT COST IS ASKED OF THE ONE THING THAT CAN SAY, in the same order
-	// [subharnessRun.note] asks it: a runner that journals its own calls has
-	// already summed them, and adding this command's journal to that would be
-	// counting one run twice.
-	spend := result.Spend
-	if !spend.Reported() {
-		spend = run.journal.Ledger()
-	}
+	// [subharnessRun.note] asks it (see [subharnessRun.spent]).
+	spend := run.spent(result)
 	answer := strings.TrimSpace(result.Report)
 	output := bytes.TrimSpace(result.Output)
 	if len(output) > 0 && string(output) != "null" {
