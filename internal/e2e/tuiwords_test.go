@@ -610,6 +610,40 @@ var tuiWords = map[string]tuiWord{
 			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish",
 	},
 
+	// ── the run's plan row, on the live edge (c185, SURFACE.md §2A/§3) ────────
+	//
+	// A plan row's own live step and the corrections the design makes to its
+	// words. The run's engine publishes the in-flight step on the store row
+	// (session.PlanTaskRow.Live); the surface draws it under the row's title. A row
+	// admitted and not started reads `queued` rather than the machinery's
+	// `pending`, and one held behind named work reads the dependency sentence
+	// beside it (internal/tui3's planStateWord and planWaits).
+	"planQueuedWord": {
+		screen: "queued · waits: ",
+		source: "waits: ",
+		why: "the words a run task's row wears while it is admitted and not started: planStateWord " +
+			"maps the store's `pending` onto the surface's own `queued`, and the work it is held behind is " +
+			"named beside it — `queued · waits: Add rate limiting`, one sentence, joined by " +
+			"session.TaskStatus.RowWord so the state cell, the line the cursor's row grows and the phone " +
+			"card all read it the same way. It is there so a person watching a run reads where a task is " +
+			"rather than a machinery word of the store's, and what is holding it rather than an id",
+	},
+	"planLiveLead": {
+		screen: "$ ",
+		source: tokens.GlyphShell,
+		pkg:    tokensPkg,
+		why: "the shell lead a plan row's live step line opens with, ahead of the command the step is " +
+			"running (task.go's planLiveRow). The `$` is the vocabulary's own shell glyph — the same byte " +
+			"a conversation's tool line carries — drawn off the table and never spelled here",
+	},
+	"planStepsSpend": {
+		screen: "steps · $",
+		source: "steps",
+		why: "the figures a plan row's under-block carries under the live command: how many steps its " +
+			"worker has taken and what it has cost, each half omitted when it is nothing (taskplan.go's " +
+			"planFigures). It is the same `N steps` and `$` the row already spends in its two columns",
+	},
+
 	// ── the seat a crew older than it never wrote ────────────────────────────
 	//
 	// The two halves of one line, and it is the ENGINE'S sentence: the surface

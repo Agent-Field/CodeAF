@@ -5293,6 +5293,58 @@ func (a *app) railWorking(node *taskNode, width int) []string {
 	return []string{line}
 }
 
+// planUnderRows is the block a plan row spends under its own title: the step it is
+// running right now, and under that the task's own figures — how many steps its
+// worker has taken and what it has cost ([planFigures]).
+//
+//	◐ $ git grep -n RateLimit internal/api     a step in flight, and
+//	  12 steps · $0.11                          what it has come to
+//
+// IT IS THE RAIL'S OWN UNDER-BLOCK REACHED FROM THE OTHER SIDE. A plan row is a
+// store row rather than a node of this conversation's graph, so it is drawn by
+// the tasks place and not on the column ([tasksplace.go]) — but it wears the
+// same two-row cap ([railUnderRows]), the same give-up-the-tail fitting
+// ([app.railWorking] spends the command's tail to keep the column whole), and
+// the same one door for its marks ([palette.glyph]).
+//
+// IT DRAWS NOTHING FOR A ROW BETWEEN STEPS. The engine publishes the in-flight
+// step on the row (PlanTaskRow.Live) and clears it the moment the step's end line
+// is written, so a row that has not started, one that is held behind named work
+// and one that has landed all have no block at all. What a held row waits on is
+// on the row's own reading ([planWaits]) and is not repeated here; the telemetry
+// stands only where it has a figure behind it — the emptiness law, on a row's own
+// numbers.
+func planUnderRows(item tasksItem, width int, pal palette) []string {
+	if item.plan == nil || width < 1 || item.plan.Live.Step <= 0 {
+		return nil
+	}
+	rows := make([]string, 0, railUnderRows)
+	if line := planLiveRow(item.plan.Live.Command, width, pal); line != "" {
+		rows = append(rows, line)
+	}
+	if figures := planFigures(item.plan); figures != "" {
+		rows = append(rows, pal.dim(fit(figures, width)))
+	}
+	if len(rows) > railUnderRows {
+		rows = rows[:railUnderRows]
+	}
+	return rows
+}
+
+// planLiveRow is the live step's own line: the running step's glyph, the shell
+// lead, and the command the step is running. The glyph and the lead are drawn
+// OUTSIDE the fitting — they are two whole cells and a command never gets to
+// spend them — so a narrow column drops the command's tail and never a half
+// glyph (the mark comes off the vocabulary's own door, [palette.glyph], so this
+// line gets this terminal's repertoire).
+func planLiveRow(command string, width int, pal palette) string {
+	lead := pal.glyph(tokens.GStepRunning) + " " + tokens.GlyphShell + " "
+	if width < ansi.StringWidth(lead) {
+		return ""
+	}
+	return lead + pal.dim(fit(strings.TrimSpace(command), width-ansi.StringWidth(lead)))
+}
+
 // railDoing is the row a node wears while it is in a phase of its own kind's
 // naming, or nil for the ordinary node, which has no phases.
 //

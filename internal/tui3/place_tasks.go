@@ -1436,7 +1436,7 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 		return 0
 	}
 	end := cursor
-	for end+1 < len(lines) && lines[end+1].kind == tasksLineTail {
+	for end+1 < len(lines) && (lines[end+1].kind == tasksLineTail || lines[end+1].kind == tasksLinePlanUnder) {
 		end++
 	}
 	if top > cursor {
