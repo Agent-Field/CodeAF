@@ -149,6 +149,9 @@ func TestEveryPlaceIsRegisteredOnceAndInTabOrder(t *testing.T) {
 func TestOnePlaceOneFile(t *testing.T) {
 	for _, id := range pages() {
 		name := "place_" + id.word() + ".go"
+		if id == pageTasks {
+			name = "place_tasks.go"
+		}
 		body, err := os.ReadFile(name)
 		if err != nil {
 			t.Errorf("the %s place has no %s: %v", id.word(), name, err)

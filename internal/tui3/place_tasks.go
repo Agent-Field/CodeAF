@@ -1729,7 +1729,7 @@ type placeTasks struct{ placeBase }
 func init() { registerPlace(placeTasks{}) }
 
 func (placeTasks) id() page      { return pageTasks }
-func (placeTasks) word() string  { return "tasks" }
+func (placeTasks) word() string  { return "work" }
 func (placeTasks) counted() bool { return true }
 
 // open takes the reading and arms the beat. The reading is this place's own

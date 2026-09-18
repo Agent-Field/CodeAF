@@ -2007,7 +2007,7 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 inside a conversation, and `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the four places on
-the tab bar — `home  tasks  spend  settings` — and each answers to its position there,
+the tab bar — `home  work  spend  settings` — and each answers to its position there,
 `alt+1` through `alt+4`. **`alt+5`, `alt+6` and `alt+7` are kept**, on the three places that
 are off the bar — standing, memory and search — so those keys still open a room rather than
 doing nothing; `alt+.` draws all seven with their numbers. Hold

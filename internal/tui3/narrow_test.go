@@ -53,13 +53,13 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 	// columns that re-spaced a hundred and sixty would be a fix that cost every
 	// other terminal something.
 	wide := plain(a.placeTabBar(120, false, a.pal))
-	if !strings.Contains(wide, "home   tasks") {
+	if !strings.Contains(wide, "home   work") {
 		t.Fatalf("at 120 columns the bar drew\n\t%q\nand the air between two chips is gone; it should read\n\t%q",
-			wide, "  home   tasks   spend   settings")
+			wide, "  home   work   spend   settings")
 	}
-	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
+	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home  work") {
 		t.Fatalf("at %d columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
-			tight, narrow, "  home  tasks  spend  settings")
+			tight, narrow, "  home  work  spend  settings")
 	}
 }
 
@@ -72,14 +72,14 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 // reaches them is on the foot of every place.
 func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 	a := placeApp(t)
-	for _, tc := range []struct{ width int }{{28}, {24}} {
+	for _, tc := range []struct{ width int }{{22}, {20}} {
 		bar := plain(a.placeTabBar(tc.width, false, a.pal))
 		if !strings.Contains(bar, a.page.word()) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand dropped the place you are standing in (%q)", tc.width, bar, a.page.word())
 		}
 		if !strings.Contains(bar, tokens.GlyphCollapsed) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand said nothing about the places it could not carry; it should end in a marked count, as in\n\t%q",
-				tc.width, bar, "  home  tasks  "+tokens.GlyphCollapsed+" 2")
+				tc.width, bar, "  home  work  "+tokens.GlyphCollapsed+" 2")
 		}
 		if got := ansi.StringWidth(bar); got > tc.width {
 			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", tc.width, got, bar)

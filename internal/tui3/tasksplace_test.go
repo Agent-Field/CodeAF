@@ -61,7 +61,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now))
 	rows := reading.rows(120, newPalette(tokens.NoColor, false))
 	page := strings.Join(rows, "\n")
-	wants := []string{tierYourCallWord, "waiting"}
+	wants := []string{tierYourCallWord, "queued"}
 	last := -1
 	for _, want := range wants {
 		at := strings.Index(page, want)
@@ -74,7 +74,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	// clause rather than the sentence it used to end. It read `work codeaf ran on
 	// its own. 14 pieces of work since aug 2, $34.10 between them.` — a paragraph
 	// teaching the machinery's own idea of itself, ahead of every row on the page.
-	if !strings.Contains(page, "tasks · 14 pieces of work · $34.10") {
+	if !strings.Contains(page, "work · 14 pieces of work · $34.10") {
 		t.Fatalf("header did not count the window and its known spend:\n%s", page)
 	}
 	if strings.Contains(page, "ran on its own") {
@@ -178,7 +178,7 @@ func TestTheTasksPageDrawsNoEmptySection(t *testing.T) {
 	world.Projects[0].Sessions[0].Tasks.Rows = world.Projects[0].Sessions[0].Tasks.Rows[:1]
 	world.Projects = world.Projects[:1]
 	page := strings.Join(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now).rows(100, newPalette(tokens.NoColor, false)), "\n")
-	if strings.Contains(page, "\nrunning\n") || strings.Contains(page, "\nfinished today\n") || strings.Contains(page, "\nearlier\n") {
+	if strings.Contains(page, "\nrunning\n") || strings.Contains(page, "\ndone today\n") || strings.Contains(page, "\nearlier\n") {
 		t.Fatalf("an empty section drew a heading:\n%s", page)
 	}
 }
@@ -766,7 +766,7 @@ func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
 		t.Fatalf("the query kept %d rows and it should have emptied the list", len(r.items))
 	}
 	got := r.head(120, false)
-	want := "tasks · 3 pieces of work · $0.72"
+	want := "work · 3 pieces of work · $0.72"
 	if got != want {
 		t.Fatalf("a query nothing matches makes the page say\n  %s\nand what is true of the machine is\n  %s", got, want)
 	}
@@ -778,7 +778,7 @@ func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
 func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
 	world, win, now := tasksPolishFixture()
 	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
-	if got, want := reading.head(120, false), "tasks · 3 pieces of work · $0.72"; got != want {
+	if got, want := reading.head(120, false), "work · 3 pieces of work · $0.72"; got != want {
 		t.Fatalf("the head reads\n  %s\nwant\n  %s", got, want)
 	}
 	// THE WINDOW'S EDGE IS CARRIED WHERE THE CONTROL IS NOT DRAWN, and the spend
