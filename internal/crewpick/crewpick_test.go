@@ -105,8 +105,12 @@ func wantCrew(t *testing.T, name string, got Crew, want string) {
 
 // The fixture's front is a fixed property of its rows: seven crews in the
 // open family, eighteen in all, and these are the picks each front reads.
-// The all-family balanced crew is where money stops buying quality — a bill
-// of 0.590 at quality 95.4.
+// The all-family balanced crew is the one with the least loss at the balanced
+// stake of ten dollars over a typical task — a bill of 0.147 per 1M tokens
+// ($0.65 a task) at quality 89.2. The knee this word used to name sat at
+// 0.590 ($2.60 a task) for 95.4: six more points of quality at four times
+// the bill, which a ten-dollar stake declines to buy, and a fifty-dollar one
+// would.
 func TestPresetsReadTheFixtureFront(t *testing.T) {
 	cands := loadCandidates(t)
 	shapes := DefaultShapes()
@@ -126,13 +130,13 @@ func TestPresetsReadTheFixtureFront(t *testing.T) {
 	}
 	frugal, balanced, max = Presets(all)
 	wantCrew(t, "all frugal", frugal, "z-ai/glm-5.3-flash|google/gemini-3.8-flash|z-ai/glm-5.3-flash")
-	wantCrew(t, "all balanced", balanced, "z-ai/glm-5.3-flash|anthropic/claude-fable-5.1|anthropic/claude-fable-5.1")
+	wantCrew(t, "all balanced", balanced, "z-ai/glm-5.3-flash|qwen/qwen3.8-max-0902|qwen/qwen3.8-max-0902")
 	wantCrew(t, "all max", max, "anthropic/claude-fable-5.1|openai/gpt-6-astra|anthropic/claude-fable-5.1")
-	if math.Abs(balanced.Bill-0.590) > 0.005 {
-		t.Fatalf("all balanced bill = %f, want about 0.590", balanced.Bill)
+	if math.Abs(balanced.Bill-0.147) > 0.005 {
+		t.Fatalf("all balanced bill = %f, want about 0.147", balanced.Bill)
 	}
-	if math.Abs(balanced.Quality-95.4) > 0.05 {
-		t.Fatalf("all balanced quality = %f, want about 95.4", balanced.Quality)
+	if math.Abs(balanced.Quality-89.2) > 0.05 {
+		t.Fatalf("all balanced quality = %f, want about 89.2", balanced.Quality)
 	}
 }
 
@@ -501,13 +505,13 @@ func TestNothingMissingLeavesEveryPickUnchanged(t *testing.T) {
 	}
 	frugal, balanced, max = Presets(all)
 	wantCrew(t, "all frugal", frugal, "z-ai/glm-5.3-flash|google/gemini-3.8-flash|z-ai/glm-5.3-flash")
-	wantCrew(t, "all balanced", balanced, "z-ai/glm-5.3-flash|anthropic/claude-fable-5.1|anthropic/claude-fable-5.1")
+	wantCrew(t, "all balanced", balanced, "z-ai/glm-5.3-flash|qwen/qwen3.8-max-0902|qwen/qwen3.8-max-0902")
 	wantCrew(t, "all max", max, "anthropic/claude-fable-5.1|openai/gpt-6-astra|anthropic/claude-fable-5.1")
-	if math.Abs(balanced.Bill-0.590) > 0.005 {
-		t.Fatalf("all balanced bill = %f, want about 0.590", balanced.Bill)
+	if math.Abs(balanced.Bill-0.147) > 0.005 {
+		t.Fatalf("all balanced bill = %f, want about 0.147", balanced.Bill)
 	}
-	if math.Abs(balanced.Quality-95.4) > 0.05 {
-		t.Fatalf("all balanced quality = %f, want about 95.4", balanced.Quality)
+	if math.Abs(balanced.Quality-89.2) > 0.05 {
+		t.Fatalf("all balanced quality = %f, want about 89.2", balanced.Quality)
 	}
 	for _, front := range [][]Crew{open, all} {
 		for _, crew := range front {
@@ -829,5 +833,133 @@ func TestMergePriorsFoldsTwoPriorsByObservationCount(t *testing.T) {
 	}
 	if r := sharedB[Worker]["c/both"]; r.Mean != 90 || r.N != 30 {
 		t.Fatalf("the merge moved its second prior: %v", r)
+	}
+}
+
+// A stake of zero buys the cheapest crew and a stake past every bill the
+// best, and between them the pick walks up the front and never back down.
+func TestAtStakeWalksUpTheFrontAsTheStakeRises(t *testing.T) {
+	front := Front(loadCandidates(t), DefaultShapes(), All)
+	if got := AtStake(front, 0, TypicalTaskTokens); got != front[0] {
+		t.Fatalf("stake 0 picked %s|%s|%s, want the cheapest", got.Worker, got.High, got.Mastermind)
+	}
+	if got := AtStake(front, 1e9, TypicalTaskTokens); got != front[len(front)-1] {
+		t.Fatalf("a boundless stake picked %s|%s|%s, want the best", got.Worker, got.High, got.Mastermind)
+	}
+	last := -1
+	for _, stake := range []float64{0, 0.5, 1, 2, 5, 10, 20, 50, 100, 1000} {
+		pick := AtStake(front, stake, TypicalTaskTokens)
+		at := -1
+		for i, crew := range front {
+			if crew == pick {
+				at = i
+			}
+		}
+		if at < last {
+			t.Fatalf("stake %v picked crew %d after stake before it picked %d: the walk went back down", stake, at, last)
+		}
+		last = at
+	}
+	if AtStake(nil, 10, TypicalTaskTokens) != (Crew{}) {
+		t.Fatal("an empty front picked something")
+	}
+}
+
+// Fifty dollars of stake over a typical task buys the fable checker the
+// ten-dollar balanced pick declines; the numbers behind the two words are
+// the point of having units.
+func TestTheStakeIsWhatBuysTheDearerChecker(t *testing.T) {
+	front := Front(loadCandidates(t), DefaultShapes(), All)
+	ten := AtStake(front, 10, TypicalTaskTokens)
+	fifty := AtStake(front, 50, TypicalTaskTokens)
+	if ten.High != "qwen/qwen3.8-max-0902" {
+		t.Fatalf("ten dollars checks with %s, want qwen/qwen3.8-max-0902", ten.High)
+	}
+	if fifty.High != "anthropic/claude-fable-5.1" {
+		t.Fatalf("fifty dollars checks with %s, want anthropic/claude-fable-5.1", fifty.High)
+	}
+	if !(fifty.Bill > ten.Bill && fifty.Quality > ten.Quality) {
+		t.Fatalf("fifty (%.3f, %.1f) should bill and score above ten (%.3f, %.1f)", fifty.Bill, fifty.Quality, ten.Bill, ten.Quality)
+	}
+}
+
+// No tasks leave the defaults untouched; one task barely moves them; many
+// tasks that all seat the high seat at a third of the tokens pull its volume
+// most of the way there, and a seat no task carried keeps its default. The
+// share is learned on the log scale, so one task that put everything on the
+// high seat cannot drag the typical share the way an arithmetic mean would.
+func TestShapesFromShrinksTowardsWhatTasksSpent(t *testing.T) {
+	defaults := DefaultShapes()
+	if got := ShapesFrom(defaults, nil); got[High] != defaults[High] || got[Worker] != defaults[Worker] {
+		t.Fatal("no tasks changed a shape")
+	}
+	one := []TaskUsage{{Worker: {In: 660_000, Out: 6_600}, High: {In: 330_000, Out: 3_300}}}
+	got := ShapesFrom(defaults, one)
+	w := 1.0 / (1 + ShapeWeightAt)
+	wantHigh := math.Exp((1-w)*math.Log(defaults[High].Volume) + w*math.Log(333_300.0/999_900))
+	if math.Abs(got[High].Volume-wantHigh) > 1e-6 {
+		t.Fatalf("one task moved the high volume to %f, want %f", got[High].Volume, wantHigh)
+	}
+	if got[Mastermind] != defaults[Mastermind] {
+		t.Fatal("a seat no task carried moved")
+	}
+	many := make([]TaskUsage, 300)
+	for i := range many {
+		many[i] = one[0]
+	}
+	got = ShapesFrom(defaults, many)
+	// In log space the default's tenth of the weight still pulls the share a
+	// little below a third — 0.293 — where an arithmetic blend would sit at
+	// 0.31; both are most of the way there, and the tail test below is why
+	// the log scale is the one kept.
+	if got[High].Volume < 0.28 || got[High].Volume > 0.3333 {
+		t.Fatalf("three hundred tasks left the high volume at %f, want close to a third", got[High].Volume)
+	}
+	if math.Abs(got[High].InOut-(100*300.0/(300+ShapeWeightAt)+defaults[High].InOut*ShapeWeightAt/(300+ShapeWeightAt))) > 1e-6 {
+		t.Fatalf("in/out = %f", got[High].InOut)
+	}
+	empty := []TaskUsage{{Worker: {}}, {}}
+	if got := ShapesFrom(defaults, empty); got[Worker] != defaults[Worker] {
+		t.Fatal("tasks with no tokens taught something")
+	}
+}
+
+// Two cells for one seat and model — a graded source and a seeded one — are
+// one rating, their means weighted by their counts, however they arrive.
+func TestPriorFromCellsFoldsTwoSourcesOfOneSeat(t *testing.T) {
+	cells := []Cell{
+		{Role: "worker", Model: "a/b", Mean: 100, N: 10},
+		{Role: "worker", Model: "a/b", Mean: 50, N: 30},
+	}
+	prior := PriorFromCells(cells, 1, nil)
+	got := prior[Worker]["a/b"]
+	if got.N != 40 || math.Abs(got.Mean-62.5) > 1e-9 {
+		t.Fatalf("folded to %+v, want mean 62.5 over 40", got)
+	}
+	reversed := PriorFromCells([]Cell{cells[1], cells[0]}, 1, nil)
+	if reversed[Worker]["a/b"] != got {
+		t.Fatal("order changed the fold")
+	}
+}
+
+// A single task that put nearly everything on the high seat moves the
+// learned share far less than an arithmetic mean would: the shape is learned
+// on the log scale, where a tail task is one vote and not most of the sum.
+func TestShapesFromLearnsTheShareOnTheLogScale(t *testing.T) {
+	defaults := DefaultShapes()
+	typical := TaskUsage{Worker: {In: 970_000, Out: 9_700}, High: {In: 30_000, Out: 300}}
+	tail := TaskUsage{Worker: {In: 50_000, Out: 500}, High: {In: 950_000, Out: 9_500}}
+	tasks := make([]TaskUsage, 0, 40)
+	for i := 0; i < 39; i++ {
+		tasks = append(tasks, typical)
+	}
+	tasks = append(tasks, tail)
+	got := ShapesFrom(defaults, tasks)[High].Volume
+	arithmetic := (1-40.0/70)*defaults[High].Volume + 40.0/70*((39*0.03+0.95)/40)
+	if got >= arithmetic {
+		t.Fatalf("the log-scale share %f is not below the arithmetic %f", got, arithmetic)
+	}
+	if got < 0.03 || got > 0.06 {
+		t.Fatalf("thirty-nine typical tasks and one tail task learned a high share of %f, want close to the typical 0.03", got)
 	}
 }

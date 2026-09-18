@@ -13,7 +13,17 @@
 // quality reaches Floor of that seat's best in the family, and a crew is
 // refused outright when its high seat comes from the worker's own vendor.
 // The crews that no other crew beats on both bill and quality survive as the
-// front, sorted by bill; Presets and AtKnob read picks off that front.
+// front, sorted by bill; Presets, AtStake and AtKnob read picks off that
+// front.
+//
+// A pick is a decision with units. The person's one dial is the STAKE: what
+// one failed task costs them, in dollars. A crew's loss at a stake is its
+// expected bill for a task plus the stake times the chance the task is not
+// accepted, and the pick at a stake is the crew on the front with the least
+// loss. The three named presets are three stakes (docs/design/model-pool/
+// pareto-crewing.tex, the decision section): the knee of the front that
+// balanced used to name implied a stake nobody was shown, and one that moved
+// with the price level while a person's stake does not.
 //
 // A candidate that publishes some but not all of its three indexes is scored
 // on the ones it publishes: each missing index is estimated from the call's
@@ -144,6 +154,88 @@ func DefaultShapes() map[Seat]SeatShape {
 	}
 }
 
+// A TaskUsage is what one task spent on each seat, in tokens: the evidence a
+// seat's shape is learned from. A seat the task never seated is absent.
+type TaskUsage map[Seat]SeatTokens
+
+// SeatTokens is one seat's tokens on one task.
+type SeatTokens struct {
+	In  int64
+	Out int64
+}
+
+// ShapeWeightAt is the number of tasks at which the seats' measured shape
+// carries the same weight as the defaults: at N tasks the measurement is worth
+// half of each learned figure and the default the other half, the same
+// N/(N+ShapeWeightAt) shrinkage the quality prior uses, so one strange task
+// cannot move a bill and thirty ordinary ones can.
+const ShapeWeightAt = 30
+
+// ShapesFrom learns the seats' shapes from what real tasks spent: each seat's
+// Volume moves from the default towards the share of a task's tokens the seat
+// typically took, and its InOut towards the seat's input tokens per output
+// token over every task, each by N/(N+ShapeWeightAt) with N the tasks that
+// carried the seat. Everything else about a shape — its weights, its needs,
+// its cache share, which no ledger row can see — is the default's. A task
+// with no tokens teaches nothing, and no tasks at all leaves the defaults
+// untouched.
+//
+// THE SHARE IS LEARNED ON THE LOG SCALE — the geometric mean of the seat's
+// shares, shrunk towards the default in log space — and not as an arithmetic
+// mean. The split is heavy-tailed: the high seat takes a few percent of the
+// tokens on most tasks and most of them on a few, so the arithmetic mean is
+// not the typical task, and a bill priced from it is wrong on nearly every
+// task. On 132 measured runs the arithmetic shape predicted bills no better
+// than the fixed default (median error a factor of 2.9 against 3.4) while the
+// log-scale shape brought it to 1.5 (docs/design/model-pool/pareto-crewing.tex,
+// the cost experiment).
+func ShapesFrom(defaults map[Seat]SeatShape, tasks []TaskUsage) map[Seat]SeatShape {
+	type tally struct {
+		n        int
+		logShare float64
+		in, out  float64
+	}
+	tallies := map[Seat]*tally{}
+	for _, task := range tasks {
+		var total float64
+		for _, t := range task {
+			total += float64(t.In + t.Out)
+		}
+		if total <= 0 {
+			continue
+		}
+		for seat, t := range task {
+			if t.In+t.Out <= 0 {
+				continue
+			}
+			ty := tallies[seat]
+			if ty == nil {
+				ty = &tally{}
+				tallies[seat] = ty
+			}
+			ty.n++
+			ty.logShare += math.Log(float64(t.In+t.Out) / total)
+			ty.in += float64(t.In)
+			ty.out += float64(t.Out)
+		}
+	}
+	shapes := make(map[Seat]SeatShape, len(defaults))
+	for seat, shape := range defaults {
+		ty := tallies[seat]
+		if ty == nil || ty.n == 0 || shape.Volume <= 0 {
+			shapes[seat] = shape
+			continue
+		}
+		w := float64(ty.n) / float64(ty.n+ShapeWeightAt)
+		shape.Volume = math.Exp((1-w)*math.Log(shape.Volume) + w*ty.logShare/float64(ty.n))
+		if ty.out > 0 {
+			shape.InOut = (1-w)*shape.InOut + w*ty.in/ty.out
+		}
+		shapes[seat] = shape
+	}
+	return shapes
+}
+
 // A Family is which candidates a crew may be drawn from.
 type Family int
 
@@ -226,8 +318,11 @@ var seatWords = map[string]Seat{
 // canonical id a candidate is looked up by, and carries a mean and a count.
 // A cell whose role names no seat, or whose count is below minInstalls, is
 // ignored, and so is a count of zero or less. A nil canonical leaves the id
-// as it stands. When no cell survives the prior is nil, which is the same as
-// no prior at all.
+// as it stands. Two cells that name one seat and one model — a graded source
+// and a seeded one, or two spellings one canonical resolves together — fold
+// into one rating, their means weighted by their counts and the counts added,
+// in whatever order they arrive. When no cell survives the prior is nil,
+// which is the same as no prior at all.
 //
 // The floor here keeps counting rows rather than the installs a measurement
 // document carries beside them: the reader applies the document's floor
@@ -252,6 +347,11 @@ func PriorFromCells(cells []Cell, minInstalls int, canonical func(string) string
 		}
 		if prior[seat] == nil {
 			prior[seat] = map[string]Rating{}
+		}
+		if got, ok := prior[seat][model]; ok {
+			n := got.N + c.N
+			prior[seat][model] = Rating{Mean: (float64(got.N)*got.Mean + float64(c.N)*c.Mean) / float64(n), N: n}
+			continue
 		}
 		prior[seat][model] = Rating{Mean: c.Mean, N: c.N}
 	}
@@ -422,17 +522,73 @@ func FrontWith(candidates []Candidate, shapes map[Seat]SeatShape, fam Family, pr
 	return front
 }
 
-// Presets reads the three named picks off a front: frugal is the cheapest
-// crew, max the dearest, and balanced the knee between them — the crew
-// farthest above the straight line from one end of the front to the other in
-// (ln bill, quality), which is where money stops buying quality in earnest.
-// A front of one crew is all three; an empty front is none.
+// Two of the three named presets are stakes, in dollars — what one failed
+// task costs the person. The words are the paper's (docs/design/model-pool/
+// pareto-crewing.tex, product semantics): frugal is a failed task that is an
+// annoyance, balanced one that costs about ten minutes of a person. Max is
+// not a stake: it is the best crew on the front whatever it bills, the one
+// word that stays a superlative, because a person who says max has said the
+// bill is not the point. A custom stake is any number.
+const (
+	StakeFrugal   = 1.0
+	StakeBalanced = 10.0
+)
+
+// TypicalTaskTokens is the token count a crew's bill is read over when a
+// caller has no better figure for the task in hand: the median of the 133
+// task-door runs on the bench with a per-seat token split, taken 2026-09-17
+// (quartiles 2.3M and 11.4M). Bill is dollars per 1M task tokens, so this is
+// what turns it into dollars per task, which is the unit a stake is in.
+const TypicalTaskTokens = 4_400_000
+
+// TaskBill is the crew's expected bill for one task of the tokens given, in
+// dollars: Bill is per 1M task tokens.
+func TaskBill(c Crew, tokens float64) float64 {
+	return c.Bill * tokens / 1e6
+}
+
+// Loss is the crew's expected loss at a stake for one task of the tokens
+// given: the task's bill plus the stake times the chance the task is not
+// accepted, read as one minus the crew's quality on its 0-1 scale. Quality
+// is on the acceptance scale by construction — a measured rating is the share
+// of graded tasks accepted, times 100, and the catalog's index blend is the
+// prior for it — so the two terms are in the same dollars.
+func Loss(c Crew, stake, tokens float64) float64 {
+	return TaskBill(c, tokens) + stake*(1-c.Quality/100)
+}
+
+// AtStake reads one pick off the front at a stake: the crew with the least
+// loss for a task of the tokens given, and the cheaper one when two tie. A
+// stake of zero is the cheapest crew and a stake past every bill is the best
+// one; between them, as the stake rises the pick walks up the front and never
+// back down, because a crew that was worth more at a lower stake is worth at
+// least that at a higher one. An empty front picks nothing.
+func AtStake(front []Crew, stake, tokens float64) Crew {
+	if len(front) == 0 {
+		return Crew{}
+	}
+	pick := front[0]
+	best := Loss(pick, stake, tokens)
+	for _, crew := range front[1:] {
+		if loss := Loss(crew, stake, tokens); loss < best-1e-12 {
+			pick, best = crew, loss
+		}
+	}
+	return pick
+}
+
+// Presets reads the three named picks off a front: frugal at StakeFrugal and
+// balanced at StakeBalanced, each for a task of TypicalTaskTokens, and max the
+// best crew on the front, which is its last because the front is sorted by
+// bill with quality strictly rising. A front of one crew is all three; an
+// empty front is none.
 func Presets(front []Crew) (frugal, balanced, max Crew) {
 	if len(front) == 0 {
 		return Crew{}, Crew{}, Crew{}
 	}
-	frugal, balanced, max = front[0], knee(front), front[len(front)-1]
-	return frugal, balanced, max
+	return AtStake(front, StakeFrugal, TypicalTaskTokens),
+		AtStake(front, StakeBalanced, TypicalTaskTokens),
+		front[len(front)-1]
 }
 
 // AtKnob reads one pick off the front at knob k in [0, 1]: the budget runs
@@ -449,27 +605,6 @@ func AtKnob(front []Crew, k float64) Crew {
 	for _, crew := range front {
 		if crew.Bill <= budget*(1+1e-9) {
 			pick = crew
-		}
-	}
-	return pick
-}
-
-// knee returns the front's knee: the crew farthest above the straight line
-// from the first crew to the last in (ln bill, quality). Ties go to the
-// earlier crew, and a front whose two ends share a bill has no line to be
-// above — its best crew carries the name.
-func knee(front []Crew) Crew {
-	x0, y0 := math.Log(front[0].Bill), front[0].Quality
-	x1, y1 := math.Log(front[len(front)-1].Bill), front[len(front)-1].Quality
-	if x1 == x0 {
-		return front[len(front)-1]
-	}
-	pick := front[0]
-	best := math.Inf(-1)
-	for _, crew := range front {
-		d := (crew.Quality - y0) - (y1-y0)*(math.Log(crew.Bill)-x0)/(x1-x0)
-		if d > best {
-			pick, best = crew, d
 		}
 	}
 	return pick

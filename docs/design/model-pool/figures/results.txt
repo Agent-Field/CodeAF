@@ -1,0 +1,58 @@
+Numbers quoted in the experiments section. Regenerate with
+    python3 make_figures.py numbers
+
+--- setup ---
+runs with a per-seat split:            132
+of which the reviewer was invoked:     116
+graded runs:                           136
+distinct assignments:                  15 (12 run at least 3 times)
+overall failure rate:                  0.176
+
+--- E1 the cost model ---
+writer    token share  median 0.974  mean 0.877   dollar share median 0.519 mean 0.485
+reviewer  token share  median 0.026  mean 0.117   dollar share median 0.437 mean 0.478
+planner   token share  median 0.000  mean 0.006   dollar share median 0.000 mean 0.038
+reviewer, restricted to the runs that invoked it:
+          token share  median 0.034  mean 0.133   dollar share median 0.509
+fixed reviewer volume 0.080; measured mean is 1.46x that (1.67x on the invoked subset)
+fixed shape           MAPE   302.5%   median |log error| 1.217 (x3.38)   median bias x3.31
+learned, arithmetic   MAPE   241.9%   median |log error| 1.058 (x2.88)   median bias x2.72
+learned, log scale    MAPE    58.4%   median |log error| 0.443 (x1.56)   median bias x0.92
+crew-mean bill: learned MAPE 38.9% (bias x0.89), fixed MAPE 129.7% (bias x2.18)
+
+--- E2 the hindsight check ---
+L=$1   hindsight deepseek-v4.1-flash + kimi-k3      rule deepseek-v4.1-flash + qwen3.8-max-0902 B0-shape muse-spark-1.3 + qwen3.8-max-0902
+        realised loss  hindsight 0.8014   rule 0.8288 (+3.4%)   B0-shape 1.2625 (+57.5%)
+L=$10  hindsight deepseek-v4.1-flash + kimi-k3      rule deepseek-v4.1-flash + qwen3.8-max-0902 B0-shape muse-spark-1.3 + qwen3.8-max-0902
+        realised loss  hindsight 0.8014   rule 1.5393 (+92.1%)   B0-shape 1.2625 (+57.5%)
+L->inf hindsight deepseek-v4.1-flash + kimi-k3      rule muse-spark-1.3 + qwen3.8-max-0902  B0-shape muse-spark-1.3 + qwen3.8-max-0902
+hindsight winner   deepseek-v4.1-flash + kimi-k3      failures 0/11  Wilson 0.000-0.259
+rule's pick        deepseek-v4.1-flash + qwen3.8-max-0902 failures 3/38  Wilson 0.027-0.208
+
+--- E2 sensitivity: the pick at each stake, per prior constant ---
+             L=$1                               L=$10                              L->inf
+lambda=0     deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902
+lambda=2     deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902 muse-spark-1.3 + qwen3.8-max-0902
+lambda=4     deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902 muse-spark-1.3 + qwen3.8-max-0902
+lambda=8     deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902 muse-spark-1.3 + qwen3.8-max-0902
+kappa=10     deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902 muse-spark-1.3 + qwen3.8-max-0902
+kappa=30     deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902 muse-spark-1.3 + qwen3.8-max-0902
+kappa=100    deepseek-v4.1-flash + qwen3.8-max-0902 deepseek-v4.1-flash + qwen3.8-max-0902 muse-spark-1.3 + claude-fable-5.1
+
+--- E3 convergence ---
+replay length 136 graded runs, in completion order
+L=$1   best fixed assignment in hindsight: deepseek-v4.1-flash + kimi-k3      (0.8014 $/task)
+    proposed rule regret   61.287   slope by third +0.8964 +0.4029 +0.0268 $/task   settles on deepseek-v4.1-flash + qwen3.8-max-0902
+    B1 fixed shape regret   65.635   slope by third +0.4914 +0.4611 +0.4509 $/task   settles on muse-spark-1.3 + qwen3.8-max-0902
+    B0 knee       regret   31.434   slope by third +0.2983 +0.1808 +0.1768 $/task   settles on muse-spark-1.3 + claude-fable-5.1
+    rule overtakes B0 cumulatively in 199 further tasks
+L=$10  best fixed assignment in hindsight: deepseek-v4.1-flash + kimi-k3      (0.8014 $/task)
+    proposed rule regret   68.349   slope by third +0.4484 +0.3552 +0.5800 $/task   settles on deepseek-v4.1-flash + qwen3.8-max-0902
+    B1 fixed shape regret   73.619   slope by third +0.5888 +0.4611 +0.4509 $/task   settles on muse-spark-1.3 + qwen3.8-max-0902
+    B0 knee       regret   44.034   slope by third +0.4983 +0.1808 +0.1768 $/task   settles on muse-spark-1.3 + claude-fable-5.1
+    rule overtakes B0 cumulatively in no further tasks
+L->inf best fixed assignment in hindsight: deepseek-v4.1-flash + kimi-k3      (0.0000 failures/task)
+    proposed rule regret    1.400   slope by third +0.0222 +0.0000 +0.0000 failures/task   settles on muse-spark-1.3 + qwen3.8-max-0902
+    B1 fixed shape regret    1.400   slope by third +0.0222 +0.0000 +0.0000 failures/task   settles on muse-spark-1.3 + qwen3.8-max-0902
+    B0 knee       regret    1.400   slope by third +0.0222 +0.0000 +0.0000 failures/task   settles on muse-spark-1.3 + claude-fable-5.1
+    rule overtakes B0 cumulatively in no further tasks

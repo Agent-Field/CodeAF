@@ -1,5 +1,5 @@
 \documentclass[10pt,a4paper]{article}
-\usepackage[margin=2.54cm]{geometry}
+\usepackage[margin=2.4cm]{geometry}
 \usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{newtxtext,newtxmath}
 \usepackage{booktabs}
@@ -14,16 +14,16 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{caption}
 \usepackage{float}
-\captionsetup{font=small,labelfont=bf,width=.92\textwidth}
+\captionsetup{font=small,labelfont=bf,width=.94\textwidth}
 \usepackage{abstract}
 \renewcommand{\abstractnamefont}{\normalfont\bfseries}
-\setlength{\absleftindent}{1.2cm}\setlength{\absrightindent}{1.2cm}
+\setlength{\absleftindent}{1.0cm}\setlength{\absrightindent}{1.0cm}
 \setlength{\parskip}{2pt}
 
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small\textsc{Preprint}}
-\fancyhead[R]{\small Pareto Crewing}
+\fancyhead[R]{\small One Dial}
 \fancyfoot[C]{\small\thepage}
 \renewcommand{\headrulewidth}{0.2pt}
 
@@ -32,13 +32,17 @@
 \newcommand{\N}{\mathbb{N}}
 \newcommand{\roles}{\mathcal{R}}
 \newcommand{\mods}{\mathcal{M}}
-\newcommand{\crews}{\mathcal{K}}
+\newcommand{\chans}{\mathcal{C}}
+\newcommand{\sizes}{\mathcal{S}}
+\newcommand{\srcs}{\mathcal{G}}
+\newcommand{\acts}{\mathcal{A}}
 \newcommand{\front}{\mathcal{F}}
-\newcommand{\seat}[1]{\mathrm{#1}}
+\newcommand{\hull}{\mathcal{H}}
 \newcommand{\code}[1]{\texttt{#1}}
-\newcommand{\pclean}{P_{\mathrm{c}}}
 \DeclareMathOperator*{\argmin}{arg\,min}
 \DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator{\conv}{conv}
 \newtheorem{theorem}{Theorem}
 \newtheorem{proposition}{Proposition}
 \newtheorem{lemma}{Lemma}
@@ -46,14 +50,16 @@
 \theoremstyle{definition}
 \newtheorem{definition}{Definition}
 \newtheorem{assumption}{Assumption}
+\newtheorem{conjecture}{Conjecture}
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
-\title{\textbf{Pareto Crewing}\\[6pt]
-\large Decentralised, privacy-preserving measurement of language-model teams,\\ and a learner that picks them on the cost-quality front, per role and per task}
+\title{\textbf{One Dial}\\[6pt]
+\large Learning cost-aware model assignment for multi-role agent harnesses\\
+from graded outcomes}
 \author{Santosh Kumar Radha}
 \affil{AgentField AI}
-\date{September 2026}
+\date{17 September 2026}
 
 \begin{document}
 \maketitle
@@ -61,507 +67,1513 @@
 
 \begin{abstract}
 \noindent
-\emph{Pareto crewing} is the practice of picking the language-model team for a task on the cost-quality front, one model per role, from evidence about how models have performed in that role rather than from a fixed table. An agent harness runs a task through a \emph{crew}: an assignment of one language model to each of $n$ roles (in our instance a worker that does the work, a checker that reads it and a planner that cuts it). The crew that pays best is neither the cheapest nor the strongest on paper; it is the one that minimises the expected cost of one clean delivery once failed runs, wall time and shipped defects are priced. We give that objective in closed form, show how a crew is computed from a published catalog of prices and benchmark indexes alone (a pareto front in bill and quality, with a scale-free knee), and then how measurements from real runs replace the catalog's proxy. Runs are scored role by role by a model outside the crew. Each score becomes a row that carries no text, no file name, no price and no identity beyond a per-install nonce, so what an install sends is a handful of coarse fields about a model, not about the work; rows reduce to sufficient statistics that form a join-semilattice, so any number of installs and a relay can merge them in any order and reach the same state, the relay is a convenience rather than an authority, and the published index is signed so that every reader can check what it is blending in. Participation is a setting: an install can contribute, read and learn from its own runs without sending, or stay out. Judge severity is removed by a two-way fixed-effects fit on those statistics, drift by a local-level model whose forgetting rate is estimated rather than set, and heterogeneity between installs by a hierarchical prior whose variance is estimated by moments; every statistical constant is an empirical-Bayes estimate, and what remains for the user to set is the price of a defect and the price of time. The crew is chosen by Thompson sampling with semi-bandit feedback: because the objective is linear in role qualities and every role is scored separately, a run on one crew informs every crew that shares a model with it, and the sample complexity scales with the number of models rather than the number of crews. On a ground truth fitted to our own runs the learner beats a fixed table by a third of the remaining regret within a few hundred runs, and role-level feedback halves the regret of a crew-level learner fed the same scores at four hundred runs.
+A multi-role agent harness must decide, before each task, which language model occupies
+which role: which one writes, which one reviews, which one plans. We give a
+decision-theoretic account of that assignment problem and a learner for it whose only
+user-facing parameter is a scalar $L\ge0$, the dollar cost of a failed task. Every other
+quantity --- prices, token volumes, acceptance probabilities, the weight of a published
+catalog, the reliability of each grading source --- is measured or learned. The assignment
+minimises $J(a;x,L)=\E[B(a,x)]+L\,(1-P(g{=}1\mid a,x))$, where $g$ is an executable,
+model-free grade on the artefact the run leaves behind. We characterise exactly what the
+dial reaches: sweeping $L$ over $[0,\infty)$ traces the exposed vertices of the lower
+convex hull of the achievable (bill, failure) set and nothing else, so Pareto-optimal
+assignments strictly inside the hull are selected by no stake. We prove that the
+scale-free knee used by a standard baseline is always such a vertex, and retire it anyway,
+because its implied stake is covariant with the price scale while a user's stake is not.
+Around that core we give a per-role additive-logit quality model with semi-bandit
+feedback, a hierarchical catalog-anchored prior with a cap derived from a between-site
+random effect, sample complexity in closed form, drift by variance inflation, a cascade
+break-even condition, and a switching rule with an anytime-valid test. We evaluate on
+$202$ graded runs of one production harness, $132$ of them carrying a per-role token
+split. Three results. The measured role shape is nothing like the fixed one: the writing
+role takes a median $0.97$ of a run's tokens but only $0.52$ of its dollars, while the
+reviewing role takes a median $0.026$ of the tokens and $0.44$ of the dollars, with a tail
+reaching $0.95$ and nine runs in $132$ on which the role that only reads the work takes
+more than half the tokens; learning that shape --- shrunk on the log scale, which matters --- cuts
+leave-one-out bill prediction error from $302\%$ to $58\%$ and the median error factor
+from $3.4\times$ to $1.6\times$. In a hindsight check over the twelve assignments run at
+least three times, the learned rule's pick at $L{=}\$1$ costs $3.4\%$ more than the
+best assignment in hindsight, against $57.5\%$ for the same rule priced with a fixed
+shape; at $L{=}\$10$ it costs $92\%$ more, and we show why --- the additive model cannot
+represent the role-pair interaction that the hindsight winner exploits. Replaying the
+ledger in time order, the rule's empirical regret at $L{=}\$1$ flattens from
+$\$0.90$ to $\$0.027$ per task across thirds while a fixed-shape variant stays at
+$\$0.45$; at $L{=}\$10$ it does not flatten at all, which is what a stake of ten dollars
+and $136$ graded runs are jointly unable to resolve. We report the negative results
+in full.
 \end{abstract}
 
-\vspace{4pt}
-\noindent\textbf{Keywords:} Pareto crewing, model selection, pareto front, empirical Bayes, Thompson sampling, combinatorial semi-bandits, CRDT, judge calibration, privacy, decentralised measurement.
+\vspace{2pt}
+\noindent\textbf{Keywords:} model selection, decision theory, combinatorial semi-bandits,
+Thompson sampling, cascades, empirical Bayes, cost-aware learning, LLM agents.
 
 \section{Introduction}
+\label{sec:intro}
 
-A harness that drives language models through software tasks has to decide, before every task, which model sits in which role. The decision is made under three kinds of information that arrive at different times and in different units: published prices and benchmark indexes, available for every model on the day it appears; the harness's own past runs, few but on the right distribution; and the runs of everyone else using the same harness, many but on other people's tasks and scored by other people's judges. This note is about turning the three into one decision.
+An agent harness that drives language models through software tasks makes a structured
+choice before every task: which model occupies which role. Contemporary harnesses run two
+to five roles --- one that writes the change, one that reviews it, one that decomposes the
+brief, sometimes one that grades and one that converses --- and the published model
+catalog offers hundreds of candidates for each. The choice matters twice over. It sets the
+bill, which varies by two orders of magnitude across feasible assignments, and it sets the
+probability that the task comes back done, which varies by tens of percentage points. The
+two move together, and the rate at which a practitioner is willing to trade one for the
+other is not a property of the system.
 
-We call the resulting discipline \emph{Pareto crewing}: the crew is picked on the cost-quality front, per role and per task, from whatever evidence exists on the day, and the evidence is pooled across installs without any install giving up what it worked on. Our contributions are the following.
-\begin{enumerate}
-\item A closed-form objective for a crew, the expected cost of one clean delivery under reruns and a priced defect (Section~\ref{sec:objective}), and the observation that on a catalog alone the objective cannot be evaluated, which is why the catalog picker is a pareto front with a scale-free knee (Section~\ref{sec:catalog}).
-\item A decentralised measurement of role quality (Section~\ref{sec:pool}): text-free rows, sufficient statistics that form a state-based CRDT (Proposition~\ref{prop:crdt}), judge fixed effects identified from the connectivity of the judge-cell graph (Proposition~\ref{prop:ident}), robust aggregation across installs, and drift handled by a local-level model.
-\item An estimator with no tuned constant except the user's price of a defect (Section~\ref{sec:eb}): the catalog's prior weight, the between-install variance, the noise scale and the forgetting rate are all estimated from the pool by moments.
-\item A picker (Section~\ref{sec:decide}) that is Thompson sampling in a combinatorial semi-bandit: the crew objective is linear in role qualities, roles are scored separately, so one run updates every crew sharing a model with it.
-\item An empirical check on our own measured runs (Section~\ref{sec:exp}), reproducible from the script beside this document.
+The information available to make the choice arrives in three units and on three
+timescales. A published catalog gives a price and one or more benchmark indexes for every
+model on the day it appears --- in the snapshot we use, $522$ models, $417$ of them
+priced. A site's own past runs are few, but they are drawn from exactly the distribution
+that matters. Other sites' runs are many, but they are drawn from other people's
+repositories. A usable rule must combine all three, and must keep working on the day a
+model nobody has run appears in the feed.
+
+\paragraph{The thesis.}
+We argue for a one-parameter decision rule. The practitioner states one number: $L$, the
+dollars a failed task costs them. Everything else --- the per-role token volumes, the
+prices, the acceptance probabilities, the weight the catalog deserves, the reliability of
+each source of grades --- is measured from graded runs or read from a public feed. The
+rule minimises expected loss
+\[
+J(a;x,L)=\E[B(a,x)]+L\,\big(1-P(g{=}1\mid a,x)\big),
+\]
+its reachable set is exactly the exposed lower convex hull of the achievable (bill,
+failure) set, and as graded runs accumulate its picks converge to the assignment that
+minimises realised loss. The units are dollars throughout. There is no utility scale, no
+temperature, and no exchange rate the practitioner does not set.
+
+\paragraph{Why one dial and not zero.}
+A rule with no dial must choose the trade-off on the practitioner's behalf, and the usual
+device for that is a scale-free knee: the point on the cost--quality front farthest above
+the chord in $(\log\text{cost},\,\text{quality})$. We show in Section~\ref{sec:decision}
+that such a knee is always a hull vertex, hence always the answer for \emph{some} stake
+--- and that this is exactly the problem, because the stake it implies is never shown, and
+it moves when prices move in a direction opposite to the one a fixed stake implies. A rule
+with no units cannot be told what a failure costs.
+
+\paragraph{Why one dial and not several.}
+Every additional knob --- an exploration rate, a quality floor, a temperature, a price
+ceiling --- is a quantity the practitioner must set without a unit in which to reason
+about it, and each interacts with the others. We show that the quantities usually exposed
+as knobs are either derivable from $L$ and the measured cells (the exploration budget
+prices itself inside $J$; the switching threshold is a cache loss with a receipt) or
+estimable from data (the catalog's weight, the between-site variance, the drift rate, each
+a moment estimator).
+
+\paragraph{Contributions.}
+\begin{enumerate}\itemsep1pt
+\item A decision-theoretic formulation of role assignment with a single scalar in dollars,
+and a complete characterisation of what sweeping it can and cannot reach
+(Propositions~\ref{prop:hull}--\ref{prop:sweep}), together with a proof that the
+scale-free knee is always reachable (Proposition~\ref{prop:kneehull}) and the scale
+argument for retiring it anyway (Proposition~\ref{prop:scale}).
+\item An executable, model-free reward, and a derivation of what a noisy proxy for it is
+worth in units of graded runs (Proposition~\ref{prop:reliab}), measured on three candidate
+proxies (Section~\ref{sec:reward}).
+\item A per-role additive-logit quality model with semi-bandit feedback, a hierarchical
+catalog-anchored prior whose external evidence is capped by a between-site random effect
+(Proposition~\ref{prop:post}), closed-form sample complexity
+(Proposition~\ref{prop:samples}), and drift by variance inflation
+(Section~\ref{sec:quality}).
+\item A learned per-(role, model) token shape in place of a fixed one, and the observation
+--- which turns out to carry the entire effect --- that the shape must be shrunk on the
+log scale (Section~\ref{sec:cost}).
+\item Cascades, exploration under a hard budget, switching under an anytime-valid test,
+and pooling across sites, each as a separate mechanism with its own break-even condition
+and its own stated limits (Sections~\ref{sec:decide}--\ref{sec:federation}).
+\item An evaluation on $202$ graded runs of a production harness --- a cost-model
+experiment, a hindsight check against the best assignment at three stakes, and a
+convergence replay --- reported with its negative results (Section~\ref{sec:exp}).
 \end{enumerate}
 
-\section{Setting}
+\section{Setting and notation}
 \label{sec:setting}
 
-\begin{definition}[Roles, crews]
-Let $\roles$ be a finite set of $n$ \emph{roles} and $\mods$ a finite set of models. A \emph{crew} is a map $\kappa:\roles\to\mods$. Each role $r$ carries a \emph{shape}: a token share $v_r\ge 0$ with $\sum_r v_r=1$, index weights $w_r\in\Delta^{2}$, a cache share $\gamma_r\in[0,1]$, an input-to-output ratio $\rho_r>0$, and a predicate $\mathrm{fit}_r(m)$ saying whether model $m$ can hold the role (tools, images, context). A symmetric relation $D\subseteq\roles\times\roles$ names the pairs of roles that may not be held by models of the same vendor.
+\begin{definition}[Roles, models, assignments]
+Let $\roles$ be a finite set of \emph{roles} and $\mods$ a finite set of \emph{models}. An
+\emph{assignment} is a map $a:\roles\to\mods$ subject to feasibility: each role $r$ carries
+a predicate $\mathrm{fit}_r(m)$ (tool use, modalities, context window) and a set
+$D\subseteq\roles\times\roles$ of role pairs that may not be held by models of the same
+vendor. Write $\acts$ for the feasible set.
 \end{definition}
 
-Our instance has $\roles=\{\seat{W},\seat{H},\seat{M}\}$ (worker, high, mastermind), token shares $(0.90,0.08,0.02)$, weights $(0.2,0.3,0.5)$, $(\tfrac13,\tfrac13,\tfrac13)$, $(0.6,0,0.4)$ on the indexes (intelligence, coding, agentic), cache shares $(0.75,0.75,0)$, ratios $(100,100,10)$ and $D=\{(\seat W,\seat H)\}$: the two roles that read the same work never share one shop. On the chat door the planner role is absent and $n=2$. Nothing below depends on $n=3$.
+Throughout, $\roles=\{\mathrm{writer},\mathrm{reviewer},\mathrm{planner}\}$: the writer
+produces the change, the reviewer reads it without producing one, the planner decomposes
+the brief into steps. Nothing below depends on $|\roles|=3$, and nothing depends on those
+three being the roles; a harness with a separate grading role or a separate conversational
+role adds coordinates to $a$ without changing any statement.
 
-A \emph{task} is one unit of work; a \emph{run} is one attempt at it by a crew. A run ends \emph{delivered} or not, and a delivered task is later found \emph{clean} (no major defect) or not. Money is in dollars and time is priced at $\lambda$ dollars per minute.
+A \emph{task} carries a context $x$ recorded before the run starts: an entry channel
+$c\in\chans$ (which interface the work arrived through), a size class $s\in\sizes$, and any
+other pre-run covariate. A \emph{run} is one attempt by one assignment on one task, and
+leaves behind an \emph{artefact} --- in the software setting, a working tree.
 
-The \emph{catalog} lists, per model, a prompt price $\pi_m$, a cache-read price $\pi^c_m$, a completion price $\kappa_m$ per million tokens, and benchmark indexes $I_m\in\R^3$. The \emph{pool} is the set of measurements described in Section~\ref{sec:pool}; the \emph{own sheet} is one install's part of it.
+\begin{table}[h]\centering\small
+\begin{tabular}{p{2.2cm}p{11.6cm}}\toprule
+symbol & meaning\\\midrule
+$r\in\roles$, $m\in\mods$ & a role; a model\\
+$a\in\acts$, $a(r)$ & an assignment; the model it puts in role $r$\\
+$x=(c,s,\dots)$ & the task's pre-run context: entry channel $c\in\chans$, size class $s\in\sizes$\\
+$g\in\{0,1\}$ & the grade: $1$ iff the artefact is acceptable by the harness's own checks\\
+$z$ & an auxiliary observation from a source in $\srcs$ (an independent rating, review findings, a run's own claim)\\
+$B(a,x)$ & the run's bill in dollars\\
+$L\ge0$ & the \emph{stake}: what one failed task costs this practitioner, in dollars\\
+$J(a;x,L)$ & the objective, Eq.~\eqref{eq:J}\\
+$\theta_{r,m}$ & role $r$'s contribution to the log-odds of acceptance when held by $m$\\
+$\alpha_x$ & the task's own difficulty on the log-odds scale\\
+$\varphi_m$ & the catalog's published indexes for $m$\\
+$w_r$ & role $r$'s weighting of those indexes\\
+$\kappa$ & the catalog prior's strength, in graded runs\\
+$\sigma_0^2,\ \sigma_u^2,\ \tau^2$ & prior variance; between-site variance; drift variance per day\\
+$T_{r,m}$ & the token shape of $(r,m)$: input, cached and output tokens per call, calls per task\\
+$\pi_m,\pi^c_m,\chi_m$ & prompt, cache-read and completion price per token\\
+$b$, $\beta(b)$ & a log-price band; the set of models in it\\
+$\rho_{\mathrm{src}}$ & source $\mathrm{src}\in\srcs$'s reliability: what one of its observations is worth in grades\\
+$E$ & the per-site, per-day cap on exploration spend, in dollars\\
+$\delta$ & the switching threshold: cache loss plus hysteresis\\
+\bottomrule\end{tabular}
+\caption{Notation. Dollars are dollars throughout; there is no utility unit and no
+exchange rate the practitioner does not set.}
+\label{tab:notation}
+\end{table}
 
-\section{The crew computed from the catalog}
-\label{sec:catalog}
+\section{Baselines}
+\label{sec:today}
 
-\paragraph{Role cost and role quality.}
-Per million task tokens on role $r$, model $m$ costs
+We state two baselines precisely, because the contributions below are differences from
+them and because both are what deployed systems actually do.
+
+\paragraph{Baseline B0: a fixed token shape and a scale-free knee.}
+Quality is read from the catalog alone. A model's score for a role is a weighted,
+pool-normalised blend of its published indexes,
 \begin{equation}
-c_r(m) = (1-\gamma_r)\,\pi_m + \gamma_r\,\pi^{c}_m + \kappa_m/\rho_r ,
-\label{eq:seatcost}
-\end{equation}
-and its catalog quality is the weighted, pool-normalised index
-\begin{equation}
-\hat q_r(m) = 100 \sum_{i=1}^{3} w_{r,i}\,\frac{I_{m,i}}{\max_{m'\in\mods} I_{m',i}} .
+\hat q_r(m)=100\sum_{i} w_{r,i}\,\frac{\varphi_{m,i}}{\max_{m'\in\mods}\varphi_{m',i}},
 \label{eq:catq}
 \end{equation}
-A missing index is imputed from the models that publish it: for each index the model does publish, the median over at least three donor models of the ratio between the missing and the present index gives an offer, the offers are averaged, and the estimate is capped at the largest measured value of the missing index in the pool; with fewer than three donors the model takes the standing its present indexes give it on the pool's scale. An imputed quality is flagged and loses ties.
-
-\paragraph{Shortlists.}
-Role $r$'s shortlist is
+the maximum taken over the candidate list handed to the call, so the same model scores
+differently in a stronger pool; a missing index is imputed from ratios to the indexes the
+model does publish. Cost is read from a \emph{fixed shape}: each role carries an
+input-to-output ratio, a cache-hit share, and a share of the task's tokens, all of them
+constants. The role's unit cost is $(1-\gamma_r)\pi_m+\gamma_r\pi^c_m+\chi_m/\mathrm{InOut}_r$
+and the assignment's bill is the volume-weighted sum. Assignments are sorted by bill and
+swept for strict improvement in quality, giving the Pareto front $\front$; the chosen
+assignment is the member farthest above the chord of the front in $(\ln B,Q)$:
 \begin{equation}
-S_r=\{m:\ \mathrm{fit}_r(m)\ \wedge\ \hat q_r(m)\ge \phi\max_{m'} \hat q_r(m')\},\qquad \phi=0.8,
-\label{eq:floor}
-\end{equation}
-the floor being the statement that a model which cannot do the job is not cheap at any price. The crew set is $\crews=\{\kappa\in\prod_r S_r:\ \mathrm{vendor}(\kappa(r))\ne\mathrm{vendor}(\kappa(r'))\ \forall (r,r')\in D\}$.
-
-\paragraph{Bill, quality, front.}
-\begin{equation}
-B(\kappa)=\sum_{r} v_r\,c_r(\kappa(r)),\qquad Q(\kappa)=\sum_{r}\nu_r\, q_r(\kappa(r)),\qquad \nu_r\ge0,\ \textstyle\sum_r\nu_r=1,
-\label{eq:crew}
-\end{equation}
-with $\nu$ uniform by default. The \emph{front} $\front\subseteq\crews$ is the set of crews not dominated in $(B,Q)$. Sorting $\crews$ by $(B\uparrow, Q\downarrow, \text{imputed count}\uparrow, \text{id}\uparrow)$ and keeping a crew when its $Q$ exceeds every kept crew's yields $\front$ in $O(|\crews|\log|\crews|)$, and the tie order makes $\front$ a function of the set $\crews$ rather than of any input order. In practice $|S_r|$ is a few dozen and $|\crews|$ a few thousand.
-
-\paragraph{Why a front and not a score.}
-The objective of Section~\ref{sec:objective} needs a probability of clean delivery. The catalog has none, so any scalarisation of $(B,Q)$ would fix an exchange rate between a price and a benchmark index that nobody has measured. Dominance is the only order that needs no such rate; every crew a user could sensibly want is on $\front$, which is small, and the remaining choice is one-dimensional along it.
-
-\paragraph{Knee and knob.}
-Index $\front$ by bill, $B_0\le\dots\le B_1$. The three named picks are \emph{frugal} $=\argmin_\front B$, \emph{max} $=\argmax_\front Q$, and \emph{balanced}, the crew farthest above the chord of the front in $(\ln B,Q)$:
-\begin{equation}
-\text{balanced}=\argmax_{\kappa\in\front}\ \Big[(Q(\kappa)-Q_0) - (Q_1-Q_0)\frac{\ln B(\kappa)-\ln B_0}{\ln B_1-\ln B_0}\Big].
+\text{knee}=\argmax_{a\in\front}\Big[(Q(a)-Q_0)-(Q_1-Q_0)\frac{\ln B(a)-\ln B_0}{\ln B_1-\ln B_0}\Big].
 \label{eq:knee}
 \end{equation}
-\begin{proposition}[Scale invariance]
-The balanced crew is invariant under $B\mapsto aB$ for any $a>0$ and under $Q\mapsto Q+b$.
-\end{proposition}
-\begin{proof}
-$\ln(aB)-\ln(aB_0)=\ln B-\ln B_0$ and $\ln(aB_1)-\ln(aB_0)=\ln B_1-\ln B_0$; the bracket is unchanged. A shift of $Q$ cancels in both differences.
-\end{proof}
-The log scale is not cosmetic: catalog prices span two orders of magnitude, and the knee should not move when a currency changes or every vendor cuts prices by the same factor. A knob $k\in[0,1]$ picks the best crew with $B\le B_0(B_1/B_0)^k$, so equal steps in $k$ are equal ratios in the bill.
 
-\section{The objective: the cost of one clean delivery}
-\label{sec:objective}
-
-Let a run of crew $\kappa$ cost $c$ dollars and $t$ minutes, deliver with probability $r$, and let a delivered task be clean with probability $p$; a run that fails to deliver costs $c_f$ and $t_f$.
-
-\begin{lemma}[Rerun until clean]
-If every defect is caught and the task rerun, the expected cost to one clean delivery is
+\paragraph{Baseline B1: a posterior-mean rule with a catalog prior.}
+B1 keeps B0's fixed cost shape but replaces the catalog score with a shrinkage blend of it
+and the site's own measurements. A cell supplies a mean $\bar y_{r,m}$ over $N$
+observations, and the role's score becomes
 \begin{equation}
-E_0(\kappa)=\frac{(1-r)(c_f+\lambda t_f)+r\,(c+\lambda t)}{r\,p}.
-\label{eq:E0}
+(1-w)\,\hat q_r(m) + w\,\bar y_{r,m},\qquad w=\frac{N}{N+\kappa},\qquad \kappa=30 .
+\label{eq:blend}
 \end{equation}
-\end{lemma}
-\begin{proof}
-Attempts are i.i.d.\ with success probability $rp$; the count to the first success is geometric with mean $1/(rp)$, and by Wald's identity the expected total cost is the mean count times the expected cost of one attempt, which is the numerator.
-\end{proof}
+This is the posterior mean of a conjugate normal model in which the catalog is a prior
+worth $\kappa$ observations; Section~\ref{sec:quality} makes that reading precise and
+Proposition~\ref{prop:post} generalises it to three sources.
 
-\begin{lemma}[Priced defect]
-If a shipped defect costs $H$ to find and mend and only non-deliveries are rerun,
-\begin{equation}
-E_H(\kappa)=\frac{(1-r)(c_f+\lambda t_f)}{r} + (c+\lambda t) + (1-p)\,H .
-\label{eq:EH}
-\end{equation}
-\end{lemma}
-\begin{proof}
-The count of failed attempts before the first delivery is geometric on $\{0,1,\dots\}$ with mean $(1-r)/r$; the delivering attempt costs $c+\lambda t$; the defect is paid once with probability $1-p$.
-\end{proof}
+\paragraph{Four things neither baseline can see.}
+\begin{enumerate}\itemsep1pt
+\item[\textbf{G1}] \emph{No exploration.} The pick is the argmin at the posterior mean. A
+role--model pair nobody has rated keeps its catalog score forever, and a model outside the
+catalog's index coverage keeps whatever default it was given. Section~\ref{sec:decide}
+shows this is not merely a theoretical gap: it is the one regime in which the rule's
+regret does not fall at all.
+\item[\textbf{G2}] \emph{No measured cost.} The token shape is a constant, so the bill of
+an assignment is a statement about prices and not about what the models do. In particular
+nothing in the shape varies by model: a reviewer that emits ten times as many tokens as
+another is priced as though it emitted the same number. Section~\ref{sec:exp} measures
+what that omission costs.
+\item[\textbf{G3}] \emph{Two scales under one name.} Systems of this kind routinely publish
+a continuous rubric score and a binary defect indicator under a single metric, and average
+them into one cell. A Gaussian mean over a mixture of a $0$--$100$ rubric and a two-point
+Bernoulli is not a quantity. Section~\ref{sec:reward} separates them.
+\item[\textbf{G4}] \emph{Leakage in the covariates.} Where a size class is computed from
+the artefact's token count \emph{after} the run, it cannot be conditioned on before the
+pick. A feature known only after the outcome is not a feature.
+\end{enumerate}
+A rule with no units, moreover, cannot be told what a failure costs, which is the
+motivation for everything in Section~\ref{sec:decision}.
 
-$H$ is the one quantity that belongs to the user, and the budget word sets it: frugal $H=\$1$, balanced $\$10$, max $\$50$. Both forms are monotone in the same three quantities, the run's cost, its time and $\pclean=rp$, and the picker works with
-\begin{equation}
-E(\kappa)=c(\kappa)+\lambda\,t(\kappa)+H\,\big(1-\pclean(\kappa)\big).
-\label{eq:E}
-\end{equation}
-Equation~\eqref{eq:E} is~\eqref{eq:EH} with $r$ set to one: a run that fails to deliver is priced as a shipped defect rather than rerun. The surrogate ranks crews as $E_H$ does when $H$ is large next to a run's cost and $r$ is not far below one, which is the regime of every crew on the front of Figure~\ref{fig:front}; when a role's delivered rate is measured, as the worker's is, the picker can use~\eqref{eq:EH} directly and nothing below changes. Figure~\ref{fig:front} draws our measured crews with the iso-lines of~\eqref{eq:E}. The knob $k$ and the price $H$ parametrise the same trade-off; $k$ is what a catalog admits, $H$ is what measurements admit.
+\section{The reward: an executable grade, and what a proxy is worth}
+\label{sec:reward}
 
-\begin{assumption}[Linearity in roles]
-\label{ass:linear}
-$\pclean(\kappa)=\sum_r \nu_r\,q_r(\kappa(r))/100$, where $q_r(m)$ is the pool's role quality: the run's outcome credited to the role, on a 0--100 scale.
-\end{assumption}
-The assumption is what makes~\eqref{eq:E} linear in the role qualities, which Section~\ref{sec:decide} uses. It is a working rule rather than a law: a product over roles would count one outcome $n$ times, and a fitted interaction becomes available once judged scores separate the roles' contributions. Nothing in Sections~\ref{sec:pool}--\ref{sec:eb} depends on it.
-
-\begin{figure}[t]
-\centering\includegraphics{fig-front.pdf}
-\caption{Our measured crews: 56 (worker, checker or planner) combinations, each fitted by a ridge model on 72 scored runs over nine tasks; cost of one run against the probability that it delivers clean. Solid: the pareto front. Dashed: iso-cost lines of~\eqref{eq:E}; a larger $H$ tilts them so that quality buys more.}
-\label{fig:front}
-\end{figure}
-
-\section{The Model Pool: a decentralised measure of role quality}
-\label{sec:pool}
-
-\subsection{Judged runs and rows}
-
-After a run finishes, one model outside the crew reads the record (brief, deliverable, the checker's report and claim, the files touched) and answers one question per role with a score in $[0,100]$ and one sentence. The judge is chosen deterministically: the cheapest catalog model with coding index at least $60$ that can call tools, holds no role in the crew, and is not from the worker's vendor; a role the judge's own model holds is skipped. The floor is absolute, not relative to the worker; its reason is that a judge well below the class of the work it reads rubber-stamps. The judge's calls are billed to a role of their own, so learning is never free by accident; the cost is one short completion per role.
-
-One judged role of one run is one \emph{row}
-\[
-x=(\text{role},\ \text{model},\ \text{score},\ \text{judge},\ \text{door},\ \text{size}\in\{S,M,L\},\ \text{day}),
-\]
-sent under an \emph{install} nonce drawn once per profile and carried on the batch, not in the row. No text, no price and no duration is in a row; dollars and minutes stay in the install's own ledger. Rows wait in a local outbox, which can be inspected, until they are sent.
-
-\subsection{Sufficient statistics and order-free merging}
-
-\begin{definition}[Cell, sheet]
-A \emph{cell} is a tuple $\theta=(\text{role},\text{model},\text{judge},\text{door},\text{size})$. A \emph{sheet} is a map from (install, day, cell) to a triple $T=(n,S,S^2)\in\N\times\R_{\ge0}\times\R_{\ge0}$, the count, sum and sum of squares of the scores an install has produced in that cell.
+\begin{definition}[The grade]
+\label{def:grade}
+For an artefact $\ell$, the harness runs a fixed, executable battery --- in the software
+setting: a build over the whole module; a static check; the test suites of exactly the
+packages the change touched, with the cache defeated; and a formatting check. Define
+$g(\ell)=1$ if all succeed and $0$ otherwise. The grade is a function of the artefact and
+the repository alone. No language model is consulted, so no model grades itself, and no
+model's opinion of an artefact can move it.
 \end{definition}
 
-Every quantity computed below is a function of the sheet. Sheets are merged by the join
-\begin{equation}
-(A\sqcup B)(u,d,\theta)=\big(\max(n_A,n_B),\ \max(S_A,S_B),\ \max(S^2_A,S^2_B)\big)\quad\text{componentwise on } A(u,d,\theta),\,B(u,d,\theta),
-\label{eq:join}
-\end{equation}
-with a missing entry read as $(0,0,0)$.
+This is a deliberately narrow reward. It says nothing about whether the change is the
+change that was asked for; Section~\ref{sec:limits} treats that as the principal threat to
+validity. What it buys is a reward that is cheap, reproducible by a stranger, and immune
+to the single largest hazard in an agent harness --- that the thing being optimised is a
+claim made by the thing being optimised.
 
-\begin{proposition}[The sheet is a state-based CRDT]
-\label{prop:crdt}
-Let each install $u$ only ever publish its own entries $(u,d,\theta)$ and let every published triple be the running total of $u$'s rows in $\theta$ on day $d$. Then (i) $\sqcup$ is commutative, associative and idempotent; (ii) an install's triples are monotone non-decreasing in time, so a later publication dominates an earlier one under $\sqcup$; (iii) any two nodes that have received the same set of publications, in any order and with any duplication, hold the same sheet.
+\subsection{Auxiliary observations and their reliability}
+
+Other signals exist and are not thrown away: an independent rating in $[0,100]$; the
+reviewing role's counts of major and minor findings; the run's own account of how it
+stopped. They enter as observations \emph{of} $g$ with a fitted reliability, never as $g$.
+
+\begin{proposition}[What one noisy binary observation is worth]
+\label{prop:reliab}
+Let $g\sim\mathrm{Bernoulli}(p)$ and let $z\in\{0,1\}$ satisfy $P(z{=}1\mid g{=}1)=a$ and
+$P(z{=}0\mid g{=}0)=b$ with $\gamma:=a+b-1>0$, and $z\perp\!\!\!\perp$ everything else
+given $g$. Then $z\sim\mathrm{Bernoulli}(q)$ with $q=ap+(1-b)(1-p)$, and the Fisher
+information $z$ carries about $p$ is $\gamma^2/\big(q(1-q)\big)$. Relative to one direct
+observation of $g$, which carries $1/\big(p(1-p)\big)$, the \emph{effective count} of one
+$z$ is
+\begin{equation}
+\rho \;=\; \gamma^{2}\,\frac{p(1-p)}{q(1-q)}\ \in[0,1],
+\label{eq:rho}
+\end{equation}
+with $\rho=1$ iff $a=b=1$.
 \end{proposition}
 \begin{proof}
-(i) is the componentwise max on a product of totally ordered sets. (ii) Scores lie in $[0,100]$, so $n$, $S$ and $S^2$ each grow by a non-negative amount per row. (iii) follows from (i) and (ii): the join of a set of publications is their least upper bound, which does not depend on order or multiplicity, and by (ii) the least upper bound of an install's publications is its latest.
+$q=ap+(1-b)(1-p)$ gives $dq/dp=a-(1-b)=\gamma$. The Fisher information of a
+Bernoulli$(q)$ observation about its own parameter is $1/(q(1-q))$; by the chain rule for
+Fisher information under a smooth reparametrisation, its information about $p$ is
+$(dq/dp)^2/(q(1-q))=\gamma^2/(q(1-q))$. Dividing by $1/(p(1-p))$ gives~\eqref{eq:rho}. For
+the range, write $\gamma=a+b-1$ and note $q(1-q)\ge \gamma^2 p(1-p)$ because $q$ is an
+affine image of $p$ with slope $\gamma$ into $[0,1]$:
+$\operatorname{Var}(z)\ge\operatorname{Var}(\E[z\mid g])=\gamma^2 p(1-p)$, the inequality
+being the law of total variance with the conditional variance dropped, and it is an
+equality exactly when $\operatorname{Var}(z\mid g)=0$ almost surely, i.e.\ $a=b=1$.
 \end{proof}
 
-The cell means and pooled variances are functions of $\sum_u T(u,\theta)$, so by Proposition~\ref{prop:crdt} a relay and every install compute the same estimates from the same publications; there is no coordinator whose order of arrival matters, and a relay that is lost is rebuilt from any node that kept the publications. This is the sense in which the measure is decentralised: the relay is a convenience for bandwidth and signing, not a source of truth. Two kinds of merge exist, and the join is the law for one of them. Within a store, rows are folded by addition: the install's own sheet (\code{internal/pool/tally}) adds each of its rows once, as it is judged, and the reference relay adds each row it receives into the sender's triple for that cell and day. Addition is not idempotent, so a batch retried after a lost acknowledgement can be counted twice there; the relay bounds that by its daily row quota per install, and a relay that wants exactness keeps the batch's nonce. Between stores, when a relay, a mirror or an install holds a copy of another's sheet, the join~\eqref{eq:join} is the merge, and Proposition~\ref{prop:crdt} is what makes copies converge whatever the order.
+An observation from source $\mathrm{src}\in\srcs$ is therefore admitted with weight
+$\rho_{\mathrm{src}}$ in the count $N$ of Eq.~\eqref{eq:blend} and its successors, and
+$(a_{\mathrm{src}},b_{\mathrm{src}})$ are fitted wherever grades and proxies co-occur --- a
+Dawid--Skene fit over sources~\cite{dawid1979}, the binary case of the many-facet Rasch
+calibration~\cite{linacre1989} that a rater-severity fit performs on the continuous scale.
 
-\subsection{Judges are not the same ruler}
+\subsection{Three proxies, measured}
 
-Let $y$ be a score of role $r$, model $m$, by judge $j$. We posit the two-way additive model
-\begin{equation}
-y=\mu_{rm}+\beta_j+\varepsilon,\qquad \E\varepsilon=0,\ \operatorname{Var}\varepsilon=\sigma^2,
-\label{eq:twoway}
-\end{equation}
-with $\mu_{rm}$ the quantity of interest and $\beta_j$ the judge's severity, constrained by $\sum_j n_{\cdot\cdot j}\beta_j=0$ (the judges' weighted mean is the ruler). Weighted least squares needs only the cell means $\bar y_{rmj}=S_{rmj}/n_{rmj}$ and counts. The normal equations are solved by alternating
-\begin{equation}
-\beta_j\leftarrow\frac{\sum_{r,m} n_{rmj}(\bar y_{rmj}-\mu_{rm})}{\sum_{r,m} n_{rmj}},\qquad
-\mu_{rm}\leftarrow\frac{\sum_{j} n_{rmj}(\bar y_{rmj}-\beta_j)}{\sum_{j} n_{rmj}},
-\label{eq:als}
-\end{equation}
-re-centring $\beta$ after each sweep. Each half-step minimises a convex quadratic in its block, so the residual is non-increasing and the iteration converges to the least-squares solution; five sweeps suffice in practice.
+Figure~\ref{fig:selfreport} applies Eq.~\eqref{eq:rho} to a ledger of $202$ graded runs
+(Section~\ref{sec:exp} describes it), using ``the run carried no major finding'' as the
+grade, for want of an executable grader in the historical data. Three results, and the
+third is a design consequence.
 
-\begin{proposition}[Identifiability]
-\label{prop:ident}
-Let $G$ be the bipartite graph with the judges on one side, the pairs $(r,m)$ on the other, and an edge where $n_{rmj}>0$. The parameters of~\eqref{eq:twoway} are identified up to one additive constant per connected component of $G$: within a component every contrast is identified, and one centring constraint per component fixes its levels. When $G$ is connected the single constraint identifies everything.
-\end{proposition}
-\begin{proof}
-The design matrix of a two-way additive model has rank equal to (number of vertices of $G$) minus (number of connected components), and its kernel is spanned by the vectors that shift $\mu$ up and $\beta$ down by one constant on one component; one linear constraint per component removes them. With the single centring constraint, exactly one component is fully identified.
-\end{proof}
+\emph{A run's own claim is worth almost nothing.} The harness's own verdict that a run
+finished has sensitivity $0.56$, specificity $0.62$, $\gamma=0.18$ and $\rho=0.02$: fifty
+such claims carry the information of one grade. The process exit code does barely better
+($\gamma=0.25$, $\rho=0.04$). An independent rating of $4$ or $5$ on a five-point scale
+reaches $\gamma=0.72$, $\rho=0.42$.
 
-The reference relay centres $\beta$ by one weighted mean, which fixes the levels only when $G$ is connected; on a disconnected graph the between-component offsets are a convention of the fit, and the index says which judges each cell was scored by so a reader can tell. The judge rule of Section~5.1 makes $G$ connected quickly in practice: it sends most installs to the same few cheap judges. A model scored by a single judge so far has $\mu_{rm}$ equal to its own mean and the index says so.
+\emph{The relation between a rating and a defect is not monotone.} At ratings $2$ and $3$
+the chance of at least one major finding is $1.00$ and $0.81$; at rating $1$ it is $0.12$.
+The reason is visible in the run records: $92\%$ of rating-$1$ runs produced nothing at all
+--- they hit a cap or a provider error with no artefact. A run that does nothing has
+nothing to be wrong about. Any reward monotone in the rating would pay for doing nothing,
+and any reward monotone in the \emph{absence} of findings would pay for it too.
+Definition~\ref{def:grade} does not, because an empty artefact fails the tests the brief
+asked for.
 
-\subsection{Installs are not independent, and some are wrong}
-
-Rows from one install share a task mix, a codebase and a way of writing briefs. Under an intra-class correlation $\varrho$, $n_u$ rows from install $u$ carry the information of $n_u/(1+(n_u-1)\varrho)$ independent ones, which saturates at $1/\varrho$. The pool's cell estimate therefore treats installs, not rows, as the unit: it forms the install means $\bar y_{u\theta}$ and combines them with a location estimator that is robust to a minority of installs that are broken or adversarial. We use the Huber $M$-estimate with scale $s=1.4826\cdot\mathrm{MAD}$ and the conventional tuning constant $1.345$ (95\% efficiency at the normal), which has breakdown point $1/2$ in location, and fall back to the precision-weighted mean when a cell has fewer than five installs. A cell backed by fewer than three installs is published but not read.
-
-\subsection{Drift}
-
-Models change under the same name. Let $\bar y_d$ be a cell's day-$d$ mean over $n_d$ rows and model the true level as a random walk,
-\begin{equation}
-\mu_d=\mu_{d-1}+\eta_d,\quad \eta_d\sim\mathcal N(0,\omega^2);\qquad \bar y_d=\mu_d+\bar\varepsilon_d,\quad \bar\varepsilon_d\sim\mathcal N(0,\sigma^2/n_d).
-\label{eq:localevel}
-\end{equation}
-The Kalman filter for this local-level model is, in steady state with constant $n_d=\bar n$, an exponentially weighted average whose forgetting factor $1-\alpha$ solves $\alpha^2/(1-\alpha)=\bar n\omega^2/\sigma^2$; the effective memory is about $1/\alpha$ days. The drift variance is estimated by moments from the day-to-day differences,
-\begin{equation}
-\hat\omega^2=\Big[\widehat{\operatorname{Var}}(\bar y_d-\bar y_{d-1})-\sigma^2\big(\tfrac1{n_d}+\tfrac1{n_{d-1}}\big)\Big]_+,
-\label{eq:drift}
-\end{equation}
-pooled across cells. A cell with no evidence of drift ($\hat\omega^2=0$) keeps everything; a cell that drifts forgets at the rate the data show. The day is a cell dimension for exactly this reason.
+\emph{Therefore the scoreboard splits.} There is one Bernoulli metric, acceptance, whose
+cells carry a source dimension in $\srcs$ and whose per-source $(a,b)$ are fitted
+alongside any rater severities; and a separate continuous metric on its own scale. The two
+are never summed into one cell. This is the resolution of G3.
 
 \begin{figure}[t]
-\centering
-\begin{tikzpicture}[x=1cm,y=1cm,
-  box/.style={draw,rounded corners=2pt,inner sep=4pt,font=\small,align=center,minimum height=8mm},
-  store/.style={box,fill=black!6},
-  net/.style={box,fill=blue!6},
-  arr/.style={-{Latex[length=2mm]},thick},
-  lbl/.style={font=\scriptsize,fill=white,inner sep=1.5pt}
-]
-\node[box]   (cat)   at (1.4,0)     {catalog\\prices, indexes};
-\node[store] (post)  at (4.7,0)     {posterior per\\(role, model)};
-\node[box]   (ts)    at (8.1,0)     {Thompson draw\\$\argmin_\kappa \tilde E(\kappa)$};
-\node[box]   (run)   at (10.7,0)    {run};
-\node[box]   (judge) at (13.3,0)    {judge\\outside the crew};
-\node[store] (outbox) at (10.7,-1.6) {outbox};
-\node[store] (own)   at (13.3,-1.6) {own sheet};
-\node[store] (index) at (4.7,-4.1)  {signed index\\(mirrored)};
-\node[net]   (relay) at (9.4,-4.1)  {relay: fold, judge effects \eqref{eq:als},\\Huber over installs, sign};
-\node[box,dashed] (others) at (13.3,-4.1) {other installs};
-\draw[arr] (cat) -- (post);
-\draw[arr] (post) -- (ts);
-\draw[arr] (ts) -- (run);
-\draw[arr] (run) -- (judge);
-\draw[arr] (judge) -- (own);
-\draw[arr] ([xshift=-7mm]judge.south) |- (outbox.east);
-\draw[arr] (own.south) -- ++(0,-0.45) -| node[lbl,pos=0.12,below]{at once} (post.south);
-\draw[arr] (outbox.south) -- node[lbl,right]{rows, no text} (outbox.south |- relay.north);
-\draw[arr] (relay) -- (index);
-\draw[arr] (index.north) -- node[lbl,pos=0.35,right]{read at start} (post.south);
-\draw[arr] (others.west) -- node[lbl,above]{rows} (relay.east);
-\draw[arr] (index.south) -- ++(0,-0.5) -| node[lbl,pos=0.25,below]{the same index} (others.south);
-\draw[dotted,thick] (-0.1,0.75) rectangle (14.9,-2.55);
-\node[font=\scriptsize] at (0.9,0.95) {one install};
-\end{tikzpicture}
-\caption{Where each step runs. Inside the dotted box is one install; the only thing that crosses it outward is a row without text. The relay merges publications with the join of Proposition~\ref{prop:crdt} and publishes a signed index; any install can host a relay, and any node that kept the publications can rebuild one.}
-\label{fig:flow}
+\centering\includegraphics[width=\textwidth]{figures/f2-selfreport.pdf}
+\caption{\textbf{Measured.} Left: the chance a run carried at least one major finding, by
+the rating it was given, with Wilson intervals; the accent line is the share of runs at
+that rating that produced nothing at all. The relation is not monotone, and the
+non-monotonicity is exactly the runs that did no work. Right: Proposition~\ref{prop:reliab}
+applied to three candidate proxies for the graded bit. A run's own account of itself is
+worth $\rho=0.02$ of a grade.}
+\label{fig:selfreport}
 \end{figure}
 
-\section{Estimation with no tuned constant}
-\label{sec:eb}
+\section{The decision: one dial in dollars}
+\label{sec:decision}
 
-We now combine the three sources for one install $u$. Write $\hat q_r(m)$ for the catalog quality~\eqref{eq:catq}, $\bar y^{\mathrm{pool}}_{rm}$ and $n^{\mathrm{pool}}_{rm}$ for the pool's cell after Sections~5.3--5.5, and $\bar y^{u}_{rm}$, $n^{u}_{rm}$ for the own sheet.
-
-\begin{assumption}[Hierarchy]
+\begin{definition}[The objective]
+For a task with context $x$ and a stake $L\ge0$,
 \begin{equation}
-\mu_{rm}\sim\mathcal N\big(\hat q_r(m)+b,\,\tau_0^2\big),\qquad
-\mu^{u}_{rm}\mid\mu_{rm}\sim\mathcal N\big(\mu_{rm},\,\tau_1^2\big),\qquad
-y\mid\mu^{u}_{rm}\sim\mathcal N\big(\mu^{u}_{rm},\,\sigma^2\big).
-\label{eq:hier}
+J(a;x,L)\;=\;\E\big[B(a,x)\big]\;+\;L\,\Big(1-P\big(g{=}1\mid a,x\big)\Big),
+\label{eq:J}
+\end{equation}
+and the pick is $a^\star(x,L)=\argmin_{a\in\acts}J(a;x,L)$.
+\end{definition}
+
+$L$ is the whole user-facing interface: the number of dollars a task that has to be redone,
+or that ships a defect, costs this practitioner. Latency enters, when it is wanted, as
+$J+\lambda\,\E[t(a,x)]$ with $\lambda$ dollars per minute; every statement below survives
+that addition unchanged, since it only adds a second deterministic term to the bill.
+
+Write $b(a)=\E[B(a,x)]$ and $f(a)=1-P(g{=}1\mid a,x)$ at a fixed $x$, and let
+$P=\{(b(a),f(a)):a\in\acts\}\subset\R_{\ge0}\times[0,1]$ be the achievable set.
+
+\begin{proposition}[What the dial can reach]
+\label{prop:hull}
+$a$ minimises $J(\cdot;x,L)$ for some $L\in[0,\infty)$ if and only if $(b(a),f(a))$ is an
+exposed point of $\conv(P)+\R^2_{\ge0}$ in a direction $(1,L)$ --- equivalently, a vertex
+of the lower-left convex hull of $P$. Every such $a$ is Pareto-optimal; the converse fails.
+\end{proposition}
+\begin{proof}
+$J(a;x,L)=\langle(1,L),(b(a),f(a))\rangle$ is a linear functional with strictly positive
+first and non-negative second coefficient. A point of a finite set minimises a linear
+functional with non-negative coefficients over the set iff it minimises it over the convex
+hull, and the minimisers of such a functional over a polytope are exactly the faces exposed
+by that direction; ranging $L$ over $[0,\infty)$ ranges the direction over all of
+$\{(1,L):L\ge0\}$, whose exposed points are the vertices of the lower-left hull. That a
+minimiser is Pareto-optimal for $L>0$ follows because a dominating point would attain a
+strictly smaller value. The converse fails already for three points: with
+$P=\{(0.1,0.40),(0.5,0.30),(1.0,0.10)\}$ the middle point is Pareto-optimal but lies
+strictly above the segment joining the other two (which passes through
+$(0.5,0.2\overline{6})$), so no $(1,L)$ exposes it. This is the standard phenomenon of
+\emph{unsupported} efficient solutions in bi-objective combinatorial
+optimisation~\cite{geoffrion1968,ehrgott2005}.
+\end{proof}
+
+\begin{proposition}[The sweep is a finite monotone path]
+\label{prop:sweep}
+Order the lower-hull vertices by increasing bill, $a_0,\dots,a_K$. Then
+$L\mapsto b(a^\star(L))$ is non-decreasing and $L\mapsto f(a^\star(L))$ is non-increasing;
+$a^\star(L)=a_j$ exactly for $L$ in the interval $[L_j,L_{j+1}]$ with
+\begin{equation}
+L_j=\frac{b(a_j)-b(a_{j-1})}{f(a_{j-1})-f(a_j)},\qquad L_0=0,\ L_{K+1}=\infty,
+\label{eq:breakpoints}
+\end{equation}
+and $L_1\le L_2\le\dots\le L_K$. Each $L_j$ is the dollars per unit of failure probability
+that the $j$th upgrade buys.
+\end{proposition}
+\begin{proof}
+Consecutive hull vertices $a_{j-1},a_j$ are indifferent exactly when
+$b(a_{j-1})+Lf(a_{j-1})=b(a_j)+Lf(a_j)$, which rearranges to~\eqref{eq:breakpoints}; the
+hull's edge slopes $-1/L_j$ increase along the hull by convexity, so the $L_j$ increase,
+and the argmin steps from $a_{j-1}$ to $a_j$ at $L_j$ and nowhere else. Monotonicity of
+$b$ and $f$ along the sweep is then monotonicity along the hull, which holds by
+construction.
+\end{proof}
+
+Proposition~\ref{prop:sweep} is what makes the dial implementable: the hull is computed
+once, in $O(|\acts|\log|\acts|)$ after the front, and the answer for any $L$ is a binary
+search over at most $K+1$ intervals. It is also what makes the dial explainable: $L_j$ is a
+sentence --- ``spending $\$0.90$ more per task buys one point of acceptance''.
+
+\subsection{Retiring the knee, and why the usual argument for retiring it is wrong}
+
+One expects to show that the knee of Eq.~\eqref{eq:knee} is unreachable. It is not.
+
+\begin{proposition}[The knee is always supported]
+\label{prop:kneehull}
+Let the front have at least two distinct qualities, so the chord's slope
+$g=(Q_1-Q_0)/(\ln B_1-\ln B_0)$ is strictly positive, and let $a_p$ maximise the bracket
+of Eq.~\eqref{eq:knee} over the front. Then $(b(a_p),f(a_p))$ is a vertex of the lower-left
+convex hull of $P$. Consequently the knee is the argmin of $J(\cdot;L)$ for a non-empty
+interval of $L$.
+\end{proposition}
+\begin{proof}
+Write $D(a)=Q(a)-Q_0-g(\ln B(a)-\ln B_0)$, so $D(a_p)\ge D(a)$ for all $a$ on the front,
+and recall $Q=100(1-f)$ so that ``above the chord in $Q$'' and ``below the chord in $f$''
+are the same statement. Suppose $a_p$ is not a hull vertex. Then there are front points
+$a_u,a_v$ with $B_u<B_p<B_v$ such that $a_p$ lies strictly above the segment
+$\overline{a_ua_v}$ in $(B,f)$, equivalently strictly below it in $(B,Q)$:
+\[
+Q_p \;<\; Q_u+t\,(Q_v-Q_u),\qquad t=\frac{B_p-B_u}{B_v-B_u}\in(0,1),
+\]
+i.e.\ $(1-t)(Q_p-Q_u)<t\,(Q_v-Q_p)$. Optimality of $a_p$ gives $D(a_p)\ge D(a_u)$ and
+$D(a_p)\ge D(a_v)$, that is
+\[
+Q_p-Q_u\ \ge\ g\ln(B_p/B_u),\qquad Q_v-Q_p\ \le\ g\ln(B_v/B_p).
+\]
+Combining, $(1-t)\,g\ln(B_p/B_u)\le(1-t)(Q_p-Q_u)<t\,(Q_v-Q_p)\le t\,g\ln(B_v/B_p)$, and
+since $g>0$,
+\begin{equation}
+(1-t)\ln\!\big(B_p/B_u\big)\;<\;t\,\ln\!\big(B_v/B_p\big).
+\label{eq:lnineq}
+\end{equation}
+But $B_p=(1-t)B_u+tB_v$, so by concavity of $\ln$,
+$\ln B_p\ge(1-t)\ln B_u+t\ln B_v$, which rearranges to exactly
+$(1-t)\ln(B_p/B_u)\ge t\ln(B_v/B_p)$, contradicting~\eqref{eq:lnineq}. Hence $a_p$ is a
+hull vertex, and by Proposition~\ref{prop:hull} some $L\ge0$ selects it.
+\end{proof}
+
+\begin{remark}
+The proof uses only that the knee's scalarisation is affine in a \emph{concave} increasing
+transform of the bill. Any such transform --- $\ln$, $\sqrt{\ }$, a Box--Cox with
+$\lambda\le1$ --- gives the same conclusion. A \emph{convex} transform would not, and a
+knee measured on a convex transform of the bill can indeed be unsupported.
+\end{remark}
+
+So the knee is a decision. The objection is a different one, and it is fatal.
+
+\begin{proposition}[The knee's stake is covariant with the price scale; the practitioner's is not]
+\label{prop:scale}
+Multiply every price in the catalog by $\sigma>0$, so $b\mapsto\sigma b$ and $f$ is
+unchanged. Then (i) the knee of Eq.~\eqref{eq:knee} is unchanged; (ii)
+$\argmin_a\{\sigma b(a)+Lf(a)\}=\argmin_a\{b(a)+(L/\sigma)f(a)\}$, so the assignment that a
+fixed stake $L$ selects is the assignment that the stake $L/\sigma$ selected before. If the
+lower hull has at least two vertices, there is an open interval of $\sigma$ on which the
+two disagree.
+\end{proposition}
+\begin{proof}
+(i) $\ln(\sigma B)-\ln(\sigma B_0)=\ln B-\ln B_0$, and likewise for the denominator, so the
+bracket of~\eqref{eq:knee} is unchanged. (ii) $\sigma b+Lf=\sigma\big(b+(L/\sigma)f\big)$
+and multiplication by $\sigma>0$ preserves the argmin. By Proposition~\ref{prop:sweep},
+$L\mapsto a^\star(L)$ is a non-constant step function whenever $K\ge1$, so
+$a^\star(L/\sigma)\ne a^\star(L)$ for $\sigma$ in an interval around any breakpoint ratio.
+\end{proof}
+
+This is the whole case. Prices in this market move by factors of two in months. Under a
+uniform halving of prices the correct decision moves \emph{up} the front, because a fixed
+number of dollars of stake now buys twice as much quality; the knee does not move at all,
+because scale-invariance is what it was designed for. The right panel of
+Figure~\ref{fig:hull} draws that: the knee is a horizontal line, and the $L=\$5$ pick is a
+staircase crossing it. Worse, the stake the knee \emph{implies} is never shown: on the
+simulated front of Figure~\ref{fig:hull} the knee sits in the interval
+$L\in[\$3.57,\$18.46]$, a range in which the practitioner was never asked to have an
+opinion.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\textwidth]{figures/f3-hull.pdf}
+\caption{\textbf{Simulated.} Nine candidate models at each of two roles, prices log-uniform
+over the span the measured ledger shows, quality additive on the logit scale
+(Assumption~\ref{ass:add}). Left: all $81$ assignments; the $12$ on the Pareto front; the
+$7$ lower-hull vertices, which are exactly the assignments some $L$ selects
+(Proposition~\ref{prop:hull}), with the breakpoints of Eq.~\eqref{eq:breakpoints}; the $5$
+front assignments that no $L$ selects; and the knee of Eq.~\eqref{eq:knee}, which is a hull
+vertex, as Proposition~\ref{prop:kneehull} requires. Right: every price multiplied by
+$\sigma$. The knee does not move. The assignment that a stake of $\$5$ selects moves twice.}
+\label{fig:hull}
+\end{figure}
+
+\section{Price bands}
+\label{sec:bands}
+
+\begin{definition}[Band]
+Fix a base $\beta>1$ and a reference price $\pi_{\min}$. Model $m$'s band at role $r$ is
+$\mathrm{band}_r(m)=\big\lfloor \log_\beta\big(c_{r,m}/\pi_{\min}\big)\big\rfloor$, where
+$c_{r,m}$ is the role's expected bill for one task under the token shape of
+Section~\ref{sec:cost}. We use $\beta=2$: a band is a doubling of the bill.
+\end{definition}
+
+Bands do two jobs and neither of them is the decision.
+
+\emph{Pruning.} $|\acts|$ is a product over roles. With hundreds of priced models the full
+assignment set is far too large to score, and a quality floor --- the usual device --- can
+delete a whole price region. A band-aware shortlist keeps at most $k$ models per band per
+role, the $k$ with the largest posterior mean of $\theta_{r,m}$, which bounds $|\acts|$ at
+$(k\cdot\#\text{bands})^{|\roles|}$ and cannot delete a price region. We use $k=3$. The
+rule is a heuristic and we do not claim it preserves the hull; an assignment whose only
+virtue is that it is the fourth-best in its band is lost.
+
+\emph{Pooling exploration.} A model with no observations borrows, through the hierarchy of
+Section~\ref{sec:quality}, from its band:
+$\theta_{r,m}\sim\mathcal N(w_r^\top\varphi_m+\mu_{r,\mathrm{band}(m)},\,\sigma_0^2)$ with a
+band offset $\mu_{r,b}$ itself drawn from $\mathcal N(0,\sigma_b^2)$. Because bills within
+a band differ by less than a factor of $\beta$, the exploration budget of
+Section~\ref{sec:decide} can be spent on any member of a band at a known worst-case cost,
+which is what makes a hard dollar cap enforceable in advance rather than in arrears.
+
+\emph{What bands are not.} They are not the decision. A band is a bin over one coordinate
+of $P$; the decision is Proposition~\ref{prop:hull}. Reporting a band instead of a stake
+would reintroduce exactly the unit-free knob just retired.
+
+\section{Quality: per-role decomposition, prior, sample cost, drift}
+\label{sec:quality}
+
+\begin{assumption}[Additive logit]
+\label{ass:add}
+\begin{equation}
+\logit P\big(g{=}1\mid a,x\big)\;=\;\alpha_x+\sum_{r\in\roles}\theta_{r,a(r)} .
+\label{eq:logit}
 \end{equation}
 \end{assumption}
-The first line says the catalog predicts the population quality up to one offset $b$ shared by every model (the catalog's scale is not the judge's) and a noise $\tau_0$; the second that install $u$'s own quality for the model scatters around the population's; the third is judge noise after Section~5.3. The install cares about $\mu^u_{rm}$.
 
-\begin{proposition}[Posterior for the install]
-\label{prop:post}
-Under~\eqref{eq:hier}, with $k=\sigma^2/\tau_0^2$, $\ell=\sigma^2/\tau_1^2$ and $\tilde n=n^{\mathrm{pool}}\,\ell/(\ell+1)$ (pool rows are other installs' rows, so each carries variance $\sigma^2+\tau_1^2$ about $\mu_{rm}$), the posterior of $\mu^u_{rm}$ is normal with
+\paragraph{What it buys.}
+The unknowns are $\sum_r|\mods_r|$ numbers rather than $|\acts|$. Feedback is
+\emph{semi-bandit}: the grade of one run is one observation for every role on that
+assignment, so a run informs every assignment that shares a model with it. This is the
+structure of combinatorial bandits with semi-bandit feedback~\cite{chen2013,wen2015}, and
+it is the difference between learning tens of numbers and learning tens of thousands.
+
+\paragraph{What it ignores.}
+Eq.~\eqref{eq:logit} has no interaction. The interaction one most expects is real and has
+a name: a strong reviewer rescuing a weak writer, so that $P(g{=}1)$ for (cheap writer,
+dear reviewer) exceeds the additive prediction. We do not fit it as a parameter. We capture
+the largest part of it structurally, by the cascade of Section~\ref{sec:cascade}, which is
+an explicit two-stage action whose value is computed rather than learned. A pair term
+$\delta_{(m_r,m_{r'})}\sim\mathcal N(0,\tau_{rr'}^2)$ can be added as a further level of
+the hierarchy below and costs observations only where a pair is actually run. We flag any
+claim about its size as conjecture --- and Section~\ref{sec:exp} reports a hindsight result
+that the additive model gets wrong for exactly this reason, which is the strongest evidence
+we have that the term is worth fitting.
+
+\subsection{The prior, and the three-source posterior}
+
+\begin{assumption}[Hierarchy]
+\label{ass:hier}
+With $\varphi_m$ the catalog indexes and $w_r$ the role's weighting,
 \begin{equation}
-\E[\mu^u_{rm}\mid\cdot]=\frac{k^{\ast}\,(\hat q_r(m)+b) + n^{\ast}\,\bar y^{\mathrm{pool}}_{rm} + n^u\,\bar y^u_{rm}}{k^{\ast}+n^{\ast}+n^u},\qquad
-\operatorname{Var}[\mu^u_{rm}\mid\cdot]=\frac{\sigma^2}{k^{\ast}+n^{\ast}+n^u},
+\theta_{r,m}\sim\mathcal N\big(w_r^\top\varphi_m+\mu_{r,\mathrm{band}(m)},\ \sigma_0^2\big),\qquad
+\theta^{(i)}_{r,m}\mid\theta_{r,m}\sim\mathcal N\big(\theta_{r,m},\ \sigma_u^2\big),
+\label{eq:prior}
+\end{equation}
+where $\theta^{(i)}$ is site $i$'s own value and $\sigma_u^2$ is the between-site variance.
+Observations carry variance $\sigma^2$.
+\end{assumption}
+
+Every priced model has a prior mean on the day it appears, which is the cold-start property
+the catalog is for.
+
+\begin{proposition}[Three-source posterior]
+\label{prop:post}
+Under Assumption~\ref{ass:hier}, with $k=\sigma^2/\sigma_0^2$, $\ell=\sigma^2/\sigma_u^2$,
+$\tilde n=n^{\mathrm{pool}}\ell/(\ell+1)$ and $K=k+\tilde n$, the posterior of site $i$'s
+$\theta^{(i)}_{r,m}$ given the catalog, the pool and $n^i$ own observations is normal with
+\begin{equation}
+\E\big[\theta^{(i)}_{r,m}\mid\cdot\big]=\frac{k^{\ast}\,\hat\theta^{\mathrm{cat}} + n^{\ast}\,\bar y^{\mathrm{pool}} + n^{i}\,\bar y^{i}}{k^{\ast}+n^{\ast}+n^{i}},
+\qquad
+\operatorname{Var}\big[\theta^{(i)}_{r,m}\mid\cdot\big]=\frac{\sigma^2}{k^{\ast}+n^{\ast}+n^{i}},
 \label{eq:three}
 \end{equation}
-where the catalog and the pool share one \emph{capped} external count $W$ in proportion to what each contributed,
+where everything external to this site shares one capped count
 \begin{equation}
-W=\frac{K\,\ell}{K+\ell}\ \le\ \ell,\qquad K=k+\tilde n,\qquad
-k^{\ast}=\frac{k}{K}\,W,\qquad n^{\ast}=\frac{\tilde n}{K}\,W .
+W=\frac{K\,\ell}{K+\ell}\ \le\ \ell,\qquad k^{\ast}=\frac{k}{K}W,\qquad n^{\ast}=\frac{\tilde n}{K}W .
 \label{eq:cap}
 \end{equation}
 \end{proposition}
 \begin{proof}
-Integrate out $\mu_{rm}$. The catalog and the pool inform $\mu^u_{rm}$ only through $\mu_{rm}$, whose posterior given them is normal with precision $K/\sigma^2$, $K=k+\tilde n$, and mean the $k:\tilde n$ precision-weighted average of $\hat q_r(m)+b$ and $\bar y^{\mathrm{pool}}_{rm}$; adding the between-install variance $\tau_1^2$ gives, for $\mu^u_{rm}$, a precision $1/(\sigma^2/K+\tau_1^2)=W/\sigma^2$ with the same mean. The own rows add precision $n^u/\sigma^2$ directly. Precision-weighting the two gives~\eqref{eq:three}, with the external count $W$ split as $k^{\ast}+n^{\ast}=W$ in the ratio $k:\tilde n$.
+Integrate out $\theta_{r,m}$. The catalog and the pool inform $\theta^{(i)}_{r,m}$ only
+through $\theta_{r,m}$, whose posterior given them is normal with precision $K/\sigma^2$
+and mean the $k:\tilde n$ precision-weighted average of $\hat\theta^{\mathrm{cat}}$ and
+$\bar y^{\mathrm{pool}}$; each pool observation is another site's, hence carries variance
+$\sigma^2+\sigma_u^2$ about $\theta_{r,m}$, which is the deflation
+$\tilde n=n^{\mathrm{pool}}\ell/(\ell+1)$. Adding the between-site variance $\sigma_u^2$
+gives, for $\theta^{(i)}$, precision $1/(\sigma^2/K+\sigma_u^2)=W/\sigma^2$ with the same
+mean. Own observations add precision $n^i/\sigma^2$ directly. Precision-weighting the two
+gives~\eqref{eq:three}, and $k^\ast+n^\ast=W$ split in the ratio $k:\tilde n$.
 \end{proof}
 
 \begin{corollary}
-With $\tau_1=0$ ($\ell=\infty$) the posterior mean is $(1-w)\hat q_r(m)+w\bar y$ with $w=n/(n+k)$, $n=n^{\mathrm{pool}}+n^u$: the plain shrinkage blend, which is what the picker applies today with $k=30$.
+\label{cor:blend}
+With $\sigma_u=0$ ($\ell=\infty$) and no band offset, Eq.~\eqref{eq:three} is the plain
+shrinkage blend $(1-w)\hat\theta^{\mathrm{cat}}+w\bar y$ with $w=n/(n+k)$,
+$n=n^{\mathrm{pool}}+n^i$: exactly Eq.~\eqref{eq:blend}, with $\kappa=k=30$. Baseline B1 is
+therefore the degenerate case of Proposition~\ref{prop:post} in which every other site's
+run is assumed to be as informative as one's own.
 \end{corollary}
 
-The cap~\eqref{eq:cap} is the point of the hierarchy. However many rows the pool holds, everything external to this install, catalog and pool together, is worth at most $\ell=\sigma^2/\tau_1^2$ own rows, because other installs' tasks are not this install's tasks; and the own rows are never capped. This replaces an ad hoc "own rows count triple" by a quantity with a meaning and an estimator. The pick shipped today is the Corollary's form: the pool's and the install's cells are folded together by observation count against the catalog at $k=30$, which is~\eqref{eq:three} at $\ell=\infty$ and $b=0$.
+Eq.~\eqref{eq:cap} is the point of the hierarchy: however many rows the pool holds,
+everything external to this site is worth at most $\ell=\sigma^2/\sigma_u^2$ of this site's
+own observations, because other sites' tasks are not this site's tasks; own observations
+are never capped. Section~\ref{sec:federation} gives $\ell$ its estimator.
 
-\paragraph{Estimating the constants.}
-Every constant in~\eqref{eq:three} is estimated from the sheet by moments; none is set by hand.
-\begin{align}
-\hat\sigma^2 &= \frac{\sum_{u,\theta}\big(S^2_{u\theta}-S_{u\theta}^2/n_{u\theta}\big)}{\sum_{u,\theta}(n_{u\theta}-1)} &&\text{pooled within-cell variance,}\label{eq:sigma}\\
-\hat\tau_1^2 &= \Big[\,\widehat{\operatorname{Var}}_u\big(\bar y_{u\theta}\big)-\hat\sigma^2\,\overline{(1/n_{u\theta})}\,\Big]_+ &&\text{between-install variance, pooled over cells,}\label{eq:tau1}\\
-\hat b &= \overline{\bar y^{\mathrm{pool}}_{rm}-\hat q_r(m)} &&\text{the catalog's offset,}\label{eq:bias}\\
-\hat\tau_0^2 &= \Big[\,\widehat{\operatorname{Var}}_{(r,m)}\big(\bar y^{\mathrm{pool}}_{rm}-\hat q_r(m)\big)-\overline{(\hat\sigma^2+\hat\tau_1^2)/n^{\mathrm{pool}}_{rm}}\,\Big]_+ &&\text{how far the catalog misses,}\label{eq:tau0}
-\end{align}
-each a within-minus-noise moment estimator of the kind used by Efron and Morris~\cite{efron1975}. Then $k=\hat\sigma^2/\hat\tau_0^2$ and $\ell=\hat\sigma^2/\hat\tau_1^2$, and $\hat\omega^2$ of~\eqref{eq:drift} sets the forgetting. On the seed index alone the estimator already says something: its thirteen cells with a published intelligence index give $\hat b=-13.7$ (the judged scale sits 14 points below the catalog's) and a variance of the residuals, 109, below the noise they carry, 167, so $\hat\tau_0^2$ clips to zero: thirteen cells of bit-valued scores ($\hat\sigma\approx43$) cannot resolve a catalog error under about 13 points, and the day-one $k=30$ stands until judged scores, with their smaller $\sigma$, replace the bits. The design publishes them in the index beside the cells so that every install blends with the same constants, re-estimated at every relay cycle and withheld until each denominator has at least ten degrees of freedom, with the day-one values of Table~\ref{tab:const} until then; the index on this head carries the cells and the day-one constants, and the estimators are the next thing the relay's job runs.
+\subsection{How many runs it costs to tell two models apart}
 
-\subsection{Covariates, and why no row is ever wasted}
-\label{sec:covariates}
-
-A row carries more than (role, model, score): a door, a size bucket, a judge, a day, an install, and any field added later, such as the harness version or a task family. Call the vector of such fields the row's \emph{profile} $c\in\mathcal C=\prod_f L_f$, a product of factor levels. The hierarchy~\eqref{eq:hier} extends factor by factor:
+\begin{proposition}[Sample complexity at one role]
+\label{prop:samples}
+Let two models at role $r$ differ by $\Delta$ in $P(g{=}1)$ at a common operating point
+$\bar p$, let each have $\kappa$ prior observations and $N$ graded ones, and approximate the
+grade's variance by $\bar p(1-\bar p)$. Under the conjugate normal approximation the
+posterior means differ by a normal with variance $2\bar p(1-\bar p)/(\kappa+N)$, so a
+two-sided test at level $z$ separates them when
 \begin{equation}
-\mu_{rm,c}=\mu_{rm}+\sum_{f}\delta^{f}_{rm,c_f},\qquad \delta^{f}_{rm,\cdot}\sim\mathcal N(0,\tau_f^2)\ \text{i.i.d.\ over levels},
-\label{eq:factors}
+N\ \ge\ \frac{2z^{2}\,\bar p(1-\bar p)}{\Delta^{2}}\ -\ \kappa .
+\label{eq:samples}
 \end{equation}
-so that a (role, model) has one population quality and one partially pooled offset per level of each factor. The install factor is the case $f=\text{install}$ of~\eqref{eq:factors}, and Proposition~\ref{prop:post} is its two-level instance; the same derivation gives, for a query profile $c$, a posterior mean that is a precision-weighted combination of the cell means at every level that shares a coordinate with $c$, each capped by its own $\ell_f=\sigma^2/\tau_f^2$, with $\hat\tau_f^2$ estimated by the between-level moment~\eqref{eq:tau1} applied to factor $f$. Two properties follow.
-
-\emph{Old rows keep their value when the harness changes.} If the door algorithm is rewritten, rows from the old door are a level of the door factor; they still inform $\mu_{rm}$ with the full weight the estimated $\tau_{\text{door}}^2$ allows, and the new door starts at $\mu_{rm}$ plus nothing and specialises as its own rows arrive. If the two doors turn out to differ little, $\hat\tau_{\text{door}}^2\approx 0$, $\ell_{\text{door}}\to\infty$, and the factor pools completely; if they differ a lot, the cap keeps the old door from speaking for the new one. The data decide, per factor, how much they transfer.
-
-\emph{The schema is open.} A row with a field absent (older rows, before the field existed) is at a level of its own, \emph{unknown}, which the estimator treats like any other level. Adding a field therefore invalidates nothing already collected, and the sheet's join in Proposition~\ref{prop:crdt} is unaffected because a cell key is only a tuple. What can be extracted from the rows is the set of contrasts the factors expose; a factor that is never recorded cannot be recovered later, which is why the row carries every cheap field now and the text of none.
-
-Regressors that are not factors, a task's token count for instance, enter the same way as a linear term with a partially pooled slope; the moment estimators are the same with a design column in place of an indicator.
-
-\paragraph{Interactions: the crew as a group.}
-Assumption~\ref{ass:linear} scores roles one at a time. Whether a particular worker and a particular checker do better \emph{together} than their role qualities predict is a question about the pair, and the same hierarchy answers it: a pair $(m_r,m_{r'})$ is a level of a factor over $\mods\times\mods$, with its own partially pooled offset $\delta^{rr'}_{(m_r,m_{r'})}\sim\mathcal N(0,\tau_{rr'}^2)$. A pair that has never been run sits at zero offset and the additive prediction stands; a pair with rows moves by exactly the amount its rows justify against $\hat\tau_{rr'}^2$; if pairs in general add nothing, $\hat\tau_{rr'}^2\to0$ and the term disappears. This is the whole difference between learning crews as groups and learning roles: the group term is there, but it is charged for. A crew-level learner with no structure has to visit each of $|\crews|$ crews to say anything about it; the additive model needs $\sum_r|S_r|$ observations to say something about every crew, and the pair term then spends further observations only where a pair is actually run. Some group effects are constraints rather than parameters: the vendor rule $D$ is one, and it is applied to $\crews$ before any learning happens.
-
-\begin{table}[h]
-\centering\small
-\begin{tabular}{p{2.0cm}p{5.2cm}p{4.0cm}p{2.6cm}}\toprule
-constant & meaning & estimator & day-one value\\\midrule
-$\sigma$ & judge noise & \eqref{eq:sigma} & 15\\
-$k=\sigma^2/\tau_0^2$ & weight of the catalog & \eqref{eq:tau0} & 30\\
-$\ell_f=\sigma^2/\tau_f^2$ & cap on evidence transferred across a factor (install, door, size, \dots) & \eqref{eq:tau1} per factor & 30\\
-$\omega^2$ & drift per day & \eqref{eq:drift} & 0 (no forgetting)\\
-$\beta_j$ & judge severity & \eqref{eq:als} & 0\\
-$v_r$ & role token shares & measured from run token accounting & $0.90/0.08/0.02$\\
-\midrule
-$H$ & price of a shipped defect & the user's, by budget word & \$1 / \$10 / \$50\\
-$\lambda$ & price of a minute & the user's & \$0.01\\
-$\phi$, judge floor & structural floors & fixed by design & $0.8$, $60$\\
-\bottomrule\end{tabular}
-\caption{Every constant with its estimator. Two are the user's by design; two are structural floors. The rest are empirical-Bayes estimates that the relay publishes with the index.}
-\label{tab:const}
-\end{table}
-
-\begin{figure}[t]
-\centering\includegraphics{fig-shrink.pdf}
-\caption{Shrinkage of one role quality from the catalog prior (80) toward the measured mean (65), $k=30$, $\sigma=15$. The band is what the Thompson draw of Section~\ref{sec:decide} samples from.}
-\label{fig:shrink}
-\end{figure}
-
-\section{Deciding: Thompson sampling with semi-bandit feedback}
-\label{sec:decide}
-
-Given a posterior $\mathcal N(\mu'_{rm},\sigma'^2_{rm})$ per role and model from~\eqref{eq:three}, the pick could minimise~\eqref{eq:E} at the posterior means. That never tries a crew the prior underrates, and the catalog prior is wrong by a lot for some models (Figure~\ref{fig:cells}). Thompson sampling~\cite{thompson1933,russo2018} draws one plausible world from the posterior and acts as if it were true: a crew is chosen with the probability that it is the best, exploration is proportional to what is unknown, and it stops on its own as the posteriors tighten. No exploration rate exists to be set.
-
-\begin{algorithm}[h]
-\caption{One pick under \emph{learn}}
-\begin{algorithmic}[1]
-\Require shortlists $S_r$ on the posterior means, budget word $\Rightarrow H$, task size bucket $\Rightarrow$ expected tokens $T$ and minutes $t(\kappa)$
-\For{each role $r$ and $m\in S_r$}
-  \State $\tilde q_{rm}\sim\mathcal N(\mu'_{rm},\sigma'^2_{rm})$ \Comment{one draw per run; never redrawn during the run}
-\EndFor
-\For{each $\kappa\in\crews$}
-  \State $\tilde E(\kappa)\gets T\,B(\kappa)+\lambda\,t(\kappa)+H\,\big(1-\sum_r\nu_r\tilde q_{r\kappa(r)}/100\big)$
-\EndFor
-\State \Return $\argmin_\kappa\tilde E(\kappa)$ \Comment{ties: fewer imputed indexes, then id order}
-\end{algorithmic}
-\end{algorithm}
-
-\begin{proposition}[Role draws are crew draws]
-Under Assumption~\ref{ass:linear}, drawing $\tilde q_{rm}$ independently per (role, model) and minimising $\tilde E$ over $\crews$ is Thompson sampling over the crews' posterior costs under the product posterior on role qualities.
 \end{proposition}
 \begin{proof}
-$\tilde E(\kappa)$ is an affine function of the vector $(\tilde q_{rm})$, so its joint law over $\crews$ is the push-forward of the posterior on role qualities; a sample of the latter is a sample of the former. The judge-effect fit of Section~5.3 and the drift model of Section~5.5 induce dependence between cells that the independent draw ignores; the draw is exact for the product approximation the index publishes.
+Immediate from the conjugate posterior $\mathcal N(\cdot,\sigma^2/(\kappa+N))$ with
+$\sigma^2=\bar p(1-\bar p)$, independence of the two arms, and the definition of a
+$z$-level two-sided test.
 \end{proof}
 
-The structure that matters is the feedback. A run of crew $\kappa$ is judged role by role, so it yields one observation for each of its $n$ (role, model) pairs, and the posterior of every crew that shares a pair with $\kappa$ moves. This is a combinatorial bandit with semi-bandit feedback~\cite{chen2013,wen2015}: the unknowns are the $\sum_r|S_r|$ role qualities, not the $|\crews|$ crew values, and the regret of Thompson sampling scales with the former~\cite{wen2015}. Section~\ref{sec:exp} measures the difference on our runs. For Gaussian posteriors the Bayesian regret of Thompson sampling is $O(\sqrt{dT\log T})$ in the dimension $d$ of the unknowns over $T$ runs~\cite{russo2014}.
-
-\paragraph{The learned front.}
-Under \emph{learn} the front of Section~\ref{sec:catalog} is recomputed on the posterior: the bill $B(\kappa)$ is read at the run's expected tokens, and the quality is the posterior mean of $\pclean(\kappa)$, so the front is the pareto set in (expected dollars per task, expected probability of a clean delivery) with an interval on each point from~\eqref{eq:three}. The budget word's $H$ is a line of slope $-1/H$ in that plane and the pick is where the line first touches the front; Algorithm~1 is the same pick on one draw of the front rather than on its mean, which is what makes it explore. The pool command prints the mean front with its intervals, and the catalog front beside it, so that a user can see where measurement moved a pick and by how much.
-
-\paragraph{When is it settled.}
-The same posterior answers whether learning is done: the probability $\pi^\ast$ that the posterior-mean crew is the best, estimated by repeating the draw of Algorithm~1 a few hundred times. The pool command reports $\pi^\ast$; a value near one means further exploration is nearly free, a value near $1/|\front|$ means the ranking is still open. Costs enter as observed dollars per run and are not sampled; their noise is small next to the quality's.
-
-\begin{remark}[A new model]
-A model with no rows has $n=0$ and sits at its catalog prior with the prior variance $\sigma^2/k^{\ast}$. If that puts it near the front it is drawn into crews soon, judged, and confirmed or pushed down by its first rows. Nothing is done by hand when the catalog changes.
-\end{remark}
-
-\section{Experiments on our measured runs}
-\label{sec:exp}
-
-Ground truth is the table of Figure~\ref{fig:front}: 56 crews with $\pclean$, dollars and minutes fitted by a ridge model on 72 scored runs of our own over nine tasks. Each replicate draws a catalog prior per arm as the truth plus $\mathcal N(0,0.15^2)$ noise, roughly the disagreement between indexes and measurements in Figure~\ref{fig:cells}, holds it with $k=30$, and runs $N$ tasks; a strategy picks, observes the outcome and pays~\eqref{eq:E} with $H=\$10$. Regret is the excess over the oracle crew, averaged over 200 replicates.
-
-\paragraph{Crew-level learners.}
-Table~\ref{tab:regret} and Figure~\ref{fig:regret} compare, on all 23 chat-door crews of the table, a fixed table row (the shipped balanced crew), the catalog prior alone, $\varepsilon$-greedy and Thompson, all with one arm per crew. After 400 runs Thompson is \$0.33 per task under the fixed table, a third of the table's regret, and still falling; $\varepsilon$-greedy is \$0.12 behind it. Thompson pays an exploration tax in its first forty runs, when it is no better than the table; $k=30$ is what bounds it. $\varepsilon$-greedy pays more, because a tenth of its runs go to a random crew among 23, and its rate neither grows when a new model appears nor shrinks when the ranking is settled.
-
-\begin{table}[h]
-\centering\small
-\input{tab-regret.tex}
-\caption{Regret against the oracle, dollars per task after $N$ runs, one arm per crew.}
-\label{tab:regret}
-\end{table}
-
-\begin{figure}[h]
-\centering\includegraphics{fig-regret.pdf}
-\caption{Left: regret per task. Right: share of runs on a crew other than the current posterior-mean best. Thompson explores heavily while many crews sit within cents of each other and less as the posteriors separate; $\varepsilon$-greedy explores at its fixed rate.}
-\label{fig:regret}
-\end{figure}
-
-\paragraph{Role-level feedback.}
-Figure~\ref{fig:semibandit} and Table~\ref{tab:semibandit} isolate the structure of Section~\ref{sec:decide}. The ground truth is three-role: a role quality per (role, model) read off the measured rows (a worker's delivered rate, a checker's and a planner's clean rate), combined by the linear rule of Assumption~\ref{ass:linear} over every crew the vendor rule admits, with dollars additive over roles. Three learners run Thompson sampling with the same prior noise and the same $H$ and differ only in what they see after a run: one arm per crew fed the run's clean-or-defect bit; one arm per crew fed the mean of the judge's role scores; one posterior per (role, model) fed each role's own score, which is what the judge of Section~5.1 provides. The last is the semi-bandit. Richer feedback per run helps: the crew-level learner fed the mean score sits at \$0.31 after four hundred runs against \$0.54 for the one fed only the clean bit. The structure helps again as much: the role-level learner, fed the same scores as the second, sits at \$0.15, half of it and a third of the first, because every run updates the crews that share a model with the one that ran, and there are sixteen unknowns behind 138 crews.
-
-\begin{table}[h]
-\centering\small
-\input{tab-semibandit.tex}
-\caption{Regret against the oracle, dollars per task after $N$ runs, on the three-role truth; same prior noise and $H$ for all three learners.}
-\label{tab:semibandit}
-\end{table}
-
-\begin{figure}[h]
-\centering\includegraphics{fig-semibandit.pdf}
-\caption{Thompson sampling under three kinds of feedback on the same three-role truth. Dotted and dashed: one arm per crew, fed the clean bit and the mean role score respectively. Solid: one posterior per (role, model) fed the role scores, the combinatorial semi-bandit of Section~\ref{sec:decide}.}
-\label{fig:semibandit}
-\end{figure}
-
-\begin{figure}[t]
-\centering\includegraphics{fig-cells.pdf}
-\caption{The seed index shipped in the binary: 15 cells from 194 scored runs, \code{role\_quality} $=100\cdot P(\text{no major defect})$ under a Beta(1,1) posterior. The spread between models a catalog rates alike is why the pool exists.}
-\label{fig:cells}
-\end{figure}
-
-The truth in these experiments is our own fitted table from one team's tasks, so the size of the gain is the shape of the effect and not a promise for every install; the regret scale is set by how close the crews sit, which the front of Figure~\ref{fig:front} shows and no bound here uses. The script \code{figures.py} beside this document reproduces every figure and table from the two CSV files it reads and the constants written at its head.
-
-\section{System architecture}
-\label{sec:arch}
-
-The statistics of Sections~\ref{sec:pool}--\ref{sec:decide} fix what the system computes; this section fixes where the bytes live, so that the privacy claims can be checked against the deployment rather than taken on trust. Figure~\ref{fig:arch} shows the four components. The design rule is that the relay holds nothing worth stealing and nothing that cannot be rebuilt.
-
-\paragraph{The binary.}
-Everything that touches a task runs inside the install: the catalog read, the posterior, the draw, the run, the judge call, the own sheet and the outbox. The judge is an ordinary model call through the install's own provider credentials; the record it reads never leaves the machines the install already trusts with its work. The outbox is a newline-delimited file under the profile directory; \code{codeaf pool status} prints its pending rows, and a user who wants to see exactly what would be sent can read the file. The loader reads the fresher of the cached index and the embedded seed index, by generated day, once at start-up; a refresh runs in the background and takes effect at the next start, so a running task's picks never move under it.
-
-\paragraph{The relay.}
-The reference relay is a single edge function with an object store behind it, deployable in minutes on a commodity edge platform (\code{wrangler deploy} from \code{relay/} in the repository; the runbook beside this document is ten steps). It exposes two routes. \code{POST /v1/rows} accepts a batch of rows, validates the schema, folds each row into the sender's triple for its cell and day, and discards the row: the store holds the sheet of Definition~2 and nothing else, one triple per (install, cell, day), so its size is bounded by installs times cells times days and not by traffic, and a row that has been folded cannot be recovered from it. \code{GET /index.json} serves the last published index and its detached signature. An hourly scheduled job reads the sheet, runs the judge-effect fit and the robust aggregation of Section~5 (the drift estimate of Section~5.5 is specified and next to land), writes the index, signs it with an Ed25519 key held as a platform secret, and mirrors the pair of files to a public git branch so that they are browsable, diffable and forkable. The function keeps no request logs and stores no network address; the install nonce is the only identity in the store, and rate limiting is by nonce (a cap on rows per day) rather than by address.
-
-\paragraph{Priming, and one document at a time.}
-The pool does not start empty. The same measured runs the seed of Figure~\ref{fig:cells} encodes were loaded once as ordinary rows, by a committed script in \code{relay/tools}, under one install nonce per originating session and one judge id for the reviewer that scored them; so the first published index carries the cells the binary already knows, and an install that reaches the relay reads numbers on day one rather than an empty document. Nothing is counted twice, because an install holds exactly one index document at a time: the cached one when it parses and is not older, by its generated day, than the seed the binary carries, and the seed otherwise. The seed is the offline fallback, never a second source blended with the fetched one. That the priming rows were scored by review and later rows by a judge model is the judge-severity situation of Section~\ref{sec:pool} already: one more judge id, fitted like the others.
-
-\paragraph{Keys and verification.}
-The signing key's public half is compiled into the binary as a list, so a key can be rotated by shipping a binary that carries both; the private half exists only in the platform secret store. Verification is client-side: the binary checks the signature before it reads a single cell, refuses a version lower than the one it holds (a rollback is caught by the version; a replayed old index is refused the same way), and on any failure keeps the cached copy beside an error. Because verification is local, the index can be served from anywhere: the mirror, a static file host, or a directory on disk, which is what the \code{file://} address is for.
-
-\paragraph{Trust and failure.}
-What a compromised relay learns is the sheet: counts, sums and sums of squares of scores per (install nonce, role, model, judge, day, size, door). It learns no task, no code, no prompt, no user, and no address. What a compromised relay can do is publish a bad index, which the signature stops unless the key is also taken; a taken key is retired by shipping the next key, and the min-installs and robust-aggregation rules bound what a flood of fabricated nonces can move in the meantime. What an unreachable relay costs is nothing at all: the cache, then the seed, answer every read, and the outbox waits. Any install can run the same function against its own store and point its \code{CODEAF\_MODEL\_POOL\_URL} and \code{\_SUBMIT\_URL} at it; two relays that receive the same publications produce the same sheet (Proposition~\ref{prop:crdt}), so a private relay and the public one can be federated later by a one-way copy of publications with no reconciliation step.
-
-\begin{figure}[H]
-\centering
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[x=1cm,y=1cm,
-  box/.style={draw,rounded corners=2pt,inner sep=4pt,font=\small,align=center,minimum height=8mm},
-  store/.style={box,fill=black!6},
-  net/.style={box,fill=blue!6},
-  arr/.style={-{Latex[length=2mm]},thick},
-  lbl/.style={font=\scriptsize,fill=white,inner sep=1.5pt}
-]
-\node[box,text width=3.2cm]   (bin)    at (2.0,0)    {binary\\posterior, draw, run, judge};
-\node[store,text width=3.2cm] (outbox) at (2.0,-1.8) {outbox\\rows, local file};
-\node[store,text width=3.2cm] (cache)  at (2.0,-3.6) {index cache\\and embedded seed};
-\node[net,text width=6.1cm]   (fn)     at (8.2,-1.8) {edge function\\\code{POST /v1/rows}: fold a row into its triple\\\code{GET /index.json}: serve the last index};
-\node[store,text width=6.1cm] (kv)     at (8.2,-4.2) {object store\\one triple per (install, cell, day)};
-\node[net,text width=3.4cm]   (cron)   at (13.7,-4.2) {hourly job\\fold, \eqref{eq:als}, Huber, sign};
-\node[store,text width=3.4cm] (mirror) at (13.7,-1.8) {public mirror\\\code{index.json} + \code{.sig}};
-\node[box,dashed,text width=3.4cm] (secret) at (13.7,-6.0) {platform secret\\Ed25519 private key};
-\draw[arr] (bin) -- (outbox);
-\draw[arr] (cache.west) -- ++(-0.4,0) |- node[lbl,pos=0.25,left]{read at start} (bin.west);
-\draw[arr] (outbox.east) -- node[lbl,above]{https, batched} (fn.west |- outbox.east);
-\draw[arr] (fn) -- node[lbl,right]{fold} (kv);
-\draw[arr] (kv) -- node[lbl,above]{sheet} (cron);
-\draw[arr] (cron) -- node[lbl,right]{signed index} (mirror);
-\draw[arr] (secret) -- (cron);
-\draw[arr] (mirror.west) -- node[lbl,below,pos=0.6]{pull, verify} (fn.east |- mirror.west);
-\draw[arr] ([xshift=-2.2cm]fn.south) |- node[lbl,pos=0.75,above]{cached index} (cache.east);
-\node[font=\scriptsize] at (8.0,0.2) {no request logs, no addresses stored, rows discarded after folding};
-\end{tikzpicture}}
-\caption{Deployment. The relay is one edge function, one object store holding only the sheet, and one scheduled signing job; the install verifies every index locally and never blocks on the network. Any of the three network components can be replaced by a static file, a directory, or a self-hosted copy.}
-\label{fig:arch}
-\end{figure}
-
-\section{What the user controls}
+At $z=1.96$ and $\bar p=0.75$ (so $\bar p(1-\bar p)=0.1875$), Eq.~\eqref{eq:samples} gives,
+per model, at one role:
 
 \begin{center}\small
-\begin{tabular}{p{2.1cm}p{4.3cm}p{8.0cm}}\toprule
-setting & values & meaning\\\midrule
-\code{crew} & frugal $\mid$ balanced $\mid$ max $\mid$ custom & how much to spend: $H$ and the knob $k$\\
-\code{picked from} & table $\mid$ catalog $\mid$ learn & the rows we measured; recomputed from today's catalog; catalog plus pool plus own sheet\\
-\code{model\_pool} & on $\mid$ read $\mid$ off & read the index and send rows (default); read only; neither\\
-\code{explore} & on $\mid$ off & Thompson draw (default) or the posterior mean; \emph{learn} only; specified, not on this head\\
+\begin{tabular}{lrrrr}\toprule
+$\Delta$ & $\kappa=0$ & $\kappa=10$ & $\kappa=30$ & $\kappa=100$\\\midrule
+$0.10$ & $144$ & $134$ & $114$ & $44$\\
+$0.20$ & $36$ & $26$ & $6$ & $0$\\
+$0.30$ & $16$ & $6$ & $0$ & $0$\\
 \bottomrule\end{tabular}
 \end{center}
 
-With the pool set to \emph{read}, the own sheet still accrues and enters~\eqref{eq:three}; with it \emph{off}, only the catalog prior remains and the pick is the catalog's. The index is a JSON document signed with an Ed25519 key whose public half is in the binary; \code{codeaf pool verify} checks it, \code{pool show} prints its summary and each address with its source, \code{pool status} counts the rows waiting in the outbox and says whether the relay answered. The binary carries a seed index of our own scored runs (Figure~\ref{fig:cells}) so that \emph{learn} has numbers on day one. The relay's code is in this repository; its addresses are settings, so an install can read from and send to a relay of its own, or to none.
+\begin{remark}[The subtraction is a loan, not a gift]
+\label{rem:loan}
+The $-\kappa$ in~\eqref{eq:samples} is only a saving if the prior is centred correctly. A
+prior worth $\kappa$ observations that is wrong by more than $\Delta$ does not shorten the
+experiment; it lengthens it, because the first $\kappa$ observations are spent undoing the
+prior. Baseline B1's $\kappa=30$ is a constant, not an estimate;
+Section~\ref{sec:federation} gives the moment estimator that should replace it, and
+Section~\ref{sec:decide} shows what an overconfident $\kappa$ costs in the one regime where
+it matters most.
+\end{remark}
 
-\section{Status}
+Two corollaries. First, $\Delta=0.10$ is out of reach for a single site: $114$ graded runs
+\emph{per model per role}, against $202$ runs in total across all models in the ledger of
+Section~\ref{sec:exp}. Pooling is not an optimisation; it is the only way the question is
+answerable at all. Second, semi-bandit feedback is what makes even $\Delta=0.20$ plausible,
+because each run pays for $|\roles|$ of these counters at once.
 
-On the head this document ships with: the catalog crew of Section~\ref{sec:catalog}; the shrinkage blend of the Corollary with $k=30$; the \code{picked from} row and its ladder; the index document, its reader and signed pull with the built-in key; the outbox, the install nonce and the push; the judge, its deterministic choice, and the hook that calls it when a chat task lands; the own sheet, whose cells enter the prior beside the index's by observation count; the settings; the seed index; the relay of Section~\ref{sec:arch} with its store keyed by install and day, the join, the judge-effect fit and the Huber aggregation; the mirror workflow. Specified here and next to land: the drift estimate~\eqref{eq:drift}; the hierarchical cap~\eqref{eq:cap} with the moment estimators~\eqref{eq:sigma}--\eqref{eq:tau0} in place of the count fold; the Thompson draw with role-level updates, the \code{explore} setting and the settled probability $\pi^\ast$; the pair term of Section~6.1; the headless doors' hook. The referee's report on an earlier draft, and what changed in answer to it, are beside this file.
+\begin{figure}[t]
+\centering\includegraphics[width=\textwidth]{figures/f5-samples.pdf}
+\caption{\textbf{Closed form.} Eq.~\eqref{eq:samples}. Left: graded runs per model at one
+role before any prior, for three operating points; $\bar p(1-\bar p)=0.074$ is the
+major-free rate the measured ledger shows, $0.25$ the worst case. Right: what remains after
+a catalog prior worth $\kappa$ runs, at $\bar p=0.75$, with the $\kappa=30$ of baseline B1
+marked. Remark~\ref{rem:loan} applies to every curve on the right.}
+\label{fig:samples}
+\end{figure}
 
-\begin{thebibliography}{9}\small
-\bibitem{thompson1933} W.~R. Thompson. On the likelihood that one unknown probability exceeds another in view of the evidence of two samples. \emph{Biometrika} 25:285--294, 1933.
-\bibitem{russo2018} D.~Russo, B.~Van Roy, A.~Kazerouni, I.~Osband, Z.~Wen. A tutorial on Thompson sampling. \emph{Foundations and Trends in Machine Learning} 11(1):1--96, 2018.
-\bibitem{russo2014} D.~Russo, B.~Van Roy. Learning to optimize via posterior sampling. \emph{Mathematics of Operations Research} 39(4):1221--1243, 2014.
-\bibitem{chen2013} W.~Chen, Y.~Wang, Y.~Yuan. Combinatorial multi-armed bandit: general framework and applications. \emph{ICML}, 2013.
-\bibitem{wen2015} Z.~Wen, B.~Kveton, A.~Ashkan. Efficient learning in large-scale combinatorial semi-bandits. \emph{ICML}, 2015.
+\subsection{Drift}
+
+Models change under one identifier. Between observations, inflate the variance:
+\begin{equation}
+\theta_{r,m,t}=\theta_{r,m,t-1}+\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N\big(0,\tau^2\Delta t\big),
+\qquad V_t = \min\big(\sigma_0^2,\ V_{t-1}+\tau^2\Delta t\big),
+\label{eq:drift}
+\end{equation}
+which is the state equation of a local-level model~\cite{harvey1989} and the
+variance-inflation step of Glicko-2~\cite{glickman2001}; the cap at the prior variance is
+what keeps an arm from becoming \emph{more} uncertain than a model nobody has ever run. Two
+consequences. An arm nobody has run for a while regains uncertainty and is drawn again by
+the sampler of Section~\ref{sec:decide} --- forgetting is what makes exploration
+self-renewing without an exploration rate. And a model identifier that is re-released is a
+change point: the mean and the variance both reset to the prior, rather than drifting
+there. Figure~\ref{fig:drift} draws both. $\tau^2$ is estimated by the day-to-day moment
+$\hat\tau^2=[\widehat{\operatorname{Var}}(\bar y_d-\bar y_{d-1})-\sigma^2(1/n_d+1/n_{d-1})]_+$
+pooled over cells, which is why the day is a cell dimension; a cell with no evidence of
+drift gets $\hat\tau^2=0$ and forgets nothing. The non-stationary bandit
+literature~\cite{garivier2011} offers discounted and sliding-window alternatives; we prefer
+variance inflation because it leaves the posterior mean alone and therefore does not throw
+away information that has not been contradicted.
+
+\begin{figure}[t]
+\centering\includegraphics[width=0.62\textwidth]{figures/f7-drift.pdf}
+\caption{\textbf{Simulated.} Eq.~\eqref{eq:drift}. An arm run daily for three weeks, then
+never; its posterior standard deviation climbs back toward the prior at a rate set by
+$\tau$, which is what makes it eligible to be drawn again. At day $60$ the identifier is
+re-released and the arm is reset rather than drifted.}
+\label{fig:drift}
+\end{figure}
+
+\section{Cost: a learned token shape}
+\label{sec:cost}
+
+\begin{definition}[Token shape]
+$T_{r,m}=(\bar\iota_{r,m},\bar\gamma_{r,m},\bar o_{r,m},\bar\nu_{r,m})$: mean input tokens
+per call, the fraction of them served from cache, mean output tokens per call, and mean
+calls per task, for model $m$ in role $r$.
+\end{definition}
+
+The bill is then
+\begin{equation}
+\E[B(a,x)]=\sum_{r\in\roles}\bar\nu_{r,a(r)}(x)\Big[(1-\bar\gamma)\,\bar\iota\,\pi_{a(r)}+\bar\gamma\,\bar\iota\,\pi^c_{a(r)}+\bar o\,\chi_{a(r)}\Big] ,
+\label{eq:bill}
+\end{equation}
+with the four shape components read at the task's context $x$. Each is estimated from the
+site's own usage ledger with a shrinkage prior at the role's default shape:
+\begin{equation}
+\hat T_{r,m}=\frac{n_{r,m}\,\bar T_{r,m}+\kappa_T\,T^{\mathrm{def}}_{r}}{n_{r,m}+\kappa_T},
+\label{eq:shape}
+\end{equation}
+a model with no history priced exactly as the baseline prices it, a model with history
+priced as it actually behaves.
+
+\paragraph{The shrinkage is on the log scale, and this is not a detail.}
+Eq.~\eqref{eq:shape} is written as an arithmetic average, which is what a conjugate normal
+model prescribes for a quantity whose errors are additive. The volume share of a role is
+not such a quantity: it is bounded in $[0,1]$, heavy-tailed, and enters the bill
+multiplicatively. Section~\ref{sec:exp} measures the difference and it is the entire
+effect: shrinking the arithmetic mean of the role's volume share improves leave-one-out
+bill prediction from a mean absolute percentage error of $302\%$ to $242\%$, while
+shrinking its logarithm --- that is, replacing the arithmetic mean in~\eqref{eq:shape} by a
+geometric one for the volume components --- improves it to $58\%$. The reason is visible in
+Figure~\ref{fig:cost}: a reviewing role takes a few per cent of a run's tokens on most runs
+and most of them on a few, so the arithmetic mean of its share is not the share of any
+typical run, and a rule that prices the typical run from that mean is wrong on nearly
+every run.
+
+\paragraph{The expectation is over task volumes, not at the median task.}
+$J$ takes an expectation, so the cost model must integrate~\eqref{eq:bill} over the
+distribution of task volumes rather than evaluate it at a representative task. The
+distribution is heavy-tailed and its mean is not its median;
+Section~\ref{sec:exp} shows that pricing the median task understates the mean bill of an
+assignment by a factor that varies across assignments, which reorders them.
+
+\section{Exploration}
+\label{sec:decide}
+
+The pick under Eq.~\eqref{eq:J} at posterior means never tries an assignment the prior
+underrates. Thompson sampling~\cite{thompson1933,russo2018} draws one plausible world and
+acts as if it were true.
+
+\begin{algorithm}[h]
+\caption{One pick}
+\label{alg:pick}
+\begin{algorithmic}[1]
+\Require task context $x$; stake $L$; per-role shortlists $M_r$ (at most $k$ per band, Section~\ref{sec:bands}); the day's remaining exploration budget $E_{\mathrm{left}}$; the incumbent assignment $a_0$
+\For{each role $r$ and $m\in M_r$}
+  \State $\tilde\theta_{r,m}\sim\mathcal N(\mu_{r,m},V_{r,m})$ \Comment{one draw per task; never redrawn inside a task}
+\EndFor
+\State $\tilde a \gets \argmin_{a}\ \E[B(a,x)] + L\big(1-\mathrm{logit}^{-1}(\alpha_x+\sum_r\tilde\theta_{r,a(r)})\big)$ \Comment{costs are \emph{not} sampled}
+\State $\hat a \gets$ the same argmin at the posterior means $\mu$ \Comment{the greedy assignment}
+\State $e \gets \big[\E[B(\tilde a,x)]-\E[B(\hat a,x)]\big]_+$ \Comment{what this draw would spend on exploration}
+\If{$e > E_{\mathrm{left}}$} \State $\tilde a\gets\hat a$;\ $e\gets0$ \Comment{the hard daily cap}
+\EndIf
+\State $\tilde a \gets$ the assignment in $\{a_0\}\cup\{a:\ a\ \text{differs from}\ a_0\ \text{in at most one role}\}$ nearest $\tilde a$ in $J$ \Comment{one role moves per task}
+\State \Return $\tilde a$ if $J(a_0)-J(\tilde a)>\delta$ (Section~\ref{sec:switch}), else $a_0$;\quad $E_{\mathrm{left}}\mathrel{-}=e$
+\end{algorithmic}
+\end{algorithm}
+
+Four things in Algorithm~\ref{alg:pick} deserve their own justification.
+
+\emph{The draw is inside $J$, not beside it.} Because costs are deterministic and $L$ is in
+dollars, an expensive assignment is drawn only when the sampled quality gain covers its
+extra bill at the practitioner's own stake. There is no separate exploration rate to set
+and no unit-free temperature.
+
+\emph{A hard daily cap $E$.} Thompson sampling has no budget; $J$ prices exploration but
+does not bound it. $E$ is a per-site, per-day cap on
+$\sum_t[B(\tilde a_t)-B(\hat a_t)]_+$, which makes the worst case a number the
+practitioner can be told. This is the bandits-with-knapsacks setting~\cite{bwk2013} in its
+simplest form --- one resource, a hard constraint --- and we do not use its algorithms; we
+use the constraint, and we say plainly that greedily spending the budget until it is
+exhausted is not the optimal way to spend it.
+
+\emph{One role changes per task.} Changing two roles at once makes the resulting grade
+uninformative about which change caused it, and makes bills jump. The restriction costs
+optimality --- the reachable set in one step is a neighbourhood, not $\acts$ --- and buys
+attribution and stability.
+
+\emph{Cheap exploration has its own vehicle.} A one-token probe action buys a measurement
+at negligible cost, and reserving a slot for the least-observed pair is the same idea at
+the task level. Observations from a deliberately exploratory slot carry a source tag and
+hence, by Proposition~\ref{prop:reliab}, their own reliability; they are not the same
+evidence as a run the rule chose on its merits.
+
+\subsection{What the simulation says, including the part we did not want}
+
+Figure~\ref{fig:regret} is a calibrated simulation: two roles, ten models each, bills
+log-uniform over the two orders of magnitude the measured ledger spans, quality additive on
+the probability scale, grades Bernoulli, estimation the exact Gaussian linear model (so one
+grade updates both roles --- the semi-bandit structure), prior the truth plus noise held at
+strength $\kappa$.
+
+\emph{Where every model carries a catalog index, exploration does not repay itself.} Over
+$800$ tasks the posterior-mean rule accumulates \$195 of regret, Thompson inside $J$
+accumulates \$347, and the capped version \$270. Thompson's instantaneous regret falls
+below the greedy rule's only at around $T\approx2000$ in a longer run, and the cumulative
+debt is not repaid within any horizon a single site will see. The reason is not subtle: a
+Bernoulli grade has standard deviation near $0.45$ about a quantity whose spread across
+models is near $0.15$, so evidence arrives slowly, while $L=\$5$ makes a quality
+uncertainty of $0.04$ worth $\$0.20$ --- more than the whole bill of a cheap assignment. We
+checked the sensitivity: at $L\in\{\$1,\$5,\$20,\$80\}$ the ratio of Thompson's regret to
+the greedy rule's is $1.36$, $1.51$, $1.70$, $1.73$. The finding is robust in the direction
+we did not want.
+
+\emph{Where one model per role carries no index, the greedy rule fails completely.} Give
+each role one model the catalog does not index --- a new release, an open-weights
+checkpoint, anything outside the feed --- give it a prior equal to the role's average with
+three times the prior variance, and make it in fact the best model at its role. The
+posterior-mean rule never plays it: its regret over $800$ tasks is \$839 and its per-task
+regret in the last hundred tasks is \$1.00, not falling. Thompson finds it: \$301
+cumulative, \$0.19 per task and still falling. The cap costs almost nothing here (\$273
+cumulative regret, \$4 of exploration spend against \$70 uncapped) because the exploration
+that matters is cheap and early.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\textwidth]{figures/f6-regret.pdf}
+\caption{\textbf{Simulated}, calibrated to the measured ledger's cost spread. Left: with
+every model indexed, the posterior-mean rule beats Thompson sampling inside $J$ over any
+horizon a site will see. Middle: with one unindexed model per role that happens to be the
+best, the posterior-mean rule's regret does not fall at all. Right: what exploration costs,
+and what the per-day cap holds it to. The conclusion is the asymmetry, not either panel
+alone.}
+\label{fig:regret}
+\end{figure}
+
+\paragraph{The design conclusion.}
+Exploration is not worth paying for in the assignment choice at this data scale when the
+prior covers every arm; it is worth almost any price when the prior does not cover an arm.
+So: keep the posterior-mean pick as the default, keep the Thompson draw behind a setting,
+keep the hard cap $E$ small, and direct the budget at arms whose \emph{prior} is
+uninformative rather than at arms whose posterior is merely wide. That is a
+value-of-information argument, and it is the argument for IDS~\cite{russo2014ids,russo2018ids}
+or a knowledge-gradient-per-dollar rule over plain Thompson sampling. We do not implement
+either, for a stated reason: both need a per-candidate information estimate at every pick,
+and at $|\acts|$ in the thousands and $|\mods|$ in the hundreds that is a second
+optimisation inside the first, while the gain over Thompson sampling at $T$ in the hundreds
+is within the noise of Figure~\ref{fig:regret}. We regard ``IDS beats Thompson-in-$J$ on
+this problem'' as a conjecture and have not tested it.
+
+\subsection{Regret, as a sketch}
+
+\begin{proposition}[Sketch]
+\label{prop:regret}
+Suppose (i) $P(g{=}1\mid a,x)$ is replaced by its linearisation $\nu^\top\theta_a$ about the
+operating point, so that $J(a;L)=b(a)+L(1-\nu^\top\theta_a)$ is affine in $\theta$ with a
+known deterministic offset $b(a)$; (ii) the prior is the true generating prior; (iii) grades
+are conditionally sub-Gaussian with proxy $\varsigma$. Then the Bayesian regret of Thompson
+sampling over $T$ tasks satisfies $\mathcal R(T)=O\big(L\,\varsigma\sqrt{d\,T\log T}\big)$
+with $d=\sum_r|M_r|$, by the general posterior-sampling bound of Russo and Van
+Roy~\cite{russo2014}, and the $d$ rather than $|\acts|$ is exactly the semi-bandit structure
+exploited by the combinatorial analyses of Chen, Wang and Yuan~\cite{chen2013} and Wen,
+Kveton and Ashkan~\cite{wen2015}; for combinatorial Thompson sampling specifically see Wang
+and Chen~\cite{wangchen2018}.
+\end{proposition}
+
+We label this a sketch and mean it. Assumption (i) is false --- the link is a logit and the
+linearisation error is not controlled; assumption (ii) is false, and
+Section~\ref{sec:decide} showed the failure of (ii) is what actually governs the outcome;
+the band pruning of Section~\ref{sec:bands} changes $\acts$ between rounds, which none of
+these analyses covers; and the exploration cap makes the policy non-Thompson on the rounds
+where it binds. The bound is offered as an account of \emph{why} the dimension is $d$ and
+not $|\acts|$, and for nothing else. The empirical statement in Figure~\ref{fig:regret} is
+not an instance of it.
+
+\section{Cascades}
+\label{sec:cascade}
+
+Extend the action set. A \emph{cascade} $(b\to b')$ runs an assignment from band $b$; if
+the grade is $0$, it escalates to an assignment from band $b'>b$; if that also fails, the
+stake is paid.
+
+\begin{proposition}[Break-even]
+\label{prop:cascade}
+Write $c_b,c_{b'}$ for the two bands' expected bills and $p_b,p_{b'}$ for their acceptance
+probabilities, and let $X=c_{b'}+(1-p_{b'})L$ be the cost of going straight to $b'$. Then
+\begin{align}
+J(b\to b') &= c_b+(1-p_b)\big[c_{b'}+(1-p_{b'})L\big],\label{eq:cascade}\\
+J(b\to b') < J(b') &\iff p_b > \frac{c_b}{c_{b'}+(1-p_{b'})L}, \label{eq:cascadeA}\\
+J(b\to b') < J(b)\ \ \ &\iff p_{b'}L > c_{b'} .\label{eq:cascadeB}
+\end{align}
+At $L=0$, \eqref{eq:cascadeA} is the bare cost ratio $p_b>c_b/c_{b'}$.
+\end{proposition}
+\begin{proof}
+\eqref{eq:cascade} is the expectation over the first grade. Then
+$J(b\to b')-J(b')=c_b+(1-p_b)X-X=c_b-p_bX$, giving~\eqref{eq:cascadeA}. And
+$J(b\to b')-J(b)=(1-p_b)[c_{b'}+(1-p_{b'})L]-(1-p_b)L=(1-p_b)[c_{b'}-p_{b'}L]$, which is
+negative iff $p_{b'}L>c_{b'}$, giving~\eqref{eq:cascadeB}. With a latency price $\lambda$
+the same algebra holds with $c$ replaced by $c+\lambda t$ throughout.
+\end{proof}
+
+Read together the two conditions say: cascade when the cheap band clears the bar often
+enough to pay for its own attempt, \emph{and} when the escalation is worth buying at the
+practitioner's stake at all. Higher stakes lower the first bar and raise the second, because
+a cascade ends unaccepted with probability $(1-p_b)(1-p_{b'})$, strictly less than
+$(1-p_{b'})$: escalation buys quality as well as costing money. Figure~\ref{fig:cascade}
+draws both. This is the mechanism FrugalGPT studies for single-call
+inference~\cite{frugalgpt2023}; the difference here is that the escalation decision is made
+on a model-free grade rather than on a scored confidence, which is what the next paragraph
+is about.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\textwidth]{figures/f4-cascade.pdf}
+\caption{\textbf{Closed form.} Proposition~\ref{prop:cascade}. Left: the break-even
+acceptance for the cheap band against the cost ratio, for four stakes; $L=0$ is the bare
+cost ratio, and every dollar of stake lowers the bar because a cascade strictly reduces the
+chance of an unaccepted task. Right: condition~\eqref{eq:cascadeB}, which decides whether
+the escalation is worth buying at all.}
+\label{fig:cascade}
+\end{figure}
+
+\paragraph{The endogeneity hazard, and why an executable grade removes it.}
+Suppose the escalation trigger were the reviewing role's verdict rather than the grade, and
+suppose that role is part of the assignment being scored. Then a cheap reviewer that passes
+bad work produces no escalation, the cheap writer's measured acceptance rises, the rule
+prefers the cheap assignment, and the cheap reviewer is chosen again. The feedback loop is
+closed and it collapses to the cheapest possible assignment with the worst possible quality,
+while every measured quantity in the system improves. Formally, the trigger $z$ and the
+outcome $g$ are both functions of the action $a$ through the reviewing role, so
+$\E[z\mid a]$ is not an unbiased signal of $\E[g\mid a]$ and the argmin of the estimated $J$
+is not consistent for the argmin of $J$. Definition~\ref{def:grade} breaks the loop by
+construction: $g$ is computed from the artefact by the harness, and no model in the
+assignment can move it. An independent rating and the reviewing role's findings remain as
+auxiliary observations with reliability $\rho<1$, which is exactly the right treatment for a
+signal that is informative and endogenous: it can shorten the experiment, and it cannot
+determine its answer.
+
+\section{Switching and stability}
+\label{sec:switch}
+
+\begin{definition}[Switching threshold]
+Let $a_0$ be the incumbent and $a_1$ the challenger. Switch only at a task boundary, and
+only when
+\begin{equation}
+J(a_0)-J(a_1) \;>\; \delta,\qquad \delta \;=\; \underbrace{\hat\iota^{\,\mathrm{cached}}\big(\pi_{a_0(r)}-\pi^c_{a_0(r)}\big)}_{\text{cache loss}}\;+\;h,
+\label{eq:switch}
+\end{equation}
+where $\hat\iota^{\,\mathrm{cached}}$ is the prompt prefix currently cached for the role
+being changed and $h\ge0$ is a hysteresis margin.
+\end{definition}
+
+The first term is a real cost with a receipt: changing the model in a role discards the
+provider-side cache of that role's prompt prefix, and the next call pays the prompt price
+for tokens that would have been served at the cache-read price. The second is a margin
+against churn.
+
+\begin{remark}[$\delta=0$ for a batch harness]
+Where every task is a fresh session, there is no cached prefix to lose across tasks, so
+$\hat\iota^{\,\mathrm{cached}}=0$ and $\delta=h$. Inside an interactive session the prefix
+is real and $\delta>0$; this is why the model in a role is fixed for the duration of a task
+and may change only between tasks.
+\end{remark}
+
+\paragraph{Evaluating at every boundary inflates false switches.}
+The rule of Eq.~\eqref{eq:switch} is tested after every task, which is optional stopping: a
+fixed-$\alpha$ test applied at every $t$ rejects with probability one under the null. The
+correct instrument is an anytime-valid confidence sequence: a family $\{C_t\}$ with
+$P(\exists t:\theta\notin C_t)\le\alpha$, built from a non-negative
+supermartingale~\cite{howard2021}. Concretely, maintain the sequence for the difference
+$J(a_0)-J(a_1)$ and switch when its lower bound exceeds $\delta$. The cost is a wider
+interval than a fixed-sample test at the same $\alpha$; the benefit is that ``we checked at
+every task'' is no longer a way of manufacturing a switch.
+
+\paragraph{Why batching is the right shape.}
+Bandits with switching costs have minimax regret $\tilde\Theta(T^{2/3})$ rather than
+$\tilde\Theta(T^{1/2})$~\cite{dekel2014}, and the optimal policies batch: they hold an arm
+for a stretch, then reconsider. The task boundary is a natural batch edge --- it is where
+the cache is worthless anyway and where a bill is closed --- so the switching structure the
+theory recommends is the structure the problem already has. We claim no bound; we claim that
+the shape is not accidental.
+
+\section{Pooling across sites}
+\label{sec:federation}
+
+\begin{definition}[Cell]
+A cell is keyed by $(\text{role},\text{model},\text{source},\text{channel},\text{size},\text{day})$
+and holds $(n,\Sigma_1,\Sigma_2)$: count, sum and sum of squares, plus the count of
+contributing sites. A sheet maps (site, cell) to such a triple.
+\end{definition}
+
+\paragraph{Merging.}
+Two structures, deliberately different. \emph{Within} a store, a site's own sheet
+accumulates its own disjoint observations by addition, which is associative and commutative
+but not idempotent, so a retried batch can be double-counted and the relay bounds that with
+a per-site daily quota. \emph{Between} stores, a copy of another store's sheet merges by
+componentwise maximum on each site's running total, which is a join-semilattice and hence a
+state-based CRDT~\cite{shapiro2011}: any two nodes that have seen the same publications, in
+any order and with any duplication, hold the same sheet. The published index is a function
+of the merged sheet, so a relay is a convenience for bandwidth and signing, not an
+authority.
+
+\paragraph{What this is and is not.}
+It is centralised-relay and mergeable: one relay publishes, any node can host one, and two
+relays that receive the same publications agree. It is \emph{not} decentralised learning.
+There is no coordinated exploration --- nothing tells site $B$ that site $A$ has already
+paid to measure a cell, so the pool re-measures what it already knows. Publishing a
+per-cell value of information alongside each cell, so that sites allocate their exploration
+budgets to disjoint questions, is the obvious next step and is exactly the
+distributed-exploration problem~\cite{hillel2013}; federated bandit
+formulations~\cite{shi2021} give the communication--regret trade-offs. We have implemented
+none of it and claim none of it.
+
+\paragraph{The site random effect gives $\ell$ its meaning.}
+Assumption~\ref{ass:hier}'s $\theta^{(i)}_{r,m}=\theta_{r,m}+u_{i,r,m}$,
+$u\sim\mathcal N(0,\sigma_u^2)$, is what makes $\ell=\sigma^2/\sigma_u^2$ the cap of
+Eq.~\eqref{eq:cap}: however large the pool, the outside world is worth at most $\ell$ of
+this site's own runs. Every constant is a moment estimate on the sheet, none is set by hand:
+\begin{align}
+\hat\sigma^2 &= \frac{\sum_{i,\theta}\big(\Sigma_{2,i\theta}-\Sigma_{1,i\theta}^2/n_{i\theta}\big)}{\sum_{i,\theta}(n_{i\theta}-1)},
+&&\hat\sigma_u^2 = \Big[\widehat{\operatorname{Var}}_i\big(\bar y_{i\theta}\big)-\hat\sigma^2\,\overline{(1/n_{i\theta})}\Big]_+,
+\label{eq:moments}\\
+\hat\sigma_0^2 &= \Big[\widehat{\operatorname{Var}}_{(r,m)}\big(\bar y^{\mathrm{pool}}_{r,m}-\hat\theta^{\mathrm{cat}}_{r,m}\big)-\overline{(\hat\sigma^2+\hat\sigma_u^2)/n^{\mathrm{pool}}}\Big]_+,
+&&\kappa=\hat\sigma^2/\hat\sigma_0^2,\quad \ell=\hat\sigma^2/\hat\sigma_u^2 ,
+\nonumber
+\end{align}
+each a within-minus-noise estimator of the Efron--Morris kind~\cite{efron1975}. Each is
+withheld until its denominator carries at least ten degrees of freedom, with the day-one
+values of Table~\ref{tab:const} until then. On a small seed index $\hat\sigma_0^2$ clips to
+zero --- a dozen cells of two-point scores cannot resolve a catalog error under about
+thirteen points --- which is why $\kappa=30$ still stands as a day-one value and why
+Remark~\ref{rem:loan} is not an academic caveat.
+
+\paragraph{Robustness and reliability.}
+Rows from one site share a task mix and a codebase; the unit of aggregation is therefore the
+site mean, not the row. A Huber $M$-estimate over site means (MAD scale $1.4826$, tuning
+constant $1.345$, breakdown $1/2$)~\cite{huber1964} bounds what a minority of broken or
+adversarial sites can move, with a precision-weighted mean below five sites. Rater
+severities are fitted as one additive effect per rater by alternating weighted means, which
+is the two-way additive model identified up to one constant per connected component of the
+rater-by-cell graph --- the many-facet Rasch calibration~\cite{linacre1989}. The same
+machinery fits one $(a_{\mathrm{src}},b_{\mathrm{src}})$ per source~\cite{dawid1979} and
+publishes $\rho_{\mathrm{src}}$ of Eq.~\eqref{eq:rho} in the index, so that every site
+discounts a proxy observation by the same factor.
+
+\begin{table}[h]\centering\small
+\begin{tabular}{p{2.3cm}p{5.6cm}p{3.6cm}p{2.4cm}}\toprule
+constant & meaning & estimator & day-one value\\\midrule
+$\sigma$ & grade / score noise & \eqref{eq:moments} & --- (fitted)\\
+$\kappa=\sigma^2/\sigma_0^2$ & the catalog's weight, in runs & \eqref{eq:moments} & $30$\\
+$\ell=\sigma^2/\sigma_u^2$ & cap on outside evidence & \eqref{eq:moments} & $30$\\
+$\tau^2$ & drift per day & moment on daily differences & $0$ (no forgetting)\\
+$\rho_{\mathrm{src}}$ & a source's reliability & \eqref{eq:rho}, fitted per source & executable grader $1$\\
+$\beta$, $k$ & band base; keep per band per role & fixed by design & $2$, $3$\\
+$\kappa_T$ & shrinkage of the token shape & \eqref{eq:shape}, on the log scale & $30$ runs\\
+\midrule
+$L$ & the stake, in dollars & \textbf{the practitioner's} & \$1 / \$10 / $\infty$\\
+$\lambda$ & dollars per minute & the practitioner's & \$0.01\\
+$E$ & daily exploration cap & the practitioner's & a fraction of the daily bill\\
+$h$ & hysteresis in \eqref{eq:switch} & fixed by design & small\\
+\bottomrule\end{tabular}
+\caption{Every constant with its estimator. Four belong to the practitioner by design; the
+rest are empirical-Bayes estimates the relay publishes with the index, or stated design
+judgements. No constant in this table is a unit-free knob, and only $L$ is normally set.}
+\label{tab:const}
+\end{table}
+
+\section{Experiments}
+\label{sec:exp}
+
+\subsection{Setup}
+
+The evidence is one production harness's ledger over a $21$-hour window, one repository,
+one language.\footnote{The ledger comes from a production multi-role coding-agent harness
+operated by the authors. The harness itself is not the subject of this paper; every
+quantity below is a measurement of the variables defined in Section~\ref{sec:setting}. The
+extraction script, the derived tables and every figure are released; the run records, which
+carry task text, are not.} It holds $202$ graded runs. Of these, $136$ carry the full
+assignment (writer, reviewer, planner) together with an executable-proxy outcome, and $132$
+carry a per-role split of tokens and dollars. All model identifiers are as published on the
+day of the catalog snapshot, which lists $522$ models, $417$ of them priced; prices are read
+from that snapshot and are per token. No run is dropped for a missing price: every model
+that appears in the ledger is priced in the snapshot.
+
+Table~\ref{tab:models} lists the eight models the ledger exercises, with their
+as-published prices and indexes.
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lrrlp{4.2cm}}\toprule
+model (as published) & \$/Mtok in & \$/Mtok out & index & roles held (runs)\\\midrule
+anthropic/claude-fable-5.1       & 10.00 & 50.00 & 53.4 & reviewer (43) \\
+anthropic/claude-opus-5          &  5.00 & 25.00 & 50.7 & planner (136), reviewer (3) \\
+moonshotai/kimi-k3               &  3.00 & 15.00 & 43.8 & reviewer (31) \\
+qwen/qwen3.8-max-0902            &  2.00 &  6.00 & 45.4 & reviewer (59) \\
+z-ai/glm-5.3                     &  1.40 &  4.40 & 44.9 & writer (16) \\
+meta/muse-spark-1.3              &  1.25 &  4.25 & 44.3$^{\ast}$ & writer (14) \\
+deepseek/deepseek-v4.1-flash     &  0.15 &  0.60 & 39.5 & writer (62) \\
+z-ai/glm-5.3-flash               &  0.09 &  0.30 & 41.9 & writer (44) \\
+\bottomrule\end{tabular}
+\caption{The models the ledger exercises, as published in the catalog snapshot. Prices are
+quoted per million tokens for readability; the released table carries them per token, which
+is how the catalog states them. $^{\ast}$imputed from the secondary index. The design is
+close to a balanced $4\times4$ over writer and reviewer with the planner held fixed, which
+is what makes the per-role marginals of Section~\ref{sec:exp} readable at this sample size.}
+\label{tab:models}
+\end{table}
+
+Three quantities are fixed once here and used throughout. The \emph{failure bit} is
+$1-g$ with $g$ taken to be the reviewing role's major-defect flag, negated, and with an
+artefact that contains no change counted as a failure. This is a \emph{proxy} for
+Definition~\ref{def:grade}, not the grade itself: the historical runs predate an executable
+grader. Section~\ref{sec:reward} measured what that proxy is worth in the other direction
+--- an independent rating carries $\rho=0.42$ of a grade --- and every claim below inherits
+that qualification. The failure rate over the $136$ graded runs is $0.176$. The
+\emph{assignment set} is the $12$ distinct assignments run at least three times, out of $15$
+observed; the three dropped were run once each. The \emph{quality model} is the MAP of
+Assumption~\ref{ass:add} under a catalog-anchored Gaussian prior worth $\kappa=30$ runs at
+the operating point, with per-role anchors $\lambda(\varphi_m/\varphi_{\max}-\bar\varphi_r)$
+at $\lambda=4$ logits; a model missing the primary index is imputed from the secondary one
+by least squares over the $58$ catalog models carrying both ($r=0.88$).
+
+\subsection{E1: what a role costs, and whether a learned shape predicts it}
+
+Figure~\ref{fig:cost}, left, is the measured token shape. Over the $132$ runs carrying a
+split, the writing role takes a median $0.974$ of a run's tokens (mean $0.877$), the
+reviewing role a median $0.026$ (mean $0.117$) with a long tail --- its ninetieth
+percentile is $0.395$ and its maximum $0.946$, and on nine of the $132$ runs the role that
+only reads the work takes more than half the tokens --- and the planning role a median
+below $10^{-3}$ (mean $0.006$). The dollars land somewhere else entirely: the writing
+role takes a median $0.519$ of them and the reviewing role a median $0.437$. Restricted to
+the $116$ runs in which the reviewing role was actually invoked, its token median is $0.034$
+and its dollar median $0.509$. So the reviewing role's bill share is mostly price and partly
+the volume tail. Against a fixed shape that assigns the reviewing role $0.08$ of a run's
+tokens, the measured mean is $1.46$ times that ($1.67$ times on the invoked subset) while
+the measured median is a third of it --- the fixed value is neither.
+
+The prediction task is: given the assignment and the run's total token volume, return the
+run's bill. Leave-one-out throughout; the shape for a run is fitted on the other $131$ runs
+only, shrunk toward the fixed shape at $\kappa_T=30$; prices as published.
+
+\begin{center}\small
+\begin{tabular}{lrrr}\toprule
+cost model & MAPE & median $|\log$ error$|$ & median error factor\\\midrule
+fixed shape (B0, B1) & $302.5\%$ & $1.217$ & $3.38\times$ (over)\\
+learned shape, arithmetic shrinkage & $241.9\%$ & $1.058$ & $2.72\times$ (over)\\
+learned shape, log-scale shrinkage & $\mathbf{58.4\%}$ & $\mathbf{0.443}$ & $0.92\times$\\
+\bottomrule\end{tabular}
+\end{center}
+
+Two readings. First, the fixed shape is not merely noisy but biased: its median prediction
+is $3.3$ times the realised bill, because it attributes $8\%$ of a large token volume to a
+role whose price per token is often an order of magnitude higher than the writer's, and on
+most runs that role does a small fraction of that work. Second, and this is the result we
+did not expect, \emph{how} the shape is shrunk carries the entire effect. Shrinking the
+arithmetic mean of the volume share recovers a fifth of the gap; shrinking its logarithm
+recovers nine tenths of it. An ablation isolates the component: learning the volume share
+alone gives MAPE $56\%$, while learning the cache share alone gives $299\%$ and the
+input-to-output split alone $305\%$. The bill of a multi-role run is, to a first
+approximation, a question about who spent the tokens.
+
+At the assignment level --- predicting the mean bill of each of the $12$ assignments, which
+is what $J$ needs --- the learned shape gives MAPE $38.9\%$ against $129.7\%$ for the fixed
+one, and the fixed shape over-predicts by a median factor of $2.18$. That over-prediction is
+not uniform across assignments, which is why it reorders them, and reordering is what E2
+tests next.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\textwidth]{figures/f8-cost.pdf}
+\caption{\textbf{Measured.} Left: each role's share of a run, in tokens and in dollars, over
+the $132$ runs that carry a per-role split; bars are medians, the dashed rules are the fixed
+shape's volume shares. The writing role takes nearly all the tokens and about half the
+dollars; the reviewing role takes a few per cent of the tokens on a typical run, most of
+them on a few, and about half the dollars. Right: leave-one-out bill prediction, predicted
+against realised, for the fixed shape and for the learned shape with log-scale shrinkage.
+The fixed shape is biased high by a median factor of $3.3$.}
+\label{fig:cost}
+\end{figure}
+
+\subsection{E2: does the rule pick what hindsight would have picked?}
+
+For each stake $L\in\{\$1,\$10,\infty\}$ we compute, over the $12$ assignments, the one with
+the lowest \emph{realised} loss --- mean bill plus $L$ times failure rate, and for
+$L\to\infty$ the lowest failure rate with the bill as tie-break --- and ask whether the
+rule's pick, formed from the catalog prior plus the measured cells and priced by the learned
+shape, coincides with it. Figure~\ref{fig:hindsight} draws the realised set with Wilson
+intervals and marks both.
+
+It does not coincide, at any of the three stakes, and the honest account of why is
+instructive.
+
+At $L=\$1$ hindsight prefers deepseek-v4.1-flash writing with kimi-k3 reviewing (realised
+loss $\$0.801$); the rule picks deepseek-v4.1-flash with qwen3.8-max-0902 (realised
+$\$0.829$, $3.4\%$ worse). The same rule priced with the fixed shape picks
+muse-spark-1.3 with qwen3.8-max-0902 (realised $\$1.263$, $57.5\%$ worse). At $L=\$10$ the
+rule's pick is unchanged and now costs $92.1\%$ more than hindsight, while the fixed-shape
+variant is unchanged at $57.5\%$ --- the fixed shape is better here, by luck, and we say so.
+At $L\to\infty$ hindsight and the rule disagree again, hindsight taking the assignment with
+$0/11$ failures and the rule the one with $0/4$.
+
+The reason the rule misses the hindsight winner is not noise in the bill; it is
+Assumption~\ref{ass:add}. Marginally over the ledger, kimi-k3 in the reviewing role fails on
+$6$ of $31$ runs ($0.194$) while qwen3.8-max-0902 fails on $7$ of $59$ ($0.119$), so an
+additive model prefers the latter at that role, correctly given its assumptions. The
+hindsight winner is a \emph{pair}: kimi-k3 fails on $0$ of $11$ runs specifically alongside
+deepseek-v4.1-flash. An additive logit cannot represent that, and the pair term of
+Section~\ref{sec:quality} is exactly what would.
+
+It should also be said plainly that the sample cannot resolve the difference. The hindsight
+winner's failure rate is $0/11$, Wilson interval $[0.000,0.259]$; the rule's pick is $3/38$,
+interval $[0.027,0.208]$. The intervals overlap over most of their length. By
+Proposition~\ref{prop:samples}, separating two models at one role by $\Delta=0.10$ at
+$\kappa=30$ needs $114$ graded runs \emph{per model per role}; this ledger has $136$ runs in
+total. At $L=\$1$ the bill term dominates and the rule is within a few cents of hindsight;
+at $L=\$10$ the failure term dominates and the ledger has nothing to say. That transition,
+rather than either number, is the finding.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\textwidth]{figures/f9-hindsight.pdf}
+\caption{\textbf{Measured.} Left: the $12$ assignments run at least three times, in realised
+mean bill against realised failure rate; marker area is the number of runs, vertical bars
+are Wilson intervals, and the dashed path is the lower hull of the realised set --- the
+empirical version of Proposition~\ref{prop:hull}. Circled is the assignment hindsight
+prefers at every stake; squared are the rule's picks. Right: what those picks actually cost
+per task, against the best assignment in hindsight and against the same rule priced with
+B0's fixed cost shape.}
+\label{fig:hindsight}
+\end{figure}
+
+\subsection{E3: does the rule converge?}
+
+We replay the $136$ graded runs in completion order. At step $t$ the rule refits the quality
+model on the runs seen so far and picks among the assignments observed so far; it is charged
+the plug-in realised loss of the assignment it picks, and its \emph{empirical regret} is the
+running excess over the best assignment in hindsight. Three rules are replayed: the proposed
+one; B1, which is the same quality model priced by the fixed cost shape; and B0, the
+scale-free knee on the fixed cost shape and the catalog score, which takes no stake and
+therefore draws the same picks at every $L$. Figure~\ref{fig:converge} shows the curves and
+Table~\ref{tab:e3} the slopes.
+
+This is a replay, not a policy evaluation. The rule learns from the logged stream but does
+not control it, and it is scored against full-sample plug-in means; the quantity it measures
+is how fast the estimator converges to the hindsight-optimal assignment, not the regret of a
+policy that also chooses its own data. Section~\ref{sec:eval} says why the stronger claim is
+not available from these logs.
+
+\begin{table}[h]\centering\small
+\begin{tabular}{llrrrr}\toprule
+stake & rule & regret & \multicolumn{3}{c}{slope, by third of the replay}\\
+\cmidrule(lr){4-6}
+ & & total & first & second & last\\\midrule
+$L=\$1$ & proposed & $\$61.29$ & $+0.896$ & $+0.403$ & $\mathbf{+0.027}$\\
+        & B1 (fixed shape) & $\$65.64$ & $+0.491$ & $+0.461$ & $+0.451$\\
+        & B0 (knee) & $\$31.43$ & $+0.298$ & $+0.181$ & $+0.177$\\\midrule
+$L=\$10$ & proposed & $\$68.35$ & $+0.448$ & $+0.355$ & $+0.580$\\
+         & B1 (fixed shape) & $\$73.62$ & $+0.589$ & $+0.461$ & $+0.451$\\
+         & B0 (knee) & $\$44.03$ & $+0.498$ & $+0.181$ & $+0.177$\\\midrule
+$L\to\infty$ & all three & $1.40$ & $+0.022$ & $+0.000$ & $+0.000$\\
+\bottomrule\end{tabular}
+\caption{E3. Empirical regret against the best assignment in hindsight over $136$ replayed
+runs, and its slope over each third. Dollars per task for the two finite stakes; excess
+failures per task for $L\to\infty$, where all three rules coincide after the sixth run and
+the hindsight optimum is zero failures.}
+\label{tab:e3}
+\end{table}
+
+\emph{At $L=\$1$ the rule converges and the baselines do not.} Its per-task gap falls from
+$\$0.90$ to $\$0.40$ to $\$0.027$ across the three thirds --- by the end it is within three
+cents per task of the assignment hindsight would have chosen, which is the $3.4\%$ of E2
+seen as a rate. B1's gap is flat at $\$0.45$: with the same quality model and the same
+information, pricing by a fixed shape stops the rule converging at all. B0's is flat at
+$\$0.18$ by construction, since after the front stabilises it holds one assignment forever.
+The proposed rule's \emph{cumulative} regret is still the larger of the three at the end of
+the replay, because of what it paid while learning; extrapolating the last third's slopes,
+it overtakes B0 cumulatively after about $200$ further tasks. We report that extrapolation
+as an extrapolation.
+
+\emph{At $L=\$10$ it does not converge.} The rule's last-third slope is $\$0.58$ per task,
+higher than its second third. The cause is E2's: at a stake of ten dollars the objective is
+dominated by a failure-rate difference of a few percentage points between two assignments
+whose Wilson intervals overlap, and $136$ runs cannot order them. The rule is not
+oscillating --- it settles on one assignment and holds it --- it has settled on the wrong
+one and has no evidence that would move it. This is the regime Proposition~\ref{prop:samples}
+describes and it is the argument for pooling across sites, not for a different rule.
+
+\emph{At $L\to\infty$ the experiment is uninformative.} All three rules incur $1.4$ excess
+failures over $136$ runs against a hindsight optimum of zero, and all three curves are flat
+after the sixth run. With three assignments at exactly zero observed failures out of
+$11$, $5$ and $4$ runs, there is nothing here to distinguish. We show the panel rather than
+omit it.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\textwidth]{figures/f10-converge.pdf}
+\caption{\textbf{Measured.} Empirical regret against the best assignment in hindsight,
+replaying $136$ graded runs in completion order, at three stakes; annotations are the slope
+over the last third. At $L=\$1$ the proposed rule flattens to three cents per task while
+both baselines stay linear. At $L=\$10$ nothing flattens, for the reason
+Proposition~\ref{prop:samples} gives. At $L\to\infty$ the three rules coincide and the
+panel is uninformative; it is shown rather than omitted.}
+\label{fig:converge}
+\end{figure}
+
+\subsection{What the three experiments jointly support, and what they do not}
+
+They support the cost half of the thesis strongly and the quality half weakly, and the
+asymmetry is a function of how much data each half needs. A bill is observed exactly on
+every run, so $132$ runs are enough to fit a per-role token shape and to show that doing so
+cuts prediction error by a factor of five and reorders the assignments. A grade is one bit
+per run, so $136$ runs are nowhere near enough to order twelve assignments by failure rate,
+and at a stake where the failure term dominates the rule inherits that ignorance. The
+practical reading is that a deployment should expect the cost model to pay for itself
+immediately and the quality model to pay for itself only with pooled evidence --- which is
+what Section~\ref{sec:federation} exists for, and what Proposition~\ref{prop:samples}
+predicted before any of this was measured.
+
+\section{Evaluation protocol}
+\label{sec:eval}
+
+\paragraph{The bar.}
+A rule is better if it picks assignments that are better on the cost--quality front, per
+role and per task, than the posterior-mean blend of B1, on the same data. Not: if it is more
+principled. Not: if it explores.
+
+\paragraph{Off-policy estimation needs propensities that do not exist.}
+For a logged history $\{(x_t,a_t,g_t)\}$ under a behaviour policy $\pi_0$ and a candidate
+$\pi$, the inverse-propensity estimator
+$\hat V_{\mathrm{IPS}}(\pi)=\frac1T\sum_t \frac{\pi(a_t\mid x_t)}{\pi_0(a_t\mid x_t)}\,y_t$
+and its doubly robust refinement~\cite{dudik2011} both require $\pi_0(a_t\mid x_t)$ to be
+recorded at the time of the pick. It is not recorded, and the reason is structural: the
+assignment pick is deterministic, so $\pi_0$ is a point mass and every importance weight is
+$0$ or $\infty$. \emph{So the first requirement of this protocol is a logging change}:
+under the Thompson setting, record the sampled $\tilde\theta$'s seed and the resulting
+selection probability (estimable by replaying the draw $R$ times at the stored posterior),
+and under the greedy setting record that the propensity is one, which makes the honest
+statement that no off-policy claim is possible from greedy logs.
+
+\paragraph{Until then: replay and simulation, both labelled.}
+Two admissible claims remain, and Section~\ref{sec:exp} makes exactly those. (a)
+\emph{Replay}: recompute what each rule would have picked for each historical task and
+compare the picks' \emph{bills} exactly --- bills are deterministic given the catalog and
+the shape, so this is an exact statement about cost with no counterfactual outcome in it ---
+and score the quality term against plug-in means, labelled as such. (b)
+\emph{Simulation}, calibrated on the ledger, labelled as simulation in every caption, with
+its sensitivity to $L$, to the prior's error and to the grade's variance reported, as in
+Section~\ref{sec:decide}. Neither is a randomised trial. A randomised trial over assignments
+is the right experiment and is the thing to build next; with $\Delta=0.20$ and $\kappa=30$ it
+needs about six graded runs per model per role (Proposition~\ref{prop:samples}), which is
+within reach of a single team over a week.
+
+\section{Exposing the dial}
+\label{sec:product}
+
+The dial is one sentence: \emph{what does it cost you when a task comes back wrong?} A
+hobby script, nothing much. A change a colleague will review, rather more. A change going
+near a release, whatever it takes.
+
+\begin{center}\small
+\begin{tabular}{p{2.2cm}p{2.2cm}p{9.4cm}}\toprule
+preset & $L$ & what it means\\\midrule
+\emph{frugal} & \$1 & a failed task is an annoyance; spend nothing to avoid one\\
+\emph{balanced} & \$10 & a failed task costs about ten minutes of a person\\
+\emph{max} & $\to\infty$ & the best assignment on the front, whatever the bill\\
+\emph{custom} & any $L$ & the number in dollars\\
+\bottomrule\end{tabular}
+\end{center}
+
+Two of the presets are stakes in dollars; the third is the limit. By
+Proposition~\ref{prop:sweep} the limit is well defined and cheap: as $L\to\infty$ the argmin
+of $J$ is the last hull vertex $a_K$, the assignment with the lowest failure probability,
+with the bill as tie-break. That is what a superlative should mean. Naming a large finite
+number instead --- fifty dollars, say --- would be a fourth ordinary stake wearing a
+superlative's label, and on any front whose top breakpoint $L_K$ exceeds it, it would
+silently decline to buy the best assignment available.
+
+Three properties follow from the machinery rather than from the copy.
+
+\emph{Bills become predictable per band.} Because the shortlist keeps at most $k$ models per
+band (Section~\ref{sec:bands}) and the bill is computed from a measured token shape
+(Section~\ref{sec:cost}), the rule can state, before the run, the band it will run in and
+therefore the bill's range within a factor of $\beta=2$. A rule with a fixed shape can state
+a bill computed from a constant, which Section~\ref{sec:exp} shows is wrong by a median
+factor of $3.3$ at the level of a run and $2.2$ at the level of an assignment.
+
+\emph{Every pick has a reason, and it is the posterior.} ``Why this assignment?'' is
+answered by the two numbers in Eq.~\eqref{eq:J} and one from Eq.~\eqref{eq:breakpoints}:
+this assignment costs \$$x$ and accepts $p$ of the time; the next one up costs \$$y$ more
+and accepts $p'$; at your stake of \$$L$ the upgrade is worth it above \$$L_j$ and you are
+below it. That sentence is a by-product of the posterior, not a separate explanation
+feature, and it cannot drift out of agreement with the pick because it is computed from the
+same numbers.
+
+\emph{What exploration costs is a number the practitioner set.} $E$ is dollars per day. The
+system never spends more than $E$ above what the greedy pick would have cost, and it reports
+how much of $E$ it used.
+
+\section{Limitations}
+\label{sec:limits}
+
+\begin{enumerate}\itemsep2pt
+\item \textbf{One repository, one language, one window.} All $202$ runs come from a single
+deployment, in one repository, inside a single $21$-hour window. There are no external
+sites. Every measured number in this paper --- the role shares, the proxy reliabilities, the
+cost spread, all of Section~\ref{sec:exp} --- is a statement about that sample and about
+nothing else. The between-site variance $\sigma_u^2$, on which the cap of
+Eq.~\eqref{eq:cap} entirely depends, is unmeasured, because there is exactly one site.
+\item \textbf{The outcome measured is a proxy, not the grade.} The historical runs predate
+an executable grader, so E2 and E3 use the reviewing role's major-defect flag (with an empty
+artefact counted as a failure) in place of Definition~\ref{def:grade}. That proxy is
+endogenous in exactly the way Section~\ref{sec:cascade} warns about --- the reviewing role
+is part of the assignment being scored --- and Section~\ref{sec:reward} measured that a
+related proxy is worth $\rho=0.42$ of a grade. Every quality claim in
+Section~\ref{sec:exp} should be read through that factor. Repeating E2 and E3 against
+Definition~\ref{def:grade} is the single highest-value next measurement.
+\item \textbf{$g$ is binary and only as good as the checks.} A change that builds, passes
+and is formatted, but does not do what the brief asked, scores $1$. A repository with weak
+tests grades weakly. We regard this as the dominant threat to validity of the reward
+itself: it is honest and narrow, and the narrowness is not free. Extending $g$ to a graded
+scale (fraction of acceptance criteria met) is straightforward statistically and hard to
+specify in a way that no model can influence.
+\item \textbf{The objective is risk-neutral.} Eq.~\eqref{eq:J} optimises an expectation. A
+practitioner who cares about the worst task of the week wants a mean-variance or CVaR
+objective; $J_\eta(a)=\E[B]+L(1-P)+\eta\sqrt{\operatorname{Var}[B]}$ is a one-line change
+with a second dial, and a second dial is exactly what Section~\ref{sec:decision} argued
+against. We have not resolved this.
+\item \textbf{The additive logit ignores interactions, and E2 shows it costing something.}
+The hindsight winner at every stake is a role pair the additive model cannot represent.
+The cascade captures the largest interaction we expect structurally; a pair term would
+capture more, at a cost in observations that Proposition~\ref{prop:samples} says this ledger
+cannot afford.
+\item \textbf{E3 is a replay, not a policy evaluation.} The rule learns from a stream it
+did not choose and is scored against plug-in means. It measures estimator convergence, not
+policy regret, and the two coincide only if the logged design is close to uniform over the
+assignments --- which it approximately is here, by construction of the logging experiment,
+but which we have not tested.
+\item \textbf{$k=3$, $\beta=2$, $\lambda=4$, $h$ are judgements.} They are marked as such
+in Table~\ref{tab:const} and each should be replaced by an estimate. We report the pick's
+sensitivity to $\lambda$ and $\kappa$ in the released results: the picks at $L=\$1$ and
+$L=\$10$ are unchanged over $\lambda\in\{0,2,4,8\}$ and over $\kappa\in\{10,30,100\}$,
+while the pick at $L\to\infty$ moves at $\lambda=0$ and again at $\kappa=100$ --- which is
+what one should expect of the stake at which the bill stops mattering and only the prior's
+ordering of rarely-run assignments is left.
+\item \textbf{Exploration was not shown to pay.} Section~\ref{sec:decide} reports a
+negative result. We have not shown that Thompson sampling inside $J$ improves the rule in
+the regime it will mostly run in; we have shown where it is indispensable and where it is a
+tax, and set the default accordingly.
+\item \textbf{No off-policy evidence is possible from these logs}
+(Section~\ref{sec:eval}), and none is claimed.
+\end{enumerate}
+
+\section{Related work}
+\label{sec:related}
+
+The decision-theoretic core is bi-objective scalarisation and the classical fact that linear
+scalarisation reaches exactly the supported efficient set~\cite{geoffrion1968,ehrgott2005};
+Pareto bandits~\cite{drugan2013} address the case where no scalarisation is available, which
+is the case we deliberately leave by putting the exchange rate in dollars. The learner is a
+combinatorial bandit with semi-bandit feedback~\cite{chen2013,wen2015,wangchen2018} under
+Thompson sampling~\cite{thompson1933,russo2014,russo2018}; information-directed
+sampling~\cite{russo2014ids,russo2018ids} is the value-of-information alternative discussed
+in Section~\ref{sec:decide}. The budget is the bandits-with-knapsacks
+constraint~\cite{bwk2013} without its algorithms. Non-stationarity is handled by variance
+inflation in the manner of Glicko-2~\cite{glickman2001} and the local-level
+model~\cite{harvey1989}, rather than by the discounting and sliding windows
+of~\cite{garivier2011}. Switching costs and their $T^{2/3}$ consequence are Dekel et
+al.~\cite{dekel2014}; anytime-valid testing at every boundary is Howard et
+al.~\cite{howard2021}. Cascades over price tiers for language models are
+FrugalGPT~\cite{frugalgpt2023}. Rater calibration is many-facet Rasch~\cite{linacre1989} on
+the continuous scale and Dawid--Skene~\cite{dawid1979} on the binary; shrinkage is
+Efron--Morris~\cite{efron1975} and robustness is Huber~\cite{huber1964}. Merging without a
+coordinator is the state-based CRDT~\cite{shapiro2011}. Distributed and federated
+bandits~\cite{hillel2013,shi2021} describe the coordinated exploration we do not yet do.
+Off-policy evaluation is Dudík et al.~\cite{dudik2011}.
+
+\section{Reproducibility}
+\label{sec:repro}
+
+One extraction script turns the private run ledger and the public catalog snapshot into five
+text-free tables: one row per run, one per graded run, one per run with a per-role token and
+dollar split, and the catalog's prices and indexes. It is the only script that reads a path
+outside the release directory. A second script draws every figure and computes every number
+quoted in Section~\ref{sec:exp} from those tables alone, and writes them to a plain-text
+results file that is released beside the figures; the sensitivity sweeps over $\lambda$ and
+$\kappa$ referenced in Section~\ref{sec:limits} are in it. Figures~\ref{fig:selfreport},
+\ref{fig:cost}, \ref{fig:hindsight} and~\ref{fig:converge} are measured;
+Figures~\ref{fig:hull}, \ref{fig:samples}, \ref{fig:drift}, \ref{fig:regret}
+and~\ref{fig:cascade} are simulation or closed form and say so in their captions. Nothing in
+the release carries task text, a file name, a brief or a reviewer's sentence.
+
+\begin{thebibliography}{99}\small
+\bibitem{bwk2013} A.~Badanidiyuru, R.~Kleinberg, A.~Slivkins. Bandits with knapsacks. \emph{54th IEEE Symposium on Foundations of Computer Science (FOCS)}, pp.~207--216, 2013.
+\bibitem{chen2013} W.~Chen, Y.~Wang, Y.~Yuan. Combinatorial multi-armed bandit: general framework and applications. \emph{Proceedings of the 30th International Conference on Machine Learning (ICML)}, pp.~151--159, 2013.
+\bibitem{frugalgpt2023} L.~Chen, M.~Zaharia, J.~Zou. FrugalGPT: how to use large language models while reducing cost and improving performance. arXiv:2305.05176, 2023.
+\bibitem{dawid1979} A.~P. Dawid, A.~M. Skene. Maximum likelihood estimation of observer error-rates using the EM algorithm. \emph{Journal of the Royal Statistical Society, Series C} 28(1):20--28, 1979.
+\bibitem{dekel2014} O.~Dekel, J.~Ding, T.~Koren, Y.~Peres. Bandits with switching costs: $T^{2/3}$ regret. \emph{Proceedings of the 46th ACM Symposium on Theory of Computing (STOC)}, pp.~459--467, 2014.
+\bibitem{drugan2013} M.~M. Drugan, A.~Now\'e. Designing multi-objective multi-armed bandits algorithms: a study. \emph{International Joint Conference on Neural Networks (IJCNN)}, 2013.
+\bibitem{dudik2011} M.~Dud\'ik, J.~Langford, L.~Li. Doubly robust policy evaluation and learning. \emph{Proceedings of the 28th International Conference on Machine Learning (ICML)}, pp.~1097--1104, 2011.
 \bibitem{efron1975} B.~Efron, C.~Morris. Data analysis using Stein's estimator and its generalizations. \emph{Journal of the American Statistical Association} 70(350):311--319, 1975.
-\bibitem{shapiro2011} M.~Shapiro, N.~Pregui\c{c}a, C.~Baquero, M.~Zawirski. Conflict-free replicated data types. \emph{SSS}, 2011.
-\bibitem{huber1964} P.~J. Huber. Robust estimation of a location parameter. \emph{Annals of Mathematical Statistics} 35(1):73--101, 1964.
+\bibitem{ehrgott2005} M.~Ehrgott. \emph{Multicriteria Optimization}, 2nd edition. Springer, 2005.
+\bibitem{garivier2011} A.~Garivier, E.~Moulines. On upper-confidence bound policies for switching bandit problems. \emph{Algorithmic Learning Theory (ALT)}, LNCS 6925, pp.~174--188, 2011.
+\bibitem{geoffrion1968} A.~M. Geoffrion. Proper efficiency and the theory of vector maximization. \emph{Journal of Mathematical Analysis and Applications} 22(3):618--630, 1968.
+\bibitem{glickman2001} M.~E. Glickman. Dynamic paired comparison models with stochastic variances. \emph{Journal of Applied Statistics} 28(6):673--689, 2001.
 \bibitem{harvey1989} A.~C. Harvey. \emph{Forecasting, Structural Time Series Models and the Kalman Filter}. Cambridge University Press, 1989.
+\bibitem{hillel2013} E.~Hillel, Z.~Karnin, T.~Koren, R.~Lempel, O.~Somekh. Distributed exploration in multi-armed bandits. \emph{Advances in Neural Information Processing Systems (NeurIPS)} 26, 2013.
+\bibitem{howard2021} S.~R. Howard, A.~Ramdas, J.~McAuliffe, J.~Sekhon. Time-uniform, nonparametric, nonasymptotic confidence sequences. \emph{Annals of Statistics} 49(2):1055--1080, 2021.
+\bibitem{huber1964} P.~J. Huber. Robust estimation of a location parameter. \emph{Annals of Mathematical Statistics} 35(1):73--101, 1964.
+\bibitem{linacre1989} J.~M. Linacre. \emph{Many-Facet Rasch Measurement}. MESA Press, Chicago, 1989.
+\bibitem{russo2014} D.~Russo, B.~Van Roy. Learning to optimize via posterior sampling. \emph{Mathematics of Operations Research} 39(4):1221--1243, 2014.
+\bibitem{russo2014ids} D.~Russo, B.~Van Roy. Learning to optimize via information-directed sampling. \emph{Advances in Neural Information Processing Systems (NeurIPS)} 27, 2014.
+\bibitem{russo2018ids} D.~Russo, B.~Van Roy. Learning to optimize via information-directed sampling. \emph{Operations Research} 66(1):230--252, 2018.
+\bibitem{russo2018} D.~Russo, B.~Van Roy, A.~Kazerouni, I.~Osband, Z.~Wen. A tutorial on Thompson sampling. \emph{Foundations and Trends in Machine Learning} 11(1):1--96, 2018.
+\bibitem{shapiro2011} M.~Shapiro, N.~Pregui\c{c}a, C.~Baquero, M.~Zawirski. Conflict-free replicated data types. \emph{Stabilization, Safety, and Security of Distributed Systems (SSS)}, pp.~386--400, 2011.
+\bibitem{shi2021} C.~Shi, C.~Shen. Federated multi-armed bandits. \emph{Proceedings of the AAAI Conference on Artificial Intelligence} 35(11):9603--9611, 2021.
+\bibitem{thompson1933} W.~R. Thompson. On the likelihood that one unknown probability exceeds another in view of the evidence of two samples. \emph{Biometrika} 25(3/4):285--294, 1933.
+\bibitem{wangchen2018} S.~Wang, W.~Chen. Thompson sampling for combinatorial semi-bandits. \emph{Proceedings of the 35th International Conference on Machine Learning (ICML)}, pp.~5114--5122, 2018.
+\bibitem{wen2015} Z.~Wen, B.~Kveton, A.~Ashkan. Efficient learning in large-scale combinatorial semi-bandits. \emph{Proceedings of the 32nd International Conference on Machine Learning (ICML)}, pp.~1113--1122, 2015.
 \end{thebibliography}
 
 \end{document}

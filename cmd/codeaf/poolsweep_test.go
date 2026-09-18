@@ -41,7 +41,7 @@ func TestPoolJudgeSweepJudgesAPendingRowOnceThenNeverAgain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("own sheet: %v", err)
 	}
-	if len(record.Cells(sheet)) == 0 {
+	if len(judgedCells(sheet)) == 0 {
 		t.Fatal("the sweep judged no seat of the pending row")
 	}
 	if !alreadyJudged(poolDir, landing.ID, landing.Attempt) {

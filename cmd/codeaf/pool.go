@@ -371,8 +371,8 @@ type ownSummary struct {
 }
 
 // ownSheetSummary counts what the install's own sheet holds for the picker:
-// the role_quality cells recorded with no dim labels and the observations
-// behind them. A sheet that is missing, or one that does not parse, reads as
+// the acceptable cells, one per seat, model and grading source, and the
+// graded tasks behind them. A sheet that is missing, or one that does not parse, reads as
 // none — the reading form reports what a person has.
 func ownSheetSummary(poolDir string) ownSummary {
 	sheet, err := record.LoadSheet(record.OwnSheetPath(poolDir))
