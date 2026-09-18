@@ -3747,6 +3747,15 @@ func (n *TaskNode) endingNow() TaskEnding {
 // wrote it — the flag was the whole of that fact before the ending existed, and
 // it stays the source of it.
 func (n *TaskNode) endingLocked() TaskEnding {
+	// A NODE MACHINERY CUT WHERE IT STOOD IS STILL RUNNING AND STILL HAS A REASON.
+	// The paused road leaves the state alone so recovery resumes the node, and it
+	// used to carry no ending at all — so a reader could not tell a node machinery
+	// had cut from one still being worked. The ending is surfaced for a running
+	// node exactly as it is for a failed one; every other state still carries none,
+	// and the flag a person's stop sets outranks the field wherever it is.
+	if n.state == TaskRunning {
+		return n.ending
+	}
 	if n.state != TaskFailed {
 		return ""
 	}
@@ -5324,9 +5333,15 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 			node.finish(withReport(node.stoppedLead(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
-		// Lifecycle cancellation is an interruption, never a finding about the
-		// work. The running checkpoint is deliberately left resumable.
-		node.finish(withReport("paused — it resumes", report), changed, tree.branch, abortedMerge(tree))
+		// A LIFECYCLE CANCELLATION IS AN INTERRUPTION, NEVER A FINDING ABOUT THE
+		// WORK, so the state does not move and the running checkpoint stays
+		// resumable. BUT IT IS NO LONGER SILENT: the machinery that cut it is named
+		// on the record, so a person reading it can tell an interruption they caused
+		// from machinery that cut the work. A node a person stopped takes the arm
+		// above and carries [TaskEndingStopped]; this one carries
+		// [TaskEndingInterrupted] and says why, and the two do not read the same.
+		node.end(TaskEndingInterrupted)
+		node.finish(withReport("paused — it resumes · cut short from outside the work, not by a person", report), changed, tree.branch, abortedMerge(tree))
 		return "", true
 	case runErr != nil:
 		merge, changed := keepHome(node, tree, changed, a.signsGitWork())
