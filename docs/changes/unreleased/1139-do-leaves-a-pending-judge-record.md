@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a `codeaf do` errand leaves a pending landing for the Model Pool's judge
-pr: 0000
+pr: 1139
 surface: [engine]
 invalidates:
   - "A headless `codeaf do` run was never scored by the Model Pool. The do door runs the resident's brain over a store journal and builds no `session.Agent`, so `Config.TaskLanded` — the seam a chat landing reaches the live judge on (`cmd/codeaf/poolrecord.go`) — never fired for it. The errand now appends one row to `<profile>/pool/pending.jsonl` at its tail, door `do`, for the restart-time sweep to judge later under that row's door. Nothing waits on a judge; the process exits at once."
