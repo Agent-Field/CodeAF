@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: pool show and verify say both metrics the index carries
-pr: 0000
+pr: 1141
 surface: [engine]
 invalidates:
   - "`codeaf pool show` printed the held index as a metric count (`… 2 metrics …`) and `codeaf pool verify` ended its sentence with the same count, so the relay's second metric was invisible and a person could not tell which cells are judged scores and which are graded shares. show now prints one line per declared metric after the index line — `role_quality: gaussian score · 12 cells · dims role, model`, and for the metric whose cells are split by the grader or judge that produced each share, the distinct sources beside them: `acceptable: bernoulli share · 7 cells · dims role, model, source · sources reviewer, grader`. verify says `metrics role_quality, acceptable` where it counted."
