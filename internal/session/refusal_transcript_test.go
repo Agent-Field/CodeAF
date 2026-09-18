@@ -46,9 +46,9 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 }
 
 // A CHECK IS JUDGED BY ITS SHAPE, AND THE SCHEMA SAYS THE SHAPE IN ANY SETUP: one
-// rerunnable command, no absolute path, no composition. It names no tool and no language.
+// rerunnable command, no leading cd, no composition. It names no tool and no language.
 func TestChecksSchemaSaysWhereAChecksRunsAndNamesNoTool(t *testing.T) {
-	for _, want := range []string{"ONE rerunnable command", "no absolute path", "no &&"} {
+	for _, want := range []string{"ONE rerunnable command", "no leading cd", "no &&"} {
 		if !strings.Contains(checksSchemaJSON, want) {
 			t.Errorf("checks schema does not say %q:\n%s", want, checksSchemaJSON)
 		}

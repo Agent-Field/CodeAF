@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Each ONE rerunnable command re-establishing the result: no absolute path, no &&. ` +
+	`"description":"Optional. Each ONE rerunnable command re-establishing the result: no leading cd, no &&. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
