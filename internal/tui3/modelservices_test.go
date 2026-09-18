@@ -945,8 +945,11 @@ func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
 	}
 	a.openPicker()
 	got := a.pick.rows(100, a.pick.height(100), pal, -1, func(string) string { return "" })
-	want := "› openai/gpt-4.1-mini                                                                             1M\n" +
-		"  gpt-5-classic"
+	// THE ROWS ARE ALPHABETICAL, which is every table's opening order on this
+	// surface (pickersort.go) — so `gpt-5-classic` stands above the model in use.
+	// The mark is still on the model in use, which is what this test is about.
+	want := "  gpt-5-classic\n" +
+		"› openai/gpt-4.1-mini                                                                             1M"
 	if rendered := plain(strings.Join(got, "\n")); rendered != want {
 		t.Fatalf("one-service picker changed:\ngot  %q\nwant %q", rendered, want)
 	}
@@ -993,7 +996,7 @@ func TestAServiceWithNoListingDrawsNoCount(t *testing.T) {
 			break
 		}
 	}
-	if placeholder < 0 || a.pick.unfoldAt(placeholder, "", timeNow()) {
+	if placeholder < 0 || a.pick.unfoldAt(placeholder, timeNow()) {
 		t.Fatal("the empty-group notice reached the lane-sheet door")
 	}
 	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))

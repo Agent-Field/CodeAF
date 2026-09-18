@@ -149,16 +149,29 @@ Type to filter. The keys:
 | ctrl+t | walk the reasoning effort of the model under the cursor |
 | tab, → | open the providers — the providers serving the model under the cursor — and move the cursor into them |
 | tab, ← | close them again, back on the model |
-| enter | switch to the row under the cursor — or, on an open provider, pin it |
-| esc | cancel, changing nothing |
+| enter | switch to the row under the cursor — or, on an open provider, pin it — and **leave the list up** |
+| esc | close it; what enter already did stays done |
+| alt+s, alt+shift+s | order the list by the next column, and turn that column round |
 
-`→` and `←` open and close the providers only from the **end** and the **start** of what
-you have typed; with characters to step over they move the caret through the filter
-instead. `tab` always opens and closes.
+## Why left and right arrows do the wrong thing in the model picker — the caret and the providers share one pair of keys
+
+`→` and `←` belong to the providers **unless you are mid-typing**, where they move the caret
+through the filter instead. Mid-typing means within 0.6 seconds of the last change to the box,
+and every keystroke pushes that out — so the arrows are the caret's while you type and the
+tree's once you stop. They are the tree's at the very end and start of the text regardless,
+where there is no character to step over, which is why an empty box never waits.
+
+**This is what made coming back out of a fold cost four presses.** With `deep` typed and the
+providers open, `←` used to step through `p`, `e`, `e`, `d` before it would close anything.
+Now you pause and press it once.
+
+**Any edit takes the caret back** — a letter, `backspace`, `ctrl+w`, a paste — and so do
+`ctrl+b`/`ctrl+f`, which are never the providers' keys and so move the caret without changing
+your query. `↑`/`↓` do not count as editing. `tab` always opens and closes.
 
 **This is one list with two doors.** `/model` opens it, and so does the **your model**
-row at the top of the Providers tab in `/settings` — the same rows, the same filter
-grammar, the same providers under `→`, and `enter` on a provider pins it either way. The media
+row at the top of the Providers tab in `/settings` — the same rows, the same name
+search, the same providers under `→`, and `enter` on a provider pins it either way. The media
 slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
 component over their own models, but they have no provider row behind them, so nothing
 unfolds under them and the foot does not offer the key.
@@ -166,10 +179,18 @@ unfolds under them and the foot does not offer the key.
 The cursor opens **on the model in use**, which is also the marked row, so enter with
 nothing typed confirms rather than changes.
 
-Filtering splits what you type on whitespace; every token must match, each in one of three
-tiers — prefix, then substring, then subsequence. So `ds v4` finds
-`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, and fuzzy
-hits sit at the bottom rather than mixed through. Twelve rows show at a time.
+**Enter does not close the list.** It switches, the mark moves to the row you chose, and
+the list stays where it is — so two models can be compared on their prices, chosen between,
+and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
+what enter did is already done.
+
+**The box searches the model's name and nothing else.** Filtering splits what you type on
+whitespace; every token must match, each in one of three tiers — prefix, then substring,
+then subsequence. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds
+`anthropic/claude-sonnet-4.5`, and fuzzy hits sit at the bottom rather than mixed through.
+Twelve rows show at a time. No word means anything but itself — the speed, price and
+capability terms this box used to take are gone, and the section "You cannot filter the
+picker by speed, price or capability" says what to read instead.
 
 The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
 router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
@@ -179,31 +200,66 @@ remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
 tried only when the one above it came back empty after filtering.
 
+**The `/model` you typed stays in the box**, drawn as the chip it was, with the filter after
+it: `› /model filter by name`. The list is a different box from the one you typed the command
+into, and without the chip the line was a `›` and a grey phrase that could have belonged to
+any list on this surface. What you type goes after the chip and the chip cannot be edited.
+
 The placeholder in the empty filter box is the only place the overlay explains itself:
-`filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc`
+`filter by name · ctrl+r refresh` — it says `by name` because that is the whole scope of the
+box, and on a frame too narrow for it the words fall back to `filter`. The keys themselves are named on the foot under the list,
+where they stay while you type and say what they do on the row the cursor is on
 
 There is no mouse commit on the picker's rows.
 
-## What each row in the model picker tells you
+## What each row in the model picker tells you — the columns, and what the headings mean
 
-A row reads `<id>:<level>` on the left and, dimly on the right, the facts about it — in
-this order, which is the order they are given up in when the window is narrow: the
-machine that would serve it (`via cloudflare`), the wait before the first word
-(`▲0.8s`), the price per million prompt and completion tokens, the context window, how
-fast it writes (`58t/s`), the arena elo, and what the model can do besides write.
-**Each part is hidden when nobody published it.** A price shows only when both halves are
-known — a zero means "nobody said", never "free".
+The list is a **table**. The model's id is on the left under the heading `model`, and the
+facts about it stand in columns, each with a dim heading that names the unit so the figures
+under it do not have to:
 
-**A narrow window shows fewer numbers, never a shortened name.** The id keeps every cell
-it needs first; then the facts are added from the front of that list, each in the longest
-spelling that still fits — `$0.09/$0.18 per M` becomes `$0.18/M` becomes `$0.18`, and
-`via cloudflare` becomes `cloudflare` — and the ones that do not fit are simply not
-drawn. So a sixty-column terminal shows the whole model name with the provider, the wait and
-the price beside it, and nothing is ever half a number. Under sixty columns the facts
-move to a line of their own under the name. The only time a name is shortened is when the
-window cannot hold it alone, and then it loses its author first (`nvidia/nemotron-3.5-lightning`
-becomes `nemotron-3.5-lightning`) — unless two models on the list share that slug, which
-is the one case where the author is what tells them apart.
+| Heading | The column | Spelled |
+|---|---|---|
+| `via` | the machine that would serve it | `cloudflare` |
+| `first` | the wait before the first word | `0.8s` |
+| `in/M` | what a million prompt tokens cost | `$0.09` |
+| `out/M` | what a million completion tokens cost | `$0.18` |
+| `window` | how much it can hold | `1M`, `128k` |
+| `t/s` | how fast it writes once it has started | `58` |
+| `elo` | its Design Arena score | `1290` |
+| `inputs` | what you can put in besides text | `image`, `image file` |
+| `outputs` | what comes back besides text | `image`, `speech` |
+
+That is also the ORDER, and it is the order the columns are given up in when the window is
+narrow — `outputs` goes first, `via` last. **A column nobody on this list published is not
+drawn at all**, heading and all: a catalog with nothing measured behind it shows no `via`,
+no `first` and no `t/s` rather than three headings over three hundred blanks.
+
+**An empty cell means the catalog published nothing.** Every row shows every column the
+table drew, so a gap is never "it did not fit" — that is the one thing the old ragged row
+could not tell you. A price shows only when both halves are known; a zero means "nobody
+said", never "free".
+
+A name that begins with `~` — `~deepseek/deepseek-v4-flash-latest` — is not a typo and not
+a home folder: `~` is the router's own marker for a *floating* name, one that points at
+whichever build of a model is current rather than at a fixed one. The *lanes* page, "A model
+name that ends in latest, and the tilde in front of it", says what that costs and where the
+speeds behind it are filed.
+
+**The names are measured first and the columns take what is left**, so the id is never
+shortened to make room for an arena score — a column goes instead. A name is shortened only
+when the window cannot hold the longest one on the list, and then it loses its author first
+(`nvidia/nemotron-3.5-lightning` becomes `nemotron-3.5-lightning`) — unless two models on
+the list share that slug, which is the one case where the author is what tells them apart.
+
+**Under sixty columns there is no table.** There is no second column to put anything in, so
+the row falls back to the ranked tail it always drew: the facts in the same order, joined
+with `·` on a line of their own under the name, each in the longest spelling that fits —
+`$0.09/$0.18 per M` becomes `$0.18/M` becomes `$0.18`, and `via cloudflare` becomes
+`cloudflare`. Nothing is ever half a number either way.
+
+The heading line costs the overlay a line of its own rather than costing you a model:
+twelve models still show at a time.
 
 Only models you can hold a conversation with are listed: text in, text out. A model that
 publishes `["image","text"]` out (a drawing model that captions) is excluded, and so is a
@@ -229,26 +285,85 @@ the `via` and the speeds do not rewrite themselves while you look. A turn runnin
 underneath can still update the status line. Close the list and open it again if you
 want the latest machines.
 
-## What "sees", "draws", "speaks", "films", "hears" mean on a model row
+## What the inputs and outputs columns mean — image, audio, video, file on a model row
 
-The dim tail of a picker row ends with what the model can do besides hold a conversation,
-in one word each — last in the row's order, so it is the first thing a narrow window
-drops:
+`inputs` is what you can put into the model besides text, and `outputs` is what comes back
+besides text, each in the catalog's own word:
 
-| Word | What the catalog published |
-|---|---|
-| `sees` | it reads images |
-| `hears` | it reads sound |
-| `watches` | it reads video |
-| `draws` | it answers with images |
-| `speaks` | it answers with speech, audio or music |
-| `films` | it answers with video |
+| Word | Under `inputs` it means | Under `outputs` it means |
+|---|---|---|
+| `image` | it takes pictures — screenshots, photos | it answers with pictures |
+| `audio` | it takes sound | it answers with sound |
+| `video` | it takes video | it answers with video |
+| `file` | it takes attachments, a PDF among them | — |
+| `speech` | — | it answers with a voice reading words |
+| `music` | — | it answers with music |
 
-Input words come first, so a model that reads and paints pictures reads `sees · draws`.
+A model that takes several says them in one cell, separated by a space and commonest
+first: `image audio video file`. **The order is codeaf's, not the catalog's** — the catalog
+publishes the same set three different ways on neighbouring rows, so echoing it would put
+one fact in three places down a column.
 
-**A plain text chat model shows nothing here at all**, and neither does a model that
-published no modalities — silence means text in, text out, and nothing more. The same tail
-appears on `codeaf models`.
+**`text` is never shown on either side.** Every model on the `/model` list reads and writes
+it — that is what makes it a model you can talk to — so the word would be the same five
+cells on five hundred rows, and what a cell is for is what the model can do **beyond**
+holding a conversation. **Two empty cells therefore mean text in, text out**, which is also
+what a row that published no modalities at all means.
+
+**A word this build has never seen is still shown**, after the ones it knows: the catalog
+carries `embeddings`, `transcription` and `rerank` today and will carry something else
+tomorrow, and a row that said nothing about a family codeaf did not recognise would be
+indistinguishable from a plain text model.
+
+**`outputs` is usually not drawn at all, and that is not an accident of width.** A list
+here is always a filtered view of one catalog, and what each list filters on is a
+modality — so a modality column can end up saying the same thing on every row, which is
+the list's own definition written out once per row rather than a fact about any of them.
+Where that happens the column is dropped, head and all:
+
+| List | What `outputs` would say | Drawn? |
+|---|---|---|
+| `/model` | nothing, on every row — a model you can converse with answers in text and nothing else, so a drawing model that also captions is off the list entirely | no |
+| **drawing** | `image`, on every row | no |
+| **speaking** | `speech`, on every row | no |
+| **filming** | `video`, on every row | no |
+
+`inputs` survives the same test on most lists because it genuinely varies: on `/model` it
+has eleven different values across three hundred-odd models, and in the **filming** slot
+some models take a picture to animate and some take a clip.
+
+**This is only asked of `inputs` and `outputs`,** because they are the only columns a list
+is ever chosen by. A price or a window that happens to be the same on every row of a short
+list is a coincidence, not a definition, and those columns are always drawn.
+
+**The cells report only what was published — they never read the id.** A model whose name
+says `vl` or `vision` but whose catalog row lists no modalities draws two blank cells,
+because a cell is a fact about the catalog and not a guess about a name. The **looking**
+slot does fall back to those two words in a name when a row published nothing, so a silent
+`…-vl` row can be offered there while showing nothing under `inputs` here. The two are
+asking different questions: the cell says what is known, the slot has to decide whether to
+offer the row at all.
+
+**On a line with no heading over it the side is spelled out.** `codeaf models`, a frame too
+narrow for the table, and a phone all draw the facts as a `·` tail instead — `inputs image
+file · outputs image` — and a plain chat model says nothing there either.
+
+## Older names for these — sees, draws, speaks, films, hears, watches, and the reads and makes columns
+
+Rows used to carry one invented verb per modality — `sees` for image in, `hears` for audio
+in, `watches` for video in, `draws` for image out, `films` for video out, and `speaks` for
+all three of speech, audio and music. They are gone from every row: a verb had to carry
+the side as well as the thing, which is six words to learn before a row could be read, and
+`speaks` folded three different kinds of product into one word.
+
+For a short while the two columns were headed `reads` and `makes`. They are `inputs` and
+`outputs` now.
+
+**None of them survives anywhere.** `sees` and `draws` outlived the rest for a while as
+filter words in the model picker's box — typing `sees` kept the models that read images —
+and that box now searches names only, so `sees` is four letters to look for like any other.
+It still finds `deepseek/deepseek-v4-flash`, because those letters run through that id in
+order; it no longer finds a model because of what the model can see.
 
 ## Switching model by name in one command
 
@@ -262,18 +377,21 @@ The words after `/model` are read for their **shape**, not for a flag:
 | `/model deepseek/deepseek-v4-flash` | switches to that slug |
 | `/model @cloudflare` | pins the provider that serves your model — the model does not change |
 | `/model auto` | gives the choice of provider back to codeaf |
-| `/model deepseek <1s` | opens the picker with `deepseek <1s` already in the filter |
+| `/model deepseek flash` | opens the picker with `deepseek flash` already in the filter |
 
-Anything with a space in it, and any single word the picker's filter grammar understands
-(`fast`, `cheap`, `tools`, `<1s`, `>50t/s`, `$<0.3`, `fp8`), opens the list already
-narrowed. A slug has no spaces in it, so two words were never a name.
+**Anything with a space in it opens the list already narrowed**, because a slug has no
+spaces in it — so two words were never a name, and the two sensible words to do with them
+are to search names with them. A **single** word is always taken as a slug. Until
+2026-09-17 a single word the picker's filter grammar recognised (`fast`, `cheap`, `tools`,
+`<1s`, `>50t/s`, `$<0.3`, `fp8`) opened a narrowed list instead; that grammar is gone, and
+`/model fast` is now a request to switch to a model called `fast`.
 
 There is one check, and only one. If the slug **is** in the catalog and cannot hold a
 conversation — a drawing model, a speech model, a transcriber — codeaf refuses in one line
 and the conversation does not move:
 
 ```
-openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on moonshotai/kimi-k3.
+openai/gpt-4o-mini-tts cannot hold a conversation — it answers with speech. Still on moonshotai/kimi-k3.
 ```
 
 A slug the catalog has never carried is still **taken at its word**, exactly as before:
@@ -2900,27 +3018,67 @@ there is no tail, and a session that has measured nothing shows the model id alo
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
 `tab` on a row and the model's providers open underneath it, with the cursor already on the
-provider in force (`auto` when nothing is pinned):
+provider in force (`auto` when nothing is pinned). The providers are a block under the row
+and not part of the table, so they keep the `·` tail the model rows gave up:
 
 ```
- deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
-   ● auto        openrouter's own routing; codeaf stays out
-     cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
-     coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
-     deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
-   ○ openrouter  let the router balance on price
+ model               via         first  in/M   out/M  window  t/s
+ deepseek-v4-flash   cloudflare   0.8s  $0.09  $0.18      1M   58
+   auto          auto-route based on /settings
+   openrouter    default routing
 ```
 
-That is the `auto` row under the shipped `simple` row. Set **routing** to `latency` or
-`price` and it reads `router routes; codeaf takes over if answers turn bad — cloudflare
-now · recommended` instead, because there it does.
+**`→` opens two answers, and `→` again opens the providers.** The key means the same thing
+at both depths — show me what is inside this — and it walks the cursor in each time. The
+providers live under **openrouter** because every one of them is a machine OpenRouter routes
+to; naming one is a narrower answer inside that row rather than a third thing beside it.
+`←` closes one level at a time, so the way out is as many presses as the way in.
+
+```
+   auto          auto-route based on /settings
+   openrouter    default routing
+     provider ↓  first  t/s    $/M    up  note       last 8
+     cloudflare   0.8s   58   $1.3  100%  no tools   ▁▂▁▃▁▂
+     coreweave    0.4s   24  $0.28   99%  tail 12s   ▁▁▇▁▂▁
+     deepinfra    0.8s   27  $0.18   99%  out ≤ 65k
+```
+
+**The providers are a table**, drawn by the same engine as the model list above and read the
+same way: down the page, comparing. The heading carries the unit so the cell does not —
+`58` under `t/s`, `$1.3` under `$/M` — and a column no provider on the list published is not
+drawn at all.
+
+**Both headings are drawn apart from their cells** — a different colour, and italic where
+the terminal can draw one — so a line of labels is never mistaken for a row whose figures
+have gone missing.
+
+**They open in alphabetical order, and `alt+s` reorders them** — the same key that orders the
+model list, applied to whichever table the cursor is in. codeaf's own ranking —
+fastest-feeling first — is still what `auto` and the model row's `via` read; it is the wrong
+order for a list a person reads, because it moves a provider every time the ledger learns
+something and the eye has to start over on each visit.
+
+Inside the providers the cycle is `provider → first → t/s → $/M → up` and back, each column
+forwards then reversed. `note` and `last 8` do not sort: a note is whichever one thing is
+worth saying about a provider, so ordering by its text would rank "bad replies" against
+"tail 3s" alphabetically, and the sparkline is a picture rather than a value. The two tables
+keep their own orders, so sorting the providers leaves the model list where it was.
+
+**Neither answer wears a mark.** They carried a filled and a hollow bullet for a while, meant
+to say which of them chooses for you — but under the shipped routing row neither of them
+does, so the mark was making a distinction the wire does not. The indent says they are not
+machines and the sentence beside each says what it is.
 
 Each provider row reads, in order: its name, the wait before the first word, how fast it
-writes, what a million output tokens cost there, one short note about what is wrong with
-it, how much of the last five minutes it was answering, and a sparkline of **your own**
-last eight first-token waits on it (taller is slower). That is also the order a narrow
-window gives them up in — the sparkline goes first, and the note about capability outranks
-the uptime because `no tools` changes the answer you get. `←` or `tab` closes the providers
+writes, what a million output tokens cost there, how much of the last five minutes it was
+answering, one short note about what is wrong with it, and a sparkline of **your own** last
+eight first-token waits on it (taller is slower).
+
+**`up` stands with the figures and the note after them.** Uptime is a number and is read down
+its last digit with the three numbers before it; a note is prose, and prose in the middle of
+a run of figures breaks the run the eye is following. That is also the order a narrow window
+gives them up in — the sparkline first, then the note — so a narrow fold keeps `100%`, which
+can be compared between rows, over one row's own caveat. `←` or `tab` closes the providers
 again.
 
 `enter` on a provider **pins** it in your home: chat, `codeaf do`, `codeaf exec`, `codeaf
@@ -2930,7 +3088,8 @@ a pin without you. It says so once, in the conversation
 (`coreweave cannot serve this model; routing on auto for this model until you pin again`),
 routes that one model on auto for the rest of the run, and leaves your row and every other
 model alone. *Providers → Pinning one provider yourself* has the whole of it. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no provider
-at all and lets the router balance on price. If the providers were open under a model you are
+at all, lets the router balance on price, and opens the fold under it (*Providers → Pinning one
+provider yourself* says why). If the providers were open under a model you are
 not talking to, `enter` switches to that model as well — choosing a provider under a name
 means you want that name served from there.
 
@@ -2941,9 +3100,8 @@ measured it opens all the same, onto the only two honest answers: `auto` and `op
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
-**Under `routing: simple` — the row codeaf ships with — the `auto` row says something
-else, because it does something else.** It reads `openrouter's own routing; codeaf stays
-out`, and it names no provider beside it: under that row nothing on codeaf's side chooses,
+**Under `routing: simple` — the row codeaf ships with — the `auto` row does something
+else.** It reads the same sentence, and it names no provider beside it: under that row nothing on codeaf's side chooses,
 so there is no provider it could honestly say the next turn will land on, and no `no
 rescue` note either, because there is no rescue running under any setting of the speed
 guard. The fold still opens and `enter` still pins: a pin is the one instruction that row
@@ -3000,32 +3158,105 @@ because that is a claim about the worst case too. The speed and throughput figur
 they are still the best guess there is. Ask that provider one question and the row has a tail
 again, or has honestly none.
 
-The dim line under the cursor says both halves out loud:
+**Where the numbers come from is the same everywhere:** a public sheet of what each
+provider is like, corrected by the answers your own conversations have actually had. The
+row itself carries the figures; a sentence under the cursor used to repeat them in prose
+and say where they came from, and it is gone — it said the row's own three numbers a second
+time, under a name the row had just written, and cost the open fold a line on every move
+of the cursor.
+
+## Sorting the model list by a column — alt+s, cheapest first, biggest window, highest score
+
+**`alt+s` walks the sort. `alt+shift+s` walks it backwards.**
+
+**The list is always sorted, and it opens on its first column — the name, A to Z.** There is
+no unsorted state, and the heading always carries an arrow saying which order you are in.
+
+**Every column is two presses: its own direction, then reversed.** So the cycle is
 
 ```
-cloudflare: first token 0.8s, steady 58 t/s, no tail — from the sheet + your last 12 answers
+model ↓  model ↑  via ↓  via ↑  first ↓  first ↑  in/M ↓  in/M ↑
+window ↓  window ↑  t/s ↓  t/s ↑  elo ↓  elo ↑   → back to model ↓
 ```
 
-## Filtering the picker by speed, price and capability — @cloudflare, <1s, >50t/s, $<0.3
+and one key reaches every order the table has. **The first of each pair is the way that
+column is asked about** — cheapest for `in/M` and `out/M`, quickest for `first`, biggest for
+`window`, fastest for `t/s`, highest for `elo`, A to Z for `model` and `via`. Nobody opens a
+price column to find the most expensive model, so the useful order is never two presses away.
 
-The filter box takes a few words that are not names at all. Each narrows the list, and
-they combine:
+**The sorted column wears the arrow** — `out/M ↓`, and `↑` reversed. The foot names the key
+(`alt+s sort`) and not the column, because the heading is already saying which column it is.
 
-| What you type | What it keeps |
-|---|---|
-| `@cloudflare` | models with a provider whose name carries that word — and it opens the first one on that provider |
-| `<1s`, `<800ms` | the best provider starts within that |
-| `>50t/s` | the best provider writes at least that fast |
-| `$<0.3` | the best provider charges under that per million output tokens |
-| `fp8`, `bf16` | it has a provider serving at least that precision |
-| `tools` | it has a provider that honours a tool call |
-| `sees`, `draws` | the model reads images, or answers with them |
-| `fast` | sorts what is left by how soon an answer would start |
-| `cheap` | sorts what is left by price |
+Four things worth knowing:
 
-**Anything else you type is still the search it has always been** — prefix, then
-substring, then subsequence over the model id — so `ds v4` and `claude 4.5` work exactly
-as before, and a word this grammar does not know is simply a word to search for.
+- **A column this list published nothing in is skipped.** With no providers measured yet
+  there is no `via`, `first` or `t/s` column, so the cycle steps over them rather than
+  stopping on a press that changes nothing you can see.
+- **Rows that published nothing sort to the bottom, both ways round.** A model with no
+  price is not the cheapest one, and reversing the column does not make it the dearest: it
+  is not in the comparison at all. That holds for the sparse columns too — `via`, `first`
+  and `t/s` are blank on every model nobody has measured yet, and those rows sit together
+  under the ones that carry a figure. A price needs both halves to count: a model that
+  published a prompt price and no completion price draws no price, and sorts with the
+  blanks.
+- **Rows a column cannot tell apart come back alphabetically.** A sparse column leaves a
+  whole block of them, and the name is the one order every row has — so the same press
+  draws the same screen twice instead of leaving the block in whatever order the press
+  before it produced.
+- **With something typed, the name column is best match first.** `gpt` puts `gpt-5-classic`
+  above `anthropic/claude-gpt-echo`, because that is what you asked for; the arrow then
+  decides the order inside a tier. With an empty box every row matches equally and the
+  column is plainly alphabetical.
+- **A service heading keeps its place, and the sort happens under it.** If you have
+  connected your own service the list is drawn under one dim heading per service, in the
+  order those services are held, and no column reorders them — `out/M ↓` puts the cheapest
+  `openrouter` model at the top of the `openrouter` rows, not your local box above them.
+  With one service, which is most doors, there are no headings and the arrow means the
+  whole list.
+- **Pressing the key puts the cursor on the top row**, because the top row is the answer to
+  the question you just asked. Opening the list still lands on the model in use. It sorts
+  whatever the filter kept, so `deep` then `alt+s` is the deepseek rows in that column's
+  order.
+
+**Inside the providers it sorts the providers** — whichever table the cursor is in. The two
+keep their own orders.
+
+This is where the filter box's `fast` and `cheap` went. They sorted the list too, and the
+problem with them was never sorting — it was that a word typed into a name box is an
+undiscoverable way to ask for it, and that two words were two opinions about seven columns.
+
+## You cannot filter the picker by speed, price or capability — @cloudflare, <1s, >50t/s, $<0.3, fast, cheap
+
+**The filter box searches model names and nothing else.** There is no way to type a
+question about speed, price, tool support, precision or modality into it.
+
+Until 2026-09-17 there was: `@cloudflare` kept the models one provider serves, `<1s` and
+`<800ms` bounded how soon an answer starts, `>50t/s` put a floor under how fast it writes,
+`$<0.3` capped the price per million output tokens, `fp8` and `bf16` asked for a precision,
+`tools` asked for tool support, `sees` and `draws` asked about images in and out, and `fast`
+and `cheap` reordered what was left. **Every one of those is now an ordinary thing to search
+for.** Typing `$<0.3` looks for a model whose name carries those characters, finds none, and
+the list is empty — it does not quietly answer the old question.
+
+**What replaced it is the table.** Every fact those words asked about is a column you can
+read: `first` is how soon an answer starts, `t/s` how fast it writes, `in/M` and `out/M` the
+price, `window` the context, `inputs` and `outputs` the modalities — and inside a provider
+fold, `$/M`, `note` and `up` per provider. A question you can see the answer to does not
+need a syntax, and a syntax nobody can discover is a feature only the person who wrote it
+can use.
+
+**To sort or filter by these, use the places that do it:**
+
+- **`codeaf models`** from a terminal prints the same catalog as text, where `grep`, `sort`
+  and `awk` do anything this box ever did and more.
+- **`→` on a model** lists its providers with their own figures, alphabetically, so the
+  cheapest or quickest of them is one column-read away.
+- **`/settings` → routing** is how you say *which* of them to prefer for every model at
+  once — `price`, `latency` or `simple` — rather than hunting one model at a time.
+
+The name search itself is unchanged: whitespace splits, every token must match, and each
+matches by prefix, then substring, then subsequence over the id. So `ds v4` finds
+`deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`.
 
 ## Why did it say via cloudflare — the provider named beside your model
 
@@ -3206,9 +3437,8 @@ simple runs no choosing of its own for a slow answer to borrow. The `switch to a
 question a slow pinned provider raises still has somewhere to send you — it asks whether to
 let go of the pin for that one answer, and asking is all it ever does. The `auto` row of
 the table above is the other rung that reads differently there: under `simple` nothing
-takes over, so the row says `openrouter's own routing; codeaf stays out` in the fold and
-the **your model** row drops its `auto (cloudflare now)` tail rather than name a provider
-nobody chose.
+takes over, so the `auto` row names no provider beside its sentence and the **your model**
+row drops its `auto (cloudflare now)` tail rather than name a provider nobody chose.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 

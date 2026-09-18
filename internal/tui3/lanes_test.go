@@ -131,31 +131,60 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 	if a.pick.unfold != flash {
 		t.Fatalf("→ on the model in use left the fold at %q", a.pick.unfold)
 	}
+	// THE MACHINES ARE A SECOND FOLD, under `openrouter` — the row they belong
+	// to ([picker.machines]) — so the first `→` opens the two answers and the
+	// second opens the list.
+	drive(t, a, key("down"), key("right"))
 	screen := plain(frame(a))
 	for _, want := range []string{
-		"● auto", "router routes; codeaf takes over if answers turn bad", "recommended",
-		"cloudflare", "0.8s", "58 t/s", "100%", "no tools",
+		"auto", laneAutoNote,
+		"openrouter", laneDefaultWord,
+		// The machines are a TABLE now, under their own heading, so the unit is
+		// on the head and the cell carries the figure alone (modeltable.go).
+		laneHead, "first", "t/s", "$/M", "note", "up",
+		"cloudflare", "0.8s", "100%", "no tools",
 		"coreweave", "0.4s", "tail",
 		"deepinfra", "out ≤ 65k",
-		"○ openrouter", "let the router balance on price",
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the fold does not say %q:\n%s", want, screen)
 		}
 	}
-
-	// The why line explains the row under the cursor, and only that row. `→`
-	// walked in onto `auto`, so the first machine is one row down.
-	drive(t, a, key("down"))
-	if got := plain(frame(a)); !strings.Contains(got, "cloudflare: first token 0.8s") ||
-		!strings.Contains(got, "from the sheet") {
-		t.Fatalf("no why line under the cursor:\n%s", got)
+	// AND THEY ARE IN ALPHABETICAL ORDER, which is the order that does not move
+	// when the ledger learns something ([picker.unfoldAt]).
+	if names := laneNames(a.pick.lanes); len(names) != 3 ||
+		names[0] != "cloudflare" || names[1] != "coreweave" || names[2] != "deepinfra" {
+		t.Fatalf("the machines are drawn %v, want them alphabetical", names)
 	}
 
-	// ← closes it again and puts the cursor back on the model.
+	// AND NOTHING IS WRITTEN UNDER THE ROW THE CURSOR STOPS ON. A sentence
+	// there used to repeat the row's own three numbers in prose, under a name
+	// the row had just said, and cost the fold a line every time
+	// ([picker.lineUnder] says why it went). `→` walked in onto `auto`, so the
+	// first machine is one row down.
+	drive(t, a, key("down"))
+	got := plain(frame(a))
+	if strings.Contains(got, "cloudflare: first token") || strings.Contains(got, "from the sheet") {
+		t.Fatalf("the row under the cursor grew a sentence back:\n%s", got)
+	}
+	// The fold is still the rows themselves, cursor and all.
+	if !strings.Contains(got, "cloudflare") || !strings.Contains(got, "0.8s") {
+		t.Fatalf("the fold lost the row the cursor is on:\n%s", got)
+	}
+
+	// ← closes ONE LEVEL AT A TIME: the machines first, then the model's own
+	// fold ([picker.foldHere]). The way out is as many presses as the way in.
+	drive(t, a, key("left"))
+	if !a.pick.machines {
+		// the first ← shut the machines
+	}
+	if a.pick.machines || a.pick.unfold != flash {
+		t.Fatalf("the first ← should shut the machines and keep the fold: machines=%v fold=%q",
+			a.pick.machines, a.pick.unfold)
+	}
 	drive(t, a, key("left"))
 	if a.pick.unfold != "" {
-		t.Fatal("← left the lanes open")
+		t.Fatal("the second ← left the lanes open")
 	}
 	if chosen, _ := a.pick.choice(); chosen.ID != flash {
 		t.Fatalf("folding left the cursor on %q", chosen.ID)
@@ -220,14 +249,24 @@ func TestAnOpenPickerKeepsTheViaItOpenedWith(t *testing.T) {
 	}
 }
 
+// pickerVia is the machine named on one model's row, in whichever shape that
+// frame drew it: the table's own first column ([modelColumns]), or the ranked
+// tail's `via <machine>` on a frame too narrow for columns (rowfit.go).
 func pickerVia(screen, id string) string {
 	for _, line := range strings.Split(screen, "\n") {
-		if !strings.Contains(line, id) || !strings.Contains(line, "via ") {
+		if !strings.Contains(line, id) {
 			continue
 		}
-		_, rest, _ := strings.Cut(line, "via ")
-		named, _, _ := strings.Cut(rest, " · ")
-		return strings.TrimSpace(named)
+		_, rest, _ := strings.Cut(line, id)
+		if _, named, found := strings.Cut(rest, "via "); found {
+			name, _, _ := strings.Cut(named, " · ")
+			return strings.TrimSpace(name)
+		}
+		for _, cell := range strings.Split(strings.TrimSpace(rest), modelTableSep) {
+			if cell = strings.TrimSpace(cell); cell != "" {
+				return cell
+			}
+		}
 	}
 	return ""
 }
@@ -277,11 +316,17 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 	if a.pick.unfold != flash {
 		t.Fatal("→ on a model nothing is believed about opened nothing")
 	}
+	// THE LINE SAYING WHY THERE ARE NO MACHINES IS INSIDE `openrouter`, where
+	// the machines would be ([picker.lineUnder]) — and that row opens even with
+	// nothing measured, because `default` is always in it.
 	screen := plain(frame(a))
-	for _, want := range []string{"● auto", laneUnmeasured, "○ openrouter"} {
+	for _, want := range []string{"auto", "openrouter"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the unmeasured fold does not say %q:\n%s", want, screen)
 		}
+	}
+	if strings.Contains(screen, laneUnmeasured) {
+		t.Fatalf("the line about missing machines is drawn before anybody opened them:\n%s", screen)
 	}
 	for _, forbidden := range []string{"t/s", "▲", "%"} {
 		if strings.Contains(screen, forbidden) {
@@ -294,70 +339,95 @@ func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
 	if wantedCount(sheet, flash) <= asked {
 		t.Fatalf("the unfold did not ask the beat for %s's sheet: %v", flash, sheet.wanted)
 	}
-	// And the two answers are real: enter on openrouter writes it.
-	drive(t, a, key("down"), key("enter"))
+	// AND `openrouter` OPENS EVEN WITH NOTHING MEASURED, onto the line that says
+	// why and the `default` row that is always in there.
+	drive(t, a, key("down"), key("right"))
+	opened := plain(frame(a))
+	for _, want := range []string{laneUnmeasured, laneDefaultWord} {
+		if !strings.Contains(opened, want) {
+			t.Fatalf("the opened fold does not say %q:\n%s", want, opened)
+		}
+	}
+	if row, on := a.pick.laneUnder(); !on || row.lane != laneDefaultAt {
+		t.Fatalf("→ did not walk onto default: %+v (on=%v)", row, on)
+	}
+	// And the answer is real: enter on it writes the router's own routing.
+	drive(t, a, key("enter"))
 	if got := config.LaneAt(a.profileDir, talkSlot); got != config.LaneOpenRouter {
-		t.Fatalf("enter on openrouter wrote %q", got)
+		t.Fatalf("enter on default wrote %q", got)
 	}
 }
 
-// ── 3. the filter grammar ───────────────────────────────────────────────────
+// ── 3. the filter box ───────────────────────────────────────────────────────
 
-// `@name` KEEPS THE MODELS SERVED BY THAT LANE, and opens the first of them on
-// the lane that was asked about.
-func TestTheLaneFilterKeepsTheModelsThatLaneServesAndOpensIt(t *testing.T) {
+// THE BOX SEARCHES NAMES AND NOTHING ELSE, and these are the words that used to
+// mean something else. `@cloudflare` kept the models one provider serves, `<1s`
+// and `>50t/s` and `$<0.3` read the best provider's figures, `fp8` and `tools`
+// asked what some provider could do, and `sees` and `draws` read the model's own
+// modalities. Every one of them is now an ordinary thing to look for, and what
+// comes back is whatever carries those letters — for most of them nothing at all,
+// since no model id carries an `@`, a `<` or a `$` (palette.go's [picker.rank]
+// argues why the facts belong in the columns rather than in a syntax).
+func TestTheFilterBoxSearchesNamesAndNotFacts(t *testing.T) {
 	laneLab(t, threeLanes())
-	a := laneApp(t)
-	typeLine(t, a, "/model")
-
-	typeInto(t, a, "@cloud")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf("@cloud kept %v, want only the model with that lane", got)
-	}
-	if a.pick.unfold != flash {
-		t.Fatal("an @ filter has to open the row it was about")
-	}
-	if len(a.pick.lanes) == 0 || !strings.EqualFold(a.pick.lanes[0].Name, "Cloudflare") {
-		t.Fatalf("the lane asked about is not first: %+v", a.pick.lanes)
-	}
-}
-
-// `<1s` IS A BOUND ON THE FIRST TOKEN of the best lane, and it is measured
-// against the posterior rather than against anything published.
-func TestTheSpeedFilterKeepsWhatStartsInTime(t *testing.T) {
-	slow := "vendor/slow-model"
-	rows := threeLanes()
-	rows[slow] = []lane.Belief{
-		laneBelief(slow, "GMICloud", 3030, 30, 0.1, lane.Facts{Tools: true, Uptime5m: 97}),
-	}
-	laneLab(t, rows)
-	a := pickerApp(t, &fakeAgent{model: flash}, append(append([]Model{}, laneCatalog...), Model{ID: slow}))
-	a.profileDir = t.TempDir()
-	typeLine(t, a, "/model")
-
-	typeInto(t, a, "<1s")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf("<1s kept %v, want only what starts inside a second", got)
-	}
-
-	drive(t, a, key("ctrl+u"))
-	typeInto(t, a, ">50t/s")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf(">50t/s kept %v", got)
-	}
-
-	drive(t, a, key("ctrl+u"))
-	typeInto(t, a, "$<0.3")
-	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
-		t.Fatalf("$<0.3 kept %v — the best lane's price per million", got)
+	for _, probe := range []struct {
+		typed string
+		want  []string
+	}{
+		{"@cloudflare", nil},
+		{"@cloud", nil},
+		{"<1s", nil},
+		{"<800ms", nil},
+		{">50t/s", nil},
+		{"$<0.3", nil},
+		{"fp8", nil},
+		{"tools", nil},
+		{"draws", nil},
+		// `sees` IS THE ONE THAT PROVES THE POINT. No model in this lab publishes
+		// an image input, so the old term kept NOTHING here — and the letters
+		// s-e-e-s run through `deepseek/deepseek-v4-flash` in order, so the name
+		// search keeps exactly one. Same keystrokes, a different question, and the
+		// answer the letters give is the one a person can see the reason for.
+		{"sees", []string{flash}},
+		{"flas", []string{flash}},
+	} {
+		a := laneApp(t)
+		typeLine(t, a, "/model")
+		typeInto(t, a, probe.typed)
+		if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(probe.want, ",") {
+			t.Fatalf("%q kept %v, want %v", probe.typed, got, probe.want)
+		}
+		// AND NOTHING OPENS A FOLD ANY MORE. `@name` used to open the first model
+		// it kept with that machine lifted to the top, which was the one place in
+		// this surface where typing walked the cursor into a fold.
+		if a.pick.unfold != "" {
+			t.Fatalf("%q opened the fold at %q", probe.typed, a.pick.unfold)
+		}
 	}
 }
 
-// AND EVERYTHING ELSE RANKS EXACTLY AS IT ALWAYS DID. This is the promise the
-// grammar is built on: a word it does not recognise is a word to search for,
-// with the same three tiers and the same order, whether or not a single lane
-// has ever been measured.
-func TestAnUnparsedTokenRanksTheWayItAlwaysHas(t *testing.T) {
+// AND THE TWO WORDS THAT ORDERED THE LIST NO LONGER TOUCH IT. `fast` sorted what
+// was left by how soon an answer would start and `cheap` sorted it by price, so
+// either of them over this lab's five models kept all five and reordered them.
+// They are letters now, and no id in the lab carries either run — so the honest
+// answer is an EMPTY list rather than five rows in an order nobody asked for.
+func TestTheOrderingWordsNoLongerOrderAnything(t *testing.T) {
+	laneLab(t, threeLanes())
+	for _, typed := range []string{"fast", "cheap"} {
+		a := laneApp(t)
+		typeLine(t, a, "/model")
+		typeInto(t, a, typed)
+		if got := pickerIDs(a); len(got) != 0 {
+			t.Fatalf("%q kept %v, want nothing — it is a word, not a sort", typed, got)
+		}
+	}
+}
+
+// AND EVERYTHING ELSE RANKS EXACTLY AS IT ALWAYS DID — the three tiers, in the
+// same order, whether or not a single provider has ever been measured. This was
+// the promise the old grammar was built on ("a word it does not recognise is a
+// word to search for"), and it outlives the grammar: now every word is one.
+func TestAWordRanksTheWayItAlwaysHas(t *testing.T) {
 	want := []string{"gpt-5-classic", "openai/gpt-4.1-mini", "anthropic/claude-gpt-echo"}
 
 	forgetLanes()
@@ -386,12 +456,18 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	typeLine(t, a, "/model")
-	drive(t, a, key("right")) // walks in, onto the auto row
-	drive(t, a, key("down"))  // the first lane
+	drive(t, a, key("right"))              // walks in, onto the auto row
+	drive(t, a, key("down"), key("right")) // openrouter, then into its machines
 	drive(t, a, key("enter"))
 
+	// ENTER CHOOSES AND LEAVES THE LIST UP ([app.pickerKey] argues it), so the
+	// pin is written with the list still on screen and esc is the way out.
+	if !a.pick.open {
+		t.Fatal("pinning a lane closed the picker")
+	}
+	drive(t, a, key("esc"))
 	if a.pick.open {
-		t.Fatal("pinning a lane left the picker open")
+		t.Fatal("esc left the picker open")
 	}
 	name, pinned := config.LanePinned(a.profileDir, talkSlot)
 	if !pinned || !strings.EqualFold(name, "Cloudflare") {
@@ -408,9 +484,9 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 		t.Fatalf("the picker opened with pin %q", a.pick.pin)
 	}
 
-	drive(t, a, key("right")) // walks in, onto the pinned lane
-	drive(t, a, key("up"))
-	drive(t, a, key("enter")) // auto
+	drive(t, a, key("right"))         // walks in, onto the pinned lane
+	drive(t, a, key("up"), key("up")) // past openrouter, back onto auto
+	drive(t, a, key("enter"))         // auto
 	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
 		t.Fatal("enter on auto left a pin behind")
 	}
@@ -438,13 +514,16 @@ func TestSlashModelPinsAndUnpinsTheLane(t *testing.T) {
 		t.Fatal("/model auto did not clear the pin")
 	}
 
-	// AND A QUESTION OPENS THE LIST rather than switching to a slug nobody
-	// meant: two words were never a name.
-	typeLine(t, a, "/model deepseek <1s")
+	// AND TWO WORDS OPEN THE LIST rather than switching to a slug nobody meant:
+	// a slug has no spaces, so two words were never a name. They go into the
+	// filter box as typed, and the box searches names with them — `/model
+	// deepseek <1s` used to reach the same door through the filter GRAMMAR, and
+	// the grammar is gone while this shape of the rule is not.
+	typeLine(t, a, "/model deepseek flash")
 	if !a.pick.open {
-		t.Fatal("/model with a filter query has to open the picker")
+		t.Fatal("/model with two words has to open the picker")
 	}
-	if got := a.pick.filter.String(); got != "deepseek <1s" {
+	if got := a.pick.filter.String(); got != "deepseek flash" {
 		t.Fatalf("the picker opened on the filter %q", got)
 	}
 	if got := pickerIDs(a); len(got) != 1 || got[0] != flash {
@@ -464,7 +543,7 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 	a.profileDir = ""
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned("", talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the default profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -479,7 +558,7 @@ func TestAHostedSurfacePinsNothing(t *testing.T) {
 	a.host = "blackmac"
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("right"), key("enter"))
 	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
 		t.Fatal("a hosted surface wrote a lane pin into this machine's profile")
 	}
@@ -563,12 +642,15 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	if got := a.sheet.sel.pick.unfold; got != flash {
 		t.Fatalf("→ in the settings picker left the fold at %q", got)
 	}
+	// AND THE SECOND FOLD IS THE SAME TWO KEYS HERE, which is the whole point of
+	// there being one picker: the machines live under `openrouter` at both doors.
+	drive(t, a, key("down"), key("right"))
 	screen := strings.Join(sheetLabels(a), "\n")
 	for _, want := range []string{
-		"auto", "router routes; codeaf takes over if answers turn bad",
-		"cloudflare", "0.8s", "58 t/s", "no tools",
+		"auto", laneAutoNote,
+		"cloudflare", "0.8s", "no tools",
 		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
-		"openrouter", "let the router balance on price",
+		"openrouter", laneDefaultWord,
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the unfolded settings picker never said %q:\n%s", want, screen)
@@ -579,8 +661,9 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 	if !strings.Contains(a.sheet.keysLine(), "← or tab back") {
 		t.Fatalf("the foot inside the fold reads %q", a.sheet.keysLine())
 	}
-	// `←` closes it again, from the start of an empty filter box.
-	drive(t, a, key("left"))
+	// `←` closes it again, from the start of an empty filter box — one level at
+	// a time, the machines before the model's own fold ([picker.foldHere]).
+	drive(t, a, key("left"), key("left"))
 	if a.sheet.sel.pick.unfold != "" {
 		t.Fatal("← left the lanes open")
 	}
@@ -597,15 +680,16 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"))
+	drive(t, a, key("enter"), key("right"), key("down"), key("right"))
 	row, on := a.sheet.sel.pick.laneUnder()
 	if !on || row.lane != 0 {
 		t.Fatalf("the cursor is not on the first machine: %+v (on=%v)", row, on)
 	}
 	drive(t, a, key("enter"))
-	if a.sheet.sel != nil {
-		t.Fatal("enter on a lane left the list open")
+	if a.sheet.sel == nil {
+		t.Fatal("enter on a lane closed the list; esc is the way out now")
 	}
+	drive(t, a, key("esc"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -635,7 +719,7 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"), key("enter"))
+	drive(t, a, key("enter"), key("right"), key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -647,7 +731,7 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	if !lane.HeardPrefsSilent(base) {
 		t.Fatal("the answer was not filed against the base the sheet is wired to")
 	}
-	drive(t, a, key("down"), key("up"))
+	drive(t, a, key("esc"), key("down"), key("up"))
 	if !sheetHas(a, "pinned: cloudflare (not taken on this base)") {
 		t.Fatalf("the row still reads as though the pin were on the wire:\n%s",
 			strings.Join(sheetLabels(a), "\n"))
@@ -678,7 +762,7 @@ func TestTheLaneRowOpensTheMachines(t *testing.T) {
 	}
 	// Walking to a machine and pressing enter pins it, and nothing about the
 	// model changed on the way.
-	drive(t, a, key("down"), key("enter"))
+	drive(t, a, key("down"), key("right"), key("enter"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -703,10 +787,11 @@ func TestTheLaneRowOpensTheTwoAnswersWhenNothingIsMeasured(t *testing.T) {
 	if row, on := a.sheet.sel.pick.laneUnder(); !on || row.lane != laneAutoAt {
 		t.Fatalf("the list did not open on auto: %+v (on=%v)", row, on)
 	}
-	drive(t, a, key("down"), key("enter"))
+	drive(t, a, key("down"), key("right"), key("enter"))
 	if got := config.LaneAt(dir, talkSlot); got != config.LaneOpenRouter {
-		t.Fatalf("enter on openrouter wrote %q", got)
+		t.Fatalf("enter on default wrote %q", got)
 	}
+	drive(t, a, key("esc"))
 
 	// The speed guard is on until somebody says otherwise, and enter turns it.
 	if !config.LaneGuardAt(dir) {
@@ -742,9 +827,14 @@ func TestTheSettingsPanelDrawsNoLanesWhenNothingIsKnown(t *testing.T) {
 	if n := len(a.sheet.sel.pick.lanes); n != 0 {
 		t.Fatalf("a ledger that believes nothing put %d machines in the fold", n)
 	}
+	// The line saying why lives inside `openrouter`, where the machines would
+	// be, and that row opens with nothing measured ([picker.lineUnder]).
+	drive(t, a, key("down"), key("right"))
 	screen := strings.Join(sheetLabels(a), "\n")
-	if !strings.Contains(screen, laneUnmeasured) {
-		t.Fatalf("the empty fold does not say why it is empty:\n%s", screen)
+	for _, want := range []string{laneUnmeasured, laneDefaultWord} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the empty fold does not say %q:\n%s", want, screen)
+		}
 	}
 }
 
@@ -913,7 +1003,6 @@ func TestAFirstTokenWaitIsAlwaysSaidInSeconds(t *testing.T) {
 	for what, text := range map[string]string{
 		"the model row": laneSpeedWord(config.RoutingLatency, views, ""),
 		"the lane row":  head + " " + tail,
-		"the why line":  laneWhy(views[0]),
 	} {
 		if !strings.Contains(text, "2.4s") {
 			t.Errorf("%s says %q, which does not name the 2.4 second wait it was drawn from", what, text)

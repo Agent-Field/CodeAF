@@ -73,6 +73,17 @@ type homeTarget struct {
 	// there is one filterable model list on this surface and this is a fourth
 	// door onto it rather than a fourth list that looks like it.
 	pick picker
+	// levels is the reasoning rung `ctrl+t` has dialled onto a model FOR THE
+	// NEXT CONVERSATION, per model id, and it is here rather than on the agent
+	// for [app.pinTargetModel]'s reason: nothing behind home is touched. The
+	// agent this window happens to be holding is a conversation the person is
+	// not looking at, and a rung written there would change that conversation's
+	// setting for a model it is not using and then be forgotten by the one they
+	// are about to start (`/new` is a new agent).
+	//
+	// It is spent in [app.applyTargetModel], after the new conversation has
+	// attached and has an agent to write to.
+	levels map[string]string
 }
 
 // targetWhere is the folder the next conversation will open in: the pin, and
@@ -100,6 +111,33 @@ func (a *app) targetModel() string {
 func (a *app) targetModelPinned() bool {
 	pinned := strings.TrimSpace(a.target.model)
 	return pinned != "" && pinned != strings.TrimSpace(a.model)
+}
+
+// targetPickFoot is home's foot while the model list is open: the walk, then
+// whatever the row under the cursor answers to, then the way out.
+//
+// IT IS CURSOR-SHAPED FOR [picker.keysHint]'s REASON, and it is home's own
+// verbs around it. The keys used to live in the filter box's placeholder, which
+// is the one line that vanishes the moment somebody types — and at this door
+// two of them did nothing whatever anybody typed ([app.openTargetPicker] arms
+// the fold now, and [targetDraft.levels] holds the rung).
+//
+// `enter choose` and not `enter switch`, because nothing switches here: a choice
+// made on this list is a pin on the NEXT conversation ([app.pinTargetModel]). The
+// picker's own middle says `enter switch`, so the verb is swapped and home's own
+// ending put back on. It said `use it` until the owner asked for one verb across
+// the levels — every other row of this same fold already said `choose`, so `use
+// it` was a second word for one gesture on one rung of it.
+func (a *app) targetPickFoot() string {
+	before, enter, after := a.target.pick.keysParts()
+	// `use it` AND NOT `switch`, because nothing switches here: a choice made on
+	// this list is a pin on the next conversation ([app.pinTargetModel]). The
+	// other two words enter can take — `choose` a provider, `unpin` the one the
+	// requests already go to — mean the same at either door and are kept.
+	if enter == "switch" {
+		enter = "choose"
+	}
+	return dotted(targetPickWalkWord, before, "enter "+enter, after, targetPickLeaveWord)
 }
 
 // targetPickShowing is whether the model list over the target is up. It is
@@ -139,17 +177,18 @@ const (
 	// The conversation's legend is a list of VERBS in the same slot (`tab last`,
 	// `space space home`), which is why the same door is `alt+k switch` there.
 	targetSwitcherKeyWord = "alt+k chats"
-	// targetPinnedModelWord is what home's message line says when a model has
-	// been pinned onto the draft. It names the slug and then the SCOPE of what
-	// just happened, because "did that change the conversation behind home"
-	// is the exact question the old silent `/model` left a person holding.
-	targetPinnedModelWord = " · for the next conversation you start here"
 	// targetMovedWord is what the same line says when `alt+w` moved the folder.
 	targetMovedWord = "next conversation opens in "
 	// targetPickWord is the foot while the model list is open, in the hint
 	// grammar — the same sentence the composer layer's own list says, because
-	// it is the same list answering the same keys ([composerPickWord]).
-	targetPickWord = "↑↓ pick · enter use it · esc back"
+	// it is the same list answering the same keys ([composerPickWord]). It is
+	// the WALK and the two ways out; what the keys in the middle do depends on
+	// the row the cursor is on, and [app.targetPickFoot] puts them between.
+	targetPickWord = "↑↓ pick · enter choose · esc back"
+	// targetPickWalkWord and targetPickLeaveWord are that sentence's two ends,
+	// so the middle can be spliced in without a second spelling of either.
+	targetPickWalkWord  = "↑↓ pick"
+	targetPickLeaveWord = "esc back"
 )
 
 // targetLegendRight is the right of home's rule: the two chords that edit the
@@ -451,7 +490,43 @@ func (a *app) moveTarget() bool {
 // cursor sits on what you are on, so enter confirms rather than changes.
 func (a *app) openTargetPicker() {
 	a.target.pick.startFor(a.modelsFor(chatModel), a.targetModel(), chatModel)
+	// AND THE PROVIDERS OPEN HERE TOO. The box under this list has always named
+	// `→ providers`, and for one wave the key did nothing at all, because the
+	// list was never handed the slot, the pin and the routing row a fold needs
+	// ([app.armLanes]). A pin belongs to your home rather than to one
+	// conversation (lanes.md says so in those words), so it is exactly as
+	// writable from the next conversation's draft as from a live one.
+	a.armLanes(&a.target.pick, laneSlotFor(a.targetModel()))
 	a.touch()
+}
+
+// targetReasoningFor is the rung one model stands at FOR THE NEXT CONVERSATION:
+// what `ctrl+t` has dialled onto this draft, and otherwise what this window's
+// own conversation would answer.
+//
+// THE FALLBACK IS THE WINDOW'S BECAUSE THE DRAFT INHERITS IT. A conversation
+// started from home with nothing dialled runs on whatever the model already
+// stands at, so a row that drew nothing until it was touched would be telling a
+// person their model thinks at `auto` when it does not.
+func (a *app) targetReasoningFor(id string) string {
+	if level, held := a.target.levels[session.ReasoningKey(id)]; held {
+		return level
+	}
+	return a.reasoningFor(id)
+}
+
+// cycleTargetReasoning is `ctrl+t` over the draft's list: the same walk the
+// conversation's own list takes ([app.cycleReasoning]), written to the draft
+// instead of to an agent.
+func (a *app) cycleTargetReasoning() {
+	chosen, ok := a.target.pick.choice()
+	if !ok || !chosen.Reasoning {
+		return
+	}
+	if a.target.levels == nil {
+		a.target.levels = map[string]string{}
+	}
+	a.target.levels[session.ReasoningKey(chosen.ID)] = nextReasoning(a.targetReasoningFor(chosen.ID))
 }
 
 // targetPickKey is every key while that list is open: the walk and the filter
@@ -461,16 +536,40 @@ func (a *app) targetPickKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		a.target.pick.close()
+	// ENTER CHOOSES AND LEAVES THE LIST UP, which is /model's own rule and for
+	// its reason ([app.pickerKey]): the list is a table, and a table that shuts
+	// on the first press cannot be compared against. `esc` is the way out.
 	case "enter":
-		if chosen, ok := a.target.pick.choice(); ok {
-			a.target.pick.close()
+		chosen, ok := a.target.pick.choice()
+		// ENTER ON A PROVIDER PINS THE PROVIDER — and pins the model under it
+		// too, for the reason /model's own list gives: somebody who opened a
+		// model's providers and chose one asked for that model on that machine,
+		// and a lane pinned under a model they never picked is a setting that
+		// takes effect the next time they happen to switch.
+		row, onLane := a.target.pick.laneUnder()
+		if ok && onLane {
 			a.pinTargetModel(chosen.ID)
+			a.applyLaneChoice(chosen.ID, row, a.target.pick.lanes)
+			a.restatePicker(&a.target.pick, a.targetModel())
+			a.target.pick.showChoice(row)
 			a.touch()
 			return nil
 		}
-		a.target.pick.close()
+		if ok {
+			a.pinTargetModel(chosen.ID)
+			a.restatePicker(&a.target.pick, a.targetModel())
+		}
+	// The rung the next conversation starts at, held on the draft until there
+	// is an agent to spend it on ([targetDraft.levels]).
+	case "ctrl+t":
+		a.cycleTargetReasoning()
+	// THE FOLD IS THE LIST'S OWN KEY MAP and not this door's ([picker.foldKey]),
+	// exactly as /model and the settings panel read it — a fold that opened
+	// from one door and not another would be two pickers again.
 	default:
-		a.target.pick.navigate(msg)
+		if !a.target.pick.foldKey(msg.String()) {
+			a.target.pick.navigate(msg)
+		}
 	}
 	a.touch()
 	return nil
@@ -491,7 +590,13 @@ func (a *app) pinTargetModel(id string) {
 		return
 	}
 	a.target.model = id
-	a.home.say("model · "+modelBase(id)+targetPinnedModelWord, "")
+	// NO NOTE. This used to say `model · <name> · for the next conversation you
+	// start here` on the line under the box, and the line it was answering —
+	// "did that change the conversation behind home?" — is answered better by the
+	// SEAM, which carries the pinned model beside the folder and carries it for as
+	// long as the pin lasts rather than until the next note replaces it. A
+	// sentence that repeats what is already on the screen is a sentence that costs
+	// the row something else could have used (the owner's ruling).
 	a.touch()
 }
 
@@ -500,7 +605,7 @@ func (a *app) pinTargetModel(id string) {
 // place takes the frame whole, so the bottom-anchored overlay has nothing under
 // it to sit on and the frame draws the rows itself.
 func (a *app) targetPickRows(width, room int, pal palette) []placeRow {
-	return pickerRowsIn(&a.target.pick, width, room, pal, a.reasoningFor)
+	return pickerRowsIn(&a.target.pick, width, room, pal, a.targetReasoningFor)
 }
 
 // pickerRowsIn is the shared body: one picker's rows, padded to the room the

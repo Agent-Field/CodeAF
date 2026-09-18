@@ -1473,19 +1473,39 @@ rows) · `tab` and `→` open the providers under the model the cursor is on and
 cursor into them, `tab` and `←` close them and put it back on the model ·
 `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
-`home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · anything else types into it.
+`home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
+column and **`alt+shift+s`** turns that column round · anything else types into it.
 
-`→` and `←` only open and close the providers from the **end** and the **start** of what you
-have typed — with anything to step over, they move the caret through the filter text
-instead. `tab` always opens and closes. With the providers open, `enter` on one of them pins
-it instead of switching model.
+Every column is two rungs — its own direction, then reversed — so `alt+s` walks `model ↓`,
+`model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
+published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
+column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the tasks place gives:
+`s` is one of the commonest letters a filter starts with, and the list a person was
+narrowing would re-sort instead.
 
-Its placeholder reads exactly `filter · ↑↓ · → providers · ctrl+t effort · ctrl+r refresh · enter · esc`;
-on a narrow terminal the keys drop from the right, `esc` first. The hint slot follows the
-cursor: `→ providers · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
+`→` and `←` are the providers' keys **unless you are in the middle of typing**, in which case
+they move the caret through the filter text. "In the middle of typing" means within **0.6
+seconds** of the last change to the box; every keystroke pushes that out again, so they stay
+the caret's for as long as you keep typing and become the tree's the moment you stop. They
+are also always the tree's at the very end and the very start of the text, where there is no
+character to step over — so an empty box, which is most of this list's life, never waits.
+
+**To get the caret back without waiting, press any key that edits** — a letter, `backspace`,
+`ctrl+w`, or a paste — or `ctrl+b`/`ctrl+f`, which are `←`/`→`'s understudies, are never the tree's, and
+so move the caret without changing a letter of what you typed. Walking the list with
+`↑`/`↓` does **not** count as editing, so reading a filtered list never takes the arrows back
+from the tree. `tab` always opens and closes whatever the box is doing.
+
+With the providers open, `enter` on one of them pins it instead of switching model.
+
+Its placeholder reads exactly `filter by name · ctrl+r refresh` — the keys are on the FOOT, because
+a placeholder vanishes under the first typed character and the foot does not. The hint slot
+follows the cursor: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
 providers, and `enter unpin · ← back · esc` on the provider already pinned, where `enter` takes
-the pin off — with `tab providers` and `tab back` in place of the arrows while there is typed
-text the arrow would step over. Typing while a fold is open filters that model's providers;
+the pin off — with `tab providers` and `tab back` in place of the arrows while you are
+mid-typing and the arrow would step over a character instead. The foot always names whichever
+of the two actually works at that moment. Typing while a fold is open filters that model's providers;
 only a query none of them match falls through to filtering the model list.
 
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the

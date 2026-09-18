@@ -949,9 +949,12 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 		if a.sheet.sel == nil {
 			t.Fatalf("%s did not open a picker", row)
 		}
-		// It is THE picker: the rows carry what /model's rows carry.
-		if !strings.Contains(plain(frame(a)), "$3/$15 per M · 200k · elo 1300") {
-			t.Fatalf("%s opened a plainer list:\n%s", row, plain(frame(a)))
+		// It is THE picker: the rows carry what /model's rows carry, under the
+		// heads that name them (modeltable.go).
+		screen := plain(frame(a))
+		if !strings.Contains(screen, "in/M  out/M  window   elo") ||
+			!pickerRowSays(screen, "anthropic/claude-sonnet-4.5", "$3", "$15", "200k", "1300") {
+			t.Fatalf("%s opened a plainer list:\n%s", row, screen)
 		}
 		drive(t, a, key("esc"))
 	}
@@ -986,7 +989,9 @@ func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
 
 	cursorTo(t, a, config.KeyTierHighModel)
 	drive(t, a, key("enter"))
-	chat := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	// Alphabetical, which is what a table opens in on this surface
+	// (pickersort.go). What this test is about is WHICH models are on offer.
+	chat := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3", "vendor/blind-chat"}
 	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(chat, ",") {
 		t.Fatalf("a class row offers %v, want the models you can talk to %v", got, chat)
 	}
@@ -1077,7 +1082,7 @@ func TestTheModalityPredicates(t *testing.T) {
 func TestTheModelOverlayAsksTheChatQuestion(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: "vendor/blind-chat"}, modalityCatalog)
 	typeLine(t, a, "/model")
-	want := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	want := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3", "vendor/blind-chat"}
 	if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("/model offers %v, want %v", got, want)
 	}

@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -78,11 +76,29 @@ type picker struct {
 	// TIME on purpose: the fold is a way of looking closer at one row, and a
 	// list with four models open is a list with no shape left.
 	unfold string
+	// machines is whether the `openrouter` row's OWN fold is open, showing the
+	// machines behind that model.
+	//
+	// THE MACHINES SIT UNDER `openrouter` BECAUSE THEY ARE ITS. Every provider
+	// in that list is one OpenRouter routes to; the row means "openrouter's
+	// world", and naming one of its machines is a narrower answer inside that
+	// world rather than a third thing beside it. `auto` is the other answer —
+	// codeaf choosing — and it has no list under it because what it would
+	// choose from is the same list.
+	machines bool
 	// lanes is what was believed about that model's lanes at the moment it was
-	// opened, best first, and first names the lane an `@` filter asked to see
-	// at the top of them.
+	// opened, in the order they are drawn in.
 	lanes []laneView
-	first string
+	// sort is which column the model list is ordered by and laneSort the same for
+	// the providers inside an open fold. The zero value of each is its table's
+	// first column — the name — ascending (pickersort.go's laws).
+	sort     tableSort
+	laneSort tableSort
+	// typed is when the filter box last changed under somebody's hands, and it is
+	// what tells EDITING from NAVIGATING ([picker.editing]). Zero is "nothing has
+	// been typed into this list", which is navigating: there is no text to put a
+	// caret in.
+	typed time.Time
 	// auto is the lane the CHOOSER would send the next turn to, taken with the
 	// views at the moment the fold opened. It is not [bestLane]'s answer and
 	// must not be: this file's own sort orders the rows a person reads, and the
@@ -113,11 +129,6 @@ type picker struct {
 	// like the rest of them — the row lands on the next session and cannot move
 	// while a modal list owns the keyboard.
 	routing string
-	// ascii is whether this terminal was refused box drawing, so the two marks
-	// on the fold's own rows have a plain spelling. It is a snapshot like the
-	// rest of them, and the list is closed long before a terminal could change
-	// its mind about glyphs.
-	ascii bool
 	// laneSlot is the CONFIG SLOT whose lane row this list may write, and empty
 	// when there is none.
 	//
@@ -134,9 +145,14 @@ type picker struct {
 	// not honour — and that is the emptiness law, not a door's permission.
 	laneSlot string
 
-	// current is the model in use when the picker opened. It is what the accent
-	// marks, and it is deliberately a snapshot: the mark answers "what am I on",
-	// which cannot change while a modal overlay owns the keyboard.
+	// current is the model in use. It is what the accent marks, and it is a
+	// snapshot of what was true when the list opened — nothing running
+	// underneath may move it, which is the whole of the freeze on this list.
+	//
+	// THE ONE THING THAT MOVES IT IS THE PERSON ([picker.restate]). Enter
+	// chooses and leaves the list up, so the model in use can change while it
+	// is open; a mark left on the row they had just left would be the one thing
+	// on this list that was no longer true.
 	current string
 
 	// held is each model's row facts, frozen the first time this list drew
@@ -144,6 +160,26 @@ type picker struct {
 	// turn still updates the ledger. Neither may rewrite a row somebody is
 	// reading — the same snapshot law as current and pin.
 	held map[string][]rowField
+	// cells is the same freeze for the table's shape of row, and columns is the
+	// measurement over all of them — both taken the first time this list is
+	// drawn, which is the first moment [app.armLanes] has finished telling it
+	// what routing is in force.
+	cells   map[string][]string
+	columns *colTable
+	// fitted is that measurement laid out at one width, kept because the draw
+	// path asks for it once for the heading and once per row and the answer
+	// cannot differ between those asks. fitAt is the width it was laid out at,
+	// and zero is no answer yet — a frame is never zero cells wide.
+	fitted colTableFit
+	fitAt  int
+	// lanesFitted is the SAME measurement for the providers inside an open
+	// fold, over [laneColumns] and over this model's machines alone. It is a
+	// second table because it is a second question — the machines behind one
+	// model are compared with each other and not with the models — and it is
+	// rebuilt when the fold moves, which is the only time its rows change.
+	lanesFitted colTableFit
+	lanesFitAt  int
+	lanesFor    string
 
 	// task is the NODE this list is being chosen for, and 0 is the conversation —
 	// which is every /model, every press on the status row out in the thread, and
@@ -190,6 +226,13 @@ func (p *picker) start(models []Model, current string) {
 func (p *picker) restock(models []Model) {
 	p.all = models
 	p.shared = sharedSlugs(models)
+	// A NEW LIST IS A NEW MEASUREMENT. The columns were measured over the rows
+	// that were on offer, and a refresh that brought a dearer model or a wider
+	// name has changed that. The frozen CELLS stay, exactly as the frozen fields
+	// beside them do: the freeze is against a row rewriting itself while
+	// somebody reads it, not against the list being replaced — and a row whose
+	// cells were kept is re-measured from those same kept cells.
+	p.columns, p.fitAt = nil, 0
 	p.lower = make([]string, len(models))
 	for i, model := range models {
 		label := model.ID
@@ -238,6 +281,15 @@ const (
 	laneNone   = -1
 	laneAutoAt = -2
 	laneRoutAt = -3
+	// laneDefaultAt is the last row inside the `openrouter` fold: no machine
+	// named, the router's own default answering. It is a row among the machines
+	// rather than a word beside them because it is the same KIND of choice —
+	// "serve this from here" — and a person picking one down that list should
+	// not have to leave it to pick the one that declines to pick.
+	//
+	// Its cells are empty, and honestly so: nothing has been measured about
+	// "whatever the router feels like", because it is not one machine.
+	laneDefaultAt = -4
 )
 
 // relist rebuilds the drawn rows from the hits and the fold. It is called
@@ -253,11 +305,21 @@ func (p *picker) relist() {
 		if p.unfold == "" || p.all[hit].ID != p.unfold {
 			continue
 		}
+		// THE TWO ANSWERS THAT NAME NO MACHINE STAND TOGETHER, above the list
+		// of machines. They used to sit at either end of it with fifteen
+		// providers between them, and they are the two rows a person is
+		// actually choosing BETWEEN — under the shipped routing row they even
+		// send the same thing, and telling them apart means reading them side
+		// by side rather than a screen apart.
 		p.list = append(p.list, pickRow{hit: at, lane: laneAutoAt})
+		p.list = append(p.list, pickRow{hit: at, lane: laneRoutAt})
+		if !p.machines {
+			continue
+		}
 		for i := range p.lanes {
 			p.list = append(p.list, pickRow{hit: at, lane: i})
 		}
-		p.list = append(p.list, pickRow{hit: at, lane: laneRoutAt})
+		p.list = append(p.list, pickRow{hit: at, lane: laneDefaultAt})
 	}
 }
 
@@ -269,6 +331,24 @@ func (p *picker) close() { *p = picker{} }
 // rank re-filters against the filter box: case-insensitive, EVERY TOKEN MUST
 // MATCH, and each token matches in one of three tiers — prefix, then substring,
 // then subsequence.
+//
+// THE BOX SEARCHES NAMES AND NOTHING ELSE. It used to carry a small query
+// language beside the search — `@cloudflare`, `<1s`, `>50t/s`, `$<0.3`, `fp8`,
+// `tools`, `sees`, `draws`, and `fast` and `cheap` to reorder what was left —
+// and every one of those words is now an ordinary thing to search for. The
+// reason is the table: those terms were asking about the FACTS, and a person
+// reading a column of first-token times or prices can see which rows answer
+// them without describing the question in a syntax nobody can discover. What a
+// person cannot see is where their model's name is in six hundred rows, and
+// that is the one job left here.
+//
+// A QUERY LANGUAGE HAS TO BE LEARNED AND A NAME DOES NOT. `$<0.3` could only
+// ever be typed by somebody who had read a page about it, while every person who
+// opens this list already knows the name they are looking for — so the box that
+// answers only the second is the box that answers for everybody. It also means
+// there is no longer a token that silently means something other than itself:
+// `fast` searches for `fast`, and the rows that come back are the rows carrying
+// those letters.
 //
 // THE QUERY IS TOKENS AND NOT A PHRASE. A person hunting a model types the
 // pieces they remember in the order they remember them, and the pieces are not
@@ -288,25 +368,17 @@ func (p *picker) close() { *p = picker{} }
 // of those sits under the models that really carry the word. Ties keep source
 // order, which is the catalog's, so an empty box shows the list as handed over.
 func (p *picker) rank() {
-	// THE QUERY IS SPLIT BEFORE IT IS SCORED. A token that parses as a question
-	// about the machines behind a model (lanes.go's [parseLaneTerm]) is a
-	// filter, and everything else is a word to be ranked exactly as it always
-	// was — which is why a person who has never heard of any of this types the
-	// same query and gets the same list.
-	tokens, terms := splitQuery(p.filter.String())
+	tokens := strings.Fields(strings.ToLower(p.filter.String()))
 	now := timeNow()
 	// AN OPEN FOLD IS THE SUBJECT OF WHAT IS TYPED NEXT, and it is read before
 	// the fold is forgotten below ([picker.narrowFold]).
 	open := p.unfold
 	p.hits = p.hits[:0]
-	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
-	if p.narrowFold(open, tokens, terms, now) {
+	p.unfold, p.lanes, p.auto = "", nil, ""
+	if p.narrowFold(open, tokens, now) {
 		return
 	}
 	for i, id := range p.lower {
-		if len(terms) > 0 && !keepsLanes(p.all[i], terms, now) {
-			continue
-		}
 		if len(tokens) == 0 {
 			p.hits = append(p.hits, i)
 			continue
@@ -327,23 +399,23 @@ func (p *picker) rank() {
 			return p.score[p.hits[a]] < p.score[p.hits[b]]
 		})
 	}
-	p.orderByLanes(terms, now)
+	// AND THE SORT COMES LAST, over whatever the name ranking left — so `deep`
+	// then a press of the sort key is the deepseek rows by price, rather than the
+	// cheapest rows that happen to say deep (pickersort.go).
+	p.sortHits(len(tokens) > 0)
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose.
 	p.cursor, p.top = 0, 0
-	// AN `@lane` QUERY OPENS THE ROW IT WAS ABOUT. Somebody who typed
-	// `@cloudflare` asked a question about a machine, and answering it with a
-	// list of model names they would then have to open one by one would be the
-	// filter working and the surface not.
-	if word, ok := laneTermWord(terms); ok && len(p.hits) > 0 {
-		p.unfoldAt(0, word, now)
-	}
 	p.relist()
 	// AND A BOX WITH NOTHING IN IT IS THE LIST THE PICKER OPENED ON, so the
 	// cursor goes back to where it opened: on the model in use. Emptying the
 	// box with ctrl+u used to leave it on row zero, which made the enter that
 	// followed a switch to whatever sorted first.
-	if len(tokens) == 0 && len(terms) == 0 {
+	//
+	// THE SORT KEY MOVES IT TO THE TOP ITSELF ([picker.sortNext]) rather than this
+	// being asked to tell the two cases apart: opening the list and pressing the
+	// sort key both end here, and only the second of them wants row one.
+	if len(tokens) == 0 {
 		p.cursorToCurrent()
 	}
 }
@@ -361,10 +433,11 @@ func (p *picker) rank() {
 //
 // IT IS THE SAME MATCHER AND NOT A SECOND ONE ([tokenScore], every token ANDed),
 // so `cloud fl` finds Cloudflare in a fold exactly as it finds a model in the
-// list, and a lane term (`@name`, `<1s`) is left to the list because those are
-// questions about which MODELS to keep.
-func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now time.Time) bool {
-	if model == "" || len(tokens) == 0 || len(terms) > 0 {
+// list. It is a NAME search on both sides of that fall-through, which is the
+// whole of what this box does ([picker.rank]): the only thing that changes with
+// the fold is whose names are being searched.
+func (p *picker) narrowFold(model string, tokens []string, now time.Time) bool {
+	if model == "" || len(tokens) == 0 {
 		return false
 	}
 	at := -1
@@ -402,8 +475,11 @@ func (p *picker) narrowFold(model string, tokens []string, terms []laneTerm, now
 	// drawn under the name they serve and nothing else is on the screen to
 	// wonder about. The `auto` row's prediction is taken over ALL the views: it
 	// is a claim about where the next turn goes and not about what was typed.
+	// AND THE MACHINES ARE OPEN, because they are what was typed for. The
+	// filter's whole answer is a shorter list of them, and a fold that answered
+	// by narrowing a list it then left closed would have hidden the answer.
 	p.hits = append(p.hits, at)
-	p.unfold, p.lanes, p.first = model, kept, ""
+	p.unfold, p.lanes, p.machines = model, kept, true
 	p.auto = laneAuto(p.routing, model, views, now)
 	p.relist()
 	p.top = 0
@@ -439,77 +515,6 @@ func queryScore(text string, tokens []string) (int, bool) {
 		total += score
 	}
 	return total, true
-}
-
-// splitQuery divides what is typed into the words that rank and the terms that
-// filter. Every token that does not parse is a word, unchanged.
-func splitQuery(query string) ([]string, []laneTerm) {
-	var words []string
-	var terms []laneTerm
-	for _, token := range strings.Fields(strings.ToLower(query)) {
-		if term, ok := parseLaneTerm(token); ok {
-			terms = append(terms, term)
-			continue
-		}
-		words = append(words, token)
-	}
-	return words, terms
-}
-
-// keepsLanes is every keeping term ANDed over one model.
-func keepsLanes(model Model, terms []laneTerm, now time.Time) bool {
-	views := laneViews(model.ID, now)
-	for _, term := range terms {
-		if !term.keeps(model, views) {
-			return false
-		}
-	}
-	return true
-}
-
-// orderByLanes is the two words that ORDER rather than keep. They come last, so
-// `deep fast` is the deepseek rows soonest-first rather than the fastest rows
-// that happen to say deep.
-func (p *picker) orderByLanes(terms []laneTerm, now time.Time) {
-	for _, term := range terms {
-		switch term.kind {
-		case termFast:
-			sort.SliceStable(p.hits, func(a, b int) bool {
-				return laneFeel(bestOf(p.all[p.hits[a]], now)) < laneFeel(bestOf(p.all[p.hits[b]], now))
-			})
-		case termCheap:
-			sort.SliceStable(p.hits, func(a, b int) bool {
-				return lanePrice(bestOf(p.all[p.hits[a]], now)) < lanePrice(bestOf(p.all[p.hits[b]], now))
-			})
-		}
-	}
-}
-
-// bestOf is one model's best-believed lane, or a lane that knows nothing —
-// which sorts last under both words rather than first under either.
-func bestOf(model Model, now time.Time) laneView {
-	best, _ := bestLane(laneViews(model.ID, now))
-	return best
-}
-
-// lanePrice is what a million output tokens cost on a lane, and a very large
-// number for a lane with no published tariff: `cheap` must not put the rows
-// nobody knows the price of at the top of the list.
-func lanePrice(view laneView) float64 {
-	if view.PriceOut <= 0 {
-		return math.Inf(1)
-	}
-	return view.PriceOut * 1_000_000
-}
-
-// laneTermWord is the first `@lane` word in a query, if there is one.
-func laneTermWord(terms []laneTerm) (string, bool) {
-	for _, term := range terms {
-		if term.kind == termLane {
-			return term.word, true
-		}
-	}
-	return "", false
 }
 
 // The three rungs, far enough apart that no offset inside one can reach the
@@ -625,9 +630,8 @@ func (p *picker) follow(height int) { p.top = listTop(p.cursor, p.top, len(p.lis
 // knocks on — so the machines are on the way while the person is still looking
 // at the two answers. The picker still fetches nothing itself.
 
-// unfoldAt unfolds the model at hit `at`, with `first` — a lane an `@` filter asked
-// about — lifted to the top of the lanes. It reports whether anything opened.
-func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
+// unfoldAt unfolds the model at hit `at`. It reports whether anything opened.
+func (p *picker) unfoldAt(at int, now time.Time) bool {
 	if at < 0 || at >= len(p.hits) {
 		return false
 	}
@@ -639,18 +643,22 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 	if len(views) == 0 {
 		lane.WantSheet(model.ID)
 	}
-	if first != "" {
-		if named, ok := laneNamed(views, first); ok {
-			lifted := []laneView{named}
-			for _, view := range views {
-				if !strings.EqualFold(view.Name, named.Name) {
-					lifted = append(lifted, view)
-				}
-			}
-			views = lifted
-		}
-	}
-	p.unfold, p.lanes, p.first, p.auto = model.ID, views, first, laneAuto(p.routing, model.ID, views, now)
+	// THE ROWS ARE DRAWN IN ALPHABETICAL ORDER and the chooser's order is left
+	// where it is. [laneViews] hands them back fastest-feeling first, which is
+	// the right order for a MACHINE TO BE PICKED BY — `auto` reads it, the
+	// model row's `via` reads it — and the wrong order for a list a person
+	// reads: it puts the same provider in a different place every time the
+	// ledger learns something, so the eye has to start over on every visit. The
+	// prediction is taken from `views` before the copy is sorted, so nothing
+	// downstream is looking at this order.
+	p.auto = laneAuto(p.routing, model.ID, views, now)
+	p.unfold, p.lanes = model.ID, views
+	// AND THE FOLD OPENS IN ITS OWN SORT, whose zero value is the name column
+	// ascending — the alphabetical order these rows have always been drawn in, now
+	// said once as a sort rather than twice as a sort and a special case. The
+	// prediction above is taken from `views` BEFORE this, so nothing downstream is
+	// looking at the order.
+	p.sortLanes()
 	return true
 }
 
@@ -660,7 +668,7 @@ func (p *picker) fold() bool {
 	if p.unfold == "" {
 		return false
 	}
-	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
+	p.unfold, p.lanes, p.auto, p.machines = "", nil, "", false
 	return true
 }
 
@@ -681,13 +689,31 @@ func (p *picker) unfoldHere() bool {
 		return false
 	}
 	row := p.list[p.cursor]
+	// THE SECOND LEVEL: `→` on `openrouter` opens the machines it routes to.
+	// The key means the same thing at both depths — show me what is inside this
+	// — which is the only way a tree is learnable from one press.
+	if row.lane == laneRoutAt {
+		// IT OPENS WITH NOTHING MEASURED TOO. The `default` row is always in
+		// there, and the line saying why the machines are missing is in there
+		// with it ([picker.lineUnder]) — which is the only place a person
+		// looking for machines will go to find out.
+		if p.machines {
+			return false
+		}
+		p.machines = true
+		p.relist()
+		p.cursorToMachine()
+		p.revealFold(pickerRows)
+		return true
+	}
 	if row.lane != laneNone {
 		return false
 	}
-	// A model whose block an `@` filter already opened is walked into rather
-	// than opened twice.
+	// A model whose block the filter box already opened — by narrowing that
+	// model's own machines ([picker.narrowFold]) — is walked into rather than
+	// opened twice.
 	if p.all[p.hits[row.hit]].ID != p.unfold {
-		if !p.unfoldAt(row.hit, "", timeNow()) {
+		if !p.unfoldAt(row.hit, timeNow()) {
 			return false
 		}
 		p.relist()
@@ -714,6 +740,12 @@ func (p *picker) revealFold(height int) {
 		if p.lineUnder(at) != "" {
 			extra++
 		}
+		// THE PROVIDERS' HEADING IS A LINE OF THE BLOCK TOO, and a block scrolled
+		// into view against a count that left it out is a block one line taller
+		// than the room made for it ([picker.laneHeadBefore]).
+		if p.machines && row.lane == laneRoutAt {
+			extra++
+		}
 	}
 	if from >= 0 {
 		if to >= p.top+height-extra {
@@ -732,6 +764,32 @@ func (p *picker) foldHere() bool {
 	if p.cursor < 0 || p.cursor >= len(p.list) {
 		return false
 	}
+	// `←` CLOSES THE INNERMOST THING THAT IS OPEN, one level at a time: from a
+	// machine, from the `default` row beside them, or from the `openrouter` row
+	// itself it shuts the machines and leaves the cursor on `openrouter`, and only
+	// then does it shut the model's own fold. A key that collapsed both at once
+	// would make the way in and the way out different lengths.
+	//
+	// `default` IS IN THIS LIST BECAUSE IT IS ONE OF THE ROWS INSIDE, and it was
+	// left out when it stopped being a note beside `openrouter` and became a row
+	// under it. Its lane number is negative like the two containers' are, so
+	// `row.lane >= 0` — which is every real machine — did not cover it, and `←`
+	// there fell through to closing the model's whole fold: two levels on one
+	// press, from the one row `enter` on `openrouter` now lands the cursor on
+	// ([picker.showChoice]). That is the press a person makes next, so the skip
+	// was reachable by exactly the gesture most likely to reach it.
+	if row := p.list[p.cursor]; p.machines && (row.lane >= 0 || row.lane == laneRoutAt || row.lane == laneDefaultAt) {
+		p.machines = false
+		p.relist()
+		for at, drawn := range p.list {
+			if drawn.lane == laneRoutAt && drawn.hit == row.hit {
+				p.cursor = at
+				break
+			}
+		}
+		p.follow(pickerRows)
+		return true
+	}
 	hit := p.list[p.cursor].hit
 	if !p.fold() {
 		return false
@@ -745,6 +803,36 @@ func (p *picker) foldHere() bool {
 	}
 	p.follow(pickerRows)
 	return true
+}
+
+// cursorToMachine walks the cursor into the machines just opened: onto the one
+// the requests are already going to, and onto the first of them otherwise.
+//
+// `→` WALKS IN AT BOTH DEPTHS. The key means "show me what is inside this" and
+// then puts the cursor there; a second press that opened a list and left the
+// cursor outside it would be the one gesture on this surface that does half of
+// what it did a moment ago.
+func (p *picker) cursorToMachine() {
+	land := -1
+	for at, row := range p.list {
+		// A MACHINE, OR THE ROW THAT DECLINES TO NAME ONE. With nothing measured
+		// the fold holds only `default`, and walking in has to land somewhere
+		// that is inside it.
+		if (row.lane < 0 && row.lane != laneDefaultAt) || p.all[p.hits[row.hit]].ID != p.unfold {
+			continue
+		}
+		if land < 0 {
+			land = at
+		}
+		if p.marked(at) {
+			land = at
+			break
+		}
+	}
+	if land >= 0 {
+		p.cursor = land
+	}
+	p.follow(pickerRows)
 }
 
 // cursorToPin puts the cursor, inside an open fold, on the row the pin names —
@@ -761,6 +849,19 @@ func (p *picker) foldHere() bool {
 // is not talking to (see [picker.rowText]) — so the true answer for that model
 // right now is the one that chooses for you.
 func (p *picker) cursorToPin() {
+	// A PINNED MACHINE OPENS THE LIST IT IS IN. The pin is the true answer for
+	// this model, so landing on it means the fold it lives in has to be open —
+	// otherwise `→` on a model pinned to `cloudflare` walks onto `auto`, which
+	// is the one row that is not what the next request would do.
+	if !p.machines && p.force != "" {
+		for _, view := range p.lanes {
+			if strings.EqualFold(view.Name, p.force) {
+				p.machines = true
+				p.relist()
+				break
+			}
+		}
+	}
 	land := -1
 	for at, row := range p.list {
 		if row.lane == laneNone || p.all[p.hits[row.hit]].ID != p.unfold {
@@ -780,6 +881,74 @@ func (p *picker) cursorToPin() {
 	p.follow(pickerRows)
 }
 
+// pasteFilter puts clipboard text into the filter box, as ONE edit by somebody
+// who is standing at that box.
+//
+// IT STAMPS [picker.typed] AND `/model <query>` DELIBERATELY DOES NOT, and the
+// difference is where the person's hands are. A paste happens with the list
+// already open and the caret already in the box — it is editing, arriving through
+// a different door than the keyboard, and the arrows belong to the caret
+// afterwards for the same reason they do after a typed character. Opening the
+// list with text already in it ([app.openPickerFiltered], home's and a room's
+// `/model <query>`) is the opposite: the query was finished before the list
+// existed, so the arrows are the tree's from the first frame and a person who
+// meant to edit that text still has 600ms of nothing to wait for.
+//
+// It also spares the insert-then-rank pair from being written out at each door;
+// a paste that filtered nothing because one site forgot the second call is a bug
+// this shape cannot have.
+func (p *picker) pasteFilter(text string) {
+	p.filter.insert(text)
+	p.rank()
+	p.typed = timeNow()
+}
+
+// pickerQuiet is how long the filter box must go untouched before `→` and `←`
+// stop being the caret and go back to being the tree.
+//
+// IT IS A QUIET WINDOW AND NOT A DEADLINE, which is the difference between a
+// mode that follows a pair of hands and one that expires mid-word: every edit
+// pushes it out again, so a person typing at any speed keeps the caret keys for
+// as long as they are typing, and the moment they stop is the moment the arrows
+// mean the list.
+//
+// SIX HUNDRED MILLISECONDS IS CHOSEN AGAINST TYPING CADENCE rather than against
+// what feels like a pause in the abstract. Ordinary typing puts 100–200ms between
+// keys and a correction burst is faster than that, so 600ms cannot land inside a
+// word; and a hand moving from the letters to an arrow key takes about that long,
+// so by the time the arrow is pressed on purpose the window has usually closed.
+// Longer and the list feels stuck behind text nobody is editing any more; much
+// shorter and a thinking pause mid-name would take the caret away.
+const pickerQuiet = 600 * time.Millisecond
+
+// editing reports whether the caret keys still belong to the FILTER BOX rather
+// than to the tree.
+//
+// THE TWO GESTURES COLLIDE ON ONE PAIR OF KEYS and something has to break the
+// tie. `→` and `←` are what a hand reaches for at a tree, and they are also how
+// a caret walks text. The tie used to be broken by POSITION alone — the arrows
+// were the tree's only at the very start and the very end of what was typed —
+// and that made the commonest gesture in this list cost four presses: type
+// `deep`, press `→` to open the providers, then press `←` to come back out and
+// watch the caret step backwards through `p`, `e`, `e`, `d` while the fold
+// stayed open.
+//
+// So the tie is broken by TIME as well, and time is the honest signal: somebody
+// still editing is still pressing keys. The position rule is kept on top of this
+// one, because `→` at the end of a word has nowhere to step and was always the
+// tree's — which is what makes an empty box, where this list spends most of its
+// life, behave exactly as it always did.
+//
+// COMING BACK IS ANY EDIT AT ALL — a character, a backspace, a kill, an undo, or
+// `ctrl+b`/`ctrl+f`, which are the caret's own keys and never the tree's
+// ([picker.navigate] stamps them all). That last pair is the way out of this mode
+// that does not change a single letter of the query, and it is why the mode
+// cannot trap anybody: the arrows went to the list, so the arrows' understudies
+// are still there to take the caret back.
+func (p *picker) editing() bool {
+	return !p.typed.IsZero() && timeNow().Sub(p.typed) < pickerQuiet
+}
+
 // foldKey is `tab`, `→` and `←` over this list — the fold's whole key map, in
 // one place because the list has two doors ([app.pickerKey] and settings.go's
 // [app.sheetSelectKey]) and a gesture that opened the machines from one of them
@@ -794,17 +963,59 @@ func (p *picker) cursorToPin() {
 // which is where this list spends most of its life, that is every press.
 func (p *picker) foldKey(name string) bool {
 	switch name {
+	// ── THE SORT IS THE LIST'S KEY AND NOT A DOOR'S ─────────────────────────
+	//
+	// It is read here, with the fold's keys, for [picker.foldKey]'s own reason:
+	// there are four doors onto this list and an order that could be changed from
+	// one of them and not the others would be four lists again. It is read BEFORE
+	// the filter box because `alt+s` is not text — the chord exists so that a bare
+	// `s` stays the commonest first letter a person types into this box
+	// (taskstable.go argues it for the tasks page's filter, and the argument is
+	// the same one here).
+	case tasksSortKeyChord:
+		p.sortNext(false)
+		return true
+	case tasksSortBackChord:
+		// AND SHIFT WALKS THE CYCLE BACKWARDS. Every column is two rungs now — its
+		// own direction and the other one ([tableSort.step]) — so "the previous
+		// rung" is what this chord can mean, and it retraces exactly what the
+		// unshifted key visited rather than being a second way to say "reverse".
+		p.sortNext(true)
+		return true
 	case "tab":
 		if !p.unfoldHere() {
 			p.foldHere()
 		}
 		return true
 	case "right":
-		return p.filter.cursor >= len(p.filter.value) && p.unfoldHere()
+		return (!p.editing() || p.filter.cursor >= len(p.filter.value)) && p.unfoldHere()
 	case "left":
-		return p.filter.cursor <= 0 && p.foldHere()
+		return (!p.editing() || p.filter.cursor <= 0) && p.foldHere()
 	}
 	return false
+}
+
+// showChoice opens what a row just chosen is the LID of, and does nothing for a
+// row that is not one. It runs after the write, so the mark it reveals is the
+// answer that was just written and not the one before it.
+//
+// `enter` ON `openrouter` CHOOSES `default` — the container and the row inside it
+// write the same thing (lanes.go's [app.applyLaneChoice]) — AND THAT IS EXACTLY
+// WHY IT HAS TO OPEN. Shut, the gesture reads as "you have chosen openrouter",
+// which sounds like a destination and hides that there was a list under it at
+// all. Open, it reads as the true sentence: here are the machines this routes
+// between, and the answer you just gave is `default`, the one that declines to
+// pick among them.
+//
+// THE MARK DOES THE TALKING AND IT ALREADY WORKED THIS WAY. [picker.marked] gives
+// the container the mark only while it is SHUT and gives it to `default` once it
+// is open, and [picker.cursorToMachine] walks onto the marked row — so opening is
+// the whole of the change, and what a person sees is the cursor landing on
+// `default` with the band on it.
+func (p *picker) showChoice(row pickRow) {
+	if row.lane == laneRoutAt {
+		p.unfoldHere()
+	}
 }
 
 // laneUnder is the lane row the cursor is on: the view, and which of the three
@@ -1167,6 +1378,12 @@ func overlayLead(selected, hovered bool, pal palette) string {
 // A blank second line under every path would spend half the screen saying
 // nothing.
 
+// laneIndent is how far a provider row hangs in from the frame's own edge: the
+// two cells every row pays for its cursor mark, the two that put `auto` and
+// `openrouter` under the model, and two more that put the machines under
+// `openrouter` — which is where they now live ([picker.relist]).
+const laneIndent = 6
+
 // overlayIndent is where a wrapped tail starts: the row's own two-cell lead,
 // plus two more so the tail reads as hanging under the label rather than as a
 // row of its own.
@@ -1387,9 +1604,25 @@ func (p *picker) height(width int) int {
 	// way: one line, inside the ceiling, and never half of a pair. The fetching
 	// line is counted inside the same ceiling, so the overlay does not grow
 	// while a refresh is out.
-	lines := p.headLines()
-	for at := p.top; at < len(p.list) && lines < pickerRows; at++ {
+	//
+	// THE TABLE'S HEAD IS THE ONE LINE COUNTED OUTSIDE IT, and the difference is
+	// that it does not come and go. A fetch is a thing that is happening to the
+	// list for a second or two, so an overlay that grew for it would jump under
+	// somebody's hands and jump back; the heads stand over the columns for as
+	// long as the list is open, and twelve rows is a promise about how many
+	// MODELS you can see (the manual makes it in those words). Charging the
+	// heading to the models would quietly make it eleven.
+	ceiling := pickerRows + p.tableHead(width)
+	lines := p.headLines(width)
+	for at := p.top; at < len(p.list) && lines < ceiling; at++ {
 		if p.groupBefore(at) != "" {
+			lines++
+		}
+		// The providers' own heading is counted where it is drawn, for
+		// [overlayItemLines]' reason: the count here and the lines the fill
+		// actually writes must agree or the list is laid into a block of the
+		// wrong size.
+		if p.laneHeadBefore(at, width) != "" {
 			lines++
 		}
 		_, note := p.entryText(at, width, nil)
@@ -1397,7 +1630,7 @@ func (p *picker) height(width int) int {
 		if p.lineUnder(at) != "" {
 			take++
 		}
-		if lines+take > pickerRows {
+		if lines+take > ceiling {
 			break
 		}
 		lines += take
@@ -1429,13 +1662,31 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		return []string{pal.dim("  " + p.emptyLine())}, []int{-1}
 	}
 	fill := newOverlayFill(width, n, pal, hover)
-	if p.headLines() > 0 {
+	if p.fetching {
 		fill.plain(pal.dim("  " + modelsFetching))
 	}
-	p.follow(overlayItems(n-p.headLines(), width))
+	// THE HEADS STAND OVER THE COLUMNS, and they are what lets a row carry a
+	// bare figure at all: `$0.09` means nothing until `in $/M` is over it
+	// (modeltable.go). It is drawn under the fetching line rather than above it,
+	// because the fetching line is about the LIST and the heads are about the
+	// rows, and the heads must be the last thing before the first row they
+	// describe.
+	if head := p.tableFit(width).header(); head != "" {
+		fill.plain(pal.head(fit(head, width)))
+	}
+	p.follow(overlayItems(n-p.headLines(width), width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
 		if group := p.groupBefore(at); group != "" {
 			if !fill.plain(pal.dim(fit("  "+group, width))) {
+				break
+			}
+		}
+		// THE PROVIDERS' OWN HEADING, drawn where their block starts and nowhere
+		// else. A bare `0.8s 58 $1.3` under `openrouter` is six figures with
+		// nothing saying which is which, and this table is a table for the same
+		// reason the model list is ([picker.laneFit]).
+		if head := p.laneHeadBefore(at, width); head != "" {
+			if !fill.plain(pal.head(fit(head, width))) {
 				break
 			}
 		}
@@ -1462,6 +1713,52 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		}
 	}
 	return fill.done()
+}
+
+// laneHeadBefore is the providers' heading line when row `at` is the FIRST
+// machine of an open block, and empty everywhere else — the same shape
+// [picker.groupBefore] has for a service's name, and for the same reason: a
+// heading belongs to the block under it and a scrolled window that starts
+// mid-block draws it again at the top.
+func (p *picker) laneHeadBefore(at, width int) string {
+	if at < 0 || at >= len(p.list) || p.list[at].lane < 0 {
+		return ""
+	}
+	if at > 0 && p.list[at-1].lane >= 0 && at != p.top {
+		return ""
+	}
+	return p.laneFit(width).header()
+}
+
+// restate moves the marks after a choice has been made with the list still
+// open, which is what `enter` now leaves it ([app.pickerKey]).
+//
+// THE MARKS ARE SNAPSHOTS AND THAT IS STILL RIGHT — nothing running underneath
+// may move them ([picker.current] says why). What just happened is not
+// something running underneath: it is the person pressing enter, and a list
+// that went on marking the model they had just left would be the one thing on
+// the row that was no longer true.
+//
+// A door that writes something else — a task's model, a settings row, home's
+// draft — passes what IT now holds, because the mark is about that door's
+// subject and not about this window's conversation.
+func (p *picker) restate(current, pin, force string) {
+	if !p.open {
+		return
+	}
+	p.current, p.pin, p.force = current, pin, force
+}
+
+// restatePicker is [picker.restate] with the two lane answers read off the
+// profile this window writes to — the row VERBATIM, which is what tells `auto`
+// from `openrouter` ([picker.marked]), and the machine the wire would actually
+// demand.
+func (a *app) restatePicker(p *picker, current string) {
+	pin := ""
+	if p.laneSlot != "" {
+		pin = config.LaneAt(a.profileDir, p.laneSlot)
+	}
+	p.restate(current, pin, a.pinnedNow())
 }
 
 // pinnedLane is the MACHINE this conversation is held to, and empty for every
@@ -1500,8 +1797,13 @@ func (p *picker) marked(at int) bool {
 		return false
 	case row.lane == laneAutoAt:
 		return p.force == "" && !strings.EqualFold(p.pin, config.LaneOpenRouter)
-	case row.lane == laneRoutAt:
+	case row.lane == laneDefaultAt:
 		return strings.EqualFold(p.pin, config.LaneOpenRouter)
+	case row.lane == laneRoutAt:
+		// THE CONTAINER WEARS THE MARK ONLY WHILE IT IS SHUT. Open, the row
+		// that holds this answer is visible and wears it itself; marking both
+		// would draw one answer twice.
+		return !p.machines && strings.EqualFold(p.pin, config.LaneOpenRouter)
 	}
 	return p.force != "" && strings.EqualFold(p.force, p.lanes[row.lane].Name)
 }
@@ -1567,7 +1869,7 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 			sentence += " — " + strings.ToLower(p.auto) + " now"
 			short = strings.ToLower(p.auto) + " now"
 		}
-		fields := []rowField{rowSay(sentence, short), rowSay("recommended")}
+		fields := []rowField{rowSay(sentence, short)}
 		// AND WHAT AUTO WILL NOT DO, said where the choice is made. With the
 		// speed guard off, a lane that turns slow mid-answer is one you wait
 		// out; that is a fact about this row and it belongs on it. Where the
@@ -1576,37 +1878,59 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		if said.chooses && !p.guard {
 			fields = append(fields, rowSay("no rescue"))
 		}
-		return rowHalves(rowPlan{primary: "  " + p.mark(true) + " auto", fields: fields}, width, 0)
+		return rowHalves(rowPlan{primary: "  auto", fields: fields}, width, 0)
 	case laneRoutAt:
-		return rowHalves(rowPlan{
-			primary: "  " + p.mark(false) + " openrouter",
-			fields:  []rowField{rowSay("let the router balance on price", "balances on price")},
-		}, width, 0)
+		// NO SENTENCE ON THIS ROW. It said `default routing`, which is the
+		// answer the `default` row inside it now carries — and a container that
+		// describes one of the things it contains reads like a third choice.
+		return rowHalves(rowPlan{primary: "  openrouter"}, width, 0)
+	case laneDefaultAt:
+		label := strings.Repeat(" ", laneIndent-2) + laneDefaultWord
+		if fit := p.laneFit(width); fit.drawn() {
+			return label, fit.row(make([]string, len(laneColumns)))
+		}
+		return label, ""
 	}
-	// A LANE SITS UNDER THE TWO WORDS THAT ARE NOT LANES. `auto` and
-	// `openrouter` are the two ways of declining to name a machine, so they
-	// stand at the block's own margin and the machines themselves are indented
-	// past them — which is what makes the block read as a question with two
-	// answers and a list, rather than as five things of the same kind.
-	label, note := rowHalves(laneRowPlan(p.lanes[row.lane]), width, overlayIndent)
+	// A MACHINE SITS UNDER `openrouter`, indented past it, because it is one of
+	// the machines that row routes to ([picker.machines] says why the list
+	// lives there). The two answers that name no machine stand at the block's
+	// own margin above it.
+	//
+	// AND IT IS A TABLE, the same engine the model list is drawn with
+	// ([picker.laneFit]) — the providers behind one model are read down the
+	// page and compared, which is what a column is for. Where the frame cannot
+	// hold one, the ranked tail it has always drawn is what it falls back to.
+	view := p.lanes[row.lane]
+	if fit := p.laneFit(width); fit.drawn() {
+		name, _ := rowTrim(strings.ToLower(view.Name), fit.name, false)
+		return strings.Repeat(" ", laneIndent-2) + name, fit.row(laneCells(view))
+	}
+	label, note := rowHalves(laneRowPlan(view), width, overlayIndent)
 	return strings.Repeat(" ", overlayIndent) + label, note
 }
 
-// mark is the two lead glyphs of the fold's own rows — filled for the answer
-// that chooses for you, hollow for the one that declines to. A terminal without
-// box drawing gets the same distinction in the letters it does have, because a
-// difference drawn in shape has to survive having no shape (styles.go).
-func (p *picker) mark(filled bool) string {
-	switch {
-	case p.ascii && filled:
-		return "*"
-	case p.ascii:
-		return "o"
-	case filled:
-		return tokens.GlyphStepDone
-	}
-	return tokens.GlyphStepPending
-}
+// ── WHY THESE TWO ROWS WEAR NO MARK ─────────────────────────────────────────
+//
+// `auto` and `openrouter` used to carry a filled and a hollow bullet, and the
+// mark was doing two jobs. The first — saying these two are not machines — the
+// INDENT already does, and does better now they stand together above the list
+// rather than at either end of it ([picker.relist]).
+//
+// The second was `filled for the answer that chooses for you, hollow for the one
+// that declines to`, and that one was not true where most people read it. Under
+// the shipped `simple` routing row NEITHER of them chooses: auto sends no lane
+// either ([laneAutoSaid]), so the filled bullet claimed a difference the wire
+// does not make. A mark that is wrong on the default install is worse than no
+// mark, and the sentence beside each row says what it does in words.
+
+// laneDefaultWord is the row inside the `openrouter` fold that names no machine
+// — what this build did before it held an opinion, and what it still does when
+// nobody has asked for anything.
+//
+// IT IS A WORD AND NOT A SENTENCE because it stands in a list of machines and
+// is read as one of them. The row it used to be — `openrouter · default
+// routing` — described the container instead of the choice.
+const laneDefaultWord = "default"
 
 // laneAutoSay is what the `auto` row may honestly claim, as the routing row in
 // force decides it: the sentence saying what leaving the choosing alone DOES,
@@ -1650,9 +1974,16 @@ type laneAutoSay struct {
 // `simple`, so a surface that fell through to the takeover sentence would be
 // promising the machinery the shipped row disconnects.
 func laneAutoSaid(routing string) laneAutoSay {
+	// THE SENTENCE SAYS WHAT THIS ROW IS FOR AND THEN WHETHER IT IS DOING IT.
+	// `codeaf tries to pick the best provider` is the whole of what auto means,
+	// and under the shipped `simple` routing row it is a thing codeaf is not
+	// allowed to do — so the row that would otherwise read exactly like
+	// `openrouter` says which setting is holding it back, and names it. A
+	// sentence true only on a setting most people have not got is a sentence
+	// that lies on the default install.
 	if config.RoutingWord(routing) == config.RoutingSimple {
 		return laneAutoSay{
-			note: "openrouter's own routing; codeaf stays out",
+			note: laneAutoNote,
 			about: "which provider answers your model. routing is simple, so auto " +
 				"sends no choice of ours at all and openrouter's own routing answers; a provider " +
 				"you pin is the whole request. enter opens them all with what has been " +
@@ -1660,12 +1991,27 @@ func laneAutoSaid(routing string) laneAutoSay {
 		}
 	}
 	return laneAutoSay{
-		note: "router routes; codeaf takes over if answers turn bad",
+		note: laneAutoNote,
 		about: "which provider answers your model. auto picks the fastest one " +
 			"each answer; enter opens them all with what has been measured of each.",
 		chooses: true,
 	}
 }
+
+// laneAutoNote is what the `auto` row is FOR.
+//
+// IT POINTS AT THE SETTING RATHER THAN NAMING ITS VALUE. It said `codeaf tries
+// to pick the best provider — not while routing is simple` for one wave, and
+// `simple` is a word nobody meets before this row: it is one of four values on
+// a `routing` setting nothing on this screen mentions. A sentence you have to
+// already know the answer to is not a hint. `/settings` is a place a person can
+// go, so the row names that and the setting explains itself when they get
+// there.
+//
+// AND IT IS ONE SENTENCE UNDER EVERY ROUTING ROW, which is the other half of
+// the same fix. `according to /settings` is true whichever value is set —
+// that is what makes it honest without having to be rewritten per value.
+const laneAutoNote = "auto-route based on /settings"
 
 // laneUnmeasured is the one line a fold draws in the providers' place when
 // nothing behind the model has been measured. It is a sentence a person would
@@ -1673,30 +2019,32 @@ func laneAutoSaid(routing string) laneAutoSay {
 // of what somebody who pressed `→` on the model needs to know about the gap.
 const laneUnmeasured = "no provider has been measured for this model yet — providers show up after its first answer"
 
-// lineUnder is the dim line drawn under one row, and empty under nearly all of
-// them: the why of the lane the cursor is on ([picker.whyAt]), or — under the
-// `auto` row of a fold with no providers in it — [laneUnmeasured], standing
-// exactly where the providers would.
+// lineUnder is the dim line drawn under one row, and empty under all but one of
+// them: [laneUnmeasured], under the `auto` row of a fold with no providers in
+// it, standing exactly where the providers would.
+//
+// THE CURSOR'S LANE ROW USED TO CARRY A SENTENCE HERE TOO, and it is gone. It
+// read `baseten: first token 0.4s, steady 64 t/s, no tail — from the sheet`
+// under the row that already read `baseten   0.4s · 64 t/s · $1.2/M · out ≤ 32k
+// · 69%` — the same three numbers in prose, under a name the row had just said,
+// one line further from the eye. It was written when the lane row was thinner
+// than it is now and it outlived the row filling in; what it added at the end
+// was the provenance clause, which is one fact about the LIST rather than about
+// the row the cursor happens to be on.
+//
+// AND IT COST A ROW OF THE FOLD, every time, on the one list where a row is a
+// machine somebody is comparing against fifteen others.
 func (p *picker) lineUnder(at int) string {
 	if at < 0 || at >= len(p.list) {
 		return ""
 	}
-	if p.list[at].lane == laneAutoAt && len(p.lanes) == 0 {
+	// IT IS UNDER `openrouter` AND INSIDE ITS OPEN FOLD, which is where somebody
+	// went looking: the machines are that row's, so their absence is that row's
+	// to explain, and it stands exactly where they would.
+	if p.list[at].lane == laneRoutAt && p.machines && len(p.lanes) == 0 {
 		return laneUnmeasured
 	}
-	return p.whyAt(at)
-}
-
-// whyAt is the dim sentence under the cursor's lane row, empty everywhere else.
-func (p *picker) whyAt(at int) string {
-	if at != p.cursor || at < 0 || at >= len(p.list) {
-		return ""
-	}
-	row := p.list[at]
-	if row.lane < 0 {
-		return ""
-	}
-	return laneWhy(p.lanes[row.lane])
+	return ""
 }
 
 // rowText is one model as the row's two halves: the id with whatever level it
@@ -1731,7 +2079,121 @@ func (p *picker) rowText(model Model, level string, width int) (string, string) 
 	if level != "" {
 		plan.suffix = ":" + level
 	}
+	// THE TABLE IS THE ROW'S SHAPE WHEREVER THERE IS ROOM FOR ONE, and the
+	// ranked tail is what it falls back to below that and at tierPhone
+	// (modeltable.go argues the trade). They are the same facts in the same
+	// order either way, so a frame that crosses between them loses a column and
+	// never a subject.
+	if fit := p.tableFit(width); fit.drawn() {
+		name, _ := rowTrim(plan.primary, fit.name-ansi.StringWidth(plan.suffix), plan.author)
+		// A CUT NAME KEEPS ITS FACTS HERE, WHICH IS LAW 1's ONE EXCEPTION and it
+		// is the table that earns it. In a tail, the facts beside an ellipsis
+		// are a second loss on a row that has already spent what it was drawn to
+		// say. In a table they are not the row's, they are the COLUMN's: a blank
+		// where the window should be reads as "nobody published one" on every
+		// other row of this list (the emptiness law), so blanking it for want of
+		// cells would make this row lie about the catalog. The name gives way
+		// and the columns hold.
+		return name + plan.suffix, fit.row(p.rowCells(model, pin))
+	}
 	return rowHalves(plan, width, 0)
+}
+
+// tableFit is this list's columns laid out at one width — the measurement taken
+// once ([modelTable.add] over every row) and fitted fresh, since the measurement belongs to the
+// list and the fit belongs to the frame, and only one of those two changes when
+// a terminal is dragged wider.
+//
+// A PHONE NEVER TABLES. At [tierPhone] the tail already has a line of its own
+// under the name and there is no second column to put anything in; a table
+// there would be one column of figures with a heading nobody can see the other
+// half of.
+func (p *picker) tableFit(width int) colTableFit {
+	if phoneList(width) {
+		return colTableFit{}
+	}
+	p.measure()
+	if p.fitAt != width {
+		p.fitted, p.fitAt = p.columns.fit(width, p.sort.column(), p.sort.arrow()), width
+		p.fitted.name0 = modelHead
+	}
+	return p.fitted
+}
+
+// measure builds this list's column measurement, once, and is what every question
+// about the columns goes through.
+//
+// IT IS SEPARATE FROM THE FIT BECAUSE IT IS NOT ABOUT THE FRAME. The measurement
+// is over the rows and answers "what did this catalog publish"; the fit is over a
+// width and answers "what fits". They were one function, and the join meant a
+// question that needs only the measurement could not be asked until a frame had
+// been drawn — which is exactly what the sort cycle needs
+// ([picker.sortable]): it skips the columns nobody filled, and before the first
+// draw it could not tell, so a key pressed then walked onto a rung that ordered
+// nothing. A phone draws no table at all and still has a list to sort.
+func (p *picker) measure() {
+	if p.columns != nil {
+		return
+	}
+	table, pin := newColTable(modelColumns, 0), p.pinnedLane()
+	for _, model := range p.all {
+		// A NOTICE IS NOT A MODEL. An unavailable service's row carries a
+		// sentence where an id would be and draws no facts at all, so measuring
+		// it would widen columns for a row that uses none of them.
+		if model.Unavailable {
+			continue
+		}
+		// THE PIN IS THIS CONVERSATION'S ROW ALONE ([picker.rowText] says why),
+		// and it rides into the measurement because a column measured without it
+		// would be one machine's name too narrow for the one row that matters
+		// most.
+		held := ""
+		if model.ID == p.current {
+			held = pin
+		}
+		table.add(p.rowCells(model, held), nameAsk(model))
+	}
+	p.columns = &table
+	p.fitAt = 0
+}
+
+// laneFit is the providers' own table, measured over the machines of the model
+// whose fold is open and laid out in what the frame leaves after their indent.
+//
+// IT IS REBUILT WHEN THE FOLD MOVES and not on every draw: the rows are this
+// model's machines, frozen when the fold opened the way everything else on this
+// list is ([picker.lanes]), so the measurement can only change when the fold
+// does.
+func (p *picker) laneFit(width int) colTableFit {
+	if phoneList(width) || len(p.lanes) == 0 {
+		return colTableFit{}
+	}
+	if p.lanesFitAt != width || p.lanesFor != p.unfold {
+		table := newColTable(laneColumns, laneIndent-2)
+		for _, view := range p.lanes {
+			table.add(laneCells(view), ansi.StringWidth(strings.ToLower(view.Name)))
+		}
+		p.lanesFitted = table.fit(width, p.laneSort.column(), p.laneSort.arrow())
+		p.lanesFitted.name0 = laneHead
+		p.lanesFitAt, p.lanesFor = width, p.unfold
+	}
+	return p.lanesFitted
+}
+
+// rowCells is one model's facts in column order, frozen the first time this
+// list drew them — [picker.rowFields]' rule, for the table's shape of row and
+// for the same reason: a running turn still updates the ledger, and a row may
+// not rewrite itself under somebody who is reading it.
+func (p *picker) rowCells(model Model, pin string) []string {
+	if p.cells == nil {
+		p.cells = make(map[string][]string)
+	}
+	if cells, ok := p.cells[model.ID]; ok {
+		return cells
+	}
+	cells := modelFactsOf(model, pin, p.routing).cells()
+	p.cells[model.ID] = cells
+	return cells
 }
 
 // rowFields is the tail of one model, frozen the first time this list drew
@@ -1805,45 +2267,50 @@ func (a *app) cycleReasoning() {
 	if _, known := a.levels[session.ReasoningKey(chosen.ID)]; !known {
 		a.learnLevel(chosen.ID)
 	}
-	next := nextReasoning(a.reasoningFor(chosen.ID))
-	a.agent.SetReasoningFor(chosen.ID, next)
-	a.keepLevel(chosen.ID, next)
+	a.setLevel(chosen.ID, nextReasoning(a.reasoningFor(chosen.ID)))
 }
 
-// pickerHint is the placeholder in the empty filter box. It is the only place
-// this overlay explains itself, and it costs no row of its own.
+// slashPickerTack is the command left standing in the box while the model list is
+// open ([draftBlockTacked]). It is spelled once, here, rather than at the doors
+// that draw this box, and it carries its slash because that is how a person typed
+// it and how the command list spells it.
 //
-// THE LINE IS BUDGETED. A hint cut off at "e…" is a hint that has to be guessed
-// at, so it is the same RANKED TAIL every row is (rowfit.go): the keys go from
-// the right, whole, and the box never draws a key spelled `es…`. Which is why
-// the written order is also the order they are given up in — `filter` is what
-// the box IS and survives every width, and the two universal verbs at the end
-// are the two a person already knows without being told: enter commits and esc
-// leaves, everywhere on this surface and in every other program.
+// A test asserts this names a command the surface actually has, since a chip for a
+// command nobody can type would be the box teaching a gesture that does not exist.
+const slashPickerTack = "/model"
+
+// pickerHint is the placeholder in the empty filter box, and it names the box
+// and the one key that is not about walking the list.
 //
-// So on a sixty-cell frame, with about fifty-eight cells in the box, the line
-// is WHOLE where the door offers no refresh, and where it does the ladder now
-// stops one key earlier: `filter · ↑↓ · → providers · ctrl+t effort`, with the
-// refresh key named from about sixty-four columns up.
+// THE KEYS MOVED TO THE FOOT, and the reason they had to is that a placeholder
+// is the one line on the screen that DISAPPEARS THE MOMENT SOMEBODY USES IT.
+// `→ providers` and `ctrl+t effort` lived here, so they were gone by the first
+// typed character — exactly when a person has found their model and wants its
+// machines — and at home they were worse than gone: they named two keys that
+// door did not answer at all (homedraft.go now arms the fold and holds the
+// rung). The foot is a line that stays, follows the cursor, and can say what
+// each key does WHERE IT DOES IT ([picker.keysHint]).
 //
-// THAT IS WHAT THE WORD COST, and it is written down rather than worked around.
-// The fold's key used to read `→ lanes`; the owner's ruling on the vocabulary
-// (issue #1023) made it `→ providers`, four cells wider, and four cells is
-// exactly what `ctrl+r refresh` had bought from `enter · esc`. Spelling the
-// refresh key `ctrl+r` alone would fit it back in and break the older law in
-// this same comment — the keys go WHOLE, and a box that says `ctrl+r` with no
-// word is a box teaching nobody what the key does. A narrow frame gives up the
-// key it can no longer say properly, which is the ladder working.
-const pickerHint = "filter · ↑↓ · → providers · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
+// WHAT IS LEFT IS WHAT THE FOOT CANNOT SAY. `filter by name` is what the box IS,
+// which no foot can tell you about an empty box, and the refresh key belongs to
+// the LIST rather than to the row the cursor is on — the foot is cursor-shaped
+// and this key is not.
+//
+// AND IT SAYS `by name` BECAUSE THAT IS THE WHOLE SCOPE OF IT. The box once took
+// a query language over the facts as well ([picker.rank] buries it), and while it
+// did, `filter` was the honest word: it could not promise names without
+// under-selling the rest. Now that names are all it answers, a person who types
+// `cheap` deserves to have been told, in the one line that was on the screen
+// before they typed, that this box was never going to understand them. The two
+// spellings degrade to `filter` on a narrow frame (rowfit.go's second law), where
+// naming the box at all beats naming its scope.
+const pickerHint = "filter by name · " + refreshModelsHint
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
 // test that joins them and compares against [pickerHint] is what keeps the two
 // spellings one (the one-source-of-truth law: a constant read by a person and a
 // list read by the fitter would otherwise drift).
-var pickerHintFields = []rowField{
-	rowSay("filter"), rowSay("↑↓"), rowSay("→ providers"),
-	rowSay("ctrl+t effort"), rowSay(refreshModelsHint), rowSay("enter"), rowSay("esc"),
-}
+var pickerHintFields = []rowField{rowSay("filter by name", "filter"), rowSay(refreshModelsHint)}
 
 // pickerHintFieldsBare is the line for a list that cannot be refreshed: the
 // same fields with the refresh key taken out, since a key that does nothing is
@@ -1864,33 +2331,50 @@ func pickerHintAt(room int, refresh bool) string {
 // list answers it and not while a fetch is already out.
 func (p *picker) hintAt(room int) string { return pickerHintAt(room, p.offersRefresh()) }
 
-// The hint slot's words while this list is open, by where the cursor is
-// ([picker.keysHint]). They are written out whole rather than assembled, so the
-// manual and the tests quote what the frame draws.
+// sortKeyWord is how the foot names the sort, and it is one constant because the
+// spelled-out rows above and the cursor-shaped foot below have to say it the same
+// way (the one-source-of-truth rule; [pickerHint]'s own test compares the two).
+const sortKeyWord = tasksSortKeyChord + " sort"
+
+// effortKeyWord is the chord that walks the rung of the model under the cursor,
+// named in the foot since [pickerHint] stopped naming it in the box.
+const effortKeyWord = "ctrl+t effort"
+
+// The hint slot's words while this list is open, by where the cursor is. They
+// are named constants because the manual and the tests quote them, and they are
+// built from the pieces [picker.keysParts] returns so the two cannot drift.
 const (
 	// pickerKeysModel is a model's row on a list that folds: `→` opens the
-	// providers behind it and walks in, enter switches.
-	pickerKeysModel = "→ providers · enter switch · esc"
+	// providers behind it and walks in, `ctrl+t` dials how hard it thinks, and
+	// enter switches.
+	//
+	// THE EFFORT KEY IS NAMED HERE BECAUSE THE BOX STOPPED NAMING IT
+	// ([pickerHint]), and this is the row it works on: inside a fold the cursor
+	// is on a machine and `ctrl+t` has no model to dial.
+	pickerKeysModel = "→ providers · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 	// pickerKeysModelTab is the same row with the caret somewhere inside what is
 	// typed, where `→` steps over a character instead ([picker.foldKey]) and
 	// only `tab` opens.
-	pickerKeysModelTab = "tab providers · enter switch · esc"
+	pickerKeysModelTab = "tab providers · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 	// pickerKeysFold is a row inside an open fold: enter chooses that provider,
 	// `←` walks back out to the model.
-	pickerKeysFold = "enter choose · ← back · esc"
+	pickerKeysFold = "← back · " + sortKeyWord + " · enter choose · esc"
 	// pickerKeysFoldTab is the same with characters before the caret, where
 	// `←` edits the box and `tab` is the way out.
-	pickerKeysFoldTab = "enter choose · tab back · esc"
+	pickerKeysFoldTab = "tab back · " + sortKeyWord + " · enter choose · esc"
 	// pickerKeysUnpin is the row inside the fold that the requests are ALREADY
 	// going to: the same enter takes the pin off there (lanes.go's
 	// [app.applyLaneChoice]), and the hint is the only place that gesture
 	// announces itself.
-	pickerKeysUnpin = "enter unpin · ← back · esc"
+	pickerKeysUnpin = "← back · " + sortKeyWord + " · enter unpin · esc"
 	// pickerKeysUnpinTab is that row with characters before the caret.
-	pickerKeysUnpinTab = "enter unpin · tab back · esc"
-	// pickerKeysSwitch is a list with no fold at all — a task's model, an
-	// empty result — where the keys are the two every list has.
-	pickerKeysSwitch = "enter switch · esc"
+	pickerKeysUnpinTab = "tab back · " + sortKeyWord + " · enter unpin · esc"
+	// pickerKeysSwitch is a list with no fold at all and no cursor on anything:
+	// the two keys every list has. pickerKeysSwitchEffort is that list where the
+	// rung can still be dialled, which is every model list a door holds a level
+	// for even when no machine stands behind the row.
+	pickerKeysSwitch       = "enter switch · esc"
+	pickerKeysSwitchEffort = sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 )
 
 // keysHint is what the hint slot says this list's keys do RIGHT NOW, read off
@@ -1902,8 +2386,41 @@ const (
 // `→ lanes` was the filter box's placeholder — which vanishes on the first
 // typed character, exactly when a person has found their model and wants its
 // machines. The owner opened /model, pressed `←` and `→`, and asked how anybody
-// changes the provider of a model (2026-09-10).
+// changes the provider of a model (2026-09-10). The placeholder has since given
+// the keys up altogether ([pickerHint]) and this line carries them.
 func (p *picker) keysHint() string {
+	before, enter, after := p.keysParts()
+	return dotted(before, "enter "+enter, after, "esc")
+}
+
+// keysParts is that same reading in its three pieces: whatever is said before
+// enter, the one word that says what enter DOES on the row the cursor is on,
+// and whatever is said after it.
+//
+// ── THE ORDER OF THE WHOLE LINE ──────────────────────────────────────────────
+//
+//	↑↓ pick · ← back · → providers · alt+s sort · enter <verb> · ctrl+t effort · esc
+//
+// The walk and the way out are the DOOR's (home adds `↑↓ pick` and ends `esc
+// back`); everything between is this list's and comes back from here.
+//
+// IT IS GROUPED BY WHAT THE KEY MOVES, not by how often it is pressed. The first
+// two move the CURSOR — `← back` walks out of a fold exactly as `↑↓` walks the
+// rows, so it belongs beside it rather than stranded after enter, which is where
+// it used to sit. The next two change the LIST: `→` opens a row, `alt+s` reorders
+// it. Then `enter`, which is the one key that DECIDES something, so it stands
+// where the eye stops. `ctrl+t` comes after it because it is the one key here
+// that is not about the list at all — it dials a setting on the row and leaves
+// the list exactly as it was.
+//
+// IT IS SPLIT BECAUSE THE DOORS END THE SENTENCE DIFFERENTLY. /model switches a
+// conversation and says `enter switch · esc`; home pins the NEXT one and says
+// `enter use it · esc back` around the very same keys ([app.targetPickFoot]).
+// Splicing home's ending onto the finished sentence meant cutting the other
+// ending back off it, which worked on the row it was written for and left
+// `enter choose · ← back · esc · enter use it · esc back` on every row inside a
+// fold.
+func (p *picker) keysParts() (string, string, string) {
 	row, ok := pickRow{}, p.cursor >= 0 && p.cursor < len(p.list)
 	if ok {
 		row = p.list[p.cursor]
@@ -1911,21 +2428,56 @@ func (p *picker) keysHint() string {
 	// AND A MACHINE THAT IS ALREADY THE ANSWER SAYS WHAT ENTER DOES THERE, which
 	// is the one gesture in this fold that is not the same as its neighbours'.
 	unpin := ok && row.lane >= 0 && p.marked(p.cursor)
-	switch {
-	case !ok || p.laneSlot == "":
-		return pickerKeysSwitch
-	case unpin && p.filter.cursor > 0:
-		return pickerKeysUnpinTab
-	case unpin:
-		return pickerKeysUnpin
-	case row.lane != laneNone && p.filter.cursor > 0:
-		return pickerKeysFoldTab
-	case row.lane != laneNone:
-		return pickerKeysFold
-	case p.filter.cursor < len(p.filter.value):
-		return pickerKeysModelTab
+	// AND THE FOOT NAMES WHICHEVER KEY ACTUALLY WORKS RIGHT NOW. While the box is
+	// being edited the arrows are the caret's and only `tab` reaches the tree, so
+	// the foot says `tab`; once the box has gone quiet ([picker.editing]) the
+	// arrows are the tree's again and it says so. A foot that named `←` while `←`
+	// was stepping through a word is the thing that made the fold feel broken.
+	back := "← back"
+	if p.editing() && p.filter.cursor > 0 {
+		back = "tab back"
 	}
-	return pickerKeysModel
+	open := "→ providers"
+	if p.editing() && p.filter.cursor < len(p.filter.value) {
+		open = "tab providers"
+	}
+	// AND THE SORT IS NAMED WHEREVER THE TABLE IS DRAWN, because it is the LIST's
+	// key rather than the cursor's — the same reason the refresh key is in the
+	// placeholder and not here. It names the KEY and not the column, which is
+	// taskstable.go's ruling and its measurement: `alt+s sort: out/M` cost the
+	// five cells that made the foot drop this clause and the one beside it at a
+	// hundred columns, and which column the list is on is already drawn, on the
+	// heading, wearing the arrow.
+	sorts := sortKeyWord
+	switch {
+	case !ok:
+		return "", "switch", ""
+	case p.laneSlot == "":
+		// A LIST WITH NO FOLD STILL DIALS THE RUNG, because the level is the
+		// door's and not the router's: a task's model list holds one, and the
+		// foot is the only place the key is named.
+		return sorts, "switch", effortKeyWord
+	case unpin:
+		return dotted(back, sorts), "unpin", ""
+	case row.lane == laneRoutAt && !p.machines:
+		// THE SECOND FOLD SAYS SO ON ITS OWN ROW. `openrouter` opens the
+		// machines it routes to, and the key that opens them is the key that
+		// opened this fold — said again, because a row that can be opened and
+		// does not say so is a row nobody opens.
+		//
+		// IT SAYS SO WITH NOTHING MEASURED TOO. This asked for at least one
+		// believed machine, which was true when an unmeasured fold refused to
+		// open — and stopped being true the moment `default` became a row inside
+		// it ([picker.unfoldHere]), leaving `→` working on a row that did not
+		// name it. A key that does something is named where it does it.
+		return dotted(back, open, sorts), "choose", ""
+	case row.lane != laneNone:
+		// A MACHINE'S ROW NAMES THE SORT TOO, because the sort key orders the
+		// PROVIDERS from in here (pickersort.go's [picker.sortNext]) and a table a
+		// person is reading down is exactly where they want to reorder it.
+		return dotted(back, sorts), "choose", ""
+	}
+	return dotted(open, sorts), "switch", effortKeyWord
 }
 
 // ── the app's side of the overlay ───────────────────────────────────────────
@@ -2078,10 +2630,37 @@ func (a *app) nonChatWarning(id string) string {
 			return ""
 		}
 		line := model.ID + " cannot hold a conversation"
-		if words := ModalityWord(model.Input, model.Output); words != "" {
-			line += " — it " + words
+		if why := cannotChatBecause(model); why != "" {
+			line += " — " + why
 		}
 		return line + ". Still on " + a.model + "."
+	}
+	return ""
+}
+
+// cannotChatBecause is the half-sentence that says why a slug the catalog
+// carries is not something you can talk to: `it answers with speech`,
+// `it reads audio, not text`.
+//
+// IT IS A SENTENCE AND SO IT NEEDS A VERB, which is the one place on this
+// surface where the modality nouns cannot stand alone. A column says the side
+// in its head and the cell carries `speech`; a sentence in the middle of a
+// conversation has no head over it, so the verb is written out. Both are built
+// from the same two readings ([modalityInputs] and [modalityOutputs]), so there
+// is no second vocabulary to keep in step — only a second grammar.
+//
+// WHICH SIDE IT NAMES IS WHICHEVER SIDE IS THE REASON. A model that answers in
+// speech is refused for what it gives back; a transcriber is refused for what it
+// takes in, and its output is text like anything else's, so naming that would
+// explain nothing. A row that published neither says nothing at all and the
+// refusal is the bare sentence, because a reason nobody published is not a
+// reason this surface may invent.
+func cannotChatBecause(model Model) string {
+	if makes := modalityOutputs(model.Output); makes != "" {
+		return "it answers with " + makes
+	}
+	if reads := modalityInputs(model.Input); reads != "" && !readsText(model) {
+		return "it reads " + reads + ", not text"
 	}
 	return ""
 }
@@ -2189,18 +2768,21 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		a.pick.close()
 
+	// ── ENTER CHOOSES AND THE LIST STAYS OPEN ───────────────────────────────
+	//
+	// It used to close on the press, which made every choice final and every
+	// comparison a round trip: pick a model, watch the list vanish, type
+	// `/model` again to see what the other one cost. The list is a TABLE now —
+	// a thing built to be read down and compared — and a table that shuts the
+	// moment you touch a row is a table you can use once.
+	//
+	// So enter applies and leaves it up, and `esc` is the way out. Applying is
+	// safe to repeat: switching a model twice lands on the second, and pinning
+	// a provider twice writes the second row.
 	case "enter":
 		chosen, ok := a.pick.choice()
-		// THE SUBJECT IS READ BEFORE THE LIST IS CLOSED, because closing it is what
-		// forgets the subject ([picker.close] zeroes the whole struct).
 		task := a.pick.task
-		// AND SO IS THE LANE ROW, for the same reason.
 		row, onLane := a.pick.laneUnder()
-		var lanes []laneView
-		if onLane {
-			lanes = a.pick.lanes
-		}
-		a.pick.close()
 		if ok && onLane && task == 0 {
 			// ENTER ON A LANE IS TWO ANSWERS AT ONCE WHEN THE MODEL IS NOT THE
 			// ONE IN USE: somebody who opened another model's lanes and chose
@@ -2210,7 +2792,9 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			if chosen.ID != a.model {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
-			a.applyLaneChoice(chosen.ID, row, lanes)
+			a.applyLaneChoice(chosen.ID, row, a.pick.lanes)
+			a.restatePicker(&a.pick, a.model)
+			a.pick.showChoice(row)
 			a.touch()
 			return nil
 		}
@@ -2223,6 +2807,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			} else {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
+			a.restatePicker(&a.pick, a.model)
 		}
 
 	// The reasoning cycle sits above the filter's default branch on purpose: it
@@ -2258,7 +2843,21 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 // is one filterable model list on this surface; a slot row in the settings
 // panel and /model are two doors onto it, not two lists that look alike.
 func (p *picker) navigate(msg tea.KeyPressMsg) {
+	// WHAT COUNTS AS EDITING IS THE BOX HAVING MOVED, asked of the box itself
+	// rather than of the key's name. A list of editing keys kept here would be a
+	// second copy of [listNavigate]'s own switch — and the day somebody adds a
+	// kill to that switch, the copy stops agreeing and the mode starts lying
+	// about a keystroke that plainly edited. The text and the caret are the whole
+	// state a person can see, so a press that changed neither did not edit.
+	//
+	// AND THE WALK DELIBERATELY DOES NOT COUNT. `↑`/`↓` move the cursor through
+	// the list and leave the box alone, so walking a filtered list never hands
+	// the arrows back to the caret.
+	before, at := string(p.filter.value), p.filter.cursor
 	listNavigate(msg, &p.filter, p.move, p.rank, pickerRows)
+	if string(p.filter.value) != before || p.filter.cursor != at {
+		p.typed = timeNow()
+	}
 }
 
 // listNavigate is that key map itself, held apart from the model list so the

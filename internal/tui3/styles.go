@@ -1627,16 +1627,34 @@ func (p palette) bold(s string) string {
 	return "\x1b[1m" + s + "\x1b[22m"
 }
 
-// italic is the second attribute, and it has exactly one job: the model's own
+// italic is the second attribute, and it has two jobs. The model's own
 // reasoning (thinking.go), which is text that has to read as a tier below the
-// answer even where the dim hue lands close to it. A terminal that ignores SGR 3
-// loses nothing — the block is dim and behind its own marker either way.
+// answer even where the dim hue lands close to it; and a table's column heads
+// ([palette.head]). A terminal that ignores SGR 3 loses nothing in either place
+// — the reasoning block is dim and behind its own marker, and a head is a
+// different hue from its cells as well as a different shape.
 func (p palette) italic(s string) string {
 	if p.profile == tokens.NoColor || s == "" {
 		return s
 	}
 	return "\x1b[3m" + s + "\x1b[23m"
 }
+
+// head is a table's column heading: the words that name what is under them,
+// rather than one more row of the thing.
+//
+// IT IS A DIFFERENT HUE AND A DIFFERENT SHAPE, and it needs both. The cells of
+// a picker row are dim, and a heading painted dim beside them was the same text
+// twice — a person reading down `first  t/s  $/M` had nothing telling them that
+// line was the labels and not a provider whose numbers had gone missing. The
+// hue does the work on a colour terminal and the italic does it on one whose
+// ramp lands the two close together.
+//
+// IT IS MUTED AND NOT INK, because a heading is read ONCE and the figures under
+// it are read every time. A head louder than its own column is a label shouting
+// over the thing it labels, which is the opposite of what the design language
+// asks of dim telemetry.
+func (p palette) head(s string) string { return p.italic(p.muted(s)) }
 
 // rail is the marker that opens a tool line: the elbow for the last call of a
 // cluster, the tee for every call above it, and one ASCII arrow for a terminal
