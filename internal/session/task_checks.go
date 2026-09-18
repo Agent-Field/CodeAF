@@ -183,7 +183,7 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional repeatable checks; every check runs from the repository root, so no cd and no &&. ` +
+	`"description":"Optional. Each ONE rerunnable command re-establishing the result: no absolute path, no &&. ` +
 	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
@@ -579,24 +579,40 @@ func runnableChecks(declared []string, own taskCopy) []string {
 // THE SHAPE IS THE ONLY THING ASKED HERE, and the ground is not: a check is
 // declared before the work exists, so a command naming a file the work has yet to
 // write is a perfectly good check and is settled where the door is built.
+// rootedCheck drops a leading change into an ABSOLUTE directory from a declared
+// check. A CHECK RUNS FROM THE ROOT OF THE TASK'S OWN COPY, so the step is never
+// needed, and it is worse than unneeded: the path a proposer can see is the
+// person's checkout, and a checker that obeyed it would judge the tree the work
+// did not land in. A model writes it out of habit (measured 2026-09-18: the
+// first proposal of a hand-off was refused for exactly this, and a card saying
+// so was drawn over a request that was fine). A change into a RELATIVE
+// directory means something and is left for the shape law below to rule on.
+func rootedCheck(said string) string {
+	step, rest, composed := strings.Cut(said, "&&")
+	if !composed {
+		return said
+	}
+	fields := strings.Fields(step)
+	if len(fields) != 2 || fields[0] != "cd" {
+		return said
+	}
+	if dir := strings.Trim(fields[1], `"'`); !strings.HasPrefix(dir, "/") && !strings.HasPrefix(dir, "~") {
+		return said
+	}
+	return strings.TrimSpace(rest)
+}
+
 func declaredCheckList(raw []string) ([]string, string) {
 	out := make([]string, 0, len(raw))
 	for _, entry := range raw {
-		said := strings.TrimSpace(entry)
+		said := rootedCheck(strings.TrimSpace(entry))
 		if said == "" {
 			continue
 		}
 		command, ok := commandLike(said)
 		if !ok {
-			refusal := "Invalid arguments: checks must each be ONE command with no shell composition — " +
+			return nil, "Invalid arguments: checks must each be ONE command with no shell composition — " +
 				strconv.Quote(clip(said, auditCommandLimit)) + " is not"
-			if last := strings.LastIndex(said, "&&"); last >= 0 {
-				tail := strings.TrimSpace(said[last+len("&&"):])
-				if repair, legal := commandLike(tail); legal && approval.Vouchable(repair) && auditAllowed.CheckBash(repair).Action == approval.ActionAllow {
-					refusal += "; use " + strconv.Quote(repair)
-				}
-			}
-			return nil, refusal
 		}
 		if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
 			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +

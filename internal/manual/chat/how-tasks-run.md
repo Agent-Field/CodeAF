@@ -3116,7 +3116,11 @@ be negative`. Zero or absent means the default.
 **`checks`** — the repeatable verification, described in *What propose_task needs from you*
 above. Each entry must be one simple command with no pipes or `&&`, and one that even a
 permit-everything policy would still stop and ask about is refused outright:
-`Invalid arguments: checks must each be ONE command with no shell composition — "cd somewhere && go test ./..." is not; use "go test ./..."`. The same
+`Invalid arguments: checks must each be ONE command with no shell composition`. One
+composition is dropped instead of refused: a leading `cd` into an ABSOLUTE directory. A check
+runs from the root of the task's own copy, and the absolute path is your checkout, the one
+tree the work did not land in, so `cd /your/checkout && <command>` is kept as `<command>`. A
+`cd` into a relative directory is still a composition and is still refused. The same
 argument is on `divide_work`, where each part declares what its own checker may run — and a
 check every part declares is taken off all of them and given once to the task that divided
 them, which is the only one that can honestly make it after its parts are home.

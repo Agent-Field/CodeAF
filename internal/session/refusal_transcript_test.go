@@ -20,7 +20,7 @@ import (
 // transcript": the belt's own sentence for a composed check, unclipped and
 // unrewritten, carried in the result the model's next turn reads.
 func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
-	refusal := `Invalid arguments: checks must each be ONE command with no shell composition — "cd 1-check && ./run.sh" is not; use "./run.sh"`
+	refusal := `Invalid arguments: checks must each be ONE command with no shell composition — "cd 1-check && ./run.sh" is not`
 
 	// The direct answer the belt gives is the sentence whole.
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
@@ -31,9 +31,6 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 	}
 	if !strings.Contains(composed, "checks must each be ONE command with no shell composition") {
 		t.Fatalf("the refusal does not name the repair:\n%s", composed)
-	}
-	if !strings.HasSuffix(composed, `use "./run.sh"`) {
-		t.Fatalf("the refusal does not end with the legal command after the last &&:\n%s", composed)
 	}
 
 	// The same sentence, sent back through a refused call's result, is still
@@ -48,17 +45,30 @@ func TestAnArgumentRefusalStillReachesTheModelVerbatim(t *testing.T) {
 	}
 }
 
-func TestChecksSchemaSaysChecksRunAtRepositoryRoot(t *testing.T) {
-	for _, want := range []string{"repository root", "no cd", "no &&"} {
+// A CHECK IS JUDGED BY ITS SHAPE, AND THE SCHEMA SAYS THE SHAPE IN ANY SETUP: one
+// rerunnable command, no absolute path, no composition. It names no tool and no language.
+func TestChecksSchemaSaysWhereAChecksRunsAndNamesNoTool(t *testing.T) {
+	for _, want := range []string{"ONE rerunnable command", "no absolute path", "no &&"} {
 		if !strings.Contains(checksSchemaJSON, want) {
 			t.Errorf("checks schema does not say %q:\n%s", want, checksSchemaJSON)
 		}
 	}
 }
 
-func TestComposedCheckRepairUsesCommandAfterLastAndAnd(t *testing.T) {
-	_, refusal := declaredCheckList([]string{"printf setup && cd elsewhere && go test ./..."})
-	if !strings.HasSuffix(refusal, `use "go test ./..."`) {
-		t.Fatalf("refusal does not name the independently legal final command:\n%s", refusal)
+// A LEADING CHANGE INTO AN ABSOLUTE DIRECTORY IS DROPPED, NEVER REFUSED: the
+// check runs from the root of the task's own copy, and the absolute path is the
+// person's checkout, the one tree the work did not land in. A change into a
+// relative directory is still a composition and is still refused, unrepaired:
+// naming the command after the last `&&` as the repair would drop a build step
+// or a directory the check needs.
+func TestAnAbsoluteDirectoryChangeIsDroppedFromADeclaredCheck(t *testing.T) {
+	got, refusal := declaredCheckList([]string{"cd /srv/checkout && ./run.sh --all", `cd "/srv/with space" && ./run.sh`})
+	if refusal != "" || len(got) != 2 || got[0] != "./run.sh --all" || got[1] != "./run.sh" {
+		t.Fatalf("checks = %q, refusal = %q", got, refusal)
+	}
+	for _, composed := range []string{"cd sub && ./run.sh", "./build.sh && ./run.sh", "cd /srv/checkout && ./build.sh && ./run.sh"} {
+		if _, refusal := declaredCheckList([]string{composed}); !strings.Contains(refusal, "no shell composition") || strings.Contains(refusal, "use ") {
+			t.Fatalf("%q: refusal = %q", composed, refusal)
+		}
 	}
 }
