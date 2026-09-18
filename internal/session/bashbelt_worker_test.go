@@ -14,6 +14,7 @@ package session
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/effort"
@@ -77,4 +78,86 @@ func newRunBeltWorker(t *testing.T, taskRung effort.Rung) *Agent {
 	}
 	t.Cleanup(func() { _ = agent.Close() })
 	return agent
+}
+
+// ASK LAW. [BeltWorkerBrief] composes every run worker's opening document, and
+// A LEAF OWNS A PART OF THE ASK, AND READS THE ASK: a leaf's document carries
+// the run root's description verbatim under one heading after its own work
+// order, the root's own document carries nothing extra (its work order IS the
+// ask), an ask over the cap is cut with the marker, and a store with no root
+// row to read renders no section at all.
+
+// askStore opens a real store whose root carries the person's ask and adds one
+// leaf under it, so the brief's new section can be read off a leaf and its
+// absence off the root.
+func askStore(t *testing.T, rootDescription string) *plandb.Store {
+	t.Helper()
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the run", planRootID, "The run", rootDescription)
+	if err != nil {
+		t.Fatalf("open the plan store: %v", err)
+	}
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "leaf", Title: "the leaf", Description: "the leaf's own work order", ParentID: planRootID}}); err != nil {
+		t.Fatalf("add the leaf: %v", err)
+	}
+	return store
+}
+
+// TestBeltWorkerBriefCarriesTheRunsAskToALeaf is the law's positive half: a
+// leaf's document holds the root's description VERBATIM — the exact bytes,
+// under the heading and its one rule — so the leaf that owns a part reads the
+// whole ask, omissions and all.
+func TestBeltWorkerBriefCarriesTheRunsAskToALeaf(t *testing.T) {
+	ask := "Scoped containers can be initialized independently; the parent container's singletons are not reinitialized."
+	store := askStore(t, ask)
+	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "")
+	want := askSectionHeading + "\n" + askSectionRule + "\n\n" + ask
+	if !strings.Contains(doc, want) {
+		t.Fatalf("a leaf's document does not carry the run's ask verbatim under %q:\n%s", askSectionHeading, doc)
+	}
+}
+
+// TestBeltWorkerBriefLeavesTheRootsOwnDocumentAlone is the emptiness law: the
+// root's work order IS the ask, so its document gains no section and prints
+// its own words exactly once — under THE WORK it was composed into.
+func TestBeltWorkerBriefLeavesTheRootsOwnDocumentAlone(t *testing.T) {
+	ask := "add a rate limiter to the upload route"
+	store := askStore(t, ask)
+	doc := BeltWorkerBrief(store, store.Task(planRootID), true, false, "")
+	if strings.Contains(doc, askSectionHeading) {
+		t.Fatalf("the root's document grew the ask section:\n%s", doc)
+	}
+	if n := strings.Count(doc, ask); n != 1 {
+		t.Fatalf("the root's own words appear %d times in its document, want once as its work order:\n%s", n, doc)
+	}
+}
+
+// TestBeltWorkerBriefBoundsTheAskWithAMarkedCut: the ask is verbatim only up to
+// the cap, and what the cap takes is marked — a leaf handed a truncated ask can
+// see that it was.
+func TestBeltWorkerBriefBoundsTheAskWithAMarkedCut(t *testing.T) {
+	store := askStore(t, strings.Repeat("z", askSectionLimit+4096))
+	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "")
+	if !strings.Contains(doc, askSectionHeading) {
+		t.Fatalf("the leaf's document dropped the ask section entirely:\n%s", doc)
+	}
+	if !strings.Contains(doc, strings.Repeat("z", askSectionLimit-len("…"))+"…") {
+		t.Fatalf("the ask over the %d-byte cap was not cut with the marker:\n%s", askSectionLimit, doc)
+	}
+	if strings.Contains(doc, strings.Repeat("z", askSectionLimit+1)) {
+		t.Fatalf("the ask was not bounded at the %d-byte cap", askSectionLimit)
+	}
+}
+
+// TestBeltWorkerBriefRendersNoAskSectionWithoutARoot is the defensive half:
+// with no root row to read — a nil handle, or a root carrying no description —
+// the section is absent rather than empty, never a heading over nothing.
+func TestBeltWorkerBriefRendersNoAskSectionWithoutARoot(t *testing.T) {
+	leaf := &plandb.Task{TaskSpec: plandb.TaskSpec{ID: "leaf", Description: "the leaf's own work order"}}
+	if doc := BeltWorkerBrief(nil, leaf, false, false, ""); strings.Contains(doc, askSectionHeading) {
+		t.Fatalf("a nil store grew an ask section:\n%s", doc)
+	}
+	store := askStore(t, "")
+	if doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, ""); strings.Contains(doc, askSectionHeading) {
+		t.Fatalf("a root with no description grew an ask section:\n%s", doc)
+	}
 }
