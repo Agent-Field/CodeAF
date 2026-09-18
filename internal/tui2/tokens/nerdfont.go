@@ -37,6 +37,9 @@ package tokens
 // the grid still advances one, so layout is safe either way, but legibility is
 // not. That is a font choice, recorded here so the symptom is diagnosable, and
 // named in the settings row's hint.
+// NFFailedCell pins the Font Awesome vocabulary spelling for a failed run share.
+const NFFailedCell = "nf-fa-times_circle_o"
+
 var vocabulary = []GlyphBinding{
 	// -- state (card line 1, rail card, agent row) ---------------------------
 	{
@@ -501,7 +504,7 @@ var vocabulary = []GlyphBinding{
 	{ID: GDoneCell, Name: "DoneCell", Meaning: "a completed share of a run", Plain: GlyphDoneCell, NerdFont: "\uF111", NFName: "nf-fa-circle", ASCII: "#", UsualTint: Green, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
 	{ID: GRunningCell, Name: "RunningCell", Meaning: "the partly completed share at a run frontier", Plain: GlyphRunningCell, NerdFont: "\uF042", NFName: "nf-fa-adjust", ASCII: ">", UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
 	{ID: GEmptyCell, Name: "EmptyCell", Meaning: "a not-started share of a run", Plain: GlyphEmptyCell, NerdFont: "\uF10C", NFName: "nf-fa-circle_o", ASCII: ".", UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true},
-	{ID: GFailedCell, Name: "FailedCell", Meaning: "a share of a run holding a failure", Plain: GlyphFailedCell, NerdFont: "\uF05C", NFName: "nf-fa-times_circle_o", ASCII: "x", UsualTint: Coral, NFAmbiguous: true, AutoUpgrade: true},
+	{ID: GFailedCell, Name: "FailedCell", Meaning: "a share of a run holding a failure", Plain: GlyphFailedCell, NerdFont: "\uF05C", NFName: NFFailedCell, ASCII: "x", UsualTint: Coral, NFAmbiguous: true, AutoUpgrade: true},
 
 	// -- queue pills (10.3.13) -----------------------------------------------
 	{
