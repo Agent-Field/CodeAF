@@ -289,13 +289,10 @@ func TestTheConsentQuestionIsAmberEverywhereAtOnce(t *testing.T) {
 		t.Fatalf("the asked-about row is not marked: %q", row)
 	}
 
-	// And the status line says so in words as well as in colour.
+	// The open decision owns the request for attention; the seam does not repeat it.
 	status := a.legend(a.width)
-	if !strings.Contains(plain(status), waitingWord) {
-		t.Fatalf("the status line does not say the surface is waiting: %q", plain(status))
-	}
-	if !strings.Contains(status, violet) {
-		t.Fatalf("the status line's state is not in the question hue: %q", status)
+	if strings.Contains(plain(status), waitingWord) {
+		t.Fatalf("the seam repeats the open decision: %q", plain(status))
 	}
 	if strings.Contains(plain(status), "working") {
 		t.Fatalf("a blocked turn still calls itself working: %q", plain(status))

@@ -488,8 +488,7 @@ it, and the keys that answer it written into the bottom edge.
 │   3  BoltDB        fastest reads · adds a dependency                 │
 │   4  something else…                                                 │
 │                                                                      │
-╰─ ↑↓ choose · enter take it · esc later ──────────────────────────────╯
-  c change · ? ask back · o open full · d you decide · 1–4 jump
+╰─ esc later · c other · ? clarify ──────────────────────────────╯
 ```
 
 **The `▸` is your pointer.** `↑` and `↓` walk it from answer to answer (`←→`,
@@ -531,8 +530,7 @@ side changes with it.
 │    3  a file per day                      │ into it.                            │
 │    4  something else…                     │ then · one connection for both      │
 │                                           │ confidence · fairly sure            │
-╰─ ↑↓ choose · enter take it · esc later ─────────────────────────────────────────╯
-  o open full · c change · ? ask back · d you decide · 1–3 jump
+╰─ esc later · c other · ? clarify ─────────────────────────────────────────╯
 ```
 
 **Narrower than about a hundred columns there is no room for two**, so the same
@@ -556,7 +554,7 @@ sentence is a box drawn around nothing:
 ```
   ? publish the draft?  ▸1 publish it   2 hold it   3 ask Sam
     nobody has read it
-    ←→ choose · enter take it · esc later · c change · ? ask back
+    ←→ choose · enter take it · esc later · c other · ? clarify
 ```
 
 **A permission is always the panel**, because allowing a call means reading the
@@ -571,8 +569,7 @@ it.
 │   2  always, this tool (session)                                │
 │ ▸ 3  deny                                          safe answer  │
 │                                                                 │
-╰─ ↑↓ choose · enter take it · esc later ─────────────────────────╯
-  c change · ? ask back · 1–3 jump
+╰─ esc later · c other · ? clarify ─────────────────────────╯
 ```
 
 **Under sixty columns it is a bottom sheet** — every answer a full-width band a
@@ -598,23 +595,30 @@ presses that answer; nothing is ever cut at the edge of the panel except a note
 the screen has no room for. A click on any row of an answer presses it, and the
 row under the mouse lights up.
 
-## The two rows of keys
+## The keys on a decision box — esc, c other, ? clarify
 
-Every question spells its keys in one grammar: **the key, then what it does**,
-no brackets anywhere. The keys that ANSWER are written into the frame's bottom
-edge — `↑↓ choose · enter take it · esc later` — and the quieter ones stand on
-one dim row under the frame: `c change · ? ask back · o open full · d you decide
-· 1–4 jump`. When the frame is narrow that second row gives its keys up from the
-right.
+A framed decision ends with `esc later · c other · ? clarify` on its lower
+boundary. Only actions the question supports appear. There is no second hint
+row, ordinary message box or footer underneath it. The seam above keeps its
+model and telemetry but omits the duplicate question and `waiting · your call`
+text while this box is open. Folding it restores the conversation's controls.
 
-The line above the block never lists the answers: the panel is right there
-drawing them.
+Arrow keys and Tab still move through the options, wrapping from either end to
+the other. Scrolling over the box does the same; scrolling over the conversation
+still scrolls the conversation. Enter takes the selected answer and the numbered
+answer keys still work. These navigation keys need no separate hint.
+
+`c other` and `? clarify` work without first moving through the list. The brief
+settle guard still protects a newly appeared question from a keystroke already
+in flight. A draft already being typed keeps its keys.
+
+Full question pages and sets of questions keep their own navigation controls.
 
 ## Every key on a question
 
 The keys are one set, and a question only ever draws the ones it will actually
-take — nothing on the row does nothing, and nothing that does something is off
-the row.
+take — every displayed shortcut works, while navigation and additional commands
+remain available without being listed on a decision box.
 
 | key | what it does |
 | --- | --- |
@@ -624,8 +628,8 @@ the row.
 | `esc` | later. Nothing is cancelled — the question folds to one titled rule where it stood |
 | `space` | open a question that has been folded to its rule, while the box is empty |
 | `o` | open full: the page with everything the asker attached. It is not a key on the page itself — the page IS what it opens |
-| `c` | change — take an answer, but say what you want different. It moves the pointer to the `something else…` row carrying the answer you were on; on a question that asked for words it points the message box at the question instead |
-| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the question is still there to answer. On a question the model itself asked, the reply comes back while you are still deciding; on a permission, a task proposal or a standing card it reaches the model after you answer |
+| `c` | other — take an answer, but say what you want different. It moves the pointer to the `something else…` row carrying the answer you were on; on a question that asked for words it points the message box at the question instead |
+| `?` | clarify before answering. The row becomes `clarify: type your question, then enter · the question stays open`; the question is still there to answer. On a question the model itself asked, the reply comes back while you are still deciding; on a permission, a task proposal or a standing card it reaches the model after you answer |
 | `d` | you decide |
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
@@ -636,7 +640,8 @@ the row.
 On **tabs**, `enter` and the digits answer the question on screen and hold the
 answer until the review sends them all; `esc` puts the whole set off.
 
-**Typing is answering.** The box under the block stays live. While there are
+**Typing is answering.** A text field appears inside a framed decision when you
+type or choose `other` or `clarify`. While there are
 words in it every ordinary key belongs to the box, and pressing `enter` sends
 what you typed as your answer rather than as a message — on a question the
 conversation is waiting on. Only `esc` stays the question's.
@@ -1000,26 +1005,27 @@ Under eighty columns the table stacks: each answer gets its own heading with its
 readings underneath, because a column cut to nine characters is a column that
 lies. `x` again goes back to the answers.
 
-## Where do I type my answer — the box under the question, change and ask back, why typing did nothing
+## Where do I type my answer — other and clarify, why typing did nothing
 
-There is no separate typing place: **the message box under the question is where
-the words go**, and the block says what they will mean. With nothing pressed,
-what you type is a message to the conversation — and sending it **takes the
-question back**, because saying something else is a kind of answer (the next
-section). Press
-`c` first and the answers row turns into `change: say what you want different,
-then enter · it goes with 2 Adaptive · esc back` — now the box is the
-question's: every letter types (even `d`), `enter` sends the sentence together
-with the answer the pointer is on, and `esc` turns the row back into the keys
-without answering. Press `?` and the row says `ask back: type your question,
-then enter · the question stays open`: `enter` sends the question to the asker and
-the block is still above the box to answer afterwards. Its reply lands in the
-conversation when the work can read it — which, while the work is parked on this
-very question, is after you answer (see the limit under **Ask it something before
-I decide**).
+`c other` opens the question's `something else…` row when it has one. Otherwise
+it opens a text field inside the decision box, with `other: type your answer,
+then enter`. Your words correct the request; they do not approve a permission.
+For a model's choice, words may accompany the answer the pointer was on.
 
-If the row still shows the keys — `enter take it · esc later · …` — the box
-is the conversation's, and what you type there goes to the model as a message.
+`? clarify` opens a text field inside the same box, with `clarify: type your
+question, then enter · the question stays open`. Every letter types while the
+field is active; Enter sends it and Esc returns to the choices without answering.
+These shortcuts work before you navigate the list. Nothing is drawn below the
+box's lower boundary.
+
+On a question the model itself asked, its clarification can return while the
+question stays open. On a permission, task proposal or standing card, the words
+reach the model after the outstanding decision is answered. Clarify does not
+silently grant permission.
+
+Typing without choosing either shortcut still writes to the conversation; that
+text is shown inside the frame while the decision is open. Sending it follows
+the ordinary conversation routing described below.
 
 ## I typed instead of pressing a key — answering a question in my own words, talking past it
 

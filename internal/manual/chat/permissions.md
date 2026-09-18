@@ -19,8 +19,7 @@ answer:
 │   2  always, this command                                        │
 │ ▸ 3  deny                                           safe answer  │
 │                                                                  │
-╰─ ↑↓ choose · enter take it · esc later ──────────────────────────╯
-  c change · ? ask back · 1–3 jump
+╰─ esc later · c other · ? clarify ──────────────────────────╯
 ```
 
 The tool's own name and the wait mode are the aside in the top edge — ` · 7s`,
@@ -132,7 +131,7 @@ answers.
 │ ▸ 1  allow all 4                                                  │
 │   2  one by one                                                   │
 │   3  deny all                                       safe answer   │
-╰─ ↑↓ choose · enter take it · esc later ───────────────────────────╯
+╰─ esc later · c other · ? clarify ───────────────────────────╯
 ```
 
 - **`1 allow all 4`** gives every one of them its own `allow once`, in one go.
@@ -199,15 +198,14 @@ At about seventy columns and up it is drawn whole:
 │   2  always, this tool                                             │
 │ ▸ 3  deny                                             safe answer  │
 │                                                                    │
-╰─ ↑↓ choose · enter take it · esc later ────────────────────────────╯
-  c change · ? ask back · 1–3 jump
+╰─ esc later · c other · ? clarify ────────────────────────────╯
 ```
 
-The bottom edge carries exactly `↑↓ choose · enter take it · esc later` at every
-width and never gives any of it up: those three are the way in and the way out,
-and a frame with no way off it is the modal this block replaced. Everything else
-is on the dim row underneath, and **that** row is what gives way, dropped from
-the right: `1–3 jump` goes first, then `? ask back`, then `c change`.
+The bottom edge carries `esc later · c other · ? clarify`. Nothing is drawn
+under the box. `c` and `?` work before you move through the answers and open their
+text field inside it. Arrows, Tab and the wheel over the box cycle through the
+answers in both directions; Enter and the numbered answers still work. The seam
+omits its duplicate yellow decision text while the permission box is open.
 
 The command itself **wraps** rather than being cut, and says so with `…` if even
 the wrap was not enough. An answer is never dropped at any width: an offer with

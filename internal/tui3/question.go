@@ -1123,7 +1123,9 @@ func (a *app) questionRows(width int) []string {
 	// questionpanel.go's [app.questionPanelBody]. Agreed with lane A before
 	// either landed.)
 	if more := a.questionWaitingCount() - 1; more > 0 {
-		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
+		if _, panel := a.questionDialog(width); !panel {
+			out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
+		}
 	}
 	return out
 }
@@ -1756,11 +1758,7 @@ func (a *app) questionBeatKey(head questionShown, key string) (tea.Cmd, bool) {
 		a.setQuestionBeat(head, nil)
 		return nil, true
 	}
-	// THE SHAPES ARE WALKED AND TAKEN LIKE ANY OTHER ANSWERS, and they STOP at
-	// the ends rather than wrapping — this surface's law about a row of chips
-	// (subharness.go's [app.moveSubharnessAnswer] says why: a cursor that
-	// reappeared at the far end puts the widest shape under a key pressed to
-	// reach the narrowest).
+	// Shapes wrap like the options that opened this second choice.
 	switch key {
 	case "up", "left", "shift+tab":
 		a.moveQuestionBeat(head, head.beatAt-1)
@@ -1777,13 +1775,13 @@ func (a *app) questionBeatKey(head questionShown, key string) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// moveQuestionBeat walks the beat's cursor, clamped to the shapes there are.
+// moveQuestionBeat wraps the cursor around the available shapes.
 func (a *app) moveQuestionBeat(head questionShown, to int) {
 	open := a.questionHeld(head.token())
-	if open == nil || to < 0 || to >= len(open.beat) {
+	if open == nil || len(open.beat) == 0 {
 		return
 	}
-	open.beatAt = to
+	open.beatAt = (to + len(open.beat)) % len(open.beat)
 	a.touch()
 }
 
@@ -3090,7 +3088,9 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 	if cmd, taken := a.questionOptionKey(head, key); taken {
 		return cmd, true
 	}
-	if questionTextKey(key) && !a.questionHasTheHand(head.question) {
+	// The two advertised text doors work before navigation. Other letter
+	// commands still require intent, so an ordinary sentence cannot decide work.
+	if questionTextKey(key) && key != questionCommentKey && key != questionAskBackKey && !a.questionHasTheHand(head.question) {
 		// AND A VERB IS THE BOX'S UNTIL SOMEBODY AIMS AT THE BLOCK. The `d` at
 		// the head of "do the schema first" handed the call back to the asker and
 		// left the rest of the sentence in the box. Every key above this line
@@ -3206,9 +3206,9 @@ func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		open.pick = max(questionOtherAt(open.question)-1, 0)
 		open.other.with = ""
 	case "down", "tab":
-		// THE LIST ENDS HERE AND NOTHING WRAPS, which is this block's own rule at
-		// both ends of every list it draws.
-		return nil, true
+		// The custom answer is the last row of the same circular list.
+		open.pick = 0
+		open.other.with = ""
 	case "left", "ctrl+b":
 		box.left()
 	case "right", "ctrl+f":
@@ -3354,8 +3354,8 @@ func questionChangeCarriesThePointer(q session.Question) bool {
 // one fact the row exists to carry is that the box's next enter is the
 // question's and not the conversation's.
 const (
-	questionCommentKeyWord = "change: say what you want different, then enter"
-	questionAskBackKeyWord = "ask back: type your question, then enter"
+	questionCommentKeyWord = "other: type your answer, then enter"
+	questionAskBackKeyWord = "clarify: type your question, then enter"
 	questionWritingGap     = " · "
 )
 
@@ -3402,10 +3402,8 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 		}
 	}
 	if walk != 0 && a.questionWalkCount(head) > 1 {
-		to := head.pick + walk
-		if to >= 0 && to < a.questionWalkCount(head) {
-			a.moveQuestionPick(head, to)
-		}
+		count := a.questionWalkCount(head)
+		a.moveQuestionPick(head, (head.pick+walk+count)%count)
 		return nil, true
 	}
 	for at, option := range head.question.Options {

@@ -25,8 +25,7 @@ import (
 //	│   3  BoltDB        fastest reads · adds a dependency                 │
 //	│   4  something else…                                                 │
 //	│                                                                      │
-//	╰─ ↑↓ choose · enter take it · esc later ──────────────────────────────╯
-//	  c change · ? ask back · o open full · d you decide · 1–4 jump
+//	╰─ esc later · c other · ? clarify ───────────────────────────────────╯
 //
 // THE FIVE DECISIONS THE OWNER MADE, AND WHERE EACH ONE IS:
 //
@@ -38,9 +37,8 @@ import (
 //     right edge of the picked row, and the pointer opens on it — except where
 //     nobody but a person may answer, where the pointer opens on the answer that
 //     loses nothing and the pick keeps its mark ([questionPointerStart]).
-//   - TWO TIERS OF KEYS (pick A). The frame's bottom edge carries exactly the
-//     keys that answer; one dim row under the frame carries the rest, dropped
-//     right to left when the frame is narrow. Both come from the ONE key table.
+//   - ONE BOUNDARY OF KEYS. The bottom edge carries esc, c other and ? clarify.
+//     Navigation still works; no extra hint or composer stands below the frame.
 //   - YOUR OWN ANSWER IS A ROW (pick A). The last row is `something else…`, and
 //     the pointer on it turns it into a box you type in. There is no hidden
 //     `press c first`; `c` is a shortcut to that row.
@@ -107,20 +105,17 @@ func (a *app) questionPanelRows(q questionShown, width int) []string {
 	// would not fit into that edge: each of them puts the body one row further
 	// down the block. The marks are what a press resolves against, so the inside
 	// is told where it stands rather than left to guess.
-	rows, keyRow, keys := a.questionPanelInside(q, width, inner, 1+len(headRows), nil)
+	rows, keyRow, _ := a.questionPanelInside(q, width, inner, 1+len(headRows), nil)
+	aside := a.questionPanelAside(q, width)
+	if more := a.questionWaitingCount() - 1; more > 0 {
+		aside += a.pal.dim(questionKeyGap + itoa(more) + " more")
+	}
 	panel := framed{
 		title: title,
-		aside: a.questionPanelAside(q, width),
+		aside: aside,
 		keys:  keyRow,
 	}
 	out, _ := panel.draw(a.pal, width, append(headRows, rows...))
-	// AND THE SECOND TIER STANDS UNDER THE FRAME, dim, in the same grammar. It
-	// is not written into the bottom edge because the edge is for the keys that
-	// ANSWER: a row that mixed `esc later` with `D decide these from now on` was
-	// the owner's "no hierarchy in the hints".
-	if second := a.questionPanelSecond(q, keys, width); second != "" && q.writing == "" {
-		out = append(out, second)
-	}
 	return out
 }
 
@@ -154,12 +149,23 @@ func (a *app) questionPanelInside(q questionShown, width, inner, above int, edge
 		a.questionBands[i].row += above
 	}
 	keys = a.questionAnswerKeys(q, formsCard)
-	keyRow = a.questionKeyRow(q, append(append([]questionVerb{}, edge...), questionKeysOnTier(keys, keyPrimary)...), frameEdgeRoom(width))
+	visible := questionDialogKeys(keys)
+	if len(edge) > 0 {
+		visible = append(append([]questionVerb{}, edge...), questionKeysOnTier(keys, keyPrimary)...)
+	}
+	keyRow = a.questionKeyRow(q, visible, frameEdgeRoom(width))
 	if q.writing != "" {
 		// THE EDGE SAYS WHAT THE BOX MEANS while the composer is pointed at the
 		// question ([app.questionWritingRow]): every letter types, so an edge
 		// naming letters would be naming keys that do something else.
-		keyRow = a.pal.dim(fit(a.questionWritingRow(q), frameEdgeRoom(width)))
+		rows = append(rows, questionPanelGap+a.pal.dim(fit(a.questionWritingRow(q), inner-2)))
+		keyRow = a.pal.data("esc") + a.pal.dim(" back")
+	}
+	if len(edge) == 0 && a.questionPanelTyping(q) {
+		input, _, _ := a.inputBlock(inner - len(questionPanelGap))
+		for _, line := range input {
+			rows = append(rows, questionPanelGap+line)
+		}
 	}
 	return rows, keyRow, keys
 }
@@ -180,8 +186,7 @@ func (a *app) questionPanelBeat(q questionShown, above, inner int) (rows []strin
 		a.questionSpans[i].from++
 		a.questionSpans[i].to++
 	}
-	return []string{"", row, ""}, a.pal.data("1–"+itoa(len(q.beat))) + a.pal.dim(" shape") +
-		a.pal.dim(questionKeyGap) + a.pal.data(questionLaterKey) + a.pal.dim(" "+questionBeatBack), nil
+	return []string{"", row, ""}, a.pal.data(questionLaterKey) + a.pal.dim(" "+questionBeatBack), nil
 }
 
 // questionPanelEvidenced is the panel's body where its answers brought
@@ -213,8 +218,8 @@ func (a *app) questionPanelEvidenced(q questionShown, width, inner, headRows int
 }
 
 // questionPanelFrameRows is how many rows a panel draws around its body: the top
-// edge, the bottom edge, and the one dim row of keys under the frame.
-const questionPanelFrameRows = 3
+// edge and the bottom edge. Nothing is drawn below the panel.
+const questionPanelFrameRows = 2
 
 // questionPanelTall is the most rows a panel may take above the box.
 //

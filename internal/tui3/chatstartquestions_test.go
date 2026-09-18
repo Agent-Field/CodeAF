@@ -228,12 +228,12 @@ func TestAVisibleQuestionStillAnswersItsNumber(t *testing.T) {
 // back to the body the moment the page opens.
 func TestAWaitingPermissionDoesNotMakeTheStartPageRefuseSilently(t *testing.T) {
 	lab := questionUnderStart(t, consentAsk())
-	// SIXTY BY SIXTEEN IS THE REPRO ON THIS BRANCH: the panel is eleven rows and
-	// the chrome fifteen, so the body region with the block on it is exactly
-	// nothing. THE PRECONDITION IS ASSERTED AND NEVER SKIPPED — a test that
-	// stepped over its own repro would go green without running it, which is the
-	// shape of #576 said about one test instead of a suite.
+	// Keep the original zero-body repro after the decision's chrome shrinks.
 	lab.a.width, lab.a.height = 60, 16
+	for lab.a.viewHeight() > 0 && lab.a.height > roomyFloor {
+		lab.a.height--
+	}
+
 	if got := len(lab.rows()); got < 8 {
 		t.Fatalf("the fixture's permission is %d rows; this test is about a tall one", got)
 	}

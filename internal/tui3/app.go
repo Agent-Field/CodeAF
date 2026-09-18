@@ -3551,6 +3551,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
+		if a.questionDialogWheel(msg) {
+			return a, nil
+		}
 		// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on all seven places in the same
 		// cells, so a wheel answered by the place under it would scroll a list for

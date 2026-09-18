@@ -295,6 +295,8 @@ func TestQuestionScreens(t *testing.T) {
 // segment alone: the chip is only worth having if it survives the width ladder.
 func TestTheChipIsDrawnOnTheStatusRowWhereEveryPageCanSeeIt(t *testing.T) {
 	lab := newQuestionLab(t)
+	// A live conversation has a model; an unlabelled seam deliberately stays bare.
+	lab.a.model = "test/model"
 	lab.a.pal = newPalette(tokens.TrueColor, false)
 	lab.raise(consentAsk())
 	lab.tick(questionSettle)
