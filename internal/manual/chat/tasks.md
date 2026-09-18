@@ -330,12 +330,11 @@ memory above `task.min_free_mb` can hold and leaves the rest queued, each row re
 `waiting · machine busy`. Those begin by themselves as earlier pieces finish; there is
 nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
-What it will *not* do is watch them. Each landing arrives on its own and wakes the
-conversation, so once nothing is left that is independent of the work it handed out, the
-turn simply ends — a reply that sat there polling would have spent your money to learn
-what it was going to be told anyway. If the pieces share what they learn, they are one
-quick task's items instead, and they stay in order.
-
+What it will *not* do is watch them. Each landing writes one dim line in the
+conversation and does not start a turn, so once nothing is left that is independent of the
+work it handed out, the turn simply ends — a reply that sat there polling would have spent
+your money to learn what it was going to be told anyway. If the pieces share what they
+learn, they are one quick task's items instead, and they stay in order.
 ## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
 
 **Yes, under exactly the bounds every task is under.** A quick task's worker carries
@@ -1233,32 +1232,10 @@ reading every small reply cost a thinking-tier call on every message you sent: m
 was a third to a half of a small question's whole bill, and it almost never found anything
 left to do.
 
-**That short-reply exemption is only for a reply YOU typed.** A reply that started on its own —
-the turn a finished task's landing begins, the one *Why did the chat reply on its own* in *how
-tasks run* describes — is read for what remains **however short it was**. You are sitting in
-front of a reply you typed and can carry a small one on yourself; nobody is sitting in front of
-a woken one, so the cheapness that leaves your reply alone is exactly the reason not to leave
-that one alone. Measured, the best clean run of a ten-hour request had a task come home
-unfinished, the landing woke a reply, it read for six steps — under that first point — and
-stopped on "let me diagnose the failures systematically", and the run then sat idle for seven
-and a half of its ten hours. A woken reply that ends by **asking you** something is still left
-alone, and one that **broke** is still not read — those two endings hold for every reply.
-
-**And a woken reply is read against the request its result belongs to, not against the last
-thing you typed.** A reply that a landing started owes THAT work's request: the words you used
-when you asked for it, or — if you redirected the task in its room while it ran — the words you
-redirected it with, together with what the deliverable and the done-condition became. What you
-happened to ask about in between is not part of it, and neither is a question that was already
-answered. Measured: a build was delegated, a checksum question was asked and answered while it
-ran, and when the build landed the reader was handed the checksum question, said it had not
-been answered, and the reply repeated an answer already on the screen.
-
-**Several things landing at once keep several requests, in the order they arrived, and each one
-says where it came from.** A batch of reports is read against each of the targets behind it,
-oldest first, and a reply you typed into while work was out owes both: your words and whatever
-landed in it. Which is which matters — **your latest words are the authority**, and a task's
-line is only what THAT work was for, so a slow task landing after you have said something else
-does not overrule what you said.
+**A finished task starts no reply on its own.** Its landing writes one dim line in the
+conversation and does not start a turn. You can open its room and read the task's own report;
+what you happened to ask about in between is not part of it, and a slow task landing after you
+have said something else does not overrule what you said.
 
 **But a reply that CHANGED a file and then stopped is read however short it was.** The gate is
 what the reply left behind, not what it cost. If the last thing a reply did was save or edit
@@ -1333,19 +1310,10 @@ the running-long point moved the wait into a task whose done-condition nobody co
 
 **A task started for the message you just sent ends the reply, and nothing else does.** If the
 reply handed *this* request's work to a task and that task is queued or running, the reply
-stops there and is not read: the outcome is the task's to deliver, its landing wakes a reply
-here on its own, and *that* reply is read for what remains with the report in front of it. It
-is narrow on purpose — **anything you say after the handoff**, including a correction typed
-into the running reply, puts the reading back; and a task that has already **failed or
-finished** is news to answer rather than work to wait for.
-
-**What that says is who owes the outcome, not that it is finished.** Nothing is marked done and
-no done-condition is answered. A reply that hands one part of your message over and quietly
-drops another ends here too, and what catches that is the reading the landing brings — deferred,
-not skipped. The measured failure it fixes: "hand this work to a task, run the build and tell me
-the marker, keep the conversation free while it runs" was done exactly as asked, read as
-unfinished because the marker was not known yet, and carried on into polling the task it had
-just started and a watch over its own work.
+stops there and is not read: the outcome is the task's to deliver. When it lands, one dim
+line is written in the conversation and no turn starts. Anything you say after the handoff,
+including a correction typed into the running reply, puts the reading back.
+;337a
 
 ## Why does it say carry on — what carry on means, carried on, why does it say "carried on 3 times", the reply was pushed on, it argued with itself about something it had already answered, why does it say "saying it again would not change it"
 
@@ -1358,53 +1326,21 @@ that simply repeats the one before it never gets that far**: the second identica
 the reply straight away, because a thing said twice is not a second piece of evidence.
 
 **It is never carried on over its own running work.** A reply waiting on a task, a quick
-task, a background command or a watch it started is waiting, not unfinished; the ending it
-waits for wakes a new reply here on its own.
-
-**And a reply you did not type is left alone while any of its own tasks is still out.** A
-landing wakes a reply here, and that reply often has nothing to do but say so: one of two quick
-tasks is in, the other is still running. While a task or a quick task this conversation started
-is queued or running, that reply is not read and not carried on — what it is waiting for is the
-other landing, and that landing is what wakes it. **Your own words outrank this**: the moment
-you type or steer anything, the reply is read for what you asked exactly as it always was,
-whatever is still out, so a task from an earlier message excuses nothing you say. Measured on a
-real drive: a chat started two quick tasks, answered the first one's landing, and was then
-pushed on three times over the second — each push another reading and another `tasks` poll of
-the node that was about to report, each answered "still running, no gap to fix".
+task, a background command or a watch it started is waiting, not unfinished. A landing
+writes one dim line and does not start a reply here on its own.
 
 ## A settled task with green checks is not carried on as unfinished — it kept saying the ask was not finished over a done task, carried on 3 times then said unfinished
 
-**When the task that was this request comes home done and its own checks have passed, the
-reply that reports the landing is not carried on as unfinished.** The card already shows
-it done. The end-of-turn reader is looking at a short account of what was said, not at the
-tree or the checks that already ran, and a reader that answers "still not finished" over
-that card is not evidence — it is the same echo that used to carry a finished ask on three
-times and then tell you it was unfinished.
+**When the task that was this request comes home done and its own checks have passed, one dim
+line reports the landing.** The card already shows it done. No reply starts.
 
-**A piece of a larger ask is still read.** If the landing is one finished part and what you
-asked for is bigger, or the landing is incomplete, or nobody ran the task's own checks, that
-reply is still read for what remains, the way a cheap woken reply always is. The gate is the
-landing's own fact: this request, this task, done, checks green.
+**A piece of a larger ask still writes one dim line.** If the landing is one finished part and
+what you asked for is bigger, or the landing is incomplete, or nobody ran the task's own
+checks, no reply starts.
 
 **It is the other half of handing the work out.** While the task is queued or running, the
-reply that started it is not read. When it lands done with its checks green, the reply that
-reports it is not read either. What is in between — a failed landing, a landing nobody
-checked, a new sentence you typed after it — is still read.
+reply that started it is not read. When it lands, one dim line is written and no turn starts.
 
-**The same observation twice stops the reply, and that comes first.** If the reader's second
-look says exactly what its first look said about the same stopped reply, nothing moved — and
-raising it again only buys another answer to something the reply has already answered. So the
-reply ends there, on one dim line naming what repeated itself:
-
-```
-stopping here · nothing moved since the last look and what is left is the same — the missing zeta.txt has not been reported · saying it again would not change it
-```
-
-That is a **second** carry-on being refused, not the first: the observation is always put to
-the reply once. What it closes is a measured drive where a reply had correctly reported that a
-file did not exist, the reader claimed three times running that the missing file had not been
-reported, and the reply spent three turns explaining that the observation was mistaken — an
-argument you never typed a word into and read all of.
 
 **And a reader that keeps finding NEW things is carried on at most three times.** Three
 different readings are three pieces of evidence, so each one is believed; the fourth time the
