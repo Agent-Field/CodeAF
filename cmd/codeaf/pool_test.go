@@ -38,6 +38,18 @@ func poolClock(t *testing.T) func() time.Time {
 	return func() time.Time { return moment }
 }
 
+// seedDay is the day the embedded seed carries. It is read from the seed rather
+// than pinned, because the seed is regenerated from the relay and its day moves
+// with the pool — an expected figure, not a constant a test should freeze.
+func seedDay(t *testing.T) string {
+	t.Helper()
+	seed, err := index.SeedIndex()
+	if err != nil {
+		t.Fatalf("the embedded seed does not parse: %v", err)
+	}
+	return seed.Generated().Format("2006-01-02")
+}
+
 // noEnv is an environment in which nothing is set, handed in the way the verb
 // reads the world, so a test's answer cannot depend on the machine's shell.
 func noEnv(string) (string, bool) {
@@ -149,7 +161,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 		"mirror https://raw.githubusercontent.com/Agent-Field/CodeAF/model-pool/pool/index.json · default",
 		"submit https://codeaf.agentfield.ai/pool/v1/rows · default",
 		"ttl 1d · default",
-		"no index cached yet · built-in seed of 2026-09-17",
+		"no index cached yet · built-in seed of " + seedDay(t),
 		"own sheet: none",
 	} {
 		if !strings.Contains(body, want) {
@@ -955,7 +967,7 @@ func TestPoolIndexForIgnoresAnUnparsableCache(t *testing.T) {
 	dir := t.TempDir()
 	writePoolDoc(t, dir, "{ this is not a document")
 	held := poolIndexFor(dir, poolcfg.Resolve("", "", noEnv), poolClock(t))()
-	if held == nil || held.Generated().Format("2006-01-02") != "2026-09-17" {
+	if held == nil || held.Generated().Format("2006-01-02") != seedDay(t) {
 		t.Fatalf("an unparsable cache did not fall back to the seed: %v", held)
 	}
 }
@@ -1045,7 +1057,7 @@ func TestPoolShowJSONWithNoCacheReportsTheSeed(t *testing.T) {
 	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
 		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
 	}
-	if answer.Index == nil || answer.Index.Source != "seed" || answer.Index.Generated != "2026-09-17" {
+	if answer.Index == nil || answer.Index.Source != "seed" || answer.Index.Generated != seedDay(t) {
 		t.Fatalf("the seed was not reported: %+v", answer.Index)
 	}
 }
