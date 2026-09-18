@@ -151,6 +151,9 @@ Type to filter. The keys:
 | tab, ← | close them again, back on the model |
 | enter | switch to the row under the cursor — or, on an open provider, pin it — and **leave the list up** |
 | esc | close it; what enter already did stays done |
+| alt+s, alt+shift+s | order the list by the next column, and turn that column round |
+
+## Why left and right arrows do the wrong thing in the model picker — the caret and the providers share one pair of keys
 
 `→` and `←` belong to the providers **unless you are mid-typing**, where they move the caret
 through the filter instead. Mid-typing means within 0.6 seconds of the last change to the box,
@@ -3044,6 +3047,43 @@ row itself carries the figures; a sentence under the cursor used to repeat them 
 and say where they came from, and it is gone — it said the row's own three numbers a second
 time, under a name the row had just written, and cost the open fold a line on every move
 of the cursor.
+
+## Sorting the model list by a column — alt+s, cheapest first, biggest window, highest score
+
+**`alt+s` orders the list by the next column. `alt+shift+s` turns that column round.**
+
+The cycle starts and ends at the list's own order, so one more press always gets you
+back:
+
+```
+list → model → first → in/M → out/M → window → t/s → elo → list
+```
+
+**The first press of a column is the way that column is asked about.** Cheapest first for
+`in/M` and `out/M`, quickest first for `first`, biggest first for `window`, fastest for
+`t/s`, highest for `elo`, A to Z for `model`. Nobody opens a price column to find the most
+expensive model, so the useful order is never two presses away. `alt+shift+s` is there for
+the other half.
+
+**The sorted column wears an arrow in the heading** — `out/M ↓`, and `↑` when it is turned
+round. The foot names the key (`alt+s sort`) and not the column, because the heading is
+already saying which column it is.
+
+Three things worth knowing:
+
+- **A column this list published nothing in is skipped.** With no providers measured yet
+  there is no `first` and no `t/s` column, so the cycle steps over them rather than
+  stopping on a press that changes nothing you can see.
+- **Rows that published nothing sort to the bottom, both ways round.** A model with no
+  price is not the cheapest one, and turning the column round does not make it the dearest:
+  it is not in the comparison at all.
+- **A sorted list drops the service headings** and the cursor goes to the top row, because
+  the top row is the answer to the question you just asked. It sorts whatever the filter
+  kept, so `deep` then `alt+s` is the deepseek rows in that column's order.
+
+This is where the filter box's `fast` and `cheap` went. They sorted the list too, and the
+problem with them was never sorting — it was that a word typed into a name box is an
+undiscoverable way to ask for it, and that two words were two opinions about six columns.
 
 ## You cannot filter the picker by speed, price or capability — @cloudflare, <1s, >50t/s, $<0.3, fast, cheap
 

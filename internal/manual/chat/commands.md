@@ -949,6 +949,11 @@ each rung used only when the one above it came back empty after filtering:
 3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
    `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
 
+**`alt+s` orders the list by the next column** and `alt+shift+s` turns that column round —
+`list → model → first → in/M → out/M → window → t/s → elo`, skipping the columns this list
+published nothing in, with the arrow on the sorted column's heading (the *models and cost*
+page, "Sorting the model list by a column").
+
 Filtering is over the model's **name** and nothing else. It splits your text on whitespace
 and every token must match, each in one of three tiers: prefix, then substring, then
 subsequence. So `ds v4` finds `deepseek/deepseek-v4-flash` and `claude 4.5` finds

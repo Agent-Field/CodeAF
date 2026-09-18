@@ -89,6 +89,9 @@ type picker struct {
 	// lanes is what was believed about that model's lanes at the moment it was
 	// opened, in the order they are drawn in.
 	lanes []laneView
+	// sort is which column the list is ordered by, and the zero value is the
+	// list's own order ([pickerSortKey] and pickersort.go's laws).
+	sort pickerSort
 	// typed is when the filter box last changed under somebody's hands, and it is
 	// what tells EDITING from NAVIGATING ([picker.editing]). Zero is "nothing has
 	// been typed into this list", which is navigating: there is no text to put a
@@ -394,6 +397,10 @@ func (p *picker) rank() {
 			return p.score[p.hits[a]] < p.score[p.hits[b]]
 		})
 	}
+	// AND THE SORT COMES LAST, over whatever the name ranking left — so `deep`
+	// then a press of the sort key is the deepseek rows by price, rather than the
+	// cheapest rows that happen to say deep (pickersort.go).
+	p.sortHits()
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose.
 	p.cursor, p.top = 0, 0
@@ -402,7 +409,14 @@ func (p *picker) rank() {
 	// cursor goes back to where it opened: on the model in use. Emptying the
 	// box with ctrl+u used to leave it on row zero, which made the enter that
 	// followed a switch to whatever sorted first.
-	if len(tokens) == 0 {
+	//
+	// UNLESS THE LIST HAS BEEN SORTED, WHERE THE TOP IS THE ANSWER. Somebody who
+	// ordered by price asked which model is cheapest, and that is row one — going
+	// to the model in use instead shows them their own row's neighbourhood, which
+	// is the one part of a sorted list that has nothing to do with what they
+	// asked. It made reversing a column look like it had done nothing at all: the
+	// order changed underneath and the window stayed around the same cursor.
+	if len(tokens) == 0 && p.sort.key == pickerByList {
 		p.cursorToCurrent()
 	}
 }
@@ -947,6 +961,23 @@ func (p *picker) editing() bool {
 // which is where this list spends most of its life, that is every press.
 func (p *picker) foldKey(name string) bool {
 	switch name {
+	// ── THE SORT IS THE LIST'S KEY AND NOT A DOOR'S ─────────────────────────
+	//
+	// It is read here, with the fold's keys, for [picker.foldKey]'s own reason:
+	// there are four doors onto this list and an order that could be changed from
+	// one of them and not the others would be four lists again. It is read BEFORE
+	// the filter box because `alt+s` is not text — the chord exists so that a bare
+	// `s` stays the commonest first letter a person types into this box
+	// (taskstable.go argues it for the tasks page's filter, and the argument is
+	// the same one here).
+	case tasksSortKeyChord:
+		p.sortBy(p.nextSort())
+		return true
+	case tasksSortBackChord:
+		// THE SAME COLUMN AGAIN TURNS IT ROUND ([pickerSort.on]), which is what
+		// this chord means on the tasks page and therefore what it means here.
+		p.sortBy(p.sort.key)
+		return true
 	case "tab":
 		if !p.unfoldHere() {
 			p.foldHere()
@@ -1780,6 +1811,13 @@ func (p *picker) groupBefore(at int) string {
 	if at < 0 || at >= len(p.list) || p.list[at].lane != laneNone {
 		return ""
 	}
+	// A SORTED LIST IS NOT GROUPED. The rows are in a column's order now, so a
+	// service's name over a run of them would be a claim about the structure that
+	// stopped being true — and with the services interleaved it would be drawn
+	// again on nearly every row, which is a heading per row and a wall.
+	if p.sort.key != pickerByList {
+		return ""
+	}
 	model := p.all[p.hits[p.list[at].hit]]
 	if model.Group == "" {
 		return ""
@@ -2077,33 +2115,49 @@ func (p *picker) tableFit(width int) colTableFit {
 	if phoneList(width) {
 		return colTableFit{}
 	}
-	if p.columns == nil {
-		table, pin := newColTable(modelColumns, 0), p.pinnedLane()
-		for _, model := range p.all {
-			// A NOTICE IS NOT A MODEL. An unavailable service's row carries a
-			// sentence where an id would be and draws no facts at all, so
-			// measuring it would widen columns for a row that uses none of them.
-			if model.Unavailable {
-				continue
-			}
-			// THE PIN IS THIS CONVERSATION'S ROW ALONE ([picker.rowText] says
-			// why), and it rides into the measurement because a column measured
-			// without it would be one machine's name too narrow for the one row
-			// that matters most.
-			held := ""
-			if model.ID == p.current {
-				held = pin
-			}
-			table.add(p.rowCells(model, held), nameAsk(model))
-		}
-		p.columns = &table
-		p.fitAt = 0
-	}
+	p.measure()
 	if p.fitAt != width {
-		p.fitted, p.fitAt = p.columns.fit(width), width
+		p.fitted, p.fitAt = p.columns.fit(width, p.sort.column(), p.sort.arrow()), width
 		p.fitted.name0 = modelHead
 	}
 	return p.fitted
+}
+
+// measure builds this list's column measurement, once, and is what every question
+// about the columns goes through.
+//
+// IT IS SEPARATE FROM THE FIT BECAUSE IT IS NOT ABOUT THE FRAME. The measurement
+// is over the rows and answers "what did this catalog publish"; the fit is over a
+// width and answers "what fits". They were one function, and the join meant a
+// question that needs only the measurement could not be asked until a frame had
+// been drawn — which is exactly what the sort cycle needs
+// ([picker.sortable]): it skips the columns nobody filled, and before the first
+// draw it could not tell, so a key pressed then walked onto a rung that ordered
+// nothing. A phone draws no table at all and still has a list to sort.
+func (p *picker) measure() {
+	if p.columns != nil {
+		return
+	}
+	table, pin := newColTable(modelColumns, 0), p.pinnedLane()
+	for _, model := range p.all {
+		// A NOTICE IS NOT A MODEL. An unavailable service's row carries a
+		// sentence where an id would be and draws no facts at all, so measuring
+		// it would widen columns for a row that uses none of them.
+		if model.Unavailable {
+			continue
+		}
+		// THE PIN IS THIS CONVERSATION'S ROW ALONE ([picker.rowText] says why),
+		// and it rides into the measurement because a column measured without it
+		// would be one machine's name too narrow for the one row that matters
+		// most.
+		held := ""
+		if model.ID == p.current {
+			held = pin
+		}
+		table.add(p.rowCells(model, held), nameAsk(model))
+	}
+	p.columns = &table
+	p.fitAt = 0
 }
 
 // laneFit is the providers' own table, measured over the machines of the model
@@ -2122,7 +2176,12 @@ func (p *picker) laneFit(width int) colTableFit {
 		for _, view := range p.lanes {
 			table.add(laneCells(view), ansi.StringWidth(strings.ToLower(view.Name)))
 		}
-		p.lanesFitted = table.fit(width)
+		// THE PROVIDERS' TABLE CARRIES NO ARROW. `alt+s` orders the MODELS; the
+		// machines inside a fold are already in one order nobody chose
+		// (alphabetical, [picker.unfoldAt]) and there are never more of them than
+		// fit on a screen, which is the whole reason the model list needed a sort
+		// and this one does not.
+		p.lanesFitted = table.fit(width, colTableNoMark, "")
 		p.lanesFitted.name0 = laneHead
 		p.lanesFitAt, p.lanesFor = width, p.unfold
 	}
@@ -2360,6 +2419,14 @@ func (p *picker) keysParts() (string, string, string) {
 	if p.editing() && p.filter.cursor < len(p.filter.value) {
 		open = "tab providers"
 	}
+	// AND THE SORT IS NAMED WHEREVER THE TABLE IS DRAWN, because it is the LIST's
+	// key rather than the cursor's — the same reason the refresh key is in the
+	// placeholder and not here. It names the KEY and not the column, which is
+	// taskstable.go's ruling and its measurement: `alt+s sort: out/M` cost the
+	// five cells that made the foot drop this clause and the one beside it at a
+	// hundred columns, and which column the list is on is already drawn, on the
+	// heading, wearing the arrow.
+	sorts := tasksSortKeyChord + " sort"
 	switch {
 	case !ok:
 		return "", "switch", ""
@@ -2367,7 +2434,7 @@ func (p *picker) keysParts() (string, string, string) {
 		// A LIST WITH NO FOLD STILL DIALS THE RUNG, because the level is the
 		// door's and not the router's: a task's model list holds one, and the
 		// foot is the only place the key is named.
-		return effortKeyWord, "switch", ""
+		return dotted(effortKeyWord, sorts), "switch", ""
 	case unpin:
 		return "", "unpin", back
 	case row.lane == laneRoutAt && !p.machines && len(p.lanes) > 0:
@@ -2379,7 +2446,7 @@ func (p *picker) keysParts() (string, string, string) {
 	case row.lane != laneNone:
 		return "", "choose", back
 	}
-	return dotted(open, effortKeyWord), "switch", ""
+	return dotted(open, effortKeyWord, sorts), "switch", ""
 }
 
 // ── the app's side of the overlay ───────────────────────────────────────────

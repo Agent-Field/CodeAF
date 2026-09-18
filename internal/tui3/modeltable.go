@@ -321,7 +321,28 @@ type colTableFit struct {
 	// name0 is the head over the name column: `model` on the model list, the
 	// provider list's own word inside a fold.
 	name0 string
+	// mark is the column whose head wears the sort arrow — an index into cols, or
+	// [colTableNameMark] for the name column, or [colTableNoMark] for a list
+	// nobody has sorted. arrow is the character it wears.
+	//
+	// IT IS IN THE FIT AND NOT IN THE HEADER because the arrow takes CELLS, and
+	// cells are what a fit is. A head that grew two cells wide after the columns
+	// were budgeted would push the block past the measure and take its right edge
+	// with it — and every row on this surface is right-aligned inside that edge,
+	// so one over-wide heading moves the whole table sideways from the heading
+	// down. Measured here, the column is simply two cells wider and every row in
+	// it still lines up.
+	mark  int
+	arrow string
 }
+
+// colTableNoMark and colTableNameMark are the two mark values that are not a
+// column index: no arrow anywhere, and the arrow on the name column, which is
+// drawn from [colTableFit.name0] rather than out of cols.
+const (
+	colTableNoMark   = -1
+	colTableNameMark = -2
+)
 
 // varies reports whether a column said two different things anywhere on this
 // list.
@@ -364,7 +385,7 @@ func (f colTableFit) drawn() bool { return len(f.at) >= modelTableLeast }
 // Every row shows the same columns from the top, so a blank never has to be
 // read as "it did not fit" and the ranking is the only thing that decides what
 // a narrow frame loses.
-func (t colTable) fit(width int) colTableFit {
+func (t colTable) fit(width int, mark int, arrow string) colTableFit {
 	room := width - 2
 	// THE TABLE STOPS TRAVELLING RIGHT AT THE MEASURE, exactly as every other
 	// label/tail pair on this surface does and for [overlayMeasure]'s reason:
@@ -372,7 +393,7 @@ func (t colTable) fit(width int) colTableFit {
 	if room > overlayMeasure {
 		room = overlayMeasure
 	}
-	fit := colTableFit{cols: t.cols, indent: t.indent, room: room}
+	fit := colTableFit{cols: t.cols, indent: t.indent, room: room, mark: mark, arrow: arrow}
 	for at := range t.cols {
 		// LAW 4: a column nobody published is not a narrow column, it is no
 		// column. A list where nothing has been measured draws no `via`, no
@@ -389,7 +410,7 @@ func (t colTable) fit(width int) colTableFit {
 			continue
 		}
 		wide := t.wide[at]
-		if head := ansi.StringWidth(t.cols[at].head); head > wide {
+		if head := ansi.StringWidth(fit.headAt(at)); head > wide {
 			wide = head
 		}
 		fit.at = append(fit.at, at)
@@ -412,7 +433,26 @@ func (t colTable) fit(width int) colTableFit {
 		fit.at = fit.at[:len(fit.at)-1]
 		fit.wide = fit.wide[:len(fit.wide)-1]
 	}
-	return colTableFit{cols: t.cols, indent: t.indent, room: room}
+	return colTableFit{cols: t.cols, indent: t.indent, room: room, mark: mark, arrow: arrow}
+}
+
+// headAt is one column's heading as it will be DRAWN: its word, and the sort
+// arrow after it on the one column the list is ordered by. It is asked once while
+// the column is being measured and once while it is being drawn, so the two
+// cannot disagree about how wide the word is.
+func (f colTableFit) headAt(at int) string {
+	if at != f.mark || f.arrow == "" {
+		return f.cols[at].head
+	}
+	return f.cols[at].head + " " + f.arrow
+}
+
+// nameHead is the same for the NAME column, whose head is not in cols.
+func (f colTableFit) nameHead() string {
+	if f.mark != colTableNameMark || f.arrow == "" {
+		return f.name0
+	}
+	return f.name0 + " " + f.arrow
 }
 
 // row is one model's facts as the tail the list draws — every drawn column, in
@@ -449,15 +489,16 @@ func (f colTableFit) header() string {
 	if !f.drawn() {
 		return ""
 	}
-	gap := f.room - f.indent - ansi.StringWidth(f.name0) - f.facts - f.pad
+	name0 := f.nameHead()
+	gap := f.room - f.indent - ansi.StringWidth(name0) - f.facts - f.pad
 	if gap < rowGutter {
 		gap = rowGutter
 	}
 	heads := make([]string, len(f.cols))
 	for _, at := range f.at {
-		heads[at] = f.cols[at].head
+		heads[at] = f.headAt(at)
 	}
-	return "  " + strings.Repeat(" ", f.indent) + f.name0 + strings.Repeat(" ", gap) + f.row(heads)
+	return "  " + strings.Repeat(" ", f.indent) + name0 + strings.Repeat(" ", gap) + f.row(heads)
 }
 
 // padCell sets one value inside its column: to the right for a figure, to the

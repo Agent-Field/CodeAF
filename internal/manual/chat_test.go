@@ -271,6 +271,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the left arrow move my cursor instead of closing the providers", "models-and-cost"},
 		{"left and right arrows do the wrong thing in the model picker", "models-and-cost"},
 		{"how do I get back to editing the filter after the arrows started navigating", "models-and-cost"},
+		// AND THE SORT, asked by somebody who wants the thing the old filter words
+		// used to do and by somebody who pressed the key and wants to know what the
+		// arrow in the heading means.
+		{"how do I sort the model list by price", "models-and-cost"},
+		{"sort models by context window", "models-and-cost"},
+		{"what does the arrow in the model picker heading mean", "models-and-cost"},
+		{"can I order the model list cheapest first", "models-and-cost"},
+		{"alt+s in the model picker", "models-and-cost"},
 		{"can I change the model while it is replying", "models-and-cost"},
 		{"does switching the model take effect now or later", "models-and-cost"},
 		{"I changed the model in the middle of an answer", "models-and-cost"},

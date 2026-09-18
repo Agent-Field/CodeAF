@@ -1472,7 +1472,14 @@ rows) · `tab` and `→` open the providers under the model the cursor is on and
 cursor into them, `tab` and `←` close them and put it back on the model ·
 `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
-`home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · anything else types into it.
+`home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · **`alt+s`** orders the list by the next
+column and **`alt+shift+s`** turns that column round · anything else types into it.
+
+`alt+s` walks `list → model → first → in/M → out/M → window → t/s → elo` and back to
+`list`, skipping any column this list published nothing in. The sorted column wears `↓` or
+`↑` in the heading. It is a chord and not a bare `s` for the reason the tasks place gives:
+`s` is one of the commonest letters a filter starts with, and the list a person was
+narrowing would re-sort instead.
 
 `→` and `←` are the providers' keys **unless you are in the middle of typing**, in which case
 they move the caret through the filter text. "In the middle of typing" means within **0.6
