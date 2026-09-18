@@ -244,9 +244,6 @@ func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 		return "done"
 	}
 	long := width >= 90
-	if long && row.Failed > 0 {
-		return itoa(row.Done) + " of " + itoa(row.Total) + railSep + itoa(row.Failed) + " failed"
-	}
 	cells := 0
 	switch {
 	case width >= 60:
@@ -257,14 +254,24 @@ func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 	if row.Total <= 10 && cells > row.Total {
 		cells = row.Total
 	}
+	// THE FAILURES STAND AT THE ROW'S END, their share of the cells rounded up so
+	// that one failure in a hundred is still one cell, and never at the frontier:
+	// laid after the finished work they took the cell where the running mark
+	// belongs, and one failure in fourteen tasks straddled two cells.
+	failedCells := 0
+	if row.Failed > 0 && cells > 0 {
+		failedCells = (row.Failed*cells + row.Total - 1) / row.Total
+		if failedCells >= cells {
+			failedCells = cells - 1
+		}
+	}
 	var dots strings.Builder
 	for cell := 0; cell < cells; cell++ {
 		lo, hi := cell*row.Total, (cell+1)*row.Total
 		doneAt := row.Done * cells
-		failedLo, failedHi := row.Done*cells, (row.Done+row.Failed)*cells
 		id := tokens.GEmptyCell
 		switch {
-		case row.Failed > 0 && lo < failedHi && hi > failedLo:
+		case cell >= cells-failedCells:
 			id = tokens.GFailedCell
 		case hi <= doneAt:
 			id = tokens.GDoneCell
@@ -276,7 +283,13 @@ func planProgress(row session.PlanTaskRow, width int, pal palette) string {
 	count := itoa(row.Done) + "/" + itoa(row.Total)
 	if long {
 		count = itoa(row.Done) + " of " + itoa(row.Total)
-		if row.Running > 0 {
+		// A FAILURE IS SAID IN WORDS AND DRAWN IN ITS CELL, both. The words used
+		// to replace the dot row outright, so the one run a person most needs to
+		// see at a glance was the one drawn with no picture at all.
+		switch {
+		case row.Failed > 0:
+			count += railSep + itoa(row.Failed) + " failed"
+		case row.Running > 0:
 			count += railSep + itoa(row.Running) + " running"
 		}
 	}
@@ -510,6 +523,41 @@ func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
 		strings.Repeat(" ", room-titleWidth-tailWidth) + pal.dim(tail)
 }
 
+// planRailDotsUnder is the rail width under which the run's dot row stands on a
+// line of its own: the width tier at which [planProgress] stops drawing cells.
+const planRailDotsUnder = 40
+
+// planRailDots is the run's dot row on a line of its own, under the run's title,
+// on a rail too narrow to carry it at the title's end.
+//
+// THE PICTURE IS THE POINT OF THE ROW. At the rail's ordinary width the tiers
+// leave the run's row a bare `8/14`, which is a figure somebody has to read; the
+// cells are the thing seen without reading, so where they cannot share the
+// title's line they take the next one, all ten of them, and the title keeps its
+// own line whole.
+func planRailDots(line tasksLine, width int, pal palette) string {
+	plan := line.item.plan
+	if plan == nil || plan.Total <= 1 || width >= planRailDotsUnder || planRailFolded(line.item) {
+		return ""
+	}
+	if plan.Done == plan.Total && plan.Failed == 0 {
+		return ""
+	}
+	pad := line.underKin
+	if pad == "" {
+		pad = strings.Repeat(" ", ansi.StringWidth(line.kin))
+	}
+	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
+	room := width - ansi.StringWidth(planRailLead+pad) - taskSheetPhoneIndent
+	// The sixty-column tier is ten cells and `N/M`; the forty-column one is five.
+	for _, tier := range []int{60, 40} {
+		if dots := planProgress(*plan, tier, pal); ansi.StringWidth(dots) <= room {
+			return lead + pal.dim(dots)
+		}
+	}
+	return ""
+}
+
 // planRailLive is the one line a plan row with a step in flight spends under
 // its own: the running glyph, the shell lead and the command — and nothing
 // else. The steps and the money that stand under it on the tasks page
@@ -522,7 +570,10 @@ func planRailLive(line tasksLine, width int, pal palette) string {
 	// THE UNDER-LINE WEARS THE PAD KIN AND NOT THE CONNECTOR, which is the same
 	// choice the page's own under-block made ([tasksReading.lay]): a connector
 	// says another row of the tree, and this line belongs to the one above it.
-	pad := strings.Repeat(" ", ansi.StringWidth(line.kin))
+	pad := line.underKin
+	if pad == "" {
+		pad = strings.Repeat(" ", ansi.StringWidth(line.kin))
+	}
 	lead := planRailLead + pal.dim(pad) + strings.Repeat(" ", taskSheetPhoneIndent)
 	room := width - ansi.StringWidth(planRailLead+line.kin) - taskSheetPhoneIndent
 	if room < 1 {
@@ -576,7 +627,7 @@ func planRailTail(item tasksItem, width int, pal palette, now time.Time) string 
 		return ""
 	}
 	var parts []string
-	if item.plan.Total > 0 {
+	if item.plan.Total > 0 && width >= planRailDotsUnder {
 		if progress := planProgress(*item.plan, width, pal); progress != "" {
 			parts = append(parts, progress)
 		}

@@ -701,6 +701,18 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		if s.inFlight >= s.slots {
 			return
 		}
+		// THE WOKEN-PARENT LAW: every non-root launch holds the task under its
+		// own agent id, so wait and done work identically on a first turn and a wake.
+		//
+		// A CLAIM THE STORE REFUSES DOES NOT CANCEL THE WAKE. A parent that is
+		// never woken holds its family open until the wall, which is worse than
+		// one launched as it was before this law: it can still answer in words,
+		// and the run closes it on that.
+		if task.ID != rootID && task.ClaimedBy == "" {
+			if claimed, err := s.store.ClaimWake(task.ID, task.ID, s.Owner); err == nil {
+				task = *claimed
+			}
+		}
 		s.wakes[task.ID]++
 		s.reported[task.ID] = childIDs(tasks, task.ID)
 		s.launch(ctx, task, wakeClause(tasks, task))
@@ -754,6 +766,13 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 		woken, err := s.store.Wake(task.ID)
 		if err != nil {
 			continue
+		}
+		// The park flag is already cleared, so a refused claim still launches:
+		// see [Supervisor.launchWakes] for why a wake is never dropped on it.
+		if task.Composite && task.ID != rootID {
+			if claimed, err := s.store.ClaimWake(task.ID, task.ID, s.Owner); err == nil {
+				woken = claimed
+			}
 		}
 		if task.Composite {
 			// A WAIT RELAUNCH OF A COMPOSITE IS A WAKE AND IS COUNTED AS ONE:
@@ -1079,17 +1098,20 @@ func (s *Supervisor) releaseStale() {
 }
 
 // endCancelledWorkers ends the context of every running worker whose task
-// the store has ended out from under it. The store's cancel writes the
-// ending under the task and everything under it and releases the claim in
-// the same write — ClaimedBy goes with the cancelled row, and a Release
-// against a cancelled task is refused — so the part left to the loop is the
-// context: cancelled here, the worker stops at its next step, and the return
-// it makes afterwards is dropped whole in absorb. The ancestor walk is the
-// belt over a row this handle read before the ending landed.
+// the store has ended out from under it. A failure or cancellation written by
+// somebody else is the task's terminal word; the loop cancels the context on
+// its next pass, frees the slot when the worker returns, and absorb preserves
+// that word instead of writing the late return over it. The ancestor walk is
+// the belt over a row this handle read before a cancellation landed.
 func (s *Supervisor) endCancelledWorkers() {
 	for id, cancel := range s.cancels {
 		task := s.store.Task(id)
-		if task == nil || task.Status == plandb.StatusCancelled || s.hasCancelledAncestor(*task) {
+		// FAILED AND CANCELLED, NEVER DONE. A worker that finishes writes its own
+		// `done` and then returns; a pass landing between the two would cancel a
+		// worker that ended well, its return would carry the cancellation as an
+		// error, and absorb would skip the review round on work that completed.
+		ended := task != nil && (task.Status == plandb.StatusCancelled || task.Status == plandb.StatusFailed)
+		if task == nil || ended || s.hasCancelledAncestor(*task) {
 			cancel()
 			delete(s.cancels, id)
 		}
