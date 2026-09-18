@@ -31,10 +31,13 @@ import (
 //
 //   - A live remote. The push never runs here; the test pins the decision
 //     that stood in front of it, not the push itself.
-//   - The task classifier at head.go's consequenceGated — the v1 resident's
-//     road. internal/session imports internal/head nowhere, so nothing on the
-//     chat road classifies a bash command by verb; that is a different
-//     product's road and this fix does not wire it up.
+//   - The resident's CONSEQUENCE classifier (internal/head/head.go:1123's
+//     consequenceGated, consulted from that head's own tool road at
+//     internal/head/bash.go:214) — the v1 resident's road, a different product.
+//     internal/session imports internal/head in no non-test file, so it never
+//     sees a chat door's tool call. The chat road's only verb reading is the
+//     guard's own firstBranchMover (taskgit.go), which reads push/merge/rebase
+//     and nothing about consequence; this fix does not wire that head up.
 //   - The git guard's principal gate (taskgit.go's whoseCopy) still leaves a
 //     [Person]-headed session unguarded ON PURPOSE — taskgit_test.go's own rows
 //     assert that. The fix is the NARROWER third register beside it
