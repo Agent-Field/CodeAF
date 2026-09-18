@@ -60,10 +60,11 @@ type Index struct {
 	minInstalls int
 	judges      []string
 	rubrics     map[string]int
-	// metrics holds the declared names as spelled; kinds and dims are keyed by
-	// the folded name every lookup arrives under.
+	// metrics holds the declared names as spelled; kinds, units and dims are
+	// keyed by the folded name every lookup arrives under.
 	metrics map[string]string
 	kinds   map[string]string
+	units   map[string]string
 	dims    map[string]map[string]bool
 	// aliases maps a folded, ~-stripped id to the canonical id as the document
 	// spells it. The canonical id is in the map under its own folded form.
@@ -124,6 +125,7 @@ type document struct {
 
 type metricDecl struct {
 	Kind string   `json:"kind"`
+	Unit string   `json:"unit"`
 	Dims []string `json:"dims"`
 }
 
@@ -167,6 +169,7 @@ func parse(data []byte) (*Index, error) {
 		rubrics:     d.Rubrics,
 		metrics:     map[string]string{},
 		kinds:       map[string]string{},
+		units:       map[string]string{},
 		dims:        map[string]map[string]bool{},
 		aliases:     map[string]string{},
 		cells:       map[string]map[string]Cell{},
@@ -196,6 +199,9 @@ func parse(data []byte) (*Index, error) {
 		}
 		if _, seen := x.kinds[folded]; !seen {
 			x.kinds[folded] = fold(decl.Kind)
+		}
+		if _, seen := x.units[folded]; !seen {
+			x.units[folded] = fold(decl.Unit)
 		}
 		dimset := map[string]bool{}
 		for _, dim := range decl.Dims {
@@ -394,6 +400,27 @@ func (x *Index) Metrics() []string {
 func (x *Index) Kind(metric string) (string, bool) {
 	kind, ok := x.kinds[fold(metric)]
 	return kind, ok
+}
+
+// Unit answers with the unit word the document spells for the metric,
+// lowercased, whether or not this build knows it. A metric that spells no
+// unit, and a name the document does not declare, answer empty.
+func (x *Index) Unit(metric string) string {
+	return x.units[fold(metric)]
+}
+
+// Dims answers with the metric's declared dims beyond role and model,
+// sorted. Role and model are the address of every cell and are never
+// repeated here. A metric that declares no dim beyond them, and a name the
+// document does not declare, answer empty.
+func (x *Index) Dims(metric string) []string {
+	set := x.dims[fold(metric)]
+	out := make([]string, 0, len(set))
+	for dim := range set {
+		out = append(out, dim)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Canonical answers with the canonical id the document spells for a model id,

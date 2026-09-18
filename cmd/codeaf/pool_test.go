@@ -72,6 +72,30 @@ func poolDoc() []byte {
 	}`)
 }
 
+// poolDocBothMetrics is the relay's wire shape: the judge's scored cells and
+// the graded shares beside them, the shares split by the source that
+// produced each. The numbers name no model; it is a fixture, and the field
+// it is read for is its shape.
+func poolDocBothMetrics() []byte {
+	return []byte(`{
+		"version": 7,
+		"schema": 1,
+		"generated": "2026-09-10",
+		"min_installs": 1,
+		"judges": ["z-ai/glm-5.3"],
+		"metrics": {
+			"role_quality": {"kind": "gaussian", "unit": "score", "dims": ["role", "model"]},
+			"acceptable": {"kind": "bernoulli", "unit": "share", "dims": ["role", "model", "source"]}
+		},
+		"cells": [
+			{"metric": "role_quality", "role": "worker", "model": "z-ai/glm-5.3", "mean": 75, "sd": 7, "n": 30},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.9, "sd": 0, "n": 20, "source": "reviewer"},
+			{"metric": "acceptable", "role": "planner", "model": "z-ai/glm-5.3", "mean": 0.8, "sd": 0, "n": 30, "source": "reviewer"},
+			{"metric": "acceptable", "role": "worker", "model": "z-ai/glm-5.3", "mean": 0.7, "sd": 0, "n": 15, "source": "grader"}
+		]
+	}`)
+}
+
 // seedIndex writes poolDoc where show reads the cache, and nothing else:
 // show takes the document as it stands and does not ask its signature —
 // that is verify's question, not the reading form's.
@@ -595,7 +619,7 @@ func TestPoolVerifyFetchesAndChecksASignedIndex(t *testing.T) {
 		&out, dir, poolClock(t), lookup); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "signature good: version 7, generated 2026-09-10, 1 metric") {
+	if !strings.Contains(out.String(), "signature good: version 7, generated 2026-09-10, metrics role_rating") {
 		t.Fatalf("verify did not read the fetched document:\n%s", out.String())
 	}
 	out.Reset()
@@ -604,6 +628,71 @@ func TestPoolVerifyFetchesAndChecksASignedIndex(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "generated 2026-09-10") {
 		t.Fatalf("a verified index did not land in the cache show reads:\n%s", out.String())
+	}
+}
+
+// verify names the metrics it verified, where it used to count them: the
+// count said how many, the names say which, and the second metric is no
+// longer invisible. --json carries the array beside the count the way the
+// reading forms do.
+func TestPoolVerifyNamesTheMetricsItVerified(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	doc := poolDocBothMetrics()
+	if err := os.WriteFile(filepath.Join(src, "index.json"), doc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sig := ed25519.Sign(priv, doc)
+	if err := os.WriteFile(filepath.Join(src, "index.json.sig"),
+		[]byte(base64.StdEncoding.EncodeToString(sig)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lookup := oneEnv("CODEAF_MODEL_POOL_URL", filepath.Join(src, "index.json"))
+	dir := t.TempDir()
+	var out strings.Builder
+	if err := runPoolWith([]string{"verify", "--key", base64.StdEncoding.EncodeToString(pub)},
+		&out, dir, poolClock(t), lookup); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "signature good: version 7, generated 2026-09-10, metrics acceptable, role_quality") {
+		t.Fatalf("verify did not name both metrics:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runPoolWith([]string{"verify", "--json", "--key", base64.StdEncoding.EncodeToString(pub)},
+		&out, dir, poolClock(t), lookup); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Verified   bool `json:"verified"`
+		Metrics    int  `json:"metrics"`
+		MetricList []struct {
+			Name    string   `json:"name"`
+			Kind    string   `json:"kind"`
+			Unit    string   `json:"unit"`
+			Dims    []string `json:"dims"`
+			Cells   int      `json:"cells"`
+			Sources []string `json:"sources"`
+		} `json:"metric_list"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("verify --json did not parse: %v\n%s", err, out.String())
+	}
+	if !answer.Verified || answer.Metrics != 2 || len(answer.MetricList) != 2 {
+		t.Fatalf("verify reported %+v, want both metrics beside the count", answer)
+	}
+	shares, quality := answer.MetricList[0], answer.MetricList[1]
+	if shares.Name != "acceptable" || shares.Kind != "bernoulli" || shares.Unit != "share" ||
+		strings.Join(shares.Dims, ",") != "role,model,source" || shares.Cells != 3 ||
+		strings.Join(shares.Sources, ",") != "grader,reviewer" {
+		t.Fatalf("the graded shares read as %+v", shares)
+	}
+	if quality.Name != "role_quality" || quality.Kind != "gaussian" || quality.Unit != "score" ||
+		strings.Join(quality.Dims, ",") != "role,model" || quality.Cells != 1 || len(quality.Sources) != 0 {
+		t.Fatalf("the judged scores read as %+v", quality)
 	}
 }
 
@@ -870,6 +959,97 @@ func TestPoolShowSaysHowManyCellsTheBuiltInSeedHolds(t *testing.T) {
 	}
 	if want := countWord(total, "cell", "cells"); !strings.Contains(out.String(), want) {
 		t.Errorf("show did not say the seed holds %q:\n%s", want, out.String())
+	}
+	// The seed's one metric says itself the way a cached document's do:
+	// the kind and unit the document spells, its cells, and the dims a cell
+	// of it is addressed by.
+	if want := "role_quality: gaussian score · " + countWord(total, "cell", "cells") + " · dims role, model"; !strings.Contains(out.String(), want) {
+		t.Errorf("the seed's metric line did not read %q:\n%s", want, out.String())
+	}
+}
+
+// The index declares two metrics now — the judge's scores and the graded
+// shares beside them — and a count says neither which nor what. show prints
+// one line per declared metric after the index line: the kind and unit the
+// document spells, the cells counted with their noun, the dims a cell of
+// the metric is addressed by, and the distinct sources when the cells are
+// split by one. The order is the index's own, sorted.
+func TestPoolShowPrintsEachMetricAfterTheIndexLine(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, string(poolDocBothMetrics()))
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	indexAt := strings.Index(body, "index · ")
+	sharesAt := strings.Index(body, "acceptable: bernoulli share · 3 cells · dims role, model, source · sources grader, reviewer")
+	qualityAt := strings.Index(body, "role_quality: gaussian score · 1 cell · dims role, model")
+	if indexAt < 0 || sharesAt < 0 || qualityAt < 0 {
+		t.Fatalf("show did not print both metrics beside the index line:\n%s", body)
+	}
+	if sharesAt < indexAt || qualityAt < sharesAt {
+		t.Fatalf("the metric lines did not follow the index line in the index's own order:\n%s", body)
+	}
+}
+
+// A document that declares one metric prints one line, and a metric the
+// document spells no unit for says its kind alone.
+func TestPoolShowPrintsOneLineForAOneMetricDocument(t *testing.T) {
+	var out strings.Builder
+	if err := runPoolWith([]string{"show"}, &out, seedIndex(t), poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "role_rating: gaussian · 1 cell · dims role, model") {
+		t.Fatalf("the one-metric document did not print its one line:\n%s", out.String())
+	}
+}
+
+// The --json answer carries the metrics as an array beside the count it
+// already carried, so a script written against today's shape still reads
+// and a script that wants the split reads it from the array.
+func TestPoolShowJSONCarriesTheMetricsBesideTheCount(t *testing.T) {
+	dir := t.TempDir()
+	writePoolDoc(t, dir, string(poolDocBothMetrics()))
+	var out strings.Builder
+	if err := runPoolWith([]string{"show", "--json"}, &out, dir, poolClock(t), noEnv); err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Index *struct {
+			Metrics    int `json:"metrics"`
+			MetricList []struct {
+				Name    string   `json:"name"`
+				Kind    string   `json:"kind"`
+				Unit    string   `json:"unit"`
+				Dims    []string `json:"dims"`
+				Cells   int      `json:"cells"`
+				Sources []string `json:"sources"`
+			} `json:"metric_list"`
+		} `json:"index"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
+		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
+	}
+	held := answer.Index
+	if held == nil {
+		t.Fatal("a seeded index was not reported")
+	}
+	if held.Metrics != 2 {
+		t.Fatalf("the count did not stay a count: %d", held.Metrics)
+	}
+	if len(held.MetricList) != 2 {
+		t.Fatalf("the array carried %d metric(s), want both: %+v", len(held.MetricList), held.MetricList)
+	}
+	shares, quality := held.MetricList[0], held.MetricList[1]
+	if shares.Name != "acceptable" || shares.Kind != "bernoulli" || shares.Unit != "share" ||
+		strings.Join(shares.Dims, ",") != "role,model,source" || shares.Cells != 3 ||
+		strings.Join(shares.Sources, ",") != "grader,reviewer" {
+		t.Fatalf("the graded shares read as %+v", shares)
+	}
+	if quality.Name != "role_quality" || quality.Kind != "gaussian" || quality.Unit != "score" ||
+		strings.Join(quality.Dims, ",") != "role,model" || quality.Cells != 1 || len(quality.Sources) != 0 {
+		t.Fatalf("the judged scores read as %+v", quality)
 	}
 }
 
