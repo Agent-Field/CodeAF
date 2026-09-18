@@ -31,3 +31,9 @@ bench/prompt-diet/out/
 # that documents a feature to conflict with every other one.
 internal/manual/chat.pack.gz
 internal/manual/pages.pack.gz
+# latexmk's bookkeeping beside docs/design/model-pool/pareto-crewing.tex. The
+# .tex, the figures and the built .pdf are tracked; these three are rebuilt by
+# any `make` in that directory.
+*.fdb_latexmk
+*.fls
+*.out
