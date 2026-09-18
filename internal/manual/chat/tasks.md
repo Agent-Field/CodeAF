@@ -5548,3 +5548,9 @@ are restored. The row disappears when you are already in the main conversation.
 Breadcrumbs still let you choose a particular ancestor; Escape can step back
 through nested task views. If the column is hidden, the header's return control
 and breadcrumbs remain available.
+
+## will the chat do it itself or start a task?
+
+- **hand off:** launch a task.
+- **add to:** a second `/task` while one runs joins the live root.
+- **ask about:** read the store’s rows and the task’s own steps and answer from them, never redo the work.
