@@ -330,6 +330,32 @@ func TestMinInstallsHoldsBackThinCells(t *testing.T) {
 	}
 }
 
+// THE FLOOR COUNTS INSTALLS, NOT ROWS, because a cell one contributor
+// filled alone is thin however many rows it holds, and a cell three
+// contributors share meets the floor however few rows each added. A cell
+// that carries no installs at all — the shape the seed carries — keeps
+// meeting the floor on rows, the only count it has.
+func TestTheFloorCountsInstallsNotRows(t *testing.T) {
+	x := mustParse(t, `{
+		"min_installs": 3,
+		"metrics": {"m": {"kind": "a"}},
+		"cells": [
+			{"metric": "m", "role": "r", "model": "lone", "mean": 1, "sd": 1, "n": 9, "installs": 1},
+			{"metric": "m", "role": "r", "model": "shared", "mean": 2, "sd": 1, "n": 3, "installs": 3},
+			{"metric": "m", "role": "r", "model": "seed", "mean": 3, "sd": 1, "n": 3}
+		]
+	}`)
+	if _, ok := x.Cell("m", "r", "lone", nil); ok {
+		t.Error("a cell one install filled alone passed the floor on its rows")
+	}
+	if _, ok := x.Cell("m", "r", "shared", nil); !ok {
+		t.Error("a cell three installs share was held below the floor")
+	}
+	if _, ok := x.Cell("m", "r", "seed", nil); !ok {
+		t.Error("a cell carrying no installs did not meet the floor on its rows")
+	}
+}
+
 func TestCellsAreSortedByRoleThenModelThenDims(t *testing.T) {
 	x := mustParse(t, `{
 		"metrics": {"m": {"kind": "a", "dims": ["region", "tier"]}},

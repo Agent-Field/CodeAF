@@ -137,7 +137,8 @@ type wantEntry struct {
 // of these could never be read off a cell, so the name is reserved rather than
 // resolved twice.
 var reservedCellFields = map[string]bool{
-	"metric": true, "role": true, "model": true, "mean": true, "sd": true, "n": true,
+	"metric": true, "role": true, "model": true, "mean": true, "sd": true,
+	"n": true, "installs": true,
 }
 
 // The separators are unprintable so no dim key or value can contain one and
@@ -250,9 +251,10 @@ func (x *Index) addAlias(id, canonical string) {
 
 // addCell reads one raw cell into the index, or drops it. A cell whose metric
 // is not declared is skipped — a measurement with no metric behind it has no
-// units, and guessing is worse than dropping it. A cell whose N is below the
-// document's min_installs is skipped too: too few observations is not a
-// measurement.
+// units, and guessing is worse than dropping it. A cell below the document's
+// min_installs is skipped too: the floor counts installs, the contributors
+// behind a measurement, and a cell that carries none meets it on rows, the
+// only count it has.
 func (x *Index) addCell(raw map[string]any) {
 	metricName, _ := raw["metric"].(string)
 	mk := fold(metricName)
@@ -262,7 +264,14 @@ func (x *Index) addCell(raw map[string]any) {
 	role, _ := raw["role"].(string)
 	model, _ := raw["model"].(string)
 	n := int(number(raw["n"]))
-	if n < x.minInstalls {
+	// The floor means the same thing on both sides of the wire: the relay
+	// counts installs, so the cell's installs are counted where it carries
+	// them and its rows where it does not.
+	if _, carries := raw["installs"]; carries {
+		if int(number(raw["installs"])) < x.minInstalls {
+			return
+		}
+	} else if n < x.minInstalls {
 		return
 	}
 	dims := map[string]string{}
@@ -349,7 +358,8 @@ func (x *Index) Schema() int { return x.schema }
 // date is the zero time, which sorts as the oldest thing there is.
 func (x *Index) Generated() time.Time { return x.generated }
 
-// MinInstalls is the document's floor on observations per measurement.
+// MinInstalls is the document's floor on the installs behind a measurement,
+// which a cell that carries none meets on its rows.
 func (x *Index) MinInstalls() int { return x.minInstalls }
 
 // Judges answers with a copy of the document's judges.
