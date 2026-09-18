@@ -966,8 +966,12 @@ this window is a window onto, so inside a room they are the node's — `38 tok/s
 writes, `running go test · 41s` while it is in a call — and they are drawn **whether or
 not the conversation is doing anything**, which is the usual case: handing a task out ends
 your turn, and the node goes on working for minutes with the conversation idle. The
-ledger, the meter and the job counts on the same row stay the conversation's, because
-those are measurements of a session. A node that has said nothing for a while draws
+meter and the job counts on the same row stay the conversation's, because those are
+measurements of a session; the ledger is not, and has not been since 2026-08-31 — the
+bill is the whole tree's, the larger of the subtree's receipt and this conversation's own
+books, so a running node's spend is in it whether or not its room is open (the bill's own
+entry above says so: *what this conversation and its tasks have spent*). /cost is where
+the two halves are taken apart. A node that has said nothing for a while draws
 nothing rather than the conversation's clock; `esc` gives the conversation's own reading
 back. Until 2026-09-10 a room drew no rate and no machine at all and could show a stale
 line left over from the conversation — the news said which model it was about but not
