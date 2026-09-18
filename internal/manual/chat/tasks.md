@@ -5594,5 +5594,7 @@ when nothing changed. **now** says what is happening now, or how the run ended.
 **next** says what comes after and whether anything needs you.
 
 The worker model writes these lines. It refreshes them only when the shape of
-the run has moved, rather than every time you look. Without a model key the
-lines are absent; the task facts remain available on their own.
+the run has moved and somebody is looking, rather than every time you look, and
+once when the run lands. The **now** sentence also appears under the run's dot
+row in the rail, dim and two lines at most. Without a model key the lines are
+absent; the task facts remain available on their own.
