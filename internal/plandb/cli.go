@@ -1678,6 +1678,9 @@ func cliShow(st *Store, p *cliParsed) error {
 		fmt.Fprintf(cliOut, "agent: %s\n", task.ClaimedBy)
 	}
 	fmt.Fprintf(cliOut, "description: %s\n", task.Description)
+	if task.Question != "" {
+		fmt.Fprintf(cliOut, "question: %s\n", task.Question)
+	}
 	if len(task.Checks) > 0 {
 		fmt.Fprintln(cliOut, "checks:")
 		for _, check := range task.Checks {

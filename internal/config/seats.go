@@ -42,6 +42,11 @@ const (
 	// delivery gate. Empty is legal here and means "the work model plans too";
 	// see [Config.PlanModelResolved].
 	SeatPlan SeatRole = "plan"
+	// SeatCheck is the model that checks finished work. It has no flagless
+	// rung of its own here: an empty check seat is the crew's careful row,
+	// read by the run's crew factory rather than resolved here, because the
+	// check is the one seat a two flag run must not let a third model fill.
+	SeatCheck SeatRole = "check"
 )
 
 // SeatSource is the rung that answered, and the five constants are the ladder in
@@ -301,12 +306,12 @@ func tierSeatUnder(profileDir, family, tier string) Seat {
 	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from, Crew: byWord}
 }
 
-// ModelEnv and PlanModelEnv are the two variables the seats read. They are
-// spelled here once because three places need them by name: the ladder, [Load],
-// and the receipt that says one of them answered.
+// ModelEnv, PlanModelEnv, and CheckModelEnv are the variables the seats read.
+// They are spelled here once because the ladder, [Load], and receipts name them.
 const (
-	ModelEnv     = "CODEAF_MODEL"
-	PlanModelEnv = "CODEAF_PLAN_MODEL"
+	ModelEnv      = "CODEAF_MODEL"
+	PlanModelEnv  = "CODEAF_PLAN_MODEL"
+	CheckModelEnv = "CODEAF_CHECK_MODEL"
 )
 
 // Seat is one seat's answer: the model, and where it came from.
@@ -337,8 +342,11 @@ type Seat struct {
 
 // Flag is the flag that fills this seat.
 func (s Seat) Flag() string {
-	if s.Role == SeatPlan {
+	switch s.Role {
+	case SeatPlan:
 		return "--plan-model"
+	case SeatCheck:
+		return "--check-model"
 	}
 	return "--model"
 }
@@ -496,10 +504,15 @@ const modelsLabel = "models: "
 // executes and never plans.
 func (s Seat) Line() string { return modelsLabel + s.Describe() }
 
-// Seats is both seats of one run.
+// Seats is both seats of one run, and the check seat beside them when a door
+// resolved one. Work and Plan are the ladder's two answers
+// ([ResolveSeats]); Check is the door's own answer for the review round
+// ([CheckSeat]), and empty on a door that named nothing, which the run's crew
+// factory reads as the profile's careful row.
 type Seats struct {
-	Work Seat
-	Plan Seat
+	Work  Seat
+	Plan  Seat
+	Check Seat
 }
 
 // Sentence is both seats, unlabelled, for a door whose opening lines have a
@@ -584,6 +597,26 @@ func ResolveSeats(profileDir, flagModel, flagPlanModel string) Seats {
 		Work: resolveSeat(SeatWork, profileDir, flagModel, ModelTierWorker, DefaultModel),
 		Plan: resolveSeat(SeatPlan, profileDir, flagPlanModel, ModelTierMastermind, ""),
 	}
+}
+
+// CheckSeat is the check seat's own ladder, resolved at the door.
+// The flag wins, then the check environment. A plan seat pinned by either its
+// flag or its environment answers next. Any other plan source leaves the seat
+// empty for the run's crew factory to fill from the careful row.
+func CheckSeat(flagCheck string, plan Seat) Seat {
+	seat := Seat{Role: SeatCheck}
+	if value := strings.TrimSpace(flagCheck); value != "" {
+		seat.Model, seat.Source = value, SeatFlag
+		return seat
+	}
+	if value := strings.TrimSpace(env.Get(CheckModelEnv)); value != "" {
+		seat.Model, seat.Source = value, SeatEnv
+		return seat
+	}
+	if plan.Source == SeatFlag || plan.Source == SeatEnv {
+		seat.Model, seat.Source = plan.Model, plan.Source
+	}
+	return seat
 }
 
 // resolveSeat is the ladder itself, once, for either seat. The two seats differ

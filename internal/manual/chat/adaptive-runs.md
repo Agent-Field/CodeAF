@@ -159,6 +159,7 @@ keyboard decides for itself and says on the record that it decided.
 | `--yes-spend` | approve a plan whose price crosses the consent threshold |
 | `--model <slug>` | the work model for this run |
 | `--plan-model <slug>` | the model that plans, when it should differ from the work model |
+| `--check-model <slug>` | the model that checks finished work; then `CODEAF_CHECK_MODEL`, then a plan seat pinned by flag or environment, then the crew's careful row |
 | `--context-fill <percent>` | how full a model's context window may get before it is compacted |
 | `--completion-reserve <tokens>` | tokens every call keeps free for its answer and its reasoning |
 

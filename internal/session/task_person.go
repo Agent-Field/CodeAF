@@ -83,7 +83,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	// below is the whole of this door whenever the belt is not asked for — which
 	// is every build and every caller that never asked.
 	if bashBeltAsked() {
-		return a.startTaskRun(ctx, brief, solo)
+		return a.startTaskRun(ctx, brief, solo, "")
 	}
 	return a.startTaskLegacy(ctx, brief, solo)
 }

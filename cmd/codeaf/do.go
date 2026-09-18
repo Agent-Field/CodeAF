@@ -311,6 +311,7 @@ func runDo(args []string) error {
 	yesSpend := flags.Bool("yes-spend", false, yesSpendFlagHelp)
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
+	checkModel := flags.String("check-model", "", checkModelFlagHelp)
 	// A FLAG IS DOCUMENTED BY WHAT IT DOES, NOT BY WHAT IT SETS. These two said
 	// "…; sets CODEAF_CONTEXT_FILL_PCT for this run", which is the
 	// implementation, and hard-coded their defaults in prose while their own
@@ -349,7 +350,7 @@ func runDo(args []string) error {
 	return doErrand(doRequest{
 		task: task, run: run, database: *database, keep: *keep, workspace: *workspace,
 		timeout: wall.wall, asJSON: *asJSON,
-		yesSpend: *yesSpend, model: *model, planModel: *planModel,
+		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
 		contextFill: *contextFill, completionReserve: *completionReserve,
 		stdout: os.Stdout, stderr: os.Stderr,
 	})
@@ -362,15 +363,16 @@ type doRequest struct {
 	// run is the id this invocation minted at the door ([trace.Begin]). It goes
 	// out on the `--json` envelope, where it is the join to the model-call log
 	// and to the debug record's folder, both of which are named by it.
-	run       string
-	database  string
-	keep      bool
-	workspace string
-	timeout   time.Duration
-	asJSON    bool
-	yesSpend  bool
-	model     string
-	planModel string
+	run        string
+	database   string
+	keep       bool
+	workspace  string
+	timeout    time.Duration
+	asJSON     bool
+	yesSpend   bool
+	model      string
+	planModel  string
+	checkModel string
 	// contextFill and completionReserve are this run's two dials on the window
 	// law (internal/ctxbudget). They are integers rather than a struct because
 	// zero has to mean "not asked for": the law's own defaults are the answer
@@ -479,6 +481,9 @@ func doErrand(request doRequest) error {
 		useAutoSeats(settings)
 	}
 	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
+	// THE CHECK SEAT RESOLVES AT THE DOOR: its flag, its environment, a plan
+	// seat pinned by flag or environment, then the crew's careful row.
+	seats.Check = config.CheckSeat(request.checkModel, seats.Plan)
 	fmt.Fprintln(request.stderr, seats.Report())
 	outcome, err := errandRun(request, seats, started)
 	if err != nil {
@@ -3438,8 +3443,9 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 		Slots:     request.slotsOrDefault(),
 		Limits:    limits,
 		Factory: runengine.CrewFactory(store, workspace, settings.ProfileDir, runengine.Seats{
-			Work: seats.Work.Model,
-			Plan: seats.Plan.Model,
+			Work:  seats.Work.Model,
+			Plan:  seats.Plan.Model,
+			Check: seats.Check.Model,
 		}, completerFor),
 	})
 	errand := headlessOutcome{

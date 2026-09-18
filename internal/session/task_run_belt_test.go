@@ -9,6 +9,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -41,6 +42,9 @@ type beltRunDouble struct {
 	entered chan struct{}
 	release chan struct{}
 	ran     bool
+	// ctx is the context the engine was started under, kept so a test can ask
+	// whether the run outlived the turn that launched it.
+	ctx context.Context
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
@@ -55,6 +59,7 @@ func newBeltRunDouble(result string) *beltRunDouble {
 func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	d.mu.Lock()
 	d.ran = true
+	d.ctx = ctx
 	d.mu.Unlock()
 	if spec.CompleterFor != nil {
 		if completer := spec.CompleterFor("test/model"); completer != nil {
@@ -153,6 +158,17 @@ func conversationNotes(agent *Agent, phrase string) int {
 	return count
 }
 
+// conversationJournalLines counts display entries in the durable conversation record.
+func conversationJournalLines(agent *Agent, phrase string) int {
+	count := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, phrase) {
+			count++
+		}
+	}
+	return count
+}
+
 // waitFor polls a condition to a bounded deadline, failing with what it was
 // waiting on rather than hanging.
 func beltRunWaitFor(t *testing.T, what string, ok func() bool) {
@@ -189,11 +205,16 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	registerBeltRunEngine(t, double)
 
 	dir := t.TempDir()
-	agent, _ := newTestAgent(t, beltRunCompleter{text: "the run fixed the nil map"}, func(config *Config) {
+	completer := &scriptedCompleter{steps: []step{finalText("the run fixed the nil map")}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = newTestRepo(t)
 		config.Place = Place{Dir: dir}
+		config.SessionFile = filepath.Join(dir, placeTranscript)
 		config.AskConsent = false
 	})
+
+	clock := &fakeClock{at: time.Date(2026, time.September, 18, 12, 0, 0, 0, time.UTC)}
+	agent.taskNow = clock.now
 
 	id, title, _, err := agent.StartTask(context.Background(), "fix the nil map crash", false)
 	if err != nil {
@@ -220,11 +241,28 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 		t.Fatalf("PlanTasks does not show the run running: %+v", agent.PlanTasks())
 	}
 
+	wakes, stopWakes := agent.WatchWakes()
+	defer stopWakes()
+	callsBeforeLanding := completer.requests()
 	close(double.release)
 	beltRunWaitFor(t, "the run's landing", func() bool {
 		task := beltRunTaskAt(t, dir, rootID)
-		return task != nil && task.Status == plandb.StatusDone && conversationNotes(agent, "landed on ") == 1
+		agent.beltMu.Lock()
+		landed := agent.beltRun == nil
+		agent.beltMu.Unlock()
+		return task != nil && task.Status == plandb.StatusDone && landed
 	})
+	// THE CONVERSATION TAKES NO TURN AT A LANDING THAT OWES NO ANSWER. The one
+	// call a landing does make is the run's own summary, a small errand on the
+	// worker model that is not a turn, so it is counted out by the page it reads.
+	if got := completer.requests() - callsBeforeLanding - runSummaryRequestCount(completer); got != 0 {
+		t.Fatalf("landing made %d completer calls beside the run summary, want zero", got)
+	}
+	select {
+	case <-wakes:
+		t.Fatal("done landing published a wake")
+	default:
+	}
 
 	if task := beltRunTaskAt(t, dir, rootID); task == nil || task.Status != plandb.StatusDone {
 		t.Fatalf("the run's root did not read done")
@@ -232,8 +270,25 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on task/fix-the-nil-map-crash") {
 		t.Fatalf("no note on the root carries the branch: %v", beltRunNotes(t, dir, rootID))
 	}
-	if got := conversationNotes(agent, "landed on task/fix-the-nil-map-crash"); got != 1 {
-		t.Fatalf("the conversation received %d landing notes, want one", got)
+	wantDigest := beltRunOutcomeNote(nil, "", double.summary, double.landing)
+	if !strings.Contains(wantDigest, "done") || !strings.Contains(wantDigest, "the run fixed the nil map") ||
+		!strings.Contains(wantDigest, "landed on task/fix-the-nil-map-crash") {
+		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
+	}
+	if got := conversationJournalLines(agent, wantDigest); got != 1 {
+		t.Fatalf("the conversation journal carries digest %d times, want one", got)
+	}
+	journal := agent.file.journalPath()
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	reopened, err := newAgent(Config{Workspace: agent.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: journal}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+	if got := conversationJournalLines(reopened, wantDigest); got != 1 {
+		t.Fatalf("reopened conversation carries digest %d times, want one", got)
 	}
 	// the run's row settled too, on the surface's own lane
 	if row := planRowFor(agent.PlanTasks(), planStoreID(rootID)); row == nil || row.Status != string(plandb.StatusDone) {
@@ -321,4 +376,167 @@ func anyNoteCarries(notes []string, phrase string) bool {
 		}
 	}
 	return false
+}
+
+func TestLandingDigestCarriesTheStoredNowSentence(t *testing.T) {
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "run", planRootID, "The run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	payload, err := json.Marshal(storedRunSummary{Summary: RunPlanSummary{
+		What: "repair the landing digest",
+		Now:  "The focused landing tests pass.",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddContext(planRootID, runSummaryContextKind, string(payload)); err != nil {
+		t.Fatalf("store summary: %v", err)
+	}
+
+	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
+		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
+	})
+	want := "done · landed on task/landing-digest: 1 file · The focused landing tests pass."
+	if got != want {
+		t.Fatalf("landing digest = %q, want %q", got, want)
+	}
+}
+
+func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "run", planRootID, "The run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
+		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
+	})
+	want := "done · landed on task/landing-digest: 1 file"
+	if got != want {
+		t.Fatalf("landing digest = %q, want byte-for-byte legacy digest %q", got, want)
+	}
+}
+
+// landingRunDouble ends synchronously so the test can observe the exact order:
+// the summary refresh must have stored its sentence before the outcome note is
+// composed.
+type landingRunDouble struct {
+	summary RunSummary
+	landing RunLanding
+}
+
+func (d landingRunDouble) Start(context.Context, RunSpec) RunSummary { return d.summary }
+func (d landingRunDouble) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+	return d.landing, nil
+}
+
+func landingSummaryFixture(t *testing.T, client *scriptedCompleter) (*Agent, *plandb.Store, *beltRun, string) {
+	t.Helper()
+	// THE BELT IS SET HERE, NEVER INHERITED: the plan store's door only opens
+	// under it, and a test that passes because the shell that ran it had the
+	// variable is red on every other machine.
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	store, err := plandb.Open(path, "run", planRootID, "The run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 18, 21, 0, 0, 0, time.UTC)
+	agent, _ := newTestAgent(t, client, func(config *Config) {
+		config.Place = Place{Dir: dir}
+		config.clock = func() time.Time { return now }
+	})
+	run := &beltRun{store: store, root: planRootID, row: 1, title: "The run"}
+	return agent, store, run, dir
+}
+
+func runSummaryRequestCount(client *scriptedCompleter) int {
+	count := 0
+	for i := 0; i < client.requests(); i++ {
+		for _, message := range client.request(i) {
+			if strings.Contains(messageText(message), "You write the four lines a person reads") {
+				count++
+				break
+			}
+		}
+	}
+	return count
+}
+
+func TestDriveBeltRunRefreshesSummaryOnceBeforeOutcomeNote(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{finalText("what: repair landing\nsince: the work landed\nnow: The fresh landing summary is stored.\nnext: Nothing needs you.")}}
+	agent, _, run, dir := landingSummaryFixture(t, client)
+	engine := landingRunDouble{
+		summary: RunSummary{Outcome: beltRunOutcomeDone, Result: "fixed"},
+		landing: RunLanding{Branch: "task/landing", Changed: []string{"internal/session/task_run_belt.go"}},
+	}
+
+	agent.driveBeltRun(context.Background(), engine, run, RunSpec{})
+
+	if got := runSummaryRequestCount(client); got != 1 {
+		t.Fatalf("summary requests = %d, want exactly one", got)
+	}
+	notes := beltRunNotes(t, dir, planRootID)
+	if !anyNoteCarries(notes, "done · fixed · landed on task/landing: 1 file · The fresh landing summary is stored.") {
+		t.Fatalf("outcome note was written before the fresh now sentence: %v", notes)
+	}
+}
+
+func TestDriveBeltRunSummaryFailurePreservesOutcomeNoteAndIsDeadlineBounded(t *testing.T) {
+	landing := RunLanding{Branch: "task/landing", Changed: []string{"internal/session/task_run_belt.go"}}
+	want := "done · landed on task/landing: 1 file"
+	tests := []struct {
+		name string
+		step step
+	}{
+		{name: "refused", step: func(context.Context, []ai.Message) (*ai.Response, error) { return nil, context.Canceled }},
+		{name: "slow", step: func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &scriptedCompleter{steps: []step{tt.step}}
+			agent, _, run, dir := landingSummaryFixture(t, client)
+			// THE DEADLINE IS SHORTENED, NOT WAITED OUT: what is asserted is that a
+			// call that never answers is cut by it, not how long a box under load
+			// takes to notice.
+			was := beltRunSummaryDeadline
+			beltRunSummaryDeadline = 40 * time.Millisecond
+			t.Cleanup(func() { beltRunSummaryDeadline = was })
+			started := time.Now()
+			agent.driveBeltRun(context.Background(), landingRunDouble{
+				summary: RunSummary{Outcome: beltRunOutcomeDone}, landing: landing,
+			}, run, RunSpec{})
+			elapsed := time.Since(started)
+			if elapsed > was {
+				t.Fatalf("landing delayed %v: the refresh was not cut at its deadline", elapsed)
+			}
+			notes := beltRunNotes(t, dir, planRootID)
+			if len(notes) != 1 || notes[0] != want {
+				t.Fatalf("failed refresh changed outcome note: %v, want [%q]", notes, want)
+			}
+		})
+	}
+}
+
+func TestDriveBeltRunDoesNotRefreshWhenStoreIsGone(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{finalText("what: must not be called\nsince: no\nnow: no\nnext: no")}}
+	agent, store, run, _ := landingSummaryFixture(t, client)
+	// The conversation no longer has a plan handle, although the engine's
+	// already-open handle remains long enough to record its legacy outcome.
+	agent.mu.Lock()
+	agent.config.Place = Place{Dir: t.TempDir()}
+	agent.mu.Unlock()
+	agent.driveBeltRun(context.Background(), landingRunDouble{
+		summary: RunSummary{Outcome: beltRunOutcomeDone},
+	}, run, RunSpec{})
+	if got := runSummaryRequestCount(client); got != 0 {
+		t.Fatalf("summary requests with no store = %d, want none", got)
+	}
+	_ = store.Close()
 }
