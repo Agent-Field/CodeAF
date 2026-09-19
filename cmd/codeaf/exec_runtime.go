@@ -38,6 +38,11 @@ func (s *workspaceExecStore) BindRuntime(ctx context.Context, requestKey, runIns
 	return execBindingOf(got), execStoreError(err)
 }
 
+func (s *workspaceExecStore) RecordJoiner(ctx context.Context, requestKey, chatID string) (wsexec.ExecutionBinding, error) {
+	got, err := s.jobs.RecordJoiner(ctx, requestKey, chatID)
+	return execBindingOf(got), execStoreError(err)
+}
+
 func (s *workspaceExecStore) GetGrant(ctx context.Context, id string) (wsexec.Grant, error) {
 	got, err := s.jobs.GetGrant(ctx, id)
 	return execGrantOf(got), execStoreError(err)
@@ -72,6 +77,7 @@ func execBindingOf(b workspace.ExecutionBinding) wsexec.ExecutionBinding {
 		CoordinatorID: b.CoordinatorID, RuntimeRef: b.RuntimeRef, AssignmentRev: b.AssignmentRev, GrantRev: b.GrantRev,
 		State: b.State, Fence: b.Fence, Owner: b.Owner, LeaseUntil: b.LeaseUntil,
 		CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt, BoundAt: b.BoundAt, AdmittedAt: b.AdmittedAt,
+		JoinerJSON: b.JoinerJSON,
 	}
 }
 
@@ -82,6 +88,7 @@ func workspaceBindingOf(b wsexec.ExecutionBinding) workspace.ExecutionBinding {
 		CoordinatorID: b.CoordinatorID, RuntimeRef: b.RuntimeRef, AssignmentRev: b.AssignmentRev, GrantRev: b.GrantRev,
 		State: b.State, Fence: b.Fence, Owner: b.Owner, LeaseUntil: b.LeaseUntil,
 		CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt, BoundAt: b.BoundAt, AdmittedAt: b.AdmittedAt,
+		JoinerJSON: b.JoinerJSON,
 	}
 }
 
@@ -115,22 +122,19 @@ func (r *liveExecRuntime) Admit(ctx context.Context, req wsexec.AdmitRequest) (w
 		return wsexec.AdmitResult{}, err
 	}
 	runID := strconv.FormatUint(id, 10)
-	live := execLive{agent: agent, chatID: req.OwnerChatID, requestKey: req.RequestKey, road: req.Road, id: id}
-	r.mu.Lock()
-	r.byRun[runID] = live
-	r.mu.Unlock()
+	r.rememberRun(runID, execLive{agent: agent, chatID: req.OwnerChatID, requestKey: req.RequestKey, road: req.Road, id: id})
 	return wsexec.AdmitResult{RunInstanceID: runID, RuntimeRef: "session:" + runID, Road: req.Road, Already: already}, nil
+}
+
+func (r *liveExecRuntime) rememberRun(runID string, live execLive) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byRun[runID] = live
 }
 
 func (r *liveExecRuntime) FindByRequestKey(_ context.Context, requestKey string) (wsexec.AdmitResult, bool, error) {
 	requestKey = strings.TrimSpace(requestKey)
-	r.mu.Lock()
-	agents := make([]*session.Agent, 0, len(r.agents))
-	for _, agent := range r.agents {
-		agents = append(agents, agent)
-	}
-	r.mu.Unlock()
-	for _, agent := range agents {
+	for _, agent := range r.agentsSnapshot() {
 		id, _, ok := agent.TaskByRequestKey(requestKey)
 		if !ok {
 			continue
@@ -139,6 +143,16 @@ func (r *liveExecRuntime) FindByRequestKey(_ context.Context, requestKey string)
 		return wsexec.AdmitResult{RunInstanceID: runID, RuntimeRef: "session:" + runID}, true, nil
 	}
 	return wsexec.AdmitResult{}, false, nil
+}
+
+func (r *liveExecRuntime) agentsSnapshot() []*session.Agent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	agents := make([]*session.Agent, 0, len(r.agents))
+	for _, agent := range r.agents {
+		agents = append(agents, agent)
+	}
+	return agents
 }
 
 func (r *liveExecRuntime) Inspect(_ context.Context, runInstanceID string) (wsexec.WorkView, error) {

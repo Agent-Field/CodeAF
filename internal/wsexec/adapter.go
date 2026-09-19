@@ -2,8 +2,9 @@ package wsexec
 
 import (
 	"fmt"
-	"os"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // Adapter holds the injected store and runtime. Production wire constructs
@@ -30,7 +31,7 @@ func (a *Adapter) require() error {
 // currentRoad reads the same switch StartTask already honours. Unset is the
 // session task tree; bash is the run engine. Tests are table-driven across both.
 func currentRoad() string {
-	if os.Getenv("CODEAF_TASK_BELT") == "bash" {
+	if strings.TrimSpace(env.Get("CODEAF_TASK_BELT")) == "bash" {
 		return RoadBashRun
 	}
 	return RoadSessionTask

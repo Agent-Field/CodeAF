@@ -2,7 +2,9 @@ package wsexec
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -118,6 +120,41 @@ func (m *memStore) BindRuntime(_ context.Context, requestKey, runInstanceID, run
 	got.UpdatedAt = m.now
 	m.byKey[requestKey] = got
 	return got, nil
+}
+
+func (m *memStore) RecordJoiner(_ context.Context, requestKey, chatID string) (ExecutionBinding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	got, ok := m.byKey[requestKey]
+	if !ok {
+		return ExecutionBinding{}, ErrNotFound
+	}
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" || chatID == got.OwnerChatID || chatID == got.CoordinatorID {
+		return got, nil
+	}
+	ids := memJoinerIDs(got.JoinerJSON)
+	for _, id := range ids {
+		if id == chatID {
+			return got, nil
+		}
+	}
+	raw, err := json.Marshal(append(ids, chatID))
+	if err != nil {
+		return ExecutionBinding{}, err
+	}
+	got.JoinerJSON = string(raw)
+	got.UpdatedAt = m.now
+	m.byKey[requestKey] = got
+	return got, nil
+}
+
+func memJoinerIDs(raw string) []string {
+	var items []string
+	if raw == "" || json.Unmarshal([]byte(raw), &items) != nil {
+		return nil
+	}
+	return items
 }
 
 func (m *memStore) nextID() string {

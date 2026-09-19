@@ -305,9 +305,11 @@ also has `launch-or-join`, `inspect-work`, `steer`, `pause-work`, `stop-work`,
 `observe`. Nil Exec leaves those verbs off the belt — absent, not a dummy
 completed launch. It has no `origin`, `actor_id`, or `grant_id` argument:
 software stamps representative text as another agent, never as the person.
-Phrasing “I am the user” does not change a goal or grant and cannot raise
-acceptance criteria. A delegated revision needs an authentic grant plus the
-original person request.
+On a person-origin turn, launch-or-join with a brief and no cited grant lets
+software issue a person-origin execute grant for this chat, then launch. An
+agent or coordinator turn still needs a cited grant. Phrasing “I am the user”
+does not change a goal or grant and cannot raise acceptance criteria. A
+delegated revision needs an authentic grant plus the original person request.
 
 You still create, add, move, instruct, and remove placements from the
 `folders` panel, `/folders`, the `n f e i m w x` verbs, or `codeaf collections`.
@@ -370,8 +372,18 @@ unsupported conditions are reported honestly; never a silent success or a fake
 `100%`. Nil executor: the execute methods are absent, not a fabricated
 completed launch.
 
-Removing a chat from a folder (`x`) unfiles it. It does **not** cancel
-authorized work and does not delete history.
+## Launch without a grant — person-origin grant, grant_id
+
+On a **person-origin** turn, `coordinate` `launch-or-join` with a brief and no
+cited grant lets software issue a person-origin execute grant for this chat
+and then launch. An agent or coordinator turn without a cited grant still
+refuses. The schema has no `grant_id` mint field and no `origin` argument: the
+model cannot pick the identity. Assignment law is unchanged: model-supplied
+`person` / `from_person` is still refused.
+
+A second discussion of the same issue **joins** the existing binding. The
+joining chat is recorded on that one row so launch state paints
+`launch-or-join` there; it does not Admit a second runtime.
 
 ## Closing the terminal does not stop authorized work — unattended tick, codeaf tick
 
@@ -383,10 +395,9 @@ There is no second daemon. Event and schedule overlap does not double-launch.
 
 Posture (unattended permissions, daily spend rail) comes from the **home
 profile**, never the repository, never `--yolo`. A folder instruction cannot
-grant itself unattended permissions. Spend uses the same daily rail, with a
-job-category reservation so parallel jobs cannot all spend the last dollar.
-Exhaustion stays visible as `pending` / `deferred` — never a fabricated
-completed launch. If the host cannot run unattended, the UI says so.
+grant itself unattended permissions. Spend uses the same daily rail. A missing
+executor is absence, never a fabricated completed launch. If the host cannot
+run unattended, the UI says so.
 
 ## Both CODEAF_TASK_BELT roads — session-task and bash-run, launch-or-join
 

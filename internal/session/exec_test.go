@@ -231,19 +231,79 @@ func TestCoordinateLaunchWhenExecWired(t *testing.T) {
 	}
 }
 
+func TestPersonTurnLaunchOrJoinIssuesGrantWhenEmpty(t *testing.T) {
+	fake := &fakeExec{
+		view:   ExecView{WorkID: "rk-person", RunInstanceID: "9", Road: execRoadSession, State: "bound"},
+		minted: "g-minted",
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Collab = &fakeCollab{}
+		config.Exec = fake
+		config.Place = Place{Dir: filepath.Join(t.TempDir(), "cccccccccccccccc")}
+	})
+	out, failed := callCoordinate(t, agent, `{"action":"launch-or-join","body":"add a readme comment","equivalence":"issue-42"}`)
+	if failed {
+		t.Fatalf("person-origin launch-or-join refused: %s", out)
+	}
+	if fake.issued != 1 || fake.launches != 1 || fake.grant != "g-minted" || fake.brief != "add a readme comment" {
+		t.Fatalf("person grant path = %+v", fake)
+	}
+	schema := coordinateOfferedSchema(t, agent)
+	if strings.Contains(schema, `"grant_id"`) {
+		t.Fatal("schema must still not mint grant_id")
+	}
+}
+
+func TestAgentTurnLaunchOrJoinStillNeedsAGrant(t *testing.T) {
+	fake := &fakeExec{view: ExecView{WorkID: "rk-agent", State: "bound"}}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Collab = &fakeCollab{}
+		config.Exec = fake
+		config.InTask = true
+		config.Place = Place{Dir: filepath.Join(t.TempDir(), "cccccccccccccccc")}
+	})
+	out, failed := callCoordinate(t, agent, `{"action":"launch-or-join","body":"add a readme comment"}`)
+	if !failed {
+		t.Fatalf("agent turn launched without a grant: %s", out)
+	}
+	if fake.issued != 0 || fake.launches != 0 {
+		t.Fatalf("agent turn minted or launched: %+v", fake)
+	}
+	if !strings.Contains(out, "grant") {
+		t.Fatalf("refusal = %q, want a cited grant required", out)
+	}
+}
+
+func TestCoordinatorTurnLaunchOrJoinStillNeedsAGrant(t *testing.T) {
+	fake := &fakeExec{view: ExecView{WorkID: "rk-coord", State: "bound"}}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Collab = &fakeCollab{}
+		config.Exec = fake
+		config.Place = Place{Dir: filepath.Join(t.TempDir(), "cccccccccccccccc")}
+	})
+	agent.turnSeq, agent.personHeard = 4, 1
+	out, failed := callCoordinate(t, agent, `{"action":"launch-or-join","body":"add a readme comment"}`)
+	if !failed || fake.issued != 0 || fake.launches != 0 {
+		t.Fatalf("coordinator turn launched without a grant: %s %+v", out, fake)
+	}
+}
+
 type fakeExec struct {
 	mu        sync.Mutex
 	view      ExecView
 	result    ExecResult
 	launches  int
+	issued    int
 	steers    int
 	grant     string
+	minted    string
 	brief     string
 	eq        string
 	work      string
 	text      string
 	person    string
 	launchErr error
+	grantErr  error
 }
 
 func (f *fakeExec) LaunchOrJoin(_ context.Context, grantID, brief, equivalenceKey string) (ExecView, error) {
@@ -252,6 +312,19 @@ func (f *fakeExec) LaunchOrJoin(_ context.Context, grantID, brief, equivalenceKe
 	f.launches++
 	f.grant, f.brief, f.eq = grantID, brief, equivalenceKey
 	return f.view, f.launchErr
+}
+
+func (f *fakeExec) IssuePersonGrant(_ context.Context, brief string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.issued++
+	f.brief = brief
+	id := strings.TrimSpace(f.minted)
+	if id == "" {
+		id = "g-person"
+	}
+	f.grant = id
+	return id, f.grantErr
 }
 
 func (f *fakeExec) Inspect(_ context.Context, workID string) (ExecView, error) {

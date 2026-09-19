@@ -118,6 +118,26 @@ func (e *sessionExec) LaunchOrJoin(ctx context.Context, grantID, brief, equivale
 	return sessionViewOf(got), nil
 }
 
+// IssuePersonGrant is the production door IssueGrant was missing: software
+// stamps OriginPerson, an empty parent issuer, execute class, and this chat
+// as coordinator. A model cannot mint grant_id through the schema.
+func (e *sessionExec) IssuePersonGrant(ctx context.Context, brief string) (string, error) {
+	if e == nil || e.svc == nil {
+		return "", fmt.Errorf("%w: executor is absent", workspace.ErrInvalid)
+	}
+	if strings.TrimSpace(e.chatID) == "" {
+		return "", fmt.Errorf("%w: grant needs a coordinator", workspace.ErrInvalid)
+	}
+	got, err := e.svc.IssueGrant(ctx, wsapi.GrantRequest{
+		CoordinatorID: e.chatID, Goal: brief, ChatIDs: []string{e.chatID},
+		ActionClasses: []string{workspace.ClassExecute},
+	})
+	if err != nil {
+		return "", err
+	}
+	return got.ID, nil
+}
+
 func (e *sessionExec) Inspect(ctx context.Context, workID string) (session.ExecView, error) {
 	got, err := e.svc.InspectWork(ctx, workID)
 	if err != nil {
@@ -180,7 +200,7 @@ func (e *tuiExec) LaunchState(ctx context.Context, conversationID string) ([]tui
 	}
 	out := make([]tui3.ExecWork, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, execWorkOf(row))
+		out = append(out, execWorkOf(row, conversationID))
 	}
 	return out, nil
 }
@@ -193,20 +213,24 @@ func (e *tuiExec) StopWork(ctx context.Context, workID string) error {
 	return e.svc.StopWork(ctx, workID)
 }
 
-func execWorkOf(row workspace.ExecutionBinding) tui3.ExecWork {
+func execWorkOf(row workspace.ExecutionBinding, chatID string) tui3.ExecWork {
 	title := strings.TrimSpace(row.WorkID)
 	if title == "" {
 		title = row.RequestKey
 	}
+	joined := row.JoinedBy(chatID)
 	source := row.OwnerChatID
 	if source == "" {
 		source = row.CoordinatorID
+	}
+	if joined {
+		source = chatID
 	}
 	workID := row.WorkID
 	if workID == "" {
 		workID = row.RequestKey
 	}
-	return tui3.ExecWork{WorkID: workID, Title: title, State: row.State, Road: row.Road, SourceRef: source}
+	return tui3.ExecWork{WorkID: workID, Title: title, State: row.State, Road: row.Road, SourceRef: source, Joined: joined}
 }
 
 type wsapiExecBridge struct{ inner *wsexec.Adapter }

@@ -11,9 +11,10 @@ const minSchemaVersion = 1
 // Wave 1 owns v2 (purpose, provenance, root_state). Wave 2 owns v3
 // (guidance, jobs, observations, placement_suppressions, proposed_actions).
 // Wave 3 owns v4 (participants, deliveries). Wave 4 owns v5 (grants,
-// execution_bindings). Launch intent is the reserved binding row, not a
-// third table.
-const schemaVersion = 5
+// execution_bindings) and v6 (joiner_json on the same binding row so a
+// second discussion can list it). Launch intent is the reserved binding
+// row, not a third table.
+const schemaVersion = 6
 
 const v2CollectionsDDL = `
 CREATE TABLE collections (
@@ -255,7 +256,13 @@ func verifyVersionTables(ctx context.Context, q schemaQuerier, version int) erro
 	if version < 5 {
 		return nil
 	}
-	return verifyV5Tables(ctx, q)
+	if err := verifyV5Tables(ctx, q); err != nil {
+		return err
+	}
+	if version < 6 {
+		return nil
+	}
+	return verifyV6Tables(ctx, q)
 }
 
 func verifyV1Tables(ctx context.Context, q schemaQuerier) error {
@@ -310,6 +317,11 @@ func verifyV5Tables(ctx context.Context, q schemaQuerier) error {
 	return err
 }
 
+func verifyV6Tables(ctx context.Context, q schemaQuerier) error {
+	_, err := q.ExecContext(ctx, "SELECT joiner_json FROM execution_bindings LIMIT 0")
+	return err
+}
+
 func migrateToCurrent(ctx context.Context, tx schemaQuerier, from int, now string) error {
 	if from >= schemaVersion {
 		return nil
@@ -337,6 +349,12 @@ func migrateToCurrent(ctx context.Context, tx schemaQuerier, from int, now strin
 	}
 	if from == 4 {
 		if err := migrateV4ToV5(ctx, tx); err != nil {
+			return err
+		}
+		from = 5
+	}
+	if from == 5 {
+		if err := migrateV5ToV6(ctx, tx); err != nil {
 			return err
 		}
 	}
@@ -379,6 +397,11 @@ func migrateV4ToV5(ctx context.Context, tx schemaQuerier) error {
 	return err
 }
 
+func migrateV5ToV6(ctx context.Context, tx schemaQuerier) error {
+	_, err := tx.ExecContext(ctx, `ALTER TABLE execution_bindings ADD COLUMN joiner_json TEXT NOT NULL DEFAULT '[]'`)
+	return err
+}
+
 func createV2(ctx context.Context, tx schemaQuerier, now string) error {
 	if _, err := tx.ExecContext(ctx, v2CollectionsDDL+v2HistoryDDL); err != nil {
 		return err
@@ -399,6 +422,9 @@ func createCurrent(ctx context.Context, tx schemaQuerier, now string) error {
 		return err
 	}
 	if err := migrateV4ToV5(ctx, tx); err != nil {
+		return err
+	}
+	if err := migrateV5ToV6(ctx, tx); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion))

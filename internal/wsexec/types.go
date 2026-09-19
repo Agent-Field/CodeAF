@@ -59,6 +59,7 @@ type ExecutionBinding struct {
 	OwnerChatID, GrantID, CoordinatorID, RuntimeRef             string
 	AssignmentRev, GrantRev, State, Fence, Owner                string
 	LeaseUntil, CreatedAt, UpdatedAt, BoundAt, AdmittedAt       string
+	JoinerJSON                                                  string
 }
 
 // Runtime is the existing task/run door. Session-task maps to StartTask.
@@ -81,5 +82,6 @@ type Store interface {
 	BindingByRequestKey(ctx context.Context, requestKey string) (ExecutionBinding, error)
 	BindingByEquivalence(ctx context.Context, equivalenceKey string) (ExecutionBinding, error)
 	BindRuntime(ctx context.Context, requestKey, runInstanceID, runtimeRef string) (ExecutionBinding, error)
+	RecordJoiner(ctx context.Context, requestKey, chatID string) (ExecutionBinding, error)
 	GetGrant(ctx context.Context, id string) (Grant, error)
 }

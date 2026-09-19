@@ -172,6 +172,95 @@ func TestLaunchStateReadsBindingsFromRealStore(t *testing.T) {
 	}
 }
 
+func TestSessionExecIssuesPersonGrantThenLaunch(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	folders := openV3Folders()
+	exec := sessionExecOf(folders, "aaaaaaaaaaaaaaaa")
+	if exec == nil {
+		t.Fatal("session Exec missing")
+	}
+	ctx := context.Background()
+	id, err := exec.IssuePersonGrant(ctx, "add a readme comment")
+	if err != nil || id == "" {
+		t.Fatalf("IssuePersonGrant: %q, %v", id, err)
+	}
+	wrapped, ok := folders.(*sessionFolders)
+	if !ok || wrapped.svc == nil {
+		t.Fatal("production folders must wrap wsapi")
+	}
+	held, err := wrapped.svc.Workspace().GetGrant(ctx, id)
+	if err != nil || held.Origin != workspace.OriginPerson || held.Issuer != "" {
+		t.Fatalf("person grant %+v, %v", held, err)
+	}
+	if !strings.Contains(held.ActionJSON, workspace.ClassExecute) {
+		t.Fatalf("execute class missing: %q", held.ActionJSON)
+	}
+	view, err := exec.LaunchOrJoin(ctx, id, "add a readme comment", "eq-person")
+	if err != nil && !errors.Is(err, wsexec.ErrAbsent) {
+		t.Fatalf("launch after person grant: %+v, %v", view, err)
+	}
+	if view.State == workspace.BindCompleted || view.State == "100%" {
+		t.Fatalf("person grant launch fabricated completed: %+v", view)
+	}
+}
+
+func TestJoinerLaunchStateShowsJoinedWithoutSecondAdmit(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	handles := openV3FolderHandles()
+	if handles.folders == nil {
+		t.Fatal("folders missing")
+	}
+	var options tui3.Options
+	attachSurfaceFolders(&options, handles.folders)
+	if options.Exec == nil {
+		t.Fatal("Options.Exec missing")
+	}
+	wrapped, ok := handles.folders.(*sessionFolders)
+	if !ok || wrapped.svc == nil {
+		t.Fatal("production folders must wrap wsapi")
+	}
+	svc := wrapped.svc
+	ctx := context.Background()
+	owner, joiner := "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"
+	grant, err := svc.IssueGrant(ctx, wsapi.GrantRequest{
+		CoordinatorID: owner, Goal: "add a readme comment",
+		ActionClasses: []string{workspace.ClassExecute},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = svc.LaunchOrJoin(ctx, wsapi.LaunchWorkRequest{
+		GrantID: grant.ID, CoordinatorID: owner, OwnerChatID: owner,
+		Brief: "add a readme comment", EquivalenceKey: "eq-join", IdempotencyKey: "rk-join-1",
+	})
+	second, err := svc.LaunchOrJoin(ctx, wsapi.LaunchWorkRequest{
+		GrantID: grant.ID, CoordinatorID: joiner, OwnerChatID: joiner,
+		Brief: "add a readme comment", EquivalenceKey: "eq-join", IdempotencyKey: "rk-join-2",
+	})
+	if err != nil && !errors.Is(err, wsexec.ErrAbsent) {
+		t.Fatalf("joiner launch: %v", err)
+	}
+	if !second.Joined {
+		t.Fatalf("second discussion must join: %+v", second)
+	}
+	jobs := svc.Workspace()
+	owned, err := jobs.ListBindingsForChat(ctx, owner)
+	if err != nil || len(owned) != 1 {
+		t.Fatalf("owner list: %+v, %v", owned, err)
+	}
+	seen, err := jobs.ListBindingsForChat(ctx, joiner)
+	if err != nil || len(seen) != 1 || seen[0].ID != owned[0].ID || !seen[0].JoinedBy(joiner) {
+		t.Fatalf("joiner list: %+v vs %+v, %v", seen, owned, err)
+	}
+	works, err := options.Exec.LaunchState(ctx, joiner)
+	if err != nil || len(works) == 0 || !works[0].Joined {
+		t.Fatalf("joiner launch state: %+v, %v", works, err)
+	}
+	if works[0].SourceRef != joiner {
+		t.Fatalf("joiner source %q, want the joining chat so the discussion paints", works[0].SourceRef)
+	}
+}
+
 func TestPauseCoordinationDoesNotStopWorkOnRealStore(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	svc, _ := openV3FolderServiceWith(nil)

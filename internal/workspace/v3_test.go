@@ -76,7 +76,7 @@ func TestFirstWriteMigratesV2ToV5(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 5 {
+	if app != applicationID || version != schemaVersion {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
 	requireTables(t, path, v3TableNames...)
@@ -239,7 +239,7 @@ func TestBlankCreateWritesV5WithGrantTables(t *testing.T) {
 	s := openTestStore(t, path)
 	createTestCollection(t, s, "Inbox")
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 5 {
+	if app != applicationID || version != schemaVersion {
 		t.Fatalf("fresh write left application %d version %d", app, version)
 	}
 	requireTables(t, path, v3TableNames...)

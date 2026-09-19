@@ -80,7 +80,7 @@ func TestFirstWriteMigratesV3ToV5(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 5 {
+	if app != applicationID || version != schemaVersion {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
 	requireTables(t, path, v3TableNames...)
@@ -272,8 +272,8 @@ func TestBlankFilePutParticipantInitializesV5(t *testing.T) {
 	if err != nil || got.ID == "" {
 		t.Fatalf("blank put: %+v, %v", got, err)
 	}
-	if s.SchemaVersion() != 5 {
-		t.Fatalf("schema %d, want 5", s.SchemaVersion())
+	if s.SchemaVersion() != schemaVersion {
+		t.Fatalf("schema %d, want %d", s.SchemaVersion(), schemaVersion)
 	}
 	queued, err := s.PutDelivery(ctx, Delivery{ToChatID: "peer", Body: "hello", Origin: OriginAgent})
 	if err != nil || queued.Origin != OriginAgent || queued.State != DeliveryPending {

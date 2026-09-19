@@ -147,10 +147,10 @@ func TestFirstWriteMigratesV1ToV5(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, version := fileUserVersion(t, path)
-	if app != applicationID || version != 5 {
+	if app != applicationID || version != schemaVersion {
 		t.Fatalf("first write left application %d version %d", app, version)
 	}
-	if s.SchemaVersion() != 5 {
+	if s.SchemaVersion() != schemaVersion {
 		t.Fatalf("handle version %d after write", s.SchemaVersion())
 	}
 	after, err := s.Collections(ctx)
