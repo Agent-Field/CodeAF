@@ -1,8 +1,8 @@
 package plandb
 
 // THE VERDICT BASIS IS HOW ONE VERDICT WAS EARNED, written down so that a
-// reader can tell whether the checker read the work or ran the declared proof
-// — and, when it ran, the recorded exit from every run — without reopening
+// reader can tell whether the checker read the work or ran the declared proof, and,
+// when it ran, the recorded exit from every run, without reopening
 // the trajectory. It is part of the task record ([Task.VerdictBasis]) and
 // rides every surface reading that record: cli.go's cliTaskObject, the
 // session fit record, and the tasks view.

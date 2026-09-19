@@ -618,7 +618,7 @@ func isReviewConclusion(result string) bool {
 // declared the verdict is a reading one and reading can always hold
 // ([TestReadingCanHoldAndDoesNotHoldIsUngated]); with a declaration, every
 // declared command must have a recorded zero-exit run AND must pass the same
-// read-only audit law the checker's door applies — because a command merely
+// read-only audit law the checker's door applies, because a command merely
 // present in some earlier record proves none of those facts. The recorded
 // exits are exactly what the persisted basis carries, runs included, so the
 // proof is on the node rather than in a file a reader would have to reopen.
@@ -722,9 +722,9 @@ func (s *Store) recordedRuns(task *Task) (map[string]int, bool) {
 // auditableDeclaredCheck is the store's half of the check door's law, asked of
 // a persisted declared check before a holds verdict may rest on it. It is the
 // SAME three questions the proposal door asks ([declaredCheckList] in
-// internal/session): one command in shape — a first word with something in it
+// internal/session): one command in shape, a first word with something in it
 // besides wildcards, nothing that starts with an option, and no shell
-// composition — that a blanket-allow gate would still let run. A second
+// composition, that a blanket-allow gate would still let run. A second
 // reading here would be a second door, which is why every half is asked of the
 // same functions the session asks: [approval.Vouchable], the blanket-allow
 // policy whose critical table is the build's floor, and the one-command
