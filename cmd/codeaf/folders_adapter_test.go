@@ -301,6 +301,10 @@ func TestAdapterOrganizeExistingCoalescesAndCancels(t *testing.T) {
 	if err != nil || cancelled.State != "cancel" {
 		t.Fatalf("cancel: %+v, %v", cancelled, err)
 	}
+	resumed, err := adapter.OrganizeExisting(ctx)
+	if err != nil || resumed.JobID != first.JobID || resumed.State != "queued" {
+		t.Fatalf("resume after cancel minted %+v vs %s, %v", resumed, first.JobID, err)
+	}
 }
 
 func containsName(names []string, want string) bool {
