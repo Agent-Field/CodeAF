@@ -112,3 +112,26 @@ func TestSpendBankWithoutLimitLetsWorkerReturn(t *testing.T) {
 		t.Fatalf("run spend = %v, want returned 3 exactly once", supervisor.spent)
 	}
 }
+
+func TestCostLimitCountsReturnedWorkerBelowCeilingOnce(t *testing.T) {
+	store, err := plandb.Open(t.TempDir()+"/plan.json", "cost-limit-under", "root", "root", "finish below the limit")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	factory := func(task plandb.Task) Worker {
+		return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+			bankSpend(ctx, 0.4)
+			bankSpend(ctx, 0.9)
+			return Report{Result: "done", USD: 0.9}, nil
+		})
+	}
+	supervisor := NewSupervisor(store, t.TempDir(), 1, Limits{CostUSD: 1}, factory)
+	if outcome := supervisor.Run(context.Background()); outcome != OutcomeDone {
+		t.Fatalf("outcome = %q, want %q", outcome, OutcomeDone)
+	}
+	if supervisor.spent != 0.9 {
+		t.Fatalf("run spend = %v, want cumulative 0.9 exactly once", supervisor.spent)
+	}
+}
