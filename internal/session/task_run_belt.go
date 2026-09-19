@@ -107,6 +107,11 @@ type RunLanding struct {
 	Branch  string
 	Changed []string
 	Refused string
+	// Home is how the work came home, in the landing road's own outcome words
+	// ([mergeMerged] and its kin), set by this door once the run's copy has been
+	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
+	// landing, which commits on the copy's branch and merges nothing.
+	Home string
 }
 
 // RunEngine is the run engine as this door reaches it. Start drives one store
@@ -158,6 +163,11 @@ type beltRun struct {
 	workspace string
 	ground    string
 	tree      taskTree
+	// joined is every hand-off that joined this run after it started, by the
+	// number its row wears. Each was published as a running row of its own, and
+	// each is settled with the run ([Agent.settleBeltRun]); it is written and
+	// read under [Agent.beltMu].
+	joined []uint64
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -231,6 +241,9 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 		}}); err != nil {
 			return err
 		}
+		a.beltMu.Lock()
+		live.joined = append(live.joined, id)
+		a.beltMu.Unlock()
 		a.publishRunRow(g, TaskNotice{ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow()})
 		return nil
 	}
@@ -424,9 +437,10 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 		if said == "" {
 			said = "its work is kept on " + landing.Branch + " and did not go into " + run.ground
 		}
-		landing.Refused = said
+		landing.Refused, landing.Home = said, merge
 		return landing
 	}
+	landing.Home = merge
 	if branch := currentBranch(run.ground); branch != "" {
 		landing.Branch = branch
 	}
@@ -508,6 +522,35 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	a.publishRunRow(g, notice)
+	a.settleJoinedRows(g, run, notice.EndedAt)
+}
+
+// settleJoinedRows ends the row of every hand-off that joined the run. A JOINED
+// HAND-OFF IS A ROW OF ITS OWN AND ENDS WITH THE RUN IT JOINED: it was published
+// running when it joined and nothing ever published its ending, so on the real
+// screen it span beside a finished run for as long as the window stayed open.
+// Its state is what the store says of that task, and the run's landing is said
+// once, on the run's own row.
+func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time) {
+	a.beltMu.Lock()
+	joined := append([]uint64(nil), run.joined...)
+	a.beltMu.Unlock()
+	for _, id := range joined {
+		notice := TaskNotice{ID: id, State: TaskFailed, Parent: run.row, EndedAt: ended}
+		for _, kept := range g.runRows(id) {
+			if kept.ID == id {
+				notice.Title, notice.StartedAt = kept.Title, kept.StartedAt
+			}
+		}
+		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil {
+			if task.Status == plandb.StatusDone {
+				notice.State = TaskDone
+			}
+			notice.Result = strings.TrimSpace(task.Result)
+			notice.Report = notice.Result
+		}
+		a.publishRunRow(g, notice)
+	}
 }
 
 // beltRunNotice is the run as a task notice: its row, its ending, the result the
@@ -533,7 +576,13 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 	}
 	if landing.Branch != "" {
 		notice.Branch = landing.Branch
+		// WHERE THE WORK IS, AS A FACT. A run whose copy came home says so, and
+		// only a branch that is still waiting is `kept`: the card read `branch
+		// kept` over work that was already in the person's folder.
 		notice.Merge = mergeKept
+		if landing.Home != "" {
+			notice.Merge = landing.Home
+		}
 	}
 	return notice
 }
