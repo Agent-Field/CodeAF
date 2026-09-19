@@ -3205,8 +3205,9 @@ that grace; this is a bounded wait, not a guarantee about every external process
 
 That is shutting **this session** down, not closing the TUI. Quitting the
 window does not stop authorized **launch-or-join** work; `codeaf tick` continues
-it under the same `CODEAF_HOME`. `stop work` is the explicit verb that stops
-existing work. `pause coordination` only blocks new launches.
+it under the same `CODEAF_HOME`. Closing a view still does not pause. `stop work`
+is the explicit verb that stops existing work. `pause coordination` only blocks
+new launches. `revoke grant` withdraws authority and is neither of those.
 
 ## Does checking see the full task answer and the right tool results?
 

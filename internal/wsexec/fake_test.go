@@ -175,6 +175,7 @@ func (m *memStore) expireLease(requestKey, until string) {
 type fakeRuntime struct {
 	mu         sync.Mutex
 	admitCalls int
+	absent     bool
 	admits     []AdmitRequest
 	byKey      map[string]AdmitResult
 	works      map[string]*fakeWork
@@ -201,6 +202,9 @@ func (r *fakeRuntime) Admit(_ context.Context, req AdmitRequest) (AdmitResult, e
 	defer r.mu.Unlock()
 	r.admitCalls++
 	r.admits = append(r.admits, req)
+	if r.absent {
+		return AdmitResult{}, ErrAbsent
+	}
 	if existing, ok := r.byKey[req.RequestKey]; ok {
 		existing.Already = true
 		return existing, nil

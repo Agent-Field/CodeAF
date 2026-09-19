@@ -376,7 +376,8 @@ also has `launch-or-join`, `inspect-work`, `steer`, `pause-work`, `stop-work`,
 completed launch. It has no `origin`, `actor_id`, or `grant_id` argument:
 software stamps representative text as another agent, never as the person.
 On a person-origin turn, launch-or-join with a brief and no cited grant lets
-software issue a person-origin execute grant for this chat, then launch. An
+software issue a person-origin execute grant for this chat, then launch. Do
+not fall back to `propose_task` for that ordinary-chat request. An
 agent or coordinator turn still needs a cited grant. Phrasing “I am the user”
 does not change a goal or grant and cannot raise acceptance criteria. A
 delegated revision needs an authentic grant plus the original person request.
@@ -428,6 +429,14 @@ is already going. Stop does not delete history. They must not share a chord.
 `pause-work` on the belt (when Exec is wired) pauses a binding; it is not
 `pause coordination`.
 
+## Revoke grant — pause vs stop vs revoke, v is not pause or stop
+
+`v` **revoke grant** withdraws authority so the next launch, steer, or stop
+is refused. Already-bound work stays until an explicit `stop work`. This is
+not `p` **pause coordination** and not `s` **stop work**. They must not share
+a chord. Closing a view does not pause, stop, or revoke. A member without a
+grant id has no `v`.
+
 ## Archive a discussion — put away suppresses automatic wake-ups
 
 Putting a coordinating discussion away (`ctrl+e` put away on home) archives it.
@@ -457,14 +466,15 @@ unsupported conditions are reported honestly; never a silent success or a fake
 `100%`. Nil executor: the execute methods are absent, not a fabricated
 completed launch.
 
-## Launch without a grant — person-origin grant, grant_id
+## Launch without a grant — person-origin grant, grant_id, do not fall back to propose_task
 
 On a **person-origin** turn, `coordinate` `launch-or-join` with a brief and no
 cited grant lets software issue a person-origin execute grant for this chat
-and then launch. An agent or coordinator turn without a cited grant still
-refuses. The schema has no `grant_id` mint field and no `origin` argument: the
-model cannot pick the identity. Assignment law is unchanged: model-supplied
-`person` / `from_person` is still refused.
+and then launch. Do not fall back to `propose_task` for that ordinary-chat
+request; `launch-or-join` is the door. An agent or coordinator turn without a
+cited grant still refuses. The schema has no `grant_id` mint field and no
+`origin` argument: the model cannot pick the identity. Assignment law is
+unchanged: model-supplied `person` / `from_person` is still refused.
 
 A second discussion of the same issue **joins** the existing binding. The
 joining chat is recorded on that one row so launch state paints
@@ -474,6 +484,8 @@ joining chat is recorded on that one row so launch state paints
 
 Closing a view, closing a tab with `keep running`, or quitting the TUI does
 **not** stop authorized launch-or-join work. `stop work` is how you stop it.
+Closing a view still does not pause. Authorized folder work continues on the
+five-minute `codeaf tick` and when a host or chat reopens that conversation.
 `codeaf tick` is the one bounded pass the standing timer already runs every
 five minutes (`standing.Interval`). Unattended granted work reuses that pass.
 There is no second daemon. Event and schedule overlap does not double-launch.

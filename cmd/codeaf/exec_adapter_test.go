@@ -170,6 +170,9 @@ func TestLaunchStateReadsBindingsFromRealStore(t *testing.T) {
 	if strings.Contains(low, "100%") || strings.Contains(low, "0 runs") {
 		t.Fatalf("emptiness/dummy words painted: %+v", works[0])
 	}
+	if works[0].GrantID == "" {
+		t.Fatal("launch state must carry GrantID so revoke grant can find it")
+	}
 }
 
 func TestSessionExecIssuesPersonGrantThenLaunch(t *testing.T) {
@@ -353,4 +356,139 @@ func execCyclomatic(body *ast.BlockStmt) int {
 		return true
 	})
 	return decisions
+}
+
+// tickRuntime is a test host that counts Admit. Recover must not call it;
+// continueGrantedWork LaunchOrJoin must.
+type tickRuntime struct {
+	admitCalls int
+}
+
+func (r *tickRuntime) Admit(_ context.Context, req wsexec.AdmitRequest) (wsexec.AdmitResult, error) {
+	r.admitCalls++
+	id := "ri-" + req.RequestKey
+	return wsexec.AdmitResult{RunInstanceID: id, RuntimeRef: "tick/" + id, Road: req.Road}, nil
+}
+
+func (r *tickRuntime) Inspect(context.Context, string) (wsexec.WorkView, error) {
+	return wsexec.WorkView{}, wsexec.ErrNotFound
+}
+
+func (r *tickRuntime) Steer(context.Context, string, wsexec.SteerRevision) error { return nil }
+func (r *tickRuntime) Pause(context.Context, string) error                       { return nil }
+func (r *tickRuntime) Stop(context.Context, string) error                        { return nil }
+
+func (r *tickRuntime) Observe(context.Context, string) (wsexec.ResultView, error) {
+	return wsexec.ResultView{}, wsexec.ErrNotFound
+}
+
+func (r *tickRuntime) FindByRequestKey(context.Context, string) (wsexec.AdmitResult, bool, error) {
+	return wsexec.AdmitResult{}, false, nil
+}
+
+func TestContinueGrantedWorkAdmitsReservedWhenRuntimePresent(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	svc, _ := openV3FolderServiceWith(nil)
+	if svc == nil || svc.Workspace() == nil {
+		t.Fatal("production wsapi.Open must bind collections.db")
+	}
+	ctx := context.Background()
+	grant, err := svc.IssueGrant(ctx, wsapi.GrantRequest{
+		CoordinatorID: "aaaaaaaaaaaaaaaa", Goal: "add a readme comment",
+		ActionClasses: []string{workspace.ClassExecute},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = svc.LaunchOrJoin(ctx, wsapi.LaunchWorkRequest{
+		GrantID: grant.ID, CoordinatorID: "aaaaaaaaaaaaaaaa", OwnerChatID: "aaaaaaaaaaaaaaaa",
+		Brief: "add a readme comment", IdempotencyKey: "rk-tick-1",
+	})
+	row, err := svc.Workspace().BindingByRequestKey(ctx, "rk-tick-1")
+	if err != nil || row.RunInstanceID != "" {
+		t.Fatalf("pre-tick reserved: %+v, %v", row, err)
+	}
+	rt := &tickRuntime{}
+	setV3Executor(wsexec.Open(&workspaceExecStore{jobs: svc.Workspace()}, rt))
+	t.Cleanup(func() { setV3Executor(nil) })
+	continueGrantedWork(ctx, svc.Workspace())
+	if rt.admitCalls != 1 {
+		t.Fatalf("tick LaunchOrJoin must admit reserved work once: %d", rt.admitCalls)
+	}
+	bound, err := svc.Workspace().BindingByRequestKey(ctx, "rk-tick-1")
+	if err != nil || bound.RunInstanceID == "" || bound.State != workspace.BindBound {
+		t.Fatalf("tick left reserved unbound: %+v, %v", bound, err)
+	}
+}
+
+func TestRecoverUnboundWorkStillDoesNotAdmit(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	svc, _ := openV3FolderServiceWith(nil)
+	if svc == nil || svc.Workspace() == nil {
+		t.Fatal("production wsapi.Open must bind collections.db")
+	}
+	ctx := context.Background()
+	grant, err := svc.IssueGrant(ctx, wsapi.GrantRequest{
+		CoordinatorID: "aaaaaaaaaaaaaaaa", Goal: "add a readme comment",
+		ActionClasses: []string{workspace.ClassExecute},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = svc.LaunchOrJoin(ctx, wsapi.LaunchWorkRequest{
+		GrantID: grant.ID, CoordinatorID: "aaaaaaaaaaaaaaaa", OwnerChatID: "aaaaaaaaaaaaaaaa",
+		Brief: "add a readme comment", IdempotencyKey: "rk-a14-1",
+	})
+	rt := &tickRuntime{}
+	setV3Executor(wsexec.Open(&workspaceExecStore{jobs: svc.Workspace()}, rt))
+	t.Cleanup(func() { setV3Executor(nil) })
+	recoverUnboundWork(ctx, svc.Workspace())
+	if rt.admitCalls != 0 {
+		t.Fatalf("A14 Recover admitted: %d", rt.admitCalls)
+	}
+	row, err := svc.Workspace().BindingByRequestKey(ctx, "rk-a14-1")
+	if err != nil || row.RunInstanceID != "" {
+		t.Fatalf("recover without a found runtime must leave reserved: %+v, %v", row, err)
+	}
+}
+
+func TestTuiExecRevokeGrantLeavesBinding(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	handles := openV3FolderHandles()
+	if handles.folders == nil {
+		t.Fatal("folders missing")
+	}
+	var options tui3.Options
+	attachSurfaceFolders(&options, handles.folders)
+	if options.Exec == nil {
+		t.Fatal("Options.Exec missing")
+	}
+	wrapped, ok := handles.folders.(*sessionFolders)
+	if !ok || wrapped.svc == nil {
+		t.Fatal("production folders must wrap wsapi")
+	}
+	svc := wrapped.svc
+	ctx := context.Background()
+	grant, err := svc.IssueGrant(ctx, wsapi.GrantRequest{
+		CoordinatorID: "aaaaaaaaaaaaaaaa", Goal: "add a readme comment",
+		ActionClasses: []string{workspace.ClassExecute, workspace.ClassStop},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = svc.LaunchOrJoin(ctx, wsapi.LaunchWorkRequest{
+		GrantID: grant.ID, CoordinatorID: "aaaaaaaaaaaaaaaa", OwnerChatID: "aaaaaaaaaaaaaaaa",
+		Brief: "add a readme comment", IdempotencyKey: "rk-revoke-1",
+	})
+	if err := options.Exec.RevokeGrant(ctx, grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	held, err := svc.Workspace().GetGrant(ctx, grant.ID)
+	if err != nil || held.Status != workspace.GrantRevoked {
+		t.Fatalf("revoke status %+v, %v", held, err)
+	}
+	row, err := svc.Workspace().BindingByRequestKey(ctx, "rk-revoke-1")
+	if err != nil || row.State == workspace.BindStopped {
+		t.Fatalf("revoke grant must not stop work: %+v, %v", row, err)
+	}
 }

@@ -362,6 +362,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "stop work",
 		why:    "Wave 4 explicit stop of existing authorized work. History remains. Not pause coordination. Same spelling as the tab-close answer",
 	},
+	"execRevokeGrantWord": {
+		screen: "revoke grant",
+		why:    "Wave 4 visible revoke of authority. Not pause coordination and not stop work. Closing a view does not revoke",
+	},
 	"foldMoreWord": {
 		screen: " more",
 		why:    "every panel's fold counts what it stands over — `14 more` — and is a toggle, not a door",

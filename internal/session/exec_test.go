@@ -248,6 +248,13 @@ func TestPersonTurnLaunchOrJoinIssuesGrantWhenEmpty(t *testing.T) {
 	if fake.issued != 1 || fake.launches != 1 || fake.grant != "g-minted" || fake.brief != "add a readme comment" {
 		t.Fatalf("person grant path = %+v", fake)
 	}
+	desc := coordinateOfferedDescription(t, agent)
+	if strings.Contains(desc, "when an authentic grant says so") {
+		t.Fatal("person-origin copy still demanded a cited grant before launch-or-join")
+	}
+	if !strings.Contains(desc, "launch-or-join") || !strings.Contains(desc, "propose_task") {
+		t.Fatalf("person-origin copy must name launch-or-join and refuse propose_task fallback: %s", desc)
+	}
 	schema := coordinateOfferedSchema(t, agent)
 	if strings.Contains(schema, `"grant_id"`) {
 		t.Fatal("schema must still not mint grant_id")
@@ -353,6 +360,17 @@ func coordinateOfferedSchema(t *testing.T, agent *Agent) string {
 	for _, tool := range agent.belt() {
 		if tool.Name == "coordinate" {
 			return string(tool.Schema)
+		}
+	}
+	t.Fatal("coordinate is not on the belt")
+	return ""
+}
+
+func coordinateOfferedDescription(t *testing.T, agent *Agent) string {
+	t.Helper()
+	for _, tool := range agent.belt() {
+		if tool.Name == "coordinate" {
+			return tool.Description
 		}
 	}
 	t.Fatal("coordinate is not on the belt")

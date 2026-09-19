@@ -10,10 +10,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	"github.com/Agent-Field/codeaf/internal/workspace"
@@ -70,6 +76,10 @@ func bindAgentExec(agent *session.Agent, cfg session.Config) {
 		return
 	}
 	v3ExecRuntime.bind(id, agent)
+	// Host/TUI just bound this conversation: reserved granted work can
+	// LaunchOrJoin now. Closing the view does not pause; this is how it
+	// continues after a reopen.
+	continueGrantedWorkFor(context.Background(), id)
 }
 
 func sessionExecOf(folders session.Folders, chatID string) session.Exec {
@@ -230,7 +240,15 @@ func execWorkOf(row workspace.ExecutionBinding, chatID string) tui3.ExecWork {
 	if workID == "" {
 		workID = row.RequestKey
 	}
-	return tui3.ExecWork{WorkID: workID, Title: title, State: row.State, Road: row.Road, SourceRef: source, Joined: joined}
+	return tui3.ExecWork{
+		WorkID: workID, Title: title, State: row.State, Road: row.Road,
+		SourceRef: source, GrantID: row.GrantID, Joined: joined,
+	}
+}
+
+func (e *tuiExec) RevokeGrant(ctx context.Context, grantID string) error {
+	_, err := e.svc.RevokeGrant(ctx, grantID, 0)
+	return err
 }
 
 type wsapiExecBridge struct{ inner *wsexec.Adapter }
@@ -284,10 +302,7 @@ func recoverUnboundWork(ctx context.Context, jobs *workspace.Store) {
 	if jobs == nil {
 		return
 	}
-	adapter := currentV3Executor()
-	if adapter == nil {
-		adapter = wsexec.Open(&workspaceExecStore{jobs: jobs}, v3ExecRuntime)
-	}
+	adapter := grantedWorkAdapter(jobs)
 	rows, err := jobs.ListUnboundBindings(ctx)
 	if err != nil {
 		return
@@ -295,4 +310,135 @@ func recoverUnboundWork(ctx context.Context, jobs *workspace.Store) {
 	for _, row := range rows {
 		_, _ = adapter.Recover(ctx, row.RequestKey)
 	}
+}
+
+// continueGrantedWork is the tick unattended pass: Recover finds a request
+// key the runtime already accepted (A14), then LaunchOrJoin admits reserved
+// granted work that never got a host. Closing a TUI view does not pause and
+// does not stop this pass.
+func continueGrantedWork(ctx context.Context, jobs *workspace.Store) {
+	if jobs == nil {
+		return
+	}
+	recoverUnboundWork(ctx, jobs)
+	launchReservedWork(ctx, jobs, "")
+}
+
+func continueGrantedWorkFor(ctx context.Context, chatID string) {
+	handles := openV3FolderHandles()
+	if handles.jobs == nil {
+		return
+	}
+	recoverUnboundWork(ctx, handles.jobs)
+	launchReservedWork(ctx, handles.jobs, chatID)
+}
+
+func grantedWorkAdapter(jobs *workspace.Store) *wsexec.Adapter {
+	adapter := currentV3Executor()
+	if adapter != nil {
+		return adapter
+	}
+	return wsexec.Open(&workspaceExecStore{jobs: jobs}, v3ExecRuntime)
+}
+
+func launchReservedWork(ctx context.Context, jobs *workspace.Store, chatID string) {
+	if jobs == nil {
+		return
+	}
+	adapter := grantedWorkAdapter(jobs)
+	rows, err := jobs.ListUnboundBindings(ctx)
+	if err != nil {
+		return
+	}
+	chatID = strings.TrimSpace(chatID)
+	for _, row := range rows {
+		if !reservedWorkMatches(row, chatID) {
+			continue
+		}
+		grant, err := jobs.GetGrant(ctx, row.GrantID)
+		if err != nil || grant.Status != workspace.GrantActive || !grantAllowsExecute(grant) {
+			continue
+		}
+		if chatID == "" {
+			bindTickExec(row.OwnerChatID)
+		}
+		_, _ = adapter.LaunchOrJoin(ctx, reservedLaunchReq(row, grant))
+	}
+}
+
+func reservedWorkMatches(row workspace.ExecutionBinding, chatID string) bool {
+	if chatID == "" {
+		return true
+	}
+	return row.OwnerChatID == chatID || row.CoordinatorID == chatID
+}
+
+func reservedLaunchReq(row workspace.ExecutionBinding, grant workspace.Grant) wsexec.LaunchRequest {
+	owner := strings.TrimSpace(row.OwnerChatID)
+	if owner == "" {
+		owner = row.CoordinatorID
+	}
+	return wsexec.LaunchRequest{
+		RequestKey:     row.RequestKey,
+		EquivalenceKey: row.EquivalenceKey,
+		GrantID:        row.GrantID,
+		CoordinatorID:  row.CoordinatorID,
+		OwnerChatID:    owner,
+		Brief:          grant.Goal,
+		GrantRev:       strconv.Itoa(grant.Revision),
+	}
+}
+
+func grantAllowsExecute(g workspace.Grant) bool {
+	var classes []string
+	if json.Unmarshal([]byte(g.ActionJSON), &classes) != nil {
+		return false
+	}
+	for _, got := range classes {
+		if got == workspace.ClassExecute {
+			return true
+		}
+	}
+	return false
+}
+
+// bindTickExec opens the owning conversation under standing posture so tick
+// LaunchOrJoin can Admit. Missing transcript or a host that cannot run
+// unattended is absence — reserved work stays reserved.
+func bindTickExec(chatID string) {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" || v3ExecRuntime.agent(chatID) != nil {
+		return
+	}
+	dir := findSessionDir(chatID)
+	if dir == "" {
+		return
+	}
+	settings, err := config.Load()
+	if err != nil {
+		return
+	}
+	cfg, err := v3StandingPosture(settings)
+	if err != nil {
+		return
+	}
+	cfg.Folders = openV3Folders()
+	place := v3PlaceOf(filepath.Join(dir, v3TranscriptName), cfg.Workspace)
+	cfg, err = v3PointAt(cfg, place)
+	if err != nil {
+		return
+	}
+	_, _ = v3OpenSession(cfg)
+}
+
+func findSessionDir(chatID string) string {
+	matches, err := filepath.Glob(filepath.Join(home.Join("v3", "projects"), "*", chatID))
+	if err != nil || len(matches) != 1 {
+		return ""
+	}
+	info, err := os.Stat(matches[0])
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	return matches[0]
 }
