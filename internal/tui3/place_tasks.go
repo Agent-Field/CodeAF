@@ -1846,19 +1846,15 @@ func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.chan
 // box is the filter, exactly as it has always been: every printable key on this
 // place goes into it and the list narrows as it fills.
 //
-// WHAT MOVED IS WHERE IT IS DRAWN ([placeTasks.boxOnBody]). The router used to
-// put this editor's letters two rows UNDER the list they were narrowing; they
-// are on the first row of the list now, over the rows they changed
-// ([tasksControlRow]). The editor itself stays the place's box because a box is
-// more than a row of letters — the two-space door home is armed from it
-// ([app.placeHomeGesture]), a press in the foot puts the caret in it, and a
-// place that answered `nil` here would silently lose all of that.
+// The editor stays the place's box because a box is more than a row of letters:
+// the two-space door home is armed from it ([app.placeHomeGesture]), a press in
+// the foot puts the caret in it, and a place that answered `nil` here would
+// silently lose all of that.
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 
-// boxOnBody says THIS PLACE DRAWS WHAT IS TYPED INTO ITS BOX ITSELF, in a row of
-// its own body, so the foot must not draw it a second time. The foot keeps the
-// invitation ([placeTasks.resting]) and loses the echo; one person's letters on
-// screen twice is the defect this page's own title row was removed for.
+// boxOnBody leaves the filter in the shared place box: its resting sentence is
+// replaced by the words as soon as a person types, and the shared renderer keeps
+// the caret and a long query visible.
 func (placeTasks) boxOnBody() bool { return false }
 
 // resting is what that box says when nothing is typed in it, and it is THIS
