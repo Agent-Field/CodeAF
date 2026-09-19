@@ -229,6 +229,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"coordinate these", "collections"},
 		{"is a group chat required", "collections"},
 		{"direct request reply", "collections"},
+		{"does the management chat show request reply sent", "collections"},
+		{"painted request reply sent", "collections"},
 		{"fan-out to several chats", "collections"},
 		{"selected snapshot", "collections"},
 		{"manage this folder", "collections"},

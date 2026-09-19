@@ -368,6 +368,14 @@ Three patterns share one router:
 person sees `sent`, `request`, `reply`. If a recipient is not running, the line
 waits and appears **once** on resume. Citing a chat as evidence does not wake it.
 
+## Painted request reply sent — management chat chrome, source links
+
+After this chat asks one conversation, fans out to several, or invites two
+jointly, the **management chat** itself paints `request`, `reply`, and `sent`
+with a `source` link named from that conversation's title. The chrome is the
+transcript after the coordinating turn, not a separate manager page. Empty
+activity draws nothing. Original chats keep their own histories.
+
 The `coordinate` tool is on the belt only when collab is wired, and absent
 rather than present and failing otherwise. Wave 3 actions: `deliver`, `invite`,
 `inspect`, `selected`, `manage-folder`, `pause`. When execution is wired it

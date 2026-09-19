@@ -356,6 +356,64 @@ func TestCoordinateFailedRefreshKeepsLastActivity(t *testing.T) {
 	}
 }
 
+func TestCoordinateDeliveriesPaintInTheManagementChat(t *testing.T) {
+	a, fake := collabLab(t)
+	a.closeHome()
+	a.touch()
+	hidden := plain(frame(a))
+	if strings.Contains(hidden, collabRequestWord) || strings.Contains(hidden, "how's progress") {
+		t.Fatalf("empty memo painted activity before the coordinating turn:\n%s", hidden)
+	}
+	// Adapter shape: Kind is the person word, SourceRef/ToTitle are chat ids.
+	fake.activity = []CollabActivity{
+		{Kind: collabRequestWord, SourceRef: "aaaa000000000002", ToTitle: "aaaa000000000002", Body: "how's progress"},
+		{Kind: collabReplyWord, SourceRef: "aaaa000000000002", ToTitle: "aaaa000000000002", Body: "waiting on tests"},
+		{Kind: collabSentWord, SourceRef: "bbbb000000000001", ToTitle: "bbbb000000000001", Body: "use the new interface"},
+		{Kind: "accepted", SourceRef: "aaaa000000000002", Body: "must not paint"},
+	}
+	fake.participants = []CollabParticipant{
+		{Role: "planner", SourceTitle: "aaaa000000000002"},
+		{Role: "critic", SourceTitle: "bbbb000000000001"},
+	}
+	a.refreshCollabChrome()
+	a.touch()
+	got := plain(frame(a))
+	for _, want := range []string{
+		collabRequestWord, collabReplyWord, collabSentWord, collabSourceWord,
+		"prime sieve", "pricing site", "how's progress", "waiting on tests",
+		"use the new interface", "planner", "critic",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("management chat hid %q:\n%s", want, got)
+		}
+	}
+	for _, banned := range []string{
+		"aaaa000000000002", "bbbb000000000001", "accepted", "must not paint",
+		"0 participants", "manager",
+	} {
+		if strings.Contains(got, banned) {
+			t.Fatalf("management chat painted %q:\n%s", banned, got)
+		}
+	}
+}
+
+func TestCoordinateTurnSettleRereadsActivity(t *testing.T) {
+	a, fake := collabLab(t)
+	a.closeHome()
+	fake.activity = []CollabActivity{
+		{Kind: collabRequestWord, SourceRef: "aaaa000000000002", ToTitle: "aaaa000000000002", Body: "how's progress"},
+		{Kind: collabReplyWord, SourceRef: "aaaa000000000002", Body: "waiting on tests"},
+		{Kind: collabSentWord, ToTitle: "bbbb000000000001", Body: "use the new interface"},
+	}
+	_ = a.settle()
+	got := plain(frame(a))
+	for _, want := range []string{collabRequestWord, collabReplyWord, collabSentWord, "prime sieve", "pricing site"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("settling the coordinating turn hid %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestFoldersIsStillNotACollabSlash(t *testing.T) {
 	for _, c := range commands {
 		if c.name == "coordinate" || c.name == "collab" || c.name == "mark" {

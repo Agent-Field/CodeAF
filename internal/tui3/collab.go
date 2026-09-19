@@ -17,8 +17,9 @@ import (
 // "coordinate these" still works if session.Config.Collab is wired. A belt
 // that painted dummy sent lines would be a capability advertised as broken.
 //
-// THE SNAPSHOT IS TAKEN ON THE HOME BEAT and after a collab mutation.
-// View, the cursor and a mere rebuild read [app.collabView], which is a memo.
+// THE SNAPSHOT IS TAKEN ON THE HOME BEAT, after a collab mutation, and when
+// a coordinating turn settles ([app.refreshCollabChrome]). View, the cursor
+// and a mere rebuild read [app.collabView], which is a memo.
 type Collab interface {
 	Mark(ctx context.Context, refID string) error
 	Unmark(ctx context.Context, refID string) error
@@ -108,6 +109,7 @@ func (a *app) readCollabChat() {
 	if parts, err := a.collab.Participants(ctx, id); err == nil {
 		a.collabView.participants = parts
 	}
+	a.collabNameMemo()
 }
 
 func collabChatMarked(in *homeGridInput, refID string) bool {
