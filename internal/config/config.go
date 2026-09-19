@@ -367,6 +367,9 @@ func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage)
 		KeySetupSeen:          true,
 		KeySplitPct:           true,
 		KeyStandingBackground: true,
+		KeyResponseAttempts:   true,
+		KeyResponseLiftAfter:  true,
+		KeyResponseLiftCap:    true,
 		keyModelSources:       true,
 	}
 	for _, row := range NewSettings(SettingsOptions{ProfileDir: profileDir}).Rows() {

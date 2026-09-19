@@ -512,7 +512,7 @@ func TestDocumentClientIsDirectLikeTheVisionProxy(t *testing.T) {
 func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(ProfileDirEnv, dir)
-	if err := os.WriteFile(BudgetConfigPath(dir), []byte(`{"models":{"tiers":{"reflex":"nested/model"}},"typo.key":true,"model.talk":"flat/model"}`), 0o600); err != nil {
+	if err := os.WriteFile(BudgetConfigPath(dir), []byte(`{"models":{"tiers":{"reflex":"nested/model"}},"typo.key":true,"model.talk":"flat/model","response.attempts":3,"response.lift_after":2,"response.lift_cap_usd":0.5}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	warnedProfileConfigs = sync.Map{}
@@ -548,7 +548,18 @@ func TestLoadWarnsOnceForEveryUnreadTopLevelProfileKey(t *testing.T) {
 			t.Errorf("diagnostic does not name %q: %q", key, got)
 		}
 	}
-	if strings.Contains(got, KeyChatModel) {
-		t.Errorf("diagnostic called a consumed flat key unread: %q", got)
+	for _, key := range []string{KeyChatModel, KeyResponseAttempts, KeyResponseLiftAfter, KeyResponseLiftCap} {
+		if strings.Contains(got, key) {
+			t.Errorf("diagnostic called consumed flat key %q unread: %q", key, got)
+		}
+	}
+	if value := ResponseAttemptsAt(dir); value != 3 {
+		t.Errorf("response attempts = %v, want 3", value)
+	}
+	if value := ResponseLiftAfterAt(dir); value != 2 {
+		t.Errorf("response lift after = %v, want 2", value)
+	}
+	if value := ResponseLiftCapAt(dir); value != 0.5 {
+		t.Errorf("response lift cap = %v, want 0.5", value)
 	}
 }
